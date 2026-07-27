@@ -1,0 +1,9 @@
+- id: TEST-008
+  domain: TEST
+  title: subagent reserve guard test infra881test1780417229 d
+  status: closed
+  priority: P3
+  effort: xs
+  notes: |
+    [2026-06-05T05:26:12Z] Test fixture pollution from subagent reserve-guard test (1780416055 / 1780417229). No real bug; reaped.
+

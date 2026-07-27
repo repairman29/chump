@@ -1,0 +1,19 @@
+- id: INFRA-2166
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124 — IntegrationCycleContract typed handoff for batched Mode A integrator daemon"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- New IntegrationCycleContract Input/Output structs in crates/chump-handoff/src/contracts.rs, mirroring existing CodeFixContract/DecomposeContract/GapReviewContract patterns.\n- Input: cycle_id (String, integration-YYYY-MM-DD-HHMM), candidate_gap_ids (Vec<String>), integration_branch (String), preflight_log_path (String), trigger_reason (enum: Cadence "
+    - " Volume "
+    - " LocBudget "
+    - " OperatorManual).\n- Output: cycle_status (enum: Shipped "
+    - " BisectQuarantined "
+    - " Inconclusive "
+    - " Aborted), manifest (Vec<{gap_id, commit_sha}>), quarantined_gap_ids (Vec<String>), root_cause_signature (Option<String>), bisect_runs (u32).\n- Validate impl: manifest.len() + quarantined_gap_ids.len() MUST equal candidate_gap_ids.len() (no silent drops). cycle_id MUST match regex ^integration-\\\\d{4}-\\\\d{2}-\\\\d{2}-\\\\d{4}$. integration_branch non-empty.\n- HandoffContract impl: name()='IntegrationCycleContract', prompt() embeds all input fields in fenced-JSON-output spec matching CodeFixContract style, model_tier()=ModelTier::Sonnet.\n- 5+ unit tests: accept_valid_output, reject_manifest_quarantined_mismatch, reject_bad_cycle_id_format, reject_empty_branch, prompt_includes_all_inputs.\n- Update tiers_are_intentional test to include this contract.\n- cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo test -p chump-handoff GREEN.\n- Cross-references META-124 (Mode A integrator daemon C2 dispatches via this contract), INFRA-2130 (the daemon), INFRA-2111 (sibling ExternalRepoContract pattern reference)."
+  notes: |
+    [2026-06-04T00:26:26Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2737
+  outcome_id: MISSION-010
+

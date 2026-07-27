@@ -1,0 +1,15 @@
+- id: INFRA-2913
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 2 PRs blocked >2h as of 2026-06-17"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Events emitted on every invocation (success/no-op/dry-run/error/bad-args) via kind=pr_stuck_cluster_detector_run — shipped INFRA-2754 (#3221)."
+    - 2. Cost (gap_reserve_calls) tracked per-run and reported to the operator via the ambient event, now registered in EVENT_REGISTRY.yaml with fields_required including failure_class and consumers [waste-tally, watchdog].
+    - "3. failure_class taxonomy (none/transient/permanent) shipped INFRA-2906 (#3223); this gap closes the EVENT_REGISTRY.yaml doc gap it left (fields_required + smoke-test pointer)."
+    - "4. Smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh (runnable standalone) — now cross-referenced from EVENT_REGISTRY.yaml."
+  closed_date: '2026-07-20'
+  closed_pr: 3224
+  outcome_id: MISSION-010
+

@@ -1,0 +1,30 @@
+- id: INFRA-1362
+  domain: INFRA
+  title: "EFFECTIVE: OPERATOR_RUNBOOK.md — one-shot setup checklist for INFRA-1076 GitHub App installations"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "New file docs/process/OPERATOR_RUNBOOK.md with a top-level table-of-contents and a dedicated section \"INFRA-1076: split GitHub App lane installations (one-shot setup)\" containing:"
+    - "  1. Why: the multi-hour secondary-mutation gag on the operator user account (live evidence from 2026-05-14 session) blocks ship-blocking merges when a sweep saturates the per-user limit. Lane-isolated App installations give critical + background flows their own quota counters."
+    - "  2. Prerequisite: GitHub admin access to the org and the repo (repairman29/chump)."
+    - "  3. Step 1: Create the chump-critical GitHub App in github.com/settings/apps. Scopes: repo: contents (write), pull-requests (write), statuses (write), checks (write), metadata (read). Generate + download the private-key .pem file."
+    - "  4. Step 2: Same as Step 1 but for chump-background. Same scopes."
+    - "  5. Step 3: Install both Apps on the repository in github.com/settings/installations."
+    - "  6. Step 4: Create ~/.chump/github_apps.toml chmod 600 with the structure:"
+    - "       [critical]"
+    - "       app_id = <Id from app settings>"
+    - "       private_key_path = \"/Users/<you>/.chump/keys/chump-critical.pem\""
+    - "       installation_id = <Installation Id from /api/installations>"
+    - "       [background]"
+    - "       (same fields)"
+    - "  7. Step 5: Install the rotator cron — on macOS run `bash scripts/setup/install-gh-token-rotate-launchd.sh`; on Linux add `*/50 * * * * <repo>/target/release/chump gh-token rotate` to crontab."
+    - "  8. Step 6: Verify with `chump gh-token rotate` (one-shot manual run); inspect ~/.chump/oauth-token-{critical,background}.json files exist with chmod 600."
+    - "  9. Step 7: Verify lane routing in flight — run `CHUMP_GH_CALL_CRITICALITY=background chump_gh api rate_limit` and confirm via `gh api rate_limit` (without the env) that the two return DIFFERENT rate_limit.remaining values (separate quota buckets)."
+    - "  10. Recovery: when chump-gh-app crate (INFRA-1360) is updated and the App installations are revoked or rotated, re-run Steps 1–6 to refresh credentials."
+    - "Cross-references: link from INFRA-1076 PR body + AC to this runbook section once the runbook lands. Link from docs/process/CLAUDE_GOTCHAS.md secondary-mutation section to this runbook as the structural fix."
+    - "Out of scope: command-line tool that AUTOMATES the App creation (still requires browser GitHub Settings UI per GitHub policy)."
+  closed_date: '2026-05-15'
+  closed_pr: 2099
+  outcome_id: MISSION-010
+

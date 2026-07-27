@@ -1,0 +1,17 @@
+- id: INFRA-1460
+  domain: INFRA
+  title: "CREDIBLE: keystone-impact telemetry — emit kind=keystone_impact {merged_pr, target_check, prs_unblocked_count, latency_min} 30min after detecting a paths-filter/workflow fix lands"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - On every merge, scan the merged PR's diff for .github/workflows/ or .gitattributes or paths-filter changes; tag as 'keystone-candidate'
+    - "30 min after a keystone-candidate merge, compute deltas: PRs that were failing the related check at T0 vs now; emit kind=keystone_impact {merged_pr:N, target_check, prs_at_t0, prs_now, delta_count, latency_min}"
+    - Surface in chump health dashboard and ambient stream so operator sees 'this fix unblocked N PRs' without manual counting
+    - "Today's lesson: #2163 narrow-tauri merge unblocked 23 PRs but I had to manually count by mass-rebasing. The telemetry would emit kind=keystone_impact merged_pr=2163 target_check=tauri-cowork-e2e prs_at_t0=24 prs_now=1 delta_count=23"
+    - Smoke test scripts/ci/test-keystone-impact.sh stub merged PR + ambient input, assert correct emit shape
+    - Depends on INFRA-1420 keystone cascade (which already detects the merge) — this is the measurement leg
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

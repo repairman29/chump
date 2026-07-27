@@ -1,0 +1,19 @@
+- id: RESILIENT-076
+  domain: RESILIENT
+  title: "RESILIENT P0: farmer guards the drain — auto-reconcile branch-protection drift to baseline + keep drain daemons alive"
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    Operator directive 2026-06-03 ('keep the farmer in charge of this'). Branch-protection silently drifted strict false->true (checked-in baseline docs/baselines/branch-protection-main.json says false), which serialized merges + churned CI. The existing drift detector (INFRA-121, branch-protection-drift.yml) WARNED but never RECONCILED -> not load-bearing. Make the farmer (RESILIENT-068: un-killable, pause-immune, already does daemon recovery) the guardian of the drain machinery: (1) each tick, diff LIVE branch-protection (gh api) vs the checked-in baseline and AUTO-RECONCILE drift (strict/contexts/enforce_admins) via the API, not just warn; (2) add the drain daemons (auto-merge-rearm, ci-flake-rerun, pr-shepherd, bot-merge-watchdog, transient-retrigger) to the farmer recovery set so a crash is restarted within a tick. Gate both on the kill switch (AUTONOMY_LEVEL>=1). || CRITICAL UPDATE 2026-06-03 (conductor): the REAL 'require up-to-date' enforcement is a REPOSITORY RULESET, not classic branch protection. Ruleset 'Protect main' (id=15133729) had required_status_checks.strict_required_status_checks_policy=TRUE while classic BP strict=false. Rulesets evaluate IN ADDITION to classic BP (most-restrictive wins), so the ruleset strict=true was the actual force behind the quadratic rebase-reset cascade (queue-driver existed to bring BEHIND PRs current to satisfy it). 8 conductor ticks of reconciling classic-BP strict=false were the WRONG KNOB. Flipped the ruleset to strict=false (backup /tmp/ruleset_backup_15133729.json); #3020 merged the instant it landed. THE FARMER MUST reconcile the RULESET strict policy (gh api .../rulesets/<id>), not just classic BP. ALSO docs/baselines/branch-protection-main.json is INCOMPLETE: it omits the ruleset — add the ruleset's strict_required_status_checks_policy=false so drift detection covers the enforcing knob.
+  acceptance_criteria:
+    - the farmer diffs live branch-protection vs docs/baselines/branch-protection-main.json each cycle and auto-reconciles any drift via the GitHub API (emits kind=branch_protection_reconciled naming the field changed)
+    - the 5 drain daemons (auto-merge-rearm, ci-flake-rerun, pr-shepherd, bot-merge-watchdog, transient-retrigger) are in the farmer recovery set, restarted within one tick if down
+    - a test flips strict to true and asserts the farmer reconciles it back to false within one cycle
+    - reconcile + daemon-restart are SKIPPED when AUTONOMY_LEVEL=0 (kill switch always wins)
+  depends_on: [RESILIENT-068]
+  notes: |
+    [2026-06-04T00:08:29Z] Shipped #3022 (farmer drain-guardian, LIVE). auto-flip-on-merge missed this one (edge case — likely the bypass-recipe direct-merge event); closed manually. Farmer confirmed live via manual run.
+  closed_pr: 3022
+  outcome_id: RESILIENT-000
+

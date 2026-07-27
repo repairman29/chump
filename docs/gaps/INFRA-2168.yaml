@@ -1,0 +1,15 @@
+- id: INFRA-2168
+  domain: INFRA
+  title: "RESILIENT P1: integration-cycle flake-class oracle — extend KNOWN_FLAKES.yaml + cargo-test-with-rerun.sh contract to bisect step"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- New docs/process/INTEGRATION_FLAKE_CLASSES.yaml registry, distinct from existing KNOWN_FLAKES.yaml (which is cargo-test-scoped only).\n- Schema: list of entries with {id (e.g. acp-cache-collision), failure_signature_regex (multi-line regex), recovery_action (skip "
+    - " rerun "
+    - " quarantine), max_retries (default 2), discovered_in (gap-id), notes (string)}.\n- Seed with 3 known classes from today's evidence: (a) ACP cache-collision pattern \"Failed to save: Unable to reserve cache with key\", (b) e2e-pwa flake pattern (signature TBD from existing rerun logs), (c) cargo-test cache-race pattern \"failed to read .* Cargo.toml No such file or directory\".\n- New scripts/dev/integration-bisect-step.sh: wraps chump preflight, returns 0 (good) / 1 (bad) / 125 (skip/flake-class-match).\n- Before declaring 1 (bad), grep preflight output against each registry entry's failure_signature_regex. If match → return 125 (bisect skips this commit as untestable, not bad).\n- New scripts/ci/test-integration-flake-classes.sh: feeds fixture preflight logs with each known flake signature; verifies correct return code (0/1/125) per class.\n- Update INFRA-2136 (META-124 C8) AC cross-reference to depend on this registry.\n- Voice-lint clean.\n- Cross-references INFRA-2126 (ACP cache-collision structural fix that this catches at bisect time too), KNOWN_FLAKES.yaml (sibling cargo-test catalog), INFRA-1395 (grace-window-misuse anti-pattern this avoids)."
+  notes: |
+    [2026-06-04T00:26:25Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2758
+  outcome_id: MISSION-010
+

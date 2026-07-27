@@ -1,0 +1,19 @@
+- id: CREDIBLE-155
+  domain: CREDIBLE
+  title: "CREDIBLE: chump verify — unify the ~18 gate archipelago into one typed policy engine, parsed-semantics rules, single impl local+CI (ground-up step 4)"
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    Ground-up step 4 (docs/design/GROUND_UP_2026-07-19.md): unify the ~18 grep-based pre-commit/CI gates into 'chump verify' — one Rust policy engine, typed rules over parsed semantics, identical local+CI. Each rule keeps its incident receipt; remediation machine-readable; bypass = signed event to ambient (replaces the trailer/env sprawl: CHUMP_GAPS_LOCK, TEST_LAG, PREREG, DOCS_DELTA, PIPEFAIL, RUST_FIRST, OFF_RAILS...). Rough shape: (a) rule trait + registry in src/verify/, (b) port 3 worst-false-positive gates first (gaps-lock title compare by VALUE not raw line — closes CREDIBLE-153; test-lag; docs-delta), (c) pre-commit hook calls 'chump verify --stage pre-commit', CI calls same binary, parity gate retired for ported rules, (d) migration table tracking gate→rule port status. Decompose at claim.
+  acceptance_criteria:
+    - chump verify runs the ported rules identically in pre-commit and CI from one implementation
+    - gaps-lock rule compares parsed title values (quote-churn commits clean; real title change still blocks — regression test)
+    - every bypass emits one signed ambient event with rule id + reason (no per-gate env vars for ported rules)
+    - migration table in docs/process lists all ~18 gates with ported/pending status
+  notes: |
+    Outcome: CREDIBLE-000. Supersedes CREDIBLE-153 (folds its fix into the port).
+    [2026-07-22T01:47:32Z] Batch 2 continuation filed as CREDIBLE-157 (INFRA-456: done is terminal, so the port continues under a fresh ID). PR #3229: pipefail-race (INFRA-1658), path-filter-allowlist (INFRA-682), install-manifest (INFRA-1810), event-registry (INFRA-754/1237/1287) all ported (parallel-run). Migration table now 7 of ~33 gates ported. Remaining pending rows: 5-15, 17-30.
+  closed_date: '2026-07-20'
+  closed_pr: 3214
+

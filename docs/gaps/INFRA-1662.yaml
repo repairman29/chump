@@ -1,0 +1,22 @@
+- id: INFRA-1662
+  domain: INFRA
+  title: "RESILIENT: reap orphan claude subprocesses spawned by cron-loop firings"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Cron-loop 6249a56f ran for ~60h firing every ~12min; each firing spawned a fresh Claude Code subprocess (binary at ~/Library/Application Support/Claude/claude-code/2.1.138/claude.app/Contents/MacOS/claude) that never got reaped. By 2026-05-22 morning: 354 wedged claude processes pinning 8.5GB RAM, load average 262. SIGTERM didn't reach them (wedged); SIGKILL required. Cleanup was manual via ps + xargs kill -9.
+  acceptance_criteria:
+    - "Investigate Claude Code harness side: does it intend to leave claude-binary subprocesses running between cron firings? If yes, why?"
+    - If unintended (harness bug), file upstream report with reproduction (cron-loop fires every 12m → claude binary count grows linearly)
+    - "If intended (subscription-OAUTH session reuse), add Chump-side launchd-watchdog: every 1h, find claude-binary processes with same --plugin-dir signature older than 1h not in active session chain, SIGKILL"
+    - Emit ambient kind=orphan_subprocess_reaped with count + age stats on each sweep
+    - Register the kind in EVENT_REGISTRY.yaml
+    - "Hard cap: never kill processes whose ppid chain leads to the foreground Claude.app (PID 15517 pattern)"
+    - "CI test: stub ps output with synthetic claude processes (1 fresh, 5 old), verify reaper kills exactly the 5 olds"
+  notes: |
+    DISCOVERED 2026-05-22 during mac-slowness diagnosis. Cron 6249a56f cancelled 2026-05-21; this gap is preventive for future autonomous loops (which will absolutely run again). Pairs with INFRA-NEW-stale-process-watchdog (below). Tier-1 risk: future autonomous runs lock the operator's machine within 24h without this guard.
+  closed_date: '2026-05-22'
+  closed_pr: 2323
+  outcome_id: MISSION-010
+

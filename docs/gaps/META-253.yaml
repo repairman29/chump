@@ -1,0 +1,13 @@
+- id: META-253
+  domain: META
+  title: "META: Add §14 'Prior wisdom canonical index' to PR_RESCUE_PROCEDURE.md (META-247 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Add a new section §14 titled 'Prior wisdom canonical index' to `PR_RESCUE_PROCEDURE.md`.
+    - The new §14 lists and briefly describes the integrated wisdom sources (SHIP_ASSIST_PLAYBOOK, FAILURE_MODES) and cross-linked documents (CLAUDE_GOTCHAS, MISSION_YIELD, FLEET_SLOS).
+    - The index provides clear pointers to where the wisdom is integrated or referenced within the document.
+  depends_on: [META-250, META-251]
+  outcome_id: MISSION-010
+

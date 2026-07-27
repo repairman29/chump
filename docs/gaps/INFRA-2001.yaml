@@ -1,0 +1,29 @@
+- id: INFRA-2001
+  domain: INFRA
+  title: "RESILIENT P1: absorb scripts/coord/bot-merge.sh (3044 LOC bash) into existing chump-ship crate — single-instance via PID-locked Unix socket (fixes INFRA-1532 double-instance bug by construction), typed Ship trait + ShipReceipt, single-transaction commit+push+pr+arm, no subshell race"
+  status: done
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - Expand existing crates/chump-ship with Ship trait (async preflight + async ship) and ShipIntent struct with Cow str fields for gap_id branch base commit_message session_id
+    - "ShipMode enum: Manual (default) "
+    - " BotMerge { bot_session_id }; Manual is single-instance via PID-locked Unix socket at /tmp/chump-ship-SESSION.sock; bind fails if another ShipMode::Manual already holds it — fixes INFRA-1532 double-instance bug BY CONSTRUCTION not by convention"
+    - "Port scripts/coord/bot-merge.sh (3044 LOC bash) ShipMode::BotMerge variant — gated on explicit --mode bot-merge flag, default remains Manual until INFRA-1532 root-cause separately resolved"
+    - "Ship::ship implements the canonical pipeline: chump_gh pr create -> arm auto-merge --auto --squash -> chump_gap_store mark shipped with proof-of-merge bypass discipline (CHUMP_BYPASS_PROOF_OF_MERGE for stale binaries, audit-trail emit kind=stale_binary_destructive_override)"
+    - "ShipError typed via thiserror: PreflightFailed { gate_name, detail } "
+    - " LeaseCollision { path, holder } "
+    - " ProofOfMergeRefused { gap_id, reason } "
+    - " Github (from octocrab::Error) "
+    - " Git (from git2::Error) "
+    - " BotMergeDoubleInstance { detail }"
+    - All chump_gh callsites in chump-ship route through chump-github-cache (INFRA-1999) for read paths; mutations go through octocrab directly
+    - New CLI binary chump-ship (in chump-ship/src/bin/) replaces scripts/coord/bot-merge.sh --gap GAP --auto-merge invocation pattern
+    - "Backward-compat shim: scripts/coord/bot-merge.sh becomes 5-line wrapper that exec chump-ship --gap  --auto-merge; existing fleet callsites (subagents, worker.sh, queue-driver.sh) unchanged"
+    - "Smoke test scripts/ci/test-ship-rust-parity.sh: dry-run 5 ship scenarios via both bash and Rust paths against a synthetic PR fixture; assert identical PR creation + auto-merge arming + gap-store mutation"
+    - "Concurrent-instance test scripts/ci/test-ship-single-instance.sh: spawn 3 chump-ship instances against same gap; assert exactly 1 acquires the PID-locked socket and ships, other 2 exit cleanly with BotMergeDoubleInstance error"
+    - Feature flag CHUMP_SHIP_RUST=1; 2-week parallel-run (longer because bot-merge is highest-blast-radius); cutover removes scripts/coord/bot-merge.sh (3044 LOC) and emits kind=rust_migration_landed gap=INFRA-2001 lines_out=3044
+  depends_on: [INFRA-1998, INFRA-1999]
+  closed_date: '2026-05-29'
+  closed_pr: 2641
+  outcome_id: MISSION-010
+

@@ -1,0 +1,17 @@
+- id: INFRA-1872
+  domain: INFRA
+  title: "CI/QA: ci_qa_score telemetry — daily metric pct of last-N PRs landed without bypass/rebase/flake-rerun (INFRA-1861 slice g)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "New scripts/ops/ci-qa-score.sh: walks last N (default 50) merged PRs via gh api; computes pct that landed without (a) chump --no-verify push, (b) post-CI rebase, (c) cargo-test rerun via KNOWN_FLAKES auto-bypass"
+    - Emits ambient kind=ci_qa_score {pct, sample_size, ts} once/day
+    - Daily launchd cron; dashboard endpoint /api/ci-qa-score returns latest
+    - Threshold WARN if pct < 95; ALERT if pct < 80
+    - Pairs with INFRA-1837 (bypass-frequency auditor) — different metric, same telemetry layer
+    - "Parent: INFRA-1861 slice (g)"
+  closed_date: '2026-05-29'
+  closed_pr: 2436
+  outcome_id: MISSION-010
+

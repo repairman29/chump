@@ -1,0 +1,14 @@
+- id: EFFECTIVE-314
+  domain: EFFECTIVE
+  title: "EFFECTIVE: cost-tiered model escalation ladder — strike count bumps chump-local dispatch to the next-priced model"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Cost-tiered model routing (operator ask 2026-07-22: 'know when to use M3 vs. call up the next best-priced thing'). Empirical basis from live chumpd-eu cycles: M3 emits perfect native tool_calls on concrete tasks (direct probe) but NEVER converged to a patch on real investigation-heavy fleet gaps across ~15 cycles; GLM-5.2 reached patch_file where M3 didn't (INFRA-1961) — so escalation pays. Price ladder (OpenRouter $/M in+out): deepseek-v4-flash 0.10/0.20 < minimax-m3 0.30/1.20 < glm-5.2 0.78/2.44 < claude-sonnet 3.00/15.00. qwen3-coder-30b eliminated (emits no tool_calls). Mechanism: worker.sh reads CHUMP_MODEL_ESCALATION_LADDER (comma-sep, cheapest-first) and the EFFECTIVE-310 strike count for the gap; each prior whole-gap failure bumps this attempt one rung up (strike 0=cheapest, capped at top rung), emitting kind=model_tier_escalated. After the open ladder exhausts, existing INFRA-267 (P0→claude-direct) + EFFECTIVE-310 (strike-threshold→claude-decompose) provide the Claude ceiling. Env-gated: no ladder set = current single-model behavior. NOTE: set CHUMP_DECOMPOSE_STRIKE_THRESHOLD >= ladder length so the open ladder isn't cut short by decompose.
+  acceptance_criteria:
+    - "The change described by \"cost-tiered model escalation ladder — strike count bumps chump-local dispatch to the next-priced model\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3253
+

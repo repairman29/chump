@@ -1,0 +1,15 @@
+- id: INFRA-2925
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 2 PRs blocked >2h as of 2026-06-19"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - pr-stuck-cluster-detector.sh emits kind=pr_stuck_cluster_detector_run on every exit path (no_op/dry_run/cluster_filed/bad_args/gap_id_extract_failed/gap_reserve_failed) with an outcome field distinguishing success/failure/timeout
+    - gap_reserve_calls field on the run event tracks mutation cost per invocation, visible to the operator without grepping logs
+    - failure_class field (none|transient|permanent) on the run event distinguishes retry-worthy transients from permanent failures
+    - scripts/ci/test-pr-stuck-cluster-observability.sh smoke-tests the above and is wired into a gate (chump preflight and/or CI), not just runnable standalone
+  closed_date: '2026-07-20'
+  closed_pr: 3225
+  outcome_id: MISSION-010
+

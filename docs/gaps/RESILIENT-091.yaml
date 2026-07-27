@@ -1,0 +1,13 @@
+- id: RESILIENT-091
+  domain: RESILIENT
+  title: "RESILIENT: kpi_report::tests::infra617_cost_savings_computes_baseline flaky under parallel/disk pressure — write_ambient helper unwraps file I/O (EINVAL)"
+  status: open
+  priority: P3
+  effort: xs
+  description: |
+    Observed 2026-06-04 blocking the INFRA-2741 pre-push test gate. src/kpi_report.rs test helper write_ambient() (around line 1352-1362) does OpenOptions::new().create(true).append(true).open(...).unwrap() with no retry/guard. Under the full 2365-test parallel run on a disk at 94% capacity it intermittently panics with Os{code:22, EINVAL}. The test PASSES in isolation, so it is a transient parallel-contention flake, not a logic bug. Low value but it can false-RED any local cargo-test push.
+  acceptance_criteria:
+    - write_ambient (and sibling unguarded fs unwraps in kpi_report test helpers) either retry-on-transient or surface a clear message instead of bare unwrap; OR the test is classified in docs/process/KNOWN_FLAKES.yaml per INFRA-764
+    - "kpi_report::tests::infra617_cost_savings_computes_baseline no longer intermittently EINVAL-panics in a full parallel cargo test run"
+  outcome_id: RESILIENT-000
+

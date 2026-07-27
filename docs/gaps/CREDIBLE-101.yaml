@@ -1,0 +1,15 @@
+- id: CREDIBLE-101
+  domain: CREDIBLE
+  title: "CREDIBLE: mission-ranking quality grader — nobody measures whether the ACTIVE mission advances in the right order"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - read-only grader (extend scripts/dev/mission-scoreboard.sh) reports pct of open gaps traced to an outcome (today 418/1201 ~35pct), the ACTIVE_MISSION next-pickable gap + whether dependency-ordered, count of mission-domain gaps NOT linked to active mission
+    - "flags incoherence: umbrella ranked below its own children, or non-active mission above the active one"
+    - emits kind=mission_rank_audit
+    - operator confirms accountable owner role (curator-opus-target vs roadmap-keeper)
+  closed_date: '2026-07-20'
+  closed_pr: 3071
+  outcome_id: CREDIBLE-000
+

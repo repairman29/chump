@@ -1,0 +1,15 @@
+- id: RESILIENT-036
+  domain: RESILIENT
+  title: "RESILIENT P1: fleet-wire reaction-cooldown — per-role corr_id-react-dedupe (anti wire-storm + echo-chamber)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Risk 3 of 10. Curator A broadcasts FEEDBACK → B reads → B reacts + broadcasts → A reads → A reacts → wire-storm. Even with EFFECTIVE-028 corr_id threading there's no react-cooldown.
+  acceptance_criteria:
+    - "ambient-context-inject --tick-preamble adds per-role react cooldown: sentinel .chump-locks/<role>-reacted/<corr_id>.sentinel; if exists AND mtime < CHUMP_REACT_COOLDOWN_M (default 30min), digest SUPPRESSES that corr_id"
+    - First-react per corr_id is fine; second-react within cooldown gets suppressed silently
+    - "Parent_corr_id chains: cooldown applies to root corr_id (chase parent links) so reacting to a reply to your own broadcast also dedupes"
+    - "Smoke test: synth FEEDBACK with corr_id X; tick preamble for role A; assert digest contains X; second tick within 30min asserts digest does NOT contain X"
+  outcome_id: RESILIENT-000
+

@@ -1,0 +1,12 @@
+- id: EFFECTIVE-048
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Wire test-pre-push-multi-claim.sh into role curator-opus-ci-audit"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "1. Edit the role-doc for curator-opus-ci-audit to reference test-pre-push-multi-claim.sh (shipped in INFRA-2446) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-pre-push-multi-claim.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  closed_date: '2026-07-20'
+  closed_pr: 3165
+  outcome_id: EFFECTIVE-000
+

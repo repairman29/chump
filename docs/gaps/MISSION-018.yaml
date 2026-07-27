@@ -1,0 +1,14 @@
+- id: MISSION-018
+  domain: MISSION
+  title: "MISSION: Enable CHUMP_EXTERNAL_REPO_PICK_OK feature flag for fleet (MISSION-015 slice)"
+  status: closed
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - The `CHUMP_EXTERNAL_REPO_PICK_OK` environment variable or configuration setting is set to `1` in the fleet's deployment environment.
+    - Fleet logs confirm that it is now configured to consider `external_repo` gaps for picking.
+  notes: |
+    [2026-06-05T14:13:43Z] Shipped #3062. CHUMP_EXTERNAL_REPO_PICK_OK=1 in mesh-worker plist + run-fleet.sh. Live-verified in launchd env. Pairs with peer's #3061 (MISSION-028 picker mission-rank) — fleet can now both see + prefer BEAST gaps.
+  closed_pr: 3062
+  outcome_id: MISSION-010
+

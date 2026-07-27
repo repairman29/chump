@@ -1,0 +1,11 @@
+- id: RESILIENT-024
+  domain: RESILIENT
+  title: batch-immunize ~15 W-013-vulnerable tests — add unset CHUMP_REPO/CHUMP_LOCK_DIR after mktemp (proactive)
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Surface scan found 15+ tests with mktemp+ambient-emit pattern but NO unset CHUMP_REPO/CHUMP_LOCK_DIR — each is a future W-013 wedge waiting to surface.\",\"Apply uniform sed-fix: insert `unset CHUMP_REPO CHUMP_LOCK_DIR # W-013 immunization` after the first mktemp -d line in each file.\",\"Local verify: every patched test still PASSES in clean env AND CHUMP_REPO=/wrong CHUMP_LOCK_DIR=/wrong env (proves env hijack is now neutralized).\",\"After ship, audit-gate failure rate from W-013 class drops to 0 for these test paths.\",\"Pairs with RESILIENT-023 (single-file W-013 fix proof) and CREDIBLE-077 (the audit gate that surfaces these).\"]"
+  closed_date: '2026-05-25'
+  outcome_id: RESILIENT-000
+

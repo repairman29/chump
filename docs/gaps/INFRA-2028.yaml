@@ -1,0 +1,19 @@
+- id: INFRA-2028
+  domain: INFRA
+  title: "RESILIENT P1: chump binary's gh subprocesses can't read macOS keychain — every gap reserve + ship-cleanup silently 401s; INFRA-1893 smoke-gate also fails because keychain is blocked for it too"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Observed (2026-05-25 with valid gh auth): chump gap reserve printed [gap reserve] WARN open-PR scan failed (gh repo view failed HTTP 401 Bad credentials https://api.github.com/graphql). Direct shell test of identical command succeeded: gh repo view --json nameWithOwner --jq .nameWithOwner returns repairman29/chump exit 0. gh auth status reports keyring + valid scopes (repo workflow gist read-org)."
+    - "Root cause: ~/.config/gh/hosts.yml does NOT contain oauth_token field; token lives only in macOS keychain. chump binary at /opt/homebrew/bin/chump (Homebrew-installed, version 0.1.2 1c9bd3103acc built 2026-05-25) spawns gh as a subprocess via std::process::Command. That subprocess context lacks the keychain entitlement my interactive shell has — so gh inside chump cannot read the token, falls back to anonymous request, gets 401."
+    - "Why INFRA-1893 smoke-gate did not fire: gh_smoke_check() runs gh api user --jq .login from the SAME subprocess context, hits the SAME keychain block, also gets 401, returns false. The negative-confirmation gate code path takes the else branch and prints the warning. The fix shipped in #2489 cannot help here because the diagnostic call itself is broken in the same way."
+    - "Confirmed workaround: set GH_TOKEN=$(gh auth token) before chump invocation. With that env var, all chump→gh subprocess calls succeed."
+    - "Fix path A (small, immediate): chump binary detects unset GH_TOKEN, captures token via gh auth token at startup, sets GH_TOKEN for all child gh subprocesses for the lifetime of the chump process. One-shot at binary start, cached for process duration."
+    - "Fix path B (better, larger): chump uses an HTTP client (reqwest) directly against api.github.com with the gh token instead of shelling out to gh. Eliminates subprocess hop, kills the keychain dependency entirely. INFRA-1998 Rust messaging migration is doing similar absorption — same shape."
+    - Smoke test scripts/ci/test-chump-gh-subprocess-auth.sh — unset GH_TOKEN; run chump gap reserve in dry mode; assert no [gap reserve] WARN line on stderr; assert gap_reserve_open_pr_scan_failed is NOT in ambient.jsonl.
+    - "Impact: every chump gap reserve since this regression has had silent 401 + the visible WARN; every chump gap ship close-superseded-prs cleanup also 401s (saw it on 5 ghost-gap ships today); collision-detection against in-flight PRs is currently disabled fleet-wide on this machine."
+    - Pairs with — INFRA-1893 (original fix, partial — diagnosed gap), INFRA-1998 (Rust messaging absorption, sibling pattern), curator-opus-shepherd-generalist lane.
+    - Done definition — chump gap reserve with valid gh auth + unset GH_TOKEN produces no operator-visible 401 warning + collision-detection against in-flight PRs works.
+  outcome_id: MISSION-010
+

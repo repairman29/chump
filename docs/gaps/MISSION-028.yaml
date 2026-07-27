@@ -1,0 +1,16 @@
+- id: MISSION-028
+  domain: MISSION
+  title: "MISSION P0: PICKER SPRAWL — the WORKER's picker (_pick_and_claim_gap.py) isn't mission-first in runtime; #3055 fixed the WRONG picker (_pick_gap.py); consolidate + prove mission-first with a live test"
+  status: in_progress
+  priority: P0
+  effort: m
+  description: |
+    VERIFIED 2026-06-05 (conductor deep-dive). The fleet isn't mission-directed because of PICKER SPRAWL — 3 pickers: (1) scripts/dispatch/_pick_gap.py — used by curator-jit-scheduler.sh + test-mission-picker.sh; #3055/MISSION-026 fixed THIS one (planner_rank-first -> prio-first + xs-gate exception); (2) scripts/coord/musher.py — prio-only, NOT mission-aware; (3) scripts/dispatch/_pick_and_claim_gap.py — the WORKER's ACTUAL picker (worker.sh line 492; FLEET-046 pillar-rebalancing). #3055 fixed _pick_gap.py but the WORKERS use _pick_and_claim_gap.py, which is UNCHANGED vs main (never got the fix). So the celebrated 'mission-directed picker fix' NEVER REACHED THE WORKERS. _pick_and_claim_gap.py DOES rank P0 first (PRIO_RANK) + boosts starved pillars (MISSION is in PILLAR_TAGS), yet P0 MISSION gaps (MISSION-016/018, RESILIENT-086) still lose to self-maintenance in runtime (ratio stuck 6/30) — a subtle issue (pillar-starvation favoring big pillars, the sonnet xs-gate, or the claim loop). FIX: (a) CONSOLIDATE to ONE canonical picker (kill the 3-way sprawl); (b) make the WORKER's picker provably pick a P0 MISSION gap over P0 self-maintenance via a LIVE regression test; (c) preserve substrate-P0 > mission-P1. HIGH-STAKES (selects ALL fleet work) — careful fix + test, NOT a blind edit. Compounding: farmer auth_dead (RESILIENT-086, band-aided) throttled worker-revival -> slow fleet. This supersedes MISSION-026 (which fixed the wrong file).
+  acceptance_criteria:
+    - ONE canonical worker picker (sprawl consolidated; _pick_gap.py/_pick_and_claim_gap.py/musher.py reconciled)
+    - the WORKER's picker provably picks a P0 MISSION gap over P0 self-maintenance (live regression test)
+    - substrate-P0 still beats mission-P1
+    - "runtime-verified: a P0 MISSION gap is claimed within N worker cycles of filing"
+    - mission-ship-ratio climbs toward >=2/3
+  outcome_id: MISSION-010
+

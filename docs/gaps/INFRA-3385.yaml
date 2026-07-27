@@ -1,0 +1,18 @@
+- id: INFRA-3385
+  domain: INFRA
+  title: "META-070: preflight-mirror PR/bot-merge lifecycle gates (23 scripts, audit-job decomposition cluster 2/5)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    META-070/META-086 follow-up sub-gap. Rough shape: (a) add src/preflight.rs mirror gates for the 23 PR/bot-merge-lifecycle scripts.
+    list: test-bot-merge-auto-close.sh, test-bot-merge-conflict-wiring.sh, test-conflict-resolver.sh, test-external-verify-merge.sh, test-infra-119-bot-merge-hang.sh, test-install-pr-auto-rebase.sh, test-open-pr-dup-detection.sh, test-pr-auto-rebase.sh, test-pr-blocked-watch.sh, test-pr-explain-block.sh, test-pr-terminal-state.sh, test-pr-triage-bot.sh, test-pr-watch-auto-resolve.sh, test-pr-watch-shepherd-smoke.sh, test-pre-push-force-lease-guard.sh, test-pre-push-preflight-hook.sh, test-pre-push-rebase-allow.sh, test-pre-push-test-gate.sh, test-rebase-coordination.sh, test-review-handoff-smoke.sh, test-speculative-on-speculative-guard.sh, test-stale-branch-rebase.sh, test-status-flip-proof-of-merge.sh.
+    (b) follow the existing preflight.rs pattern used for test-merged-check-guard.sh / test-stale-pr-rebase-bot.sh (already-mirrored siblings).
+    (c) update docs/process/AUDIT_JOB_DECOMPOSITION.md marking these mirrored=yes.
+    Key constraint: several require a live/synthetic gh PR fixture or mock — check for CHUMP_GH_MOCK or similar test doubles before wiring.
+  acceptance_criteria:
+    - All 23 scripts in this cluster (see description) are invoked from chump preflight (src/preflight.rs), matching the same pass/fail semantics as the CI fast-checks job
+    - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 23 rows flip from mirrored=no to mirrored=yes"
+    - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
+    - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+

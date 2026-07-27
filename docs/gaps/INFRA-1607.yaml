@@ -1,0 +1,26 @@
+- id: INFRA-1607
+  domain: INFRA
+  title: "CREDIBLE: wire chump health --slo-check + pipeline-jam detector into .chump/fleet-paused sentinel; gate chump gap reserve admission when fleet is unhealthy (the lid)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Verified 2026-05-17 03:20 UTC: (1) sentinel mechanism works — worker.sh:295-299 checks .chump/fleet-paused before claim cycle, CHUMP_IGNORE_WASTE_PAUSE=1 bypass exists; (2) sentinel is currently only set by scripts/coord/waste-spike-detector.sh on waste-% threshold; (3) chump health --slo-check correctly exits 1 on breach (verified directly with /opt/homebrew/bin/chump → RC=1 on the 2 active breaches: L1-SLO-1 silent_agent + L2-SLO-2 waste 58%); (4) MISSION_YIELD.md Floor rule states "≥10 yield, below which pause and investigate before claiming new work" — doctrine, not enforced; (5) docs/process/FLEET_SLOS.md breach response ladder — defined but only acts via worker.sh waste-spike path. WHAT IS MISSING: a daemon that runs chump health --slo-check + pipeline-jam check (% BLOCKED PRs over rolling window) and sets/clears .chump/fleet-paused based on results, AND a chump gap reserve admission gate that respects the sentinel. Live evidence of need: 10/10 open PRs BLOCKED right now (100% jam), waste at 58% (11x target), workers still claiming new work — exactly the cascade the lid would prevent. INFRA-1522 covers the related chump fleet up startup gate but not gap-reserve admission.
+  acceptance_criteria:
+    - "New scripts/coord/ci-health-gate.sh daemon (mirrors scripts/coord/waste-spike-detector.sh shape): runs every 5 min via launchd, invokes chump health --slo-check; on RC=1 writes .chump/fleet-paused with payload {ts, kind: slo_breach"
+    - "pipeline_jam, reason, slos_breached: [ids], blocked_pct?}; clears the sentinel only after 2 consecutive runs return RC=0"
+    - "Pipeline-jam side-check: queries gh pr list (or cache) for % open PRs in BLOCKED state over rolling 1h window; threshold default 50% triggers sentinel write with reason=pipeline_jam, recovery threshold 30% for 2 consecutive runs"
+    - src/main.rs chump gap reserve handler (around line 4779) checks .chump/fleet-paused before any state.db write; refuses with operator-friendly multi-line message naming the breach + bypass env var (CHUMP_IGNORE_WASTE_PAUSE=1) + suggested investigation command (chump health --slo-check)
+    - New launchd plist launchd/com.chump.ci-health-gate.plist (StartInterval=300) + manifest entry in scripts/setup/bootstrap-manifest.yaml; chump-fleet-bootstrap.sh --check verifies presence
+    - "docs/observability/EVENT_REGISTRY.yaml entries for new kinds: pipeline_health_throttle (daemon emits on state-change), gap_reserve_blocked (CLI emits on refusal); emitter_paths set"
+    - docs/process/FLEET_SLOS.md gains Layer 4 — Pipeline Health table entry with the % BLOCKED PR threshold and auto-pause behavior
+    - INFRA-1522 cross-referenced in description as the chump fleet up startup-gate sibling so workers see the full lid surface (startup gate + admission gate)
+    - "scripts/ci/test-ci-health-gate.sh: stub .chump/fleet-paused, attempt chump gap reserve, assert it refuses with the right exit code and stderr text"
+    - Worker.sh behavior unchanged (already respects the sentinel via existing waste-spike path — verify no regression)
+    - "Post-merge verification: with the gate active on a synthetic 100% BLOCKED queue + 58% waste, chump gap reserve must refuse and no new gap row may land in state.db"
+  notes: |
+    wave: 0b (auto-recovery — keeps the lid on the gap store when CI pipeline health drops, prevents jam from cascading); chip-prediction: fleet-quality
+  closed_date: '2026-05-25'
+  closed_pr: 2546
+  outcome_id: MISSION-010
+

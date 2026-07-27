@@ -1,0 +1,12 @@
+- id: INFRA-2459
+  domain: INFRA
+  title: "RESILIENT: chump-integrator daemon silently dead (exit 127, binary never installed) — bootstrap must install it + infra-watcher must catch daemon exit!=0"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - chump-fleet-bootstrap.sh --check verifies ~/.cargo/bin/chump-integrator exists + matches the integrator-daemon.plist ProgramArguments path, and installs via cargo install --path crates/chump-integrator if missing
+    - infra-watcher detects launchd daemons whose last exit status != 0 (e.g. 127) and emits kind=daemon_exit_nonzero with label+code — today only daemon_silent fires, which missed the exit-127 root cause for an unknown duration
+    - "repro: 2026-06-02 chump-integrator was exit-127 fleet-wide (binary never built), so the batched ship path (bot-merge Mode A / INFRA-2133) silently never drained"
+  outcome_id: MISSION-010
+

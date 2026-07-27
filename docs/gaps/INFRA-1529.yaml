@@ -1,0 +1,10 @@
+- id: INFRA-1529
+  domain: INFRA
+  title: "RESILIENT: tauri-cowork-e2e flake — selenium timeout 60s waiting for chump-chat element blocks 5+ PRs despite continue-on-error: true"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-16T18:07: PR #2111 (PRODUCT-080), #2133 (PRODUCT-081), #2173 (INFRA-1434), #2068 (INFRA-1335), #2214, #2220 all show tauri-cowork-e2e as FAILURE in gh pr view statusCheckRollup. The selenium step times out at 60s on By(css selector chump-chat). The chump-chat web component must not be rendering or the Tauri build is broken in CI.\",\"Job has continue-on-error: true (INFRA-1342 fix) which makes job-level conclusion=success, BUT statusCheckRollup still aggregates the failed STEPS as FAILURE, which makes operator/audit dashboards flag the PR.\",\"Root-cause: either (a) chump-chat element registration regression on main, or (b) Tauri build is slow in CI and 60s wait is too short, or (c) test selector is stale (chump-chat renamed/refactored).\",\"Fix path A — bump timeout: if logs show app DID render but selenium gave up, raise wait from 60s to 120s in e2e-tauri/test files\",\"Fix path B — fix the regression: if chump-chat is no longer registered, find what broke it (look for recent web/v2/index.html or web/v2/app.js changes that drop the custom-element registration)\",\"Fix path C — quarantine: add tauri-cowork-e2e to docs/observability/CI_AUDIT_QUARANTINE.yaml so it does not block PRs while real fix lands\",\"Out of scope: rewriting the e2e harness to use a different framework\"]"
+  outcome_id: MISSION-010
+

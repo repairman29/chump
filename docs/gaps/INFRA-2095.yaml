@@ -1,0 +1,20 @@
+- id: INFRA-2095
+  domain: INFRA
+  title: "GitHub native merge queue: batch N PRs in 1 CI cycle instead of N cycles — eliminates today's rebase-cascade whack-a-mole class entirely"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Enable GitHub native merge queue on main branch. Currently each PR gets its own full CI cycle; with merge queue, GitHub batches PRs into a single test run, only the batch needs to pass for all included PRs to merge. Eliminates today's rebase-cascade whack-a-mole class (where wedging one PR's merge cascade-blocks every subsequent PR). 47-PR day → ~10 batches instead of 47 cycles. Pairs with INFRA-2093 + INFRA-2094 for compounding speedup.
+  acceptance_criteria:
+    - GitHub branch protection on main has 'Require merge queue' enabled
+    - ".github/workflows/ci.yml adds 'merge_group:' event trigger so CI runs on the merge-queue commit (not just push/pull_request)"
+    - Per-PR CI continues to run for early feedback; merge-queue CI is the authoritative gate
+    - "Auto-merge integration verified: PR with auto-merge armed + passing per-PR CI gets added to merge queue automatically"
+    - "Batch failure handling tested: synth a batch with 1 failing PR + 1 passing PR, verify GitHub auto-bisects and ships the passing one"
+    - Update docs/process/MERGE_QUEUE.md with operator-facing 'how merge queue works, what changes for me, how to bypass for emergencies'
+    - "Measurement: before/after PR-to-merge wall-clock on a representative wave of 5 PRs"
+  closed_date: '2026-05-29'
+  closed_pr: 2687
+  outcome_id: MISSION-010
+

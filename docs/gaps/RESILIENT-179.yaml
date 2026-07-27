@@ -1,0 +1,15 @@
+- id: RESILIENT-179
+  domain: RESILIENT
+  title: "RESILIENT: worker heartbeat must span the FULL cycle — writer only runs during claude; long ship phases go quiet and chumpd wedge-kills healthy workers (16 kills first night, ~2/hr yield tax)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    First chumpd night (2026-07-20): 16 wedge-kills / 23 spawns, zero real deaths — but most kills hit HEALTHY workers. Mechanism: worker.sh's FLEET-042 heartbeat writer is a background subshell started per-cycle alongside the claude call; during ship phases (rebase, push, bot-merge, CI wait — routinely 10-20 min) no writer runs, heartbeat ages past chumpd's 900s wedge threshold, chumpd kills mid-ship (also explains many rc=143 'timeout' classifications). Fix EITHER side: (a) worker.sh runs the heartbeat writer for the entire cycle (start before pick, kill at cycle_end) — preferred; or (b) chumpd threshold phase-aware. Pairs with the cosmetic bug: chumpd status keeps a stale slot entry (pid null, hb_age 20541s) for de-scaled slots.
+  acceptance_criteria:
+    - "heartbeat file updates at least every 120s across an ENTIRE cycle including ship phases (assert in test-chumpd.sh or a worker fixture: mock cycle with 5-min no-claude phase keeps heartbeat fresh)"
+    - chumpd wedge-kills drop below 2/night in the following 24h (evidence in chumpd.log)
+    - de-scaled slots removed from chumpd-status.json workers array
+  notes: |
+    Promoted P0 2026-07-22: confirmed #1 yield ceiling (2 real ships/day at 2 workers); wedge-kill tax measured across two nights.
+

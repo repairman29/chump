@@ -1,0 +1,14 @@
+- id: META-319
+  domain: META
+  title: Mirror PR/claim/worker lifecycle gates cluster into chump preflight (META-086 follow-up)
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    META-086 cluster follow-up: mirror the PR / claim / worker lifecycle gates cluster (25 scripts) from ci.yml fast-checks job into chump preflight. See docs/process/AUDIT_JOB_DECOMPOSITION.md for the full script list.
+  acceptance_criteria:
+    - "Every script in the PR / claim / worker lifecycle gates cluster (test-bot-merge-auto-close, test-bot-merge-conflict-wiring, test-claim-fuzzy-match, test-conflict-resolver, test-infra-109-worktree-boundary, test-infra-119-bot-merge-hang, test-inspect-resume-scrap, test-install-pr-auto-rebase, test-md-links-loop, test-open-pr-dup-detection, test-pick-and-claim-lockdir, test-pr-auto-rebase, test-pr-blocked-watch, test-pr-explain-block, test-pr-terminal-state, test-pr-triage-bot, test-pr-watch-auto-resolve, test-pr-watch-shepherd-smoke, test-pre-push-force-lease-guard, test-pre-push-preflight-hook, test-pre-push-rebase-allow, test-pre-push-test-gate, test-rebase-coordination, test-review-handoff-smoke, test-stale-branch-rebase) is either mirrored as a GateKind::Scripts gate in src/preflight.rs, or classified Tier-D in docs/process/CI_GATES_INVENTORY.md with a reason"
+    - docs/process/AUDIT_JOB_DECOMPOSITION.md 'Mirrored?' column updated to yes for every mirrored script in this cluster
+    - scripts/ci/test-preflight-ci-parity.sh passes for the newly-mirrored scripts
+  depends_on: [META-086]
+

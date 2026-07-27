@@ -1,0 +1,31 @@
+- id: INFRA-2135
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C7 Batched-Under: trailer + integration PR body template"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- Integrator daemon (INFRA-2130) emits each git merge with: git merge --no-ff origin/chump/<gap-branch> -m \"Batched: <gap-id> — <gap-title>\" --no-edit\n- After each merge, amend commit to add trailer: Batched-Under: integration-YYYY-MM-DD-HHMM\n- Also adds: Co-Authored-By: <original author from gap branch HEAD>\n- Integration PR body generated from template at scripts/dev/integration-pr-template.md:\n    ## Integration cycle: integration-{date}\n    \n    **Triggered by:** {trigger_reason}\n    **Started:** {iso_ts}\n    **Preflight:** green in {duration}\n    \n    ### Gaps shipped ({N})\n    \n    "
+    - " Gap "
+    - " Commit "
+    - " Author "
+    - " LOC "
+    - " Class "
+    - "\n    "
+    - "---"
+    - "---"
+    - "---"
+    - "---"
+    - "---"
+    - "\n    {per-gap row, links to gap show + commit}\n    \n    ### Quarantined (if any)\n    \n    "
+    - " Gap "
+    - " Reason "
+    - "\n    "
+    - "---"
+    - "---"
+    - "\n    \n    🤖 Integration cycle shipped by chump-integrator-daemon\n- PR title format: \"integration-{date} ({N} gaps): {comma-sep-short-titles, max-150-chars-truncated}\"\n- Trailer is parseable: chump gap show can grep \"Batched-Under:\" on the merge commit to resolve INFRA-NNNN → integration-id.\n- Test: scripts/ci/test-integration-pr-template.sh — generates a template from a fixture manifest, verifies all required fields present, voice-lint clean.\n- Cross-references INFRA-2130 (the emitter), INFRA-2134 (gap show reads the trailer back)."
+  notes: |
+    [2026-06-04T00:16:22Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2772
+  outcome_id: MISSION-010
+

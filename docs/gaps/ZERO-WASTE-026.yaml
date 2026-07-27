@@ -1,0 +1,13 @@
+- id: ZERO-WASTE-026
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: headless fleet worker shares a cargo workspace with the Tauri desktop GUI — pulls GTK/webkit into every server build"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Cargo.toml workspace includes 'desktop/src-tauri' (a Tauri GUI app) alongside the ~34 headless fleet crates. Consequence: 'cargo build/clippy --workspace' (which bot-merge runs on EVERY ship) compiles the desktop GUI + its GTK/webkit-sys native deps (libwebkit2gtk-4.1-dev, libjavascriptcoregtk-4.1-dev, libsoup-3.0-dev). This is why a headless Linux fleet host needs a windowing toolkit at all (RESILIENT-183 — every ship cycle cold-failed those crates until the dev libs were installed) and part of why cycles take ~10min (ZERO-WASTE-024, full-workspace clippy). A headless coding agent has no reason to build a desktop GUI. Fix: either (a) move desktop/src-tauri out of the default workspace members into its own workspace / feature-gated member so 'cargo build --workspace' on a server doesn't pull it, or (b) split the fleet worker into a slim workspace and keep the GUI separate. Preferred: (a) — smallest change, unblocks stripping the GTK sys-deps from server provisioning. Related: ZERO-WASTE-024 (scope clippy to touched crates), ZERO-WASTE-025 (strip debug symbols).
+  acceptance_criteria:
+    - "The change described by \"headless fleet worker shares a cargo workspace with the Tauri desktop GUI — pulls GTK/webkit into every server build\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

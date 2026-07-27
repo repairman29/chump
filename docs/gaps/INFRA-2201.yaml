@@ -1,0 +1,18 @@
+- id: INFRA-2201
+  domain: INFRA
+  title: "RESILIENT P0: branch-protection silent-open-gates class — operator/wizard can leave required_status_checks=[] for hours undetected. No ambient emit, no watchdog alert"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Observed 2026-05-29T22:30Z: required_status_checks=[] on both branch-protection AND ruleset 15133729 — wide open for hours after my admin-merge cycle drop. Discovered only because INFRA-2191 agent reported 'once the operator restores the ruleset rule'. No alert, no ambient emit, no fleet-doctor flag."
+    - "2. Add ambient emit: every PUT to /repos/{owner}/{repo}/branches/main/protection OR /repos/{owner}/{repo}/rulesets/{id} that changes required_status_checks emits kind=ruleset_required_checks_changed with {before:[], after:[], actor, ts}. Hook either in chump_gh wrapper or via a daemon scraping the GH audit log."
+    - "3. Add fleet-doctor invariant: required_status_checks must be non-empty on both branch-prot AND ruleset 15133729 OR exit non-zero with REQUIRED_CHECKS_EMPTY error. Run every 5min via existing daemon (queue-health-monitor or similar)."
+    - "4. Add restore-on-exit pattern to admin-merge cycle: before dropping, snapshot the current required list to /tmp/.required-snapshot-{ts}.json; trap EXIT restores from snapshot. Don't trust 'I'll remember to restore'."
+    - "5. Backfill audit: query the last 24h of GH audit log for protection_changed events; count any window where required_status_checks was empty; emit per-window ambient kind=required_checks_open_window with {start, end, duration_min, prs_merged_in_window}."
+    - "6. Test: scripts/ci/test-required-checks-non-empty.sh — single grep against gh api, exit non-zero if empty. Wire as required check in CI (a check-on-itself, ironic but works)."
+  notes: |
+    [2026-06-04T00:16:24Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2756
+  outcome_id: MISSION-010
+

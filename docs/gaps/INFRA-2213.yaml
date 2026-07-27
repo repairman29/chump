@@ -1,0 +1,17 @@
+- id: INFRA-2213
+  domain: INFRA
+  title: "EFFECTIVE: /api/autopilot/daemon-log endpoint — server-side tail for chump-daemon-set-panel (EFFECTIVE-026 follow-up)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    EFFECTIVE-026 Sonnet (PR #2770) shipped the <chump-daemon-set-panel> click-to-tail UI but the server-side endpoint /api/autopilot/daemon-log?name=<label> wasn't wired — currently returns a stub. Add the endpoint to shell tail -n 20 of .chump-locks/autopilot-logs/<label>.log or matching path; return JSON {lines: [...], path: ..., truncated: bool}.
+  acceptance_criteria:
+    - src/web_server.rs (or wherever the EFFECTIVE-026 endpoint lives) adds GET /api/autopilot/daemon-log?name=<label>
+    - "Resolves the log path: tries .chump-locks/autopilot-logs/<label>.log first, falls back to .chump-locks/<label>.log; returns 404 with {error: 'no log for daemon <label>'} if neither exists"
+    - "Returns last 20 lines (default) or ?lines=N (capped at 200) as JSON {lines: [...], path: '...', truncated: bool}"
+    - Localhost-only (no auth needed; same as other /api/autopilot/* endpoints)
+    - "Smoke test extends EFFECTIVE-026 test: hit endpoint with a known daemon label, assert 200 + non-empty lines array; hit with bogus label, assert 404"
+    - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN
+  outcome_id: MISSION-010
+

@@ -1,0 +1,15 @@
+- id: META-199
+  domain: META
+  title: "META-131 sub: add actionlint to CI — catch broken rustup component/apt-get/etc at PR time"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A new actionlint step appears early in the fast-checks job in ci.yml, using rhysd/actionlint action pinned to a specific SHA or tag
+    - The step runs on every PR and push; actionlint exits non-zero on broken workflow syntax causing fast-checks to fail
+    - actionlint step is listed in preflight-ci-parity-exceptions.txt or CI_GATES_INVENTORY.md as Tier-D (cannot mirror locally without installing actionlint binary)
+    - The PR passes CI with the new step present
+  closed_date: '2026-06-05'
+  closed_pr: 2877
+  outcome_id: MISSION-010
+

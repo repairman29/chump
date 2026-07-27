@@ -1,0 +1,14 @@
+- id: INFRA-2309
+  domain: INFRA
+  title: "ZERO-WASTE: chump pr ready-to-ship CLI — list PRs with mergeStateStatus=CLEAN + auto-merge-rearm daemon for CLEAN-state PRs that lost armed status to rebase/force-push"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. New CLI subcommand: chump pr ready-to-ship — lists all open PRs with mergeStateStatus=CLEAN, columns: number / title / fix-class (parsed from title prefix) / auto_merge_armed (true/false) / age. Sorted by age desc.\n2. New daemon: scripts/coord/auto-merge-rearm-daemon.sh — walks all open PRs every CHUMP_AUTO_MERGE_REARM_INTERVAL_S (default 60s). For each PR with mergeStateStatus=CLEAN AND autoMergeRequest=null: arms auto-merge via gh pr merge --auto --squash. Cache-first reads.\n3. Optional policy filter: scripts/coord/lib/fix-class-allowlist.txt — title prefixes safe to auto-merge (fix, docs, chore, hotfix); daemon defaults to allowlist-only unless CHUMP_AUTO_MERGE_REARM_OPEN=1 set.\n4. launchd plist: scripts/setup/install-auto-merge-rearm-daemon.sh — StartInterval=60; adds to optional-installers-allowlist.txt\n5. Ambient events: kind=auto_merge_rearmed (when daemon arms a CLEAN PR), kind=auto_merge_rearm_skipped (when not in allowlist), kind=auto_merge_rearm_failed (gh API error)\n6. Smoke test: scripts/ci/test-auto-merge-rearm-daemon.sh with 3-PR fixture (CLEAN-in-allowlist / CLEAN-not-in-allowlist / non-CLEAN)\n7. chump preflight passes; raw-gh allowlist not needed (uses cache_query_open_prs + cache_lookup_pr)"
+  notes: |
+    Filed 2026-05-30T18:24Z under operator question: 'How do we just ship stuff that passes QA?' Direct answer: a daemon that walks open PRs and arms auto-merge on CLEAN-state ones. Pairs with META-209 (full agent admin-merge protocol) but doesn't require bot identity — uses operator's gh CLI auth via launchd-loaded plist. Smallest+fastest delivery of 'auto-ship CLEAN PRs' without waiting for META-209's full bot-identity provisioning.
+  closed_date: '2026-05-30'
+  closed_pr: 2886
+  outcome_id: MISSION-010
+

@@ -1,0 +1,17 @@
+- id: INFRA-1935
+  domain: INFRA
+  title: "MARCUS M-B: chump fanout --reference flag + agent-prompt template injection (smallest shippable slice of INFRA-1487 reference-implementation primitive — interface-only, no orchestrator changes)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - chump fanout CLI accepts new --reference <commit-sha-or-PR-N> flag (parsed but does not yet alter execution); flag value is plumbed into the FanoutSpec struct + serialized into per-worktree agent dispatch payload
+    - "Agent dispatch prompt template at scripts/dispatch/fanout-agent-prompt.md (new) includes a 'Reference implementation' section that injects: (a) the resolved commit-or-PR diff, (b) literal instruction 'Apply the structurally equivalent change to your assigned target in your worktree' per Marcus's M-B brief"
+    - If --reference resolves to a PR-N, chump fanout resolves it to the merge commit SHA via gh api (REST not GraphQL — fleet GraphQL is exhausted per ambient.jsonl)
+    - "Smoke test scripts/ci/test-fanout-reference-flag.sh: invoke chump fanout --reference HEAD~1 <stub-spec>, assert (a) FanoutSpec captures the reference SHA, (b) agent prompt template renders with the diff embedded, (c) absent --reference, prompt template renders the today-path"
+    - "Defers to follow-up gap: the actual structural-equivalence enforcement in agent execution (that needs orchestrator changes + cross-repo test fixtures from INFRA-1484); this slice is interface-only so the operator can preview the cmd shape + downstream pieces can attach"
+    - "Trace to Marcus quote: 'I personally migrated one of the simplest endpoints myself and merged it to main. That gave her a flawless, living template.' — this slice lets the operator commit-then-reference; downstream slices make the fleet act on it"
+  closed_date: '2026-05-25'
+  closed_pr: 2536
+  outcome_id: MISSION-010
+

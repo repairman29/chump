@@ -1,0 +1,10 @@
+- id: INFRA-2197
+  domain: INFRA
+  title: "EFFECTIVE P1: META-128/C6 chump claim integration — pre-claim disk plan check + refuse with alternative"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- Modify chump claim CLI handler (src/main.rs or src/claim.rs — grep for 'fn claim' or 'chump claim' subcommand) to call chump disk plan BEFORE atomic-CAS claim.\n- Pre-claim flow: parse action class from gap.skills_required (default = sonnet_dispatch_with_worktree); call chump disk plan <class> --count 1; if exit code 1 (REFUSE) → print helpful error + exit 1 (operator must reap or override); if exit code 2 (WAIT) → print warning + offer auto-reap hint; if 0 (OK) → proceed with existing claim flow.\n- Override: CHUMP_DISK_PLAN_BYPASS=1 with reason emitted as ambient kind=disk_plan_bypassed.\n- Emit ambient kind=disk_plan_checked on every claim with {gap_id, action_class, projection, decision}.\n- Register kind=disk_plan_bypassed AND kind=disk_plan_checked in EVENT_REGISTRY.yaml + event-registry-reserved.txt.\n- 4+ unit tests: REFUSE blocks claim, WAIT warns but proceeds, OK proceeds silently, CHUMP_DISK_PLAN_BYPASS=1 emits ambient + proceeds.\n- Backwards compat: when ~/.chump/disk-inventory.json missing (daemon not installed), fall through with WARN log; never block.\n- Cross-references META-128 (umbrella), INFRA-2193 daemon, INFRA-2195 cost model, INFRA-2196 CLI (the chump disk plan subcommand this calls)."
+  outcome_id: MISSION-010
+

@@ -1,0 +1,23 @@
+- id: RESILIENT-187
+  domain: RESILIENT
+  title: Helsinki EU host ships 0/10 — chump-local free-tier backend fails at ship step
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Deployed to Helsinki (Hetzner-class Ubuntu host root@204.168.229.237) on 2026-07-22. Host is REACHABLE and grinding (2 workers, mode=grind, both actively picking gaps) but ships 0/10 cycles — eu_last10 reports 0✓/10✗. Fleet-wide merges in the same window (EFFECTIVE-315, RESILIENT-185, etc.) come from the OTHER host (Claude backend), NOT Helsinki.
+    
+    Ground truth from ssh into the host, 2026-07-23 ~01:40Z, worker:2 log (5 consecutive rc=1 kind=failed, worker_circuit_open fired at 3):
+    - backend=chump-local, escalation models z-ai/glm-5.2, minimax/minimax-m3 (EFFECTIVE-314 ladder).
+    - Some cycles: 'chump-local exited ERROR_1 (rc=1)' from the model itself.
+    - INFRA-1904 cycle: model DID the work (read_file etc.), then free-tier ship 'bot-merge.sh --gap INFRA-1904 --fast --auto-merge' failed because (a) 'install-hooks.sh failed; continuing without hooks' AND (b) 'chump claim: Gap INFRA-1904 has no concrete acceptance criteria — add AC before claiming' → bot-merge exits 1. Note preflight PASSED the same gap ('OK INFRA-1904 — open and unclaimed') — preflight and claim disagree on AC-less gaps.
+    
+    Rough shape: (a) fix install-hooks.sh on fresh Ubuntu (RESILIENT-185 provisioner sibling); (b) reconcile preflight-vs-claim AC gate so a gap that passes preflight isn't rejected at claim (or make the picker skip AC-less gaps before dispatch); (c) confirm chump-local free-tier provider creds/routing are actually present in the chumpd daemon env on Helsinki (the OPENAI_*/CHUMP_FREE_TIER_PROVIDERS path per chump-local model selection) — note launchctl getenv is a macOS-only probe and invalid on this Linux host, so check the daemon's real env, not an ssh shell.
+    
+    Not halt-class: fleet overall is shipping from the other host; this is a localized new-host degradation. Evidence via scripts/ops/chump-eu-status.sh (already on origin/main via EFFECTIVE-315).
+    
+    EVIDENCE (57 recent Helsinki cycle logs, overlapping counts): patch-apply/zero-commit=23 (~40%, fixed by PR #3265 write_file mode), AC-less claim=17 (~30% → EFFECTIVE-316), post-commit compile/CI=39 (model-capability, not cheaply fixable), model ERROR_1=0. Conclusion: #3265 gets Helsinki SHIPPING, not to 10/10.
+  acceptance_criteria:
+    - "AC1 (root cause — CONFIRMED): free-tier models (glm-5.2, minimax-m3) emit structurally-broken unified diffs (blank context lines missing the leading space → 'corrupt patch at line N'; wrong hunk counts; overlapping hunks). git apply AND GNU patch both reject them; chump's strict→fuzzy→tier-c applier also rejects → patch lands in /root/patch-fails → zero commits → bot-merge refuses (CREDIBLE-162 'ZERO commits since main') → 0/10. AC2 (fix): build_free_tier_prompt in src/execute_gap.rs:376 must instruct write_file (whole-file rewrite) instead of patch_file when CHUMP_FREE_TIER_WRITE_FILE=1 (already set on Helsinki). Whole-file writes have no diff structure to corrupt. Verify: a free-tier dispatch on Helsinki completes with kind=shipped (grep cycle_end shows kind=shipped, not 10/10 failed). AC3 (secondary): free-tier pick skips AC-less gaps (INFRA-1904 class fails at 'chump claim: no concrete acceptance criteria' though preflight passed). AC4: rebuild+restart chumpd on Helsinki so the new binary is live."
+  closed_pr: 3265
+

@@ -1,0 +1,16 @@
+- id: MISSION-040
+  domain: MISSION
+  title: "MISSION: active-mission-aware + dependency-ordered picker ranking (mission_rank is binary today)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Picker today (MISSION-028 #3061) treats mission-rank as BINARY: a gap either matches the active mission or doesn't. Two missing dimensions: (a) ACTIVE_MISSION-aware ranking — picker should read ~/.chump/ACTIVE_MISSION (currently MISSION-010) and weight gaps whose outcome_id matches that specific mission higher than gaps linked to other outcomes; (b) DEPENDENCY-ORDERED ranking — gaps with no open depends_on should rank higher than gaps blocked by other open gaps (don't pick a gap whose dependencies aren't done). Today both decisions are missing → fleet picks gaps that are mission-linked-in-theory but depend on stuff that isn't done. Pairs with MISSION-030 outcomes FK (gives picker a real signal to rank by) and MISSION-008 outcome FK schema (the column the picker reads). NOTE: this gap's description was briefly corrupted during MISSION-040 vs MISSION-041 confusion in musher tick 7 (2026-06-05 16:50Z); restored via CHUMP_ALLOW_GAP_REWRITE=1 to match the original title.
+  acceptance_criteria:
+    - Picker reads ~/.chump/ACTIVE_MISSION and prefers gaps with outcome_id matching that mission over gaps with other (or no) outcomes, at same priority/effort tier
+    - Picker deprioritizes a gap if any of its open depends_on entries are themselves unclosed (deps_first rule)
+    - "Live regression test: 2 same-pri/effort gaps, A linked to ACTIVE_MISSION + no deps, B linked to a different outcome + has open dep → picker chooses A"
+  closed_date: '2026-07-21'
+  closed_pr: 3071
+  outcome_id: MISSION-010
+

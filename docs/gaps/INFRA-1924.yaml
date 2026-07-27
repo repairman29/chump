@@ -1,0 +1,18 @@
+- id: INFRA-1924
+  domain: INFRA
+  title: "EFFECTIVE: productize curator-opus-decompose role (.claude agent + skill + scripts/coord/decompose-loop.sh) per META-097 inferred AC"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Create .claude/agents/decompose.md following the .claude/README.md discipline (capability lives in the script, agent body delegates) — mirror existing .claude/agents/target.md as model
+    - Create .claude/skills/decompose/SKILL.md following the same pattern as existing .claude/skills/target/SKILL.md (~50-80 lines, frontmatter with name/description/user-invocable/allowed-tools, body explains routing + when-to-use)
+    - "Create scripts/coord/decompose-loop.sh as the harness-neutral CLI per OPERATOR_PLAYBOOK Section 5 — implements the AC items specific to this role per docs/process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md (AC source: inferred from curator self-contribution OR opus-curator-overnight inference)"
+    - Smoke test scripts/ci/test-decompose-loop.sh validates each subcommand exits 0 on synthetic happy path and exit 2 on bad input
+    - Update docs/architecture/TEAM_OF_AGENTS.md shipped/filed/missing table to move decompose from missing to shipped
+    - If AC is inferred (not curator-contributed) AND a curator session for this role wakes up later contesting the design choices, file a follow-up gap to refactor rather than blocking this productization PR
+    - Ship via scripts/coord/bot-merge.sh --gap INFRA-1924 --auto-merge on branch chump/INFRA-1924-decompose-productize
+  closed_date: '2026-05-25'
+  closed_pr: 2529
+  outcome_id: MISSION-010
+

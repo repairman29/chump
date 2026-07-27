@@ -1,0 +1,18 @@
+- id: INFRA-1848
+  domain: INFRA
+  title: "EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema (149MB active Next.js+Postgres OKR platform)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Clone or browse repairman29/project-forge via gh api; document the OKR data model (initiative, key result, owner, due date, status, hierarchy, AI-insights enrichment) in docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    - Compare against Chump's state.db schema (gap row shape, status enum, depends_on graph, acceptance_criteria, pillar tag) — produce a side-by-side mapping with deltas
+    - "Identify superior primitives in project-forge: hierarchy depth, AI-insights enrichment pipeline, team analytics, Postgres-vs-SQLite tradeoffs, Next.js dashboard patterns"
+    - "Decision document: (a) keep Chump's SQLite gap schema as-is, (b) extend the schema with hierarchy depth (gap as root, sub-gaps as children with materialized path), (c) full migration to Postgres + initiative tier above gaps. Each option's cost+benefit explicit"
+    - "If (b) or (c): file a follow-up Schema-Evolution gap with the migration plan"
+    - Coordinate with META-046 PM-curation role and CLAUDE.md Mission Driver section — both expect a richer gap-hierarchy model than today's flat list
+    - Coordinate with INFRA-1816 echeo Ship Velocity Score harvest — score and hierarchy are complementary substrate
+    - "Vendoring lineage if any code ports: 'Vendored from repairman29/project-forge at commit SHA (CP-016)'"
+    - Cross-pollination brief CP-016-project-forge-okr.md
+  outcome_id: MISSION-010
+

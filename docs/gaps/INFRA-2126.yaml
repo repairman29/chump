@@ -1,0 +1,11 @@
+- id: INFRA-2126
+  domain: INFRA
+  title: "RESILIENT P1: ACP smoke test cache-key collision — 6 concurrent PRs all fight for same cache key, 5/6 fail"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- Repro: open ≥6 PRs that all run the ACP smoke test concurrently against the same self-hosted runner pool (Darwin-arm64).\n- Symptom: Job-level FAILURE despite all in-test assertions PASSing. Failure manifests in the cache-save phase: \"Failed to save: Unable to reserve cache with key v0-rust-acp-smoke-Darwin-arm64-<hash>, another job may be creating this cache.\"\n- Discovered: META-123 Wave 2 dispatch session 2026-05-28. 5 of 6 in-flight PRs (#2705, 2706, 2707, 2708, and #2698 from a different cluster) failed the ACP gate with this exact cache-collision pattern. Manual sequential rerun unblocked all of them.\n- Root cause: rust-cache action key includes the lock-file hash but NOT a per-PR uniqueness suffix, so concurrent runs of the same workflow on the same Cargo.lock all target the same cache slot, and only the first save wins.\n- Fix options:\n  (a) Add `key-suffix: ${{ github.event.pull_request.number }}` (or `github.run_id`) to the rust-cache config in `.github/workflows/acp-smoke.yml` so each PR gets its own cache slot. Tradeoff: slightly less hit rate across PRs.\n  (b) Set `save-if: ${{ github.ref == 'refs/heads/main' }}` so PR runs only RESTORE from cache, never SAVE. Main is the only writer. Tradeoff: cold cache for crates that haven't merged yet.\n  (c) Both — best of both worlds.\n- Verify: open 6 PRs that all run ACP smoke concurrently; all 6 jobs complete without the cache-save error.\n- Cross-references: DOC-063 (CI bottleneck review, just merged) — this is Lever ? in the catalog. Also same class as INFRA-2125 (substrate-noise patterns) and INFRA-755 (observability budget) — the CI infrastructure layer is increasingly the bottleneck, not the code."
+  closed_date: '2026-05-29'
+  outcome_id: MISSION-010
+

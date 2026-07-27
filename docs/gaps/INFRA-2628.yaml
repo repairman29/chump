@@ -1,0 +1,18 @@
+- id: INFRA-2628
+  domain: INFRA
+  title: "RESILIENT P0: session clock-in/clock-out + main-freshness enforcement — prevent stale-base regressions like RESILIENT-058 nearly rescinding INFRA-2524"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Today 2026-06-03 RESILIENT-058 Sonnet dispatched worktree was created against main HEAD ~56e15def while INFRA-2524 had landed at 31e71d16 — Sonnet rebased AWAY a 66-line fail-open guard. Caught by orchestrator before push but if missed would have re-broken fail-open behavior on next garbled-watchdog tick. Operator: we keep working on the wrong main."
+    - "Fix-A: chump session start emits kind=session_opened with current origin/main HEAD sha and pid; chump session end emits kind=session_closed. Stored in .chump-locks/.session-clock.jsonl for cross-session visibility."
+    - "Fix-B: chump claim refuses if local origin/main is more than CHUMP_MAIN_STALE_THRESHOLD_S (default 600s) behind remote — auto-fetches first OR fails with clear message pointing to git fetch origin main"
+    - "Fix-C: pre-push hook also checks main-freshness; refuses push if branch was last-rebased against a main HEAD that is now N commits behind current remote origin/main HEAD (with N tunable, default 5). Emits kind=stale_rebase_blocked with old-base/current-base/commits-behind"
+    - "Fix-D: launchd daemon com.chump.main-freshness-watcher tick every 60s broadcasts kind=fleet_main_head_updated when origin/main HEAD changes, including the new sha and merged-commit-list. Sessions can subscribe."
+    - "Regression test scripts/ci/test-stale-main-guards.sh covers: (a) claim against stale main blocked, (b) push against stale-rebased branch blocked, (c) main-head-updated event fires on fetch detecting new HEAD, (d) session_opened+session_closed bracket properly"
+  notes: |
+    [2026-06-03T23:58:34Z] confirmed on origin/main (merged fix commit); mission-loop registry hygiene
+  closed_pr: 2999
+  outcome_id: MISSION-010
+

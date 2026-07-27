@@ -1,0 +1,11 @@
+- id: INFRA-2192
+  domain: INFRA
+  title: "EFFECTIVE P1: META-128/C1 strategy doc — docs/strategy/DISK_AWARE_FLEET_2026-05-29.md"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Write docs/strategy/DISK_AWARE_FLEET_2026-05-29.md (~1500 words). Cover: today's evidence (98% crisis, INFRA-2188 leak class, 6-12 GB burst worry), the 4-layer architecture from META-128 AC (inventory / cost model / chump disk plan / adaptive scaler + multi-node routing), 4-wave migration plan, success criteria, 5 open questions for operator. Cross-link from CLAUDE.md §On-demand docs + OPERATOR_PLAYBOOK.md §Disk hygiene. Voice-lint clean."
+  closed_date: '2026-05-29'
+  outcome_id: MISSION-010
+

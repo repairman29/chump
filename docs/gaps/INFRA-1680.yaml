@@ -1,0 +1,15 @@
+- id: INFRA-1680
+  domain: INFRA
+  title: wire test-claude-reaper.sh into ci.yml fast-checks (INFRA-1662 follow-up)
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    INFRA-1662 added scripts/ci/test-claude-reaper.sh but could not wire it into .github/workflows/ci.yml fast-checks because INFRA-1621 held the ci.yml lease at ship time. Add the one-line step under fast-checks, modeled on cargo-target-reaper (test-cargo-target-reaper.sh, INFRA-1250).
+  acceptance_criteria:
+    - Add a step to .github/workflows/ci.yml fast-checks job that runs 'bash scripts/ci/test-claude-reaper.sh'.
+    - Step name references INFRA-1662 (claude-reaper orphan claude subprocess sweeper).
+    - "Local: 'bash scripts/ci/test-claude-reaper.sh' must still PASS (7/7)."
+    - CI run on the PR shows the new step is green.
+  outcome_id: MISSION-010
+

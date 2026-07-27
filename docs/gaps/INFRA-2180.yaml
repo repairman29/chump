@@ -1,0 +1,12 @@
+- id: INFRA-2180
+  domain: INFRA
+  title: "RESILIENT P1: event-registry cleanup — prune zero-emit kinds + audit before META-124+125 add 20+ more kinds (registry currently 343, headroom < 60)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Audit scripts/ci/event-registry-reserved.txt (currently 343 kinds; observability flagged headroom < 60 before META-124/125 add 20+). For each kind: query ambient.jsonl last 7d for emit count. Zero-emit kinds with no scanner anchor present → propose removal. Output: scripts/ci/event-registry-audit-2026-05-29.md listing keep/prune/investigate. Target: prune 50+ zero-emit kinds → headroom back above 100 before META-124 Wave 1 dispatch. Cross-references INFRA-754 (registry discipline), INFRA-2132 (META-124 C4 adds 9 kinds)."
+  closed_date: '2026-05-29'
+  closed_pr: 2726
+  outcome_id: MISSION-010
+

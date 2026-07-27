@@ -1,0 +1,19 @@
+- id: META-109
+  domain: META
+  title: "WIZARD-AS-DAEMON: autonomous orchestrator that drives PRs to merge without operator/Opus on duty — the missing DRIVE primitive on top of THE FLOOR's BUILD primitives"
+  status: done
+  priority: P0
+  effort: l
+  acceptance_criteria:
+    - scripts/coord/wizard-daemon.sh exists and is executable
+    - Step 1 (PR classification by mergeStateStatus) implemented
+    - Step 2 (recovery-queue-emit trigger for stale-base/cascading) implemented
+    - Step 6 (CRIT broadcast on fleet_stalled/worker_stuck) implemented
+    - "Safety: refuses HOT temp + refuses CONFLICTING PRs"
+    - DEFAULT-OFF (CHUMP_WIZARD_DAEMON_ENABLED=1 required)
+    - Smoke test scripts/ci/test-wizard-daemon.sh covers dry-run + safety refusal
+  notes: |
+    [2026-05-27T13:30:35Z] 2026-05-27: Phase 2 (Steps 3+4+5: real-fails routing, pickable-gap dispatch, cascade rebase) shipped via PR #2630 under temporary META-107 collision; canonical Phase 2 gap is META-111.
+  closed_date: '2026-05-27'
+  outcome_id: MISSION-010
+

@@ -1,0 +1,19 @@
+- id: INFRA-2047
+  domain: INFRA
+  title: "EFFECTIVE P2: scripts/coord/recovery-queue-emit.sh CLI wrapper — ergonomic emit for operator_recovery_requested ambient event consumed by recovery-queue-service.sh; today (2026-05-27) shepherd had to inline-emit JSON manually for INFRA-1999 #2633 re-ship; wrapper turns it into one-line CLI"
+  status: superseded
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "New scripts/coord/recovery-queue-emit.sh CLI wrapper. Invocation: bash scripts/coord/recovery-queue-emit.sh --prs CSV --reason TEXT --gap GAP-ID --urgency LEVEL where LEVEL is INFO or WARN or CRIT"
+    - Calls chump ambient emit operator_recovery_requested under the hood with --field pr=N --field reason=TEXT for each PR in the CSV. Each PR gets a separate ambient event line so recovery-queue-service.sh can pick them off independently
+    - "Mandatory args: --prs CSV of PR numbers + --reason one-sentence operator-readable rationale. Optional --gap defaults to none + --urgency defaults to WARN"
+    - "Rate-limit safety: refuses to emit if same PR had operator_recovery_requested in last CHUMP_RECOVERY_EMIT_COOLDOWN_S seconds default 1800 unless --force is passed; emits kind=recovery_emit_rate_limited audit-trail when refused"
+    - "Smoke test scripts/ci/test-recovery-queue-emit.sh: invoke with --prs 2633 --reason TEST; assert ambient.jsonl has the new line with correct kind + pr + reason; invoke twice within cooldown; assert second is rate-limited unless --force"
+    - Pairs with recovery-queue-service.sh consumer which already exists; recovery-queue-emit.sh is purely the producer ergonomics not a replacement
+    - "Backward-compat: chump ambient emit operator_recovery_requested continues to work; this wrapper is the convenience layer"
+  notes: |
+    
+    CLOSED 2026-05-27 14:42Z by shepherd: superseded by INFRA-1993 (THE FLOOR Phase 3) which already ships scripts/coord/recovery-queue-emit.sh. Filing missed verify-at-source check. Delta enhancements (per-PR events, --urgency, --force, --dry-run, per-PR cooldown) deferred unless someone needs them.
+  outcome_id: MISSION-010
+

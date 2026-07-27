@@ -1,0 +1,14 @@
+- id: INFRA-2318
+  domain: INFRA
+  title: "fix(META-267 follow-up): update test-preflight-ci-parity.sh INFRA_JOBS set with new matrixed e2e job name (drop e2e-pwa/e2e-battle-sim/e2e-golden-path, add e2e)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. scripts/ci/test-preflight-ci-parity.sh INFRA_JOBS set updated: drop 'e2e-pwa', 'e2e-battle-sim', 'e2e-golden-path' and add 'e2e' with META-267 cite\n2. scripts/ci/preflight-ci-parity-exceptions.txt line ~336 comment updated to reference new matrixed job\n3. bash scripts/ci/test-preflight-ci-parity.sh exits 0"
+  notes: |
+    META-267 (#2905) matrixed the 3 e2e jobs into a single 'e2e' job with strategy.matrix.suite. Pre-commit parity check still has the OLD names in INFRA_JOBS skip list → false positive on the new matrixed job. Surgical 2-line fix.
+  closed_date: '2026-05-31'
+  closed_pr: 2907
+  outcome_id: MISSION-010
+

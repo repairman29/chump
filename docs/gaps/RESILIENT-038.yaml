@@ -1,0 +1,15 @@
+- id: RESILIENT-038
+  domain: RESILIENT
+  title: "RESILIENT P1: supervisor substrate-vs-code triage — detect environmental causes (disk/runner/NATS/auth) and skip Sonnet spawn"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Risk 2 of 10. supervisor blindly spawns Sonnet on any detected failure. But disk-full / runner-ghost / NATS-down / OAuth-expired cause all 6 curators to fail simultaneously — code changes won't help. Supervisor should triage substrate vs code BEFORE spawning.
+  acceptance_criteria:
+    - "supervisor adds substrate_check() pre-flight before spawn: query df / lsof for disk; gh api rate_limit for GH; chump-coord ping for NATS; CHUMP_AUTH_MODE health for auth"
+    - "If substrate-cause detected: supervisor files single 'substrate: X impacting curators' gap (NOT per-curator gaps); broadcasts WARN to operator; DOES NOT spawn per-curator Sonnets"
+    - Substrate check results cached for 5min (avoid hammering APIs)
+    - "Smoke test: mock disk-full state, synth 3 failing curators, assert single substrate gap filed + zero Sonnet spawns"
+  outcome_id: RESILIENT-000
+

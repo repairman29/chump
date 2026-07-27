@@ -1,0 +1,15 @@
+- id: META-182
+  domain: META
+  title: "META: Integrate GitHub API for PR reads with rate limiting and caching (META-180 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Daemon can fetch 100% of open PRs using GitHub API.
+    - GitHub API calls for reads respect `CHUMP_GH_MAX_CALLS_PER_MIN` cap.
+    - Daemon prioritizes cache-first reads (INFRA-1081 pattern).
+    - Daemon is critical-tagged for `graphql_exhausted` protection.
+  closed_date: '2026-05-30'
+  closed_pr: 2885
+  outcome_id: MISSION-010
+

@@ -1,0 +1,18 @@
+- id: INFRA-2281
+  domain: INFRA
+  title: "EFFECTIVE: discoverability layer — CLAUDE.md On-demand docs + curator role docs (.claude/agents/curator-opus-*.md) get 'Tools you can use' section linking chump voice, chump scratch, --discard-wip, SHIP_ASSIST_PLAYBOOK, VOICE_OF_AGENT"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "CLAUDE.md 'On-demand docs (read only when you hit the failure surface)' section gets 5 new one-line entries: (a) chump voice CLI for filing VOAs, (b) chump scratch CLI for shared state, (c) chump claim --discard-wip safe-destroy flag (INFRA-2235), (d) SHIP_ASSIST_PLAYBOOK.md wedge taxonomy, (e) VOICE_OF_AGENT.md protocol"
+    - "Each of 4 curator role docs (.claude/agents/curator-opus-shepherd.md + ci-audit.md + handoff.md + target.md) gets a 'Tools you can use' section with the same 5 entries plus role-specific framings (e.g. shepherd: 'after each cycle, consider filing a VOA on any friction'; ci-audit: 'consult SHIP_ASSIST §1 wedge taxonomy before drilling failures')"
+    - No new ambient kinds; pure docs
+    - "Smoke: grep verification asserting every curator role doc contains 'chump voice' + 'SHIP_ASSIST_PLAYBOOK' + 'VOICE_OF_AGENT' string after edit"
+    - "Pairs with INFRA-2278 (SessionStart hook surface, shipped PR #2844) — together this makes the discoverability layer real: hook surfaces at startup + curator role docs teach when/how/why"
+  notes: |
+    [2026-05-30T07:58:54Z] Filed 2026-05-30 — Tier 2 of operator's Integration Tier plan. After this lands, every curator role learns its new surface area + every session sees it at startup. Operator's exact frame: 'we keep shipping product without training the team or providing the tools they need to exploit them.'
+  closed_date: '2026-06-08'
+  closed_pr: 3106
+  outcome_id: MISSION-010
+

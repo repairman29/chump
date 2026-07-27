@@ -1,0 +1,19 @@
+- id: META-086
+  domain: META
+  title: "MISSION: audit-job preflight mirror DECOMPOSITION — survey ci.yml audit job's ~20 test scripts + group into ship-sized sub-gaps (proper INFRA-1856 followup after scope discovery)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    INFRA-1856 was closed 2026-05-23 after scope discovery — the ci.yml audit job is NOT 2 sub-checks but ~20+ distinct test scripts. Properly decomposing it needs a survey + grouping pass, then 3-5 ship-sized sub-gaps. This is META-070 Tier-C continuation work.
+  acceptance_criteria:
+    - "Survey docs/process/AUDIT_JOB_DECOMPOSITION.md enumerates every bash scripts/ci/test-*.sh invoked by .github/workflows/ci.yml audit job; for each: 1-line purpose + whether already mirrored in src/preflight.rs"
+    - Group the unmirrored scripts into 3-5 thematic clusters by closest sibling (cache/observability gates, gap-state-consistency gates, worker/PR-lifecycle gates, etc) — each cluster shippable as one new META-070 sub-gap with its own preflight gate
+    - File the 3-5 sub-gaps per the cluster grouping; each gets concrete AC + ship target
+    - Self-closing on the last sub-gap shipping
+    - Smoke test scripts/ci/test-audit-job-decomposition.sh asserts the survey doc lists every audit-job test script that exists in scripts/ci/
+  depends_on: [INFRA-3384, INFRA-3385, INFRA-3386, INFRA-3387, INFRA-3388]
+  notes: |
+    Pillar: META. Replaces INFRA-1856 after scope discovery. Demonstrates honest curator practice: when AC at filing turns out wrong on inspection, document the discovery + file a properly-scoped follow-up rather than ship a slim slice that misses the actual scope.
+  outcome_id: MISSION-010
+

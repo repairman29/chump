@@ -1,0 +1,20 @@
+- id: CREDIBLE-082
+  domain: CREDIBLE
+  title: "CREDIBLE P1: vote weighting — distinguish original emissions from reactions in consensus-tally (anti echo-chamber)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Risk 5 of 10. One curator's hot take read by 5 others; each reacts + broadcasts; META-159 vote-tally counts the 6 as 6 distinct votes. False unanimity.
+  acceptance_criteria:
+    - consensus-tally CLI distinguishes original emissions (no parent_corr_id) from reactions (has parent_corr_id pointing at the proposal)
+    - "Vote weighting: original=1.0, react=0.3 (configurable via CHUMP_CONSENSUS_REACT_WEIGHT)"
+    - Tally output shows both raw count AND weighted count + delta highlighted when react-weight >50% of weighted total (consensus is mostly echo)
+    - "Smoke test: synth proposal + 1 original vote + 5 reactions; assert weighted count = 1.0 + 5*0.3 = 2.5 NOT 6"
+  depends_on: [META-159, EFFECTIVE-028]
+  notes: |
+    [2026-05-30T16:21:02Z] stuck cycle 1 → re-attempt 2026-05-30 (PR #2846 auto-closed) respawn-handled:2846
+    [2026-06-04T00:16:24Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2846
+  outcome_id: CREDIBLE-000
+

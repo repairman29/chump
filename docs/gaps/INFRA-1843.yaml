@@ -1,0 +1,19 @@
+- id: INFRA-1843
+  domain: INFRA
+  title: "EFFECTIVE: vendor pixel-edge bicameral-mind blueprint (Reflexive on-device plus Neocortex cloud) for Chump LLM routing architecture"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Read pixel-edge-server/PIXEL_ARCHITECTURE.md and BLUEPRINT_BEST_IN_CLASS.md locally; document the bicameral-mind decomposition (Reflexive on-device = fast cheap fallback; Neocortex cloud = expensive complex deliberate) in docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+    - Map the bicameral pattern onto Chump's current LLM call sites — gap-decompose, subagent dispatch, preflight reasoning, daily curation — identify which tier each call should default to
+    - "Define routing heuristics: which gap classes go Reflexive (small models, on-device), which go Neocortex (claude opus, network), what's the escalation path (Reflexive tried first, escalates on confidence threshold)"
+    - Wire into src/inference_router.rs (new module) with two-tier dispatch logic; default tier configurable via env CHUMP_INFERENCE_TIER=reflexive
+    - neocortex
+    - auto
+    - "Smoke test scripts/ci/test-inference-router.sh: synthetic call with each tier, verify routing decision is deterministic and observable"
+    - "Vendoring lineage comment: 'Vendored architectural pattern from repairman29/pixel-edge-server at commit SHA, original BLUEPRINT_BEST_IN_CLASS.md (CP-011)'"
+    - Cross-pollination brief CP-011-bicameral-mind.md documents the harvest, the routing heuristics, and the migration path
+    - Coordinate with CP-001 neural-farm harvest (the local-LLM gateway is the Reflexive tier substrate) and the ai-gm-service ensemble harvest (Neocortex tier substrate)
+  outcome_id: MISSION-010
+

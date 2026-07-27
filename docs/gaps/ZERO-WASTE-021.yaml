@@ -1,0 +1,18 @@
+- id: ZERO-WASTE-021
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: sccache Rust wrapper retired on fleet machines — 0% lifetime hit rate, 12GB write-only cache caused disk_critical; timestamped worktree paths defeat cache keys"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    2026-07-19 disk_critical (996MiB free) traced to ~/Library/Caches/Mozilla.sccache at 12GB with LIFETIME 0.00% Rust hit rate — 536 Rust misses, 0 hits, write-only. Structural causes, all verified: (1) every chump claim mints a timestamped worktree (/tmp/chump-<gap>-<ts>); absolute source paths enter rustc arg hashes so cache keys NEVER repeat across claims — the May-2026 57.88% hit rate that justified the 20G cap predates the timestamped-worktree pattern; (2) incremental dev builds are sccache-uncacheable (39 calls); (3) bin/proc-macro crate types uncacheable (55). The shared warm CARGO_TARGET_DIR is the actual compile cache on fleet machines. DECISION (operator-relayed 2026-07-19): Rust wrapper OFF on fleet machines, SCCACHE_CACHE_SIZE capped 2G (C/C++/future use), applied to the live machine config; installer defaults must match so regeneration doesn't resurrect the 20G write-only config.
+  acceptance_criteria:
+    - scripts/setup/install-sccache.sh default generates config WITHOUT the Rust rustc-wrapper and with a 2G cap; --with-rust-wrapper opt-in flag documents the stable-paths prerequisite
+    - comment block in the generated config carries the 0%-hit evidence + revisit criteria (path remapping / trim-paths / stable worktree paths)
+    - infra-watcher check-disk (or the sccache probe test) flags a local sccache cache >4GB as a warning so a silent regrow pages before disk_critical
+    - R2/CI sccache path (INFRA-2093) explicitly untouched — runners keyed by stable CI paths keep their own config
+  notes: |
+    Live machine already switched (wrapper commented, 2G cap, server restarted). Fleet-pickable: installer + watcher slices.
+  closed_date: '2026-07-25'
+  closed_pr: 3302
+

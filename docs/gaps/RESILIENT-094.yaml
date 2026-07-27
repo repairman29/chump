@@ -1,0 +1,22 @@
+- id: RESILIENT-094
+  domain: RESILIENT
+  title: "RESILIENT: onboard auto-select prefers heaviest local model (qwen2.5:14b) → HTTP-unreachable/crash under load on 24GB; prefer a faster model + retry/fallback to lighter on provider error"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    EFFECTIVE-141 made onboard auto-select an available local model, preferring
+    the LARGEST (qwen2.5:14b). Live BEAST-MODE scout: it auto-selected
+    qwen2.5:14b, generated ~5 min, then the Ollama HTTP connection dropped
+    ('model HTTP unreachable') — the 14b likely crashed/overloaded Ollama on the
+    24GB M4. Re-running with qwen2.5:7b is lighter/more reliable. The scout
+    should neither default to the heaviest model nor hard-fail on a transient drop.
+  acceptance_criteria:
+    - onboard's local-model preference favors a reliably-runnable model on the host (e.g. a 7b before a 14b) — not strictly the largest — overridable via OPENAI_MODEL / a preference env
+    - on a provider HTTP error/timeout mid-cascade, onboard retries once and/or falls back to a lighter available model before failing
+    - "the scout completes end-to-end and returns proposals against a default local Ollama on a 24GB host (qwen2.5:7b acceptance case)"
+    - a test covers the fallback-to-lighter-on-provider-error path without a live LLM call
+  closed_date: '2026-07-21'
+  closed_pr: 3165
+  outcome_id: RESILIENT-000
+

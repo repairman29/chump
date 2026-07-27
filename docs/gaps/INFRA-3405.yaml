@@ -1,0 +1,14 @@
+- id: INFRA-3405
+  domain: INFRA
+  title: "INFRA: chump-preflight.sh CURL_AUTH empty-array expansion breaks under macOS bash 3.2 set -u — e2e job fails when CHUMP_WEB_TOKEN unset"
+  status: done
+  priority: P0
+  effort: xs
+  description: |
+    scripts/ci/chump-preflight.sh line 72: CURL_AUTH=() then "${CURL_AUTH[@]}" — macOS runner bash 3.2 treats empty-array expansion under set -u as unbound variable, failing the PWA e2e job for ANY PR when CHUMP_WEB_TOKEN is unset (blocked #3231/#3233 on 2026-07-22). Fix with the bash-3.2-safe expansion ${CURL_AUTH[@]+"${CURL_AUTH[@]}"}.
+  acceptance_criteria:
+    - "The change described by \"chump-preflight.sh CURL_AUTH empty-array expansion breaks under macOS bash 3.2 set -u — e2e job fails when CHUMP_WEB_TOKEN unset\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3234
+

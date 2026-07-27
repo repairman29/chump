@@ -1,0 +1,19 @@
+- id: RESILIENT-099
+  domain: RESILIENT
+  title: "RESILIENT: stale-worktree-reaper reaps an ACTIVELY-LEASED 0-commits-ahead worktree (misreads 'branch merged into origin/main'); active lease must hard-block reap"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    2026-06-05T13:32:36Z: while editing INFRA-2744 in /tmp/chump-infra-2744 (active lease claim-infra-2744-26441-...), the stale-worktree-reaper REAPED the worktree with reason='branch merged into origin/main'. The branch chump/infra-2744-claim was NOT merged — it had 0 commits ahead because the work was still UNCOMMITTED (working-tree edits). The reaper read '0 ahead' as 'merged' and removed the worktree. It DID auto-stash first (kind=worktree_work_stashed_before_reap -> commit 5e0bb0c9c on wip/ branch; work recovered), but it should not have reaped at all: an ACTIVE LEASE was held (ambient showed it). Compare: it correctly SKIPPED a sibling worktree the same cycle with reason=git_index_fresh. So the active-lease + uncommitted-work guards were bypassed by the 'merged (0 ahead)' code path. Evidence: .chump-locks/ambient.jsonl around 2026-06-05T13:32:31-37Z (kind=commit auto-stash, worktree_work_stashed_before_reap, worktree_reaped).
+  acceptance_criteria:
+    - an active lease (state.db leases row OR .chump-locks json) for the worktree's gap HARD-BLOCKS reap regardless of the merged/0-ahead heuristic
+    - a freshly-claimed branch with 0 commits ahead of origin/main is NOT classified as 'merged' when the worktree has uncommitted working-tree changes or an active lease
+    - "regression test: worktree on a 0-ahead claim branch + active lease + dirty working tree is NOT reaped (skipped with an explicit reason)"
+    - the auto-stash safety net is retained as defense-in-depth, not the primary guard
+  notes: |
+    Surfaced shipping INFRA-2744. The .chump-no-reap opt-out works but is manual; the active-lease guard should be automatic. Reaper: scripts/ops/stale-worktree-reaper.sh + scripts/coord/worktree-prune.sh (guards: wt_has_active_lease, .git/index freshness, unpushed commits, untracked files) — the 'branch merged' path apparently precedes/overrides these.
+    MISSION-010 Gate0 cluster — co-prioritized 2026-06-05; mission-linked for the MISSION-011 picker boost (mission_rank=0 → sorts ahead of non-mission gaps within its priority band).
+  closed_pr: 3075
+  outcome_id: RESILIENT-000
+

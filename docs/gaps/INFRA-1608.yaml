@@ -1,0 +1,21 @@
+- id: INFRA-1608
+  domain: INFRA
+  title: "RESILIENT: atomic-claim integrity bug — INFRA-1602 has TWO simultaneous live leases (claim-infra-1602-26392 + claim-infra-1602-47300); the try_claim_gap CAS is supposed to prevent this"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Evidence 2026-05-17 (current session ambient digests, captured across multiple PreToolUse hook fires): INFRA-1602 shows TWO simultaneous live leases — claim-infra-1602-26392-1778986903 (expires 07:02:09Z) and claim-infra-1602-47300-1778986751 (expires 06:59:35Z). Both within their TTL windows. The atomic_claim::try_claim_gap CAS via NATS-KV (chump-coord work_board) is supposed to make this impossible — first writer wins, second writer fails. Either (a) the CAS check has a race window, (b) the NATS-KV bucket has stale state vs file-lock layer, (c) two workers used different claim paths (one NATS, one file-only), or (d) one of the two sessions died mid-claim leaving an orphaned lease that wasn t reaped. The lease_overlap ambient event kind exists in EVENT_REGISTRY but does NOT appear to be emitted on this collision — tail of ambient.jsonl shows no lease_overlap signal despite the visible double-claim, suggesting the detection path is missing OR the second claimer succeeded without ever checking. INFRA-1554 synthesis-truth covers a different class (gaps referenced in synthesis but not in registry); this gap covers the inverse — gaps in registry with duplicate live ownership.
+  acceptance_criteria:
+    - "Investigate the INFRA-1602 double-claim: read both lease lock files (or NATS-KV bucket entries), compare timestamps + worker session IDs, reconstruct the race window from worker.sh logs; output findings in docs/audits/lease-collision-2026-05-17.md"
+    - "Root-cause classification: identify which of (race window in CAS / NATS-vs-file divergence / mixed-path claim / orphan resurrection) caused this specific collision"
+    - "Fix the underlying race: src/atomic_claim.rs::try_claim_gap must either be CAS-correct or use a stronger primitive; if the bug is in chump-coord work_board, fix there"
+    - "Detection path: every claim attempt that loses the CAS race emits kind=lease_overlap to ambient.jsonl with {gap_id, winner_session, loser_session, paths_attempted}; today the event kind exists in registry but emission may be missing"
+    - New scripts/ci/test-atomic-claim-collision.sh spawns two mock workers racing for the same gap with synthetic NATS + file backends, asserts exactly one wins and the loser sees lease_overlap on stderr + ambient
+    - "Post-merge regression: rerun the test under load (50 concurrent claim attempts on a single gap) — expect exactly one winner, 49 lease_overlap events emitted, zero double-claims persist in state.db"
+    - "EVENT_REGISTRY.yaml lease_overlap entry has emitter_paths populated with the file:function reference (src/atomic_claim.rs::try_claim_gap)"
+    - docs/process/CLAUDE_GOTCHAS.md gains a known-error-class entry for atomic-claim-collision with diagnosis steps and the test command
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

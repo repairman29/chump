@@ -1,0 +1,15 @@
+- id: EFFECTIVE-215
+  domain: EFFECTIVE
+  title: "EFFECTIVE: make ExternalRepoContract implement-agent BAR-AWARE — prompt states the verify-merge gates (CI-green + a test that fails-on-base/passes-on-head + no-regression) and requires self-verify, so the autonomous loop ships bar-PASSING PRs instead of cosmetic ones"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "ExternalRepoContract::prompt() output contains a MERGE BAR section listing all three gates: (1) CI must be green on PR head commit, (2) PR diff adds/modifies at least one test that FAILS on base and PASSES on head, (3) full existing test suite passes on head."
+    - "Prompt instructs the agent to SELF-VERIFY before opening the PR: run the changed test against base (confirm FAIL), against head (confirm PASS), run full suite on head (confirm GREEN)."
+    - "Unit test in chump-handoff asserts ExternalRepoContract::prompt() contains gate language: CI green, test fails on base/passes on head, regression, self-verify."
+    - cargo fmt --check, cargo clippy -D warnings, and cargo test -p chump-handoff all pass.
+  closed_date: '2026-07-20'
+  closed_pr: 3087
+  outcome_id: EFFECTIVE-000
+

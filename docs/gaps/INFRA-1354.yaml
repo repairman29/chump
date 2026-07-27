@@ -1,0 +1,16 @@
+- id: INFRA-1354
+  domain: INFRA
+  title: "RESILIENT: chump gap reserve cross-worktree visibility — auto-stage doesn't help when shipping from a different worktree"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    INFRA-484 ALREADY auto-stages docs/gaps/<id>.yaml after chump gap reserve. The bug isn't missing auto-stage — it's that auto-stage runs in the worktree where reserve was invoked. Today's cascade (PR #2063 killed by orphan-closer): I ran 'chump gap reserve' from session worktree A, yaml auto-staged in A, but pushed PRs from worktree B. The yamls never made the PR commits → orphan-closer couldn't see them. Required 2 rescue PRs (#2071, #2077) to staple them into main. The fix: chump gap reserve should ALSO write the yaml to the main repo's docs/gaps/ (regardless of cwd), so any worktree's next pull picks it up. OR: emit a clear warning when the current worktree's HEAD branch is NOT the operator's likely shipping branch.
+  acceptance_criteria:
+    - chump gap reserve writes yaml to <main_repo_root>/docs/gaps/<id>.yaml even when run from a linked worktree
+    - If main repo root cannot be determined (CHUMP_REPO/CHUMP_HOME unset, not in git), fall back to current-worktree behavior with a stderr warning
+    - "Smoke test scripts/ci/test-gap-reserve-cross-worktree.sh: reserve from a linked worktree, verify yaml appears in MAIN repo's docs/gaps/"
+    - docs/process/CLAUDE_GOTCHAS.md updated with the 2026-05-15 cascade + fix
+  closed_date: '2026-05-15'
+  outcome_id: MISSION-010
+

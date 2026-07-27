@@ -1,0 +1,21 @@
+- id: INFRA-2116
+  domain: INFRA
+  title: "EFFECTIVE P1: ~/.chump/external/<owner>/<repo>/ scan+delta+memory schema (META-123 C8)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    META-123 C8: Define the persistent on-disk schema for ~/.chump/external/<owner>/<repo>/. This is the shared memory + scan-result + delta layer that Scout writes, Context-Keeper curates, Decompose reads, and Target picker filters against. Schema MUST be concrete (exact field names, exact file paths) so the other 7 children can build against a stable contract. This is a design + implementation gap — produces the directory layout doc + a Rust module that knows how to read/write it.
+  acceptance_criteria:
+    - "Directory layout under ~/.chump/external/<owner>/<repo>/: (1) clone/ — the shallow git clone of the external repo (chump onboard populates this); (2) memory/ — persistent memory files (snapshot-<iso-date>.json, delta-<from>-to-<to>.md, notes.md hand-maintained); (3) scans/ — Scout output files (onboard-scan-<iso-ts>.json with proposed-gap list, source-of-evidence, confidence); (4) signals/ — Context-Keeper output (issues.jsonl streaming append, prs.jsonl streaming append, commits.jsonl streaming append). Document this in a new doc docs/design/EXTERNAL_REPO_SCHEMA.md (or as a fenced block in docs/strategy/MARKET_POSITIONING_2026-05-27.md). Do NOT edit docs/gaps/*.yaml directly."
+    - "scans/onboard-scan-<iso-ts>.json schema (exact field names): { scan_timestamp: ISO-8601, external_repo: 'owner/repo', tool_version: string, inputs_read: [{path: string, sha256: string, summary: string}], proposed_gaps: [{title: string, domain: string, priority: 'P0'|'P1'|'P2'|'P3', effort: 'xs'|'s'|'m'|'l', confidence: 'high'|'med'|'low', source_of_evidence: {input_path: string, section: string, excerpt: string}, acceptance_criteria_draft: [string]}] }."
+    - "memory/snapshot-<iso-date>.json schema: { snapshot_timestamp: ISO-8601, external_repo: 'owner/repo', git_head_sha: string, open_issues_count: u32, open_prs_count: u32, last_commit_iso: ISO-8601, last_30d_commit_count: u32, intent_files_present: [string] }."
+    - "signals/{issues,prs,commits}.jsonl schemas: streaming-append JSONL, one event per line. issues.jsonl: { ts: ISO-8601, number: u32, action: 'opened'|'closed'|'reopened'|'commented'|'labeled', title: string }. prs.jsonl: { ts: ISO-8601, number: u32, action: 'opened'|'merged'|'closed'|'reviewed', title: string, head_repo: string }. commits.jsonl: { ts: ISO-8601, sha: string, author: string, summary: string }."
+    - New Rust module crates/chump-handoff/src/external_repo_schema.rs (or src/external_repo_schema.rs if simpler) with serde-derived structs for each schema above + read/write helpers (load_snapshot, save_snapshot, append_signal, read_latest_scan). Include doc comments referencing this gap.
+    - "skills_required tag format for external-repo gaps: 'external_repo:<owner>/<repo>' — exactly this form (lowercase, single colon, slash separator). Document this as the canonical tag in EXTERNAL_REPO_SCHEMA.md so INFRA-2113 (picker filter) and INFRA-2112 (decompose --external-repo) can rely on it."
+    - "Unit tests in external_repo_schema.rs: (a) round-trip snapshot save/load, (b) round-trip scan save/load, (c) signal-append produces well-formed JSONL one-per-line, (d) reject malformed tag (e.g. 'external:foo/bar' missing the _repo, 'external_repo:foo' missing the slash). cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo test GREEN. Voice-lint clean. PR via scripts/coord/bot-merge.sh --auto-merge."
+  depends_on: [META-123]
+  closed_date: '2026-05-29'
+  closed_pr: 2705
+  outcome_id: MISSION-010
+

@@ -1,0 +1,16 @@
+- id: RESILIENT-123
+  domain: RESILIENT
+  title: "RESILIENT: bot-merge silent exit 2 after cargo-fmt step in DOC_ONLY mode — no step-tracking transition logged"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Reproducer: scripts/coord/bot-merge.sh on a DOC_ONLY=1 diff (no .rs changes) successfully completes 'cargo fmt' step at bot-merge-NNNNN.steps, then exits 2 silently with no further .steps entries, no error message, no PR opened"
+    - "Root cause: identify where between line ~3700 (post cargo fmt) and line 4072 (INFRA-028 PR-existence honesty check) the script can silently fail without recording a step transition. Candidate sites: git push (potentially blocked by INFRA-719 even when initiated by bot-merge), gh pr create (silent gh exit), or a guarded code path that exits without _bm_step_done"
+    - "Fix: every internal step in bot-merge.sh MUST call _bm_step_start before any work and _bm_step_done (with rc) after, OR explicitly log+exit with a named exit code. Add a global trap that records 'unknown_step_silent_failure' to .steps and ambient if exit is non-zero with no terminal step recorded"
+    - "Add test scripts/ci/test-bot-merge-step-coverage.sh: dry-run bot-merge with all branch paths, assert every exit produces a terminal step in .steps + a bot_merge_completed ambient event"
+    - "Doctrine cross-ref: CASE STUDY in docs/process/DURABLE_FIX_DOCTRINE.md — exit code 2 with no diagnostic is the band-aid version of the meta-clause violation; the script knows it failed but doesn't tell anyone WHY. Origin: 2026-06-05 CREDIBLE-105 ship attempt blocked by this."
+  closed_date: '2026-07-21'
+  closed_pr: 3103
+  outcome_id: RESILIENT-000
+

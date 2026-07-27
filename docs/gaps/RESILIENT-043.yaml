@@ -1,0 +1,18 @@
+- id: RESILIENT-043
+  domain: RESILIENT
+  title: "RESILIENT: INFRA-1390 clippy pre-push cache-marker test — 4 fast-checks failures blocking required gate (post-trunk-RED inherited)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Filed 2026-05-30T09:55Z. fast-checks gate fails on 4 cache-marker tests: 'rs-change-passing should pass (rc=2)', 'cache marker missing at .chump-locks/test-gate-cache/6a704886b35d2851946d179bacf6172156e3a7b9.ok', 'cache hit should skip', 'test failure should block'. The rc=2 from cargo clippy suggests clippy itself is failing inside the test fixture. INFRA-1390 was originally a CACHE optimization for the pre-push clippy hook; the test gate validates the cache behaves correctly. Either the clippy fixture has bit-rotted OR the cache marker logic broke.
+  acceptance_criteria:
+    - Investigate which specific clippy invocation in the test fixture is failing rc=2 — read scripts/ci/test-INFRA-1390-* + scripts/git-hooks/pre-push around the cache-marker logic
+    - Identify whether clippy is failing on real warnings (fix the warnings) OR the test fixture sets up a broken state (fix the fixture)
+    - "All 4 cache-marker tests pass: rs-change-passing, cache marker present, cache hit skip, test failure block"
+    - Required CI gate fast-checks passes on a fresh PR against main containing this fix
+    - "If the fix requires changes to the pre-push hook itself: update scripts/git-hooks/pre-push + scripts/ci/test-INFRA-1390-clippy-pre-push-cache.sh together; verify hook + test stay in sync"
+  closed_date: '2026-07-21'
+  closed_pr: 3165
+  outcome_id: RESILIENT-000
+

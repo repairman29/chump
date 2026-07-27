@@ -1,0 +1,16 @@
+- id: INFRA-1869
+  domain: INFRA
+  title: "CI/QA: false-positive heuristic-check audit — track promoted-to-strict gates, prevent regression to advisory (INFRA-1861 slice d)"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "New docs/process/CI_GATE_PROMOTION_LOG.md: append-only log of gates that were promoted from --warn-only to strict-fail; each entry has gate-name + ci.yml-line + promotion-date + reason"
+    - "New CI guard scripts/ci/test-gate-promotion-no-regression.sh: parses CI_GATE_PROMOTION_LOG.md; asserts every promoted gate is currently strict (no --warn-only flag in its ci.yml invocation)"
+    - "Block PRs that demote a promoted gate without an explicit 'CI-Promotion-Reverted: <reason>' commit trailer + new log entry"
+    - "Smoke test: synthetic ci.yml that demotes a promoted gate fails the guard"
+    - "Parent: INFRA-1861 slice (d)"
+  closed_date: '2026-05-23'
+  closed_pr: 2470
+  outcome_id: MISSION-010
+

@@ -1,0 +1,16 @@
+- id: RESILIENT-114
+  domain: RESILIENT
+  title: "RESILIENT P1: chump fleet doctor doesn't validate auth path (CLAUDE.md claims it does) — output is required-check health only, no API-key/OAuth check"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    CLAUDE.md §Auth modes says: 'Validate: chump fleet doctor — exits non-zero if no valid auth path found.' Empirical 2026-06-05 22:48Z: 'chump fleet doctor' on operator's box outputs only 'required-check health: 3 checks OK' — NEVER tests auth. There's no 'chump fleet doctor --auth-only' flag, no validation of ANTHROPIC_API_KEY presence/validity, no oauth-token.json freshness check, nothing. This is the doctrine-vs-reality gap that drives RESILIENT-113 (farmer.sh can't delegate to fleet doctor because fleet doctor doesn't know about auth). FIX shape: add to src/main.rs fleet doctor handler: (a) check if ANTHROPIC_API_KEY env or .env contains a non-empty key; (b) optionally HTTP-call api.anthropic.com/v1/models with that key to validate (cheap, gated by --network flag); (c) check oauth-token.json existence + age vs. threshold; (d) exit non-zero with clear message naming what's broken. Pairs tightly with RESILIENT-113.
+  acceptance_criteria:
+    - "chump fleet doctor outputs an 'auth: OK/STALE/MISSING' section in addition to required-check health"
+    - Exits non-zero when neither ANTHROPIC_API_KEY nor a fresh oauth-token.json is present (matches CLAUDE.md doctrine)
+    - chump fleet doctor --auth-only flag short-circuits to just the auth check (callable from farmer.sh after RESILIENT-113)
+  closed_date: '2026-07-21'
+  closed_pr: 2655
+  outcome_id: RESILIENT-000
+

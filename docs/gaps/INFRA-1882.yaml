@@ -1,0 +1,10 @@
+- id: INFRA-1882
+  domain: INFRA
+  title: "PRODUCT-TAKEOVER: chump scan <repo-path> walks sibling repo + files 5 concrete actionable gaps from its findings (2026 demo #2: repo takeover opener)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. New `chump scan <repo-path> [--max-gaps N]` CLI subcommand under crates/chump-cli/src/cmd/scan.rs (default --max-gaps 5)\n2. Heuristics it runs against the target repo (none require GH access — all local file reads):\n   - TODO/FIXME/XXX comment grep across {src,lib,scripts,docs} → file 1 gap per unique top-level file with count >= 3\n   - Missing top-level files: LICENSE, README.md, CI workflow yml under .github/workflows/ → 1 gap each\n   - cargo test or npm test invocation: if it fails, 1 gap \"fix N failing tests in <repo>\"\n   - .git/info/exclude or .gitignore missing entries for common patterns (target/, node_modules/, .DS_Store) → 1 gap\n3. Each filed gap has crisp AC (not \"fix TODOs\" but \"remove the 7 TODOs in src/foo.rs by either resolving or filing tracking gaps\")\n4. Each filed gap goes into the TARGET repo's .chump/state.db (not ours) — chump scan honors --target-state-db\n5. Emits kind=chump_scan_complete {target_path, gaps_filed, total_findings}\n6. Smoke test scripts/ci/test-chump-scan.sh: synthetic /tmp repo with known-shape findings, assert correct gap count + IDs are filed\n7. Operator-facing: this is the 2026 outcome demo #2 (repo takeover opener). Pair with chump fleet-mode --takeover to run takeover end-to-end."
+  outcome_id: MISSION-010
+

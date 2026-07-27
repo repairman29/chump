@@ -1,0 +1,21 @@
+- id: INFRA-2270
+  domain: INFRA
+  title: "EFFECTIVE: chump sdk gen --target ts — codegen TypeScript bindings from chump-handoff typed contracts (TS consumer surfaces can call substrate primitives type-safely)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Filed 2026-05-30. TS consumer surfaces (any frontend / API gateway / Node service) that want to call Chump substrate primitives type-safely need TypeScript bindings generated from the Rust typed-contract types in crates/chump-handoff/src/contracts.rs. Codegen rather than hand-maintained to prevent drift.
+  acceptance_criteria:
+    - chump sdk gen --target ts --out <dir> reads crates/chump-handoff/src/contracts.rs (and any other registered contract crates) and emits TypeScript types + client functions to <dir>
+    - "Generated types match Rust structs 1:1 (serde JSON shape): ArchitectureDecisionContract, RoadmapFromVisionContract, GapReviewContract, CodeFixContract, DecomposeContract, ExternalRepoContract — verified by round-trip JSON parse test"
+    - "Generated client functions: invoke chump via subprocess CLI OR Chump HTTP server (--web mode at :3000); choose via --transport [cli|http] flag at codegen time; both transports compile and pass tsc --strict"
+    - "Output structure: package.json with name @chump/sdk + version derived from chump --version, index.d.ts with all types, index.js (or src/index.ts) with client functions, README.md with 3 usage examples (file vision → roadmap; submit code-fix; reserve gap)"
+    - "Smoke test scripts/ci/test-ts-sdk-codegen.sh: <120s, requires node+tsc on PATH, runs codegen → tsc --noEmit --strict against generated output → synthetic round-trip (file vision doc → invoke roadmap-from-vision via http transport → assert response matches RoadmapFromVisionContract.Output schema)"
+    - "Codegen drift detection: scripts/ci/test-ts-sdk-drift.sh diffs generated SDK against a committed snapshot at sdk/ts-snapshot/; fails CI if crates/chump-handoff/src/contracts.rs changes without sdk/ts-snapshot/ regen"
+    - "Emits kind=sdk_generated (fields: target_lang, contract_count, out_dir, drift_detected) to ambient; registered in EVENT_REGISTRY.yaml with effect_metric set"
+    - chump preflight runs codegen smoke when crates/chump-handoff/src/contracts.rs OR src/sdk.rs touched
+    - README + CLAUDE.md updated with 3-line example invocation; cross-link to crates/chump-handoff/src/contracts.rs as source-of-truth for contract surface
+  source_doc: docs/gaps/META-067.yaml
+  outcome_id: MISSION-010
+

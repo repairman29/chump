@@ -1,0 +1,26 @@
+- id: EFFECTIVE-178
+  domain: EFFECTIVE
+  title: "EFFECTIVE: chump harness-parity command surface — recovery/orchestration VERBS the fleet can call to self-heal, so autonomy doesn't depend on a human-in-Claude-Code (umbrella)"
+  status: open
+  priority: P1
+  effort: l
+  description: |
+    Verified 2026-06-05 (probed live against the chump CLI): every recovery/orchestration action a human-in-Claude-Code performed to ship one s-sized gap this session is ABSENT as a chump verb, so a headless fleet worker / cron / non-Claude harness cannot perform it. Chump has DAEMONS that heal passively on a cadence, but lacks VERBS a worker can call to heal itself synchronously. This is the gap between 'fleet eventually recovers' and 'fleet is autonomous + harness-neutral'. Principle: parity is NOT reimplementing the harness's file/bash/git (HARNESS_CONTRACT.md) — it is exposing coordination/recovery/orchestration as on-demand chump commands. Decompose at claim time into the sub-verbs below.
+  acceptance_criteria:
+    - "chump claim --recover <gap>: detect the stale-worktree-reaper auto-stash branch, recreate the worktree, restore the work, and reconcile all lease stores — replaces the 5-step manual recovery (sqlite DELETE + git branch -D + chump-coord release + re-claim + cherry-pick). Faces RESILIENT-099/103"
+    - chump lease <ls
+    - release
+    - reconcile> [--gap
+    - "--session] [--all-stores]: single verb over state.db + NATS-KV + git claim-branch (RESILIENT-103 is the storage unification; this is its CLI face)"
+    - "chump unwedge <gap> (or ship --abort): on-demand kill+recover of a wedged bot-merge, the operator/worker face of the bot-merge-watchdog daemon (RESILIENT-100)"
+    - chump wait <condition> / chump pr wait <N> --until merged
+    - "green: block until a fleet condition holds, replacing hand-rolled 'for i in seq; do gh pr view; sleep; done' background loops"
+    - "chump loop <cmd> --interval N [--max-iters M] (or chump every): harness-neutral EPHEMERAL scheduler — the /loop twin; today /loop+ScheduleWakeup+CronCreate are Claude-only and launchd is durable-only, leaving non-Claude harnesses with no in-session recurring primitive"
+    - "chump daemons --status [--json]: list all fleet daemons + last-exit + crash-loop flag (harness-neutral, not launchctl-coupled); surfaces the silently-dead-but-reported-alive class (e.g. the integrator-daemon exit=127 + ~8 exit=78 crash-loopers seen this session)"
+    - "chump ship --manual <gap>: blessed manual-fallback ship (push + PR + auto-merge) for when bot-merge wedges, instead of falling into raw git/gh"
+    - "chump commit --bypass <gate> --reason '<>=10 words>' --followup <gap>: emit the INFRA-2407 compliant bypass-trailer quad automatically (Tier/Class/Reason/Followup) instead of hand-typing 4 trailers"
+  notes: |
+    Grounded in this session's transcript: shipping INFRA-2744 required ~5 manual rescues, each of which is a missing verb above. Recovery faces cross-ref RESILIENT-099 (reaper), RESILIENT-100 (bot-merge wedge), RESILIENT-103 (triple-store lease). The loop/wait/daemons verbs are net-new. Each verb must work harness-neutral (callable from worker.sh / chump --rpc / a cron, not just Claude Code) per AGENTS.md + docs/process/AGENT_API.md. Decompose into per-verb sub-gaps; claim-recover + lease-reconcile are highest leverage (turn a human rescue back into a 2-min self-heal).
+    MISSION-010 Gate0 cluster — co-prioritized 2026-06-05; mission-linked for the MISSION-011 picker boost (mission_rank=0 → sorts ahead of non-mission gaps within its priority band).
+  outcome_id: EFFECTIVE-000
+

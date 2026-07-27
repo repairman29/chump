@@ -1,0 +1,21 @@
+- id: INFRA-1550
+  domain: INFRA
+  title: "CREDIBLE: EVENT_REGISTRY truth audit — 416 declared event kinds vs <20 actually firing; emitters wired, gated, or removed; dashboards stop displaying scaffolding"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    docs/observability/EVENT_REGISTRY.yaml declares ~416 event kinds. tail -2000 .chump-locks/ambient.jsonl | jq -r .kind | sort -u shows <20 distinct kinds firing in practice. Documented-but-never-emitted kinds include hang_detector, invariant_recovered, gap_check_false_positive, pr_dedup_bypassed, roadmap_update_proposal_*, planner_rank_ran and 40+ others. Dashboards / war-room / chump-ambient-glance read this registry as ground truth and display widgets for kinds that never fire — operator trust erodes. Audit should triage each declared kind into one of three buckets: wire emitter, gate behind feature flag with note, or remove from registry.
+  acceptance_criteria:
+    - New scripts/ci/test-event-registry-truth.sh diffs declared kinds in EVENT_REGISTRY.yaml against grep emitters in src/ scripts/ and fails CI when a declared kind has zero emitter sites and is not gated
+    - "EVENT_REGISTRY.yaml gains optional fields status: active"
+    - gated
+    - "planned and emitter_paths: [list] for every kind"
+    - All currently-never-emitted kinds receive triage classification (wired/gated/removed) committed in the same PR
+    - New chump health subcommand or report tab surfaces declared-vs-firing count delta from the last 24h of ambient.jsonl
+    - docs/observability/README.md (create if missing) describes the registry contract and the truth-audit gate
+    - "Post-merge: chump-ambient-glance.sh shows no widgets for permanently-zero kinds"
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

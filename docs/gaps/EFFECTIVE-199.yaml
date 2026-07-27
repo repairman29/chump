@@ -1,0 +1,13 @@
+- id: EFFECTIVE-199
+  domain: EFFECTIVE
+  title: "EFFECTIVE: 0->1 onboard doctrine + standard-mission set (foundation queue) — canonical ONBOARD_0TO1_DOCTRINE.md + the L1 config the audit auto-injects"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - ONBOARD_0TO1_DOCTRINE.md exists at docs/design/ and contains all three layers (L1/L2/L3), all eight principles, and the How-the-loop-uses-this section
+    - A Rust const module src/standard_missions.rs defines the five L1 standard missions (id, title, layer, done_criterion) and is referenced from main.rs with a doc comment linking to the doctrine
+    - cargo fmt --all -- --check and cargo clippy --workspace pass clean on the new Rust file with no warnings
+  closed_pr: 3076
+  outcome_id: EFFECTIVE-000
+

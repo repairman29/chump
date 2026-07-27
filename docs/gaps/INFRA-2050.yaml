@@ -1,0 +1,17 @@
+- id: INFRA-2050
+  domain: INFRA
+  title: voice ban-list lint scopes over entire changed file, false-positives on pre-existing content far from diff
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    scripts/ci/test-voice-banlist.sh scans the entire changed file's content, not just the +/- diff hunks. On PR #2631 (INFRA-2043) the lint flagged 'world-class' at lines 219 + 574 of docs/process/CLAUDE_GOTCHAS.md, BUT my edit was at line 1721+. The flagged content was pre-existing and untouched. Falsely failing CI for changes unrelated to the diff creates: (a) developer friction (add Voice-Lint-Bypass trailer for content you didn't author), (b) admin-merge churn if lint becomes required. Fix: tool should scan only the lines actually in the +/- hunks of the diff, not the surrounding context. Same class as 'CI scope drift' that bit INFRA-682.
+  acceptance_criteria:
+    - scripts/ci/test-voice-banlist.sh extracts the actual added/modified lines from git diff (e.g. via 'git diff --unified=0 --no-color') and scans ONLY those
+    - Pre-existing flagged content far from the diff (>5 lines away) does NOT cause failure
+    - "Test case: synthesize a fixture commit that adds an unrelated line to a file that contains pre-existing 'world-class' — lint should PASS"
+    - Existing test cases still catch genuinely-added banned terms
+  closed_date: '2026-05-29'
+  closed_pr: 2635
+  outcome_id: MISSION-010
+

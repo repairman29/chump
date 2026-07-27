@@ -1,0 +1,15 @@
+- id: INFRA-2675
+  domain: INFRA
+  title: "PR #3005 failing on fast-checks: https://github.com/repairman29/chump/actions/runs/2690348949"
+  status: superseded
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-06-05T23:26:43Z] outdated: stale CI alert, PR #3005 resolved
+  outcome_id: MISSION-010
+

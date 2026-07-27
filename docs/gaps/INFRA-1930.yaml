@@ -1,0 +1,15 @@
+- id: INFRA-1930
+  domain: INFRA
+  title: "RESILIENT: claude reapers fire reactive on PTY pressure (95 reaper_pty_pressure events/24h) — tighten claude-reaper cadence below 300s OR add pty-count threshold trigger so reaper fires BEFORE saturation, not after"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-07-20'
+  closed_pr: 3210
+  outcome_id: MISSION-010
+

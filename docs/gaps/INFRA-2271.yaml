@@ -1,0 +1,20 @@
+- id: INFRA-2271
+  domain: INFRA
+  title: "RESILIENT P2: queue-driver iteration bug — re-picks same skipped DIRTY PR every iter instead of round-robin / blacklist for the run; manifested as INFRA-2255 unable to process other DIRTY when #2777 was first in pick order"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "1. scripts/coord/queue-driver.sh cascade_auto_resolve_pr (or wherever the DIRTY-PR pick loop is) currently picks the same skipped PR every iter. Bug: skipped-PR set is per-iter not per-run."
+    - "2. Fix: maintain a per-run 'attempted_prs' set in shell (e.g. local file /tmp/queue-driver-attempted-$$.txt cleared on each run); before picking next DIRTY, exclude already-attempted PRs."
+    - 3. Round-robin OR ordinal-by-PR-number — pick the next DIRTY whose number > last-attempted. Or alphabetical. Doesn't matter much; just don't re-pick the same one.
+    - 4. After successful auto-resolve OR after detecting semantic-conflict-skipped, mark PR as attempted and move on within the same run.
+    - "5. Test: scripts/ci/test-queue-driver-iter-no-repeat.sh — fixture 3 DIRTY PRs, one with semantic conflict (mocked); assert queue-driver processes all 3 in one run, semantic-skipped only logged once"
+    - "6. Emit kind=queue_driver_iter_attempted {pr, outcome:resolved"
+    - skipped_semantic
+    - skipped_other} for observability
+  notes: |
+    [2026-06-04T00:26:09Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2833
+  outcome_id: MISSION-010
+

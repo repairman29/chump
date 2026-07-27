@@ -1,0 +1,19 @@
+- id: INFRA-2224
+  domain: INFRA
+  title: "RESILIENT: self-hosted actions-runners ghost-online — launchd PIDs alive, GH job queue not consumed (substrate)"
+  status: closed_not_a_bug
+  priority: P3
+  effort: xs
+  description: |
+    Observed 2026-05-30T01:25Z: 4 com.chump.actions-runner* launchd jobs report PIDs (1020, 1036, 1038, 1039) but GH job queue shows 17 queued, 0 in-progress. The runners are ghost-online — process tree alive, GH listener disconnected. 11 fleet-viz PRs (#2742, #2743, #2750, #2761, #2763, #2765, #2766, #2770, #2775, #2778, #2783) blocked on required 'test' check that won't run. Same pattern infra-watcher already documented; this incident is fresh evidence. Operator may need to kill the ghost PIDs so launchd KeepAlive restarts them. Real fix: add a runner-liveness-probe to com.chump.actions-runner* plists that compares ListenLog mtime against GH API runner.status — restart on >5min divergence.
+  acceptance_criteria:
+    - Document the runner-ghost-online detection signature in docs/process/WEDGE_CLASS_CATALOG.md as a new W-class or extension of existing wedge
+    - Add a scripts/coord/runner-liveness-probe.sh that compares each runner PID's last ListenLog write against gh api repos/{owner}/{repo}/actions/runners?status=online and emits kind=runner_ghost_online to ambient.jsonl when divergence >5min
+    - Wire the probe into scripts/coord/infra-watcher-loop.sh as a check
+    - "Recovery: scripts/ops/runner-recover.sh <pid> sends SIGTERM to runner PID; launchd KeepAlive restarts; verify by polling gh actions/runners until status=online"
+    - "Smoke test in scripts/ci/test-runner-liveness-probe.sh: mock the divergence condition, assert the probe emits the event"
+    - chump preflight green before push
+  notes: |
+    RETRACTED 2026-05-30T07:15Z: re-checked gh api repos/.../actions/runners — all 4 runners report status=online AND busy=true. The 'ghost online' diagnosis was based on gh run list showing 0 in-progress (stale-API snapshot at the moment of check). Runners were just saturated by the morning PR burst. Demote to P3; keep on file in case the failure mode genuinely happens later, but no action needed now.
+  outcome_id: MISSION-010
+

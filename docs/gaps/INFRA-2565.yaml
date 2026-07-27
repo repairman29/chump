@@ -1,0 +1,19 @@
+- id: INFRA-2565
+  domain: INFRA
+  title: "RESILIENT P0: matrix-shard audit.yml — split 128 sequential audit gates into 4-6 parallel shards (14min → ~4min wall-clock per PR)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - audit.yml currently runs 136 steps sequentially in ONE job — 8 setup + ~128 audit gates. Each PR pays full serial cost (~14min after INFRA-2534 cross-PR fix). With 4 self-hosted runners and 13+ open PRs, this serialization is the dominant wall-clock bottleneck in the fleet.
+    - "Fix: split into a matrix-strategy audit-shard job with N shards (recommend N=4 or 6). Each shard runs setup + its share of audit gates in parallel. Wall-clock drops from sum-of-steps to max-shard."
+    - "CRITICAL: branch protection requires job name audit by exact match (docs/baselines/branch-protection-main.json ruleset 15133729). Solution: keep job named audit as an aggregate that depends on audit-shard matrix; passes only if all shards pass. Sub-job names can be audit-shard (shard-1), audit-shard (shard-2), etc. — those do NOT need to match branch protection."
+    - "Shard split strategy: group gates by category to keep each shard cohesive. Recommended categories: 1) cargo fmt/clippy/check, 2) event-registry + observability gates, 3) regression-test-exists gates for INFRA-* / EFFECTIVE-* / CREDIBLE-*, 4) cross-PR contract gate (INFRA-2406) + scripts gates. Each shard should target ~6-8 min wall-clock."
+    - "Verify cumulative coverage: shards together MUST run all 128 audit gates currently in audit.yml — no gate dropped. A regression test scripts/ci/test-audit-shard-coverage.sh that diffs the union of shards against the prior audit.yml job step list and exits non-zero on any missing gate."
+    - audit-required job also stays as the rollup signal for branch protection (must still verify the audit aggregate result).
+    - "Self-test: scripts/ci/test-audit-matrix-shape.sh: parse audit.yml, assert (a) strategy.matrix.shard exists, (b) audit aggregate depends on audit-shard, (c) audit always() and fails-if-any-shard-failed, (d) all original gate scripts referenced in the shards."
+  notes: |
+    [2026-06-03T23:58:35Z] confirmed on origin/main (merged fix commit); mission-loop registry hygiene
+  closed_pr: 2994
+  outcome_id: MISSION-010
+

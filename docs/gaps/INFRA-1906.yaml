@@ -1,0 +1,15 @@
+- id: INFRA-1906
+  domain: INFRA
+  title: "RESILIENT P0: pr-auto-rebase.sh re-arms auto-merge after update-branch (GitHub disarms on every force-push; the daemon currently leaves PRs orphaned)"
+  status: done
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - scripts/coord/pr-auto-rebase.sh after successful gh pr update-branch — re-runs gh pr merge <pr> --auto --squash to re-arm (GitHub disarms on force-push as safety)
+    - This was the silent failure mode — pr-auto-rebase fires but auto-merge is gone after the rebase
+    - Smoke test scripts/ci/test-pr-auto-rebase-rearm.sh mocks update-branch + verifies re-arm command issued
+    - Telemetry — extend kind=pr_auto_rebased event with rearmed_status field
+  closed_date: '2026-05-24'
+  closed_pr: 2484
+  outcome_id: MISSION-010
+

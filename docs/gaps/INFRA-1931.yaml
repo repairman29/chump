@@ -1,0 +1,13 @@
+- id: INFRA-1931
+  domain: INFRA
+  title: "RESILIENT: sub-agent dispatch lacks per-exit worktree self-cleanup — every Agent-dispatched Sonnet leaves /tmp/chump-<GID>/ behind on both success and failure paths; trap EXIT cleanup in chump claim + SUBAGENT_DISPATCH.md contract update"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

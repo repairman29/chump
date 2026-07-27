@@ -1,0 +1,17 @@
+- id: META-290
+  domain: META
+  title: "META UMBRELLA: plumbing-priority forcing function — fleet picks structural-wiring gaps at a guaranteed rate; idle umbrellas auto-decompose; CLAUDE.md doctrine-delta injection so agents see what just shipped"
+  status: open
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - "docs/process/PLUMBING_PRIORITY.md exists: codifies the forcing function — when structural-PR-rate (% of last-N shipped PRs that closed gaps with effort=l OR title containing UMBRELLA/META/IGNITION/SUBSTRATE) drops below 25% rolling 14d, fleet pickability bias FLIPS toward plumbing for the next 7d."
+    - "Sub-gaps decomposed and shipped: META-291 (umbrella-progress audit + decompose-cascade) + META-292 (SessionStart doctrine-delta injection)."
+    - "CLAUDE.md gains a Plumbing-Priority section pointing to PLUMBING_PRIORITY.md + the rate metric. Picker doctrine: when in plumbing-bias mode, low-rated feature classes get demoted in tie-breaks."
+    - "Empirical validation: after this umbrella ships, weekly structural_work_digest shows the rate above 25% for 4 consecutive weeks. Otherwise this umbrella did NOT solve the problem and stays open."
+    - "Pillar-fit: this is META (forcing function for cross-cutting plumbing). Resists the trap that filed it as \"yet another feature gap that drowns in the queue\"."
+  depends_on: [META-291, META-292]
+  notes: |
+    Origin: operator 2026-06-09T04:30Z "we never seem to get to this work". Inventory shows 20+ open umbrellas (MISSION-009 A2A, CREDIBLE-106 enforcement, EFFECTIVE-222 ignition, CREDIBLE-114 oxygen-hook, INFRA-2465 substrate-deprecation, META-033 invariants-cron, META-038 coord-tax, META-039 learning-loop, META-042 coord-cull, META-051 fix-one-wave) — most untouched for >7d while fleet ships 24 features/day. The gaps are not missing; the forcing function is missing. Closing this without changing the rate = not closed.
+  outcome_id: MISSION-010
+

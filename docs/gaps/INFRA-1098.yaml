@@ -1,0 +1,16 @@
+- id: INFRA-1098
+  domain: INFRA
+  title: "PR #1732 stuck [BEHIND] — 70 commits behind main"
+  status: closed
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-06-05T22:09:20Z] auto-closed by stuck-pr-filer: PR #1732 resolved (MERGED)
+  closed_pr: 1732
+  outcome_id: MISSION-010
+

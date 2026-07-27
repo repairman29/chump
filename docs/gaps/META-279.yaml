@@ -1,0 +1,12 @@
+- id: META-279
+  domain: META
+  title: main worktree cleanup — 225 untracked yaml + 7 commits behind
+  status: superseded
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  notes: |
+    [2026-06-06T00:04:34Z] outdated: transient worktree-cleanup snapshot, state no longer present
+  outcome_id: MISSION-010
+

@@ -1,0 +1,45 @@
+- id: INFRA-2304
+  domain: INFRA
+  title: "RESILIENT P0: disk_critical event → reactive escalation wiring — alarm fires but no consumer escalates reaper aggression or pages operator (today's 95% surprise)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Operator real-talk 2026-05-30: "WTF is this happening... we should not ever have
+    these surprises. Are we not wired up to automate this?"
+    
+    The fleet HAS every primitive needed but they are not wired end-to-end:
+    
+      EMITTER (works):    disk-health-monitor (5min cron) → emits disk_critical to ambient.jsonl
+      EMITTER (works):    disk-pressure-watchdog (15min cron) → emits disk_critical to ambient.jsonl
+      REAPER  (works):    disk-pressure-reaper --execute (15min cron) → tier 1-4 escalation
+      PAUSER  (works):    worker.sh line 656 pauses on disk_critical
+      PAUSER  (works):    chump gap reserve blocks on slo_breach
+      PAGER   (exists):   scripts/dispatch/operator-recall.sh — halt-class pager
+      ────────────────────── BREAKS HERE ──────────────────────
+      disk_critical event has ZERO ambient consumers that ACT on it
+      reaper runs on a FIXED 15min cron, not reactive to the alert
+      operator-recall halt-classes don't include DISK_CRITICAL (only AUTH_DEAD,
+        COST_CAP, CI_BROKEN, QUEUE_STARVE)
+      reaper Tier 4 comment says "fall back to operator escalation" — no code path
+    
+    Result: between an ALERT at 16:45:47Z and the next 15min cron tick, nothing
+    happens. Operator finds out because they happen to be in session. Today's
+    incident: 95-98% disk, two ALERTs, manual operator triage required, ship-rate
+    risk on every active claim.
+    
+    This is the META-128 "pre-action disk planning" gap's twin: META-128 plans
+    BEFORE; this gap REACTS DURING. Both are needed.
+  acceptance_criteria:
+    - "New scripts/coord/disk-critical-reactor.sh: tails ambient.jsonl, on every disk_critical event invokes disk-pressure-reaper.sh --execute with tier forced to (current_tier + 1) — bounded by tier 4. De-bounced 60s per event to avoid thrash."
+    - Launchd plist dev.chump.disk-critical-reactor.plist runs the reactor as a long-lived process (KeepAlive=true).
+    - "operator-recall.sh gains DISK_CRITICAL halt-class: triggered when disk_critical fires AND post-reactor disk still <5% free for >10min. Reuses existing pager mechanism (ambient kind=operator_recall + optional POST to CHUMP_OPERATOR_RECALL_URL)."
+    - "disk-pressure-reaper.sh Tier 4 (<5GB): replace the dead 'operator escalation' comment with an actual operator-recall.sh --condition DISK_CRITICAL invocation."
+    - "Smoke test scripts/ci/test-disk-critical-reactor.sh: synthesize disk_critical event in temp ambient.jsonl; assert reactor invokes reaper with tier-up flag within 5s; assert idempotence inside the 60s debounce window."
+    - Depends_on INFRA-2303 (sccache + incremental reapers) so the escalation has actual recoverable bytes to reap at tier 3-4.
+  depends_on: [INFRA-2303]
+  notes: |
+    [2026-06-04T00:16:23Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2873
+  outcome_id: MISSION-010
+

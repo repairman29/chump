@@ -1,0 +1,16 @@
+- id: EFFECTIVE-222
+  domain: EFFECTIVE
+  title: "A2A IGNITION: broadcast.sh persistent fan-out queue — every msg lands in ~/.chump/comms/<recipient>.queue.jsonl, future sessions drain on start (today: 0-lock-files = msg lost forever)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/coord/broadcast.sh writes EVERY message to ~/.chump/comms/<recipient>.queue.jsonl (one JSONL per recipient) in addition to ambient + curator-lock fan-out. For broadcast --to all-opus, write to ~/.chump/comms/all-opus.queue.jsonl. For broadcast --to <session-id>, write to ~/.chump/comms/<session-id>.queue.jsonl.
+    - "On SessionStart, inbox-poll.sh / inbox-check-urgent.sh drain the queue files relevant to this session (own session-id + all-opus + role-based aliases like all-curator-opus-shepherd if session matches role pattern) and emit them in the session digest under \"Pending broadcasts\"."
+    - After drain, the read entries are moved to ~/.chump/comms/.read/<recipient>/<ts>-<corr_id>.jsonl (cursor preserved for audit but not re-presented).
+    - "Reaper: queue files >30 days old are pruned (audit log only)."
+    - "Smoke test: broadcast.sh --to all-opus from session A with NO other live sessions; spawn fresh session B; assert SessionStart digest contains the message; assert second start of session B does NOT re-present it."
+  notes: |
+    ROOT-CAUSE evidence (2026-06-05): broadcast.sh FEEDBACK fan-out checks .chump-locks/.curator-opus-*.lock and silently no-ops if 0 found. Today even the operator's 23:14:33Z broadcast to all-opus only landed in ambient — no inbox writes because no curator-opus locks were live. ~/.chump/inbox/ doesn't exist; ~/.chump/comms/ doesn't exist. This is the missing 'subscribe-side' from A2A_MASTER_PLAN_2026-06-03.md L1/L5. Without this, every broadcast is a coin-toss based on who happens to be running at fan-out time. Pairs with: CREDIBLE-114 (enforcement hook), INFRA-1944 (delivery receipts), INFRA-1862 (umbrella).
+  outcome_id: EFFECTIVE-000
+

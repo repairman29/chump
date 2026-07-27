@@ -1,0 +1,12 @@
+- id: INFRA-2083
+  domain: INFRA
+  title: "MISSION P1: Market Positioning bounce-off results — answers to 7 cross-reference questions; identifies undercredited substrate + filing list"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Write docs/strategy/MARKET_POSITIONING_BOUNCEOFF_2026-05-28.md answering the 7 cross-reference questions from MARKET_POSITIONING_2026-05-27.md against the actual gap registry + crate substrate audit.
+  closed_date: '2026-05-29'
+  closed_pr: 2681
+  outcome_id: MISSION-010
+

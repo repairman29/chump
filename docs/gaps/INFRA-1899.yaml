@@ -1,0 +1,15 @@
+- id: INFRA-1899
+  domain: INFRA
+  title: "RESILIENT P1: transient-retrigger daemon — known transient CI failure classes (audit-cancel, fast-checks-flake) auto-empty-commit-retry capped at N=2 per PR per 6h (retires operator empty-commit workaround)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-24'
+  closed_pr: 2482
+  outcome_id: MISSION-010
+

@@ -1,0 +1,19 @@
+- id: INFRA-1487
+  domain: INFRA
+  title: "EFFECTIVE: reference-implementation primitive (commit 1 example, fan-out structural template)"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Audit miss from 2026-05-15 second pass. Persona-1 (Marcus) described the structural pattern that makes delegation work in his Q3 Sarah-migration success story: 'I didn't make her start from scratch. Before handing it over, I personally migrated one of the simplest endpoints myself and merged it to main. That gave her a flawless, living template.' This is the OPERATOR's mental model for what makes fleet-delegation safe — commit one reference implementation, let the fleet fan out using it as a template. Today Chump doesn't have a 'reference impl' primitive; the spec-file (INFRA-1483) is intent-based, but the commit-an-example-then-fan pattern is distinct.
+  acceptance_criteria:
+    - "chump fanout --reference <commit-sha-or-PR-N> <spec> spawns N agents each told: 'Look at the diff from <reference>; apply the structurally equivalent change to your assigned target in your worktree'"
+    - Agent's LLM context includes the reference diff verbatim as a system message
+    - Reference-diff template plus the agent's per-instance variables (which file? which service?) inform the LLM call
+    - "Result-validation against reference: rollup (INFRA-1455) clusters agent diffs by structural similarity to the reference (high similarity = Strategy A canonical, low = Strategy B deviation needs operator review)"
+    - "Operator-friendly UX: in the cockpit, the reference diff is shown alongside each agent's proposed diff side-by-side"
+    - "CI test: commit a reference migration on file X; spawn 3-agent fanout against files Y, Z, W; verify each agent's output is structurally similar to reference"
+  closed_date: '2026-05-25'
+  closed_pr: 2536
+  outcome_id: MISSION-010
+

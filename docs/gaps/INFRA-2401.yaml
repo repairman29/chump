@@ -1,0 +1,10 @@
+- id: INFRA-2401
+  domain: INFRA
+  title: "ZERO-WASTE: clean 5 register-without-emit EVENT_REGISTRY orphans (INFRA-2396 reserved cohort)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "[\"For each of the 5 INFRA-2396 register-without-emit kinds (auto_merge_arm_dropped/restored/skipped, gh_token_rotate_noop/rotated): either re-add the emit site (if the kind is still semantically valid) OR remove from EVENT_REGISTRY.yaml\",\"After cleanup: remove the INFRA-2396 reservations from scripts/ci/event-registry-reserved.txt\",\"Smoke test: bash scripts/ci/test-event-registry-coverage.sh with CHUMP_REGISTRY_GATE_MODE=strict exits 0\"]"
+  outcome_id: MISSION-010
+

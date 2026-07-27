@@ -1,0 +1,26 @@
+- id: META-247
+  domain: META
+  title: "[UMBRELLA] PR_RESCUE_PROCEDURE operationalization — measurement + adherence detector + wisdom integration + daemon emission fix (META-246 companion)"
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    META-246 (PR_RESCUE_PROCEDURE.md) shipped the doctrine. This umbrella ensures it's load-bearing not shelf-ware.
+    
+    4 sub-slices needed:
+    
+    (a) DAEMON EMISSION FIX (P0/xs): Fix launchd plist WorkingDirectory so pr-shepherd-daemon's ambient events actually land in repo's .chump-locks/ambient.jsonl when run via launchctl. Currently silent in ambient despite ticking every 60s. Verify by tick count delta after kickstart.
+    
+    (b) ADHERENCE DETECTOR (P1/s): CI gate scripts/ci/test-rescue-class-cites-procedure.sh — for any PR whose title is rescue-class (fix(...rescue), fix(...trunk-red), unblock, fix(...allowlist), filed-by-pr-shepherd), assert PR body contains literal '§5' AND '§6' references. Exit 1 with remediation pointer.
+    
+    (c) WISDOM INTEGRATION (P1/m): Synthesize the 7 wedge classes from SHIP_ASSIST_PLAYBOOK.md (INFRA-2256) + 217 failure-mode rules from FAILURE_MODES.yaml (INFRA-1552) into PR_RESCUE_PROCEDURE.md §5. Cross-link CLAUDE_GOTCHAS.md, MISSION_YIELD.md, FLEET_SLOS.md from §13. Add §14 'Prior wisdom canonical index'.
+    
+    (d) AGGREGATION CLI (P1/s): scripts/dev/pr-rescue-leaderboard.sh — reads ambient.jsonl for pr_action_taken events, groups by sha256 fingerprint + day, prints top-5 recurring. Exits non-zero if any fingerprint appears 3+ times in 24h (= doctrine violated; same surface recurring).
+  acceptance_criteria:
+    - "1. Sub-gaps for (a)(b)(c)(d) filed via chump gap decompose --apply\n2. (a) ships first as P0/xs — fixes daemon emission; verify by tick-count delta in ambient.jsonl after manual kickstart\n3. (b) ships as P1/s — CI gate that rejects rescue-class PRs missing §5/§6 citations\n4. (c) ships as P1/m — synthesizes 4 wisdom docs + adds §14 canonical index\n5. (d) ships as P1/s — leaderboard CLI detects recurring fingerprints\n6. After all 4: smoke tests bash scripts/ci/test-pr-rescue-procedure-doc.sh + bash scripts/dev/pr-rescue-leaderboard.sh PASS\n7. Doctrine update note appended to PR_RESCUE_PROCEDURE.md TL;DR: 'measurement + adherence + integration shipped via META-247'"
+  notes: |
+    Decomposed into 8 slices: META-248, META-249, META-250, META-251, META-252, META-253, META-254, META-255
+  closed_date: '2026-06-05'
+  closed_pr: 2897
+  outcome_id: MISSION-010
+

@@ -1,0 +1,30 @@
+- id: RESILIENT-084
+  domain: RESILIENT
+  title: "auth::tests api_key_only/fleet_doctor_warns/neither_present FAIL on origin/main — env poisoning despite with_env mutex"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Reproduced on fresh origin/main checkout 2026-06-04T00:08Z:
+    
+    $ cargo test --bin chump --tests auth::tests
+    failures:
+        auth::tests::api_key_only_resolves_api_key_mode
+        auth::tests::fleet_doctor_warns_when_no_creds
+        auth::tests::neither_present_resolves_none
+    test result: FAILED. 20 passed; 3 failed.
+    
+    src/auth.rs uses a static ENV_LOCK Mutex + with_env() that saves/sets/clears env vars and restores on drop. Despite the lock, when parallel test runners use multiple threads, env-var state can leak between tests (or test panics poison the mutex and subsequent tests run without isolation).
+    
+    These tests block every push from this machine — pre-push hook runs cargo test --bin chump --tests and fails on auth::tests trio.
+    
+    This is a real test-isolation bug, not a flake. Don't classify in KNOWN_FLAKES.yaml — fix the test isolation.
+  acceptance_criteria:
+    - "1. Move 3 failing auth tests to a separate test binary or use #[serial] (serial_test crate) to force single-threaded execution"
+    - 2. fresh-checkout cargo test --bin chump --tests passes 100%
+    - 3. add scripts/ci/test-auth-isolation-doesnt-poison.sh that runs auth tests in parallel + verifies no env leakage
+    - 4. emit kind=auth_test_isolation_fixed once passing on origin/main
+  closed_date: '2026-07-21'
+  closed_pr: 3023
+  outcome_id: RESILIENT-000
+

@@ -1,0 +1,11 @@
+- id: CREDIBLE-078
+  domain: CREDIBLE
+  title: "CREDIBLE-078: exempt+guard remaining 25-33 flagged tests (drive audit --strict to 0)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Audit --strict mode passes with 0 flagged tests on scripts/ci/test-*.sh.\", \"Batch add # capability-guard-exempt: markers to cargo-build-in-test and already-has-skip files (each marker includes a brief reason).\", \"Add real capability-guard pattern to 4 truly-missing tests: test-content-bots-toggle.sh, test-gap-audit-priorities-closed-at.sh, test-gap-list-domain-summary.sh, test-gap-list-done-format.sh.\", \"After this PR lands, operator can re-arm test as required check per CREDIBLE-076 § Re-arming.\"]"
+  closed_date: '2026-05-25'
+  outcome_id: CREDIBLE-000
+

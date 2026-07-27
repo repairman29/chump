@@ -1,0 +1,14 @@
+- id: META-186
+  domain: META
+  title: "META: Implement rerun and file gap actions for BLOCKED (flake/real-fail) PRs (META-180 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - PRs classified as `BLOCKED + flake-class fail` trigger a rerun of failing jobs.
+    - PRs classified as `BLOCKED + real fail` trigger filing a follow-up gap with failure signature.
+    - "`pr_action_taken` event is emitted when these actions are taken."
+  closed_date: '2026-05-31'
+  closed_pr: 2893
+  outcome_id: MISSION-010
+

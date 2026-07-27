@@ -1,0 +1,14 @@
+- id: EFFECTIVE-218
+  domain: EFFECTIVE
+  title: "EFFECTIVE: chump-commit.sh cargo-fmt git add -A sweeps untracked files despite explicit argv"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - scripts/coord/chump-commit.sh line ~687 — after cargo fmt --all, the script runs git add -A which captures any untracked file in the worktree (e.g. .chump-no-reap marker) and commits it
+    - "Fix: replace bare git add -A with git add -- \"${FILES[@]}\" (the same argv used at line 342) so cargo-fmt re-staging stays scoped to user's declared files"
+    - "Test scripts/ci/test-chump-commit-argv-scope.sh: create untracked .chump-no-reap; run chump-commit foo.rs -m '...' with cargo fmt touching foo.rs; verify commit contains foo.rs ONLY (not .chump-no-reap)"
+    - If cargo fmt touches a file OUTSIDE the declared argv (e.g. an unrelated .rs file in workspace), chump-commit FAILS LOUD with a diagnostic rather than silently re-staging it
+    - "Doctrine cross-ref: this gap is a CASE STUDY referenced in docs/process/DURABLE_FIX_DOCTRINE.md (CREDIBLE-105) — the 2026-06-05 RESILIENT-110 ship attempt was forced into a soft-reset cycle by this bug"
+  outcome_id: EFFECTIVE-000
+

@@ -1,0 +1,14 @@
+- id: INFRA-1986
+  domain: INFRA
+  title: "RESILIENT: pre-push Guard 3 silently exits 0 on stale-fetch force-push (test-pre-push-force-lease-guard Test 1 FAIL, not W-013)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-25'
+  outcome_id: MISSION-010
+

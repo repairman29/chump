@@ -1,0 +1,12 @@
+- id: INFRA-2119
+  domain: INFRA
+  title: "EFFECTIVE P1 (CI-REVIEW Lever 3): rewrite bot-merge.sh CI-wait loop to consume GH webhook events instead of poll-sleep (kills bot_merge_watchdog_stuck class — 33 events/14d)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. scripts/coord/bot-merge.sh CI-wait loop rewritten to consume from scripts/ops/github-webhook-receiver.py (or existing cache layer) instead of `while true; do sleep 30; gh pr view ...; done`\n2. After fix, `bot_merge_watchdog_stuck` event count drops from 33/14d to <5/14d\n3. `Bot-Merge-Bypass:` trailer use drops from 16/14d to <5/14d (operator no longer needs manual bypass because bot-merge no longer hangs)\n4. Smoke test: scripts/ci/test-bot-merge-webhook-wait.sh validates that the new wait logic returns within 30s of CI check completion (current polling: 30-60s lag)\n5. Source: docs/strategy/CI_REVIEW_2026-05-29.md Lever 3"
+  closed_date: '2026-05-29'
+  closed_pr: 2716
+  outcome_id: MISSION-010
+

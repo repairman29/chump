@@ -1,0 +1,15 @@
+- id: META-269
+  domain: META
+  title: blanket detection+fix coverage — mirror every CI gate locally, meta-monitor every daemon, cross-platform-smoke every subprocess
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-06-05'
+  closed_pr: 2931
+  outcome_id: MISSION-010
+

@@ -1,0 +1,16 @@
+- id: RESILIENT-044
+  domain: RESILIENT
+  title: "RESILIENT: audit gate silent-exit-1 after 31 PASS lines — required gate blocker, need to identify which sub-test fails without [FAIL] marker (post-trunk-RED inherited)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Filed 2026-05-30T09:55Z. The 'audit' required CI gate runs N sub-tests sequentially; 31 visible [PASS] lines appear, then the script exits code 1 without a visible [FAIL] message. Last visible PASS is 'Test 5: all docs/gaps/*.yaml files have acceptance_criteria'. The silent-exit pattern means either: (a) a sub-test fails but uses a different output format, or (b) one of the audit scripts has a non-[PASS]/[FAIL] error path that just exits 1, or (c) the audit wrapper script returns an error after the last sub-test. Diagnostic gap, then fix.
+  acceptance_criteria:
+    - "Identify which audit sub-script causes the exit 1 — examine the audit job's full log (gh run view --job <id> --log) to find the line immediately before the exit, OR run the audit invocation locally (CI 'audit' job is .github/workflows/ci.yml — find the run: step + reproduce)"
+    - "If the failing sub-test is legitimate: fix the underlying issue"
+    - "If the wrapper swallows the error: add explicit [FAIL: <reason>] output so future failures are debuggable"
+    - Required CI gate audit passes on a fresh PR against main containing this fix
+    - "If the issue is the audit aggregator wrapper hiding failure details: file a follow-up gap to instrument all audit sub-test runners with consistent [PASS]/[FAIL] output (META-quality)"
+  outcome_id: RESILIENT-000
+

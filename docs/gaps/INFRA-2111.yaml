@@ -1,0 +1,21 @@
+- id: INFRA-2111
+  domain: INFRA
+  title: "EFFECTIVE P1: ExternalRepoContract typed handoff in chump-handoff (META-123 C3)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    META-123 C3: Add ExternalRepoContract to crates/chump-handoff/src/contracts.rs alongside GapReviewContract / CodeFixContract / DecomposeContract. This is the typed handoff shape that flows: Scout proposes -> External-collab reviews -> Target picks -> Handoff dispatches via this contract to a worker that will ship into the external repo. Pattern matches the existing 3 contracts: Input/Output structs with serde, Validate impl, HandoffContract impl with prompt() + model_tier().
+  acceptance_criteria:
+    - "New struct ExternalRepoInput in crates/chump-handoff/src/contracts.rs with fields: external_repo (String, owner/repo form e.g. 'ehippy/derelict'), repo_local_path (String, absolute path to clone), proposed_gap_description (String, what to ship), base_branch (String, e.g. 'main'), fork_owner (Option<String>, e.g. 'repairman29' for fork-PR mode)."
+    - "New struct ExternalRepoOutput with fields: pr_url (String, full GitHub URL), head_ref (String), base_ref (String), files_touched (Vec<String>), commit_sha (String), notes (String, free-form what was done)."
+    - "Validate impl on ExternalRepoOutput rejects: empty pr_url, pr_url not matching 'https://github.com/.+/pull/[0-9]+' regex, empty files_touched, empty commit_sha. Mirror the existing GapReviewOutput/CodeFixOutput validation style."
+    - "ExternalRepoContract impl of HandoffContract with name() = 'ExternalRepoContract', prompt() embedding all input fields (external_repo / repo_local_path / proposed_gap_description / base_branch / fork_owner) in a fenced-JSON-output spec matching the CodeFixContract pattern, model_tier() = ModelTier::Sonnet (per existing convention for execution work)."
+    - "Unit tests added to the tests mod at the bottom of contracts.rs: (a) external_repo_accepts_valid_output, (b) external_repo_rejects_bad_pr_url, (c) external_repo_rejects_empty_files_touched, (d) external_repo_rejects_empty_commit_sha, (e) external_repo_prompt_includes_inputs (smoke test that all input fields render in prompt). Update the tiers_are_intentional test to include ExternalRepoContract."
+    - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo test -p chump-handoff all GREEN. Local CI via chump preflight before push.
+    - Voice-lint clean. PR via scripts/coord/bot-merge.sh --auto-merge (or manual fallback with Bot-Merge-Bypass trailer if INFRA-1939 wedge is in place).
+  depends_on: [META-123]
+  closed_date: '2026-05-29'
+  closed_pr: 2700
+  outcome_id: MISSION-010
+

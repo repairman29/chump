@@ -1,0 +1,21 @@
+- id: INFRA-1548
+  domain: INFRA
+  title: "EFFECTIVE: contract schema_version=1 on chump --briefing/--health/--gap-show --json per AGENT_API.md — make the harness contract real, not paper"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    docs/process/AGENT_API.md describes schema_version=1 on JSON CLI outputs but notes 'stable in practice but not formally contracted'. Verified current state: chump health --json EXISTS with no schema_version field; chump gap show <ID> --json EXISTS with no schema_version field (returns object); chump --briefing <GAP-ID> EXISTS as positional command but does NOT accept --json today (src/briefing.rs::build_briefing returns structured data only via src/web_server.rs::handle_briefing HTTP route). Wire-up requires adding --json flag to the --briefing handler in src/main.rs and the schema_version field to all three JSON outputs.
+  acceptance_criteria:
+    - "chump --briefing <GAP-ID> --json (new flag added to the --briefing handler in src/main.rs) renders src/briefing.rs::build_briefing output as JSON including top-level integer field schema_version: 1"
+    - "chump health --json output (existing src/main.rs handle_health path) gains a top-level integer field schema_version: 1"
+    - "chump gap show <GAP-ID> --json output (existing path) gains schema_version: 1 at the top level of the object"
+    - docs/process/AGENT_API.md updated from 'stable in practice but not formally contracted' to 'contracted as schema_version=1' with explicit breaking-change-bump policy documented
+    - scripts/ci/test-agent-api-schema.sh asserts schema_version=1 in all three JSON outputs and fails if absent
+    - AGENT_API.md gains a 'Breaking changes' subsection requiring schema_version bump on field removal or type change
+  notes: |
+    wave: 0 (--briefing/health/gap-show schema_version contract — agent-API truth gate)
+  closed_date: '2026-05-24'
+  closed_pr: 2520
+  outcome_id: MISSION-010
+

@@ -1,0 +1,17 @@
+- id: MISSION-014
+  domain: MISSION
+  title: "MISSION P1: encode the load-bearing mission + scoreboard — operationalize MISSION-010 (empty conductor's chair / BEAST proof) so the fleet can't drift to self-maintenance"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Operator directive 2026-06-04. MISSION-010 (self-coordinating fleet, proven on BEAST-MODE) is STATED but not LOAD-BEARING: nothing measures the fleet against it, so it optimizes the proxy 'ship any PR' and drifts to ~2/3 self-maintenance (verified: of ~12 merges/24h only ~4 mission-relevant). Operationalize it: (a) docs/MISSION.md = canonical North Star / Mission / Goals / Scoreboard; (b) scripts/dev/mission-scoreboard.sh = READ-ONLY scoreboard (binary 'did Chump merge a zero-human-touch PR in BEAST-MODE this week?', mission-ship ratio 24h, deploy-lag vs main = MISSION-012 proxy, last-merge age, verdict); (c) document ACTIVE_MISSION + the doctrine that gap-generation serves the mission. Headline today: NO BEAST zero-touch ship. MISSION-012 is the multiplier.
+  acceptance_criteria:
+    - docs/MISSION.md exists with North Star+Mission+Goals+Scoreboard, names MISSION-010 + MISSION-012
+    - scripts/dev/mission-scoreboard.sh runs read-only, prints BEAST binary + mission-ship ratio + deploy-lag + last-merge age + verdict
+    - doc documents ACTIVE_MISSION + picker serves it
+    - follow-up to port to chump kpi mission noted
+  closed_date: '2026-06-05'
+  closed_pr: 3038
+  outcome_id: MISSION-010
+

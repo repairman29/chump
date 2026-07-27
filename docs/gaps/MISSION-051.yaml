@@ -1,0 +1,18 @@
+- id: MISSION-051
+  domain: MISSION
+  title: "MISSION: chumpd supervisor umbrella — fold worker spawn + launchd daemon zoo into one supervised Rust process tree (ground-up step 2)"
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    Ground-up step 2 (docs/design/GROUND_UP_2026-07-19.md): one Rust supervisor process owns worker spawn/supervision and absorbs the launchd daemon zoo (43 services, disabled-override graveyard per RESILIENT-174). Rough shape: (a) chumpd binary (extend chump-integrator crate or new crates/chumpd) with child-process supervision + restart policy, (b) workers spawned as children (no tmux), (c) absorb farmer/watchdog/reaper duties as internal tasks, (d) launchd keeps ONE plist: chumpd itself, (e) socket API stub for state queries (CLI reads via API when daemon up, falls back to direct db read-only). Decompose at claim time per two-phase doctrine.
+  acceptance_criteria:
+    - chumpd runs as the single KeepAlive LaunchAgent and spawns N supervised workers with effort-scaled timeouts
+    - worker death auto-restarts within 30s without farmer daemon
+    - at least 5 existing launchd daemons retired into chumpd internal tasks with their plists deleted
+    - kill -9 chumpd → launchd revives it and workers resume within 60s (documented test)
+  notes: |
+    Outcome: MISSION-010. Operator authorized Opus direct-build 2026-07-19.
+  closed_date: '2026-07-20'
+  closed_pr: 3216
+

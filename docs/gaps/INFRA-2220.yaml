@@ -1,0 +1,12 @@
+- id: INFRA-2220
+  domain: INFRA
+  title: "EFFECTIVE P1: META-127/C3b curator-opus-historian role — captures lessons learned; prevents re-litigation; auto-resurfaces relevant past decisions on new gap classes"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- Create .claude/agents/curator-opus-historian.md following the standardized template (lane scope + 5-step + discipline + cross-refs + self-audit + confidence-calibration).\n- Lane scope (1 sentence, hard-bounded): \"captures lessons learned from shipped + reverted PRs + closed-as-not-a-bug gaps; auto-resurfaces relevant past decisions when new gap class matches a prior class via skills_required tags; does NOT file new gaps from history (decompose's lane), modify CLAUDE.md or AGENTS.md doctrine (operator's authority), or relitigate closed decisions.\"\n- 5-step work-your-lane: (1) read inbox + ambient kind=ship_landed + kind=gap_closed_not_a_bug events from last 7d; (2) extract structured lesson (root cause + fix pattern + tags) into chump_improvement_targets; (3) on new gap filing, query lesson store for relevant past decisions; (4) post to gap notes via chump gap update --notes-append if relevant; (5) emit heartbeat kind=historian_tick.\n- Storage: ~/.chump/lessons-store.jsonl (rolling append-only); index by skills_required tag + failure_class regex.\n- Cross-references: META-127 (umbrella), INFRA-2214 (template), INFRA-2209 (consensus discipline), docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md.\n- Voice-lint clean."
+  closed_date: '2026-06-05'
+  closed_pr: 2785
+  outcome_id: MISSION-010
+

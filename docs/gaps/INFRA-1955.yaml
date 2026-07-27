@@ -1,0 +1,12 @@
+- id: INFRA-1955
+  domain: INFRA
+  title: "RESILIENT P0 TRUNK-RED: test-fleet-spec.sh AC#7 hard-fails when chump fleet plan binary not yet compiled — add capability guard to skip gracefully"
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "1. test-fleet-spec.sh AC#7 checks whether 'chump fleet plan --help' or 'chump fleet' usage includes 'plan' before running the integration assertion; if not present emits SKIP (not FAIL) with message citing INFRA-1483 pending merge. 2. All other ACs (1-6) continue to pass unchanged. 3. CI on main goes green (fast-checks passes)."
+  closed_date: '2026-05-25'
+  closed_pr: 2548
+  outcome_id: MISSION-010
+

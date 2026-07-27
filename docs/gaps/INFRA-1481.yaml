@@ -1,0 +1,19 @@
+- id: INFRA-1481
+  domain: INFRA
+  title: "EFFECTIVE: Growth-tier governance bundle (RBAC + spend caps + repo access control)"
+  status: open
+  priority: P3
+  effort: l
+  description: |
+    Audit miss from 2026-05-15. The Growth-tier ($149/operator/month) headline features are named in the pricing ladder commitment (PERSONAS_VALIDATION.md, COMMERCIAL_PIVOT_SPARRING.md) but engineering had not been scoped against them. Persona-1 named all three as the trigger to upgrade from Team to Growth: 'RBAC to restrict Fleet Operator status to Senior and Staff engineers,' 'Repo Access Control to completely blacklist the billing and auth repos from the AI's vision,' and 'spend caps so no rogue loop can ever spike our credit card again.' Bundled as one gap because they ship together as the Growth-tier governance surface. P3 because Team-tier launch (INFRA-1454/1455/1456/1462/1473/1475) is the critical path; Growth-tier is downstream.
+  acceptance_criteria:
+    - "RBAC: per-operator role assignment (admin / fleet-operator / observer); fleet-operator role gated to claim gaps on configured repos; observer role can view but not claim"
+    - "Spend caps: per-operator and per-team caps on LLM API spend; hard-stop when cap reached; spend tallied per-call in real-time from ambient.jsonl"
+    - "Repo access control: blacklist or allowlist set per role; agents fail-fast when attempting to claim a gap on a blacklisted path"
+    - Configuration lives in team-scoped state (depends on INFRA-1475 cross-operator queue)
+    - Cockpit shows current role + remaining spend cap + repo permissions per operator session
+    - "Audit log: every governance check (allow/deny) writes to a tamper-resistant ambient event with operator + resource + decision"
+    - "CI test: 3-operator simulation with different roles, verify role-gated claim succeeds for admin, fails for observer; spend cap exhaustion stops next call cleanly"
+    - "Documented for procurement reviewers: SOC 2-aligned audit log claims; role hierarchy; spend-cap arithmetic"
+  outcome_id: MISSION-010
+

@@ -1,0 +1,20 @@
+- id: INFRA-1572
+  domain: INFRA
+  title: "ZERO-WASTE: scripts/ops/ sprawl curation — 60 helper scripts including 6 stale-*-reapers, 6 gap-*, 4 pr-*, 3 ci-*; consolidate overlap behind a single dispatch with subcommands"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    CORRECTED 2026-05-16 via direct verification: scripts/ops/ contains 58 helpers (not 60 as claimed). The reaper family is LARGER than my original filing: 11 reapers + 1 test fixture, not just 6 stale-*. Full inventory: stale-auditor-finding-reaper (104 LOC), stale-bot-merge-reaper (92), stale-branch-reaper (179), stale-gap-lock-reaper (325), stale-pr-reaper (356), stale-worktree-reaper (453), active-target-reaper (172), cargo-target-reaper (232), ghost-open-gaps-reaper (102), reaper-heartbeat-watchdog (154), subagent-budget-reaper (151), test-stale-bot-merge-reaper.sh (67, test fixture). The "30-120 LOC scanner" claim was wrong — three are >300 LOC and likely have substantial non-generic logic. Other categories: 6 gap-* lifecycle, 4 pr-* watch/repair, 3 ci-*, 2 each subagent/github/fleet/disk/audit. Cleanup is strategic curation, but the engine-extraction scope is narrower than originally framed: probably 4-6 of the smaller reapers are engine-able; the big ones need case-by-case review.
+  acceptance_criteria:
+    - "First-pass investigation: read all 11 reaper scripts, classify each as engine-able (predicate + action share generic shape) vs unique-logic (substantial non-generic state machine). Output: docs/audits/reaper-curation-2026-05.md with kill/engine/leave-alone verdict per reaper"
+    - "For the engine-able subset (likely the 4-6 smaller ones): new scripts/lib/reaper.sh provides a generic age + state + predicate engine consumed via env vars (REAPER_NAME, REAPER_FIND_CMD, REAPER_PREDICATE_CMD, REAPER_ACTION_CMD, REAPER_AGE_THRESHOLD_S)"
+    - "Each engine-able reaper shrinks proportionally (target: 50-70% LOC reduction); unique-logic reapers stay as-is with a comment explaining why they were not consolidated"
+    - chump audit redundancy (or new subcommand) reports the top still-overlapping script families and suggests next consolidations
+    - "docs/process/CLAUDE_GOTCHAS.md gains a Scripts curation principle subsection: prefer a generic engine + per-instance config over N near-identical scripts, but ONLY when the candidates share enough structure that delegation does not lose semantics"
+    - "Post-merge: measurable LOC drop in scripts/ops/ (target: >=15%, not >=20% as originally claimed since the big reapers are likely staying); no functional regression (every reaper still emits its existing ambient event)"
+    - scripts/ci/test-reaper-engine.sh exercises the generic engine against a synthetic fixture and verifies each engine-consuming reaper still produces its canonical ambient event
+  notes: |
+    wave: noise (scripts/ops sprawl — noise tag per MISSION_YIELD; do not block ship)
+  outcome_id: MISSION-010
+

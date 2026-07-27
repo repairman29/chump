@@ -1,0 +1,16 @@
+- id: INFRA-1016
+  domain: INFRA
+  title: "RESILIENT: pr-rescue --rest-only mode (survives GraphQL exhaustion)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Today every rescue tool (pr-rescue, queue-driver, bot-merge) uses gh pr * GraphQL shortcuts.
+    When GraphQL bucket hits 0/5000 (1-2x per active day), all rescue is gagged for ~30 min.
+    REST core bucket stays healthy in parallel (4868/5000 typical). Adding a --rest-only mode
+    to pr-rescue.sh as the minimum-viable rescue path lets the operator still recover stuck PRs
+    during GraphQL exhaustion. REST merge is immediate (no auto-merge); accepted limitation:
+    only use when PR is already green and you want to force-land it now.
+  closed_pr: 1685
+  outcome_id: MISSION-010
+

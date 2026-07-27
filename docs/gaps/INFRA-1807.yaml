@@ -1,0 +1,16 @@
+- id: INFRA-1807
+  domain: INFRA
+  title: "ZERO-WASTE: reap stale claude-code helper PIDs leaking ptys (observed pty exhaustion 527/511 on 2026-05-23)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - scripts/ops/pty-doctor.sh exists and exits 0 on healthy machine, exit 2 when pty count > 80% of kern.tty.ptmx_max
+    - "pty-doctor.sh prints: current pty count, kernel limit, top 10 PIDs holding ptys grouped by parent command + elapsed time"
+    - Either (a) launchd plist scripts/launchd/com.chump.pty-reaper.plist running every 30 min that SIGTERMs claude-code helper pairs older than CHUMP_PTY_REAPER_MAX_AGE_S (default 7200=2h), OR (b) chump fleet doctor --apply integration doing the same
+    - Reaper invocation emits ambient kind=pty_reaper_swept with {ts, reaped_pids, pty_count_before, pty_count_after, kernel_limit} to .chump-locks/ambient.jsonl
+    - Event kind=pty_reaper_swept registered in docs/observability/EVENT_REGISTRY.yaml
+    - Smoke test scripts/ci/test-pty-doctor.sh exercises diagnostic path against a synthetic pty hog and verifies the reaper kills it
+    - Root-cause note in docs/process/CLAUDE_GOTCHAS.md describing the leak pattern + manual recovery command, even if upstream fix is out of Chump scope
+  outcome_id: MISSION-010
+

@@ -1,0 +1,19 @@
+- id: INFRA-1615
+  domain: INFRA
+  title: "EFFECTIVE: ship default skill bundle — skills-bundle/ at repo root with 3 seed skills (verify-existence, claim-without-collision, pre-ship-ci-prediction); chump init taps them into chump-brain/skills/"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    chump-brain/ is gitignored (correctly — it is per-host learning state). But this means newly-installed fleets start with an empty brain and the orchestrator-instruction "create skills from successful patterns" produces nothing for weeks until enough patterns accumulate. Today 2026-05-17 chump-brain/skills/ on the operator host has 3 prototype skills (verify-existence, claim-without-collision, pre-ship-ci-prediction) drafted from session-observed pain. They live at skills-bundle/<name>/SKILL.md in the repo (committed, not gitignored). Need: chump init (or chump skill bundle install) copies skills-bundle/* into chump-brain/skills/ on a fresh install. Each install starts with operator-curated baseline curriculum instead of zero.
+  acceptance_criteria:
+    - skills-bundle/ at repo root contains the 3 seed skills (verify-existence, claim-without-collision, pre-ship-ci-prediction) with full user-story-shaped SKILL.md bodies
+    - "chump init invokes the bundle install: copies skills-bundle/*/SKILL.md to $CHUMP_BRAIN_PATH/skills/<name>/SKILL.md (default chump-brain/skills/); idempotent (skip if name already exists, do not overwrite)"
+    - New chump skill bundle install command for re-running standalone (e.g., on existing installs where chump init already ran)
+    - FTUE smoke test extended to assert chump skill list --json after chump init returns at least the 3 seed names
+    - docs/strategy/CHUMP_TO_CHAMP.md or docs/operations/INSTALL.md gains a Curriculum bootstrap section explaining the bundle
+    - Additional seed skills (4th, 5th, etc.) can be added to skills-bundle/ via normal PRs; bundle install picks them up
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

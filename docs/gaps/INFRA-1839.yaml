@@ -1,0 +1,15 @@
+- id: INFRA-1839
+  domain: INFRA
+  title: "ZERO-WASTE P0: chump preflight runs DOC-026 env-var-coverage gate locally (META-070 sub) — caught CHUMP_PREFLIGHT_SKIP_GAPSINT and SKIP_PRSCOPE missing-allowlist post-CI today"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    Dedup: env-var-coverage gate already in main via INFRA-1787 work that landed through sibling formatting-cleanup. Verified origin/main:src/preflight.rs has the gate at the INFRA-1787 block (cargo grep confirms 'test-env-var-coverage.sh' invocation + CHUMP_PREFLIGHT_SKIP_ENVVARS bypass + preflight_envvars_bypassed emit). The real issue today wasn't a missing gate — it was that my new bypass envs (CHUMP_PREFLIGHT_SKIP_GAPSINT, CHUMP_PREFLIGHT_SKIP_PRSCOPE) weren't in scripts/ci/env-vars-internal.txt at PR-open time. That's a per-PR allowlist discipline issue, not a missing-gate issue. Closing as superseded.
+  outcome_id: MISSION-010
+

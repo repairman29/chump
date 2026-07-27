@@ -1,0 +1,16 @@
+- id: CREDIBLE-156
+  domain: CREDIBLE
+  title: "CREDIBLE: fleet-brief ship count 10x inflated (banner said 21/24h, git ground truth = 2) — counter must fetch first and count merge-commits on origin/main only"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    2026-07-22 forensics: SessionStart fleet-brief banner claimed 'Ships: 21 (~0.9/hr)' for the last 24h; git ground truth on origin/main for the same window = 2 merges (#3227, #3228). 10x inflation. fleet-brief.sh counts git log --after='24 hours ago' origin/main in MAIN_REPO — suspect stale local ref (no fetch before count) and/or checkout sitting on an integrator branch context. The operator's primary health number must be an observation, not a cached impression (CREDIBLE-090 applies to dashboards too).
+  acceptance_criteria:
+    - fleet-brief fetches origin/main (or reads the webhook cache) before counting
+    - count = merge commits on origin/main in the window, verified against gh pr list --state merged in a test
+    - regression test with a stale-ref fixture proves the old path inflated and the new path matches ground truth
+    - ChumpBar ships_24h uses the same corrected source
+  closed_date: '2026-07-22'
+  closed_pr: 1460
+

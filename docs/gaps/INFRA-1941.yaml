@@ -1,0 +1,17 @@
+- id: INFRA-1941
+  domain: INFRA
+  title: "RESILIENT: SessionStart hook nags if curator session has no inbox-watcher armed within 60s (INFRA-1936 follow-up — operator-as-messenger antipattern enforcer)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/hooks/inbox-watcher-nag.sh (new) — SessionStart hook addendum that scans active tasks/monitors for one matching the inbox-watcher signature (tail -F .chump-locks/inbox/<session-id>.jsonl); fires 60s after session start
+    - "If no watcher found AND session-id matches curator-* pattern: emit ambient kind=inbox_watcher_missing with session_id + curator-role + age_s; also broadcast WARN to operator-* with one-line nag message ('curator-opus-X session missing real-time inbox watcher; arm Monitor per docs/process/INBOX_WATCHER_PATTERN.md')"
+    - "Idempotent: re-running the hook within 5min after first nag does NOT re-emit (debounce per session-id)"
+    - "Allowlist override: CHUMP_INBOX_WATCHER_OPTOUT=1 suppresses the nag entirely (some sessions are explicitly polling-only); audit-emit kind=inbox_watcher_opted_out when override fires"
+    - "Smoke test scripts/ci/test-inbox-watcher-nag.sh: synthetic curator-X session without watcher → assert nag emit within 60s; same session with watcher armed → assert silent; opted-out session → assert audit-emit only"
+    - Registered in .claude/settings.json (or whatever hook config) as a SessionStart phase-2 hook (runs after digest, before first user prompt)
+  notes: |
+    Filed by curator-opus-target-2026-05-23 after observing my own Monitor bo2mnd8z0 was killed at session-restart boundary; operator had to remind me to re-arm. The session-start nag closes that loop.
+  outcome_id: MISSION-010
+

@@ -1,0 +1,17 @@
+- id: META-119
+  domain: META
+  title: "RESILIENT: META-116 follow-up — add Pattern 13 (hung-hook detection) to SHEPHERD_LOOP_PLAYBOOK.md + allowlist dispatch_hung_hook_detected in event-registry-reserved.txt (deferred from META-116 PR #2658 due to META-115 lease on playbook + INFRA-2003 lease pattern on registry)"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Append Pattern 13 (hung-hook detection) to docs/process/SHEPHERD_LOOP_PLAYBOOK.md — codifies the diagnosis-before-takeover discipline; cross-link to META-116 SUBAGENT_DISPATCH.md addendum + scripts/coord/dispatch-health-check.sh
+    - "Pattern 13 body includes the real-world precedent (2026-05-27 14:56Z INFRA-2000 dispatch: pre-commit wedged 5+ min; killing hook PID unblocked Sonnet; shepherd takeover was duplicate work)"
+    - Append dispatch_hung_hook_detected entry to scripts/ci/event-registry-reserved.txt with reason 'META-116 / META-119 — emitted by scripts/coord/dispatch-health-check.sh when pre-commit or git-commit child exceeds threshold'
+    - Verify no active foreign lease on scripts/ci/event-registry-reserved.txt before editing; single-line additive change
+    - Single-commit PR; touches SHEPHERD_LOOP_PLAYBOOK.md + event-registry-reserved.txt only
+    - "Source: deferred from META-116 PR #2658 because META-115 had an active lease on SHEPHERD_LOOP_PLAYBOOK.md at the time + bundling registry change with Pattern 13 minimizes audit churn"
+  closed_date: '2026-05-29'
+  closed_pr: 2661
+  outcome_id: MISSION-010
+

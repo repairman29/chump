@@ -1,0 +1,32 @@
+- id: INFRA-2822
+  domain: INFRA
+  title: "PR #3108 stuck [ORPHAN] — auto-merge disarmed, no live owner"
+  status: closed
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/3108
+    
+    Detected by stuck-pr-filer (2026-06-08T18:17:59Z).
+    
+    Trigger: auto-merge disarmed, no live owner
+    Auto-merge is disarmed and the original gap(s) [INFRA-2005] have no live lease — the opening agent likely exited without re-arming.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 3108 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-2005
+    Branch: chump/infra-2005-fleet-4-20260608-105750
+    Stuck class: ORPHAN — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-06-09T04:20:06Z] auto-closed by stuck-pr-filer: PR #3108 resolved (CLOSED)
+  closed_pr: 3108
+  outcome_id: MISSION-010
+

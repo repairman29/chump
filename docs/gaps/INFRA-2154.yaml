@@ -1,0 +1,13 @@
+- id: INFRA-2154
+  domain: INFRA
+  title: "EFFECTIVE P1: META-125/C4 chump-curator-subscriber daemon — Rust binary persistent NATS subscriber per curator role"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

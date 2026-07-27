@@ -1,0 +1,14 @@
+- id: INFRA-2315
+  domain: INFRA
+  title: trunk-red rescue P0 — allowlist pr-shepherd-daemon.sh (META-186 added gh pr merge at line 431; same pattern as INFRA-2314)
+  status: done
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "1. scripts/ci/raw-gh-allowlist.txt gains scripts/coord/pr-shepherd-daemon.sh entry\n2. bash scripts/ci/test-no-raw-gh-in-hot-paths.sh exits 0\n3. Ships fast via admin-merge to unblock 26 BLOCKED PRs"
+  notes: |
+    META-186 added gh pr merge to pr-shepherd-daemon.sh:431 for BLOCKED_GREEN arming. Cache wrapper has no merge API. Same pattern as INFRA-2314 (which I just shipped for the auto-merge-rearm + ready-to-ship CLI).
+  closed_date: '2026-05-31'
+  closed_pr: 2895
+  outcome_id: MISSION-010
+

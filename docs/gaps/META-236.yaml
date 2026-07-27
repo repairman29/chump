@@ -1,0 +1,11 @@
+- id: META-236
+  domain: META
+  title: "META: Register kind=agent_admin_merge ambient event (META-209 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new event type 'kind=agent_admin_merge' is defined in the project's event schema (e.g., events.proto, JSON schema).
+    - "The event schema includes fields: 'role', 'pr_number', 'fix_class', 'consensus_corr_id', 'trigger_check_results'."
+  outcome_id: MISSION-010
+

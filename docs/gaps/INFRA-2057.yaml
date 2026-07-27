@@ -1,0 +1,19 @@
+- id: INFRA-2057
+  domain: INFRA
+  title: "EFFECTIVE P1: chump cron subcommand — declarative cron expr to launchd plist (macOS) / systemd timer (Linux) generator; idempotent install + uninstall; never depends on Claude Code or any specific agent session being alive"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "New chump cron subcommand with at least install + uninstall + status actions. Surface: chump cron install --name NAME --schedule CRON_EXPR --exec COMMAND [--description TEXT] [--working-dir PATH] [--env KEY=VAL] [--stdout-log PATH] [--stderr-log PATH]"
+    - "Backend selection by platform: macOS uses launchd plist generation under ~/Library/LaunchAgents/com.chump.NAME.plist OR /Library/LaunchDaemons/com.chump.NAME.plist (chump cron install --scope user|system selects); Linux uses systemd user-unit at ~/.config/systemd/user/chump-NAME.timer + chump-NAME.service. Auto-detected via uname; explicit override via env CHUMP_CRON_BACKEND=launchd|systemd"
+    - Cron expression supports full 5-field cron syntax (M H DoM Mon DoW) PLUS launchd-native StartInterval seconds shorthand via --interval Ns (translates to StartInterval on launchd, OnUnitActiveSec on systemd). EVERY plist generated MUST have either StartCalendarInterval entries OR StartInterval — never both omitted (INFRA-1929 prune-worktrees plist class)
+    - "Idempotent: chump cron install on an existing name with identical config is a no-op + exit 0. With changed config, stops + reloads atomically. chump cron uninstall --name NAME removes from disk + bootout from launchd (or stop+disable from systemd). chump cron uninstall on non-existent is a no-op + exit 0 (not error)"
+    - All Chump-managed plists are tagged with a sentinel comment + a Label prefix com.chump. so chump cron list (sibling INFRA-2046) can distinguish them from operator-owned plists. Refuse to manage plists outside the com.chump.* label space
+    - "On install, emits ambient kind=chump_cron_installed with fields name, schedule, exec, backend, scope. On uninstall emits kind=chump_cron_uninstalled. PER WIZARD 2026-05-27 13:27Z: use the INFRA-2003/2020 lease pattern — single-commit add to scripts/ci/event-registry-reserved.txt allowlist (with reason 'INFRA-2045 chump cron lifecycle, emitted by crates/chump-cron/src/lib.rs'), hold off docs/observability/EVENT_REGISTRY.yaml entry until the first runtime fire reveals the actual emit shape"
+    - "Smoke test scripts/ci/test-chump-cron-install.sh: install a synthetic schedule, assert plist exists + launchctl list shows it loaded; wait one fire-window, assert exec ran (via stdout-log presence); uninstall, assert plist removed + launchctl no longer lists it. Linux variant tested via container or skipped on non-Linux runners with appropriate marker"
+    - "Backward-compat: ALL existing scripts/setup/install-NAME-launchd.sh scripts continue to work; chump cron is a NEW surface, not a replacement. Migration of existing 20+ launchd installers to chump-cron management is a SEPARATE follow-up sub-gap"
+    - "Capability lives in NEW Rust crate crates/chump-cron/ per META-064 Rust-first criteria (mutates canonical state under ~/Library/LaunchAgents or /Library/LaunchDaemons; durable beyond 3mo; will exceed 200 LOC at first commit). NOT bash. Wizard-confirmed 2026-05-27 13:27Z. chump cron CLI is the harness-neutral surface per OPERATOR_PLAYBOOK Section 5"
+    - "Documentation: chump cron --help shows full CLI; docs/process/SCHEDULING_LAYERS.md (DOC-058 sibling) references chump cron as the durable layer; CLAUDE.md adds a Scheduling discipline section linking to it"
+  outcome_id: MISSION-010
+

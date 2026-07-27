@@ -1,0 +1,11 @@
+- id: INFRA-1388
+  domain: INFRA
+  title: "RESILIENT: speculative_execution tests corrupt active git branch — spec-exec sandbox must not commit to real branches"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Reproduce: cargo test --bin chump speculative_execution from any worktree branch, confirm HEAD changes to a test-fixture 'init' commit after test run\n2. Root cause traced: speculative_execution sandbox code creates git commits via git_commit() that operates on the ambient CWD repo instead of an isolated temp fixture\n3. Fix: speculative_execution tests either (a) use a fully isolated temp git repo via tempdir fixture, or (b) the production spec-exec code wraps git operations in GIT_DIR/GIT_WORK_TREE override to target the worktree only\n4. CI test scripts/ci/test-speculative-execution-isolation.sh verifies test run leaves HEAD unchanged in a fresh worktree fixture\n5. The 9 previously-failing tests in pre-push gate (version::tests x5, speculative_execution::tests x2, repo_path::tests x1) all pass in the worktree context after fix"
+  closed_pr: 2144
+  outcome_id: MISSION-010
+

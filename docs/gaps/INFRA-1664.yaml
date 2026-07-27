@@ -1,0 +1,21 @@
+- id: INFRA-1664
+  domain: INFRA
+  title: "CREDIBLE: SessionStart/PreToolUse lease digest parser — disambiguate gap-claim leases from curator-filed markers"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    FLEET-019 SessionStart + PreToolUse ambient-digest hooks report '47 active sibling leases' with 37x INFRA-1149 every session. None are real gap-claim leases (those use claim-*.json prefix; there are 0). The parser is matching the gap_id substring inside .chump-locks/curator-filed-*.json idempotence markers (META-065). Operator-facing noise; the digest is supposed to surface real collisions.
+  acceptance_criteria:
+    - Locate the digest-emitter (likely scripts/coord/chump-ambient-glance.sh or fleet hook)
+    - Restrict lease enumeration to claim-*.json prefix only (the actual lease file convention)
+    - Curator-filed markers and other .chump-locks/*.json files are skipped
+    - "Test: with 0 claim-*.json files but 44 curator-filed files present, digest reports 'no active sibling leases'"
+    - "Test: with 3 claim-*.json files (real leases), digest reports the 3 with their gap_id + session + expires"
+    - Update CLAUDE_GOTCHAS.md ambient-digest section if the false-positive history is documented
+  notes: |
+    ship bookkeeping — PR #2307 merged into origin/main at commit c67f09c7a on 2026-05-22 09:53; status was lingering open
+  closed_date: '2026-05-22'
+  closed_pr: 2307
+  outcome_id: MISSION-010
+

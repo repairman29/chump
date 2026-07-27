@@ -1,0 +1,14 @@
+- id: RESILIENT-022
+  domain: RESILIENT
+  title: 3 pre-existing silent daemons — install/restart stale-branch-reaper + pr-watch + distill heartbeat plists
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "3 daemons surface daemon_silent / reaper_silent ambient alerts as of 2026-05-25T15:47Z, pre-existing pre-META-090: stale-branch-reaper (never heartbeated, install plist missing), pr-watch (12h since heartbeat — process not running), distill (never heartbeated, install plist missing)"
+    - Install missing plists via scripts/setup/install-stale-branch-reaper-launchd.sh + scripts/setup/install-pr-watch-launchd.sh (or equivalents) + scripts/setup/install-distill-pr-skills-launchd.sh; launchctl load each; verify heartbeat file appears at /tmp/chump-<daemon>.heartbeat within 5 min
+    - After install, run scripts/coord/wedge-watch.sh — daemon_silent + reaper_silent ALERTs should not fire for these 3 daemons in subsequent 30min window
+    - Add the 3 install scripts to AUTOPILOT_LAYERS in scripts/coord/fleet-autopilot.sh so the autopilot start covers them too (CREDIBLE substrate completeness)
+    - Pairs with META-090 (autopilot orchestrator), MISSION-006 (wedge-watch detection)
+  outcome_id: RESILIENT-000
+

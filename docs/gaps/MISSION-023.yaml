@@ -1,0 +1,16 @@
+- id: MISSION-023
+  domain: MISSION
+  title: "MISSION: Verify fleet can open a PR against repairman29/BEAST-MODE (MISSION-015 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The fleet successfully opens a Pull Request from its new branch to the `main` branch of `repairman29/BEAST-MODE`.
+    - The PR title and description are automatically generated based on the gap details.
+    - The newly created PR is visible on GitHub in the `repairman29/BEAST-MODE` repository.
+    - Fleet logs confirm successful PR creation.
+    - The internal system tracks the external PR link.
+  depends_on: [MISSION-022]
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

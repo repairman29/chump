@@ -1,0 +1,12 @@
+- id: META-268
+  domain: META
+  title: Widen preflight-vs-CI parity script to scan all workflow files not just ci.yml (META-264 followup)
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "1. test-preflight-ci-parity.sh scans all .github/workflows/*.yml (not just ci.yml); exits 0 on current repo. 2. Each sibling workflow's run: steps are classified as mirrored/Tier-D/allowlisted or flagged. 3. Any newly-surfaced unmirrored steps from sibling workflows are added to preflight-ci-parity-exceptions.txt with reason. 4. docs/process/CI_PREFLIGHT_PARITY.md documents the widened scope. 5. ambient emit: kind=ci_parity_drift for any unmirrored gate in sibling workflows."
+  closed_date: '2026-05-31'
+  closed_pr: 2906
+  outcome_id: MISSION-010
+

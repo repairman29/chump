@@ -1,0 +1,10 @@
+- id: INFRA-2370
+  domain: INFRA
+  title: EVENT_REGISTRY.yaml line 341 unquoted-colon parse error — strict YAML parsers fail
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Quote the colon-containing 'Overrides logged separately: --allow-duplicate-pr / CHUMP_CLAIM_ALLOW_OPEN_PR' line on EVENT_REGISTRY.yaml line 341 so strict YAML parsers (python yaml.safe_load) succeed; verify with python3 -c 'import yaml; yaml.safe_load(open(\"docs/observability/EVENT_REGISTRY.yaml\"))'; one-line fix"
+  outcome_id: MISSION-010
+

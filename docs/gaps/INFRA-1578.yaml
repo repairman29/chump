@@ -1,0 +1,19 @@
+- id: INFRA-1578
+  domain: INFRA
+  title: "ZERO-WASTE: Cargo.lock dependency audit — 1203 transitive deps; find heavy-dep-for-thin-feature signal (abandoned experiments retain weight)"
+  status: open
+  priority: P3
+  effort: m
+  description: |
+    Cargo.lock at repo root is 320K with 1203 transitive deps locked. No prior audit pass has scanned for heavy-deps-for-thin-features (the abandoned-experiment retention signal where a once-tried crate stays pinned even though the feature using it was removed). Candidates per heuristic: machine-learning / inference deps that may correspond to retired backends, GUI/render deps that may not be used by Tauri or PWA, networking/protocol deps for features that never shipped, large transitive deps from a single direct dep with narrow use. Audit needs cross-referencing direct deps in Cargo.toml workspace and root, then asking per direct dep "what feature does this enable, is that feature shipped".
+  acceptance_criteria:
+    - "New scripts/dev/dep-audit.sh emits a report: for each direct dep in root Cargo.toml + workspace members Cargo.toml, list the transitive dep weight (cargo tree --prefix none "
+    - " wc -l) and a 1-line description of which feature uses it"
+    - Findings logged to docs/audits/dep-audit-YYYY-MM-DD.md with a kill/keep recommendation per dep
+    - At least 3 dependency removals shipped where the corresponding feature is verifiably retired (e.g., a model backend that was deprecated, a GUI lib that the Tauri rewrite obviated)
+    - "cargo-deny config (deny.toml at repo root) gets a \"advisories\" + \"bans\" section listing the deps blocked from re-introduction"
+    - "Re-running cargo tree --prefix none after the cleanup shows a measurable transitive-count drop (target: >=5%)"
+  notes: |
+    wave: noise (Cargo.lock audit — noise; only act if dep-graph triggers an alert)
+  outcome_id: MISSION-010
+

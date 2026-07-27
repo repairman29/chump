@@ -1,0 +1,13 @@
+- id: INFRA-1962
+  domain: INFRA
+  title: "ZERO-WASTE: rephrase 2 banned 'leverage' in HARVEST_ROADMAP.md (voice-lint follow-up to INFRA-1957 squash)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

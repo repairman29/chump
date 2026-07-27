@@ -1,0 +1,16 @@
+- id: INFRA-1396
+  domain: INFRA
+  title: "RESILIENT: unwedge fleet audit job — replace hardcoded now=\"2026-05-15T22:00:00Z\" with datetime.now(utc) in test-cache-mergestatestatus.sh (INFRA-1368 follow-up, supersedes abandoned INFRA-1384)"
+  status: done
+  priority: P0
+  effort: xs
+  description: |
+    Convoy-blocking regression: INFRA-1368 (#2105) shipped scripts/ci/test-cache-mergestatestatus.sh with hardcoded now="2026-05-15T22:00:00Z" stored as fetched_at_local. Once wall-clock passes max_age_s=9999 (~2.8h) after that literal, the cache_lookup_by_number returns None and 3 of 7 assertions fail. Every PR's audit job has been failing since ~01:00Z today. Sibling INFRA-1384 (#2136) attempted the fix but closed without merging. This is a 4-line scripts-only diff that hits the new INFRA-1379 lane split (docs+scripts skip audit+cargo), so it should land in one fast CI cycle. Unblocks the entire open-PR queue.
+  acceptance_criteria:
+    - "scripts/ci/test-cache-mergestatestatus.sh: replace the two hardcoded `now = \"2026-05-15T22:00:00Z\"` literals (one in §2 webhook receiver block, one in §5 pre-migration DB block) with `now = datetime.datetime.now(datetime.timezone.utc).strftime(\"%Y-%m-%dT%H:%M:%SZ\")`"
+    - Add `datetime` to the inline-Python imports in both blocks
+    - CI passes the audit job on the next PR cycle — bottom-line measure is whether the kind=audit_job_pass rate goes from ~0 to ~1.0 across open PRs
+    - No other changes — strictly the time-bomb fix; broader test redesign is out of scope
+    - Supersedes the abandoned INFRA-1384/PR-2136 (sibling attempted same fix, never merged); this gap exists so the registry has a clean done-state pointer
+  outcome_id: MISSION-010
+

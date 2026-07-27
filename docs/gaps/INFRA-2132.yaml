@@ -1,0 +1,11 @@
+- id: INFRA-2132
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C4 register 8 integration-cycle ambient event kinds + EVENT_REGISTRY.yaml + scanner anchors"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- Register 8 new ambient event kinds in EVENT_REGISTRY.yaml (INFRA-754 discipline):\n  1. integration_cycle_started — payload: {cycle_id, trigger_reason, candidate_count, ts}\n  2. integration_candidates_selected — payload: {cycle_id, manifest: [{gap_id, branch, loc, priority, queue_age_s}]}\n  3. integration_branch_merged — payload: {cycle_id, gap_id, branch, parent_sha, merge_sha}\n  4. integration_preflight_started — payload: {cycle_id, branch, expected_duration_s}\n  5. integration_preflight_failed — payload: {cycle_id, branch, failure_class, log_path}\n  6. ship_bisect_root_cause — payload: {cycle_id, offending_gap_id, failure_signature, bisect_steps_taken}\n  7. bisect_quarantine — payload: {cycle_id, quarantined_gap_id, reason, requeue_status}\n  8. integration_cycle_shipped — payload: {cycle_id, final_manifest, pr_url, merge_sha, total_loc, wall_time_s}\n- Each kind: docstring, emitter source-of-truth, payload schema (TypeScript-like for clarity), expected emit volume, consumer list.\n- Add scanner-anchor comments at emit sites in src/* per INFRA-754:\n    # scanner-anchor: \"kind\":\"integration_cycle_started\"\n- For C2's dry-run mode, also reserve: integration_cycle_dry_run_completed (Phase 1 only).\n- Add 9 new kinds to scripts/ci/event-registry-reserved.txt for the registry validation gate.\n- Test: scripts/ci/test-event-registry.sh passes (zero-emit gate satisfied at fixture time via dry-run sentinel emits).\n- Cross-references INFRA-2130 (the emitter), INFRA-754 (registry discipline)."
+  closed_date: '2026-06-05'
+  outcome_id: MISSION-010
+

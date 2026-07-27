@@ -1,0 +1,13 @@
+- id: META-188
+  domain: META
+  title: "META: Restrict destructive actions (rebase, admin-merge) during trunk-red safe-mode (META-180 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - When in safe-mode due to `trunk_red`, the daemon prevents `auto-rebase` actions.
+    - When in safe-mode due to `trunk_red`, the daemon prevents `admin-merge` actions (both consensus-driven and bypass).
+  closed_date: '2026-07-21'
+  closed_pr: 3110
+  outcome_id: MISSION-010
+

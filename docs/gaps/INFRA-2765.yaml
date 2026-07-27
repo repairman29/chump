@@ -1,0 +1,33 @@
+- id: INFRA-2765
+  domain: INFRA
+  title: "PR #3049 stuck [CI-RED] — CI red for 23m"
+  status: closed
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/3049
+    
+    Detected by stuck-pr-filer (2026-06-05T02:48:21Z).
+    
+    Trigger: CI red for 23m
+    At least one required check has been failing for 23m (threshold 20m). Failing check: audit.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 3049 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-1881
+    Branch: chump/infra-1881-claim
+    Failing check: audit
+    Stuck class: CI-RED — ci-flake-rerun or human investigation required
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-06-05T05:32:06Z] PR reached final state (MERGED or CLOSED); stuck-PR detector never auto-closed. Sweep 2026-06-05T05:35Z (sibling cleanup to RESILIENT-097 trunk-recovery class).
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

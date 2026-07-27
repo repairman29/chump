@@ -1,0 +1,21 @@
+- id: INFRA-2211
+  domain: INFRA
+  title: "EFFECTIVE: chump-fleet-server daemons.toml — fleet daemon catalog skeleton (INFRA-2206 precursor)"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Precursor to INFRA-2206 (daemon view): the static catalog TOML mapping launchd plist name to (purpose, cadence, emits_kinds, log_path). Catalog can land independently of the view rendering — the view depends on a stable recorder (INFRA-2203) and panel correctness (INFRA-2204), but a static TOML at crates/chump-fleet-server/daemons.toml has zero runtime deps. Enumerated from launchctl list (25+ com.chump.* jobs) plus scripts/setup/launchd/*.plist + scripts/plists/*.plist + scripts/launchd/*.plist + scripts/ops/com.chump.fleet-worker-watchdog.plist.
+  acceptance_criteria:
+    - crates/chump-fleet-server/daemons.toml created; one [[daemon]] table per launchd entry with fields name (launchd label), purpose (1-line human description), cadence (StartInterval secs, or 'persistent' for loop daemons, or 'event-triggered'), emits_kinds (array of ambient event kind names this daemon writes), log_path (relative path under .chump-locks or absolute), plist_path (where the plist lives in repo)
+    - "At least 20 daemons enumerated: fleet-recorder, fleet-server, fleet-daemon, github-cache-reconcile, bot-merge-watchdog, prune-worktrees, claude-reaper, oauth-refresh / oracle-refresh, opus-curator, inbox-injector, pr-pulse-consumer, ci-health-gate, wizard-daemon, smee-tunnel, nats-server, actions-runner (x4 variants), main-health-watchdog, wedge-state-machine, transient-retrigger, cluster-detector, emergency-fast-path, claude-tmp-cleanup, fleet-autopilot"
+    - For each daemon, the purpose is sourced from a code comment header in the script the plist invokes OR from the plist Label description. Don't fabricate — if unknown, mark purpose as 'TODO — needs owner review' and emits_kinds as []. Honesty over completeness
+    - "TOML parses cleanly: python3 -c 'import tomllib; tomllib.load(open(\"crates/chump-fleet-server/daemons.toml\", \"rb\"))' exits 0"
+    - No Rust changes; the consumer (server reading + serving this catalog) lands later in INFRA-2206
+    - chump preflight green
+  depends_on: [INFRA-2206]
+  notes: |
+    [2026-06-04T00:26:17Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2765
+  outcome_id: MISSION-010
+

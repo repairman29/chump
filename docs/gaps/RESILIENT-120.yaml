@@ -1,0 +1,19 @@
+- id: RESILIENT-120
+  domain: RESILIENT
+  title: "RESILIENT: /loop cron scheduler correctness — dedupe wizard-daemon plist + load all autopilot layers"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    The durable /loop scheduler = chump fleet autopilot (com.chump.fleet-autopilot.plist) + wizard-daemon (scripts/coord/wizard-daemon.sh). Audit 2026-06-05 found two defects: (a) TWO wizard-daemon plists with DIVERGENT impls — ai.chump.wizard-daemon runs 'bash <(git show origin/main:scripts/coord/wizard-daemon.sh) tick' (logs to logs/wizard-daemon.log) vs com.chump.wizard-daemon runs the LOCAL scripts/coord/wizard-daemon.sh (logs to .chump-locks/wizard-daemon.log); only com.chump is loaded so ai.chump is a STALE split-brain footgun (load it and you double-tick). (b) chump fleet autopilot status reports 15 layers configured but only 10 loaded (5 present-but-unloaded) and 0 ambient events in last 5min. Same split-brain/partial-load shape as the sccache reaper bug (RESILIENT-112).
+  acceptance_criteria:
+    - exactly ONE wizard-daemon launchd plist remains — the stale ai.chump.wizard-daemon.plist is removed/archived OR the two are reconciled into one canonical plist, with a note documenting which is canonical
+    - chump fleet autopilot status reports loaded == configured (all 15 layers), OR the unloaded layers are explicitly documented as opt-in with a reason
+    - a healthcheck asserts the /loop scheduler is actively ticking (ambient events > 0 in the expected window) and fails loudly if it is silently idle — not just plist-present
+    - docs/process/SCHEDULING_LAYERS.md names the canonical durable /loop scheduler (autopilot + wizard-daemon) so sessions stop reinventing it
+  notes: |
+    MISSION-010 Gate0 (substrate self-heals) / Gate0.5 (observability). The durable /loop scheduler is chump fleet autopilot + wizard-daemon; if it is split-brained or partially loaded, the fleet's own loop is unreliable.
+  closed_date: '2026-07-21'
+  closed_pr: 3094
+  outcome_id: RESILIENT-000
+

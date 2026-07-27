@@ -1,0 +1,53 @@
+- id: META-256
+  domain: META
+  title: "[UMBRELLA] Doctrine Loom — seamstress daemon that continuously threads playbooks (PR_RESCUE_PROCEDURE, SHIP_ASSIST, CLAUDE_GOTCHAS, OPERATOR_PLAYBOOK, SUBAGENT_DISPATCH, agents/*.md, etc.) into one living, continuous, stronger weave; auto-publishes DOCTRINE_INDEX.md + DOCTRINE_GRAPH.md; injected into every Sonnet briefing"
+  status: open
+  priority: P1
+  effort: l
+  description: |
+    OPERATOR DIRECTIVE 2026-05-31T17:15Z (verbatim): 'We have other playbooks and have been developing a procedures protocol of some sort. We need to keep that in mind and have some process to automate "threading" some amazing seamstress type of automation that weaves and stitches our products and processes together into something incredible and artistic, stronger, living, continuous.'
+    
+    THE METAPHOR → CONCRETE ARCHITECTURE:
+    
+    Each playbook = bolt of fabric. The Loom = a daemon that continuously stitches them into a coherent garment (the operator's wardrobe of doctrine).
+    
+    PLAYBOOKS IN SCOPE (the bolts):
+    - docs/process/PR_RESCUE_PROCEDURE.md (META-246, just shipped)
+    - docs/process/SHIP_ASSIST_PLAYBOOK.md (INFRA-2256, 7 wedge classes)
+    - docs/process/CLAUDE_GOTCHAS.md (141KB, the gotchas)
+    - docs/process/OPERATOR_PLAYBOOK.md (operator directives surface)
+    - docs/process/SUBAGENT_DISPATCH.md (META-069 dispatch contract)
+    - docs/process/SHEPHERD_LOOP_PLAYBOOK.md (Pattern 14, 15)
+    - docs/process/FLEET_SLOS.md (SLO targets)
+    - docs/process/KNOWN_FLAKES.yaml (INFRA-764 catalog)
+    - docs/strategy/MISSION_YIELD.md (headline metric)
+    - docs/strategy/ROADMAP_WAVES.md (prerequisite ordering)
+    - AGENTS.md (canonical Linux Foundation contract)
+    - CLAUDE.md (Claude-Code overlay)
+    - .claude/agents/*.md (14 curator role docs)
+    - Future playbooks (auto-discovered)
+    
+    THE LOOM'S 6 STITCHES:
+    1. Seam-finder: build graph (playbooks → cross-references) + topic-overlap scoring
+    2. Missing-thread detector: asymmetric references (X→Y but Y→X absent), topic-overlap-without-link
+    3. Frayed-edge detector: stale references (X cites Y §3 that no longer exists; gap-ID in CLOSED state)
+    4. Conflict-warning: semantic disagreement detection (keyword-pair conflicts on canonical topics like admin-merge / escalation / claim-discipline)
+    5. Auto-publish: generate docs/process/DOCTRINE_INDEX.md (canonical entry point) + docs/process/DOCTRINE_GRAPH.md (Mermaid visualization)
+    6. Live injection: SUBAGENT_DISPATCH.md briefing-context includes the doctrine graph subset relevant to the gap; agents read playbooks with the weave-context preloaded
+    
+    EMITS (new ambient kinds): doctrine_weave_tick, doctrine_weave_orphan, doctrine_weave_asymmetry, doctrine_weave_frayed_edge, doctrine_weave_conflict_warning, doctrine_weave_score, doctrine_index_regenerated
+    
+    DEPENDS ON / INTEGRATES WITH:
+    - INFRA-1146 (roadmap-status drift) — extend with doc-to-doc check
+    - md-links curator — synergy on link verification
+    - INFRA-2165 (umbrella context injection) — extend to inject doctrine graph
+    - Quartermaster auto-fixers (META-225) — sibling daemon pattern
+    - META-247 measurement umbrella — weave-score is a metric
+    
+    DECOMPOSE INTO SUB-SLICES via chump gap decompose after META-247 keystone (META-248 daemon emission fix) lands.
+  acceptance_criteria:
+    - "1. Sub-gaps filed via chump gap decompose covering: scanner, graph-builder, asymmetry-detector, frayed-edge-detector, conflict-warning, INDEX-generator, GRAPH-generator, launchd installer, ambient event registration, SUBAGENT_DISPATCH integration, tests\n2. scripts/coord/doctrine-loom-daemon.sh — every 30 min, scans the playbook set, builds graph, runs 4 detectors, emits ambient events, regenerates INDEX.md + GRAPH.md\n3. docs/process/DOCTRINE_INDEX.md — auto-generated canonical entry point listing every playbook (path, topics, last-modified, weave-score, inbound-reference-count)\n4. docs/process/DOCTRINE_GRAPH.md — auto-generated Mermaid diagram of cross-reference graph\n5. 6 new ambient kinds registered in EVENT_REGISTRY.yaml: doctrine_weave_tick, doctrine_weave_orphan, doctrine_weave_asymmetry, doctrine_weave_frayed_edge, doctrine_weave_conflict_warning, doctrine_weave_score\n6. SUBAGENT_DISPATCH.md updated: every dispatch's 'Read first' section auto-includes the doctrine-graph subset for the gap's topic vector\n7. scripts/dev/doctrine-weave-leaderboard.sh — daily roll-up showing weave-score trend + top-5 frayed edges\n8. docs/process/DOCTRINE_INDEX.md is itself self-referential (lists itself + the loom daemon as governing primitives)\n9. Smoke test scripts/ci/test-doctrine-loom-emission.sh asserts daemon tick exits 0 + emits expected kinds\n10. The Loom daemon respects the no-escalation doctrine (META-207): files gaps for issues but never pages operator unless T4 trigger"
+  notes: |
+    Filed under operator's seamstress directive 2026-05-31T17:15Z. Pairs with META-247 (PR_RESCUE_PROCEDURE operationalization). Both are doctrine-level measurement + maintenance. Together they make the entire procedure ecosystem load-bearing.
+  outcome_id: MISSION-010
+

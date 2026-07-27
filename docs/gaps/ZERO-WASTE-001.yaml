@@ -1,0 +1,12 @@
+- id: ZERO-WASTE-001
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: audit stale worktrees > 1d old — cleanup script + CI gate"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Create scripts/ops/audit-stale-worktrees.sh: scan .claude/worktrees/ + /private/tmp/chump-*, list branches last-modified > 24h ago, check for orphaned leases\",\"Implement pruning logic: report git worktrees with no matching lease in .chump-locks/ AND branch > 24h old (read-only audit, NOT auto-delete — pruning is INFRA-1347 scope)\",\"Event emission: worktree_stale_detected with path, age_hours, and reason (orphaned_lease vs no_lease_ever_existed)\",\"Register worktree_stale_detected in EVENT_REGISTRY.yaml\",\"Test scripts/ci/test-audit-stale-worktrees.sh: create temp worktrees with backdated mtimes, verify audit detects + reports correctly\",\"Out of scope: --execute deletion (handled by INFRA-1347 worktree-prune.sh); this gap is READ-ONLY audit\"]"
+  closed_date: '2026-05-16'
+  closed_pr: 2097
+  outcome_id: ZERO-WASTE-000
+

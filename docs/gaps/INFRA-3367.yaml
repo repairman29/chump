@@ -1,0 +1,9 @@
+- id: INFRA-3367
+  domain: INFRA
+  title: "audit-required-tail: shard the 12 unsharded serial scripts + preflight mirror (META-086 cluster 5/5)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"audit-required-tail\" — 12 scripts bolted onto the audit-required job outside the INFRA-2565 shard matrix, running serially and un-parallelized.\n2. Move these 12 steps into the audit-shard matrix (assign each to whichever of shard 1-4 fits its theme, per the existing shard comments in .github/workflows/audit.yml) so they benefit from the 4-way parallelism; audit-required goes back to being a thin aggregate-only job.\n3. For each of the 12 scripts, also add a preflight.rs mirror entry (same standard as the other 4 clusters).\n4. Verify CI wall-clock for the audit workflow does not regress (shard max-time should not exceed pre-change audit-shard max, since these were previously serial add-ons).\n5. bash scripts/ci/test-audit-job-decomposition.sh still passes; update the doc's mirrored column for this cluster in the same PR.\n6. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+

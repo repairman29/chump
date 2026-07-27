@@ -1,0 +1,19 @@
+- id: INFRA-1849
+  domain: INFRA
+  title: "RESILIENT: harvest mission-engine-service Supabase plus Redis plus LLM choreographer pattern for Chump gap-decompose pipeline"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Read repairman29/mission-engine-service via gh api; document the service to persistent state to cache to LLM pipeline (Supabase state, Redis cache, LLM prompt) in docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    - "Map onto Chump gap-decompose pipeline: today decompose calls LLM directly with no caching layer and no persistent prompt-history; mission-engine pattern adds both"
+    - Replace inline cache shape with Chump-native equivalents — state.db replaces Supabase (or stays as-is), .chump/decompose_cache.db replaces Redis (sqlite is fine for single-machine), LLM call stays
+    - Refactor src/decompose.rs to delegate to a new src/decompose_choreographer.rs that handles cache lookup, cache miss, LLM call, cache write — keep decompose.rs as the public API
+    - "Smoke test scripts/ci/test-decompose-cache.sh: same gap decomposed twice produces second call from cache (no LLM hit), measured via mock-services CP-009"
+    - "Cache invalidation: per-gap cache entry expires when gap description or acceptance_criteria mutates (state.db trigger)"
+    - Ambient event kind=decompose_cache_hit emitted per cache hit, with gap_id and age fields
+    - "Vendoring lineage comment in src/decompose_choreographer.rs: 'Vendored pattern from repairman29/mission-engine-service at commit SHA (CP-017)'"
+    - Cross-pollination brief CP-017-mission-engine-choreographer.md
+    - Coordinate with INFRA-1719 tree-sitter AST crawler — the AST signal is one of the inputs that should feed the decompose prompt cache key
+  outcome_id: MISSION-010
+

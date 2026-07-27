@@ -1,0 +1,15 @@
+- id: INFRA-2167
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124 — ExternalRepoContract typed handoff for Mode D customer-repo dispatch (META-123 sibling)"
+  status: closed
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    Closed as duplicate of INFRA-2111 (shipped via PR #2700). curator-opus-handoff filed this during META-124 review based on a grep that truncated before reaching ExternalRepoContract in crates/chump-handoff/src/contracts.rs. Verified by orchestrator: file has all 4 contracts at L701, INFRA-2111 gap status=done. No work needed. Lesson for META-125 consensus aggregator: cross-validate curator claims against current main, not just stated premises.
+  outcome_id: MISSION-010
+

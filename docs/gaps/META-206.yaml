@@ -1,0 +1,24 @@
+- id: META-206
+  domain: META
+  title: "EFFECTIVE: bot-merge INFRA-2133 mode-A routing should exempt docs/design-only gaps — add domain/effort exception to Mode B"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    scripts/coord/bot-merge.sh INFRA-2133 mode-A routing (line ~1591) defaults ALL gaps to chump-integrator batch queue when NATS is reachable. This is wrong for docs/design-only gaps (no Rust code → integrator batching adds latency for zero benefit).
+    
+    OBSERVED 2026-05-30: META-198 (design-only PR shipping docs/design/NATIVE_MERGE_QUEUE_MIGRATION.md) was intercepted by mode-A routing despite touching only .md files. Sonnet had to manually push with Bot-Merge-Bypass trailer.
+    
+    Routing decision at line 1591 sets `_BM_MODE="A"` as default. No exception exists for:
+    - domain == META or DOC
+    - effort == xs
+    - diff containing only .md files (no .rs, no Cargo.toml, no scripts/)
+    
+    Supersedes INFRA-2307 (same issue, filed at INFRA domain — close that one as duplicate).
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

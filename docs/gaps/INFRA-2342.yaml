@@ -1,0 +1,13 @@
+- id: INFRA-2342
+  domain: INFRA
+  title: in-session URGENT-INBOX polling — running Claude Code sessions miss mid-session fix_trunk signals
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

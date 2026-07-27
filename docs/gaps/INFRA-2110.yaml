@@ -1,0 +1,20 @@
+- id: INFRA-2110
+  domain: INFRA
+  title: "EFFECTIVE P1: curator-opus-scout role doc — first-touch repo intent reader (META-123 C1)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    META-123 C1: Define the curator-opus-scout role — first-touch repo intent reader. Scout is the entry point of the 7-role external-repo pipeline. It reads README/CLAUDE.md/ideas/TODO.md/IMPLEMENTATION.md/ROADMAP.md, last 20 commits, open issues/PRs; surfaces a prioritized backlog grounded in the maintainer's roadmap (not generic /health work). Hands off to external-collab for triage. Operator-sensitive: this is a role design call — file the doc as design first; if the operator wants the role split into Scout-ingest + Scout-propose, refile as a sub-pair.
+  acceptance_criteria:
+    - New file .claude/agents/curator-opus-scout.md following the curator-opus-target/decompose/shepherd format (frontmatter with name/description/tools; body with Lane scope, Session start inbox watcher, Standard work-your-lane protocol, Discipline rules, Don't section, Cross-references).
+    - "Lane scope MUST be hard-bounded to external repo first-touch only — cloning, reading intent inputs (README, CLAUDE.md, AGENTS.md, ideas/TODO.md, IMPLEMENTATION.md, ROADMAP.md, docs/ROADMAP.md), summarizing last 20 commits + open issues, surfacing N proposed gaps with confidence (high/med/low) + source-of-evidence per gap. Scout does NOT: claim work, dispatch subagents, edit external repo files, decide priority (that's external-collab + operator)."
+    - "Standard 5-step work-your-lane protocol referencing the canonical loop driver (file as a stub script ref: scripts/coord/scout-loop.sh — filed as follow-up if not present; this agent body is discipline source-of-truth until then, matching curator-opus-target pattern)."
+    - "Discipline rules: never touch internal Chump main checkout, never push to external repo without operator approval, never invent ACs (every proposed gap MUST cite source-of-evidence pointing to a specific input file's section), cap each iter at 12 minutes."
+    - "Cross-references section linking: docs/strategy/MARKET_POSITIONING_2026-05-27.md Bet-1+Bet-2 (Marcus M-B canonical demo arc); META-123 (umbrella); INFRA-2108 (chump onboard CLI is the wrapper that invokes Scout); .claude/agents/decompose.md (downstream consumer); .claude/agents/external-collab.md (handoff target)."
+    - Voice-lint clean (no 'leverage'; use 'advantage'/'lift'/'impact').
+  depends_on: [META-123]
+  closed_date: '2026-05-29'
+  closed_pr: 2702
+  outcome_id: MISSION-010
+

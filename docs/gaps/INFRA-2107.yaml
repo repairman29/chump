@@ -1,0 +1,10 @@
+- id: INFRA-2107
+  domain: INFRA
+  title: "RESILIENT: chump-coord work-board complete needs Open→Claimed→Complete; auto-claim on direct complete OR clearer error"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "- Repro:\n    $ chump-coord work-board post some-gap class \"title\"\n    SUBTASK-abc12345\n    $ chump-coord work-board complete SUBTASK-abc12345\n    [chump-coord] cannot complete SUBTASK-abc12345: subtask is in state Open, not the expected state\n- Root cause: the work-board state machine requires Open → Claimed → Complete. `complete` rejects subtasks in `Open` because it expects them to have been claimed first. Discovered while closing the derelict demo loop on 2026-05-28.\n- Why this hurts: a single-agent flow (or operator running the demo solo) wants to mark \"I did the work\" without first claiming. The current message names the *state* but not the *missing transition*, so the next thing the user tries is usually `claim` then re-`complete` after squinting.\n- Fix options (pick one):\n    (a) Allow `work-board complete` from `Open` directly when there's no other claimant; emit a one-line note that the implicit claim was performed.\n    (b) Improve the error message to be remedy-shaped: `cannot complete SUBTASK-abc12345 from state Open: run \\`chump-coord work-board claim SUBTASK-abc12345\\` first`.\n- Verify: after fix, the demo loop (post → complete on a single agent) works without a manual claim step. Or, the error message names the exact next command to run.\n- Cross-references: discovered during INFRA-2102 Phase 2 / derelict end-to-end demo. See docs/strategy/NATS_A2A_DEMO_2026-05-28.md."
+  outcome_id: MISSION-010
+

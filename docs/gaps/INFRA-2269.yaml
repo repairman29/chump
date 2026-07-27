@@ -1,0 +1,22 @@
+- id: INFRA-2269
+  domain: INFRA
+  title: "EFFECTIVE: chump keys — per-org Anthropic + GitHub key vault with scope isolation (encrypted local store; scope precedence repo>user>org>global; multi-tenant substrate prerequisite)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Filed 2026-05-30. Env-var BYOK (CHUMP_AUTH_MODE + ANTHROPIC_API_KEY + CLAUDE_CODE_OAUTH_TOKEN) works for single-operator. For paying-customer / multi-org scope (multi-tenant consumer surfaces), need per-org key vault with scope isolation. Substrate-layer primitive; vault lives in Chump, consumer surfaces call into it.
+  acceptance_criteria:
+    - "chump keys add <key-name> --value <value> --scope <global|org|user|repo> [--org NAME | --repo PATH]: stores in encrypted local vault; value never echoed to stdout/stderr/logs"
+    - "chump keys list [--scope X] [--json]: shows key-name + scope + created-ts + last-accessed-ts (NEVER values); --json for machine output; default human table"
+    - "chump keys get <key-name> [--scope X]: retrieves value; if vault encrypted with passphrase, gated by passphrase prompt (with CHUMP_VAULT_PASSPHRASE env var bypass for CI/scripts)"
+    - "chump keys remove <key-name> --scope X: removes from vault; emits kind=key_removed (fields: key_name_hash, scope)"
+    - "Vault backend: ~/.chump/keys.db (SQLite via sqlcipher) OR ~/.chump/keys.age (age-encrypted JSON); operator chooses via chump keys init --backend [sqlcipher|age]; default age for portability"
+    - "Per-call scope precedence: repo > user > org > global; worker reads from vault first via chump_keys::resolve(name), falls back to env vars (existing behavior preserved for backwards compat)"
+    - "Audit log: kind=key_accessed (fields: key_name_hash, scope, caller_session, ts) — values NEVER logged; key_name_hash is SHA256-prefix not raw name; new kind registered in EVENT_REGISTRY.yaml with effect_metric set"
+    - "Smoke test scripts/ci/test-keys-vault.sh: <60s, asserts add/list/get/remove + scope precedence + no plaintext key value in vault file at rest (file read + grep -c <value> == 0)"
+    - chump preflight runs smoke when crates/chump-keys/* OR src/web_server.rs SECRET_KEYS list touched
+    - README + CLAUDE.md Auth modes section updated with vault path; cross-link to existing CHUMP_AUTH_MODE knob
+  source_doc: docs/gaps/META-067.yaml
+  outcome_id: MISSION-010
+

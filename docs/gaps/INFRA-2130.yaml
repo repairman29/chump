@@ -1,0 +1,11 @@
+- id: INFRA-2130
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C2 chump-integrator-daemon core — new Rust binary crates/chump-integrator (Phase 1 dry-run only)"
+  status: done
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - "- New Rust crate at crates/chump-integrator/ following the chump-coord pattern (Cargo.toml, src/main.rs, src/lib.rs, src/cycle.rs, src/policy.rs). Single bin target `chump-integrator`.\n- Polls NATS work-board every 15s (configurable via CHUMP_INTEGRATOR_POLL_S) for gaps with status=ready_to_ship AND mode=batched (default).\n- Lifecycle steps 1-5 fully implemented (CLAIM via chump-coord atomic CAS slot lock, SELECT via priority+queue-time sort, MERGE via tokio::process::Command git fetch+merge, PREFLIGHT via shell-out to chump preflight or bash scripts/dev/cross-build-linux.sh, DECISION).\n- Phase 1 SCOPE: in dry-run mode the daemon stops AFTER preflight, logs \"WOULD HAVE SHIPPED N gaps: <manifest>\" to ~/.chump/integrator-dry-run.log AND emits ambient kind=integration_cycle_dry_run_completed. Steps 6 (SHIP/BISECT), 7 (CLEANUP) deferred to C8 + later phases.\n- Env knobs (all optional, sensible defaults): CHUMP_INTEGRATOR_CADENCE_MIN=30, CHUMP_INTEGRATOR_VOLUME_THRESHOLD=5, CHUMP_INTEGRATOR_LOC_BUDGET=1500, CHUMP_INTEGRATOR_MAX_BATCH=10, CHUMP_INTEGRATOR_PREFLIGHT_TIMEOUT_S=480, CHUMP_INTEGRATOR_DRY_RUN=1 (default 1 for Phase 1).\n- Idempotent: re-entry mid-cycle reads the active integration-slot KV and resumes from last completed step.\n- Graceful NATS-unavailable fallback: polls state.db directly (same query) and warns to log.\n- Emits ambient events kind=integration_cycle_started, integration_candidates_selected, integration_branch_merged (per candidate), integration_preflight_started, integration_preflight_failed (per step).\n- 12+ unit tests in tests/, 4+ integration tests in tests/integration/. Tests use serial_test for env-mutating cases.\n- Cargo fmt + clippy -D warnings + check clean.\n- Cross-references INFRA-2132 (registers the event kinds), INFRA-2131 (the launchd installer), INFRA-2136 (bisect-step which extends step 6)."
+  closed_date: '2026-05-29'
+  outcome_id: MISSION-010
+

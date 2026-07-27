@@ -1,0 +1,16 @@
+- id: INFRA-2522
+  domain: INFRA
+  title: "RESILIENT P1: collapse local commit/push gates — 2021-line pre-commit (45 blocks) + 1307-line pre-push (48 blocks) down to ~3 fast local checks (fmt, cargo check, identity/claim); move all depth to CI"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "pre-commit + pre-push each enforce <=3 fast checks (target <10s total): formatting, compile/syntax, claim/identity"
+    - every other current block-point (obs-budget, rust-first, redundancy, ac-completeness, registry-coverage, preflight-parity, bypass-trailer, etc.) moves to CI as a single parallel job OR is deleted
+    - net local block-points drop from ~93 to <=6
+    - "measured: time-to-first-commit and bypass-trailer invocations both fall"
+  notes: |
+    [2026-06-04T00:06:13Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2988
+  outcome_id: MISSION-010
+

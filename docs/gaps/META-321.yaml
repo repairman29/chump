@@ -1,0 +1,14 @@
+- id: META-321
+  domain: META
+  title: Mirror docs/content/product-surface gates cluster into chump preflight (META-086 follow-up)
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    META-086 cluster follow-up: mirror the Docs / content / product-surface gates cluster (17 scripts) from ci.yml fast-checks job into chump preflight. See docs/process/AUDIT_JOB_DECOMPOSITION.md for the full script list.
+  acceptance_criteria:
+    - "Every script in the Docs / content / product-surface gates cluster (check-release-staleness, test-book-sync-guard, test-cli-fleet-coord, test-cli-help, test-cli-integration, test-cross-judge-guard, test-css-token-discipline, test-doc-freshness, test-effective-010-completion, test-infra-250-v1-retirement, test-infra-254-pwa-root-redirect, test-infra-257-doc-only-guards, test-no-claude-leak, test-preflight-ci-parity, test-prereg-content-guard, test-research-026-preflight, test-self-hosted-runner-deps) is either mirrored as a GateKind::Scripts gate in src/preflight.rs, or classified Tier-D in docs/process/CI_GATES_INVENTORY.md with a reason"
+    - docs/process/AUDIT_JOB_DECOMPOSITION.md 'Mirrored?' column updated to yes for every mirrored script in this cluster
+    - scripts/ci/test-preflight-ci-parity.sh passes for the newly-mirrored scripts
+  depends_on: [META-086]
+

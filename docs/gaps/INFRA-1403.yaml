@@ -1,0 +1,12 @@
+- id: INFRA-1403
+  domain: INFRA
+  title: "RESILIENT: CHUMP_TEST_GATE auto-bypass when no Rust files staged + retry on flaky shape (INFRA-764 catalog match)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-15/16: every push this session needed CHUMP_TEST_GATE=0 because the pre-push test suite has known flakes (INFRA-764 catalog). The catalog + scripts/ci/cargo-test-with-rerun.sh exist BUT pre-push hook does not use them — it calls plain `cargo test --bin chump --tests` and any flake kills the push.\",\"scripts/git-hooks/pre-push: (a) if zero Rust files staged in this push range, skip the test gate entirely. (b) Otherwise call cargo-test-with-rerun.sh instead of plain cargo test — auto-rerun once on known-flake failures per docs/process/KNOWN_FLAKES.yaml. (c) If still failing AND only known-flake tests fail, emit kind=pre_push_flake_recovered and allow push.\",\"Emit kind=pre_push_test_gate_skipped {reason: no_rust_changes "
+    - " flake_recovered} to ambient.jsonl per skip event so audit trail surfaces the bypass.\",\"Register pre_push_test_gate_skipped in EVENT_REGISTRY.yaml\",\"Smoke test scripts/ci/test-pre-push-flake-retry.sh: synthetic push with only .md changes, assert test gate skipped; synthetic push with stub-flake test in KNOWN_FLAKES, assert rerun-and-recover path fires.\",\"Out of scope: removing the test gate (INFRA-1138 + INFRA-1374 cover broader cargo-test isolation)\"]"
+  closed_date: '2026-05-16'
+  outcome_id: MISSION-010
+

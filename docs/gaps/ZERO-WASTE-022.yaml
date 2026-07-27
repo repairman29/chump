@@ -1,0 +1,11 @@
+- id: ZERO-WASTE-022
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: ghost-gap-reaper detects merged-but-open gaps but 'failed to ship' on flip — post-YAML-retirement residue in its gap-ship call; use chump gap set done path"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "The change described by \"ghost-gap-reaper detects merged-but-open gaps but 'failed to ship' on flip — post-YAML-retirement residue in its gap-ship call; use chump gap set done path\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

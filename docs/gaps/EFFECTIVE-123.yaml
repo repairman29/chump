@@ -1,0 +1,16 @@
+- id: EFFECTIVE-123
+  domain: EFFECTIVE
+  title: "EFFECTIVE P0: chump onboard clone-auth picks an INVALID env token before the valid gh-auth token — private clone STILL fails (BEAST-MODE / MISSION-010 blocked)"
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    VERIFIED 2026-06-04 by running `chump onboard https://github.com/repairman29/BEAST-MODE` AFTER the EFFECTIVE-112 fix deployed (binary rebuilt + installed): onboard now injects a token ('using GITHUB_TOKEN for clone auth, authenticated clone token injected') but the clone STILL fails — 'Invalid username or token. Password authentication is not supported. git clone exited 128.' The EFFECTIVE-112 MECHANISM works (token injection) but its PRIORITY is wrong: it tries $GH_TOKEN -> $GITHUB_TOKEN -> `gh auth token`, so a SET-BUT-INVALID $GITHUB_TOKEN (stale env token) is used BEFORE the VALID `gh auth token` (the gh CLI is authenticated — a manual `gh repo clone` of BEAST-MODE succeeds). FIX: (a) prefer `gh auth token` for github.com when gh is authenticated, OR (b) validate each token (test-auth) and fall THROUGH to the next source on failure, OR (c) use `gh repo clone` (which uses gh's own valid auth). Also flag the stale env $GITHUB_TOKEN for refresh/removal. This unblocks the BEAST-MODE 0->1 mission (MISSION-010): until it lands, Chump cannot read the repo it is meant to build.
+  acceptance_criteria:
+    - "chump onboard clones a PRIVATE repo with a VALID token — verified against repairman29/BEAST-MODE: the clone succeeds and the first-touch scan runs"
+    - onboard falls through to the next auth source (and ultimately `gh auth token`) when an earlier token is invalid, instead of failing on the first
+    - a test covers invalid-first-token -> valid-fallback
+    - "`chump onboard https://github.com/repairman29/BEAST-MODE` completes end-to-end"
+  closed_pr: 3036
+  outcome_id: MISSION-010
+

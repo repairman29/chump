@@ -1,0 +1,19 @@
+- id: INFRA-1842
+  domain: INFRA
+  title: "CREDIBLE: vendor BEAST-MODE AuditLogger pattern for Chump compliance and audit gating (lib/enterprise/auditLogger.js)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Read BEAST-MODE/lib/enterprise/auditLogger.js locally and document the structured-entry shape (action, userId, timestamp, resource, changes, result, metadata, queryable by userId and action) in docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+    - In-memory ring buffer with 10k entries plus disk-persistence backing — document the persistence strategy and rotation rules
+    - Map BEAST-MODE audit shape onto Chump's existing audit surfaces (.chump-locks/ambient.jsonl for events, .chump/state.db for gap mutations, scripts/dispatch/audit logs) — identify the gap that AuditLogger fills
+    - Port the queryable-buffer primitive into src/audit_log.rs as a Rust-native module — do not import the JS, rebuild the schema in our stack
+    - Add chump audit query --user X --action Y --since 24h subcommand that returns structured JSON
+    - "Smoke test scripts/ci/test-audit-log.sh: synthetic audit entries, query by action and by user, verify counts"
+    - "Vendoring lineage comment in src/audit_log.rs: 'Vendored pattern from repairman29/BEAST-MODE at commit SHA, original lib/enterprise/auditLogger.js (CP-010)'"
+    - Cross-pollination brief CP-010-beast-mode-audit-logger.md documents the harvest
+    - Coordinate with INFRA-1703 compliance gating and INFRA-1813 HITL approval — the audit log is the substrate for both
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

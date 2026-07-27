@@ -1,0 +1,19 @@
+- id: INFRA-2523
+  domain: INFRA
+  title: "RESILIENT P1: one canonical ship path — collapse bot-merge.sh (4000 LOC) + batched integrator-queue + manual-PR into a single path; delete the other two"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - bot-merge Mode A (batched integrator) is selected ONLY when the integrator is verified healthy — chump-integrator binary present at the daemon plist's ProgramArguments path AND the com.chump.integrator-daemon launchctl last-exit==0; otherwise bot-merge fails-open to Mode B (per-PR auto-merge) and emits kind=bot_merge_mode_failopen with a reason
+    - no gap is ever silently routed to a dead/missing integrator queue — kills the INFRA-2455 limbo + INFRA-1120/2188 ghost class
+    - the integrator-health check is bounded (<=2s, no hang) and computed once per run
+    - a normal 'bot-merge --gap X --auto-merge' opens+arms a PR whenever Mode A is unavailable, so a routine ship no longer needs CHUMP_BYPASS_BOT_MERGE
+    - scripts/ci/test-bot-merge-mode-failopen.sh asserts integrator-unhealthy->Mode B + integrator-healthy->Mode A + bounded check, via a mockable health probe
+    - bot_merge_mode_failopen registered in EVENT_REGISTRY.yaml with scanner-anchor
+    - "follow-ups noted: reconcile stale ready_to_ship ghosts (INFRA-2460), docs (CLAUDE.md + INTEGRATION_CYCLE), eventual full single-path consolidation"
+  notes: |
+    [2026-06-04T00:06:14Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2991
+  outcome_id: MISSION-010
+

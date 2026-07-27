@@ -1,0 +1,14 @@
+- id: META-265
+  domain: META
+  title: "META: Validate overall CI optimization metrics (META-258 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The count of workflow runs per pull request push is measured and confirmed to be ≤10 (down from ~19).
+    - The total job count within `ci.yml` is measured and confirmed to be ≤16 (down from ~24).
+    - A report or dashboard confirms that these target metrics have been met after all changes are deployed.
+  depends_on: [META-259, META-260, META-261, META-262]
+  closed_date: '2026-05-31'
+  outcome_id: MISSION-010
+

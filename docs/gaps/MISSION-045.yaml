@@ -1,0 +1,17 @@
+- id: MISSION-045
+  domain: MISSION
+  title: "MISSION-008 follow-up: outcome_id REQUIRED at reserve for P0 (parallel to CREDIBLE-107 --evidence gate); picker tie-breaks toward traced; --status=done flip requires outcome_id"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`chump gap reserve --priority P0` REQUIRES --outcome <id> where id is a valid row in outcomes table; refuses without it (mirrors CREDIBLE-107 --evidence gate). Bypass: CHUMP_GAP_RESERVE_NO_OUTCOME=1 + emit kind=outcome_gate_bypassed audit event."
+    - "`chump gap set <ID> --status done` (or `chump gap ship`) for P0/P1 gaps refuses to close without outcome_id set. Bypass: same env var. Mirrors how MISSION-008 HARD CONSTRAINT permits — only the P0/P1 path is gated; P2/P3 stay permissionless."
+    - "Picker tie-break: when multiple pickable gaps have equal priority/effort, prefer the one with outcome_id over the one without (encourages tracing without breaking permissionless picking)."
+    - "roadmap-status --exit-on-drift gains TEETH: untraced_open_p0 > 0 → exit 1 (today: signal only, no action). Now that the FK landed (MISSION-008) and reserve is gated (this gap), the original HARD CONSTRAINT in MISSION-008 description (\"do NOT wire roadmap-status --exit-on-drift until AFTER the FK lands\") is satisfied."
+    - "Backfill sweep: audit current 232 untraced open gaps; for each, propose the most likely outcome via heuristic (title/domain pattern matching against the 8 outcomes); operator reviews and bulk-applies. Target: untraced < 30 after one sweep."
+    - "CLAUDE.md gains a Mission-Tracing section: \"Every P0/P1 gap belongs to an outcome. Filed without one → blocked at reserve. Closed without one → blocked at ship.\""
+  notes: |
+    Origin: operator 2026-06-09T04:45Z "WTF I thought all gaps belong to missions and we worked them top to bottom?" Diagnosis: MISSION-008 shipped the SCHEMA but HARD CONSTRAINT explicitly forbade enforcement until follow-up. Current state: 1159 open gaps, 232 untraced (20%), 5 untraced open P0s. The hook tells us; nothing acts. This gap closes that loop. The CREDIBLE-107 pattern (--evidence gate just shipped) is the template. Untraced gaps that pre-date this enforcement: backfilled via heuristic + operator review (no migration retroactive ban).
+  outcome_id: MISSION-010
+

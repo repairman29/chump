@@ -1,0 +1,17 @@
+- id: INFRA-2038
+  domain: INFRA
+  title: "RESILIENT P2: chump gap ship's 15-commit stale-check gates metadata-only status flips (closed_pr already set) — should skip when no code/yaml changing"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Observed (2026-05-25): chump gap ship INFRA-1854 returned branch is 22 commits behind origin/main (threshold 15). Rebase before shipping. Intended op was pure metadata flip — INFRA-1854 already had closed_pr=#2525 set; only status:open to status:done needed."
+    - "Required workaround: CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 chump gap ship INFRA-1854 --closed-pr 2525. Bypass exists but stale-check is mis-applied for metadata flips. Today session needed it 5x for ghost-gap cleanup (INFRA-1854/1855/1857/1858/1859 to done)."
+    - "Root cause hypothesis: stale-check fires unconditionally before chump gap ship logic differentiates between code-shipping and metadata-flip. Stale-check is meaningful when shipping modifies docs/gaps/yaml + bot-merge PR; meaningless when only state.db status field is being updated."
+    - "Fix path A: in chump gap ship, detect metadata-only operation (closed_pr already set AND new closed-pr matches existing AND update-yaml not passed). Skip stale-check. Emit kind=gap_ship_metadata_only ambient event for telemetry."
+    - "Fix path B (less surgical): keep stale-check but warn-only when new closed_pr matches existing, indicating idempotent metadata-only ship."
+    - "Smoke test scripts/ci/test-gap-ship-metadata-only-no-stale.sh — checkout 30 commits behind main; create gap with status:open + closed_pr=12345; run chump gap ship GAP-ID --closed-pr 12345 WITHOUT bypass env; assert exit 0."
+    - Pairs with — META-046 (ghost-gap class, five today triggered this), INFRA-825 (closed_pr integrity guard), L2-SLO-5 ghost-gap target.
+    - Done definition — chump gap ship on metadata-only flip succeeds without CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1; smoke test green; ghost-gap cleanup is friction-free.
+  outcome_id: MISSION-010
+

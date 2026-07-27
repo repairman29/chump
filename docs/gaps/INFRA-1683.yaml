@@ -1,0 +1,18 @@
+- id: INFRA-1683
+  domain: INFRA
+  title: "EFFECTIVE: chump gap set --skills-required flag missing — blocks INFRA-1622 PWA-worker-routing backfill"
+  status: superseded
+  priority: P2
+  effort: xs
+  description: |
+    Discovered 2026-05-22 during INFRA-1622 inspection: AC #2 of INFRA-1622 requires 'chump gap set <ID> --skills-required <csv>' but the flag does not exist on chump gap set. CLAUDE.md FLEET-034 push-routing already documents skills_required as the gap-routing field, and _pick_and_claim_gap.py reads it. The column exists in schema; only the CLI write-path is missing. Once this lands, INFRA-1622 unblocks.
+  acceptance_criteria:
+    - src/main.rs gap subcommand 'set' adds --skills-required flag accepting comma-separated string
+    - the value is persisted into the gaps.skills_required TEXT column (schema_migration.sql shows the column already exists)
+    - "smoke test: chump gap set <ID> --skills-required 'pwa,frontend' && chump gap show <ID> outputs skills_required: 'pwa,frontend'"
+    - "enables INFRA-1622 PWA-worker-routing backfill (currently blocked since 2026-05-22 19:55Z+)"
+  notes: |
+    Investigated 2026-05-22 19:58Z: feature is already implemented. src/main.rs:6292 wires --skills-required to GapPatch.skills_required → gap_store.set_fields writes to gaps.skills_required column → format_gap_yaml renders skills_required to YAML (crates/chump-gap-store/src/lib.rs:2018-2031). Verified: chump gap set INFRA-1683 --skills-required 'pwa,frontend,test' persists correctly and renders in YAML mirror. INFRA-1622 (the blocker that filed this gap) is unblocked.
+  skills_required: pwa,frontend,test
+  outcome_id: MISSION-010
+

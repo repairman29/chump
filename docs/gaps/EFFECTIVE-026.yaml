@@ -1,0 +1,19 @@
+- id: EFFECTIVE-026
+  domain: EFFECTIVE
+  title: PWA cockpit daemon-set health panel — render 10-layer autopilot status with green/red indicators
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - New /api/autopilot/daemon-status endpoint (Rust) that shells out to scripts/coord/fleet-autopilot.sh status json
+    - Returns list of 10 layers with plist + loaded status (per META-090 + RESILIENT-021 spec)
+    - New <chump-daemon-set-panel> web component polls every 10s
+    - "Each daemon row: name + status pill (green=loaded, amber=plist-present-not-loaded, red=absent)"
+    - Click-row shows last 20 lines from .chump-locks/autopilot-logs when available
+    - Renders in PWA cockpit alongside existing <chump-autopilot-toggle> (PRODUCT-115)
+  notes: |
+    PR #2770 open, auto-merge armed, CI running
+  closed_date: '2026-06-05'
+  closed_pr: 2770
+  outcome_id: EFFECTIVE-000
+

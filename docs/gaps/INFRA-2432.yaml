@@ -1,0 +1,33 @@
+- id: INFRA-2432
+  domain: INFRA
+  title: "RESILIENT: trunk red — main ci.yml failing on [audit,audit-required] (fp=3fb93c628432)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Trunk-sentinel detected main ci.yml has been RED for 5m.
+    
+      - Run ID: 26829771730
+      - Head SHA: 55d3757a8e5825c88e2d05305c3881d29b668b19
+      - Failing jobs: audit,audit-required
+      - Fingerprint: 3fb93c628432
+    
+    This gap was auto-filed by scripts/coord/trunk-sentinel-daemon.sh. The
+    fingerprint above is sha256(sorted failing-job names) so a second tick with
+    the same failure set will NOT re-file. A different failure pattern (a new
+    failing job appears) WILL file a new gap.
+    
+    Recommended workflow:
+      1. Inspect the run: gh run view 26829771730
+      2. Identify the root commit (gh log origin/main --oneline -5).
+      3. Either revert the offending commit OR file a forward fix.
+      4. When main is green again the sentinel will emit trunk_recovered and
+         close this gap.
+    
+    This is a fleet-halt-class wedge: every other PR currently in flight will
+    land BEHIND a red trunk; bot-merge will refuse to arm new ones until green.
+  acceptance_criteria:
+    - "1. ci.yml audit job passes on main (no 'expected exit 1, got 0' from test-no-manual-ship-bypass.sh Test 2). 2. test-no-manual-ship-bypass.sh passes locally (7/7). 3. Root cause: git commit-tree fails in CI without author identity, falling back to real HEAD which has Bot-Merge-Bypass trailer; fix must set GIT_AUTHOR_NAME/GIT_COMMITTER_NAME before commit-tree call."
+  skills_required: fix_trunk,ci_repair
+  outcome_id: MISSION-010
+

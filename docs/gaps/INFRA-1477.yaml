@@ -1,0 +1,18 @@
+- id: INFRA-1477
+  domain: INFRA
+  title: "EFFECTIVE: live flight-radar dashboard for active fleet runs"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Audit miss from 2026-05-15. Persona-1 described the cockpit he wanted as 'a flight controller's radar screen, but local' — a matrix of active worktrees with state, validation status, resource tax, and per-row action buttons. Today chump --web exists but presents a queue/PR-list view, not a real-time per-worktree status matrix during an active fleet run. The semantic-rollup view (INFRA-1455) is post-run consolidation; this gap is in-run observability.
+  acceptance_criteria:
+    - "chump --web /fleet renders a real-time matrix with one row per active worktree: gap-id, agent state (writing / testing / paused / blocked / done), local validation status (pending / passing / failing test name), resource tax (CPU / memory / wallclock since claim), action column (intervene / inspect / scrap)"
+    - Updates streamed from ambient.jsonl with sub-second latency
+    - Color coding by agent state — green/yellow/red — for at-a-glance scan
+    - Click on a row opens chump inspect for that gap inline
+    - Sort/filter by state, resource, gap-id
+    - Works with both pull-mode and NATS push-mode fleets
+    - "CI test: start a 5-agent fleet, verify all 5 rows render with correct state transitions in under 5 seconds; intentionally wedge one, verify color flips to red and inspect button appears"
+  outcome_id: MISSION-010
+

@@ -1,0 +1,11 @@
+- id: INFRA-1517
+  domain: INFRA
+  title: "CREDIBLE: enforce effect_metric required on new EVENT_REGISTRY.yaml entries in pre-commit"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - 1. pre-commit-bootstrap-manifest.sh (or a new hook) checks that every new EVENT_REGISTRY.yaml entry added by the PR has an effect_metric field. 2. Hook exits non-zero with a clear message listing the missing-effect_metric event kind(s). 3. Hook is skipped if CHUMP_EFFECT_METRIC_CHECK=0 (bypass with trailer). 4. CI scripts/ci/test-event-registry-effect-metric-hook.sh validates the hook catches a synthetic missing entry. 5. Fixes root cause of audit CI exit-code-3 pattern that blocked 8+ PRs on 2026-05-16 (INFRA-1399 added bot_merge_stall_detected + bot_merge_test_gate_skipped without effect_metric).
+  closed_pr: 2281
+  outcome_id: MISSION-010
+

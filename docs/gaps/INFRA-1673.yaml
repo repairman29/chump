@@ -1,0 +1,20 @@
+- id: INFRA-1673
+  domain: INFRA
+  title: "EFFECTIVE: doc the local-CI discipline in AGENTS.md + CLAUDE.md hot overlay (mandate via memory)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Make local CI discipline a written rule, not folklore. Adds it to AGENTS.md (canonical agent rules) + CLAUDE.md (hot overlay) so every new contributor — human or agent — finds it on first read. Also mentions chump preflight in the standard PR template + claim flow.
+  acceptance_criteria:
+    - "AGENTS.md adds 'Local CI discipline (mandatory)' section: 'before every push that touches Rust or scripts, run chump preflight. Bypass only with CHUMP_PREFLIGHT_SKIP=1 + audit-logged reason in commit body'"
+    - CLAUDE.md hot overlay adds same to the 'Hard rules' section
+    - docs/process/CLAUDE_GOTCHAS.md adds 'Why CI was slow — local-CI was skipped' historical note linking INFRA-1670/1671/1672
+    - "scripts/coord/chump-commit.sh greps the commit body for 'Preflight-Skip-Reason:' trailer; warns if pushing without it post-INFRA-1670 ship"
+    - chump gap claim output mentions 'remember to chump preflight before push' in the post-claim hint
+  notes: |
+    xs-effort — pure documentation + one trivial chump-commit.sh addition. Can ship FIRST (before INFRA-1670 even lands) to lock in the discipline; the tool catches up.
+  closed_date: '2026-05-22'
+  closed_pr: 2311
+  outcome_id: MISSION-010
+

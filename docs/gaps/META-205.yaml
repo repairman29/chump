@@ -1,0 +1,28 @@
+- id: META-205
+  domain: META
+  title: Quartermaster role + shelfware-audit daemon (ship-count-triggered, 30m floor) — operationalize new ships into curator workflows
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Operationalize new ships: every NNN ships landed on main, audit whether ANY curator role doc references the shipped artifact (gap_id or filename) — if not, file a follow-up gap so the role grows the reference. The 7-persona overlay (operator-MEMORY: project_multi_agent_factory) says Quartermaster is the persona that owns this surface. Today, the role doesn't exist on disk — it lives only in operator memory. Without it, every ship that ships a new daemon/cli/protocol becomes shelf-ware: present on disk, absent from any curator's playbook. Rough shape: (1) .claude/agents/quartermaster.md — role-def doc following ci-audit.md/decompose.md format, includes ship-count-triggered cadence rule, lane boundaries vs shepherd/ci-audit/decompose/infra-watcher; (2) scripts/coord/quartermaster-audit-loop.sh — bash daemon, ~150 LOC, polls git log origin/main against checkpoint at .chump/quartermaster-checkpoint.json, fires audit when (ships_since_last >=5) OR (now-last_audit >=30min AND ships >=1), greps role docs for each gap_id, emits ambient + reserves follow-up gaps with self-throttle (max 5 follow-ups per run, deferred written to .chump/quartermaster-deferred.jsonl); (3) scripts/launchd/com.chump.quartermaster-audit.plist + bootstrap entry so daemon ticks every 5 min; (4) docs/process/PROCEDURES/ dir + one seed procedure rotate-sccache-r2.md (operator-shippable how-to derived from scripts/ops/rotate-sccache-r2-token.sh + rotate-sccache-r2-gh-only.sh); (5) ambient kinds shelfware_detected + shelfware_audit_run registered via scanner-anchor comments (EVENT_REGISTRY.yaml is collision-prone); (6) smoke test scripts/ci/test-quartermaster-audit.sh — runs the loop against a synthetic git history + role-doc set, asserts (a) fires at 5 ships, (b) fires at 30min+1ship, (c) does NOT fire at 0 ships, (d) emits both ambient kinds, (e) self-throttles at 5 follow-ups, (f) gap_id regex matches all 10 prefixes (INFRA META CREDIBLE RESILIENT EFFECTIVE FLEET DOC MEM VOA SCALE); (7) docs/process/SHIP_ASSIST_PLAYBOOK.md — add Quartermaster section under wedge classes.
+  acceptance_criteria:
+    - ".claude/agents/quartermaster.md exists with lane boundaries (in: shelfware audit / procedure authoring / role-doc sync / daemon-cadence audit; out: PR rescue / CI gates / gap slicing / substrate health)"
+    - scripts/coord/quartermaster-audit-loop.sh implements trigger rule (ships_since_last_audit >= 5) OR (now - last_audit_ts >= 1800s AND ships_since_last_audit >= 1) — never fires on 0 ships
+    - Checkpoint file .chump/quartermaster-checkpoint.json persists {last_audit_sha, last_audit_ts}; first run uses HEAD~5 baseline
+    - Per-merged-PR audit greps .claude/agents/*.md + CLAUDE.md + AGENTS.md + docs/process/*.md + docs/agents/*.md for the gap_id AND for each unique script/doc basename touched in the merge; zero-hit = shelfware
+    - "Shelfware finding emits kind=shelfware_detected {gap_id, artifact, role_candidate} + reserves a follow-up gap titled 'EFFECTIVE: Wire <artifact> into role <best-guess curator>' with concrete AC"
+    - "Self-throttle: max 5 follow-up gaps per audit run; overflow written to .chump/quartermaster-deferred.jsonl (one JSON line per deferred finding) so nothing is lost"
+    - Audit run emits kind=shelfware_audit_run {ships_checked, shelfware_found, gaps_filed, deferred_count} for observability
+    - scripts/launchd/com.chump.quartermaster-audit.plist ticks every 5 min (300s StartInterval), StandardOutPath + StandardErrorPath set, KeepAlive=false (one-shot per tick), included in chump-fleet-bootstrap.sh --check
+    - docs/process/PROCEDURES/ directory created with seed procedure rotate-sccache-r2.md — operator-shippable how-to derived from scripts/ops/rotate-sccache-r2-token.sh + rotate-sccache-r2-gh-only.sh (when to use which, expected output, recovery if rotation half-fails)
+    - "Ambient kinds shelfware_detected + shelfware_audit_run registered via scanner-anchor comment pattern (# scanner-anchor: 'kind':'shelfware_detected' etc) so EVENT_REGISTRY.yaml does not need to be touched (collision-prone)"
+    - scripts/ci/test-quartermaster-audit.sh exercises (a) trigger at >=5 ships, (b) trigger at 30min+1ship, (c) no-fire at 0 ships, (d) both ambient kinds emit, (e) self-throttle caps at 5 follow-ups, (f) gap_id regex matches all 10 prefixes (INFRA|META|CREDIBLE|RESILIENT|EFFECTIVE|FLEET|DOC|MEM|VOA|SCALE)
+    - docs/process/SHIP_ASSIST_PLAYBOOK.md updated with Quartermaster section under wedge classes (no-shelfware-detection is the new wedge class)
+    - "All commits use Co-Authored-By: Claude Sonnet (META-069 dispatch); PR title 'feat(META-205): EFFECTIVE — Quartermaster role + shelfware-audit daemon (ship-count cadence)'; auto-merge armed via scripts/coord/bot-merge.sh --gap META-205 --auto-merge"
+    - Smoke test (scripts/ci/test-quartermaster-audit.sh) passes locally before push; preflight passes (cargo fmt/clippy/check on any Rust touched, none expected for bash-only PR — Rust-First-Bypass trailer with reason 'bash daemon + plist + docs only, no state.db mutation' if pre-commit Rust-First gate fires)
+  notes: |
+    [2026-06-04T00:16:21Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2882
+  outcome_id: MISSION-010
+

@@ -1,0 +1,14 @@
+- id: INFRA-2316
+  domain: INFRA
+  title: fix(noisy alert) — post-push-integrity-watch fails on gh CLI version mismatch (stateReason field unknown); drop the field
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. scripts/coord/post-push-integrity-watch.sh drops 'stateReason' from --json field list (or queries it via separate gh api call if needed)\n2. bash scripts/coord/post-push-integrity-watch.sh exits 0 with no 'gh pr list failed' WARN\n3. post_push_integrity_watch_err stops appearing in ambient.jsonl every minute"
+  notes: |
+    Operator-found: gh CLI on operator machine doesn't recognize stateReason field. Script was suppressing the error with 2>/dev/null. Causing ambient noise every 60s since 17:03Z.
+  closed_date: '2026-05-31'
+  closed_pr: 2898
+  outcome_id: MISSION-010
+

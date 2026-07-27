@@ -1,0 +1,16 @@
+- id: EFFECTIVE-165
+  domain: EFFECTIVE
+  title: "MISSION: Chump autonomous external-repo capability — scout(capable)→implement→VERIFY-AND-MERGE bar→loop; Chump (not the operator/Opus) reads a repo, picks real work, proves it (no-regression + fails-on-base/passes-on-PR test + green CI), and self-merges on merit. Prove on repairman29/BEAST-MODE 0→better-than-before, no human in loop"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-07-20'
+  closed_pr: 3066
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

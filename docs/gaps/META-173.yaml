@@ -1,0 +1,22 @@
+- id: META-173
+  domain: META
+  title: "RESILIENT: curator-loop coverage — ship the 4 missing lane drivers (harvester, orchestrator, context-keeper, scout) + shepherd agent-spec"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Filed 2026-05-30 from APPROACH_AUDIT_2026-05-30.md + CHUMP_PLAYBOOK.md §8 divergence #1 (corrected). Current state: 7 of 12 documented curator lanes have loop drivers (ci-audit, decompose, external-collab, handoff, infra-watcher, md-links, observability). META-171 ships target-loop.sh + opus-shepherd-triage.sh (bringing 9 to coverage). Still missing: (1) harvester-loop.sh, (2) orchestrator-loop.sh (or absorbed into META-090 autopilot), (3) context-keeper-loop.sh, (4) scout-loop.sh, (5) .claude/agents/shepherd.md agent spec (shepherd has docs + scripts but no formal spec file — asymmetry). Each missing loop should mirror the existing pattern (scripts/coord/<role>-loop.sh that emits <lane>_heartbeat per tick).
+  acceptance_criteria:
+    - scripts/coord/harvester-loop.sh exists; emits kind=harvester_heartbeat per tick (registered in EVENT_REGISTRY.yaml); thin wrapper pattern per .claude/README.md
+    - scripts/coord/context-keeper-loop.sh exists; emits kind=context_keeper_heartbeat per tick (registered); reads external-repo memory dir, checks freshness
+    - scripts/coord/scout-loop.sh exists; emits kind=scout_heartbeat per tick (registered); discovers external-repo onboard candidates
+    - EITHER scripts/coord/orchestrator-loop.sh exists with kind=orchestrator_heartbeat, OR docs explicitly note that META-090 autopilot absorbs orchestrator-lane heartbeat (decide via consensus help-request — both are valid)
+    - .claude/agents/shepherd.md agent spec exists (cross-link to SHEPHERD_LOOP_PLAYBOOK.md for full discipline); fills the lane-spec asymmetry flagged in CHUMP_PLAYBOOK.md §2
+    - docs/process/CURATOR_ROSTER.md status column updated — all 12 lanes show ✅ (or ✅ with clear note for orchestrator-absorbed-by-autopilot case)
+    - autopilot_heartbeat curators_alive field jumps from 6 to 10+ after loops ship; if not, file follow-up to debug autopilot lane-discovery
+    - "Smoke test scripts/ci/test-curator-loop-coverage.sh: <30s, asserts every .claude/agents/*.md (or recognized shepherd doc) has a corresponding scripts/coord/<lane>-loop.sh OR a documented exemption; fails CI if a new agent spec lands without a loop driver"
+  source_doc: docs/process/CHUMP_PLAYBOOK.md
+  closed_date: '2026-07-21'
+  closed_pr: 3212
+  outcome_id: MISSION-010
+

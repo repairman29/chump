@@ -1,0 +1,15 @@
+- id: INFRA-1905
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 5 PRs blocked >2h as of 2026-05-24"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping INFRA-1749; reason: INFRA-2301: replace boilerplate AC with concrete tags-wiring AC after reserve
+  outcome_id: MISSION-010
+

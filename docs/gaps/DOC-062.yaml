@@ -1,0 +1,11 @@
+- id: DOC-062
+  domain: DOC
+  title: "EFFECTIVE: refresh ROADMAP.md TL;DR with Wave 1 CI scaling ships (2026-05-28 reality)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. docs/ROADMAP.md TL;DR header date 2026-05-24 → 2026-05-28\n2. New section \"Shipped 2026-05-28 — Wave 1 CI scaling ✅\" lists all 5 Wave-1 PRs (INFRA-2096 keystone, INFRA-2086 wrapper, INFRA-2094 nextest, INFRA-2095 merge_queue gate, INFRA-2093 sccache+R2) with gap-yaml links + PR numbers + one-line outcome each\n3. Operator action checkpoints refreshed: Day +1 → 2026-05-29 (sccache hit-rate observe, merge-queue toggle flip), Day +3 → 2026-05-31 (Wave 1 empirical measurement); subsequent days shifted by the same delta\n4. No broken doc links (chump preflight markdown-intra-doc-links must pass)"
+  closed_date: '2026-05-29'
+  closed_pr: 2691
+

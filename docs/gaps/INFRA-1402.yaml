@@ -1,0 +1,12 @@
+- id: INFRA-1402
+  domain: INFRA
+  title: "RESILIENT: hardcoded-date detector pre-commit gate — catches time-bomb fixtures (INFRA-1368 class)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-16: INFRA-1368 (#2105) shipped scripts/ci/test-cache-mergestatestatus.sh with now = \\\"2026-05-15T22:00:00Z\\\" hardcoded. Test expired 2.7h after merge (max_age_s=9999), broke audit fleet-wide. Fix via INFRA-1384 + sibling. Pattern: any test that backdates/compares against now-fixed timestamps will eventually expire.\",\"Existing pre-commit-hardcoded-dates.sh (scripts/git-hooks/pre-commit-hardcoded-dates.sh) catches ISO-8601 literals BUT only in specific patterns. It missed INFRA-1368 because the timestamp was inside a Python heredoc.\",\"Extend pre-commit-hardcoded-dates.sh to scan inside <<PY heredocs and Python `import` blocks. Detect:  (a) ISO-8601 string literal compared via age math, (b) variable named `now`/`current_ts` set to literal string, (c) datetime.datetime(YYYY,...) literals in test fixtures.\",\"Bypass marker: # chump-fmt: time-bomb-ok at end of the line (existing convention).\",\"Smoke test scripts/ci/test-hardcoded-date-heredoc.sh: stage a fixture file with `now = \\\"2026-05-15T22:00:00Z\\\"` inside a heredoc, assert pre-commit-hardcoded-dates.sh exits 1.\",\"Net effect: future INFRA-1368-style timebombs blocked at commit time, not after they expire in CI.\"]"
+  closed_date: '2026-05-16'
+  closed_pr: 2158
+  outcome_id: MISSION-010
+

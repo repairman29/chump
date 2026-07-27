@@ -1,0 +1,16 @@
+- id: INFRA-1668
+  domain: INFRA
+  title: "RESILIENT: oauth-token-critical.json missing — every critical-lane GitHub call emits github_app_fallback, no fallback path exercised"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Symptom: every critical-lane GitHub API call from queue-driver.sh emits 'github_app_fallback criticality=critical reason=lane_token_missing expected_file=/Users/jeffadkins/.chump/oauth-token-critical.json'. Confirmed by ls ~/.chump/ — only oauth-token.json exists, not oauth-token-critical.json. Likely INFRA-1080's call-criticality system (CLAUDE.md) is configured to use a separate token for critical operations but the token-refresh path was never wired. Net effect: critical calls silently fall back to the standard lane (functional) but the noise floods ambient.jsonl. Fix shape: pick one — (a) update fleet-bootstrap to provision the critical token file, or (b) treat fallback as the default and emit only on transition (per-process sentinel). Option (b) is xs effort.
+  acceptance_criteria:
+    - "Verified 2026-05-22: per-process sentinel _CHUMP_GH_FALLBACK_NOTICED in scripts/coord/lib/github.sh:451 already limits to one emit per process; ambient noise = N short-lived cron-tick scripts × 1 emit each (queue-driver.sh, pr-rescue.sh, bot-merge.sh fire as separate processes)"
+    - "Fix shape A (preferred): day-level sentinel file at .chump-locks/gh-fallback-acked-<YYYY-MM-DD> — skip emit when file exists, touch it on first emit of the day. Limits ambient noise to 1 event per machine per day rather than 1 per process"
+    - "Fix shape B: gate emit on CHUMP_GH_LEGACY_AUTH_OK=1 env so operators on legacy path silence the notice via env, not code change"
+    - CI test scripts/ci/test-github-fallback-noise-budget.sh runs 5 distinct fleet scripts in a row and asserts at most 1 github_app_fallback emit total (vs. current 5+)
+    - "docs/process/OPERATOR_RUNBOOK.md adds a paragraph: 'the fallback notice is informational; provision lane tokens (Steps 1-6) only when seeing graphql_exhausted under sustained load — proven by PR #2310 merging cleanly on legacy path 2026-05-22'"
+  outcome_id: MISSION-010
+

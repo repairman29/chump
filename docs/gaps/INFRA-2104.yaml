@@ -1,0 +1,34 @@
+- id: INFRA-2104
+  domain: INFRA
+  title: "RESILIENT: chump-worker bin fails Linux cross-build — chump_coord::worker module not public"
+  status: closed
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "- Repro: `docker run --rm -v $(pwd):/src:ro -v /tmp/build:/target -w /src -e CARGO_BUILD_RUSTC_WRAPPER='' -e CARGO_TARGET_DIR=/target rust:1.95-slim sh -c 'apt-get update -qq && apt-get install -y -qq pkg-config libssl-dev cmake >/dev/null 2>&1; cargo build --release -p chump-coord'` — main `chump-coord` bin builds, sibling `chump-worker` bin fails with `error[E0432]: could not find 'worker' in 'chump_coord'`.\n- Root cause: `crates/chump-coord/src/bin/chump-worker.rs:29` imports `chump_coord::worker::{run_one_cycle, CycleEnv, CycleOutcome}` but `chump-coord/src/lib.rs` does not `pub mod worker;` (or the worker mod is private).\n- Fix one of: (a) add `pub mod worker;` to `crates/chump-coord/src/lib.rs` if the source exists, (b) move/restore the worker module if it was renamed, (c) remove the chump-worker bin if it's vestigial.\n- Confirm: same Docker command builds BOTH bins (`chump-coord` AND `chump-worker`) cleanly.\n- Discovered during: INFRA-2102 Phase 2 cross-machine validation (Docker-emulated Linux node hitting host NATS). Caveat documented in docs/strategy/NATS_A2A_DEMO_2026-05-28.md appendix."
+  notes: |
+    Closed as not-a-bug after investigation.
+    
+    Root cause was build-state pollution, NOT a source-level issue. The chump-worker bin builds cleanly on Linux from a fresh cargo target dir:
+    
+      $ docker run --rm -v $(pwd):/src:ro -v /tmp/fresh:/target -w /src \
+          -e CARGO_BUILD_RUSTC_WRAPPER="" -e CARGO_TARGET_DIR=/target \
+          rust:1.95-slim sh -c "apt-get install -y -qq pkg-config libssl-dev cmake; cargo build --release -p chump-coord"
+      ...
+      Finished release profile [optimized + debuginfo] target(s) in 1m 55s
+      # Produces: chump-coord (73 MB), chump-fleet (7.6 MB), chump-worker (23 MB)
+    
+    Source code is fine:
+    - crates/chump-coord/src/lib.rs:68 has pub mod worker; (unconditional)
+    - crates/chump-coord/src/worker/mod.rs re-exports run_one_cycle, CycleEnv, CycleOutcome
+    - All imports in chump-worker.rs resolve correctly
+    
+    What actually happened: my first Docker build attempt left partial cargo state in /tmp/chump-coord-linux-build/ because .cargo/config.toml hardcodes rustc-wrapper = "/opt/homebrew/bin/sccache" (Mac-only path that doesn't exist in container). Cargo errored and seeded the target dir with corrupted intermediate state. My second attempt disabled sccache via CARGO_BUILD_RUSTC_WRAPPER="" but reused the same poisoned target dir, surfacing as a fake "could not find worker in chump_coord" error.
+    
+    From a fresh target dir, with CARGO_BUILD_RUSTC_WRAPPER="" set, the build is clean.
+    
+    Real lesson worth preserving (now documented in NATS_A2A_DEMO_2026-05-28.md appendix): Linux/Docker cross-builds need CARGO_BUILD_RUSTC_WRAPPER="" to override the Mac-only sccache wrapper baked into the per-machine .cargo/config.toml.
+    
+    No code change needed. Closing.
+  outcome_id: MISSION-010
+

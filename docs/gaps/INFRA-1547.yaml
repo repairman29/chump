@@ -1,0 +1,20 @@
+- id: INFRA-1547
+  domain: INFRA
+  title: "EFFECTIVE: surface war-room.sh agent/conflict digest at SessionStart hook — replace hand-rolled ambient digest with structured situational awareness"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    scripts/dev/war-room.sh produces full agent/conflict/PR situational awareness but only ADR-004 mentions it and no Claude Code hook activates it. Verified: hook configuration lives in .claude/settings.json under hooks.SessionStart[] — there is no separate .claude/hooks/ directory in this repo. Today every session reads a hand-rolled fleet brief that war-room would render better and more uniformly. Rough decomposition: (a) verify war-room.sh --json output exists (extend if missing), (b) add a SessionStart entry to .claude/settings.json invoking war-room.sh --json --quiet, (c) ensure under-2s budget with timeout fallback.
+  acceptance_criteria:
+    - scripts/dev/war-room.sh supports --json --quiet with stable schema fields active_agents (array of {agent_id, worktree, last_event_ts, current_gap}), active_leases (array of {gap_id, session, expires}), sibling_conflicts (array of {path, agents}), stuck_prs (array of {pr_number, age_h, state}) — verify current capability and extend if any field missing
+    - .claude/settings.json hooks.SessionStart[] array gains an entry whose command invokes scripts/dev/war-room.sh --json --quiet and emits the result as additionalContext (alongside the existing ambient-emit hook, not replacing it)
+    - Hook execution budget enforced at 2s via timeout wrapper with graceful fallback message if war-room exceeds budget
+    - scripts/ci/test-war-room-json.sh validates schema stability and exit code under both populated and empty fleet conditions
+    - CLAUDE.md MANDATORY pre-flight section references war-room as the canonical situational-awareness command instead of the bespoke shell incantation
+  notes: |
+    wave: 0b (war-room at SessionStart — operator visibility into self-doctor state)
+  closed_date: '2026-05-22'
+  closed_pr: 2335
+  outcome_id: MISSION-010
+

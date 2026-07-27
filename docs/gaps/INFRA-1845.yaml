@@ -1,0 +1,17 @@
+- id: INFRA-1845
+  domain: INFRA
+  title: "CREDIBLE: harvest bot-simulation-service synthetic-load generator (5-archetype, fatigue sim, funnel analytics) into Chump fleet test harness"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Survey repairman29/bot-simulation-service via gh api; document the 5 bot archetypes (casual, impatient, methodical, etc.), fatigue simulation logic, performance baseline recording, and bottleneck-detection output shape in docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+    - "Map archetype semantics onto Chump worker simulation: bot archetypes map onto worker personalities (Opus = methodical, Sonnet = balanced, Haiku = casual+fast). Document the mapping"
+    - "Decide harvest route: (a) vendor the archetype scheduler into scripts/dispatch/synthetic-fleet.sh, (b) extract as chump-synthetic-load crate, (c) Microservice mode (run bot-simulation-service alongside the fleet, feed it gap-claim signals) — pick one"
+    - "Implement chump fleet simulate --archetypes casual:3,methodical:2,impatient:1 --duration 1h subcommand that produces synthetic gap-claim load against a sandboxed state.db"
+    - "Smoke test scripts/ci/test-synthetic-fleet.sh: spin up synthetic fleet, verify N gap-claims emitted, verify funnel analytics produced"
+    - Coordinate with INFRA-518 fleet scaling gate — synthetic load is the substrate that lets us test scale-up thresholds without real load
+    - "Vendoring lineage comment in chosen target file: 'Vendored from repairman29/bot-simulation-service at commit SHA (CP-013)'"
+    - Cross-pollination brief CP-013-bot-simulation.md
+  outcome_id: MISSION-010
+

@@ -1,0 +1,19 @@
+- id: META-166
+  domain: META
+  title: "AGENTS.md update: agent autonomy principle — make-the-call by default, consensus-fallback on uncertainty, escalate to operator only when irreversible/cross-lane/spending-cap"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Filed 2026-05-30 after operator directive: 'you make the call(s) or use consensus we need that to be fleet standards.' Currently only encoded in operator-private memory (feedback_opus_pm_role + feedback_file_gaps_dont_ask + project_beast_dogfood_plan.md). Needs to live in public AGENTS.md + CLAUDE.md so all curators, sub-agents, and external harnesses operate by the same principle. Proposed wording (refine via consensus): 'When an agent has (a) authority over the lane per role definition, (b) sufficient context to decide, (c) the decision is reversible AND has no external consequences (no destructive ops, no public-facing comms, no spending past budget caps) — make the call. Do NOT serially ask the operator. When genuinely uncertain, use chump-coord help-request consensus mechanism (N-peer vote) rather than escalating to operator. Operator escalation reserved for: irreversible decisions, cross-lane work, consensus split needing tiebreaker.'
+  acceptance_criteria:
+    - New section in docs/process/AGENT_AUTONOMY.md (or AGENTS.md §autonomy) with the principle wording above
+    - Cross-reference from CLAUDE.md (Mission Driver section), SUBAGENT_DISPATCH.md, OPERATOR_PLAYBOOK.md
+    - "Worked examples: 3 'make the call' cases + 2 'use consensus' cases + 2 'escalate to operator' cases"
+    - "Consensus mechanism documented: chump-coord help-request post --blocker-type other --description 'CONSENSUS_VOTE: <proposal>' --blocking; N peer agents respond via help-request complete --resolution 'APPROVE/REJECT/ABSTAIN: reason'; threshold for pass"
+    - "Soak test: dispatch 5 sub-agents on test gaps WITHOUT operator-permission requests over 24h; measure: zero operator-permission asks for in-scope reversible decisions"
+    - META gap, pillar=RESILIENT (operator-overhead reduction)
+  closed_date: '2026-07-21'
+  closed_pr: 3178
+  outcome_id: MISSION-010
+

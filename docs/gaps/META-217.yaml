@@ -1,0 +1,12 @@
+- id: META-217
+  domain: META
+  title: "META: Integrate `gh pr merge --admin` with `chump-fleet-bot` PAT (META-209 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The `auto-admin-merge-daemon.sh` script can successfully execute `gh pr merge --admin --squash <PR_NUMBER>`.
+    - The merge operation is performed using the `chump-fleet-bot`'s PAT, ensuring the bot is the actor.
+  depends_on: [META-211, META-212]
+  outcome_id: MISSION-010
+

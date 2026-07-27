@@ -1,0 +1,50 @@
+- id: FLEET-034
+  domain: FLEET
+  title: chump-coord assign daemon — NATS push routing for new gaps when broker available, pull fallback when not
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    Phase 3 of dispatcher routing redesign. The architectural shift from PULL-by-default to PUSH-when-broker-available, with PULL fallback when offline.
+    
+    CURRENT (pull): every worker queries state.db every loop, picks first eligible. O(N) sqlite reads per cycle for N workers. Scaling-broken at ~30 workers (today's 28 stale procs were the canary).
+    
+    NEW (push when NATS available): single chump-coord assign daemon (1 per fleet, NATS leader-election picks which host runs it) watches state.db for new gaps. On each new/updated gap, publishes to capability-routed subjects:
+    
+      Subject pattern: chump.work.<priority>.<class>.<machine>
+        chump.work.P0.runtime.macbook    — INFRA runtime gap, P0, prefers macbook
+        chump.work.P2.docs.any           — DOC gap, P2, any machine
+        chump.work.P1.coord.macbook      — coord-script gap, P1, macbook only
+    
+    Workers subscribe via capability tags (from INFRA-314 affinity work):
+    
+      WORKER_SKILLS=rust,git,macos chump-coord worker
+        → subscribes: chump.work.>.runtime.>, chump.work.>.coord.macbook, ...
+    
+    NATS handles fan-out + ack:
+      - NATS publishes once per gap; first worker to ack wins (lease-equivalent)
+      - Ack-timeout (default 60s) → redeliver to next subscriber
+      - Worker death detection: missed acks → coordinator reassigns
+    
+    OFFLINE FALLBACK: when CHUMP_NATS_URL unset OR broker unreachable, worker.sh runs current pull loop. Coordinator daemon also degrades gracefully — exits cleanly when broker down, restarts on broker recovery.
+    
+    This isn't a replacement for state.db (FLEET-033 covers that). state.db remains source-of-truth for gap state; NATS is the WORK ROUTING layer. The two are orthogonal:
+      - state.db: 'what gaps exist, what's their status'
+      - NATS: 'who should work on this gap right now'
+    
+    Phase 4 (failure handling) is a follow-up gap once Phase 3 is stable.
+  acceptance_criteria:
+    - chump-coord assign daemon implemented (Rust binary, lives in crates/chump-coord/)
+    - "Daemon watches state.db (sqlite hook or polling) for status:open transitions"
+    - Publishes to chump.work.<priority>.<class>.<machine> subjects on each new gap
+    - Workers subscribe via capability tags (consumes INFRA-314 affinity layer)
+    - "Ack semantics: first ack wins claim, ack-timeout redelivers"
+    - "Speculative override: gap with replicas:N publishes N copies (consumes INFRA-311)"
+    - "Offline fallback: when CHUMP_NATS_URL unset, workers run pull loop AND coordinator exits gracefully"
+    - "Cross-machine integration test: gap reserved on host A is published, claimed by best-fit worker on host B"
+    - Documented in CLAUDE.md as opt-in scaling tier
+    - Replaces 'dispatcher dispatches' cognitive model gap (current docs implied push, code did pull)
+  opened_date: '2026-05-02'
+  closed_date: '2026-05-14'
+  closed_pr: 1912
+

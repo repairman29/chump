@@ -1,0 +1,17 @@
+- id: CREDIBLE-105
+  domain: CREDIBLE
+  title: "CREDIBLE: durable-fix doctrine + no-band-aids rule"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Codify a durable-fix doctrine + no-band-aids rule as canonical agent doctrine. Origin: 2026-06-05 sccache incident — a session nearly ran RUSTC_WRAPPER= to disable sccache and get ITS build through, which would have left the dead server wedging every fleet worker AND masked the real bug (two unlocked sccache-reaper.sh racing the live cache -> 2-daemon split-brain). Operator caught it. A band-aid is a CREDIBILITY failure: it makes something LOOK fixed when it isn't. Same family as a session reporting 'the loop is running' when no /loop job was set. Rough shape: (a) docs/process/DURABLE_FIX_DOCTRINE.md; (b) CLAUDE.md Hard-rules pointer; (c) AGENTS.md canonical section; ties into REALITY_CHECK.md (CREDIBLE-090), BYPASS_TRAILER_SCHEMA.md, the --no-verify rule.
+  acceptance_criteria:
+    - "docs/process/DURABLE_FIX_DOCTRINE.md exists with: core rule (fix the cause not your path around it), a pre-workaround 3-question test, a band-aid ban-list, the 'bridge allowed IFF real fix filed AND workaround emits an audit signal' carve-out, and the 2026-06-05 sccache case study"
+    - CLAUDE.md Hard rules gains a one-line No-band-aids/durable-fix entry pointing to the doctrine doc
+    - AGENTS.md gains a harness-neutral Durable-fix doctrine section
+    - doctrine cross-references REALITY_CHECK.md, BYPASS_TRAILER_SCHEMA.md, and the --no-verify rule so it is not orphaned
+    - "includes the meta-clause: do not report a mechanism/loop/fix as active until you have verified it is active"
+  closed_pr: 3092
+  outcome_id: CREDIBLE-000
+

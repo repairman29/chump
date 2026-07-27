@@ -1,0 +1,10 @@
+- id: META-270
+  domain: META
+  title: fleet orchestrator role — the loop-closer that uses substrate instead of being more substrate
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - ".claude/agents/orchestrator.md role spec exists in Linux Foundation AGENTS.md format with WHEN_ACTIVE, CURRENT_OBJECTIVE_PROTOCOL, DISPATCH_POLICY, CHECKPOINT_DISCIPLINE, KPI_REPORTING sections;chump objective subcommand (set/show/progress/done) is callable and writes to .chump-locks/current-objective.json with required JSON schema fields {objective_id, set_by, set_at, text, success_criteria, expected_completion, status};scripts/coord/iter-agenda.sh reads current-objective.json + chump gap list + ambient.jsonl + queue size and produces ranked top-5 actions to .chump-locks/iter-agenda.jsonl;SessionStart hook (via scripts/coord/inbox-check-urgent.sh extension or equivalent) emits sections in order: CURRENT OBJECTIVE / ITER AGENDA top-3 / URGENT alarms / ambient digest, and emits ambient kind=orchestrator_session_active;launchd plist com.chump.iter-agenda.plist exists at 30-min cadence with RunAtLoad=true;integration test scripts/ci/test-iter-agenda.sh asserts deterministic agenda output on synthetic inputs;four follow-up gaps INFRA-2363/2364/2365/2366 are filed with concrete AC and skills_required including fleet"
+  outcome_id: MISSION-010
+

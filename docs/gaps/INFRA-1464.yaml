@@ -1,0 +1,18 @@
+- id: INFRA-1464
+  domain: INFRA
+  title: "RESILIENT: /api/fleet-status hangs (25× sequential gh pr list, no timeout, no cache)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Real bug 2026-05-16: GET /api/fleet-status hangs >10s on the live server. Root cause: handle_fleet_status in src/web_server.rs:~4387-4502 calls std::process::Command::new('gh') pr list synchronously, once per lease. With 25 leases in .chump-locks/ that's 25 sequential network round-trips. No timeout on Command::output(), so a slow GitHub API or rate-limited call stalls the whole endpoint. The codebase already has cache_lookup_pr (CLAUDE.md INFRA-1081) for this exact use case — the handler should consult the cache first.
+  acceptance_criteria:
+    - handle_fleet_status calls cache_lookup_pr (or equivalent github_cache.db read) BEFORE shelling to gh pr list
+    - "Each per-lease gh fallback wrapped in tokio::time::timeout (2s default, configurable via CHUMP_FLEET_STATUS_GH_TIMEOUT_S)"
+    - "Parallel execution via futures::join_all instead of sequential"
+    - "Smoke test scripts/ci/test-api-fleet-status-perf.sh: seed 25 fake leases, assert /api/fleet-status returns in <3s"
+    - "Real-machine repro from this session: curl --max-time 10 /api/fleet-status currently returns 000 after 10s timeout"
+  closed_date: '2026-05-16'
+  closed_pr: 2214
+  outcome_id: MISSION-010
+

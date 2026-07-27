@@ -1,0 +1,12 @@
+- id: INFRA-1933
+  domain: INFRA
+  title: "RESILIENT P0: each chump worktree has its own /target dir (5-11 GB Rust build artifacts) — 77 worktrees × ~700MB avg = 51 GB just in target/; set CARGO_TARGET_DIR to shared cache dir at session-start so worktrees share build artifacts and disk doesn't explode"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. CARGO_TARGET_DIR exported to ~/.cargo/chump-shared-target in scripts/dispatch/worker.sh and any chump-claim entry point before cargo invocations; new worktrees do not create their own target/ dir.\n2. Ambient event kind=cargo_target_shared emitted when CARGO_TARGET_DIR is first set per session (one-shot, not per-build).\n3. scripts/ci/test-cargo-target-dir.sh passes: verifies CARGO_TARGET_DIR is set in worker launch env, and that no worktree created after the change has a local target/ dir.\n4. Failure class: if CARGO_TARGET_DIR unset, cargo falls back to per-worktree target/ (non-blocking but emits kind=cargo_target_dir_fallback)."
+  closed_date: '2026-05-29'
+  closed_pr: 2522
+  outcome_id: MISSION-010
+

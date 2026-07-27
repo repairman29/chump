@@ -1,0 +1,14 @@
+- id: INFRA-2109
+  domain: INFRA
+  title: test ignore_waste_pause
+  status: closed
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: test gap from META-123 dispatch validation, no work performed
+  outcome_id: MISSION-010
+

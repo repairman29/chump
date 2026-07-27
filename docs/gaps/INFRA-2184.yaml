@@ -1,0 +1,16 @@
+- id: INFRA-2184
+  domain: INFRA
+  title: "RESILIENT: sccache binary broken on host — /opt/homebrew/bin/sccache exits 254, blocks pre-push test gate"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - scripts/git-hooks/pre-push probes the configured RUSTC_WRAPPER (sccache) once at the top of the test gate via --version
+    - If the probe fails, the script CLEARS CARGO_BUILD_RUSTC_WRAPPER for the cargo test invocation (so a broken host sccache does not block pushes); logs to stderr with the INFRA-2184 marker
+    - Both invocation paths (cargo-test-with-rerun.sh wrapper AND direct cargo test fallback) honor the cleared wrapper
+    - "Verification: RUSTC_WRAPPER= cargo build --package chump-fleet-recorder succeeds in any worktree (no sccache involved)"
+    - "No regression when sccache is healthy: the probe passes and the wrapper stays set"
+  closed_date: '2026-05-30'
+  closed_pr: 2740
+  outcome_id: MISSION-010
+

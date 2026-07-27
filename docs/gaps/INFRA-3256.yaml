@@ -1,0 +1,11 @@
+- id: INFRA-3256
+  domain: INFRA
+  title: 'EFFECTIVE: real-1'
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+  - verify it
+  outcome_id: MISSION-010
+  closed_date: '2026-07-25'
+  closed_pr: 3271

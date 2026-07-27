@@ -1,0 +1,12 @@
+- id: INFRA-2374
+  domain: INFRA
+  title: remove 3 dead Rust modules + 2 dead EVENT_REGISTRY kinds (confirmed via inventory review)
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. Delete src/approval_stats.rs (7696 bytes) — confirmed dead via inventory finding 477\n2. Delete src/circuit_breaker.rs (14789 bytes) — confirmed dead via finding 478\n3. Delete src/gh_token.rs (15571 bytes) — confirmed dead via finding 479\n4. Delete scripts/audit/check-ambient-rotation-health.sh (orphan audit, not in gate-manifest)\n5. Delete scripts/audit/check-sccache-health.sh (same pattern)\n6. Remove kind=fleet_auto_widen_applied from docs/observability/EVENT_REGISTRY.yaml\n7. Remove kind=circuit_breaker_closed from EVENT_REGISTRY.yaml (pairs with circuit_breaker.rs removal)\n8. Remove kind=tool_normalize from EVENT_REGISTRY.yaml (zero emitters)\n9. cargo check --workspace passes after Rust deletions\n10. YAML still parses after registry edits\n11. Admin-merge as META-207 T4 substrate cleanup; chump inventory rebuild after merge shows 8 fewer findings\n12. Add Bot-Merge-Bypass trailer to commit body"
+  closed_date: '2026-06-05'
+  closed_pr: 2934
+  outcome_id: MISSION-010
+

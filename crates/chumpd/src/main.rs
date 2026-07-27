@@ -18,6 +18,7 @@
 //! v0 scope: supervise + restart + wedge-kill + mode obedience. The state-API
 //! socket (CLI reads via chumpd) is the next slice; see MISSION-051 AC.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
@@ -25,6 +26,8 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::UnixListener;
 
 static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
@@ -54,6 +57,7 @@ fn iso_now() -> String {
     format!("epoch:{}", now_epoch())
 }
 
+#[derive(Clone)]
 struct Config {
     repo: PathBuf,
     home: PathBuf,
@@ -256,7 +260,77 @@ fn write_status(_cfg: &Config, mode: &str, desired: usize, slots: &HashMap<usize
     }
 }
 
-fn main() {
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "method", rename_all = "kebab-case")]
+enum RpcRequest {
+    Ping,
+    Status,
+    DbPath,
+}
+
+#[derive(Serialize)]
+struct RpcResponse {
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    db_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status_json: Option<serde_json::Value>,
+}
+
+async fn handle_socket(cfg: Config, listener: UnixListener) {
+    loop {
+        match listener.accept().await {
+            Ok((mut stream, _)) => {
+                let cfg = cfg.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 1024];
+                    match stream.read(&mut buf).await {
+                        Ok(n) if n > 0 => {
+                            if let Ok(req) = serde_json::from_slice::<RpcRequest>(&buf[..n]) {
+                                let resp = match req {
+                                    RpcRequest::Ping => RpcResponse {
+                                        status: "pong".into(),
+                                        db_path: None,
+                                        status_json: None,
+                                    },
+                                    RpcRequest::DbPath => RpcResponse {
+                                        status: "ok".into(),
+                                        db_path: Some(
+                                            cfg.repo.join(".chump/state.db").display().to_string(),
+                                        ),
+                                        status_json: None,
+                                    },
+                                    RpcRequest::Status => {
+                                        let status_raw =
+                                            fs::read_to_string("/tmp/chumpd-status.json")
+                                                .unwrap_or_else(|_| "{}".into());
+                                        let status_json = serde_json::from_str(&status_raw).ok();
+                                        RpcResponse {
+                                            status: "ok".into(),
+                                            db_path: None,
+                                            status_json,
+                                        }
+                                    }
+                                };
+                                let _ = stream
+                                    .write_all(serde_json::to_string(&resp).unwrap().as_bytes())
+                                    .await;
+                            }
+                        }
+                        _ => {}
+                    }
+                });
+            }
+            Err(e) => {
+                eprintln!("socket accept error: {e}");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() {
     // SAFETY: signal() with a signal-safe handler that only stores an atomic.
     unsafe {
         let handler = on_term as extern "C" fn(i32) as *const () as usize;
@@ -266,6 +340,17 @@ fn main() {
 
     let cfg = Config::load();
     takeover(&cfg);
+
+    // MISSION-052: Start Unix socket API.
+    let socket_path = cfg.home.join(".chump/chumpd.sock");
+    let _ = fs::remove_file(&socket_path);
+    if let Ok(listener) = UnixListener::bind(&socket_path) {
+        let cfg_clone = cfg.clone();
+        tokio::spawn(async move {
+            handle_socket(cfg_clone, listener).await;
+        });
+    }
+
     // scanner-anchor: "kind":"chumpd_started"
     emit(
         &cfg,

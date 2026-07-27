@@ -1,0 +1,17 @@
+- id: INFRA-1856
+  domain: INFRA
+  title: "ZERO-WASTE: chump preflight runs full audit job (ip-protection + cargo-audit sub-checks currently CI-only)"
+  status: closed
+  priority: P1
+  effort: m
+  description: |
+    META-071 sub-gap. ci.yml audit job currently runs: event-registry-audit (mirrored as INFRA-1731), ip-protection-audit (NOT mirrored), cargo audit advisory check (NOT mirrored). Today only 1 of 3 sub-checks runs locally — drift accumulates and surfaces only on CI.
+  acceptance_criteria:
+    - src/preflight.rs audit gate extended to include ip-protection-audit sub-check (scripts/ci/test-ip-protection.sh or equivalent)
+    - Add cargo-audit advisory sub-check via scripts/ci/test-cargo-audit.sh wrapping cargo audit with current advisory db; skip if cargo-audit binary missing (emit info-level warning, do not fail)
+    - Both skippable via existing CHUMP_PREFLIGHT_SKIP_REGISTRY env or new CHUMP_PREFLIGHT_SKIP_IPAUDIT and CHUMP_PREFLIGHT_SKIP_CARGOAUDIT — each emits its own audit-trail event
+    - "Smoke test scripts/ci/test-preflight-audit-full.sh: assert all 3 sub-checks run by default; assert independent skip via each env var; assert proper exit code on any sub-check fail"
+  notes: |
+    Closed 2026-05-23 by curator-opus-shepherd after scope discovery: original AC was speculative (ip-protection-audit + cargo audit as 2 sub-checks). Reality: (a) ci.yml audit job runs ~20+ distinct test-*.sh scripts, (b) INFRA-503 explicitly moved cargo audit to cargo-audit-nightly.yml NOT the per-PR audit job, (c) no scripts/ci/test-ip-protection*.sh exists. Real effort is l-or-bigger, not m. Properly decomposed via follow-up: INFRA-NEW (filed) which surveys the audit job's script list + groups into 3-5 ship-sized sub-gaps. Releasing claim cleanly per Pattern 7.
+  outcome_id: MISSION-010
+

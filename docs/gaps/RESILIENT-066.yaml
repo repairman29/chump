@@ -1,0 +1,19 @@
+- id: RESILIENT-066
+  domain: RESILIENT
+  title: "RESILIENT P0: fleet-pause is a one-way deadlock that kills the supervisors and never auto-lifts (choir-down-while-singing root cause)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    ROOT-CAUSED 2026-06-03 (operator: 'we don't auto-revive the choir before we try to start singing'). A 3-layer self-sealing deadlock that took down the entire self-healing layer and forced manual PR rescue: (1) 21 gaps shipped (closed_pr set) but were never marked done -> ghost-gap count 21 >> L2-SLO-5 target 2; (2) SLO breach wrote .chump/fleet-paused sentinel (INFRA-1607 'the lid') -> chump gap reserve + other ops fail with exit 78; (3) the supervisory daemons (com.chump.curator-supervisor, com.chump.main-health-watchdog, dev.chump.auto-merge-rearm) call chump ops to do their jobs, so the pause CRASHED them (exit 78) -> the PR-rescue choir (pr-shepherd, auto-merge-rearm, ci-flake-rerun, bot-merge-watchdog, ghost-gap-reaper) stayed down -> PRs with armed auto-merge + a transient failed check just SAT (nothing reran the flake, nothing re-fired the merge) -> required manual rescue. DEADLOCK: the ghost-gap-reaper that would clear the ghosts is itself blocked by the pause the ghosts caused, AND the sentinel never auto-clears when SLOs recover (the daemon that would lift it is dead). Manual recovery required: close the 21 ghosts + rm .chump/fleet-paused + kickstart daemons. Compounding bug: auto-merge-rearm only re-arms CLEAN PRs (skips BEHIND/failing). Related: RESILIENT-058 supervision trees (the keystone), INFRA-1607 (the pause mechanism).
+  acceptance_criteria:
+    - supervisory + reaper daemons (curator-supervisor, main-health-watchdog, daemon-activator, ghost-gap-reaper, auto-merge-rearm, pr-shepherd) run with the fleet-pause bypassed by design — the recovery layer MUST keep running during a pause so it can recover the fleet FROM the pause
+    - the .chump/fleet-paused sentinel auto-clears when chump health --slo-check next passes (a cadence re-check lifts the pause; it is NOT one-way) — assert a breach->pause->recover cycle leaves the fleet un-paused with no manual rm
+    - "graduated response: a soft hygiene breach (ghost-gap count) warns + kicks the ghost-gap-reaper rather than hard-pausing the whole fleet and crashing the supervisors"
+    - ghost-gap-reaper runs on a launchd cadence AND actually closes shipped-but-open gaps (the manual run produced zero output — it is broken)
+    - auto-merge-rearm handles BEHIND/failing armed PRs, not only CLEAN+unarmed ones
+    - a regression test simulates breach->pause->recover and asserts the supervisors stayed up + the sentinel auto-lifted
+  closed_date: '2026-06-05'
+  closed_pr: 3002
+  outcome_id: RESILIENT-000
+

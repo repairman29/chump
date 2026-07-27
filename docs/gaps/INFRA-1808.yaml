@@ -1,0 +1,22 @@
+- id: INFRA-1808
+  domain: INFRA
+  title: "RESILIENT: chump-fleet-bootstrap durability — auto-chmod install scripts, fix false-negative checks, run hourly via launchd (3 issues found by curator-opus-shepherd 2026-05-23)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Three concrete issues found 2026-05-23 by curator-opus-shepherd while investigating why pr-auto-rebase + claude-reaper + bot-merge-watchdog + 2 other REQUIRED_DAEMONS were not running despite their installer scripts having shipped days earlier. Root cause: nothing runs the bootstrap installer automatically. The installer is documented in CLAUDE.md but only runs when an operator manually invokes it. Manual invocation discovered a real bug too (scripts/setup/install-bot-merge-watchdog.sh was mode 0644). Two of the manifest checks (queue-health-monitor-launchd, github-liaison-launchd) returned false-negative MISSING despite the daemons being loaded — bootstrap-check logic looks for different markers than what installers create. Rough shape: (a) fix install-bot-merge-watchdog.sh perm + add a pre-commit hook or CI gate that asserts install-*.sh files are mode 0755; (b) fix bootstrap-check false negatives for queue-health-monitor and github-liaison; (c) install a launchd job that runs chump-fleet-bootstrap.sh --install hourly (idempotent installers already, so safe to repeat) with a kind=fleet_bootstrap_auto_install ambient event per run.
+  acceptance_criteria:
+    - scripts/setup/install-bot-merge-watchdog.sh chmod +x in repo (currently 0644) — single commit, no logic change
+    - "scripts/ci/test-install-scripts-executable.sh new test: asserts every scripts/setup/install-*.sh file is mode 0755; fails CI if not — prevents recurrence"
+    - "chump-fleet-bootstrap.sh --check fixed for queue-health-monitor-launchd: verify via launchctl list query for dev.chump.queue-health-monitor, NOT the marker currently used"
+    - "chump-fleet-bootstrap.sh --check fixed for github-liaison-launchd: verify via launchctl list query for dev.chump.github-liaison, NOT the marker currently used"
+    - "scripts/setup/install-bootstrap-auto-launchd.sh: new installer that registers a launchd job running chump-fleet-bootstrap.sh --install hourly; emits kind=fleet_bootstrap_auto_install with fields {installed_count, manifest_missing_count, daemon_missing_count} per run"
+    - chump-fleet-bootstrap.sh self-installs the auto-launchd job on first install run (so the boot-strap problem is solved on first manual run, never reverts)
+    - chump-fleet-bootstrap.sh attempts chmod +x on any install-*.sh it tries to run before invoking it — resilience against this exact perm-bit failure mode
+    - README.md and CLAUDE.md MANDATORY pre-flight section updated to note that the hourly auto-bootstrap exists, but operators on a fresh machine still need to run chump-fleet-bootstrap.sh once manually to bootstrap the bootstrapper
+    - CI test scripts/ci/test-bootstrap-auto-install.sh asserts the launchd job loads cleanly and emits the expected ambient kind on a synthetic invocation
+  notes: |
+    Pillar: RESILIENT. Discovered 2026-05-23 by curator-opus-shepherd during investigation of stale PR queue. INFRA-1777 (pr-auto-rebase daemon shipped 2026-05-22 23:36Z) and INFRA-1779 (its launchd plist installer shipped 23:48Z) were never installed on this host until manual run today. Same pattern as INFRA-1662 reaper from prior day. This gap closes the structural pattern: code shipped to repo != code running on host. Effort=s because each individual fix is a few lines; the wiring is the work.
+  outcome_id: MISSION-010
+

@@ -1,0 +1,16 @@
+- id: INFRA-2329
+  domain: INFRA
+  title: "fix-trunk: honor CARGO_TARGET_DIR in gap-reserve fast-checks PATH"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "All 4 export PATH lines in .github/workflows/ci.yml fast-checks job honor CARGO_TARGET_DIR via the ${CARGO_TARGET_DIR:-$(pwd)/target}/debug pattern"
+    - fast-checks and fast-checks-required jobs pass green on a push touching gap-reserve code
+    - YAML parses cleanly (python3 yaml.safe_load) and actionlint reports no errors
+    - "grep count of 'export PATH=\"${CARGO_TARGET_DIR' equals 4 or more"
+  notes: |
+    [2026-06-04T00:16:30Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2911
+  outcome_id: MISSION-010
+

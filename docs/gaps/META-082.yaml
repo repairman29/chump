@@ -1,0 +1,12 @@
+- id: META-082
+  domain: META
+  title: "META: Implement cost tracking for coordination actions (META-073 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Each coordination action (route change, lesson fetch, etc.) logs CPU/time/cost metrics
+    - Metrics include agent ID, action type, duration, estimated resource cost
+    - Data available via /metrics endpoint
+  outcome_id: MISSION-010
+

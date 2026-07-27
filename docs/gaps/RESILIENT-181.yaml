@@ -1,0 +1,14 @@
+- id: RESILIENT-181
+  domain: RESILIENT
+  title: "RESILIENT: chump-binary-unwedge.sh uses gtimeout + BSD stat — false wedge diagnosis kills every ship on Linux hosts"
+  status: done
+  priority: P0
+  effort: xs
+  description: |
+    scripts/dev/chump-binary-unwedge.sh probe uses gtimeout (homebrew-only name; absent on Linux → command-not-found → probe 'fails') and stat -f '%i' (BSD; on Linux returns multi-line filesystem info → garbage mv filename). Net effect on chumpd-eu: healthy binary falsely diagnosed as wedged, self-heal mv fails, bot-merge doctor preflight declares 'binary wedged, could not self-heal' and every free-tier ship dies (all EU cycles rc=1, 2026-07-22 05:45Z). Fix: portable timeout resolver (gtimeout||timeout) + GNU-first stat (stat -c '%i' || stat -f '%i').
+  acceptance_criteria:
+    - "The change described by \"chump-binary-unwedge.sh uses gtimeout + BSD stat — false wedge diagnosis kills every ship on Linux hosts\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3235
+

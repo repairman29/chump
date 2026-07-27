@@ -1,0 +1,17 @@
+- id: INFRA-2484
+  domain: INFRA
+  title: "RESILIENT-FIRE: graphql_exhausted false-positive from -1 sentinel — root-cause fix at github.sh + github_rate_limit.rs"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "AC1: scripts/coord/lib/github.sh _chump_gh_maybe_emit_exhausted MUST reject gql_rem < 0"
+    - "AC2: chump_gh_record MUST skip emit when rc != 0"
+    - "AC3: src/github_rate_limit.rs uses CHUMP_GH_NO_SHIM=1 + CHUMP_GH_SILENT=1 env when running gh subprocess to skip recursive recording"
+    - "AC4: scripts/ci/test-graphql-exhausted-false-positive-guard.sh covers gql_rem=-1 + rc=1 paths"
+    - "AC5: kind=gh_recording_skipped_rc_nonzero ambient event registered"
+  notes: |
+    [2026-06-03T23:58:35Z] confirmed on origin/main (merged fix commit); mission-loop registry hygiene
+  closed_pr: 2982
+  outcome_id: MISSION-010
+

@@ -1,0 +1,16 @@
+- id: RESILIENT-102
+  domain: RESILIENT
+  title: "RESILIENT: consolidate 4 gap-pickers to 1 (picker sprawl = wrong-target dispatch)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - single canonical picker module imported by worker.sh path, _pick_gap.py path, musher.py path (no 4-way sprawl)
+    - "a picker-logic fix lands in exactly one file (MISSION-011/#3055 fixed the wrong of 4 pickers)"
+    - mission_rank + xs-gate exception + pillar-rebalance unified in one place
+    - regression test covers both worker and curator-jit picker entrypoints
+    - doc note in scripts/dispatch/README.md names the canonical picker
+  closed_date: '2026-07-21'
+  closed_pr: 3064
+  outcome_id: RESILIENT-000
+

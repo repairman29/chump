@@ -1,0 +1,10 @@
+- id: INFRA-2010
+  domain: INFRA
+  title: "RESILIENT P2: chump fleet doctor — detect inbox-name convention mismatch (today's 7h blind-spot: opus-curator-overnight vs canonical curator-opus-overnight)"
+  status: superseded
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Add a check to scripts/coord/fleet-doctor-strict.sh (or chump fleet doctor) that audits: for each role registered in .chump-locks/fleet-registry.jsonl, verify a canonical-named inbox file exists at .chump-locks/inbox/curator-opus-<role>.jsonl. If the role is registered under a non-canonical name pattern (e.g. opus-curator-<role>) or under a date-stamped variant only, emit kind=inbox_name_convention_drift and exit non-zero in --strict mode."
+  outcome_id: MISSION-010
+

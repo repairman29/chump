@@ -1,0 +1,17 @@
+- id: RESILIENT-089
+  domain: RESILIENT
+  title: test-gap-preflight-ac-gate.sh apply RESILIENT-085 worktree-safety guard
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    test-gap-preflight-ac-gate.sh creates 'init' commits via git config user.email test@local + git commit --allow-empty -m 'init'. Same incident class as RESILIENT-085: if anything in the chain resolves $REPO incorrectly, those commits land on the operator's HEAD during preflight. Apply the same chump/*-claim branch guard pattern that landed in RESILIENT-085 #3027.
+  acceptance_criteria:
+    - 1. Add the same worktree-safety guard pattern as RESILIENT-085 to test-gap-preflight-ac-gate.sh
+    - 2. Guard refuses to run when on a chump/*-claim branch or active leases exist
+    - 3. CHUMP_AC_GATE_TEST_FORCE=1 bypass for CI invocations
+    - 4. Test still passes its 4 assertions when force-invoked or run from main
+  closed_date: '2026-06-05'
+  closed_pr: 3031
+  outcome_id: RESILIENT-000
+

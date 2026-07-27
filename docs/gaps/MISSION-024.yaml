@@ -1,0 +1,14 @@
+- id: MISSION-024
+  domain: MISSION
+  title: "MISSION: Implement monitoring for external repairman29/BEAST-MODE PR status (MISSION-015 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The system can periodically poll or receive webhooks for PR status updates from `github.com/repairman29/BEAST-MODE`.
+    - When a PR opened by the fleet is merged, the internal system detects this status change.
+    - The internal gap associated with the PR is marked as 'Completed' or 'Merged'.
+  depends_on: [MISSION-023]
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

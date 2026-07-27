@@ -1,0 +1,20 @@
+- id: INFRA-1569
+  domain: INFRA
+  title: "ZERO-WASTE: dead-route triage — 27 backend routes registered in src/web_server.rs with zero production callers (file ingestion, inbox, PR review trio, Apple Shortcuts, TTS, brain graph viewer, et al)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Comprehensive audit (2026-05-16): src/web_server.rs registers 98 /api/* routes. Of those, 27 have zero web/v2 frontend calls, zero internal Rust callers (excluding web_server.rs itself), and zero test references. Another 12 have only test-file references. Routes cluster into themes: (a) PR review trio — /api/prs/{number}/comment, /api/prs/{number}/request-changes, /api/prs/{number}/revert (PRODUCT-086 surface, never wired into PWA); (b) Apple Shortcuts integration — /api/shortcut/{capture,command,status,task} (started, abandoned); (c) File ingestion — /api/files, /api/files/{file_id}, /api/upload, /api/ingest/upload; (d) Inbox — /api/inbox/{session}/ack, /api/inbox/{session}/unread-count; (e) Session detail — /api/sessions/{id}, /api/sessions/{id}/messages; (f) Brain graph (Pass 3 finding) — /api/brain/graph.json; (g) TTS — /api/tts; plus singletons /api/docs, /api/research/{id}, /api/projects/{id}/activate, /api/tasks/{id}, /api/skills/health, /api/watch/alerts, /api/watch/{list}/{item_id}, /api/messages/{id}/feedback. Bulk-deletion would be cleanup theater since some clusters (PR review trio, brain graph viewer) represent real abandoned features worth wiring. Operator triage required per cluster.
+  acceptance_criteria:
+    - Audit script scripts/dev/dead-route-scan.sh added that produces the registered-vs-called diff and emits kind=dead_route_scan to ambient.jsonl
+    - Each of the 7 named clusters (PR review trio, Apple Shortcuts, file ingestion, inbox, session detail, brain graph, TTS) plus the 7 singleton routes gets a kill/wire/test-only verdict committed in a docs/decisions/dead-routes-2026-05.md decision log with rationale per cluster
+    - Routes marked kill are removed from src/web_server.rs in the same PR (handler + route registration) with no behavioral regressions caught by existing tests
+    - Routes marked wire have follow-up gaps filed referencing this gap as the audit source
+    - Routes marked test-only get an inline comment in src/web_server.rs explaining they are test-fixture surfaces and a CI assertion that production builds drop them (via cfg(test) or similar)
+    - docs/observability/EVENT_REGISTRY.yaml entry for dead_route_scan with emitter_paths set
+    - Re-running the audit script after the cleanup produces zero genuinely-dead routes
+  notes: |
+    wave: noise (dead-route triage — noise tag per MISSION_YIELD; fold pieces into Wave 4 if features get wired)
+  outcome_id: MISSION-010
+

@@ -1,0 +1,12 @@
+- id: RESILIENT-184
+  domain: RESILIENT
+  title: "RESILIENT: chumpd-eu picker assigns STRATEGY/research-class gaps to free-tier M3 — no skills_required or tier-fit filter"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"chumpd-eu picker assigns STRATEGY/research-class gaps to free-tier M3 — no skills_required or tier-fit filter\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3251
+

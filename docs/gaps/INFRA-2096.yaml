@@ -1,0 +1,12 @@
+- id: INFRA-2096
+  domain: INFRA
+  title: "RESILIENT P0: SKIP-guard on test-mcp-coord-smoke.sh — runner-side silent-build-failure trunk-RED affects all PRs"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. scripts/ci/test-mcp-coord-smoke.sh has SKIP guards mirroring INFRA-1955 pattern in scripts/ci/coord-surfaces-smoke.sh: (a) if `command -v cargo` fails → SKIP exit 0, (b) if cargo build returns non-zero → SKIP exit 0, (c) if binary still missing after build → SKIP exit 0\n2. test-mcp-coord-smoke.sh emits ambient event kind=trunk_red_skip with reason field on each SKIP path so the operator can audit which PRs were unblocked by SKIP vs. real PASS\n3. ambient_events_registry.yaml registers `trunk_red_skip` with description \"test SKIPped because runner-side capability missing (cargo, binary build, etc.); audit before flipping back to blocking\"\n4. CI run on this PR's branch goes GREEN (proves the SKIP guard works under the current trunk-RED runner state)\n5. docs/process/CLAUDE_GOTCHAS.md adds a paragraph under 'Runner-side cargo silent-build-failure' linking to INFRA-2086 (loud failure detection) + INFRA-2096 (SKIP-on-detect) + INFRA-1955 (sibling pattern in coord-surfaces-smoke.sh)"
+  closed_date: '2026-05-29'
+  closed_pr: 2689
+  outcome_id: MISSION-010
+

@@ -1,0 +1,14 @@
+- id: INFRA-1702
+  domain: INFRA
+  title: "CREDIBLE: register content_bot_pipeline_aborted in EVENT_REGISTRY.yaml (INFRA-1698 follow-up — bypass debt)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Bypass debt from INFRA-1698 (PR #2348). The orchestrator emits content_bot_pipeline_aborted on any abort path but the registry entry was deferred because INFRA-1698's claim didn't include EVENT_REGISTRY.yaml. Filing this so the bypass doesn't rot.
+  acceptance_criteria:
+    - "docs/observability/EVENT_REGISTRY.yaml gains content_bot_pipeline_aborted entry: emitter=scripts/content-bots/orchestrate-pipeline.sh (INFRA-1698), trigger=any stage failure that prevents the pipeline from reaching CopyBot, fields_required=[ts,kind,run_id,reason]"
+    - consumers=[content-bots-pipeline-orchestrator, fleet-brief, ops-audit]
+    - the existing CHUMP_EVENT_REGISTRY_CHECK CI gate would have caught this had INFRA-1698's claim included EVENT_REGISTRY.yaml — this is the cleanup PR
+  outcome_id: MISSION-010
+

@@ -1,0 +1,13 @@
+- id: INFRA-1956
+  domain: INFRA
+  title: "RESILIENT P2: wizard discipline rule — CLASSIFY queue (DIRTY/disarmed/armed counts) BEFORE dispatching pr-queue-manager OR doing rescue work. Today's 19:50Z spin-up dispatched Sonnet to drain a 30-open queue when 100% were correctly armed+cycling — wasted 15min of Sonnet time. Same shape as 'status-pull before task-assign' (INFRA-1943) but for queue-state"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

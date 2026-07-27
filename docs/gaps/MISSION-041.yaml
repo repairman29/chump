@@ -1,0 +1,18 @@
+- id: MISSION-041
+  domain: MISSION
+  title: "MISSION P0: backfill gap.skills_required with external_repo: tags — picker can't see BEAST gaps because the routing field is empty (description text doesn't route)"
+  status: closed
+  priority: P0
+  effort: s
+  description: |
+    VERIFIED 2026-06-05 16:50Z (musher tick 7, Sonnet finding from MISSION-033 #3073). After shipping MISSION-018 (flag) + MISSION-028 (picker mission-rank) + MISSION-033 (repos table auto-populate), discovered the picker has nothing to act on because gap.skills_required is EMPTY on the BEAST execution slices (MISSION-016/017/019…025) and other BEAST-tagged gaps. The 'external_repo:repairman29/BEAST-MODE' tag is only in DESCRIPTION text, which is informational and not consumed by capability.rs:130 or any picker logic. Verified: sqlite SELECT id, skills_required FROM gaps WHERE (skills_required LIKE '%external_repo:%' OR title LIKE '%BEAST%') AND status='open' returns 10+ rows with empty skills_required, 0 with the tag. ROOT CAUSE: gap-filing convention drifted — operators put 'external_repo:' in description for human readability, but never copied to skills_required (the routing field). FIX: (a) write a one-shot backfill script (similar to MISSION-030 backfill pattern) that scans gap description + title for 'BEAST', 'repairman29/BEAST-MODE', 'BEAST-MODE', external_repo: phrases, and adds 'external_repo:repairman29/BEAST-MODE' to skills_required; (b) optionally add a chump gap reserve --external-repo <owner/repo> shortcut that sets skills_required correctly; (c) audit other external_repo: gap classes (ehippy/derelict etc per scout output) and backfill them too. Until this lands, MISSION-018 + MISSION-028 + MISSION-033 produce 0 net value.
+  acceptance_criteria:
+    - "After backfill: sqlite SELECT COUNT(*) FROM gaps WHERE skills_required LIKE '%external_repo:repairman29/BEAST-MODE%' AND status='open' returns >= 5 (the BEAST execution slices)"
+    - chump repos list (after MISSION-033 lands + gap import re-runs) shows repairman29/BEAST-MODE in the list
+    - "Optional: chump gap reserve --external-repo <owner/repo> shortcut wires skills_required directly so this drift doesn't recur"
+  notes: |
+    [2026-06-05T18:49:48Z] Shipped #3078 via Sonnet dispatch. 99 gaps tagged, 15 open BEAST. The MISSION-018/028/033 chain now has data to route.
+  closed_pr: 3078
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

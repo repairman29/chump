@@ -1,0 +1,12 @@
+- id: CREDIBLE-129
+  domain: CREDIBLE
+  title: fleet-brief ship-count intermittently returns 0 while fleet is actively shipping — false fleet-dead signal at SessionStart
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Observed 2026-06-08: fleet-brief banner (SessionStart hook) showed 'Ships: 0 (24h) | last 1h: 0' + '✓ fleet looks healthy', but ground truth at the same moment was: git log origin/main = 2 merges last 1h / 7 last 6h; 24 worker.sh procs, 42 claude -p procs, 13 bot-merge procs in-flight, 2 active leases. ~30 min earlier the SAME script reported 'Ships: 43 | last 1h: 9' (correct). The ship-count intermittently collapses to 0 — likely a transient failure inside fleet-brief.sh (git fetch timeout / swallowed subshell error -> empty -> 0). This is the ROOT of the #1 operator false-positive ('fleet is dead', mis-called 4x per CLAUDE.md): the brief is the first thing every SessionStart shows, so a false 0 makes every fresh agent misdiagnose fleet-death. Sibling of CREDIBLE-086 (merge-queue lie) + META-287 fresh-eyes comparator_6 (brief-says-healthy-but-not-shipping).
+  acceptance_criteria:
+    - "1. fleet-brief ship-count NEVER silently returns 0 on a transient error — it retries, reports the real count, or prints an explicit 'ship-count unavailable (<reason>)' instead of a misleading 0. 2. Root-cause the intermittent-0 (candidate: git fetch failure / swallowed subshell error inside the script). 3. The 'looks healthy' verdict incorporates ship-rate — a 0-ship state with live workers is NOT 'healthy', it is 'measurement failed / investigate'. 4. Regression test: synthetic scenario where the count query fails -> brief shows 'unavailable', not '0 + healthy'."
+  outcome_id: CREDIBLE-000
+

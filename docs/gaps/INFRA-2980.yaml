@@ -1,8 +1,8 @@
 - id: INFRA-2980
   domain: INFRA
-  title: "CREDIBLE: pickable"
-  status: open
+  title: 'CREDIBLE: pickable'
+  status: done
   priority: P1
   effort: xs
-  acceptance_criteria:
-    1. verify it works
+  acceptance_criteria: 1. verify it works
+  closed_date: '2026-07-25'

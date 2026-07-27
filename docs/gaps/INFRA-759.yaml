@@ -1,0 +1,9 @@
+- id: INFRA-759
+  domain: INFRA
+  title: "RESILIENT: pr-watch-shepherd auto-fix for cargo fmt failures on open PRs"
+  status: done
+  priority: P2
+  effort: s
+  closed_pr: 1584
+  outcome_id: MISSION-010
+

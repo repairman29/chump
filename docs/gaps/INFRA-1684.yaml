@@ -1,0 +1,18 @@
+- id: INFRA-1684
+  domain: INFRA
+  title: "CREDIBLE: scripts/ci/test-synthesis-truth.sh validator — grep docs/syntheses/*.md for 'filed: <GAP-ID>' patterns + assert each exists in state.db (INFRA-1554 narrow follow-up)"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Narrow follow-up to INFRA-1554 (which has 5 ACs; this gap is AC #2 alone for atomic shipping under tight cadence). The validator alone is shippable: greps for 'filed:' patterns in syntheses, verifies each referenced gap exists. The harder ACs (atomic synthesis-pass.sh modification, EVENT_REGISTRY entry, SYNTHESIS_CONTRACT.md) remain on INFRA-1554.
+  acceptance_criteria:
+    - scripts/ci/test-synthesis-truth.sh exists, is executable, runs grep over docs/syntheses/*.md
+    - "For each 'filed: <DOMAIN-ID>' or 'INFRA-NNNN filed' style reference, asserts chump gap show <ID> succeeds (status open or done both acceptable)"
+    - "Test passes against current state OR reports orphan list with file:line citations; exit 1 only on orphans"
+    - "Bypass per-file via '<!-- synthesis-truth-exempt: <reason> -->' marker"
+    - "Self-test: a synthetic synthesis file with a known-bad 'filed: INFRA-9999999' reference triggers a non-zero exit"
+  closed_date: '2026-05-22'
+  closed_pr: 2336
+  outcome_id: MISSION-010
+

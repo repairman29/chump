@@ -1,0 +1,25 @@
+- id: RESILIENT-093
+  domain: RESILIENT
+  title: "Audit: source scrub-git-env.sh in remaining 5 test scripts that create git commits"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Companion to RESILIENT-090 #3032. The root-cause scrub-git-env.sh ships in main; only 2 preflight tests source it (test-system-integration.sh, test-gap-preflight-ac-gate.sh).
+    
+    5 more test scripts use the same Reinitialized existing Git repository in /Users/jeffadkins/Projects/Chump/.git/ +  pattern but are NOT in preflight — they only run in CI:
+      - scripts/ci/test-bot-merge-gap-fatal.sh
+      - scripts/ci/test-chump-upgrade-detection.sh
+      - scripts/ci/test-inventory.sh
+      - scripts/ci/test-agent-dispatch-guardrail.sh
+      - scripts/ci/test-rust-first-worktree-bypass.sh
+    
+    Risk: lower than the preflight tests (CI runs in fresh GHA workers with no inherited GIT_DIR), but if anyone runs them locally from a worktree during debugging, the leak applies. Source scrub-git-env.sh at the top of each. Cost: 6 lines per file.
+  acceptance_criteria:
+    - 1. Add 'source scripts/lib/scrub-git-env.sh' line near top of all 5 test scripts
+    - 2. Each test still passes its existing assertions
+    - 3. emit kind=preflight_test_leak_belt_complete on landing
+  closed_date: '2026-06-05'
+  closed_pr: 3034
+  outcome_id: RESILIENT-000
+

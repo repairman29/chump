@@ -1,0 +1,17 @@
+- id: META-164
+  domain: META
+  title: "EFFECTIVE P1 (RAINBOW-6): Mission orchestrator system — public Mission/ObjectiveState types + orchestrator daemon + mission-aware picker + CLI + ambient events; turns ad-hoc multi-gap dispatches into coordinated squad missions (HITL approval, dep-graph execution, auto-replan on collision/failure)"
+  status: done
+  priority: P1
+  effort: xl
+  acceptance_criteria:
+    - "**Reframe (2026-05-30):** Mission system shapes are well-established prior art in established Rust mission-execution codebases. This META is LIFT + adapt the public-interface subset for agent-fleet semantics, not greenfield design.\n\n**Public-interface shapes to mirror (semantic equivalents):**\n- Mission { id, name, objectives, fallback_behavior, timestamp_issued, ttl_seconds, version }\n- Objective { id, description, resource_cost, duration_secs, target?, sequence }\n- ObjectiveState { Pending, InProgress, Completed, Failed, Skipped }\n- PersistentMission, MissionCheckpoint, ObjectiveDependency, DependencyCondition\n- MissionReplanner trait, ReplanStrategy enum (Abort "
+    - " Retry "
+    - " Degrade "
+    - " HumanEscalate)\n- MissionExecutor, ObjectiveResult\n- ExecutionRecord, ExecutionLog\n- FallbackMode { SafeShutdown, ReturnToBase, QueryAuthority, ContinueLastTask, SkipAndContinue }\n\n**Adaptations for agent fleet (vs original physical-fleet context):**\n- resource_cost = token_budget (per-gap cost cap; INFRA-2090 alignment)\n- target = HITL approval gate (already wired via INFRA-1813)\n- location/geo affinity = path-domain scope (file-prefix lease affinity)\n- mesh distribution = chump-coord broadcast + lease primitives (already operational)\n- ExecutionRecord = ambient stream + PR commit log (already in place)\n\n**Sub-tracks (decompose at claim):**\n\n(a) **INFRA-2247 (keystone prerequisite): lift Mission types into crates/chump-coord/src/mission/** — public-interface only, derived from internal prior-art shapes; agent-fleet-adapted (resource_cost vs energy_cost, path scope vs geo)\n(b) Curator capability registry — each role declares supported ObjectiveKind (in INFRA-1120 capability.rs)\n(c) MissionExecutor daemon — dispatches via chump-coord broadcasts + lease primitives\n(d) Mission-aware picker — curators prefer assigned Objective over generic next-best (depends_on as hard ordering)\n(e) chump mission CLI (new / status / complete / abort)\n(f) Replanner: AbortOnFailure + RetryWithBackoff + DegradeToSimpler + HumanEscalate\n(g) Ambient events: mission_created, objective_started, objective_completed, mission_replanned, mission_completed (extend EVENT_REGISTRY)\n(h) Rainbow-6 viz: fleet-scrubber gains mission lane (timeline + role assignments)\n(i) Canary: declare Marcus M-B (INFRA-1813/1605/2141/2200) as a post-hoc Mission for validation\n(j) PWA Mission panel — chump-cockpit mission status view\n\n**Operator value:** today's manual multi-sub-agent dispatch + manual lease arbitration + manual admin-merge cycles → one CLI call. Mission lands → done. Replan on collision automatic.\n\nDecompose via chump gap decompose at claim time. INFRA-2247 is the unblocker for everything else."
+  notes: |
+    [2026-05-30T16:21:04Z] stuck cycle 1 → re-attempt 2026-05-30 (PR #2831 auto-closed) respawn-handled:2831
+  closed_date: '2026-06-05'
+  closed_pr: 2831
+  outcome_id: MISSION-010
+

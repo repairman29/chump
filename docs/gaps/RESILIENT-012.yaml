@@ -1,0 +1,11 @@
+- id: RESILIENT-012
+  domain: RESILIENT
+  title: "RESILIENT: GitHub Actions queue saturation — prevent merge stall when >50 jobs queued"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\n    \"Implement scripts/coord/ci-queue-monitor.sh: poll gh run list --status queued every 10s, emit ci_queue_depth event to ambient.jsonl with count of queued runs\",\n    \"Add ci_queue_depth to EVENT_REGISTRY.yaml with consumers=[fleet_health, operator_dashboard]; threshold alert when count > 50\",\n    \"Implement backpressure: bot-merge.sh polls ci_queue_depth before spawning new CI run; if > 50, waits with exponential backoff (max 5min) rather than saturating queue\",\n    \"Add circuit-breaker fallback: when queue_depth > 100 for >10min, emit ci_queue_critical and auto-cancel lowest-priority queued runs (nightly, e2e-*, non-fast-checks)\",\n    \"Docs: scripts/coord/README.md § CI Queue Management with runbook for manual intervention when queue wedges\",\n    \"CI test: scripts/ci/test-ci-queue-saturation.sh validates backpressure logic and circuit-breaker triggers\"\n  ]"
+  closed_pr: 1687
+  outcome_id: RESILIENT-000
+

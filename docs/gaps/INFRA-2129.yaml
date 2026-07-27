@@ -1,0 +1,12 @@
+- id: INFRA-2129
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C1 ship strategy doc — docs/strategy/INTEGRATION_CYCLE_2026-05-29.md (operator-reviewed draft at /tmp/)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- Copy the operator-reviewed draft at /tmp/INTEGRATION_CYCLE_2026-05-29.md to docs/strategy/INTEGRATION_CYCLE_2026-05-29.md (~3500 words, comprehensive strategy + 4 operating modes + lifecycle + bisect handling + migration phases + metrics).\n- Cross-link FROM CLAUDE.md (§On-demand docs section), OPERATOR_PLAYBOOK.md (§Ship pipeline section), and docs/ROADMAP.md.\n- Cross-link TO docs/strategy/MARKET_POSITIONING_2026-05-27.md, docs/strategy/NATS_A2A_DEMO_2026-05-28.md (the substrate this builds on), docs/strategy/DOC-063 (the problem catalog), META-123 (Mode D defined there).\n- Voice-lint clean (no \"leverage\" / \"synergy\" / \"seamless\" — already verified in draft).\n- All internal markdown links resolve (md-links curator lane).\n- Acceptance hint: when operator runs `chump roadmap-status`, this doc appears as a top-level strategy reference."
+  closed_date: '2026-06-05'
+  closed_pr: 2730
+  outcome_id: MISSION-010
+

@@ -1,0 +1,11 @@
+- id: META-189
+  domain: META
+  title: "META: Implement consensus vote arming for MERGEABLE PRs (requires INFRA-2274) (META-180 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - PRs classified as `MERGEABLE` trigger broadcast of `FEEDBACK kind=vote-request` with `corr_id=pr-N`.
+    - Consensus votes are tracked per PR, keyed by `corr_id`.
+  outcome_id: MISSION-010
+

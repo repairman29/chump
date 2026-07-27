@@ -1,0 +1,17 @@
+- id: CREDIBLE-116
+  domain: CREDIBLE
+  title: chump-desktop --doc — doctest never executed, rustdoc returns ENOENT on intermediate artifact dirs (proc-macro panic during workspace cargo-test)
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Reproduce: `cargo test -p chump-desktop --doc` after fresh `cargo build --workspace` — does it fail with `(never executed) No such file or directory (os error 2)`? If yes, root-cause why rustdoc cannot find intermediate build artifacts that cargo just produced."
+    - "Hypothesis: build script outputs (objc2-exception-helper, ring) are placed in `target/debug/build/<hash>/out` but rustdoc invocation paths are computed against a stale snapshot."
+    - "Fix: pin the doctest invocation to a deterministic working dir + add a sentinel that asserts all -L native dirs exist before rustdoc exec; if not, regenerate via cargo build --quiet -p chump-desktop."
+    - "Verify: 3 consecutive workspace cargo-test runs include chump-desktop doctest passing."
+  notes: |
+    First observed 2026-06-05T23:50Z during RESILIENT-118 preflight. Failure mode: `error: proc macro panicked` followed by `doctest failed`, `rustdoc ... (never executed) ... No such file or directory (os error 2)`. Blocked RESILIENT-118 ship; bypassed via CHUMP_PREFLIGHT_SKIP=1 with trailer per CREDIBLE-105.
+  closed_date: '2026-07-20'
+  closed_pr: 1652
+  outcome_id: CREDIBLE-000
+

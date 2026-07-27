@@ -1,0 +1,13 @@
+- id: META-223
+  domain: META
+  title: "META: Implement assertions for `test-auto-admin-merge-policy.sh` (META-209 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The `test-auto-admin-merge-policy.sh` script runs the `auto-admin-merge-daemon.sh` against the 5-PR fixture.
+    - The script asserts that the single policy-passing PR is successfully admin-merged by the daemon.
+    - The script asserts that the four policy-failing PRs are *not* admin-merged by the daemon, and logs the specific reason for each failure.
+  depends_on: [META-222, META-219]
+  outcome_id: MISSION-010
+

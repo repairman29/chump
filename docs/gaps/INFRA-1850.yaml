@@ -1,0 +1,18 @@
+- id: INFRA-1850
+  domain: INFRA
+  title: "EFFECTIVE: harvest postsub Stripe tiered billing (PLATFORM_FEES 5pct 8pct 3pct with creator revenue split) for Chump marketplace tier"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - Read repairman29/postsub/server.js via gh api; document the PLATFORM_FEES object (basic 5pct, pro 8pct, enterprise 3pct), Stripe fee constants (STRIPE_FEE_PERCENTAGE 0.029, STRIPE_FEE_FIXED 0.30), creator revenue calc (amount minus Stripe fee minus platform fee) in docs/arsenal/cross-pollination/CP-018-postsub-stripe.md
+    - Compare against BEAST-MODE marketplace monetization (70/30 split per project_content_bots_suite memory) — pick the model that fits Chump's content-bots-suite productization plan
+    - "Decide harvest route: Vendoring is right here since fee-calc is pure-function logic with no runtime state. Port into a Rust crate chump-billing-feecalc with tier enum and split function"
+    - "Define Chump tier semantics: pillar-tag and effort-class map to fee-tier (so an EFFECTIVE-S gap is basic-tier vs RESILIENT-L which is pro-tier or similar) — operator configurable"
+    - "Smoke test scripts/ci/test-billing-feecalc.sh: synthetic amounts and tiers produce deterministic revenue splits"
+    - Coordinate with project_content_bots_suite memory and the productization plan (META-068) — billing is the substrate that unlocks the content-bots side-product revenue line
+    - Defer implementation until content-bots-suite is an active workstream — this gap parks the harvest target so when the productization moment comes, the prior art is referenced
+    - "Vendoring lineage comment in chump-billing-feecalc/src/lib.rs: 'Vendored from repairman29/postsub at commit SHA, original server.js fee logic (CP-018)'"
+    - Cross-pollination brief CP-018-postsub-stripe.md
+  outcome_id: MISSION-010
+

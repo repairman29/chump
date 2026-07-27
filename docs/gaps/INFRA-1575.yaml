@@ -1,0 +1,19 @@
+- id: INFRA-1575
+  domain: INFRA
+  title: "CREDIBLE: A2A_TWO_WAY_COMMS.md DOC-049 claims 10-gap implementation chain (INFRA-1296..1302 + PRODUCT-103..105) — ALL TEN MISSING from state.db; same truth-audit pattern as INFRA-1554 at design-doc scale"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Verified 2026-05-16: docs/architecture/A2A_TWO_WAY_COMMS.md (DOC-049) is marked "status: approved — implementation chain INFRA-1296..1302 + PRODUCT-103..105" and explicitly names each gap as the implementing work for specific UI/backend pieces (POST /api/broadcast = INFRA-1296, urgency/severity fields = INFRA-1299, filter rules = INFRA-1300, compose component = PRODUCT-103, inbox view = PRODUCT-104, toast = PRODUCT-105, web push = INFRA-1301, daily digest = INFRA-1302, inbox endpoint = INFRA-1298, reach-classifier = INFRA-1297). chump gap show on each returns "not found" — all ten missing from state.db. Same truth-audit pattern as INFRA-1554 (synthesis-pass claimed INFRA-1305 filed when it wasn", just at design-doc scale not synthesis-output scale. Doc was approved without the gaps being created, OR gaps existed and got reaped without doc update. Either way the doc misleads any agent or operator who reads it for implementation guidance.
+  acceptance_criteria:
+    - "Investigate: for each of the 10 referenced IDs (INFRA-1296, 1297, 1298, 1299, 1300, 1301, 1302, PRODUCT-103, 104, 105), determine if it was ever filed (git log on docs/gaps/ for the ID), reaped, or never filed"
+    - "For each that should still be active: file via chump gap reserve with description + AC drawn from the corresponding paragraph in A2A_TWO_WAY_COMMS.md; capture the returned ID and update the doc to match if any ID renamed"
+    - "For each that was deliberately abandoned: update A2A_TWO_WAY_COMMS.md status field to \"deferred\" or \"partial — see <new-IDs>\" and note which use-case-matrix rows are no longer active"
+    - "Extend INFRA-1554 synthesis-truth audit to also scan docs/architecture/*.md and docs/design/*.md for \"INFRA-<num>\" patterns and validate each ID exists (broaden the truth-audit scope beyond just docs/syntheses/)"
+    - Spot-check the other A2A docs (docs/design/A2A_ROADMAP.md, A2A_MAILBOX_SEMANTICS.md, docs/process/A2A_MAILBOX.md, A2A_INTENT.md, A2A_DISCORD.md) for similar unfiled-implementation-chain references and consolidate findings
+  notes: |
+    MISDIAGNOSIS — closed 2026-05-16. Premise was 'INFRA-1296..1302 + PRODUCT-103..105 missing from state.db = doc references unfiled work'. Reality: all 10 shipped (PRs #1960, #1967, #1969, #1972, #1991, #1992, #1994, #1997, #1998, #2004) plus base layer INFRA-1255 (#1900). I read 'chump gap show: gap INFRA-X not found' as 'never existed' when it actually meant 'closed and reaped from active registry'. broadcast.sh + reach-classifier + operator-rules + /api/inbox + chump-fleet-message + chump-inbox + web push + daily-digest are all wired and operational. Real finding tracked in INFRA-1582 — chump gap show should distinguish reaped from non-existent.
+  closed_date: '2026-05-16'
+  outcome_id: MISSION-010
+

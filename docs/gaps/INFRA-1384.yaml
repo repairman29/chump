@@ -1,0 +1,11 @@
+- id: INFRA-1384
+  domain: INFRA
+  title: "RESILIENT: INFRA-1368 test-cache-mergestatestatus.sh fails on Linux CI — blocks every PR's audit job"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"INFRA-1368 (ff3f7fb0) shipped scripts/ci/test-cache-mergestatestatus.sh which fails on Ubuntu noble CI runners with: FAIL"
+  closed_date: '2026-05-16'
+  outcome_id: MISSION-010
+

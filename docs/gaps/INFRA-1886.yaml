@@ -1,0 +1,15 @@
+- id: INFRA-1886
+  domain: INFRA
+  title: "EFFECTIVE: chump gap preflight prints higher-priority unclaimed gaps as soft suggestion (advisory, not blocking) — alternative to enforced ranked pulling"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-29'
+  closed_pr: 2459
+  outcome_id: MISSION-010
+

@@ -1,0 +1,11 @@
+- id: DOC-063
+  domain: DOC
+  title: "MISSION P1: docs/strategy/CI_REVIEW_2026-05-29.md — holistic CI bottleneck review (14d failure catalog + top-5 levers)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. docs/strategy/CI_REVIEW_2026-05-29.md exists with these sections: Headline finding (37% CI-rot tax), 14-day failure catalog from ambient.jsonl, frequency × time-cost ranking, fix mapping per class, top-5 highest-leverage levers ranked, what we don't need to fix\n2. Failure catalog cites real ambient.jsonl event counts (e.g. cache_drift=618, autopilot_partial=264, etc.) from a 14-day window\n3. Top-5 levers each include: rough effort estimate, expected % reduction in CI-rot tax, dependencies on hardware vs code changes\n4. Doc is operator-facing — readable as the canonical answer to \"what should we do about CI\" for the next 30 days\n5. Pairs-with section links: CI_SCALING_REFERENCE.md (Wave 2 hardware), MERGE_QUEUE.md (Wave 1), OPERATOR_PLAYBOOK §8"
+  closed_date: '2026-05-29'
+  closed_pr: 2699
+

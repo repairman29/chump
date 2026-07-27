@@ -1,0 +1,10 @@
+- id: INFRA-2178
+  domain: INFRA
+  title: "EFFECTIVE P2: chump gap reserve — NATS KV chump_gap_counter for atomic ID allocation (file-fallback to state.db; multi-machine safe)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "- chump gap reserve obtains the next INFRA-NNNN id via NATS KV CAS on bucket chump_meta key gap_counter_<domain> (e.g. gap_counter_INFRA).\n- Lifecycle: nats kv update chump_meta gap_counter_INFRA <new_value> with --revision <previous_revision>. Atomic; multi-machine safe.\n- Behavior: NATS available → KV CAS path; NATS unavailable → fall back to state.db SELECT MAX (existing logic from INFRA-2177).\n- Env knob: CHUMP_GAP_RESERVE_NATS_COUNTER=1 (default 0 until validated, then flip).\n- On NATS-unavailable fallback, emit kind=gap_counter_fallback_to_db to ambient.jsonl.\n- 3+ unit tests: NATS-available happy path, NATS-down fallback, concurrent reserve race (two reserves at same revision → one wins).\n- Cross-references INFRA-2102 (NATS substrate live), INFRA-2177 (the state.db simplification)."
+  outcome_id: MISSION-010
+

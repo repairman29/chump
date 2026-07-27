@@ -1,0 +1,10 @@
+- id: INFRA-2148
+  domain: INFRA
+  title: "RESILIENT P2: broadcast.sh threading — add --reply-to <msg-id> for FEEDBACK chain audit"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Add --reply-to <message-id> flag to broadcast.sh. Each emitted event gets a stable msg_id field (uuid). When --reply-to is set, the new event's payload includes reply_to=<original-msg-id>. Enables FEEDBACK chain reconstruction. Test: send FEEDBACK A, send FEEDBACK B --reply-to A; verify A and B linked in ambient stream + a query like 'chump-coord watch --thread <msg-id>' shows both."
+  outcome_id: MISSION-010
+

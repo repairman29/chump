@@ -1,0 +1,12 @@
+- id: INFRA-2106
+  domain: INFRA
+  title: "RESILIENT: chump gen broken on Mac default config — local provider expects gpt-5-mini (not on PATH), cloud cascade returns tool-use that doesn't parse"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "- Repro: cd /tmp/some-non-rust-project && chump gen \"create file foo.txt with content bar\" --work-dir /tmp/some-non-rust-project\n- Symptom A (default cascade): \"Local API error 404 Not Found: model 'gpt-5-mini' not found\". Hardcoded local model = gpt-5-mini, local provider URL = http://localhost:8000/v1 (vllm-mlx) or http://localhost:8001/v1, neither running by default on dev Mac.\n- Symptom B (CHUMP_GEN_PROVIDER=anthropic): cloud route returns tool-call syntax like `<function/run_cli>{\"command\": \"echo ok\"}` but chump gen parses only `===FILE===` blocks. Result: \"LLM response contained no parseable file edits\". Tool-use trained models (Claude, GPT) can't be steered to file-block output without explicit prompt tuning.\n- Symptom C (--local + OPENAI_API_BASE=http://127.0.0.1:11434/v1 → ollama): chump fails with \"model HTTP unreachable (daemon down)\" even though `curl http://127.0.0.1:11434/api/tags` succeeds. Likely connection-handling bug or timeout mismatch in chump's local-LLM HTTP client.\n- Fix one of: (a) update default local model to one that actually runs on dev Mac (qwen3:14b or similar from ollama), (b) auto-fallback model resolution: probe local endpoints, pick a model that exists, (c) update cloud cascade prompt to force ===FILE=== block output for tool-use models OR teach chump gen to accept tool-call responses by mapping them to file ops.\n- Verify: `chump gen \"create test.txt with hello\" --work-dir /tmp/scratch` succeeds with cloud or local provider, produces a git commit.\n- Discovered: 2026-05-28 trying to demo chump gen on ehippy/derelict (external TypeScript repo). Coord primitives (claim, work-board, emit) worked perfectly; chump gen was the only broken link."
+  closed_date: '2026-05-29'
+  closed_pr: 2698
+  outcome_id: MISSION-010
+

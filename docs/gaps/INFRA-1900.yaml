@@ -1,0 +1,13 @@
+- id: INFRA-1900
+  domain: INFRA
+  title: "CREDIBLE: tighten test-no-anthropic-smoke.sh grep — false-positive on gap titles containing '401' or 'API key' literal (today: INFRA-1893 'HTTP 401 Bad credentials' triggered cross-PR cascade)"
+  status: done
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - scripts/ci/test-no-anthropic-smoke.sh Test 1 grep no longer matches gap titles containing 'API key' or '401' as substring/grep changed from 'Error.*anthropic
+    - 401
+    - "API key' to anchored pattern matching only actual Anthropic API failures (e.g. 'ANTHROPIC_API_KEY' env var name + 'HTTP 401' phrase + 'anthropic\\.com' domain)/Test 1 still detects real Anthropic API call attempts (mock test added: synthetic gap with 'API key' in title doesn't trigger fail; real binary calling anthropic does)/Currently blocking 8+ PRs with chump-first contract failure due to false-positive on PRODUCT/INFRA gap titles"
+  closed_date: '2026-05-24'
+  outcome_id: MISSION-010
+

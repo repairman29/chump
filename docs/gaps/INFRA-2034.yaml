@@ -1,0 +1,13 @@
+- id: INFRA-2034
+  domain: INFRA
+  title: "RESILIENT P2: broadcast.sh positional-arg footgun — text passed as bare arg lands in corr_id/gap field, not reason; --help doesn't document event-type enum"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

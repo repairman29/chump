@@ -1,0 +1,11 @@
+- id: INFRA-1963
+  domain: INFRA
+  title: "MISSION P1: vision doc — order the gap store by wedge-class topology to multiply velocity (lived evidence from session 2026-05-24/25)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Write docs/strategy/SHIP_ORDER_VISION_2026-05-25.md (~100-150 lines). Core thesis: priority tells us what matters, dependency-topology tells us in what ORDER to ship. We've been mixing them, producing convoy stalls and ghost work."
+  closed_date: '2026-05-25'
+  outcome_id: MISSION-010
+

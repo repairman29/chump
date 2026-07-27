@@ -1,0 +1,20 @@
+- id: INFRA-1617
+  domain: INFRA
+  title: "EFFECTIVE: skill curriculum advanced learning mechanisms — compound-skill proposer + curator failure-driven skill creation + skill_considered event for selection-bias correction"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Three independent learning mechanisms that all extend the basic skill-record loop into proactive curriculum evolution. Filed as one umbrella for chump gap decompose at claim time. (1) Compound-skill proposer: detect repeated successful sequences like {verify-existence + claim-without-collision + pre-ship-ci-prediction} fired in order with >=N successes, propose a compound skill complete-gap-cycle with the primitives declared as composition. (2) Curator failure-driven proposal: extend META-065 opus-curator so when >=N agents fail at the same task class in 7d, it proposes a skill that codifies the avoidance pattern. (3) skill_considered event: skill_manage(action=view) emits kind=skill_considered to ambient with the agent session_id; viewed-but-no-outcome = selection-bias signal (agent decided this did not fit, valuable data the current loop misses).
+  acceptance_criteria:
+    - "Sub-gap A (compound proposer): scripts/coord/skill-compound-proposer.sh runs daily, scans session ambient for ordered skill_invoked sequences in successful PRs, emits kind=skill_compound_proposal to ambient when threshold met (default >=5 successful sequences in 14d); proposals appear in chump cos digest New section"
+    - "Sub-gap B (curator failure-driven): src/opus_curator/skills.rs (or wherever META-065 lives) gains failure_cluster_skill_proposal — clusters failure_class events from META-051 pattern detector, proposes a skill when N>=3 fails in same class within 7d"
+    - "Sub-gap C (skill_considered event): src/skill_tool.rs::handle_view emits kind=skill_considered to ambient.jsonl with {skill_name, session_id, gap_id?, ts}; cos digest computes \"viewed but unrecorded\" = agent skipped skill — selection-bias signal"
+    - EVENT_REGISTRY.yaml entries for skill_compound_proposal, skill_failure_proposal, skill_considered with emitter_paths
+    - Each sub-gap has its own smoke test in scripts/ci/test-skill-<mechanism>.sh
+    - Depends on INFRA-1614 (correlation wire-up) shipping first so yield_weight is available for the proposal scoring
+    - chump gap decompose INFRA-1617 at claim time produces 3 sub-gaps for parallel implementation
+  notes: |
+    wave: 1+ (advanced learning mechanisms; chump gap decompose at claim time into 3 sub-gaps); chip-prediction: fleet-quality
+  outcome_id: MISSION-010
+

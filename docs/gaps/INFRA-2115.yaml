@@ -1,0 +1,20 @@
+- id: INFRA-2115
+  domain: INFRA
+  title: "EFFECTIVE P1: curator-opus-context-keeper role doc OR Harvester external-mode extension (META-123 C7)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    META-123 C7: Either define a new curator-opus-context-keeper role OR extend the existing Harvester role with an external-repo mode. Context-Keeper's job is the persistent memory layer for external repos: scan-deltas (what changed since last touch), maintainer signal capture (issue activity, PR merges, commit cadence), memory file curation under ~/.chump/external/<owner>/<repo>/memory/. Decide which option: (a) new dedicated role for cleaner lane bounding; (b) extend Harvester since it already has the arsenal-builder muscle. Operator-sensitive design call: surface the trade-off in the doc itself if uncertain.
+  acceptance_criteria:
+    - "Pick one path (document the choice in the PR description with 2-3 sentence rationale): (a) New file .claude/agents/curator-opus-context-keeper.md following the curator-opus-target/decompose/shepherd format, OR (b) Edit .claude/agents/harvester.md adding an 'External mode' section that bounds when Harvester operates against ~/.chump/external/ vs the internal arsenal."
+    - "If (a): frontmatter with name=context-keeper, description bounding to external-repo memory only (NOT internal Chump memory), tools list including Read/Write/Edit/Bash/Grep/Glob. Lane scope MUST be hard-bounded: scan-delta against last snapshot, capture maintainer signals (open issues count delta, recent PR merges, commit cadence over last 7/30/90 days), curate memory files. Does NOT: file gaps, dispatch subagents, run scout-style proposals (that's Scout's lane)."
+    - "If (b): add a new top-level section to harvester.md titled 'External mode (META-123 C7)' that bounds when Harvester operates on ~/.chump/external/<owner>/<repo>/ paths and what artifacts it produces there (memory/snapshot-<date>.json, memory/delta-<from>-to-<to>.md, signals/issues.jsonl, signals/prs.jsonl). Explicit hard-bound: external-mode artifacts MUST land under ~/.chump/external/, NEVER under docs/arsenal/."
+    - Standard work-your-lane protocol (5-step) referencing canonical loop driver (scripts/coord/context-keeper-loop.sh OR the existing harvester invocation with --external-mode flag; file a follow-up gap if loop script doesn't exist yet).
+    - "Discipline rules: never invent maintainer activity (every signal MUST be sourced from git/gh API), never claim work outside external memory curation, cap each iter at 12 minutes. Cross-references section linking META-123, INFRA-2116 (schema), .claude/agents/harvester.md (for path b: link in both directions), the Marcus M-B canonical demo arc."
+    - Voice-lint clean. PR via scripts/coord/bot-merge.sh --auto-merge (or manual fallback).
+  depends_on: [META-123]
+  closed_date: '2026-05-29'
+  closed_pr: 2703
+  outcome_id: MISSION-010
+

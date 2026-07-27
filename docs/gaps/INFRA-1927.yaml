@@ -1,0 +1,21 @@
+- id: INFRA-1927
+  domain: INFRA
+  title: "CREDIBLE: measure local-preflight vs CI agreement rate — emit kind=preflight_ci_agreement {gap_id, preflight_pass, ci_pass} per PR; weekly rollup catches preflight-theater (false-negatives) and preflight-overreach (false-positives) — currently 0 visibility into whether the <60s local gate matches the 10-12min CI gate"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Reproduce: every push that fires the pre-push hook (which already invokes chump preflight per INFRA-1670/1671) emits a kind=preflight_ci_agreement event to ambient with {gap_id, branch, preflight_pass:bool, preflight_secs:int, sha:str} AFTER the local preflight completes"
+    - "2. After CI completes on the resulting PR (success/failure/skipped), a follow-up event kind=preflight_ci_agreement_resolved {gap_id, sha, ci_pass:bool, ci_required_pass:bool, mismatch:bool} is emitted — likely via scripts/ops/github-liaison.sh on workflow_run.completed webhook"
+    - "3. Weekly rollup script scripts/dev/preflight-ci-agreement-report.sh: queries ambient.jsonl for the last 7 days, joins by sha, reports {total_pushes, both_pass_count, both_fail_count, local_pass_ci_fail_count, local_fail_ci_pass_count, agreement_pct}"
+    - "4. Target: agreement_pct ≥ 95% (anything below means preflight needs adjustment to match CI gates more closely)"
+    - "5. Bypass: CHUMP_PREFLIGHT_CI_AGREEMENT=0 disables emit (debug-only)"
+    - "6. Smoke test scripts/ci/test-preflight-ci-agreement.sh: stub a synthetic push event + a synthetic workflow_run.completed + invoke the rollup; assert mismatch counted correctly when local-pass + ci-fail"
+    - 7. Register the 2 new event kinds in scripts/ci/event-registry-reserved.txt (python-direct emit, not grep-scannable)
+    - "8. Baseline 2026-05-24: 0 visibility into local↔CI agreement; pre-push hook is honored (0 bypass events in 24h) but we cannot tell if the 0.18s docs-only preflight + sub-min Rust preflight actually catches what the 10-12min CI catches"
+    - 9. Pairs with INFRA-1928 (audit-required regression — the current case of 'CI is firing but no one reads it because everyone knows it is broken')
+    - 10. The Liaison Phase 2 webhook stream (INFRA-1318) is the data plumbing this gap consumes
+  closed_date: '2026-05-25'
+  closed_pr: 2555
+  outcome_id: MISSION-010
+

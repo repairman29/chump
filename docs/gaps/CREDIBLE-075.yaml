@@ -1,0 +1,17 @@
+- id: CREDIBLE-075
+  domain: CREDIBLE
+  title: "PREVENTER: new-lint-gate self-test fixture requirement — when a new CI lint is added, force a smoke test that runs the lint against its own examples doc and asserts the gate doesn't self-flag (precedent: INFRA-1728 voice-banlist gate flagged VOICE_GUARDRAIL.md examples on its own merge, #2509 stuck 49m)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Every new CI lint added under scripts/ci/test-lint or test-banlist patterns MUST ship with a smoke test that runs the lint against the lint own documentation (e.g. docs/process/NAME_GUARDRAIL.md or docs/NAME.md) and asserts exit 0; smoke test in scripts/ci/test-NAME-self-fixture.sh
+    - Lint scripts that match patterns inside code-block contexts (markdown fenced blocks, table cells with backtick-quoted words, indented blocks) must implement a skip-context filter; default filter excludes lines inside markdown fenced blocks and table-cell backtick contexts
+    - "Add to docs/process/CI_GATES_INVENTORY.md a CI Gate Author Checklist subsection: (a) self-fixture test, (b) skip-context filter, (c) Voice-Lint-Bypass-equivalent trailer documented, (d) Tier classification (Tier-A/B/C/D) explicit"
+    - Smoke test scripts/ci/test-lint-gate-checklist.sh greps any NEW scripts/ci/test-NAME-lint.sh added in the PR against the checklist; FAILs if checklist not met
+    - "Retroactive: scan scripts/ci/test-NAME-lint.sh (12 existing lint gates as of 2026-05-24); flag any that lack a self-fixture; file follow-up gaps per affected lint"
+    - "Roll-out doc: append to existing CI_GATES_INVENTORY.md or new docs/process/CI_LINT_AUTHORING.md"
+  closed_date: '2026-05-25'
+  closed_pr: 2547
+  outcome_id: CREDIBLE-000
+

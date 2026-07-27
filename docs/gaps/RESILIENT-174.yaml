@@ -1,0 +1,17 @@
+- id: RESILIENT-174
+  domain: RESILIENT
+  title: "RESILIENT: disabled-daemon graveyard — 63 launchd findings (disabled/not-loaded/failing) from new audit-daemon-health; per-daemon revive-or-retire"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    First run of audit-daemon-health (RESILIENT-168) found 63 CRITICAL runtime findings across ~/Library/LaunchAgents com.chump.*/dev.chump.*: services DISABLED in launchd override DB (dev.chump.planner, dev.chump.auto-merge-rearm, dev.chump.github-liaison, com.chump.daemon-exit-loop-watcher, dev.chump.overnight-research, ...), plists not loaded (com.chump.cluster-detector, com.chump.refresh-runner-binary, ...), and failing (dev.chump.syspolicyd-doctor exit=127). Some were disabled DELIBERATELY — do NOT mass-enable. Needs a per-daemon decision pass: revive (enable+bootstrap+verify exit 0), retire (delete plist + remove installer), or document-as-intentionally-off. auto-merge-rearm and planner are the highest-suspicion casualties for fleet throughput.
+  acceptance_criteria:
+    - inventory table (daemon, state, decision revive/retire/intentional, rationale) committed to docs/process or docs/ops
+    - every 'revive' verified loaded + exit 0; every 'retire' plist removed AND installer deleted or marked deprecated
+    - ambiguous daemons (overnight-research class) listed for operator sign-off rather than unilaterally enabled
+    - audit-daemon-health CRITICAL count drops below 10 after the pass
+  notes: Week-1/2 lane; born from RESILIENT-168 ship 2026-07-19.
+  closed_date: '2026-07-21'
+  closed_pr: 3203
+

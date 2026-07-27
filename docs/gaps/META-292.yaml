@@ -1,0 +1,16 @@
+- id: META-292
+  domain: META
+  title: SessionStart doctrine-delta injection — surface 'CLAUDE.md/AGENTS.md/docs/process/* changes since session's last commit' in the digest, so agents see what doctrine just shipped (today CREDIBLE-105 shipped during my session; tomorrow's agent has no reason to know unless they re-read the whole file)
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/coord/doctrine-delta-inject.sh wired into SessionStart hook (alongside ambient-context-inject.sh + inbox-check-urgent.sh).
+    - "On SessionStart: read ~/.chump/session-last-doctrine-commit (file storing last-seen origin/main commit for doctrine paths); run git log <stored-commit>..origin/main --name-only -- CLAUDE.md AGENTS.md docs/process/*.md docs/MISSION.md to enumerate doctrine changes; format as \"Doctrine changes since your last session\" block in the session digest."
+    - "Operator-directive freshness sub-check: when SessionStart context contains an operator directive with file-path + line-number references (e.g. \"fix line 2927 in src/main.rs\"), verify the file exists at origin/main HEAD and emit a \"directive freshness\" line: \"✓ verified at HEAD\" or \"⚠ src/main.rs has been modified since this directive — line numbers may have shifted N lines\"."
+    - Update ~/.chump/session-last-doctrine-commit on each session START with current origin/main HEAD (not on session end — session end may not fire on crash).
+    - "Smoke test scripts/ci/test-doctrine-delta-inject.sh: seed a fake last-doctrine-commit pointing at 2 commits ago; run inject; assert digest contains the 2 doctrine commits in human-readable form."
+  notes: |
+    Origin: operator 2026-06-09 framing #8 "doctrine ships faster than CLAUDE.md updates". Real example: CREDIBLE-105 (no-band-aids) was filed AND shipped during my Jun 5 session. Jun 6 agents had no copy; Jun 7 agents only saw it because I had MEMORY.md context. Without this, every doctrine change has a multi-day visibility lag. Paired with META-290 + META-291 to close the discoverability cliff named in operator framing #3.
+  outcome_id: MISSION-010
+

@@ -1,0 +1,23 @@
+- id: INFRA-1681
+  domain: INFRA
+  title: "EFFECTIVE: sweep ci.yml fast-checks wiring for 5 deferred test invocations (INFRA-1657/1658/1662/1663/1656)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    5 PRs shipped 2026-05-22 deferred their new ci.yml fast-checks test invocation due to a perceived lease on .github/workflows/ci.yml that turned out to be from already-done INFRA-1621. The 5 new tests run standalone but aren't enforced by CI yet. Sweep them in one PR.
+  acceptance_criteria:
+    - "Add to .github/workflows/ci.yml fast-checks block: scripts/ci/test-bot-merge-conflict-wiring.sh (INFRA-1657)"
+    - "Add: scripts/ci/test-pipefail-race-sweep.sh (INFRA-1658)"
+    - "Add: scripts/ci/test-claude-reaper.sh (INFRA-1662)"
+    - "Add: scripts/ci/test-stale-process-watchdog.sh (INFRA-1663)"
+    - "Add: scripts/ci/test-main-health-watchdog.sh (INFRA-1656)"
+    - "Add: scripts/ci/test-preflight-scope.sh (INFRA-1672)"
+    - Run each locally to confirm they pass before push
+    - Single-PR sweep; clean diff
+  notes: |
+    Operator request 2026-05-22: 5+ agents independently deferred ci.yml wiring assuming INFRA-1621 held the lease. INFRA-1621 was done before they started; the lease constraint was a misread. This sweep consolidates the deferrals.
+  closed_date: '2026-05-22'
+  closed_pr: 2328
+  outcome_id: MISSION-010
+

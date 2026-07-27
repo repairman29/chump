@@ -1,0 +1,18 @@
+- id: INFRA-3388
+  domain: INFRA
+  title: "META-070: preflight-mirror worker/CLI smoke gates (14 scripts, audit-job decomposition cluster 5/5)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    META-070/META-086 follow-up sub-gap. Rough shape: (a) add src/preflight.rs mirror gates for the 14 worker/CLI smoke scripts.
+    list: test-changes-job-self-hosted.sh, test-chump-improve.sh, test-ci-flake-rerun.sh, test-cli-fleet-coord.sh, test-cli-help.sh, test-cli-integration.sh, test-cli-version-debug.sh, test-effective-010-completion.sh, test-flake-autorerun.sh, test-inspect-resume-scrap.sh, test-install-ambient-hooks.sh, test-sandbox-isolation.sh, test-self-hosted-runner-deps.sh, test-spike-isolation.sh.
+    (b) follow the existing preflight.rs pattern used for test-chump-subcommand-help.sh / test-chump-repos.sh (already-mirrored siblings).
+    (c) update docs/process/AUDIT_JOB_DECOMPOSITION.md marking these mirrored=yes.
+    Key constraint: some build the chump binary as part of the test (CHUMP_BIN) — reuse the existing built-binary path from other CLI-smoke mirrors rather than rebuilding.
+  acceptance_criteria:
+    - All 14 scripts in this cluster (see description) are invoked from chump preflight (src/preflight.rs), matching the same pass/fail semantics as the CI fast-checks job
+    - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 14 rows flip from mirrored=no to mirrored=yes"
+    - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
+    - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+

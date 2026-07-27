@@ -1,0 +1,14 @@
+- id: INFRA-2059
+  domain: INFRA
+  title: "scripts/ci/test-pr-auto-rebase.sh synth fixture fails: 'live rebase did not OK #9001 — could not resolve branch name' — INFRA-2044-class CI-test-broken-on-real-state"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-27'
+  outcome_id: MISSION-010
+

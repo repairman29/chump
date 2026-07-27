@@ -1,0 +1,12 @@
+- id: INFRA-2393
+  domain: INFRA
+  title: "ZERO-WASTE: 7 scripts/coord/ dead scripts — delete fleet-cleanup.sh + 5 ask-*.sh + refresh-roadmap-status.sh"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Single PR deletes these 7 confirmed-dead scripts: scripts/coord/fleet-cleanup.sh, scripts/coord/refresh-roadmap-status.sh, scripts/coord/rpc/ask-capability.sh, scripts/coord/rpc/ask-eta.sh, scripts/coord/rpc/ask-handoff.sh, scripts/coord/rpc/ask-overlap.sh, scripts/coord/rpc/ask-progress.sh\",\"Pre-deletion: re-verify each has zero refs via `git grep -l <basename>` (paranoia gate)\",\"Post-deletion: scripts/coord/rpc/ directory is empty → remove the directory too\",\"Post-deletion: `chump inventory rebuild` should drop orphan-artifact count by 7\",\"Provenance: scripts/coord/rpc/ask-*.sh shipped via PR #2437 INFRA-1874 — capability-RPC feature that was never wired; note this in commit body\"]"
+  closed_date: '2026-07-20'
+  closed_pr: 3219
+  outcome_id: MISSION-010
+

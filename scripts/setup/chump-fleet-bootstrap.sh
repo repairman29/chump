@@ -185,19 +185,35 @@ for pri in P0 P1 P2 P3; do
 done
 
 # ── REQUIRED_DAEMONS pass (INFRA-1594) ────────────────────────────────────────
-# Independent of the manifest loop: verify each daemon is REGISTERED + ACTIVE
-# in launchd. The manifest's `check` field can pass via a heuristic grep, but
-# the host can still be missing the daemon (2026-05-16 M4 incident).
+# Independent of the manifest loop: verify each daemon is REGISTERED + ACTIVE.
+# On macOS uses launchctl; on Linux uses systemctl --user.
 MISSING_DAEMONS=()
+OS_KIND="macos"
+[[ "$(uname -s)" == "Linux" ]] && OS_KIND="linux"
+
 for entry in "${REQUIRED_DAEMONS[@]}"; do
     label="${entry%%|*}"
     installer="${entry##*|}"
-    # Skip if install script doesn't exist (intentional — pr-rebase-daemon
-    # is referenced in CLAUDE.md but install script may not exist yet).
     if [[ ! -f "$REPO_ROOT/$installer" ]]; then
         continue
     fi
-    if launchctl print "gui/${UID_VAL}/${label}" >/dev/null 2>&1; then
+    
+    is_active=0
+    if [[ "$OS_KIND" == "macos" ]]; then
+        if launchctl print "gui/${UID_VAL}/${label}" >/dev/null 2>&1; then
+            is_active=1
+        fi
+    else
+        # systemd unit name for com.chump.chumpd is chumpd.service
+        unit_name="${label#com.chump.}"
+        unit_name="${unit_name#dev.chump.}"
+        [[ "$label" == "com.chump.chumpd" ]] && unit_name="chumpd"
+        if systemctl --user is-active "${unit_name}.service" >/dev/null 2>&1; then
+            is_active=1
+        fi
+    fi
+
+    if [[ "$is_active" -eq 1 ]]; then
         [[ "$MODE" == "check" ]] && echo "  ok      daemon:$label"
         continue
     fi

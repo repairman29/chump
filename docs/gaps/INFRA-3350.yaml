@@ -1,0 +1,15 @@
+- id: INFRA-3350
+  domain: INFRA
+  title: "ZERO-WASTE: swap audit.yml bypass-lint step to chump verify --stage ci (CREDIBLE-155 follow-up)"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    CREDIBLE-155 ported the INFRA-2429 no-new-bypass-env-vars gate into chump verify (rule id no-new-bypass-env-vars) and wired it locally at the commit-msg hook. CI still runs the legacy shell impl via .github/workflows/audit.yml -> scripts/ci/test-no-new-bypass-env-vars.sh. Swap that step to build/cache the chump binary and run 'chump verify --stage ci --base origin/main' so local and CI share one implementation (AC 1 of CREDIBLE-155 fully closed). Keep the EFFECTIVE-094 debt-ceiling half of the shell script (repo-wide count, not a diff property) until it becomes an engine input. See docs/process/VERIFY_MIGRATION.md.
+  acceptance_criteria:
+    - "The change described by \"swap audit.yml bypass-lint step to chump verify --stage ci (CREDIBLE-155 follow-up)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-21'
+  closed_pr: 3214
+

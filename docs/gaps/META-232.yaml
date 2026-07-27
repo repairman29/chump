@@ -1,0 +1,13 @@
+- id: META-232
+  domain: META
+  title: "META: Integrate chump consensus-tally check (META-209 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - auto-admin-merge-daemon.sh calls 'chump consensus-tally <PR_NUMBER>' for each open PR.
+    - The script parses the output of 'chump consensus-tally' to determine if 'consensus_resolved' is true and 'quorum>=3'.
+    - Logging indicates the consensus status (resolved/not resolved, quorum met/not met) for each PR.
+  depends_on: [META-229, META-230]
+  outcome_id: MISSION-010
+

@@ -1,0 +1,13 @@
+- id: INFRA-2325
+  domain: INFRA
+  title: pr-shepherd cascade-gate — hold rebases when trunk red
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. pr-shepherd-daemon reads latest kind=trunk_state_change from ambient.jsonl via _get_trunk_state helper\n2. When trunk state is TRUNK_RED, daemon emits kind=pr_action_taken with action=rebase_skipped, reason=cascade_held for each BEHIND PR instead of rebasing\n3. When trunk state is TRUNK_GREEN or UNKNOWN (no trunk_state_change events), daemon preserves current rebase behavior (default-safe)\n4. Test scripts/ci/test-pr-shepherd-daemon.sh passes new case (j) verifying 2 BEHIND PRs get cascade_held when synthetic TRUNK_RED event is injected\n5. bash -n syntax clean on both modified scripts"
+  notes: |
+    [2026-06-04T00:16:30Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2914
+  outcome_id: MISSION-010
+

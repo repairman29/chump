@@ -1,0 +1,16 @@
+- id: INFRA-2545
+  domain: INFRA
+  title: "EFFECTIVE P1: deploy FLEET-034 mesh-worker daemon — capability-routed mesh consumer (route-only default + CHUMP_MESH_WORKER_EXECUTE opt-in), fail-open to pull fleet"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "scripts/coord/mesh-worker-loop.sh: fail-open (chump-coord ping fails -> exit 0, pull fleet handles); picks one capability-matched mesh-routed gap via chump-coord worker --once; ROUTE-ONLY by default (emit mesh_worker_routed + release the NATS-KV claim, no execution); EXECUTE only when CHUMP_MESH_WORKER_EXECUTE=1 (release routing-claim -> chump --execute-gap, which takes the authoritative file-lease)"
+    - "com.chump.mesh-worker.plist: RunAtLoad + conservative StartInterval (300s), capability env (WORKER_SKILLS/MACHINE), CHUMP_NATS_URL, logs; NOT KeepAlive (one gap per tick)"
+    - deployed route-only + verified one routing cycle live; reversible (launchctl unload)
+    - mesh_worker_routed + mesh_worker_executing registered in EVENT_REGISTRY
+    - scripts/ci/test-mesh-worker.sh structural smoke
+  closed_date: '2026-06-05'
+  closed_pr: 2993
+  outcome_id: MISSION-010
+

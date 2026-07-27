@@ -1,0 +1,19 @@
+- id: INFRA-1880
+  domain: INFRA
+  title: "RESILIENT P1: curator-launch scripts auto-export CHUMP_SESSION_ID=curator-opus-<role>-<date> at session start — closes the manual-export workaround (pairs with INFRA-1879)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Background — INFRA-1860 + INFRA-1879 together make inbox-poll.sh derive session from 5 paths. Manual workaround today is operator broadcasting `export CHUMP_SESSION_ID=curator-opus-<role>-<date>` to each curator. Want this set automatically at curator session launch so the operator-as-messenger pattern fully closes
+    - Find curator launch entry — likely scripts/dispatch/curator-launch.sh or similar wrapper that spawns each Opus curator session. Read existing convention (if curators are launched via a script we own, modify it; if launched manually via claude CLI, add to a documented operator playbook)
+    - Set CHUMP_SESSION_ID before claude starts — e.g. `CHUMP_SESSION_ID=curator-opus-${ROLE}-$(date +%Y-%m-%d) claude -p ...` so the hook sees it on every PostToolUse
+    - Backwards-compat — if a curator session is already running with no CHUMP_SESSION_ID set, the INFRA-1879 fallback paths (CLAUDE_SESSION_ID, tmux pane, claim-lease, operator_id) still work. This gap is about making the env-set the FIRST and most reliable path for fresh launches
+    - Document — update docs/process/CURATOR_DISPATCH.md (or create) with the launch incantation; reference INFRA-1860 + INFRA-1879 chain
+    - Smoke test scripts/ci/test-curator-launch-session-export.sh — assert curator-launch.sh exports CHUMP_SESSION_ID before invoking claude
+    - Bypass — if CHUMP_SESSION_ID_AUTO=0 set, skip the auto-export (operator may want to use a custom session-id)
+    - Pattern reference — INFRA-1860 (PostToolUse inbox poll); INFRA-1879 (5-path derivation); together they form the operator-as-messenger preventer triad
+  closed_date: '2026-05-24'
+  closed_pr: 2518
+  outcome_id: MISSION-010
+

@@ -1,0 +1,27 @@
+- id: INFRA-2268
+  domain: INFRA
+  title: "EFFECTIVE: chump onboard --schedule — per-external-repo overnight loop (launchd-installed, picks safe-mode gaps, ships via bot-merge conservative policy; extends INFRA-2108 with autonomous-execution mode)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Filed 2026-05-30. Extends INFRA-2108 (chump onboard) with a --schedule mode: launchd-installed per-repo loop that wakes hourly, picks safe-mode gaps, ships via bot-merge under conservative auto-merge. All primitives exist (chump-orchestrator, bot-merge.sh, chump-policy 3-scope chain, overnight LaunchAgent pattern). What is missing: the wiring + per-repo plist installer. Substrate primitive for autonomous external-repo execution (META-067 outcome #2 repo takeover at scale).
+  acceptance_criteria:
+    - chump onboard --schedule <repo-path> installs a per-repo launchd plist generated from scripts/plists/com.chump.external-repo-loop.plist.template; per-repo unique label (com.chump.external-repo.<sanitized-path>); loaded via launchctl on success
+    - "Per-iter worker loop: chump claim (atomic) → pick safest pickable gap (priority>=P2 AND effort<=s, env-configurable via CHUMP_EXTERNAL_LOOP_PRIORITY_FLOOR and CHUMP_EXTERNAL_LOOP_EFFORT_CEIL) → ship via scripts/coord/bot-merge.sh --auto-merge --conservative-policy"
+    - "Conservative policy: chump-policy 3-scope chain requires all-checks-green AND code-reviewer 4-state-verdict APPROVE before merge; on ESCALATE pages operator via scripts/dispatch/operator-recall.sh kind=external_repo_escalation"
+    - "chump onboard --unschedule <repo-path>: unloads launchd plist + removes from list-scheduled output + emits kind=external_repo_unscheduled"
+    - "chump onboard --list-scheduled [--json]: shows all scheduled repos with last-iter status (timestamp, picked_gap_id, ship_outcome, consecutive_failures)"
+    - "Two new ambient event kinds registered in docs/observability/EVENT_REGISTRY.yaml: kind=external_repo_loop_iter (fields: repo_path, picked_gap_id, ship_outcome, duration_ms) and kind=external_repo_unscheduled (fields: repo_path, reason); both with effect_metric set"
+    - "Per-repo state in ~/.chump/external-repos/<sanitized-path>/loop-state.json: last_iter_ts, consecutive_failures, auto-pause when consecutive_failures >= 3 (configurable via CHUMP_EXTERNAL_LOOP_MAX_FAILURES); auto-pause triggers kind=external_repo_paused + operator-recall"
+    - "Smoke test scripts/ci/test-external-repo-scheduler.sh: <120s, creates tmp repo + fixture gap, runs --schedule, asserts plist installed via launchctl list, asserts one worker iter completes against fixture gap, runs --unschedule, asserts plist unloaded"
+    - chump preflight runs smoke when chump onboard subcommand handler or scheduler-worker.sh touched
+    - README + CLAUDE.md updated with 3-line example invocation; cross-link to INFRA-2108 (chump onboard) and INFRA-2265 (chump bootstrap) — the scheduler picks gaps that either of those entrypoints may have filed
+  depends_on: [INFRA-2276, INFRA-2277]
+  notes: |
+    DECOMPOSED 2026-05-30 per APPROACH_AUDIT_2026-05-30.md Angle 3. Sub-slices: INFRA-2275 (plist installer, xs), INFRA-2276 (worker loop+policy, s, deps:INFRA-2275), INFRA-2277 (observability+state+smoke, xs, deps:INFRA-2276). Ship sub-slices in order; this umbrella closes when all three close.
+  source_doc: docs/gaps/META-067.yaml
+  closed_date: '2026-07-21'
+  closed_pr: 3047
+  outcome_id: META-067
+

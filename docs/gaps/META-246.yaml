@@ -1,0 +1,14 @@
+- id: META-246
+  domain: META
+  title: PR_RESCUE_PROCEDURE.md — codify the triage → fix-at-source → propagate → cascade sequence; teaches daemons + sub-agents the right order for whack-a-mole problems we've solved 5+ times this session
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. docs/process/PR_RESCUE_PROCEDURE.md exists with 10 sections: (a) when to use, (b) triage protocol, (c) queue-state taxonomy (BLOCKED/BEHIND/DIRTY/UNKNOWN), (d) failure-surface taxonomy (12 patterns from this session), (e) cascade impact tables, (f) merge-order pyramid, (g) admin-merge safety gates (when YES/NO), (h) daemon coordination matrix, (i) collision-prone file watch list, (j) decision flowchart\n2. Each section is action-prescriptive — exact commands, not theory\n3. References this session's actual fingerprints (raw-gh-allowlist drift, install-manifest gate, EMIT-NO-REG, test-pre-push-test-gate, pr-shepherd self-allowlist gap)\n4. Cited from .claude/agents/quartermaster.md + .claude/agents/handoff.md + SUBAGENT_DISPATCH.md\n5. Includes one-page TL;DR at top for daemon's brief-injection (CHUMP_PR_SHEPHERD_BRIEF env path)\n6. Smoke test: scripts/ci/test-pr-rescue-procedure-doc.sh asserts the 10 anchor sections exist + the 4 queue-states are defined"
+  notes: |
+    Operator directive 2026-05-31T15:55Z: 'develop a tight procedure document for the agents. they need to know what to fix in what order based on the situation.' This session has hit allowlist-drift 3 times, install-manifest gate 2 times, test-gate flakes 1 time, daemon-allowlist 1 time. Same triage → fix → propagate → cascade pattern each time. Doctrine codifies the pattern so daemons and sub-agents stop reinventing.
+    [2026-06-04T00:26:06Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2896
+  outcome_id: MISSION-010
+

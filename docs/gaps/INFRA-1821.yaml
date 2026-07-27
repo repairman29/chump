@@ -1,0 +1,16 @@
+- id: INFRA-1821
+  domain: INFRA
+  title: "RESILIENT: tree-sitter-bash extracts 0 top-level symbols — AST crawler bash parser misses fn definitions (Opus #1 finding 2026-05-23 against echeo)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Root cause — crates/ast-crawler/src/lib.rs:701 iterates root.named_children() looking for kind=='function_definition'; bash grammar at tree-sitter-bash 0.25 nests fn defs deeper (likely inside program > command > function_definition) so the top-level scan finds 0"
+    - "Fix — walk recursively into the tree (use TreeCursor::goto_first_child + sibling iteration, or root.walk() with depth-tracking) to find function_definition nodes at any depth"
+    - Bound the recursion — skip walking into function bodies (don't extract nested fn defs as top-level symbols); top-level only means file-scope-visible
+    - Add a 5-line bash fixture to crates/ast-crawler/tests/fixtures/sample.sh with 3 fn defs (foo(), bar() { ... }, baz function syntax) and assert parse_bash returns 3 symbols
+    - Regression test scripts/ci/test-ast-crawler-bash.sh — runs crawl-cli against scripts/ directory, asserts symbol count > 100 (Chump has hundreds of bash fns in scripts/)
+    - "Side-effect check — Opus #1's PR #2412 finding 'Bash dominates source file count but produces 0 symbols' should reverse to 'Bash is among the top-3 symbol producers' after fix"
+    - "Pattern reference — INFRA-1722 (Cartographer) consumes this data via chump_ast_crawler::crawl_repo; downstream ARCHITECTURE.md auto-gen will show empty 'bash' section until this lands"
+  outcome_id: MISSION-010
+

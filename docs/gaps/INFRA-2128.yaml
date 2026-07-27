@@ -1,0 +1,16 @@
+- id: INFRA-2128
+  domain: INFRA
+  title: "RESILIENT P0: pwa-onboarding-consolidation.spec.ts TimeoutError flake in required e2e-pwa check — blocks 3+ unrelated PRs (INFRA-1585 stability followup)"
+  status: done
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "1. Reproduce: bash scripts/dev/run-e2e-pwa.sh tests/pwa-onboarding-consolidation.spec.ts 10× locally; record pass/fail count. If <100% pass, flake confirmed."
+    - "2. Root cause: page.goto Timeout 120000ms suggests dev-server startup race OR PWA wizard hanging on a localStorage migration edge case. Check pwa-onboarding-consolidation.spec.ts setup against the actual ChumpFirstRunWizard#migrateLegacyWelcomeKeys code path."
+    - "3. Fix: either (a) bump page.goto timeout to 300000ms + add retry-on-timeout 3× (Playwright config), OR (b) fix the actual race in firstrun migration. Prefer (b) for real stability."
+    - "4. Defensive: add scripts/ci/test-pwa-onboarding-stability.sh that runs the spec 5× back-to-back in CI; fails if any one of 5 times out (catches regression of fix)."
+    - 5. Until fixed, demote pwa-onboarding-consolidation from required e2e-pwa to advisory continue-on-error=true; flag in CLAUDE_GOTCHAS.md as known flake to unblock orthogonal PRs.
+  closed_date: '2026-05-29'
+  closed_pr: 2712
+  outcome_id: MISSION-010
+

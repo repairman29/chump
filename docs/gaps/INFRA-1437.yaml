@@ -1,0 +1,12 @@
+- id: INFRA-1437
+  domain: INFRA
+  title: "EFFECTIVE: chump session-summary command — list merged + armed + filed PRs in current session window"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-15/16 across both sessions: operator (and PM-curator) had to manually scrape ambient.jsonl + gh pr list + chump gap list to compile the per-session summary that gets reported back. ~5 min of manual work at every session end.\",\"Add chump session-summary subcommand to src/main.rs (or src/cmd/session.rs new module). Reads CHUMP_SESSION_ID env (or auto-detect from ambient.jsonl most-recent session_start event for the current operator). Reports:\",\"  - PRs merged in this session-window (gh pr list --search merged AND merged-by-session-author within [session_start, now])\",\"  - PRs open + auto-merge armed in this session-window\",\"  - Gaps filed via chump gap reserve in this session-window\",\"  - Gaps marked done via chump gap ship in this session-window\",\"  - Disk reclaimed (kind=target_artifact_reaped + worktree_orphan_pruned summed since session_start)\",\"Default text-table output; --format json for machine-readable\",\"Smoke test scripts/ci/test-chump-session-summary.sh: seed ambient.jsonl with synthetic events, assert summary table contains expected counts\",\"Out of scope: cross-session leaderboards (different gap)\"]"
+  closed_date: '2026-05-22'
+  closed_pr: 2332
+  outcome_id: MISSION-010
+

@@ -1,0 +1,12 @@
+- id: INFRA-2328
+  domain: INFRA
+  title: "fix-trunk: revert META-262 clippy container migration — chump-ci image never published"
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "1. Clippy job in .github/workflows/ci.yml no longer uses container: ghcr.io/repairman29/chump-ci:latest\n2. Clippy job restores in-line toolchain install steps matching the cargo-test job pattern (free disk space + apt + dtolnay/rust-toolchain + mold + Swatinem/rust-cache)\n3. ci.yml parses as valid YAML and actionlint reports no NEW errors\n4. PR squash-merged via admin to unblock trunk; clippy turns green within 5min on next push\n5. Follow-up gap filed for Dockerfile.ci edition2024 fix + re-attempt with image-exists preflight"
+  closed_date: '2026-05-31'
+  closed_pr: 2910
+  outcome_id: MISSION-010
+

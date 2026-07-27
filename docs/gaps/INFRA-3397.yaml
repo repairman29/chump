@@ -1,0 +1,12 @@
+- id: INFRA-3397
+  domain: INFRA
+  title: "RESILIENT: test-model-class-routing.sh fixtures missing acceptance_criteria, silently broken by INFRA-1259 AC-vague gate"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"test-model-class-routing.sh fixtures missing acceptance_criteria, silently broken by INFRA-1259 AC-vague gate\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: SUPERSEDED 2026-07-21 by INFRA-3396 — exact duplicate, already claimed
+

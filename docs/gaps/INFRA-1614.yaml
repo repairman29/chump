@@ -1,0 +1,20 @@
+- id: INFRA-1614
+  domain: INFRA
+  title: "EFFECTIVE: wire pr_chip_tagged.skills_invoked field + cos digest per-skill yield aggregation — closes the agent learning loop (skill reliability x Mission Yield chip = curriculum bias signal)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    The Mission Yield framework (MISSION_YIELD.md) records per-PR chip-tags (marcus|fleet-quality|dev-tool|noise). The skill system (src/skill_db.rs) records per-skill outcomes (success|failure). These two signals are currently UNCONNECTED — the system knows what skills agents used AND what value each PR produced, but never correlates the two. Without correlation, skill curriculum cannot bias toward marcus-producing techniques and against noise-producing techniques. This is the load-bearing wire that makes the brain self-improving rather than just self-tracking.
+  acceptance_criteria:
+    - "kind=pr_chip_tagged event gets a new skills_invoked: [] field listing the skill names that were applied during the agent session(s) producing this PR; populated by aggregating skill_manage(action=view) + record_outcome events with the same session_id over the PR lifetime"
+    - "src/skill_db.rs gains skill_chip_correlation(name) returning {chips: {marcus, fleet_quality, dev_tool, noise}, yield_weight}"
+    - chump cos digest --week computes per-skill yield_weight = (marcus + fleet_quality + dev_tool - reverts_7d) / attempts; surfaces in JSON output
+    - chump skill health --json includes chip distribution per skill (additive to INFRA-1613 surface)
+    - "scripts/ci/test-skill-chip-correlation.sh: seed synthetic skill outcomes + chip-tags, assert yield_weight computes correctly"
+    - docs/strategy/MISSION_YIELD.md gains a Skill correlation section explaining how skill yield feeds the chip distribution
+    - EVENT_REGISTRY.yaml updated for the new pr_chip_tagged.skills_invoked field
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

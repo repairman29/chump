@@ -1,0 +1,18 @@
+- id: INFRA-2301
+  domain: INFRA
+  title: "RESILIENT P1: integrator do-not-batch label — wire tags through GapCandidate"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "crates/chump-integrator/src/cycle/mod.rs: add pub tags String field to GapCandidate (comma-separated, same shape as WorkBoardEntry.tags)."
+    - "crates/chump-integrator/src/cycle/select.rs: populate GapCandidate.tags from WorkBoardEntry.tags inside select_candidates() where the conversion happens."
+    - "crates/chump-integrator/src/daemon.rs: extend has_do_not_batch_label() to ALSO check candidate.tags split by comma against configured label. Update doc comment to drop stale INFRA-2136 reference."
+    - "Unit test in cycle/select.rs: confirm tags propagate from a WorkBoardEntry with tags=do-not-batch,foo into the resulting GapCandidate."
+    - "Unit test in daemon.rs: has_do_not_batch_label returns true for a candidate whose tags field contains the configured label even when branch and author do NOT contain it."
+    - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings clean. chump preflight passes.
+  notes: |
+    [2026-06-04T00:16:24Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2876
+  outcome_id: MISSION-010
+

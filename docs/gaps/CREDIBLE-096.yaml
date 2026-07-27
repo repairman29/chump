@@ -1,0 +1,14 @@
+- id: CREDIBLE-096
+  domain: CREDIBLE
+  title: "CREDIBLE: verify-and-merge bar for autonomous external-repo PRs — Chump self-merges a PR ONLY if (a) repo CI fully green, (b) PR diff adds a test that FAILS on base commit + PASSES on PR (anti-cosmetic), (c) no regression; else holds + records reason. Emits external_merge_verified/external_merge_held. The trust keystone — a PR existing is not a merge"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_pr: 3058
+  outcome_id: CREDIBLE-000
+

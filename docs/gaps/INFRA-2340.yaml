@@ -1,0 +1,19 @@
+- id: INFRA-2340
+  domain: INFRA
+  title: trunk-loop substrate completion — claude auth pass-through to launchd-spawned Sonnet + reaper extensions
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "fix-trunk-dispatcher.sh reads CLAUDE_CODE_OAUTH_TOKEN from ~/.chump/oauth-token.json (key: token) before spawning claude -p if env var not set"
+    - trunk-sentinel-daemon.sh applies same OAUTH defensive read before any claude invocation
+    - scripts/launchd/com.chump.trunk-sentinel.plist + launchd/com.chump.fix-trunk-dispatcher.plist include CLAUDE_CODE_OAUTH_TOKEN + ANTHROPIC_API_KEY placeholders under EnvironmentVariables
+    - scripts/setup/install-trunk-sentinel.sh substitutes auth placeholders at install time (reads ~/.chump/oauth-token.json + env ANTHROPIC_API_KEY; deletes XML lines if both empty)
+    - scripts/setup/install-trunk-sentinel.sh installs BOTH plists (sentinel + dispatcher; resolves INFRA-2338)
+    - plutil -lint on both installed plists exits 0
+    - manual dispatcher tick spawns Sonnet that survives >=30s without 401 auth error
+    - OAUTH token never written to logs (only string length on diagnostic paths)
+  closed_date: '2026-06-01'
+  closed_pr: 2921
+  outcome_id: MISSION-010
+

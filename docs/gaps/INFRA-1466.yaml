@@ -1,0 +1,17 @@
+- id: INFRA-1466
+  domain: INFRA
+  title: "RESILIENT: /api/health/pillars hangs >30s (Command::new without timeout)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Real bug 2026-05-16: GET /api/health/pillars hangs >30s on live server. handle_health_pillars (src/web_server.rs:3857) shells out via std::process::Command::new(...) without a timeout. If the shelled command stalls (chump pillar-health or similar) the whole endpoint hangs. Same pattern as INFRA-1464.
+  acceptance_criteria:
+    - "handle_health_pillars wraps Command call in tokio::time::timeout (3s default)"
+    - "On timeout returns degraded payload {pillars: {}, error: 'pillar-health timed out'}"
+    - Smoke test scripts/ci/test-api-health-pillars-timeout.sh asserts <5s response under load
+    - "Real-machine repro: curl --max-time 30 /api/health/pillars currently returns 000"
+  closed_date: '2026-05-16'
+  closed_pr: 2202
+  outcome_id: MISSION-010
+

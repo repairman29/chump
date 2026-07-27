@@ -1,0 +1,20 @@
+- id: META-065
+  domain: META
+  title: "MISSION: SOC2 Type II posture for Chump-hosted Team-tier (decoupled from M-D MVP)"
+  status: done
+  priority: P3
+  effort: l
+  description: |
+    Marcus M-D AC #8 (INFRA-1473) targets SOC 2 Type II posture by launch for the shared team vector-space. With Supabase BYO-project deployment model (operator brings their own Supabase account), this question PUNTS — the customer's Supabase project = the customer's compliance posture. Supabase Inc itself has SOC 2 Type II. SOC 2 only becomes Chump's problem if/when we offer a Chump-hosted-Supabase tier where Chump stores customer data on Chump's account.
+  acceptance_criteria:
+    - "Decision documented: when does Chump take on direct customer-data-custody (and thus SOC 2 scope)? Likely answer: not until N paying Team-tier customers explicitly request it (target: N=5 or first enterprise prospect, whichever first)"
+    - "If/when threshold hit, scope the audit: choose auditor (Vanta/Drata/Tugboat-style platform OR full Big-4); estimate cost (-50k typical for Type II), timeline (6-9 months observation window)"
+    - "Pre-audit hardening: encryption at rest (Postgres TDE or column-level for sensitive fields), TLS 1.3+ enforced, audit logs of admin access, incident response playbook, vendor management policy"
+    - "Pre-audit governance docs: data classification, retention policy, deletion procedure (GDPR-aligned), DPA template for customers"
+    - "Decision matrix in docs/strategy/COMPLIANCE.md (new file) — explains when each compliance posture is needed: SOC 2 Type I, SOC 2 Type II, HIPAA, ISO 27001, GDPR DPA-ready"
+  notes: |
+    DECOUPLED from M-D MVP timeline. Per design: Phase 0 (INFRA-1665) ships BYO-Supabase only; SOC 2 not blocking. This gap is the holding-place for the decision/work when it becomes commercially necessary. P3 because no commercial pressure yet; promote to P1 when first enterprise prospect surfaces.
+  closed_date: '2026-05-29'
+  closed_pr: 1932
+  outcome_id: MISSION-010
+

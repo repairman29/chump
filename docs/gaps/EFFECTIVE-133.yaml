@@ -1,0 +1,17 @@
+- id: EFFECTIVE-133
+  domain: EFFECTIVE
+  title: "EFFECTIVE P0: chump onboard panics 'Cannot start a runtime from within a runtime' (onboard.rs:287) at provider cascade — blocks the BEAST scout milestone"
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    VERIFIED 2026-06-04 (conductor, live test). `chump onboard https://github.com/repairman29/BEAST-MODE` clones + scans OK, then PANICS at src/onboard.rs:287:23: 'Cannot start a runtime from within a runtime' right after 'calling provider cascade (10 gaps requested)'. Root cause: the provider cascade (LLM gap-proposal step) is invoked via a synchronous block_on / Runtime::new().block_on(...) from INSIDE an already-async tokio context — the classic tokio nested-runtime error. FIX: don't create a new runtime inside async — (a) make the calling fn async and .await the cascade, (b) move the blocking call into tokio::task::spawn_blocking, or (c) reuse the existing runtime Handle. THE wall blocking the core mission (Chump autonomously scouting BEAST-MODE) — onboard's scout dies here every run. Mission-linked MISSION-010. SEPARATE BLOCKER: installed /opt/homebrew/bin/chump is STALE (built Jun 4 14:17, predates EFFECTIVE-112 + 123 onboard-auth fixes) — MISSION-012 (no self-deploy) means merged fixes don't reach the running binary without a manual scripts/setup/refresh-runner-binary.sh. Both must clear before onboard scouts BEAST.
+  acceptance_criteria:
+    - chump onboard <repo> completes the provider cascade with no nested-runtime panic
+    - "the provider/LLM call runs on the existing tokio runtime (no Runtime::new/block_on inside async)"
+    - "onboard.rs:287 no longer triggers the panic"
+    - "verified live: chump onboard https://github.com/repairman29/BEAST-MODE returns proposed gaps (or a clean provider error), not a panic"
+    - a regression test covers the onboard provider-cascade path
+  closed_pr: 3039
+  outcome_id: MISSION-010
+

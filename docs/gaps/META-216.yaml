@@ -1,0 +1,12 @@
+- id: META-216
+  domain: META
+  title: "META: Implement conflict and operator HOLD label checks in daemon (META-209 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The `auto-admin-merge-daemon.sh` script can detect if a PR has a `DIRTY` conflict status (e.g., via `gh pr status` or similar API).
+    - The script can detect if a PR has an `operator HOLD` label applied.
+  depends_on: [META-212]
+  outcome_id: MISSION-010
+

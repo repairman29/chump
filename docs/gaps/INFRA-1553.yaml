@@ -1,0 +1,20 @@
+- id: INFRA-1553
+  domain: INFRA
+  title: "EFFECTIVE: wire chump-mcp-lifecycle SessionMcpPool into ACP server session lifecycle — 485 LOC of tested MCP spawn/reap orphaned from session entry points"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Phase A workspace audit (2026-05-16): the workspace ships SEVEN Chump-provided MCP server crates under crates/mcp-servers/ — chump-mcp-github, chump-mcp-tavily, chump-mcp-adb, chump-mcp-gaps, chump-mcp-eval, chump-mcp-coord, chump-mcp-memory — that are the THINGS the chump-mcp-lifecycle SessionMcpPool would run inside an ACP session. crates/chump-mcp-lifecycle (485 LOC) implements PersistentMcpServer + SessionMcpPool with JSON-RPC routing and spawn-on-session/new + reap-on-session/cancel lifecycle. Zero imports from main crate or src/acp_server.rs. Wire-up unlocks: agents in an ACP session get tools from these 7 MCP servers without the operator manually configuring each server. Operator UX win: chump --acp becomes a one-binary entry point that exposes the full Chump tool surface (gaps, eval, coord, memory, github cache, tavily search, adb) to any ACP-speaking client (Zed/JetBrains/VS Code).
+  acceptance_criteria:
+    - "src/acp_server.rs constructs a crates/chump-mcp-lifecycle::SessionMcpPool when a new ACP session is opened and tears it down on cancel"
+    - Session config (env var CHUMP_SESSION_MCP_SERVERS or new TOML key) defaults to the 7 in-tree MCP servers (chump-mcp-gaps, chump-mcp-coord, chump-mcp-memory, chump-mcp-github, chump-mcp-eval, chump-mcp-tavily, chump-mcp-adb) and is overridable
+    - Each MCP server crate has a cargo run --bin entry point that the lifecycle can spawn; verify each crate bin and adjust if needed
+    - Each spawn emits kind=mcp_server_spawned to ambient.jsonl with session_id + server_name + pid fields; each reap emits kind=mcp_server_reaped
+    - Smoke test scripts/ci/test-mcp-lifecycle-integration.sh starts a mock ACP session, asserts all 7 servers spawn, sends a JSON-RPC call through SessionMcpPool to chump-mcp-gaps (a known server), cancels the session, asserts all 7 are reaped within 5s
+    - docs/process/MCP_SERVERS.md (new) documents the 7 in-tree servers, their purposes, and how operators register additional ones via env var
+    - docs/observability/EVENT_REGISTRY.yaml entries for mcp_server_spawned and mcp_server_reaped with emitter_paths set
+  notes: |
+    wave: 4 (chump-mcp-lifecycle in ACP — agent tool surface, customer-facing)
+  outcome_id: MISSION-010
+

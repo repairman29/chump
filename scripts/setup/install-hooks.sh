@@ -51,8 +51,29 @@ log() { [[ "$QUIET" == "0" ]] && echo "$@" || true; }
 # and SILENTLY break the instant that claim is reaped (git skips a dangling-symlink
 # hook with no error — the whole gate layer vanishes fleet-wide). The main worktree
 # is always the FIRST entry of `git worktree list --porcelain`, so we pin to it.
-MAIN_WORKTREE="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
-REPO_ROOT="${MAIN_WORKTREE:-$(git rev-parse --show-toplevel)}"
+# 54: MAIN_WORKTREE="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
+# 55: REPO_ROOT="${MAIN_WORKTREE:-$(git rev-parse --show-toplevel)}"
+# 56: SRC_DIR="$REPO_ROOT/scripts/git-hooks"
+
+# RESILIENT-192: improve MAIN_WORKTREE resolution on Linux. Some older git
+# versions on Ubuntu 24.04/22.04 don't return absolute paths in worktree list.
+# We fall back to standard rev-parse if list is empty or relative.
+MAIN_WORKTREE_RAW="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
+if [[ -n "$MAIN_WORKTREE_RAW" && "$MAIN_WORKTREE_RAW" == /* ]]; then
+    MAIN_WORKTREE="$MAIN_WORKTREE_RAW"
+else
+    # Not an absolute path or list failed; get the real root from the git common dir.
+    # rev-parse --show-toplevel returns the current WORKTREE, but we need the main one.
+    _git_dir=$(git rev-parse --git-common-dir 2>/dev/null || git rev-parse --git-dir 2>/dev/null)
+    if [[ "$_git_dir" == ".git" ]]; then
+        MAIN_WORKTREE="$(pwd)"
+    else
+        # If it's a worktree, git-dir is something like .../main/.git/worktrees/name
+        # We want the parent of the parent of the worktrees dir.
+        MAIN_WORKTREE="$(cd "$_git_dir/../.." && pwd)"
+    fi
+fi
+REPO_ROOT="$MAIN_WORKTREE"
 SRC_DIR="$REPO_ROOT/scripts/git-hooks"
 
 # Defense in depth: never anchor the fleet's hooks under a temp dir. If the
@@ -93,11 +114,15 @@ while read -r line; do
             if [ -z "$wt_gitdir" ]; then
                 continue
             fi
+            
+            # POSIX-compliant symlink cleanup: remove if exists, then link.
             mkdir -p "$wt_gitdir/hooks"
             for src in "$SRC_DIR"/*; do
                 [ -f "$src" ] || continue
                 name=$(basename "$src")
-                ln -sf "$src" "$wt_gitdir/hooks/$name"
+                # ln -sf can be flaky with directories on some systems; rm + ln is safer.
+                rm -f "$wt_gitdir/hooks/$name"
+                ln -s "$src" "$wt_gitdir/hooks/$name"
             done
             # Write the profile so the hook knows which guards to activate.
             printf '%s\n' "$PROFILE" > "$wt_gitdir/chump-hook-profile"

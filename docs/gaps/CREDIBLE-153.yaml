@@ -1,0 +1,15 @@
+- id: CREDIBLE-153
+  domain: CREDIBLE
+  title: "CREDIBLE: gaps-lock hijack guard false-positives on YAML quote-style churn — compare parsed titles, not raw lines"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    The pre-commit gaps-lock guard (gap-ID HIJACK check) compares raw YAML title lines. chump gap set re-serializes YAML with single-quote style while older files used double quotes, so every mechanical status/notes update reads as a 'title change' and blocks the commit — 700+ files in the 2026-07-19 registry-triage PR false-positived. Guard should parse both sides (yq/python yaml) and compare title VALUES; quoting changes are not hijacks.
+  acceptance_criteria:
+    - pre-commit guard parses old/new YAML and compares title string values, not raw lines
+    - quote-style-only change commits cleanly in a test fixture
+    - true title-value change still blocks (regression test in scripts/ci/)
+  closed_date: '2026-07-20'
+  closed_pr: 3200
+

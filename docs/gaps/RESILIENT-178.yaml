@@ -1,0 +1,16 @@
+- id: RESILIENT-178
+  domain: RESILIENT
+  title: "CREDIBLE: workers inherit the operator's FULL file authority — iCloud/TCC prompt 2026-07-19 proves strays past repo; chumpd must constrain the worker file view (deny-by-default outside repo + worktrees)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    2026-07-19 ~18:30 the operator got a macOS TCC prompt: 'chump' requesting iCloud Drive access. Mechanism: worker claude sessions run with the operator's full user file authority; a mid-gap broad find/grep strayed past the repo into an iCloud-synced location and macOS attributed it to the fleet parent. Operator denied (correct — nothing in the fleet needs iCloud). Structural fix: chumpd (MISSION-051) spawns every worker post-cutover and is the chokepoint to constrain the file view — sandbox-exec profile or equivalent allowing repo + claim worktrees + /tmp + toolchains, deny-by-default elsewhere; a denied stray becomes a logged event (kind exists via ambient), not a scary operator prompt. Interim: worker prompt discipline (search within repo paths only) is advisory-only and insufficient.
+  acceptance_criteria:
+    - "chumpd spawns workers under a file-access profile: allow CHUMP_REPO, claim worktrees, /tmp, HOME/.chump, toolchain dirs; deny Desktop/Documents/Mobile Documents/Downloads and other TCC surfaces"
+    - a blocked access attempt emits an ambient event with the attempted path (auditable, not silent)
+    - documented in SLEEP_WAKE_RECOVERY-adjacent ops docs + OFF_LAPTOP_SUBSTRATE runbook (remote host gets the same profile)
+    - "regression test: fixture worker attempting a deny-listed read fails without prompting"
+  notes: |
+    Outcome: MISSION-010. Depends_on MISSION-051 cutover. Born from operator TCC prompt report.
+

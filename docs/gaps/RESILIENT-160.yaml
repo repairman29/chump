@@ -1,0 +1,14 @@
+- id: RESILIENT-160
+  domain: RESILIENT
+  title: "RESILIENT: keeper-launched run-fleet's token refresher dies with the heartbeat process group → oauth not auto-refreshed (~1h relaunch cycle)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. The keeper-launched worker pool's token refresher PERSISTS past the fleet-autopilot heartbeat's process-group teardown — verified: pgrep the refresher stays alive while the chump-fleet tmux session is up, across >=2 heartbeats. 2. Preferred fix: the worker pool runs as its own KeepAlive launchd job (or run-fleet is launched fully-detached via setsid/double-fork) so its daemons aren't reaped with the heartbeat tick. 3. The oauth token (~/.chump/oauth-token.json) mtime stays fresh (refreshed ~every 5min) while the fleet is up, WITHOUT an hourly pool relaunch. 4. No RESILIENT-159 regression: still 0 orphaned run-fleet/refresher procs when the fleet dies (self-exit + trap hold). 5. Consider folding in the failing com.chump.oauth-refresh launchd job (was status 1) — one durable oauth-refresh path, not two half-working ones."
+  closed_date: '2026-07-21'
+  closed_pr: 3165
+  outcome_id: RESILIENT-000
+  evidence: |
+    2026-06-22 ~01:58, verifying the RESILIENT-158 always-on keeper: the worker pool is UP + durable + LEAK-FREE (pgrep run-fleet.sh=0 vs 49 orphans pre-RESILIENT-159 — leak confirmed fixed), workers cycling on sonnet. BUT pgrep for the token refresher + autorestart daemon = 0 while the tmux pool is up. Cause: the keeper (ensure_worker_pool in fleet-autopilot.sh, a launchd StartInterval job) launches run-fleet via nohup; run-fleet spawns the token refresher + autorestart daemon as children, then exits; when the heartbeat launchd job finishes its tick, launchd tears down its process group → those children die (the detached tmux session survives, owned by the tmux server). NET: the keeper-launched fleet has no persistent oauth refresher → the token (~/.chump/oauth-token.json) goes stale in ~1h → workers fail auth → pool degrades → keeper relaunches with a fresh token. Self-healing (NOT a leak — RESILIENT-159 holds) but causes an ~hourly relaunch + a possible auth-failure window. CURE options: (a) keeper launches run-fleet FULLY detached (setsid-equiv / double-fork / disown) so its daemons survive the heartbeat exit; (b) BETTER: make the worker pool its own launchd job (KeepAlive) instead of heartbeat-spawned, so its support daemons persist; (c) move the oauth token refresher to a standalone launchd job decoupled from run-fleet (it's a per-machine concern, not per-launch). Related: the com.chump.oauth-refresh launchd job was observed failing (status 1) earlier — (c) would subsume it. Non-blocking: the always-on fleet operates durably + leak-free today; this is hardening for token-freshness + fewer relaunches.
+

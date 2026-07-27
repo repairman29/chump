@@ -1,0 +1,15 @@
+- id: RESILIENT-130
+  domain: RESILIENT
+  title: "RESILIENT: dev.chump.cargo-target-reaper launchd daemon exits 1 silently — last exit code = 1 in launchctl print, no audit trail in ambient"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Reproducer: launchctl print gui/$(id -u)/dev.chump.cargo-target-reaper shows 'last exit code = 1' (other ~22 chump.* daemons show last exit code = 0)"
+    - "Find the stderr capture: cargo-target-reaper plist's StandardErrorPath should be pointed at /tmp/cargo-target-reaper.err.log or .chump-locks/cargo-target-reaper.err; if not pointed there, redirect it so the failure has a paper trail"
+    - "Root cause: read the captured stderr from a recent crash run. Likely candidates: (a) /tmp/chump-* worktree paths the reaper tries to clean are racy with active builds, (b) a chump CLI invocation inside the script fails on the stale-binary warning + non-zero exit, (c) git worktree list parsing assumption broken by 'prunable' entries"
+    - "Add audit emit in the reaper script: every successful + failed run emits kind=cargo_target_reaper_run with rc, target_paths_scanned, paths_reaped, error_msg fields to ambient.jsonl. Then the silent-failure class becomes silent_failure_visible"
+    - "Test scripts/ci/test-cargo-target-reaper-honesty.sh: simulate a fail (e.g. mock a worktree that triggers the bug), assert ambient gets the cargo_target_reaper_run kind=fail event"
+    - "Doctrine cross-ref: CREDIBLE-105 — a daemon failing silently is the meta-clause violation in the substrate layer (we report 'fleet healthy' while one of its reapers is dead). Same family as CREDIBLE-120/121/123 (measurement lies) and RESILIENT-127 (ambient parser silently drops malformed)"
+  outcome_id: RESILIENT-000
+

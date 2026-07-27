@@ -1,0 +1,33 @@
+- id: INFRA-2806
+  domain: INFRA
+  title: "PR #3098 stuck [CI-RED] — CI red for 32m"
+  status: closed
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/3098
+    
+    Detected by stuck-pr-filer (2026-06-07T22:18:00Z).
+    
+    Trigger: CI red for 32m
+    At least one required check has been failing for 32m (threshold 20m). Failing check: ACP protocol smoke test (Zed / JetBrains compatible).
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 3098 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: EFFECTIVE-216
+    Branch: chump/effective-216-claim
+    Failing check: ACP protocol smoke test (Zed / JetBrains compatible)
+    Stuck class: CI-RED — ci-flake-rerun or human investigation required
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-06-07T23:18:02Z] auto-closed by stuck-pr-filer: PR #3098 resolved (MERGED)
+  closed_pr: 3098
+  outcome_id: MISSION-010
+

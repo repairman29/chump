@@ -1,0 +1,19 @@
+- id: INFRA-2288
+  domain: INFRA
+  title: "RESILIENT: sccache CI health probe — fall back to no-cache when sccache --start-server fails (mirrors INFRA-2184 local for CI; prevents queue-wide cargo-metadata-exit-101 class wedges)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "After every 'Install sccache' step in .github/workflows/ci.yml (currently 1 occurrence at the cargo-test step ~line 1199-1201 per INFRA-2093 wiring), add a 'sccache health probe' step that runs sccache --start-server and on non-zero exit echoes a ::warning:: + writes RUSTC_WRAPPER= to GITHUB_ENV (clearing the wrapper for the rest of the job)"
+    - Probe must NOT fail the job — only warn + degrade. The job then runs cargo test with no sccache (slow but shipping) instead of dying at cargo metadata exit 101
+    - "Smoke validation: inspect ci.yml diff manually; YAML lints clean; structure mirrors INFRA-2184 local pre-push pattern"
+    - Document the fix shape in commit body so future shepherds can recognize this as the CI-side mirror of INFRA-2184
+    - "After merge: simulate by temporarily corrupting R2 secret (separately from this PR — out of scope to test) → next CI run skips sccache cleanly instead of wedging"
+  notes: |
+    [2026-05-30T08:46:08Z] Filed 2026-05-30 by curator-opus-shepherd after operator asked 'have we done all we can to keep our work moving through GH CI'. Today's sccache R2 incident wedged the queue for 90+ minutes; this CI-side health probe would have degraded to slow-but-shipping instead of dead-queue. Mirrors INFRA-2184 local pre-push fix (already shipped). 5-line ci.yml change.
+    [2026-05-30T16:20:59Z] stuck cycle 1 → re-attempt 2026-05-30 (PR #2856 auto-closed) respawn-handled:2856
+    [2026-06-04T00:16:25Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2856
+  outcome_id: MISSION-010
+

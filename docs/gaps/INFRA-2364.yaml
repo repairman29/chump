@@ -1,0 +1,13 @@
+- id: INFRA-2364
+  domain: INFRA
+  title: chump fleet doctor — wire default mode to fleet-doctor-strict.sh (placeholder shipped at INFRA-1595 but strict script INFRA-1427 already exists)
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

@@ -1,0 +1,16 @@
+- id: INFRA-1430
+  domain: INFRA
+  title: "MISSION: docs/strategy/OFFLINE_COMPLIANCE_RUBRIC.md — define the 3 offline_class values + forbidden-pattern catalog that INFRA-1418 linter enforces"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - docs/strategy/OFFLINE_COMPLIANCE_RUBRIC.md (new) defines the canon for what 'offline-compliant' means in Chump. Authored by Chief of Product (2026-05-16) to extract the rubric from INFRA-1418's AC into a separate deliverable so the linter implementation has something to reference.
+    - "Sections: (1) The mission anchor — quote project_offline_local_llm_mission.md, link to docs/design/OFFLINE_FIRST.md and GITHUB_LIAISON.md; (2) The 3 offline_class values with operational definitions: required (works in CHUMP_GITHUB_MODE=offline), optional (online-only optimization that gracefully degrades), breaks_offline (regresses Pi-mesh capability — needs --force-anti-offline + audit row); (3) Forbidden-pattern catalog with regex + rewrite suggestion + linked example: 'gh pr X ONLY' → propose local equivalent; 'webhook ONLY' → propose post-receive hook OR NATS subject; 'GitHub Actions REQUIRED' → split into local-CI vs remote-CI; 'gh api blocking' → cache-first read; (4) Decision tree: 'is my new gap offline-compliant?' (5 yes/no questions); (5) The --force-anti-offline operator playbook: when to use, what audit row to write, who reviews; (6) Examples: link to INFRA-1392/1405 as case studies (rescoped from anti-offline to dual-trigger)."
+    - "Length target: 200-400 lines. Reads like a checklist, not a manifesto. Each section ends with 'how to apply this in chump gap reserve' so the linter (INFRA-1418) implementation is mechanical translation."
+    - "Cross-link: OFFLINE_FIRST.md gets a forward reference at top: 'For the gap-filing rubric that enforces this architecture, see OFFLINE_COMPLIANCE_RUBRIC.md'. README.md or docs/INDEX.md gets the doc listed."
+    - "Acceptance: file exists, passes markdownlint, references resolve. Can be cited verbatim by INFRA-1418 linter output ('OFFLINE_CHECK FAIL: see RUBRIC §3 forbidden-patterns')."
+  closed_date: '2026-05-16'
+  closed_pr: 2203
+  outcome_id: MISSION-010
+

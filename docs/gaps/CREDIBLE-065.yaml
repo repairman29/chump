@@ -1,0 +1,15 @@
+- id: CREDIBLE-065
+  domain: CREDIBLE
+  title: "CREDIBLE: runtime assertion framework for gap execution — fail-fast validation"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Implement assertion helpers in src/assertion.rs (new module): assert_json_shape(), assert_gap_valid(), assert_lease_held()"
+    - "Integration test in tests/assertion_test.rs: verify assertions fail with clear error messages on violation"
+    - "Use assertions in chump claim and gap ship paths: fail-fast on invalid state before mutations"
+    - "Event emission: kind=assertion_failure when any assertion fires, with field name and expected/actual"
+    - "Documentation: docs/ASSERTIONS.md with assertion catalog and failure recovery guide"
+  closed_date: '2026-05-15'
+  outcome_id: CREDIBLE-000
+

@@ -1,0 +1,22 @@
+- id: INFRA-1815
+  domain: INFRA
+  title: "EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary (substrate for INFRA-1763 and INFRA-1758)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Survey chump-proprietary/crates/coord and list every public type and function in mesh, consensus, executor modules with file and line refs in docs/arsenal/cross-pollination/CP-004-chump-coord-mesh.md
+    - Identify the subset needed by public Chump INFRA-1758 (file-fallback), INFRA-1763 (predictive collision), INFRA-1804 (BandwidthBudget and MessageQueue port) — call this the shared API
+    - Create new crate chump-coord-mesh inside chump-proprietary at crates/coord-mesh, move shared types there (real move not copy, with crates/coord re-exporting for proprietary consumers)
+    - Decide path-dependency vs private cargo registry for public Chump consumption — decision recorded in the CP brief
+    - Public Chump Cargo.toml gains optional dependency on chump-coord-mesh behind feature flag mesh-bridge
+    - INFRA-1758, INFRA-1763, INFRA-1804 work-streams consume types from chump-coord-mesh rather than re-implementing
+    - Cross-pollination brief CP-004-chump-coord-mesh.md documents the extraction shape, migration path, and feature-flag toggle
+    - Coordinate with active sibling leases on crates/chump-coord during the extraction window to avoid churn
+  notes: |
+    2026-05-23 curator update: CP brief shipped as docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md (not CP-004 as the AC originally referenced — CP numbers got allocated in dispatch order). AC text references CP-004 but the actual file is CP-008. Implementer should consume CP-008. Brief includes: shareable subset (mesh::abstract_impl + consensus, 700 LOC), consumption mechanism (git-dep-with-SHA-pin), and shrinks INFRA-1802/1803/1804 effort to xs each via re-exports.
+    [2026-05-30T05:28:42Z] [2026-05-29 operator authorization] Operator explicitly authorized vendoring proprietary code: 'reusing the code it's not a problem if its fit for purpose or fast/easy to mod.' INFRA-1815 extraction can copy + attribute rather than re-derive shapes. Pairs with INFRA-2247 (Mission types lift) + INFRA-2248 (MeshTransport lift) — same authorization applies. CP brief shipped as CP-008 (per 2026-05-23 update note). VOA-001 documents the strategic frame as 'forward-deployment motion'.
+    [2026-06-04T00:26:11Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2822
+  outcome_id: MISSION-010
+

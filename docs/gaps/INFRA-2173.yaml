@@ -1,0 +1,18 @@
+- id: INFRA-2173
+  domain: INFRA
+  title: "RESILIENT: chump gap decompose truncates LLM response, fails JSON parse"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    chump gap decompose <ID> --apply produced truncated JSON from the LLM, failed serde_json parse at line 11 column 5. Tested on INFRA-2164 (l-class umbrella with 8 AC + ~3000 char description). Raw response was clean JSON for first 6 slices then cut off. Likely max_tokens cap too low for large umbrellas.
+  acceptance_criteria:
+    - "chump gap decompose detects truncated JSON (heuristic: ends without closing bracket) and retries with a larger max_tokens budget OR streams the JSON in chunks"
+    - On final truncation failure, surfaces the raw response to operator with a 'partial decomposition recovered' fallback that imports the slices that did parse before the cutoff
+    - "Smoke test scripts/ci/test-gap-decompose-truncation.sh: feeds a mock LLM response that ends mid-JSON, asserts the tool either retries successfully or recovers the parseable prefix"
+    - cargo fmt + cargo clippy GREEN; chump preflight before push
+  notes: |
+    [2026-06-04T00:26:26Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2735
+  outcome_id: MISSION-010
+

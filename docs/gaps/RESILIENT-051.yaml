@@ -1,0 +1,15 @@
+- id: RESILIENT-051
+  domain: RESILIENT
+  title: "ZERO-WASTE: triage 13 silent-dead daemons (overnight-research, integrator-daemon, ci-flake-rerun, syspolicyd-doctor, self-doctor, fleet-server, decomposition-tracker, branch-protection-drift, refresh-runner-binary, stuck-pr-filer, cargo-target-reaper, planner, github-liaison) — fleet-doctor's silent-fleet-death gate fires; most likely pre-existing rot (exit 78=missing deps, exit 127=command-not-found) but need diagnosis pass"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-07-21'
+  closed_pr: 3212
+  outcome_id: RESILIENT-000
+

@@ -1,0 +1,15 @@
+- id: RESILIENT-136
+  domain: RESILIENT
+  title: "RESILIENT: worker.sh model-routing mutates global FLEET_MODEL across cycles (same anti-pattern as RESILIENT-135) — per-cycle resolved model sticks; haiku contaminates later sonnet cycles"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Sibling of RESILIENT-135 (same mutate-the-global-in-a-loop anti-pattern). worker.sh:712 (FLEET_MODEL=$_resolved_model from routing.yaml) and :726 (FLEET_MODEL=$_gap_required_model) assign to the GLOBAL FLEET_MODEL — but the comment at :701 explicitly says 'overriding FLEET_MODEL locally for the current cycle only.' FLEET_MODEL persists across the worker's cycle loop with no reset, so once any gap routes to haiku (routing.yaml or required_model), FLEET_MODEL=haiku STICKS for all subsequent cycles, including gaps that should use sonnet. Observed live 2026-06-08 (worker spawning model=haiku). Per INFRA-515, fleet workers should be sonnet (haiku hesitates in --dangerously-skip-permissions, burning the slot). Fix: keep FLEET_MODEL as the immutable base (e.g. FLEET_MODEL_BASE), resolve the per-cycle model into a LOCAL var used only for the spawn, never mutating the base — mirror the RESILIENT-135 FLEET_TIMEOUT_BASE_S fix.
+  acceptance_criteria:
+    - Per-cycle model resolution (routing.yaml + gap.required_model) uses a LOCAL variable for the spawn; the worker's base FLEET_MODEL is never mutated, so a haiku-routed gap does NOT change the model used by the next cycle.
+    - "A behavioral test asserts: after resolving model=haiku for gap A, gap B with no routing still resolves to the base (sonnet) — i.e. no cross-cycle contamination."
+  closed_date: '2026-07-21'
+  closed_pr: 3109
+  outcome_id: RESILIENT-000
+

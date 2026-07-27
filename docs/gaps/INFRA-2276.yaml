@@ -1,0 +1,19 @@
+- id: INFRA-2276
+  domain: INFRA
+  title: "EFFECTIVE: chump onboard --schedule worker loop + conservative policy (INFRA-2268 sub-slice 2/3) — per-iter claim+pick+ship under chump-policy gate"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    INFRA-2268 sub-slice 2/3 — worker loop + conservative policy. Sister: INFRA-2275 (plist installer), INFRA-2277 (observability+state+test). Depends on INFRA-2275 (plist must be installable first).
+  acceptance_criteria:
+    - "Per-iter worker loop: chump claim (atomic) → pick safest pickable gap (priority>=P2 AND effort<=s, env-configurable via CHUMP_EXTERNAL_LOOP_PRIORITY_FLOOR + CHUMP_EXTERNAL_LOOP_EFFORT_CEIL) → ship via scripts/coord/bot-merge.sh --auto-merge --conservative-policy"
+    - "Conservative policy: chump-policy 3-scope chain requires all-checks-green AND code-reviewer 4-state-verdict APPROVE before merge"
+    - "On code-reviewer ESCALATE: pages operator via scripts/dispatch/operator-recall.sh; emits kind=external_repo_escalation (fields: repo_path, pr_number, escalate_reason)"
+    - Auto-pause when consecutive_failures >= CHUMP_EXTERNAL_LOOP_MAX_FAILURES (default 3); emits kind=external_repo_paused + triggers operator-recall
+    - "Smoke test scripts/ci/test-external-repo-worker-loop.sh: <90s, runs one worker iter against fixture repo+gap, asserts ship outcome + ambient events emitted"
+    - chump preflight runs smoke when src/onboard.rs OR scripts/dispatch/external-repo-worker.sh touched
+  closed_date: '2026-07-21'
+  closed_pr: 3047
+  outcome_id: MISSION-010
+

@@ -1,0 +1,14 @@
+- id: META-083
+  domain: META
+  title: "META: Define failure-class taxonomy for coordination system (META-073 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Taxonomy distinguishes transient (timeout, throttle) vs permanent (invalid config, auth fail) failures
+    - Each class maps to retry policy and alerting level
+    - Documented in system handbook
+  closed_date: '2026-05-24'
+  closed_pr: 2443
+  outcome_id: MISSION-010
+

@@ -1,0 +1,19 @@
+- id: INFRA-1835
+  domain: INFRA
+  title: "EFFECTIVE: chump preflight result caching by tree-sha — warm cache returns <500ms (kills skip-incentive)"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - src/preflight.rs (or a wrapper) computes a tree-sha hash of the staged delta + relevant source files (Cargo.lock, .github/workflows/, src/, scripts/, crates/) before running gates
+    - If a cache entry exists at .chump-locks/preflight-cache/<tree-sha>.json with status=pass + age < 1h, return PASS immediately (no gates run)
+    - If status=fail, return FAIL immediately with the cached failure summary (operator can re-run with --force to retry)
+    - "On gates run: write status + per-gate timing + failure summary to .chump-locks/preflight-cache/<tree-sha>.json"
+    - Cache invalidates on any source file mtime change OR after 24h max age
+    - "Bypass: CHUMP_PREFLIGHT_NO_CACHE=1 forces re-run"
+    - "Smoke test scripts/ci/test-preflight-cache.sh: run preflight twice with no changes, assert second run completes in <1s with 'cache HIT'"
+    - "Removes skip-incentive: warm preflight is now faster than 'cargo check' alone"
+  closed_date: '2026-05-29'
+  closed_pr: 2432
+  outcome_id: MISSION-010
+

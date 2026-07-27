@@ -1,0 +1,15 @@
+- id: RESILIENT-080
+  domain: RESILIENT
+  title: "RESILIENT P1: killed sub-agent dispatches resume from checkpoint, not restart-from-zero (dispatch reset)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    VERIFIED 2026-06-03: 3+ Agent-tool sub-agent dispatches were killed mid-work (Anthropic server rate-limit, ghost-gap-reaper lease-reap, timeout) and their partial work was lost -> the next attempt restarts from zero = a reset that burns tokens + wall-clock. This is the dispatch-path analog of RESILIENT-059 (durable gap execution: journal + resume) and the WIP-rescue pattern (worker.sh SIGALRM checkpoint, INFRA-525). Make sub-agent dispatches checkpoint progress (periodic WIP commit+push to the claim branch, or journal per RESILIENT-059) so a kill leaves recoverable work; on recovery the agent re-attaches to the WIP branch and FINISHES rather than re-doing. Reuse RESILIENT-059's journal where applicable — no parallel mechanism.
+  acceptance_criteria:
+    - a dispatched sub-agent checkpoints WIP (commit+push to its claim branch) at intervals so a kill leaves recoverable work on the branch, not lost
+    - on re-dispatch/recovery the agent resumes from the WIP branch and finishes, rather than restarting from zero
+    - a kill-mid-work-then-recover cycle is tested and completes without re-doing the already-finished steps
+    - integrates with RESILIENT-059 durable execution (shared journal), no parallel checkpoint mechanism
+  outcome_id: RESILIENT-000
+

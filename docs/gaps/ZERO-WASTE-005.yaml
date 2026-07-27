@@ -1,0 +1,12 @@
+- id: ZERO-WASTE-005
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: release.yml (cargo-dist) builds FULL cross-platform artifacts on every PR (pr-run-mode=upload) — burns the 4 saturated runners + red-X noise on non-required jobs; set pr-run-mode=plan + regen"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Root cause: release.yml triggers on pull_request and pr_run_mode=='upload', so build-local-artifacts + build-global-artifacts run a full cross-platform Rust release build on EVERY PR. NOT required checks (only audit/test/ACP-smoke block merge) — pure runner waste + red-X noise on the 4 saturated runners."
+    - "Fix: set pr-run-mode=\"plan\" in dist-workspace.toml, regenerate release.yml via `dist generate-ci` with the cargo-dist version matching the generator header (do not regen with a mismatched version). release.yml is generated + has no drift gate (hand-edit if-guard is a stopgap, overwritten on next regen — prefer the config fix)."
+    - "Verify: on a PR only `plan` runs (artifacts SKIP); tag-push release unchanged. Top runner-saturation lever for queue-not-draining; pairs with INFRA-1379 + INFRA-1378."
+  outcome_id: ZERO-WASTE-000
+

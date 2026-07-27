@@ -1,0 +1,41 @@
+- id: META-221
+  domain: META
+  title: "ZERO-WASTE: semantic-collision-detector daemon — match active INTENT broadcasts by topic+file-paths, fire WARN on duplicate-effort patterns (NATS handles lock collision, not semantic)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    ZERO-WASTE UPSTREAM fix: extend chump gap reserve similarity check (INFRA-1149) to catch semantic collisions at FILING TIME, not via downstream detector daemon.
+    
+    [REWRITE rationale 2026-05-30: original description framed this as a downstream collision daemon. Operator directive 'fix upstream' shifted scope: extend the existing INFRA-1149 similarity check inside chump gap reserve instead of bolting on a separate daemon. Hijack-bypass with reason: legitimate scope correction per operator direction.]
+    
+    EXISTING INFRA (audited 2026-05-30):
+    - src/main.rs gap reserve: store.similarity_candidates(title, 3, 30) — Jaccard tokens 3+chars, TITLE ONLY
+    - Thresholds: CHUMP_GAP_RESERVE_SIMILARITY_WARN=0.65, BLOCK=0.85
+    - src/rollup_cmd.rs cluster_by_jaccard — file-list Jaccard >= 0.8
+    - scripts/git-hooks/pre-commit-redundancy.sh — Jaccard function-names >= 0.6
+    - scripts/coord/cluster-detector.sh — CI-failure cluster detection
+    
+    THE GAP: similarity_candidates scans ONLY gap titles vs other gap titles. Misses open PRs, recently-merged PRs, gap descriptions, AC text. Today's collisions slipped past because intent overlap was in description, not title.
+    
+    OBSERVED WASTE 2026-05-30:
+    - META-198 (merge_group migration spec) vs INFRA-2298 (merge_group trigger): title-Jaccard ~0.2, intent overlap 100%
+    - INFRA-2295 (stale-pr-rebase-bot) vs META-181 (pr-shepherd-daemon): title-Jaccard ~0.1, intent overlap 80%
+    - META-202 (parallelize fast-checks) vs INFRA-2298 (16-core runner): title-Jaccard ~0.0, intent overlap 50%
+    
+    DESIGN (~150 LOC in src/main.rs reserve path + src/gap_store.rs):
+    1. Broaden similarity_candidates to compute Jaccard over (title, description, ac); weighted max (0.4 title, 0.4 desc, 0.2 ac)
+    2. Add open-PR corpus (last 14d via github_cache.db / INFRA-1081): treat (title, body_first_500) as synthetic candidates
+    3. Add recently-merged corpus (last 7d, merged status)
+    4. Threshold tuned: warn 0.5, block 0.75 (broader corpus is noisier)
+    5. Bypass: --force-duplicate + CHUMP_GAP_RESERVE_NO_SIMILARITY existing
+    6. Audit: kind=gap_reserve_similarity_match ambient event with score breakdown
+    
+    NO new daemon, no new event stream. Pure extension to existing INFRA-1149 path.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

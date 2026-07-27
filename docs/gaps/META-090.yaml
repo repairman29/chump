@@ -1,0 +1,18 @@
+- id: META-090
+  domain: META
+  title: "MISSION P0: chump fleet autopilot — single CLI command that runs the full operator playbook as one daemon set (manage PRs + organize gap store + raise fleet + ship product + repeat)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - chump fleet autopilot start launches all 5 layers — (1) PR mgmt daemons (auto-rebase + auto-rearm + pulse + consumer + transient-retrigger), (2) Oracle refresh cron, (3) JIT scheduler, (4) curator sessions per role (6 launchd plists with CHUMP_SESSION_ID auto-export per INFRA-1880), (5) master heartbeat that reports daemon health every N min
+    - chump fleet autopilot status — one-shot health report (all daemons running? last fire? alerts in 30min?)
+    - chump fleet autopilot stop — graceful shutdown of all daemons
+    - Bootstrap composition — autopilot start invokes scripts/setup/chump-fleet-bootstrap.sh for the existing daemons (paramedic, watchdogs, queue-health) THEN starts the new autopilot-specific layers
+    - Telemetry emit kind=autopilot_started, autopilot_stopped, autopilot_heartbeat at top of file
+    - Bypass CHUMP_AUTOPILOT_DISABLED=1 prevents auto-start (for forensic operator sessions)
+    - Smoke test scripts/ci/test-fleet-autopilot.sh — autopilot start succeeds, status reports >=10 daemons running, stop graceful
+    - Productizes today's session pattern — operator runs ONE command and walks away; PRs drain, gaps refresh, curators stay fed, demo evidence accumulates. The 'walk-away test' is the done bar
+  closed_date: '2026-05-25'
+  outcome_id: MISSION-010
+

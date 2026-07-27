@@ -1,0 +1,15 @@
+- id: INFRA-1883
+  domain: INFRA
+  title: "PRODUCT-DASHBOARD: PWA /api/dashboard-summary returns today's ship-count + ci_qa_score + active-leases as one JSON for operator quick-glance"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. New GET /api/dashboard-summary endpoint in crates/chump-pwa/src/api/mod.rs (or wherever PWA API handlers live)\n2. JSON shape: {today_ships: N, ci_qa_score: {pct, sample_size, status} "
+    - ""
+    - " null, active_leases: [{gap, session, expires_at}], window_hours: 24}\n3. today_ships = count of gh pr list --state merged for repairman29/chump in last 24h (cache-first via INFRA-1081 github_cache.sh)\n4. ci_qa_score = read latest kind=ci_qa_score event from ambient.jsonl (INFRA-1872) and surface\n5. active_leases = read .chump-locks/claim-*.json (capped at top-10)\n6. Smoke test: integration test in crates/chump-pwa/tests/dashboard_summary.rs hits the endpoint, asserts JSON shape, asserts no fields are null when test fixtures present\n7. PWA UI: render this on the home page in a 3-tile layout (ships / score / leases). Lazy-load. Marcus-review-ready.\n8. Operator-facing: this is the 2026 outcome demo #3 (consumer dashboard surface). One glance answers \"is the fleet shipping useful work?\"."
+  notes: |
+    [2026-06-04T00:16:27Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2777
+  outcome_id: MISSION-010
+

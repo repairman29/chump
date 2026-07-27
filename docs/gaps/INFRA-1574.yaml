@@ -1,0 +1,18 @@
+- id: INFRA-1574
+  domain: INFRA
+  title: "ZERO-WASTE: src/bin/fleet_ws_echo.rs WP-5.1 spike — retire if learning captured or graduate to chump subcommand; spike binaries shouldn't ship long-term"
+  status: open
+  priority: P3
+  effort: xs
+  description: |
+    Verified: src/bin/fleet_ws_echo.rs header comment declares it WP-5.1, a "minimal Mac to client WebSocket echo spike" for "fleet lab spikes". scripts/dev/fleet-ws-spike.sh references it. Spike binaries are temporary by design — they prove a concept or measure a thing, then either graduate (become a real feature) or retire (the learning is captured elsewhere). Today this binary still ships in cargo build output. Either (a) the WS spike learning is captured in a design doc and the binary can be removed, OR (b) the WS path is becoming a real fleet protocol and the binary should graduate to chump fleet ws subcommand. Cargo.toml has [[bin]] name = fleet-ws-echo so it builds on every cargo build.
+  acceptance_criteria:
+    - "Investigate WP-5.1 status: find the original spike issue/doc/PR and capture findings"
+    - "If learning captured: remove src/bin/fleet_ws_echo.rs and its [[bin]] entry in Cargo.toml; remove scripts/dev/fleet-ws-spike.sh; document the spike outcome in docs/design/ (one-pager naming what was learned and where the production path lives)"
+    - "If WS becomes a real protocol path: graduate to chump fleet ws subcommand in src/main.rs with proper argument parsing, observability, and tests"
+    - Cargo.toml updated either way (bin entry removed or replaced)
+    - No CI references to the old binary path remain
+  notes: |
+    wave: noise (fleet_ws_echo retire — noise; trivially fold into INFRA-1577)
+  outcome_id: MISSION-010
+

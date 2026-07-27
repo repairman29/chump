@@ -1,0 +1,18 @@
+- id: RESILIENT-026
+  domain: RESILIENT
+  title: extend pre-commit + pre-push hooks to enforce full claim contract — commit touches only paths in claim.paths, branch name matches chump/<gap-id>-claim convention
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    RESILIENT-025 ships a 1-field claim contract check (commit subject mentions gap_id). The claim file contains more enforceable fields. Today's a44 incident would have been caught by either subject-check OR paths-check. Defense-in-depth: extend the pre-commit AND pre-push hooks to enforce the full claim contract — commit-touched paths must be subset of claim.paths, branch name must match chump/<gap-id>-claim convention. Same bypass trailer pattern as RESILIENT-025 (Off-Rails-Bypass for legitimate cross-cutting work). Depends on RESILIENT-025 landing first (extends the same hook regions).
+  acceptance_criteria:
+    - scripts/coord/orphan-worktree-watchdog.sh exists, is executable, passes shellcheck
+    - Script detects /tmp/chump-* worktrees with (uncommitted-or-unpushed) + dead-process + >15min-idle + no-recent-push, emits kind=orphan_worktree_detected to ambient.jsonl
+    - Script skips worktrees with a live process (session_id in pgrep output) or clean state or <15min idle
+    - ~/Library/LaunchAgents/ai.chump.orphan-worktree-watchdog.plist created with StartInterval=300, RunAtLoad=false
+    - kind=orphan_worktree_detected registered in both docs/observability/EVENT_REGISTRY.yaml and scripts/ci/event-registry-reserved.txt
+    - scripts/ci/test-orphan-worktree-watchdog.sh passes 5/5 fixtures (live-active skip, clean skip, uncommitted detect, unpushed detect, no-claim-file detect with null gap_id)
+  closed_date: '2026-05-27'
+  outcome_id: RESILIENT-000
+

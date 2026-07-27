@@ -1,0 +1,11 @@
+- id: INFRA-1356
+  domain: INFRA
+  title: "RESILIENT: lease_is_fresh treats age=0s as stale — just-written heartbeats fail freshness check"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "[\"scripts/lib/lease.sh::lease_is_fresh currently returns 1 (stale) when age == 0s; the [[ \\\"$age\\\" -gt 0 ]] guard was intended to filter parse-failed empty heartbeats but excludes the legitimate 0s case\",\"Replace [[ \\\"$age\\\" -gt 0 ]] with an explicit empty-string check: [[ -n \\\"$age\\\" && \\\"$age\\\" != \\\"-1\\\" ]] (or have lease_heartbeat_age_s emit -1 instead of 0 on parse failure)\",\"Surfaced by INFRA-1349 CI test: lease backdated by 10s to work around. After fix, test backdate workaround can be removed.\",\"Smoke test scripts/ci/test-lease-lib.sh adds case: write lease with heartbeat == now; assert lease_is_fresh returns 0\",\"Out of scope: refactoring lease_heartbeat_age_s output contract (separate gap if needed)\"]"
+  closed_date: '2026-05-15'
+  outcome_id: MISSION-010
+

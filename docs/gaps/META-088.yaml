@@ -1,0 +1,21 @@
+- id: META-088
+  domain: META
+  title: "MISSION P1: Oracle refresh cron — periodic Opus burst (every 4h) re-contemplates THE_PATH.md + state.db priorities; writes fresh ranked program (retirement criterion #4)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Background — META-087 shipped THE_PATH.md as the Oracle output. Refresh today is manual (operator-opus session re-writes by hand). Stale within 4-8h as gaps land. Need periodic automatic refresh to keep the road accurate without operator burning cycles
+    - New scripts/coord/oracle-refresh.sh runs every 4h via launchd; spawns Opus subagent with fixed prompt — read state.db open gaps + recent ambient + recent ships, update docs/process/THE_PATH.md per its 5-track structure, mark drift
+    - "Cost budget — subagent burst bounded: max 30 sec wall-clock, max 50K tokens (CHUMP_ORACLE_TOKEN_BUDGET); cheaper than operator-opus running the loop"
+    - Idempotent — if no significant change since last refresh, output is no-op (same file); detected via content hash comparison
+    - Drift signal — emit ambient kind=oracle_refresh_drift with fields gaps_demoted, gaps_promoted, tracks_added, tracks_collapsed; operator sees what changed
+    - "Auto-commit + auto-PR — if THE_PATH.md changed, opens a PR with title `docs(META-087): Oracle refresh <stamp>` and auto-merge armed"
+    - Bypass — CHUMP_ORACLE_DISABLED=1 short-circuits; operator can run manually via bash scripts/coord/oracle-refresh.sh --force
+    - Install — scripts/setup/install-oracle-refresh-launchd.sh; plist fires every 4h
+    - Smoke test scripts/ci/test-oracle-refresh.sh — mocks the Opus call (returns fixed THE_PATH.md), asserts cron fires, content-hash dedup works, PR opens on change
+    - Done definition — operator-opus stops manually editing THE_PATH.md; the doc's Updated line moves on its own every 4h; Oracle drift signals visible in ambient
+  closed_date: '2026-05-29'
+  closed_pr: 2510
+  outcome_id: MISSION-010
+

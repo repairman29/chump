@@ -1,0 +1,19 @@
+- id: META-112
+  domain: META
+  title: "RESILIENT P1: INFRA-1997 follow-up — port remaining 10 pre-push hook guards from scripts/git-hooks/pre-push (1154 LOC bash) to chump-git-hooks crate as typed Hook impls; one PR per guard recommended; wizard pre-approved filing once INFRA-1998 lands (it did, on 2026-05-25 19:52Z)"
+  status: done
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - "Rough shape — decompose at claim time per CLAUDE.md two-phase doctrine. Each of the remaining pre-push hook guards (currently in scripts/git-hooks/pre-push bash body) becomes its own typed pub struct GuardName : impl Hook in crates/chump-git-hooks/src/guards/. INFRA-1997 already shipped HookContext + Hook trait + ForceWithLeaseRaceGuard as the foundation pattern; this umbrella ports the remaining ~10 guards"
+    - "Pattern per guard: 5-50 LOC Rust impl + a typed BlockReason variant in chump_git_hooks::BlockReason enum + a smoke test in scripts/ci/test-prepush-NAME-rust.sh that exercises the guard's pass + block paths under both the bash and Rust hook (parallel-run validation)"
+    - "Known guards from the bash hook (decompose-time will refresh against the actual scripts/git-hooks/pre-push body since it has had patches): pr-hygiene mass-deletion check (CREDIBLE-027); fmt-drift detection (INFRA-1390); ratchet detection; broad-canary scope; stdin double-drain (INFRA-1986); silent-noop alarm (INFRA-1988); auto-skip during recent-rebase (INFRA-368); pre-existing-fmt-drift skip (the workspace-wide gates wedge today); branch-protection lookup; pr-scope-sanity (CREDIBLE-026 / INFRA-1792). Final list comes from chump gap decompose META-112 at claim time"
+    - "Sequencing: each guard ships in its own sub-gap + PR. Sub-gaps NOT filed in advance per CLAUDE.md two-phase doctrine — they're created at claim time via chump gap decompose META-112 against the current pre-push.sh state. Reduces churn against shifting types + lets the implementer batch related guards if they choose"
+    - "Cutover discipline: each sub-gap shipped sequentially behind CHUMP_PREPUSH_RUST=1 feature flag (the same flag INFRA-1997 added). Bash hook body for each ported guard becomes a no-op gated on the flag being set; full bash body removal is the FINAL sub-gap of this umbrella after all 10 are ported"
+    - "Smoke testing strategy: scripts/ci/test-prepush-rust-vs-bash-parity.sh runs 20 representative push scenarios (5 from each guard category) against BOTH bash hook (CHUMP_PREPUSH_RUST=0) and Rust hook (=1); asserts identical exit codes + identical BlockReason / pass outcomes. This is the SHARED smoke test all sub-gaps reuse; per-guard smoke tests focus on edge cases unique to that guard"
+    - "Done definition for umbrella close: (a) all 10 guards ported with own sub-gap each MERGED; (b) scripts/git-hooks/pre-push bash body removed (just a 3-line shim that execs chump-pre-push always — feature flag retired); (c) scripts/ci/test-prepush-rust-vs-bash-parity.sh shows 20/20 PASS; (d) chump preflight uses chump-pre-push as the canonical pre-push entry; (e) ambient kind=rust_migration_landed emitted with gap=META-112 lines_out_total=(bash LOC removed) lines_in_total=(Rust LOC added across all 10 guards)"
+    - "Pillar mapping: RESILIENT (typed BlockReason replaces bash echo+exit string-shotgun; env-immunity-by-construction extends to every guard; INFRA-1950-class env-leak impossible across all guards) + EFFECTIVE (1154 LOC bash → estimated ~600 LOC Rust spread across guards/, 48% reduction)"
+  closed_date: '2026-07-21'
+  closed_pr: 3127
+  outcome_id: MISSION-010
+

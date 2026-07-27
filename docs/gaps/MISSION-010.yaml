@@ -1,0 +1,34 @@
+- id: MISSION-010
+  domain: MISSION
+  title: "MISSION: self-coordinating fleet (empty conductor's chair) under operator controls — proven on BEAST-MODE overnight"
+  status: done
+  priority: P1
+  effort: xl
+  description: |
+    North-star mission (operator-confirmed 2026-06-03). Chump's purpose is a FLEET that COORDINATES itself — N agents divide work, hand off, reach consensus, ship — with NO human conductor. Verified gap (this session): the coordination layer is ~1 load-bearing primitive (atomic NATS-CAS claim); the conductor (fleet-autopilot/opus-curator/wizard-daemon) is DOWN, the deliberator CRASHED, consensus_result=0 ever — a human (orchestrator) did every coordination act. The build, controls-FIRST: Gate0 farmer (substrate self-heals, RESILIENT-066/068/069) -> Gate0.5 operator cockpit (kill switch + autonomy dial + dashboard) -> Gate1 consensus actually fires (RESILIENT-061 shipped + RESILIENT-062 routing) -> Gate2 autonomous conductor loop -> Proof: unattended overnight BEAST-MODE run. The human moves from IN the loop to ON the loop (hand on a dial).
+  acceptance_criteria:
+    - the fleet runs the prioritize->route->decide->ship cycle with NO human session (fleet-autopilot/conductor loop alive; consensus emits verdicts that drive decisions)
+    - "operator controls work: chump fleet stop halts within one tick, chump fleet level N dials autonomy, chump fleet status shows the cockpit"
+    - "PROOF: an unattended overnight run on BEAST-MODE merges >=1 PR at level 4 with zero human touches, and the operator can stop it instantly"
+    - the leading metric (coordination acts by agent vs by operator) is reported and trends toward agent
+  notes: |
+    GATE0/0.5 CLUSTER + RANKED PLAN (2026-06-05 session — 'the farm fights the operator' AND 'you cannot see who is working').
+    
+    RANKED EXECUTION PLAN (broadcast subject=gate0-substrate-harm-priority-2026-06-05; operator-confirmed re-rank putting observability first):
+      T1 OBSERVABILITY (see the fleet FIRST — you cannot verify pickup of anything you cannot see):
+        1. CREDIBLE-099 (P1/m) — worker-presence registry. Workers register the CLAIM (NATS-KV) but not THEMSELVES: register_worker RPC is a stub, 0 heartbeat files, kpi --agents empty. MISSION-010 Gate0.5 cockpit. The ROOT of 'looks like opus in trench coats' — an in-system session misread the fleet twice.
+        2. RESILIENT-104 (P1/s) — ~9 daemons crash-loop silently (integrator=127, exit=78 cohort) while bootstrap reports healthy.
+      T2 HARM-PREVENTION (stop the farm fighting the operator):
+        3. RESILIENT-099 (P1/s) — stale-worktree-reaper reaped an ACTIVELY-LEASED worktree; active lease must HARD-BLOCK reap.
+        4. RESILIENT-100 (P1/s) — bot-merge hot-file-lock self-deadlock when a PR edits bot-merge.sh.
+      T3 SELF-HEAL VERBS:
+        5. EFFECTIVE-178 (P1/l umbrella) — recovery/orchestration verbs (claim --recover, lease reconcile, unwedge, loop/wait, daemons --status). Decompose then build claim --recover + lease reconcile (with RESILIENT-103 P1/m, the triple-store lease: state.db + NATS-KV + git branch).
+      T4 REMNANTS: RESILIENT-054 (auth API-key floor), RESILIENT-068 AC#6 (farmer meta-watchdog), RESILIENT-058 (supervisor KeepAlive), INFRA-2304 (disk-reactor KeepAlive).
+      T5 PROOF: MISSION-015 (BEAST 0to1) — gated on T1-T3; a BEAST worker hits the same friction AND is equally invisible.
+    
+    Shipped first cuts: RESILIENT-096 (disk_critical dedup, #3056 merged) + INFRA-2744 (bot-merge reads state.db lease, #3063).
+    PRINCIPLE: Gate0 = substrate self-heals from HARM (not just death) AND is VERIFIABLE from any harness. Until T1-T3 land, neither MISSION-010 nor MISSION-015 runs unattended. NOTE: picker is mission-first since MISSION-028 -> Gate0 risks starving behind the mission push; co-prioritization is an operator call.
+  closed_date: '2026-07-21'
+  closed_pr: 3169
+  outcome_id: MISSION-010
+

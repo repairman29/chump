@@ -1,0 +1,14 @@
+- id: MISSION-064
+  domain: MISSION
+  title: always-on env-var + event-registry preflight gates (kill scripts-scope round-trips)
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+  - 'Move env-var-coverage (INFRA-1787) + event-registry-coverage (INFRA-1731) preflight gates from --scope rust to ALWAYS-ON
+    (AlwaysFast scope) in src/preflight.rs, so a scripts/docs-scoped PR that introduces a new CHUMP_* env var or ambient kind
+    (common in shell) is caught locally instead of on GitHub (~15min round-trip). This is Lever 4 from docs/strategy/CI_REVIEW_2026-05-29.md
+    (''move CI-parity gate to PR-time'', flagged cheapest high-value). Keep the existing CHUMP_PREFLIGHT_SKIP_ENVVARS/REGISTRY
+    escape hatches. Verify: chump preflight on a docs-only diff that adds a CHUMP_FOO var fails locally.'
+  closed_date: '2026-07-25'
+  closed_pr: 3298

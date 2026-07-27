@@ -1,0 +1,23 @@
+- id: INFRA-2174
+  domain: INFRA
+  title: "EFFECTIVE: chump-fleet-recorder — NATS+ambient capture daemon (INFRA-2164 sub-slice a)"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Sub-slice (a) of umbrella INFRA-2164. Capture layer for fleet event visualization. New Rust crate crates/chump-fleet-recorder/ runs as launchd daemon, subscribes to NATS chump.events.> + chump.work.>, ALSO tails .chump-locks/ambient.jsonl for events from harnesses bypassing NATS, dedupes via (ts, session, kind, gap) natural key, writes to .chump/fleet_events.db (sqlite). Model the NATS subscription path after crates/chump-coord/src/main.rs:322. Use a JetStream durable consumer so the recorder resumes from the last-acked sequence after restart. Storage budget ~500MB/week so add a 7-day TTL pruner. Per Rust-first (META-064): must be Rust (long-lived daemon, mutates canonical state, > 200 LOC, will outlive 3 months).
+  acceptance_criteria:
+    - crates/chump-fleet-recorder/ created with daemon binary chump-fleet-recorder
+    - "Sqlite schema at .chump/fleet_events.db: events(id PK, ts TEXT, ts_ms INTEGER, source TEXT, subject TEXT, event_kind TEXT, session_id TEXT, gap_id TEXT, payload TEXT) with indexes on (ts_ms), (session_id, ts_ms), (gap_id, ts_ms), (event_kind, ts_ms)"
+    - Connects to CHUMP_NATS_URL, subscribes to chump.events.> and chump.work.> via JetStream durable consumer; on restart resumes from last-acked sequence (smoke test asserts kill -TERM + restart loses zero events)
+    - Tails .chump-locks/ambient.jsonl from current file position; on rotation, resumes from new file head
+    - "Dedupe: composite key (ts, session_id, event_kind, gap_id) — INSERT OR IGNORE on duplicates"
+    - TTL pruner runs every 60min via in-process timer, deletes events older than 7 days, asserts table size stays under 1GB
+    - launchd plist at scripts/setup/launchd/com.chump.fleet-recorder.plist installed by chump-fleet-bootstrap.sh; bootstrap --check exits 0 with recorder running
+    - "Smoke test scripts/ci/test-fleet-recorder.sh: spins up recorder + ephemeral NATS, emits 5 known events via chump-coord emit + appends 3 ambient lines, asserts all 8 present in sqlite within 2s"
+    - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN; chump preflight before push
+  depends_on: [INFRA-2164]
+  closed_date: '2026-05-29'
+  closed_pr: 2724
+  outcome_id: MISSION-010
+

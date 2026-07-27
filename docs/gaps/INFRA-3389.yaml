@@ -1,0 +1,16 @@
+- id: INFRA-3389
+  domain: INFRA
+  title: chump-commit.sh silently aborts (zero output, exit 1) when worktree's local .chump/state.db is empty
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Discovered while shipping META-086 (2026-07-19). scripts/coord/chump-commit.sh line ~534 does `_state_db="$REPO_ROOT/.chump/state.db"` (worktree-local path) instead of resolving via the git-common-dir MAIN_REPO helper already sourced from scripts/lib/repo-paths.sh a few lines later. In a freshly created .claude/worktrees/<name>/ worktree, .chump/state.db is a 0-byte gitignored placeholder (never initialized -- the canonical db lives at the main checkout root). The known-prefixes lookup at line 537 (sqlite3 query piped through tr/sed) then fails with "no such table: gaps", and because this runs under set -euo pipefail BEFORE the RESILIENT-065 exit trap is armed (trap installed later, around line 660), the script dies silently: exit 1, zero stdout/stderr, files left staged but uncommitted. Symptom matches exactly the "stages but never commits, no error" bug the RESILIENT-065 trap was built to catch -- this is a gap in its coverage, not a fixed case.
+    Rough shape: (a) source scripts/lib/repo-paths.sh (or inline its MAIN_REPO resolution) before the known-prefixes block so _state_db points at MAIN_REPO/.chump/state.db, matching how the chump binary itself resolves the canonical db; (b) alternatively, arm the RESILIENT-065 exit trap earlier (before the known-prefixes block) so any future gap in this pattern degrades to a loud diagnostic instead of silent exit 1; (c) add a regression test scripts/ci/test-chump-commit-fresh-worktree.sh that simulates a worktree with an empty local state.db and asserts the commit still succeeds (or at least fails loudly).
+    Key constraint: .chump/state.db is gitignored per-worktree; the fix must not assume any particular worktree has a populated local copy.
+  acceptance_criteria:
+    - scripts/coord/chump-commit.sh succeeds (or fails loudly, never silently) in a worktree whose local .chump/state.db is empty/missing/has no gaps table
+    - known-prefixes lookup resolves against the canonical MAIN_REPO/.chump/state.db (via the same git-common-dir resolution repo-paths.sh already uses), not the worktree-local path
+    - regression test proves a fresh worktree with an empty state.db can still commit via chump-commit.sh
+    - RESILIENT-065 exit trap coverage extended (or the known-prefixes block moved after it arms) so no future pre-trap block can reproduce this silent-abort class
+

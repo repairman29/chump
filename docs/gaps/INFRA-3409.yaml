@@ -1,0 +1,14 @@
+- id: INFRA-3409
+  domain: INFRA
+  title: "INFRA: patch_file tier-e — repair malformed @@ hunk headers that fail parse before any apply tier runs"
+  status: done
+  priority: P0
+  effort: xs
+  description: |
+    Follow-up to INFRA-3407 (PR #3247), discovered from the FIRST real CHUMP_PATCH_DEBUG_DIR capture on chumpd-eu: MiniMax M3 sometimes emits a hunk header of bare '@@' with NO numeric range (instead of '@@ -l,c +l,c @@'). This fails Patch::from_single at PARSE time — before ANY of the four apply tiers (strict/fuzzy/headerless/anchored) run, since every one of them calls parse_single_file_patch first. looks_headerless() doesn't catch it either: the diff can have perfectly valid ---/+++ file headers and still carry a broken @@ line. Fix: tier-e (repair_hunk_headers) recomputes self-consistent -old_start,old_count +new_start,new_count values by counting each hunk's own context/remove/add lines and stacking hunks sequentially, then retries strict->fuzzy->anchored on the repaired diff. Absolute start-line values don't need to be correct since anchored ignores range info entirely as the final safety net.
+  acceptance_criteria:
+    - "The change described by \"patch_file tier-e — repair malformed @@ hunk headers that fail parse before any apply tier runs\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3248
+

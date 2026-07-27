@@ -1,0 +1,12 @@
+- id: INFRA-1958
+  domain: INFRA
+  title: pr-auto-rebase trusts gh pr update-branch false-positives — wedged 8 PRs for hours on tooling bug
+  status: done
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "[\"Root cause — scripts/coord/pr-auto-rebase.sh trusts gh pr update-branch non-zero exit as true"
+  closed_date: '2026-05-25'
+  closed_pr: 2553
+  outcome_id: MISSION-010
+

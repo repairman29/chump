@@ -1,0 +1,13 @@
+- id: META-234
+  domain: META
+  title: "META: Implement DIRTY conflict and operator HOLD label check (META-209 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - auto-admin-merge-daemon.sh checks if a PR has merge conflicts (e.g., using 'gh pr checks <PR_NUMBER>' or similar GitHub API call).
+    - The script checks for the presence of a specific 'HOLD' label on the PR.
+    - Logging indicates the conflict status and 'HOLD' label status for each PR.
+  depends_on: [META-229, META-230]
+  outcome_id: MISSION-010
+

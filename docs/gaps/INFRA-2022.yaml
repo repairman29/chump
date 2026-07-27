@@ -1,0 +1,15 @@
+- id: INFRA-2022
+  domain: INFRA
+  title: "EFFECTIVE P1: chump gap set acceptance_criteria CLI overwrites with TODO placeholder instead of operator-provided value (bit wizard 6+ times today 2026-05-25; bypass = edit YAML directly + git add)"
+  status: superseded
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-05-27T21:13:24Z] [2026-05-27T21:13Z] Cannot reproduce: tested 5 scenarios (chump gap set with --acceptance-criteria single/multiple, chump gap update, set without AC flag, set --status only, YAML/state.db divergence). All correctly preserve operator-provided AC values. Likely fixed by intermediate ship between 05-25 (when bug was reported) and 05-27. If bug recurs, file a fresh gap with exact repro steps + the actual command sequence that triggered the overwrite.
+  outcome_id: MISSION-010
+

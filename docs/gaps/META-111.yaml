@@ -1,0 +1,15 @@
+- id: META-111
+  domain: META
+  title: "wizard-daemon Phase 2 shipped via PR #2630 under META-107 collision (real META-107 is rust-first migration done 2026-05-25) — backfill correct gap ID + cross-link"
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    PR #2630 (commit 655602a39) shipped wizard-daemon Phase 2 (Steps 3+4+5: real-fails routing, pickable-gap dispatch, cascade rebase). The work is correct and on main, but it was dispatched under gap ID META-107 which was already done (rust-first migration of orchestration layer, shipped 2026-05-25 PR #2594). This is a metadata collision, not a code bug. Action: backfill META-NNN = META-111 (this gap) as the canonical gap for the wizard-daemon Phase 2 work; close it as done pointing at PR #2630; leave META-107 alone (its rust-first migration scope is intact). Add note to META-109 (wizard-daemon Phase 1) cross-linking META-111 as Phase 2.
+  acceptance_criteria:
+    - "META-111 is registered with status:done, closed_pr:2630, closed_date:2026-05-27"
+    - Cross-link added in META-109.yaml notes pointing at META-111 as Phase 2
+    - "PR #2630 commit message references (in retro) corrected to META-111"
+  closed_date: '2026-05-27'
+  outcome_id: MISSION-010
+

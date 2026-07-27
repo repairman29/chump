@@ -1,0 +1,17 @@
+- id: RESILIENT-074
+  domain: RESILIENT
+  title: "RESILIENT P1: preflight-vs-CI parity has a Mac-vs-Linux blind spot — macOS-only tests pass preflight (Mac) and fail CI (Linux)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    VERIFIED 2026-06-03: the dominant cause of stuck PRs. The preflight-vs-CI parity gate (INFRA-1867/2120) verifies CI gates are PRESENT in preflight — but preflight runs on the operator's macOS while CI runs on Linux ubuntu (runs-on: ubuntu-latest). So a test using macOS-only commands (launchctl, plutil, BSD stat -f, plist paths) passes preflight on the Mac and FAILS in CI on Linux. Live example: RESILIENT-068's scripts/ci/test-farmer.sh passed 9/9 locally (the build agent reported 'all passing locally') and failed 7/9 in CI on #3005, blocking Gate 0; the farmer is a macOS launchd daemon so its launchctl assertions cannot run on Linux. Same class likely affects #3006 (chump farmer status). This is the structural reason 'passes locally' keeps not meaning 'lands' — parity checks gate PRESENCE, not PASS on the CI platform.
+  acceptance_criteria:
+    - "platform-specific tests are either guarded to skip on the non-target OS (e.g. command -v launchctl "
+    - ""
+    - " skip) OR routed to a matching runner (macOS tests -> self-hosted macOS runner, where launchctl exists)"
+    - preflight warns when a touched test uses macOS-only commands (launchctl/plutil/BSD-stat) that the Mac preflight cannot validate against Linux CI
+    - a documented platform-guard convention exists for fleet/launchd tests so this class stops recurring
+    - test-farmer.sh (RESILIENT-068) and the farmer-status test (RESILIENT-069) pass in CI under the chosen approach
+  outcome_id: RESILIENT-000
+

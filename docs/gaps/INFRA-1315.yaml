@@ -1,0 +1,12 @@
+- id: INFRA-1315
+  domain: INFRA
+  title: "RESILIENT: kill bot-merge zombie accumulation — add post-merge self-exit guard"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "1. bot-merge polling loop exits promptly (within one poll interval) after detecting PR merged — no lingering bash process after successful auto-merge; 2. A bot-merge-watchdog.sh script (or chump subcommand) can be invoked to identify and SIGKILL zombie bot-merge processes for gaps that are already done in state.db — outputs list of reaped PIDs; 3. A CI test (scripts/ci/test-bot-merge-zombie-reap.sh or similar) validates the watchdog reaps a synthetic stuck process correctly; NOTE: INFRA-1311 covers exponential backoff on failed gh pr merge — this gap is specifically about the polling loop not self-exiting after successful merge when invoked via pipe (bot-merge.sh ... 2>&1 "
+    - " tail -N causes blocking write deadlock when parent is killed); watchdog must handle both the poll-loop case and the pipe-blocked case"
+  closed_pr: 2058
+  outcome_id: MISSION-010
+

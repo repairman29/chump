@@ -1,0 +1,12 @@
+- id: INFRA-2151
+  domain: INFRA
+  title: "EFFECTIVE P1: META-125/C1 — see META-125 child manifest"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Per META-125 umbrella revision (harvester finding 2026-05-29: META-125 is a PORT from chump-proprietary/crates/coord/consensus/mod.rs L160-235, NOT a build). Write docs/strategy/LIVE_A2A_CONSENSUS_2026-05-29.md (~2000 words). Sections:\n- Today's evidence: 9-curator manual consensus pattern delivered substantive findings in <5 min × 2 rounds (META-124 review + sequence-alignment); operator directive 2026-05-29 'consensus over operator-pinging' shipped via INFRA-2209\n- The chump-proprietary port: ConsensusCoordinator with initiate_vote/cast_vote/finalize_vote/should_proceed; Vote/VoteProof/ConsensusDecision/VoteRequest/ConsensusRecord; DecisionType::ThreatAssessment → Anomaly rename\n- 4-step lifecycle: ASK / ROUTE / VOTE / RESOLVE per META-125 umbrella AC\n- 3-wave implementation: Wave 1 port + NATS subject taxonomy + 9 event kinds; Wave 2 ask/vote/resolve CLI + aggregator daemon; Wave 3 chump consensus roadmap-pivot\n- Connection to META-124 (DECIDE rhythm + SHIP rhythm compose) + META-126 (event-sourced gaps) + META-127 (curator suite live subscribers)\n- Cross-link from CLAUDE.md + OPERATOR_PLAYBOOK.md + docs/strategy/MARKET_POSITIONING_2026-05-27.md\n- Voice-lint clean\n- Operator's pending decisions (defer to consensus once shipped): quorum default, confidence weighting, auto-pivot threshold, backlog rationale schema, curator-subscriber Rust-binary-vs-claude-p-tmux"
+  closed_date: '2026-05-30'
+  closed_pr: 2781
+  outcome_id: MISSION-010
+

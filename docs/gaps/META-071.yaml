@@ -1,0 +1,21 @@
+- id: META-071
+  domain: META
+  title: "MISSION: META-070 sub-audit — enumerate every CI gate not yet mirrored in chump preflight (the parity-matrix gap)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Background — today cascade (2026-05-23) layered THREE distinct CI-only failure modes that surfaced one-by-one only after each fix landed (yaml integrity, events.rs Debug bug in tests, pre-existing fmt drift in 7 chump-coord files) plus a transient audit-job cancellation. Each was a 15-min CI round-trip discovered only via remote CI. The pattern repeats because no one has enumerated WHICH CI gates preflight does not yet mirror. Deliverable: single markdown doc at docs/process/CI_PREFLIGHT_PARITY.md with a parity table. Parent epic: META-070 (quality firewall completion).
+  acceptance_criteria:
+    - Deliverable docs/process/CI_PREFLIGHT_PARITY.md with a markdown table — column 1 CI gate name (matches .github/workflows yml job name); column 2 preflight gate name (src/preflight.rs audit step) or BLANK if not mirrored; column 3 status (mirrored / unmirrored / NA-needs-cloud-env); column 4 gap ID if unmirrored work has a filed gap
+    - "Discovery method — grep .github/workflows yml for name: and run: lines; cross-reference against src/preflight.rs Audit kinds. Output a structured list, not prose"
+    - Categorize unmirrored gates — (a) easy mirrors (Python script + scope filter, like INFRA-1831 was), (b) heavier mirrors (need a Rust build), (c) NA — cloud-only (e.g. coverage upload, Supabase Preview). Do not try to mirror NA — document why
+    - For each easy or heavy unmirrored gate, file a follow-up INFRA-NEW gap with link back to META-070. Promote any P3 ones to P1 per the META-070 ownership rule
+    - Smoke test scripts/ci/test-meta-071-parity-doc.sh — assert docs/process/CI_PREFLIGHT_PARITY.md exists, parses as markdown table, contains every workflow job name found in .github/workflows/
+    - Done definition — doc lands; sub-gap list filed; gap-count delta visible
+  notes: |
+    Filed during the #2422 keystone wait at 19:40Z 2026-05-23 by orchestrator. The audit produces the actual sub-gap manifest that enables META-070 quality-firewall completion.
+  closed_date: '2026-05-29'
+  closed_pr: 2429
+  outcome_id: MISSION-010
+

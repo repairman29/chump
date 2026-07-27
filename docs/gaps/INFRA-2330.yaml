@@ -1,0 +1,15 @@
+- id: INFRA-2330
+  domain: INFRA
+  title: "fix-trunk: point test-pwa-flake-quarantine.sh at integrations.yml (META-266 collapsed)"
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - scripts/ci/test-pwa-flake-quarantine.sh WORKFLOW assignment points at .github/workflows/integrations.yml
+    - bash scripts/ci/test-pwa-flake-quarantine.sh exits 0 locally
+    - grep assertions for CHUMP_E2E_INCLUDE_FLAKES=1 and continue-on-error find matches in integrations.yml
+    - audit + audit-required jobs go green on main after merge
+  closed_date: '2026-05-31'
+  closed_pr: 2913
+  outcome_id: MISSION-010
+

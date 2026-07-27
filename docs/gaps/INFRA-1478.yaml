@@ -1,0 +1,18 @@
+- id: INFRA-1478
+  domain: INFRA
+  title: "EFFECTIVE: offload-ready 5-minute onboarding for remote dedicated machine"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Audit miss from 2026-05-15. Persona-1 dealbreaker: 'Give us a dead-simple way to point Chump away from our individual laptops and toward a dedicated, high-spec local Linux box or an internal team server — what you called a neural farm.' INFRA-1462 covers single-machine onboarding (180s chump init). This gap covers the OTHER side: chump init for the 'point my workers at a remote box' workflow. Architecturally exists via NATS push tier (FLEET-034) with WORKER_MACHINE env var, but is undocumented and not a smooth onboarding ramp.
+  acceptance_criteria:
+    - chump init --remote <ssh-host> bootstraps a Chump worker on a remote machine via SSH; handles binary installation, environment setup, and worker daemon registration
+    - chump init --remote runs the same 180s diagnostic that single-machine init runs (INFRA-1462); reports the same green/red result
+    - "Cross-machine fleet works out of the box: operator on laptop, workers on remote Linux box, state.db on either; gaps reserved on laptop are picked by remote workers automatically"
+    - Network requirements documented clearly (SSH port, NATS port if using push tier, no inbound from remote)
+    - Operator can disconnect laptop and remote workers continue running; reconnect resumes view of in-flight work
+    - "Documented runbook for common topologies: solo with dedicated workstation, team with shared neural-farm Linux box, remote workers in different geo"
+    - "CI test: simulate the 2-machine topology in CI (two containers); verify cross-machine fleet operates end-to-end"
+  outcome_id: MISSION-010
+

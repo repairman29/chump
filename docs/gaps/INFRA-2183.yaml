@@ -1,0 +1,17 @@
+- id: INFRA-2183
+  domain: INFRA
+  title: "RESILIENT: per-worktree CARGO_TARGET_DIR in chump claim — sccache + shared target collision causes compile panics across parallel Sonnets"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "When chump claim creates a worktree: the .cargo/config.toml from repo_root is copied (or a stub written) into <worktree>/.cargo/config.toml so cargo builds in the worktree use the shared sccache wrapper. Verify: after a worktree build, sccache --show-stats shows non-zero compiled count."
+    - "Each worktree gets a unique CARGO_TARGET_DIR set in its .cargo/config.toml env section (or as an environment variable written to <worktree>/.cargo/env), preventing parallel Sonnet compile-dir collisions. Path format: <worktree_base>/.cargo-targets/<gap-lower>."
+    - Per-worktree target dirs are named predictably (chump-<gap-lower> worktree => .cargo-targets/<gap-lower> target dir) so the existing cargo-target-reaper (INFRA-2125/2188) can locate and reap them — no unbounded disk growth.
+    - "Integration test (scripts/ci/test-worktree-build-cache.sh): creates a temp worktree via atomic_claim::provision_worktree_build_cache, asserts .cargo/config.toml is present with rustc-wrapper and CARGO_TARGET_DIR set, and that the target path is worktree-unique."
+    - "Ambient event kind=worktree_build_cache_provisioned emitted after successful copy with fields: gap_id, sccache_path, target_dir. Emits kind=worktree_build_cache_skip (with reason) when sccache is absent or .cargo/config.toml is missing from repo root."
+  notes: |
+    [2026-06-04T00:06:15Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2969
+  outcome_id: MISSION-010
+

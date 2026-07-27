@@ -1,0 +1,12 @@
+- id: INFRA-2150
+  domain: INFRA
+  title: "RESILIENT P3: broadcast.sh --list — show known inboxes + their canonical names"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Add --list-recipients (or --list) flag to broadcast.sh. Lists known recipient inboxes (curator-opus-*, sessions with active leases) with categorization: (canonical role inboxes / today's date-stamped sessions / active leases). Test: bash scripts/coord/broadcast.sh --list prints >= 9 curator role names + their current most-recent date-stamp inbox."
+  closed_date: '2026-07-20'
+  closed_pr: 3158
+  outcome_id: MISSION-010
+

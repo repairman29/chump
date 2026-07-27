@@ -1,0 +1,31 @@
+- id: INFRA-1824
+  domain: INFRA
+  title: "CI blocker: cargo-test failing on 6+ open PRs"
+  status: closed
+  priority: P1
+  effort: s
+  description: |
+    Shared CI-blocker detected by stuck-pr-filer (2026-05-23T16:57:02Z).
+    
+    Failing CI step:  cargo-test
+    Script path:      unknown
+    Affected PRs:     6 (#2414 #2410 #2409 #2407 #2406 #2401)
+    Oldest failure:   33h
+    
+    Recent changes to script on origin/main:
+    (script path not identified from check name: cargo-test)
+    
+    Suggested action:
+      1. Check whether origin/main already fixed this test (git log above).
+      2. If yes: bulk-rebase affected PRs so they pick up the fix.
+      3. If no: fix the script and ship a patch PR first.
+      4. Once root cause resolved, re-arm affected PRs via bot-merge.sh.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    Closed 2026-05-23 by curator-opus-shepherd as superseded — auto-filed CI-blocker status report from stuck-pr-filer at older timestamp; affected PRs all closed/merged (today's cascade fixes #2419 keystone + INFRA-1832 #2422 events.rs fix + INFRA-1796 #2402 YAML fix). Cleanup of state.db drift per INFRA-1382 batch.
+  outcome_id: MISSION-010
+

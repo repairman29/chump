@@ -1,0 +1,12 @@
+- id: INFRA-2219
+  domain: INFRA
+  title: "EFFECTIVE P1: META-127/C3a curator-opus-roadmap-keeper role — owns docs/ROADMAP.md priority ranking; updates from consensus + ship signal; surfaces drift"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- Create .claude/agents/curator-opus-roadmap-keeper.md following the standardized template (lane scope, session-start inbox watcher, 5-step protocol, discipline rules, don't section, cross-references, self-audit checklist per INFRA-2214, confidence-calibration loop per INFRA-2214).\n- Lane scope (1 sentence, hard-bounded): \"owns docs/ROADMAP.md priority ranking + outcome-drift surface + un-traced P0 audit; updates priority ordering from consensus_decision_emitted events + recent ship signal; does NOT decompose gaps (decompose's lane), file new gaps (operator/per-lane curator), or move work to/from in-flight (target's lane).\"\n- 5-step work-your-lane: (1) read inbox + ambient kind=ship_landed events; (2) scan docs/ROADMAP.md for outcomes with starved children (no pickable gaps); (3) scan chump gap list --status open --priority P0 for entries with no ROADMAP outcome trace; (4) propose re-ranking via FEEDBACK proposal broadcast (NEVER edit ROADMAP.md without consensus); (5) emit heartbeat kind=roadmap_keeper_tick.\n- Cross-references: META-127 (umbrella), INFRA-1146 (roadmap drift detector — primary signal source), INFRA-2214 (template), INFRA-2209 (consensus discipline), docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md (audit that named this role).\n- Voice-lint clean."
+  closed_date: '2026-06-05'
+  closed_pr: 2785
+  outcome_id: MISSION-010
+

@@ -1,0 +1,19 @@
+- id: MISSION-002
+  domain: MISSION
+  title: "MISSION: Offline-First Validation — pre-push + pre-ship local test gates"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Design phase: docs/process/OFFLINE_VALIDATION.md with three gates: (1) pre-push format/lint/type-check, (2) pre-ship unit tests, (3) pre-merge integration tests. Define what runs where and why."
+    - "Gate 1 (pre-push, run in worktree): src/bin/validate-offline.rs — runs cargo fmt --check, cargo clippy --all-targets, cargo check. Outputs pass/fail + elapsed time to stdout."
+    - "Gate 2 (pre-ship, run in worktree): cargo test --lib (unit tests only, skip integration). AC §2: run only on Rust file changes; skip if YAML/docs-only changes detected."
+    - "Gate 3 (pre-merge, GitHub CI): full cargo test suite (integration + e2e). Only reaches GitHub if gates 1+2 pass locally."
+    - "Integration: scripts/coord/chump-commit.sh calls Gate 1 after staging; chump gap ship calls Gate 2 before creating PR. Both exit 1 on failure, preventing push/PR creation."
+    - "Acceptance: AC metric — 30% reduction in failed GitHub CI runs (fewer PRs with clippy/fmt errors reaching CI). Test: scripts/ci/test-offline-validation-gates.sh with synthetic Rust errors, YAML-only changes."
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  closed_date: '2026-07-21'
+  closed_pr: 3081
+  outcome_id: MISSION-010
+

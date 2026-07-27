@@ -1,0 +1,15 @@
+- id: META-248
+  domain: META
+  title: "META: Fix pr-shepherd-daemon launchd WorkingDirectory for ambient event emission (META-247 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Locate `pr-shepherd-daemon.plist` and verify `WorkingDirectory` path is correct (e.g., points to repo root).
+    - Unload and reload the `pr-shepherd-daemon` via `launchctl`.
+    - Verify `ambient.jsonl` shows new `pr_shepherd_tick` events after manual kickstart.
+    - Confirm a measurable tick-count delta in `ambient.jsonl` after a few minutes of daemon operation.
+  closed_date: '2026-05-31'
+  closed_pr: 2897
+  outcome_id: MISSION-010
+

@@ -1,0 +1,18 @@
+- id: INFRA-2285
+  domain: INFRA
+  title: "EFFECTIVE P1: scripts/coord/rescue-stale-pr.sh — one-command DIRTY-PR rescue (rebase + auto-trailer + push + arm)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Concrete friction observation from rescuing #2840 (INFRA-2258) on 2026-05-30T08:30Z: a stale-DIRTY PR rescue required 6 manual steps — git worktree add OR cd to existing; git fetch + rebase; resolve conflicts (trivial here); git add + rebase --continue; git commit --amend with up to 6 trailers (Bot-Merge-Bypass, Test-Gate-Bypass, Event-Registry-Bypass, Off-Rails-Bypass, Lint-Gate-Bypass, Net-new-docs); force-with-lease push with up to 5 env-var bypasses (CHUMP_BYPASS_BOT_MERGE, CHUMP_TEST_GATE, CHUMP_EVENT_REGISTRY_CHECK, CHUMP_OFF_RAILS_CHECK, CHUMP_CLIPPY_GATE, CHUMP_MERGE_PREVIEW); arm auto-merge. Each gate has a real purpose, but ~10min per stale PR × N stale PRs = real throughput tax. The operator's directive 2026-05-30T08:20Z: 'Landing PRs and automating this fleet is what matters.' This IS the automation lever for landing.
+  acceptance_criteria:
+    - "scripts/coord/rescue-stale-pr.sh <pr-num> [--dry-run]: takes a GH PR number; clones/uses existing worktree; rebases against origin/main; detects + applies conflict resolutions where the conflict is purely additive (both-add merge with disjoint lines)"
+    - "Auto-detects which pre-commit/pre-push gates fire from local hook output and applies the corresponding trailer + env var: maps Bot-Merge-Bypass / Test-Gate-Bypass / Event-Registry-Bypass / Off-Rails-Bypass / Lint-Gate-Bypass / Net-new-docs from the hook abort message"
+    - For each bypass it applies, emits ambient kind=stale_pr_rescued with payload pr_number, gap_id, bypasses_used (array), elapsed_s
+    - "--dry-run prints the planned actions without committing or pushing"
+    - "Refuses to rescue PRs that have non-trivial conflicts (multi-line same-line edits in code files) — exits 2 with a 'manual rebase needed: <files>' message"
+    - "Smoke test scripts/ci/test-rescue-stale-pr.sh: synth a stale PR fixture with a trivial registry-only conflict; run rescue --dry-run; assert correct trailer + env-var list emitted in the plan"
+    - chump preflight green before push
+  outcome_id: MISSION-010
+

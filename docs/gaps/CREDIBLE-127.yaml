@@ -1,0 +1,17 @@
+- id: CREDIBLE-127
+  domain: CREDIBLE
+  title: "CREDIBLE: hermetic auth tests — with_env must redirect CHUMP_HOME, not read operator real ~/.chump/config.toml"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Root cause: src/auth.rs test helper with_env() CLEARS CHUMP_HOME instead of redirecting it. chump_config_path() (auth.rs:510) then falls back to $HOME/.chump/config.toml, which holds LIVE creds on every operator/fleet machine (control.sh refreshes every 5 min). So the no-creds assertions (neither_present_resolves_none, api_key_only_resolves_api_key_mode asserting !has_oauth, fleet_doctor_warns_when_no_creds) read the operators real token and panic. Clean in CI (no ~/.chump) so it false-passes there; RED on every operator-machine pre-push (cargo test --bin chump) so it blocks interactive ship without a bypass. Fix: with_env redirects CHUMP_HOME to a throwaway temp dir (unless the test sets CHUMP_HOME via vars, which wins), making config.toml/token-file resolution hermetic for the whole auth::tests module.
+  acceptance_criteria:
+    - with_env() in src/auth.rs redirects CHUMP_HOME to a unique throwaway temp dir; a test needing a specific CHUMP_HOME passes it via vars and that wins
+    - "cargo test --bin chump auth::tests is green on a machine WITH populated env creds AND a real populated ~/.chump/config.toml (the operator-machine condition that currently fails)"
+    - no auth test resolves credentials from the operators real $HOME/.chump
+    - fix lives in the shared with_env helper so every auth test inherits hermeticity (regression guard)
+  closed_date: '2026-07-20'
+  closed_pr: 3203
+  outcome_id: CREDIBLE-000
+

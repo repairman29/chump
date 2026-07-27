@@ -1,0 +1,19 @@
+- id: INFRA-2093
+  domain: INFRA
+  title: "sccache + Cloudflare R2 backend: shared cargo compile cache across all 4 self-hosted runners + GH-hosted overflow (~50-70% compile time reduction on cache hits)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Install sccache binary on all 4 self-hosted runners + configure Cloudflare R2 as shared backend. Set RUSTC_WRAPPER=sccache in CI workflows. First cache hit pays full cost; subsequent hits across runners + PRs return cached compiled artifacts. Estimated impact: 50-70% reduction in cargo build time on cache hits. For our 47-PR day, this is ~3-4hrs of CPU saved.
+  acceptance_criteria:
+    - sccache binary present on all 4 self-hosted Mac runners (~/actions-runner-chump{,-2,-3,-4})
+    - Cloudflare R2 bucket created (chump-sccache) with appropriate access keys stored in repo Actions secrets
+    - .github/workflows/ci.yml exports SCCACHE_BUCKET + SCCACHE_REGION + AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY + RUSTC_WRAPPER=sccache in env block
+    - sccache --show-stats step added at end of cargo-test + clippy jobs for observability (cache hits / misses / cache size)
+    - "Measurement: compare wall-clock of cargo build --release --bin chump before + after on a representative PR. Document the speedup in commit body"
+    - "Smoke test scripts/ci/test-sccache-wired.sh: assert RUSTC_WRAPPER=sccache in env, R2 bucket reachable, sccache --show-stats reports nonzero requests after a build"
+  closed_date: '2026-05-29'
+  closed_pr: 2690
+  outcome_id: MISSION-010
+

@@ -1,0 +1,9 @@
+- id: INFRA-3345
+  domain: INFRA
+  title: test-reaper-pty-pressure.sh flakes on hosts with low real /dev/ttys??? count (cases 2/5 assume real pty count 100-200)
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "1. scripts/ci/test-reaper-pty-pressure.sh cases 2 and 5 use FAKE_PTMX_MAX=150 and assume the host's real /dev/ttys??? count is ~100-200 (comment: \"127/150 = 84% IS pressure\"); on hosts with few real ptys open (observed: 18) the computed pct falls below the 80% threshold and the test fails.\n2. Fix: stub `ls`/the tty-count probe (not just sysctl) so the test controls both numerator and denominator deterministically, instead of relying on ambient real pty count.\n3. Verify: bash scripts/ci/test-reaper-pty-pressure.sh passes on a host with a low real pty count (e.g. a fresh shell with <20 ttys open)."
+

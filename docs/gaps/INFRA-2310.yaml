@@ -1,0 +1,13 @@
+- id: INFRA-2310
+  domain: INFRA
+  title: "ZERO-WASTE: activate consensus merge gate in shadow mode — export CHUMP_CONSENSUS_MERGE_GATE=1 in operator shell rc + 4 curator launchd plists; 7-day observation; then flip to =enforce per INFRA-2274 design"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. ~/.zshrc or ~/.bashrc adds 'export CHUMP_CONSENSUS_MERGE_GATE=1' so all interactive sessions activate shadow mode\n2. 4 curator launchd plists (curator-opus-ci-audit, curator-opus-decompose, curator-opus-handoff, curator-opus-target) gain CHUMP_CONSENSUS_MERGE_GATE=1 in their EnvironmentVariables block\n3. Verify via tail -100 .chump-locks/ambient.jsonl after 1 hour — at least one kind=consensus_gate_would_block event present (= gate observed something)\n4. After 7 days of shadow observation (audit via grep consensus_gate_would_block): if zero false-positives, flip to CHUMP_CONSENSUS_MERGE_GATE=enforce\n5. Operator action — secrets/values aren't required, just the env var"
+  notes: |
+    Filed under post-INFRA-2274 activation sweep 2026-05-30T18:30Z. The consensus gate substrate landed in main but nobody flipped the switch. xs effort because it's literally one env var in shell rc + 4 plists.
+  closed_date: '2026-06-02'
+  outcome_id: MISSION-010
+

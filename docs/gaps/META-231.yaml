@@ -1,0 +1,13 @@
+- id: META-231
+  domain: META
+  title: "META: Implement fix-class classification for PRs (META-209 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A function or helper script is added to auto-admin-merge-daemon.sh (or a new utility) that classifies a PR's 'fix_class' based on its title prefix and/or diff scope.
+    - A configurable allowlist for 'fix_class' (e.g., 'bugfix', 'refactor') is defined and used by the classification logic.
+    - The daemon logs the classified 'fix_class' for each PR.
+  depends_on: [META-229, META-230]
+  outcome_id: MISSION-010
+

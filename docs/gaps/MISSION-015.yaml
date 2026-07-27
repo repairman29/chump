@@ -1,0 +1,20 @@
+- id: MISSION-015
+  domain: MISSION
+  title: "MISSION P0: execute the scouted BEAST-MODE gaps — turn the onboard scan's 10 proposals into worked external-repo gaps → ship the FIRST PR to repairman29/BEAST-MODE (the final 0→1 proof)"
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    2026-06-05 MILESTONE: chump onboard repairman29/BEAST-MODE now COMPLETES end-to-end (panic EFFECTIVE-133 + truncation EFFECTIVE-147 both fixed+deployed) — it scouted BEAST + proposed 10 real gaps (admin dashboard, admin-auth-middleware, OAuth-login-fix, bd-migration, session-completion-workflow, port-docs, etc.) citing BEAST's docs/ROADMAP.md + AGENTS.md, persisted to ~/.chump/external/repairman29/BEAST-MODE/scans/onboard-scan-20260605T021647Z.json. NEXT 0→1 STEP: turn those proposals into ACTIONABLE external-repo gaps + have the FLEET work them + ship PRs to BEAST. This is the final mission proof (MISSION-010): a zero-human-touch PR merged in BEAST. Sub-steps: (a) file the scouted proposals as gaps tagged external_repo:repairman29/BEAST-MODE (INFRA-2111 ExternalRepoContract); (b) enable fleet pick (CHUMP_EXTERNAL_REPO_PICK_OK=1); (c) fleet works the simplest first (port-docs or OAuth-fix) in the BEAST clone + ships a PR to repairman29/BEAST-MODE; (d) verify a PR merges in BEAST zero-touch (scoreboard ① flips YES). FIND+file the next wall in the BEAST-execution path. Lean on the FLEET (it ships reliably) — NOT Agent-dispatches (they stall at the ship-wall).
+  acceptance_criteria:
+    - "the 10 scouted BEAST proposals are filed as actionable external_repo:repairman29/BEAST-MODE gaps"
+    - the fleet can pick+work an external-repo BEAST gap (CHUMP_EXTERNAL_REPO_PICK_OK path verified)
+    - a PR is opened against repairman29/BEAST-MODE by the fleet
+    - "THE PROOF: a PR merges in repairman29/BEAST-MODE with zero human touches (scoreboard ① = YES)"
+  notes: |
+    Decomposed into 10 slices: MISSION-016, MISSION-017, MISSION-018, MISSION-019, MISSION-020, MISSION-021, MISSION-022, MISSION-023, MISSION-024, MISSION-025
+  closed_date: '2026-07-21'
+  closed_pr: 3062
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

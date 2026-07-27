@@ -1,0 +1,9 @@
+- id: INFRA-3359
+  domain: INFRA
+  title: "META-070 Tier-C: mirror C1 doc/commit-hygiene audit-job guards into chump preflight"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. src/preflight.rs audit-gate discovery list (fn near line 581) extended with the 21 unmirrored C1 doc/commit-hygiene scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md C1 table\n2. Gated behind CHUMP_PREFLIGHT_SKIP_DOCHYGIENE env var per existing CHUMP_PREFLIGHT_SKIP_REGISTRY pattern\n3. scripts/ci/test-preflight-audit-c1-dochygiene.sh smoke test asserts the cluster's scripts run by default and skip cleanly via the env var\n4. chump preflight wall-clock stays under the documented target (<60s warm) — measure before/after"
+

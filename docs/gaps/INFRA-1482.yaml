@@ -1,0 +1,16 @@
+- id: INFRA-1482
+  domain: INFRA
+  title: "ZERO-WASTE: ci-yml-add-row merge driver fails on multi-step interleaved additions — returns rc=1 forcing manual conflict resolution (today: rebase of #2088 still needed manual ci.yml edit despite INFRA-1389 driver coverage)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Today's session: rebase of #2088 (INFRA-1339) against main went DIRTY on .github/workflows/ci.yml. The ci-yml-add-row driver is registered in .gitattributes and runs, but returned rc=1 (couldn't resolve). Operator had to manually take main's version + re-add the INFRA-1339 step. The driver is currently line-diff based; a YAML-aware driver could handle this case cleanly.
+  acceptance_criteria:
+    - "Reproduce: bash scripts/git/merge-driver-ci-yml-add-row.sh BASE OURS THEIRS LEVEL with synthetic cases — additive-only diffs should auto-resolve, but interleaved additions (where ours adds a step between two main-added steps) should also auto-resolve via YAML-aware parsing instead of line-based"
+    - "Replace the line-diff heuristic with a YAML parser (python3 -c with PyYAML, or a small Rust binary): parse both ours+theirs as YAML; for the jobs.<job>.steps array, take the union keyed by step.name, preserve order via topological sort of base position"
+    - Add CI test scripts/ci/test-ci-yml-merge-driver.sh with N synthetic cases (additive-only, interleaved adds, both modify same step → keep conflict, both rename → keep conflict)
+    - Emit kind=merge_driver_fallback to ambient.jsonl when the driver gives up (rc=1) so we can measure how often manual resolution is still needed
+    - Pairs with INFRA-1389 (broad merge-driver coverage) — that gap added the registration; this gap improves the resolution algorithm itself
+  outcome_id: MISSION-010
+

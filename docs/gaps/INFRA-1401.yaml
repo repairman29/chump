@@ -1,0 +1,15 @@
+- id: INFRA-1401
+  domain: INFRA
+  title: "RESILIENT: AC-mandated CI test missing detector — block ship when 'Smoke test scripts/ci/test-X.sh' in AC but file absent from commit"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-15/16: pattern across PRODUCT-127, PRODUCT-128, PRODUCT-130, PRODUCT-131 — each gap declared a smoke test in AC #N (scripts/ci/test-cockpit-*.sh) but original PR shipped the feature WITHOUT the test. Required 4 follow-up PRs (#2147 #2148 #2149 #2151) to backfill the tests. Same pattern across many INFRA gaps\",\"scripts/git-hooks/pre-commit-ac-completeness.sh (new): for each gap mentioned in the commit subject (parse gap-id from `feat(GAP-NNN):` prefix), read docs/gaps/<id>.yaml acceptance_criteria, search each AC for filename patterns matching `scripts/(ci"
+    - coord
+    - ops)/(test-)?.+\\.(sh
+    - rs
+    - "py)`, assert each referenced file is either staged OR already exists on the staged tree\",\"Block commit with message listing AC-referenced files that are missing\",\"Bypass marker: AC-Backfill-Reason: <one-sentence why test ships separately> trailer, or CHUMP_AC_COMPLETENESS_CHECK=0\",\"Smoke test scripts/ci/test-ac-completeness-gate.sh: fake commit feat(TEST-1): foo with AC referencing scripts/ci/test-foo.sh that does NOT exist in the staged tree; assert gate fails\",\"Net effect: prevents the code"
+  closed_date: '2026-05-17'
+  outcome_id: MISSION-010
+

@@ -1,0 +1,19 @@
+- id: INFRA-1453
+  domain: INFRA
+  title: "CREDIBLE: branch-reaper.sh emits kind=branch_reaped to ambient (today: operator had to grep /tmp/chump-stale-branch-reaper.out.log to verify the reaper ran; INFRA-1058 ships the reaper but with zero telemetry — invisible from fleet brief + PWA)"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Observed 2026-05-15 02:55Z: 172 branches on origin, operator filed INFRA-1450 thinking the reaper was broken. Then discovered INFRA-1058 branch-reaper.sh exists, is scheduled (dev.chump.stale-branch-reaper, 14d, daily), and successfully reaped 5 branches this cycle — verified only via grep on /tmp/chump-stale-branch-reaper.out.log. With zero ambient emits, this is invisible to fleet-brief, PWA dashboards, and any operator who isn't grepping /tmp logs. Concrete instance of the INFRA-1370 aha-sweep pattern: feature present, runtime healthy, effect-leg invisible.
+  acceptance_criteria:
+    - "scripts/coord/branch-reaper.sh (INFRA-1058) extended: for each branch successfully deleted, emit kind=branch_reaped to .chump-locks/ambient.jsonl with fields {ts, kind, branch_name, age_days, repo, reaper_run_id}"
+    - At end of run, emit kind=branch_reaper_run_summary with {ts, kind, reaped_count, skipped_open_pr_count, skipped_fresh_count, duration_s}
+    - Register both kinds in docs/observability/EVENT_REGISTRY.yaml with proper effect_metric (INFRA-1371)
+    - "Fleet brief picks up the summary event and surfaces \"N branches reaped 24h\" as a ZERO-WASTE metric"
+    - CI test scripts/ci/test-branch-reaper-emit.sh stubs origin branches + runs reaper --dry-run with --emit-anyway flag + asserts the right events are emitted
+    - "Pairs with INFRA-1370 aha-sweep — without these emits the reaper is \"code-present + runtime-up + measurable effect=invisible\""
+  closed_date: '2026-05-16'
+  closed_pr: 2212
+  outcome_id: MISSION-010
+

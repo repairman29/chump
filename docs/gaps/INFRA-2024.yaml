@@ -1,0 +1,15 @@
+- id: INFRA-2024
+  domain: INFRA
+  title: "RESILIENT P1: multi-agent INBOX collision — generic chump-Chump-NNN session is shared mailbag by operator + every agent in main checkout; needs per-agent stable CHUMP_SESSION_ID (curator-opus-* convention) or random suffix on session-init"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-29'
+  closed_pr: 2614
+  outcome_id: MISSION-010
+

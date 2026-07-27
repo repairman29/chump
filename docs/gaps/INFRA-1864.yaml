@@ -1,0 +1,17 @@
+- id: INFRA-1864
+  domain: INFRA
+  title: "MISSION: Harvester per-file primitive indexing (per CP-002 finding — catalog needed per-file granularity to proactively surface tree-sitter overlap)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - scripts/arsenal/build.py extended to scan each repo's src/ tree for known-primitive signatures (e.g. 'use tree_sitter' in Rust, 'import tree-sitter' in TS/JS/Python, 'stripe.api_key' for Stripe primitive, 'jwt.verify' for JWT auth, etc) — produce per-file primitive index in GLOBAL_ARSENAL.json under repos_by_name[X].extracted_primitives
+    - Primitive signature library lives at scripts/arsenal/primitive_signatures.json — language-keyed regex patterns mapping to primitive labels (auth, payment, ast, vector_embedding, llm_router, etc)
+    - harvest.sh check <topic> reads extracted_primitives in addition to current cluster + description match — surfaces per-file hits with line refs
+    - "Smoke test scripts/ci/test-primitive-indexing.sh: synthetic repo with tree-sitter use produces correct ast extracted_primitive entry"
+    - Re-run build.py and verify echeo/src/shredder.rs gets indexed as having ast primitive — closing the loop on CP-002's Discovery Failure footprint
+    - Document the per-file pattern in docs/arsenal/HARVESTER.md as the discipline that prevents the next CP-002-class miss
+    - Coordinate with INFRA-1823 productization (per-file indexing extends the chump harvest CLI surface — the Rust port may want to do this at scan time)
+    - "Performance budget: scan must complete under 30s for 76 repos when local clones available (use existing clones, gh api for remaining)"
+  outcome_id: MISSION-010
+

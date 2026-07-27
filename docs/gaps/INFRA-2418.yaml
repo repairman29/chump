@@ -1,0 +1,17 @@
+- id: INFRA-2418
+  domain: INFRA
+  title: "RESILIENT P0: integrator stale-queue SLA fallback — single-candidate cycles after N hours"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "chump-integrator: when ready_to_ship gap candidate count < CHUMP_INTEGRATOR_VOLUME_THRESHOLD (default 5) AND any candidate has age > CHUMP_INTEGRATOR_STALE_SLA_HOURS (default 6h), proceed with the available candidates (single or fewer-than-threshold cycle)"
+    - Emit kind=integrator_stale_sla_fired with {candidates_shipped, stale_hours} when this path triggers
+    - "Bypass: CHUMP_INTEGRATOR_NO_STALE_SLA=1 (strict-threshold mode)"
+    - "Cite trigger: INFRA-2399 sat in mode-A queue 18+ hours yesterday because volume never reached 5; the bypass + Disease-Layer-5 pattern from AGENT_GATE_LOCKDOWN doc demands this fallback"
+    - "Smoke test: mock 1 gap aged 7h in ready_to_ship; assert cycle fires; mock 1 gap aged 2h; assert cycle skips"
+  notes: |
+    [2026-06-04T00:06:18Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2951
+  outcome_id: MISSION-010
+

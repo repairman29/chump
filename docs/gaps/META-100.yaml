@@ -1,0 +1,20 @@
+- id: META-100
+  domain: META
+  title: "RESILIENT P0: operator-recall daemon doesn't detect 'self-hosted runners online but queued-jobs unclaimed >5min' — silent CI wedge class that left 14 PRs stuck for up to 17h on 2026-05-24 without paging the operator"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. NEW detection class RUNNER_GHOST_ONLINE added to scripts/dispatch/operator-recall.sh — fires when: 'queued workflow_runs (status=queued) older than CHUMP_RUNNER_QUEUE_THRESHOLD_S (default 300s) exist AND >= 1 self-hosted runner reports status=online,busy=false' (the contradiction)"
+    - "2. DETECTION MUST BE EVENT-DRIVEN not polled — leverage the existing scripts/ops/github-webhook-receiver.py that ALREADY ingests workflow_run.queued events from GitHub: (a) on workflow_run.queued, schedule a one-shot deadline-check at +CHUMP_RUNNER_QUEUE_THRESHOLD_S, (b) at deadline, query .chump/github_cache.db (local, no gh API cost) + the cached runner status, (c) if both conditions met, emit kind=operator_recall + condition=RUNNER_GHOST_ONLINE + post to CHUMP_OPERATOR_RECALL_URL"
+    - 3. SCHEDULE THE DEADLINE-CHECK VIA Monitor OR macOS launchd one-shot (StartCalendarInterval at +5min) — do NOT add a polling cron. Idle case = zero process spawns.
+    - 4. opus-shepherd Monitor filter (per OPUS_SHEPHERD_PLAYBOOK + META-094 + META-099) already includes 'operator_recall' kind — so any shepherd wakes immediately on this halt-class fire; no shepherd-side cron change needed
+    - "5. Auto-recovery: ALSO scripts/ops/restart-actions-runners.sh that runs launchctl unload+load on all 4 com.chump.actions-runner[-N] daemons; the operator_recall webhook can be wired to invoke this OR operator runs it after page; emit kind=actions_runners_restarted with {runners_restarted_count, prior_queued_count}"
+    - "6. Smoke test scripts/ci/test-runner-ghost-online-detection.sh: stub a workflow_run.queued webhook event 6min ago + stub gh runners API returning online,busy=false; invoke detection; assert operator_recall emitted with correct condition"
+    - "7. Bypass: CHUMP_RUNNER_GHOST_ONLINE_DETECT=0"
+    - "8. Baseline 2026-05-24: 14 PRs sat blocked-pending for up to 17h (1070min) on this very condition with operator_recall daemon SILENT — operator only found out by hand-asking the shepherd"
+    - 9. Pairs with INFRA-1609 (general self-hosted runner offline detection) — this gap is the SPECIFIC online-but-not-claiming variant which is more insidious because runners look healthy
+  closed_date: '2026-05-25'
+  closed_pr: 2532
+  outcome_id: MISSION-010
+

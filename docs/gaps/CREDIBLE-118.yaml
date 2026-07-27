@@ -1,0 +1,17 @@
+- id: CREDIBLE-118
+  domain: CREDIBLE
+  title: "bypass-trailer validator: Bypass-Followup regex only accepts INFRA-NNNN — CREDIBLE/EFFECTIVE/RESILIENT/MISSION/ZERO-WASTE gap IDs rejected"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/git-hooks/commit-msg-bypass-trailers.sh validator must accept any chump-domain prefix in Bypass-Followup, not just INFRA-NNNN. Current regex (see commit-msg-bypass-trailers.sh) blocks CREDIBLE-115, EFFECTIVE-219, RESILIENT-118, MISSION-010, ZERO-WASTE-001 etc.
+    - Update validator to match `^[A-Z]+(-[0-9]+)+$` (or explicit allowlist of domain prefixes).
+    - "Test: commit with Bypass-Followup: CREDIBLE-115 and commit-msg hook accepts it."
+    - "Backwards-compat: existing INFRA-NNNN followups still validate."
+  notes: |
+    Hit while shipping RESILIENT-118 PR #3097 on 2026-06-07. Three legitimate followup gaps (CREDIBLE-115 chump-reviewer-routing flake, INFRA-2744 lease split, EFFECTIVE-219 YAML deletion) had to be collapsed to INFRA-2744 to pass validator. Real fix: stop discriminating by domain prefix.
+  closed_date: '2026-07-20'
+  closed_pr: 3200
+  outcome_id: CREDIBLE-000
+

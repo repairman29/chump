@@ -1,0 +1,12 @@
+- id: INFRA-2117
+  domain: INFRA
+  title: "RESILIENT P1 (CI-REVIEW Lever 1A): move cargo-test + cargo-fmt + clippy + audit to GH-hosted ubuntu containers — eliminates ~50% of CI-rot tax"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. .github/workflows/ci.yml cargo-test, cargo-fmt, clippy, audit jobs migrated to runs-on: ubuntu-latest (GH-hosted) instead of self-hosted Mac\n2. macOS-only jobs (acp-real-clients, e2e-pwa-advisory, tauri-cowork-e2e) stay on self-hosted-macos-arm64\n3. After 14-day observation window, count of `runner_binary_refresh_failed` + tauri-2.11.2 corruption + wasmtime_wasi .d orphan + rustup conflict events in ambient.jsonl drops to <5/14d (from current 10+/14d)\n4. Sccache + R2 still active on ubuntu containers (verify SCCACHE_BUCKET + R2 secrets pass through)\n5. Cargo build wall-clock measured before/after migration on a representative wave of 5 PRs; documented in commit body\n6. Source: docs/strategy/CI_REVIEW_2026-05-29.md Lever 1A"
+  closed_date: '2026-05-29'
+  closed_pr: 2719
+  outcome_id: MISSION-010
+

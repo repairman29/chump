@@ -1,0 +1,20 @@
+- id: INFRA-1576
+  domain: INFRA
+  title: "CREDIBLE: doc staleness markers — ARCHITECTURE.md needs [PARTIAL IMPL] tags, TEAM_OF_AGENTS.md needs in-flight badges, INFERENCE_PROFILES.md + CONTINUAL_LEARNING.md need last-verified timestamps"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Agent A doc-audit findings 2026-05-16: (1) docs/architecture/ARCHITECTURE.md describes "delegate" worker pattern (CHUMP_DELEGATE=1) and "enriched memory" (confidence, verified, sensitivity, expires_at, memory_type) — both partially implemented; doc treats them as live without marking [PARTIAL IMPL]. (2) docs/architecture/TEAM_OF_AGENTS.md says "shipped (validated by today session)" for lease/ambient/coord but the GitHub merge queue (INFRA-MERGE-QUEUE), agent-code-reviewer (INFRA-AGENT-CODEREVIEW), and heartbeat-watcher are P1 with zero commits this cycle — the multi-agent pattern is partially wired. (3) docs/operations/INFERENCE_PROFILES.md is current and well-tested but has no "last verified" banner — drift will be invisible. (4) docs/CONTINUAL_LEARNING.md is excellent live document but lacks an "updated" timestamp at the top. These are all low-effort doc fixes that prevent future readers from acting on stale claims.
+  acceptance_criteria:
+    - "docs/architecture/ARCHITECTURE.md: each section that describes an optional/partial feature gains a [PARTIAL IMPL] or [GATED ON ENV] inline badge with a brief note on what is shipped vs aspirational (delegate, enriched memory, A2A two-way comms)"
+    - "docs/architecture/TEAM_OF_AGENTS.md: rename \"Shipped (validated)\" section to \"Shipped + operating\" and add a \"Filed but in-flight (multi-week)\" subsection listing INFRA-MERGE-QUEUE, INFRA-AGENT-CODEREVIEW, INFRA-HEARTBEAT-WATCHER with their current open status"
+    - "docs/operations/INFERENCE_PROFILES.md: top-of-file banner \"Last verified: YYYY-MM-DD against vLLM-MLX <version> / Ollama <version>\" updated whenever the doc is touched"
+    - "docs/CONTINUAL_LEARNING.md: top-of-file \"Last updated: YYYY-MM-DD\" timestamp, refreshed by anyone who appends a session handoff entry"
+    - "Add a generic CI check scripts/ci/test-doc-staleness-markers.sh that warns when docs >90 days old lack a \"last verified\" or \"last updated\" marker (operator-only warn, not blocker)"
+  notes: |
+    wave: 0 (doc staleness markers — supports truth-gate honesty)
+  closed_date: '2026-06-05'
+  closed_pr: 2947
+  outcome_id: MISSION-010
+

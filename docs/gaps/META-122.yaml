@@ -1,0 +1,12 @@
+- id: META-122
+  domain: META
+  title: "EFFECTIVE P1: chump fleet autopilot should auto-launch 6 curator Claude sessions (today operator must open 6 windows manually — root cause of dispatch flatline)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. `chump fleet autopilot start` spawns 6 curator Claude Code sessions (curator-opus-shepherd, curator-opus-target, curator-opus-handoff, curator-opus-ci-audit, curator-opus-decompose, curator-opus-md-links) via `osascript` or `claude-code --session-id` headless launcher, with appropriate /loop arguments. Without this, JIT scheduler has nothing to dispatch to and `sub_agent_dispatched` stays at 0 (precedent: 2026-05-28 24h flatline).\n2. `chump fleet autopilot stop` gracefully terminates the 6 spawned sessions.\n3. `chump fleet autopilot status` reports each curator session: alive (PID present), heartbeat-recent (<10min), or absent. Adds 6 lines to the existing layer report.\n4. Session re-launch on death: if a curator session dies mid-run, autopilot's heartbeat (5min cadence) re-spawns it. Tracked via ambient kind=curator_session_respawned.\n5. Operator bypass: env var CHUMP_AUTOPILOT_SKIP_CURATOR_LAUNCH=1 disables auto-launch (operator wants to manage sessions manually for debugging).\n6. The dispatch-flatline detector (INFRA-2101) should report 0 flatlines for 24h after this lands — proof that the dispatch chain is now end-to-end functional.\n7. Pairs with META-090 (autopilot bash orchestrator) and INFRA-2101 (silent-staleness fix)."
+  closed_date: '2026-05-29'
+  closed_pr: 2695
+  outcome_id: MISSION-010
+

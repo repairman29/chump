@@ -1,0 +1,23 @@
+- id: INFRA-1663
+  domain: INFRA
+  title: "RESILIENT: stale-process watchdog (rustc/chump health/any worker exceeding expected lifetime)"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    2026-05-22 cleanup found 5 leaked rustc compilations alive for 1.5+ days (parent worker died, child kept running consuming CPU) and 2 leaked 'chump health --slo-check' invocations alive 11+ hours (should complete in seconds). Both classes are easy to detect by ps + etime comparison against an expected-lifetime table.
+  acceptance_criteria:
+    - "Define expected_lifetime table: rustc=10m, cargo=15m, chump health=2m, worker.sh=4h, bot-merge.sh=20m, run-fleet.sh=24h, others=1h default"
+    - Daily launchd cron sweeps ps -Ao pid,etime,comm,user; flags any matching the table whose etime exceeds expected
+    - SIGTERM with 30s grace, then SIGKILL
+    - Emit ambient kind=stale_process_reaped per kill with comm/etime/expected/pid
+    - Register kind in EVENT_REGISTRY.yaml
+    - "Bypass env: CHUMP_STALE_PROC_WATCHDOG=0 disables (operator override during legitimate long runs)"
+    - "CI test: synthetic ps output with 2 stale + 1 fresh row, verify watchdog kills only the 2 stale"
+    - Document in docs/process/SELF_HOSTED_RUNNERS.md operational section
+  notes: |
+    DISCOVERED 2026-05-22. Generalizes INFRA-1662 (which targets only claude-binary leaks). Cheap insurance: ~50 LOC bash + plist. P2 because INFRA-1662 covers the highest-frequency leak; this catches the long tail.
+  closed_date: '2026-05-22'
+  closed_pr: 2326
+  outcome_id: MISSION-010
+

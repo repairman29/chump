@@ -1,0 +1,12 @@
+- id: INFRA-2516
+  domain: INFRA
+  title: "RESILIENT P1: audit.yml cancel-in-progress:false (INFRA-2452) saturates the audit queue under multi-PR load — 13 runs vs 4 runners wedged merges for ~30min"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "audit.yml concurrency uses cancel-in-progress:true so a newer push cancels the superseded audit run instead of piling up"
+    - under N-simultaneous-PR load the audit queue stays drained (no >Krunner backlog)
+    - "evidence 2026-06-03: 13 audit runs in_progress / 4 runners stalled #2981 + 3 PRs + fleet merges ~30min until the backlog drained"
+  outcome_id: MISSION-010
+

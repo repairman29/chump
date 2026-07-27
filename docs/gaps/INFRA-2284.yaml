@@ -1,0 +1,14 @@
+- id: INFRA-2284
+  domain: INFRA
+  title: "ZERO-WASTE: un-pin Rust toolchain from 1.95.0 — track upstream cranelift manifest resolution and bump back to @stable when v1.97.0+ ships"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All occurrences of dtolnay/rust-toolchain@1.95.0 in .github/workflows/ are replaced back with dtolnay/rust-toolchain@stable. Upstream Rust v1.97.0+ channel manifest confirmed to include rustc-codegen-cranelift for x86_64-unknown-linux-gnu. CI passes on a Rust PR after the change. No residual @1.95.0 pin remains.
+  notes: |
+    Pinned in INFRA-2283 (PR #2851) as emergency fix for v1.96.0 broken manifest. Depends on upstream fix — check https://forge.rust-lang.org/ or rust-lang/rust issue tracker for cranelift x86_64-unknown-linux-gnu availability in v1.97.0+. When resolved: sed -i '' 's|dtolnay/rust-toolchain@1.95.0|dtolnay/rust-toolchain@stable|g' .github/workflows/ci.yml .github/workflows/pr-triage-bot.yml
+  closed_date: '2026-05-30'
+  closed_pr: 2845
+  outcome_id: MISSION-010
+

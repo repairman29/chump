@@ -32,6 +32,13 @@ brew tap repairman29/chump && brew install chump   # macOS — pre-built binary,
 
 The tap is live at [`repairman29/homebrew-chump`](https://github.com/repairman29/homebrew-chump). Pre-built binaries for macOS arm64/x86_64 and Linux arm64/x86_64 ship with each release; SHA256 pinned in the formula. Verified end-to-end on 2026-05-15 (v0.1.2): `brew install` → working binary in ~23 seconds, no Rust compile required.
 
+> **Linux users:** if `brew` is not your style, use the **Native Linux Substrate** path (Ubuntu 22.04/24.04 recommended):
+> ```bash
+> git clone https://github.com/repairman29/chump.git && cd chump
+> bash scripts/setup/provision-chumpd-host.sh --install-deps  # Install system libs + Rust + gh
+> bash scripts/setup/install-chumpd.sh                       # Register the chumpd systemd service
+> ```
+
 **2. Initialize** — interactive wizard checks Ollama, scaffolds `~/.chump/`, picks a default model.
 
 ```bash

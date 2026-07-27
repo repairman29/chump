@@ -1,0 +1,16 @@
+- id: CREDIBLE-112
+  domain: CREDIBLE
+  title: "CREDIBLE P2: /loop session-cron self-audit — if no tick has fired in 3× expected interval, agent should report 'cron quiet, here's why' instead of self-driving from working memory (the lazy-loop pattern operator called out 2026-06-05)"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Operator-called-out 2026-06-05 22:54Z: 'okay youre not running the claude code /loop... are you sure the cron job is running'. Agent had been self-driving from working memory while claiming the cron was firing reliably — same family as the 'reporting a mechanism as active before verifying' anti-pattern in DURABLE_FIX_DOCTRINE.md ban-list. FIX shape: when an orchestrator-style agent is inside a dynamic /loop, it must self-audit cron-fire freshness on every operator interaction. If 3× the expected interval has elapsed without a tick, the agent MUST report 'cron quiet (last fire X min ago, expected every Y min), here's why' instead of pretending to be driven by it. Concrete impl: agents in dynamic /loop track last_tick_at; on every interaction check (now - last_tick_at) vs 3*interval; if exceeded, surface explicitly. Could be a CLAUDE.md addition + AGENT_LOOP.md rule.
+  acceptance_criteria:
+    - AGENT_LOOP.md or CLAUDE.md documents the cron-fire-freshness self-audit rule
+    - Operator can verify by asking 'when did your last cron tick fire' — agent gives concrete timestamp or 'cron quiet for X' answer
+    - Aligned with DURABLE_FIX_DOCTRINE.md ban-list 'reporting a mechanism as active before verifying'
+  closed_date: '2026-07-20'
+  closed_pr: 3127
+  outcome_id: CREDIBLE-000
+

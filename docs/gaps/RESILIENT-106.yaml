@@ -1,0 +1,15 @@
+- id: RESILIENT-106
+  domain: RESILIENT
+  title: "RESILIENT: chump improve IMPLEMENT stage blocked — spawned 'claude -p' reports 'Not logged in'. The standalone claude CLI needs OAUTH login; works in the pre-authed fleet-worker env but not when chump improve is run from a session using a custom ANTHROPIC gateway (ANTHROPIC_BASE_URL/AUTH_TOKEN). Orchestrator's implement stage should self-authenticate the spawned agent (set CLAUDE_CODE_OAUTH_TOKEN from ~/.chump/oauth-token.json like worker.sh) OR the loop must run in the worker context. Blocks the full BEAST-MODE self-merge proof; pick+dedup verified working"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "implement-stage spawned claude inherits CLAUDE_CODE_OAUTH_TOKEN: if env-unset, read it from ~/.chump/oauth-token.json (mirror worker.sh INFRA-620) so the agent authenticates outside the pre-authed worker env"
+    - token value is never logged or printed
+    - a unit test covers the token-injection path (env-unset + token file present → the spawn Command carries CLAUDE_CODE_OAUTH_TOKEN) without a live LLM
+    - "verified live: chump improve repairman29/BEAST-MODE --apply reaches Stage 3 implement without the Not-logged-in failure"
+  closed_pr: 3072
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

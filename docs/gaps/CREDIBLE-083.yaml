@@ -1,0 +1,14 @@
+- id: CREDIBLE-083
+  domain: CREDIBLE
+  title: "CREDIBLE P2: idleness-class taxonomy — detect 'disguised idleness' (low-value gap filing as cover for nothing-to-do)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Risk 8 of 10. 'Disguised idleness' — file a low-value doc gap or write a synthesis to look productive. Currently undetectable. Define a taxonomy + a detector.
+  acceptance_criteria:
+    - "docs/process/IDLENESS_TAXONOMY.md defines 4 classes: TRUE-IDLE (no tick action), CARGO-CULT (vague gap filing), THEATRE (synthesis when fleet has P0 unclaimed), HEALTHY-PICKED (real next-best work)"
+    - "chump gap audit-tick-outcomes <window>: tail tick_outcome events (CREDIBLE-084) + classify each against the taxonomy + emit ambient kind=idleness_class_audit with per-role count of each class over window"
+    - "Operator surface: chump fleet idleness-report (one row per role / last 24h / class breakdown)"
+  outcome_id: CREDIBLE-000
+

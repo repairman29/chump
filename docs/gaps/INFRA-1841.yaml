@@ -1,0 +1,16 @@
+- id: INFRA-1841
+  domain: INFRA
+  title: "CREDIBLE: vendor mock-services (4 containerized API mocks Anthropic, OpenAI, Stripe, Supabase) into Chump CI fixture layer"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Survey repairman29/mock-services repo via gh api; document each of the 4 mock servers (Anthropic, OpenAI, Stripe, Supabase) — request/response shape, port, Dockerfile, container image, supported endpoints — in docs/arsenal/cross-pollination/CP-009-mock-services.md
+    - "Decide vendoring approach: (a) git submodule under tests/fixtures/mock-services, (b) docker-compose pulled at CI start, (c) extract as standalone chump-mock-services crate that ships its own Docker images — pick one and document why"
+    - Wire selected mocks into scripts/ci/ test harness — at minimum the Anthropic and OpenAI mocks should be invokable by existing scripts/ci/test-*.sh tests as transparent replacements for real API calls
+    - "Smoke test scripts/ci/test-mock-services.sh: spin up all 4 containers, hit canonical endpoint of each, verify response shape, tear down — exits 0 in under 30s"
+    - "Vendoring lineage comment in any ported file: 'Vendored from repairman29/mock-services at commit SHA, original path X (CP-009)'"
+    - Cross-pollination brief CP-009-mock-services.md documents the harvest, the container build recipe, and the test-injection pattern
+    - Coordinate with INFRA-1670 chump preflight — preflight can shell out to docker-compose up against the mock fixtures for offline-CI tests
+  outcome_id: MISSION-010
+

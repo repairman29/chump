@@ -1,0 +1,19 @@
+- id: INFRA-1803
+  domain: INFRA
+  title: "EFFECTIVE: import Vote/VoteProof/ConsensusDecision primitive from chump-proprietary as META-061 Layer 4 consensus foundation"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Port crates/coord/src/consensus/mod.rs from chump-proprietary as crates/chump-coord/src/consensus.rs
+    - "Types ported: DecisionType enum (EscalationRequired, ResourceCritical, NetworkPartitionRecovery — drop ThreatAssessment as robot-specific); Vote enum (Approve/Abort/Timeout) + is_committed() method; ConsensusDecision enum (Proceed/Abort/Inconclusive); VoteRequest {vote_id, initiator, decision_type, reason, context, quorum, timeout_secs}; VoteProof {signature_tag (SHA256 of vote_id+session_id+vote+timestamp), timestamp, vote}"
+    - "Adapt operator-facing strings: 'robot' → 'session' where it appears in serializable fields"
+    - "Quorum + timeout semantics preserved (timeout marks Vote::Timeout, doesn't count toward quorum)"
+    - Register pub mod consensus; in crates/chump-coord/src/lib.rs
+    - "Integration test crates/chump-coord/tests/a2a_consensus.rs validates: hash_vote_proof determinism, majority detection across {3:Approve, 1:Abort} → Proceed, timeout exclusion ({2:Approve, 1:Abort, 3:Timeout, quorum=3} → Inconclusive)"
+    - Cite chump-proprietary attribution in source header
+    - Pairs with META-061 Layer 4 (consensus); supersedes the placeholder framing of INFRA-1122/1123 which were m-effort umbrellas without concrete primitives
+  closed_date: '2026-05-29'
+  closed_pr: 2410
+  outcome_id: MISSION-010
+

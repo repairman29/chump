@@ -1,0 +1,13 @@
+- id: INFRA-2032
+  domain: INFRA
+  title: "EFFECTIVE P1: chump health --temp should return COLD|WARM|HOT enum (not full health report) — INFRA-2008 worker prelude reads this signal but current output is multi-line human-readable; workers cannot branch programmatically"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

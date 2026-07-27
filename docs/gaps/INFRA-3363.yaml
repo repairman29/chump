@@ -1,0 +1,9 @@
+- id: INFRA-3363
+  domain: INFRA
+  title: "preflight mirror: audit-shard-1 cargo/CLI gates (29 scripts, META-086 cluster 1/5)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"cargo-gates (shard 1)\" for the current unmirrored-script list (29 at filing time; re-check for drift since META-086 shipped, list may have grown/shrunk).\n2. For each unmirrored script in that cluster, add an entry to src/preflight.rs (the DEFAULT_TEST_SCRIPTS whitelist / relevant Step) so `chump preflight --with-tests` runs it, mirroring the invocation exactly as it appears in .github/workflows/audit.yml (same env vars, same CHUMP_BIN setup).\n3. Scripts requiring `cargo build --bin chump` first must reuse the existing cargo-build step in preflight.rs rather than re-invoking cargo per script.\n4. bash scripts/ci/test-audit-job-decomposition.sh still passes (doc stays in sync); update the doc's \"mirrored: yes/no\" column for this cluster's rows in the same PR.\n5. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+

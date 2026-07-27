@@ -1,0 +1,20 @@
+- id: META-104
+  domain: META
+  title: "MISSION P0: productize curator-opus-external-collab role — owns Marcus M-B dispatch + customer-arc maintenance + PITCH.md/HIDDEN_GEMS.md/DEMO_5MIN.md voice and freshness + INFRA-1501 (Anthropic partnership) + INFRA-1506 (license decision) — current operator-facing surface has no maintenance owner after content lands"
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - 1. Create .claude/agents/external-collab.md following .claude/README.md discipline
+    - "2. Create .claude/skills/external-collab/SKILL.md (~50-80 lines). Triggers: 'Marcus review', 'partnership pitch', 'customer arc', 'PITCH.md update'"
+    - "3. Create scripts/coord/external-collab-loop.sh. Subcommands: tick (one cycle), marcus-status (track M-A through M-E milestones from ROADMAP_MARCUS.md), voice-audit (re-run INFRA-1728 ban-list on PITCH.md/HIDDEN_GEMS.md/DEMO_5MIN.md), partnership-pipeline (status of INFRA-1501 Anthropic outreach + INFRA-1506 license decision + INFRA-1511 founding-customer offer)"
+    - 4. Emits kind=external_collab_finding
+    - 5. Smoke test scripts/ci/test-external-collab-loop.sh
+    - 6. Register external_collab_finding in event-registry-reserved.txt
+    - "7. Baseline 2026-05-24: Marcus M-B dispatch awaiting decision per target curator's status; PITCH.md+HIDDEN_GEMS.md+DEMO_5MIN.md just shipped today with no maintenance owner; INFRA-1501/1506/1511 sitting open — none being progressed"
+    - "8. Lane discipline: ADJACENT to product/customer; NOT a tech curator. Owns OPERATOR-FACING and EXTERNAL-FACING surfaces. Hands implementation back to specialist curators when underlying work needed"
+    - "9. CRITICAL: anything involving operator-personal decisions (license choice, partnership signing) is DEFERRED to operator — this curator drafts, the operator decides"
+  closed_date: '2026-05-24'
+  closed_pr: 2545
+  outcome_id: MISSION-010
+

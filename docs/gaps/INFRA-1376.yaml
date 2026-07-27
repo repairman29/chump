@@ -1,0 +1,11 @@
+- id: INFRA-1376
+  domain: INFRA
+  title: "RESILIENT: fix bot-merge.sh broken reference to deleted gap-preflight.sh"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - bot-merge.sh calls 'chump gap preflight' (Rust CLI) instead of gap-preflight.sh. Running 'bash scripts/coord/bot-merge.sh --gap INFRA-1367 --auto-merge' in any worktree exits 0 (or fails only on actual gap issues, not a missing script). grep for gap-preflight.sh in bot-merge.sh returns 0 results.
+  closed_pr: 2124
+  outcome_id: MISSION-010
+
