@@ -2774,6 +2774,31 @@ events:
     consumers: [fleet-brief, audit-log]
 
   # ── Auto-merge rearm daemon (INFRA-2309) ──────────────────────────────────
+  - kind: autodeploy_tool_smoke_passed
+    effect_metric: self
+    emitter: scripts/ops/auto-deploy.sh (INFRA-3453)
+    trigger: >
+      After a successful binary auto-deploy, the tool-invocation smoke
+      (agent-tool-smoke.sh) drove the freshly-installed agent through a real
+      turn and every critical tool was invocable with outcome=ok.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, new_sha]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: autodeploy_tool_smoke_failed
+    effect_metric: self
+    emitter: scripts/ops/auto-deploy.sh (INFRA-3453)
+    trigger: >
+      After a successful binary auto-deploy, the tool-invocation smoke found a
+      critical tool the agent could NOT invoke (the comprehend_repo-profile-gap
+      class) — OR the model was unavailable. Advisory: the deploy is not
+      reverted; an operator/watchdog should investigate profile/registration/gate.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, new_sha, reason]
+    expected_min_per_day: 0
+    status: stable
+
   - kind: auto_merge_rearmed
     effect_metric: effective
     emitter: scripts/coord/auto-merge-rearm-daemon.sh (INFRA-2309)
