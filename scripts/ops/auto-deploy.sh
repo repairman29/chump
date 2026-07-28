@@ -36,6 +36,8 @@ mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/auto-deploy-$(date -u +%Y%m%dT%H%M%SZ).log"
 
 # scanner-anchor: "kind":"binary_auto_deployed"
+# scanner-anchor: "kind":"autodeploy_tool_smoke_passed"
+# scanner-anchor: "kind":"autodeploy_tool_smoke_failed"
 emit_ambient() {
     local kind="$1" extra="${2:-}"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -108,6 +110,33 @@ if CHUMP_REPO_ROOT="$REPO_ROOT" bash "$REFRESH_SCRIPT" >>"$LOG" 2>&1; then
     # (e) Emit binary_auto_deployed
     emit_ambient "binary_auto_deployed" \
         "\"prev_sha\":\"$PREV_SHA\",\"new_sha\":\"$NEW_SHA\",\"main_sha\":\"$MAIN_SHA_SHORT\""
+
+    # (f) INFRA-3453: post-deploy tool-invocation smoke — the loop tests itself.
+    # ADVISORY: never blocks or reverts the deploy. It drives the freshly-installed
+    # agent through a real turn and confirms a critical tool is actually CALLABLE,
+    # not merely present — catching the deploy->unreachable-tool class (the
+    # 2026-07-28 comprehend_repo profile gap, which every structural check missed).
+    # Opt-in: CHUMP_AUTODEPLOY_SMOKE (default 1; 0 skips). LLM-driven (~1-2 min); a
+    # failure may also mean the model was unavailable, hence advisory-only.
+    if [ "${CHUMP_AUTODEPLOY_SMOKE:-1}" != "0" ]; then
+        SMOKE_SH="$REPO_ROOT/scripts/dev/agent-tool-smoke.sh"
+        if [ -x "$SMOKE_SH" ]; then
+            log "post-deploy tool-invocation smoke (advisory) …"
+            if CHUMP_SMOKE_BIN="$TARGET_BIN" \
+               CHUMP_SMOKE_TOOLS="${CHUMP_AUTODEPLOY_SMOKE_TOOLS:-comprehend_repo:$REPO_ROOT}" \
+               timeout "${CHUMP_AUTODEPLOY_SMOKE_TIMEOUT:-220}" \
+               bash "$SMOKE_SH" --bin "$TARGET_BIN" --repo "$REPO_ROOT" >>"$LOG" 2>&1; then
+                log "OK: post-deploy smoke — critical tools are agent-invocable"
+                emit_ambient "autodeploy_tool_smoke_passed" "\"new_sha\":\"$NEW_SHA\""
+            else
+                log "WARN: post-deploy smoke FAILED — a critical tool is NOT agent-invocable in $NEW_SHA (or the model was unavailable). Deploy stands; check profile/registration/gate."
+                emit_ambient "autodeploy_tool_smoke_failed" \
+                    "\"new_sha\":\"$NEW_SHA\",\"reason\":\"critical_tool_unreachable_or_model_unavailable\""
+            fi
+        else
+            log "post-deploy smoke skipped — $SMOKE_SH not present yet (INFRA-3452 undeployed)"
+        fi
+    fi
 else
     log "FAIL: refresh-runner-binary.sh exited non-zero; binary may be stale"
     emit_ambient "binary_auto_deploy_failed" \
