@@ -204,6 +204,25 @@ events:
       CHUMP_FLEET_SUPERVISOR_MAX_ESCALATIONS is exceeded.
       Scanner-anchor: "kind":"gap_supervisor_escalated"
 
+  - kind: gap_discipline_routed
+    effect_metric: self
+    emitter: src/main.rs
+    trigger: >
+      `chump gap route <ID>` classifies a stuck gap by effort-size × strikes and
+      recommends the recovery discipline (retry | escalate-model | decompose |
+      flag-human), per INFRA-3448.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, gap_id, effort, strikes, discipline]
+    expected_min_per_day: 0
+    status: stable
+    docs: |
+      The discipline router (INFRA-3448) replaces EFFECTIVE-310's blanket
+      "any strike → decompose" and EFFECTIVE-314's blanket model-escalation
+      with an effort-aware decision: small/conceptual gaps escalate the model,
+      large gaps decompose, and either flags a human once its remedy is
+      exhausted. INFRA-3449 wires worker.sh / gap-strike to ACT on this.
+      Scanner-anchor: "kind":"gap_discipline_routed"
+
   - kind: gap_supervisor_heartbeat
     effect_metric: self
     emitter: scripts/coord/gap-supervisor.sh
