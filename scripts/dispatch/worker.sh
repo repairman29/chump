@@ -980,6 +980,23 @@ print('1' if (p == 'P0' and dom == 'MISSION' and e in ('m', 'l', 'xl')) else '0'
                     gap_yaml=$(cat "$gap_yaml_main_path")
                     log "INFRA-502: legacy: gap YAML in main repo (pre-INFRA-498)"
                 fi
+                # INFRA-3458: comprehension-first for the external `claude` backend.
+                # comprehend_repo is a chump-native tool that external `claude -p`
+                # can't call, so point at the `comprehend` CLI (run via Bash). Best-
+                # effort: only when the binary is installed and not disabled. Mirrors
+                # the chump-local context_assembly directive so BOTH fleet runtimes
+                # ground in wiring/gates/config before editing (the INFRA-3456 loop
+                # only reached `chump --briefing`, which the fleet never calls).
+                comprehend_bin="${CHUMP_COMPREHEND_BIN:-$HOME/.cargo/bin/comprehend}"
+                comprehend_hint=""
+                if [[ "${CHUMP_COMPREHEND_ENABLED:-1}" != "0" && -x "$comprehend_bin" ]]; then
+                    comprehend_hint="
+══ UNDERSTAND FIRST (ChumpOS organs) ══
+Before editing an unfamiliar area, run:  comprehend --repo ${wt_path}
+It reports WIRING (live vs registered-but-unwired), GATES (CI/hook gates + bypasses),
+and CONFIG drift — ground in how this repo is wired instead of rediscovering by trial.
+"
+                fi
                 prompt="Ship gap ${GAP_ID}.
 
 The gap is already claimed for this session; lease is in .chump-locks/.
@@ -989,6 +1006,7 @@ watch'. Spend tokens on the implementation, not on discovery.
 
 ══ GAP YAML (canonical) ══
 ${gap_yaml}
+${comprehend_hint}
 
 ══ HARD RULES (full text in CLAUDE.md if you need it) ══
 - Work ONLY in this worktree: ${wt_path}

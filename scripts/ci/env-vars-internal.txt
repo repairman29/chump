@@ -1253,3 +1253,10 @@ CHUMP_RESERVE_GIT_HISTORY_CHECK
 CHUMP_BRIEFING_COMPREHEND
 # detected in: (standard input)
 CHUMP_BRIEFING_COMPREHEND_TIMEOUT_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_COMPREHEND_BIN
+# detected in: (standard input)
+CHUMP_COMPREHEND_ENABLED
