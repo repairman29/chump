@@ -59,6 +59,14 @@ ChumpMenu/ChumpMenu.app/
 .chump/state.db.bak
 .chump/state.sql
 
+# GitHub webhook cache (INFRA-3460) — regenerable binary cache written constantly by
+# the webhook receiver (CREATE TABLE IF NOT EXISTS on start); reader falls back to REST
+# on miss. Tracking it made the working tree perpetually dirty, which bailed the
+# INFRA-2423 ship autofetch guard on every `chump gap ship`. Same treatment as state.db.
+.chump/github_cache.db
+.chump/github_cache.db-shm
+.chump/github_cache.db-wal
+
 # Auditor (INFRA-087) runtime state — strikes index + raw findings dumps
 .chump/auditor-strikes.json
 .chump/auditor-findings-*.jsonl
