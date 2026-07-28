@@ -1260,3 +1260,8 @@ CHUMP_BRIEFING_COMPREHEND_TIMEOUT_S
 CHUMP_COMPREHEND_BIN
 # detected in: (standard input)
 CHUMP_COMPREHEND_ENABLED
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_COMPREHEND_TIMEOUT_S
