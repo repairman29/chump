@@ -153,6 +153,35 @@ Logged to ambient as `kind=redundancy_bypass_used`.
 
 Sibling rules: META-064 (Rust-first), META-065 (auto-prioritization).
 
+## Prefer shared services over silos (INFRA-3463)
+
+When a capability already has a **canonical shared service** in this codebase,
+route through it — do not hand-roll your own client, auth, retries, and fallback.
+Silos duplicate logic, drift, and reproduce bugs the shared service already
+solved. The canonical case: INFRA-3457 — a hand-rolled `curl` + `x-api-key` in the
+code reviewer broke for every OAuth-only user because it bypassed the shared LLM
+service (`ProviderCascade`) that already handled the auth ladder.
+
+The registry of canonical services lives in
+[`docs/process/CANONICAL_SERVICES.md`](./docs/process/CANONICAL_SERVICES.md). Today:
+
+- **LLM completion → `ProviderCascade`.** Rust: `provider_cascade::build_provider().complete(...)`.
+  Shell / external: `chump llm-complete [--model <class>] [--system <t>] [--max-tokens <n>]`.
+
+The `pre-commit-shared-service.sh` gate surfaces new bespoke LLM calls (curl/HTTP
+to `api.anthropic.com` / `api.openai.com`, or `x-api-key`) added outside the
+sanctioned allowlist. It **warns by default** (heuristic nudge, per the rust-first
+anti-friction lesson INFRA-2522); hard-enforce with `CHUMP_SHARED_SERVICE_BLOCK=1`.
+
+**Bypass:** for a genuine reason to call a provider directly, add a commit trailer
+so it is audited, not silent:
+
+```
+Shared-Service-Bypass: <one-sentence reason>
+```
+
+Sibling rules: META-063 (redundancy), META-064 (Rust-first). Disable: `CHUMP_SHARED_SERVICE_CHECK=0`.
+
 ## Lint and format commands
 
 ```bash

@@ -1870,6 +1870,21 @@ if [ -x "$RUST_FIRST_HOOK" ]; then
     fi
 fi
 
+# 15b. Shared-service contract gate (INFRA-3463)
+# ------------------------------------------------------------------
+# Surfaces NEW bespoke LLM-API calls (curl/HTTP to api.anthropic.com /
+# api.openai.com, or x-api-key) added outside the sanctioned shared layer,
+# steering them to the canonical shared service (ProviderCascade /
+# `chump llm-complete`). WARN-only by default (mirrors rust-first); hard-blocks
+# under CHUMP_SHARED_SERVICE_BLOCK=1 unless a `Shared-Service-Bypass:` trailer is
+# present. Registry: docs/process/CANONICAL_SERVICES.md. Bypass: CHUMP_SHARED_SERVICE_CHECK=0
+SHARED_SVC_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-shared-service.sh"
+if [ -x "$SHARED_SVC_HOOK" ]; then
+    if ! "$SHARED_SVC_HOOK"; then
+        exit 1
+    fi
+fi
+
 # 16. Main-worktree config guard (INFRA-1060, 2026-05-13)
 # ------------------------------------------------------------------
 # Detects and auto-removes stray core.worktree from the main .git/config.
