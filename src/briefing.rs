@@ -115,6 +115,15 @@ pub struct GapBriefing {
     /// computed fresh at briefing time — never cached — so agents don't
     /// misroute work based on a stale auth or backend state.
     pub fleet_mode: crate::fleet_mode::FleetMode,
+    /// INFRA-3456 (comprehension-first loop): the unified `comprehend`
+    /// (ChumpOS comprehension-organs) report for `root` — WIRING / GATES /
+    /// CONFIG with honest coverage labels — so the agent grounds in how the
+    /// repo is actually wired BEFORE editing, instead of rediscovering "we
+    /// have X but it's not wired" by trial. `None` when the organs aren't
+    /// built here (`comprehend` binary absent), the consult is disabled
+    /// (`CHUMP_BRIEFING_COMPREHEND=0`), the subprocess times out, or the
+    /// report is empty. Best-effort: never blocks the rest of the briefing.
+    pub comprehension: Option<String>,
 }
 
 /// Build a briefing for the given gap ID. Returns `gap_not_found = true` when
@@ -195,6 +204,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
             umbrella_context: None,
             scratchpad_context: Vec::new(),
             fleet_mode: crate::fleet_mode::compute(""),
+            comprehension: None,
         };
     };
 
@@ -302,6 +312,12 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
     // reflects current auth/backend state at the moment it's requested.
     let fleet_mode = crate::fleet_mode::compute(&parsed.effort);
 
+    // INFRA-3456: comprehension-first — consult the ChumpOS organs for this
+    // repo so the briefing grounds the agent in wiring/gates/config before any
+    // edit. Best-effort: None when the organs are absent, disabled, timed out,
+    // or produce nothing. Never blocks the rest of the briefing.
+    let comprehension = build_comprehension(root);
+
     GapBriefing {
         gap_id,
         gap_title: parsed.title,
@@ -322,6 +338,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         umbrella_context,
         scratchpad_context,
         fleet_mode,
+        comprehension,
     }
 }
 
@@ -985,6 +1002,88 @@ pub fn find_similar_prs(gap_id: &str) -> Vec<u32> {
     prs
 }
 
+/// INFRA-3456 (comprehension-first loop): shell to the `comprehend` binary —
+/// the unified ChumpOS comprehension-organs report — for `root`, so the
+/// briefing can ground the agent in the repo's wiring / gates / config BEFORE
+/// it edits, instead of rediscovering "we have X but it's not wired" by trial.
+///
+/// Best-effort by construction — every failure mode degrades to `None`, never a
+/// panic or a hang, so the organs being absent (or slow) can't break briefings:
+///   - `CHUMP_BRIEFING_COMPREHEND=0` disables the consult outright.
+///   - `None` when the `comprehend` binary isn't installed (organs not built
+///     on this machine) — reuses `comprehend_tool::comprehend_bin` for parity
+///     with the `comprehend_repo` native tool.
+///   - Wall-clock budget `CHUMP_BRIEFING_COMPREHEND_TIMEOUT_S` (default 20s):
+///     on overrun the child is killed and we return `None`, so a pathological
+///     repo can never wedge a briefing.
+///   - Output is byte-capped (char-boundary safe) so a huge report can't bloat
+///     the briefing.
+fn build_comprehension(root: &Path) -> Option<String> {
+    use std::io::Read;
+
+    if std::env::var("CHUMP_BRIEFING_COMPREHEND").as_deref() == Ok("0") {
+        return None;
+    }
+    let bin = crate::comprehend_tool::comprehend_bin()?;
+    let timeout_s: u64 = std::env::var("CHUMP_BRIEFING_COMPREHEND_TIMEOUT_S")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(20);
+
+    let mut child = Command::new(&bin)
+        .arg("--repo")
+        .arg(root)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+
+    // Poll for completion within the wall-clock budget. `comprehend`'s report
+    // is a small summary (well under the OS pipe buffer), so the child never
+    // blocks writing stdout while we sleep between polls.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_s);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_status)) => break,
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(_) => return None,
+        }
+    }
+
+    // Child has exited; drain the buffered stdout (try_wait does not take it).
+    let mut buf = String::new();
+    if let Some(mut so) = child.stdout.take() {
+        let _ = so.read_to_string(&mut buf);
+    }
+    let text = buf.trim();
+    if text.is_empty() {
+        return None;
+    }
+
+    const MAX: usize = 4000;
+    if text.len() > MAX {
+        let mut end = MAX;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        Some(format!(
+            "{}\n… (truncated at {MAX} bytes — run `comprehend --repo {}` for the full report)",
+            &text[..end],
+            root.display()
+        ))
+    } else {
+        Some(text.to_string())
+    }
+}
+
 /// Render the briefing as agent-readable markdown.
 /// INFRA-1548: JSON rendering with schema_version:1 for harness consumers.
 pub fn render_json(b: &GapBriefing) -> String {
@@ -1010,7 +1109,7 @@ pub fn render_json(b: &GapBriefing) -> String {
             r#""gap_effort":"{effort}","gap_domain":"{domain}","gap_not_found":{nf},"#,
             r#""gap_acceptance":{ac},"depends_on":[{deps}],"#,
             r#""relevant_reflections":[{refs}],"similar_closed_prs":[{prs}],"#,
-            r#""fleet_mode":{fleet_mode}}}"#
+            r#""comprehension":{comp},"fleet_mode":{fleet_mode}}}"#
         ),
         id = escape(&b.gap_id),
         title = escape(&b.gap_title),
@@ -1026,6 +1125,11 @@ pub fn render_json(b: &GapBriefing) -> String {
         deps = deps.join(","),
         refs = reflections.join(","),
         prs = prs.join(","),
+        comp = b
+            .comprehension
+            .as_deref()
+            .map(|s| format!("\"{}\"", escape(s)))
+            .unwrap_or_else(|| "null".to_string()),
         fleet_mode = crate::fleet_mode::render_json(&b.fleet_mode),
     )
 }
@@ -1064,6 +1168,20 @@ pub fn render_markdown(b: &GapBriefing) -> String {
     // INFRA-1718: fleet-mode snapshot — auth/backend/effort/cost ceiling,
     // computed fresh at briefing time.
     out.push_str(&crate::fleet_mode::render_markdown_section(&b.fleet_mode));
+
+    // INFRA-3456: comprehension-first — the ChumpOS organs' read on this repo's
+    // wiring / gates / config, surfaced BEFORE the agent starts editing so it
+    // grounds in how the repo is actually wired instead of guessing. Hidden
+    // when the organs are absent/disabled (best-effort, keeps briefings clean).
+    if let Some(c) = &b.comprehension {
+        out.push_str("## Comprehension (organs)\n\n");
+        out.push_str(
+            "_ChumpOS comprehension organs' read on this repo — ground here before editing._\n\n",
+        );
+        out.push_str("```\n");
+        out.push_str(c);
+        out.push_str("\n```\n\n");
+    }
 
     // INFRA-1121: scratchpad context — fleet state snapshot at session start.
     // Only rendered when at least one key is set; hidden when empty to keep
@@ -2084,5 +2202,86 @@ gaps:
     fn filter_cycle_events_missing_file_returns_empty() {
         let hits = filter_cycle_events(Path::new("/nonexistent/ambient.jsonl"), 86400, 5);
         assert!(hits.is_empty());
+    }
+
+    // ---- INFRA-3456: comprehension-first briefing ----
+
+    /// The consult is opt-out: `CHUMP_BRIEFING_COMPREHEND=0` short-circuits to
+    /// `None` before we ever look for the binary — the deterministic disable
+    /// path (the present-binary path depends on machine state, so we don't
+    /// exercise it in a unit test).
+    #[test]
+    fn build_comprehension_disabled_flag_yields_none() {
+        std::env::set_var("CHUMP_BRIEFING_COMPREHEND", "0");
+        let got = build_comprehension(Path::new("/nonexistent/repo"));
+        std::env::remove_var("CHUMP_BRIEFING_COMPREHEND");
+        assert!(got.is_none(), "disable flag must force None, got {got:?}");
+    }
+
+    /// An unknown-gap briefing (the not-found early return) carries no
+    /// comprehension — nothing to comprehend for a gap that doesn't exist.
+    #[test]
+    fn unknown_gap_briefing_has_no_comprehension() {
+        let dir = std::env::temp_dir().join(format!("brief-comp-nf-{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let b = build_briefing_at("NOPE-9999", &dir);
+        assert!(b.gap_not_found);
+        assert!(b.comprehension.is_none());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// render_markdown surfaces the comprehension section (prominently, before
+    /// the acceptance criteria) when the organ report is present.
+    #[test]
+    fn render_markdown_includes_comprehension_when_present() {
+        let b = GapBriefing {
+            gap_id: "INFRA-1".into(),
+            gap_title: "t".into(),
+            comprehension: Some("WIRING: full (12 live)\nGATES: partial".into()),
+            ..Default::default()
+        };
+        let md = render_markdown(&b);
+        assert!(md.contains("## Comprehension (organs)"), "md=\n{md}");
+        assert!(md.contains("WIRING: full (12 live)"));
+        // Grounds before editing: the section precedes acceptance criteria.
+        let comp_at = md.find("## Comprehension (organs)").unwrap();
+        let ac_at = md.find("## Acceptance Criteria").unwrap();
+        assert!(comp_at < ac_at, "comprehension must precede acceptance");
+    }
+
+    /// render_markdown hides the section entirely when there's no report, so
+    /// briefings on organ-less machines stay clean.
+    #[test]
+    fn render_markdown_omits_comprehension_when_none() {
+        let b = GapBriefing {
+            gap_id: "INFRA-2".into(),
+            comprehension: None,
+            ..Default::default()
+        };
+        let md = render_markdown(&b);
+        assert!(!md.contains("Comprehension (organs)"));
+    }
+
+    /// render_json emits an escaped string when present and a bare `null` when
+    /// absent — a stable field for harness consumers either way.
+    #[test]
+    fn render_json_carries_comprehension_field() {
+        let present = GapBriefing {
+            gap_id: "INFRA-3".into(),
+            comprehension: Some("line1\n\"q\"".into()),
+            ..Default::default()
+        };
+        let j = render_json(&present);
+        assert!(
+            j.contains(r#""comprehension":"line1\n\"q\"""#),
+            "json=\n{j}"
+        );
+
+        let absent = GapBriefing {
+            gap_id: "INFRA-4".into(),
+            comprehension: None,
+            ..Default::default()
+        };
+        assert!(render_json(&absent).contains(r#""comprehension":null"#));
     }
 }
