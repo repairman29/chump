@@ -11547,7 +11547,7 @@ async fn main() -> Result<()> {
                     eprintln!("  --clone-path <path>       Override the resolved clone path");
                     eprintln!();
                     eprintln!("Verify model: set CHUMP_VERIFY_API_BASE + CHUMP_VERIFY_MODEL,");
-                    eprintln!("  or falls back to ANTHROPIC_API_KEY with claude-sonnet-4-6.");
+                    eprintln!("  or falls back to the shared provider cascade (INFRA-3464).");
                     std::process::exit(2);
                 });
                 let apply = args.iter().any(|a| a == "--apply");
@@ -12054,23 +12054,19 @@ async fn main() -> Result<()> {
                             .ok()
                             .filter(|s| !s.is_empty());
                         if let (Some(base), Some(model)) = (vbase, vmodel) {
+                            // Explicit operator override — honor it (legit direct).
                             let key = vkey.unwrap_or_default();
                             Some(Box::new(crate::local_openai::LocalOpenAIProvider::new(
                                 base, key, model,
                             )))
-                        } else if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
-                            if !api_key.is_empty() {
-                                let model = "claude-sonnet-4-6".to_string();
-                                Some(Box::new(crate::local_openai::LocalOpenAIProvider::new(
-                                    "https://api.anthropic.com/v1".to_string(),
-                                    api_key,
-                                    model,
-                                )))
-                            } else {
-                                None
-                            }
                         } else {
-                            None
+                            // INFRA-3464: default to the shared cascade instead of a bespoke
+                            // LocalOpenAIProvider pointed straight at the Anthropic endpoint.
+                            // The cascade brings the full auth ladder (incl OAuth), 429 backoff,
+                            // and slot fallback — and works for OAuth-only fleets, which the
+                            // old ANTHROPIC_API_KEY-only path did not. (Closes debt site #5 of
+                            // the LLM-service-fragmentation audit; reviewer done in INFRA-3462.)
+                            Some(crate::provider_cascade::build_provider())
                         }
                     };
 
