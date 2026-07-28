@@ -1121,6 +1121,62 @@ fn parse_llm_complete_args(
     (system, max_tokens, prompt, model_class)
 }
 
+/// INFRA-3475: parse `chump agent-run` flags. Scans `args[2..]` for
+/// `--prompt-file <path>` and `--cwd <dir>`. Returns `(prompt_file, cwd)`;
+/// `prompt_file` is `None` when the flag is absent (caller reads stdin). Pure so
+/// the flag handling is unit-testable without building an agent.
+fn parse_agent_run_args(args: &[String]) -> (Option<String>, Option<String>) {
+    let mut prompt_file = None;
+    let mut cwd = None;
+    let mut i = 2;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--prompt-file" => {
+                prompt_file = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--cwd" => {
+                cwd = args.get(i + 1).cloned();
+                i += 2;
+            }
+            _ => i += 1,
+        }
+    }
+    (prompt_file, cwd)
+}
+
+#[cfg(test)]
+mod agent_run_tests {
+    use super::parse_agent_run_args;
+
+    fn argv(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn parses_prompt_file_and_cwd() {
+        let a = argv(&[
+            "chump",
+            "agent-run",
+            "--prompt-file",
+            "/tmp/p.txt",
+            "--cwd",
+            "/tmp/clone",
+        ]);
+        let (pf, cwd) = parse_agent_run_args(&a);
+        assert_eq!(pf.as_deref(), Some("/tmp/p.txt"));
+        assert_eq!(cwd.as_deref(), Some("/tmp/clone"));
+    }
+
+    #[test]
+    fn defaults_to_stdin_and_current_dir() {
+        let a = argv(&["chump", "agent-run"]);
+        let (pf, cwd) = parse_agent_run_args(&a);
+        assert!(pf.is_none(), "no --prompt-file → None so stdin is read");
+        assert!(cwd.is_none(), "no --cwd → run in the current dir");
+    }
+}
+
 #[cfg(test)]
 mod llm_complete_tests {
     use super::parse_llm_complete_args;
@@ -1397,6 +1453,58 @@ async fn main() -> Result<()> {
             }
             Err(e) => {
                 eprintln!("chump llm-complete: provider error: {e:#}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // `chump agent-run` (INFRA-3475) — the external-repo execution keystone. Runs
+    // the OS's OWN agent (chump-local: ProviderCascade + the full tool set incl.
+    // git_push/gh) on an ad-hoc prompt inside a working dir. NO gap lookup — this
+    // is the primitive that sidesteps execute_gap's gap-source/file-root conflation,
+    // so `chump improve` can default to chump-local (spawn this in the clone) instead
+    // of the claude CLI. See docs/design/EXTERNAL_REPO_EXECUTION.md.
+    if args.get(1).map(String::as_str) == Some("agent-run") {
+        let (prompt_file, cwd) = parse_agent_run_args(&args);
+        let prompt = match prompt_file {
+            Some(f) => std::fs::read_to_string(&f).unwrap_or_else(|e| {
+                eprintln!("chump agent-run: cannot read --prompt-file {f}: {e}");
+                std::process::exit(2);
+            }),
+            None => {
+                use std::io::Read;
+                let mut buf = String::new();
+                let _ = std::io::stdin().read_to_string(&mut buf);
+                buf
+            }
+        };
+        if prompt.trim().is_empty() {
+            eprintln!("chump agent-run: empty prompt (pass --prompt-file <f> or pipe via stdin)");
+            std::process::exit(2);
+        }
+        // Root the agent's file tools at --cwd (the external clone/worktree) so its
+        // edits land THERE, not in the chump repo. This is the external analog of a
+        // linked worktree: gap/context come from chump, files live in the target.
+        if let Some(dir) = cwd {
+            std::env::set_var("CHUMP_REPO", &dir);
+            if let Err(e) = std::env::set_current_dir(&dir) {
+                eprintln!("chump agent-run: cannot cd to --cwd {dir}: {e}");
+                std::process::exit(2);
+            }
+        }
+        match crate::agent_factory::build_chump_agent_cli() {
+            Ok((agent, _ready)) => match agent.run(&prompt).await {
+                Ok(o) => {
+                    print!("{}", o.reply);
+                    return Ok(());
+                }
+                Err(e) => {
+                    eprintln!("chump agent-run: agent error: {e:#}");
+                    std::process::exit(1);
+                }
+            },
+            Err(e) => {
+                eprintln!("chump agent-run: build failed: {e:#}");
                 std::process::exit(1);
             }
         }
