@@ -143,6 +143,27 @@ fn brain_autoload_last_turns() -> &'static Mutex<HashMap<String, u64>> {
 
 /// Build the context block injected into the system prompt (ego, tasks, episodes, schedule, heartbeat meta).
 /// When CHUMP_HEARTBEAT_TYPE is set, only inject sections relevant to that round to save context tokens.
+/// INFRA-3458: the ChumpOS comprehension-organs directive, or `None` when the
+/// `comprehend_repo` tool isn't callable. Split out from `assemble_context` so
+/// the gating + text are unit-testable without depending on whether the
+/// `comprehend` binary happens to exist on the test host (CI won't have it).
+/// The caller passes `crate::comprehend_tool::comprehend_available()`.
+fn comprehend_directive(available: bool) -> Option<&'static str> {
+    if !available {
+        return None;
+    }
+    Some(
+        "[Comprehend — understand a repo BEFORE you touch it, via the comprehend_repo tool]\n\
+         - On an unfamiliar repo or area, call comprehend_repo FIRST: it returns WIRING (which \
+         capabilities are live + what's registered-but-not-wired), GATES (which CI/hook gates a \
+         change trips + their documented bypasses), and CONFIG (flags + inconsistent-default \
+         DRIFT), each with an honest coverage label.\n\
+         - Adding or wiring a capability? Check WIRING first — \"registered but in NO profile\" \
+         is the defined-but-not-wired trap this tool exists to catch.\n\
+         - Before committing, glance at GATES so a hook/CI gate doesn't bounce your push.\n\n",
+    )
+}
+
 pub fn assemble_context() -> String {
     const INITIAL_CAP: usize = 4096;
     let mut out = String::with_capacity(INITIAL_CAP);
@@ -193,6 +214,17 @@ pub fn assemble_context() -> String {
              file's imports/callers; almanac_status reports index freshness.\n\
              Prefer Almanac; fall back to grep only when it returns nothing.\n\n",
         );
+    }
+
+    // ChumpOS comprehension organs (INFRA-3458) — "understand a repo BEFORE you
+    // touch it." Gated on the tool actually being callable (binary present AND
+    // CHUMP_COMPREHEND_ENABLED != 0, via comprehend_available) so we never
+    // advertise a tool that isn't wired. This closes the INFRA-3456 gap: the
+    // comprehension-first briefing only reached `chump --briefing`, but the
+    // fleet's chump-local runtime assembles its context HERE — so this is where
+    // the fleet actually learns to reach for the organs instead of guessing.
+    if let Some(directive) = comprehend_directive(crate::comprehend_tool::comprehend_available()) {
+        out.push_str(directive);
     }
 
     crate::precision_controller::init_energy_budget_from_env();
@@ -957,5 +989,23 @@ mod cos_weekly_tests {
         std::fs::create_dir_all(&logs).unwrap();
         assert!(pick_latest_cos_weekly_path(&logs).is_none());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // INFRA-3458: the comprehension directive is gated on the tool being callable
+    // and carries the organ vocabulary the agent needs. Pure over the availability
+    // bool so it's deterministic regardless of whether `comprehend` is installed.
+    #[test]
+    fn comprehend_directive_gated_on_availability() {
+        assert!(
+            comprehend_directive(false).is_none(),
+            "no directive when the tool isn't callable — never advertise an unwired tool"
+        );
+        let d = comprehend_directive(true).expect("directive present when the tool is callable");
+        assert!(d.contains("comprehend_repo"), "names the tool to call");
+        assert!(d.contains("WIRING") && d.contains("GATES") && d.contains("CONFIG"));
+        assert!(
+            d.contains("registered but in NO profile"),
+            "surfaces the defined-but-not-wired trap"
+        );
     }
 }
