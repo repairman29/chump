@@ -1087,10 +1087,15 @@ fn run_plan_subcommand(args: &[String]) -> Result<()> {
 /// Returns `(system, max_tokens, prompt_from_flag)`; `prompt_from_flag` is `None`
 /// when `--prompt` was absent (the caller then reads the prompt from stdin).
 /// Pure over `args` so the flag handling is unit-testable without a provider.
-fn parse_llm_complete_args(args: &[String]) -> (Option<String>, u32, Option<String>) {
+fn parse_llm_complete_args(
+    args: &[String],
+) -> (Option<String>, u32, Option<String>, Option<String>) {
     let mut system = None;
     let mut max_tokens = 1024u32;
     let mut prompt = None;
+    // INFRA-3462: --model <class> (haiku/sonnet/opus) biases the cascade's slot
+    // selection via CHUMP_PREFERRED_MODEL_CLASS; None = cascade default.
+    let mut model_class = None;
     let mut i = 2;
     while i < args.len() {
         match args[i].as_str() {
@@ -1106,10 +1111,14 @@ fn parse_llm_complete_args(args: &[String]) -> (Option<String>, u32, Option<Stri
                 prompt = args.get(i + 1).cloned();
                 i += 2;
             }
+            "--model" => {
+                model_class = args.get(i + 1).cloned().filter(|s| !s.is_empty());
+                i += 2;
+            }
             _ => i += 1,
         }
     }
-    (system, max_tokens, prompt)
+    (system, max_tokens, prompt, model_class)
 }
 
 #[cfg(test)]
@@ -1131,31 +1140,44 @@ mod llm_complete_tests {
             "256",
             "--prompt",
             "hello",
+            "--model",
+            "opus",
         ]);
-        let (sys, mt, prompt) = parse_llm_complete_args(&a);
+        let (sys, mt, prompt, model) = parse_llm_complete_args(&a);
         assert_eq!(sys.as_deref(), Some("you are terse"));
         assert_eq!(mt, 256);
         assert_eq!(prompt.as_deref(), Some("hello"));
+        assert_eq!(model.as_deref(), Some("opus"));
     }
 
     #[test]
     fn defaults_and_stdin_prompt() {
-        // No flags → default max_tokens, no system, prompt None (caller reads stdin).
+        // No flags → default max_tokens, no system, prompt None (caller reads stdin),
+        // no model class (cascade default).
         let a = argv(&["chump", "llm-complete"]);
-        let (sys, mt, prompt) = parse_llm_complete_args(&a);
+        let (sys, mt, prompt, model) = parse_llm_complete_args(&a);
         assert!(sys.is_none());
         assert_eq!(mt, 1024);
         assert!(prompt.is_none(), "no --prompt → None so stdin is read");
+        assert!(model.is_none(), "no --model → cascade default");
     }
 
     #[test]
     fn bad_max_tokens_falls_back_to_default() {
         let a = argv(&["chump", "llm-complete", "--max-tokens", "notanumber"]);
-        let (_, mt, _) = parse_llm_complete_args(&a);
+        let (_, mt, _, _) = parse_llm_complete_args(&a);
         assert_eq!(
             mt, 1024,
             "unparseable --max-tokens must not panic; defaults"
         );
+    }
+
+    #[test]
+    fn empty_model_is_none() {
+        // --model "" must not pin an empty class (would zero out the cascade default).
+        let a = argv(&["chump", "llm-complete", "--model", ""]);
+        let (_, _, _, model) = parse_llm_complete_args(&a);
+        assert!(model.is_none());
     }
 }
 
@@ -1336,7 +1358,7 @@ async fn main() -> Result<()> {
     // reach the shared service instead of hand-rolling `curl` + `x-api-key`,
     // which is the class of bug the shared-service contract exists to kill.
     if args.get(1).map(String::as_str) == Some("llm-complete") {
-        let (system, max_tokens, prompt_flag) = parse_llm_complete_args(&args);
+        let (system, max_tokens, prompt_flag, model_class) = parse_llm_complete_args(&args);
         let prompt = match prompt_flag {
             Some(p) => p,
             None => {
@@ -1351,6 +1373,14 @@ async fn main() -> Result<()> {
                 "chump llm-complete: empty prompt (pass --prompt <text> or pipe it via stdin)"
             );
             std::process::exit(2);
+        }
+        // INFRA-3462: --model biases the cascade toward a class (opus/sonnet/haiku)
+        // via CHUMP_PREFERRED_MODEL_CLASS, which build_provider() reads. If that
+        // class has no valid slot the cascade falls back to its other slots — so
+        // the caller (e.g. the code reviewer) gets a strong model when available
+        // and a graceful downgrade otherwise, never a hard failure.
+        if let Some(class) = model_class {
+            std::env::set_var("CHUMP_PREFERRED_MODEL_CLASS", class);
         }
         let provider = provider_cascade::build_provider();
         let msgs = vec![axonerai::provider::Message {
