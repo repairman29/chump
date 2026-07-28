@@ -301,11 +301,24 @@ _bm_cleanup() {
     # NOTE: _BM_STEPS_FILE is intentionally NOT deleted here — it's the
     # recovery artifact that bot-merge-recover.sh needs to diagnose the crash.
     # INFRA-1017: vacuum state.db leases row so gap-preflight doesn't report a
-    # phantom live claim after this process is killed (SIGTERM, OOM, ctrl-C).
-    if [[ -n "${CHUMP_SESSION_ID:-}" ]] && command -v sqlite3 &>/dev/null; then
+    # phantom live claim after this process is KILLED (SIGTERM, OOM, ctrl-C).
+    # INFRA-3455: gate this on _BM_LEASE_VACUUM_OK (set ONLY by the kill handlers)
+    # and scope it to THIS gap. The old blanket DELETE fired on EVERY exit — so a
+    # recoverable preflight-FAIL deleted the operator's own lease, and the retry
+    # then hit its still-present worktree with no lease → "<unknown> owner" dead
+    # end → manual --no-verify. On success the gap is marked done (preflight
+    # returns Done, not Claimed) so a lingering lease is benign; on a recoverable
+    # abort the lease must SURVIVE so the retry's self-recognition (INFRA-3446)
+    # passes.
+    if [[ "${_BM_LEASE_VACUUM_OK:-0}" == "1" && -n "${CHUMP_SESSION_ID:-}" ]] \
+       && command -v sqlite3 &>/dev/null; then
         local _db="${MAIN_REPO:-${REPO_ROOT:-.}}/.chump/state.db"
-        [[ -f "$_db" ]] && sqlite3 "$_db" \
-            "DELETE FROM leases WHERE session_id='${CHUMP_SESSION_ID}'" 2>/dev/null || true
+        local _vg="${GAP_IDS[0]:-${GAP_ID:-}}"
+        if [[ -f "$_db" && -n "$_vg" ]]; then
+            sqlite3 "$_db" \
+                "DELETE FROM leases WHERE session_id='${CHUMP_SESSION_ID}' AND gap_id='${_vg}'" \
+                2>/dev/null || true
+        fi
     fi
 }
 trap '_bm_cleanup' EXIT
@@ -327,11 +340,13 @@ _bm_sigterm_handler() {
         >> "$_ambient" 2>/dev/null || true
     printf '\033[0;31m[bot-merge] TIMEOUT (INFRA-2426): SIGTERM received at phase="%s" elapsed=%ds — kind=bot_merge_timeout emitted to ambient.\033[0m\n' \
         "$_step" "$_elapsed" >&2 || true
+    _BM_LEASE_VACUUM_OK=1   # INFRA-3455: killed → vacuum the phantom lease
     _bm_cleanup
     exit 1
 }
 trap '_bm_sigterm_handler' TERM
-trap '_bm_cleanup; exit 1' INT
+# INFRA-3455: ctrl-C is a kill → vacuum the phantom lease (recoverable EXIT does not).
+trap '_BM_LEASE_VACUUM_OK=1; _bm_cleanup; exit 1' INT
 
 # ── META-156: per-step ambient observability ─────────────────────────────────
 # Emit kind=bot_merge_step_started / kind=bot_merge_step_done to ambient.jsonl
@@ -1551,6 +1566,26 @@ except Exception:
             fi
         done
     fi
+fi
+
+# INFRA-3455: RECONCILE (not just fill). The block above only resolves when
+# CHUMP_SESSION_ID is UNSET. But an operator shell often already exports a stale
+# CHUMP_SESSION_ID (a long-lived session, or a value from a prior claim). If the
+# gap's lease names a DIFFERENT session, bot-merge would hand that wrong value to
+# `chump gap preflight`, and preflight_claim_is_self (INFRA-3446) would compare
+# the wrong session → false "live-claimed by <other>" on the operator's OWN gap.
+# So override CHUMP_SESSION_ID with the gap's lease owner whenever they differ.
+if [[ ${#GAP_IDS[@]} -gt 0 ]] && command -v sqlite3 &>/dev/null; then
+    for _gid in "${GAP_IDS[@]}"; do
+        _lease_sess="$(lease_session_from_statedb "$_gid" "${MAIN_REPO:-${REPO_ROOT:-.}}/.chump/state.db")"
+        if [[ -n "$_lease_sess" ]]; then
+            if [[ "$_lease_sess" != "${CHUMP_SESSION_ID:-}" ]]; then
+                info "INFRA-3455: reconciled CHUMP_SESSION_ID to gap $_gid lease owner ($_lease_sess; was '${CHUMP_SESSION_ID:-<unset>}')"
+                export CHUMP_SESSION_ID="$_lease_sess"
+            fi
+            break
+        fi
+    done
 fi
 
 # INFRA-919: release lease on any exit so the gap can be re-claimed after a
