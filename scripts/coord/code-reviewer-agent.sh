@@ -345,8 +345,18 @@ else
         done
     fi
     if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-        red "ANTHROPIC_API_KEY not set — cannot call Claude API."
-        exit 4
+        # INFRA-3457: the LLM reviewer is a BONUS gate — GitHub's required checks
+        # are the real protection on main. When it can't authenticate (no
+        # ANTHROPIC_API_KEY in env or any .env — e.g. the fleet/interactive
+        # OAuth-only path, or a linked worktree without a .env), SKIP (exit 3,
+        # non-blocking) rather than ERROR (exit 4). The old exit-4 made a purely
+        # environmental auth-miss block auto-merge, which forced every OAuth-only
+        # session to silently hand-arm 'gh pr merge --auto' — strictly worse than
+        # an honest skip. The 'SKIP:' line below is captured in bot-merge's log so
+        # a chronically-skipping reviewer stays visible.
+        yellow "ANTHROPIC_API_KEY not set — SKIPPING LLM review (GitHub required checks still gate this merge)."
+        echo "SKIP: reviewer could not authenticate (no ANTHROPIC_API_KEY; OAuth-only or worktree without .env)"
+        exit 3
     fi
 
     info "Calling Claude API (claude-opus-4-5) …"
