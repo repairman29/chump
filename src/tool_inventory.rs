@@ -96,6 +96,7 @@ fn outbound_web_tools_allowed() -> bool {
 /// Sort keys for spawn_worker: file ops, run_cli, run_test, git_commit, diff_review. No git_push, gh_*, set_working_repo, delegate, notify.
 const WORKER_TOOL_KEYS: &[&str] = &[
     "read_file",
+    "comprehend_repo",
     "list_dir",
     "write_file",
     "patch_file",
