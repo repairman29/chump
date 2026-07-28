@@ -344,48 +344,27 @@ else
             fi
         done
     fi
-    if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-        # INFRA-3457: the LLM reviewer is a BONUS gate — GitHub's required checks
-        # are the real protection on main. When it can't authenticate (no
-        # ANTHROPIC_API_KEY in env or any .env — e.g. the fleet/interactive
-        # OAuth-only path, or a linked worktree without a .env), SKIP (exit 3,
-        # non-blocking) rather than ERROR (exit 4). The old exit-4 made a purely
-        # environmental auth-miss block auto-merge, which forced every OAuth-only
-        # session to silently hand-arm 'gh pr merge --auto' — strictly worse than
-        # an honest skip. The 'SKIP:' line below is captured in bot-merge's log so
-        # a chronically-skipping reviewer stays visible.
-        yellow "ANTHROPIC_API_KEY not set — SKIPPING LLM review (GitHub required checks still gate this merge)."
-        echo "SKIP: reviewer could not authenticate (no ANTHROPIC_API_KEY; OAuth-only or worktree without .env)"
+    # INFRA-3462: route the Tier-2 review through the SHARED LLM service via the
+    # `chump llm-complete` gateway (ProviderCascade — full auth ladder incl OAuth,
+    # 429 backoff, slot fallback) instead of a bespoke `curl` + `x-api-key` that
+    # only worked with a raw API key. `--model opus` asks the cascade for a strong
+    # slot and degrades gracefully to the cascade default if opus is unavailable.
+    # No ANTHROPIC_API_KEY check here: the gateway owns auth.
+    CHUMP_BIN="${CHUMP_LLM_BIN:-chump}"
+    info "Tier-2 review via ${CHUMP_BIN} llm-complete (shared cascade, --model opus) …"
+    if RESPONSE=$(printf '%s' "$PROMPT" | "$CHUMP_BIN" llm-complete --model opus --max-tokens 1024 2>/dev/null) \
+        && [[ -n "${RESPONSE//[[:space:]]/}" ]]; then
+        : # got a review
+    else
+        # The gateway itself couldn't produce a review (no provider configured at
+        # all). Same INFRA-3457 rationale: the reviewer is a BONUS gate and
+        # GitHub's required checks are the real protection, so SKIP (exit 3,
+        # non-blocking) rather than block auto-merge. The 'SKIP:' line is captured
+        # in bot-merge's log so a chronically-skipping reviewer stays visible.
+        yellow "chump llm-complete produced no review — SKIPPING (GitHub required checks still gate this merge)."
+        echo "SKIP: reviewer gateway unavailable (no provider configured for chump llm-complete)"
         exit 3
     fi
-
-    info "Calling Claude API (claude-opus-4-5) …"
-    REQUEST_JSON=$(python3 -c "
-import json, sys
-p = sys.stdin.read()
-print(json.dumps({
-    'model': 'claude-opus-4-5',
-    'max_tokens': 1024,
-    'messages': [{'role': 'user', 'content': p}],
-}))" <<< "$PROMPT")
-
-    API_RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
-        -H "x-api-key: $ANTHROPIC_API_KEY" \
-        -H "anthropic-version: 2023-06-01" \
-        -H "content-type: application/json" \
-        -d "$REQUEST_JSON")
-
-    RESPONSE=$(echo "$API_RESPONSE" | python3 -c "
-import json, sys
-try:
-    d = json.load(sys.stdin)
-    if 'content' in d and d['content']:
-        print(d['content'][0].get('text', '').strip())
-    else:
-        print('ESCALATE: Claude API returned no content — ' + json.dumps(d)[:200])
-except Exception as e:
-    print(f'ESCALATE: failed to parse Claude API response: {e}')
-")
 fi
 
 # ── 7. Parse verdict ─────────────────────────────────────────────────────────
