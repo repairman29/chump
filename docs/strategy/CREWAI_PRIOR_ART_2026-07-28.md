@@ -9,6 +9,26 @@ Reference: [github.com/crewaiinc/crewai](https://github.com/crewaiinc/crewai) �
 "an open-source **Python framework** ... for building production-ready multi-agent
 workflows." ~56k stars, 100k+ certified devs, an enterprise control plane (AMP Suite).
 
+---
+
+## ⚠️ Load-bearing invariant — DO NOT try to "close" the framework/OS gap
+
+**The distance between Chump and CrewAI is not a deficiency to be fixed — it IS the
+ChumpOS thesis.** CrewAI is an *application framework* (a library you use to build a
+crew); ChumpOS is the *operating system* that could run a crew as one process. That
+gap — running system vs library, self-authored work vs human-conducted, shipped
+CI-gated software vs a report, distributed self-healing fleet vs in-process run,
+governance-as-product vs neutral-framework — is precisely what makes ChumpOS
+**not** "CrewAI in Rust."
+
+A future agent (or a well-meaning refactor) may read this comparison and conclude
+Chump should be *reduced* to a crew framework, or that adopting CrewAI's model
+wholesale would "simplify" things. **That is the one wrong takeaway.** Borrow the
+*patterns* (§3b) and the *interop* (§3c); never collapse the OS into the crew.
+The right verb for the gap is **widen**, not close.
+
+---
+
 ## 1. The framing: framework vs OS
 
 The single sharpest distinction, and it is exactly the ChumpOS thesis:
