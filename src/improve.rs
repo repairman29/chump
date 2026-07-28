@@ -221,6 +221,11 @@ fn run_inner(args: &[String]) -> Result<i32> {
         return Ok(0);
     }
 
+    // INFRA-3477: ensure the clone EXISTS. The scout stage normally clones, but
+    // `--gap` skips the scout — leaving refresh_clone (which only fetches) to fail
+    // with "cannot change to .../clone". Clone-if-missing closes that.
+    ensure_clone_exists(&clone_dir, &opts.owner_repo)?;
+
     // EFFECTIVE-291: refresh the persistent clone to the remote default branch
     // BEFORE dedup + implement, so the PR branches from CURRENT main rather than
     // a stale reused clone. Without this, every improve PR inherits months-old
@@ -864,6 +869,18 @@ Add this exact trailer as the LAST line of every commit message body you create:
 /// --dangerously-skip-permissions` pattern from `src/dispatch.rs`
 /// (`spawn_headless`). Binary is resolved via `CHUMP_IMPROVE_CLAUDE_BIN`
 /// env var (same pattern as `CHUMP_COORD_BIN`).
+/// INFRA-3477 / Principle 0: which agent runtime `improve` spawns to implement a
+/// gap. Default is the OS's OWN runtime ("chump-local", via `chump agent-run`);
+/// the external claude CLI is opt-in only (`CHUMP_IMPROVE_BACKEND=claude`). An
+/// unset/empty/whitespace value resolves to the default — the OS never silently
+/// falls back to claude.
+fn resolve_improve_backend() -> String {
+    match std::env::var("CHUMP_IMPROVE_BACKEND") {
+        Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
+        _ => "chump-local".to_string(),
+    }
+}
+
 fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<String> {
     use chump_handoff::contracts::{ExternalRepoContract, ExternalRepoInput};
     use chump_handoff::HandoffContract;
@@ -890,34 +907,67 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         id.trailer()
     );
 
-    // Resolve claude binary — injectable for tests.
-    let claude_bin =
-        std::env::var("CHUMP_IMPROVE_CLAUDE_BIN").unwrap_or_else(|_| "claude".to_string());
-
     // Write prompt to a temp file so we don't hit ARG_MAX on complex prompts.
     let prompt_file = write_temp_prompt(&prompt)?;
 
-    let mut cmd = Command::new(&claude_bin);
-    cmd.arg("-p")
-        .arg(std::fs::read_to_string(&prompt_file)?)
-        .arg("--dangerously-skip-permissions")
-        .args(["--model", "claude-sonnet-4-5"])
-        .current_dir(clone_dir);
-    // MISSION-063: author the agent's commits under its identity, not the token.
-    id.apply_git_env(&mut cmd);
+    // INFRA-3477 / Principle 0 (docs/design/EXTERNAL_REPO_EXECUTION.md): the OS
+    // runs on its OWN runtime by default and NEVER defaults to the claude CLI.
+    // CHUMP_IMPROVE_BACKEND selects: "chump-local" (default) spawns `chump
+    // agent-run` — the INFRA-3475 keystone that runs the chump-local agent
+    // (ProviderCascade + full tools incl git/gh) in the clone; "claude" is the
+    // opt-in legacy path that spawns the external `claude -p` CLI.
+    let backend = resolve_improve_backend();
 
-    // B4 + RESILIENT-106: inject OAUTH token and neutralize conflicting
-    // gateway vars so the spawned agent authenticates from any context.
-    // configure_claude_auth_env handles both responsibilities atomically.
-    let oauth_path = configure_claude_auth_env(&mut cmd);
-    if oauth_path {
-        eprintln!("[improve] auth: using OAUTH token path for spawned claude");
-    }
+    let mut cmd = if backend == "claude" {
+        // OPT-IN legacy path — external claude CLI (injectable via
+        // CHUMP_IMPROVE_CLAUDE_BIN for tests).
+        let claude_bin =
+            std::env::var("CHUMP_IMPROVE_CLAUDE_BIN").unwrap_or_else(|_| "claude".to_string());
+        eprintln!("[improve] backend=claude (opt-in) — spawning external claude CLI");
+        let mut c = Command::new(&claude_bin);
+        c.arg("-p")
+            .arg(std::fs::read_to_string(&prompt_file)?)
+            .arg("--dangerously-skip-permissions")
+            .args(["--model", "claude-sonnet-4-5"])
+            .current_dir(clone_dir);
+        // MISSION-063: author the agent's commits under its identity, not the token.
+        id.apply_git_env(&mut c);
+        // B4 + RESILIENT-106: inject OAUTH token and neutralize conflicting
+        // gateway vars so the spawned agent authenticates from any context.
+        let oauth_path = configure_claude_auth_env(&mut c);
+        if oauth_path {
+            eprintln!("[improve] auth: using OAUTH token path for spawned claude");
+        }
+        c
+    } else {
+        // DEFAULT (Principle 0): the OS's own runtime via `chump agent-run`.
+        // Reads the prompt from --prompt-file, runs the chump-local agent in the
+        // clone (--cwd), which implements + commits + pushes + opens the PR and
+        // emits the same pr_url JSON block the contract prompt asks for — so the
+        // extraction below is backend-agnostic. Auth is ProviderCascade's own,
+        // not claude's, so no configure_claude_auth_env here.
+        let chump_bin = std::env::var("CHUMP_IMPROVE_CHUMP_BIN")
+            .or_else(|_| std::env::var("CHUMP_BIN"))
+            .unwrap_or_else(|_| "chump".to_string());
+        eprintln!(
+            "[improve] backend=chump-local (default) — `chump agent-run` in {}",
+            clone_dir.display()
+        );
+        let mut c = Command::new(&chump_bin);
+        c.arg("agent-run")
+            .arg("--prompt-file")
+            .arg(&prompt_file)
+            .arg("--cwd")
+            .arg(clone_dir);
+        // MISSION-063: author the agent's commits under its identity.
+        id.apply_git_env(&mut c);
+        c
+    };
 
     // Capture output so we can extract the PR URL from the JSON block.
     let out = cmd
         .output()
-        .with_context(|| format!("spawn `{claude_bin} -p` (is claude CLI on PATH?)"))?;
+        .with_context(|| format!("spawn improve backend `{backend}`"))?;
 
     // Cleanup temp file.
     let _ = std::fs::remove_file(&prompt_file);
@@ -925,7 +975,8 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         bail!(
-            "claude -p exited {} — stderr: {}",
+            "improve backend `{}` exited {} — stderr: {}",
+            backend,
             out.status.code().unwrap_or(-1),
             stderr.trim().lines().next().unwrap_or("(no output)")
         );
@@ -1781,6 +1832,31 @@ fn resolve_clone_dir(opts: &Opts) -> PathBuf {
 /// default branch before implementing, so the PR branches from CURRENT main
 /// rather than a stale reused clone. Best-effort: a no-op if the clone isn't a
 /// git repo yet; a warning (not a hard error) if fetch fails (offline).
+/// INFRA-3477: clone the external repo if the persistent clone doesn't exist yet.
+/// The scout stage clones on the scan path, but `improve --gap` skips the scout,
+/// so the clone must be created here or refresh_clone/implement fail. Idempotent:
+/// a no-op when the clone already exists.
+fn ensure_clone_exists(clone_dir: &Path, owner_repo: &str) -> Result<()> {
+    if clone_dir.join(".git").exists() {
+        return Ok(());
+    }
+    if let Some(parent) = clone_dir.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let url = format!("https://github.com/{owner_repo}.git");
+    let cd = clone_dir.to_string_lossy().to_string();
+    println!("[improve] first-touch clone {owner_repo} → {cd}");
+    let ok = Command::new("git")
+        .args(["clone", "--quiet", &url, &cd])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !ok {
+        bail!("git clone {url} → {cd} failed");
+    }
+    Ok(())
+}
+
 fn refresh_clone(clone_dir: &Path) -> Result<()> {
     if !clone_dir.join(".git").exists() {
         return Ok(()); // not cloned yet — the scan/implement path reports that
@@ -2793,6 +2869,45 @@ Some prose from the agent.
     ///
     /// We use Command::get_envs() to inspect the env-override map without
     /// spawning any process.
+    /// INFRA-3477 / Principle 0: `improve` must default to the OS's own runtime
+    /// ("chump-local") and NEVER silently fall back to the claude CLI. claude is
+    /// opt-in only. Guards the outward-flywheel default against regression.
+    #[test]
+    #[serial_test::serial]
+    fn improve_backend_defaults_to_chump_local_not_claude() {
+        unsafe {
+            std::env::remove_var("CHUMP_IMPROVE_BACKEND");
+        }
+        assert_eq!(
+            resolve_improve_backend(),
+            "chump-local",
+            "unset → chump-local (never claude)"
+        );
+
+        unsafe {
+            std::env::set_var("CHUMP_IMPROVE_BACKEND", "   ");
+        }
+        assert_eq!(
+            resolve_improve_backend(),
+            "chump-local",
+            "blank/whitespace → chump-local (never claude)"
+        );
+
+        unsafe {
+            std::env::set_var("CHUMP_IMPROVE_BACKEND", "claude");
+        }
+        assert_eq!(
+            resolve_improve_backend(),
+            "claude",
+            "explicit opt-in resolves to claude"
+        );
+
+        // Isolate from other tests.
+        unsafe {
+            std::env::remove_var("CHUMP_IMPROVE_BACKEND");
+        }
+    }
+
     #[test]
     #[serial_test::serial]
     fn configure_auth_env_strips_gateway_when_oauth_in_env() {
