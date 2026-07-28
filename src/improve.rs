@@ -221,16 +221,12 @@ fn run_inner(args: &[String]) -> Result<i32> {
         return Ok(0);
     }
 
-    // INFRA-3477: ensure the clone EXISTS. The scout stage normally clones, but
-    // `--gap` skips the scout — leaving refresh_clone (which only fetches) to fail
-    // with "cannot change to .../clone". Clone-if-missing closes that.
-    ensure_clone_exists(&clone_dir, &opts.owner_repo)?;
-
-    // EFFECTIVE-291: refresh the persistent clone to the remote default branch
-    // BEFORE dedup + implement, so the PR branches from CURRENT main rather than
-    // a stale reused clone. Without this, every improve PR inherits months-old
-    // main and fails CI gates that were already fixed on real main.
-    refresh_clone(&clone_dir)?;
+    // INFRA-3477/3478: prepare the shared clone under a lock — clone-if-missing
+    // (the `--gap` path skips the scout that clones) + refresh to the remote
+    // default branch (so the PR branches from CURRENT main, not a stale reused
+    // clone). The lock serializes concurrent agents' first-touch clone/refresh so
+    // they don't race on the shared clone.
+    prepare_shared_clone(&clone_dir, &opts.owner_repo)?;
 
     // ── Stage 1.5: SHEPHERD ───────────────────────────────────────────────
     // MISSION-061: before implementing NEW work, drive the loop's own open PRs
@@ -885,11 +881,33 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
     use chump_handoff::contracts::{ExternalRepoContract, ExternalRepoInput};
     use chump_handoff::HandoffContract;
 
+    // INFRA-3478: run the agent in a per-agent LINKED WORKTREE off the shared
+    // clone (unless CHUMP_IMPROVE_SHARED_CLONE_DIRECT=1), so concurrent agents on
+    // the same external repo don't collide. The shared clone stays canonical
+    // (fetch + objects + default branch); the worktree is this agent's isolated
+    // checkout. base_branch is resolved from the shared clone (origin/HEAD) so the
+    // PR base stays the repo default even though the worktree is on a feature branch.
+    let base_branch = detect_base_branch(clone_dir);
+    let direct_mode = std::env::var("CHUMP_IMPROVE_SHARED_CLONE_DIRECT")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let work_dir: PathBuf = if direct_mode {
+        clone_dir.to_path_buf()
+    } else {
+        let key = improve_worktree_key();
+        let wt = ensure_improve_worktree(clone_dir, &key, &base_branch)?;
+        eprintln!(
+            "[improve] agent worktree: {} (off shared clone)",
+            wt.display()
+        );
+        wt
+    };
+
     let input = ExternalRepoInput {
         external_repo: opts.owner_repo.clone(),
-        repo_local_path: clone_dir.to_string_lossy().to_string(),
+        repo_local_path: work_dir.to_string_lossy().to_string(),
         proposed_gap_description: build_gap_description(gap),
-        base_branch: detect_base_branch(clone_dir),
+        base_branch,
         fork_owner: None, // direct-push to a branch; operator can set fork via --gap override
     };
 
@@ -929,7 +947,7 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
             .arg(std::fs::read_to_string(&prompt_file)?)
             .arg("--dangerously-skip-permissions")
             .args(["--model", "claude-sonnet-4-5"])
-            .current_dir(clone_dir);
+            .current_dir(&work_dir);
         // MISSION-063: author the agent's commits under its identity, not the token.
         id.apply_git_env(&mut c);
         // B4 + RESILIENT-106: inject OAUTH token and neutralize conflicting
@@ -951,14 +969,14 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
             .unwrap_or_else(|_| "chump".to_string());
         eprintln!(
             "[improve] backend=chump-local (default) — `chump agent-run` in {}",
-            clone_dir.display()
+            work_dir.display()
         );
         let mut c = Command::new(&chump_bin);
         c.arg("agent-run")
             .arg("--prompt-file")
             .arg(&prompt_file)
             .arg("--cwd")
-            .arg(clone_dir);
+            .arg(&work_dir);
         // MISSION-063: author the agent's commits under its identity.
         id.apply_git_env(&mut c);
         c
@@ -985,12 +1003,20 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
 
     // Extract the JSON block containing pr_url.
-    extract_pr_url_from_output(&stdout).ok_or_else(|| {
+    let pr_url = extract_pr_url_from_output(&stdout).ok_or_else(|| {
         anyhow::anyhow!(
             "could not find a pr_url in agent output.\nAgent output:\n{}",
             stdout.trim().chars().take(500).collect::<String>()
         )
-    })
+    })?;
+
+    // INFRA-3478: success — the agent has pushed its branch to origin, so this
+    // agent's worktree is disposable. On the failure paths above we deliberately
+    // leave it for debugging; a later run's `git worktree prune` reclaims it.
+    if !direct_mode {
+        remove_improve_worktree(clone_dir, &work_dir);
+    }
+    Ok(pr_url)
 }
 
 /// Stage 4: Call `chump external verify-merge` and return the verdict string.
@@ -1855,6 +1881,114 @@ fn ensure_clone_exists(clone_dir: &Path, owner_repo: &str) -> Result<()> {
         bail!("git clone {url} → {cd} failed");
     }
     Ok(())
+}
+
+/// INFRA-3478: prepare the shared clone (clone-if-missing + refresh) under an
+/// atomic-mkdir lock, so two `improve` processes touching the same external repo
+/// for the first time don't race on `git clone` / `git reset` in the shared
+/// clone (observed: concurrent first-touch → "could not create work tree dir:
+/// File exists"). Per-agent worktrees are created OUTSIDE this lock — they are
+/// independently safe. A crashed holder self-heals after the 150s wait bail; the
+/// lock dir can also be removed by hand.
+fn prepare_shared_clone(clone_dir: &Path, owner_repo: &str) -> Result<()> {
+    let base = clone_dir.parent().unwrap_or(clone_dir);
+    let _ = std::fs::create_dir_all(base);
+    let lock = base.join(".clone.lock");
+    let mut waited = 0u32;
+    loop {
+        match std::fs::create_dir(&lock) {
+            Ok(_) => break, // we hold the lock
+            Err(_) => {
+                // Someone else is preparing it. If it's already usable, proceed.
+                if clone_dir.join(".git").exists() {
+                    return refresh_clone(clone_dir);
+                }
+                if waited >= 300 {
+                    bail!("timed out (150s) waiting for a concurrent clone of {owner_repo}");
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                waited += 1;
+            }
+        }
+    }
+    let result = (|| -> Result<()> {
+        ensure_clone_exists(clone_dir, owner_repo)?;
+        refresh_clone(clone_dir)?;
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir(&lock);
+    result
+}
+
+/// INFRA-3478: unique per-process key for this agent's worktree. The pid isolates
+/// concurrent `improve` processes working the same external repo; a serial reuse
+/// in one process is safe (the worktree is pruned+removed before re-add).
+fn improve_worktree_key() -> String {
+    format!("p{}", std::process::id())
+}
+
+/// INFRA-3478: create a per-agent LINKED WORKTREE off the shared clone (mirrors
+/// internal `chump claim`). The shared clone stays canonical — fetch source,
+/// object store, default branch — while each agent branches in its own isolated
+/// checkout under `<clone-parent>/wt/<key>`, so N agents on one external repo
+/// never collide on the working tree or the index. Idempotent: prunes dead admin
+/// entries and clears any stale worktree/branch at this key first.
+fn ensure_improve_worktree(clone_dir: &Path, key: &str, base_branch: &str) -> Result<PathBuf> {
+    let root = clone_dir.parent().unwrap_or(clone_dir).join("wt");
+    let _ = std::fs::create_dir_all(&root);
+    let wt = root.join(key);
+    let cd = clone_dir.to_string_lossy().to_string();
+    let wt_str = wt.to_string_lossy().to_string();
+    let branch = format!("chump/improve-{key}");
+
+    // Clear stale state from a prior crashed run at this key.
+    let _ = Command::new("git")
+        .args(["-C", &cd, "worktree", "prune"])
+        .status();
+    if wt.exists() {
+        let _ = Command::new("git")
+            .args(["-C", &cd, "worktree", "remove", &wt_str, "--force"])
+            .status();
+        let _ = std::fs::remove_dir_all(&wt);
+    }
+    let _ = Command::new("git")
+        .args(["-C", &cd, "branch", "-D", &branch])
+        .status();
+
+    // A worktree can't check out a branch already checked out elsewhere (the
+    // shared clone holds the default branch), so create a fresh agent branch off
+    // the remote default.
+    let base_ref = format!("origin/{base_branch}");
+    let ok = Command::new("git")
+        .args([
+            "-C", &cd, "worktree", "add", &wt_str, "-b", &branch, &base_ref,
+        ])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !ok {
+        bail!("git worktree add {wt_str} (-b {branch} {base_ref}) failed in clone {cd}");
+    }
+    Ok(wt)
+}
+
+/// INFRA-3478: dispose of a per-agent worktree after a successful ship (the agent
+/// has already pushed its branch to origin, so the local checkout is disposable).
+fn remove_improve_worktree(clone_dir: &Path, wt: &Path) {
+    let cd = clone_dir.to_string_lossy().to_string();
+    let _ = Command::new("git")
+        .args([
+            "-C",
+            &cd,
+            "worktree",
+            "remove",
+            &wt.to_string_lossy(),
+            "--force",
+        ])
+        .status();
+    let _ = Command::new("git")
+        .args(["-C", &cd, "worktree", "prune"])
+        .status();
 }
 
 fn refresh_clone(clone_dir: &Path) -> Result<()> {
@@ -2869,6 +3003,20 @@ Some prose from the agent.
     ///
     /// We use Command::get_envs() to inspect the env-override map without
     /// spawning any process.
+    /// INFRA-3478: the per-agent worktree key is pid-scoped so concurrent
+    /// `improve` processes on the same external repo get distinct worktrees, and
+    /// stable within a process (one implement call reuses it).
+    #[test]
+    fn improve_worktree_key_is_pid_scoped() {
+        let k = improve_worktree_key();
+        assert!(k.starts_with('p'), "key should be pid-scoped: {k}");
+        assert!(
+            k[1..].chars().all(|c| c.is_ascii_digit()),
+            "key tail must be the numeric pid: {k}"
+        );
+        assert_eq!(k, improve_worktree_key(), "stable within a process");
+    }
+
     /// INFRA-3477 / Principle 0: `improve` must default to the OS's own runtime
     /// ("chump-local") and NEVER silently fall back to the claude CLI. claude is
     /// opt-in only. Guards the outward-flywheel default against regression.
