@@ -2796,6 +2796,25 @@ events:
       reverted; an operator/watchdog should investigate profile/registration/gate.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, new_sha, reason]
+  - kind: merge_deploy_lag_ok
+    effect_metric: self
+    emitter: scripts/coord/merge-deploy-lag-watchdog.sh (INFRA-3454)
+    trigger: >
+      Installed binary sha == origin/main sha — the merge->deploy chain is current.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, sha]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: merge_deploy_lag_exceeded
+    effect_metric: self
+    emitter: scripts/coord/merge-deploy-lag-watchdog.sh (INFRA-3454)
+    trigger: >
+      origin/main advanced but the installed binary is still stale past the SLO
+      (default 1800s) — the auto-deploy daemon stalled. The watchdog kickstarts
+      com.chump.auto-deploy to self-heal (unless CHUMP_DEPLOY_LAG_NO_HEAL=1).
+    consumers: [fleet-brief, ops-audit, main-health-watchdog]
+    fields_required: [ts, kind, installed_sha, main_sha, lag_secs, slo_secs]
     expected_min_per_day: 0
     status: stable
 
