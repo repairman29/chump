@@ -107,12 +107,20 @@ FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
 # sessions (token in env CLAUDE_CODE_OAUTH_TOKEN or refreshed to
 # ~/.chump/oauth-token.json by parent app) mis-routed to chump-local even
 # though `claude -p` would have worked fine via the OAUTH path.
+# EFFECTIVE-325: unify the two backend selectors. `chump improve`,
+# `chump --execute-gap`, and dispatch.rs read CHUMP_WORK_BACKEND; the fleet
+# worker historically read ONLY FLEET_BACKEND. An operator who set
+# CHUMP_WORK_BACKEND=chump-local (to route the cheap substrate through
+# execute-gap) would still get `claude` here, because FLEET_BACKEND defaulted
+# to `claude` whenever any OAUTH token was present — a silent divergence that
+# burned the subscription when the operator thought they'd switched to the
+# free tier. Precedence: explicit FLEET_BACKEND > CHUMP_WORK_BACKEND > default.
 if [[ -z "${ANTHROPIC_API_KEY:-}" \
    && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" \
    && ! -s "${HOME}/.chump/oauth-token.json" ]]; then
-    FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
+    FLEET_BACKEND="${FLEET_BACKEND:-${CHUMP_WORK_BACKEND:-chump-local}}"
 else
-    FLEET_BACKEND="${FLEET_BACKEND:-claude}"
+    FLEET_BACKEND="${FLEET_BACKEND:-${CHUMP_WORK_BACKEND:-claude}}"
 fi
 FLEET_MODEL="${FLEET_MODEL:-sonnet}"
 IDLE_SLEEP_S="${IDLE_SLEEP_S:-60}"
@@ -1359,7 +1367,16 @@ Operator or sibling worker can rescue this branch via:
             # provide the Claude ceiling. Empirical basis (2026-07-22): M3
             # never converged on real fleet gaps; GLM-5.2 reached patch_file
             # where M3 didn't — so escalation pays. No ladder set = unchanged.
+            # RESILIENT-206: _model_pinned gates whether we rewrite
+            # CHUMP_FREE_TIER_PROVIDERS below. It is set ONLY when an escalation
+            # ladder DELIBERATELY selects a model — never by the passive
+            # OPENAI_MODEL default. Without this gate the local dev model
+            # (e.g. qwen2.5:14b from a stale .env) got stamped onto the remote
+            # provider entry, so the fleet sent a bogus model name to
+            # devstral/Groq/etc. and died TRANSPORT_UNREACHABLE instead of
+            # using the operator's configured free-tier provider.
             _cl_model="${OPENAI_MODEL:-}"
+            _model_pinned=0
             if [[ -n "${CHUMP_MODEL_ESCALATION_LADDER:-}" ]]; then
                 IFS=',' read -r -a _ladder <<< "$CHUMP_MODEL_ESCALATION_LADDER"
                 _strikes="$(chump gap strike "$GAP_ID" --show 2>/dev/null \
@@ -1367,6 +1384,7 @@ Operator or sibling worker can rescue this branch via:
                 _strikes="${_strikes:-0}"
                 _rung=$(( _strikes < ${#_ladder[@]} ? _strikes : ${#_ladder[@]} - 1 ))
                 _cl_model="${_ladder[$_rung]}"
+                _model_pinned=1
                 if [[ "$_rung" -gt 0 ]]; then
                     log "EFFECTIVE-314: $GAP_ID at escalation rung $_rung (strikes=$_strikes) → model=$_cl_model"
                     printf '{"ts":"%s","kind":"model_tier_escalated","source":"worker.sh","agent":"%s","gap_id":"%s","strikes":%s,"rung":%d,"model":"%s"}\n' \
@@ -1374,7 +1392,15 @@ Operator or sibling worker can rescue this branch via:
                         >> "${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" 2>/dev/null || true
                 fi
             fi
-            log "spawning chump --execute-gap $GAP_ID (timeout ${FLEET_TIMEOUT_S}s, backend=chump-local, model=${_cl_model:-default}) → $cycle_log"
+            # RESILIENT-206: report the model the run will ACTUALLY use. When no
+            # ladder pinned a model but CHUMP_FREE_TIER_PROVIDERS is set, the
+            # effective model is that list's first entry — not OPENAI_MODEL.
+            _model_display="${_cl_model:-default}"
+            if [[ "$_model_pinned" -eq 0 && -n "${CHUMP_FREE_TIER_PROVIDERS:-}" ]]; then
+                _first_prov="${CHUMP_FREE_TIER_PROVIDERS%%,*}"
+                _model_display="${_first_prov%%@*}"
+            fi
+            log "spawning chump --execute-gap $GAP_ID (timeout ${FLEET_TIMEOUT_S}s, backend=chump-local, model=${_model_display}) → $cycle_log"
             (
                 cd "$wt_path" || exit 99
                 # COG-025: route inference through src/provider_cascade.rs
@@ -1387,13 +1413,24 @@ Operator or sibling worker can rescue this branch via:
                 # provider in that list, clobbering OPENAI_MODEL. So pin the
                 # provider list to a SINGLE entry for the escalated model,
                 # reusing the "@base:KEY_ENV" suffix from the existing list.
-                if [[ -n "$_cl_model" ]]; then
+                #
+                # RESILIENT-206: gate that rewrite on _model_pinned. Rewrite the
+                # provider list ONLY when an escalation ladder actively chose the
+                # model. When the operator configured CHUMP_FREE_TIER_PROVIDERS
+                # (e.g. devstral) and no ladder is active, leave the list exactly
+                # as configured — stamping OPENAI_MODEL's local model name onto a
+                # remote provider entry is what broke the cheap fleet.
+                if [[ "$_model_pinned" -eq 1 && -n "$_cl_model" ]]; then
                     export OPENAI_MODEL="$_cl_model"
                     if [[ -n "${CHUMP_FREE_TIER_PROVIDERS:-}" ]]; then
                         _prov_suffix="${CHUMP_FREE_TIER_PROVIDERS%%,*}"   # first entry
                         _prov_suffix="@${_prov_suffix#*@}"               # strip model, keep @base:KEY
                         export CHUMP_FREE_TIER_PROVIDERS="${_cl_model}${_prov_suffix}"
                     fi
+                elif [[ -z "${CHUMP_FREE_TIER_PROVIDERS:-}" && -n "$_cl_model" ]]; then
+                    # No provider list configured — legacy single-model path:
+                    # honor OPENAI_MODEL as the sole model, as before.
+                    export OPENAI_MODEL="$_cl_model"
                 fi
                 # shellcheck disable=SC2086
                 $TO chump --execute-gap "$GAP_ID"
