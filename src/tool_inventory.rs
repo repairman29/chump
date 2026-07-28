@@ -195,6 +195,7 @@ const LIGHT_CHAT_TOOL_KEYS: &[&str] = &[
     "ask_jeff",
     "calculator",
     "checkpoint",
+    "comprehend_repo",
     "episode",
     "list_dir",
     "memory_brain",
