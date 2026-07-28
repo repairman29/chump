@@ -37,23 +37,29 @@ detect_worker_backend() {
     local oauth_env="$2"
     local oauth_file_present="$3"  # "1" to create file, "" otherwise
     local explicit_backend="$4"     # "" if unset
+    local work_backend="${5:-}"     # EFFECTIVE-325: CHUMP_WORK_BACKEND, "" if unset
 
     rm -f "$TMPHOME/.chump/oauth-token.json"
     if [[ "$oauth_file_present" == "1" ]]; then
         echo '{"token":"fake"}' > "$TMPHOME/.chump/oauth-token.json"
     fi
 
+    # NOTE: this inline block MUST mirror the resolution in worker.sh
+    # (and run-fleet.sh). EFFECTIVE-325 added CHUMP_WORK_BACKEND as the
+    # default fallback between an explicit FLEET_BACKEND and the auth-based
+    # default. Keep all three in sync.
     HOME="$TMPHOME" \
     ANTHROPIC_API_KEY="$api_key" \
     CLAUDE_CODE_OAUTH_TOKEN="$oauth_env" \
     FLEET_BACKEND="$explicit_backend" \
+    CHUMP_WORK_BACKEND="$work_backend" \
     bash -c '
         if [[ -z "${ANTHROPIC_API_KEY:-}" \
            && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" \
            && ! -s "${HOME}/.chump/oauth-token.json" ]]; then
-            FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
+            FLEET_BACKEND="${FLEET_BACKEND:-${CHUMP_WORK_BACKEND:-chump-local}}"
         else
-            FLEET_BACKEND="${FLEET_BACKEND:-claude}"
+            FLEET_BACKEND="${FLEET_BACKEND:-${CHUMP_WORK_BACKEND:-claude}}"
         fi
         echo "$FLEET_BACKEND"
     '
@@ -98,6 +104,37 @@ assert_eq "$got" "chump-local" \
 got="$(detect_worker_backend "" "" "1" "chump-local")"
 assert_eq "$got" "chump-local" \
     "explicit FLEET_BACKEND=chump-local overrides oauth-file auto-detect"
+
+# ─── EFFECTIVE-325: CHUMP_WORK_BACKEND unification ───────────────────────────
+# Case 7: CHUMP_WORK_BACKEND=chump-local with an OAUTH token present routes to
+# chump-local (the pre-EFFECTIVE-325 bug: operator sets CHUMP_WORK_BACKEND, gets
+# claude anyway because FLEET_BACKEND defaulted to claude on the OAUTH path).
+got="$(detect_worker_backend "" "oauth-fake" "" "" "chump-local")"
+assert_eq "$got" "chump-local" \
+    "CHUMP_WORK_BACKEND=chump-local overrides auth-based claude default (EFFECTIVE-325)"
+
+# Case 8: explicit FLEET_BACKEND still beats CHUMP_WORK_BACKEND.
+got="$(detect_worker_backend "sk-ant-fake" "" "" "claude" "chump-local")"
+assert_eq "$got" "claude" \
+    "explicit FLEET_BACKEND=claude beats CHUMP_WORK_BACKEND=chump-local (precedence)"
+
+# Case 9: CHUMP_WORK_BACKEND does NOT force a backend when auth is absent and
+# it agrees with the default (sanity — no auth + CHUMP_WORK_BACKEND=chump-local).
+got="$(detect_worker_backend "" "" "" "" "chump-local")"
+assert_eq "$got" "chump-local" \
+    "no auth + CHUMP_WORK_BACKEND=chump-local → chump-local"
+
+# Case 10: run-fleet.sh's block must also carry the CHUMP_WORK_BACKEND fallback
+# (it exports FLEET_BACKEND to workers, so divergence there defeats the fix).
+if ! grep -q 'CHUMP_WORK_BACKEND:-chump-local' "$RUNFLEET" 2>/dev/null \
+   || ! grep -q 'CHUMP_WORK_BACKEND:-claude' "$RUNFLEET" 2>/dev/null; then
+    echo "FAIL: run-fleet.sh missing CHUMP_WORK_BACKEND fallback (EFFECTIVE-325)"
+    failures=$((failures + 1))
+fi
+if ! grep -q 'CHUMP_WORK_BACKEND' "$WORKER" 2>/dev/null; then
+    echo "FAIL: worker.sh missing CHUMP_WORK_BACKEND fallback (EFFECTIVE-325)"
+    failures=$((failures + 1))
+fi
 
 # ─── run-fleet.sh auth-path detection block ──────────────────────────────────
 # Verify the new oauth-token.json branch exists in run-fleet.sh too.

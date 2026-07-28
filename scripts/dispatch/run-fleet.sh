@@ -269,8 +269,14 @@ FLEET_DRY_RUN="${FLEET_DRY_RUN:-0}"
 #   - Explicit FLEET_BACKEND override always wins.
 # Pre-INFRA-1717 the check was ANTHROPIC_API_KEY-only, which mis-routed
 # OAUTH-subscription sessions to the exhausted chump-local cascade.
+# EFFECTIVE-325: honor CHUMP_WORK_BACKEND as the default here too — this
+# launcher EXPORTS FLEET_BACKEND to every worker it spawns, so if it resolved
+# to `claude` while the operator had set CHUMP_WORK_BACKEND=chump-local, the
+# worker would receive FLEET_BACKEND=claude already set and never reach its own
+# CHUMP_WORK_BACKEND fallback. Keep the two selectors unified at both layers.
+# Precedence: explicit FLEET_BACKEND > CHUMP_WORK_BACKEND > auth-based default.
 if [[ "$_fleet_auth_mode" == "unknown" ]]; then
-    FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
+    FLEET_BACKEND="${FLEET_BACKEND:-${CHUMP_WORK_BACKEND:-chump-local}}"
     # INFRA-1716: warn when falling through to chump-local — the cascade bank
     # was exhausted in INFRA-459 and produces silent 15-min timeouts per worker.
     if [[ "${FLEET_BACKEND}" == "chump-local" ]]; then
@@ -279,7 +285,7 @@ if [[ "$_fleet_auth_mode" == "unknown" ]]; then
         echo "[run-fleet] WARN: set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN to use backend=claude." >&2
     fi
 else
-    FLEET_BACKEND="${FLEET_BACKEND:-claude}"
+    FLEET_BACKEND="${FLEET_BACKEND:-${CHUMP_WORK_BACKEND:-claude}}"
 fi
 # INFRA-459: default model is haiku — cost-efficient for xs/s/m fleet gaps.
 # Override via FLEET_MODEL=sonnet for harder tasks.
