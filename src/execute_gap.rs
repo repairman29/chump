@@ -376,6 +376,117 @@ fn activate_free_tier_provider(spec: &FreeTierProviderSpec) {
     std::env::set_var("CHUMP_FREE_TIER_MODE", "1");
 }
 
+/// INFRA-3459: does this gap touch the repo's wiring/architecture (adds or
+/// registers a capability/tool/gate/profile, or is about wiring/consumption
+/// itself) — the class where the comprehension REPO MAP earns its ~750 tokens?
+/// Narrow bug-fixes return false so the lean free-tier prompt is preserved.
+/// Pure over (title, ac) so it's deterministic and unit-testable.
+fn gap_touches_wiring(title: &str, ac: &str) -> bool {
+    let hay = format!("{title} {ac}").to_lowercase();
+    // Signals kept specific to architecture/wiring so we don't inject the map
+    // into most gaps (that would defeat "targeted"). Leading spaces on the
+    // risky short words avoid matching investigate/mitigate/delegates/etc.
+    const SIGNALS: &[&str] = &[
+        "wire",
+        "wiring",
+        "unwired",
+        "not wired",
+        "register",
+        "registration",
+        "registered but",
+        "activation profile",
+        "tool profile",
+        "tool inventory",
+        "dispatch profile",
+        "capability",
+        "capabilities",
+        " gate ",
+        " gates",
+        "git hook",
+        "pre-commit",
+        "pre-push",
+        "ci gate",
+        "mcp server",
+        "mcp tool",
+        "inconsistent default",
+        "flag drift",
+        "consume",
+        "consumed",
+    ];
+    SIGNALS.iter().any(|s| hay.contains(s))
+}
+
+/// INFRA-3459: run `comprehend` on `root` and wrap its report as a REPO MAP
+/// section for the free-tier prompt, or `""` on any failure. Best-effort by
+/// construction (mirrors `briefing::build_comprehension`): disabled by
+/// `CHUMP_COMPREHEND_ENABLED=0`, `""` when the binary is absent, killed +
+/// dropped past the wall-clock budget, and byte-capped so a huge report can't
+/// bloat a weak model's prompt.
+fn free_tier_comprehend_section(root: &std::path::Path) -> String {
+    use std::io::Read;
+
+    if std::env::var("CHUMP_COMPREHEND_ENABLED").as_deref() == Ok("0") {
+        return String::new();
+    }
+    let Some(bin) = crate::comprehend_tool::comprehend_bin() else {
+        return String::new();
+    };
+    let timeout_s: u64 = std::env::var("CHUMP_COMPREHEND_TIMEOUT_S")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(20);
+
+    let Ok(mut child) = std::process::Command::new(&bin)
+        .arg("--repo")
+        .arg(root)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return String::new();
+    };
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_s);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return String::new();
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(_) => return String::new(),
+        }
+    }
+
+    let mut buf = String::new();
+    if let Some(mut so) = child.stdout.take() {
+        let _ = so.read_to_string(&mut buf);
+    }
+    let text = buf.trim();
+    if text.is_empty() {
+        return String::new();
+    }
+
+    const MAX: usize = 3000;
+    let body = if text.len() > MAX {
+        let mut end = MAX;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        &text[..end]
+    } else {
+        text
+    };
+    // Fenced + clearly labelled as reference so a weak model treats it as
+    // grounding, not as another instruction to act on.
+    format!("\n## Repo map (comprehension — reference, only if your change touches wiring/gates)\n```\n{body}\n```\n")
+}
+
 /// Build a simplified prompt for free-tier models. Key differences from
 /// `build_execute_gap_prompt`:
 ///
@@ -397,9 +508,18 @@ fn build_free_tier_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
     // an EMPTY db there and the model stayed blind. Resolve the MAIN checkout
     // (shared .git parent), which owns the canonical state.db.
     let canonical_root = crate::repo_path::main_checkout_root();
-    let gap_yaml = chump_gap_store::GapStore::open(&canonical_root)
+    let gap_row = chump_gap_store::GapStore::open(&canonical_root)
         .ok()
-        .and_then(|store| store.get(gap_id).ok().flatten())
+        .and_then(|store| store.get(gap_id).ok().flatten());
+    // INFRA-3459: only wiring/architecture gaps get the comprehension REPO MAP.
+    // Narrow bug-fixes keep the lean weak-model prompt (weak free-tier models
+    // ship less when distracted — RESILIENT-187/EFFECTIVE-311 scar tissue), so
+    // spend the ~750 grounding tokens only where they earn their keep.
+    let wiring_gap = gap_row
+        .as_ref()
+        .map(|r| gap_touches_wiring(&r.title, &r.acceptance_criteria))
+        .unwrap_or(false);
+    let gap_yaml = gap_row
         .map(|row| {
             format!(
                 "id: {}\ntitle: {}\npriority: {}\neffort: {}\ndescription: |\n  {}\nacceptance_criteria: |\n  {}",
@@ -415,6 +535,17 @@ fn build_free_tier_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
             std::fs::read_to_string(repo_root.join(format!("docs/gaps/{gap_id}.yaml"))).ok()
         })
         .unwrap_or_else(|| format!("(gap spec not found — work on gap {gap_id})"));
+
+    // INFRA-3459: for wiring gaps, embed the comprehend summary inline. The
+    // free-tier agent CAN'T call comprehend_repo (not in its slim tool set) and
+    // is too weak to reliably call tools anyway, so grounding must be in the
+    // prompt, not a directive. Best-effort: "" when disabled, binary absent,
+    // timed out, or not a wiring gap — so the lean path is byte-for-byte unchanged.
+    let repo_map = if wiring_gap {
+        free_tier_comprehend_section(&canonical_root)
+    } else {
+        String::new()
+    };
 
     let overlay = maybe_overlay_from_env().unwrap_or_default();
 
@@ -464,7 +595,7 @@ Your ONLY job is to make code changes that satisfy the gap below, then commit.
 ```yaml
 {gap_yaml}
 ```
-
+{repo_map}
 ## Workflow (follow exactly, ONE tool call per response)
 {locate_step}
 Step 2: read_file — read the file the previous step pointed you to.
@@ -484,6 +615,7 @@ Step 5: Respond with the single word: done
 - After git_commit succeeds, respond \"done\" and stop.",
         overlay = overlay,
         gap_yaml = gap_yaml,
+        repo_map = repo_map,
         locate_step = locate_step,
         locate_rule = locate_rule,
         edit_step = edit_step,
@@ -1279,6 +1411,70 @@ mod tests {
         );
     }
 
+    // INFRA-3459: the REPO MAP is targeted at wiring/architecture gaps only, so
+    // narrow bug-fixes keep the lean weak-model prompt.
+    #[test]
+    fn gap_touches_wiring_matches_architecture_gaps() {
+        assert!(gap_touches_wiring(
+            "EFFECTIVE: fleet consumes comprehension — inject directive",
+            "wire comprehend_repo into the tool profile"
+        ));
+        assert!(gap_touches_wiring(
+            "add comprehend_repo to LIGHT_CHAT tool profile",
+            ""
+        ));
+        assert!(gap_touches_wiring(
+            "capability registered but in NO activation profile",
+            ""
+        ));
+        assert!(gap_touches_wiring(
+            "",
+            "add a new pre-commit gate for CSS tokens"
+        ));
+    }
+
+    #[test]
+    fn gap_touches_wiring_skips_narrow_fixes() {
+        assert!(!gap_touches_wiring(
+            "fix typo in README",
+            "correct the spelling"
+        ));
+        assert!(!gap_touches_wiring(
+            "off-by-one in date parser",
+            "the loop should stop at len, not len+1"
+        ));
+        // False-positive guard: words that merely CONTAIN a signal substring
+        // must not trip it (leading-space signals).
+        assert!(!gap_touches_wiring(
+            "investigate slow query in dashboard",
+            "mitigate the N+1 and delegate paging"
+        ));
+    }
+
+    // INFRA-3459: the comprehend section is best-effort. Disabled path is
+    // deterministic everywhere; the present path is exercised only on a host
+    // that actually has the `comprehend` binary (CI won't — it must not fail there).
+    #[test]
+    #[serial]
+    fn free_tier_comprehend_section_is_best_effort() {
+        std::env::set_var("CHUMP_COMPREHEND_ENABLED", "0");
+        assert_eq!(
+            free_tier_comprehend_section(std::path::Path::new(".")),
+            "",
+            "disabled flag must yield an empty section (lean prompt unchanged)"
+        );
+        std::env::remove_var("CHUMP_COMPREHEND_ENABLED");
+
+        if crate::comprehend_tool::comprehend_bin().is_some() {
+            let root = crate::repo_path::main_checkout_root();
+            let sect = free_tier_comprehend_section(&root);
+            assert!(
+                sect.contains("Repo map") && sect.contains("WIRING"),
+                "on a host with the binary, a wiring gap's section carries the comprehend report; got: {sect:.120}"
+            );
+        }
+    }
+
     // CREDIBLE-170 verify-gate verdict classification.
     #[test]
     fn verdict_pass_is_not_fail() {
@@ -1713,9 +1909,18 @@ mod tests {
         let prev_base = std::env::var("OPENAI_API_BASE").ok();
         std::env::set_var("OPENAI_MODEL", "llama-3.3-70b");
         std::env::set_var("OPENAI_API_BASE", "https://api.groq.com/openai/v1");
+        // INFRA-3459: neutralise the free-tier flag env so this asserts ONLY the
+        // model/base logic, immune to a leaked CHUMP_FREE_TIER_MODE/PROVIDERS
+        // from a sibling test (the source of the parallel flake).
+        let prev_ftmode = std::env::var("CHUMP_FREE_TIER_MODE").ok();
+        let prev_ftprov = std::env::var("CHUMP_FREE_TIER_PROVIDERS").ok();
+        std::env::remove_var("CHUMP_FREE_TIER_MODE");
+        std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
         let result = is_free_tier_model();
         restore_env_var("OPENAI_MODEL", prev_model);
         restore_env_var("OPENAI_API_BASE", prev_base);
+        restore_env_var("CHUMP_FREE_TIER_MODE", prev_ftmode);
+        restore_env_var("CHUMP_FREE_TIER_PROVIDERS", prev_ftprov);
         assert!(
             result,
             "Groq endpoint + non-Claude model must detect as free-tier"
@@ -1729,9 +1934,16 @@ mod tests {
         let prev_base = std::env::var("OPENAI_API_BASE").ok();
         std::env::set_var("OPENAI_MODEL", "claude-sonnet-4-5-20250929");
         std::env::set_var("OPENAI_API_BASE", "https://api.groq.com/openai/v1");
+        // INFRA-3459: neutralise leaked free-tier flags (see sibling test).
+        let prev_ftmode = std::env::var("CHUMP_FREE_TIER_MODE").ok();
+        let prev_ftprov = std::env::var("CHUMP_FREE_TIER_PROVIDERS").ok();
+        std::env::remove_var("CHUMP_FREE_TIER_MODE");
+        std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
         let result = is_free_tier_model();
         restore_env_var("OPENAI_MODEL", prev_model);
         restore_env_var("OPENAI_API_BASE", prev_base);
+        restore_env_var("CHUMP_FREE_TIER_MODE", prev_ftmode);
+        restore_env_var("CHUMP_FREE_TIER_PROVIDERS", prev_ftprov);
         assert!(
             !result,
             "Claude model must never be classified as free-tier"
@@ -1745,9 +1957,16 @@ mod tests {
         let prev_base = std::env::var("OPENAI_API_BASE").ok();
         std::env::set_var("OPENAI_MODEL", "llama-3.3-70b");
         std::env::set_var("OPENAI_API_BASE", "http://localhost:11434/v1");
+        // INFRA-3459: neutralise leaked free-tier flags (see sibling test).
+        let prev_ftmode = std::env::var("CHUMP_FREE_TIER_MODE").ok();
+        let prev_ftprov = std::env::var("CHUMP_FREE_TIER_PROVIDERS").ok();
+        std::env::remove_var("CHUMP_FREE_TIER_MODE");
+        std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
         let result = is_free_tier_model();
         restore_env_var("OPENAI_MODEL", prev_model);
         restore_env_var("OPENAI_API_BASE", prev_base);
+        restore_env_var("CHUMP_FREE_TIER_MODE", prev_ftmode);
+        restore_env_var("CHUMP_FREE_TIER_PROVIDERS", prev_ftprov);
         assert!(!result, "Local Ollama is not a free-tier cloud endpoint");
     }
 
@@ -1915,6 +2134,13 @@ mod tests {
         let orig_base = std::env::var("OPENAI_API_BASE").ok();
         let orig_model = std::env::var("OPENAI_MODEL").ok();
         let orig_key = std::env::var("OPENAI_API_KEY").ok();
+        // INFRA-3459: activate_free_tier_provider ALSO sets the process-global
+        // CHUMP_FREE_TIER_MODE=1. Capturing + restoring it here fixes a parallel
+        // test race: without this, MODE=1 leaked for the rest of the process and
+        // any later is_free_tier_model() test (e.g. credible011_*_llama_on_ollama)
+        // saw free-tier=true regardless of its model, failing intermittently
+        // depending on scheduler order.
+        let orig_mode = std::env::var("CHUMP_FREE_TIER_MODE").ok();
 
         std::env::set_var("MY_TEST_KEY_002", "sk-test-token");
         let spec = FreeTierProviderSpec {
@@ -1935,6 +2161,7 @@ mod tests {
         restore_env_var("OPENAI_API_BASE", orig_base);
         restore_env_var("OPENAI_MODEL", orig_model);
         restore_env_var("OPENAI_API_KEY", orig_key);
+        restore_env_var("CHUMP_FREE_TIER_MODE", orig_mode);
         std::env::remove_var("MY_TEST_KEY_002");
     }
 }
