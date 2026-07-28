@@ -432,6 +432,15 @@ fn build_free_tier_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
 
+    // INFRA-3445: route weak free-tier models to almanac_search as the
+    // grounding step. EFFECTIVE-324 wired almanac_search into the free-tier
+    // tool set, but this workflow still said "Step 1: grep_repo" and never
+    // mentioned almanac — so the model did exactly what it was told, grepped
+    // blind, and shipped non-fixes the verify gate (CREDIBLE-170) then
+    // rejected. Affordance over gate: point the model at the tool it has.
+    let (locate_step, locate_rule) =
+        free_tier_locate_step(crate::almanac_tool::almanac_available());
+
     let (edit_step, edit_rule) = if write_mode {
         (
             "Step 3: write_file — rewrite the ENTIRE file with your change applied. \
@@ -457,10 +466,8 @@ Your ONLY job is to make code changes that satisfy the gap below, then commit.
 ```
 
 ## Workflow (follow exactly, ONE tool call per response)
-Step 1: grep_repo — search for a function name, error string, or key phrase \
-   from the gap to FIND the file that needs changing. Do NOT guess file paths \
-   or walk directories with list_dir — search first.
-Step 2: read_file — read the file grep_repo pointed you to.
+{locate_step}
+Step 2: read_file — read the file the previous step pointed you to.
 {edit_step}
 Step 4: git_commit — commit with message \"{gap_id}: <short summary>\". \
    This automatically stages modified files.
@@ -468,7 +475,7 @@ Step 5: Respond with the single word: done
 
 ## Rules
 - ONE tool call per response. Do NOT call multiple tools at once.
-- START with grep_repo to locate code — it is far faster than list_dir.
+{locate_rule}
 - NEVER write documentation, plans, or markdown files.
 - NEVER explain what you will do — just call the tool.
 - NEVER create new files (no chump-plan.md, no docs/*.md).
@@ -477,10 +484,38 @@ Step 5: Respond with the single word: done
 - After git_commit succeeds, respond \"done\" and stop.",
         overlay = overlay,
         gap_yaml = gap_yaml,
+        locate_step = locate_step,
+        locate_rule = locate_rule,
         edit_step = edit_step,
         edit_rule = edit_rule,
         gap_id = gap_id,
     )
+}
+
+/// INFRA-3445: pick the "locate the code" workflow step + rule for the
+/// free-tier prompt. When almanac_search is available, route the model to
+/// ground itself in the codebase graph FIRST — EFFECTIVE-324 wired the tool
+/// into the free-tier set but the workflow still said "Step 1: grep_repo" and
+/// never named almanac, so weak models grepped blind and shipped non-fixes the
+/// verify gate then rejected. Pure (no I/O) so both branches are unit-testable.
+fn free_tier_locate_step(almanac_on: bool) -> (&'static str, &'static str) {
+    if almanac_on {
+        (
+            "Step 1: almanac_search — ground yourself FIRST. Query the codebase graph \
+   with a phrase from the gap (function name, symbol, error string, or concept) to \
+   pinpoint the exact file(s), symbols, and call-sites this gap touches. Prefer it \
+   over grep_repo; use grep_repo only if almanac_search returns nothing. Do NOT guess \
+   file paths or walk directories with list_dir.",
+            "- START with almanac_search to ground yourself in the codebase graph; fall back to grep_repo only on an empty result.",
+        )
+    } else {
+        (
+            "Step 1: grep_repo — search for a function name, error string, or key phrase \
+   from the gap to FIND the file that needs changing. Do NOT guess file paths \
+   or walk directories with list_dir — search first.",
+            "- START with grep_repo to locate code — it is far faster than list_dir.",
+        )
+    }
 }
 
 /// Build a [`ChumpAgent`] with the slim 5-tool free-tier profile.
@@ -1216,6 +1251,33 @@ pub fn classify_execute_gap_error(err: &anyhow::Error) -> ExecuteGapErrorKind {
 mod tests {
     use super::*;
     use serial_test::serial;
+
+    // INFRA-3445: free-tier locate-step routing (almanac grounding vs grep).
+    #[test]
+    fn locate_step_grounds_via_almanac_when_available() {
+        let (step, rule) = free_tier_locate_step(true);
+        assert!(
+            step.contains("almanac_search") && step.starts_with("Step 1:"),
+            "almanac-on: Step 1 must route to almanac_search, got: {step}"
+        );
+        assert!(
+            rule.contains("almanac_search") && rule.contains("fall back to grep_repo"),
+            "almanac-on: rule must steer to almanac with grep fallback, got: {rule}"
+        );
+    }
+
+    #[test]
+    fn locate_step_falls_back_to_grep_without_almanac() {
+        let (step, rule) = free_tier_locate_step(false);
+        assert!(
+            step.contains("grep_repo") && !step.contains("almanac_search"),
+            "almanac-off: Step 1 must be grep_repo only, got: {step}"
+        );
+        assert!(
+            rule.contains("grep_repo") && !rule.contains("almanac_search"),
+            "almanac-off: rule must be grep-only, got: {rule}"
+        );
+    }
 
     // CREDIBLE-170 verify-gate verdict classification.
     #[test]
