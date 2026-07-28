@@ -1492,6 +1492,12 @@ async fn main() -> Result<()> {
                 std::process::exit(2);
             }
         }
+        // Unattended primitive: there's no human to approve tool calls, so clear
+        // the approval ask-list. The .env may set CHUMP_TOOLS_ASK=write_file,...
+        // which otherwise DENIES write_file/patch_file/git_commit when no event
+        // channel exists to approve them (the runtime proof of INFRA-3475 caught
+        // write_file being denied). Mirrors build_free_tier_agent's discipline.
+        std::env::remove_var("CHUMP_TOOLS_ASK");
         match crate::agent_factory::build_chump_agent_cli() {
             Ok((agent, _ready)) => match agent.run(&prompt).await {
                 Ok(o) => {
