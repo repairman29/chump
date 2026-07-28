@@ -282,6 +282,41 @@ mod embed_inprocess;
 
 mod metrics;
 
+/// INFRA-3446: does a live gap claim belong to the current session? Pure so the
+/// preflight self-recognition (a session may ship its OWN claimed work) is
+/// unit-testable without the surrounding `std::process::exit` control flow.
+/// A missing `CHUMP_SESSION_ID` (None) never matches — anonymous callers are
+/// treated as foreign, preserving the "don't stomp another worker's claim" rule.
+fn preflight_claim_is_self(current_session: Option<&str>, claim_session: &str) -> bool {
+    matches!(current_session, Some(cur) if cur == claim_session)
+}
+
+#[cfg(test)]
+mod preflight_self_tests {
+    use super::preflight_claim_is_self;
+
+    #[test]
+    fn own_session_is_self() {
+        assert!(preflight_claim_is_self(
+            Some("claim-credible-169-2700-1785205121"),
+            "claim-credible-169-2700-1785205121"
+        ));
+    }
+
+    #[test]
+    fn foreign_session_is_not_self() {
+        assert!(!preflight_claim_is_self(
+            Some("claim-mine-1"),
+            "claim-someone-else-2"
+        ));
+    }
+
+    #[test]
+    fn absent_session_is_not_self() {
+        assert!(!preflight_claim_is_self(None, "claim-anyone-3"));
+    }
+}
+
 use anyhow::{Context as _, Result};
 use axonerai::agent::Agent;
 use axonerai::file_session_manager::FileSessionManager;
@@ -9318,6 +9353,23 @@ async fn main() -> Result<()> {
                         std::process::exit(1);
                     }
                     Ok(gap_store::PreflightResult::Claimed(s)) => {
+                        // INFRA-3446: recognize self-ownership. When the live
+                        // lease belongs to THIS session (CHUMP_SESSION_ID), the
+                        // caller is shipping its OWN claimed work — that's
+                        // pickable, not a conflict. Without this, the fleet's own
+                        // ship path (execute_gap free_tier_ship → bot-merge →
+                        // `chump gap preflight`) rejected every gap as
+                        // "live-claimed by <the very session shipping it>",
+                        // blocking chump from shipping on itself. A FOREIGN
+                        // session still fails (don't stomp another worker's claim).
+                        let self_session = std::env::var("CHUMP_SESSION_ID").ok();
+                        if preflight_claim_is_self(self_session.as_deref(), &s) {
+                            println!(
+                                "[preflight] OK {} — claimed by this session (self).",
+                                gap_id
+                            );
+                            return Ok(());
+                        }
                         eprintln!(
                             "[preflight] FAIL {} — live-claimed by session {}.",
                             gap_id, s
