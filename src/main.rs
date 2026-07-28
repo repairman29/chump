@@ -282,6 +282,123 @@ mod embed_inprocess;
 
 mod metrics;
 
+/// INFRA-3448: the recovery discipline the OS should apply to a STUCK gap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GapDiscipline {
+    Retry,
+    EscalateModel,
+    Decompose,
+    FlagHuman,
+}
+
+impl GapDiscipline {
+    fn as_str(self) -> &'static str {
+        match self {
+            GapDiscipline::Retry => "retry",
+            GapDiscipline::EscalateModel => "escalate-model",
+            GapDiscipline::Decompose => "decompose",
+            GapDiscipline::FlagHuman => "flag-human",
+        }
+    }
+    fn guidance(self) -> &'static str {
+        match self {
+            GapDiscipline::Retry => "Not stuck yet — retry as-is.",
+            GapDiscipline::EscalateModel => {
+                "Too HARD (small, conceptual): retry on a stronger model rung \
+                 (CHUMP_MODEL_ESCALATION_LADDER). Decomposing a small conceptual \
+                 fix does not help."
+            }
+            GapDiscipline::Decompose => {
+                "Too BIG: run `chump gap decompose <ID>` and work the sub-gaps."
+            }
+            GapDiscipline::FlagHuman => {
+                "Automated remedies exhausted (ladder climbed / decompose tried) — needs a human."
+            }
+        }
+    }
+}
+
+/// INFRA-3448: route a stuck gap to the right recovery discipline from its SIZE
+/// (effort) and failure count (strikes). A small gap that keeps failing is too
+/// HARD — escalate the model up [`CHUMP_MODEL_ESCALATION_LADDER`]; a large one
+/// is too BIG — decompose it; once the ladder (small) or decomposition (large)
+/// is exhausted, it needs a human. This replaces EFFECTIVE-310's blanket
+/// "any strike → decompose", which wrongly tried to decompose small conceptual
+/// gaps (e.g. CREDIBLE-169: a one-line parser fix two model sizes both missed).
+/// Pure — unit-tested across the size × strikes matrix.
+fn route_stuck_gap(effort: &str, strikes: u32, model_ladder_len: u32) -> GapDiscipline {
+    const RETRY_BELOW: u32 = 2;
+    if strikes < RETRY_BELOW {
+        return GapDiscipline::Retry;
+    }
+    let ladder = model_ladder_len.max(1);
+    let is_large = matches!(
+        effort.trim().to_lowercase().as_str(),
+        "l" | "xl" | "large" | "xlarge"
+    );
+    if is_large {
+        // A big gap: break it down. If it keeps failing well past where
+        // decomposition should have helped, it's beyond automated help.
+        if strikes > ladder + 2 {
+            GapDiscipline::FlagHuman
+        } else {
+            GapDiscipline::Decompose
+        }
+    } else {
+        // Small/medium: conceptually hard, not big. Climb the model ladder;
+        // once every rung has been tried and failed, hand to a human.
+        if strikes > ladder {
+            GapDiscipline::FlagHuman
+        } else {
+            GapDiscipline::EscalateModel
+        }
+    }
+}
+
+#[cfg(test)]
+mod route_stuck_gap_tests {
+    use super::{route_stuck_gap, GapDiscipline};
+
+    #[test]
+    fn below_threshold_retries_regardless_of_size() {
+        assert_eq!(route_stuck_gap("s", 0, 2), GapDiscipline::Retry);
+        assert_eq!(route_stuck_gap("s", 1, 2), GapDiscipline::Retry);
+        assert_eq!(route_stuck_gap("xl", 1, 2), GapDiscipline::Retry);
+    }
+
+    #[test]
+    fn small_hard_gap_escalates_then_flags_human() {
+        // ladder_len 2: strike 2 → escalate to top rung; strike 3 (>2) → human.
+        assert_eq!(route_stuck_gap("xs", 2, 2), GapDiscipline::EscalateModel);
+        assert_eq!(route_stuck_gap("s", 2, 2), GapDiscipline::EscalateModel);
+        assert_eq!(route_stuck_gap("m", 2, 2), GapDiscipline::EscalateModel);
+        assert_eq!(route_stuck_gap("s", 3, 2), GapDiscipline::FlagHuman);
+    }
+
+    #[test]
+    fn large_gap_decomposes_then_flags_human() {
+        assert_eq!(route_stuck_gap("l", 2, 2), GapDiscipline::Decompose);
+        assert_eq!(route_stuck_gap("xl", 4, 2), GapDiscipline::Decompose); // ladder+2 == 4
+        assert_eq!(route_stuck_gap("l", 5, 2), GapDiscipline::FlagHuman); // > ladder+2
+    }
+
+    #[test]
+    fn credible_169_class_small_escalates_never_decomposes() {
+        // The motivating case: a small/subtle gap must ESCALATE, not decompose
+        // — decomposing a one-line conceptual fix is the wrong discipline.
+        let d = route_stuck_gap("s", 2, 2);
+        assert_eq!(d, GapDiscipline::EscalateModel);
+        assert_ne!(d, GapDiscipline::Decompose);
+    }
+
+    #[test]
+    fn effort_labels_are_case_and_whitespace_tolerant() {
+        assert_eq!(route_stuck_gap(" L ", 2, 2), GapDiscipline::Decompose);
+        assert_eq!(route_stuck_gap("Large", 2, 2), GapDiscipline::Decompose);
+        assert_eq!(route_stuck_gap("XL", 2, 2), GapDiscipline::Decompose);
+    }
+}
+
 /// INFRA-3446: does a live gap claim belong to the current session? Pure so the
 /// preflight self-recognition (a session may ship its OWN claimed work) is
 /// unit-testable without the surrounding `std::process::exit` control flow.
@@ -13281,6 +13398,79 @@ async fn main() -> Result<()> {
                 );
                 if !args.iter().any(|a| a == "--show") && n >= threshold {
                     std::process::exit(10);
+                }
+                return Ok(());
+            }
+            // INFRA-3448: `chump gap route <GAP-ID>` — the discipline router.
+            // Reads a stuck gap's SIZE (effort) and failure count (strikes) and
+            // recommends the recovery discipline: retry | escalate-model |
+            // decompose | flag-human. The OS "knows the difference" between a
+            // gap that's too HARD (small/conceptual → stronger model) and one
+            // that's too BIG (large → decompose) instead of EFFECTIVE-310's
+            // blanket "any strike → decompose".
+            "route" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap route <GAP-ID> [--json]");
+                    eprintln!();
+                    eprintln!(
+                        "Recommends the recovery discipline for a stuck gap from effort-size"
+                    );
+                    eprintln!(
+                        "x strikes: retry | escalate-model | decompose | flag-human. Read-only."
+                    );
+                    std::process::exit(2);
+                });
+                let row = match store.get(&gap_id)? {
+                    Some(r) => r,
+                    None => {
+                        eprintln!("[route] {gap_id} — not found in state.db");
+                        std::process::exit(1);
+                    }
+                };
+                let strikes = store
+                    .strike_count(&gap_id, "chump-local")
+                    .unwrap_or(0)
+                    .max(0) as u32;
+                let ladder_len = std::env::var("CHUMP_MODEL_ESCALATION_LADDER")
+                    .ok()
+                    .map(|l| l.split(',').filter(|s| !s.trim().is_empty()).count() as u32)
+                    .unwrap_or(1)
+                    .max(1);
+                let discipline = route_stuck_gap(&row.effort, strikes, ladder_len);
+                if args.iter().any(|a| a == "--json") {
+                    println!(
+                        "{{\"gap_id\":\"{}\",\"effort\":\"{}\",\"strikes\":{},\"ladder_len\":{},\"discipline\":\"{}\"}}",
+                        gap_id,
+                        row.effort,
+                        strikes,
+                        ladder_len,
+                        discipline.as_str()
+                    );
+                } else {
+                    println!(
+                        "[route] {gap_id} effort={} strikes={} → {}",
+                        row.effort,
+                        strikes,
+                        discipline.as_str()
+                    );
+                    println!("        {}", discipline.guidance());
+                }
+                // scanner-anchor: "kind":"gap_discipline_routed"
+                let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                let event = format!(
+                    "{{\"ts\":\"{ts}\",\"kind\":\"gap_discipline_routed\",\"gap_id\":\"{gap_id}\",\
+                     \"effort\":\"{}\",\"strikes\":{strikes},\"discipline\":\"{}\"}}\n",
+                    row.effort,
+                    discipline.as_str()
+                );
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&ambient_path)
+                {
+                    use std::io::Write;
+                    let _ = f.write_all(event.as_bytes());
                 }
                 return Ok(());
             }
