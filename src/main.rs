@@ -1082,6 +1082,83 @@ fn run_plan_subcommand(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// INFRA-3461: parse `chump llm-complete` flags from argv. Scans `args[2..]` for
+/// `--system <text>`, `--max-tokens <n>` (default 1024), and `--prompt <text>`.
+/// Returns `(system, max_tokens, prompt_from_flag)`; `prompt_from_flag` is `None`
+/// when `--prompt` was absent (the caller then reads the prompt from stdin).
+/// Pure over `args` so the flag handling is unit-testable without a provider.
+fn parse_llm_complete_args(args: &[String]) -> (Option<String>, u32, Option<String>) {
+    let mut system = None;
+    let mut max_tokens = 1024u32;
+    let mut prompt = None;
+    let mut i = 2;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--system" => {
+                system = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--max-tokens" => {
+                max_tokens = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(1024);
+                i += 2;
+            }
+            "--prompt" => {
+                prompt = args.get(i + 1).cloned();
+                i += 2;
+            }
+            _ => i += 1,
+        }
+    }
+    (system, max_tokens, prompt)
+}
+
+#[cfg(test)]
+mod llm_complete_tests {
+    use super::parse_llm_complete_args;
+
+    fn argv(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn parses_all_flags() {
+        let a = argv(&[
+            "chump",
+            "llm-complete",
+            "--system",
+            "you are terse",
+            "--max-tokens",
+            "256",
+            "--prompt",
+            "hello",
+        ]);
+        let (sys, mt, prompt) = parse_llm_complete_args(&a);
+        assert_eq!(sys.as_deref(), Some("you are terse"));
+        assert_eq!(mt, 256);
+        assert_eq!(prompt.as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn defaults_and_stdin_prompt() {
+        // No flags → default max_tokens, no system, prompt None (caller reads stdin).
+        let a = argv(&["chump", "llm-complete"]);
+        let (sys, mt, prompt) = parse_llm_complete_args(&a);
+        assert!(sys.is_none());
+        assert_eq!(mt, 1024);
+        assert!(prompt.is_none(), "no --prompt → None so stdin is read");
+    }
+
+    #[test]
+    fn bad_max_tokens_falls_back_to_default() {
+        let a = argv(&["chump", "llm-complete", "--max-tokens", "notanumber"]);
+        let (_, mt, _) = parse_llm_complete_args(&a);
+        assert_eq!(
+            mt, 1024,
+            "unparseable --max-tokens must not panic; defaults"
+        );
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -1249,6 +1326,50 @@ async fn main() -> Result<()> {
             print!("{}", briefing::render_markdown(&b));
         }
         return Ok(());
+    }
+
+    // `chump llm-complete` (INFRA-3461) — the SANCTIONED shell gateway to the
+    // shared LLM service (ProviderCascade). Reads a prompt from `--prompt` or
+    // stdin, routes through `build_provider()` (the shared cascade: full auth
+    // ladder incl. OAuth, 429 backoff, slot fallback), and prints the completion
+    // to stdout. This lets shell scripts (e.g. the code reviewer, INFRA-3457)
+    // reach the shared service instead of hand-rolling `curl` + `x-api-key`,
+    // which is the class of bug the shared-service contract exists to kill.
+    if args.get(1).map(String::as_str) == Some("llm-complete") {
+        let (system, max_tokens, prompt_flag) = parse_llm_complete_args(&args);
+        let prompt = match prompt_flag {
+            Some(p) => p,
+            None => {
+                use std::io::Read;
+                let mut buf = String::new();
+                let _ = std::io::stdin().read_to_string(&mut buf);
+                buf
+            }
+        };
+        if prompt.trim().is_empty() {
+            eprintln!(
+                "chump llm-complete: empty prompt (pass --prompt <text> or pipe it via stdin)"
+            );
+            std::process::exit(2);
+        }
+        let provider = provider_cascade::build_provider();
+        let msgs = vec![axonerai::provider::Message {
+            role: "user".into(),
+            content: prompt,
+        }];
+        match provider
+            .complete(msgs, None, Some(max_tokens), system)
+            .await
+        {
+            Ok(resp) => {
+                print!("{}", resp.text.unwrap_or_default());
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("chump llm-complete: provider error: {e:#}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump ambient emit <kind> [...]` (INFRA-1048) — harness-agnostic
