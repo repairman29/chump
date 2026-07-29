@@ -106,6 +106,26 @@ if [[ "${1:-}" == "external" && "${2:-}" == "verify-merge" ]]; then
   echo "Verdict: MERGE"
   exit 0
 fi
+# INFRA-3477: chump-local is now the DEFAULT improve backend — the orchestrator
+# spawns `chump agent-run` (this stub) instead of `claude -p`. Emit the same
+# ExternalRepoOutput JSON the fake claude does so pr_url extraction succeeds.
+if [[ "${1:-}" == "agent-run" ]]; then
+  cat << 'JSON_EOF'
+Fake chump-local agent running. Change implemented.
+
+```json
+{
+  "pr_url": "https://github.com/owner/testrepo/pull/77",
+  "head_ref": "chump/improve-test",
+  "base_ref": "main",
+  "files_touched": ["src/lib.rs"],
+  "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "notes": "Added integration test as requested by EFFECTIVE-177 stub"
+}
+```
+JSON_EOF
+  exit 0
+fi
 # Fallback for any other subcommand
 exit 0
 STUB_EOF
@@ -134,6 +154,13 @@ chmod +x "$STUB_DIR/chump-misfire"
 CLONE_DIR="$WORK_DIR/fake-repo/clone"
 SCANS_DIR="$WORK_DIR/fake-repo/scans"
 mkdir -p "$CLONE_DIR" "$SCANS_DIR"
+
+# INFRA-3478: this is a MOCK chain — CLONE_DIR is a fake, non-git fixture, so the
+# real per-agent-worktree layer (git worktree add off a shared clone) can't run
+# here. Bypass it so the mock exercises the ORCHESTRATOR (pick/dedup/implement/
+# verify-merge), which is this test's purpose. The worktree layer is covered by
+# its own unit test + the live integration proof.
+export CHUMP_IMPROVE_SHARED_CLONE_DIRECT=1
 
 # Write a minimal onboard scan JSON.
 SCAN_TS="20260605T120000Z"
