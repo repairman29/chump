@@ -20,7 +20,7 @@ tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
-serial_test = "3"
+serial_test = "4"
 tempfile = "3"
 
 [lints.rust]
