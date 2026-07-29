@@ -1369,7 +1369,7 @@ jobs:
 
       - name: Install sccache
         if: steps.r2detect.outputs.configured == 'true'
-        uses: mozilla-actions/sccache-action@v0.0.10
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: sccache health probe
         # INFRA-2288: probe sccache server startup after install; degrade to no-cache
