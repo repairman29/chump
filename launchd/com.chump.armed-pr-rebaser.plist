@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.armed-pr-rebaser — INFRA-3473 LaunchAgent (fleet self-healing).
+
+  Runs scripts/coord/armed-pr-rebaser.sh every 1200s (~20 min). For each open
+  ARMED PR whose mergeStateStatus is DIRTY or BEHIND, it rebases the branch on
+  origin/main in a throwaway worktree and force-pushes ONLY on a clean rebase;
+  a real conflict is flagged to ambient (armed_pr_needs_conflict_resolution),
+  never force-pushed. Closes the gap where the queue-driver/conflict-resolver
+  only rebase inside a bot-merge run, so armed PRs drift to DIRTY once main
+  advances and sit until a human notices.
+
+  Build/checkout isolation: all work happens in /tmp/armed-rebaser-<N>
+  worktrees. The main checkout is NEVER touched.
+
+  INSTALLATION (do not hand-copy this file — it has placeholder paths):
+    scripts/setup/install-armed-pr-rebaser-launchd.sh
+    launchctl list | grep chump.armed-pr-rebaser
+
+  Manual run:
+    launchctl start com.chump.armed-pr-rebaser
+    tail /path/to/Chump/.chump-locks/armed-pr-rebaser.log
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.armed-pr-rebaser</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/coord/armed-pr-rebaser.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <key>StartInterval</key>
+  <integer>1200</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/path/to/Chump/.chump-locks/armed-pr-rebaser.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/path/to/Chump/.chump-locks/armed-pr-rebaser.log</string>
+
+  <key>ThrottleInterval</key>
+  <integer>600</integer>
+</dict>
+</plist>
