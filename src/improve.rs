@@ -1866,6 +1866,20 @@ fn ensure_clone_exists(clone_dir: &Path, owner_repo: &str) -> Result<()> {
     if clone_dir.join(".git").exists() {
         return Ok(());
     }
+    // INFRA-3478: if the caller pre-populated the clone path (a `--clone-dir`
+    // fixture, or a partial checkout) and it's non-empty, respect it rather than
+    // failing a `git clone` into a non-empty dir or clobbering the caller's data.
+    if clone_dir.is_dir()
+        && std::fs::read_dir(clone_dir)
+            .map(|mut d| d.next().is_some())
+            .unwrap_or(false)
+    {
+        eprintln!(
+            "[improve] clone path {} is non-empty but has no .git — using it as-is",
+            clone_dir.display()
+        );
+        return Ok(());
+    }
     if let Some(parent) = clone_dir.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
