@@ -188,6 +188,159 @@ impl WatchdogReport {
     }
 }
 
+// ── CREDIBLE-171 / COTG-3.1: the honest zero-touch streak metric ───────────────
+// The readiness number. Provenance is trailer-based (COTG-3.2): a commit on the
+// default branch that carries the `Chump-Agent:` trailer is the OS's; one that
+// lacks it (and isn't a known automation bot) is a HUMAN touch. This replaces the
+// operator-email heuristic (which conflated agent-identity commits with human ones,
+// over-counting ~127-vs-1 on 2026-07-29). It is reliable only for commits made after
+// the CREDIBLE-172 stamp went live — older commits under-report zero-touch.
+
+/// One commit on the default branch, classified by provenance.
+#[derive(Debug, Clone)]
+pub struct ProvenanceCommit {
+    pub hash: String,
+    pub ts_unix: u64,
+    /// carries the `Chump-Agent:` trailer — the OS made it (zero-touch).
+    pub zero_touch: bool,
+    /// authored by a known automation bot (dependabot / github-actions) — not human, not ours.
+    pub is_bot: bool,
+}
+
+impl ProvenanceCommit {
+    /// A HUMAN touch = no zero-touch trailer AND not an automation bot.
+    fn is_human_touch(&self) -> bool {
+        !self.zero_touch && !self.is_bot
+    }
+}
+
+/// The zero-touch streak metric — the queryable readiness number (COTG-3.1 AC3).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StreakMetric {
+    pub branch: String,
+    pub commits_scanned: u64,
+    pub zero_touch_commits: u64,
+    pub human_touches: u64,
+    pub bot_touches: u64,
+    /// longest consecutive run of commits with NO human touch (bot/OS commits don't break it).
+    pub longest_zero_touch_streak: u64,
+    /// consecutive commits since the most recent human touch (from the newest commit backwards).
+    pub current_zero_touch_streak: u64,
+    /// hours since the most recent human touch, or None if the window is fully hands-off.
+    pub hours_since_last_human_touch: Option<f64>,
+    pub zero_touch_ratio: f64,
+}
+
+/// Compute the streak from provenance commits. **Assumes `commits` is newest-first** (git log's
+/// default order). Pure over its inputs so it is hermetically testable — `now_unix` is injected.
+pub fn compute_streak(commits: &[ProvenanceCommit], branch: &str, now_unix: u64) -> StreakMetric {
+    let scanned = commits.len() as u64;
+    let mut zt = 0u64;
+    let mut human = 0u64;
+    let mut bot = 0u64;
+    for c in commits {
+        if c.zero_touch {
+            zt += 1;
+        } else if c.is_bot {
+            bot += 1;
+        } else {
+            human += 1;
+        }
+    }
+    // longest run with no human touch
+    let mut longest = 0u64;
+    let mut run = 0u64;
+    for c in commits {
+        if c.is_human_touch() {
+            run = 0;
+        } else {
+            run += 1;
+            if run > longest {
+                longest = run;
+            }
+        }
+    }
+    // current streak: newest-first, count until the first human touch
+    let mut current = 0u64;
+    for c in commits {
+        if c.is_human_touch() {
+            break;
+        }
+        current += 1;
+    }
+    // hours since the most recent (newest) human touch
+    let hours = commits
+        .iter()
+        .find(|c| c.is_human_touch())
+        .map(|c| (now_unix.saturating_sub(c.ts_unix)) as f64 / 3600.0);
+    let ratio = if scanned > 0 {
+        zt as f64 / scanned as f64
+    } else {
+        0.0
+    };
+    StreakMetric {
+        branch: branch.to_string(),
+        commits_scanned: scanned,
+        zero_touch_commits: zt,
+        human_touches: human,
+        bot_touches: bot,
+        longest_zero_touch_streak: longest,
+        current_zero_touch_streak: current,
+        hours_since_last_human_touch: hours,
+        zero_touch_ratio: ratio,
+    }
+}
+
+/// Read the last `max_commits` on `branch` and classify each by the `Chump-Agent:` trailer.
+pub fn scan_provenance(repo_root: &Path, branch: &str, max_commits: u64) -> Vec<ProvenanceCommit> {
+    // \x1f field sep, \x1e record sep — so a commit body's newlines don't corrupt parsing.
+    let fmt = "--format=%H%x1f%ct%x1f%an%x1f%ae%x1f%b%x1e";
+    let out = std::process::Command::new("git")
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "log",
+            branch,
+            &format!("-n{max_commits}"),
+            fmt,
+        ])
+        .output();
+    let stdout = match out {
+        Ok(o) if o.status.success() => o.stdout,
+        _ => return Vec::new(),
+    };
+    let text = String::from_utf8_lossy(&stdout);
+    let mut commits = Vec::new();
+    for rec in text.split('\u{1e}') {
+        let rec = rec.trim_matches(|c| c == '\n' || c == '\r');
+        if rec.is_empty() {
+            continue;
+        }
+        let f: Vec<&str> = rec.split('\u{1f}').collect();
+        if f.len() < 5 {
+            continue;
+        }
+        let ts_unix = f[1].trim().parse::<u64>().unwrap_or(0);
+        let zero_touch = f[4].to_lowercase().contains("chump-agent:");
+        let idl = format!("{} {}", f[2], f[3]).to_lowercase();
+        let is_bot = idl.contains("bot") || idl.contains("github-actions");
+        commits.push(ProvenanceCommit {
+            hash: f[0].trim().to_string(),
+            ts_unix,
+            zero_touch,
+            is_bot,
+        });
+    }
+    commits
+}
+
+/// The public metric: classify the last `max_commits` on `branch` and compute the streak.
+pub fn zero_touch_streak(repo_root: &Path, branch: &str, max_commits: u64) -> StreakMetric {
+    let commits = scan_provenance(repo_root, branch, max_commits);
+    let now = chrono::Utc::now().timestamp().max(0) as u64;
+    compute_streak(&commits, branch, now)
+}
+
 fn ambient_paths(repo_root: &Path) -> Vec<PathBuf> {
     let dir = repo_root.join(".chump-locks");
     // Current stream + the one rotated file, so a window that spans a rotation still sees both.
@@ -339,6 +492,9 @@ pub fn run(args: &[String]) -> i32 {
     let mut window: u64 = 24;
     let mut apply = false;
     let mut json = false;
+    let mut streak_mode = false;
+    let mut branch = "origin/main".to_string();
+    let mut max_commits: u64 = 200;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -348,6 +504,27 @@ pub fn run(args: &[String]) -> i32 {
                     Some(w) => window = w,
                     None => {
                         eprintln!("--window needs a number of hours");
+                        return usage();
+                    }
+                }
+            }
+            "--streak" => streak_mode = true,
+            "--branch" => {
+                i += 1;
+                match args.get(i) {
+                    Some(b) => branch = b.clone(),
+                    None => {
+                        eprintln!("--branch needs a ref");
+                        return usage();
+                    }
+                }
+            }
+            "--max" => {
+                i += 1;
+                match args.get(i).and_then(|s| s.parse::<u64>().ok()) {
+                    Some(m) => max_commits = m,
+                    None => {
+                        eprintln!("--max needs a number of commits");
                         return usage();
                     }
                 }
@@ -364,6 +541,38 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     let repo_root = find_repo_root();
+
+    // CREDIBLE-171: the readiness number — how long has it run without a human touch.
+    if streak_mode {
+        let m = zero_touch_streak(&repo_root, &branch, max_commits);
+        if json {
+            println!(
+                "{}",
+                serde_json::to_string(&m).unwrap_or_else(|_| "{}".into())
+            );
+            return 0;
+        }
+        println!(
+            "zero-touch streak on {} (last {} commits):",
+            m.branch, m.commits_scanned
+        );
+        println!(
+            "  OS (zero-touch): {}   human touches: {}   bot: {}",
+            m.zero_touch_commits, m.human_touches, m.bot_touches
+        );
+        println!(
+            "  longest hands-off streak: {} commits",
+            m.longest_zero_touch_streak
+        );
+        println!("  current streak: {} commits", m.current_zero_touch_streak);
+        match m.hours_since_last_human_touch {
+            Some(h) => println!("  hours since last human touch: {h:.1}"),
+            None => println!("  no human touch in window — fully hands-off"),
+        }
+        println!("  zero-touch ratio: {:.0}%", m.zero_touch_ratio * 100.0);
+        return 0;
+    }
+
     let report = scan(&repo_root, window);
 
     if apply {
@@ -522,5 +731,57 @@ mod tests {
         // second apply → deduped, not re-filed
         let again = file_self_heal_gaps(root, &report, 24, true).unwrap();
         assert_eq!(again[0].1, "skip:already-open", "must dedup, not spam");
+    }
+
+    fn pc(zero_touch: bool, is_bot: bool, ts: u64) -> ProvenanceCommit {
+        ProvenanceCommit {
+            hash: format!("h{ts}"),
+            ts_unix: ts,
+            zero_touch,
+            is_bot,
+        }
+    }
+
+    /// CREDIBLE-171: the streak metric counts a HUMAN touch as a commit lacking the
+    /// zero-touch trailer AND not a bot; it measures the longest/current hands-off run and
+    /// hours since the last human touch. Newest-first order (git log default).
+    #[test]
+    fn streak_counts_human_touches_and_hands_off_runs() {
+        let now = 1_000_000u64;
+        // newest-first: OS, OS, bot, OS, HUMAN, OS, OS
+        //  current streak = 4 (OS,OS,bot,OS before the human), longest = 4,
+        //  human_touches = 1, hours_since = (now - ts_of_human)/3600.
+        let human_ts = now - 7200; // 2h ago
+        let commits = vec![
+            pc(true, false, now - 60),
+            pc(true, false, now - 120),
+            pc(false, true, now - 180), // bot — not a human touch
+            pc(true, false, now - 240),
+            pc(false, false, human_ts), // the human touch
+            pc(true, false, now - 8000),
+            pc(true, false, now - 9000),
+        ];
+        let m = compute_streak(&commits, "origin/main", now);
+        assert_eq!(m.commits_scanned, 7);
+        assert_eq!(m.zero_touch_commits, 5);
+        assert_eq!(m.human_touches, 1);
+        assert_eq!(m.bot_touches, 1);
+        assert_eq!(
+            m.current_zero_touch_streak, 4,
+            "4 non-human commits before the human"
+        );
+        assert_eq!(m.longest_zero_touch_streak, 4);
+        assert_eq!(m.hours_since_last_human_touch, Some(2.0));
+
+        // fully hands-off window → no human touch, streak == scanned, hours None
+        let clean = vec![pc(true, false, now - 10), pc(false, true, now - 20)];
+        let mc = compute_streak(&clean, "origin/main", now);
+        assert_eq!(mc.human_touches, 0);
+        assert_eq!(mc.current_zero_touch_streak, 2);
+        assert_eq!(mc.hours_since_last_human_touch, None);
+        assert!(
+            (mc.zero_touch_ratio - 0.5).abs() < 1e-9,
+            "1 of 2 carry the trailer"
+        );
     }
 }
