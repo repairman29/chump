@@ -1,0 +1,39 @@
+- id: INFRA-3516
+  domain: INFRA
+  title: "COTG-1.3: remediation/fix_pr commit path bypasses deterministic_ship guards (junk-exclusion + verify_staged_edit)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    The external-improve flow applies its reliability guards ASYMMETRICALLY. The initial
+    ship (deterministic_ship, COTG-1.2/1.3) resets runtime junk (.chump-locks/, sessions/,
+    .chump/) out of the index and runs verify_staged_edit (destructive-clobber + invalid
+    JSON/TOML/YAML rejection) before committing. But the no-abandon remediation path
+    (remediate_held -> fix_pr -> AgentFix) commits with its own raw `git add -A` + commit
+    and applies NEITHER guard. So a PR that starts clean gets corrupted by its own
+    remediation loop: runtime junk leaks in and destructive edits go unchecked.
+  acceptance_criteria:
+    - fix_pr / remediation commits route through the SAME guarded ceremony as the initial
+      ship (junk-exclusion reset + verify_staged_edit) — ideally a shared helper both call,
+      not two copies.
+    - a remediation commit that would clobber (numstat deletion>=50 && insertion*10<deletion)
+      is rejected, exactly as the ship path rejects it.
+    - runtime junk (.chump-locks/, sessions/, .chump/, *.db / *.db-shm / *.db-wal) never
+      appears in a remediation commit's diff.
+    - "regression test — a remediate run over a clone that has runtime junk on disk produces
+      a clean cumulative PR diff (0 junk files) across ALL commits, not just the first."
+  evidence: |
+    PROVEN 2026-07-29 running `chump improve repairman29/BEAST-MODE --apply` (binary built
+    from origin/main 57518ed5, floor present). The OS autonomously picked a REAL gap
+    ("Install PM2 / fix failing CI"), opened trailered zero-touch PR #35, then verify-merge
+    HELD it and ran no-abandon remediation (sonnet->opus, NO claude spawn — Principle-0 held).
+    Per-commit junk analysis of PR #35 (branch chump/improve-p94851):
+      commit 1  ebf0ad6a (deterministic_ship path)  -> 0 junk files   [guard worked]
+      commit 2  fc3ae28d (remediation/fix_pr path)   -> 4 junk files   [guard bypassed]
+      commit 3  66a2e3d9 (remediation/fix_pr path)   -> 3 junk files   [guard bypassed]
+    Cumulative diff also shows package.json at +6/-324 — a deletion the verify_staged_edit
+    clobber heuristic (d>=50 && a*10<d) WOULD have rejected on the ship path, but the
+    remediation path never runs it. Root cause: the guards live inside deterministic_ship,
+    not in a helper shared by fix_pr's commit path.
+  labels: [cotg, reliability, external-improve, self-heal]
+  discovered_by: prove-then-move-forward proof run, 2026-07-29
