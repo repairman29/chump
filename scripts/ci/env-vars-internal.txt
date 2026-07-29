@@ -1280,3 +1280,6 @@ CHUMP_IMPROVE_BACKEND
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_IMPROVE_SHARED_CLONE_DIRECT
+CHUMP_SHARED_SERVICE_BLOCK
+# detected in: (standard input)
+CHUMP_SHARED_SERVICE_CHECK
