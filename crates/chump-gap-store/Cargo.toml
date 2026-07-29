@@ -30,7 +30,7 @@ thiserror = "2"
 test-helpers = []
 
 [dev-dependencies]
-serial_test = "3"
+serial_test = "4"
 tempfile = "3"
 
 # INFRA-2000: Phase 1 of META-107 — maintenance-module CLI binaries
