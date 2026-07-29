@@ -278,33 +278,49 @@ fn run_inner(args: &[String]) -> Result<i32> {
         picked.title
     );
 
-    // ── Stage 3: IMPLEMENT ────────────────────────────────────────────────
-    println!("\n[improve] Stage 3: IMPLEMENT — spawning agent in clone...");
-
-    // COTG-1.1/INFRA-3483: thread the typed autonomy FSM through improve's stages (the
-    // kernel ABI). The typestate makes the order compile-time-enforced — you cannot reach
-    // Done without passing Verifying, which needs Executing — so a mis-ordered refactor
-    // won't compile. Planning (pick + dedup) is complete here → enter Executing.
-    let fsm = crate::autonomy_fsm::AutonomyState::<crate::autonomy_fsm::Planning>::new()
-        .begin_execution(crate::autonomy_fsm::PlanningComplete {
+    // ── Stage 3: IMPLEMENT (or COTG-1.4 RESUME) ───────────────────────────
+    // COTG-1.4/INFRA-3486: durable resume — if a prior run for THIS gap already opened a PR
+    // (journaled below), skip re-implementing (which would open a DUPLICATE PR) and resume
+    // at verify-merge. The FSM (COTG-1.1) is threaded only on the fresh-implement path;
+    // resume is a recovery shortcut, so it carries no FSM (Option-typed).
+    let (pr_url, pr_number, fsm): (
+        String,
+        Option<u64>,
+        Option<crate::autonomy_fsm::AutonomyState<crate::autonomy_fsm::Verifying>>,
+    ) = if let Some(url) = load_flow_pr_url(&opts, &picked) {
+        let n = extract_pr_number(&url);
+        println!(
+            "[improve] RESUME (COTG-1.4) — PR {url} already opened for '{}' in a prior run; \
+             skipping IMPLEMENT, resuming at VERIFY-MERGE (no duplicate PR).",
+            picked.title
+        );
+        (url, n, None)
+    } else {
+        println!("\n[improve] Stage 3: IMPLEMENT — spawning agent in clone...");
+        // COTG-1.1: thread the typed autonomy FSM (Planning → Executing). The typestate
+        // makes the stage order compile-time-enforced.
+        let fsm = crate::autonomy_fsm::AutonomyState::<crate::autonomy_fsm::Planning>::new()
+            .begin_execution(crate::autonomy_fsm::PlanningComplete {
+                task_id: 0,
+                has_acceptance: !picked.acceptance_criteria_draft.is_empty(),
+                has_verify: true,
+            });
+        let url = implement_gap(&opts, &clone_dir, &picked)?;
+        let n = extract_pr_number(&url);
+        println!("[improve] PR opened: {url}");
+        if let Some(num) = n {
+            println!("[improve] PR number: #{num}");
+        }
+        // COTG-1.4: journal the opened PR BEFORE the (long) verify stage, so a crash there
+        // resumes here instead of re-opening a duplicate.
+        save_flow_checkpoint(&opts, &picked, &url);
+        // COTG-1.1: PR opened → enter Verifying.
+        let fsm = fsm.begin_verification(crate::autonomy_fsm::ExecutionReceipt {
             task_id: 0,
-            has_acceptance: !picked.acceptance_criteria_draft.is_empty(),
-            has_verify: true,
+            summary: url.clone(),
         });
-
-    let pr_url = implement_gap(&opts, &clone_dir, &picked)?;
-    let pr_number = extract_pr_number(&pr_url);
-
-    println!("[improve] PR opened: {pr_url}");
-    if let Some(n) = pr_number {
-        println!("[improve] PR number: #{n}");
-    }
-
-    // COTG-1.1: implementation opened a PR → enter Verifying.
-    let fsm = fsm.begin_verification(crate::autonomy_fsm::ExecutionReceipt {
-        task_id: 0,
-        summary: pr_url.clone(),
-    });
+        (url, n, Some(fsm))
+    };
 
     // ── Stage 4: VERIFY-MERGE ─────────────────────────────────────────────
     println!("\n[improve] Stage 4: VERIFY-MERGE — judging PR on merit...");
@@ -329,27 +345,32 @@ fn run_inner(args: &[String]) -> Result<i32> {
 
     emit_cycle_complete(&opts.owner_repo, &picked.title, &verdict, Some(&pr_url));
 
-    // COTG-1.1: drive the FSM to its terminal state. `complete` exists ONLY on
-    // AutonomyState<Verifying>, so this line is proof the flow passed through Verifying.
-    let outcome = crate::autonomy_fsm::VerificationOutcome {
-        task_id: 0,
-        status: verdict.clone(),
-        detail: pr_url.clone(),
-    };
-    match verdict.as_str() {
-        // Both are clean terminal states — no open-red PR left behind.
-        "verified" | "closed" => {
-            let _ = fsm.complete(outcome);
+    // COTG-1.4: terminal — the Flow is done for this gap, clear the resume journal.
+    clear_flow_checkpoint(&opts, &picked);
+
+    let terminal = matches!(verdict.as_str(), "verified" | "closed");
+    // COTG-1.1: drive the FSM to its terminal state (only on the fresh-implement path;
+    // `complete` exists ONLY on AutonomyState<Verifying>, proving the flow passed Verifying).
+    if let Some(f) = fsm {
+        let outcome = crate::autonomy_fsm::VerificationOutcome {
+            task_id: 0,
+            status: verdict.clone(),
+            detail: pr_url.clone(),
+        };
+        if terminal {
+            let _ = f.complete(outcome);
             eprintln!("[improve] FSM: Planning→Executing→Verifying→Done (COTG-1.1 kernel ABI)");
-            Ok(0)
-        }
-        // Should not reach here (remediate_held always returns verified|closed),
-        // but keep the non-zero signal + the FSM Failed transition for any unforeseen path.
-        _ => {
-            let _ = fsm.fail(outcome);
+        } else {
+            let _ = f.fail(outcome);
             eprintln!("[improve] FSM: reached Failed");
-            Ok(1)
         }
+    }
+    // Both "verified"/"closed" are clean terminal states — no open-red PR left behind.
+    // (remediate_held always returns verified|closed; keep the non-zero signal otherwise.)
+    if terminal {
+        Ok(0)
+    } else {
+        Ok(1)
     }
 }
 
@@ -1128,6 +1149,55 @@ fn deterministic_ship(
         "gh pr create succeeded but no PR URL in output: {}",
         stdout.trim()
     );
+}
+
+// ── COTG-1.4/INFRA-3486: durable-resume journal for the external improve Flow ──────────
+// Extends the checkpoint_db mechanism (already wired to the autonomy loop) to improve, so a
+// crash AFTER the PR is opened resumes at verify-merge instead of re-implementing — which
+// would open a DUPLICATE PR and abandon the agent's work. Keyed by repo + gap.
+
+fn flow_session_id(opts: &Opts) -> String {
+    format!("improve:{}", opts.owner_repo)
+}
+
+fn flow_ckpt_name(gap: &ProposedGap) -> String {
+    let slug: String = gap.title.trim().chars().take(80).collect();
+    format!("flow:{slug}")
+}
+
+/// Journal the opened PR so a later crash resumes at verify, not by re-opening.
+fn save_flow_checkpoint(opts: &Opts, gap: &ProposedGap, pr_url: &str) {
+    let snap = format!("{{\"pr_url\":{pr_url:?}}}");
+    let _ = crate::checkpoint_db::create_checkpoint(
+        &flow_session_id(opts),
+        &flow_ckpt_name(gap),
+        0,
+        Some(&snap),
+        Some("improve external-Flow resume point (COTG-1.4)"),
+    );
+}
+
+/// If a prior run for this gap already opened a PR, return its URL (the resume point).
+/// Extract the resumed `pr_url` from a checkpoint's JSON snapshot (the one bit of logic;
+/// pure + unit-tested).
+fn parse_flow_pr_url(snapshot: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(snapshot).ok()?;
+    v.get("pr_url")?.as_str().map(|s| s.to_string())
+}
+
+fn load_flow_pr_url(opts: &Opts, gap: &ProposedGap) -> Option<String> {
+    let ck = crate::checkpoint_db::checkpoint_by_name(&flow_session_id(opts), &flow_ckpt_name(gap))
+        .ok()??;
+    parse_flow_pr_url(&ck.state_snapshot_json?)
+}
+
+/// Clear the resume journal after a terminal outcome (the Flow is done for this gap).
+fn clear_flow_checkpoint(opts: &Opts, gap: &ProposedGap) {
+    if let Ok(Some(ck)) =
+        crate::checkpoint_db::checkpoint_by_name(&flow_session_id(opts), &flow_ckpt_name(gap))
+    {
+        let _ = crate::checkpoint_db::delete_checkpoint(ck.id);
+    }
 }
 
 fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<String> {
@@ -3385,6 +3455,20 @@ Some prose from the agent.
             r.is_err() && r.unwrap_err().to_string().contains("parses"),
             "invalid JSON must be rejected"
         );
+    }
+
+    /// COTG-1.4/INFRA-3486: the resume journal round-trips the pr_url through the exact JSON
+    /// snapshot save_flow_checkpoint writes, so a crashed run resumes at the same PR.
+    #[test]
+    fn flow_checkpoint_pr_url_roundtrips() {
+        let url = "https://github.com/owner/repo/pull/42";
+        // the EXACT format save_flow_checkpoint persists:
+        let snap = format!("{{\"pr_url\":{url:?}}}");
+        assert_eq!(parse_flow_pr_url(&snap), Some(url.to_string()));
+        // a snapshot with no pr_url (or malformed) → no resume, run fresh:
+        assert_eq!(parse_flow_pr_url("{}"), None);
+        assert_eq!(parse_flow_pr_url("not json"), None);
+        assert_eq!(parse_flow_pr_url("{\"other\":1}"), None);
     }
 
     /// COTG-1.2/INFRA-3484: the deterministic ceremony reads the PR URL from gh's own
