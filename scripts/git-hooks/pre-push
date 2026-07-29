@@ -476,6 +476,34 @@ elif command -v git &>/dev/null; then
 fi
 
 # -----------------------------------------------------------------------
+# Guard 0b-fmt: cargo fmt gate (INFRA-3512 / COTG-2.6)
+#
+# The pre-COMMIT hook auto-fmts staged .rs, but `--no-verify` commits (and any
+# non-hook path) bypass it — so fmt drift still reached CI and BLOCKED a 5-deep
+# stack (2026-07-29). fmt is 100% deterministic AND auto-fixable; there is no
+# reason it should ever fail CI. This is the last line before the push: on a .rs
+# change, if `cargo fmt --all --check` fails, AUTO-APPLY the fix and BLOCK so the
+# operator commits it. Drift never reaches CI, regardless of how the commit was
+# made. Fast (fmt is syntactic, no build). Bypass: CHUMP_FMT_GATE=0.
+# -----------------------------------------------------------------------
+if [[ "${CHUMP_LINT_GATE:-on}" != "off" && "${CHUMP_FMT_GATE:-1}" != "0" ]] \
+   && command -v cargo &>/dev/null; then
+    _FMT_HAS_RS=0
+    if git diff --name-only origin/main...HEAD 2>/dev/null | grep -qE '\.rs$' \
+       || git diff --name-only HEAD 2>/dev/null | grep -qE '\.rs$'; then
+        _FMT_HAS_RS=1
+    fi
+    if [[ "$_FMT_HAS_RS" == "1" ]] && ! cargo fmt --all -- --check > /dev/null 2>&1; then
+        echo "[pre-push] BLOCKED (INFRA-3512): cargo fmt drift detected — auto-applying the fix." >&2
+        cargo fmt --all > /dev/null 2>&1 || true
+        echo "[pre-push] Applied. Commit the formatting and re-push:" >&2
+        echo "[pre-push]   git add -A && git commit --amend --no-edit   # or a new 'style: cargo fmt' commit" >&2
+        echo "[pre-push] fmt is deterministic + auto-fixable — it must never reach CI. Bypass: CHUMP_FMT_GATE=0" >&2
+        exit 1
+    fi
+fi
+
+# -----------------------------------------------------------------------
 # Guard 0c: cargo clippy lint gate (INFRA-1390)
 #
 # Runs cargo clippy on changed crates before the full test suite so
