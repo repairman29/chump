@@ -200,15 +200,77 @@ fn count_provenance(clone: &Path) -> Option<(u64, u64, u64)> {
     Some((human, zt, scanned))
 }
 
+/// The local clone the external-improve flow leaves on disk for a repo (if any).
+fn local_clone_dir(repo: &str) -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let slug = repo.replace('/', "_");
+    Path::new(&home)
+        .join(".chump/external")
+        .join(&slug)
+        .join("clone")
+}
+
+/// Map a process exit code to a verdict: 0 → PASS, non-zero → FAIL, no code (killed / spawn
+/// failure) → UNKNOWN. Pure + testable — the core of the `command` acceptance grader.
+pub fn verdict_from_exit(code: Option<i32>) -> Verdict {
+    match code {
+        Some(0) => Verdict::Pass,
+        Some(_) => Verdict::Fail,
+        None => Verdict::Unknown,
+    }
+}
+
+/// Grade a `command` acceptance: run the track's `check` as a shell command in `cwd` (the repo's
+/// local clone). PASS iff it exits 0. These commands come from OUR own in-repo track YAMLs — a
+/// test harness, not untrusted input. UNKNOWN if there's no clone to run in (drive a lap first).
+fn grade_command(check: &str, cwd: Option<&Path>) -> (Verdict, String) {
+    let Some(dir) = cwd else {
+        return (
+            Verdict::Unknown,
+            "no local clone to run the acceptance command in (drive an --apply lap first)"
+                .to_string(),
+        );
+    };
+    if check.trim().is_empty() {
+        return (
+            Verdict::Unknown,
+            "track has no acceptance command".to_string(),
+        );
+    }
+    match Command::new("sh")
+        .arg("-c")
+        .arg(check)
+        .current_dir(dir)
+        .output()
+    {
+        Ok(o) => {
+            let v = verdict_from_exit(o.status.code());
+            let tail: String = String::from_utf8_lossy(&o.stderr)
+                .lines()
+                .last()
+                .unwrap_or("")
+                .chars()
+                .take(80)
+                .collect();
+            let cmd: String = check.chars().take(60).collect();
+            let suffix = if tail.is_empty() {
+                String::new()
+            } else {
+                format!(" — {tail}")
+            };
+            (v, format!("`{cmd}` exit {:?}{suffix}", o.status.code()))
+        }
+        Err(e) => (
+            Verdict::Unknown,
+            format!("could not run acceptance command: {e}"),
+        ),
+    }
+}
+
 /// Best-effort human-touch tally for `repo` from a local clone the improve flow left on disk;
 /// otherwise None (a driven `--apply` lap produces the count).
 fn tally_human_touches(repo: &str) -> (Option<u64>, String) {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let slug = repo.replace('/', "_");
-    let clone = Path::new(&home)
-        .join(".chump/external")
-        .join(&slug)
-        .join("clone");
+    let clone = local_clone_dir(repo);
     if !clone.join(".git").exists() {
         return (
             None,
@@ -261,9 +323,17 @@ fn drive_engine(track: &Track) -> Result<()> {
 pub fn score_track(track: &Track) -> LapScore {
     let (acc, detail) = match track.acceptance.kind.to_lowercase().as_str() {
         "ci-green" => fetch_ci_verdict(&track.repo),
+        // The universal gradeable primitive: run the acceptance command in the repo's clone,
+        // PASS iff exit 0. Covers test-passes (cargo/npm test), url-live (curl), the CREATE
+        // tool-runs check, and comprehension-accuracy (a validator that the map's paths exist).
+        "command" => {
+            let d = local_clone_dir(&track.repo);
+            let cwd = if d.exists() { Some(d) } else { None };
+            grade_command(&track.acceptance.check, cwd.as_deref())
+        }
         other => (
             Verdict::Unknown,
-            format!("acceptance kind '{other}' not graded yet (v1: ci-green)"),
+            format!("acceptance kind '{other}' not graded yet (v1: ci-green | command)"),
         ),
     };
     let (touches, touch_detail) = tally_human_touches(&track.repo);
@@ -425,5 +495,22 @@ budget:
         assert_eq!(t.mode, "RESCUE");
         assert_eq!(t.acceptance.kind, "ci-green");
         assert_eq!(t.budget.max_human_touches, 0);
+    }
+
+    #[test]
+    fn command_acceptance_grades_by_exit_code() {
+        // pure exit-code mapping
+        assert_eq!(verdict_from_exit(Some(0)), Verdict::Pass);
+        assert_eq!(verdict_from_exit(Some(1)), Verdict::Fail);
+        assert_eq!(verdict_from_exit(Some(127)), Verdict::Fail);
+        assert_eq!(verdict_from_exit(None), Verdict::Unknown);
+        // live: a real command in a tempdir — exit 0 → PASS, exit 1 → FAIL
+        let tmp = std::env::temp_dir();
+        assert_eq!(grade_command("true", Some(&tmp)).0, Verdict::Pass);
+        assert_eq!(grade_command("false", Some(&tmp)).0, Verdict::Fail);
+        // no clone to run in → UNKNOWN, never a false pass
+        assert_eq!(grade_command("true", None).0, Verdict::Unknown);
+        // empty check → UNKNOWN
+        assert_eq!(grade_command("   ", Some(&tmp)).0, Verdict::Unknown);
     }
 }

@@ -1,0 +1,16 @@
+# ChumpBench track — COMPREHEND: understand a legacy repo and map it (DOC-072).
+# v1 acceptance = the map exists + is non-empty; accuracy-grading (every referenced
+# path exists, no hallucinated modules) is a noted follow-up.
+id: comprehend-mythseeker
+mode: COMPREHEND
+repo: repairman29/MythSeeker
+stack: typescript
+state: legacy
+difficulty: medium
+task: "Explain what this repo does and produce an onboarding map (docs/ONBOARDING_MAP.md) a newcomer could follow."
+acceptance:
+  kind: command
+  check: "test -s docs/ONBOARDING_MAP.md && echo 'onboarding map produced'"
+budget:
+  max_wall_clock_min: 25
+  max_human_touches: 0

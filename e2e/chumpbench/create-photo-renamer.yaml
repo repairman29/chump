@@ -1,0 +1,16 @@
+# ChumpBench track — CREATE: build a new tool from a plain-language vision (DOC-072).
+# repo is created by the lap (bootstrap); with no clone yet, current-state scoring is
+# UNKNOWN until a driven --apply lap bootstraps + runs the acceptance against the output.
+id: create-photo-renamer
+mode: CREATE
+repo: bootstrap:photo-renamer
+stack: python
+state: empty
+difficulty: tiny
+task: "Build me a CLI that renames photos in a folder by the date each was taken."
+acceptance:
+  kind: command
+  check: "python3 rename_photos.py fixtures/ && ls fixtures/ | grep -qE '^[0-9]{4}' && echo 'renamed by date'"
+budget:
+  max_wall_clock_min: 20
+  max_human_touches: 0
