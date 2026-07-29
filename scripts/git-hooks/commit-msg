@@ -26,6 +26,38 @@ if [ ! -f "$MSG_FILE" ]; then
     exit 0
 fi
 
+# ── CREDIBLE-172 / COTG-3.2: zero-touch provenance stamp ──────────────────────
+# The `Chump-Agent:` trailer is the ONLY signal that reliably tells an OS commit
+# from a human one on main (it is what survives squash-merge under the repo's
+# COMMIT_MESSAGES setting). But no commit path guarantees it, so its absence did
+# NOT reliably mean "human" — which made the whole zero-touch/readiness measure
+# untrustworthy (2026-07-29: 5 of 8 OS commits reached main unstamped). This stamps
+# the trailer when an agent is working under an active claim lease and it is
+# missing. No active claim = a human hand-commit = left unstamped (correct).
+# Best-effort and fail-open: it must NEVER block a commit. Bypass: CHUMP_PROVENANCE_STAMP=0.
+# Residual gap: `--no-verify` skips this hook; the canonical commit path
+# (chump-commit.sh / deterministic_ship) should also stamp at source (follow-up).
+_stamp_provenance() {
+    if [ "${CHUMP_PROVENANCE_STAMP:-1}" = "0" ]; then return 0; fi
+    if grep -qiE '^Chump-Agent:' "$MSG_FILE" 2>/dev/null; then return 0; fi
+    local root common main_root claim agent
+    root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+    [ -n "$root" ] || return 0
+    # Fleet agents commit from LINKED WORKTREES, whose .chump-locks is empty — the claim
+    # lease lives in the MAIN checkout. Resolve the shared repo root via the common git
+    # dir so the stamp fires where agents actually work (not just in the main checkout).
+    common="$(git rev-parse --git-common-dir 2>/dev/null)" || common=".git"
+    case "$common" in /*) : ;; *) common="$root/$common" ;; esac
+    main_root="$(cd "$(dirname "$common")" 2>/dev/null && pwd)" || main_root="$root"
+    # An active claim lease (main checkout OR this worktree) is the "an OS agent made
+    # this" signal — the same one the off-rails guard uses (lease.sh get_active_claim_file).
+    claim="$(find "$main_root/.chump-locks" "$root/.chump-locks" -maxdepth 1 -name 'claim-*.json' 2>/dev/null | head -1)"
+    if [ -z "$claim" ] || [ ! -f "$claim" ]; then return 0; fi
+    agent="${CHUMP_AGENT_ID:-${CHUMP_CODENAME:-chump}}"
+    printf '\nChump-Agent: %s\n' "$agent" >> "$MSG_FILE"
+}
+_stamp_provenance || true
+
 # Legacy inline docs-delta check — fallback when the installed chump binary
 # predates `chump verify` (CREDIBLE-155). NOTE: preserves historical early
 # exits (inapplicable -> exit 0 skips the INFRA-2407 validator below, same
