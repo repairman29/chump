@@ -1033,6 +1033,62 @@ fn verify_staged_edit(work_dir: &Path) -> Result<()> {
 
 /// COTG-1.2/INFRA-3484: the deterministic ship ceremony. The implement-agent is
 /// EDIT-ONLY (see ExternalRepoContract) — the FLEET turns its uncommitted edits into a
+/// COTG-1.3/INFRA-3516: the ONE guarded staging+commit ceremony, shared by the initial
+/// ship (`deterministic_ship`) and the remediation path (`fix_pr`). Before INFRA-3516 the
+/// guards (junk-exclusion + `verify_staged_edit`) lived only inside `deterministic_ship`,
+/// so the fix agent's own `git add -A`/commit re-introduced runtime droppings and slipped a
+/// destructive edit past the clobber check (BEAST PR #35: commit 1 clean, commits 2-3 = 7
+/// junk files + a -324 package.json gut). Both paths now funnel through here:
+///  1. stage everything, then DROP chump's runtime droppings (`.chump-locks/`, `sessions/`,
+///     `.chump/`) that `agent-run` writes into the cwd — never part of the change.
+///  2. an empty staged tree is an honest "no change" error, never a phantom commit.
+///  3. `verify_staged_edit` rejects a destructive clobber or an invalid structured file.
+///  4. commit under the agent identity + the `Chump-Agent` trailer (provable zero-touch).
+///
+/// Returns the branch now holding the commit; the caller decides push/PR vs push-to-branch.
+fn guarded_stage_and_commit(
+    work_dir: &Path,
+    commit_msg: &str,
+    id: &AgentIdentity,
+    context: &str,
+) -> Result<String> {
+    let wd = work_dir.to_string_lossy().to_string();
+    // 1. stage, then drop the runtime droppings agent-run writes into the cwd.
+    let _ = Command::new("git").args(["-C", &wd, "add", "-A"]).status();
+    for junk in [".chump-locks", "sessions", ".chump"] {
+        let _ = Command::new("git")
+            .args(["-C", &wd, "reset", "-q", "HEAD", "--", junk])
+            .status();
+    }
+    // 2. anything real left? (git diff --cached --quiet exits 0 == no staged changes)
+    let nothing_staged = Command::new("git")
+        .args(["-C", &wd, "diff", "--cached", "--quiet"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(true);
+    if nothing_staged {
+        bail!("agent made no changes {context} — nothing to ship (honest no-change, not a phantom commit)");
+    }
+    // 3. COTG-1.3/INFRA-3485: reject a destructive clobber or invalid structured file.
+    verify_staged_edit(work_dir)?;
+    // 4a. resolve the current branch.
+    let branch = Command::new("git")
+        .args(["-C", &wd, "rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|b| !b.is_empty() && b != "HEAD")
+        .ok_or_else(|| anyhow::anyhow!("could not resolve the worktree branch in {wd}"))?;
+    // 4b. commit under the agent identity + Chump-Agent trailer.
+    let mut commit = Command::new("git");
+    commit.args(["-C", &wd, "commit", "-m", commit_msg]);
+    id.apply_git_env(&mut commit);
+    if !commit.status().map(|s| s.success()).unwrap_or(false) {
+        bail!("git commit failed in {wd} (edits staged but not committed)");
+    }
+    Ok(branch)
+}
+
 /// PR, deterministically, never depending on a model to run git/gh correctly (the
 /// 2026-07-29 live failure: both a weak and a strong model edited but never shipped).
 /// Stages the worktree, commits under the agent identity WITH the `Chump-Agent` trailer
@@ -1047,51 +1103,16 @@ fn deterministic_ship(
     id: &AgentIdentity,
 ) -> Result<String> {
     let wd = work_dir.to_string_lossy().to_string();
-    // 1. stage everything the agent touched, then DROP chump's own runtime droppings that
-    //    agent-run writes into the cwd (`.chump-locks/`, `sessions/`, `.chump/`). They are
-    //    not part of the change and must never ship in the PR (observed on BEAST #34).
-    let _ = Command::new("git").args(["-C", &wd, "add", "-A"]).status();
-    for junk in [".chump-locks", "sessions", ".chump"] {
-        let _ = Command::new("git")
-            .args(["-C", &wd, "reset", "-q", "HEAD", "--", junk])
-            .status();
-    }
-    // 2. anything real left to ship? (git diff --cached --quiet exits 0 == no staged changes)
-    let nothing_staged = Command::new("git")
-        .args(["-C", &wd, "diff", "--cached", "--quiet"])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(true);
-    if nothing_staged {
-        bail!(
-            "agent made no changes for '{}' — nothing to ship (honest no-change, not a phantom PR)",
-            gap.title
-        );
-    }
-    // COTG-1.3/INFRA-3485: verify the staged edit before committing — a destructive
-    // clobber or an invalid structured file is rejected here, never shipped.
-    verify_staged_edit(work_dir)?;
-    // 3. resolve the per-agent worktree branch (created by ensure_improve_worktree).
-    let branch = Command::new("git")
-        .args(["-C", &wd, "rev-parse", "--abbrev-ref", "HEAD"])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .filter(|b| !b.is_empty() && b != "HEAD")
-        .ok_or_else(|| anyhow::anyhow!("could not resolve the agent worktree branch in {wd}"))?;
-    // 4. commit under the agent identity + the Chump-Agent trailer (provable zero-touch).
+    // 1-4. stage (minus runtime droppings), verify the edit, and commit under the agent
+    // identity + Chump-Agent trailer — via the ONE guarded ceremony shared with the
+    // remediation path (COTG-1.3/INFRA-3516), so neither path can drift from these guards.
     let title: String = gap.title.trim().chars().take(72).collect();
     let msg = format!(
         "{title}\n\n{}\n\n{}",
         build_gap_description(gap),
         id.trailer()
     );
-    let mut commit = Command::new("git");
-    commit.args(["-C", &wd, "commit", "-m", &msg]);
-    id.apply_git_env(&mut commit);
-    if !commit.status().map(|s| s.success()).unwrap_or(false) {
-        bail!("git commit failed in {wd} (agent edits staged but not committed)");
-    }
+    let branch = guarded_stage_and_commit(work_dir, &msg, id, &format!("for '{}'", gap.title))?;
     // 5. push the per-agent branch to origin.
     if !Command::new("git")
         .args([
@@ -1764,22 +1785,29 @@ fn build_fix_prompt(
     format!(
         "You are fixing a FAILING pull request in the repository `{repo}`.\n\n\
 PR #{pr_num} (branch `{head_branch}`) implements: {gap_title}\n\
-Its CI is RED. Your job is to make CI GREEN by fixing the ROOT CAUSE — on the SAME branch.\n\n\
-STRICT RULES:\n\
-1. `git fetch origin && git checkout {head_branch}` — work on the EXISTING branch. \
-Do NOT create a new branch and do NOT open a new PR.\n\
-2. Diagnose the failure from the CI log below and fix the underlying cause in the code. \
+Its CI is RED. Your job is to make CI GREEN by fixing the ROOT CAUSE.\n\n\
+The PR's branch is ALREADY checked out in your working directory. EDIT FILES ONLY:\n\
+1. Diagnose the failure from the CI log below and fix the underlying cause in the code. \
 Do NOT disable the failing check, weaken an assertion, or delete the test to go green.\n\
-3. Commit with a clear message and `git push` to update the existing PR.\n\
-4. Do NOT merge and do NOT close the PR — just push the fix.\n\
-5. If the failure is a genuine flake unrelated to this diff, prefer a real fix; \
-only as a last resort make a trivial no-op commit to trigger a fresh run.\n\n\
+2. EDIT ONLY. Do NOT run git and do NOT touch version control at all — no stage, commit, \
+push, checkout, branch, merge, or PR open/close. The system commits your edits \
+deterministically (with the zero-touch trailer) and pushes them to the existing branch. \
+Running git yourself risks committing runtime junk or a destructive clobber.\n\
+3. If the failure is a genuine flake unrelated to this diff, make the smallest real fix; \
+do NOT fabricate a no-op just to trigger a rerun.\n\n\
 --- FAILING CI LOG (truncated) ---\n{failing_log}\n--- END LOG ---\n\n\
 Output nothing but a one-line summary of what you changed."
     )
 }
 
 /// Re-spawn a fix agent on the PR's branch with an escalating model.
+///
+/// COTG-1.3/INFRA-3516: the agent EDITS ONLY. This function deterministically checks out
+/// the PR branch BEFORE the agent runs, then commits+pushes the agent's edits through the
+/// SAME guarded ceremony as the initial ship (`guarded_stage_and_commit`) AFTER — so the
+/// remediation path can no longer re-introduce runtime droppings or slip a destructive
+/// clobber past the guards (the BEAST PR #35 defect: remediation commits added 7 junk files
+/// + a -324 package.json gut the ship path would have rejected).
 fn fix_pr(
     clone_dir: &Path,
     repo: &str,
@@ -1792,6 +1820,28 @@ fn fix_pr(
     let log_excerpt: String = failing_log.chars().take(6000).collect();
     // MISSION-063: fixes are signed by the same named agent as the original work.
     let id = agent_identity();
+    let cd = clone_dir.to_string_lossy().to_string();
+    // Deterministically place the PR's branch at its remote tip in the working tree; the
+    // agent only edits from here (the prompt no longer runs git). `-B ... origin/<branch>`
+    // is idempotent across retries — each attempt starts from the PR's current head.
+    let _ = Command::new("git")
+        .args(["-C", &cd, "fetch", "origin", head_branch])
+        .status();
+    if !Command::new("git")
+        .args([
+            "-C",
+            &cd,
+            "checkout",
+            "-B",
+            head_branch,
+            &format!("origin/{head_branch}"),
+        ])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        bail!("could not checkout PR branch {head_branch} in {cd} for remediation");
+    }
     let prompt = format!(
         "{}{}",
         build_fix_prompt(repo, pr_num, head_branch, gap_title, &log_excerpt),
@@ -1848,6 +1898,29 @@ fn fix_pr(
             out.status.code().unwrap_or(-1),
             stderr.trim().lines().next().unwrap_or("(no output)")
         );
+    }
+
+    // COTG-1.3/INFRA-3516: commit + push the agent's edits through the SAME guarded ceremony
+    // as the initial ship — junk-exclusion + verify_staged_edit — then push to the EXISTING
+    // branch (no new PR). Before this, the agent ran freeform git and re-corrupted the PR.
+    let title: String = gap_title.trim().chars().take(60).collect();
+    let msg = format!("fix(ci): {title} (PR #{pr_num})\n\n{}", id.trailer());
+    let _branch =
+        guarded_stage_and_commit(clone_dir, &msg, &id, &format!("for the PR #{pr_num} fix"))?;
+    if !Command::new("git")
+        .args([
+            "-C",
+            &cd,
+            "push",
+            "origin",
+            head_branch,
+            "--force-with-lease",
+        ])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        bail!("git push of the fix to {head_branch} failed in {cd}");
     }
     Ok(())
 }
@@ -3455,6 +3528,65 @@ Some prose from the agent.
             r.is_err() && r.unwrap_err().to_string().contains("parses"),
             "invalid JSON must be rejected"
         );
+    }
+
+    /// COTG-1.3/INFRA-3516: the guarded ceremony that BOTH the ship and remediation paths
+    /// now share (a) drops chump's runtime droppings so they never enter a commit, (b) commits
+    /// the real edit, and (c) rejects a destructive clobber — proving the fix path can no
+    /// longer re-corrupt a PR the way BEAST #35's remediation commits did. Hermetic (git).
+    #[test]
+    fn guarded_commit_drops_junk_and_rejects_clobber() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let wd = tmp.path();
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(["-C", wd.to_str().unwrap()])
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        run(&["init", "-q", "-b", "work"]);
+        run(&["config", "user.email", "t@t"]);
+        run(&["config", "user.name", "t"]);
+        fs::write(wd.join("app.txt"), "seed\n").unwrap();
+        run(&["add", "-A"]);
+        run(&["commit", "-qm", "seed"]);
+        let id = agent_identity();
+
+        // (accept) a real edit ALONGSIDE runtime droppings the agent wrote into the cwd.
+        fs::write(wd.join("app.txt"), "seed\nreal fix\n").unwrap();
+        fs::create_dir_all(wd.join(".chump-locks")).unwrap();
+        fs::write(wd.join(".chump-locks/lease.json"), "{}").unwrap();
+        fs::create_dir_all(wd.join("sessions")).unwrap();
+        fs::write(wd.join("sessions/chump_memory.db"), "sqlite-junk").unwrap();
+        let branch = guarded_stage_and_commit(wd, "fix(ci): x\n\ntrailer", &id, "for the test")
+            .expect("a real edit must commit");
+        assert_eq!(branch, "work", "returns the branch holding the commit");
+        let files =
+            String::from_utf8(run(&["show", "--name-only", "--format=", "HEAD"]).stdout).unwrap();
+        assert!(files.contains("app.txt"), "the real edit is committed");
+        assert!(
+            !files.contains(".chump-locks") && !files.contains("sessions/"),
+            "runtime droppings must NOT enter the commit — got: {files:?}"
+        );
+
+        // (reject) a destructive clobber never commits (guard shared with the ship path).
+        fs::write(wd.join("app.txt"), "x\n").unwrap(); // near-total deletion
+                                                       // pad the prior file so the clobber heuristic (d>=50) can fire.
+        let big: String = (0..80).map(|i| format!("line {i}\n")).collect();
+        fs::write(wd.join("big.txt"), &big).unwrap();
+        run(&["add", "-A"]);
+        run(&["commit", "-qm", "grow"]);
+        fs::write(wd.join("big.txt"), "gone\n").unwrap();
+        let before = String::from_utf8(run(&["rev-parse", "HEAD"]).stdout).unwrap();
+        let r = guarded_stage_and_commit(wd, "clobber", &id, "for the test");
+        assert!(
+            r.is_err(),
+            "a destructive clobber must be rejected, not committed"
+        );
+        let after = String::from_utf8(run(&["rev-parse", "HEAD"]).stdout).unwrap();
+        assert_eq!(before, after, "no commit was created on rejection");
     }
 
     /// COTG-1.4/INFRA-3486: the resume journal round-trips the pr_url through the exact JSON
