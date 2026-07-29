@@ -281,6 +281,17 @@ fn run_inner(args: &[String]) -> Result<i32> {
     // ── Stage 3: IMPLEMENT ────────────────────────────────────────────────
     println!("\n[improve] Stage 3: IMPLEMENT — spawning agent in clone...");
 
+    // COTG-1.1/INFRA-3483: thread the typed autonomy FSM through improve's stages (the
+    // kernel ABI). The typestate makes the order compile-time-enforced — you cannot reach
+    // Done without passing Verifying, which needs Executing — so a mis-ordered refactor
+    // won't compile. Planning (pick + dedup) is complete here → enter Executing.
+    let fsm = crate::autonomy_fsm::AutonomyState::<crate::autonomy_fsm::Planning>::new()
+        .begin_execution(crate::autonomy_fsm::PlanningComplete {
+            task_id: 0,
+            has_acceptance: !picked.acceptance_criteria_draft.is_empty(),
+            has_verify: true,
+        });
+
     let pr_url = implement_gap(&opts, &clone_dir, &picked)?;
     let pr_number = extract_pr_number(&pr_url);
 
@@ -288,6 +299,12 @@ fn run_inner(args: &[String]) -> Result<i32> {
     if let Some(n) = pr_number {
         println!("[improve] PR number: #{n}");
     }
+
+    // COTG-1.1: implementation opened a PR → enter Verifying.
+    let fsm = fsm.begin_verification(crate::autonomy_fsm::ExecutionReceipt {
+        task_id: 0,
+        summary: pr_url.clone(),
+    });
 
     // ── Stage 4: VERIFY-MERGE ─────────────────────────────────────────────
     println!("\n[improve] Stage 4: VERIFY-MERGE — judging PR on merit...");
@@ -312,12 +329,27 @@ fn run_inner(args: &[String]) -> Result<i32> {
 
     emit_cycle_complete(&opts.owner_repo, &picked.title, &verdict, Some(&pr_url));
 
+    // COTG-1.1: drive the FSM to its terminal state. `complete` exists ONLY on
+    // AutonomyState<Verifying>, so this line is proof the flow passed through Verifying.
+    let outcome = crate::autonomy_fsm::VerificationOutcome {
+        task_id: 0,
+        status: verdict.clone(),
+        detail: pr_url.clone(),
+    };
     match verdict.as_str() {
         // Both are clean terminal states — no open-red PR left behind.
-        "verified" | "closed" => Ok(0),
+        "verified" | "closed" => {
+            let _ = fsm.complete(outcome);
+            eprintln!("[improve] FSM: Planning→Executing→Verifying→Done (COTG-1.1 kernel ABI)");
+            Ok(0)
+        }
         // Should not reach here (remediate_held always returns verified|closed),
-        // but keep the non-zero signal for any unforeseen path.
-        _ => Ok(1),
+        // but keep the non-zero signal + the FSM Failed transition for any unforeseen path.
+        _ => {
+            let _ = fsm.fail(outcome);
+            eprintln!("[improve] FSM: reached Failed");
+            Ok(1)
+        }
     }
 }
 
@@ -910,6 +942,74 @@ fn first_github_pr_url(s: &str) -> Option<String> {
         .map(|t| t.to_string())
 }
 
+/// COTG-1.3/INFRA-3485: verify the agent's staged edit BEFORE the deterministic ceremony
+/// commits it — the safety net that makes "can't skimp on quality" structural, not
+/// model-dependent. Two classes, both observed live 2026-07-29:
+///   (a) DESTRUCTIVE — a whole-file clobber (a weak model rewrote package.json 330→12
+///       lines). Caught via numstat: a large deletion that dwarfs the insertion.
+///   (b) INVALID — a changed structured file that no longer parses (a strong model nested
+///       `devDependencies` inside `scripts`, breaking package.json JSON). Caught by
+///       reparsing JSON/TOML/YAML.
+/// A rejected edit does NOT commit — it bails with a specific reason (worktree left for
+/// debugging), never a broken PR. The destructive check is a conservative heuristic
+/// (near-total wipes only); the validity check is exact.
+fn verify_staged_edit(work_dir: &Path) -> Result<()> {
+    let wd = work_dir.to_string_lossy().to_string();
+    let out = Command::new("git")
+        .args(["-C", &wd, "diff", "--cached", "--numstat"])
+        .output()
+        .with_context(|| "git diff --cached --numstat")?;
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let mut parts = line.split('\t');
+        let added = parts.next().unwrap_or("-");
+        let deleted = parts.next().unwrap_or("-");
+        let path = match parts.next() {
+            Some(p) if !p.is_empty() => p,
+            _ => continue,
+        };
+        // (a) destructive clobber — binary ("-") skipped; a large deletion where the
+        // insertion is < 10% of it is a near-total rewrite, not an edit.
+        if let (Ok(a), Ok(d)) = (added.parse::<u64>(), deleted.parse::<u64>()) {
+            if d >= 50 && a.saturating_mul(10) < d {
+                bail!(
+                    "edit-verify (COTG-1.3): destructive rewrite of {path} (+{a}/-{d}) — a \
+                     near-total clobber, not an edit; refusing to ship"
+                );
+            }
+        }
+        // (b) validity — a changed structured file must still parse.
+        let full = work_dir.join(path);
+        let ext = full
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let content = match std::fs::read_to_string(&full) {
+            Ok(c) => c,
+            Err(_) => continue, // deleted/unreadable — not a validity concern
+        };
+        let parse_err: Option<String> = match ext.as_str() {
+            "json" => serde_json::from_str::<serde_json::Value>(&content)
+                .err()
+                .map(|e| e.to_string()),
+            "toml" => toml::from_str::<toml::Value>(&content)
+                .err()
+                .map(|e| e.to_string()),
+            "yaml" | "yml" => serde_yaml::from_str::<serde_yaml::Value>(&content)
+                .err()
+                .map(|e| e.to_string()),
+            _ => None,
+        };
+        if let Some(e) = parse_err {
+            bail!(
+                "edit-verify (COTG-1.3): {path} no longer parses as {ext} after the edit \
+                 ({e}) — refusing to ship a broken file"
+            );
+        }
+    }
+    Ok(())
+}
+
 /// COTG-1.2/INFRA-3484: the deterministic ship ceremony. The implement-agent is
 /// EDIT-ONLY (see ExternalRepoContract) — the FLEET turns its uncommitted edits into a
 /// PR, deterministically, never depending on a model to run git/gh correctly (the
@@ -947,6 +1047,9 @@ fn deterministic_ship(
             gap.title
         );
     }
+    // COTG-1.3/INFRA-3485: verify the staged edit before committing — a destructive
+    // clobber or an invalid structured file is rejected here, never shipped.
+    verify_staged_edit(work_dir)?;
     // 3. resolve the per-agent worktree branch (created by ensure_improve_worktree).
     let branch = Command::new("git")
         .args(["-C", &wd, "rev-parse", "--abbrev-ref", "HEAD"])
@@ -3223,6 +3326,65 @@ Some prose from the agent.
         unsafe {
             std::env::remove_var("CHUMP_IMPROVE_IMPLEMENT_CLASS");
         }
+    }
+
+    /// COTG-1.3/INFRA-3485: the edit-verify gate rejects a destructive clobber and an
+    /// invalid structured file, and accepts a legitimate edit. Hermetic (git + serde).
+    #[test]
+    fn edit_verify_rejects_clobber_and_invalid_accepts_good() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let wd = tmp.path();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(["-C", wd.to_str().unwrap()])
+                .args(args)
+                .output()
+                .unwrap();
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        // a big valid JSON (for the clobber case), a small valid JSON, a text file.
+        let big = format!(
+            "{{\n{}\n  \"x\": 1\n}}\n",
+            (0..100)
+                .map(|i| format!("  \"k{i}\": {i},"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        fs::write(wd.join("big.json"), &big).unwrap();
+        fs::write(wd.join("config.json"), "{\n  \"a\": 1,\n  \"b\": 2\n}\n").unwrap();
+        fs::write(wd.join("keep.txt"), "seed\n").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "seed"]);
+
+        // (accept) a small legitimate text edit
+        fs::write(wd.join("keep.txt"), "seed\nplus one line\n").unwrap();
+        git(&["add", "-A"]);
+        assert!(verify_staged_edit(wd).is_ok(), "legit edit must pass");
+        git(&["reset", "-q"]);
+        git(&["checkout", "-q", "--", "."]);
+
+        // (reject: destructive) clobber big.json to a stub
+        fs::write(wd.join("big.json"), "{}\n").unwrap();
+        git(&["add", "-A"]);
+        let r = verify_staged_edit(wd);
+        assert!(
+            r.is_err() && r.unwrap_err().to_string().contains("destructive"),
+            "clobber must be rejected as destructive"
+        );
+        git(&["reset", "-q"]);
+        git(&["checkout", "-q", "--", "."]);
+
+        // (reject: invalid) small edit that breaks JSON validity
+        fs::write(wd.join("config.json"), "{\n  \"a\": 1,\n  oops\n}\n").unwrap();
+        git(&["add", "-A"]);
+        let r = verify_staged_edit(wd);
+        assert!(
+            r.is_err() && r.unwrap_err().to_string().contains("parses"),
+            "invalid JSON must be rejected"
+        );
     }
 
     /// COTG-1.2/INFRA-3484: the deterministic ceremony reads the PR URL from gh's own
