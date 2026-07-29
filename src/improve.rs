@@ -877,6 +877,30 @@ fn resolve_improve_backend() -> String {
     }
 }
 
+/// COTG-1.6/INFRA-3488: the cascade model-CLASS to bias chump-local toward for an
+/// external IMPLEMENTATION. External work is hard — the 2026-07-29 live run proved a
+/// weak-class model storms on it while an opus-class model (gemini-2.5-pro) edits
+/// surgically — so default to the strong class. Cost control is the verify gates
+/// (COTG-1.3/3.1), not a cheap default that ships broken tools. Operator override:
+/// `CHUMP_IMPROVE_IMPLEMENT_CLASS`.
+fn improve_implement_class() -> String {
+    std::env::var("CHUMP_IMPROVE_IMPLEMENT_CLASS")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "opus".to_string())
+}
+
+/// Map a claude model name (the fix-retry ladder's rung) to a cascade model-CLASS,
+/// so the chump-local fix path escalates through the SAME strength progression
+/// (sonnet → opus) without ever naming claude.
+fn model_to_class(model: &str) -> &'static str {
+    if model.to_ascii_lowercase().contains("opus") {
+        "opus"
+    } else {
+        "sonnet"
+    }
+}
+
 fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<String> {
     use chump_handoff::contracts::{ExternalRepoContract, ExternalRepoInput};
     use chump_handoff::HandoffContract;
@@ -979,6 +1003,11 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
             .arg(&work_dir);
         // MISSION-063: author the agent's commits under its identity.
         id.apply_git_env(&mut c);
+        // COTG-1.6: task-fit model selection — bias the cascade to a strong class for
+        // hard external implementation, unless the operator already pinned the class.
+        if std::env::var("CHUMP_PREFERRED_MODEL_CLASS").is_err() {
+            c.env("CHUMP_PREFERRED_MODEL_CLASS", improve_implement_class());
+        }
         c
     };
 
@@ -1463,8 +1492,6 @@ fn fix_pr(
     failing_log: &str,
     model: &str,
 ) -> Result<()> {
-    let claude_bin =
-        std::env::var("CHUMP_IMPROVE_CLAUDE_BIN").unwrap_or_else(|_| "claude".to_string());
     let log_excerpt: String = failing_log.chars().take(6000).collect();
     // MISSION-063: fixes are signed by the same named agent as the original work.
     let id = agent_identity();
@@ -1475,24 +1502,52 @@ fn fix_pr(
     );
     let prompt_file = write_temp_prompt(&prompt)?;
 
-    let mut cmd = Command::new(&claude_bin);
-    cmd.arg("-p")
-        .arg(std::fs::read_to_string(&prompt_file)?)
-        .arg("--dangerously-skip-permissions")
-        .args(["--model", model])
-        .current_dir(clone_dir);
-    id.apply_git_env(&mut cmd);
-    configure_claude_auth_env(&mut cmd);
+    // COTG-1.6/INFRA-3488: the fix-retry path must NOT default to claude either
+    // (Principle 0 — this was the real violation: fix_pr spawned claude unconditionally,
+    // so a failing PR pulled in claude even in default chump-local mode). Default is the
+    // OS's own runtime via `chump agent-run`; claude is opt-in. The escalating `model`
+    // ladder maps to the cascade's model-CLASS so the sonnet→opus strength progression
+    // is preserved without naming claude.
+    let backend = resolve_improve_backend();
+    let mut cmd = if backend == "claude" {
+        let claude_bin =
+            std::env::var("CHUMP_IMPROVE_CLAUDE_BIN").unwrap_or_else(|_| "claude".to_string());
+        let mut c = Command::new(&claude_bin);
+        c.arg("-p")
+            .arg(std::fs::read_to_string(&prompt_file)?)
+            .arg("--dangerously-skip-permissions")
+            .args(["--model", model])
+            .current_dir(clone_dir);
+        id.apply_git_env(&mut c);
+        configure_claude_auth_env(&mut c);
+        c
+    } else {
+        let chump_bin = std::env::var("CHUMP_IMPROVE_CHUMP_BIN")
+            .or_else(|_| std::env::var("CHUMP_BIN"))
+            .unwrap_or_else(|_| "chump".to_string());
+        let mut c = Command::new(&chump_bin);
+        c.arg("agent-run")
+            .arg("--prompt-file")
+            .arg(&prompt_file)
+            .arg("--cwd")
+            .arg(clone_dir);
+        id.apply_git_env(&mut c);
+        if std::env::var("CHUMP_PREFERRED_MODEL_CLASS").is_err() {
+            c.env("CHUMP_PREFERRED_MODEL_CLASS", model_to_class(model));
+        }
+        c
+    };
 
     let out = cmd
         .output()
-        .with_context(|| format!("spawn `{claude_bin} -p` (fix, is claude CLI on PATH?)"))?;
+        .with_context(|| format!("spawn improve fix backend `{backend}`"))?;
     let _ = std::fs::remove_file(&prompt_file);
 
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         bail!(
-            "claude -p (fix) exited {} — {}",
+            "improve fix backend `{}` exited {} — {}",
+            backend,
             out.status.code().unwrap_or(-1),
             stderr.trim().lines().next().unwrap_or("(no output)")
         );
@@ -3017,6 +3072,35 @@ Some prose from the agent.
     ///
     /// We use Command::get_envs() to inspect the env-override map without
     /// spawning any process.
+    /// COTG-1.6/INFRA-3488: the fix ladder maps to cascade model-CLASSES so the
+    /// chump-local path escalates sonnet→opus without ever naming claude.
+    #[test]
+    fn model_to_class_maps_ladder_without_naming_claude() {
+        assert_eq!(model_to_class("claude-sonnet-4-5"), "sonnet");
+        assert_eq!(model_to_class("opus"), "opus");
+        assert_eq!(model_to_class("some-OPUS-variant"), "opus");
+        assert_eq!(model_to_class("gpt-whatever"), "sonnet");
+    }
+
+    /// COTG-1.6/INFRA-3488: hard external implementation biases the strong class by
+    /// default (evidence: weak-class stormed, opus-class edited surgically); operator
+    /// can override.
+    #[test]
+    #[serial_test::serial]
+    fn improve_implement_class_defaults_strong() {
+        unsafe {
+            std::env::remove_var("CHUMP_IMPROVE_IMPLEMENT_CLASS");
+        }
+        assert_eq!(improve_implement_class(), "opus");
+        unsafe {
+            std::env::set_var("CHUMP_IMPROVE_IMPLEMENT_CLASS", "sonnet");
+        }
+        assert_eq!(improve_implement_class(), "sonnet");
+        unsafe {
+            std::env::remove_var("CHUMP_IMPROVE_IMPLEMENT_CLASS");
+        }
+    }
+
     /// INFRA-3478: the per-agent worktree key is pid-scoped so concurrent
     /// `improve` processes on the same external repo get distinct worktrees, and
     /// stable within a process (one implement call reuses it).
