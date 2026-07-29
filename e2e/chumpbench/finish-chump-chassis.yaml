@@ -1,0 +1,14 @@
+# ChumpBench track — FINISH: complete a half-built scaffold (DOC-072).
+id: finish-chump-chassis
+mode: FINISH
+repo: repairman29/chump-chassis
+stack: rust
+state: half-built
+difficulty: medium
+task: "Complete the scaffolded service: wire the stubbed endpoint and make its test pass."
+acceptance:
+  kind: command
+  check: "cargo test --quiet 2>&1 | tail -3"
+budget:
+  max_wall_clock_min: 30
+  max_human_touches: 0

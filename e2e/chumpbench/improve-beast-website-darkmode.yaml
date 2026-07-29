@@ -1,0 +1,14 @@
+# ChumpBench track — IMPROVE: add a feature to a working static site (DOC-072).
+id: improve-beast-website-darkmode
+mode: IMPROVE
+repo: repairman29/beast-mode-website
+stack: html-static
+state: green
+difficulty: small
+task: "Add a dark-mode toggle to the site that remembers the user's choice across reloads."
+acceptance:
+  kind: command
+  check: "grep -riqE 'dark.?mode|data-theme|prefers-color-scheme|toggle.*theme' . && echo 'dark-mode handling present'"
+budget:
+  max_wall_clock_min: 20
+  max_human_touches: 0

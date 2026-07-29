@@ -1,0 +1,516 @@
+//! ChumpBench runner — DOC-072 / EFFECTIVE-327.
+//!
+//! Runs a **track** (a repo + a plain-language task + a known-good acceptance check) as one
+//! scoreable lap: optionally drive the track's mode engine, grade the acceptance check, tally
+//! the human touches during the lap (the CREDIBLE-171 zero-touch metric), and print a scorecard.
+//! The scorecard's human-touches-per-lap, trended across the suite, is the readiness number —
+//! not CI-green, not a merged PR, but a course completed with no one reaching in.
+//!
+//! v1 scope: the schema + the grading/scoring harness + `ci-green` grading, proven on the
+//! known-good RESCUE/BEAST lap. Engine-drive (`--apply`) shells the mode engine; other
+//! acceptance kinds and ambient-event emission are honest follow-ups.
+
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::path::Path;
+use std::process::Command;
+
+/// A track: the schema from `e2e/chumpbench/<track>.yaml`.
+#[derive(Debug, Deserialize)]
+pub struct Track {
+    pub id: String,
+    pub mode: String,
+    pub repo: String,
+    #[serde(default)]
+    pub stack: String,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub difficulty: String,
+    pub task: String,
+    pub acceptance: Acceptance,
+    #[serde(default)]
+    pub budget: Budget,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Acceptance {
+    /// ci-green | test-passes | url-live | assertion | comprehension-accuracy
+    pub kind: String,
+    #[serde(default)]
+    pub check: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct Budget {
+    #[serde(default)]
+    pub max_wall_clock_min: u64,
+    #[serde(default)]
+    pub max_human_touches: u64,
+}
+
+/// The verdict of an acceptance check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Verdict {
+    Pass,
+    Fail,
+    Unknown,
+}
+
+/// Grade a set of CI check-run conclusions. FAIL if any conclusive run failed; PASS if at least
+/// one ran and none failed; UNKNOWN if nothing conclusive ran (e.g. CI is PR-scoped, not on the
+/// branch we looked at). Conservative on purpose — a lap only PASSES on real green.
+pub fn grade_check_conclusions(conclusions: &[String]) -> Verdict {
+    let mut any_ok = false;
+    for c in conclusions {
+        match c.trim().to_lowercase().as_str() {
+            "failure" | "cancelled" | "timed_out" | "action_required" | "startup_failure"
+            | "stale" => return Verdict::Fail,
+            "success" | "neutral" | "skipped" => any_ok = true,
+            _ => {}
+        }
+    }
+    if any_ok {
+        Verdict::Pass
+    } else {
+        Verdict::Unknown
+    }
+}
+
+/// The overall lap result: FAIL unless acceptance PASSED; then PASS if within the human-touch
+/// budget, else PARTIAL (the acceptance was met, but a human had to reach in to get there).
+pub fn overall_result(acc: Verdict, human_touches: Option<u64>, max_touches: u64) -> &'static str {
+    match acc {
+        Verdict::Fail | Verdict::Unknown => "FAIL",
+        Verdict::Pass => match human_touches {
+            Some(t) if t > max_touches => "PARTIAL",
+            _ => "PASS",
+        },
+    }
+}
+
+/// A scored lap.
+#[derive(Debug, Serialize)]
+pub struct LapScore {
+    pub track: String,
+    pub mode: String,
+    pub repo: String,
+    pub acceptance_kind: String,
+    pub acceptance_verdict: Verdict,
+    pub result: String,
+    pub human_touches: Option<u64>,
+    pub detail: String,
+}
+
+fn gh_bin() -> String {
+    std::env::var("CHUMP_BENCH_GH_BIN")
+        .or_else(|_| std::env::var("CHUMP_GH_BIN"))
+        .unwrap_or_else(|_| "gh".to_string())
+}
+
+/// Grade a `ci-green` acceptance: query the repo's default-branch tip check-runs via gh.
+fn fetch_ci_verdict(repo: &str) -> (Verdict, String) {
+    let branch = Command::new(gh_bin())
+        .args([
+            "repo",
+            "view",
+            repo,
+            "--json",
+            "defaultBranchRef",
+            "--jq",
+            ".defaultBranchRef.name",
+        ])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "main".to_string());
+    let out = Command::new(gh_bin())
+        .args([
+            "api",
+            &format!("repos/{repo}/commits/{branch}/check-runs"),
+            "--jq",
+            ".check_runs[].conclusion",
+        ])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => {
+            let concl: Vec<String> = String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty() && s != "null")
+                .collect();
+            if concl.is_empty() {
+                (
+                    Verdict::Unknown,
+                    format!("no conclusive CI on {branch} (checks may be PR-scoped)"),
+                )
+            } else {
+                (
+                    grade_check_conclusions(&concl),
+                    format!("{} check(s) on {branch}: {concl:?}", concl.len()),
+                )
+            }
+        }
+        _ => (Verdict::Unknown, "could not query CI via gh".to_string()),
+    }
+}
+
+/// Trailer-based provenance count over the last 50 commits of a local clone: (human, zero_touch,
+/// scanned). A commit carrying `Chump-Agent:` is the OS's; one lacking it (and not a bot) is a
+/// human touch (COTG-3.2). Kept self-contained so the runner compiles independently of the
+/// CREDIBLE-171 metric; both share the same trailer rule and can be deduped once both land.
+fn count_provenance(clone: &Path) -> Option<(u64, u64, u64)> {
+    let out = Command::new("git")
+        .args([
+            "-C",
+            &clone.to_string_lossy(),
+            "log",
+            "origin/HEAD",
+            "-n50",
+            "--format=%an%x1f%ae%x1f%b%x1e",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let (mut human, mut zt, mut scanned) = (0u64, 0u64, 0u64);
+    for rec in text.split('\u{1e}') {
+        let rec = rec.trim_matches(|c| c == '\n' || c == '\r');
+        if rec.is_empty() {
+            continue;
+        }
+        let f: Vec<&str> = rec.split('\u{1f}').collect();
+        if f.len() < 3 {
+            continue;
+        }
+        scanned += 1;
+        if f[2].to_lowercase().contains("chump-agent:") {
+            zt += 1;
+        } else {
+            let idl = format!("{} {}", f[0], f[1]).to_lowercase();
+            if !(idl.contains("bot") || idl.contains("github-actions")) {
+                human += 1;
+            }
+        }
+    }
+    Some((human, zt, scanned))
+}
+
+/// The local clone the external-improve flow leaves on disk for a repo (if any).
+fn local_clone_dir(repo: &str) -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let slug = repo.replace('/', "_");
+    Path::new(&home)
+        .join(".chump/external")
+        .join(&slug)
+        .join("clone")
+}
+
+/// Map a process exit code to a verdict: 0 → PASS, non-zero → FAIL, no code (killed / spawn
+/// failure) → UNKNOWN. Pure + testable — the core of the `command` acceptance grader.
+pub fn verdict_from_exit(code: Option<i32>) -> Verdict {
+    match code {
+        Some(0) => Verdict::Pass,
+        Some(_) => Verdict::Fail,
+        None => Verdict::Unknown,
+    }
+}
+
+/// Grade a `command` acceptance: run the track's `check` as a shell command in `cwd` (the repo's
+/// local clone). PASS iff it exits 0. These commands come from OUR own in-repo track YAMLs — a
+/// test harness, not untrusted input. UNKNOWN if there's no clone to run in (drive a lap first).
+fn grade_command(check: &str, cwd: Option<&Path>) -> (Verdict, String) {
+    let Some(dir) = cwd else {
+        return (
+            Verdict::Unknown,
+            "no local clone to run the acceptance command in (drive an --apply lap first)"
+                .to_string(),
+        );
+    };
+    if check.trim().is_empty() {
+        return (
+            Verdict::Unknown,
+            "track has no acceptance command".to_string(),
+        );
+    }
+    match Command::new("sh")
+        .arg("-c")
+        .arg(check)
+        .current_dir(dir)
+        .output()
+    {
+        Ok(o) => {
+            let v = verdict_from_exit(o.status.code());
+            let tail: String = String::from_utf8_lossy(&o.stderr)
+                .lines()
+                .last()
+                .unwrap_or("")
+                .chars()
+                .take(80)
+                .collect();
+            let cmd: String = check.chars().take(60).collect();
+            let suffix = if tail.is_empty() {
+                String::new()
+            } else {
+                format!(" — {tail}")
+            };
+            (v, format!("`{cmd}` exit {:?}{suffix}", o.status.code()))
+        }
+        Err(e) => (
+            Verdict::Unknown,
+            format!("could not run acceptance command: {e}"),
+        ),
+    }
+}
+
+/// Best-effort human-touch tally for `repo` from a local clone the improve flow left on disk;
+/// otherwise None (a driven `--apply` lap produces the count).
+fn tally_human_touches(repo: &str) -> (Option<u64>, String) {
+    let clone = local_clone_dir(repo);
+    if !clone.join(".git").exists() {
+        return (
+            None,
+            "n/a — no local clone (a driven --apply lap produces the touch count)".to_string(),
+        );
+    }
+    match count_provenance(&clone) {
+        Some((human, zt, scanned)) if scanned > 0 => {
+            let ratio = zt as f64 / scanned as f64 * 100.0;
+            (
+                Some(human),
+                format!("{human} human / {zt} zero-touch of {scanned} commits ({ratio:.0}% zero-touch) in local clone"),
+            )
+        }
+        _ => (
+            None,
+            "n/a — could not read local clone provenance".to_string(),
+        ),
+    }
+}
+
+/// Load a track from a YAML file.
+pub fn load_track(path: &Path) -> Result<Track> {
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("reading track {}", path.display()))?;
+    serde_yaml::from_str(&text).with_context(|| format!("parsing track {}", path.display()))
+}
+
+/// Drive the track's mode engine (only on `--apply`). v1 wires IMPROVE/RESCUE → `chump improve`.
+fn drive_engine(track: &Track) -> Result<()> {
+    let chump = std::env::var("CHUMP_BENCH_CHUMP_BIN")
+        .or_else(|_| std::env::var("CHUMP_BIN"))
+        .unwrap_or_else(|_| "chump".to_string());
+    match track.mode.to_uppercase().as_str() {
+        "RESCUE" | "IMPROVE" => {
+            let status = Command::new(&chump)
+                .args(["improve", &track.repo, "--apply"])
+                .status()
+                .with_context(|| "spawn chump improve")?;
+            if !status.success() {
+                anyhow::bail!("engine `chump improve {}` exited non-zero", track.repo);
+            }
+            Ok(())
+        }
+        other => anyhow::bail!("engine-drive for mode {other} not wired yet (v1: RESCUE/IMPROVE)"),
+    }
+}
+
+/// Score a track: grade the acceptance check + tally touches. (Does not drive the engine.)
+pub fn score_track(track: &Track) -> LapScore {
+    let (acc, detail) = match track.acceptance.kind.to_lowercase().as_str() {
+        "ci-green" => fetch_ci_verdict(&track.repo),
+        // The universal gradeable primitive: run the acceptance command in the repo's clone,
+        // PASS iff exit 0. Covers test-passes (cargo/npm test), url-live (curl), the CREATE
+        // tool-runs check, and comprehension-accuracy (a validator that the map's paths exist).
+        "command" => {
+            let d = local_clone_dir(&track.repo);
+            let cwd = if d.exists() { Some(d) } else { None };
+            grade_command(&track.acceptance.check, cwd.as_deref())
+        }
+        other => (
+            Verdict::Unknown,
+            format!("acceptance kind '{other}' not graded yet (v1: ci-green | command)"),
+        ),
+    };
+    let (touches, touch_detail) = tally_human_touches(&track.repo);
+    let result = overall_result(acc, touches, track.budget.max_human_touches).to_string();
+    LapScore {
+        track: track.id.clone(),
+        mode: track.mode.clone(),
+        repo: track.repo.clone(),
+        acceptance_kind: track.acceptance.kind.clone(),
+        acceptance_verdict: acc,
+        result,
+        human_touches: touches,
+        detail: format!("{detail}; touches: {touch_detail}"),
+    }
+}
+
+fn usage() -> i32 {
+    eprintln!(
+        "chump bench — ChumpBench: run a track as a scoreable lap (DOC-072)\n\n\
+USAGE:\n  chump bench run --track <path.yaml> [--apply] [--json]\n\n\
+FLAGS:\n  \
+--track <path>   Path to a track YAML (e2e/chumpbench/<id>.yaml)\n  \
+--apply          Drive the track's mode engine first, THEN score (default: score current state)\n  \
+--json           Machine-readable scorecard"
+    );
+    2
+}
+
+/// CLI entry — dispatched from `main.rs` on `chump bench`.
+pub fn run(args: &[String]) -> i32 {
+    // args[0] is the subcommand ("run"); tolerate its absence.
+    let mut track_path: Option<String> = None;
+    let mut apply = false;
+    let mut json = false;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "run" => {}
+            "--track" => {
+                i += 1;
+                match args.get(i) {
+                    Some(p) => track_path = Some(p.clone()),
+                    None => {
+                        eprintln!("--track needs a path");
+                        return usage();
+                    }
+                }
+            }
+            "--apply" => apply = true,
+            "--json" => json = true,
+            "-h" | "--help" => return usage(),
+            other => {
+                eprintln!("unknown arg: {other}");
+                return usage();
+            }
+        }
+        i += 1;
+    }
+    let Some(tp) = track_path else {
+        eprintln!("a --track <path.yaml> is required");
+        return usage();
+    };
+    let track = match load_track(Path::new(&tp)) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("could not load track: {e:#}");
+            return 1;
+        }
+    };
+
+    if apply {
+        eprintln!("[bench] driving {} engine on {} …", track.mode, track.repo);
+        if let Err(e) = drive_engine(&track) {
+            eprintln!("[bench] engine drive failed: {e:#} — scoring current state anyway");
+        }
+    }
+
+    let score = score_track(&track);
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string(&score).unwrap_or_else(|_| "{}".into())
+        );
+        return 0;
+    }
+    println!("── ChumpBench lap: {} ──", score.track);
+    println!("  mode:       {}  repo: {}", score.mode, score.repo);
+    println!("  task:       {}", track.task);
+    println!(
+        "  acceptance: {} → {:?}",
+        score.acceptance_kind, score.acceptance_verdict
+    );
+    println!(
+        "  human touches: {}",
+        score
+            .human_touches
+            .map(|t| t.to_string())
+            .unwrap_or_else(|| "n/a".into())
+    );
+    println!("  RESULT:     {}", score.result);
+    println!("  detail:     {}", score.detail);
+    0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ci_grading_is_conservative() {
+        assert_eq!(
+            grade_check_conclusions(&["success".into(), "skipped".into()]),
+            Verdict::Pass
+        );
+        // any failure dominates
+        assert_eq!(
+            grade_check_conclusions(&["success".into(), "failure".into()]),
+            Verdict::Fail
+        );
+        // nothing conclusive → unknown, never a false pass
+        assert_eq!(grade_check_conclusions(&[]), Verdict::Unknown);
+        assert_eq!(
+            grade_check_conclusions(&["".into(), "null".into()]),
+            Verdict::Unknown
+        );
+    }
+
+    #[test]
+    fn overall_result_maps_verdict_and_touch_budget() {
+        // acceptance fail → FAIL regardless of touches
+        assert_eq!(overall_result(Verdict::Fail, Some(0), 0), "FAIL");
+        assert_eq!(overall_result(Verdict::Unknown, Some(0), 0), "FAIL");
+        // acceptance pass + within touch budget → PASS
+        assert_eq!(overall_result(Verdict::Pass, Some(0), 0), "PASS");
+        assert_eq!(overall_result(Verdict::Pass, None, 0), "PASS");
+        // acceptance pass but a human had to reach in → PARTIAL (the honest distinction)
+        assert_eq!(overall_result(Verdict::Pass, Some(3), 0), "PARTIAL");
+    }
+
+    #[test]
+    fn track_yaml_round_trips() {
+        let y = r#"
+id: rescue-beast-ci
+mode: RESCUE
+repo: repairman29/BEAST-MODE
+stack: javascript
+state: red-ci
+difficulty: medium
+task: "CI is red, fix it."
+acceptance:
+  kind: ci-green
+  check: "all checks pass"
+budget:
+  max_wall_clock_min: 30
+  max_human_touches: 0
+"#;
+        let t: Track = serde_yaml::from_str(y).unwrap();
+        assert_eq!(t.id, "rescue-beast-ci");
+        assert_eq!(t.mode, "RESCUE");
+        assert_eq!(t.acceptance.kind, "ci-green");
+        assert_eq!(t.budget.max_human_touches, 0);
+    }
+
+    #[test]
+    fn command_acceptance_grades_by_exit_code() {
+        // pure exit-code mapping
+        assert_eq!(verdict_from_exit(Some(0)), Verdict::Pass);
+        assert_eq!(verdict_from_exit(Some(1)), Verdict::Fail);
+        assert_eq!(verdict_from_exit(Some(127)), Verdict::Fail);
+        assert_eq!(verdict_from_exit(None), Verdict::Unknown);
+        // live: a real command in a tempdir — exit 0 → PASS, exit 1 → FAIL
+        let tmp = std::env::temp_dir();
+        assert_eq!(grade_command("true", Some(&tmp)).0, Verdict::Pass);
+        assert_eq!(grade_command("false", Some(&tmp)).0, Verdict::Fail);
+        // no clone to run in → UNKNOWN, never a false pass
+        assert_eq!(grade_command("true", None).0, Verdict::Unknown);
+        // empty check → UNKNOWN
+        assert_eq!(grade_command("   ", Some(&tmp)).0, Verdict::Unknown);
+    }
+}
