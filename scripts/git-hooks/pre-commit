@@ -1870,6 +1870,18 @@ if [ -x "$RUST_FIRST_HOOK" ]; then
     fi
 fi
 
+# 15b. Auto-document new CHUMP_* env vars (RESILIENT-207, 2026-07-29)
+# ------------------------------------------------------------------
+# Kills the chronic env-var-coverage CI failure (DOC-026, 5+/week fleet-wide) by
+# auto-appending any new CHUMP_* env ref to scripts/ci/env-vars-internal.txt on the
+# UNIVERSAL commit path (the INFRA-1853 auto-fixer only lived in chump-commit.sh, which
+# raw `git commit`s skip). NON-BLOCKING + fail-open: it only ever appends + stages; it
+# never fails a commit. Bypass: CHUMP_AUTO_ENVVAR=0.
+AUTODOC_ENVVAR_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-autodoc-envvars.sh"
+if [ -x "$AUTODOC_ENVVAR_HOOK" ]; then
+    "$AUTODOC_ENVVAR_HOOK" || true
+fi
+
 # 15b. Shared-service contract gate (INFRA-3463)
 # ------------------------------------------------------------------
 # Surfaces NEW bespoke LLM-API calls (curl/HTTP to api.anthropic.com /
