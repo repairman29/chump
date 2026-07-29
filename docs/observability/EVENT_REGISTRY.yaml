@@ -1525,6 +1525,14 @@ events:
     trigger: PR BLOCKED > 4h with no progress
     consumers: [audit-log, fleet]
 
+  - kind: armed_pr_needs_conflict_resolution
+    effect_metric: pr_rescue_action_within_4h
+    emitter: scripts/coord/armed-pr-rebaser.sh (INFRA-3473)
+    trigger: an open ARMED PR is DIRTY/BEHIND and rebasing it on origin/main hit a
+      real conflict; the rebaser aborts and flags it (never force-pushes a broken
+      state) for a human / conflict-resolver to resolve.
+    consumers: [audit-log, fleet]
+
   - kind: pr_stuck_cycle_1_rebase_attempted
     effect_metric: pr_auto_closed_for_respawn_within_30m
     emitter: scripts/ops/stale-pr-reaper.sh (INFRA-1410)
