@@ -281,6 +281,17 @@ fn run_inner(args: &[String]) -> Result<i32> {
     // ── Stage 3: IMPLEMENT ────────────────────────────────────────────────
     println!("\n[improve] Stage 3: IMPLEMENT — spawning agent in clone...");
 
+    // COTG-1.1/INFRA-3483: thread the typed autonomy FSM through improve's stages (the
+    // kernel ABI). The typestate makes the order compile-time-enforced — you cannot reach
+    // Done without passing Verifying, which needs Executing — so a mis-ordered refactor
+    // won't compile. Planning (pick + dedup) is complete here → enter Executing.
+    let fsm = crate::autonomy_fsm::AutonomyState::<crate::autonomy_fsm::Planning>::new()
+        .begin_execution(crate::autonomy_fsm::PlanningComplete {
+            task_id: 0,
+            has_acceptance: !picked.acceptance_criteria_draft.is_empty(),
+            has_verify: true,
+        });
+
     let pr_url = implement_gap(&opts, &clone_dir, &picked)?;
     let pr_number = extract_pr_number(&pr_url);
 
@@ -288,6 +299,12 @@ fn run_inner(args: &[String]) -> Result<i32> {
     if let Some(n) = pr_number {
         println!("[improve] PR number: #{n}");
     }
+
+    // COTG-1.1: implementation opened a PR → enter Verifying.
+    let fsm = fsm.begin_verification(crate::autonomy_fsm::ExecutionReceipt {
+        task_id: 0,
+        summary: pr_url.clone(),
+    });
 
     // ── Stage 4: VERIFY-MERGE ─────────────────────────────────────────────
     println!("\n[improve] Stage 4: VERIFY-MERGE — judging PR on merit...");
@@ -312,12 +329,27 @@ fn run_inner(args: &[String]) -> Result<i32> {
 
     emit_cycle_complete(&opts.owner_repo, &picked.title, &verdict, Some(&pr_url));
 
+    // COTG-1.1: drive the FSM to its terminal state. `complete` exists ONLY on
+    // AutonomyState<Verifying>, so this line is proof the flow passed through Verifying.
+    let outcome = crate::autonomy_fsm::VerificationOutcome {
+        task_id: 0,
+        status: verdict.clone(),
+        detail: pr_url.clone(),
+    };
     match verdict.as_str() {
         // Both are clean terminal states — no open-red PR left behind.
-        "verified" | "closed" => Ok(0),
+        "verified" | "closed" => {
+            let _ = fsm.complete(outcome);
+            eprintln!("[improve] FSM: Planning→Executing→Verifying→Done (COTG-1.1 kernel ABI)");
+            Ok(0)
+        }
         // Should not reach here (remediate_held always returns verified|closed),
-        // but keep the non-zero signal for any unforeseen path.
-        _ => Ok(1),
+        // but keep the non-zero signal + the FSM Failed transition for any unforeseen path.
+        _ => {
+            let _ = fsm.fail(outcome);
+            eprintln!("[improve] FSM: reached Failed");
+            Ok(1)
+        }
     }
 }
 
