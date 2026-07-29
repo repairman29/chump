@@ -144,6 +144,8 @@ First target: `repairman29/BEAST-MODE` — make the existing test suite run + pa
 in CI. High-value, verifiable, bootstraps verifiability for every future autonomous
 merge (the loop strengthens its own footing).
 
-Demo thesis: *Chump took BEAST-MODE from tests-that-don't-run to
-tests-that-gate-every-change, verified it against a bar a cosmetic change can't
-fake, and merged it itself — no human touched it.*
+Demo thesis (target — not yet achieved as of 2026-07-29; the mission scoreboard's
+zero-human-touch binary in `docs/MISSION.md` is still ①=NO): *Chump takes
+BEAST-MODE from tests-that-don't-run to tests-that-gate-every-change, verifies
+it against a bar a cosmetic change can't fake, and merges it itself — no human
+touches it.*

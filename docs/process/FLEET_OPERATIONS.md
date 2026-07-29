@@ -2,7 +2,7 @@
 
 **Canonical entry point:** `scripts/dispatch/run-fleet.sh` (INFRA-203, INFRA-211)
 
-A "fleet" is a set of N concurrent Claude Code agents, coordinated via `chump-local` or the Anthropic API, each picking and shipping high-priority gaps. This runbook covers the operator surface: launching fleets, adjusting scale/filters, tearing down, and diagnosing stalls.
+A "fleet" is a set of N concurrent agent workers (default backend `chump-local`, opt-in `claude` backend via the Anthropic API — see "API credit & backend selection" below), each picking and shipping high-priority gaps. This runbook covers the operator surface: launching fleets, adjusting scale/filters, tearing down, and diagnosing stalls.
 
 ---
 

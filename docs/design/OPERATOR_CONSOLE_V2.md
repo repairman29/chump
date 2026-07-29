@@ -20,6 +20,13 @@ status: proposal
 
 ## Mission framing
 
+> **Note (framing reset, docs/ROADMAP.md, 2026-05-16 — after this doc's last
+> audit):** infra IS the product; GitHub is where users live. Read
+> "offline-capable" below as a tier-3 differentiator alongside the others,
+> not as the core spine — the fleet's GitHub-facing reliability is what
+> customers actually pay for. The archetype-1 (offline solo dev) framing
+> below is still a real, valid target user; it just isn't the mission center.
+
 Chump exists to do agentic development **without** the constraints Claude Code
 inherits from being locked to Anthropic:
 

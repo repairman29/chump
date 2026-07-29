@@ -11,12 +11,13 @@ Framework for evaluating Chump's market position, pilot readiness, and competiti
 
 ## §1 — Product identity
 
-**North Star:** Understanding the user in Discord (or PWA) and acting on intent — infer what they want from natural language; create tasks, run commands, or answer without over-asking.
+**North Star (resolved 2026-07-29, see [NORTH_STAR.md](NORTH_STAR.md)):** Chump is an agentic operating system. Mission: **ship any vision, rescue any dream** — a fleet of agents runs a person's idea to shipped, working software, human at ring-0, not in the conductor's chair.
 
-**Three concurrent product axes** (tension documented in [PRODUCT_REALITY_CHECK.md](PRODUCT_REALITY_CHECK.md)):
-1. Personal ops bot (Discord/PWA, task management, intent parsing)
-2. Cognitive architecture research platform (A/B harness, consciousness framework)
-3. Fleet OS for personal compute (Mac + Pixel + cloud, inference mesh)
+**Four facets of one system** (was framed as three competing product axes in tension; resolved in [PRODUCT_REALITY_CHECK.md](PRODUCT_REALITY_CHECK.md)):
+0. The coordination layer — the coding-agent fleet (gap registry, leases, ambient stream, merge-queue) — the headline differentiator per [docs/ROADMAP.md](../ROADMAP.md)'s "infra IS the product" framing
+1. The optional built-in agent (Discord/PWA, task management, intent parsing)
+2. Cognitive architecture research platform (A/B harness, consciousness framework) — a research bet running inside facet 1, not a competing identity
+3. Personal-inference mesh (Mac + Pixel + cloud) — supports facet 1, distinct from the coding-agent fleet in facet 0
 
 ## §2 — Baseline scores
 

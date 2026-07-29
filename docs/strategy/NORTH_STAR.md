@@ -10,6 +10,22 @@ last_audited: 2026-04-25
 
 ---
 
+## Mission
+
+**Ship any vision. Rescue any dream.**
+
+Chump is an **agentic operating system** — the coordination and governance
+layer that runs a fleet of autonomous agents to turn a person's idea into
+real, shipped, working software, with the human at ring-0, not in the
+conductor's chair. That's the whole point. Not a framework you assemble an
+agent crew with — an OS a vision runs on. See
+[docs/ROADMAP.md — "The ChumpOS arc"](../ROADMAP.md) for the phased path
+from here to there, and the mission scoreboard
+(`bash scripts/dev/mission-scoreboard.sh`) for the one honest measure of
+whether it's actually happening yet (today: not yet — see the Status footer).
+
+---
+
 ## The Bet
 
 Most AI development is a race to scale: bigger models, more compute, higher API bills. Chump is a bet against that race.
@@ -22,11 +38,17 @@ The cognitive architecture underneath Chump — free energy, surprise tracking, 
 
 ## What Chump Is
 
-Chump is the gold standard framework for building autonomous AI agents. Written in Rust. Built for the future.
+Chump is an operating system, not a framework — you don't assemble an agent
+crew with it, you run your vision on it and it ships. Written in Rust. Built
+for the future.
 
-Not a chatbot wrapper. Not a Discord bot. Not a demo. A foundation — local-first, air-gapped capable, designed to run forever and grind — that becomes whatever anyone needs it to be.
+Not a chatbot wrapper. Not a Discord bot. Not a demo. A foundation — local-
+first, air-gapped capable, designed to run forever and grind — that becomes
+whatever anyone needs it to be.
 
-The interfaces (Discord, web, CLI, PWA) are entry points. The agent underneath is the product.
+The interfaces (Discord, web, CLI, PWA) are entry points. The coordination
+layer underneath — the thing that lets a fleet of agents pick up a vision and
+actually finish it — is the product.
 
 ---
 
@@ -74,6 +96,14 @@ That is the bar.
 
 ## The Fleet
 
+> **Naming note:** "fleet" means two related but distinct things across this
+> repo. Here, it's the personal *inference mesh* below — multiple physical
+> machines splitting/serving local models for one person's built-in agent.
+> Elsewhere (docs/ROADMAP.md, CLAUDE.md), "the fleet" is the *coding-agent
+> fleet* — many agent sessions coordinating on a shared codebase via the gap
+> registry, leases, and ambient stream. Both are real; they're different
+> layers of the same ChumpOS system, not competing visions.
+
 Consumer hardware is not powerful enough today to run a 70B model on a single machine. It will be — but not yet. Most people respond to this by paying a cloud provider. Chump responds differently.
 
 A network of Raspberry Pis, old laptops, or cheap mini-PCs running Chump instances can collectively do what no single machine can. Each node runs its own local model, or the network splits a larger model across nodes using distributed inference. Nodes coordinate — sharing tasks, splitting work, supervising each other, healing when one goes down. The mesh grinds autonomously. The user doesn't manage the fleet; Chump manages it.
@@ -113,9 +143,9 @@ If the answer to all four is no, it is probably not the next thing to build.
 
 ---
 
-## Status footer (2026-05-12)
+## Status footer (2026-05-12, identity resolved 2026-07-29)
 
-This document is the **founder's statement of original intent**. It will be revisited but is not rewritten on partial data.
+This document is the **founder's statement of original intent**. It will be revisited but is not rewritten on partial data — the 2026-07-29 edit above is an explicit founder decision (converging on "ChumpOS," mission "ship any vision, rescue any dream"), not an agent inferring a rewrite from ambiguous evidence.
 
 Current evidence on the cognitive-architecture bet, recorded in the spirit of [`docs/process/RESEARCH_INTEGRITY.md`](../process/RESEARCH_INTEGRITY.md):
 

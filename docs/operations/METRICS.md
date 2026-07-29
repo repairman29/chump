@@ -391,7 +391,7 @@ SELECT COUNT(*) FROM chump_memory WHERE expires_at IS NOT NULL
 
 ## A/B eval metrics (live research)
 
-These metrics come from the formal A/B eval harness used in Chump's cognitive architecture research. See [research/consciousness-framework-paper.md](research/consciousness-framework-paper.md) for full methodology and current results. **Research is ongoing** — larger model tests (32B, 70B) have not been run yet.
+These metrics come from the formal A/B eval harness used in Chump's cognitive architecture research. Full methodology: [`docs/process/RESEARCH_INTEGRITY.md`](../process/RESEARCH_INTEGRITY.md). Current results (specific deltas, n-values, model-tier outcomes) are tracked privately per [`docs/agents/RESEARCH_PRIVACY.md`](../agents/RESEARCH_PRIVACY.md) — contact the project owner for access. **Research is ongoing and not yet validated** per the Prohibited Claims table in RESEARCH_INTEGRITY.md.
 
 ### Hallucination delta
 
@@ -406,7 +406,7 @@ mean_delta = sum(hallucination_delta) / n
 
 `hallucinated_tools` is scored by mechanical regex: any tool name appearing in model output that was not in the registered tool list for that turn counts as one hallucination event.
 
-**Current finding (cloud frontier, n=100):** Lessons block injection increases hallucination delta by +0.14 pp mean (≈ +0.0014 absolute rate on a 0–1 indicator), vs A/A noise floor mean of −0.013 pp. Ratio: **10.7×** — well outside noise.
+**Current finding:** Specific deltas, sample sizes, and noise-floor comparisons for this metric are tracked privately per [`docs/process/RESEARCH_INTEGRITY.md`](../process/RESEARCH_INTEGRITY.md) and [`docs/agents/RESEARCH_PRIVACY.md`](../agents/RESEARCH_PRIVACY.md) — contact the project owner for the current result set. The methodology (below) is public; the magnitudes are not.
 
 **A/A control check:** Before trusting any A/B delta, verify that your A/A delta (same condition both arms) is near zero. The A/A mean should be < 0.02 in absolute terms for n≥50.
 
@@ -428,10 +428,7 @@ wilson_ci(k, n, z=1.96):
 
 **How to read:** If the Wilson CI for the B condition does not overlap the CI for the A condition, the effect is statistically distinguishable at the 95% level. Non-overlapping CIs are the minimum bar for reporting a result as meaningful.
 
-**Example (COG-001, 1B model, lessons on vs off):**
-- Control (off): pass rate 0.62, CI [0.52, 0.71]
-- Treatment (on): pass rate 0.72, CI [0.62, 0.80]
-- CIs overlap → not independently significant at this n; Scaffolding U-curve effect at 1B requires replication.
+**Example:** Illustrative only — `wilson_ci(k=31, n=50)` → center ≈0.62, margin ≈0.13. For real per-model-tier results (which condition, which pass rate, which n), see the private companion repo per `docs/process/RESEARCH_INTEGRITY.md` — do not restate specific model-tier + pass-rate pairs here.
 
 ---
 
@@ -445,7 +442,7 @@ wilson_ci(k, n, z=1.96):
 tool_efficiency_delta = mean(b.tool_calls_per_task) - mean(a.tool_calls_per_task)
 ```
 
-**Current finding (COG-006, neuromodulation ablation, qwen3:8b):** +12pp pass rate with neuromodulation, but tool efficiency delta = **−0.600** on dynamic tasks (neuromod costs ~0.6 extra tool calls per task). This trade-off matters for latency and cost.
+**Current finding:** Neuromodulation ablation results (which model tier, pass-rate delta, tool-efficiency trade-off) are tracked privately per `docs/process/RESEARCH_INTEGRITY.md` — the qualitative point (a pass-rate gain can come with a tool-call-count cost) is public; the specific magnitudes and model-tier pairing are not.
 
 ---
 
@@ -467,19 +464,9 @@ Standard Chump A/B evals score each task on three axes:
 
 **What it measures:** Non-monotonic relationship between model scale and scaffolding benefit.
 
-**Current data (local models, COG-001):**
+**Current data:** Per-model-tier pass-rate deltas are tracked privately per `docs/process/RESEARCH_INTEGRITY.md` and `docs/agents/RESEARCH_PRIVACY.md` (model-tier names paired with outcome numbers are explicitly the kind of content that stays in the private companion repo). The qualitative shape (a non-monotonic, U-shaped relationship across scale) is a public methodology note; specific tiers, deltas, and which sizes are tested vs. predicted are not.
 
-| Model size | Pass rate delta (on vs off) | Interpretation |
-|-----------|---------------------------|----------------|
-| 1B | +10pp | Benefits from scaffolding |
-| 3B | −5pp | Hurt by scaffolding (over-constraint) |
-| 7B | −5pp | Hurt by scaffolding |
-| 8B | ~0pp | Neutral |
-| 14B | +10pp | Benefits from scaffolding |
-| 32B | not tested | Predicted: benefit |
-| 70B | not tested | Predicted: benefit |
-
-**Status:** Preliminary. The U-curve at 1B–14B is a real empirical finding from COG-001. The prediction that it continues improving above 14B is extrapolation — **unconfirmed until 32B/70B tests are run**.
+**Status:** Preliminary and under ongoing methodological scrutiny — see `docs/process/RESEARCH_INTEGRITY.md` Prohibited Claims table before citing this finding anywhere.
 
 ---
 
@@ -505,4 +492,4 @@ WHERE experiment_id = 'COG-001'
 GROUP BY condition;
 ```
 
-See the [consciousness framework paper](https://github.com/repairman29/chump/blob/main/docs/research/consciousness-framework-paper.md) for the raw COG-001, COG-006, and cloud hallucination study results. See [`docs/research/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/research/CONSCIOUSNESS_AB_RESULTS.md) for per-cell forensics.
+**Note (RESEARCH_PRIVACY.md, 2026-05-05 IP-protection sweep):** result-content docs referenced from earlier drafts of this section (e.g. a "consciousness framework paper" and an "AB results" doc) are exactly the kind of artifact the sweep moved to the private companion repo `chump-proprietary` — specific deltas, n-values, model-tier-paired outcomes, and per-cell forensics tables are not for the public repo. If a doc under `docs/research/` still contains that content, it is stale and should be flagged/scrubbed under the same policy, not linked to as a source of "current results."

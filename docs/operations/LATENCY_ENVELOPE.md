@@ -6,7 +6,7 @@ last_audited: 2026-04-25
 
 # Latency envelope (daily driver proof)
 
-**Purpose:** Satisfy [ROADMAP.md](ROADMAP.md) **Architecture vs proof → Latency envelope** with a **repeatable procedure** and a **dated table** of median / p90 wall times on the machine you actually use for green-path work.
+**Purpose:** Satisfy the **Architecture vs proof → Latency envelope** item (originally tracked in `docs/archive/strategy-2026-04/ROADMAP-superseded.md`, since superseded by [`docs/ROADMAP.md`](https://github.com/repairman29/chump/blob/main/docs/ROADMAP.md)) with a **repeatable procedure** and a **dated table** of median / p90 wall times on the machine you actually use for green-path work.
 
 **Not a substitute for your numbers:** Paste measured rows into this file or into [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) **Measured latency envelope** (append-only).
 

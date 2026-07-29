@@ -8,7 +8,7 @@ status: v1 — Chief of Product canon, 2026-05-16
 
 # Offline-Compliance Rubric
 
-> **Mission anchor:** Chump enables offline solo devs on local LLMs. The bespoke coordination layer (NATS, state.db, ambient.jsonl, file leases) is **load-bearing strategy, not tech debt**. The Pi mesh (4 Pis, no internet, Llama on each) is the target deployment. The airplane-with-MacBook is the minimum viable test. — `project_offline_local_llm_mission.md`
+> **Positioning note (docs/ROADMAP.md framing reset, 2026-05-16):** infra is the product and GitHub is where users live — offline/air-gapped support is a **tier-3 differentiator** for air-gapped, regulated, and cost-constrained users, not the headline pitch. Within that scope it's still real engineering discipline, not tech debt: the bespoke coordination layer (NATS, state.db, ambient.jsonl, file leases) is what makes the offline path possible without a parallel system, and the Pi mesh (4 Pis, no internet, Llama on each) / airplane-with-MacBook scenarios remain the regression targets for that capability. — `project_offline_local_llm_mission.md`
 
 Every gap filed against Chump must answer one question: **does this work when the laptop is on an airplane?**
 

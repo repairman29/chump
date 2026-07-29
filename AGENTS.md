@@ -26,8 +26,10 @@ shared codebase, using lease-based file ownership, a coordination event stream
 backend), several supporting crates, and a docs/ ledger that drives autonomous
 gap-picking.
 
-Chump's own development is done by the fleet — Claude Code, opencode, and
-manual operator commits all interop through the same coordinator primitives.
+Chump's own development is done by the fleet on a swappable harness
+(`CHUMP_AGENT_HARNESS`) — OpenCode is the default model gateway for bulk work,
+Claude Code is reserved as the hard-ship fallback, and manual operator commits
+all interop through the same coordinator primitives.
 
 > **The load-bearing mission lives in [`docs/MISSION.md`](./docs/MISSION.md)**
 > (MISSION-014). Canonical mission gap: **MISSION-010**. Read it before filing

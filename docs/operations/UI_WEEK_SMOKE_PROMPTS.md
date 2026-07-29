@@ -29,7 +29,7 @@ For Scenario B in LATENCY_ENVELOPE.md:
 
 Expected tool sequence:
 1. `list_gaps` (filter: prefix=EVAL, status=open)
-2. `read_file` (docs/archive/strategy-2026-04/ROADMAP-superseded.md or ROADMAP_FULL.md)
+2. `read_file` (docs/ROADMAP.md or docs/strategy/ROADMAP_FULL.md)
 3. LLM synthesis → recommendation
 
 Pass: All 3 tools fire in order; recommendation is sensible and cites gap IDs.
@@ -42,7 +42,7 @@ Run these 3 prompts in sequence in the same session:
 2. "What model tiers does it apply to?"
 3. "Has it been validated at n=100?"
 
-**Pass:** Response 3 builds on responses 1 and 2 without re-explaining; correct answer (yes, EVAL-025, p < 0.05).
+**Pass:** Response 3 builds on responses 1 and 2 without re-explaining; correct answer references that COG-016 has supporting eval results without citing specific eval IDs, sample sizes, or p-values (per `docs/agents/RESEARCH_PRIVACY.md` — those specifics are prohibited in public docs and public-facing agent output alike).
 
 ## Running the smoke suite
 

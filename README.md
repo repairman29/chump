@@ -4,6 +4,12 @@
 
 Runs on your hardware. Your keys, your data, your machine.
 
+Longer-term, Chump is building toward an **agentic operating system** — the
+coordination + governance layer that runs a fleet of swappable coding-agent
+harnesses, with the human at ring-0, not in the conductor's chair. See
+[docs/ROADMAP.md](docs/ROADMAP.md#the-chumpos-arc--the-multi-cycle-north-star-2026-07-27)
+for the current phase (today: substrate & governance) and honest status.
+
 Chump has two co-equal lanes:
 
 - **The coordinator** — file-based leases, an `ambient.jsonl` peripheral-vision stream, a SQLite gap registry, linked worktrees, and a merge-queue ship pipeline. Coordinates many concurrent agent sessions on the same repo without stomping each other. No specific agent required; any tool that can commit code and push a branch works.

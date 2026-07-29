@@ -66,7 +66,7 @@ For EACH of the four domains below, identify the single highest-leverage open qu
 **Per META-001:** if a domain's "open question" is whether a prior experiment was completed, run `git log origin/main --grep=<GAP-ID>` before claiming it stalled. A gap with shipped commits is an active investigation — surface the most recent commit and what's left, don't claim non-movement.
 
 **Domain A — Hallucination & Consciousness Research**
-The project has established a +0.14pp lessons-injection hallucination effect. What is the next experiment that would either replicate, refute, extend, or operationalize this finding? Consider: effect size across model families, dose-response curves, mechanistic explanations, interaction effects with tool count or context length.
+The project has established a lessons-injection hallucination effect (see the private companion repo `chump-proprietary` for the validated magnitude — do not restate the specific delta in this public doc per [RESEARCH_PRIVACY.md](./RESEARCH_PRIVACY.md)). What is the next experiment that would either replicate, refute, extend, or operationalize this finding? Consider: effect size across model families, dose-response curves, mechanistic explanations, interaction effects with tool count or context length.
 
 **Domain B — Capability Benchmarking**
 Chump runs agents — but how do we measure what they can actually do beyond binary pass/fail? Consider: information-theoretic measures of reasoning quality, calibration of model uncertainty, multi-step task decomposition fidelity, latency/quality Pareto frontiers.

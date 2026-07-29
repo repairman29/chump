@@ -40,21 +40,16 @@ Supplementary: **HippoRAG-inspired associative memory** → `memory_graph` (trip
 
 ---
 
-## 1.5 Empirical status (as of 2026-04-18)
+## 1.5 Empirical status
 
-> **This section is the honest accounting.** The modules in Section 2 are all shipped and wired. The A/B harness has been running since 2026-04-16. Here is what the data shows.
+**This section has been moved to a private repository.** Per-finding status
+(statistical significance, cross-tier confirmation, judge-bias results) is
+tracked in `chump-proprietary` per [RESEARCH_INTEGRITY.md](../process/RESEARCH_INTEGRITY.md) —
+contact the project owner for access.
 
-### What we know
-
-> **Specific magnitudes, model names, and n-values are tracked in the private companion repo (`chump-proprietary`)** per [RESEARCH_INTEGRITY.md](../process/RESEARCH_INTEGRITY.md). The summary below describes only the *shape* of the findings; contact the project owner for access to the underlying data.
-
-| Finding | Status |
-|---------|--------|
-| Lessons block has a measurable effect on fake-tool-call emission rate, above the A/A noise floor | **Statistically established** |
-| Effect direction is stable across model tiers, with magnitude variation | **Multi-model confirmed** |
-| Effect is invisible to single-axis binary pass-rate scoring | **Confirmed — multi-axis required** |
-| Within-family LLM judges reward hallucinated tool execution | **Confirmed — non-family judge needed** |
-| Smaller open-weight production-target models show a directionally consistent effect | **Preliminary, awaiting v2 confirmation** |
+The one publicly-sanctioned finding to date: **instruction injection has
+tier-dependent effects — prescriptive lessons help small models on specific
+tasks and harm frontier models.**
 
 ### What this means for the framework
 

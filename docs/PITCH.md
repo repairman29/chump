@@ -8,7 +8,11 @@
 
 ## What Chump is
 
-Chump is a multi-agent fleet coordinator. It takes natural-language gap
+Chump is building toward an **agentic operating system** — the coordination +
+governance layer that runs a fleet of swappable coding-agent harnesses to turn
+problems into shipped tools, with the human at ring-0, not in the conductor's
+chair (the "ChumpOS arc," see [docs/ROADMAP.md](ROADMAP.md)). Today, concretely,
+it is a multi-agent fleet coordinator: it takes natural-language gap
 descriptions — filed to a SQLite registry — and turns them into merged pull
 requests, autonomously, without human review at every step. A fleet of coding
 agents (Claude Code, opencode, Codex CLI, or anything that can push a branch)
@@ -117,6 +121,13 @@ tail -f .chump-locks/ambient.jsonl | jq -r '.kind'   # live fleet event stream
 tracking) is experimental — the first A/B returned null at the preregistered
 threshold. The coordination layer is not experimental; it runs production workloads.
 
+**Honest state on the ChumpOS arc:** it's gated phases, and today is Phase 0
+(substrate & governance) — not Phase 2's kernel ABI, which is still blocked. The
+mission scoreboard's own binary check — a zero-human-touch PR merged in
+`repairman29/BEAST-MODE` this week — is **not yet YES**; run
+`bash scripts/dev/mission-scoreboard.sh` for the live number before citing this
+pitch as proof the end-to-end mission is achieved.
+
 ---
 
 ## Where to start
@@ -133,3 +144,9 @@ threshold. The coordination layer is not experimental; it runs production worklo
 ---
 
 _Last refreshed: 2026-05-29_
+
+> **Note (2026-07-29 ChumpOS ground-truth audit):** the shipped/in-progress
+> lists above predate the June 22 → July 18 silent-fleet outage and the
+> 2026-07-27 ChumpOS framing. Cross-check against `docs/ROADMAP.md`'s current
+> cycle and `bash scripts/dev/mission-scoreboard.sh` before presenting this to
+> an external reviewer.

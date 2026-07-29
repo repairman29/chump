@@ -100,7 +100,7 @@ Every harness uses these — they're the agent-facing API (INFRA-1050 formalizes
 
 | Harness | Status | Identity | Notes |
 |---|---|---|---|
-| **Claude Code** | reference, in fleet | operator's git identity | Default. SDK provides Read/Edit/Bash tools; hooks fire ambient events automatically. |
+| **Claude Code** | reference, in fleet | operator's git identity | Hard-ship fallback via `CHUMP_AGENT_HARNESS` — as of the 2026-07-27 framing, OpenCode (`CHUMP_AGENT_HARNESS=opencode`) is the default model gateway, not Claude Code. SDK provides Read/Edit/Bash tools; hooks fire ambient events automatically. |
 | **opencode-bigpickle** | exists, ships PRs | `bigpickle@chump.bot` | Jeff's opencode variant. Mixed quality (private operator notes). |
 | **manual** | minimum-viable | operator's git identity | `CHUMP_AGENT_HARNESS=manual` (INFRA-956). Operator reads briefing, edits by hand, commits manually. Tests the contract bottom-up. |
 | **codex** | planned (INFRA-1054) | TBD | Second canonical non-Anthropic harness; empirical proof of independence. |
