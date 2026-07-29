@@ -2947,9 +2947,35 @@ if [[ "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
     exec 200>"$_bm_lock_file" || { warn "[INFRA-860] Could not open bot-merge.lock — skipping mutex"; exec 200>/dev/null; }
 
     if ! "$FLOCK_BIN" -w 60 200 2>/dev/null; then
-        red "[INFRA-860] bot-merge.lock: timed out waiting 60s — another bot-merge is stuck?"
-        exit 2
+        # INFRA-3513: the 60s wait expired. A killed/timed-out prior bot-merge can leave an
+        # orphan child (a `sleep`) holding fd 200 forever (INFRA-860, ~line 278), so the lock
+        # looks "stuck" even though no bot-merge is running — this stalled the ship queue 3x
+        # on 2026-07-29, forcing hand-created PRs. Tell a STALE (dead-holder) lock from real
+        # contention via the PID sidecar: if the recorded holder is dead/unknown, REAP it by
+        # rotating the lock file (the orphan keeps its lock on the now-unlinked inode,
+        # harmlessly; our fresh fd locks a new inode). A LIVE holder is respected.
+        _bm_holder=""
+        [[ -f "${_bm_lock_file}.holder" ]] && _bm_holder=$(awk 'NR==1{print $1}' "${_bm_lock_file}.holder" 2>/dev/null)
+        _bm_amb="${CHUMP_AMBIENT_LOG:-${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl}"
+        mkdir -p "$(dirname "$_bm_amb")" 2>/dev/null || true
+        if [[ -z "$_bm_holder" ]] || ! kill -0 "$_bm_holder" 2>/dev/null; then
+            red "[INFRA-3513] bot-merge.lock held by a DEAD/unknown holder (${_bm_holder:-none}) — reaping the stale lock."
+            printf '{"ts":"%s","kind":"bot_merge_stale_lock_reaped","branch":"%s","dead_holder":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "${_bm_holder:-none}" >> "$_bm_amb" 2>/dev/null || true
+            rm -f "$_bm_lock_file" "${_bm_lock_file}.holder" 2>/dev/null || true
+            exec 200>"$_bm_lock_file" || { warn "[INFRA-860] Could not reopen bot-merge.lock"; exec 200>/dev/null; }
+            if ! "$FLOCK_BIN" -w 10 200 2>/dev/null; then
+                red "[INFRA-860] bot-merge.lock: still contended after reaping — a live bot-merge may exist."
+                exit 2
+            fi
+        else
+            red "[INFRA-860] bot-merge.lock: held by a LIVE bot-merge (pid ${_bm_holder}) — waited 60s, giving up."
+            exit 2
+        fi
     fi
+    # INFRA-3513: record the live holder (pid + epoch) so a later run can distinguish a
+    # stale orphan-held lock from genuine contention.
+    printf '%s %s\n' "$$" "$(date +%s)" > "${_bm_lock_file}.holder" 2>/dev/null || true
     _bm_wait=$(( $(date +%s) - _bm_lock_start ))
     if [[ "$_bm_wait" -gt 5 ]]; then
         info "[INFRA-860] bot-merge.lock: waited ${_bm_wait}s (contention detected)"
