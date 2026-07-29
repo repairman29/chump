@@ -420,19 +420,13 @@ impl HandoffContract for ExternalRepoContract {
     }
 
     fn prompt(input: &Self::Input) -> String {
-        let fork_line = match &input.fork_owner {
-            Some(owner) => format!(
-                "Fork owner: {owner} (open the PR from a fork, not directly on the upstream)"
-            ),
-            None => "Fork owner: none (push directly to a branch on the upstream)".to_string(),
-        };
         format!(
-            r#"You are shipping a change into an external repository on behalf of the Chump fleet.
+            r#"You are making a code change in an external repository on behalf of the Chump
+fleet. The fleet handles ALL git operations — you ONLY edit files in the working tree.
 
 External repo   : {external_repo}
-Local clone path: {repo_local_path}
-Base branch     : {base_branch}
-{fork_line}
+Working checkout: {repo_local_path}   (already on a fresh per-agent branch — do NOT create or switch branches)
+Base branch     : {base_branch}       (the PR the fleet opens will target this)
 
 Proposed change:
 {proposed_gap_description}
@@ -482,41 +476,25 @@ SELF-VERIFY — run ALL three checks BEFORE opening the PR:
   fix the implementation or the test before pushing.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Steps:
-1. `cd {repo_local_path}`; confirm the clone is on a clean checkout of `{base_branch}`.
-2. Create a short descriptive branch name and check it out.
-3. Identify the behavioral defect or missing behavior to fix and write a test for it.
-4. Confirm the test FAILS on the base commit (self-verify step 1).
-5. Implement the change that makes the test pass.
-6. Confirm the test PASSES on your head commit (self-verify step 2).
-7. Confirm the full test suite is GREEN on your head commit (self-verify step 3).
-8. `git add` + `git commit` (conventional-commit style message).
-9. Push the branch and open a PR against `{base_branch}` on `{external_repo}`.
-10. Emit a single fenced JSON block with the exact shape below — no other JSON, no extra commentary outside the block.
+Steps — EDIT ONLY, no git:
+1. Work in {repo_local_path} on the current branch. Do NOT create or switch branches, and
+   do NOT `git commit`, `git push`, or `gh pr create` — the fleet performs the commit,
+   push, and PR deterministically after you finish (this is why your change ships reliably
+   instead of depending on you to run git correctly).
+2. Identify the behavioral defect or missing behavior, and write a test for it.
+3. Confirm the test FAILS on the base commit.
+4. Implement the change that makes the test pass.
+5. Confirm the test PASSES and the full suite is GREEN with your change.
+6. Leave EVERY change UNCOMMITTED in the working tree, then stop and briefly summarize:
+   what you changed, which test proves it, and your self-verify result (failed on base,
+   passed on head, full suite green).
 
-```json
-{{
-  "pr_url": "https://github.com/{external_repo}/pull/<N>",
-  "head_ref": "<branch-you-pushed>",
-  "base_ref": "{base_branch}",
-  "files_touched": ["<repo-relative path>", ...],
-  "commit_sha": "<full 40-char SHA>",
-  "notes": "<what you did and why, which test was added/changed, and how you confirmed it fails-on-base and passes-on-head>"
-}}
-```
-
-Rules:
-- `pr_url` MUST be the real URL returned by `gh pr create` — do not fabricate it.
-- `files_touched` MUST list every file the diff modifies, including the test file.
-- `commit_sha` MUST be the full 40-character SHA of the head commit (`git rev-parse HEAD`).
-- Keep `notes` factual: what changed and why, no filler.  Include which test was added/changed
-  and your self-verify result (test failed on base, passed on head, full suite green on head).
-"#,
+If you cannot satisfy the MERGE BAR, make NO changes and say why — an empty working tree
+is an honest outcome the fleet will report; a fabricated or unprovable change is not."#,
             external_repo = input.external_repo,
             repo_local_path = input.repo_local_path,
             base_branch = input.base_branch,
             proposed_gap_description = input.proposed_gap_description,
-            fork_line = fork_line,
         )
     }
 
@@ -1564,7 +1542,16 @@ mod tests {
         assert!(p.contains("/tmp/derelict"));
         assert!(p.contains("Add retry logic to fetch"));
         assert!(p.contains("main"));
-        assert!(p.contains("repairman29"));
+        // COTG-1.2/INFRA-3484: the contract is now EDIT-ONLY — the agent does not commit,
+        // push, or open a PR (the fleet's deterministic_ship does), so the prompt must tell
+        // it so and must NOT ask it to emit a pr_url. Fork ownership is a fleet concern now,
+        // no longer surfaced to the agent.
+        assert!(p.contains("EDIT ONLY"), "prompt must instruct edit-only");
+        assert!(p.contains("do NOT"), "prompt must forbid git ops");
+        assert!(
+            !p.contains("pr_url"),
+            "edit-only prompt must not ask for a pr_url"
+        );
     }
 
     // IntegrationCycleContract tests ──────────────────────────────────────────
