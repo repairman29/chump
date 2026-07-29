@@ -901,6 +901,132 @@ fn model_to_class(model: &str) -> &'static str {
     }
 }
 
+/// First `https://github.com/<owner>/<repo>/pull/<N>` URL in text (gh's own output),
+/// distinct from `extract_pr_url_from_output` which parses an agent's JSON block.
+fn first_github_pr_url(s: &str) -> Option<String> {
+    s.split_whitespace()
+        .map(|t| t.trim_matches(|c: char| !c.is_ascii_graphic()))
+        .find(|t| t.starts_with("https://github.com/") && t.contains("/pull/"))
+        .map(|t| t.to_string())
+}
+
+/// COTG-1.2/INFRA-3484: the deterministic ship ceremony. The implement-agent is
+/// EDIT-ONLY (see ExternalRepoContract) — the FLEET turns its uncommitted edits into a
+/// PR, deterministically, never depending on a model to run git/gh correctly (the
+/// 2026-07-29 live failure: both a weak and a strong model edited but never shipped).
+/// Stages the worktree, commits under the agent identity WITH the `Chump-Agent` trailer
+/// (so the zero-touch scoreboard, COTG-3.3, always counts it), pushes the per-agent
+/// branch, opens the PR against base, and returns its URL. An empty working tree is an
+/// honest "no change" error — never a phantom PR.
+fn deterministic_ship(
+    work_dir: &Path,
+    owner_repo: &str,
+    base_branch: &str,
+    gap: &ProposedGap,
+    id: &AgentIdentity,
+) -> Result<String> {
+    let wd = work_dir.to_string_lossy().to_string();
+    // 1. stage everything the agent touched, then DROP chump's own runtime droppings that
+    //    agent-run writes into the cwd (`.chump-locks/`, `sessions/`, `.chump/`). They are
+    //    not part of the change and must never ship in the PR (observed on BEAST #34).
+    let _ = Command::new("git").args(["-C", &wd, "add", "-A"]).status();
+    for junk in [".chump-locks", "sessions", ".chump"] {
+        let _ = Command::new("git")
+            .args(["-C", &wd, "reset", "-q", "HEAD", "--", junk])
+            .status();
+    }
+    // 2. anything real left to ship? (git diff --cached --quiet exits 0 == no staged changes)
+    let nothing_staged = Command::new("git")
+        .args(["-C", &wd, "diff", "--cached", "--quiet"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(true);
+    if nothing_staged {
+        bail!(
+            "agent made no changes for '{}' — nothing to ship (honest no-change, not a phantom PR)",
+            gap.title
+        );
+    }
+    // 3. resolve the per-agent worktree branch (created by ensure_improve_worktree).
+    let branch = Command::new("git")
+        .args(["-C", &wd, "rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|b| !b.is_empty() && b != "HEAD")
+        .ok_or_else(|| anyhow::anyhow!("could not resolve the agent worktree branch in {wd}"))?;
+    // 4. commit under the agent identity + the Chump-Agent trailer (provable zero-touch).
+    let title: String = gap.title.trim().chars().take(72).collect();
+    let msg = format!(
+        "{title}\n\n{}\n\n{}",
+        build_gap_description(gap),
+        id.trailer()
+    );
+    let mut commit = Command::new("git");
+    commit.args(["-C", &wd, "commit", "-m", &msg]);
+    id.apply_git_env(&mut commit);
+    if !commit.status().map(|s| s.success()).unwrap_or(false) {
+        bail!("git commit failed in {wd} (agent edits staged but not committed)");
+    }
+    // 5. push the per-agent branch to origin.
+    if !Command::new("git")
+        .args([
+            "-C",
+            &wd,
+            "push",
+            "-u",
+            "origin",
+            &branch,
+            "--force-with-lease",
+        ])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        bail!("git push of {branch} failed in {wd}");
+    }
+    // 6. open the PR against base and capture its URL from gh's output.
+    let body = format!(
+        "Automated change by the Chump fleet.\n\n{}\n\n{}",
+        build_gap_description(gap),
+        id.trailer()
+    );
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "pr",
+            "create",
+            "--repo",
+            owner_repo,
+            "--base",
+            base_branch,
+            "--head",
+            &branch,
+            "--title",
+            &title,
+            "--body",
+            &body,
+        ])
+        .current_dir(work_dir)
+        .output()
+        .with_context(|| "gh pr create (is gh on PATH?)")?;
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    // gh prints the URL on success; on "already exists" it prints the URL in stderr.
+    if let Some(url) = first_github_pr_url(&stdout).or_else(|| first_github_pr_url(&stderr)) {
+        return Ok(url);
+    }
+    if !out.status.success() {
+        bail!(
+            "gh pr create failed: {}",
+            stderr.trim().lines().next().unwrap_or("(no output)")
+        );
+    }
+    bail!(
+        "gh pr create succeeded but no PR URL in output: {}",
+        stdout.trim()
+    );
+}
+
 fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<String> {
     use chump_handoff::contracts::{ExternalRepoContract, ExternalRepoInput};
     use chump_handoff::HandoffContract;
@@ -937,11 +1063,9 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
 
     // MISSION-063: sign commits as a named Chump agent (provable zero-touch).
     let id = agent_identity();
-    let prompt = format!(
-        "{}{}",
-        ExternalRepoContract::prompt(&input),
-        id.prompt_signature()
-    );
+    // COTG-1.2: the agent is edit-only; the fleet commits (with the Chump-Agent trailer)
+    // in deterministic_ship, so no commit-signature instruction is appended to the prompt.
+    let prompt = ExternalRepoContract::prompt(&input);
     println!(
         "[improve] agent identity: {} <{}>  (trailer: {})",
         id.name,
@@ -1032,16 +1156,16 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
 
     // Extract the JSON block containing pr_url.
-    let pr_url = extract_pr_url_from_output(&stdout).ok_or_else(|| {
-        anyhow::anyhow!(
-            "could not find a pr_url in agent output.\nAgent output:\n{}",
-            stdout.trim().chars().take(500).collect::<String>()
-        )
-    })?;
+    // COTG-1.2/INFRA-3484: the agent is edit-only — the FLEET turns its uncommitted
+    // edits into a PR deterministically (commit with the Chump-Agent trailer → push →
+    // gh pr create), never depending on the model to run git/gh. `stdout` is now just the
+    // agent's summary (kept above for logs / storm detection).
+    let _ = &stdout;
+    let pr_url = deterministic_ship(&work_dir, &opts.owner_repo, &input.base_branch, gap, &id)?;
 
-    // INFRA-3478: success — the agent has pushed its branch to origin, so this
-    // agent's worktree is disposable. On the failure paths above we deliberately
-    // leave it for debugging; a later run's `git worktree prune` reclaims it.
+    // INFRA-3478: success — the branch is pushed to origin, so this agent's worktree is
+    // disposable. On the failure paths above we deliberately leave it for debugging;
+    // a later run's `git worktree prune` reclaims it.
     if !direct_mode {
         remove_improve_worktree(clone_dir, &work_dir);
     }
@@ -3099,6 +3223,26 @@ Some prose from the agent.
         unsafe {
             std::env::remove_var("CHUMP_IMPROVE_IMPLEMENT_CLASS");
         }
+    }
+
+    /// COTG-1.2/INFRA-3484: the deterministic ceremony reads the PR URL from gh's own
+    /// output (a bare URL), not an agent JSON block.
+    #[test]
+    fn first_github_pr_url_parses_gh_output() {
+        assert_eq!(
+            first_github_pr_url("https://github.com/owner/repo/pull/42\n"),
+            Some("https://github.com/owner/repo/pull/42".to_string())
+        );
+        // ignores non-PR github URLs + surrounding noise
+        assert_eq!(
+            first_github_pr_url("Creating pull request...\nhttps://github.com/o/r/pull/7 done"),
+            Some("https://github.com/o/r/pull/7".to_string())
+        );
+        assert_eq!(first_github_pr_url("no url here"), None);
+        assert_eq!(
+            first_github_pr_url("https://github.com/o/r/tree/main"),
+            None
+        );
     }
 
     /// INFRA-3478: the per-agent worktree key is pid-scoped so concurrent

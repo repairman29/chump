@@ -85,7 +85,12 @@ chmod +x "$STUB_DIR/claude"
 # ── Stub: fake gh binary ───────────────────────────────────────────────────
 cat > "$STUB_DIR/gh" << 'STUB_EOF'
 #!/usr/bin/env bash
-# Fake gh: no-op for all calls during testing.
+# Fake gh: deterministic_ship (COTG-1.2) calls `gh pr create` and reads the PR URL from
+# stdout. Emit one for that; no-op everything else.
+if [[ "${1:-}" == "pr" && "${2:-}" == "create" ]]; then
+  echo "https://github.com/owner/testrepo/pull/77"
+  exit 0
+fi
 exit 0
 STUB_EOF
 chmod +x "$STUB_DIR/gh"
@@ -106,24 +111,18 @@ if [[ "${1:-}" == "external" && "${2:-}" == "verify-merge" ]]; then
   echo "Verdict: MERGE"
   exit 0
 fi
-# INFRA-3477: chump-local is now the DEFAULT improve backend — the orchestrator
-# spawns `chump agent-run` (this stub) instead of `claude -p`. Emit the same
-# ExternalRepoOutput JSON the fake claude does so pr_url extraction succeeds.
+# COTG-1.2/INFRA-3484: the agent is EDIT-ONLY now — it makes a real change in the clone
+# (--cwd); the FLEET (deterministic_ship) commits/pushes/opens the PR. So this stub EDITS
+# a file instead of emitting a pr_url JSON block (the orchestrator no longer parses one).
 if [[ "${1:-}" == "agent-run" ]]; then
-  cat << 'JSON_EOF'
-Fake chump-local agent running. Change implemented.
-
-```json
-{
-  "pr_url": "https://github.com/owner/testrepo/pull/77",
-  "head_ref": "chump/improve-test",
-  "base_ref": "main",
-  "files_touched": ["src/lib.rs"],
-  "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "notes": "Added integration test as requested by EFFECTIVE-177 stub"
-}
-```
-JSON_EOF
+  _cwd=""; _args=("$@")
+  for ((_i=0; _i<${#_args[@]}; _i++)); do
+    [[ "${_args[$_i]}" == "--cwd" ]] && _cwd="${_args[$((_i+1))]}"
+  done
+  if [[ -n "$_cwd" ]]; then
+    printf '// stub edit-only agent change (EFFECTIVE-177)\n' >> "$_cwd/src/lib.rs"
+  fi
+  echo "Stub edit-only agent: appended a line to src/lib.rs."
   exit 0
 fi
 # Fallback for any other subcommand
@@ -144,6 +143,17 @@ if [[ "${1:-}" == "external" && "${2:-}" == "verify-merge" ]]; then
   echo "In anatomy, external means situated on or near the outside of the body."
   exit 0
 fi
+# COTG-1.2: edit-only agent-run (same as the main stub) so implement SUCCEEDS and the test
+# exercises the Stage-4 misfire (no Verdict) bail, not an earlier no-change bail.
+if [[ "${1:-}" == "agent-run" ]]; then
+  _cwd=""; _args=("$@")
+  for ((_i=0; _i<${#_args[@]}; _i++)); do
+    [[ "${_args[$_i]}" == "--cwd" ]] && _cwd="${_args[$((_i+1))]}"
+  done
+  [[ -n "$_cwd" ]] && printf '// misfire stub edit\n' >> "$_cwd/src/lib.rs"
+  echo "Stub edit-only agent (misfire): appended a line."
+  exit 0
+fi
 exit 0
 STUB_EOF
 chmod +x "$STUB_DIR/chump-misfire"
@@ -153,14 +163,29 @@ chmod +x "$STUB_DIR/chump-misfire"
 # We point it at a temp dir via --clone-dir so the scan is at <clone_dir>/../scans/.
 CLONE_DIR="$WORK_DIR/fake-repo/clone"
 SCANS_DIR="$WORK_DIR/fake-repo/scans"
-mkdir -p "$CLONE_DIR" "$SCANS_DIR"
+mkdir -p "$SCANS_DIR"
 
-# INFRA-3478: this is a MOCK chain — CLONE_DIR is a fake, non-git fixture, so the
-# real per-agent-worktree layer (git worktree add off a shared clone) can't run
-# here. Bypass it so the mock exercises the ORCHESTRATOR (pick/dedup/implement/
-# verify-merge), which is this test's purpose. The worktree layer is covered by
-# its own unit test + the live integration proof.
+# INFRA-3478: MOCK chain — bypass the per-agent-worktree layer so the mock exercises the
+# ORCHESTRATOR (pick/dedup/implement/verify-merge), not the worktree layer.
 export CHUMP_IMPROVE_SHARED_CLONE_DIRECT=1
+
+# COTG-1.2/INFRA-3484: implement now runs a DETERMINISTIC ceremony (git add/commit/push +
+# gh pr create), so the clone must be a real git repo with a bare origin + a committed
+# branch. refresh_clone resets to origin/main + drops untracked, so the seed is committed.
+# The agent stub edits src/lib.rs AFTER refresh runs; deterministic_ship commits + pushes
+# + opens the PR (via the fake gh).
+BARE_ORIGIN="$WORK_DIR/fake-repo/origin.git"
+git init -q --bare -b main "$BARE_ORIGIN"
+git init -q -b main "$CLONE_DIR"
+git -C "$CLONE_DIR" config user.email "test@chump.local"
+git -C "$CLONE_DIR" config user.name "chump-test"
+git -C "$CLONE_DIR" remote add origin "$BARE_ORIGIN"
+mkdir -p "$CLONE_DIR/src"
+printf '// seed\n' > "$CLONE_DIR/src/lib.rs"
+git -C "$CLONE_DIR" add -A
+git -C "$CLONE_DIR" commit -q -m "seed"
+git -C "$CLONE_DIR" push -q -u origin main
+git -C "$CLONE_DIR" remote set-head origin main 2>/dev/null || true
 
 # Write a minimal onboard scan JSON.
 SCAN_TS="20260605T120000Z"
@@ -342,7 +367,7 @@ CHUMP_IMPROVE_CLAUDE_BIN="$STUB_DIR/claude" \
 CHUMP_IMPROVE_GH_BIN="$STUB_DIR/gh" \
 CHUMP_IMPROVE_CHUMP_BIN="$STUB_DIR/chump-misfire" \
   "$CHUMP" improve owner/testrepo \
-  --gap "EFFECTIVE-177-stub-xyzzy99" \
+  --gap "EFFECTIVE-177-misfire-qux42" \
   --clone-dir "$CLONE_DIR" \
   --apply \
   > "$MISFIRE_OUTPUT" 2>&1 || MISFIRE_EXIT=$?
