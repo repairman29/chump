@@ -1283,3 +1283,10 @@ CHUMP_IMPROVE_SHARED_CLONE_DIRECT
 CHUMP_SHARED_SERVICE_BLOCK
 # detected in: (standard input)
 CHUMP_SHARED_SERVICE_CHECK
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ARMED_PR_REBASER_INTERVAL
+# detected in: (standard input)
+CHUMP_PR_REPO
