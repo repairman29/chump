@@ -4,7 +4,7 @@
 # you must delete one. Raising it requires operator sign-off + a reason below.
 # Baseline 2026-06-03 (was 113 when INFRA-2525 was filed — the climb to here is
 # exactly what this ceiling now reverses). Ratchet DOWN as gates are culled.
-236
+238
 
 # 233 → 234 (2026-06-04): CREDIBLE-085 introduced CHUMP_SCCACHE_HIT_RATE_CHECK
 # as a cold-cache escape valve for the new sccache hit-rate gate. Cold-cache
@@ -19,3 +19,12 @@
 # synthetic gaps without real evidence. Audit-trail via the existing reserve
 # audit log. Deletion path: when fixture seeders are refactored to use
 # Bot-Merge-Bypass-style synthetic gap class outside the evidence gate.
+# 236 -> 238 (2026-07-29): TWO concurrent operator-directed bypass vars, bumped
+# together in both PRs (INFRA-3463 + INFRA-3454) so trunk stays green regardless
+# of merge order:
+#   - CHUMP_SHARED_SERVICE_CHECK (INFRA-3463): escape valve for the pre-commit
+#     shared-service gate (warn-by-default, INFRA-2522). Trail: Shared-Service-Bypass
+#     trailer. Deletion path: all product sites migrated onto CANONICAL_SERVICES.
+#   - CHUMP_DEPLOY_LAG_NO_HEAL (INFRA-3454): disable auto-heal in the merge-to-
+#     deployed lag watchdog. Trail: the watchdog ambient event. Deletion path: when
+#     the watchdog heal is proven safe enough to be non-optional.
