@@ -63,6 +63,11 @@ pub enum Classification {
     /// fast-checks env-var coverage failed; named vars need to be appended to
     /// scripts/ci/env-vars-internal.txt.
     EnvVarCoverage { vars: Vec<String> },
+    /// INFRA-3490: the EFFECTIVE-094 bypass-var debt-ceiling gate failed — the PR added
+    /// a bypass var, pushing the count over the ceiling. `count` is the new (over-ceiling)
+    /// total; the fix raises scripts/ci/bypass-var-ceiling.txt to it with a reasoned entry.
+    /// (This is the exact class that blocked #3362/#3353 and needed a manual bump.)
+    DebtCeiling { count: u64 },
     /// PR's mergeable_state is "dirty" (merge conflict with main). v1b handler
     /// attempts `git fetch origin main && git rebase origin/main` in a temp
     /// worktree and force-pushes-with-lease on clean apply. If rebase has
@@ -216,6 +221,34 @@ fn rescue_one(pr: u32, dry_run: bool) -> RescueOutcome {
                 }
             }
         }
+        Classification::DebtCeiling { count } => {
+            mark_attempt(pr);
+            match fix_debt_ceiling(pr, *count, dry_run) {
+                Ok(()) => {
+                    emit_ambient(
+                        "pr_rescue_applied",
+                        serde_json::json!({
+                            "pr": pr,
+                            "class": "debt-ceiling",
+                            "count": count,
+                            "dry_run": dry_run,
+                        }),
+                    );
+                    RescueOutcome::Applied
+                }
+                Err(e) => {
+                    emit_ambient(
+                        "pr_rescue_failed",
+                        serde_json::json!({
+                            "pr": pr,
+                            "class": "debt-ceiling",
+                            "error": e.to_string(),
+                        }),
+                    );
+                    RescueOutcome::Failed
+                }
+            }
+        }
         Classification::Unknown { failed_check_names } => {
             emit_ambient(
                 "pr_rescue_unknown",
@@ -300,6 +333,15 @@ pub fn classify_pr(pr: u32) -> Result<Classification> {
         let vars = grep_env_var_coverage(run.id);
         if !vars.is_empty() {
             return Ok(Classification::EnvVarCoverage { vars });
+        }
+    }
+
+    // Pattern C: bypass-var debt-ceiling (INFRA-3490). The EFFECTIVE-094 gate failed
+    // because the PR pushed the bypass-var count over the ceiling — deterministic + a
+    // known 1-line fix (raise the ceiling with a reasoned entry).
+    for run in &runs {
+        if let Some(count) = grep_debt_ceiling(run.id) {
+            return Ok(Classification::DebtCeiling { count });
         }
     }
 
@@ -566,6 +608,127 @@ fn fix_env_var_coverage(pr: u32, vars: &[String], dry_run: bool) -> Result<()> {
     Ok(())
 }
 
+/// INFRA-3490: extract the new (over-ceiling) bypass-var count from a failed job's log.
+/// The gate prints: "[bypass-lint] FAIL (EFFECTIVE-094 debt-ceiling): bypass/skip/check
+/// var count 237 > ceiling 236."
+fn grep_debt_ceiling(job_id: u64) -> Option<u64> {
+    let log = run_gh_or_empty(&["run", "view", "--job", &job_id.to_string(), "--log-failed"]);
+    for line in log.lines() {
+        if line.contains("debt-ceiling") && line.contains("var count ") {
+            if let Some(idx) = line.find("var count ") {
+                let rest = &line[idx + "var count ".len()..];
+                let num: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                if let Ok(n) = num.parse::<u64>() {
+                    return Some(n);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// INFRA-3490: raise scripts/ci/bypass-var-ceiling.txt to `count` (the new total) with a
+/// reasoned entry, then push — the canonical fix for the EFFECTIVE-094 debt-ceiling gate.
+/// Mirrors fix_env_var_coverage (worktree → edit → commit → push).
+fn fix_debt_ceiling(pr: u32, count: u64, dry_run: bool) -> Result<()> {
+    println!("[pr-rescue] #{pr}: debt-ceiling → raise bypass-var-ceiling.txt to {count} + push");
+    if dry_run {
+        return Ok(());
+    }
+    let branch = run_gh(&["pr", "view", &pr.to_string(), "--json", "headRefName"])?;
+    let v: serde_json::Value = serde_json::from_str(&branch)?;
+    let head_ref = v["headRefName"]
+        .as_str()
+        .ok_or_else(|| anyhow!("headRefName missing"))?
+        .to_string();
+    let repo_root = std::env::var("CHUMP_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
+    let wt = format!("/tmp/chump-pr-rescue-{pr}");
+    if !PathBuf::from(&wt).exists() {
+        let status = Command::new("git")
+            .current_dir(&repo_root)
+            .args(["worktree", "add", &wt, &head_ref])
+            .status()
+            .context("git worktree add")?;
+        if !status.success() {
+            bail!("git worktree add failed");
+        }
+    } else {
+        let _ = Command::new("git")
+            .current_dir(&wt)
+            .args(["fetch", "origin", &head_ref])
+            .status();
+        let _ = Command::new("git")
+            .current_dir(&wt)
+            .args(["reset", "--hard", &format!("origin/{head_ref}")])
+            .status();
+    }
+    // Replace the single standalone numeric ceiling line with `count`; append a reason.
+    let ceil_path = PathBuf::from(&wt).join("scripts/ci/bypass-var-ceiling.txt");
+    let content = std::fs::read_to_string(&ceil_path)
+        .with_context(|| format!("read {}", ceil_path.display()))?;
+    let (out, old) = bump_ceiling_text(&content, count, pr)?;
+    std::fs::write(&ceil_path, &out)?;
+    println!("[pr-rescue] #{pr}: ceiling {old} -> {count}");
+    Command::new("git")
+        .current_dir(&wt)
+        .args(["add", "scripts/ci/bypass-var-ceiling.txt"])
+        .status()
+        .context("git add")?;
+    let commit_msg = format!(
+        "fix(pr-rescue): raise bypass-var ceiling to {count} for PR #{pr}\n\nAuto-applied by `chump pr-rescue` (INFRA-3490) — the PR added a bypass var,\ntripping the EFFECTIVE-094 debt-ceiling gate. Ceiling raised with a reasoned entry.\n"
+    );
+    let commit_status = Command::new("git")
+        .current_dir(&wt)
+        .args(["commit", "-m", &commit_msg])
+        .status()
+        .context("git commit")?;
+    if !commit_status.success() {
+        bail!("git commit failed (possibly nothing to add)");
+    }
+    let push_status = Command::new("git")
+        .current_dir(&wt)
+        .args([
+            "push",
+            "--force-with-lease",
+            "origin",
+            &format!("HEAD:{head_ref}"),
+        ])
+        .status()
+        .context("git push")?;
+    if !push_status.success() {
+        bail!("git push failed");
+    }
+    Ok(())
+}
+
+/// INFRA-3490: replace the single standalone numeric ceiling line with `count` and append a
+/// reasoned entry. Pure (no I/O) so it's unit-testable. Returns (new_text, old_ceiling).
+fn bump_ceiling_text(content: &str, count: u64, pr: u32) -> Result<(String, u64)> {
+    let mut out = String::new();
+    let mut bumped = false;
+    let mut old = 0u64;
+    for line in content.lines() {
+        if !bumped {
+            if let Ok(n) = line.trim().parse::<u64>() {
+                old = n;
+                out.push_str(&count.to_string());
+                out.push('\n');
+                bumped = true;
+                continue;
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if !bumped {
+        bail!("no numeric ceiling line found in bypass-var-ceiling.txt");
+    }
+    out.push_str(&format!(
+        "# {old} -> {count} (pr-rescue auto-bump, INFRA-3490): PR #{pr} added a bypass var; the EFFECTIVE-094 debt-ceiling gate blocked it. Raised to the new count. Review the added var + ratchet down when the bypass is removed.\n"
+    ));
+    Ok((out, old))
+}
+
 // ── INFRA-1751 v1b: dirty-conflict handler ────────────────────────────────
 
 /// Check `mergeable_state` via gh api. Returns true iff GitHub considers the
@@ -802,6 +965,30 @@ fn emit_ambient(kind: &str, fields: serde_json::Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// INFRA-3490: the debt-ceiling auto-fix replaces the single numeric ceiling line with
+    /// the new count + appends a reasoned entry, leaving the header + history intact.
+    #[test]
+    fn bump_ceiling_text_raises_the_number_and_records_a_reason() {
+        let src = "# header comment\n# another\n236\n\n# 235 -> 236 (old): reason\n";
+        let (out, old) = bump_ceiling_text(src, 238, 3362).unwrap();
+        assert_eq!(old, 236);
+        // the number line is now 238, only once:
+        assert!(out.lines().any(|l| l.trim() == "238"));
+        assert!(!out.lines().any(|l| l.trim() == "236"));
+        // header + prior history preserved:
+        assert!(out.contains("# header comment"));
+        assert!(out.contains("# 235 -> 236 (old): reason"));
+        // a reasoned auto-bump entry was appended:
+        assert!(out.contains("236 -> 238") && out.contains("pr-rescue auto-bump"));
+        assert!(out.contains("#3362"));
+    }
+
+    /// A file with no standalone numeric line is an error (don't silently mis-edit).
+    #[test]
+    fn bump_ceiling_text_errors_without_a_numeric_line() {
+        assert!(bump_ceiling_text("# only comments\n# no number\n", 5, 1).is_err());
+    }
 
     #[test]
     fn classification_serializes_with_tag() {
