@@ -8689,3 +8689,27 @@ events:
       recording which action was taken and the PR that did it.
     consumers: [quartermaster, ops-audit]
     fields_required: [ts, kind, crate, action, pr]
+
+  # ── COTG-2.1 / INFRA-3489: operator-intervention watchdog ───────────────
+  - kind: autonomy_defect
+    effect_metric: self
+    emitter: src/intervention_watchdog.rs (COTG-2.1/INFRA-3489)
+    trigger: >
+      The intervention watchdog detected a human touch in an autonomous run
+      (a gate bypass, a forced unlock, an admin merge, a hand-authored rescue)
+      and recorded it as a typed defect-in-autonomy, classed into
+      deterministic-gate-failure / coordination / ceremony-gap, with enough
+      context to reproduce what the human did. Every human touch is a defect.
+    consumers: [intervention-watchdog, fleet-brief, ops-audit]
+    fields_required: [ts, kind, intervention_kind, defect_class, context]
+
+  - kind: intervention_watchdog_summary
+    effect_metric: self
+    emitter: src/intervention_watchdog.rs (COTG-2.1/INFRA-3489)
+    trigger: >
+      One rollup per `intervention-watchdog --apply` run: the total human
+      interventions in the window and the per-class counts, so observers can
+      read the queryable autonomy-intervention metric without re-tallying the
+      ambient stream.
+    consumers: [intervention-watchdog, fleet-brief, ops-audit]
+    fields_required: [ts, kind, total, counts_by_class]

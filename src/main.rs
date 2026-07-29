@@ -128,6 +128,7 @@ mod ingest_preflight; // INFRA-1778: chump ingest-preflight — gh auth + push-a
 mod inspect_cmd; // INFRA-1456: chump inspect <gap-id> — eject-and-inspect surface
 mod intent_parser;
 mod interrupt_notify;
+mod intervention_watchdog; // COTG-2.1/INFRA-3489: log every human touch as an autonomy defect
 mod introspect_tool;
 mod inventory; // META-271: fleet inventory + tech-debt review-only audit DB
 mod job_log;
@@ -1786,6 +1787,13 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("voice") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(commands::voice::run(&sub_args));
+    }
+
+    // `chump intervention-watchdog [--window H] [--apply] [--json]` (COTG-2.1/INFRA-3489) —
+    // detect human touches in the fleet, class each as an autonomy_defect, file self-heal gaps.
+    if args.get(1).map(String::as_str) == Some("intervention-watchdog") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(intervention_watchdog::run(&sub_args));
     }
 
     // `chump demo [--seed N] [--duration 60m] [--dry-run] ...` (INFRA-2391) —
