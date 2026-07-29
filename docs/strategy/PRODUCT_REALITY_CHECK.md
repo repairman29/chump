@@ -38,14 +38,21 @@ Honest current-state assessment — what works, what's rough, and where the gaps
 
 **TDA module is dead code** — `src/tda_blackboard.rs` (310 lines, persistent homology) has no callsites outside the module. Ships in every production binary with no downstream consumers.
 
-## Identity and scope tensions
+## Identity and scope tensions (resolved 2026-07-29)
 
-The project is simultaneously:
-1. A Discord bot for intent-driven personal assistance (the stated North Star in `CHUMP_PROJECT_BRIEF.md`)
-2. A cognitive architecture research platform (CHUMP_TO_CHAMP.md)
-3. A distributed fleet OS for personal compute nodes (FLEET_ROLES.md, INFERENCE_MESH.md)
+This section used to describe three competing product identities pulling
+velocity apart. The operator resolved that on 2026-07-29 (see
+[NORTH_STAR.md](NORTH_STAR.md)): Chump is **one system** — an agentic
+operating system, mission "ship any vision, rescue any dream" — and the
+three axes below are facets of it, not competing products:
 
-These are three different products. Velocity measured against any single definition looks weak because effort is diffused across all three. The `FRONTIER-*` gap backlog (quantum cognition, TDA, autopoiesis, 13 entries) reflects the research platform axis; the `FLEET-*` backlog (mutual supervision, workspace merge, 9 entries) reflects the fleet OS axis. The Discord intent parsing axis has the fewest open gaps — and the least recent commits.
+1. The optional built-in agent — Discord bot for intent-driven personal assistance (`CHUMP_PROJECT_BRIEF.md`)
+2. A cognitive architecture research platform (CHUMP_TO_CHAMP.md) — a research bet running *inside* facet 1
+3. A distributed fleet OS for personal compute nodes (FLEET_ROLES.md, INFERENCE_MESH.md) — the personal-inference mesh, distinct from the coding-agent fleet (gap registry/leases/ambient stream) that's ROADMAP.md's headline "infra IS the product"
+
+The practical critique still stands, though: velocity measured against any
+one facet looks weak because effort is diffused, and that's worth watching
+even under one identity. The `FRONTIER-*` gap backlog (quantum cognition, TDA, autopoiesis, 13 entries) reflects the research axis; the `FLEET-*` backlog (mutual supervision, workspace merge, 9 entries) reflects the personal-inference-mesh axis. The Discord intent-parsing axis has the fewest open gaps and the least recent commits — and, per the ROADMAP framing reset, direct investment should now favor the coding-agent coordination layer (facet 0, not listed above because this doc predates it) over all three.
 
 ## Priority corrections needed
 

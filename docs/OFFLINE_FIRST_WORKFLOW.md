@@ -1,10 +1,24 @@
 # Offline-First Workflow — Chump on Local LLMs
 
-## Mission
+> **Superseded — historical planning doc.** The maintained, tested offline path is
+> [docs/QUICKSTART_OFFLINE.md](QUICKSTART_OFFLINE.md) (has a CI fixture,
+> `scripts/qa/test-offline-quickstart.sh`). This file predates the 2026-05-16
+> framing reset ("infra IS the product; offline-first is a tier-3 differentiator,
+> not the spine" — see [docs/ROADMAP.md](ROADMAP.md)) and the 2026-07-27 ChumpOS
+> arc; its CLI examples, model recommendations, and Q2/Q3 2026 "Next Steps" dates
+> are not kept current. Kept for history, not as a live guide.
 
-Enable a solo developer with a 24GB Mac, Ollama, and one binary to ship shipping-quality software using a multi-agent fleet, entirely offline with no GitHub/internet access and no cloud LLM API calls required.
+## What this covers (tier-3 offline path)
 
-This document validates the end-to-end workflow and provides the quickstart path.
+A solo developer with a 24GB Mac, Ollama, and one binary can ship real software
+using a multi-agent fleet, entirely offline — no GitHub/internet access, no cloud
+LLM API calls required. This is a real, supported path for air-gapped, regulated,
+or cost-constrained use, not the product's headline pitch — see
+[docs/ROADMAP.md](ROADMAP.md) for the current framing.
+
+This document validates the end-to-end workflow and provides the quickstart path
+*as it stood when written* — prefer [QUICKSTART_OFFLINE.md](QUICKSTART_OFFLINE.md)
+for the current one.
 
 ## System Requirements
 

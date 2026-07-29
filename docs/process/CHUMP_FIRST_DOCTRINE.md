@@ -29,9 +29,14 @@ Claude-specific work?") found:
   credentials; `scripts/coord/*` has 1499 `claude` references baking
   the harness in.
 
-The mission is offline solo devs on local LLMs ([per memory](
-project_offline_local_llm_mission.md)). Claude-locked dispatch means
-chump can't actually run that mission for a non-Anthropic operator.
+Offline-first on local LLMs is a real differentiator ([per memory](
+project_offline_local_llm_mission.md)) — but per the 2026-05-16 framing
+reset, infra IS the product and offline-first is a tier-3 differentiator,
+not the spine. The harness-pluggability argument stands on its own: as of
+the 2026-07-27 framing, OpenCode is the default model gateway and Claude
+Code is the hard-ship fallback via `CHUMP_AGENT_HARNESS`. Claude-locked
+dispatch works against that default-gateway shift regardless of whether
+offline-first is the headline mission or a differentiator.
 
 ## The contract
 

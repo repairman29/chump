@@ -14,18 +14,38 @@ If you landed on this repo from GitHub and are trying to figure out what you're 
 
 ## What Chump actually is
 
-Chump is three things at once, and the fact that it is all three is not an accident.
+Chump is an **agentic operating system** — mission: **ship any vision, rescue
+any dream.** Not a chatbot, not a framework you assemble a crew with — an OS
+that runs a fleet of agents against a real codebase until the vision is
+shipped, with the human at ring-0, not in the conductor's chair. See
+[docs/ROADMAP.md — "The ChumpOS arc"](../ROADMAP.md) for the current phase
+and honest status (it's an arc, not a finished product yet).
 
-**1. A Discord bot with intent understanding.**
-The most visible interface is a Discord bot that connects to local LLMs, understands natural language from users, and takes action. Not a chatbot — it creates tasks, runs code, stores memory, manages GitHub PRs, and operates on a heartbeat. You ask it to "clean up the stale worktrees" or "run the weekly report" and it does it, infers what you mean, and asks only when genuinely ambiguous.
+That shows up today as four things, and the fact that it is all four is not an accident.
 
-**2. A consciousness research platform.**
-Nine cognitive subsystems are wired into every agent loop: surprise tracking, belief state, blackboard/global workspace, neuromodulation, precision controller, memory graph, counterfactual reasoning, phi proxy, and holographic workspace. These are not production features. They are empirical interventions — each one can be ablated, A/B tested, and measured. We run controlled trials with A/A controls, Wilson confidence intervals, and multi-axis scoring. The goal is to find out which cognitive structures actually improve AI agent behavior and which ones hurt.
+**0. The coordination layer — the fleet of coding agents.**
+This is the headline differentiator: a gap registry, file-based leases, an
+ambient event stream, and a merge-queue ship pipeline that let many concurrent
+coding-agent sessions (Claude Code, opencode, or anything that can push a
+branch) work the same repo without stomping each other, hand off work, and
+recover from failure. This is what "infra IS the product" means in ROADMAP.md.
+
+**1. A Discord/PWA bot with intent understanding — the optional built-in agent.**
+Alongside the coordinator, Chump ships its own agent: connects to local LLMs,
+understands natural language, and takes action. Not a chatbot — it creates
+tasks, runs code, stores memory, manages GitHub PRs, and operates on a
+heartbeat. You ask it to "clean up the stale worktrees" or "run the weekly
+report" and it does it, infers what you mean, and asks only when genuinely
+ambiguous. This lane is optional — the coordinator works with any agent you
+already have.
+
+**2. A consciousness research platform — a bet, not a claim.**
+Nine cognitive subsystems are wired into the built-in agent's loop: surprise tracking, belief state, blackboard/global workspace, neuromodulation, precision controller, memory graph, counterfactual reasoning, phi proxy, and holographic workspace. These are not production features. They are empirical interventions — each one can be ablated, A/B tested, and measured. We run controlled trials with A/A controls, Wilson confidence intervals, and multi-axis scoring. The goal is to find out which cognitive structures actually improve AI agent behavior and which ones hurt. See [docs/process/RESEARCH_INTEGRITY.md](../process/RESEARCH_INTEGRITY.md) for what's currently validated and what isn't.
 
 **3. A Rust crate ecosystem.**
-As each module matures and its boundaries stabilize, it gets extracted into a standalone publishable crate: `chump-agent-lease`, `chump-perception`, `chump-belief-state`, `chump-messaging`, and more. The extraction pattern is proven and repeatable. This isn't just cleanup — it's how the research becomes reusable infrastructure for other agent frameworks.
+As each module matures and its boundaries stabilize, it gets extracted into a standalone publishable crate: `chump-agent-lease`, `chump-perception`, `chump-belief-state`, `chump-messaging`, and more. The extraction pattern is proven and repeatable. This isn't just cleanup — it's how both the coordination layer and the research become reusable infrastructure other agent systems can adopt piece by piece.
 
-These three identities reinforce each other. The Discord bot is the production harness that surfaces real failure modes. The research platform turns those failure modes into controlled experiments. The crate ecosystem packages what the experiments confirm.
+These reinforce each other. The coordination layer is what actually ships the vision. The built-in agent (and Discord/PWA surface) is one production harness that surfaces real failure modes. The research platform turns those failure modes into controlled experiments. The crate ecosystem packages what stabilizes.
 
 ---
 
@@ -43,33 +63,19 @@ The second was the cognitive science literature. Once you have a system that can
 
 ## What the experiments have found so far
 
-This is a summary. The full methodology and raw data are in [docs/research/consciousness-framework-paper.md](research/consciousness-framework-paper.md) and [docs/research/CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md).
+**This document has been moved to a private repository.** Per-study results
+(the Scaffolding U-curve, the neuromodulation ablation, the lessons-block
+hallucination channel, and seeded-fact retrieval) are tracked in
+`chump-proprietary` (private, need-to-key) so they can be published through
+controlled channels rather than scraped from a public repo.
 
-### The Scaffolding U-curve
+The one publicly-sanctioned finding to date: **instruction injection has
+tier-dependent effects — prescriptive lessons help small models on specific
+tasks and harm frontier models.** The fix path (gate lessons injection by
+model tier rather than remove it) is real and tracked under the
+model-tier-aware injection gap; specifics are private.
 
-When scaffolding (the nine-module cognitive layer) is added to local models, the effect on task performance depends on model size: small models lack the capacity to use it productively (it reads as noise), mid-range models are net-harmed, and larger models can leverage it. Frontier-tier substrates have not been measured in this fixture. Specific deltas, model tiers, and confidence intervals live in the private companion repo `chump-proprietary` per `docs/process/RESEARCH_INTEGRITY.md`.
-
-**Operational implication:** The cognitive modules are gated by model tier in production. Smaller models running short Discord commands don't pay the scaffolding cost. Larger models doing long research tasks do.
-
-### The neuromodulation ablation
-
-Ablating the neuromodulation module on a mid-range local substrate showed a context-dependent trade-off: neuromodulation helps on focused, structured tasks and hurts on tasks that require flexible tool selection. Both effects survived A/A controls. Specific per-task deltas are internal.
-
-### The lessons-block hallucination channel
-
-This is the most significant finding so far, and the one with the clearest path to a fix.
-
-Injecting a "Lessons from prior episodes" block into the system prompt systematically increases fake-tool-call emission across three task fixtures on weak-tier substrates, with the A/B effect well above the calibrated A/A noise floor. Specific magnitudes, sample sizes, and per-model rates live in the private companion repo.
-
-This is a documented harm channel. It means the memory system that was built to help agents learn from past mistakes is, in its current form, teaching weaker models to hallucinate tool calls.
-
-The fix is not to remove the lessons block — it's to gate which models see it. Strong models can use lessons productively; weak models cannot. A targeted directive-injection variant has been validated to neutralize the harm on a capable model class while preserving retrieval utility; tracked under the model-tier-aware injection gap.
-
-### Seeded-fact retrieval (Study 5)
-
-To confirm the lessons block actually surfaces stored information (as opposed to just adding noise), we ran a retrieval study: inject arbitrary "seeded directives" (unforgeable values like specific port numbers, timestamps, and tokens) into the causal-lessons database and test whether the model outputs them. The lessons-on variant materially outperforms lessons-off in seeded-fact retrieval; specific pass rates are internal.
-
-This confirms the mechanism works for retrieval. The hallucination problem is not that the channel is broken — it's that weak models can't distinguish between using the lessons and fabricating the actions.
+The full methodology lives in [docs/research/consciousness-framework-paper.md](research/consciousness-framework-paper.md) and [docs/research/CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) (both already correctly stubbed to the private repo). See [docs/process/RESEARCH_INTEGRITY.md](process/RESEARCH_INTEGRITY.md) for what's public-safe to state.
 
 ---
 

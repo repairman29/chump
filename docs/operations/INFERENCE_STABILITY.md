@@ -99,7 +99,7 @@ The **local / HTTP** provider (Ollama, vLLM-MLX, etc.) uses a small reliability 
 
 ## Soak (overnight / 72h)
 
-**Roadmap:** [ROADMAP.md](ROADMAP.md) **Architecture vs proof → Overnight / 72h soak**.
+**Roadmap:** **Architecture vs proof → Overnight / 72h soak** (item shipped, per `docs/archive/strategy-2026-04/ROADMAP-superseded.md`; current work tracked in [`docs/ROADMAP.md`](https://github.com/repairman29/chump/blob/main/docs/ROADMAP.md)).
 
 Use [DAILY_DRIVER_95_STEPS.md](DAILY_DRIVER_95_STEPS.md) **Day 13** (#81–87) as the daily rhythm; for a **72h** window, add checkpoints at **+24h / +48h / +72h** and capture **pre/post** SQLite size, WAL behavior, model server restarts, `logs/` growth, and `GET /api/stack-status` samples.
 

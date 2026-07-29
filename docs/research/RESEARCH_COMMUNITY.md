@@ -8,9 +8,19 @@ This document tells you how to run studies, how to contribute results, and where
 
 ## Why This Matters
 
-The Scaffolding U-curve finding (§4.3 of the research paper) is a small-N result that deserves replication. The key question: **does consciousness-inspired scaffolding help small and large models while hurting mid-size models, and does this pattern hold across hardware and model families?**
+We have a small-N result suggesting cognitive-architecture scaffolding's
+effect on task performance depends on model size in a non-monotonic way.
+Specifics (magnitudes, model names, which sizes show which direction) are
+tracked in the private companion repo `chump-proprietary` per
+[RESEARCH_INTEGRITY.md](../process/RESEARCH_INTEGRITY.md) — this is a
+small-N result that deserves replication, and the question of whether the
+pattern holds across hardware and model families is exactly what needs
+outside data.
 
-If the curve replicates on NVIDIA hardware, across Llama/Mistral/Qwen/Phi families, it suggests a fundamental property of model capacity and context integration. If it doesn't replicate, it may be an artifact of Apple Silicon inference, our specific fixture, or our judge calibration.
+If a pattern replicates across different hardware (NVIDIA vs. Apple Silicon)
+and different model families, that's a much stronger signal than one
+researcher's fixture. If it doesn't replicate, that's equally valuable —
+it may be an artifact of our specific setup rather than a real property.
 
 One researcher with different hardware is worth more to this project right now than ten more runs on the same machine.
 
@@ -139,14 +149,14 @@ These are the questions with the highest value-to-effort ratio. Pick one and run
 
 ### HIGH VALUE
 
-**Does the U-curve replicate on NVIDIA hardware?**
-Run the 5-model COG-001 battery on an RTX 3090/4090 or A100. If the curve holds, it's a property of model architecture. If it doesn't, it may be an Apple Silicon inference artifact. This is the single most important replication.
+**Does the shape replicate on NVIDIA hardware?**
+Run the 5-model COG-001 battery on an RTX 3090/4090 or A100. If the pattern holds, it's a property of model architecture. If it doesn't, it may be an Apple Silicon inference artifact. This is the single most important replication.
 
-**Does a 32B model show stronger framework benefit than 14B?**
-The U-curve predicts monotonically increasing benefit above 14B. Run the COG-001 study with a 32B model (requires ~48 GB). Models to try: `qwen2.5:32b`, `llama3.1:32b`.
+**Does the effect scale monotonically above 14B?**
+Run the COG-001 study with a 32B model (requires ~48 GB). Models to try: `qwen2.5:32b`, `llama3.1:32b`. Compare against the private repo's existing 14B result.
 
-**Does neuromodulation help Phi-4 (14B) the way it helps qwen2.5:14b?**
-qwen2.5:14b shows +10pp on the full framework. Testing the same fixture on `phi4:14b` would tell us whether this is model-family-specific or a general 14B phenomenon.
+**Is the neuromodulation effect model-family-specific or general?**
+Testing the same fixture on a different 14B-class model family (e.g. `phi4:14b`) alongside the existing result would tell us whether it's family-specific or a general phenomenon at that parameter count.
 
 ### MEDIUM VALUE
 
@@ -184,7 +194,7 @@ If you want to add a per-subsystem flag (e.g., `CHUMP_MEMORY_GRAPH_ENABLED`), op
 ## Community Norms
 
 - **Share negative results.** A model that shows no effect is as informative as one that shows benefit. The null result is the prior.
-- **Document your hardware.** "It worked" is much less useful than "RTX 4090, 24 GB, CUDA 12.3, Ollama 0.6.2, qwen2.5:14b, delta=+8pp."
+- **Document your hardware.** "It worked" is much less useful than a full spec line: GPU/chip, RAM/VRAM, CUDA/driver version, Ollama version, model name, and your measured delta. (Post the delta in your PR's result file, not in a public doc — see Submitting Results above.)
 - **Replicate before extending.** If you want to run a new fixture, first run the standard battery so we have a baseline for your hardware.
 - **One PR per study run.** Don't aggregate multiple models into one unstructured file.
 

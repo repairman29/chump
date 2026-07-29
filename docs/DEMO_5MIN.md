@@ -11,17 +11,29 @@
 
 ## 30-second elevator pitch
 
-Chump is an **autonomous engineering fleet**: a small team of Anthropic-class
-LLM agents that coordinate over a file + NATS substrate to ship real PRs to a
-real codebase, all night, without human-in-the-loop. The substrate (gap
-registry, lease atomicity, ambient event stream, A2A messaging) is the
-differentiator — it's what lets multiple agents share state without stepping
-on each other, hand off work, recover from failures, and stay honest about
-what they're doing.
+Chump is an **agentic operating system**: the coordination + governance layer
+that runs a fleet of swappable coding-agent harnesses to ship real PRs to a
+real codebase, all night, with the human at ring-0, not in the conductor's
+chair (see [docs/ROADMAP.md — "The ChumpOS arc"](ROADMAP.md)). Internal
+reasoning runs on a free-provider cascade; code-writing workers run on
+whatever harness is configured (`CHUMP_AGENT_HARNESS`) — OpenCode is the
+default gateway for bulk work today, with Claude Code reserved as the
+hard-ship fallback. The substrate (gap registry, lease atomicity, ambient
+event stream, A2A messaging) is the differentiator — it's what lets multiple
+agents, on any harness, share state without stepping on each other, hand off
+work, recover from failures, and stay honest about what they're doing.
 
 The goal isn't "AI writes code" (everyone has that). The goal is **fleet
 mechanics that actually scale**: predictive collision detection,
 skill-aware routing, calibrated bypass discipline, demo-grade throughput.
+
+**Honest state (this is an arc, not a finished product):** the ChumpOS arc runs
+in gated phases — today is Phase 0 (substrate & governance). The mission's own
+scoreboard binary — has Chump merged a zero-human-touch PR in
+`repairman29/BEAST-MODE` this week — is **not yet YES**. Run
+`bash scripts/dev/mission-scoreboard.sh` for the live number. Treat the
+evidence below as proof of a working coordination layer, not proof the
+end-to-end mission is done.
 
 ## The autopilot loop pattern
 
@@ -107,10 +119,11 @@ Credible / 56 Resilient / 16 Zero-Waste open gaps pickable — see
 
 ## What to take away
 
-- **The agent-to-agent substrate matters more than the model.** Today's
-  curators are stock Anthropic Opus + Sonnet sessions. The differentiator is
+- **The agent-to-agent substrate matters more than the model.** Curators run on
+  whatever harness is configured (`CHUMP_AGENT_HARNESS`) — Claude Opus/Sonnet
+  sessions, OpenCode-gatewayed models, or a local LLM. The differentiator is
   the lease/inbox/ambient layer that lets them coordinate without stepping
-  on each other. Swap in a local LLM tomorrow and the substrate still works.
+  on each other, regardless of which model is behind the harness.
 - **Lightning prompt-to-PR-merged is the first demo.** It's the proof that
   the substrate scales, and it's directly observable via the timeline table.
 - **The hard problems are forward-looking coordination** — predictive
@@ -134,4 +147,9 @@ that always reflects today.*
 *Maintained by curator-opus-ci-audit + the fleet. Last refresh: see
 `git log -1 docs/DEMO_5MIN.md`.*
 
-_Last refreshed: 2026-05-29_
+> **Note (2026-07-29 ChumpOS ground-truth audit):** the lightning-timeline
+> numbers and "today's evidence" figures above are a 2026-05-29 snapshot, from
+> before the June 22 → July 18 silent-fleet outage and the 2026-07-27 ChumpOS
+> framing. Re-run `bash scripts/dev/lightning-demo-timeline.sh` and
+> `bash scripts/dev/mission-scoreboard.sh` for live numbers before presenting
+> this to an external reviewer.

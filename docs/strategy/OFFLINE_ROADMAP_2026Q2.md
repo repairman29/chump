@@ -9,7 +9,7 @@ last_audited: 2026-05-29
 
 # Offline-First Roadmap (2026 Q2-Q3)
 
-> **TL;DR.** Chump's strategic mission includes Pi-mesh / air-gapped operation (existing memory + `docs/design/OFFLINE_FIRST.md`). The internal repo already has the load-bearing primitives (durable mission intent, autonomous decision-making, mesh transport including LoRa) — they were built for robotics. The public-side work is **(a)** lifting the trait + serde interfaces so public users get a working single-node default, **(b)** building the GitHub-decoupled infrastructure (local CI gate, local merge queue, sync daemon, mode knob), and **(c)** wiring internal sibling repo in as the reference implementation behind those interfaces. Today's sccache R2 incident (40 PRs wedged 90+ min on a remote service hiccup) is the evidence-driven proof that this isn't aspirational — it's overdue.
+> **TL;DR.** Per the docs/ROADMAP.md framing reset (2026-05-16), infra is the product and GitHub is where users live — Pi-mesh / air-gapped operation is a **tier-3 differentiator** for air-gapped, regulated, and cost-constrained users, not the headline spine. Within that scope the work is still real (existing memory + `docs/design/OFFLINE_FIRST.md`): the internal repo already has the load-bearing primitives (durable mission intent, autonomous decision-making, mesh transport including LoRa) — they were built for robotics. The public-side work is **(a)** lifting the trait + serde interfaces so public users get a working single-node default, **(b)** building the GitHub-decoupled infrastructure (local CI gate, local merge queue, sync daemon, mode knob), and **(c)** wiring internal sibling repo in as the reference implementation behind those interfaces. Today's sccache R2 incident (40 PRs wedged 90+ min on a remote service hiccup) is the evidence-driven proof that graceful degradation as a supported tier is overdue, not that offline-first is the headline mission.
 
 ## 0. Scope boundary — what's IN public chump vs internal sibling repo
 
@@ -37,7 +37,7 @@ This is the most important section. Skip it and you'll either build the wrong th
 
 The interface design lives at [`docs/design/MISSION_LAYER_INTERFACE.md`](../design/MISSION_LAYER_INTERFACE.md).
 
-## 1. Why offline-first is load-bearing (not aspirational)
+## 1. Why offline capability is load-bearing engineering (not aspirational, even as a tier-3 differentiator)
 
 From the operator's persistent memory:
 

@@ -8,6 +8,14 @@ status: v1 — operator review requested; gaps filed as INFRA-1320 through INFRA
 
 # Offline-First Architecture
 
+> **Framing (docs/ROADMAP.md, 2026-05-16):** Infra IS the product; GitHub is
+> where users live. Offline-first is a **tier-3 differentiator**, not the
+> spine of the ChumpOS thesis — the fleet's GitHub-facing behavior (reliable
+> auto-merge, conflict-resolving rebases, healing CI gates) is what customers
+> like Marcus actually pay for. This doc still describes a real, useful
+> subsystem; read it as "how the tier-3 differentiator would work," not as
+> "the core architecture."
+
 > **For the gap-filing rubric that enforces this architecture, see [`docs/strategy/OFFLINE_COMPLIANCE_RUBRIC.md`](../strategy/OFFLINE_COMPLIANCE_RUBRIC.md)** — defines the 3 `offline_class` values, forbidden-pattern catalog, and `--force-anti-offline` playbook used by the INFRA-1418 linter.
 
 > **The core question:** If GitHub disappeared tomorrow, could Chump still do useful work? Today: **no**. Bot-merge.sh hard-crashes on `git push` failures, workers stall waiting for GitHub Actions CI that never resolves, gap ships fail. This doc designs the fix.

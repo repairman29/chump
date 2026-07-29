@@ -13,10 +13,10 @@ last_audited: 2026-04-25
 ## Overview
 
 This 3-minute CLI demo showcases Chump's core value:
-- **Local-first setup** — No cloud dependencies, runs on your machine
 - **Autonomous gap execution** — Agents claim and complete work independently
 - **Multi-agent coordination** — Ambient stream shows real-time fleet awareness
 - **End-to-end CI/CD** — From task claim to auto-merge in seconds
+- **Local-first setup available** — No cloud dependencies required to run the CLI locally; the fleet coordination layer (this demo's headline) is the primary value, offline/local-LLM operation is a differentiator, not the spine (framing reset, docs/ROADMAP.md 2026-05-16)
 
 ## Recording Setup
 

@@ -1,5 +1,17 @@
 # Chump Founding Customer Offer
 
+> **STUB (2026-07-29) — pitch copy on hold pending ChumpOS-aligned rewrite.**
+> The program mechanics below (Stripe coupon config, contract template, case
+> study release form, conversion tracking, outreach candidate list) are
+> reusable and left intact — none of that is identity-dependent. Only the
+> **outreach script template** (bottom of this doc) is stubbed: it promised
+> zero-human-touch autonomous delivery on a prospect's own repo, a claim the
+> mission scoreboard hasn't proven yet (① is still open against
+> `repairman29/BEAST-MODE`). Don't run outreach off this doc until that
+> script is rewritten against current [docs/PITCH.md](../PITCH.md) /
+> [docs/ROADMAP.md](../ROADMAP.md) positioning, or the program itself is
+> actually opened (it hasn't launched — this is all pre-launch prep).
+
 **Program:** 10 seats × 50% off × 12 months × signed case-study rights  
 **Window:** Opens Friday of launch week — closes 14 days later (hard cap: 10 customers)  
 **Goal:** Validate hosted-tier demand + generate 5+ named testimonials for launch (INFRA-1500)
@@ -201,16 +213,15 @@ AI-automation budget, friendly to early adopters.
 **Prioritization:** rows 1–15 are solo/2-person maintainers — highest pain, lowest
 barrier. Rows 16–30 are small teams where one motivated dev can unblock the purchase.
 
-**Outreach script template** (adapt per project):
+**Outreach script template — STUBBED, do not use as-is.**
 
-> Hi [name] — I maintain Chump, a multi-agent fleet coordinator for Rust (and any
-> language) codebases. It autonomously picks tasks from a queue and ships them as
-> merged PRs — no per-step review. You file the gap, agents do the work.
->
-> We're opening 10 founding-customer slots at 50% off for the first year in exchange
-> for a short case study. Given your open [issue / PR] backlog I think it could
-> meaningfully reduce your maintenance load. Happy to give you a 30-minute live demo
-> on your repo. Interested?
+The prior draft promised zero-human-touch autonomous delivery *on the
+prospect's own repo* — the mission scoreboard's ① criterion
+(`repairman29/BEAST-MODE`) is still open, so that promise isn't true yet.
+Rewrite this against current [docs/PITCH.md](../PITCH.md) positioning before
+the program opens; likely needs softened language ("drafts PRs for your
+review" / "ships with light operator supervision") until ① actually flips to
+YES. Operator sign-off required either way before any real send.
 
 ---
 
