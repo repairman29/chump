@@ -1,0 +1,14 @@
+# ChumpBench track — the known-good RESCUE lap (DOC-072).
+id: rescue-beast-ci
+mode: RESCUE
+repo: repairman29/BEAST-MODE
+stack: javascript
+state: red-ci
+difficulty: medium
+task: "The CI check 'Vercel - beast-mode' is failing and blocks all merges. Fix the root cause so it goes green."
+acceptance:
+  kind: ci-green
+  check: "the repo's CI checks all pass (no failing check-runs)"
+budget:
+  max_wall_clock_min: 30
+  max_human_touches: 0

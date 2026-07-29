@@ -107,6 +107,7 @@ use chump_gap_store as gap_store;
 // even when the CI rust-cache restores a stale build (fixes E0433 on Ubuntu).
 extern crate chump_ship;
 mod audit;
+mod bench; // DOC-072/EFFECTIVE-327: ChumpBench — run a track as a scoreable lap
 mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod cartographer; // INFRA-1782: chump cartograph <repo-path> — ARCHITECTURE.md generation (INFRA-1746 phase 2)
 mod collision_prediction; // META-076: predictive collision detection (mock inputs), first impl of docs/design/COLLISION_PREDICTION_SCHEMA.md
@@ -1794,6 +1795,13 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("intervention-watchdog") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(intervention_watchdog::run(&sub_args));
+    }
+
+    // `chump bench run --track <path> [--apply] [--json]` (DOC-072/EFFECTIVE-327) —
+    // run a ChumpBench track as a scoreable lap: grade the acceptance check + tally human touches.
+    if args.get(1).map(String::as_str) == Some("bench") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(bench::run(&sub_args));
     }
 
     // `chump demo [--seed N] [--duration 60m] [--dry-run] ...` (INFRA-2391) —
