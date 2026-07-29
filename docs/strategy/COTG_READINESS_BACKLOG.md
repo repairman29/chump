@@ -109,7 +109,65 @@ unreliable executor, and you cannot deliver to a non-technical user on top of an
 untrustworthy one.** Reliability (E1) and self-healing (E2) are the floor;
 honest verification (E3) is the load-bearing wall; wisdom (E4) and delivery
 (E5)/stewardship (E6) are what the user actually experiences. E0 is the front
-door.
+door; **ES (Sourcing Intelligence) sits even before it — nothing builds until we
+know it doesn't already exist.**
+
+---
+
+### EPIC S — Sourcing Intelligence (know what exists before building)
+
+*Why (mission):* "own your tools, don't rent your mind" cuts both ways — reinvent
+nothing that's commodity, own everything that's a moat. Before the Vision Contract
+even reaches a build, the OS must resolve a target against what already exists —
+here, in our arsenal, and in the world — and decide finish / harvest / source /
+build. **Proven necessary by the 2026-07-29 discovery scan (§5.5), which caught 14
+already-built capabilities we had filed as "build."** Today the pieces exist (dedup,
+harvester, contract-scan, the organs) but are not composed, and there is nothing for
+half-done-and-why or world-scale prior art.
+
+**COTG-S.1 — EFFECTIVE: sourcing resolver (repo → arsenal → world, before building)** [INFRA-3508]
+- AC1: Before the Flow builds a target, resolve it in three tiers and return
+  DONE-HERE / HALF-DONE-HERE / EXISTS-IN-ARSENAL / EXISTS-IN-WORLD / NOT-FOUND with
+  receipts (file:line / repo / package+stars): (1) this repo via the comprehension
+  organs (structural completeness, NOT keyword-dedup); (2) our arsenal via the
+  harvester (76-repo catalog); (3) the open-source world (crates.io/npm/GitHub).
+- AC2: Wired AHEAD of implement so the Flow never builds what a tiered search already
+  found — the productized version of the manual discovery scan.
+- AC3: Test — a capability that exists in repo/arsenal/a well-known crate resolves to
+  the right tier with a receipt; a genuinely novel one returns NOT-FOUND.
+- Pillar: EFFECTIVE. Priority: P1. (Gates E1 — nothing builds before sourcing says BUILD.)
+
+**COTG-S.2 — CREDIBLE: stall diagnosis (detect half-done AND why it stalled)** [INFRA-3509]
+- AC1: For a HALF-DONE-HERE verdict, diagnose completeness (built vs AC) AND why it
+  stalled — wire the PROVENANCE organ (git-blame why) + TRACES + PR/issue history
+  (abandoned branch, failing test, gated scope). Return "X% done, stalled because Y."
+- AC2: So the fleet finishes intelligently rather than rebuilding on a corpse or
+  shipping the broken half — today's dedup is binary done/not-done.
+- AC3: Test — a fixture half-done feature is reported with a completeness % + a correct
+  stall reason drawn from git/PR history.
+- Pillar: CREDIBLE. Priority: P2.
+
+**COTG-S.3 — CREDIBLE: the build-vs-source decision (own-vs-rent, logged)** [INFRA-3510]
+- AC1: Given S.1/S.2, decide FINISH / HARVEST / SOURCE / BUILD, encoding "own your
+  tools, don't rent your mind": commodity substrate (resilience/HTTP/parsing) → SOURCE
+  (you'd only rent it anyway); a moat / a user's living-stack tool → BUILD (reinventing
+  that wheel is the point — no landlord can enclose it); partial → FINISH.
+- AC2: Inputs — supply-chain/dep risk, license compatibility with the protective posture
+  (AGPL/Apache/FSL), maintenance burden, integration-vs-build cost. Decision + rationale
+  logged/auditable. Precedent: the resilience-library call (don't build, cockatiel/LiteLLM
+  own it).
+- AC3: Test — a commodity capability decides SOURCE, a moat decides BUILD, a partial
+  decides FINISH, each with a logged rationale.
+- Pillar: CREDIBLE. Priority: P2.
+
+**COTG-S.4 — EFFECTIVE: wire the organs into dedup (structural completeness, not keyword)** [INFRA-3511]
+- AC1: improve's dedup (Stage 2) skips work by commit/PR keyword match; augment/replace
+  with the organs' structural completeness (actually wired + reachable, not "a commit
+  mentions it"). Cheap wiring — the organs exist.
+- AC2: Prevents the exact discovery failure — a built-but-not-wired thing falsely
+  deduped as done.
+- AC3: Test — a built-but-not-wired capability is NOT falsely deduped; a complete one is.
+- Pillar: EFFECTIVE. Priority: P2.
 
 ---
 
@@ -488,25 +546,54 @@ a non-technical user hand over their real problem.
 
 ---
 
-## 6. Sequencing — what's load-bearing first
+## 5.5 Discovery (2026-07-29) — what already exists
 
-The floor before the ceiling. Grounded in the phase model and the session
-evidence:
+A read-across-the-746k-LOC scan mapped all 28 gaps (plus ES) against existing code
+BEFORE any construction. Headline: **the COTG floor is mostly already built — it just
+isn't wired.** ~14 gaps are 40–90% done; the genuinely greenfield half is delivery to a
+human (E5) — Chump's pipeline ends at a merged PR and has **no concept of a *delivered
+tool*** distinct from one. Each gap now carries its verdict as a `DISCOVERY …` note
+(FINISH-at-file vs BUILD). Load-bearing findings:
 
-1. **Wave A — the reliable floor (do first):** COTG-1.1 Flow, 1.2 deterministic
-   ceremony, 1.3 edit-verification, 1.4 durable execution, 2.1 intervention
-   watchdog, 2.2 gate self-heal, 3.1 outcome verification. *These are the gaps the
-   session proved are load-bearing; without them "flawless" is luck.*
-2. **Wave B — close the zero-touch loop:** 2.3 coordination, 2.4 reactive bus,
-   2.5 no-untracked-infra, 3.2/3.3 honesty watchdogs, 5.1 deploy-to-surface. *Now
-   the loop runs end-to-end without a human.*
-3. **Wave C — the user's experience:** 0.1–0.3 vision contract, 5.2 translation,
-   5.3 hand-off, 6.1 trust panel. *Now a non-technical person can actually use it.*
-4. **Wave D — wisdom & stewardship:** 4.1–4.4 (architect/innovation), 6.2–6.3
-   (maintenance/ownership). *Now it's not just reliable, it's wise and durable.*
+- **Built-but-not-wired (finish, don't rebuild):** COTG-1.1 (`src/autonomy_fsm.rs` is a
+  complete typestate FSM, instantiated as a dead `_fsm`); COTG-1.2 (`crates/chump-ship`
+  is a deterministic ship engine, internal-only — the exact fix for the live last-mile
+  failure); COTG-1.6 (`improve.rs` hardcodes `claude-sonnet-4-5` — a Principle-0
+  violation — while `provider_cascade` already honors `CHUMP_PREFERRED_MODEL_CLASS`);
+  COTG-2.4 (reactive-bus transport complete, reactions absent); COTG-3.3 (the
+  `Chump-Agent` trailer is emitted on every commit; the scoreboard just counts raw merges).
+- **Exists richer than described (adopt/close):** COTG-4.4 compounding memory (capture +
+  per-directive adoption grading + A/B ranking).
+- **Genuinely greenfield (real build):** all of E5 (5.1/5.2/5.3), 6.2, plus 3.1 the live
+  outcome-verification gate that everything user-facing depends on.
+- **The consolidation point:** `src/improve.rs` + `src/execute_gap.rs` (the external Flow)
+  is the natural home for the entire Wave-A floor (1.1/1.2/1.3/1.4/1.6) — five gaps in one
+  subsystem, and today the least-wired part.
 
-The COTG gate (§4) is meaningful only after Wave A+B: a zero-intervention
-vision→tool run is the falsifiable proof.
+## 6. Sequencing — REVISED by the discovery (§5.5)
+
+The floor before the ceiling — and most of the floor is *wiring existing code*, not
+building. Order:
+
+0. **ES first (the gate):** COTG-S.4 (organs-in-dedup, cheap) + S.1 (sourcing resolver),
+   so nothing below rebuilds what exists; S.2/S.3 follow.
+1. **The measure, then the floor cluster:** COTG-3.3 (parse the `Chump-Agent` trailer in
+   the scoreboard — tiny, and it makes the COTG §4 measure real) → the **`improve.rs`
+   floor cluster** 1.1 (thread the FSM) + 1.2 (route edits into `chump-ship`) + 1.6
+   (cascade; kill the hardcoded model) — all wiring, and together they fix the exact live
+   failure (storm / no-ceremony / wrong-model). Then 1.3 edit-verify (small build) + 1.4
+   durable-exec (extend the already-wired checkpoint/resume).
+2. **Close the zero-touch loop:** 2.1 intervention-watchdog + 2.2 gate self-heal (finish
+   `pr_rescue`'s 2 missing arms) + 2.4 reactive reactions + 2.3/2.5, then the honesty
+   watchdogs 3.2 (roadmap tail-rollup) with 3.3 already landed.
+3. **Build the greenfield delivery lifecycle (the real construction):** 3.1 live outcome
+   verification (the gate) → 5.1 deploy-to-surface → 5.3 hand-off → 5.2 translation →
+   6.1 trust panel. *This half does not exist yet.*
+4. **Wisdom & stewardship:** 4.1–4.3 (4.4 already done), 6.2 external-tool self-heal, 6.3
+   enforced non-enclosure gate.
+
+The COTG gate (§4) is measurable only after 3.1 + 5.1 exist — until there is a *delivered
+tool* to verify, a zero-intervention vision→tool run cannot be scored.
 
 ## 7. The meta-principle (why this backlog eventually writes itself)
 
