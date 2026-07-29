@@ -1304,3 +1304,4 @@ CHUMP_BOT_MERGE_LOCK
 # EFFECTIVE-327/328: ChumpBench runner (src/bench.rs) — override the gh / chump binaries it shells.
 CHUMP_BENCH_GH_BIN
 CHUMP_BENCH_CHUMP_BIN
+CHUMP_FMT_GATE
