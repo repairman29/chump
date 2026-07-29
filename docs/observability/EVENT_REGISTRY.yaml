@@ -2009,6 +2009,14 @@ events:
     trigger: bot-merge.sh hanging > threshold
     consumers: [operator-recall]
 
+  - kind: bot_merge_stale_lock_reaped
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-3513)
+    trigger: the bot-merge.lock flock timed out but the recorded holder (PID sidecar)
+      is dead/unknown — an orphan sleep held the fd past its parent's death; the stale
+      lock is reaped (file rotated) so the ship queue is not blocked by a phantom holder.
+    consumers: [audit-log, fleet]
+
   - kind: bot_merge_hung
     effect_metric: self
     emitter: scripts/ops/stale-bot-merge-reaper.sh
