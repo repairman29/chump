@@ -179,13 +179,29 @@ if [[ "$MODE" == "per-repo" || "$MODE" == "aggregate" ]]; then
 fi
 
 # ── ① THE BINARY: zero-touch BEAST ship this week ───────────────────────────
-beast=$(gh pr list -R "$BEAST" --state merged --search "merged:>=$wk" --json number --jq 'length' 2>/dev/null)
+# COTG-3.3/INFRA-3496: "merged" is NOT "zero-touch". The mission is achieved only by an
+# AGENT-authored merge, provable by the `Chump-Agent:` commit trailer (the fleet's
+# autonomous signature — the producer is on every fleet commit, INFRA-3479). Count
+# merges, then classify each by the trailer; a merge whose commits lack it is
+# human-in-loop and does NOT count toward the binary. No longer "instrumented later" —
+# this IS the instrumentation.
+beast_prs=$(gh pr list -R "$BEAST" --state merged --search "merged:>=$wk" --json number --jq '.[].number' 2>/dev/null)
+beast=0; beast_zt=0
+for _pr in $beast_prs; do
+  [ -z "$_pr" ] && continue
+  beast=$((beast+1))
+  if gh pr view "$_pr" -R "$BEAST" --json commits --jq '.commits[].messageBody' 2>/dev/null \
+       | grep -qE '^Chump-Agent:'; then
+    beast_zt=$((beast_zt+1))
+  fi
+done
 echo "① THE BINARY — zero-human-touch PR merged in $BEAST this week?"
-if [ -z "$beast" ] || [ "$beast" = "0" ]; then
-  echo "     ❌ NO  (BEAST merges last 7d: ${beast:-0})  ← the mission is NOT yet achieved"
-  beast=0
+if [ "$beast_zt" -gt 0 ]; then
+  echo "     ✅ YES — $beast_zt zero-touch (Chump-Agent) of $beast BEAST merge(s) last 7d"
+elif [ "$beast" -gt 0 ]; then
+  echo "     ❌ NO  ($beast BEAST merge(s) last 7d, but 0 carry the Chump-Agent trailer — human-in-loop, not zero-touch)"
 else
-  echo "     ✅ YES — $beast BEAST merge(s) last 7d  (verify zero-touch + repeatable until instrumented)"
+  echo "     ❌ NO  (BEAST merges last 7d: 0)  ← the mission is NOT yet achieved"
 fi
 echo
 
@@ -236,8 +252,10 @@ echo
 echo "═══ VERDICT ═══"
 rc=0
 need=$(( (total + 2) / 3 ))   # ceil(total*2/3) lower bound for "mission-weighted"
-if [ "$beast" -gt 0 ]; then
-  echo "  🟢 HANDS-OFF territory — BEAST is shipping. Verify zero-touch + repeatability, then dial autonomy up."
+if [ "$beast_zt" -gt 0 ]; then
+  echo "  🟢 HANDS-OFF territory — BEAST shipping ZERO-TOUCH ($beast_zt/$beast agent-authored). Verify repeatability, then dial autonomy up."
+elif [ "$beast" -gt 0 ]; then
+  echo "  🟠 DRIFTING — BEAST has $beast merge(s) but 0 zero-touch (all human-in-loop, no Chump-Agent trailer). The binary is NOT achieved; close the autonomous-ship gap."; rc=1
 elif [ "$agem" -gt 180 ] && [ "$lmep" -gt 0 ]; then
   echo "  🔴 STALLED — no merge in ${agem}m. Unblock the queue before anything else."; rc=1
 elif [ "$stale" -eq 1 ]; then
