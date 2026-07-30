@@ -8741,3 +8741,15 @@ events:
       never auto-files a gap; a human/curator triages the flagged clusters.
     consumers: [ops-audit, quartermaster shelfware-audit (future wiring)]
     fields_required: [ts, kind, threshold_loc, flagged_clusters, flagged_count]
+  - kind: judgment_organ_redteam_regression
+    effect_metric: self
+    emitter: scripts/ci/test-judgment-organ-redteam.sh (CREDIBLE-177)
+    trigger: the pr_ac_coverage red-team fixture suite (src/pr_ac_coverage.rs
+      redteam module) observed check_coverage() disagree with a checked-in
+      fixture's documented baseline -- either a known-bad fixture that used
+      to be correctly rejected started passing (a real verifier regression)
+      or a control fixture flipped. Distinct from a normal ChumpBench lap
+      failure because it targets the judgment organ itself, not a track's
+      engine output.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, mismatch_count, fixtures]

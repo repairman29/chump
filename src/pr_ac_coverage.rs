@@ -756,3 +756,168 @@ mod tests {
         assert!(json.contains(r#""gap_id":"INFRA-1541""#));
     }
 }
+
+// ── red-team fixtures (CREDIBLE-177) ────────────────────────────────────────
+//
+// Known-bad submissions exercised directly against the live judgment organ
+// (`check_coverage`, the private function above). Each fixture's
+// `currently_covered` documents check_coverage's REAL, empirically-verified
+// behavior as of 2026-07-30 -- not the desired behavior. Verified by running
+// each fixture against `check_coverage` before writing the assertion (see
+// commit body for the probe run) rather than assuming.
+//
+// Finding: the first three categories (the exact three named in this gap's
+// acceptance criteria) are CONFIRMED CURRENTLY GAMEABLE. A judgment organ
+// that already fails to catch these isn't a hypothetical risk to guard
+// against -- it's a live weakness. Hardening check_coverage's rules is a
+// separate, riskier change (touches the pass/fail gate for every future PR)
+// filed as CREDIBLE-179, with these fixtures wired as its regression tests.
+// This suite's job today is narrower but still real: prove the weakness
+// with checked-in evidence, and catch further drift in either direction
+// (a control fixture flipping is itself a signal worth surfacing).
+#[cfg(test)]
+mod redteam {
+    use super::*;
+
+    struct Fixture {
+        name: &'static str,
+        category: &'static str,
+        bullet: &'static str,
+        diff: &'static str,
+        commit_text: &'static str,
+        /// Empirically-verified current check_coverage() outcome (non-empty rules_hit).
+        currently_covered: bool,
+    }
+
+    fn fixtures() -> Vec<Fixture> {
+        vec![
+            Fixture {
+                name: "stub_passes_as_done",
+                category: "stub-passes-as-done",
+                bullet: "emit kind=capability_drift_detected to ambient.jsonl when a bucketless cluster crosses the LOC floor",
+                diff: concat!(
+                    "+++ b/src/capability_drift.rs\n",
+                    "+// TODO: emit kind=capability_drift_detected to ambient.jsonl when a bucketless cluster crosses the LOC floor\n",
+                    "+fn scan() {}\n",
+                ),
+                commit_text: "",
+                // CONFIRMED VULNERABILITY: rule (b) keyword-matches the TODO comment's own words.
+                currently_covered: true,
+            },
+            Fixture {
+                name: "meaningless_test",
+                category: "meaningless-test",
+                bullet: "test: seeding a deliberately-broken build causes a known-bad fixture to incorrectly pass",
+                diff: concat!(
+                    "+++ b/scripts/ci/test-redteam.sh\n",
+                    "+#!/bin/bash\n",
+                    "+# deliberately-broken build causes a known-bad fixture to incorrectly pass\n",
+                    "+exit 0\n",
+                ),
+                commit_text: "",
+                // CONFIRMED VULNERABILITY: rules (b)+(d) match keywords inside a comment in a no-op test.
+                currently_covered: true,
+            },
+            Fixture {
+                name: "dod_unmet_but_ci_green",
+                category: "dod-unmet-ci-green",
+                bullet: "the fixture set runs against the live judgment organ on the same schedule as ChumpBench nightly regression, not a separate cadence",
+                diff: "+++ b/README.md\n+typo fix\n",
+                commit_text: "Closes-AC: the fixture set runs against",
+                // CONFIRMED VULNERABILITY: rule (c) accepts a loose Closes-AC prefix with zero real diff.
+                currently_covered: true,
+            },
+            Fixture {
+                name: "genuinely_covered_baseline",
+                category: "control-positive",
+                bullet: "src/pr_ac_coverage.rs must implement check_coverage",
+                diff: concat!(
+                    "+++ b/src/pr_ac_coverage.rs\n",
+                    "+fn check_coverage(bullet: &str, diff: &str, commit_text: &str) -> Vec<u8> { Vec::new() }\n",
+                ),
+                commit_text: "",
+                // control: a real, on-topic diff touching the named file should pass.
+                currently_covered: true,
+            },
+            Fixture {
+                name: "genuinely_uncovered_baseline",
+                category: "control-negative",
+                bullet: "the desktop Tauri shell must render a native macOS menu bar with a Quit item",
+                diff: "+++ b/docs/strategy/UNRELATED_TOPIC.md\n+some unrelated prose about pricing\n",
+                commit_text: "chore: fix typo",
+                // control: a totally unrelated diff must NOT be judged as covering this bullet.
+                currently_covered: false,
+            },
+        ]
+    }
+
+    #[test]
+    fn known_bad_fixtures_match_documented_baseline() {
+        // The credibility half of the suite: prove the checked-in fixtures
+        // are an accurate, CURRENT snapshot of check_coverage's real
+        // behavior, not stale assumptions. A failure here means either
+        // check_coverage's rules changed (update the fixture + evaluate
+        // whether the drift is a hardening win or a further regression) or
+        // a fixture is wrong -- either way it should never fail silently.
+        let mut mismatches = Vec::new();
+        for f in fixtures() {
+            let hits = check_coverage(f.bullet, f.diff, f.commit_text);
+            let covered = !hits.is_empty();
+            if covered != f.currently_covered {
+                mismatches.push(format!(
+                    "{} ({}): expected currently_covered={} got covered={} (rules_hit={:?})",
+                    f.name, f.category, f.currently_covered, covered, hits
+                ));
+            }
+        }
+        assert!(
+            mismatches.is_empty(),
+            "judgment-organ redteam: baseline drift detected -- {}",
+            mismatches.join("; ")
+        );
+    }
+
+    #[test]
+    fn suite_has_teeth_against_an_always_permissive_checker() {
+        // AC4: prove the fixture set actually discriminates rather than
+        // trivially always-passing. Simulate a deliberately-broken judgment
+        // organ (one that rubber-stamps every bullet as covered by rule a)
+        // and show the control-negative fixture -- which the REAL checker
+        // correctly rejects -- would incorrectly pass under it.
+        fn deliberately_broken_check_coverage(
+            _bullet: &str,
+            _diff: &str,
+            _commit_text: &str,
+        ) -> Vec<u8> {
+            vec![1] // always "covered by rule (a)", no matter what
+        }
+
+        let control_negative = fixtures()
+            .into_iter()
+            .find(|f| f.name == "genuinely_uncovered_baseline")
+            .expect("control-negative fixture must exist");
+
+        let real_result = check_coverage(
+            control_negative.bullet,
+            control_negative.diff,
+            control_negative.commit_text,
+        );
+        let broken_result = deliberately_broken_check_coverage(
+            control_negative.bullet,
+            control_negative.diff,
+            control_negative.commit_text,
+        );
+
+        assert!(
+            real_result.is_empty(),
+            "sanity: the real checker should currently reject the control-negative fixture"
+        );
+        assert!(
+            !broken_result.is_empty(),
+            "seeded deliberately-broken checker did not incorrectly pass the fixture -- test setup is wrong"
+        );
+        // The divergence itself is the proof: same fixture, real checker
+        // says Miss, broken checker says Pass. A redteam suite that could
+        // not produce this divergence would have no discriminating power.
+    }
+}
