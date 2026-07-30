@@ -8753,3 +8753,23 @@ events:
       engine output.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, mismatch_count, fixtures]
+  - kind: front_door_route_confident
+    effect_metric: self
+    emitter: src/front_door.rs (EFFECTIVE-330/COTG-0.0)
+    trigger: >
+      `chump start "<plain-language ask>"` classifies the ask into a single
+      front-door mode (CREATE/IMPROVE/RESCUE/COMPREHEND/INGEST) with a
+      confidence margin over the runner-up mode.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, input_len, mode, confidence]
+
+  - kind: front_door_route_ambiguous
+    effect_metric: self
+    emitter: src/front_door.rs (EFFECTIVE-330/COTG-0.0)
+    trigger: >
+      `chump start "<plain-language ask>"` could not confidently separate the
+      top mode from the runner-up (mixed intent, or nothing matched at all —
+      candidates is empty in the latter case). Per the front-door doc's AC2,
+      this is surfaced as a question, never resolved by a silent default.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, input_len, candidates]
