@@ -330,6 +330,26 @@ fn run_bootstrap(args: BootstrapArgs) -> Result<(), ()> {
     // ── Track files created for cleanup on error ─────────────────────────────
     let mut files_created: Vec<PathBuf> = Vec::new();
 
+    // ── Ensure target dir exists ─────────────────────────────────────────────
+    // `check_dir_empty` above treats a *missing* dir as "empty, fine", but git
+    // init below runs with `current_dir(target_dir)` and fails with ENOENT if
+    // the dir was never created. Create it here (idempotent) so bootstrap owns
+    // its own `--dir` — the documented `mkdir` step is no longer required, and
+    // CREATE bench laps (which point `--dir` at a fresh clone path) can drive.
+    if let Err(e) = std::fs::create_dir_all(target_dir) {
+        eprintln!(
+            "chump bootstrap: cannot create target dir {}: {e}",
+            target_dir.display()
+        );
+        emit_failure(
+            "bootstrap_failed",
+            FailureClass::ScaffoldingWriteFailed,
+            intent,
+            target_dir,
+        );
+        return Err(());
+    }
+
     // ── git init ─────────────────────────────────────────────────────────────
     let git_init_result = std::process::Command::new("git")
         .args(["init", "-q"])
@@ -920,4 +940,40 @@ fn emit_failure(kind: &str, class: FailureClass, intent: &str, target_dir: &Path
         ],
         ..Default::default()
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // These lock the precondition the EFFECTIVE-337 create-dir guard relies on:
+    // a missing OR freshly-created-empty target dir must pass check_dir_empty so
+    // bootstrap can create the dir itself and git init can run in it. The full
+    // create → git-init → scaffold path is exercised by the live CREATE bench lap
+    // (e2e/chumpbench/create-photo-renamer.yaml), not a unit test — run_bootstrap
+    // mutates state.db and spawns git, so it isn't a clean unit seam.
+
+    #[test]
+    fn check_dir_empty_accepts_missing_dir() {
+        let missing =
+            std::env::temp_dir().join(format!("chump-boot-missing-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&missing);
+        assert!(!missing.exists());
+        assert!(
+            check_dir_empty(&missing).is_ok(),
+            "a missing target dir must pass the empty-check (bootstrap creates it)"
+        );
+    }
+
+    #[test]
+    fn check_dir_empty_accepts_freshly_created_empty_dir() {
+        let dir = std::env::temp_dir().join(format!("chump-boot-empty-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        assert!(
+            check_dir_empty(&dir).is_ok(),
+            "an empty dir must pass the empty-check so git init can run"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
