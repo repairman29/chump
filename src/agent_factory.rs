@@ -40,6 +40,10 @@ pub struct WebAgentBuild {
 /// Uses ChumpAgent (not axonerai Agent) so text-format tool calls from cascade models are parsed and executed.
 pub fn build_chump_agent_cli() -> Result<(ChumpAgent, Session<crate::session::Ready>)> {
     tool_routing::log_tool_inventory();
+    // RESILIENT-209: opt-in (CHUMP_AUTO_PROVISION_TOOLS) — install any missing
+    // CLI belt before the agent runs, so remediation doesn't die mid-run on a
+    // tool that isn't there. Inert (returns Disabled) unless the env is set.
+    let _ = tool_routing::ensure_provisioned();
     let typed = Session::new().assemble();
     let provider: Box<dyn axonerai::provider::Provider + Send + Sync> =
         crate::provider_cascade::global_provider();
@@ -92,6 +96,10 @@ pub fn build_chump_agent_web_components(
     let _ = std::fs::create_dir_all(&session_dir);
     let session_manager = FileSessionManager::new(session_id.to_string(), session_dir)?;
     tool_routing::log_tool_inventory();
+    // RESILIENT-209: opt-in (CHUMP_AUTO_PROVISION_TOOLS) — install any missing
+    // CLI belt before the agent runs, so remediation doesn't die mid-run on a
+    // tool that isn't there. Inert (returns Disabled) unless the env is set.
+    let _ = tool_routing::ensure_provisioned();
     #[cfg(feature = "mistralrs-infer")]
     let (provider, mistral_for_stream) =
         crate::provider_cascade::build_provider_with_mistral_stream();

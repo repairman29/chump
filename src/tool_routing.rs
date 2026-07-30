@@ -8,6 +8,9 @@ use std::sync::OnceLock;
 
 static TOOL_AVAILABILITY: OnceLock<ToolAvailability> = OnceLock::new();
 static LOGGED: AtomicBool = AtomicBool::new(false);
+/// RESILIENT-209: provision at most once per process (both agent-build paths
+/// call `ensure_provisioned`).
+static PROVISIONED: AtomicBool = AtomicBool::new(false);
 
 /// Check which CLI tools are installed and cache the result.
 pub fn tools() -> &'static ToolAvailability {
@@ -44,6 +47,116 @@ pub fn log_tool_inventory() {
         }
     );
     eprintln!("[tool_routing] {}", msg);
+}
+
+/// RESILIENT-209: outcome of a tool-provisioning attempt.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ProvisionOutcome {
+    /// CHUMP_AUTO_PROVISION_TOOLS is not set — provisioning is opt-in, so we
+    /// never surprise-install. This is the default.
+    Disabled,
+    /// No tools were missing — nothing to install.
+    NothingMissing,
+    /// The installer ran. `ok` = it exited successfully; `attempted` = how many
+    /// tools were missing when we triggered it.
+    Ran { ok: bool, attempted: usize },
+    /// Provisioning was enabled and tools were missing, but the installer
+    /// script could not be located. Logged; the run continues.
+    InstallerNotFound,
+}
+
+/// Pure provisioning core (RESILIENT-209) — testable without touching the real
+/// system: given the missing tools, whether provisioning is enabled, and the
+/// installer path, decide and act.
+pub fn provision(missing: &[&str], installer: &std::path::Path, enabled: bool) -> ProvisionOutcome {
+    if !enabled {
+        return ProvisionOutcome::Disabled;
+    }
+    if missing.is_empty() {
+        return ProvisionOutcome::NothingMissing;
+    }
+    if !installer.exists() {
+        eprintln!(
+            "[tool_routing] RESILIENT-209: {} tool(s) missing but installer not found at {}",
+            missing.len(),
+            installer.display()
+        );
+        return ProvisionOutcome::InstallerNotFound;
+    }
+    eprintln!(
+        "[tool_routing] RESILIENT-209: provisioning {} missing tool(s) ({}) via {}",
+        missing.len(),
+        missing.join(", "),
+        installer.display()
+    );
+    match Command::new("bash").arg(installer).status() {
+        Ok(s) => ProvisionOutcome::Ran {
+            ok: s.success(),
+            attempted: missing.len(),
+        },
+        Err(e) => {
+            eprintln!("[tool_routing] RESILIENT-209: installer failed to spawn: {e}");
+            ProvisionOutcome::Ran {
+                ok: false,
+                attempted: missing.len(),
+            }
+        }
+    }
+}
+
+/// Resolve the toolkit installer script. Override with CHUMP_TOOLKIT_INSTALLER;
+/// otherwise probe well-known locations. Returns the first existing candidate,
+/// falling back to the repo-relative path (existence is re-checked by
+/// `provision`, which yields InstallerNotFound if nothing was found).
+fn resolve_installer() -> std::path::PathBuf {
+    use std::path::PathBuf;
+    if let Ok(p) = std::env::var("CHUMP_TOOLKIT_INSTALLER") {
+        return PathBuf::from(p);
+    }
+    let rel = "scripts/setup/bootstrap-toolkit.sh";
+    let mut candidates: Vec<PathBuf> = vec![PathBuf::from(rel)];
+    if let Ok(exe) = std::env::current_exe() {
+        for anc in exe.ancestors() {
+            candidates.push(anc.join(rel));
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        candidates.push(PathBuf::from(home).join("Projects/Chump").join(rel));
+    }
+    candidates
+        .iter()
+        .find(|p| p.exists())
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from(rel))
+}
+
+/// Ensure the CLI tool belt is provisioned when CHUMP_AUTO_PROVISION_TOOLS is
+/// set (opt-in, so it never surprise-installs). Wired into agent-run startup
+/// (RESILIENT-209): the fleet used to detect a partial tool belt and only *log*
+/// it, then fail mid-remediation when a needed tool was absent (the first
+/// ChumpBench RESCUE lap died here — "16/34 tools installed"). Now, when
+/// enabled, it installs the missing belt up-front via bootstrap-toolkit.sh.
+pub fn ensure_provisioned() -> ProvisionOutcome {
+    let enabled = std::env::var("CHUMP_AUTO_PROVISION_TOOLS")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    // Fast path: skip detection entirely when disabled (the default).
+    if !enabled {
+        return ProvisionOutcome::Disabled;
+    }
+    // Provision at most once per process — both agent-build paths call this,
+    // and bootstrap-toolkit.sh, while idempotent, is slow to re-scan 34 tools.
+    if PROVISIONED.swap(true, Ordering::Relaxed) {
+        return ProvisionOutcome::NothingMissing;
+    }
+    let missing: Vec<&str> = tools()
+        .all_checks()
+        .into_iter()
+        .filter(|(_, installed)| !*installed)
+        .map(|(name, _)| name)
+        .collect();
+    let installer = resolve_installer();
+    provision(&missing, &installer, enabled)
 }
 
 pub struct ToolAvailability {
@@ -428,5 +541,82 @@ mod tests {
         assert!(table.contains("Air-gap (CHUMP_AIR_GAP_MODE)"));
         assert!(!table.contains("read_url —"));
         std::env::remove_var("CHUMP_AIR_GAP_MODE");
+    }
+
+    // ── RESILIENT-209: tool provisioning ──────────────────────────────────
+    fn write_mock_installer(dir: &std::path::Path, exit_code: i32) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join("mock-installer.sh");
+        std::fs::write(&p, format!("#!/usr/bin/env bash\nexit {exit_code}\n")).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    }
+
+    #[test]
+    #[serial]
+    fn provision_disabled_never_runs_installer() {
+        let dir = tempfile::tempdir().unwrap();
+        let installer = write_mock_installer(dir.path(), 0);
+        // enabled=false → Disabled even with missing tools present.
+        assert_eq!(
+            provision(&["rg", "fd"], &installer, false),
+            ProvisionOutcome::Disabled
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn provision_nothing_missing_is_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let installer = write_mock_installer(dir.path(), 0);
+        assert_eq!(
+            provision(&[], &installer, true),
+            ProvisionOutcome::NothingMissing
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn provision_missing_installer_reports_not_found() {
+        let missing = std::path::Path::new("/nonexistent/definitely/not/here.sh");
+        assert_eq!(
+            provision(&["rg"], missing, true),
+            ProvisionOutcome::InstallerNotFound
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn provision_runs_installer_and_reports_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let installer = write_mock_installer(dir.path(), 0);
+        assert_eq!(
+            provision(&["rg", "fd", "just"], &installer, true),
+            ProvisionOutcome::Ran {
+                ok: true,
+                attempted: 3
+            }
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn provision_reports_installer_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let installer = write_mock_installer(dir.path(), 1);
+        assert_eq!(
+            provision(&["rg"], &installer, true),
+            ProvisionOutcome::Ran {
+                ok: false,
+                attempted: 1
+            }
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn ensure_provisioned_disabled_by_default() {
+        std::env::remove_var("CHUMP_AUTO_PROVISION_TOOLS");
+        assert_eq!(ensure_provisioned(), ProvisionOutcome::Disabled);
     }
 }

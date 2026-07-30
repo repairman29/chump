@@ -1307,3 +1307,7 @@ CHUMP_BOT_MERGE_LOCK
 CHUMP_BENCH_GH_BIN
 CHUMP_BENCH_CHUMP_BIN
 CHUMP_FMT_GATE
+# RESILIENT-209: opt-in runtime tool-provisioning (src/tool_routing.rs). When set (1/true), ensure_provisioned() installs any missing CLI belt via bootstrap-toolkit.sh at agent-run startup; unset = detect+log only (default, no surprise-install).
+CHUMP_AUTO_PROVISION_TOOLS
+# RESILIENT-209: override path to the toolkit installer script (src/tool_routing.rs resolve_installer); defaults to scripts/setup/bootstrap-toolkit.sh probed from cwd/exe/HOME.
+CHUMP_TOOLKIT_INSTALLER
