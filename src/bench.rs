@@ -424,7 +424,47 @@ fn drive_engine(track: &Track) -> Result<()> {
             }
             Ok(())
         }
-        other => anyhow::bail!("engine-drive for mode {other} not wired yet (v1: RESCUE/IMPROVE)"),
+        "CREATE" => {
+            // CREATE tracks carry a `bootstrap:<name>` pseudo-repo — the lap
+            // creates the project from the plain-language `task`. Drive the
+            // create engine: `chump bootstrap` scaffolds the project (git init +
+            // manifest + first commit + umbrella gap) into the same dir the
+            // scorer runs the acceptance command in.
+            //
+            // EFFECTIVE-335 v1: bootstrap SCAFFOLDS but does not IMPLEMENT the
+            // tool, so a track whose acceptance runs the generated program will
+            // honestly score FAIL post-scaffold — surfacing "implement-after-
+            // bootstrap" as the next CREATE layer (a follow-up wires
+            // bootstrap → implement so acceptance can pass zero-touch).
+            let dir = local_clone_dir(&track.repo);
+            if let Some(parent) = dir.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("mkdir {}", parent.display()))?;
+            }
+            // Bootstrap wants a fresh dir — clear any prior lap's output.
+            let _ = std::fs::remove_dir_all(&dir);
+            let dir_str = dir.to_string_lossy().into_owned();
+            let status = Command::new(&chump)
+                .args([
+                    "bootstrap",
+                    &track.task,
+                    "--dir",
+                    &dir_str,
+                    "--skip-arch-decision",
+                ])
+                .status()
+                .with_context(|| "spawn chump bootstrap")?;
+            if !status.success() {
+                anyhow::bail!(
+                    "engine `chump bootstrap` exited non-zero for {}",
+                    track.repo
+                );
+            }
+            Ok(())
+        }
+        other => {
+            anyhow::bail!("engine-drive for mode {other} not wired yet (v1: RESCUE/IMPROVE/CREATE)")
+        }
     }
 }
 
