@@ -815,3 +815,4 @@ opencode_harness_install_partial    # reason: EFFECTIVE-320 — install-opencode
 opencode_harness_install_unverified    # reason: EFFECTIVE-320 — install-opencode-harness.sh status (born-wired opencode+Almanac)
 fix_verify_passed    # reason: CREDIBLE-170 — execute_gap ship-path verify gate verdict
 fix_verify_failed    # reason: CREDIBLE-170 — execute_gap ship-path verify gate verdict
+judgment_organ_redteam_regression    # reason: CREDIBLE-177 — emitter lives in scripts/ci/test-judgment-organ-redteam.sh, a path class the event-registry-coverage scanner's PROD_PATHS intentionally excludes (CI/test-runner wrappers, not production daemons); emit is a real printf to ambient.jsonl, verified firing by manually forcing a fixture mismatch and confirming the line appears
