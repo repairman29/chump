@@ -1311,3 +1311,5 @@ CHUMP_FMT_GATE
 CHUMP_AUTO_PROVISION_TOOLS
 # RESILIENT-209: override path to the toolkit installer script (src/tool_routing.rs resolve_installer); defaults to scripts/setup/bootstrap-toolkit.sh probed from cwd/exe/HOME.
 CHUMP_TOOLKIT_INSTALLER
+# CREDIBLE-178: override the chump binary used by pr_ac_coverage::load_ac_bullets to shell `chump gap show <ID> --json` (defaults to "chump" on PATH); set by bot-merge.sh's auto-close ac-coverage call.
+CHUMP_REAL_BINARY
