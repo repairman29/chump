@@ -429,8 +429,8 @@ fn drive_engine(track: &Track) -> Result<()> {
             // CREATE tracks carry a `bootstrap:<name>` pseudo-repo — the lap
             // creates the project from the plain-language `task`. Drive the
             // create engine: `chump bootstrap` scaffolds the project (git init +
-            // manifest + first commit + umbrella gap) into the same dir the
-            // scorer runs the acceptance command in.
+            // manifest + first commit; the bench passes --no-umbrella-gap) into
+            // the same dir the scorer runs the acceptance command in.
             //
             // EFFECTIVE-335 v1: bootstrap SCAFFOLDS but does not IMPLEMENT the
             // tool, so a track whose acceptance runs the generated program will
@@ -445,14 +445,28 @@ fn drive_engine(track: &Track) -> Result<()> {
             // Bootstrap wants a fresh dir — clear any prior lap's output.
             let _ = std::fs::remove_dir_all(&dir);
             let dir_str = dir.to_string_lossy().into_owned();
+            // EFFECTIVE-339: honor the track's stack so the scaffold language
+            // matches the acceptance command (e.g. stack: python → a python
+            // scaffold, not the Rust default). Unknown/empty stacks fall through
+            // to bootstrap's Rust default.
+            let template = match track.stack.to_lowercase().as_str() {
+                "python" | "py" => Some("python"),
+                "node" | "javascript" | "typescript" | "js" | "ts" => Some("node"),
+                "rust" | "rs" => Some("rust"),
+                _ => None,
+            };
+            let mut args: Vec<&str> = vec!["bootstrap", track.task.as_str(), "--dir", &dir_str];
+            if let Some(t) = template {
+                args.push("--template");
+                args.push(t);
+            }
+            // Bench harness flags: no LLM arch decision, and --no-umbrella-gap so
+            // repeated laps don't flood the canonical registry with one
+            // `Bootstrap: <task>` gap each (EFFECTIVE-339).
+            args.push("--skip-arch-decision");
+            args.push("--no-umbrella-gap");
             let status = Command::new(&chump)
-                .args([
-                    "bootstrap",
-                    &track.task,
-                    "--dir",
-                    &dir_str,
-                    "--skip-arch-decision",
-                ])
+                .args(&args)
                 .status()
                 .with_context(|| "spawn chump bootstrap")?;
             if !status.success() {
