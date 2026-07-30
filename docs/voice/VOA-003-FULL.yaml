@@ -1,0 +1,26 @@
+# VOA-003 — Voice of the Agent, full report.
+# Auto-filed by `chump voice` (INFRA-2258).
+# See docs/process/VOICE_OF_AGENT.md for protocol.
+
+id: VOA-003
+filed_at: "2026-07-30T02:34:50Z"
+
+reporter:
+  agent_role: unknown-role
+  chump_version: "0.2.0"
+  target_repo: "anonymous"
+  target_repo_disclosure: anonymous
+  session_id: "(elided)"
+
+wedge_observations:
+
+  - wedge_class: gap-status-auto-flip-silent-noop
+    minutes_lost: 15
+    workaround_used:
+      summary: ""
+    proposed_fix:
+      shape: gate
+      fix: "Add a gate that refuses to drop/auto-flip a gap while an open branch or PR still references its ID; reconcile registry against open PRs before any gap GC."
+    impact_estimate_minutes_per_session: 15
+    evidence:
+      - (none provided)

@@ -1,0 +1,17 @@
+- id: VOA-003
+  domain: VOA
+  title: "VOICE-OF-AGENT VOA-003: gap-status-auto-flip-silent-noop — 15 min lost; fix-shape: gate"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Full friction report at docs/voice/VOA-003-FULL.yaml with wedge_class=gap-status-auto-flip-silent-noop, minutes_lost=15
+    - Proposed fix (gate): "Add a gate that refuses to drop/auto-flip a gap while an open branch or PR still references its ID; reconcile registry against open PRs before any gap GC."
+    - Evidence references documented in FULL report
+  notes: |
+    [2026-07-30T02:34:50Z] Auto-filed by `chump voice` (INFRA-2258).
+    Wedge class: gap-status-auto-flip-silent-noop
+    Minutes lost: 15
+    Evidence:
+    - (none provided)
+    See docs/voice/VOA-003-FULL.yaml for full report.
