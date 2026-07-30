@@ -172,6 +172,31 @@ pub fn register_free_dispatch_tools(registry: &mut ToolRegistry) {
     }
 }
 
+/// Tool keys for `chump review` (CREDIBLE-174 / CREDIBLE-181). Read-only:
+/// enough for the reviewer to investigate context around a diff (grep for
+/// callers, read a file in full, list a directory) but NO write_file,
+/// patch_file, run_cli, git, or cargo — a reviewer must not be able to
+/// silently patch over the thing it's judging.
+///
+/// This is the registry-level half of the structural guarantee; the
+/// runtime half is `tool_policy::review_class_dispatch_active()` +
+/// `tool_middleware`'s `is_write_tool` gate (CREDIBLE-174), which
+/// `review_dispatch::run` also activates for the duration of the review.
+/// Two independent layers on purpose: even if a future edit accidentally
+/// added a write tool to this list, the runtime gate still blocks it.
+const REVIEW_ONLY_TOOL_KEYS: &[&str] = &["read_file", "list_dir", "grep_repo"];
+
+/// Register the review-only tool set (CREDIBLE-181).
+pub fn register_review_only_tools(registry: &mut ToolRegistry) {
+    let mut entries: Vec<_> = inventory::iter::<ToolEntry>()
+        .filter(|e| REVIEW_ONLY_TOOL_KEYS.contains(&e.sort_key) && e.enabled())
+        .collect();
+    entries.sort_by(|a, b| a.sort_key.cmp(b.sort_key));
+    for entry in entries {
+        registry.register(tool_middleware::wrap_tool((entry.factory)()));
+    }
+}
+
 /// Tool keys for `chump gen` (PRODUCT-050/051). Read ops for context exploration,
 /// patch_file + run_cli for iterative code editing and cargo check loops.
 /// Excludes git_commit — gen.rs owns the commit step after the agent finishes.
