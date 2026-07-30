@@ -8,7 +8,8 @@
 //! SUBSTRATE-layer entrypoint; consumer surfaces own the founder-facing pitch lane.
 //!
 //! Architecture decision: uses `ArchitectureDecisionContract` from crates/chump-handoff.
-//! With --skip-arch-decision: defaults to Rust/minimal. Without it: exits 2 with TODO
+//! With --skip-arch-decision: uses --template's language defaults (Rust unless
+//! --template python|node, EFFECTIVE-339). Without it: exits 2 with TODO
 //! (LLM wiring is a INFRA-2267 follow-up).
 //!
 //! Template mode (INFRA-1881): `chump bootstrap <path> --template rust` treats the
@@ -72,6 +73,11 @@ pub struct BootstrapArgs {
     pub template: BootstrapTemplate,
     /// True when the first positional arg was used as the dir (template mode).
     pub template_mode: bool,
+    /// Skip filing the umbrella gap into canonical state.db (EFFECTIVE-339).
+    /// Test/bench harnesses (e.g. the CREATE bench lap) drive bootstrap
+    /// repeatedly and must not pollute the pickable queue with one
+    /// `Bootstrap: <intent>` gap per run.
+    pub no_umbrella_gap: bool,
 }
 
 impl BootstrapArgs {
@@ -82,6 +88,7 @@ impl BootstrapArgs {
         let mut intent: Option<String> = None;
         let mut dir: Option<PathBuf> = None;
         let mut skip_arch_decision = false;
+        let mut no_umbrella_gap = false;
         let mut with_roadmap = false;
         let mut template = BootstrapTemplate::Rust;
         let mut template_explicit = false;
@@ -106,6 +113,10 @@ impl BootstrapArgs {
                 }
                 "--skip-arch-decision" => {
                     skip_arch_decision = true;
+                    i += 1;
+                }
+                "--no-umbrella-gap" => {
+                    no_umbrella_gap = true;
                     i += 1;
                 }
                 "--with-roadmap" => {
@@ -168,6 +179,7 @@ impl BootstrapArgs {
             with_roadmap,
             template,
             template_mode,
+            no_umbrella_gap,
         })
     }
 }
@@ -215,6 +227,30 @@ impl ArchOutput {
             rationale: "test fixture default".to_string(),
         }
     }
+
+    /// Minimal arch defaults for a given template language (EFFECTIVE-339).
+    /// Lets `--skip-arch-decision` honor `--template python|node` instead of
+    /// always scaffolding Rust — so a CREATE bench track with `stack: python`
+    /// gets a Python scaffold its acceptance command can actually run.
+    fn from_template(t: BootstrapTemplate) -> Self {
+        match t {
+            BootstrapTemplate::Rust => ArchOutput::default_rust(),
+            BootstrapTemplate::Python => ArchOutput {
+                language: "python".to_string(),
+                framework: "minimal".to_string(),
+                test_harness: "pytest".to_string(),
+                deps: vec![],
+                rationale: "template default (python)".to_string(),
+            },
+            BootstrapTemplate::Node => ArchOutput {
+                language: "node".to_string(),
+                framework: "minimal".to_string(),
+                test_harness: "node --test".to_string(),
+                deps: vec![],
+                rationale: "template default (node)".to_string(),
+            },
+        }
+    }
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -242,7 +278,7 @@ pub fn run(args: &[String]) -> i32 {
 
 fn print_usage() {
     println!(
-        "Usage: chump bootstrap <path|intent> [--template rust|python|node] [--dir <path>] [--skip-arch-decision] [--with-roadmap]"
+        "Usage: chump bootstrap <path|intent> [--template rust|python|node] [--dir <path>] [--skip-arch-decision] [--no-umbrella-gap] [--with-roadmap]"
     );
     println!();
     println!("Bootstrap a new product from an empty directory.");
@@ -256,7 +292,8 @@ fn print_usage() {
     println!(
         "  --dir <path>          Target directory in classic mode (default: current directory)"
     );
-    println!("  --skip-arch-decision  Use Rust/minimal defaults (for tests, no LLM)");
+    println!("  --skip-arch-decision  Use --template's language defaults (for tests, no LLM)");
+    println!("  --no-umbrella-gap     Don't file the umbrella gap (bench/test harnesses)");
     println!("  --with-roadmap        Also generate a roadmap (INFRA-2267 follow-up)");
     println!();
     println!("Template mode (INFRA-1881) — empty dir → cargo run in one command:");
@@ -313,7 +350,7 @@ fn run_bootstrap(args: BootstrapArgs) -> Result<(), ()> {
 
     // ── Architecture decision ─────────────────────────────────────────────────
     let arch: ArchOutput = if args.skip_arch_decision {
-        ArchOutput::default_rust()
+        ArchOutput::from_template(args.template)
     } else {
         eprintln!(
             "TODO: arch-decision via LLM not yet wired (INFRA-2267 follow-up); use --skip-arch-decision for now"
@@ -620,7 +657,13 @@ fn run_bootstrap(args: BootstrapArgs) -> Result<(), ()> {
         rationale = arch.rationale,
     );
 
-    let gap_ids = reserve_umbrella_gap(&gap_title, &gap_description, intent, target_dir);
+    // EFFECTIVE-339: bench/test harnesses pass --no-umbrella-gap so repeated
+    // bootstrap runs don't pollute the canonical registry with one gap each.
+    let gap_ids = if args.no_umbrella_gap {
+        Vec::new()
+    } else {
+        reserve_umbrella_gap(&gap_title, &gap_description, intent, target_dir)
+    };
 
     // ── Print results ─────────────────────────────────────────────────────────
     let duration_ms = start.elapsed().as_millis() as u64;
@@ -975,5 +1018,48 @@ mod tests {
             "an empty dir must pass the empty-check so git init can run"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn from_template_maps_language_per_template() {
+        // EFFECTIVE-339: --skip-arch-decision must honor --template's language
+        // so a CREATE track's stack matches its acceptance command.
+        assert_eq!(
+            ArchOutput::from_template(BootstrapTemplate::Rust).language,
+            "rust"
+        );
+        assert_eq!(
+            ArchOutput::from_template(BootstrapTemplate::Python).language,
+            "python"
+        );
+        assert_eq!(
+            ArchOutput::from_template(BootstrapTemplate::Node).language,
+            "node"
+        );
+    }
+
+    #[test]
+    fn no_umbrella_gap_flag_parses() {
+        let args = vec![
+            "bootstrap".to_string(),
+            "an intent".to_string(),
+            "--dir".to_string(),
+            "/tmp/x".to_string(),
+            "--no-umbrella-gap".to_string(),
+        ];
+        let parsed = BootstrapArgs::from_argv(&args).expect("parse");
+        assert!(
+            parsed.no_umbrella_gap,
+            "--no-umbrella-gap must set the flag"
+        );
+        // Default (flag absent) must stay false.
+        let args2 = vec![
+            "bootstrap".to_string(),
+            "an intent".to_string(),
+            "--dir".to_string(),
+            "/tmp/x".to_string(),
+        ];
+        let parsed2 = BootstrapArgs::from_argv(&args2).expect("parse");
+        assert!(!parsed2.no_umbrella_gap, "flag must default to false");
     }
 }
