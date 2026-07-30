@@ -2674,8 +2674,20 @@ printf '{"ts":"%s","kind":"bot_merge_rebase_before_test","rebased":%s,"commits_b
 
 _BM_LAST_CARGO_OOM_DETECTED=0
 if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
-    stage_start "cargo test --bin chump --tests"
-    if ! _run_cargo_with_lock_detect "cargo test" 1200 test --bin chump --tests; then
+    # CREDIBLE-175: prefer `cargo nextest run` (process-isolated, exactly what
+    # CI runs) over thread-shared `cargo test`, which false-reds on
+    # CHUMP_REPO/CHUMP_HOME env-var races (repo_tools/tool_middleware) that CI's
+    # nextest never hits — those false-reds forced --skip-tests bypasses on
+    # clean pushes. Fall back to `cargo test` only when nextest isn't installed.
+    if cargo nextest --version &>/dev/null; then
+        _bm_test_label="cargo nextest run --bin chump"
+        _bm_test_args=(nextest run --bin chump)
+    else
+        _bm_test_label="cargo test --bin chump --tests"
+        _bm_test_args=(test --bin chump --tests)
+    fi
+    stage_start "$_bm_test_label"
+    if ! _run_cargo_with_lock_detect "$_bm_test_label" 1200 "${_bm_test_args[@]}"; then
         # INFRA-918: classify failure — transient_oom when rustc processes were
         # SIGTERM'd by macOS Jetsam under memory pressure; permanent_failure otherwise.
         if [[ "${_BM_LAST_CARGO_OOM_DETECTED:-0}" == "1" ]]; then
