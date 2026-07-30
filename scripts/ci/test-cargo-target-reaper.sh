@@ -184,23 +184,40 @@ pass "summary event includes worktree_orphan_count"
 #    (Runs the reaper in dry-run = default, so it never deletes during the test.) ──
 echo "--- Test 10: aggressive mode bypasses the blanket cargo-active abort (ZERO-WASTE-012) ---"
 # Spawn a fake process matching the reaper's `pgrep -f \"rustc \"` guard (argv0=\"rustc \").
-( exec -a "rustc " sleep 20 ) &
+# RESILIENT-219: 60s (was 20s) — under CI load the two reaper invocations below
+# together can take longer than 20s, letting the fake process exit before the
+# second invocation's own `pgrep -f "rustc "` check runs, which silently
+# changes the test's premise (no active build) instead of failing loudly.
+( exec -a "rustc " sleep 60 ) &
 _fake_rustc_pid=$!
 sleep 0.3
 if ! pgrep -f "rustc " >/dev/null 2>&1; then
     kill "$_fake_rustc_pid" 2>/dev/null || true
     echo "  SKIP (could not spawn a fake rustc matcher in this environment)"
 else
+    # RESILIENT-219: `printf '%s' "$long_string" | grep -q pattern` is a classic
+    # pipefail footgun — `grep -q` exits the instant it finds a match (that's
+    # what -q optimizes for), which can SIGPIPE a still-writing printf if
+    # $long_string exceeds what grep needed to read. This script runs under
+    # `set -o pipefail`, so that SIGPIPE (exit 141) becomes the PIPELINE's
+    # reported exit status regardless of grep's own (correct) result --
+    # observed in CI as "printf: write error: Broken pipe" immediately
+    # followed by this test falsely reporting "neither aborted nor escalated"
+    # even when the reaper's real output was correct. Pure bash substring
+    # matching sidesteps the footgun entirely (no subprocess, no pipe).
+    #
     # Normal mode (disk healthy) + active build → MUST still abort.
     out_normal="$(CHUMP_DISK_CRITICAL_GB=0 bash "$REAPER" 2>&1 || true)"
-    printf '%s' "$out_normal" | grep -q "ABORT: active cargo" \
-        && pass "normal mode still aborts on an active cargo/rustc process" \
-        || fail "normal mode did NOT abort on active rustc — the conservative guard was lost"
+    if [[ "$out_normal" == *"ABORT: active cargo"* ]]; then
+        pass "normal mode still aborts on an active cargo/rustc process"
+    else
+        fail "normal mode did NOT abort on active rustc — the conservative guard was lost"
+    fi
     # Disk-critical aggressive mode + active build → must NOT abort; must escalate.
     out_agg="$(CHUMP_DISK_CRITICAL_GB=999999 bash "$REAPER" 2>&1 || true)"
-    if printf '%s' "$out_agg" | grep -q "ABORT: active cargo"; then
+    if [[ "$out_agg" == *"ABORT: active cargo"* ]]; then
         fail "aggressive mode STILL aborts on active cargo — fix ineffective (the bug)"
-    elif printf '%s' "$out_agg" | grep -q "escalating"; then
+    elif [[ "$out_agg" == *"escalating"* ]]; then
         pass "disk-critical aggressive mode bypasses the blanket cargo-active abort + escalates"
     else
         fail "aggressive mode neither aborted nor escalated — unexpected"
