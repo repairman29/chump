@@ -415,7 +415,12 @@ fn drive_engine(track: &Track) -> Result<()> {
         .or_else(|_| std::env::var("CHUMP_BIN"))
         .unwrap_or_else(|_| "chump".to_string());
     match track.mode.to_uppercase().as_str() {
-        "RESCUE" | "IMPROVE" => {
+        // FINISH (complete a half-built repo) shares the improve engine: pointing
+        // `chump improve` at an existing clone drives the agent to work the repo
+        // toward green — which is exactly "wire the stubbed endpoint + make its
+        // test pass" (EFFECTIVE-340). RESCUE (fix broken CI) and IMPROVE (add a
+        // feature) are the same operation with different intent.
+        "RESCUE" | "IMPROVE" | "FINISH" => {
             let status = Command::new(&chump)
                 .args(["improve", &track.repo, "--apply"])
                 .status()
@@ -510,7 +515,7 @@ fn drive_engine(track: &Track) -> Result<()> {
         }
         other => {
             anyhow::bail!(
-                "engine-drive for mode {other} not wired yet (v1: RESCUE/IMPROVE/CREATE/COMPREHEND)"
+                "unknown bench mode {other} (wired: RESCUE/IMPROVE/CREATE/COMPREHEND/FINISH)"
             )
         }
     }
