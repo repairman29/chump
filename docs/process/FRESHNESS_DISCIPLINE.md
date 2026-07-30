@@ -34,7 +34,8 @@ Inherited from [META-114](../gaps/META-114.yaml). Each layer has a distinct fres
 | 4 | **launchd plists** | new daemon shipped; operator hasn't reloaded; or plist installed without `StartInterval` | `chump cron health` (META-110/INFRA-2046) audits every Chump plist |
 | 5 | **YAML gaps** | atomic Write edits don't propagate to state.db | `chump gap sync --pull` (same as #2) |
 | 6 | **active leases / fleet-registry** | local `.chump-locks/*.json` doesn't propagate cross-machine | NATS-primary path ([META-061](../gaps/META-061.yaml)) — not yet shipped; file-fallback only today |
-| 7 | **docs (CLAUDE.md, playbooks)** | doctrine evolves mid-session; agents don't re-read | A2A peer broadcasts (INFRA-1932 Pattern 0) surface doctrine updates fast |
+| 7 | **docs (CLAUDE.md, playbooks)** | doctrine evolves mid-session; agents don't re-read | A2A peer broadcasts (INFRA-1932 Pattern 0) surface doctrine updates fast — **today's honest state (verified 2026-07-30): the NATS broker is genuinely live and both A2A flags are ON at the launchd level, but the end-to-end proof (`consensus_result` firing) has never happened once — see [RESILIENT-212](../gaps/RESILIENT-212.yaml). Don't assume this fix is load-bearing yet; verify.** |
+| 8 | **new-content placement** ("Drift Doctor", [DOC-076](../gaps/DOC-076.yaml)) | a finding gets written as a brand-new doc/gap without checking whether it already exists, or belongs in an existing doc as a section | run [§ The doc-placement decision](#the-doc-placement-decision-layer-8) below before creating any new `.md` file |
 
 ## The verify-at-source rule
 
@@ -141,6 +142,43 @@ The [`verify-existence`](../../.claude/skills/verify-existence/SKILL.md) skill i
 - `ambiguous`: single signal — investigate manually
 
 **Use it before filing any "X is missing" gap.** This is mandatory per CLAUDE.md → mandatory pre-flight section (which links here).
+
+## The doc-placement decision (layer 8)
+
+> **"Drift Doctor"** — [DOC-076](../gaps/DOC-076.yaml). `verify-existence` (above) answers "does this thing already exist." This section answers the DIFFERENT question that comes right after: given a new finding that's genuinely new, where does it go — new file, or does an existing doc already own this topic? Nothing owned this decision before DOC-076; `docs/process/CUSTODIAN_BLUEPRINT.md` even names the resulting symptom without fixing it ("discoverability is via grep over 70 process docs").
+
+```mermaid
+flowchart TD
+    A([New finding / idea]) --> B{verify-existence:<br/>does it already exist?}
+    B -->|confirmed_shipped| C[Don't file. Point to what exists.]
+    B -->|ambiguous| D[Investigate manually before proceeding]
+    B -->|confirmed_absent| E{Does a doc on this<br/>TOPIC already exist?}
+    E -->|yes| F{Does it fit as a<br/>section/amendment?}
+    F -->|yes| G[Edit the existing doc.<br/>Don't create a new file.]
+    F -->|no, genuinely new axis| H[New doc — link it FROM<br/>the existing one]
+    E -->|no| I[New doc]
+    G & H & I --> J{Is it indexed?<br/>Referenced from a README/<br/>index a session actually reads<br/>at start?}
+    J -->|no| K[Add the pointer. An unlinked<br/>doc is invisible.]
+    J -->|yes| L{Will an ALREADY-RUNNING<br/>session see this?}
+    L -->|A2A_LAYER reactive push live| M[Push notifies live sessions]
+    L -->|today's reality, verified 2026-07-30| N[It won't, until their next<br/>session-start preamble --<br/>see layer 7 above]
+```
+
+### Worked validation (the AC's own test set)
+
+The gap's acceptance test asks whether this flowchart's output matches independent human judgment on a real case set. One exists already: this session (2026-07-30) hit exactly seven "should I file something new" decisions before this doc existed to guide them, decided by direct human/agent judgment in the moment. Running the flowchart against each after the fact:
+
+| Finding | Flowchart says | What actually happened | Match? |
+|---|---|---|---|
+| Broader security scanning for delivered tools | Topic doc exists (`COTG-6.3`/`INFRA-3507` already covers secret-sweep) → amend | Amended `INFRA-3507`'s AC | ✅ |
+| Cost gating per customer vision | Topic doc exists (`COTG-0.2`/`INFRA-3481` go/no-go) → amend | Amended `INFRA-3481`'s AC | ✅ |
+| Rollback on customer promote | Topic doc exists (`COTG-5.1`/`INFRA-3502`, just amended with stage/promote) → amend | Amended `INFRA-3502`'s AC | ✅ |
+| Vision-intake privacy | Topic doc exists (`COTG-0.1`/`INFRA-3480` intake) → amend | Amended `INFRA-3480`'s AC | ✅ |
+| Verifier red-team | `verify-existence`-style check found `RED_TEAM_VERIFICATION.md` but confirmed it's a different topic (gap-stall claims, not judgment-organ testing) → new | Filed `CREDIBLE-177` | ✅ |
+| consensus_result never firing | Genuinely new diagnostic, no existing doc/gap owns it → new | Filed `RESILIENT-212` | ✅ |
+| Doc-placement logic itself | Genuinely new axis, `FRESHNESS_DISCIPLINE.md` exists but only covers staleness-of-existing, not placement-of-new → new (but linked FROM the existing doc, per the H branch above) | Filed `DOC-076`, wired here rather than as a disconnected new doc | ✅ |
+
+7/7 — encouraging, though N=7 from one session judged by the same reasoning that designed the flowchart is a weak test. Re-run this table against the next batch of real findings from a *different* session before trusting it further.
 
 ## Cross-references
 
