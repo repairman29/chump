@@ -473,16 +473,42 @@ the generators — carefully, above a reliable floor.
 living stack. A merged PR the user can't use is not a delivered tool.
 
 **COTG-5.1 — EFFECTIVE: auto-deploy to a usable surface (URL/app, never a repo)**
-- AC1: A shipped tool is automatically deployed to a surface the non-technical
-  user can open and use (a working URL / installable app), verified live — not a
-  GitHub repo, not a build artifact. Extends self-deploy (MISSION-012) from
-  "binary current" to "user-facing surface live."
-- AC2: The deploy is verified by observing the live surface (per the preview
-  doctrine), and the user is handed the link only after it renders + performs its
-  DoD task (ties to COTG-3.1).
-- AC3: Test: a shipped tool results in a live, reachable URL that passes its DoD
-  check before any user hand-off.
+- **Revised 2026-07-29 (operator directive): split into stage + promote, not one
+  deploy step.** As originally written, AC2 verified the same surface handed to
+  the user — meaning a broken agent output could be visible mid-verification, or
+  the surface could drift between "verified" and "handed off." Fix: verification
+  (COTG-3.1) runs against an ephemeral, per-lap **stage** surface; only a passing
+  stage is **promoted** — an atomic, deterministic flip — to what the user
+  actually receives.
+- AC1: A shipped tool is automatically deployed to an **ephemeral, per-lap stage
+  surface** — not the customer-facing URL yet — the non-technical user never sees
+  this step. Extends self-deploy (MISSION-012) from "binary current" to
+  "user-facing surface live," but the first surface built is disposable, matching
+  the same isolation pattern Chump already uses per-gap (a worktree per claim).
+- AC2: COTG-3.1's outcome-verification runs against the **stage** surface, not the
+  final one. Only after it passes does a **promote** step — atomic, deterministic,
+  no re-build — flip the verified artifact to the customer-facing surface. The
+  user is handed the link only after promote, never before.
+- AC3: Test: a shipped tool deploys to a stage surface, passes its DoD check
+  there, and only then promotes; a tool that fails its DoD check on stage never
+  reaches the customer-facing surface. A second test: promote is a flip of the
+  already-verified artifact, not a fresh build (no drift between what was
+  verified and what shipped).
+- AC4 (build-vs-source, per COTG-S.3): this is commodity substrate, not a moat —
+  source it. Hosted case: wrap an existing preview-deployment mechanism (e.g.
+  Vercel's per-PR preview + promote-to-prod flip) rather than building one.
+  Self-hosted / air-gapped case: a minimal git-push-to-live-URL pattern (e.g.
+  Dokku's detect-build-run loop) or an agent-sandbox-with-exposed-port pattern
+  (e.g. e2b, Apache-2.0, self-hostable) — both are narrow, vendorable patterns,
+  not full platforms to adopt wholesale. Graft the pattern; don't rent the infra
+  for customers who can't use hosted infra.
 - Pillar: EFFECTIVE. Priority: P1.
+- **Reality check (2026-07-29 grounding pass):** the "preview verification
+  doctrine" this AC used to cite does not exist as a real document — it appeared
+  only inside this file's own text. Removed the phantom citation. The closest
+  real analog is `docs/process/EXTERNAL_GOLDEN_PATH.md`'s health-check pattern,
+  which checks liveness, not outcome — COTG-3.1 (AC2 above) is the doctrine that
+  actually needs to be written, once it ships.
 
 **COTG-5.2 — EFFECTIVE: fleet-state → user-language translation (never show PRs/CI)**
 - AC1: All user-facing communication is in the user's terms: "your budget tracker
@@ -569,6 +595,46 @@ tool*** distinct from one. Each gap now carries its verdict as a `DISCOVERY …`
 - **The consolidation point:** `src/improve.rs` + `src/execute_gap.rs` (the external Flow)
   is the natural home for the entire Wave-A floor (1.1/1.2/1.3/1.4/1.6) — five gaps in one
   subsystem, and today the least-wired part.
+
+## 5.6 Discovery round 2 (2026-07-29, operator-directed) — remaining epics + E5 grafts
+
+A second discovery pass covered what §5.5 didn't: the rest of Epic 1/2/4, plus a real
+graft search (arsenal + this repo + OSS prior art) for the genuinely-greenfield E5/RESCUE/
+E0.0/3.1 pieces. Ground rule applied both times: a file existing is not evidence of
+wiring — verified against the live claim→implement→ship path, not just source presence.
+
+**Remaining Epic 1/2/4 gaps:**
+
+| Gap | Verdict | Receipt | Remaining work |
+|---|---|---|---|
+| 1.3 edit-verify gate | PARTIAL | `verify_staged_edit()` (`src/improve.rs:977`) wired on initial ship (`:1073`), NOT on `fix_pr`/`remediate_held` remediation path — tracked by the already-open `INFRA-3516` (P1) | route remediation commits through the same gate |
+| 1.4 durable/resumable exec | DONE (narrow) | checkpoint/resume in `src/improve.rs:1168-1199,281-297` matches AC exactly | `src/execute_gap.rs` has zero checkpoint refs — the non-`improve` path has no journal at all |
+| 1.5 supervision-tree escalation | PARTIAL, likely dead | `gap-supervisor.sh`/`fleet-supervisor.sh` exist, tested in isolation, but **nothing in the live claim/retry loop calls them**; daemons not installed on this box; 0 `gap_supervisor_escalated` events ever, despite a prior gap (RESILIENT-131) claiming it was made load-bearing | wire the call from the real retry loop + install the daemons |
+| 2.1 intervention watchdog | DONE (capability), manual-only | `src/intervention_watchdog.rs` (787 lines) fully implements classify/scan/emit/file, all ACs tested | never invoked by any coordination loop — cron/manual `--apply` only |
+| 2.2 gate self-heal | PARTIAL | `src/pr_rescue.rs` `Classification` covers 3 of 5 named classes (orphan-allowlist, env-var, debt-ceiling); no handler for unregistered-ambient-kind or install-manifest gaps | finish the 2 missing arms (already correctly scoped by §6 below) |
+| 2.3 merge-order hazard | NOT-FOUND | zero grep hits for cross-PR shared-ratchet coordination | genuine build |
+| 2.5 untracked-infra guard | NOT-FOUND | `infra-watcher-loop.sh` checks plist health, not plist-vs-git-tracked | genuine build |
+| 4.1 divergent solve | NOT-FOUND | zero hits for N-candidate-generate/judge/synthesize on *solving* (review-side patterns exist, not solve-side) | genuine build |
+| 4.2 do→reflect loop | PARTIAL, not wired | `src/reflection.rs`/`reflection_db.rs` (real, LLM-assisted) but every caller is eval-harness grading — zero refs from `improve.rs`/`execute_gap.rs` | wire a post-execution pass into the live pipeline |
+
+**E5 / RESCUE / E0.0 / 3.1 graft findings:**
+
+| Gap | Verdict | Graft source | Note |
+|---|---|---|---|
+| 5.1 deploy-to-surface | NOT-FOUND here / EXISTS-IN-ARSENAL+WORLD | 6+ of Jeff's own repos already deploy via Vercel (`ai-gm-service`, `coloringbook`, `beast-mode-website`) using a proven `vercel.json` shape; self-hosted options: Dokku (minimal git-push-to-URL), e2b (self-hostable agent sandbox, Apache-2.0) | see revised AC (above, this doc) for the stage/promote split this graft feeds into |
+| 5.2 user-language translation | NOT-FOUND, no reuse candidate | — | genuine build |
+| 5.3 honest hand-off | NOT-FOUND (thin) | `src/intervention_watchdog.rs`'s `Chump-Agent` trailer parsing + `zero_touch_streak()` is the truth-primitive to compose over | build the message layer, not the truth-checks |
+| RESCUE diagnosis | DONE-HERE, via an uncataloged dependency | `src/comprehend_tool.rs` shells to a `comprehend` binary built from `~/Projects/almanac` — **`almanac` is not in `docs/arsenal/GLOBAL_ARSENAL.json`**, a live gap in the harvester's own 2026-05-25 (stale) catalog | catalog `almanac`; translate its technical output to plain language for the user flow |
+| RESCUE fix/actuation | NOT-FOUND | `src/paramedic.rs` (2154 lines, INFRA-1375) is real but Chump-repo-specific — fix vocabulary hardcoded to Chump's own CI gates | generalize the fix-dispatch beyond Chump's own gates |
+| E0.0 front-door router | NOT-FOUND (the 5 modes) / DONE-HERE (skeleton) | `src/intent_parser.rs` (828 lines, merged, live via `chump orchestrate`) is the exact right shape — typed enum + pattern-match + LLM-fallback + ambient emit — just has zero `CREATE`/`IMPROVE`/`RESCUE`/`COMPREHEND`/`INGEST` variants today | clone the shape, swap the enum, add the missing confidence+confirm step (front-door AC1/AC2, absent from both existing parsers) |
+| 3.1 outcome verification | DONE-HERE (live-observation primitive, previously uncited) / NOT-FOUND (the gate) | `src/browser.rs` + `src/browser_tool.rs` (COMP-005b, 741 lines) — wired `browser` tool, `navigate`/`screenshot` actions, gated by `CHUMP_BROWSER_AUTOAPPROVE` | wire browser output against a DoD assertion as a blocking gate — that composition, not new browser capability, is 3.1's real remaining scope |
+
+**Correction to a front-door claim:** `CHUMP_FRONT_DOOR.md`'s reuse map listed "guarded ceremony (INFRA-3516)" as already-shipped. Verified against current main: `INFRA-3516` is still `status: open` (P1) — it's the fix for the 1.3 remediation-path hole above. Corrected in that doc.
+
+**OSS prior-art, narrow patterns only (not framework adoption, per NORTH_STAR "own your tools"):**
+- Deploy-to-URL: well-covered (Dokku, e2b, WebContainers/StackBlitz as reference UX).
+- Outcome verification against a live URL: **genuinely weak coverage in the wild** — closest match is GUISpector (arXiv 2510.04791, research-stage, not adopted tooling), plus Playwright's MCP-driven browser-agent test tools (production-grade but built for generating test suites, not one-shot judging). Chump would be credibly first-to-solve-well here, not late-to-adopt.
+- Intent routing + confirm-back: well-covered (`semantic-router` for embed+threshold classification, Rasa's two-stage-fallback pattern for the confirm/rephrase UX) — clean grafts, small libraries not frameworks.
 
 ## 6. Sequencing — REVISED by the discovery (§5.5)
 
