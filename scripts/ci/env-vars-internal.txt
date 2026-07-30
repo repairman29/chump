@@ -1037,6 +1037,8 @@ CHUMP_DISK_CRITICAL_GB
 CHUMP_VERIFY_CI_POLL_SECS
 # CHUMP_VERIFY_CI_WAIT_SECS — verify-merge Gate 1 max wait for CI terminal state, seconds (default 1200)
 CHUMP_VERIFY_CI_WAIT_SECS
+# CHUMP_VERIFY_CI_EMPTY_GRACE_SECS — verify-merge Gate 1 grace window (seconds, default 180) to keep polling while the check rollup is EMPTY before concluding no-gates (CREDIBLE-176: a freshly-opened PR has not registered its check-runs yet)
+CHUMP_VERIFY_CI_EMPTY_GRACE_SECS
 # CHUMP_VERIFY_CI_ADVISORY_NAMES — comma-separated case-insensitive advisory (non-gating) check-name substrings, verify-merge Gate 1
 CHUMP_VERIFY_CI_ADVISORY_NAMES
 # CHUMP_VERIFY_DEPS_TIMEOUT_SECS — verify-merge deps install timeout in seconds (default 600); bounds npm ci / npm install duration (CREDIBLE-104)

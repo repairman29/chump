@@ -681,6 +681,15 @@ fn poll_ci_until_terminal(opts: &Opts) -> anyhow::Result<CiResult> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(1200);
+    // CREDIBLE-176: how long to keep polling while the rollup is EMPTY before
+    // concluding the repo has no CI. A PR opened moments ago (e.g. right after
+    // the improve loop opens it) has not had its workflow check-runs registered
+    // by GitHub yet, so the rollup is transiently empty — that is "no checks
+    // YET", not "no CI configured". Give checks this grace window to appear.
+    let empty_grace_secs: u64 = std::env::var("CHUMP_VERIFY_CI_EMPTY_GRACE_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(180);
 
     // Parse advisory substrings (lowercase for case-insensitive matching).
     let advisory_substrings: Vec<String> = std::env::var("CHUMP_VERIFY_CI_ADVISORY_NAMES")
@@ -696,6 +705,25 @@ fn poll_ci_until_terminal(opts: &Opts) -> anyhow::Result<CiResult> {
         let checks = fetch_check_runs(opts)?;
 
         if checks.is_empty() {
+            // CREDIBLE-176: an empty rollup does NOT immediately mean "no CI".
+            // Right after PR-open, GitHub has usually not registered the
+            // workflow check-runs yet. Distinguish "no checks YET (wait)" from
+            // "genuinely no CI (no-gates)" by giving checks a grace window to
+            // appear. Only conclude no-gates if the rollup is STILL empty after
+            // the grace window — that is the true "repo has no CI" signal.
+            let elapsed = started_at.elapsed().as_secs();
+            if elapsed < empty_grace_secs {
+                println!(
+                    "[verify-merge] Gate 1: no checks registered yet — waiting for CI to appear, elapsed {elapsed}s / grace {empty_grace_secs}s"
+                );
+                if poll_secs > 0 {
+                    std::thread::sleep(std::time::Duration::from_secs(poll_secs));
+                }
+                continue;
+            }
+            println!(
+                "[verify-merge] Gate 1: no checks appeared within {empty_grace_secs}s grace — treating as no-gates"
+            );
             return Ok(CiResult::NoGates);
         }
 
@@ -1706,6 +1734,83 @@ fi
                 }
             ),
         }
+    }
+
+    // ── CREDIBLE-176: empty rollup right after PR-open must WAIT, not no-gates ──
+    // Regression guard for the bench-lap failure: PR opened seconds earlier,
+    // GitHub hadn't registered the workflow check-runs yet → transiently empty
+    // rollup was wrongly read as "repo has no CI". Now it waits out the grace
+    // window and judges the checks once they appear.
+    #[test]
+    #[serial_test::serial]
+    fn test_ci_empty_then_checks_appear_is_not_nogates() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let empty_json = r#"{"statusCheckRollup":[]}"#;
+        let success_json =
+            r#"{"statusCheckRollup":[{"name":"CI","status":"COMPLETED","conclusion":"SUCCESS"}]}"#;
+
+        // First two polls: empty rollup (checks not registered yet). Third: green.
+        let gh_bin = fake_gh_with_responses(tmp.path(), &[empty_json, empty_json, success_json]);
+
+        std::env::set_var("CHUMP_VERIFY_CI_POLL_SECS", "0");
+        std::env::set_var("CHUMP_VERIFY_CI_WAIT_SECS", "3600");
+        // Grace window > 0 so the empty polls WAIT rather than concluding no-gates.
+        std::env::set_var("CHUMP_VERIFY_CI_EMPTY_GRACE_SECS", "3600");
+        std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_NAMES");
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
+        );
+
+        let opts = make_opts(&gh_bin);
+        let result = poll_ci_until_terminal(&opts).expect("poll_ci");
+
+        match result {
+            CiResult::Green { check_count, .. } => {
+                assert_eq!(
+                    check_count, 1,
+                    "checks appeared after grace — should judge them green"
+                );
+            }
+            other => panic!(
+                "empty-then-registered must NOT be NoGates; got {}",
+                match other {
+                    CiResult::NoGates => "NoGates (CREDIBLE-176 regression)",
+                    CiResult::Red { .. } => "Red",
+                    CiResult::TimedOut { .. } => "TimedOut",
+                    CiResult::Green { .. } => unreachable!(),
+                }
+            ),
+        }
+    }
+
+    // ── CREDIBLE-176: genuinely no CI (empty past grace) still → NoGates ──
+    // The fix must not break the real "repo has no CI" case: with the grace
+    // window elapsed and the rollup still empty, the verdict stays NoGates.
+    #[test]
+    #[serial_test::serial]
+    fn test_ci_empty_past_grace_is_nogates() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let empty_json = r#"{"statusCheckRollup":[]}"#;
+        let gh_bin = fake_gh_with_responses(tmp.path(), &[empty_json, empty_json, empty_json]);
+
+        std::env::set_var("CHUMP_VERIFY_CI_POLL_SECS", "0");
+        std::env::set_var("CHUMP_VERIFY_CI_WAIT_SECS", "3600");
+        // Grace = 0 → an empty rollup is immediately treated as no-gates.
+        std::env::set_var("CHUMP_VERIFY_CI_EMPTY_GRACE_SECS", "0");
+        std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_NAMES");
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
+        );
+
+        let opts = make_opts(&gh_bin);
+        let result = poll_ci_until_terminal(&opts).expect("poll_ci");
+
+        assert!(
+            matches!(result, CiResult::NoGates),
+            "empty rollup past grace must remain NoGates (genuine no-CI case)"
+        );
     }
 
     // ── (b) pending → FAILURE: Gate 1 HELD(ci) ───────────────────────────
