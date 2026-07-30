@@ -157,17 +157,115 @@ fn fetch_ci_verdict(repo: &str) -> (Verdict, String) {
     }
 }
 
-/// Trailer-based provenance count over the last 50 commits of a local clone: (human, zero_touch,
-/// scanned). A commit carrying `Chump-Agent:` is the OS's; one lacking it (and not a bot) is a
-/// human touch (COTG-3.2). Kept self-contained so the runner compiles independently of the
-/// CREDIBLE-171 metric; both share the same trailer rule and can be deduped once both land.
-fn count_provenance(clone: &Path) -> Option<(u64, u64, u64)> {
+/// The clone's base branch name — the remote default the lap branched FROM. Mirrors
+/// `improve.rs::detect_default_branch` (symbolic-ref origin/HEAD, then main/master), kept
+/// self-contained so the bench runner compiles independently of the improve engine.
+fn base_branch(clone: &Path) -> String {
+    let cd = clone.to_string_lossy().to_string();
+    if let Ok(out) = Command::new("git")
+        .args([
+            "-C",
+            &cd,
+            "symbolic-ref",
+            "--short",
+            "refs/remotes/origin/HEAD",
+        ])
+        .output()
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout)
+                .trim()
+                .trim_start_matches("origin/")
+                .to_string();
+            if !s.is_empty() {
+                return s;
+            }
+        }
+    }
+    for cand in ["main", "master"] {
+        for r in [format!("origin/{cand}"), cand.to_string()] {
+            let ok = Command::new("git")
+                .args(["-C", &cd, "rev-parse", "--verify", "--quiet", &r])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if ok {
+                return cand.to_string();
+            }
+        }
+    }
+    "main".to_string()
+}
+
+/// Resolve a rev to a form `git log` accepts, preferring the remote ref over the local branch of
+/// the same name (`origin/main` before `main`). Returns None if neither exists.
+fn resolve_rev(clone: &Path, name: &str) -> Option<String> {
+    let cd = clone.to_string_lossy().to_string();
+    for r in [format!("origin/{name}"), name.to_string()] {
+        let ok = Command::new("git")
+            .args(["-C", &cd, "rev-parse", "--verify", "--quiet", &r])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if ok {
+            return Some(r);
+        }
+    }
+    None
+}
+
+/// INFRA-3523: the range of commits the LAP itself produced, as a `base..tip` spec for `git log`.
+///
+/// The improve/rescue engine branches `chump/improve-<key>` off `origin/<default>` and commits the
+/// lap's work there (the OS commit carries the `Chump-Agent:` trailer); the shared clone keeps that
+/// branch after ship. So the lap's commits are exactly `base..<lap-branch>` — NOT the clone's whole
+/// history. Counting `git log origin/HEAD -n50` (the old behavior) tallied the external repo's
+/// entire pre-existing default-branch history as human touches (~50), which is the bug this fixes.
+///
+/// tip = the newest local `chump/*` lap branch if one exists, else HEAD. base = the remote default
+/// branch. Returns None when the base can't be resolved (can't scope → caller reports "can't read").
+fn lap_commit_range(clone: &Path) -> Option<String> {
+    let cd = clone.to_string_lossy().to_string();
+    let base = resolve_rev(clone, &base_branch(clone))?;
+
+    // Prefer the lap's own branch (chump/*), newest first; the improve engine names it
+    // chump/improve-<key> and leaves it in the clone after ship.
+    let tip = Command::new("git")
+        .args([
+            "-C",
+            &cd,
+            "for-each-ref",
+            "--sort=-committerdate",
+            "--format=%(refname:short)",
+            "refs/heads/chump/",
+        ])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(|s| s.trim().to_string())
+                .find(|s| !s.is_empty())
+        })
+        .unwrap_or_else(|| "HEAD".to_string());
+
+    Some(format!("{base}..{tip}"))
+}
+
+/// Trailer-based provenance count over the commits in `range` (a `git log` revision range) of a
+/// local clone: (human, zero_touch, scanned). A commit carrying `Chump-Agent:` is the OS's; one
+/// lacking it (and not a bot) is a human touch (COTG-3.2). The range is scoped to the LAP's own
+/// commits (INFRA-3523, see `lap_commit_range`) so the count is the lap's touches, not the clone's
+/// entire history. Kept self-contained so the runner compiles independently of the CREDIBLE-171
+/// metric; both share the same trailer rule and can be deduped once both land.
+fn count_provenance(clone: &Path, range: &str) -> Option<(u64, u64, u64)> {
     let out = Command::new("git")
         .args([
             "-C",
             &clone.to_string_lossy(),
             "log",
-            "origin/HEAD",
+            range,
             "-n50",
             "--format=%an%x1f%ae%x1f%b%x1e",
         ])
@@ -277,15 +375,26 @@ fn tally_human_touches(repo: &str) -> (Option<u64>, String) {
             "n/a — no local clone (a driven --apply lap produces the touch count)".to_string(),
         );
     }
-    match count_provenance(&clone) {
+    // INFRA-3523: scope to the LAP's own commits (base..lap-branch), not the clone's whole history.
+    let Some(range) = lap_commit_range(&clone) else {
+        return (
+            None,
+            "n/a — could not resolve the lap's commit range in local clone".to_string(),
+        );
+    };
+    match count_provenance(&clone, &range) {
         Some((human, zt, scanned)) if scanned > 0 => {
             let ratio = zt as f64 / scanned as f64 * 100.0;
             (
                 Some(human),
-                format!("{human} human / {zt} zero-touch of {scanned} commits ({ratio:.0}% zero-touch) in local clone"),
+                format!("{human} human / {zt} zero-touch of {scanned} lap commit(s) ({ratio:.0}% zero-touch) in local clone"),
             )
         }
-        _ => (
+        Some(_) => (
+            None,
+            "n/a — no lap commits in local clone (base..lap-branch is empty)".to_string(),
+        ),
+        None => (
             None,
             "n/a — could not read local clone provenance".to_string(),
         ),
@@ -495,6 +604,78 @@ budget:
         assert_eq!(t.mode, "RESCUE");
         assert_eq!(t.acceptance.kind, "ci-green");
         assert_eq!(t.budget.max_human_touches, 0);
+    }
+
+    /// INFRA-3523: the touch counter must tally only the LAP's own commits, not the external
+    /// clone's entire pre-existing history. Fixture: a repo with N human commits on the base
+    /// branch + 1 zero-touch lap commit on a `chump/*` branch → scanned == 1 (the lap commit),
+    /// human == 0, zt == 1 — NOT N+1.
+    #[test]
+    fn touch_count_is_scoped_to_the_lap_not_the_whole_clone() {
+        let tmp = std::env::temp_dir().join(format!("chump-bench-inf3523-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let cd = tmp.to_string_lossy().to_string();
+        let git = |args: &[&str]| {
+            let ok = Command::new("git")
+                .args(["-C", &cd])
+                .args(args)
+                .env("GIT_AUTHOR_DATE", "2026-01-01T00:00:00")
+                .env("GIT_COMMITTER_DATE", "2026-01-01T00:00:00")
+                .output()
+                .unwrap();
+            assert!(
+                ok.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&ok.stderr)
+            );
+        };
+        git(&["init", "-q", "-b", "main"]);
+        // A distinct HUMAN identity with no trailer — these must NOT be counted.
+        git(&["config", "user.name", "Jane Human"]);
+        git(&["config", "user.email", "jane@example.com"]);
+        // N = 5 pre-existing human commits on the base branch (the clone's inherited history).
+        let n = 5;
+        for i in 0..n {
+            std::fs::write(tmp.join(format!("f{i}.txt")), format!("{i}")).unwrap();
+            git(&["add", "-A"]);
+            git(&[
+                "commit",
+                "-q",
+                "-m",
+                &format!("pre-existing human commit {i}"),
+            ]);
+        }
+        // The lap branches off base and adds ONE commit carrying the zero-touch trailer.
+        git(&["checkout", "-q", "-b", "chump/improve-p999"]);
+        std::fs::write(tmp.join("lap.txt"), "lap").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-q", "-m", "lap work\n\nChump-Agent: chump/v1"]);
+
+        // The scoped range must be base..lap-branch and yield exactly the 1 lap commit.
+        let range = lap_commit_range(&tmp).expect("range resolves");
+        assert_eq!(
+            range, "main..chump/improve-p999",
+            "scoped to base..lap-branch"
+        );
+        let (human, zt, scanned) = count_provenance(&tmp, &range).expect("counts");
+        assert_eq!(
+            scanned, 1,
+            "scanned only the lap's commit, not the {} pre-existing",
+            n
+        );
+        assert_eq!(zt, 1, "the lap commit is zero-touch (carries the trailer)");
+        assert_eq!(human, 0, "no human touches in the lap itself");
+
+        // Guard against regression: the OLD full-history count would have scanned N+1.
+        let (_, _, full) = count_provenance(&tmp, "chump/improve-p999").expect("full counts");
+        assert_eq!(
+            full,
+            (n + 1) as u64,
+            "sanity: unscoped counts every commit (the old bug)"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
