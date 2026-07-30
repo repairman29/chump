@@ -34,7 +34,7 @@
 #   CHUMP_REPO_ROOT               — repo root (default: resolved relative to script)
 #   CHUMP_REFRESH_RUNNER_SCRIPT   — path to refresh-runner-binary.sh
 #   CHUMP_SKIP_AUTO_DEPLOY        — set 1 to exit 0 immediately (bypass)
-#   CHUMP_HEALTH_CHECK_CMD        — override the canary health-check command
+#   CHUMP_HEALTHCHECK_CMD        — override the canary health-check command
 #                                   (full shell command string; used by tests
 #                                   and operators to force pass/fail). Default:
 #                                   scripts/dev/mission-scoreboard.sh, falling
@@ -92,9 +92,9 @@ log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG"
 # that always exits 0 is worse than no gate — it manufactures false
 # confidence — so this never swallows a nonzero exit into success.
 run_canary_health_check() {
-    if [[ -n "${CHUMP_HEALTH_CHECK_CMD:-}" ]]; then
-        log "canary health check: CHUMP_HEALTH_CHECK_CMD override -> $CHUMP_HEALTH_CHECK_CMD"
-        bash -c "$CHUMP_HEALTH_CHECK_CMD" >>"$LOG" 2>&1
+    if [[ -n "${CHUMP_HEALTHCHECK_CMD:-}" ]]; then
+        log "canary health check: CHUMP_HEALTHCHECK_CMD override -> $CHUMP_HEALTHCHECK_CMD"
+        bash -c "$CHUMP_HEALTHCHECK_CMD" >>"$LOG" 2>&1
         return $?
     fi
     local scoreboard="$REPO_ROOT/scripts/dev/mission-scoreboard.sh"
