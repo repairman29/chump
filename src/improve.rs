@@ -1840,8 +1840,19 @@ fn fix_pr(
     {
         bail!("could not fetch PR branch {head_branch} from origin in {cd} for remediation");
     }
+    // INFRA-3519: the external scratch clone can be left dirty by a prior lap's
+    // operations, so a plain checkout refuses ("local changes would be
+    // overwritten by checkout"). The clone is throwaway — hard-reset + clean it,
+    // then force the checkout, so remediation always starts from the PR's clean
+    // remote tip regardless of what the previous attempt left behind.
+    let _ = Command::new("git")
+        .args(["-C", &cd, "reset", "--hard", "HEAD"])
+        .status();
+    let _ = Command::new("git")
+        .args(["-C", &cd, "clean", "-fd"])
+        .status();
     if !Command::new("git")
-        .args(["-C", &cd, "checkout", "-B", head_branch, "FETCH_HEAD"])
+        .args(["-C", &cd, "checkout", "-f", "-B", head_branch, "FETCH_HEAD"])
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
