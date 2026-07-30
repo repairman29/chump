@@ -1540,6 +1540,33 @@ fn emit_pr_remediation(
     });
 }
 
+/// Emit `kind=remediation_fix_confidence` — the judgment organ's AC-coverage
+/// confidence (0..1) for a candidate remediation fix, so the loop + operators
+/// can see how well it satisfies the gap's acceptance criteria. Observability
+/// only; the ship/iterate decision stays with `verify_and_merge` (EFFECTIVE-334).
+///
+/// scanner-anchor: kind=remediation_fix_confidence (EFFECTIVE-334)
+fn emit_remediation_fix_confidence(
+    repo: &str,
+    pr_num: u64,
+    attempt: usize,
+    confidence: f64,
+    ac_status: &str,
+) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "remediation_fix_confidence".to_string(),
+        source: Some("chump-improve".to_string()),
+        fields: vec![
+            ("repo".to_string(), repo.to_string()),
+            ("pr".to_string(), pr_num.to_string()),
+            ("attempt".to_string(), attempt.to_string()),
+            ("confidence".to_string(), format!("{confidence:.3}")),
+            ("ac_status".to_string(), ac_status.to_string()),
+        ],
+        ..Default::default()
+    });
+}
+
 /// Emit `kind=improve_pr_closed` — the loop closed a PR it could not get green
 /// (terminal, no-abandon).
 ///
@@ -1993,6 +2020,29 @@ fn remediate_held(
                 &log,
                 model,
             )?,
+        }
+
+        // EFFECTIVE-334 (judgment organ piece 3, observability): score the
+        // candidate fix's AC-coverage confidence so the loop + operators can see
+        // how well it satisfies the gap's acceptance criteria. Best-effort and
+        // NEVER blocks — the ship/iterate decision stays with verify_and_merge
+        // below (confidence-GATED iteration is piece 4, pending calibration).
+        // Scores gap-AC coverage, not CI-green, so it's advisory context for
+        // RESCUE-class fixes.
+        if let Ok(cov) = crate::pr_ac_coverage::run(pr_num) {
+            let conf = cov.confidence();
+            println!(
+                "[improve] remediate {} → AC-coverage confidence {conf:.3} ({:?})",
+                attempt + 1,
+                cov.status
+            );
+            emit_remediation_fix_confidence(
+                &opts.owner_repo,
+                pr_num,
+                attempt + 1,
+                conf,
+                &format!("{:?}", cov.status),
+            );
         }
 
         // Re-verify: verify_and_merge polls check-runs until terminal, so this
