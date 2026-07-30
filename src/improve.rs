@@ -1822,25 +1822,31 @@ fn fix_pr(
     let id = agent_identity();
     let cd = clone_dir.to_string_lossy().to_string();
     // Deterministically place the PR's branch at its remote tip in the working tree; the
-    // agent only edits from here (the prompt no longer runs git). `-B ... origin/<branch>`
+    // agent only edits from here (the prompt no longer runs git). `-B ... FETCH_HEAD`
     // is idempotent across retries — each attempt starts from the PR's current head.
-    let _ = Command::new("git")
-        .args(["-C", &cd, "fetch", "origin", head_branch])
-        .status();
+    //
+    // INFRA-3518: check out from FETCH_HEAD, NOT `origin/<branch>`. The external clone at
+    // ~/.chump/external/<repo>/clone uses a narrow fetch refspec that does not create an
+    // `origin/<branch>` remote-tracking ref for arbitrary PR branches, so
+    // `checkout -B <branch> origin/<branch>` failed with "fatal: 'origin/…' is not a
+    // commit" and remediation bailed before ever reaching the fix agent (caught by the
+    // 2nd RESCUE bench lap 2026-07-30). `git fetch origin <branch>` always populates
+    // FETCH_HEAD regardless of refspec — and we now bail loudly if the fetch itself fails.
     if !Command::new("git")
-        .args([
-            "-C",
-            &cd,
-            "checkout",
-            "-B",
-            head_branch,
-            &format!("origin/{head_branch}"),
-        ])
+        .args(["-C", &cd, "fetch", "origin", head_branch])
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
     {
-        bail!("could not checkout PR branch {head_branch} in {cd} for remediation");
+        bail!("could not fetch PR branch {head_branch} from origin in {cd} for remediation");
+    }
+    if !Command::new("git")
+        .args(["-C", &cd, "checkout", "-B", head_branch, "FETCH_HEAD"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        bail!("could not checkout PR branch {head_branch} (FETCH_HEAD) in {cd} for remediation");
     }
     let prompt = format!(
         "{}{}",
