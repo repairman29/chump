@@ -805,6 +805,7 @@ fn grep_compile_missing_dep(job_id: u64) -> Option<(String, Option<String>)> {
 ///   - E0432: `unresolved import \`NAME::...\``
 ///   - E0433: `use of undeclared crate or module \`NAME\``
 ///   - `can't find crate for \`NAME\``
+///
 /// The crate is the first `::`-segment of the identifier. `crate`/`self`/`super`
 /// segments are internal paths (not a missing external dep) and are ignored.
 fn parse_missing_dep_from_log(log: &str) -> Option<(String, Option<String>)> {
