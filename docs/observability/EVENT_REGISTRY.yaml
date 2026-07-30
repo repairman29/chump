@@ -8713,3 +8713,15 @@ events:
       ambient stream.
     consumers: [intervention-watchdog, fleet-brief, ops-audit]
     fields_required: [ts, kind, total, counts_by_class]
+
+  - kind: capability_drift_detected
+    effect_metric: self
+    emitter: scripts/dev/capability-drift-scan.py (CREDIBLE-173)
+    trigger: >
+      A run of capability-drift-scan.py finds one or more LOC clusters under
+      src/**/*.rs or crates/*/src/**/*.rs that match no bucket in
+      docs/observability/CAPABILITY_BUCKETS.yaml, above the LOC threshold
+      (default 200). A SIGNAL only, per MISSION-045 "signals are not work" —
+      never auto-files a gap; a human/curator triages the flagged clusters.
+    consumers: [ops-audit, quartermaster shelfware-audit (future wiring)]
+    fields_required: [ts, kind, threshold_loc, flagged_clusters, flagged_count]

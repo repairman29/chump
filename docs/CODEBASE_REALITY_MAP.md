@@ -150,16 +150,29 @@ Everything else is a prioritization question on top of these two.
 
 ## 6. Provenance & refresh
 
-- **Method:** 8 parallel read-only capability scans (coordination, LLM infra, CI/ship,
-  memory, dev surfaces, work/planning, observability, external-repo) + a negative-space
-  sweep over `crates/`, `src/`, `scripts/`, and `docs/`. LOC figures are `wc -l` over
-  `git ls-files` at the time of writing.
+- **Original method (2026-07-05):** 8 parallel read-only capability scans (coordination,
+  LLM infra, CI/ship, memory, dev surfaces, work/planning, observability, external-repo)
+  + a one-time, human-run negative-space sweep over `crates/`, `src/`, `scripts/`, and
+  `docs/`. LOC figures are `wc -l` over `git ls-files` at the time of writing. §2 and §3
+  below are that sweep's output.
+- **Mechanized backstop (2026-07-30, CREDIBLE-173):** the negative-space sweep above was
+  a one-time manual event — nothing prevented the *next* audit from repeating the same
+  "a scan finds what it's told to look for" mistake. `docs/observability/
+  CAPABILITY_BUCKETS.yaml` now encodes §2+§3's 16 buckets as path globs, and
+  `scripts/dev/capability-drift-scan.py` diffs the real module/crate tree against it,
+  flagging unattributed LOC clusters via `kind=capability_drift_detected` (a signal, not
+  an auto-filed gap — MISSION-045). Run it directly any time:
+  `python3 scripts/dev/capability-drift-scan.py`. It is not yet wired into a recurring
+  cadence (quartermaster/harvester) — that wiring is separate follow-up work, not part of
+  this gap's scope.
 - **Bias to correct on refresh:** bucketed scans confirm their own hypotheses and
   inherit the code's optimism (§0). When refreshing, *start* from the negative space and
-  from outcome-verification, not from the feature list.
+  from outcome-verification, not from the feature list. The drift scan is a mitigant, not
+  a full replacement for periodic manual re-reads — it only catches LOC-cluster drift
+  against buckets that already exist, not entirely new categories of capability.
 - **Privacy:** empirical eval results (deltas, n-values, model-tier outcomes) and
   faculty-status tables are intentionally excluded here and tracked in `chump-proprietary`
   per the 2026-05-05 IP sweep. Methodology remains public in
   `docs/process/RESEARCH_INTEGRITY.md`.
 
-_Last mapped: 2026-07-05._
+_Last mapped: 2026-07-05. Mechanized drift-check added 2026-07-30._
