@@ -2729,8 +2729,8 @@ mod tests {
         );
         assert!(p.contains("chump/feature-x"), "pins the head branch");
         assert!(p.contains("#42"));
-        assert!(p.contains("Do NOT create a new branch"));
-        assert!(p.contains("Do NOT merge"));
+        assert!(p.contains("EDIT ONLY") && p.contains("branch"), "edit-only mandate; forbids new branch");
+        assert!(p.contains("merge") && p.contains("PR open/close"), "forbids merge + PR (edit-only)");
         assert!(p.contains("error[E0308]"), "includes the failing log");
     }
 
