@@ -149,6 +149,37 @@ pub fn play_approval_audio_cue() {
     });
 }
 
+/// CREDIBLE-174: structural tool-level gate for review-class agent dispatches.
+///
+/// Chump's PR-review-intelligence surfaces (pr_triage / pr_explain /
+/// fix_clippy / ac_coverage / pr_coupling_cost, and any future LLM-driven
+/// reviewer) analyze, explain, or critique — they must never be able to
+/// silently patch over their own finding. Previously that guarantee lived
+/// only in prompt instruction ("don't edit files"), which a compromised or
+/// sloppy prompt can ignore. This flag, combined with the hard block in
+/// `tool_middleware::ToolTimeoutWrapper::execute` (gated on
+/// `tool_middleware::is_write_tool`), makes the restriction structural: when
+/// active, write/edit/bash-class tool calls (`write_file`, `patch_file`,
+/// `run_cli`, `git_commit`, `git_push`, `git_stash`, `git_revert`,
+/// `cleanup_branches`, `merge_subtask`) are refused before the inner tool
+/// ever runs — not "shouldn't invoke", but "cannot invoke".
+///
+/// Set `CHUMP_REVIEW_CLASS_DISPATCH=1` before running an agent whose job is
+/// review-only. Read fresh on every call (not cached) so a long-lived
+/// process can toggle between review and implementation sub-tasks across
+/// dispatches without a restart.
+///
+/// CREDIBLE-181 wires this into `chump review`'s ReviewClassGuard as the
+/// runtime half of that command's structural review-only guarantee.
+pub fn review_class_dispatch_active() -> bool {
+    std::env::var("CHUMP_REVIEW_CLASS_DISPATCH")
+        .map(|v| {
+            let t = v.trim();
+            t == "1" || t.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+}
+
 /// Web Push escalation threshold (seconds). After this idle gap with no
 /// operator decision, the approval handler dispatches a Web Push notification.
 /// Default 60s; override via `CHUMP_APPROVAL_ESCALATION_SECS`. Clamp [5, 600].
@@ -266,6 +297,33 @@ pub fn tool_policy_for_stack_status() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[serial_test::serial]
+    fn review_class_dispatch_active_defaults_false() {
+        std::env::remove_var("CHUMP_REVIEW_CLASS_DISPATCH");
+        assert!(!review_class_dispatch_active());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn review_class_dispatch_active_true_variants() {
+        for v in ["1", "true", "TRUE", "True"] {
+            std::env::set_var("CHUMP_REVIEW_CLASS_DISPATCH", v);
+            assert!(review_class_dispatch_active(), "expected true for {v:?}");
+        }
+        std::env::remove_var("CHUMP_REVIEW_CLASS_DISPATCH");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn review_class_dispatch_active_false_variants() {
+        for v in ["0", "false", "", "no"] {
+            std::env::set_var("CHUMP_REVIEW_CLASS_DISPATCH", v);
+            assert!(!review_class_dispatch_active(), "expected false for {v:?}");
+        }
+        std::env::remove_var("CHUMP_REVIEW_CLASS_DISPATCH");
+    }
 
     #[test]
     fn parse_comma_tool_names_trims_and_lowercases() {

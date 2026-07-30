@@ -1041,6 +1041,42 @@ impl Tool for ToolTimeoutWrapper {
         detect_ssrf(&input)?;
         enforce_tool_rate_limit(&name)?;
 
+        // CREDIBLE-174: review-class dispatch gate. PR-review-intelligence
+        // agents (pr_triage / pr_explain / fix_clippy / ac_coverage /
+        // pr_coupling_cost and any future LLM-driven reviewer) must not be
+        // able to invoke write/edit/bash-class tools AT ALL — a structural
+        // guarantee, not a prompt instruction a compromised or sloppy
+        // reviewer prompt could ignore. When `CHUMP_REVIEW_CLASS_DISPATCH=1`
+        // is set for the dispatch, any `is_write_tool` call is refused here,
+        // before the inner tool ever executes. Read/search tools (read_file,
+        // list_dir, grep_repo, etc.) are untouched — only tools this file
+        // already classifies as write-class are blocked. CREDIBLE-181 is
+        // the first real caller: `chump review`'s ReviewClassGuard sets this
+        // flag for the duration of every review dispatch.
+        if is_write_tool(&name) && crate::tool_policy::review_class_dispatch_active() {
+            record_tool_call(&name, false);
+            crate::blackboard::post(
+                crate::blackboard::Module::ToolMiddleware,
+                format!(
+                    "Review-class dispatch denied write/edit/bash tool '{}' (CREDIBLE-174)",
+                    name
+                ),
+                crate::blackboard::SalienceFactors {
+                    novelty: 0.6,
+                    uncertainty_reduction: 0.4,
+                    goal_relevance: 0.9,
+                    urgency: 0.7,
+                },
+            );
+            return Err(anyhow!(
+                "DENIED: review-class dispatch cannot invoke write/edit/bash tool '{}'. \
+                 This dispatch is classified review-only (CHUMP_REVIEW_CLASS_DISPATCH=1) — \
+                 findings must be reported, not silently patched. File a follow-up gap or \
+                 hand off to an implementation-class dispatch instead.",
+                name
+            ));
+        }
+
         // ACP permission gate: when Chump runs under an ACP client (e.g. Zed,
         // JetBrains), write tools prompt the user for consent through the
         // editor's UI before executing. No-op for non-ACP launches (CLI, web,
@@ -1922,5 +1958,123 @@ mod tests {
 
         std::env::remove_var("CHUMP_DELEGATE_PREPROCESS");
         std::env::remove_var("CHUMP_DELEGATE_CONCURRENT");
+    }
+
+    // ── CREDIBLE-174: review-class dispatch structural tool gate ──────────
+
+    /// Stub tool that counts how many times `execute()` actually ran, so
+    /// tests can prove a blocked call never reached the inner tool (a
+    /// structural "cannot invoke", not merely "returned an error after
+    /// running"). `name` is configurable so the same stub can impersonate
+    /// any write-class or read-class tool.
+    struct CountingTool {
+        name: &'static str,
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl Tool for CountingTool {
+        fn name(&self) -> String {
+            self.name.to_string()
+        }
+        fn description(&self) -> String {
+            "test stub".to_string()
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({})
+        }
+        async fn execute(&self, _input: serde_json::Value) -> anyhow::Result<String> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok("mutated".to_string())
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn review_class_dispatch_blocks_write_file_before_execution() {
+        std::env::set_var("CHUMP_REVIEW_CLASS_DISPATCH", "1");
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let wrapped = ToolTimeoutWrapper::new(Box::new(CountingTool {
+            name: "write_file",
+            calls: calls.clone(),
+        }));
+        let result = wrapped
+            .execute(serde_json::json!({"path": "src/foo.rs", "content": "malicious edit"}))
+            .await;
+        assert!(
+            result.is_err(),
+            "review-class dispatch must not be able to invoke write_file, even when instructed"
+        );
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "inner write_file tool must never execute — structural block, not a post-hoc error"
+        );
+        std::env::remove_var("CHUMP_REVIEW_CLASS_DISPATCH");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn review_class_dispatch_blocks_run_cli_and_git_commit() {
+        std::env::set_var("CHUMP_REVIEW_CLASS_DISPATCH", "1");
+        for tool_name in ["run_cli", "git_commit", "patch_file", "git_push"] {
+            let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let wrapped = ToolTimeoutWrapper::new(Box::new(CountingTool {
+                name: tool_name,
+                calls: calls.clone(),
+            }));
+            let result = wrapped.execute(serde_json::json!({})).await;
+            assert!(
+                result.is_err(),
+                "review-class dispatch must not be able to invoke {tool_name}"
+            );
+            assert_eq!(
+                calls.load(std::sync::atomic::Ordering::SeqCst),
+                0,
+                "{tool_name} must never execute under review-class dispatch"
+            );
+        }
+        std::env::remove_var("CHUMP_REVIEW_CLASS_DISPATCH");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn review_class_dispatch_still_allows_read_tools() {
+        std::env::set_var("CHUMP_REVIEW_CLASS_DISPATCH", "1");
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let wrapped = ToolTimeoutWrapper::new(Box::new(CountingTool {
+            name: "read_file",
+            calls: calls.clone(),
+        }));
+        let result = wrapped
+            .execute(serde_json::json!({"path": "src/foo.rs"}))
+            .await;
+        assert!(
+            result.is_ok(),
+            "read-class tools must remain available to review-class dispatches: {result:?}"
+        );
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        std::env::remove_var("CHUMP_REVIEW_CLASS_DISPATCH");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn non_review_dispatch_is_unaffected_by_the_gate() {
+        // Regression guard: implementation-class dispatches (the default,
+        // no env var set) must see zero behavior change from this gate.
+        std::env::remove_var("CHUMP_REVIEW_CLASS_DISPATCH");
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let wrapped = ToolTimeoutWrapper::new(Box::new(CountingTool {
+            name: "write_file",
+            calls: calls.clone(),
+        }));
+        let result = wrapped
+            .execute(serde_json::json!({"path": "src/foo.rs", "content": ""}))
+            .await;
+        assert!(
+            result.is_ok(),
+            "non-review dispatch must retain write access: {result:?}"
+        );
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

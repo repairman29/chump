@@ -200,6 +200,7 @@ mod required_check_health; // INFRA-1522: W-007 required-check health gate
 mod rescue_tally;
 mod resume_cmd; // INFRA-1456: chump resume <gap-id> — reattach wedged gap
 mod revert_pr;
+mod review_dispatch; // CREDIBLE-181: `chump review` — structurally review-only agent dispatch
 mod review_handoff;
 mod roadmap_status;
 mod rollup_cmd; // INFRA-1455: chump rollup --semantic (Marcus M-B converge)
@@ -16337,6 +16338,36 @@ async fn main() -> Result<()> {
             Ok(()) => return Ok(()),
             Err(e) => {
                 eprintln!("chump gen: {e:#}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // `chump review` (CREDIBLE-174 / CREDIBLE-181) — structurally review-only
+    // agent dispatch. Investigates a diff with read/search tools but cannot
+    // invoke write_file, patch_file, run_cli, git, or cargo — a finding
+    // cannot be silently patched over by the same call that found it.
+    if args.get(1).map(String::as_str) == Some("review") {
+        let work_dir = if let Some(d) = args
+            .iter()
+            .position(|a| a == "--work-dir")
+            .and_then(|i| args.get(i + 1))
+        {
+            std::path::PathBuf::from(d)
+        } else {
+            std::env::current_dir().unwrap_or_else(|_| repo_path::repo_root())
+        };
+        let staged = args.iter().any(|a| a == "--staged");
+        let quiet = args.iter().any(|a| a == "--quiet");
+        let opts = review_dispatch::ReviewOptions {
+            work_dir,
+            staged,
+            quiet,
+        };
+        match review_dispatch::run(opts).await {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                eprintln!("chump review: {e:#}");
                 std::process::exit(1);
             }
         }
