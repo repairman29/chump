@@ -134,7 +134,7 @@ crisp AC so it's buildable and tracked.
 | IMPROVE engine + reliability floor | `chump improve` (`src/improve.rs`); COTG-1.x merged 2026-07-29 |
 | COMPREHEND engine | `chump almanac`, `consult`, comprehension organs |
 | INGEST engine | `chump ingest` (INFRA-1746) |
-| Self-heal + intervention metric | intervention-watchdog (INFRA-3489), gate self-heal (INFRA-3490), guarded ceremony (INFRA-3516) |
+| Self-heal + intervention metric | intervention-watchdog (INFRA-3489, capability done but not invoked by any coordination loop), gate self-heal (INFRA-3490, 3 of 5 fix classes wired) — **correction 2026-07-29: "guarded ceremony (INFRA-3516)" was listed here as shipped reuse; verified against current main, `docs/gaps/INFRA-3516.yaml` is still `status: open` (P1) — the edit-verify gate (COTG-1.3) is wired on the initial ship path but not on the remediation path (`fix_pr`/`remediate_held`), which is exactly what INFRA-3516 tracks. Do not treat this as reuse until it ships.** |
 | Internal PR-rescue (informs RESCUE) | `chump paramedic` (INFRA-1375) — *internal only; not the user flow* |
 
 The release is **mostly wrapping, not inventing**: five modes already have engines. The new
