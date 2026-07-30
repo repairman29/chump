@@ -115,6 +115,7 @@ mod completion;
 mod confidence; // EFFECTIVE-332: judgment-organ calibrated confidence-score primitive
 mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod external_verify_merge; // CREDIBLE-096: chump external verify-merge
+mod front_door; // EFFECTIVE-330 (COTG-0.0): plain-language front-door mode router
 mod gen;
 mod genai_conv;
 mod git_tools;
@@ -16122,6 +16123,53 @@ async fn main() -> Result<()> {
             }
             return Ok(());
         } // end #[cfg(feature = "discord")] block
+    }
+
+    // `chump start <plain-language ask>` (EFFECTIVE-330 / COTG-0.0)
+    //
+    // The front-door router: classifies a plain-language ask into one of
+    // CREATE/IMPROVE/RESCUE/COMPREHEND/INGEST with a confidence + one-line
+    // confirm-back. Never auto-executes the routed engine — this command's
+    // job is the routing decision + confirmation, not dispatch. A person (or
+    // a wrapping script) confirms, then runs the printed engine command
+    // themselves. Ambiguous/mixed intent is surfaced as a question, never
+    // silently guessed (front-door doc AC2).
+    if args.get(1).map(String::as_str) == Some("start") {
+        let repo_root = repo_path::repo_root();
+        let Some(text) = args.get(2).filter(|a| !a.starts_with("--")) else {
+            eprintln!("Usage: chump start \"<what you're trying to do, in plain language>\"");
+            std::process::exit(1);
+        };
+        let result = front_door::classify(text);
+        let confirm = front_door::confirm_line(&result);
+        front_door::emit_route_event(&repo_root, text, &result);
+
+        if args.iter().any(|a| a == "--json") {
+            let json = match &result {
+                front_door::RouteResult::Confident { mode, confidence } => serde_json::json!({
+                    "status": "confident",
+                    "mode": mode.label(),
+                    "confidence": confidence,
+                    "engine_command": mode.engine_command(),
+                    "confirm": confirm,
+                }),
+                front_door::RouteResult::Ambiguous { candidates } => serde_json::json!({
+                    "status": "ambiguous",
+                    "candidates": candidates.iter().map(|(m, s)| serde_json::json!({"mode": m.label(), "score": s})).collect::<Vec<_>>(),
+                    "confirm": confirm,
+                }),
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json).unwrap_or_default()
+            );
+        } else {
+            println!("{confirm}");
+            if let front_door::RouteResult::Confident { mode, .. } = &result {
+                println!("  → run: {}", mode.engine_command());
+            }
+        }
+        return Ok(());
     }
 
     // `chump orchestrate [<intent>]` (INFRA-598 / INFRA-798)
