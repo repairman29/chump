@@ -116,6 +116,24 @@ else
     fail "INFRA-3521: skip should set preflight_has_targets=0 and emit prepush_preflight_skipped_botmerge"
 fi
 
+# 10. INFRA-3524: clippy re-run is skipped for bot-merge-initiated pushes
+#     (bot-merge already ran `cargo clippy --workspace --fix`; re-running the
+#     clippy gate here rebuilds ring's C-assembly cold and blew the 300s push
+#     budget → SIGTERM → orphaned worktree → META-156; timed out CREDIBLE-178
+#     twice). Extends INFRA-3521's preflight-skip to the clippy gate.
+if grep -q 'CHUMP_BOT_MERGE_IN_PROGRESS' "$HOOK" && grep -q 'INFRA-3524' "$HOOK"; then
+    ok "INFRA-3524: bot-merge pushes skip the redundant clippy re-run"
+else
+    fail "INFRA-3524 bot-merge clippy-skip missing — redundant clippy blows bot-merge push budget"
+fi
+
+# 10b. The clippy skip leaves an audit trail
+if grep -q 'prepush_clippy_skipped_botmerge' "$HOOK"; then
+    ok "INFRA-3524: clippy skip emits a prepush_clippy_skipped_botmerge audit event"
+else
+    fail "INFRA-3524: clippy skip should emit prepush_clippy_skipped_botmerge to ambient"
+fi
+
 echo ""
 echo "=== Summary: $PASS passed, $FAIL failed ==="
 if (( FAIL > 0 )); then
