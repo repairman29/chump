@@ -4200,6 +4200,28 @@ except Exception:
                     # INFRA-509: state.db is canonical; no YAML file staging needed.
                     green "Auto-closed $_gid (closed_pr=$TARGET_PR) — squashed atomically by merge queue"
 
+                    # CREDIBLE-178: surface AC-coverage drift. The gap just flipped to
+                    # 'done'; check whether the merged PR actually covered its acceptance
+                    # criteria via the existing (but previously un-wired) `chump pr
+                    # ac-coverage`. ADVISORY — it NEVER blocks the close (the checker is
+                    # still in its observation phase, INFRA-1541). On a MISS it: prints a
+                    # WARN, annotates the gap with a visible note (so `chump gap show`
+                    # reveals the partial-done instead of a silent 'done'), and the
+                    # checker's own ac_coverage_miss events land in ambient. This is the
+                    # root fix for the label-drift that closed INFRA-3490 (1 of 2 scoped
+                    # arms) and INFRA-3489 (watchdog unwired) as 'done'.
+                    if command -v chump &>/dev/null; then
+                        _ac_out="$(CHUMP_REPO="$_autoclose_main_repo" CHUMP_REAL_BINARY="$_autoclose_chump" \
+                            chump pr ac-coverage "$TARGET_PR" 2>&1 || true)"
+                        if grep -q '"status":"miss"' <<<"$_ac_out"; then
+                            _ac_misses="$(grep -oE '"misses":\[[0-9,]*\]' <<<"$_ac_out")"
+                            yellow "[CREDIBLE-178] AC-coverage MISS: $_gid closed via PR #$TARGET_PR but the merged diff did not cover all acceptance criteria (${_ac_misses:-misses}). Work may be PARTIAL — verify before trusting 'done'. (ac_coverage_miss emitted to ambient.)"
+                            CHUMP_REPO="$_autoclose_main_repo" CHUMP_REAL_BINARY="$_autoclose_chump" \
+                                chump gap set "$_gid" --add-note "CREDIBLE-178: closed via PR #$TARGET_PR with UNCOVERED acceptance criteria ${_ac_misses:-}. Verify the work is complete before trusting status=done." >/dev/null 2>&1 || true
+                        fi
+                        unset _ac_out _ac_misses
+                    fi
+
                     # INFRA-2007: emit binary_main_updated so the event-driven watcher
                     # in binary-refresh-event-watcher.sh triggers an immediate rebuild,
                     # eliminating the W-002 binary-cache-lag class permanently.
