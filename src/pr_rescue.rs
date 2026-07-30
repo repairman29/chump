@@ -12,9 +12,12 @@
 //!                            scripts/ci/env-vars-internal.txt under a per-gap section
 //!                            header, commit + push.
 //!
+//! Later arms (landed after v0): DebtCeiling (INFRA-3490), DirtyConflict
+//! (INFRA-1751), and compile-missing-dep (INFRA-3522: E0432/E0433 unresolved
+//! import / undeclared crate → auto-add the missing dep to the owning crate's
+//! Cargo.toml, workspace-aware).
+//!
 //! Deferred to follow-up gaps:
-//!   - compile-missing-dep handler (Cargo.toml workspace dep auto-add)
-//!   - dirty-conflict handler (rebase + force-push-with-lease)
 //!   - --daemon mode (loop with sleep, launchd plist)
 //!   - --stats / cost-aware ceiling
 //!   - bootstrap-manifest entry
@@ -68,6 +71,18 @@ pub enum Classification {
     /// total; the fix raises scripts/ci/bypass-var-ceiling.txt to it with a reasoned entry.
     /// (This is the exact class that blocked #3362/#3353 and needed a manual bump.)
     DebtCeiling { count: u64 },
+    /// INFRA-3522: a crate failed to compile because it uses a dependency that
+    /// isn't declared in its Cargo.toml — a deterministic compile break with a
+    /// mechanical fix. Detected from rustc's E0432 (unresolved import) / E0433
+    /// (use of undeclared crate or module) / "can't find crate for" diagnostics.
+    /// `crate_name` is the missing dependency; `source_path` is the file rustc
+    /// pointed at (used to locate the owning workspace member's Cargo.toml). The
+    /// fix adds the dep to that manifest, reusing an existing version spec from
+    /// elsewhere in the workspace when one exists (else `*`).
+    CompileMissingDep {
+        crate_name: String,
+        source_path: Option<String>,
+    },
     /// PR's mergeable_state is "dirty" (merge conflict with main). v1b handler
     /// attempts `git fetch origin main && git rebase origin/main` in a temp
     /// worktree and force-pushes-with-lease on clean apply. If rebase has
@@ -249,6 +264,38 @@ fn rescue_one(pr: u32, dry_run: bool) -> RescueOutcome {
                 }
             }
         }
+        Classification::CompileMissingDep {
+            crate_name,
+            source_path,
+        } => {
+            mark_attempt(pr);
+            match fix_compile_missing_dep(pr, crate_name, source_path.as_deref(), dry_run) {
+                Ok(()) => {
+                    emit_ambient(
+                        "pr_rescue_applied",
+                        serde_json::json!({
+                            "pr": pr,
+                            "class": "compile-missing-dep",
+                            "crate": crate_name,
+                            "source_path": source_path,
+                            "dry_run": dry_run,
+                        }),
+                    );
+                    RescueOutcome::Applied
+                }
+                Err(e) => {
+                    emit_ambient(
+                        "pr_rescue_failed",
+                        serde_json::json!({
+                            "pr": pr,
+                            "class": "compile-missing-dep",
+                            "error": e.to_string(),
+                        }),
+                    );
+                    RescueOutcome::Failed
+                }
+            }
+        }
         Classification::Unknown { failed_check_names } => {
             emit_ambient(
                 "pr_rescue_unknown",
@@ -342,6 +389,19 @@ pub fn classify_pr(pr: u32) -> Result<Classification> {
     for run in &runs {
         if let Some(count) = grep_debt_ceiling(run.id) {
             return Ok(Classification::DebtCeiling { count });
+        }
+    }
+
+    // Pattern D: compile-missing-dep (INFRA-3522). A crate uses a dependency it
+    // never declared — rustc emits E0432/E0433 (or "can't find crate for"). This
+    // is deterministic and mechanically fixable (add the dep to the owning
+    // crate's Cargo.toml). Runs after the cheaper marker-line patterns above.
+    for run in &runs {
+        if let Some((crate_name, source_path)) = grep_compile_missing_dep(run.id) {
+            return Ok(Classification::CompileMissingDep {
+                crate_name,
+                source_path,
+            });
         }
     }
 
@@ -729,6 +789,325 @@ fn bump_ceiling_text(content: &str, count: u64, pr: u32) -> Result<(String, u64)
     Ok((out, old))
 }
 
+// ── INFRA-3522: compile-missing-dep handler ───────────────────────────────
+
+/// INFRA-3522: scan a failed job's log for a missing-dependency compile error
+/// and return `(crate_name, source_path)`. Thin gh-shell-out wrapper around the
+/// pure parser so the parse is unit-testable without a network round-trip.
+fn grep_compile_missing_dep(job_id: u64) -> Option<(String, Option<String>)> {
+    let log = run_gh_or_empty(&["run", "view", "--job", &job_id.to_string(), "--log-failed"]);
+    parse_missing_dep_from_log(&log)
+}
+
+/// Pure parser (no I/O) — extracts the first missing crate + the source file
+/// rustc pointed at from a CI log. Recognizes the three rustc shapes for a
+/// dependency that isn't declared:
+///   - E0432: `unresolved import \`NAME::...\``
+///   - E0433: `use of undeclared crate or module \`NAME\``
+///   - `can't find crate for \`NAME\``
+/// The crate is the first `::`-segment of the identifier. `crate`/`self`/`super`
+/// segments are internal paths (not a missing external dep) and are ignored.
+fn parse_missing_dep_from_log(log: &str) -> Option<(String, Option<String>)> {
+    let mut pending: Option<String> = None;
+    for raw in log.lines() {
+        let line = strip_gh_log_prefix(raw);
+        if pending.is_none() {
+            pending = extract_missing_crate(line);
+        }
+        // Once we have a crate name, the first following `--> path:line:col`
+        // gives us the source file (→ owning workspace member).
+        if pending.is_some() {
+            if let Some(idx) = line.find("--> ") {
+                let rest = line[idx + "--> ".len()..].trim();
+                let path = rest.split(':').next().unwrap_or("").trim();
+                let src = if path.is_empty() {
+                    None
+                } else {
+                    Some(path.to_string())
+                };
+                return Some((pending.take().unwrap(), src));
+            }
+        }
+    }
+    // Crate identified but no source path line seen (still actionable → root).
+    pending.map(|c| (c, None))
+}
+
+/// Extract the missing crate name from a single (prefix-stripped) rustc line.
+fn extract_missing_crate(line: &str) -> Option<String> {
+    if let Some(name) = backticked_after(line, "undeclared crate or module") {
+        return first_crate_segment(&name);
+    }
+    if let Some(name) = backticked_after(line, "can't find crate for") {
+        return first_crate_segment(&name);
+    }
+    if line.contains("unresolved import") {
+        if let Some(name) = first_backticked(line) {
+            return first_crate_segment(&name);
+        }
+    }
+    None
+}
+
+/// Return the contents of the first backtick pair that appears after `marker`.
+fn backticked_after(line: &str, marker: &str) -> Option<String> {
+    let idx = line.find(marker)?;
+    first_backticked(&line[idx + marker.len()..])
+}
+
+/// Return the contents of the first backtick pair in `s`.
+fn first_backticked(s: &str) -> Option<String> {
+    let start = s.find('`')? + 1;
+    let end = s[start..].find('`')? + start;
+    Some(s[start..end].to_string())
+}
+
+/// First `::`-segment of a rust path, cleaned to `[A-Za-z0-9_]`. Returns None
+/// for internal path roots (`crate`/`self`/`super`) or an empty/invalid ident.
+fn first_crate_segment(path: &str) -> Option<String> {
+    let seg: String = path
+        .trim()
+        .split("::")
+        .next()
+        .unwrap_or("")
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    if seg.is_empty() || matches!(seg.as_str(), "crate" | "self" | "super") {
+        None
+    } else {
+        Some(seg)
+    }
+}
+
+/// Strip GitHub's raw-log line prefix (`JOB\tSTEP\tISO8601 <payload>`) to the
+/// payload. Falls back to the raw line for bare cargo output with no prefix.
+fn strip_gh_log_prefix(line: &str) -> &str {
+    let content = line.splitn(3, '\t').nth(2).unwrap_or(line);
+    // Drop a leading ISO timestamp ending in 'Z' when it's at the very start.
+    if let Some(pos) = content.find('Z') {
+        if pos < 30 {
+            return content[pos + 1..].trim_start();
+        }
+    }
+    content.trim_start()
+}
+
+/// INFRA-3522: add the missing dependency to the owning crate's Cargo.toml
+/// (workspace-aware) and push. Mirrors fix_debt_ceiling (worktree → edit →
+/// commit → push); the manifest-mutation core is the pure `add_dep_line`.
+fn fix_compile_missing_dep(
+    pr: u32,
+    crate_name: &str,
+    source_path: Option<&str>,
+    dry_run: bool,
+) -> Result<()> {
+    println!(
+        "[pr-rescue] #{pr}: compile-missing-dep → add `{crate_name}` to {} + push",
+        source_path.unwrap_or("<root crate>")
+    );
+    if dry_run {
+        return Ok(());
+    }
+    let branch = run_gh(&["pr", "view", &pr.to_string(), "--json", "headRefName"])?;
+    let v: serde_json::Value = serde_json::from_str(&branch)?;
+    let head_ref = v["headRefName"]
+        .as_str()
+        .ok_or_else(|| anyhow!("headRefName missing"))?
+        .to_string();
+    let repo_root = std::env::var("CHUMP_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
+    let wt = format!("/tmp/chump-pr-rescue-{pr}");
+    if !PathBuf::from(&wt).exists() {
+        let status = Command::new("git")
+            .current_dir(&repo_root)
+            .args(["worktree", "add", &wt, &head_ref])
+            .status()
+            .context("git worktree add")?;
+        if !status.success() {
+            bail!("git worktree add failed");
+        }
+    } else {
+        let _ = Command::new("git")
+            .current_dir(&wt)
+            .args(["fetch", "origin", &head_ref])
+            .status();
+        let _ = Command::new("git")
+            .current_dir(&wt)
+            .args(["reset", "--hard", &format!("origin/{head_ref}")])
+            .status();
+    }
+
+    // Locate the owning workspace member's manifest from the source path.
+    let root_manifest_path = PathBuf::from(&wt).join("Cargo.toml");
+    let root_manifest = std::fs::read_to_string(&root_manifest_path)
+        .with_context(|| format!("read {}", root_manifest_path.display()))?;
+    let members = parse_workspace_members(&root_manifest);
+    let manifest_rel = manifest_for_source(source_path, &members);
+    let manifest_path = PathBuf::from(&wt).join(&manifest_rel);
+    let manifest = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("read {}", manifest_path.display()))?;
+
+    // Reuse an existing version spec for this crate from the target manifest or
+    // the workspace root; fall back to `*` (any version) when it's brand-new.
+    let spec = find_existing_dep_spec(&[manifest.clone(), root_manifest.clone()], crate_name)
+        .unwrap_or_else(|| "\"*\"".to_string());
+    let out = add_dep_line(&manifest, crate_name, &spec, pr)?;
+    std::fs::write(&manifest_path, &out)?;
+    println!("[pr-rescue] #{pr}: added `{crate_name} = {spec}` to {manifest_rel}");
+
+    Command::new("git")
+        .current_dir(&wt)
+        .args(["add", &manifest_rel])
+        .status()
+        .context("git add")?;
+    let commit_msg = format!(
+        "fix(pr-rescue): add missing dep `{crate_name}` to {manifest_rel} for PR #{pr}\n\nAuto-applied by `chump pr-rescue` (INFRA-3522) — the crate used `{crate_name}`\nwithout declaring it, tripping a rustc E0432/E0433 compile break. Added it to\nthe owning member's Cargo.toml (spec {spec}, reused from the workspace when\navailable).\n"
+    );
+    let commit_status = Command::new("git")
+        .current_dir(&wt)
+        .args(["commit", "-m", &commit_msg])
+        .status()
+        .context("git commit")?;
+    if !commit_status.success() {
+        bail!("git commit failed (possibly nothing to add)");
+    }
+    let push_status = Command::new("git")
+        .current_dir(&wt)
+        .args([
+            "push",
+            "--force-with-lease",
+            "origin",
+            &format!("HEAD:{head_ref}"),
+        ])
+        .status()
+        .context("git push")?;
+    if !push_status.success() {
+        bail!("git push failed");
+    }
+    Ok(())
+}
+
+/// Parse the `[workspace] members = [ ... ]` list from a root Cargo.toml. Pure;
+/// tolerant of comments and trailing commas. Returns member dir paths.
+fn parse_workspace_members(content: &str) -> Vec<String> {
+    let mut members = vec![];
+    let mut in_members = false;
+    for line in content.lines() {
+        let t = line.trim();
+        if !in_members {
+            if t.starts_with("members") && t.contains('[') {
+                in_members = true;
+                // Handle a single-line `members = ["a", "b"]` form too.
+                if t.contains(']') {
+                    for tok in t.split(['[', ']', ',']) {
+                        if let Some(m) = tok.trim().strip_prefix('"') {
+                            if let Some(m) = m.strip_suffix('"') {
+                                members.push(m.to_string());
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+            continue;
+        }
+        if t.starts_with(']') {
+            break;
+        }
+        // Line like: "crates/foo",   (optionally with a trailing comment)
+        let code = t
+            .split('#')
+            .next()
+            .unwrap_or(t)
+            .trim()
+            .trim_end_matches(',');
+        if let Some(m) = code.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+            members.push(m.to_string());
+        }
+    }
+    members
+}
+
+/// Map a rustc source path to the Cargo.toml of the workspace member that owns
+/// it (longest matching member-dir prefix). Root crate → "Cargo.toml". Pure.
+fn manifest_for_source(source_path: Option<&str>, members: &[String]) -> String {
+    let sp = match source_path {
+        Some(s) => s,
+        None => return "Cargo.toml".to_string(),
+    };
+    let mut best = "";
+    for m in members {
+        let dir = m.trim_end_matches('/');
+        let prefix = format!("{dir}/");
+        if sp.starts_with(&prefix) && dir.len() > best.len() {
+            best = dir;
+        }
+    }
+    if best.is_empty() {
+        "Cargo.toml".to_string()
+    } else {
+        format!("{best}/Cargo.toml")
+    }
+}
+
+/// Find an existing version spec for `crate_name` across the given manifest
+/// contents (target member first, then root). Returns the RHS of the
+/// declaration (e.g. `"1"` or `{ version = "1", features = ["x"] }`). Pure.
+fn find_existing_dep_spec(contents: &[String], crate_name: &str) -> Option<String> {
+    let with_space = format!("{crate_name} =");
+    let no_space = format!("{crate_name}=");
+    for c in contents {
+        for line in c.lines() {
+            let t = line.trim_start();
+            if t.starts_with(&with_space) || t.starts_with(&no_space) {
+                if let Some((_, rhs)) = line.split_once('=') {
+                    // Strip a trailing line comment, but not a `#` inside a string.
+                    let rhs = if rhs.contains('"') {
+                        rhs.trim()
+                    } else {
+                        rhs.split('#').next().unwrap_or(rhs).trim()
+                    };
+                    if !rhs.is_empty() {
+                        return Some(rhs.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Insert `crate_name = spec` into the `[dependencies]` table of a Cargo.toml.
+/// Pure (no I/O) so it's unit-testable. Bails if the dep is already declared
+/// (never double-add) or if there's no `[dependencies]` table to add it to.
+fn add_dep_line(content: &str, crate_name: &str, spec: &str, pr: u32) -> Result<String> {
+    // Guard: already declared anywhere → don't duplicate.
+    let with_space = format!("{crate_name} =");
+    let no_space = format!("{crate_name}=");
+    if content
+        .lines()
+        .any(|l| l.trim_start().starts_with(&with_space) || l.trim_start().starts_with(&no_space))
+    {
+        bail!("dependency `{crate_name}` already declared in manifest");
+    }
+    let dep_line = format!("{crate_name} = {spec} # INFRA-3522 pr-rescue: auto-added for PR #{pr}");
+    let mut out = String::new();
+    let mut inserted = false;
+    for line in content.lines() {
+        out.push_str(line);
+        out.push('\n');
+        if !inserted && line.trim() == "[dependencies]" {
+            out.push_str(&dep_line);
+            out.push('\n');
+            inserted = true;
+        }
+    }
+    if !inserted {
+        bail!("no [dependencies] table found in manifest");
+    }
+    Ok(out)
+}
+
 // ── INFRA-1751 v1b: dirty-conflict handler ────────────────────────────────
 
 /// Check `mergeable_state` via gh api. Returns true iff GitHub considers the
@@ -1008,6 +1387,140 @@ mod tests {
         let c = Classification::DirtyConflict;
         let j = serde_json::to_string(&c).unwrap();
         assert!(j.contains("\"class\":\"DirtyConflict\""));
+    }
+
+    /// INFRA-3522: the CompileMissingDep variant ships under the "class" tag and
+    /// carries both the missing crate and the source path, like its siblings.
+    #[test]
+    fn compile_missing_dep_serializes_with_tag() {
+        let c = Classification::CompileMissingDep {
+            crate_name: "serde_json".into(),
+            source_path: Some("crates/chump-foo/src/lib.rs".into()),
+        };
+        let j = serde_json::to_string(&c).unwrap();
+        assert!(j.contains("\"class\":\"CompileMissingDep\""));
+        assert!(j.contains("serde_json"));
+        assert!(j.contains("crates/chump-foo/src/lib.rs"));
+    }
+
+    /// INFRA-3522: the log parser recognizes all three rustc missing-dep shapes,
+    /// takes the crate as the first `::`-segment, and grabs the `-->` source path.
+    #[test]
+    fn parse_missing_dep_recognizes_rustc_shapes() {
+        // E0432 unresolved import — crate is the first path segment.
+        let e0432 = "error[E0432]: unresolved import `regex`\n --> crates/chump-foo/src/lib.rs:3:5\n  |\n3 | use regex::Regex;\n";
+        assert_eq!(
+            parse_missing_dep_from_log(e0432),
+            Some(("regex".into(), Some("crates/chump-foo/src/lib.rs".into())))
+        );
+
+        // E0433 undeclared crate or module.
+        let e0433 = "error[E0433]: failed to resolve: use of undeclared crate or module `tokio`\n --> src/main.rs:10:9\n";
+        assert_eq!(
+            parse_missing_dep_from_log(e0433),
+            Some(("tokio".into(), Some("src/main.rs".into())))
+        );
+
+        // "can't find crate for" (no source path in this excerpt).
+        let cant_find = "error[E0463]: can't find crate for `anyhow`\n";
+        assert_eq!(
+            parse_missing_dep_from_log(cant_find),
+            Some(("anyhow".into(), None))
+        );
+
+        // GitHub-log-prefixed line (JOB\tSTEP\tISO8601 payload) still parses.
+        let prefixed = "cargo-check\tcargo check\t2026-05-22T23:33:33.198Z error[E0432]: unresolved import `uuid`\ncargo-check\tcargo check\t2026-05-22T23:33:33.199Z  --> crates/chump-bar/src/x.rs:1:5\n";
+        assert_eq!(
+            parse_missing_dep_from_log(prefixed),
+            Some(("uuid".into(), Some("crates/chump-bar/src/x.rs".into())))
+        );
+
+        // Internal paths (`crate::`) are not a missing external dep.
+        assert_eq!(
+            parse_missing_dep_from_log("error[E0432]: unresolved import `crate::foo`\n"),
+            None
+        );
+    }
+
+    /// INFRA-3522: source path → owning member manifest (longest prefix wins),
+    /// with the root crate as the fallback.
+    #[test]
+    fn manifest_for_source_maps_to_owning_member() {
+        let members = vec![
+            "crates/chump-foo".to_string(),
+            "crates/mcp-servers/chump-mcp-foo".to_string(),
+        ];
+        assert_eq!(
+            manifest_for_source(Some("crates/chump-foo/src/lib.rs"), &members),
+            "crates/chump-foo/Cargo.toml"
+        );
+        // Longest match wins over a shorter prefix.
+        assert_eq!(
+            manifest_for_source(
+                Some("crates/mcp-servers/chump-mcp-foo/src/main.rs"),
+                &members
+            ),
+            "crates/mcp-servers/chump-mcp-foo/Cargo.toml"
+        );
+        // Root-crate source and unknown paths fall back to the root manifest.
+        assert_eq!(
+            manifest_for_source(Some("src/pr_rescue.rs"), &members),
+            "Cargo.toml"
+        );
+        assert_eq!(manifest_for_source(None, &members), "Cargo.toml");
+    }
+
+    /// INFRA-3522: workspace member list is parsed from the root Cargo.toml,
+    /// tolerating comments + trailing commas.
+    #[test]
+    fn parse_workspace_members_reads_the_list() {
+        let src = "[workspace]\nmembers = [\n    \"chump-tool-macro\",\n    \"crates/chump-foo\", # a comment\n]\nresolver = \"2\"\n";
+        let members = parse_workspace_members(src);
+        assert_eq!(members, vec!["chump-tool-macro", "crates/chump-foo"]);
+    }
+
+    /// INFRA-3522: an existing version spec is reused (target manifest first),
+    /// preserving the full RHS (features etc.).
+    #[test]
+    fn find_existing_dep_spec_reuses_the_rhs() {
+        let target = "[dependencies]\nserde = \"1\"\n";
+        let root = "[dependencies]\nuuid = { version = \"1\", features = [\"v4\"] }\n";
+        assert_eq!(
+            find_existing_dep_spec(&[target.to_string(), root.to_string()], "uuid"),
+            Some("{ version = \"1\", features = [\"v4\"] }".to_string())
+        );
+        assert_eq!(
+            find_existing_dep_spec(&[target.to_string(), root.to_string()], "serde"),
+            Some("\"1\"".to_string())
+        );
+        // Not present anywhere → None (caller falls back to `*`).
+        assert_eq!(
+            find_existing_dep_spec(&[target.to_string(), root.to_string()], "nowhere"),
+            None
+        );
+    }
+
+    /// INFRA-3522: add_dep_line inserts the dep right under [dependencies], is
+    /// idempotent (bails if already present), and needs a [dependencies] table.
+    #[test]
+    fn add_dep_line_inserts_under_dependencies_table() {
+        let src = "[package]\nname = \"foo\"\n\n[dependencies]\nserde = \"1\"\n";
+        let out = add_dep_line(src, "regex", "\"1\"", 4242).unwrap();
+        // The new dep sits directly under the table header.
+        let lines: Vec<&str> = out.lines().collect();
+        let hdr = lines
+            .iter()
+            .position(|l| l.trim() == "[dependencies]")
+            .unwrap();
+        assert!(lines[hdr + 1].starts_with("regex = \"1\""));
+        assert!(lines[hdr + 1].contains("INFRA-3522"));
+        // Existing dep preserved.
+        assert!(out.contains("serde = \"1\""));
+
+        // Idempotent: re-adding a present dep is an error, not a duplicate.
+        assert!(add_dep_line(&out, "regex", "\"1\"", 4242).is_err());
+        // No [dependencies] table → error.
+        assert!(add_dep_line("[package]\nname = \"x\"\n", "regex", "\"1\"", 1).is_err());
     }
 
     #[test]
