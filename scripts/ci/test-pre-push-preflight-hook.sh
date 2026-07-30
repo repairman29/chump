@@ -100,6 +100,22 @@ else
     fail "Guard 0a should run before Guard 0 (cargo fmt); 0a=$line_0a, 0=$line_0"
 fi
 
+# 9. INFRA-3521: preflight re-run is skipped for bot-merge-initiated pushes
+#    (bot-merge already gated + delegates to CI; re-running here blew the
+#    300s push budget → SIGTERM → orphaned worktree → META-156).
+if grep -q 'CHUMP_BOT_MERGE_IN_PROGRESS' "$HOOK" && grep -q 'INFRA-3521' "$HOOK"; then
+    ok "INFRA-3521: bot-merge pushes skip the redundant preflight re-run"
+else
+    fail "INFRA-3521 bot-merge preflight-skip missing — double-preflight timeout wedge unfixed"
+fi
+
+# 9b. The skip disables the preflight block (flips the flag) AND leaves an audit trail
+if grep -qE 'preflight_has_targets=0' "$HOOK" && grep -q 'prepush_preflight_skipped_botmerge' "$HOOK"; then
+    ok "INFRA-3521: skip disables the preflight block + emits an audit event"
+else
+    fail "INFRA-3521: skip should set preflight_has_targets=0 and emit prepush_preflight_skipped_botmerge"
+fi
+
 echo ""
 echo "=== Summary: $PASS passed, $FAIL failed ==="
 if (( FAIL > 0 )); then
