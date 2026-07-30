@@ -11,9 +11,8 @@
 //! This module is pure and standalone. Piece 2 (EFFECTIVE-331) feeds the
 //! `pr_ac_coverage` coverage fraction in as the `coverage` signal.
 //!
-//! The public items have no non-test caller yet — piece 2 wires them into the
-//! ac-coverage path — so `dead_code` is allowed at the module level until then.
-#![allow(dead_code)]
+//! Piece 2 (EFFECTIVE-333) wires the `pr_ac_coverage` covered-bullet fraction in
+//! as the `coverage` signal via [`confidence_from_coverage`].
 
 /// Independent signals feeding the confidence blend. Each is normalized to
 /// `0.0..=1.0`; an unknown signal defaults to `0.5` (maximally uncertain).

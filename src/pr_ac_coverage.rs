@@ -42,6 +42,27 @@ pub struct AcCoverageResult {
     pub bullets: Vec<BulletResult>,
 }
 
+impl AcCoverageResult {
+    /// Calibrated confidence in `0.0..=1.0` that the PR satisfies the gap's
+    /// acceptance criteria — the judgment organ's score (EFFECTIVE-331 piece 2),
+    /// derived from the covered-bullet fraction via [`crate::confidence`]. A
+    /// bare pass/miss is a boolean; this is the score the OS can act on
+    /// (ship / iterate / hold). Waived bullets count as covered. With no bullets
+    /// to check: a `Pass` (no criteria) is fully satisfied (1.0); a
+    /// `Disabled` / `NoGapRef` result can't be judged, so it returns the neutral
+    /// prior (0.5).
+    pub fn confidence(&self) -> f64 {
+        if self.bullets.is_empty() {
+            return match self.status {
+                CoverageStatus::Pass => 1.0,
+                _ => 0.5,
+            };
+        }
+        let covered = self.bullets.iter().filter(|b| b.covered).count();
+        crate::confidence::confidence_from_coverage(covered as f64 / self.bullets.len() as f64)
+    }
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 fn gh_cmd() -> String {
@@ -407,8 +428,9 @@ pub fn render_json(result: &AcCoverageResult) -> String {
         .collect::<Vec<_>>()
         .join(",");
     format!(
-        r#"{{"status":"{status}","pr_number":{pr},"gap_id":{gap_id},"misses":[{misses_json}]}}"#,
+        r#"{{"status":"{status}","pr_number":{pr},"gap_id":{gap_id},"misses":[{misses_json}],"confidence":{conf:.3}}}"#,
         pr = result.pr_number,
+        conf = result.confidence(),
     )
 }
 
@@ -825,6 +847,50 @@ mod tests {
         assert!(json.contains(r#""status":"pass""#));
         assert!(json.contains(r#""pr_number":42"#));
         assert!(json.contains(r#""gap_id":"INFRA-1541""#));
+    }
+
+    #[test]
+    fn confidence_scales_with_ac_coverage() {
+        // EFFECTIVE-333: the judgment score rises monotonically with the
+        // covered-bullet fraction (bare pass/miss → a calibrated 0..1 score).
+        let mk = |flags: &[bool]| AcCoverageResult {
+            pr_number: 1,
+            gap_id: Some("X-1".to_string()),
+            status: CoverageStatus::Miss,
+            bullets: flags
+                .iter()
+                .enumerate()
+                .map(|(i, &c)| BulletResult {
+                    index: i,
+                    text: format!("bullet {i}"),
+                    covered: c,
+                    waived: false,
+                    waive_reason: None,
+                    rules_hit: vec![],
+                })
+                .collect(),
+        };
+        let none = mk(&[false, false]).confidence();
+        let half = mk(&[true, false]).confidence();
+        let all = mk(&[true, true]).confidence();
+        assert!(
+            none < half && half < all,
+            "confidence must rise with AC coverage: {none} < {half} < {all}"
+        );
+        assert!((0.0..=1.0).contains(&all), "confidence in 0..=1, got {all}");
+        // A no-criteria pass is fully satisfied; a disabled result can't be judged.
+        let no_ac_pass = AcCoverageResult {
+            pr_number: 1,
+            gap_id: None,
+            status: CoverageStatus::Pass,
+            bullets: vec![],
+        };
+        assert_eq!(no_ac_pass.confidence(), 1.0);
+        let disabled = AcCoverageResult {
+            status: CoverageStatus::Disabled,
+            ..no_ac_pass
+        };
+        assert_eq!(disabled.confidence(), 0.5);
     }
 }
 
