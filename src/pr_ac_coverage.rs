@@ -48,13 +48,6 @@ fn gh_cmd() -> String {
     std::env::var("CHUMP_GH").unwrap_or_else(|_| "gh".to_string())
 }
 
-fn repo_root() -> std::path::PathBuf {
-    if let Ok(v) = std::env::var("CHUMP_REPO_ROOT") {
-        return std::path::PathBuf::from(v);
-    }
-    crate::repo_path::repo_root()
-}
-
 fn run_gh(args: &[&str]) -> Result<String, String> {
     let out = Command::new(gh_cmd())
         .args(args)
@@ -110,55 +103,36 @@ pub fn parse_gap_id(title: &str) -> Option<String> {
 /// Supports `acceptance_criteria:` as a list-of-strings YAML block.
 /// The YAML file may be a list (starts with `- id:`) or a top-level object.
 fn load_ac_bullets(gap_id: &str) -> Result<Vec<String>, String> {
-    let root = repo_root();
-    let path = root
-        .join("docs")
-        .join("gaps")
-        .join(format!("{gap_id}.yaml"));
-    let text = std::fs::read_to_string(&path)
-        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-
-    let mut bullets = Vec::new();
-    let mut in_ac = false;
-    // Track the indentation of the `acceptance_criteria:` key so we know
-    // when a line at the *same or lower* indent level ends the block.
-    let mut ac_indent = 0usize;
-
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        let indent = line.len() - trimmed.len();
-
-        if trimmed.starts_with("acceptance_criteria:") {
-            in_ac = true;
-            ac_indent = indent;
-            continue;
-        }
-
-        if in_ac {
-            // A bullet line starts with "- " (after whitespace).
-            if let Some(rest) = trimmed.strip_prefix("- ") {
-                // Strip surrounding quotes if present.
-                let bullet = rest.trim();
-                let bullet = bullet
-                    .strip_prefix('"')
-                    .and_then(|s| s.strip_suffix('"'))
-                    .or_else(|| bullet.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
-                    .unwrap_or(bullet);
-                bullets.push(bullet.to_string());
-            } else if trimmed.is_empty() {
-                // blank line — continue
-            } else if indent <= ac_indent && !trimmed.starts_with('-') {
-                // A non-bullet line at the same indent level as `acceptance_criteria:`
-                // means we've exited the block.
-                break;
-            } else if indent <= ac_indent && trimmed.starts_with('-') {
-                // A new list item at the same level (e.g. a different gap entry) — done.
-                break;
-            }
-        }
+    // CREDIBLE-178: read acceptance criteria from the canonical state.db via
+    // `chump gap show <ID> --json`, NOT the docs/gaps/<ID>.yaml mirror. That
+    // per-file YAML mirror was removed by ZERO-WASTE-020, so the old file read
+    // ALWAYS failed with "no such file" → this checker silently treated every PR
+    // as a pass and could never detect a miss. That dead read is the root cause
+    // of the label-drift where gaps (INFRA-3490/3489) flipped to 'done' with
+    // uncovered acceptance criteria. state.db is canonical (see CLAUDE.md).
+    let chump_bin = std::env::var("CHUMP_REAL_BINARY").unwrap_or_else(|_| "chump".to_string());
+    let out = Command::new(&chump_bin)
+        .args(["gap", "show", gap_id, "--json"])
+        .output()
+        .map_err(|e| format!("cannot run `{chump_bin} gap show {gap_id} --json`: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "`chump gap show {gap_id} --json` failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
-
-    Ok(bullets)
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .map_err(|e| format!("cannot parse `chump gap show {gap_id} --json`: {e}"))?;
+    // `acceptance_criteria` is a JSON array of strings, serialized AS A STRING
+    // (double-encoded) in the gap row — parse the inner array.
+    let ac_field = v
+        .get("acceptance_criteria")
+        .and_then(|x| x.as_str())
+        .unwrap_or("");
+    if ac_field.trim().is_empty() {
+        return Ok(vec![]);
+    }
+    Ok(serde_json::from_str::<Vec<String>>(ac_field).unwrap_or_default())
 }
 
 // ── waiver parser ─────────────────────────────────────────────────────────────
