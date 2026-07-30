@@ -19,10 +19,38 @@
 #
 # Idempotent: exits 0 (no-op) when the installed binary is already current.
 #
+# RESILIENT-211: canary rollout. This script's own local install (the
+# machine it runs on — the launchd-scheduled canary node) is step 1 of a
+# two-step SEQUENTIAL rollout across Chump's two-node fleet (Helsinki +
+# closetjunky, see docs/process/ADD_A_FLEET_NODE.md). After the local
+# rebuild+install succeeds, a health-check gate (mission-scoreboard.sh, or
+# `chump health --slo-check` as fallback) must pass on THIS node before the
+# second node is told to refresh. A failed gate BLOCKS the second-node
+# rollout and emits kind=canary_rollout_failed rather than propagating a bad
+# binary silently. No new environment tier is introduced — both nodes are
+# existing production nodes; this only sequences and gates between them.
+#
 # Environment overrides:
 #   CHUMP_REPO_ROOT               — repo root (default: resolved relative to script)
 #   CHUMP_REFRESH_RUNNER_SCRIPT   — path to refresh-runner-binary.sh
 #   CHUMP_SKIP_AUTO_DEPLOY        — set 1 to exit 0 immediately (bypass)
+#   CHUMP_HEALTHCHECK_CMD        — override the canary health-check command
+#                                   (full shell command string; used by tests
+#                                   and operators to force pass/fail). Default:
+#                                   scripts/dev/mission-scoreboard.sh, falling
+#                                   back to `<TARGET_BIN> health --slo-check`.
+#   CHUMP_SECOND_NODE_SSH         — ssh target (alias or user@host) for the
+#                                   second fleet node. Unset = no second node
+#                                   configured on this box; second-node deploy
+#                                   is skipped (not a failure — single-node
+#                                   contexts, e.g. dev checkouts, are fine).
+#   CHUMP_SECOND_NODE_REFRESH_CMD — remote command run over ssh to refresh the
+#                                   second node's binary (default: invokes
+#                                   node-refresh-chump.sh on that node).
+#   CHUMP_SECOND_NODE_DEPLOY_CMD  — full override for the entire second-node
+#                                   deploy step (local shell command, no ssh).
+#                                   Used by tests to assert propagation
+#                                   happened/didn't without real network I/O.
 
 set -uo pipefail
 
@@ -38,6 +66,7 @@ LOG="$LOG_DIR/auto-deploy-$(date -u +%Y%m%dT%H%M%SZ).log"
 # scanner-anchor: "kind":"binary_auto_deployed"
 # scanner-anchor: "kind":"autodeploy_tool_smoke_passed"
 # scanner-anchor: "kind":"autodeploy_tool_smoke_failed"
+# scanner-anchor: "kind":"canary_rollout_failed"
 emit_ambient() {
     local kind="$1" extra="${2:-}"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -52,6 +81,56 @@ emit_ambient() {
 }
 
 log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG"; }
+
+# run_canary_health_check — RESILIENT-211 gate. Runs AFTER this node's own
+# rebuild+install has already succeeded; decides whether the second fleet
+# node is allowed to receive the same binary. Exit 0 = healthy (propagate),
+# non-zero = unhealthy (block).
+#
+# Deliberately narrow: only the two gates the operator named as acceptable
+# (mission-scoreboard.sh, chump health --slo-check) are wired in. A gate
+# that always exits 0 is worse than no gate — it manufactures false
+# confidence — so this never swallows a nonzero exit into success.
+run_canary_health_check() {
+    if [[ -n "${CHUMP_HEALTHCHECK_CMD:-}" ]]; then
+        log "canary health check: CHUMP_HEALTHCHECK_CMD override -> $CHUMP_HEALTHCHECK_CMD"
+        bash -c "$CHUMP_HEALTHCHECK_CMD" >>"$LOG" 2>&1
+        return $?
+    fi
+    local scoreboard="$REPO_ROOT/scripts/dev/mission-scoreboard.sh"
+    if [[ -x "$scoreboard" ]]; then
+        log "canary health check: mission-scoreboard.sh"
+        bash "$scoreboard" >>"$LOG" 2>&1
+        return $?
+    fi
+    log "canary health check: mission-scoreboard.sh unavailable — falling back to '$TARGET_BIN health --slo-check'"
+    "$TARGET_BIN" health --slo-check >>"$LOG" 2>&1
+    return $?
+}
+
+# deploy_second_node — RESILIENT-211. Only called after run_canary_health_check
+# returns success. Triggers the second fleet node's own refresh
+# (scripts/ops/node-refresh-chump.sh, per docs/process/ADD_A_FLEET_NODE.md)
+# over ssh so the two-node rollout is sequential rather than both nodes
+# independently free-running their own timers onto the same new SHA at once.
+#
+# No configured second node (CHUMP_SECOND_NODE_SSH unset) is a legitimate
+# single-node context (dev checkouts, a node mid-bringup) — skip, don't fail.
+deploy_second_node() {
+    if [[ -n "${CHUMP_SECOND_NODE_DEPLOY_CMD:-}" ]]; then
+        log "second-node deploy: CHUMP_SECOND_NODE_DEPLOY_CMD override"
+        bash -c "$CHUMP_SECOND_NODE_DEPLOY_CMD" >>"$LOG" 2>&1
+        return $?
+    fi
+    if [[ -z "${CHUMP_SECOND_NODE_SSH:-}" ]]; then
+        log "SKIP second-node deploy: CHUMP_SECOND_NODE_SSH not set (single-node context)"
+        return 0
+    fi
+    local remote_cmd="${CHUMP_SECOND_NODE_REFRESH_CMD:-bash ~/chump-host/scripts/ops/node-refresh-chump.sh || bash ~/Projects/Chump/scripts/ops/node-refresh-chump.sh}"
+    log "second-node deploy: ssh -> $CHUMP_SECOND_NODE_SSH"
+    ssh -o BatchMode=yes -o ConnectTimeout="${CHUMP_SECOND_NODE_SSH_TIMEOUT:-20}" \
+        "$CHUMP_SECOND_NODE_SSH" "$remote_cmd" >>"$LOG" 2>&1
+}
 
 # Bypass
 if [[ "${CHUMP_SKIP_AUTO_DEPLOY:-0}" == "1" ]]; then
@@ -136,6 +215,19 @@ if CHUMP_REPO_ROOT="$REPO_ROOT" bash "$REFRESH_SCRIPT" >>"$LOG" 2>&1; then
         else
             log "post-deploy smoke skipped — $SMOKE_SH not present yet (INFRA-3452 undeployed)"
         fi
+    fi
+
+    # (g) RESILIENT-211: canary rollout gate. This node's rebuild+install just
+    # succeeded — it is the canary / first node of the two-node fleet. Only
+    # propagate to the second node if the health-check gate actually passes;
+    # a failed gate blocks propagation and is reported, never swallowed.
+    if run_canary_health_check; then
+        log "OK: canary health check passed on $(hostname) — clearing rollout to second node"
+        deploy_second_node
+    else
+        log "FAIL: canary health check failed on $(hostname) (new_sha=$NEW_SHA) — BLOCKING rollout to second node"
+        emit_ambient "canary_rollout_failed" \
+            "\"new_sha\":\"$NEW_SHA\",\"main_sha\":\"$MAIN_SHA_SHORT\",\"canary_node\":\"$(hostname)\""
     fi
 else
     log "FAIL: refresh-runner-binary.sh exited non-zero; binary may be stale"

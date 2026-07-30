@@ -2812,6 +2812,22 @@ events:
       reverted; an operator/watchdog should investigate profile/registration/gate.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, new_sha, reason]
+
+  - kind: canary_rollout_failed
+    effect_metric: self
+    emitter: scripts/ops/auto-deploy.sh (RESILIENT-211)
+    trigger: >
+      Two-node canary rollout: the canary (first) node's binary rebuild+install
+      succeeded, but the post-install health-check gate (mission-scoreboard.sh,
+      falling back to `chump health --slo-check`) did NOT pass. The second
+      fleet node (Helsinki/closetjunky, per docs/process/ADD_A_FLEET_NODE.md)
+      is deliberately NOT told to refresh — rollout blocks here rather than
+      propagating a bad binary silently.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, new_sha, main_sha, canary_node]
+    expected_min_per_day: 0
+    status: stable
+
   - kind: merge_deploy_lag_ok
     effect_metric: self
     emitter: scripts/coord/merge-deploy-lag-watchdog.sh (INFRA-3454)
