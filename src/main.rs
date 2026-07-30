@@ -112,6 +112,7 @@ mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod cartographer; // INFRA-1782: chump cartograph <repo-path> — ARCHITECTURE.md generation (INFRA-1746 phase 2)
 mod collision_prediction; // META-076: predictive collision detection (mock inputs), first impl of docs/design/COLLISION_PREDICTION_SCHEMA.md
 mod completion;
+mod confidence; // EFFECTIVE-332: judgment-organ calibrated confidence-score primitive
 mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod external_verify_merge; // CREDIBLE-096: chump external verify-merge
 mod gen;
