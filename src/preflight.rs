@@ -1242,8 +1242,33 @@ pub fn run(argv: &[String]) -> i32 {
             // failed this gate locally (CI ran the wrapper through a
             // different ci.yml step that passed args; preflight inherited
             // the wrapper but not the args).
-            steps.push(step(
-                "cargo-test",
+            //
+            // CREDIBLE-175: run the suite under `cargo nextest run`
+            // (process-isolated) — exactly what CI runs (ci.yml wraps
+            // `cargo nextest run` in this same script). Thread-shared
+            // `cargo test` false-reds on CHUMP_REPO/CHUMP_HOME env-var races
+            // (repo_tools/tool_middleware) that CI's nextest never hits, which
+            // forced --skip-tests bypasses on otherwise-clean pushes. Fall back
+            // to `cargo test` only when cargo-nextest is not installed.
+            let nextest_available = std::process::Command::new("cargo")
+                .args(["nextest", "--version"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            let test_argv: &[&str] = if nextest_available {
+                &[
+                    "bash",
+                    "scripts/ci/cargo-test-with-rerun.sh",
+                    "--",
+                    "cargo",
+                    "nextest",
+                    "run",
+                    "--bin",
+                    "chump",
+                ]
+            } else {
                 &[
                     "bash",
                     "scripts/ci/cargo-test-with-rerun.sh",
@@ -1253,9 +1278,9 @@ pub fn run(argv: &[String]) -> i32 {
                     "--bin",
                     "chump",
                     "--tests",
-                ],
-                GateKind::Rust,
-            ));
+                ]
+            };
+            steps.push(step("cargo-test", test_argv, GateKind::Rust));
         }
 
         // INFRA-1857: system-integration-test gate (INFRA-849). Mirrors
