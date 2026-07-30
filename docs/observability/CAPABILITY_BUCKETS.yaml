@@ -1,0 +1,193 @@
+# CAPABILITY_BUCKETS.yaml — CREDIBLE-173
+#
+# Maps module/crate paths to the 16 capability areas named in
+# docs/CODEBASE_REALITY_MAP.md §2 (8 tidy, hypothesis-driven buckets) and §3
+# (8 "negative space" buckets a keyword-driven scan missed the first time).
+#
+# WHY THIS EXISTS: §3 of the Reality Map documents that a 2026-07-05 capability
+# scan found what it was told to look for (§2's 8 buckets), then a SEPARATE,
+# manual negative-space sweep found 8 more real clusters the tidy scan missed
+# entirely. That sweep was a one-time, human-run event. Nothing prevented the
+# next capability audit from repeating the same tunnel-vision mistake. This
+# registry + scripts/dev/capability-drift-scan.py is the mechanized backstop:
+# instead of re-discovering blind spots by chance, unattributed LOC clusters
+# above a threshold get flagged automatically.
+#
+# DELIBERATE OMISSION: §3's "also uncovered" list (chump-gh-app,
+# chump-integrator, chump-policy, chump-reviewer-routing, chump-cancel-registry,
+# ast-crawler) is NOT registered below on purpose — these are real crates that
+# were found but never given a proper bucket home. Leaving them unregistered
+# means the first run of capability-drift-scan.py should flag them, which is
+# the built-in self-test that the scanner actually works on real drift rather
+# than a synthetic fixture.
+#
+# Format: each bucket is a name + a list of glob patterns (relative to repo
+# root, fnmatch-style) that belong to it. A path matching zero buckets above
+# the LOC threshold is what the scanner flags.
+
+buckets:
+  # --- §2: the 8 tidy, hypothesis-driven buckets ---
+  - name: multi_agent_coordination
+    source: "CODEBASE_REALITY_MAP.md §2"
+    globs:
+      - "crates/chump-coord/**"
+      - "crates/chump-agent-lease/**"
+      - "crates/chump-orchestrator/**"
+      - "src/atomic_claim.rs"
+
+  - name: llm_infrastructure
+    source: "CODEBASE_REALITY_MAP.md §2"
+    globs:
+      - "src/provider_cascade.rs"
+      - "src/local_openai.rs"
+      - "src/provider_bandit.rs"
+      - "crates/chump-cost-tracker/**"
+      - "crates/chump-mcp-lifecycle/**"
+      - "mcp-servers/**"
+      - "src/tool_normalize.rs"
+
+  - name: ai_native_work_planning
+    source: "CODEBASE_REALITY_MAP.md §2"
+    globs:
+      - "crates/chump-gap-store/**"
+      - "crates/chump-planner/**"
+
+  - name: autonomous_ci_ship_firewall
+    source: "CODEBASE_REALITY_MAP.md §2"
+    globs:
+      - "src/preflight.rs"
+      - "crates/chump-ship/**"
+      - "scripts/git-hooks/**"
+      - "scripts/coord/bot-merge.sh"
+      - "scripts/coord/trunk-sentinel*"
+
+  - name: agent_memory_learning
+    source: "CODEBASE_REALITY_MAP.md §2"
+    globs:
+      - "src/memory_db.rs"
+      - "src/reflection_db.rs"
+      - "src/reflection.rs"
+      - "src/memory_graph.rs"
+      - "src/durable_execution*.rs"
+      - "crates/chump-perception/**"
+
+  - name: observability_fleet_telemetry
+    source: "CODEBASE_REALITY_MAP.md §2"
+    globs:
+      - "src/waste_tally.rs"
+      - "src/kpi_report.rs"
+      - "src/fleet_health.rs"
+      - "src/floor_temp.rs"
+      - "crates/chump-github-cache/**"
+
+  - name: developer_surfaces
+    source: "CODEBASE_REALITY_MAP.md §2"
+    globs:
+      - "src/acp_server.rs"
+      - "src/web_server.rs"
+      - "crates/chump-fleet-server/**"
+      - "src/chump_mode*.rs"
+      - "src/inspect_cmd.rs"
+      - "src/slack.rs"
+
+  - name: external_repo_automation
+    source: "CODEBASE_REALITY_MAP.md §2"
+    globs:
+      - "src/onboard.rs"
+      - "src/improve.rs"
+      - "src/execute_gap.rs"
+      - "src/external_verify_merge.rs"
+      - "src/commands/bootstrap.rs"
+      - "crates/chump-handoff/**"
+      - "scripts/arsenal/**"
+
+  # --- §3: the 8 negative-space buckets a keyword scan missed ---
+  - name: cognitive_architecture
+    source: "CODEBASE_REALITY_MAP.md §3"
+    globs:
+      - "src/phi_proxy.rs"
+      - "src/neuromodulation.rs"
+      - "src/blackboard.rs"
+      - "src/belief_state.rs"
+      - "src/counterfactual.rs"
+      - "src/ego_tool.rs"
+      - "src/introspect_tool.rs"
+      - "src/consciousness_*.rs"
+      - "src/reasoning_mode.rs"
+      - "src/precision_controller.rs"
+      - "src/activation.rs"
+      - "src/holographic_workspace.rs"
+      - "src/consciousness_traits.rs"
+
+  - name: evaluation_research_science
+    source: "CODEBASE_REALITY_MAP.md §3"
+    globs:
+      - "src/eval_harness.rs"
+      - "src/adversary_llm.rs"
+      - "src/battle_qa_tool.rs"
+      - "src/vector6_verify.rs"
+      - "src/vector7_verify.rs"
+      - "src/trajectory_replay.rs"
+      - "scripts/ab-harness/**"
+      - "scripts/eval/**"
+      - "scripts/eval-human-label/**"
+      - "scripts/eval-reflection-ab/**"
+      - "scripts/qa/**"
+
+  - name: tool_governance_wasm_sandbox
+    source: "CODEBASE_REALITY_MAP.md §3"
+    globs:
+      - "src/tool_policy.rs"
+      - "src/tool_middleware.rs"
+      - "src/tool_routing.rs"
+      - "src/context_firewall.rs"
+      - "src/sandbox*.rs"
+      - "src/wasm_runner.rs"
+
+  - name: pr_review_intelligence
+    source: "CODEBASE_REALITY_MAP.md §3"
+    globs:
+      - "src/pr_triage*.rs"
+      - "src/explain*.rs"
+      - "src/fix_clippy*.rs"
+      - "src/pr_ac_coverage.rs"
+      - "src/coupling*.rs"
+      - "src/diff_review_tool.rs"
+      - "src/pr_rescue.rs"
+
+  - name: omni_channel_messaging
+    source: "CODEBASE_REALITY_MAP.md §3"
+    globs:
+      - "src/discord.rs"
+      - "src/discord_intent.rs"
+      - "src/telegram*.rs"
+      - "src/platform_router.rs"
+      - "crates/chump-messaging/**"
+
+  - name: skills_registry
+    source: "CODEBASE_REALITY_MAP.md §3"
+    globs:
+      - "src/skill_db.rs"
+      - "src/skill_hub.rs"
+      - "src/skill_metrics.rs"
+      - "src/skill_tool.rs"
+
+  - name: hitl_operator_modeling
+    source: "CODEBASE_REALITY_MAP.md §3"
+    globs:
+      - "src/hitl_escalation.rs"
+      - "src/approval_resolver.rs"
+      - "src/ask_jeff_db.rs"
+      - "src/user_profile.rs"
+
+  - name: device_computer_control
+    source: "CODEBASE_REALITY_MAP.md §3"
+    globs:
+      - "src/browser.rs"
+      - "src/browser_tool.rs"
+      - "src/screen_vision_tool.rs"
+      - "mcp-servers/chump-mcp-adb/**"
+
+# Deliberately unattributed (see header) — should be flagged by the scanner:
+#   chump-gh-app, chump-integrator, chump-policy, chump-reviewer-routing,
+#   chump-cancel-registry, ast-crawler
