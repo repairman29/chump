@@ -554,6 +554,21 @@ elif [[ "${CHUMP_CLIPPY_GATE:-1}" == "0" ]]; then
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_lg_gap" "$_lg_reason" "$_lg_branch" \
         >> "${_lg_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
     unset _lg_root _lg_branch _lg_gap _lg_reason
+elif [[ "${CHUMP_BOT_MERGE_IN_PROGRESS:-0}" == "1" ]]; then
+    # INFRA-3524: skip the clippy re-run when the push is bot-merge-initiated.
+    # bot-merge already runs `cargo clippy --workspace --fix` as its own gate
+    # before pushing, and CI re-runs clippy authoritatively on the PR. Re-running
+    # clippy here is pure redundancy — and a cold compile in .cargo-test-target
+    # (rebuilding ring's C-assembly, etc.) regularly blows bot-merge's 300s
+    # push-phase budget (INFRA-2426), which SIGTERMs the push mid-flight and
+    # orphans the worktree (→ META-156 re-claim failure; timed out CREDIBLE-178
+    # twice). This extends INFRA-3521's preflight-skip to the clippy gate.
+    # Direct (non-bot-merge) `git push` still runs the full clippy gate below.
+    echo "[pre-push] INFRA-3524: skipping clippy re-run — bot-merge already clippy-checked this push; CI is authoritative." >&2
+    _amb_3524="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.chump-locks/ambient.jsonl"
+    printf '{"ts":"%s","kind":"prepush_clippy_skipped_botmerge","reason":"INFRA-3524: bot-merge already clippy-checked + CI authoritative"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$_amb_3524" 2>/dev/null || true
+    unset _amb_3524
 elif command -v cargo &>/dev/null; then
     # Determine if any .rs files changed in the push vs origin/main.
     _CLIPPY_HAS_RS=0
