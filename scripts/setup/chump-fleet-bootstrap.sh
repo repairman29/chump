@@ -41,6 +41,12 @@ REQUIRED_DAEMONS=(
     "com.chump.claude-reaper|scripts/setup/install-claude-reaper.sh"
     "com.chump.stale-process-watchdog|scripts/setup/install-stale-process-watchdog.sh"
     "com.chump.main-health-watchdog|scripts/setup/install-main-health-watchdog.sh"
+    # RESILIENT-214: intervention-watchdog — wires INFRA-3489/COTG-2.1 onto a live
+    # 30-min schedule. Runs `chump intervention-watchdog --apply` so every human
+    # touch is logged as an autonomy_defect + deduped self-heal gap. Without this
+    # plist the watchdog is callable but never invoked, so its downstream
+    # consumers (fleet-brief, ops-audit) never fire.
+    "com.chump.intervention-watchdog|scripts/setup/install-intervention-watchdog.sh"
     # INFRA-2124: OAuth refresh daemon — fills CLAUDE.md INFRA-622 5-min refresh
     # promise. Without this, ~/.chump/oauth-token.json goes stale within hours
     # and headless `claude -p` subprocesses (Oracle, JIT scheduler) silently

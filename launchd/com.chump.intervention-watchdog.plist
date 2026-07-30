@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- RESILIENT-214 (wires INFRA-3489/COTG-2.1): intervention-watchdog schedule -->
+<!-- Runs `chump intervention-watchdog --apply` so every human touch is logged  -->
+<!-- as an autonomy_defect + deduped self-heal gap. Without a live schedule the -->
+<!-- downstream consumers (fleet-brief, ops-audit) never fire.                  -->
+<!-- Install: bash scripts/setup/install-intervention-watchdog.sh               -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.intervention-watchdog</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-lc</string>
+        <string>cd REPO_ROOT &amp;&amp; exec chump intervention-watchdog --apply</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>REPO_ROOT</string>
+    <key>StartInterval</key>
+    <integer>1800</integer>
+    <key>StandardOutPath</key>
+    <string>REPO_ROOT/.chump-locks/intervention-watchdog.log</string>
+    <key>StandardErrorPath</key>
+    <string>REPO_ROOT/.chump-locks/intervention-watchdog.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
