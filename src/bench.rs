@@ -408,7 +408,8 @@ pub fn load_track(path: &Path) -> Result<Track> {
     serde_yaml::from_str(&text).with_context(|| format!("parsing track {}", path.display()))
 }
 
-/// Drive the track's mode engine (only on `--apply`). v1 wires IMPROVE/RESCUE → `chump improve`.
+/// Drive the track's mode engine (only on `--apply`). Wires RESCUE/IMPROVE → `chump improve`,
+/// CREATE → `chump bootstrap`, COMPREHEND → the `comprehend` engine.
 fn drive_engine(track: &Track) -> Result<()> {
     let chump = std::env::var("CHUMP_BENCH_CHUMP_BIN")
         .or_else(|_| std::env::var("CHUMP_BIN"))
@@ -462,8 +463,41 @@ fn drive_engine(track: &Track) -> Result<()> {
             }
             Ok(())
         }
+        "COMPREHEND" => {
+            // COMPREHEND tracks point at an existing repo — the lap *understands*
+            // it (no mutation). Drive the comprehension engine: the `comprehend`
+            // binary (almanac-organs) runs the wiring/gates/config organs over the
+            // clone and prints a report. We point it at the same dir the scorer
+            // runs the acceptance command in (`local_clone_dir`) — read-only, so
+            // unlike CREATE we must NOT wipe the dir first.
+            //
+            // EFFECTIVE-336 v1: comprehend REPORTS but does not WRITE the
+            // onboarding map, so a track whose acceptance checks for that file
+            // will honestly score FAIL post-comprehend — surfacing "write-the-map-
+            // after-comprehend" as the next COMPREHEND layer (a follow-up wires
+            // comprehend → emit docs/ONBOARDING_MAP.md so acceptance can pass
+            // zero-touch). Mirrors the CREATE arm's honest-partial posture.
+            let bin = crate::comprehend_tool::comprehend_bin().ok_or_else(|| {
+                anyhow::anyhow!("comprehend binary not found (set CHUMP_COMPREHEND_BIN)")
+            })?;
+            let dir = local_clone_dir(&track.repo);
+            let status = Command::new(&bin)
+                .arg("--repo")
+                .arg(&dir)
+                .status()
+                .with_context(|| "spawn comprehend")?;
+            if !status.success() {
+                anyhow::bail!(
+                    "engine `comprehend --repo` exited non-zero for {}",
+                    track.repo
+                );
+            }
+            Ok(())
+        }
         other => {
-            anyhow::bail!("engine-drive for mode {other} not wired yet (v1: RESCUE/IMPROVE/CREATE)")
+            anyhow::bail!(
+                "engine-drive for mode {other} not wired yet (v1: RESCUE/IMPROVE/CREATE/COMPREHEND)"
+            )
         }
     }
 }
