@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # discover-chump-bin.sh — shared CI test helper, INFRA-1437 follow-up.
 #
-# Set $CHUMP_BIN to the path of a built chump binary, checking the
-# CARGO_TARGET_DIR shared-cache path first (INFRA-1540 self-hosted runners
-# redirect cargo output there), then the legacy repo-local target/ dirs.
+# Set $CHUMP_BIN to the path of a built chump binary. Resolution order:
+#   1. an operator-supplied $CHUMP_BIN override
+#   2. the canonical cargo target dir resolved via `cargo metadata`
+#      (INFRA-3517: honors .cargo/config.toml [build] target-dir, which the
+#      $CARGO_TARGET_DIR env-var checks below silently MISS — that gap made
+#      preflight report "binary not found" on any host using a config.toml
+#      shared target dir, e.g. ~/.cargo/chump-shared-target)
+#   3. the $CARGO_TARGET_DIR shared-cache path (INFRA-1540 self-hosted runners)
+#   4. the legacy repo-local target/ dirs
 #
 # Usage in a CI test script:
 #   source "$(dirname "$0")/lib/discover-chump-bin.sh"
@@ -14,11 +20,25 @@
 # Honors an existing $CHUMP_BIN env var if it points at an executable file —
 # allows operators to override via `CHUMP_BIN=/path/to/chump bash test-foo.sh`.
 
+# INFRA-3517: resolve the canonical target dir via cargo metadata (honors
+# .cargo/config.toml [build] target-dir). resolve_cargo_target_dir also folds
+# in $CARGO_TARGET_DIR and the $REPO_ROOT/target fallback, so its result is the
+# most authoritative single source — checked ahead of the raw env-var tiers.
+_dcb_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ci/lib/resolve-cargo-target-dir.sh
+source "$_dcb_lib_dir/resolve-cargo-target-dir.sh"
+_dcb_target="$(resolve_cargo_target_dir "${REPO_ROOT:-$PWD}")"
+
 # If caller set CHUMP_BIN and it's executable, use it as-is.
 if [[ -n "${CHUMP_BIN:-}" ]] && [[ -x "$CHUMP_BIN" ]]; then
     :  # keep as-is
 elif [[ -n "${CHUMP_BIN:-}" ]] && [[ -x "${REPO_ROOT:-}/$CHUMP_BIN" ]]; then
     CHUMP_BIN="$REPO_ROOT/$CHUMP_BIN"
+elif [[ -n "$_dcb_target" ]] && [[ -x "$_dcb_target/release/chump" ]]; then
+    # INFRA-3517: cargo-metadata-resolved target (honors config.toml target-dir).
+    CHUMP_BIN="$_dcb_target/release/chump"
+elif [[ -n "$_dcb_target" ]] && [[ -x "$_dcb_target/debug/chump" ]]; then
+    CHUMP_BIN="$_dcb_target/debug/chump"
 elif [[ -n "${CARGO_TARGET_DIR:-}" ]] && [[ -x "$CARGO_TARGET_DIR/release/chump" ]]; then
     # Self-hosted runner with shared cache (INFRA-1540).
     CHUMP_BIN="$CARGO_TARGET_DIR/release/chump"
@@ -30,12 +50,14 @@ elif [[ -x "${REPO_ROOT:-}/target/debug/chump" ]]; then
     CHUMP_BIN="$REPO_ROOT/target/debug/chump"
 else
     echo "[discover-chump-bin] ERROR: no chump binary found." >&2
+    echo "  Tried cargo-metadata target dir=${_dcb_target:-<unresolved>}/{release,debug}/chump" >&2
     echo "  Tried CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-<unset>}/{release,debug}/chump" >&2
     echo "  Tried $REPO_ROOT/target/{release,debug}/chump" >&2
     echo "  Build with: cargo build --release   (or cargo build for debug)" >&2
     exit 1
 fi
 
+unset _dcb_lib_dir _dcb_target
 export CHUMP_BIN
 
 # INFRA-755 observability hook: emit ambient event recording which target dir
