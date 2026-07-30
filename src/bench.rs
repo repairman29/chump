@@ -408,9 +408,11 @@ pub fn load_track(path: &Path) -> Result<Track> {
     serde_yaml::from_str(&text).with_context(|| format!("parsing track {}", path.display()))
 }
 
-/// Drive the track's mode engine (only on `--apply`). Wires RESCUE/IMPROVE → `chump improve`,
-/// CREATE → `chump bootstrap`, COMPREHEND → the `comprehend` engine.
-fn drive_engine(track: &Track) -> Result<()> {
+/// Drive the track's mode engine (only on `--apply`). Wires RESCUE/IMPROVE/FINISH →
+/// `chump improve`, CREATE → `chump bootstrap`, COMPREHEND → the `comprehend` engine.
+/// On `implement` (CREATE only, EFFECTIVE-341), also drives `chump agent-run` after
+/// bootstrap so the lap builds a working tool from the vision, not just a scaffold.
+fn drive_engine(track: &Track, implement: bool) -> Result<()> {
     let chump = std::env::var("CHUMP_BENCH_CHUMP_BIN")
         .or_else(|_| std::env::var("CHUMP_BIN"))
         .unwrap_or_else(|_| "chump".to_string());
@@ -479,6 +481,54 @@ fn drive_engine(track: &Track) -> Result<()> {
                     "engine `chump bootstrap` exited non-zero for {}",
                     track.repo
                 );
+            }
+            // EFFECTIVE-341: implement-after-bootstrap. Bootstrap only scaffolds;
+            // on --implement, drive the coding agent to actually BUILD the tool
+            // from the vision so a CREATE lap can pass zero-touch. The agent gets
+            // the TASK, NOT the acceptance command — feeding it the grader would
+            // be teaching to the test. `agent-run` roots its file tools at --cwd,
+            // so edits land in the same scaffold dir the scorer runs acceptance
+            // in. A failed/soft implement must NOT fail the drive — we score
+            // whatever state the agent left (honest partial).
+            if implement {
+                let prompt = format!(
+                    "{}\n\nThe project is scaffolded in this directory. Implement it \
+                     fully so it works end to end: write all necessary source files \
+                     and make it runnable from this directory. Do not ask questions — \
+                     implement completely.",
+                    track.task
+                );
+                // Write the prompt OUTSIDE the scored clone dir so the agent does
+                // not treat it as a project file.
+                let prompt_path = dir
+                    .parent()
+                    .unwrap_or(dir.as_path())
+                    .join(".bench-implement-prompt.txt");
+                if let Err(e) = std::fs::write(&prompt_path, &prompt) {
+                    eprintln!(
+                        "[bench] implement: could not write prompt file: {e} — skipping implement"
+                    );
+                } else {
+                    eprintln!(
+                        "[bench] implementing {} via agent-run (can take minutes) …",
+                        track.repo
+                    );
+                    let prompt_str = prompt_path.to_string_lossy().into_owned();
+                    match Command::new(&chump)
+                        .args(["agent-run", "--cwd", &dir_str, "--prompt-file", &prompt_str])
+                        .status()
+                    {
+                        Ok(s) if s.success() => eprintln!("[bench] implement step completed"),
+                        Ok(s) => eprintln!(
+                            "[bench] implement step exited non-zero ({:?}) — scoring current state",
+                            s.code()
+                        ),
+                        Err(e) => eprintln!(
+                            "[bench] implement step failed to spawn: {e} — scoring current state"
+                        ),
+                    }
+                    let _ = std::fs::remove_file(&prompt_path);
+                }
             }
             Ok(())
         }
@@ -555,10 +605,11 @@ pub fn score_track(track: &Track) -> LapScore {
 fn usage() -> i32 {
     eprintln!(
         "chump bench — ChumpBench: run a track as a scoreable lap (DOC-072)\n\n\
-USAGE:\n  chump bench run --track <path.yaml> [--apply] [--json]\n\n\
+USAGE:\n  chump bench run --track <path.yaml> [--apply] [--implement] [--json]\n\n\
 FLAGS:\n  \
 --track <path>   Path to a track YAML (e2e/chumpbench/<id>.yaml)\n  \
 --apply          Drive the track's mode engine first, THEN score (default: score current state)\n  \
+--implement      CREATE only: after scaffolding, drive the coding agent to build the tool (implies --apply; slow)\n  \
 --json           Machine-readable scorecard"
     );
     2
@@ -569,6 +620,7 @@ pub fn run(args: &[String]) -> i32 {
     // args[0] is the subcommand ("run"); tolerate its absence.
     let mut track_path: Option<String> = None;
     let mut apply = false;
+    let mut implement = false;
     let mut json = false;
     let mut i = 0;
     while i < args.len() {
@@ -585,6 +637,12 @@ pub fn run(args: &[String]) -> i32 {
                 }
             }
             "--apply" => apply = true,
+            // --implement drives the coding agent to BUILD the tool after
+            // scaffolding (CREATE only, EFFECTIVE-341). Implies --apply.
+            "--implement" => {
+                apply = true;
+                implement = true;
+            }
             "--json" => json = true,
             "-h" | "--help" => return usage(),
             other => {
@@ -608,7 +666,7 @@ pub fn run(args: &[String]) -> i32 {
 
     if apply {
         eprintln!("[bench] driving {} engine on {} …", track.mode, track.repo);
-        if let Err(e) = drive_engine(&track) {
+        if let Err(e) = drive_engine(&track, implement) {
             eprintln!("[bench] engine drive failed: {e:#} — scoring current state anyway");
         }
     }
