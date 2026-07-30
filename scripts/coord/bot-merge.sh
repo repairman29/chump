@@ -2616,21 +2616,24 @@ _run_cargo_with_lock_detect() {
 if [[ "${DOC_ONLY:-0}" -eq 1 ]]; then
     info "[bot-merge] DOC_ONLY=1 — skipping cargo clippy entirely (INFRA-1042)"
 elif [[ $FAST -eq 1 ]]; then
-    # 2026-05-07: Even in --fast mode, run `cargo clippy --workspace --fix`
-    # as a cheap auto-correction pass. This catches the wave of fleet PRs
-    # that ship doc-list-overindented / manual_strip / manual_split_once
-    # / lines_filter_map_ok / manual_is_multiple_of style lints that
-    # fleet workers' Rust style produces. Auto-fix is fast (<2 min on
-    # warm cache) and amends the lint fixes into the current commit so
-    # CI sees a clean PR. If clippy --fix can't auto-resolve everything,
-    # we still let CI be the gate (no -D warnings).
+    # 2026-05-07: Even in --fast mode, run a `cargo clippy --fix` auto-correction
+    # pass. This catches the wave of fleet PRs that ship doc-list-overindented /
+    # manual_strip / manual_split_once / lines_filter_map_ok style lints that
+    # fleet workers' Rust style produces, amending the fixes into the current
+    # commit so CI sees a clean PR. If it can't auto-resolve everything, CI is
+    # the gate (no -D warnings).
+    #
+    # INFRA-3525: scope the pass to `--bin chump`, NOT `--workspace --all-targets`.
+    # The workspace/all-targets form ran 3-6 min and routinely blew bot-merge's
+    # phase-budget watchdog (INFRA-2426 SIGTERM) under fleet build contention —
+    # killing the whole ship, not just the (already non-fatal) clippy step. The
+    # chump bin is where ~all fleet PR diffs land, so bin-scoping keeps the
+    # auto-correct benefit for the common case while staying inside the budget;
+    # lints in crates/ or non-bin targets are caught by CI clippy.
     if command -v cargo &>/dev/null; then
-        stage_start "cargo clippy --workspace --fix (--fast pre-flight auto-correct)"
+        stage_start "cargo clippy --bin chump --fix (--fast pre-flight auto-correct)"
         _clippy_fix_rc=0
-        # INFRA-1067: bumped from 240s → 360s; INFRA-1062 documented repeated
-        # timeouts at 240s on warm-sccache builds (~3-5 min typical). 360s is
-        # the observed p95 from ambient bot_merge_phase_duration events.
-        _run_cargo_with_lock_detect "cargo clippy --fix" 360 clippy --workspace --all-targets --fix --allow-dirty --allow-staged || _clippy_fix_rc=$?
+        _run_cargo_with_lock_detect "cargo clippy --fix" 180 clippy --bin chump --fix --allow-dirty --allow-staged || _clippy_fix_rc=$?
         if [[ "$_clippy_fix_rc" -eq 124 ]]; then
             # INFRA-1062: timeout is non-fatal for --fast (CI clippy is the gate);
             # log explicitly so the operator sees it rather than silent exit.
