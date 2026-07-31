@@ -1471,6 +1471,13 @@ async fn main() -> Result<()> {
     // of the claude CLI. See docs/design/EXTERNAL_REPO_EXECUTION.md.
     if args.get(1).map(String::as_str) == Some("agent-run") {
         let (prompt_file, cwd) = parse_agent_run_args(&args);
+        // EFFECTIVE-342: --slim builds the agent with the proven free-tier
+        // dispatch profile (slim writer toolset incl patch_file, no read-only
+        // bloat) instead of the full inventory. Without it, weak/free models
+        // (the default provider cascade) loop on list_dir/read_file and return
+        // code as *text* without ever calling patch_file — so nothing lands on
+        // disk. This is the same profile the fleet's execute-gap path ships with.
+        let slim = args.iter().any(|a| a == "--slim");
         let prompt = match prompt_file {
             Some(f) => std::fs::read_to_string(&f).unwrap_or_else(|e| {
                 eprintln!("chump agent-run: cannot read --prompt-file {f}: {e}");
@@ -1503,8 +1510,29 @@ async fn main() -> Result<()> {
         // channel exists to approve them (the runtime proof of INFRA-3475 caught
         // write_file being denied). Mirrors build_free_tier_agent's discipline.
         std::env::remove_var("CHUMP_TOOLS_ASK");
-        match crate::agent_factory::build_chump_agent_cli() {
-            Ok((agent, _ready)) => match agent.run(&prompt).await {
+        let agent: anyhow::Result<crate::agent_loop::ChumpAgent> = if slim {
+            // EFFECTIVE-342: the working provider cascade + the slim free-tier
+            // writer toolset (patch_file + search, no read-only bloat) + no
+            // system prompt. This is the combination that makes weak/free models
+            // actually WRITE files. NOTE: we deliberately do NOT reuse
+            // execute_gap::build_free_tier_agent — that forces the cascade OFF and
+            // a single rotation-configured provider, which 404s to a local model
+            // when no free-tier rotation is set. Keep the cascade ON here.
+            let provider = crate::provider_cascade::global_provider();
+            let mut registry = axonerai::tool::ToolRegistry::new();
+            crate::tool_inventory::register_free_dispatch_tools(&mut registry);
+            let max_iter = std::env::var("CHUMP_AGENT_MAX_ITER")
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(30);
+            Ok(crate::agent_loop::ChumpAgent::new(
+                provider, registry, None, None, None, max_iter,
+            ))
+        } else {
+            crate::agent_factory::build_chump_agent_cli().map(|(agent, _ready)| agent)
+        };
+        match agent {
+            Ok(agent) => match agent.run(&prompt).await {
                 Ok(o) => {
                     print!("{}", o.reply);
                     return Ok(());
