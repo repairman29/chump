@@ -1,16 +1,31 @@
-# ChumpBench track — CREATE: build a new tool from a plain-language vision (DOC-072).
-# repo is created by the lap (bootstrap); with no clone yet, current-state scoring is
-# UNKNOWN until a driven --apply lap bootstraps + runs the acceptance against the output.
+# ChumpBench track — CREATE: build a working EXIF photo-renamer from a vision (EFFECTIVE-343).
+#
+# Unlike the stdlib-only linecount track, this one needs a real dependency (Pillow)
+# and a test fixture with EXIF metadata. The acceptance SELF-PROVISIONS both so the
+# lap stays hermetic: it creates a venv, installs Pillow, generates a 1-photo fixture
+# whose EXIF DateTimeOriginal is a known date, runs the generated tool, and asserts
+# the file was renamed to that date. The vision names the entry-point file + the
+# library + the exact output format (a real product spec includes its interface) so
+# the acceptance can invoke it — but the acceptance's grading logic is NOT given to
+# the agent. This measures the OS's BUILD capability on a task with a real dep, not
+# the environment.
 id: create-photo-renamer
 mode: CREATE
 repo: bootstrap:photo-renamer
 stack: python
 state: empty
-difficulty: tiny
-task: "Build me a CLI that renames photos in a folder by the date each was taken."
+difficulty: medium
+task: "Build a command-line tool in a file named rename_photos.py, using the Pillow (PIL) library, that renames every JPEG file in the folder given as its first argument to the date the photo was taken. Read the date from the photo's EXIF DateTimeOriginal tag and format the new filename as YYYY-MM-DD.jpg."
 acceptance:
   kind: command
-  check: "python3 rename_photos.py fixtures/ && ls fixtures/ | grep -qE '^[0-9]{4}' && echo 'renamed by date'"
+  check: |
+    python3 -m venv .venv &&
+    .venv/bin/pip install -q pillow &&
+    .venv/bin/python -c "from PIL import Image; im=Image.new('RGB',(4,4),'white'); ex=im.getexif(); ex.get_ifd(0x8769)[0x9003]='2021:06:15 10:30:00'; im.save('sample.jpg', exif=ex)" &&
+    mkdir -p fixtures && mv sample.jpg fixtures/ &&
+    .venv/bin/python rename_photos.py fixtures/ &&
+    ls fixtures/ | grep -qE '^2021-06-15' &&
+    echo 'renamed by EXIF date'
 budget:
   max_wall_clock_min: 20
   max_human_touches: 0

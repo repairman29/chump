@@ -301,7 +301,10 @@ fn count_provenance(clone: &Path, range: &str) -> Option<(u64, u64, u64)> {
 /// The local clone the external-improve flow leaves on disk for a repo (if any).
 fn local_clone_dir(repo: &str) -> std::path::PathBuf {
     let home = std::env::var("HOME").unwrap_or_default();
-    let slug = repo.replace('/', "_");
+    // EFFECTIVE-343: sanitize BOTH '/' and ':' — a `bootstrap:<name>` pseudo-repo
+    // otherwise leaves a colon in the path, and `python -m venv` (and other tools)
+    // refuse to operate in a directory whose path contains the PATH separator.
+    let slug = repo.replace(['/', ':'], "_");
     Path::new(&home)
         .join(".chump/external")
         .join(&slug)
