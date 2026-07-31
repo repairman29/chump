@@ -515,7 +515,23 @@ fn drive_engine(track: &Track, implement: bool) -> Result<()> {
                     );
                     let prompt_str = prompt_path.to_string_lossy().into_owned();
                     match Command::new(&chump)
-                        .args(["agent-run", "--cwd", &dir_str, "--prompt-file", &prompt_str])
+                        // --slim: the free-tier writer profile (EFFECTIVE-342) so
+                        // the agent actually WRITES the tool instead of returning
+                        // it as text.
+                        .args([
+                            "agent-run",
+                            "--slim",
+                            "--cwd",
+                            &dir_str,
+                            "--prompt-file",
+                            &prompt_str,
+                        ])
+                        // CREATE builds NEW files from scratch. The slim profile
+                        // ships patch_file (edit existing) but not write_file, which
+                        // patch_file can't substitute for — patching a nonexistent
+                        // file fails and the model storms. Re-admit write_file (with
+                        // its >50%-shrink guard) so the agent can CREATE the tool.
+                        .env("CHUMP_FREE_TIER_WRITE_FILE", "1")
                         .status()
                     {
                         Ok(s) if s.success() => eprintln!("[bench] implement step completed"),
