@@ -5,7 +5,7 @@ repo: repairman29/BEAST-MODE
 stack: javascript
 state: red-ci
 difficulty: medium
-task: "The CI check 'Vercel - beast-mode' is failing and blocks all merges. Fix the root cause so it goes green."
+task: "The GitHub Actions workflow 'ml-pipeline' is failing on the default branch: its 'Setup Node.js' step errors with 'Some specified paths were not resolved, unable to cache dependencies'. Fix the root cause in the workflow so the ml-pipeline job passes. (The ML pipeline itself already succeeds — only the setup-node dependency-cache configuration is broken.)"
 acceptance:
   kind: ci-green
   check: "the repo's CI checks all pass (no failing check-runs)"
