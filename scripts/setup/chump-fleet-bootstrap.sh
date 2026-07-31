@@ -78,6 +78,12 @@ REQUIRED_DAEMONS=(
     "dev.chump.farmer|scripts/setup/install-farmer-launchd.sh"
     "com.chump.wake-recovery|scripts/setup/install-wake-recovery.sh"
     "com.chump.fleet-pool-keeper|scripts/setup/install-fleet-pool-keeper.sh"
+    # RESILIENT-220: inventory-rebuild-cadence — weekly `chump inventory rebuild`
+    # so META-271's 9 tech-debt/dead-code detector classes don't go silently
+    # unused again. Found sitting at zero findings for ~2 months with no cadence
+    # driving it; deliberately REQUIRED (not optional) so this doesn't become
+    # yet another built-but-never-run daemon.
+    "com.chump.inventory-rebuild-cadence|scripts/setup/install-inventory-rebuild-cadence.sh"
     "com.chump.chumpd|scripts/setup/install-chumpd.sh"
 )
 UID_VAL="$(id -u)"

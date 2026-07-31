@@ -168,13 +168,13 @@ fn cmd_rebuild(_args: &[String]) -> i32 {
     }
     println!("[inventory rebuild] running detectors (tier=0 surface-only)...");
     let n = run_detectors_v2(&conn, &root, prs_available).unwrap_or_else(|e| {
-        eprintln!("[inventory rebuild] detectors warn: {e}");
+        eprintln!("[inventory rebuild] detectors warn: {e:#}");
         0
     });
     println!("[inventory rebuild] {n} findings recorded at tier=0");
 
     if let Err(e) = write_rebuild_meta(&conn, pr_result.indexed as i64, artifacts as i64) {
-        eprintln!("[inventory rebuild] meta-write warn: {e}");
+        eprintln!("[inventory rebuild] meta-write warn: {e:#}");
     }
 
     let (pr_total, art_total, find_total) = meta_counts(&conn).unwrap_or((0, 0, 0));

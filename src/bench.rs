@@ -375,12 +375,23 @@ fn tally_human_touches(repo: &str) -> (Option<u64>, String) {
             "n/a — no local clone (a driven --apply lap produces the touch count)".to_string(),
         );
     }
-    // INFRA-3523: scope to the LAP's own commits (base..lap-branch), not the clone's whole history.
-    let Some(range) = lap_commit_range(&clone) else {
-        return (
-            None,
-            "n/a — could not resolve the lap's commit range in local clone".to_string(),
-        );
+    // CREDIBLE-183: a CREATE lap (bootstrap:*) is a FRESH repo — there's no base
+    // branch to diff against; the whole history IS the lap (the scaffold + the
+    // implement commit, both OS-authored, Chump-Agent-trailed). Count over full
+    // history. For IMPROVE/RESCUE clones keep the INFRA-3523 base..lap-branch
+    // scoping so we don't count the clone's entire upstream history.
+    let range = if repo.starts_with("bootstrap:") {
+        "HEAD".to_string()
+    } else {
+        match lap_commit_range(&clone) {
+            Some(r) => r,
+            None => {
+                return (
+                    None,
+                    "n/a — could not resolve the lap's commit range in local clone".to_string(),
+                );
+            }
+        }
     };
     match count_provenance(&clone, &range) {
         Some((human, zt, scanned)) if scanned > 0 => {
@@ -544,6 +555,32 @@ fn drive_engine(track: &Track, implement: bool) -> Result<()> {
                         ),
                     }
                     let _ = std::fs::remove_file(&prompt_path);
+                }
+                // CREDIBLE-183: capture the agent's working-tree output as an
+                // OS-authored commit. The implement agent often leaves files
+                // uncommitted (write_file without git_commit); without this its
+                // work is invisible to count_provenance and the zero-touch tally
+                // reports n/a instead of a provable 0.
+                let cd = dir.to_string_lossy().to_string();
+                let _ = Command::new("git").args(["-C", &cd, "add", "-A"]).status();
+                let has_changes = Command::new("git")
+                    .args(["-C", &cd, "diff", "--cached", "--quiet"])
+                    .status()
+                    .map(|s| !s.success()) // non-zero exit ⇒ staged differences exist
+                    .unwrap_or(false);
+                if has_changes {
+                    let _ = Command::new("git")
+                        .args([
+                            "-C",
+                            &cd,
+                            "-c",
+                            "gpg.sign=false",
+                            "commit",
+                            "-m",
+                            "feat: implement from vision\n\nChump-Agent: bench-implement",
+                            "--no-verify",
+                        ])
+                        .status();
                 }
             }
             Ok(())

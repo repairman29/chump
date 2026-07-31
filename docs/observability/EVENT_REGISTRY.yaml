@@ -8773,3 +8773,16 @@ events:
       this is surfaced as a question, never resolved by a silent default.
     consumers: [ops-audit]
     fields_required: [ts, kind, input_len, candidates]
+
+  - kind: inventory_rebuild_tick
+    effect_metric: self
+    emitter: scripts/coord/inventory-rebuild-cadence.sh (RESILIENT-220)
+    trigger: >
+      Scheduled `chump inventory rebuild` run completed (launchd cadence,
+      com.chump.inventory-rebuild-cadence.plist). Summarizes total findings
+      and unreviewed count across all 9 META-271 detector classes so a
+      dormant tech-debt-detection system doesn't go silently unused again
+      -- discovered during RESILIENT-220 that it had sat un-run for ~2
+      months with zero findings recorded.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, total_findings, unreviewed_count, rebuild_rc]
