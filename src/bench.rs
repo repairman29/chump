@@ -670,6 +670,11 @@ FLAGS:\n  \
 
 /// CLI entry — dispatched from `main.rs` on `chump bench`.
 pub fn run(args: &[String]) -> i32 {
+    // CREDIBLE-184: `chump bench heat` runs the whole track suite and prints one
+    // aggregated V1 scorecard (the green/red board we drive to green).
+    if args.first().map(String::as_str) == Some("heat") {
+        return run_heat(&args[1..]);
+    }
     // args[0] is the subcommand ("run"); tolerate its absence.
     let mut track_path: Option<String> = None;
     let mut apply = false;
@@ -751,9 +756,161 @@ pub fn run(args: &[String]) -> i32 {
     0
 }
 
+/// Aggregate a heat's per-track scores: (green, total, zero_touch_passes).
+/// A green track has `result == "PASS"`; a zero-touch pass additionally proved
+/// `human_touches == Some(0)` — the V1 bar is not just green, it's green with a
+/// receipt that no one reached in.
+fn heat_summary(scores: &[LapScore]) -> (usize, usize, usize) {
+    let total = scores.len();
+    let green = scores.iter().filter(|s| s.result == "PASS").count();
+    let zt = scores
+        .iter()
+        .filter(|s| s.result == "PASS" && s.human_touches == Some(0))
+        .count();
+    (green, total, zt)
+}
+
+/// CREDIBLE-184: run every track in the suite and print one aggregated V1
+/// scorecard — the single green/red board we drive to green. Score-only by
+/// default (fast, current state); `--apply`/`--implement` drive each engine
+/// first. Exits non-zero unless every track is green, so the loop/CI can gate
+/// on "fully green".
+fn run_heat(args: &[String]) -> i32 {
+    let mut apply = false;
+    let mut implement = false;
+    let mut json = false;
+    let mut dir = "e2e/chumpbench".to_string();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--apply" => apply = true,
+            "--implement" => {
+                apply = true;
+                implement = true;
+            }
+            "--json" => json = true,
+            "--dir" => {
+                i += 1;
+                if let Some(d) = args.get(i) {
+                    dir = d.clone();
+                }
+            }
+            "-h" | "--help" => {
+                eprintln!(
+                    "usage: chump bench heat [--apply] [--implement] [--json] [--dir <path>]"
+                );
+                return 2;
+            }
+            other => {
+                eprintln!("unknown arg: {other}");
+                return 2;
+            }
+        }
+        i += 1;
+    }
+
+    let mut paths: Vec<std::path::PathBuf> = match std::fs::read_dir(&dir) {
+        Ok(rd) => rd
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension()
+                    .map(|x| x == "yaml" || x == "yml")
+                    .unwrap_or(false)
+            })
+            .collect(),
+        Err(e) => {
+            eprintln!("bench heat: cannot read {dir}: {e}");
+            return 1;
+        }
+    };
+    paths.sort();
+    if paths.is_empty() {
+        eprintln!("bench heat: no tracks in {dir}");
+        return 1;
+    }
+
+    let mut scores: Vec<LapScore> = Vec::new();
+    for p in &paths {
+        let track = match load_track(p) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("[heat] skip {}: {e:#}", p.display());
+                continue;
+            }
+        };
+        if apply {
+            eprintln!("[heat] driving {} on {} …", track.mode, track.repo);
+            if let Err(e) = drive_engine(&track, implement) {
+                eprintln!(
+                    "[heat] {} drive failed: {e:#} — scoring current state",
+                    track.id
+                );
+            }
+        }
+        scores.push(score_track(&track));
+    }
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string(&scores).unwrap_or_else(|_| "[]".into())
+        );
+        let (green, total, _) = heat_summary(&scores);
+        return if green == total { 0 } else { 1 };
+    }
+
+    let (green, total, zt) = heat_summary(&scores);
+    println!("── ChumpBench V1 scorecard — {green}/{total} green ──");
+    println!(
+        "  {:<32} {:<10} {:<8} {:<6} ACCEPTANCE",
+        "TRACK", "MODE", "RESULT", "TOUCH"
+    );
+    for s in &scores {
+        let touch = s
+            .human_touches
+            .map(|t| t.to_string())
+            .unwrap_or_else(|| "n/a".into());
+        println!(
+            "  {:<32} {:<10} {:<8} {:<6} {} → {:?}",
+            s.track, s.mode, s.result, touch, s.acceptance_kind, s.acceptance_verdict
+        );
+    }
+    println!("  ─────");
+    println!("  GREEN: {green}/{total}   zero-touch passes: {zt}/{green}");
+    if green == total && total > 0 {
+        println!("  ✅ V1 scorecard fully green");
+        0
+    } else {
+        println!("  ⛳ {} track(s) still red", total - green);
+        1
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn lap(result: &str, touches: Option<u64>) -> LapScore {
+        LapScore {
+            track: "t".into(),
+            mode: "CREATE".into(),
+            repo: "r".into(),
+            acceptance_kind: "command".into(),
+            acceptance_verdict: Verdict::Pass,
+            result: result.into(),
+            human_touches: touches,
+            detail: String::new(),
+        }
+    }
+
+    #[test]
+    fn heat_summary_counts_green_and_zero_touch() {
+        // green = PASS; zero-touch pass = PASS with a proven touches==0 receipt
+        // (a PASS with touches n/a is green but NOT a proven zero-touch pass).
+        let scores = vec![lap("PASS", Some(0)), lap("PASS", None), lap("FAIL", None)];
+        assert_eq!(heat_summary(&scores), (2, 3, 1));
+    }
 
     #[test]
     fn ci_grading_is_conservative() {
