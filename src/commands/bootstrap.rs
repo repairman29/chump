@@ -500,7 +500,11 @@ fn run_bootstrap(args: BootstrapArgs) -> Result<(), ()> {
     }
 
     // ── Initial commit ────────────────────────────────────────────────────────
-    let commit_msg = format!("chore: initial scaffold — {intent}");
+    // CREDIBLE-183: the scaffold is OS-authored — no human touched it — so the
+    // commit carries a Chump-Agent trailer. This lets the zero-touch provenance
+    // metric (bench count_provenance / CREDIBLE-171) classify it correctly
+    // instead of counting the operator's git identity as a human touch.
+    let commit_msg = format!("chore: initial scaffold — {intent}\n\nChump-Agent: bootstrap");
     let commit_result = std::process::Command::new("git")
         .args([
             "-c",
