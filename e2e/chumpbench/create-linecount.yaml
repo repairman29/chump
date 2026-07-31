@@ -1,0 +1,22 @@
+# ChumpBench track — CREATE: build a working CLI from a vision, zero-touch (EFFECTIVE-344).
+#
+# Deliberately self-contained so the acceptance measures the OS's BUILD capability,
+# not the environment: stdlib only (no pip deps), the test fixture is created inline
+# by the acceptance command (no binary assets), and the result is deterministic. The
+# vision names the entry-point file (a real product spec includes its interface) so
+# the acceptance can invoke it — but the acceptance's grading logic is NOT given to
+# the agent (no teaching to the test). This is the cleanest path to a genuine GREEN
+# zero-touch CREATE pass; the EXIF photo-renamer track (needs PIL + fixtures, see
+# EFFECTIVE-343) is the harder, environment-heavy sibling.
+id: create-linecount
+mode: CREATE
+repo: bootstrap:linecount
+stack: python
+difficulty: easy
+task: "Build a command-line tool in a file named linecount.py that prints the number of lines in the text file given as its first argument."
+acceptance:
+  kind: command
+  check: "printf 'alpha\\nbeta\\ngamma\\n' > sample.txt && python3 linecount.py sample.txt | grep -qw 3 && echo 'linecount ok'"
+budget:
+  max_wall_clock_min: 15
+  max_human_touches: 0
