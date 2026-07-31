@@ -67,6 +67,14 @@ ChumpMenu/ChumpMenu.app/
 .chump/github_cache.db-shm
 .chump/github_cache.db-wal
 
+# META-271 inventory DB — regenerable via `chump inventory rebuild`
+# (RESILIENT-220 wires this into a weekly cadence). Same treatment as
+# state.db / github_cache.db: tracking it would make the working tree
+# perpetually dirty every rebuild.
+.chump/inventory.db
+.chump/inventory.db-shm
+.chump/inventory.db-wal
+
 # Auditor (INFRA-087) runtime state — strikes index + raw findings dumps
 .chump/auditor-strikes.json
 .chump/auditor-findings-*.jsonl
