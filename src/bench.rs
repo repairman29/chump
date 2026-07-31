@@ -419,10 +419,104 @@ pub fn load_track(path: &Path) -> Result<Track> {
     serde_yaml::from_str(&text).with_context(|| format!("parsing track {}", path.display()))
 }
 
+/// EFFECTIVE-345: task-directed execution for an EXISTING repo. Clone the repo
+/// into the dir the scorer runs acceptance in, run `agent-run --slim` with the
+/// TRACK's task — so the agent does the *specific* task, not the repo's own gaps
+/// (which is what generic `chump improve` would work) — then commit its output
+/// with a Chump-Agent trailer so the touch tally proves zero-touch. This is the
+/// CREATE `--implement` pattern, but on an existing repo; it's what lets the
+/// IMPROVE/FINISH/COMPREHEND tracks satisfy their task-specific acceptance.
+fn drive_task_directed(chump: &str, track: &Track) -> Result<()> {
+    let dir = local_clone_dir(&track.repo);
+    if let Some(parent) = dir.parent() {
+        std::fs::create_dir_all(parent).with_context(|| format!("mkdir {}", parent.display()))?;
+    }
+    // Fresh clone each lap.
+    let _ = std::fs::remove_dir_all(&dir);
+    let dir_str = dir.to_string_lossy().into_owned();
+    eprintln!("[bench] cloning {} for a task-directed lap …", track.repo);
+    // `gh repo clone` so private repos authenticate; shallow for speed.
+    let clone = Command::new("gh")
+        .args(["repo", "clone", &track.repo, &dir_str, "--", "--depth", "1"])
+        .status()
+        .with_context(|| "spawn gh repo clone")?;
+    if !clone.success() {
+        anyhow::bail!("gh repo clone {} failed", track.repo);
+    }
+    // The agent gets the TASK (not the acceptance command) and works in the clone.
+    let prompt = format!(
+        "{}\n\nYou are working in an existing repository (your current directory). \
+         Make the change directly — edit or create the necessary files so the task \
+         is complete. Do not ask questions; implement fully.",
+        track.task
+    );
+    // Prompt lives OUTSIDE the clone so the agent doesn't treat it as a repo file.
+    let prompt_path = dir
+        .parent()
+        .unwrap_or(dir.as_path())
+        .join(".bench-task-prompt.txt");
+    std::fs::write(&prompt_path, &prompt).with_context(|| "write task prompt")?;
+    let prompt_str = prompt_path.to_string_lossy().into_owned();
+    eprintln!(
+        "[bench] task-directed agent-run on {} (can take minutes) …",
+        track.repo
+    );
+    let status = Command::new(chump)
+        .args([
+            "agent-run",
+            "--slim",
+            "--cwd",
+            &dir_str,
+            "--prompt-file",
+            &prompt_str,
+        ])
+        // CREATE builds new files; existing-repo tasks may too — re-admit
+        // write_file (with its shrink guard) so the agent can create files.
+        .env("CHUMP_FREE_TIER_WRITE_FILE", "1")
+        .status();
+    let _ = std::fs::remove_file(&prompt_path);
+    match status {
+        Ok(s) if s.success() => eprintln!("[bench] task-directed step completed"),
+        Ok(s) => eprintln!(
+            "[bench] task-directed step exited non-zero ({:?}) — scoring current state",
+            s.code()
+        ),
+        Err(e) => {
+            eprintln!("[bench] task-directed step failed to spawn: {e} — scoring current state")
+        }
+    }
+    // Capture the agent's output as an OS-authored commit (CREDIBLE-183) so the
+    // touch tally can prove zero-touch.
+    let _ = Command::new("git")
+        .args(["-C", &dir_str, "add", "-A"])
+        .status();
+    let has_changes = Command::new("git")
+        .args(["-C", &dir_str, "diff", "--cached", "--quiet"])
+        .status()
+        .map(|s| !s.success())
+        .unwrap_or(false);
+    if has_changes {
+        let _ = Command::new("git")
+            .args([
+                "-C",
+                &dir_str,
+                "-c",
+                "gpg.sign=false",
+                "commit",
+                "-m",
+                "feat: implement track task\n\nChump-Agent: bench-implement",
+                "--no-verify",
+            ])
+            .status();
+    }
+    Ok(())
+}
+
 /// Drive the track's mode engine (only on `--apply`). Wires RESCUE/IMPROVE/FINISH →
-/// `chump improve`, CREATE → `chump bootstrap`, COMPREHEND → the `comprehend` engine.
-/// On `implement` (CREATE only, EFFECTIVE-341), also drives `chump agent-run` after
-/// bootstrap so the lap builds a working tool from the vision, not just a scaffold.
+/// `chump improve` (or, on `--implement`, task-directed `agent-run`, EFFECTIVE-345),
+/// CREATE → `chump bootstrap`, COMPREHEND → the `comprehend` engine (or task-directed
+/// on `--implement`). On `implement` (EFFECTIVE-341/345), drives `chump agent-run` so
+/// the lap does the track's actual task, not just a scaffold or a generic gap.
 fn drive_engine(track: &Track, implement: bool) -> Result<()> {
     let chump = std::env::var("CHUMP_BENCH_CHUMP_BIN")
         .or_else(|_| std::env::var("CHUMP_BIN"))
@@ -434,6 +528,12 @@ fn drive_engine(track: &Track, implement: bool) -> Result<()> {
         // test pass" (EFFECTIVE-340). RESCUE (fix broken CI) and IMPROVE (add a
         // feature) are the same operation with different intent.
         "RESCUE" | "IMPROVE" | "FINISH" => {
+            // EFFECTIVE-345: --implement runs the TRACK's task on a fresh clone
+            // via agent-run (so the acceptance can actually be satisfied). Plain
+            // --apply keeps the generic improve engine (works the repo's own gaps).
+            if implement {
+                return drive_task_directed(&chump, track);
+            }
             let status = Command::new(&chump)
                 .args(["improve", &track.repo, "--apply"])
                 .status()
@@ -586,6 +686,13 @@ fn drive_engine(track: &Track, implement: bool) -> Result<()> {
             Ok(())
         }
         "COMPREHEND" => {
+            // EFFECTIVE-345: --implement runs the TRACK's task on a fresh clone
+            // (e.g. "produce docs/ONBOARDING_MAP.md") so the agent WRITES the
+            // deliverable the acceptance checks for. Plain --apply keeps the
+            // read-only comprehend engine (reports, doesn't write).
+            if implement {
+                return drive_task_directed(&chump, track);
+            }
             // COMPREHEND tracks point at an existing repo — the lap *understands*
             // it (no mutation). Drive the comprehension engine: the `comprehend`
             // binary (almanac-organs) runs the wiring/gates/config organs over the
