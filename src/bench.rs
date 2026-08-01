@@ -543,6 +543,168 @@ fn drive_task_directed(chump: &str, track: &Track) -> Result<()> {
             ])
             .status();
     }
+    // EFFECTIVE-346: a RESCUE lap's `ci-green` acceptance grades the TARGET repo's
+    // default-branch check-runs — so a fix that only lives in the local clone can
+    // never turn the acceptance green. When opted in (CHUMP_BENCH_SHIP=1), ship the
+    // fix: push a branch, open a PR, arm auto-merge (lands only once the PR's own CI
+    // validates the fix), and poll until it merges + the default branch goes green.
+    // Opt-in because autonomously merging to an external repo's main is a real side
+    // effect; BEAST-MODE is the sanctioned mission proof target (MISSION-010).
+    let ship_opt_in = std::env::var("CHUMP_BENCH_SHIP").ok().as_deref() == Some("1");
+    if has_changes
+        && ship_opt_in
+        && track.mode.eq_ignore_ascii_case("RESCUE")
+        && track.repo.contains('/')
+    {
+        let budget_min = if track.budget.max_wall_clock_min == 0 {
+            20
+        } else {
+            track.budget.max_wall_clock_min
+        };
+        if let Err(e) = ship_rescue_to_target(&track.repo, &dir_str, budget_min) {
+            eprintln!("[bench] rescue ship failed: {e} — scoring current (likely red) state");
+        }
+    } else if has_changes && track.mode.eq_ignore_ascii_case("RESCUE") && !ship_opt_in {
+        eprintln!(
+            "[bench] RESCUE fix committed locally only (set CHUMP_BENCH_SHIP=1 to ship to {} \
+             so the ci-green acceptance is reachable)",
+            track.repo
+        );
+    }
+    Ok(())
+}
+
+/// EFFECTIVE-346: branch name for a shipped RESCUE fix. Deterministic from the fix
+/// commit's short SHA so re-runs of the same fix reuse the branch (idempotent push)
+/// and distinct fixes get distinct branches. Pure — unit-tested.
+fn rescue_branch_name(sha: &str) -> String {
+    let clean: String = sha
+        .trim()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(12)
+        .collect();
+    let clean = if clean.is_empty() {
+        "fix".to_string()
+    } else {
+        clean
+    };
+    format!("chump/bench-rescue-{clean}")
+}
+
+/// EFFECTIVE-346: push the local RESCUE fix to the target repo, open a PR, arm
+/// auto-merge, and poll until the PR merges and the default branch's checks go
+/// green (bounded by the track's wall-clock budget). Returns Ok once merged+green,
+/// or on budget exhaustion (the scorer makes the authoritative call afterward).
+fn ship_rescue_to_target(repo: &str, dir_str: &str, budget_min: u64) -> Result<()> {
+    use std::time::{Duration, Instant};
+    let gh = gh_bin();
+    let base = Command::new(&gh)
+        .args([
+            "repo",
+            "view",
+            repo,
+            "--json",
+            "defaultBranchRef",
+            "--jq",
+            ".defaultBranchRef.name",
+        ])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "main".to_string());
+    let sha = Command::new("git")
+        .args(["-C", dir_str, "rev-parse", "--short", "HEAD"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "fix".to_string());
+    let branch = rescue_branch_name(&sha);
+    eprintln!("[bench] shipping rescue fix to {repo} on branch {branch} (base {base}) …");
+    let push = Command::new("git")
+        .args([
+            "-C",
+            dir_str,
+            "push",
+            "origin",
+            &format!("HEAD:refs/heads/{branch}"),
+        ])
+        .status()
+        .with_context(|| "git push rescue branch")?;
+    if !push.success() {
+        anyhow::bail!("push of rescue branch {branch} failed");
+    }
+    let pr = Command::new(&gh)
+        .args([
+            "pr",
+            "create",
+            "--repo",
+            repo,
+            "--base",
+            &base,
+            "--head",
+            &branch,
+            "--title",
+            "fix: rescue red CI (ChumpBench RESCUE lap)",
+            "--body",
+            "Autonomous RESCUE lap fix produced by ChumpBench.\n\nChump-Agent: bench-rescue",
+        ])
+        .output()
+        .with_context(|| "gh pr create")?;
+    let pr_url = String::from_utf8_lossy(&pr.stdout).trim().to_string();
+    if !pr.status.success() {
+        // A PR may already exist for this branch (idempotent re-run) — tolerate it.
+        let err = String::from_utf8_lossy(&pr.stderr);
+        if !err.contains("already exists") {
+            anyhow::bail!("gh pr create failed: {err}");
+        }
+        eprintln!("[bench] PR for {branch} already exists — continuing");
+    } else {
+        eprintln!("[bench] opened PR {pr_url}");
+    }
+    // Arm auto-merge so the fix lands only once the PR's own CI validates it.
+    let _ = Command::new(&gh)
+        .args(["pr", "merge", &branch, "--repo", repo, "--auto", "--squash"])
+        .status();
+    // Poll until merged, then until the base branch's checks are green.
+    let deadline = Instant::now() + Duration::from_secs(budget_min.saturating_mul(60).max(60));
+    let mut merged = false;
+    while Instant::now() < deadline {
+        std::thread::sleep(Duration::from_secs(30));
+        if !merged {
+            let state = Command::new(&gh)
+                .args([
+                    "pr", "view", &branch, "--repo", repo, "--json", "state", "--jq", ".state",
+                ])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default();
+            eprintln!("[bench] rescue PR state={state}");
+            match state.as_str() {
+                "MERGED" => merged = true,
+                "CLOSED" => anyhow::bail!("rescue PR closed without merge"),
+                _ => continue,
+            }
+        }
+        // Merged — wait for the default branch's checks to conclude green.
+        let (verdict, detail) = fetch_ci_verdict(repo);
+        eprintln!("[bench] post-merge base CI: {detail}");
+        match verdict {
+            Verdict::Pass => {
+                eprintln!("[bench] rescue landed — {base} is green");
+                return Ok(());
+            }
+            Verdict::Fail => {
+                eprintln!("[bench] {base} still red post-merge — scorer will report FAIL");
+                return Ok(());
+            }
+            Verdict::Unknown => continue,
+        }
+    }
+    eprintln!("[bench] rescue ship budget ({budget_min}m) exhausted before conclusive green");
     Ok(())
 }
 
@@ -1043,6 +1205,21 @@ mod tests {
             human_touches: touches,
             detail: String::new(),
         }
+    }
+
+    #[test]
+    fn effective346_rescue_branch_name_is_deterministic_and_clean() {
+        assert_eq!(rescue_branch_name("abc1234"), "chump/bench-rescue-abc1234");
+        // Same SHA → same branch (idempotent re-push).
+        assert_eq!(rescue_branch_name("abc1234"), rescue_branch_name("abc1234"));
+        // Non-alphanumerics stripped; length capped.
+        assert_eq!(
+            rescue_branch_name("  ab/cd\n1234567890xyz  "),
+            "chump/bench-rescue-abcd12345678"
+        );
+        // Empty/garbage SHA falls back to a valid ref.
+        assert_eq!(rescue_branch_name(""), "chump/bench-rescue-fix");
+        assert_eq!(rescue_branch_name("///"), "chump/bench-rescue-fix");
     }
 
     #[test]
