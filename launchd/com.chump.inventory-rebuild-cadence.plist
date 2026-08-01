@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- RESILIENT-220: inventory-rebuild-cadence schedule -->
+<!-- Runs `chump inventory rebuild` (META-271's tech-debt/dead-code detector) -->
+<!-- weekly and emits kind=inventory_rebuild_tick. Without a live schedule the -->
+<!-- 9 detector classes sit fully built and go silently unused indefinitely -- -->
+<!-- exactly what RESILIENT-220 found: zero findings recorded for ~2 months. -->
+<!-- Install: bash scripts/setup/install-inventory-rebuild-cadence.sh          -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.inventory-rebuild-cadence</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-lc</string>
+        <string>cd REPO_ROOT &amp;&amp; exec bash scripts/coord/inventory-rebuild-cadence.sh</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>REPO_ROOT</string>
+    <!-- Weekly (604800s) — tier-0 findings are review-only and accumulate -->
+    <!-- slowly; this is a gardener cadence, not a real-time watchdog. -->
+    <key>StartInterval</key>
+    <integer>604800</integer>
+    <key>StandardOutPath</key>
+    <string>REPO_ROOT/.chump-locks/inventory-rebuild-cadence.log</string>
+    <key>StandardErrorPath</key>
+    <string>REPO_ROOT/.chump-locks/inventory-rebuild-cadence.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/Users/jeffadkins/.cargo/bin:/Users/jeffadkins/.local/bin</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
