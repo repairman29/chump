@@ -9,6 +9,10 @@ task: "The CI check 'ml-pipeline' (the 'ML Pipeline Automation' workflow) is fai
 acceptance:
   kind: ci-green
   check: "the repo's CI checks all pass (no failing check-runs)"
+  # CREDIBLE-186: the SPECIFIC check that is red. The lap only PASSES once this
+  # check itself reports green (and all checks are settled) — not on a transient
+  # window where only fast/unrelated checks have reported.
+  required_check: ml-pipeline
 budget:
   max_wall_clock_min: 30
   max_human_touches: 0
