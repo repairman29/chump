@@ -128,20 +128,12 @@ __STAGE_BUDGET_PID=""
 # META-156 AC#6: budget-warn watchdog PID.
 _BM_BUDGET_WARN_PID=""
 
-_BM_STAGE_BUDGET_S="${CHUMP_BOT_MERGE_STAGE_BUDGET_S:-300}"
-
-# RESILIENT-210: stage_start accepts an optional second positional argument
-# PER_STAGE_BUDGET_S. When supplied, it overrides the per-stage budget used by
-# the watchdog launched (via _bm_health_write) for the current stage. When
-# omitted, the watchdog defaults to CHUMP_BOT_MERGE_STAGE_BUDGET_S (300s),
-# preserving backward compatibility with existing single-arg callers.
-stage_start() {
-    local stage_name="${1:-}"
-    local PER_STAGE_BUDGET_S="${2:-${CHUMP_BOT_MERGE_STAGE_BUDGET_S:-300}}"
-    __STAGE_LABEL="$stage_name"
-    _BM_STAGE_BUDGET_S="$PER_STAGE_BUDGET_S"
-    _bm_health_write
-}
+# RESILIENT-133/RESILIENT-210: the real stage_start() (with the actual
+# per-stage budget watchdog fork) lives later in this file. A second,
+# simpler definition used to live here -- it was silently shadowed by the
+# later one (bash: last function definition wins) and never actually ran.
+# Removed to stop the next reader from editing dead code, as this session
+# nearly did.
 
 # ── INFRA-2272: per-step progress ledger + gtimeout wrapper ──────────────────
 # See: docs/process/SHIP_ASSIST_PLAYBOOK.md §1 Class 4
@@ -1056,7 +1048,17 @@ _emit_botmerge_wedged() {
 stage_start() {
     __STAGE_LABEL="$1"
     __STAGE_T0=$(date +%s)
-    local budget="${CHUMP_BOT_MERGE_STAGE_BUDGET_S:-300}"
+    # RESILIENT-133: optional $2 overrides the per-stage watchdog budget for
+    # this call only, defaulting to the global CHUMP_BOT_MERGE_STAGE_BUDGET_S
+    # (300s) when omitted -- backward-compatible with existing single-arg
+    # callers. A second, simpler stage_start() definition earlier in this
+    # file (RESILIENT-210's attempted fix) already tried to add this, but
+    # bash silently lets a later function definition shadow an earlier one
+    # with the same name -- THIS definition wins at runtime (confirmed via
+    # direct bash semantics test), so RESILIENT-210's version never actually
+    # ran. Removed the dead duplicate below to prevent this exact confusion
+    # from recurring.
+    local budget="${2:-${CHUMP_BOT_MERGE_STAGE_BUDGET_S:-300}}"
     info "▶ $__STAGE_LABEL starting … (budget ${budget}s)"
     # INFRA-119: keep step file current so the health-file writer tracks progress
     [[ -n "${_BM_STEP_FILE:-}" ]] && printf '%s' "$__STAGE_LABEL" > "$_BM_STEP_FILE" 2>/dev/null || true
@@ -2651,7 +2653,12 @@ elif [[ $FAST -eq 1 ]]; then
         info "Skipping local clippy (--fast, no cargo). CI clippy is the gate."
     fi
 elif command -v cargo &>/dev/null; then
-    stage_start "cargo clippy --workspace --all-targets"
+    # RESILIENT-133: the inner gtimeout below is 900s, but stage_start's own
+    # watchdog (RESILIENT-210's per-stage budget mechanism) defaulted to the
+    # global 300s here because no second argument was ever passed -- the
+    # watchdog fired mid-compile on cold worktrees despite the command still
+    # being well within its own allowed budget. Pass 900 explicitly to match.
+    stage_start "cargo clippy --workspace --all-targets" 900
     if ! _run_cargo_with_lock_detect "cargo clippy" 900 clippy --workspace --all-targets -- -D warnings; then
         red "clippy found errors — fix them before merging."
         _grade_clippy_ok="false"
@@ -2689,7 +2696,13 @@ if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
         _bm_test_label="cargo test --bin chump --tests"
         _bm_test_args=(test --bin chump --tests)
     fi
-    stage_start "$_bm_test_label"
+    # RESILIENT-133: same mismatch as the clippy stage above -- inner gtimeout
+    # is 1200s but stage_start's own watchdog defaulted to the global 300s.
+    # This is the exact SIGTERM observed firing immediately AFTER a fully
+    # successful nextest run completed (not just mid-compile as originally
+    # scoped): the watchdog's own clock wasn't matched to the real budget, so
+    # a run finishing at e.g. 330s still got killed a heartbeat past 300s.
+    stage_start "$_bm_test_label" 1200
     if ! _run_cargo_with_lock_detect "$_bm_test_label" 1200 "${_bm_test_args[@]}"; then
         # INFRA-918: classify failure — transient_oom when rustc processes were
         # SIGTERM'd by macOS Jetsam under memory pressure; permanent_failure otherwise.
