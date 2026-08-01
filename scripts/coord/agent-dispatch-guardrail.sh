@@ -24,7 +24,21 @@ set -eo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # CHUMP_REPO_ROOT allows tests to override the repo root without needing to
 # install the script in the test's fake repo tree.
-REPO_ROOT="${CHUMP_REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+#
+# RESILIENT-213: the default used to derive REPO_ROOT from the SCRIPT's own
+# file location ($SCRIPT_DIR/../..), not the caller's cwd. When invoked via
+# absolute path from a worktree -- the normal dispatch pattern, `cd
+# /tmp/chump-<gap> && bash /Users/.../scripts/coord/agent-dispatch-
+# guardrail.sh ...` -- that always resolved to the MAIN checkout regardless
+# of which worktree the caller actually cd'd into, so every branch/lease
+# check silently validated against main's branch instead of the worktree's
+# real one, producing a false BLOCKED on every worktree-based dispatch.
+# Auto-detect from PWD instead: `git rev-parse --show-toplevel` correctly
+# resolves to the worktree's own root when run from inside it. Falls back to
+# the script-location derivation only if PWD isn't inside a git repo at all
+# (e.g. a stray invocation), preserving the original behavior for that edge
+# case rather than hard-failing.
+REPO_ROOT="${CHUMP_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || (cd "$SCRIPT_DIR/../.." && pwd))}"
 
 # Leases and the ambient log always live in the PRIMARY repo root, not a
 # worktree. Resolve via git-common-dir (the shared .git for all worktrees).
