@@ -1308,6 +1308,8 @@ CHUMP_BOT_MERGE_LOCK
 # EFFECTIVE-327/328: ChumpBench runner (src/bench.rs) — override the gh / chump binaries it shells.
 CHUMP_BENCH_GH_BIN
 CHUMP_BENCH_CHUMP_BIN
+# EFFECTIVE-346: opt-in (1) — a RESCUE lap ships its fix to the target repo (push+PR+auto-merge, poll to green) so the ci-green acceptance is reachable; unset = fix committed to the local clone only.
+CHUMP_BENCH_SHIP
 CHUMP_FMT_GATE
 # RESILIENT-209: opt-in runtime tool-provisioning (src/tool_routing.rs). When set (1/true), ensure_provisioned() installs any missing CLI belt via bootstrap-toolkit.sh at agent-run startup; unset = detect+log only (default, no surprise-install).
 CHUMP_AUTO_PROVISION_TOOLS
