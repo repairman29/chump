@@ -1319,3 +1319,8 @@ CHUMP_AUTO_PROVISION_TOOLS
 CHUMP_TOOLKIT_INSTALLER
 # CREDIBLE-178: override the chump binary used by pr_ac_coverage::load_ac_bullets to shell `chump gap show <ID> --json` (defaults to "chump" on PATH); set by bot-merge.sh's auto-close ac-coverage call.
 CHUMP_REAL_BINARY
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_BOT_MERGE_RECOVERY_MODE
