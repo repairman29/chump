@@ -291,6 +291,48 @@ else
     fi
 fi
 
+# ── TEST 6 (RESILIENT-213): auto-detect REPO_ROOT from cwd, no override ───────
+# The regression this gap exists for: invoke the guardrail via its ABSOLUTE
+# path (the normal dispatch pattern) while cwd is a *different* repo (T6,
+# standing in for a worktree) and CHUMP_REPO_ROOT is deliberately left
+# UNSET. Before the fix, REPO_ROOT always fell back to the script's own
+# location ($SCRIPT_DIR/../..) -- i.e. THIS repo, not T6 -- so the branch
+# check would validate against this repo's branch instead of T6's
+# "chump/infra-9006-claim", producing a false BLOCKED. After the fix,
+# `git rev-parse --show-toplevel` run from T6's cwd correctly resolves
+# REPO_ROOT to T6 itself.
+printf '\n-- Test 6: REPO_ROOT auto-detected from cwd, no CHUMP_REPO_ROOT override --\n'
+T6="$TMP_BASE/t6"
+make_repo "$T6" "chump/infra-9006-claim"
+make_lease "$T6" "INFRA-9006" '["scripts/coord/foo.sh"]'
+AMBIENT6="$T6/.chump-locks/ambient.jsonl"
+
+T6_STDERR="$(mktemp)"
+set +e
+(
+  cd "$T6"
+  # Deliberately NOT setting CHUMP_REPO_ROOT -- this is the exact scenario
+  # RESILIENT-213 found broken. CHUMP_LOCK_DIR/CHUMP_AMBIENT_LOG still set
+  # so the test doesn't pollute this repo's own real ambient log.
+  CHUMP_LOCK_DIR="$T6/.chump-locks" \
+  CHUMP_AMBIENT_LOG="$AMBIENT6" \
+      bash "$GUARDRAIL" "INFRA-9006" "scripts/coord/foo.sh" 2>"$T6_STDERR"
+)
+T6_RC=$?
+set -e
+
+if [[ $T6_RC -eq 0 ]]; then
+    ok "Test 6: rc=0 -- correctly detected T6's own branch via auto-detected REPO_ROOT"
+else
+    fail "Test 6: expected rc=0 (auto-detect should resolve REPO_ROOT to T6), got $T6_RC ($(cat "$T6_STDERR"))"
+fi
+
+if [[ -f "$AMBIENT6" ]] && grep -q "agent_dispatch_guardrail_passed" "$AMBIENT6"; then
+    ok "Test 6: agent_dispatch_guardrail_passed emitted to ambient"
+else
+    fail "Test 6: agent_dispatch_guardrail_passed not found in ambient log"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n=== Results: %d passed, %d failed ===\n' "$PASS" "$FAIL"
 if [[ ${#FAILS[@]} -gt 0 ]]; then
