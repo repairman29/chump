@@ -461,12 +461,21 @@ This guardrail catches them **before** the Agent tool fires.
 ### Usage
 
 ```bash
-# Run BEFORE every `Agent` tool call:
+# Run BEFORE every `Agent` tool call, from the worktree you're dispatching from:
+cd /tmp/chump-<gap-id-lower>
 bash scripts/coord/agent-dispatch-guardrail.sh <gap-id> <comma-separated-paths>
 ```
 
 Exit 0 = all invariants pass — proceed with dispatch.
 Exit 1 = BLOCKED — do not dispatch. Read stderr for the specific violation.
+
+**RESILIENT-213:** `REPO_ROOT` auto-detects via `git rev-parse --show-toplevel`
+from the caller's `cwd` (falling back to the script's own location if that
+fails). Run the guardrail from *inside the worktree whose branch you want
+checked* — invoking it by absolute path from a different cwd (e.g. main)
+resolves `REPO_ROOT` to that other checkout and checks the wrong branch.
+Set `CHUMP_REPO_ROOT` explicitly to override auto-detect (used by the test
+suite).
 
 ### What it checks
 
