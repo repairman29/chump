@@ -429,6 +429,36 @@ pub fn load_track(path: &Path) -> Result<Track> {
 /// with a Chump-Agent trailer so the touch tally proves zero-touch. This is the
 /// CREATE `--implement` pattern, but on an existing repo; it's what lets the
 /// IMPROVE/FINISH/COMPREHEND tracks satisfy their task-specific acceptance.
+/// EFFECTIVE-348: map a track's declared `difficulty` to a preferred model class,
+/// then stamp the cascade-routing env onto an `agent-run` command so bench laps use
+/// the right model for the task instead of whatever the bandit drifts to. The 5 easy
+/// greens proved 70B-class (sonnet) is plenty for straightforward tasks; the rescue /
+/// CI-debug class flails on 70Bs and needs the opus pool (Qwen3-Coder-480B / Gemini-Pro
+/// / NVIDIA). Only laps with a recognised difficulty escalate; unknown → leave the
+/// cascade on its default so nothing regresses. Bench targets are Jeff's test repos
+/// (not proprietary), so we open privacy to `trains` here to make the full opus pool
+/// reachable — this env is scoped to the child agent-run, never the fleet's own rounds.
+fn model_class_for_difficulty(difficulty: &str) -> Option<&'static str> {
+    match difficulty.trim().to_lowercase().as_str() {
+        "tiny" | "easy" => Some("sonnet"),
+        "medium" | "hard" | "difficult" => Some("opus"),
+        _ => None,
+    }
+}
+
+fn apply_difficulty_routing(cmd: &mut Command, track: &Track) {
+    if let Some(class) = model_class_for_difficulty(&track.difficulty) {
+        eprintln!(
+            "[bench] difficulty={} → preferred model class '{}' (opus pool for hard laps)",
+            track.difficulty, class
+        );
+        cmd.env("CHUMP_PREFERRED_MODEL_CLASS", class)
+            // Test repos: allow the full pool so opus slots (incl. trains-tier) are eligible.
+            .env("CHUMP_ROUND_PRIVACY", "trains")
+            .env("CHUMP_AUTO_PRIVACY", "0");
+    }
+}
+
 fn drive_task_directed(chump: &str, track: &Track) -> Result<()> {
     let dir = local_clone_dir(&track.repo);
     if let Some(parent) = dir.parent() {
@@ -464,19 +494,20 @@ fn drive_task_directed(chump: &str, track: &Track) -> Result<()> {
         "[bench] task-directed agent-run on {} (can take minutes) …",
         track.repo
     );
-    let status = Command::new(chump)
-        .args([
-            "agent-run",
-            "--slim",
-            "--cwd",
-            &dir_str,
-            "--prompt-file",
-            &prompt_str,
-        ])
-        // CREATE builds new files; existing-repo tasks may too — re-admit
-        // write_file (with its shrink guard) so the agent can create files.
-        .env("CHUMP_FREE_TIER_WRITE_FILE", "1")
-        .status();
+    let mut cmd = Command::new(chump);
+    cmd.args([
+        "agent-run",
+        "--slim",
+        "--cwd",
+        &dir_str,
+        "--prompt-file",
+        &prompt_str,
+    ])
+    // CREATE builds new files; existing-repo tasks may too — re-admit
+    // write_file (with its shrink guard) so the agent can create files.
+    .env("CHUMP_FREE_TIER_WRITE_FILE", "1");
+    apply_difficulty_routing(&mut cmd, track);
+    let status = cmd.status();
     let _ = std::fs::remove_file(&prompt_path);
     match status {
         Ok(s) if s.success() => eprintln!("[bench] task-directed step completed"),
@@ -628,26 +659,26 @@ fn drive_engine(track: &Track, implement: bool) -> Result<()> {
                         track.repo
                     );
                     let prompt_str = prompt_path.to_string_lossy().into_owned();
-                    match Command::new(&chump)
-                        // --slim: the free-tier writer profile (EFFECTIVE-342) so
-                        // the agent actually WRITES the tool instead of returning
-                        // it as text.
-                        .args([
-                            "agent-run",
-                            "--slim",
-                            "--cwd",
-                            &dir_str,
-                            "--prompt-file",
-                            &prompt_str,
-                        ])
-                        // CREATE builds NEW files from scratch. The slim profile
-                        // ships patch_file (edit existing) but not write_file, which
-                        // patch_file can't substitute for — patching a nonexistent
-                        // file fails and the model storms. Re-admit write_file (with
-                        // its >50%-shrink guard) so the agent can CREATE the tool.
-                        .env("CHUMP_FREE_TIER_WRITE_FILE", "1")
-                        .status()
-                    {
+                    let mut cmd = Command::new(&chump);
+                    // --slim: the free-tier writer profile (EFFECTIVE-342) so
+                    // the agent actually WRITES the tool instead of returning
+                    // it as text.
+                    cmd.args([
+                        "agent-run",
+                        "--slim",
+                        "--cwd",
+                        &dir_str,
+                        "--prompt-file",
+                        &prompt_str,
+                    ])
+                    // CREATE builds NEW files from scratch. The slim profile
+                    // ships patch_file (edit existing) but not write_file, which
+                    // patch_file can't substitute for — patching a nonexistent
+                    // file fails and the model storms. Re-admit write_file (with
+                    // its >50%-shrink guard) so the agent can CREATE the tool.
+                    .env("CHUMP_FREE_TIER_WRITE_FILE", "1");
+                    apply_difficulty_routing(&mut cmd, track);
+                    match cmd.status() {
                         Ok(s) if s.success() => eprintln!("[bench] implement step completed"),
                         Ok(s) => eprintln!(
                             "[bench] implement step exited non-zero ({:?}) — scoring current state",
@@ -1012,6 +1043,20 @@ mod tests {
             human_touches: touches,
             detail: String::new(),
         }
+    }
+
+    #[test]
+    fn effective348_difficulty_maps_to_model_class() {
+        // Easy laps stay on cheap 70B-class; hard laps escalate to the opus pool.
+        assert_eq!(model_class_for_difficulty("easy"), Some("sonnet"));
+        assert_eq!(model_class_for_difficulty("tiny"), Some("sonnet"));
+        assert_eq!(model_class_for_difficulty("medium"), Some("opus"));
+        assert_eq!(model_class_for_difficulty("hard"), Some("opus"));
+        // Case/whitespace-insensitive.
+        assert_eq!(model_class_for_difficulty("  HARD "), Some("opus"));
+        // Unknown/blank difficulty leaves the cascade on its default (no escalation).
+        assert_eq!(model_class_for_difficulty(""), None);
+        assert_eq!(model_class_for_difficulty("spicy"), None);
     }
 
     #[test]
