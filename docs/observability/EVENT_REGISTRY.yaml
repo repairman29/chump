@@ -2003,6 +2003,17 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, gap, pr, branch]
 
+  - kind: botmerge_recovery_pr_create_failed
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-1422 CHUMP_BOT_MERGE_RECOVERY_MODE=1)
+    trigger: >
+      RESILIENT-217: recovery fast-path's `gh pr create` failed (non-zero exit
+      or no PR number returned) and no existing PR was found for the branch.
+      The recovery path now exits 1 and emits this event instead of silently
+      logging "pr create/update done" and exiting 0 with no PR created.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, gap, branch, reason]
+
   - kind: bot_merge_hang
     effect_metric: self
     emitter: scripts/ops/stuck-bot-merge.sh

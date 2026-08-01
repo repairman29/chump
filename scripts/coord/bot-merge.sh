@@ -1712,13 +1712,34 @@ if [[ "${CHUMP_BOT_MERGE_RECOVERY_MODE:-0}" == "1" ]]; then
     stage_start "recovery: pr create/update"
     # Check if PR already exists for this branch.
     _recover_pr_num="$(gh pr list --head "$BRANCH" --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+    _recover_pr_create_out=""
+    _recover_pr_create_rc=0
     if [[ -z "$_recover_pr_num" ]]; then
-        _recover_pr_num="$(gh pr create --base main --head "$BRANCH" \
+        _recover_pr_create_out="$(gh pr create --base main --head "$BRANCH" \
             --title "$(git log -1 --pretty=%s)" \
             --body "Recovery push — INFRA-1422 stage-budget circuit breaker retry." \
-            --json number --jq '.number' 2>/dev/null || true)"
+            --json number 2>&1)"
+        _recover_pr_create_rc=$?
+        if [[ $_recover_pr_create_rc -eq 0 ]]; then
+            _recover_pr_num="$(printf '%s' "$_recover_pr_create_out" | jq -r '.number // empty' 2>/dev/null || true)"
+        fi
     fi
     stage_done
+
+    # RESILIENT-217: `gh pr create`'s failure must not be silently swallowed.
+    # Previously a bare `|| true` discarded gh's exit code, so a failed
+    # create (auth hiccup, rate limit, network blip) left _recover_pr_num
+    # empty while stage_done still logged "pr create/update done" and the
+    # function fell through to exit 0 — reporting success with no PR.
+    if [[ -z "$_recover_pr_num" ]]; then
+        _recover_pr_fail_reason="${_recover_pr_create_out:-gh pr create returned no PR number}"
+        _recover_pr_fail_reason="$(printf '%s' "$_recover_pr_fail_reason" | tr '\n' ' ' | tr '"' "'" | cut -c1-300)"
+        red "[RESILIENT-217] recovery-mode PR creation failed for branch $BRANCH: $_recover_pr_fail_reason"
+        printf '{"ts":"%s","kind":"botmerge_recovery_pr_create_failed","gap":"%s","branch":"%s","reason":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_gap_lbl" "${BRANCH:-unknown}" "$_recover_pr_fail_reason" \
+            >> "$_bm_recover_amb" 2>/dev/null || true
+        exit 1
+    fi
 
     if [[ -n "$_recover_pr_num" && "${AUTO_MERGE:-0}" == "1" ]]; then
         stage_start "recovery: arm auto-merge"
