@@ -333,6 +333,33 @@ fn parse_privacy_tier(s: &str) -> PrivacyTier {
     }
 }
 
+/// EFFECTIVE-347: restrict a set of eligible `(name, slot_index)` entries to the
+/// ones whose slot model-class matches `pref` (via `class_of(index)`). This is
+/// what makes difficulty-based escalation route under the Bandit strategy — the
+/// bandit only filters on privacy/circuit/rate, so without this the preferred
+/// model class is ignored and hard tasks stay on cheap slots. Graceful: if `pref`
+/// is None, or no eligible slot matches it, return the input unchanged so a round
+/// is never stranded with zero providers.
+fn restrict_eligible_to_class(
+    eligible: Vec<(String, usize)>,
+    pref: Option<&str>,
+    class_of: impl Fn(usize) -> Option<String>,
+) -> Vec<(String, usize)> {
+    let Some(pref) = pref else {
+        return eligible;
+    };
+    let in_class: Vec<(String, usize)> = eligible
+        .iter()
+        .filter(|(_, i)| class_of(*i).as_deref() == Some(pref))
+        .cloned()
+        .collect();
+    if in_class.is_empty() {
+        eligible
+    } else {
+        in_class
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ProviderTier {
     Local,
@@ -733,6 +760,19 @@ impl ProviderCascade {
         if eligible.is_empty() {
             return None;
         }
+        // EFFECTIVE-347: honor CHUMP_PREFERRED_MODEL_CLASS. The Bandit strategy
+        // otherwise ignores model class entirely — it filters only on
+        // privacy/circuit/rate, then lets the bandit pick — so difficulty-based
+        // escalation (route hard tasks to opus-class slots) was DEAD CODE under
+        // the active strategy. Restrict the bandit's arms to the preferred class
+        // when any eligible slot matches it; fall back to all eligible if none do.
+        let preferred_class = std::env::var("CHUMP_PREFERRED_MODEL_CLASS")
+            .ok()
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty());
+        let eligible = restrict_eligible_to_class(eligible, preferred_class.as_deref(), |i| {
+            self.slots.get(i).and_then(|s| s.model_class.clone())
+        });
         let names: Vec<String> = eligible.iter().map(|(n, _)| n.clone()).collect();
         let pick_name = bandit.select_from(&names)?;
         eligible
@@ -1997,6 +2037,33 @@ pub fn global_provider() -> Box<dyn Provider + Send + Sync> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn effective347_restrict_eligible_honors_preferred_class() {
+        // 3 eligible slots; index 1 is the only opus-class slot.
+        let eligible = vec![
+            ("cerebras".to_string(), 0),
+            ("gemini-pro".to_string(), 1),
+            ("groq".to_string(), 2),
+        ];
+        let class_of = |i: usize| -> Option<String> {
+            match i {
+                1 => Some("opus".to_string()),
+                _ => Some("sonnet".to_string()),
+            }
+        };
+        // opus preferred + a match → restrict to just the opus slot
+        let r = restrict_eligible_to_class(eligible.clone(), Some("opus"), class_of);
+        assert_eq!(r, vec![("gemini-pro".to_string(), 1)]);
+        // opus preferred but NOTHING matches → unchanged (graceful, never strand)
+        let r2 = restrict_eligible_to_class(eligible.clone(), Some("opus"), |_i| {
+            Some("sonnet".to_string())
+        });
+        assert_eq!(r2.len(), 3);
+        // no preference → unchanged
+        let r3 = restrict_eligible_to_class(eligible.clone(), None, |_i| Some("opus".to_string()));
+        assert_eq!(r3.len(), 3);
+    }
 
     /// INFRA-352: verify `emit_cascade_exhausted_event` writes a structured
     /// `cascade_all_exhausted` JSONL line to the path set by `CHUMP_AMBIENT_LOG`.
