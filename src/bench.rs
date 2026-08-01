@@ -39,6 +39,14 @@ pub struct Acceptance {
     pub kind: String,
     #[serde(default)]
     pub check: String,
+    /// CREDIBLE-186: for `ci-green`, the name of the SPECIFIC check that was red
+    /// (e.g. "ml-pipeline"). The acceptance PASSES only once THIS check is present
+    /// and conclusively green — never on a transient window where only fast or
+    /// unrelated checks have reported (the false-green that merged junk to
+    /// BEAST-MODE main). Empty = grade all checks, but still require every check
+    /// conclusive first (kills the race regardless).
+    #[serde(default)]
+    pub required_check: String,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -109,8 +117,116 @@ fn gh_bin() -> String {
         .unwrap_or_else(|_| "gh".to_string())
 }
 
-/// Grade a `ci-green` acceptance: query the repo's default-branch tip check-runs via gh.
-fn fetch_ci_verdict(repo: &str) -> (Verdict, String) {
+/// A single CI check-run: its name, lifecycle status, and (once completed) conclusion.
+#[derive(Debug, Clone)]
+struct CheckRun {
+    name: String,
+    /// queued | in_progress | completed
+    status: String,
+    /// success | failure | neutral | cancelled | … | "" while not completed
+    conclusion: String,
+}
+
+/// Fetch the check-runs for a repo ref (branch name or SHA) as name+status+conclusion.
+/// None on gh/API failure; Some(empty) when the ref genuinely has no check-runs.
+fn fetch_check_runs(repo: &str, git_ref: &str) -> Option<Vec<CheckRun>> {
+    let out = Command::new(gh_bin())
+        .args([
+            "api",
+            &format!("repos/{repo}/commits/{git_ref}/check-runs"),
+            "--jq",
+            ".check_runs[] | [.name, .status, (.conclusion // \"\")] | @tsv",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout);
+    let mut v = Vec::new();
+    for line in s.lines() {
+        let mut it = line.splitn(3, '\t');
+        let name = it.next().unwrap_or("").to_string();
+        let status = it.next().unwrap_or("").to_string();
+        let conclusion = it.next().unwrap_or("").to_string();
+        if !name.is_empty() {
+            v.push(CheckRun {
+                name,
+                status,
+                conclusion,
+            });
+        }
+    }
+    Some(v)
+}
+
+/// CREDIBLE-186: grade a set of check-runs HONESTLY. The false-green that merged junk
+/// to BEAST-MODE main came from grading a transient snapshot (2 fast checks green while
+/// the real one hadn't run). This grader refuses that:
+///   1. If ANY check is still running (status != completed) → Unknown (not settled yet).
+///   2. If a `required_check` is named, it must be PRESENT and green — a missing one is
+///      Unknown (hasn't reported), a failed one is Fail. This is the specific
+///      previously-red check the lap is meant to turn green.
+///   3. Only once everything is conclusive do we grade the whole set (Fail if any failed).
+///
+/// Pure — unit-tested.
+fn grade_checks_strict(checks: &[CheckRun], required_check: &str) -> (Verdict, String) {
+    let pending: Vec<&str> = checks
+        .iter()
+        .filter(|c| c.status != "completed")
+        .map(|c| c.name.as_str())
+        .collect();
+    if !pending.is_empty() {
+        return (
+            Verdict::Unknown,
+            format!(
+                "{} check(s) still running (e.g. {})",
+                pending.len(),
+                pending.first().copied().unwrap_or("")
+            ),
+        );
+    }
+    if !required_check.is_empty() {
+        match checks.iter().find(|c| c.name == required_check) {
+            None => {
+                return (
+                    Verdict::Unknown,
+                    format!("required check '{required_check}' has not reported yet"),
+                )
+            }
+            Some(c) => match c.conclusion.as_str() {
+                "success" | "neutral" | "skipped" => {}
+                other => {
+                    return (
+                        Verdict::Fail,
+                        format!("required check '{required_check}' = {other}"),
+                    )
+                }
+            },
+        }
+    }
+    let concls: Vec<String> = checks
+        .iter()
+        .map(|c| c.conclusion.clone())
+        .filter(|s| !s.is_empty() && s != "null")
+        .collect();
+    if concls.is_empty() {
+        return (Verdict::Unknown, "no conclusive checks".to_string());
+    }
+    let detail = if required_check.is_empty() {
+        format!("{} check(s) conclusive", concls.len())
+    } else {
+        format!(
+            "{} check(s) conclusive, required '{required_check}' green",
+            concls.len()
+        )
+    };
+    (grade_check_conclusions(&concls), detail)
+}
+
+/// Grade a `ci-green` acceptance on the repo's default branch — a single honest snapshot
+/// (Unknown until settled). Callers that must WAIT for CI to settle use `await_ci_verdict`.
+fn fetch_ci_verdict(repo: &str, required_check: &str) -> (Verdict, String) {
     let branch = Command::new(gh_bin())
         .args([
             "repo",
@@ -126,34 +242,38 @@ fn fetch_ci_verdict(repo: &str) -> (Verdict, String) {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "main".to_string());
-    let out = Command::new(gh_bin())
-        .args([
-            "api",
-            &format!("repos/{repo}/commits/{branch}/check-runs"),
-            "--jq",
-            ".check_runs[].conclusion",
-        ])
-        .output();
-    match out {
-        Ok(o) if o.status.success() => {
-            let concl: Vec<String> = String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty() && s != "null")
-                .collect();
-            if concl.is_empty() {
-                (
-                    Verdict::Unknown,
-                    format!("no conclusive CI on {branch} (checks may be PR-scoped)"),
-                )
-            } else {
-                (
-                    grade_check_conclusions(&concl),
-                    format!("{} check(s) on {branch}: {concl:?}", concl.len()),
-                )
-            }
+    match fetch_check_runs(repo, &branch) {
+        Some(checks) if !checks.is_empty() => {
+            let (v, detail) = grade_checks_strict(&checks, required_check);
+            (v, format!("{detail} on {branch}"))
         }
-        _ => (Verdict::Unknown, "could not query CI via gh".to_string()),
+        Some(_) => (
+            Verdict::Unknown,
+            format!("no check-runs on {branch} (may be PR-scoped)"),
+        ),
+        None => (Verdict::Unknown, "could not query CI via gh".to_string()),
+    }
+}
+
+/// CREDIBLE-186: poll `fetch_ci_verdict` until it settles (Pass/Fail) or the budget
+/// elapses. A ci-green acceptance must never grade a mid-run snapshot — an Unknown
+/// (checks still running / required check not reported) means "keep waiting", not "fail".
+/// Returns the last verdict on timeout (Unknown → the scorer honestly reports FAIL).
+fn await_ci_verdict(repo: &str, required_check: &str, budget_secs: u64) -> (Verdict, String) {
+    use std::time::{Duration, Instant};
+    let deadline = Instant::now() + Duration::from_secs(budget_secs.max(1));
+    loop {
+        let last = fetch_ci_verdict(repo, required_check);
+        if !matches!(last.0, Verdict::Unknown) {
+            return last;
+        }
+        if Instant::now() >= deadline {
+            return (
+                last.0,
+                format!("{} (CI did not settle within {budget_secs}s)", last.1),
+            );
+        }
+        std::thread::sleep(Duration::from_secs(20));
     }
 }
 
@@ -561,7 +681,12 @@ fn drive_task_directed(chump: &str, track: &Track) -> Result<()> {
         } else {
             track.budget.max_wall_clock_min
         };
-        if let Err(e) = ship_rescue_to_target(&track.repo, &dir_str, budget_min) {
+        if let Err(e) = ship_rescue_to_target(
+            &track.repo,
+            &dir_str,
+            &track.acceptance.required_check,
+            budget_min,
+        ) {
             eprintln!("[bench] rescue ship failed: {e} — scoring current (likely red) state");
         }
     } else if has_changes && track.mode.eq_ignore_ascii_case("RESCUE") && !ship_opt_in {
@@ -596,7 +721,12 @@ fn rescue_branch_name(sha: &str) -> String {
 /// auto-merge, and poll until the PR merges and the default branch's checks go
 /// green (bounded by the track's wall-clock budget). Returns Ok once merged+green,
 /// or on budget exhaustion (the scorer makes the authoritative call afterward).
-fn ship_rescue_to_target(repo: &str, dir_str: &str, budget_min: u64) -> Result<()> {
+fn ship_rescue_to_target(
+    repo: &str,
+    dir_str: &str,
+    required_check: &str,
+    budget_min: u64,
+) -> Result<()> {
     use std::time::{Duration, Instant};
     let gh = gh_bin();
     let base = Command::new(&gh)
@@ -689,8 +819,9 @@ fn ship_rescue_to_target(repo: &str, dir_str: &str, budget_min: u64) -> Result<(
                 _ => continue,
             }
         }
-        // Merged — wait for the default branch's checks to conclude green.
-        let (verdict, detail) = fetch_ci_verdict(repo);
+        // Merged — wait for the default branch's checks to conclude green (honest,
+        // check-specific: the previously-red `required_check` must itself go green).
+        let (verdict, detail) = fetch_ci_verdict(repo, required_check);
         eprintln!("[bench] post-merge base CI: {detail}");
         match verdict {
             Verdict::Pass => {
@@ -930,7 +1061,16 @@ fn drive_engine(track: &Track, implement: bool) -> Result<()> {
 /// Score a track: grade the acceptance check + tally touches. (Does not drive the engine.)
 pub fn score_track(track: &Track) -> LapScore {
     let (acc, detail) = match track.acceptance.kind.to_lowercase().as_str() {
-        "ci-green" => fetch_ci_verdict(&track.repo),
+        // CREDIBLE-186: poll until CI SETTLES and the named previously-red check is
+        // green — never grade a transient snapshot (the false-green that merged junk
+        // to BEAST-MODE main). Bounded by CHUMP_BENCH_CI_WAIT_SECS (default 300s).
+        "ci-green" => {
+            let budget_secs = std::env::var("CHUMP_BENCH_CI_WAIT_SECS")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(300);
+            await_ci_verdict(&track.repo, &track.acceptance.required_check, budget_secs)
+        }
         // The universal gradeable primitive: run the acceptance command in the repo's clone,
         // PASS iff exit 0. Covers test-passes (cargo/npm test), url-live (curl), the CREATE
         // tool-runs check, and comprehension-accuracy (a validator that the map's paths exist).
@@ -1205,6 +1345,77 @@ mod tests {
             human_touches: touches,
             detail: String::new(),
         }
+    }
+
+    fn cr(name: &str, status: &str, conclusion: &str) -> CheckRun {
+        CheckRun {
+            name: name.to_string(),
+            status: status.to_string(),
+            conclusion: conclusion.to_string(),
+        }
+    }
+
+    #[test]
+    fn credible186_strict_grader_refuses_transient_and_keys_on_required_check() {
+        // The exact false-green shape: fast checks green, but the required check
+        // (ml-pipeline) is still running → NOT a pass, it's Unknown ("keep waiting").
+        let mid_run = vec![
+            cr("build", "completed", "success"),
+            cr("Code Quality Analysis", "completed", "success"),
+            cr("ml-pipeline", "in_progress", ""),
+            cr("smoke-tests", "queued", ""),
+        ];
+        assert_eq!(
+            grade_checks_strict(&mid_run, "ml-pipeline").0,
+            Verdict::Unknown,
+            "must not PASS while the required check is still running"
+        );
+
+        // Required check present but FAILED → Fail (even if everything else is green).
+        let req_failed = vec![
+            cr("build", "completed", "success"),
+            cr("ml-pipeline", "completed", "failure"),
+        ];
+        assert_eq!(
+            grade_checks_strict(&req_failed, "ml-pipeline").0,
+            Verdict::Fail
+        );
+
+        // Required check missing entirely (never reported) → Unknown, not Pass.
+        let req_absent = vec![cr("build", "completed", "success")];
+        assert_eq!(
+            grade_checks_strict(&req_absent, "ml-pipeline").0,
+            Verdict::Unknown
+        );
+
+        // The honest green: all settled AND the required check itself is green → Pass.
+        let real_green = vec![
+            cr("build", "completed", "success"),
+            cr("ml-pipeline", "completed", "success"),
+            cr("smoke-tests", "completed", "success"),
+        ];
+        assert_eq!(
+            grade_checks_strict(&real_green, "ml-pipeline").0,
+            Verdict::Pass
+        );
+
+        // No required check named: still refuse a mid-run snapshot; PASS only when all settled.
+        let no_req_mid = vec![
+            cr("build", "completed", "success"),
+            cr("x", "in_progress", ""),
+        ];
+        assert_eq!(grade_checks_strict(&no_req_mid, "").0, Verdict::Unknown);
+        let no_req_done = vec![
+            cr("build", "completed", "success"),
+            cr("x", "completed", "success"),
+        ];
+        assert_eq!(grade_checks_strict(&no_req_done, "").0, Verdict::Pass);
+        // A failure anywhere (all settled) → Fail even without a named required check.
+        let no_req_fail = vec![
+            cr("build", "completed", "success"),
+            cr("x", "completed", "failure"),
+        ];
+        assert_eq!(grade_checks_strict(&no_req_fail, "").0, Verdict::Fail);
     }
 
     #[test]
