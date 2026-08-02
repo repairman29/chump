@@ -31,6 +31,13 @@ pub struct Track {
     pub acceptance: Acceptance,
     #[serde(default)]
     pub budget: Budget,
+    /// CREDIBLE-187: an optional shell command run in the fresh clone BEFORE the agent,
+    /// to seed a real, deterministic breakage the lap then rescues. This makes a RESCUE
+    /// lap self-contained + repeatable (no dependence on a live, PR-invisible red check
+    /// like the push-only ml-pipeline) and never touches the target's main. Pair with a
+    /// `command` acceptance that goes green only once the break is fixed.
+    #[serde(default)]
+    pub seed_break: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -676,37 +683,104 @@ fn drive_task_directed(chump: &str, track: &Track) -> Result<Option<(Verdict, St
     if !clone.success() {
         anyhow::bail!("gh repo clone {} failed", track.repo);
     }
+    // CREDIBLE-187: seed a deterministic breakage the lap will rescue. Runs in the
+    // clone BEFORE the agent; committed so it's part of the repo state the agent must
+    // fix. Self-contained + repeatable, and never touches the target's main.
+    if !track.seed_break.trim().is_empty() {
+        eprintln!("[bench] CREDIBLE-187: seeding breakage …");
+        let seeded = Command::new("sh")
+            .args(["-c", &track.seed_break])
+            .current_dir(&dir)
+            .status();
+        match seeded {
+            Ok(s) if s.success() => {
+                let _ = Command::new("git")
+                    .args(["-C", &dir_str, "add", "-A"])
+                    .status();
+                let _ = Command::new("git")
+                    .args([
+                        "-C",
+                        &dir_str,
+                        "-c",
+                        "gpg.sign=false",
+                        "commit",
+                        "-m",
+                        // CREDIBLE-187: the seed is the BENCH setting up the scenario,
+                        // not a human reaching into the fix — mark it OS-authored so the
+                        // zero-touch tally doesn't miscount it as a human touch.
+                        "chore: seed breakage for ChumpBench RESCUE lap\n\nChump-Agent: bench-seed",
+                        "--no-verify",
+                    ])
+                    .status();
+            }
+            other => eprintln!("[bench] seed_break did not succeed ({other:?}) — continuing"),
+        }
+    }
     // EFFECTIVE-349: comprehension-before-action. For a RESCUE lap, hand the agent the
     // actual CI failure log + a pointer at where CI bugs live, so it fixes the real root
     // cause instead of guessing blind (the blind guess wrote placeholder stubs that
     // false-greened). Explicitly forbid the stub/placeholder failure mode we observed.
     let mut comprehension = String::new();
     if track.mode.eq_ignore_ascii_case("RESCUE") {
-        let rc = track.acceptance.required_check.trim();
-        let label = if rc.is_empty() {
-            "the failing check"
-        } else {
-            rc
-        };
-        match fetch_failure_log(&track.repo, rc, 4000) {
-            Some(log) => {
+        if track.acceptance.kind.eq_ignore_ascii_case("command")
+            && !track.acceptance.check.trim().is_empty()
+        {
+            // CREDIBLE-187: a command-acceptance RESCUE — run the verification command in
+            // the clone, capture its failure output, and hand THAT to the agent. Concrete,
+            // deterministic evidence of what is broken (no dependence on a live CI check).
+            let out = Command::new("sh")
+                .args(["-c", &track.acceptance.check])
+                .current_dir(&dir)
+                .output();
+            if let Ok(o) = out {
+                let mut combined = String::from_utf8_lossy(&o.stdout).into_owned();
+                combined.push_str(&String::from_utf8_lossy(&o.stderr));
+                let tail = tail_to_chars(combined.trim(), 4000);
                 eprintln!(
-                    "[bench] EFFECTIVE-349: attached {}-char failure log for '{label}'",
-                    log.len()
+                    "[bench] CREDIBLE-187: attached {}-char command-failure output",
+                    tail.len()
                 );
                 comprehension = format!(
-                    "\n\nThe failing CI check is '{label}'. Its most recent failure log \
-                     (tail) is below — diagnose the ROOT CAUSE from it. A failing CI check \
-                     is almost always caused by a workflow or config file (look first under \
-                     .github/workflows/ and at build/lock/config files), NOT the application \
-                     code. Fix the actual cause. Do NOT create placeholder, stub, or \
-                     \"add your code here\" files — that does not fix anything.\n\
-                     === FAILURE LOG (tail) ===\n{log}\n=== END LOG ==="
+                    "\n\nThe verification command `{}` is currently FAILING in this repo. \
+                     Its output is below — diagnose the ROOT CAUSE from it and fix the code \
+                     so the command exits 0. Do NOT create placeholder, stub, or \"add your \
+                     code here\" files, and do NOT edit the verification command itself — fix \
+                     the actual bug.\n=== COMMAND OUTPUT ===\n{}\n=== END OUTPUT ===",
+                    track.acceptance.check,
+                    if tail.is_empty() {
+                        "(no output)"
+                    } else {
+                        &tail
+                    }
                 );
             }
-            None => eprintln!(
-                "[bench] EFFECTIVE-349: no failure log retrieved for '{label}' — proceeding without it"
-            ),
+        } else {
+            let rc = track.acceptance.required_check.trim();
+            let label = if rc.is_empty() {
+                "the failing check"
+            } else {
+                rc
+            };
+            match fetch_failure_log(&track.repo, rc, 4000) {
+                Some(log) => {
+                    eprintln!(
+                        "[bench] EFFECTIVE-349: attached {}-char failure log for '{label}'",
+                        log.len()
+                    );
+                    comprehension = format!(
+                        "\n\nThe failing CI check is '{label}'. Its most recent failure log \
+                         (tail) is below — diagnose the ROOT CAUSE from it. A failing CI check \
+                         is almost always caused by a workflow or config file (look first under \
+                         .github/workflows/ and at build/lock/config files), NOT the application \
+                         code. Fix the actual cause. Do NOT create placeholder, stub, or \
+                         \"add your code here\" files — that does not fix anything.\n\
+                         === FAILURE LOG (tail) ===\n{log}\n=== END LOG ==="
+                    );
+                }
+                None => eprintln!(
+                    "[bench] EFFECTIVE-349: no failure log retrieved for '{label}' — proceeding without it"
+                ),
+            }
         }
     }
     // The agent gets the TASK (not the acceptance command) and works in the clone.
@@ -782,7 +856,14 @@ fn drive_task_directed(chump: &str, track: &Track) -> Result<Option<(Verdict, St
     // (CHUMP_BENCH_SHIP=1) AND the fix is green (the pre-merge gate). This is what
     // makes the lap safe + repeatable: the proof is "the fix passes CI", not "we
     // merged to someone's main". Returns the PR-green verdict as the lap's acceptance.
-    if has_changes && track.mode.eq_ignore_ascii_case("RESCUE") && track.repo.contains('/') {
+    // CREDIBLE-187: only the ci-green flavor ships a PR (its acceptance grades live CI).
+    // A `command`-acceptance RESCUE is scored LOCALLY in the clone (grade_command) — no
+    // PR, fully deterministic — so we fall through to Ok(None) and let score_track run it.
+    if has_changes
+        && track.mode.eq_ignore_ascii_case("RESCUE")
+        && track.repo.contains('/')
+        && track.acceptance.kind.eq_ignore_ascii_case("ci-green")
+    {
         let budget_min = if track.budget.max_wall_clock_min == 0 {
             20
         } else {
@@ -1709,6 +1790,33 @@ budget:
         assert_eq!(t.mode, "RESCUE");
         assert_eq!(t.acceptance.kind, "ci-green");
         assert_eq!(t.budget.max_human_touches, 0);
+        // Backward-compat: a track without seed_break parses (serde default = empty).
+        assert!(t.seed_break.is_empty());
+    }
+
+    #[test]
+    fn credible187_seed_break_and_command_acceptance_parse() {
+        // The deterministic RESCUE shape: a command acceptance + a seed_break the lap
+        // applies before the agent runs.
+        let y = r#"
+id: rescue-beast-ci
+mode: RESCUE
+repo: repairman29/BEAST-MODE
+stack: javascript
+difficulty: easy
+task: "fix the bug"
+acceptance:
+  kind: command
+  check: "node -e \"process.exit(0)\""
+seed_break: "printf '%s' 'bug' > fixture.js"
+budget:
+  max_wall_clock_min: 15
+  max_human_touches: 0
+"#;
+        let t: Track = serde_yaml::from_str(y).unwrap();
+        assert_eq!(t.acceptance.kind, "command");
+        assert!(t.acceptance.check.contains("node -e"));
+        assert!(t.seed_break.contains("fixture.js"));
     }
 
     /// INFRA-3523: the touch counter must tally only the LAP's own commits, not the external
