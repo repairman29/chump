@@ -579,6 +579,86 @@ fn apply_difficulty_routing(cmd: &mut Command, track: &Track) {
     }
 }
 
+/// EFFECTIVE-349: fetch the tail of the most-recent FAILED run's log for a repo so a
+/// RESCUE agent can diagnose the real root cause instead of guessing blind (the blind
+/// guess produced placeholder stub files that false-greened). Prefers a run whose name
+/// or workflow matches `required_check`; falls back to the most recent failure. Returns
+/// the last `max_chars` of the failed-step log (the error is usually at the end), or
+/// None if nothing can be retrieved.
+fn fetch_failure_log(repo: &str, required_check: &str, max_chars: usize) -> Option<String> {
+    let gh = gh_bin();
+    let out = Command::new(&gh)
+        .args([
+            "run",
+            "list",
+            "--repo",
+            repo,
+            "--status",
+            "failure",
+            "--limit",
+            "20",
+            "--json",
+            "databaseId,name,workflowName",
+            "--jq",
+            ".[] | [.databaseId, .name, .workflowName] | @tsv",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let want = required_check.trim().to_lowercase();
+    let listing = String::from_utf8_lossy(&out.stdout);
+    let mut first: Option<String> = None;
+    let mut matched: Option<String> = None;
+    for line in listing.lines() {
+        let mut it = line.splitn(3, '\t');
+        let id = it.next().unwrap_or("").trim().to_string();
+        let name = it.next().unwrap_or("").to_lowercase();
+        let wf = it.next().unwrap_or("").to_lowercase();
+        if id.is_empty() {
+            continue;
+        }
+        if first.is_none() {
+            first = Some(id.clone());
+        }
+        if !want.is_empty() && (name.contains(&want) || wf.contains(&want)) {
+            matched = Some(id);
+            break;
+        }
+    }
+    let run_id = matched.or(first)?;
+    let log = Command::new(&gh)
+        .args(["run", "view", &run_id, "--repo", repo, "--log-failed"])
+        .output()
+        .ok()?;
+    if !log.status.success() {
+        return None;
+    }
+    let full = String::from_utf8_lossy(&log.stdout);
+    let full = full.trim();
+    if full.is_empty() {
+        return None;
+    }
+    Some(tail_to_chars(full, max_chars))
+}
+
+/// EFFECTIVE-349: keep the last `max_chars` of `s` (the CI error is usually at the end),
+/// on a UTF-8 char boundary, with a truncation marker. Pure — unit-tested.
+fn tail_to_chars(s: &str, max_chars: usize) -> String {
+    if s.len() <= max_chars {
+        return s.to_string();
+    }
+    let mut start = s.len() - max_chars;
+    while start < s.len() && !s.is_char_boundary(start) {
+        start += 1;
+    }
+    format!(
+        "…(log truncated to last {max_chars} chars)…\n{}",
+        &s[start..]
+    )
+}
+
 fn drive_task_directed(chump: &str, track: &Track) -> Result<Option<(Verdict, String)>> {
     let dir = local_clone_dir(&track.repo);
     if let Some(parent) = dir.parent() {
@@ -596,12 +676,45 @@ fn drive_task_directed(chump: &str, track: &Track) -> Result<Option<(Verdict, St
     if !clone.success() {
         anyhow::bail!("gh repo clone {} failed", track.repo);
     }
+    // EFFECTIVE-349: comprehension-before-action. For a RESCUE lap, hand the agent the
+    // actual CI failure log + a pointer at where CI bugs live, so it fixes the real root
+    // cause instead of guessing blind (the blind guess wrote placeholder stubs that
+    // false-greened). Explicitly forbid the stub/placeholder failure mode we observed.
+    let mut comprehension = String::new();
+    if track.mode.eq_ignore_ascii_case("RESCUE") {
+        let rc = track.acceptance.required_check.trim();
+        let label = if rc.is_empty() {
+            "the failing check"
+        } else {
+            rc
+        };
+        match fetch_failure_log(&track.repo, rc, 4000) {
+            Some(log) => {
+                eprintln!(
+                    "[bench] EFFECTIVE-349: attached {}-char failure log for '{label}'",
+                    log.len()
+                );
+                comprehension = format!(
+                    "\n\nThe failing CI check is '{label}'. Its most recent failure log \
+                     (tail) is below — diagnose the ROOT CAUSE from it. A failing CI check \
+                     is almost always caused by a workflow or config file (look first under \
+                     .github/workflows/ and at build/lock/config files), NOT the application \
+                     code. Fix the actual cause. Do NOT create placeholder, stub, or \
+                     \"add your code here\" files — that does not fix anything.\n\
+                     === FAILURE LOG (tail) ===\n{log}\n=== END LOG ==="
+                );
+            }
+            None => eprintln!(
+                "[bench] EFFECTIVE-349: no failure log retrieved for '{label}' — proceeding without it"
+            ),
+        }
+    }
     // The agent gets the TASK (not the acceptance command) and works in the clone.
     let prompt = format!(
-        "{}\n\nYou are working in an existing repository (your current directory). \
+        "{}{}\n\nYou are working in an existing repository (your current directory). \
          Make the change directly — edit or create the necessary files so the task \
          is complete. Do not ask questions; implement fully.",
-        track.task
+        track.task, comprehension
     );
     // Prompt lives OUTSIDE the clone so the agent doesn't treat it as a repo file.
     let prompt_path = dir
@@ -1474,6 +1587,22 @@ mod tests {
             cr("x", "completed", "failure"),
         ];
         assert_eq!(grade_checks_strict(&no_req_fail, "").0, Verdict::Fail);
+    }
+
+    #[test]
+    fn effective349_tail_to_chars_keeps_end_on_boundary() {
+        // Shorter than the cap → returned whole, no marker.
+        assert_eq!(tail_to_chars("short log", 100), "short log");
+        // Longer than the cap → keeps the TAIL (the error), with a marker prefix.
+        let big = "A".repeat(5000);
+        let out = tail_to_chars(&big, 100);
+        assert!(out.contains("truncated"));
+        assert!(out.ends_with(&"A".repeat(100)));
+        // Multi-byte content near the cut does not panic and stays valid UTF-8.
+        let unicode = format!("{}déjà-vu-café", "x".repeat(50));
+        let out = tail_to_chars(&unicode, 10);
+        assert!(out.is_char_boundary(out.len()));
+        assert!(out.ends_with("café"));
     }
 
     #[test]
