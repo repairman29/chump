@@ -6862,7 +6862,9 @@ async fn main() -> Result<()> {
 
                 // Ambient log path (mirrors scripts/coord/opus-curator.sh).
                 let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
-                let _ = std::fs::create_dir_all(ambient_log.parent().unwrap());
+                if let Some(parent) = ambient_log.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
 
                 let emit_tick =
                     |task: &DaemonTask, run_id: &str, exit_code: i32, elapsed_ms: u128| {
