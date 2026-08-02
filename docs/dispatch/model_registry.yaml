@@ -653,7 +653,7 @@ models:
     last_verified: "2026-05-08"
     notes: "OpenRouter :free model — availability not guaranteed."
 
-  # ── GitHub Models ─────────────────────────────────────────────────────────
+  # ── GitHub Models (RETIRING — do not route here) ──────────────────────────
   - model_id: meta/Llama-3.3-70B-Instruct
     input_per_mtk: 0.00
     output_per_mtk: 0.00
@@ -667,5 +667,9 @@ models:
     free_tier: true
     rpm: 12
     rpd: 120
-    last_verified: "2026-05-08"
-    notes: "GitHub Models free tier. Very low RPD (120). 8K context only."
+    status: deprecated
+    last_verified: "2026-08-02"
+    notes: "RETIRING: scheduled GitHub Models retirement brownout returns 410 Gone on
+      every call (observed dragging the full bench heat 2026-08-02). Live provider slot 7
+      disabled (RESILIENT-228). Same Llama-3.3-70B is served by groq/together/nvidia —
+      route there, not here. Very low RPD (120), 8K context only even when up."
