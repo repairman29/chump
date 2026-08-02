@@ -38,13 +38,19 @@ test.describe('API (no browser)', () => {
     expect(j).toHaveProperty('active_profile');
   });
 
-  test('POST /api/approve (idempotent for unknown id)', async ({ request }) => {
-    const r = await request.post('/api/approve', {
-      data: { request_id: '00000000-0000-0000-0000-000000000000', allowed: false },
-    });
-    expect(r.status()).toBe(200);
-    const j = await r.json();
-    expect(j.ok).toBe(true);
+  test('POST /api/approve (idempotent for unknown id — proven by calling twice)', async ({
+    request,
+  }) => {
+    // Depth pass 2026-08-02: the test NAME claimed idempotence but the body
+    // called once. An idempotence claim that never repeats is a smoke test
+    // wearing an edge-case label. Same payload, twice, same contract both times.
+    const data = { request_id: '00000000-0000-0000-0000-000000000000', allowed: false };
+    for (const attempt of [1, 2]) {
+      const r = await request.post('/api/approve', { data });
+      expect(r.status(), `approve attempt ${attempt}`).toBe(200);
+      const j = await r.json();
+      expect(j.ok, `approve attempt ${attempt}`).toBe(true);
+    }
   });
 
   test('GET /api/jobs (async job log)', async ({ request }) => {
