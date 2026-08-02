@@ -23,17 +23,26 @@ test.describe('Daily driver — API', () => {
     expect(ids.has(j2.session_id)).toBeTruthy();
   });
 
-  test('POST /api/tasks + GET pending returns array', async ({ request }) => {
-    const ts = Date.now();
+  test('POST /api/tasks; THE created task appears in the open list', async ({ request }) => {
+    // Depth pass 2026-08-02: the old form of this test queried
+    // ?status=pending — but 'pending' is not a task status
+    // (open|blocked|in_progress|done|abandoned), and task_list treats unknown
+    // statuses as "all active", so the filter was meaningless. Worse, it only
+    // asserted the array was non-empty: any pre-existing task made it green,
+    // and the created task was never looked up. Assert the actual row, by id.
+    const title = `e2e-open-${Date.now()}`;
     const p = await request.post('/api/tasks', {
-      data: { title: `e2e-pending-${ts}`, assignee: 'chump', priority: 1 },
+      data: { title, assignee: 'chump', priority: 1 },
     });
     expect(p.ok()).toBeTruthy();
-    const g = await request.get('/api/tasks?status=pending');
+    const { id } = await p.json();
+    expect(id, 'create returns the new task id').toBeTruthy();
+    const g = await request.get('/api/tasks?status=open');
     expect(g.ok()).toBeTruthy();
     const arr = await g.json();
-    expect(Array.isArray(arr)).toBeTruthy();
-    expect(arr.length).toBeGreaterThan(0);
+    const mine = arr.find((t: { id: number; title: string }) => t.id === id);
+    expect(mine, `created task ${id} present in the open list`).toBeTruthy();
+    expect(mine.title).toBe(title);
   });
 
   test('POST /api/chat empty message -> 400', async ({ request }) => {
