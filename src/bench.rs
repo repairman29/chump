@@ -579,7 +579,7 @@ fn apply_difficulty_routing(cmd: &mut Command, track: &Track) {
     }
 }
 
-fn drive_task_directed(chump: &str, track: &Track) -> Result<()> {
+fn drive_task_directed(chump: &str, track: &Track) -> Result<Option<(Verdict, String)>> {
     let dir = local_clone_dir(&track.repo);
     if let Some(parent) = dir.parent() {
         std::fs::create_dir_all(parent).with_context(|| format!("mkdir {}", parent.display()))?;
@@ -663,40 +663,32 @@ fn drive_task_directed(chump: &str, track: &Track) -> Result<()> {
             ])
             .status();
     }
-    // EFFECTIVE-346: a RESCUE lap's `ci-green` acceptance grades the TARGET repo's
-    // default-branch check-runs — so a fix that only lives in the local clone can
-    // never turn the acceptance green. When opted in (CHUMP_BENCH_SHIP=1), ship the
-    // fix: push a branch, open a PR, arm auto-merge (lands only once the PR's own CI
-    // validates the fix), and poll until it merges + the default branch goes green.
-    // Opt-in because autonomously merging to an external repo's main is a real side
-    // effect; BEAST-MODE is the sanctioned mission proof target (MISSION-010).
-    let ship_opt_in = std::env::var("CHUMP_BENCH_SHIP").ok().as_deref() == Some("1");
-    if has_changes
-        && ship_opt_in
-        && track.mode.eq_ignore_ascii_case("RESCUE")
-        && track.repo.contains('/')
-    {
+    // EFFECTIVE-350: a RESCUE lap scores on PR-GREEN by default — open a PR with the
+    // fix and check whether the previously-red `required_check` goes green ON THE PR.
+    // Nothing merges to the target's main unless the operator opts in
+    // (CHUMP_BENCH_SHIP=1) AND the fix is green (the pre-merge gate). This is what
+    // makes the lap safe + repeatable: the proof is "the fix passes CI", not "we
+    // merged to someone's main". Returns the PR-green verdict as the lap's acceptance.
+    if has_changes && track.mode.eq_ignore_ascii_case("RESCUE") && track.repo.contains('/') {
         let budget_min = if track.budget.max_wall_clock_min == 0 {
             20
         } else {
             track.budget.max_wall_clock_min
         };
-        if let Err(e) = ship_rescue_to_target(
+        match rescue_ship_and_score(
             &track.repo,
             &dir_str,
             &track.acceptance.required_check,
             budget_min,
         ) {
-            eprintln!("[bench] rescue ship failed: {e} — scoring current (likely red) state");
+            Ok(verdict) => return Ok(Some(verdict)),
+            Err(e) => {
+                eprintln!("[bench] rescue PR/score failed: {e} — falling back to current state");
+                return Ok(None);
+            }
         }
-    } else if has_changes && track.mode.eq_ignore_ascii_case("RESCUE") && !ship_opt_in {
-        eprintln!(
-            "[bench] RESCUE fix committed locally only (set CHUMP_BENCH_SHIP=1 to ship to {} \
-             so the ci-green acceptance is reachable)",
-            track.repo
-        );
     }
-    Ok(())
+    Ok(None)
 }
 
 /// EFFECTIVE-346: branch name for a shipped RESCUE fix. Deterministic from the fix
@@ -717,18 +709,45 @@ fn rescue_branch_name(sha: &str) -> String {
     format!("chump/bench-rescue-{clean}")
 }
 
-/// EFFECTIVE-346: push the local RESCUE fix to the target repo, open a PR, arm
-/// auto-merge, and poll until the PR merges and the default branch's checks go
-/// green (bounded by the track's wall-clock budget). Returns Ok once merged+green,
-/// or on budget exhaustion (the scorer makes the authoritative call afterward).
-fn ship_rescue_to_target(
+/// EFFECTIVE-350: what to do with the rescue PR after scoring it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RescueDisposition {
+    /// Land the fix on main — only when the operator opted in AND the fix is green.
+    Merge,
+    /// Close the proof PR — the default: we scored on PR-green without touching main.
+    Close,
+}
+
+/// EFFECTIVE-350: decide the PR's fate. Default is PR-green scoring: open a PR, check
+/// whether it turns the required check green, then CLOSE it (nothing lands on main, so
+/// nothing can be polluted). Only merge to main when the operator explicitly opted in
+/// (CHUMP_BENCH_SHIP=1) AND the fix is actually green on the PR — the pre-merge gate
+/// that makes the junk-to-main class impossible. Pure — unit-tested.
+fn rescue_disposition(verdict: Verdict, ship_opt_in: bool) -> RescueDisposition {
+    if ship_opt_in && verdict == Verdict::Pass {
+        RescueDisposition::Merge
+    } else {
+        RescueDisposition::Close
+    }
+}
+
+/// EFFECTIVE-350: push the RESCUE fix, open a PR, and score on **PR-green** — poll the
+/// PR's OWN checks until the previously-red `required_check` settles (green/red), using
+/// the same honest grader as main. Returns that verdict as the lap's acceptance.
+///
+/// The PR is the proof surface, not a merge: by default we CLOSE it after scoring, so
+/// nothing lands on the target's main (the pollution class is gone). Only when the
+/// operator opts in (CHUMP_BENCH_SHIP=1) AND the fix is green do we merge it — the
+/// pre-merge gate. Bounded by the track's wall-clock budget.
+fn rescue_ship_and_score(
     repo: &str,
     dir_str: &str,
     required_check: &str,
     budget_min: u64,
-) -> Result<()> {
+) -> Result<(Verdict, String)> {
     use std::time::{Duration, Instant};
     let gh = gh_bin();
+    let ship_opt_in = std::env::var("CHUMP_BENCH_SHIP").ok().as_deref() == Some("1");
     let base = Command::new(&gh)
         .args([
             "repo",
@@ -752,7 +771,7 @@ fn ship_rescue_to_target(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "fix".to_string());
     let branch = rescue_branch_name(&sha);
-    eprintln!("[bench] shipping rescue fix to {repo} on branch {branch} (base {base}) …");
+    eprintln!("[bench] opening rescue PR on {repo} from branch {branch} (base {base}) …");
     let push = Command::new("git")
         .args([
             "-C",
@@ -783,60 +802,83 @@ fn ship_rescue_to_target(
         ])
         .output()
         .with_context(|| "gh pr create")?;
-    let pr_url = String::from_utf8_lossy(&pr.stdout).trim().to_string();
-    if !pr.status.success() {
-        // A PR may already exist for this branch (idempotent re-run) — tolerate it.
+    if pr.status.success() {
+        eprintln!(
+            "[bench] opened PR {}",
+            String::from_utf8_lossy(&pr.stdout).trim()
+        );
+    } else {
         let err = String::from_utf8_lossy(&pr.stderr);
         if !err.contains("already exists") {
             anyhow::bail!("gh pr create failed: {err}");
         }
-        eprintln!("[bench] PR for {branch} already exists — continuing");
-    } else {
-        eprintln!("[bench] opened PR {pr_url}");
+        eprintln!("[bench] PR for {branch} already exists — reusing");
     }
-    // Arm auto-merge so the fix lands only once the PR's own CI validates it.
-    let _ = Command::new(&gh)
-        .args(["pr", "merge", &branch, "--repo", repo, "--auto", "--squash"])
-        .status();
-    // Poll until merged, then until the base branch's checks are green.
+    // Score on PR-green: poll the PR's OWN head checks until the required check settles.
     let deadline = Instant::now() + Duration::from_secs(budget_min.saturating_mul(60).max(60));
-    let mut merged = false;
-    while Instant::now() < deadline {
-        std::thread::sleep(Duration::from_secs(30));
-        if !merged {
-            let state = Command::new(&gh)
-                .args([
-                    "pr", "view", &branch, "--repo", repo, "--json", "state", "--jq", ".state",
-                ])
-                .output()
-                .ok()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .unwrap_or_default();
-            eprintln!("[bench] rescue PR state={state}");
-            match state.as_str() {
-                "MERGED" => merged = true,
-                "CLOSED" => anyhow::bail!("rescue PR closed without merge"),
-                _ => continue,
+    let mut last = (Verdict::Unknown, "no PR checks observed".to_string());
+    loop {
+        let head = Command::new(&gh)
+            .args([
+                "pr",
+                "view",
+                &branch,
+                "--repo",
+                repo,
+                "--json",
+                "headRefOid",
+                "--jq",
+                ".headRefOid",
+            ])
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty());
+        if let Some(head_sha) = head {
+            let (v, detail) = match fetch_check_runs(repo, &head_sha) {
+                Some(c) if !c.is_empty() => grade_checks_strict(&c, required_check),
+                _ => (Verdict::Unknown, "no PR checks yet".to_string()),
+            };
+            eprintln!("[bench] rescue PR checks: {detail}");
+            last = (v, detail);
+            if !matches!(v, Verdict::Unknown) {
+                break;
             }
         }
-        // Merged — wait for the default branch's checks to conclude green (honest,
-        // check-specific: the previously-red `required_check` must itself go green).
-        let (verdict, detail) = fetch_ci_verdict(repo, required_check);
-        eprintln!("[bench] post-merge base CI: {detail}");
-        match verdict {
-            Verdict::Pass => {
-                eprintln!("[bench] rescue landed — {base} is green");
-                return Ok(());
-            }
-            Verdict::Fail => {
-                eprintln!("[bench] {base} still red post-merge — scorer will report FAIL");
-                return Ok(());
-            }
-            Verdict::Unknown => continue,
+        if Instant::now() >= deadline {
+            eprintln!("[bench] rescue PR budget ({budget_min}m) exhausted before checks settled");
+            break;
+        }
+        std::thread::sleep(Duration::from_secs(20));
+    }
+    // Dispose of the proof PR: merge only on opt-in + green, else close (main untouched).
+    match rescue_disposition(last.0, ship_opt_in) {
+        RescueDisposition::Merge => {
+            eprintln!("[bench] CHUMP_BENCH_SHIP=1 + green → merging rescue PR to {base}");
+            let _ = Command::new(&gh)
+                .args([
+                    "pr", "merge", &branch, "--repo", repo, "--squash", "--admin",
+                ])
+                .status();
+        }
+        RescueDisposition::Close => {
+            eprintln!("[bench] scored on PR-green — closing proof PR (main untouched)");
+            let _ = Command::new(&gh)
+                .args([
+                    "pr",
+                    "close",
+                    &branch,
+                    "--repo",
+                    repo,
+                    "--delete-branch",
+                    "--comment",
+                    "ChumpBench RESCUE lap: scored on PR-green; closing (no merge). \
+                     Set CHUMP_BENCH_SHIP=1 to land the fix.",
+                ])
+                .status();
         }
     }
-    eprintln!("[bench] rescue ship budget ({budget_min}m) exhausted before conclusive green");
-    Ok(())
+    Ok(last)
 }
 
 /// Drive the track's mode engine (only on `--apply`). Wires RESCUE/IMPROVE/FINISH →
@@ -844,7 +886,7 @@ fn ship_rescue_to_target(
 /// CREATE → `chump bootstrap`, COMPREHEND → the `comprehend` engine (or task-directed
 /// on `--implement`). On `implement` (EFFECTIVE-341/345), drives `chump agent-run` so
 /// the lap does the track's actual task, not just a scaffold or a generic gap.
-fn drive_engine(track: &Track, implement: bool) -> Result<()> {
+fn drive_engine(track: &Track, implement: bool) -> Result<Option<(Verdict, String)>> {
     let chump = std::env::var("CHUMP_BENCH_CHUMP_BIN")
         .or_else(|_| std::env::var("CHUMP_BIN"))
         .unwrap_or_else(|_| "chump".to_string());
@@ -868,7 +910,7 @@ fn drive_engine(track: &Track, implement: bool) -> Result<()> {
             if !status.success() {
                 anyhow::bail!("engine `chump improve {}` exited non-zero", track.repo);
             }
-            Ok(())
+            Ok(None)
         }
         "CREATE" => {
             // CREATE tracks carry a `bootstrap:<name>` pseudo-repo — the lap
@@ -1010,7 +1052,7 @@ fn drive_engine(track: &Track, implement: bool) -> Result<()> {
                         .status();
                 }
             }
-            Ok(())
+            Ok(None)
         }
         "COMPREHEND" => {
             // EFFECTIVE-345: --implement runs the TRACK's task on a fresh clone
@@ -1048,7 +1090,7 @@ fn drive_engine(track: &Track, implement: bool) -> Result<()> {
                     track.repo
                 );
             }
-            Ok(())
+            Ok(None)
         }
         other => {
             anyhow::bail!(
@@ -1059,12 +1101,16 @@ fn drive_engine(track: &Track, implement: bool) -> Result<()> {
 }
 
 /// Score a track: grade the acceptance check + tally touches. (Does not drive the engine.)
-pub fn score_track(track: &Track) -> LapScore {
-    let (acc, detail) = match track.acceptance.kind.to_lowercase().as_str() {
+pub fn score_track(track: &Track, drive_verdict: Option<(Verdict, String)>) -> LapScore {
+    let (acc, detail) = match (drive_verdict, track.acceptance.kind.to_lowercase().as_str()) {
+        // EFFECTIVE-350: a RESCUE lap scores on PR-GREEN — the drive step already
+        // opened a PR and graded whether the previously-red check went green on it.
+        // Use that verdict directly (the authoritative acceptance for the lap).
+        (Some(v), _) => v,
         // CREDIBLE-186: poll until CI SETTLES and the named previously-red check is
         // green — never grade a transient snapshot (the false-green that merged junk
         // to BEAST-MODE main). Bounded by CHUMP_BENCH_CI_WAIT_SECS (default 300s).
-        "ci-green" => {
+        (None, "ci-green") => {
             let budget_secs = std::env::var("CHUMP_BENCH_CI_WAIT_SECS")
                 .ok()
                 .and_then(|s| s.parse::<u64>().ok())
@@ -1074,12 +1120,12 @@ pub fn score_track(track: &Track) -> LapScore {
         // The universal gradeable primitive: run the acceptance command in the repo's clone,
         // PASS iff exit 0. Covers test-passes (cargo/npm test), url-live (curl), the CREATE
         // tool-runs check, and comprehension-accuracy (a validator that the map's paths exist).
-        "command" => {
+        (None, "command") => {
             let d = local_clone_dir(&track.repo);
             let cwd = if d.exists() { Some(d) } else { None };
             grade_command(&track.acceptance.check, cwd.as_deref())
         }
-        other => (
+        (None, other) => (
             Verdict::Unknown,
             format!("acceptance kind '{other}' not graded yet (v1: ci-green | command)"),
         ),
@@ -1165,14 +1211,20 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
 
-    if apply {
+    let drive_verdict = if apply {
         eprintln!("[bench] driving {} engine on {} …", track.mode, track.repo);
-        if let Err(e) = drive_engine(&track, implement) {
-            eprintln!("[bench] engine drive failed: {e:#} — scoring current state anyway");
+        match drive_engine(&track, implement) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("[bench] engine drive failed: {e:#} — scoring current state anyway");
+                None
+            }
         }
-    }
+    } else {
+        None
+    };
 
-    let score = score_track(&track);
+    let score = score_track(&track, drive_verdict);
     if json {
         println!(
             "{}",
@@ -1282,16 +1334,22 @@ fn run_heat(args: &[String]) -> i32 {
                 continue;
             }
         };
-        if apply {
+        let drive_verdict = if apply {
             eprintln!("[heat] driving {} on {} …", track.mode, track.repo);
-            if let Err(e) = drive_engine(&track, implement) {
-                eprintln!(
-                    "[heat] {} drive failed: {e:#} — scoring current state",
-                    track.id
-                );
+            match drive_engine(&track, implement) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!(
+                        "[heat] {} drive failed: {e:#} — scoring current state",
+                        track.id
+                    );
+                    None
+                }
             }
-        }
-        scores.push(score_track(&track));
+        } else {
+            None
+        };
+        scores.push(score_track(&track, drive_verdict));
     }
 
     if json {
@@ -1416,6 +1474,20 @@ mod tests {
             cr("x", "completed", "failure"),
         ];
         assert_eq!(grade_checks_strict(&no_req_fail, "").0, Verdict::Fail);
+    }
+
+    #[test]
+    fn effective350_rescue_disposition_merges_only_on_optin_and_green() {
+        use RescueDisposition::*;
+        // Default (no opt-in): always close the proof PR — nothing touches main,
+        // regardless of verdict. This is what makes the pollution class impossible.
+        assert_eq!(rescue_disposition(Verdict::Pass, false), Close);
+        assert_eq!(rescue_disposition(Verdict::Fail, false), Close);
+        assert_eq!(rescue_disposition(Verdict::Unknown, false), Close);
+        // Opt-in: merge ONLY when the fix is actually green (the pre-merge gate).
+        assert_eq!(rescue_disposition(Verdict::Pass, true), Merge);
+        assert_eq!(rescue_disposition(Verdict::Fail, true), Close);
+        assert_eq!(rescue_disposition(Verdict::Unknown, true), Close);
     }
 
     #[test]
