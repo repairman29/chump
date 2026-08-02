@@ -1,18 +1,29 @@
-# ChumpBench track — the known-good RESCUE lap (DOC-072).
+# ChumpBench track — deterministic, self-contained RESCUE (CREDIBLE-187).
+#
+# The old spec targeted the push-only `ml-pipeline` check: it never runs on PRs, so
+# PR-green scoring could not verify a fix for it, and it does not actually block merges.
+# This re-spec makes the lap self-contained and repeatable: the runner SEEDS a real
+# logic bug into a fixture file in the clone, then the agent must diagnose it from the
+# verification command's output and fix it. Acceptance is a local `command` (no PR, no
+# live CI, nothing touches BEAST-MODE main) — so a real fix scores PASS and anything
+# else (stub, no-op, deleting the file) scores FAIL, deterministically.
 id: rescue-beast-ci
 mode: RESCUE
 repo: repairman29/BEAST-MODE
 stack: javascript
 state: red-ci
-difficulty: medium
-task: "The CI check 'ml-pipeline' (the 'ML Pipeline Automation' workflow) is failing on the default branch and blocks all merges. Fix the root cause so it goes green."
+difficulty: easy
+task: >-
+  A verification command in this repository is failing. Read the command and its
+  output, find the bug in the code the command exercises, and fix that code so the
+  command exits 0. Do not modify the verification command itself.
 acceptance:
-  kind: ci-green
-  check: "the repo's CI checks all pass (no failing check-runs)"
-  # CREDIBLE-186: the SPECIFIC check that is red. The lap only PASSES once this
-  # check itself reports green (and all checks are settled) — not on a transient
-  # window where only fast/unrelated checks have reported.
-  required_check: ml-pipeline
+  kind: command
+  check: >-
+    node -e "const {add} = require('./chumpbench_rescue_fixture.js'); if (add(2,3) !== 5) { console.error('add(2,3) returned ' + add(2,3) + ', expected 5'); process.exit(1);} console.log('add OK');"
+# Seeded before the agent runs: a real logic bug (subtracts instead of adds).
+seed_break: >-
+  printf '%s' 'function add(a, b) { return a - b; } module.exports = { add };' > chumpbench_rescue_fixture.js
 budget:
-  max_wall_clock_min: 30
+  max_wall_clock_min: 15
   max_human_touches: 0
