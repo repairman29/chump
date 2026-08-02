@@ -23,6 +23,17 @@ North Star). V1 is the first version where the loop *closes* and we can *count* 
   zero-touch PR that delivered **nothing** (a 4-line stub) and passed "verify."
 - **The judgment organ is the keystone gap** — nothing checks whether a change satisfies the
   intent, so a do-nothing PR is indistinguishable from delivery.
+- **The integrity layer is now proven (2026-08-02).** A live rescue lap *false-greened and
+  pushed junk to a real repo's main*; that caught, reverted, and drove a hardening pass that is
+  merged and demonstrated live: honest, check-specific acceptance (CREDIBLE-186 — can't
+  false-green), PR-green scoring + a pre-merge gate (EFFECTIVE-350 — can't pollute main),
+  comprehension-before-action (EFFECTIVE-349 — the agent gets the real failure log), and a
+  deterministic, self-contained rescue track (CREDIBLE-187). Full-suite heat: **5/6 green,
+  100% zero-touch**; the one miss was a python-3.14 harness bug, not a capability failure.
+- **The self-improving loop is real as primitives, not yet proven as one closed loop.** Intake,
+  run, classify-failure, decompose, provision-tools, escalate, budget/page all exist — scattered
+  across ~8 files. The drills prove *run job → succeed*; they do **not** yet prove *job exceeds
+  capability → adapt or stop cleanly*. That is the V1.5 → V2 bridge (§4b).
 
 ## 3. Discovery: the judgment organ is mostly BUILT (wire + strengthen, don't reinvent)
 
@@ -53,6 +64,45 @@ improve/merge gate, harden it from heuristic → real judge, and make AC-writing
 6. **Honest** — measured by the zero-touch metric + ChumpBench scorecard; every claim carries a
    receipt.
 
+## 4b. The self-improving job loop + the version ladder (the architecture V1 acceptance rolls up into)
+
+> Shareable map (flow chart + honest real/partial/missing status + ladder + branch-proving
+> tracks): **[ChumpOS — The Self-Improving Job Loop](https://claude.ai/code/artifact/d08efb63-24ca-48e9-abc3-d85d729c75a1)**.
+> Grounded against the codebase 2026-08-02, not memory.
+
+**The loop (what the whole OS is built to be).** Give ChumpOS a job → run it on a repo → if it
+can't succeed, adapt (decompose the work / acquire a missing capability / escalate) → and when a
+budget expires, park and page a human. Mapped to what runs today:
+
+| Stage | Real component | Status |
+|---|---|---|
+| Job intake | `execute_gap.rs`, `improve::run`, gaps in `state.db` | **real** |
+| Run & succeed? | `drive_task_directed` + honest acceptance (hardened this session) | **real** |
+| Classify failure | `failure_catalog.rs` | partial |
+| Decompose → retry | `auto_decompose_if_complex`, `chump gap decompose` | partial |
+| Acquire capability → retry | `ensure_provisioned` — installs *known* CLIs only | **weakest** (self-extending is aspirational) |
+| Escalate / page human | `hitl_escalation.rs`, `operator-recall.sh`, T1–T4 | partial |
+| Act on human input | A2A consensus (`chump vote`), `intervention_watchdog` | partial |
+| Pause / move fleet at scale | INFRA-518 scale gate + back-off triggers | runbook, not an API |
+
+**The version ladder — the proving progression** (realness synthetic→real, difficulty easy→open,
+autonomy verified→gated→hands-off). This sits *over* the capability phases (0–5) in
+[`docs/ROADMAP.md`](../ROADMAP.md): it says how we *know* a phase is real.
+
+| Rung | Done means | Metric |
+|---|---|---|
+| **V1** — honest machinery | runs a drill hands-off, scores it truthfully, ships safely | ✅ 5/6 heat green, 100% zero-touch (2026-08-02) |
+| **V1.5** — reliable + every branch fires | full suite green ×3 consecutive heats **and** each loop branch proven to fire | 3× consecutive full-suite green + 4 branch-proving tracks pass |
+| **V2** — real work, human-gated | real problems in your repos; real fixes; human approves before landing | 5 real deliverables, human-approved, honestly scored |
+| **V2.5** — real work, autonomous landing | lands real fixes hands-off (the MISSION-010 dream) | N autonomous real merges that *survive* |
+| **V3 / COTG** | a non-technical person's vision → a finished honest tool in their hands | 1 real person · 1 real tool · shipped & used |
+
+**The four architecture questions (settle before building resource-heavy) → V2 contracts:**
+(1) *how a job is given* → a job-intake schema; (2) *how/when humans are paged* → explicit
+budget→page thresholds, each testable; (3) *how we act on human input* → a pause→inject→resume
+path that provably changes the job; (4) *pause/move the fleet at scale* → a real control-plane
+API, not the INFRA-518 runbook.
+
 ## 5. Workstreams (sequenced — keystone first)
 
 | # | Workstream | First increment | Reuses |
@@ -60,7 +110,7 @@ improve/merge gate, harden it from heuristic → real judge, and make AC-writing
 | **WS1** | **Judgment organ** | extract `check_coverage` → shared lib; add a **ci-stage verify rule** that reads gap AC (`GapStore::get`) + delegates to it; wire it into improve verify-merge so a merge is refused unless AC is covered | `pr_ac_coverage`, `verify/`, `chump-gap-store` |
 | **WS2** | **Scoping / decomposition** | AC-writer that emits **gap-specific checkable** AC at reserve (not boilerplate); comprehension-picks-the-files for a scoped task | `gap decompose`, comprehension organs |
 | **WS3** | **Self-management janitor** | RESILIENT-208 — dispatch `chump agent-run` to FIX a stuck PR (rebase/clippy/conflict), re-verify via WS1, merge; never close real work | `pr_rescue.rs`, `agent-run`, bot-merge |
-| **WS4** | **Deep test harness** | graduated drills curriculum (`chumpbench/drills/`) + real repos + **user stories + mock customers**, every lap graded by WS1's checker | ChumpBench runner, the drills |
+| **WS4** | **Deep test harness** | graduated drills curriculum (`chumpbench/drills/`) + real repos + **user stories + mock customers**, every lap graded by WS1's checker. **V1.5 bridge: 4 branch-proving tracks** that deliberately exceed the agent so each loop branch (§4b) is forced to fire deterministically — `too-hard→decompose`, `missing-tool→acquire`, `impossible→escalate`, `budget→page` (assert sub-jobs / capability-acquired / clean-escalation-no-storm / operator-paged-at-threshold) | ChumpBench runner, the drills, `seed_break` |
 | **WS5** | **Delivery last-mile (E5)** | deploy a verified result to a usable surface (URL/app), user-language hand-off | COTG-5.x |
 | **WS6** | **Publish V1** | release-auditor gate → the full public release | RELEASE_CHECKLIST, GIVEAWAY_SOP |
 
