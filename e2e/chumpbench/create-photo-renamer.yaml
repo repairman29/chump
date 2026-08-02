@@ -19,7 +19,8 @@ task: "Build a command-line tool in a file named rename_photos.py, using the Pil
 acceptance:
   kind: command
   check: |
-    python3 -m venv .venv &&
+    PY=$(command -v python3.12 || command -v python3.11 || command -v python3.13 || command -v python3) &&
+    "$PY" -m venv .venv &&
     .venv/bin/pip install -q pillow &&
     .venv/bin/python -c "from PIL import Image; im=Image.new('RGB',(4,4),'white'); ex=im.getexif(); ex.get_ifd(0x8769)[0x9003]='2021:06:15 10:30:00'; im.save('sample.jpg', exif=ex)" &&
     mkdir -p fixtures && mv sample.jpg fixtures/ &&

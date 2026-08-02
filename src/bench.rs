@@ -116,6 +116,15 @@ pub struct LapScore {
     pub result: String,
     pub human_touches: Option<u64>,
     pub detail: String,
+    /// CREDIBLE-188: effort — wall-clock seconds for the whole lap (drive + score).
+    /// The first honest effort dimension; a lap is now DATA, not just a green cell.
+    #[serde(default)]
+    pub wall_clock_s: u64,
+    /// CREDIBLE-188: the preferred model class this lap routed to (from difficulty).
+    /// The *actual* provider slot + token/cost live in the agent-run subprocess and
+    /// need it to emit per-run cost before the bench can attribute them (filed follow-up).
+    #[serde(default)]
+    pub model_class: String,
 }
 
 fn gh_bin() -> String {
@@ -1335,6 +1344,9 @@ pub fn score_track(track: &Track, drive_verdict: Option<(Verdict, String)>) -> L
         result,
         human_touches: touches,
         detail: format!("{detail}; touches: {touch_detail}"),
+        // CREDIBLE-188: set by the caller (run/run_heat) which times the whole lap.
+        wall_clock_s: 0,
+        model_class: String::new(),
     }
 }
 
@@ -1405,6 +1417,7 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
 
+    let lap_t0 = std::time::Instant::now();
     let drive_verdict = if apply {
         eprintln!("[bench] driving {} engine on {} …", track.mode, track.repo);
         match drive_engine(&track, implement) {
@@ -1418,7 +1431,11 @@ pub fn run(args: &[String]) -> i32 {
         None
     };
 
-    let score = score_track(&track, drive_verdict);
+    let mut score = score_track(&track, drive_verdict);
+    score.wall_clock_s = lap_t0.elapsed().as_secs();
+    score.model_class = model_class_for_difficulty(&track.difficulty)
+        .unwrap_or("default")
+        .to_string();
     if json {
         println!(
             "{}",
@@ -1439,6 +1456,10 @@ pub fn run(args: &[String]) -> i32 {
             .human_touches
             .map(|t| t.to_string())
             .unwrap_or_else(|| "n/a".into())
+    );
+    println!(
+        "  effort:     {}s wall-clock · routed class '{}'",
+        score.wall_clock_s, score.model_class
     );
     println!("  RESULT:     {}", score.result);
     println!("  detail:     {}", score.detail);
@@ -1528,6 +1549,7 @@ fn run_heat(args: &[String]) -> i32 {
                 continue;
             }
         };
+        let lap_t0 = std::time::Instant::now();
         let drive_verdict = if apply {
             eprintln!("[heat] driving {} on {} …", track.mode, track.repo);
             match drive_engine(&track, implement) {
@@ -1543,7 +1565,12 @@ fn run_heat(args: &[String]) -> i32 {
         } else {
             None
         };
-        scores.push(score_track(&track, drive_verdict));
+        let mut lap = score_track(&track, drive_verdict);
+        lap.wall_clock_s = lap_t0.elapsed().as_secs();
+        lap.model_class = model_class_for_difficulty(&track.difficulty)
+            .unwrap_or("default")
+            .to_string();
+        scores.push(lap);
     }
 
     if json {
@@ -1558,8 +1585,8 @@ fn run_heat(args: &[String]) -> i32 {
     let (green, total, zt) = heat_summary(&scores);
     println!("── ChumpBench V1 scorecard — {green}/{total} green ──");
     println!(
-        "  {:<32} {:<10} {:<8} {:<6} ACCEPTANCE",
-        "TRACK", "MODE", "RESULT", "TOUCH"
+        "  {:<32} {:<8} {:<8} {:<6} {:<7} CLASS",
+        "TRACK", "MODE", "RESULT", "TOUCH", "WALL"
     );
     for s in &scores {
         let touch = s
@@ -1567,12 +1594,20 @@ fn run_heat(args: &[String]) -> i32 {
             .map(|t| t.to_string())
             .unwrap_or_else(|| "n/a".into());
         println!(
-            "  {:<32} {:<10} {:<8} {:<6} {} → {:?}",
-            s.track, s.mode, s.result, touch, s.acceptance_kind, s.acceptance_verdict
+            "  {:<32} {:<8} {:<8} {:<6} {:<7} {}",
+            s.track,
+            s.mode,
+            s.result,
+            touch,
+            format!("{}s", s.wall_clock_s),
+            s.model_class
         );
     }
+    let total_wall: u64 = scores.iter().map(|s| s.wall_clock_s).sum();
     println!("  ─────");
-    println!("  GREEN: {green}/{total}   zero-touch passes: {zt}/{green}");
+    println!(
+        "  GREEN: {green}/{total}   zero-touch passes: {zt}/{green}   total wall-clock: {total_wall}s"
+    );
     if green == total && total > 0 {
         println!("  ✅ V1 scorecard fully green");
         0
@@ -1596,6 +1631,8 @@ mod tests {
             result: result.into(),
             human_touches: touches,
             detail: String::new(),
+            wall_clock_s: 0,
+            model_class: String::new(),
         }
     }
 
