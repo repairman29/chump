@@ -146,7 +146,51 @@ fn gh_bin() -> String {
 /// vs a stub / hack / teaching-to-the-test. ADVISORY: returns (verdict, reason); empty
 /// verdict when there's no diff or the gateway is down. This is the missing SPIRIT lens;
 /// the LETTER lens is `pr_ac_coverage`.
-fn spirit_judge(chump_bin: &str, task: &str, dir: &Path) -> (String, String) {
+/// CREDIBLE-195 (CREDIBLE-191 slice 1): build the SPIRIT-judge prompt, GROUNDED so the lens
+/// stops false-STUB-ing genuine minimal fixes. It gives the judge (a) the acceptance RESULT —
+/// a change that made a real acceptance check PASS is strong evidence it is NOT a stub (a
+/// minimal-but-correct fix is GENUINE, not STUB merely for being short); and (b) a fuller
+/// INTENT (mode + the acceptance command, so the judge knows what "done" means, not just a
+/// terse task line). Crucially, acceptance-PASS rules out STUB but NOT hack: a diff that passes
+/// by hardcoding the expected answer or gaming the check is still a HACK — that lens stays sharp.
+/// Pure (no I/O) so the grounding is unit-testable without the LLM gateway.
+fn build_spirit_prompt(track: &Track, acceptance: Verdict, diff_excerpt: &str) -> String {
+    let acc_str = match acceptance {
+        Verdict::Pass => "PASS",
+        Verdict::Fail => "FAIL",
+        Verdict::Unknown => "UNKNOWN",
+    };
+    let acceptance_check = if track.acceptance.check.trim().is_empty() {
+        "(none specified)"
+    } else {
+        track.acceptance.check.trim()
+    };
+    format!(
+        "You are a strict senior engineer. Judge whether the DIFF genuinely achieves the \
+         INTENT in SPIRIT, not just letter.\n\
+         GROUNDING: an automated acceptance check for this task returned {acc_str}. A change that \
+         makes a REAL acceptance check PASS is strong evidence it is NOT a stub — a minimal but \
+         correct fix that passes acceptance is GENUINE; do NOT call a small correct change STUB \
+         merely because it is short. BUT acceptance passing does NOT by itself prove genuineness: \
+         if the diff passes by hardcoding the expected answer or gaming the check, that is a HACK.\n\
+         Definitions: GENUINE = really does what the intent needs, cleanly. STUB = literally a \
+         placeholder / no-op / 'add your code here' / empty / does nothing. HACK = games the check, \
+         hardcodes the expected output, or is unidiomatic. PARTIAL = real but incomplete.\n\
+         Reply EXACTLY one line:\n\
+         VERDICT: <GENUINE|STUB|HACK|PARTIAL> - <reason in 15 words or fewer>\n\n\
+         === INTENT ===\nmode: {mode}\ntask: {task}\nacceptance (what 'done' means): {acceptance_check}\n\n\
+         === ACCEPTANCE RESULT ===\n{acc_str}\n\n=== DIFF ===\n{diff_excerpt}\n",
+        mode = track.mode,
+        task = track.task,
+    )
+}
+
+fn spirit_judge(
+    chump_bin: &str,
+    track: &Track,
+    acceptance: Verdict,
+    dir: &Path,
+) -> (String, String) {
     let cd = dir.to_string_lossy().to_string();
     // CREDIBLE-194: judge the LAP's real commit range, not `base_branch...HEAD`.
     // RESCUE/--implement laps commit onto the clone's OWN main, so base_branch resolves
@@ -180,15 +224,7 @@ fn spirit_judge(chump_bin: &str, task: &str, dir: &Path) -> (String, String) {
         return (String::new(), "no diff to judge".to_string());
     }
     let diff_excerpt: String = diff.chars().take(8000).collect();
-    let prompt = format!(
-        "You are a strict senior engineer. Judge whether the DIFF genuinely achieves the \
-         INTENT in SPIRIT, not just letter. GENUINE = really does what the intent needs, \
-         cleanly and idiomatically. STUB = placeholder / no-op / 'add your code here' / empty. \
-         HACK = games the check, hardcodes the expected answer, or is unidiomatic. PARTIAL = \
-         real but incomplete. Reply EXACTLY one line:\n\
-         VERDICT: <GENUINE|STUB|HACK|PARTIAL> - <reason in 15 words or fewer>\n\n\
-         === INTENT ===\n{task}\n\n=== DIFF ===\n{diff_excerpt}\n"
-    );
+    let prompt = build_spirit_prompt(track, acceptance, &diff_excerpt);
     let class = std::env::var("CHUMP_BENCH_SPIRIT_MODEL").unwrap_or_else(|_| "opus".to_string());
     let mut child = match Command::new(chump_bin)
         .args(["llm-complete", "--model", &class, "--max-tokens", "200"])
@@ -1565,7 +1601,7 @@ pub fn run(args: &[String]) -> i32 {
             .unwrap_or_else(|_| "chump".to_string());
         let d = local_clone_dir(&track.repo);
         if d.exists() {
-            let (v, r) = spirit_judge(&chump_bin, &track.task, &d);
+            let (v, r) = spirit_judge(&chump_bin, &track, score.acceptance_verdict, &d);
             score.spirit_verdict = v;
             score.spirit_reason = r;
         }
@@ -1716,7 +1752,7 @@ fn run_heat(args: &[String]) -> i32 {
                 .unwrap_or_else(|_| "chump".to_string());
             let d = local_clone_dir(&track.repo);
             if d.exists() {
-                let (v, r) = spirit_judge(&cbin, &track.task, &d);
+                let (v, r) = spirit_judge(&cbin, &track, lap.acceptance_verdict, &d);
                 lap.spirit_verdict = v;
                 lap.spirit_reason = r;
             }
@@ -2232,6 +2268,58 @@ budget:
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible195_spirit_prompt_is_grounded_by_acceptance_and_intent() {
+        // CREDIBLE-195 (CREDIBLE-191 slice 1): the spirit prompt must be grounded so the lens
+        // stops false-STUB-ing genuine minimal fixes — it needs the acceptance RESULT + a
+        // fuller intent (mode + acceptance command), while keeping the HACK lens sharp.
+        let y = r#"
+id: rescue-beast-ci
+mode: RESCUE
+repo: repairman29/BEAST-MODE
+stack: javascript
+difficulty: easy
+task: "fix the add function"
+acceptance:
+  kind: command
+  check: "node -e \"const {add}=require('./f'); if(add(2,3)!==5) process.exit(1)\""
+budget:
+  max_wall_clock_min: 30
+  max_human_touches: 0
+"#;
+        let t: Track = serde_yaml::from_str(y).unwrap();
+        let diff = "+function add(a,b){return a+b}";
+        let p = build_spirit_prompt(&t, Verdict::Pass, diff);
+        // grounded by the acceptance RESULT (the fix that closes the false-STUB)
+        assert!(
+            p.contains("acceptance check for this task returned PASS"),
+            "prompt must state the acceptance result: {p}"
+        );
+        assert!(
+            p.contains("minimal but correct fix that passes acceptance is GENUINE"),
+            "prompt must tell the judge a passing minimal fix is GENUINE, not STUB"
+        );
+        // the HACK lens stays sharp (acceptance-pass rules out STUB, not hack)
+        assert!(
+            p.contains("hardcoding the expected answer or gaming the check is")
+                || p.contains("HACK"),
+            "prompt must keep the hack lens"
+        );
+        // fuller intent: mode + the acceptance command (not just the terse task)
+        assert!(p.contains("mode: RESCUE"), "intent must include the mode");
+        assert!(
+            p.contains("node -e"),
+            "intent must include the acceptance command so the judge knows what 'done' means"
+        );
+        assert!(p.contains("return a+b"), "the diff must be included");
+        // FAIL acceptance surfaces as FAIL (grounding reflects reality, not always PASS)
+        let pf = build_spirit_prompt(&t, Verdict::Fail, diff);
+        assert!(
+            pf.contains("returned FAIL"),
+            "a failed acceptance must surface as FAIL in the prompt"
+        );
     }
 
     #[test]
