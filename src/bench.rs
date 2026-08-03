@@ -133,6 +133,16 @@ pub struct LapScore {
     pub spirit_verdict: String,
     #[serde(default)]
     pub spirit_reason: String,
+    /// CREDIBLE-190: agent-loop effort signals, parsed from the task-directed agent-run
+    /// output, so flails are LEGIBLE in the scorecard instead of hiding behind wall-clock.
+    /// `tool_calls` = how many tools the agent invoked; `hit_iteration_cap` = the agent
+    /// exhausted its max-iteration budget without terminating (the 1909s / 26-write flail:
+    /// it produced the correct fix but couldn't recognize it was done and stop). Populated
+    /// only on --implement laps (the ones that spawn a captured agent-run).
+    #[serde(default)]
+    pub tool_calls: u64,
+    #[serde(default)]
+    pub hit_iteration_cap: bool,
 }
 
 fn gh_bin() -> String {
@@ -821,6 +831,25 @@ fn tail_to_chars(s: &str, max_chars: usize) -> String {
     )
 }
 
+/// CREDIBLE-190: parse the captured task-directed agent-run output (a `.bench-agent-output.log`
+/// beside the clone) for effort signals the scorecard was blind to — how many tools the agent
+/// invoked, and whether it exhausted its max-iteration budget WITHOUT terminating (the flail
+/// where the agent produced the fix but couldn't recognize it was done and kept rewriting).
+/// Returns (0, false) when there's no capture (e.g. a non-`--implement` lap). Pure read.
+fn parse_agent_effort(clone_dir: &Path) -> (u64, bool) {
+    let capture = clone_dir
+        .parent()
+        .unwrap_or(clone_dir)
+        .join(".bench-agent-output.log");
+    match std::fs::read_to_string(&capture) {
+        Ok(text) => (
+            text.matches("Executing tool:").count() as u64,
+            text.contains("Exceeded max iterations"),
+        ),
+        Err(_) => (0, false),
+    }
+}
+
 fn drive_task_directed(chump: &str, track: &Track) -> Result<Option<(Verdict, String)>> {
     let dir = local_clone_dir(&track.repo);
     if let Some(parent) = dir.parent() {
@@ -969,6 +998,30 @@ fn drive_task_directed(chump: &str, track: &Track) -> Result<Option<(Verdict, St
     // write_file (with its shrink guard) so the agent can create files.
     .env("CHUMP_FREE_TIER_WRITE_FILE", "1");
     apply_difficulty_routing(&mut cmd, track);
+    // CREDIBLE-190: capture the agent-run output beside the clone so the scorecard can
+    // surface tool-call count + whether the agent exhausted its iteration budget (the
+    // 1909s/26-write flail). Redirected to a file (not inherited) so it's parseable;
+    // watch it live with `tail -f`. On any capture-setup failure, fall back to inherited
+    // stdio so a lap never fails just because we couldn't observe it.
+    let capture_path = dir
+        .parent()
+        .unwrap_or(dir.as_path())
+        .join(".bench-agent-output.log");
+    match std::fs::File::create(&capture_path) {
+        Ok(f) => {
+            eprintln!(
+                "[bench] agent-run output → {} (tail -f to watch)",
+                capture_path.display()
+            );
+            if let Ok(f2) = f.try_clone() {
+                cmd.stdout(std::process::Stdio::from(f))
+                    .stderr(std::process::Stdio::from(f2));
+            }
+        }
+        Err(e) => {
+            eprintln!("[bench] could not capture agent-run output ({e}) — effort will read 0")
+        }
+    }
     let status = cmd.status();
     let _ = std::fs::remove_file(&prompt_path);
     match status {
@@ -1495,6 +1548,9 @@ pub fn score_track(track: &Track, drive_verdict: Option<(Verdict, String)>) -> L
         model_class: String::new(),
         spirit_verdict: String::new(),
         spirit_reason: String::new(),
+        // CREDIBLE-190: set by the caller from the captured agent-run output (--implement laps).
+        tool_calls: 0,
+        hit_iteration_cap: false,
     }
 }
 
@@ -1605,6 +1661,12 @@ pub fn run(args: &[String]) -> i32 {
             score.spirit_verdict = v;
             score.spirit_reason = r;
         }
+        // CREDIBLE-190: only --implement laps spawn a captured agent-run; read its effort.
+        if implement {
+            let (tc, cap) = parse_agent_effort(&d);
+            score.tool_calls = tc;
+            score.hit_iteration_cap = cap;
+        }
     }
     if json {
         println!(
@@ -1628,8 +1690,23 @@ pub fn run(args: &[String]) -> i32 {
             .unwrap_or_else(|| "n/a".into())
     );
     println!(
-        "  effort:     {}s wall-clock · routed class '{}'",
-        score.wall_clock_s, score.model_class
+        "  effort:     {}s wall-clock · routed class '{}'{}",
+        score.wall_clock_s,
+        score.model_class,
+        // CREDIBLE-190: make the agent-loop flail legible right in the scorecard.
+        if score.tool_calls > 0 || score.hit_iteration_cap {
+            format!(
+                " · {} tool-calls{}",
+                score.tool_calls,
+                if score.hit_iteration_cap {
+                    " · ⚠ HIT ITERATION CAP (agent didn't terminate)"
+                } else {
+                    ""
+                }
+            )
+        } else {
+            String::new()
+        }
     );
     if !score.spirit_verdict.is_empty() {
         println!(
@@ -1756,6 +1833,12 @@ fn run_heat(args: &[String]) -> i32 {
                 lap.spirit_verdict = v;
                 lap.spirit_reason = r;
             }
+            // CREDIBLE-190: only --implement laps capture agent output; read its effort.
+            if implement {
+                let (tc, cap) = parse_agent_effort(&d);
+                lap.tool_calls = tc;
+                lap.hit_iteration_cap = cap;
+            }
         }
         scores.push(lap);
     }
@@ -1772,8 +1855,8 @@ fn run_heat(args: &[String]) -> i32 {
     let (green, total, zt) = heat_summary(&scores);
     println!("── ChumpBench V1 scorecard — {green}/{total} green ──");
     println!(
-        "  {:<32} {:<8} {:<8} {:<6} {:<7} {:<8} SPIRIT",
-        "TRACK", "MODE", "RESULT", "TOUCH", "WALL", "CLASS"
+        "  {:<32} {:<8} {:<8} {:<6} {:<7} {:<8} {:<7} SPIRIT",
+        "TRACK", "MODE", "RESULT", "TOUCH", "WALL", "CLASS", "TOOLS"
     );
     for s in &scores {
         let touch = s
@@ -1785,14 +1868,26 @@ fn run_heat(args: &[String]) -> i32 {
         } else {
             s.spirit_verdict.clone()
         };
+        // CREDIBLE-190: TOOLS column — tool-call count, with ⚠ when the agent hit its
+        // iteration cap (flailed without terminating). "-" when not a captured lap.
+        let tools = if s.tool_calls > 0 || s.hit_iteration_cap {
+            format!(
+                "{}{}",
+                s.tool_calls,
+                if s.hit_iteration_cap { "⚠" } else { "" }
+            )
+        } else {
+            "-".to_string()
+        };
         println!(
-            "  {:<32} {:<8} {:<8} {:<6} {:<7} {:<8} {}",
+            "  {:<32} {:<8} {:<8} {:<6} {:<7} {:<8} {:<7} {}",
             s.track,
             s.mode,
             s.result,
             touch,
             format!("{}s", s.wall_clock_s),
             s.model_class,
+            tools,
             spirit
         );
     }
@@ -1828,6 +1923,8 @@ mod tests {
             model_class: String::new(),
             spirit_verdict: String::new(),
             spirit_reason: String::new(),
+            tool_calls: 0,
+            hit_iteration_cap: false,
         }
     }
 
@@ -2320,6 +2417,40 @@ budget:
             pf.contains("returned FAIL"),
             "a failed acceptance must surface as FAIL in the prompt"
         );
+    }
+
+    #[test]
+    fn credible190_parse_agent_effort_counts_tools_and_detects_cap() {
+        // CREDIBLE-190: the scorecard was blind to the agent-loop flail (26 write_file +
+        // "Exceeded max iterations"). parse_agent_effort reads the captured agent-run log
+        // beside the clone and surfaces (tool_calls, hit_iteration_cap).
+        let base = std::env::temp_dir().join(format!("chump-bench-c190-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let clone = base.join("clone");
+        std::fs::create_dir_all(&clone).unwrap();
+        // No capture (e.g. a non --implement lap) → (0, false), never panics.
+        assert_eq!(parse_agent_effort(&clone), (0, false));
+        // A flail: 3 tool calls AND the iteration cap.
+        let cap = base.join(".bench-agent-output.log");
+        std::fs::write(
+            &cap,
+            "🔧 Executing tool: write_file\nnoise\n🔧 Executing tool: write_file\n\
+             🔧 Executing tool: git_commit\nExceeded max iterations (30)\n",
+        )
+        .unwrap();
+        assert_eq!(
+            parse_agent_effort(&clone),
+            (3, true),
+            "counts 3 tool calls and detects the iteration cap"
+        );
+        // A clean lap: tool calls, no cap.
+        std::fs::write(&cap, "🔧 Executing tool: read_file\ndone\n").unwrap();
+        assert_eq!(
+            parse_agent_effort(&clone),
+            (1, false),
+            "1 tool call, no iteration cap"
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
