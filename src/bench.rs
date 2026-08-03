@@ -148,9 +148,29 @@ fn gh_bin() -> String {
 /// the LETTER lens is `pr_ac_coverage`.
 fn spirit_judge(chump_bin: &str, task: &str, dir: &Path) -> (String, String) {
     let cd = dir.to_string_lossy().to_string();
-    let base = base_branch(dir);
+    // CREDIBLE-194: judge the LAP's real commit range, not `base_branch...HEAD`.
+    // RESCUE/--implement laps commit onto the clone's OWN main, so base_branch resolves
+    // to the same tip as HEAD and the three-dot diff is empty → "no diff to judge" on
+    // exactly the laps that most need spirit judgment. lap_commit_range() (INFRA-3523,
+    // base=origin/<default>..tip) is the range the touch-tally already uses correctly;
+    // fall back to base...HEAD only if it can't resolve. Exclude the runtime junk the
+    // agent tends to sweep into commits (session dbs, ambient log) so the lens judges
+    // the real change, not the OS's own scratch state.
+    let range = lap_commit_range(dir).unwrap_or_else(|| format!("{}...HEAD", base_branch(dir)));
     let diff = Command::new("git")
-        .args(["-C", &cd, "diff", &format!("{base}...HEAD")])
+        .args([
+            "-C",
+            &cd,
+            "diff",
+            &range,
+            "--",
+            ".",
+            ":(exclude)sessions/**",
+            ":(exclude).chump-locks/**",
+            ":(exclude)**/*.db",
+            ":(exclude)**/*.db-shm",
+            ":(exclude)**/*.db-wal",
+        ])
         .output()
         .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
@@ -2129,6 +2149,86 @@ budget:
             full,
             (n + 1) as u64,
             "sanity: unscoped counts every commit (the old bug)"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible194_spirit_diff_range_nonempty_when_lap_commits_on_main() {
+        // CREDIBLE-194: a RESCUE/--implement lap commits onto the clone's OWN main (no
+        // chump/* branch). The OLD spirit-judge diff `base_branch...HEAD` was empty there
+        // (base resolves to the same tip as HEAD) → "no diff to judge" on exactly the laps
+        // that most need judging. Prove the lap_commit_range-based diff sees the lap's
+        // change while the old three-dot diff does not.
+        let tmp = std::env::temp_dir().join(format!("chump-bench-c194-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let cd = tmp.to_string_lossy().to_string();
+        let git = |args: &[&str]| {
+            let ok = Command::new("git")
+                .args(["-C", &cd])
+                .args(args)
+                .env("GIT_AUTHOR_DATE", "2026-01-01T00:00:00")
+                .env("GIT_COMMITTER_DATE", "2026-01-01T00:00:00")
+                .output()
+                .unwrap();
+            assert!(
+                ok.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&ok.stderr)
+            );
+        };
+        let git_out = |args: &[&str]| -> String {
+            let o = Command::new("git")
+                .args(["-C", &cd])
+                .args(args)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&o.stdout).trim().to_string()
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.name", "Bench Bot"]);
+        git(&["config", "user.email", "bench@example.com"]);
+        // Base commit, then freeze origin/main at it (the immovable base a real clone has).
+        std::fs::write(tmp.join("f0.txt"), "0").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-q", "-m", "base"]);
+        let base_sha = git_out(&["rev-parse", "HEAD"]);
+        git(&["update-ref", "refs/remotes/origin/main", &base_sha]);
+        git(&[
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/main",
+        ]);
+        // The lap commits its fix ONTO main (the RESCUE/--implement scenario, no chump/* branch).
+        std::fs::write(tmp.join("fixture.js"), "function add(a,b){return a+b}").unwrap();
+        git(&["add", "-A"]);
+        git(&[
+            "commit",
+            "-q",
+            "-m",
+            "fix the fixture\n\nChump-Agent: chump/v1",
+        ]);
+
+        // OLD spirit-judge behavior: base_branch is "main"; `main...HEAD` is empty because
+        // the lap commits are ON main (base == HEAD).
+        let old_three_dot = git_out(&["diff", "main...HEAD"]);
+        assert!(
+            old_three_dot.is_empty(),
+            "old base_branch...HEAD diff is empty on a commit-on-main lap (the bug)"
+        );
+
+        // FIX: lap_commit_range yields origin/main..HEAD → the diff sees the lap's change.
+        let range = lap_commit_range(&tmp).expect("range resolves");
+        let scoped = git_out(&["diff", &range]);
+        assert!(
+            scoped.contains("fixture.js"),
+            "lap_commit_range diff must contain the lap's change, got: {scoped:?}"
+        );
+        assert!(
+            !scoped.is_empty(),
+            "the spirit judge now has a real diff to judge"
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
