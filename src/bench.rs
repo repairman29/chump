@@ -125,12 +125,102 @@ pub struct LapScore {
     /// need it to emit per-run cost before the bench can attribute them (filed follow-up).
     #[serde(default)]
     pub model_class: String,
+    /// CREDIBLE-192: the SPIRIT judge's verdict on whether the change GENUINELY achieves
+    /// the intent — GENUINE | STUB | HACK | PARTIAL | (empty = not judged / gateway down).
+    /// ADVISORY for now (shown, not gated): the letter (acceptance) still decides result;
+    /// this is the missing "does it do what we needed, in the best way" lens.
+    #[serde(default)]
+    pub spirit_verdict: String,
+    #[serde(default)]
+    pub spirit_reason: String,
 }
 
 fn gh_bin() -> String {
     std::env::var("CHUMP_BENCH_GH_BIN")
         .or_else(|_| std::env::var("CHUMP_GH_BIN"))
         .unwrap_or_else(|_| "gh".to_string())
+}
+
+/// CREDIBLE-192: the SPIRIT judge — asks an LLM (via the shared `chump llm-complete`
+/// gateway the code-reviewer uses) whether the lap's diff GENUINELY achieves the intent,
+/// vs a stub / hack / teaching-to-the-test. ADVISORY: returns (verdict, reason); empty
+/// verdict when there's no diff or the gateway is down. This is the missing SPIRIT lens;
+/// the LETTER lens is `pr_ac_coverage`.
+fn spirit_judge(chump_bin: &str, task: &str, dir: &Path) -> (String, String) {
+    let cd = dir.to_string_lossy().to_string();
+    let base = base_branch(dir);
+    let diff = Command::new("git")
+        .args(["-C", &cd, "diff", &format!("{base}...HEAD")])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    let diff = diff.trim();
+    if diff.is_empty() {
+        return (String::new(), "no diff to judge".to_string());
+    }
+    let diff_excerpt: String = diff.chars().take(8000).collect();
+    let prompt = format!(
+        "You are a strict senior engineer. Judge whether the DIFF genuinely achieves the \
+         INTENT in SPIRIT, not just letter. GENUINE = really does what the intent needs, \
+         cleanly and idiomatically. STUB = placeholder / no-op / 'add your code here' / empty. \
+         HACK = games the check, hardcodes the expected answer, or is unidiomatic. PARTIAL = \
+         real but incomplete. Reply EXACTLY one line:\n\
+         VERDICT: <GENUINE|STUB|HACK|PARTIAL> - <reason in 15 words or fewer>\n\n\
+         === INTENT ===\n{task}\n\n=== DIFF ===\n{diff_excerpt}\n"
+    );
+    let class = std::env::var("CHUMP_BENCH_SPIRIT_MODEL").unwrap_or_else(|_| "opus".to_string());
+    let mut child = match Command::new(chump_bin)
+        .args(["llm-complete", "--model", &class, "--max-tokens", "200"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return (String::new(), "spirit gateway unavailable".to_string()),
+    };
+    if let Some(mut si) = child.stdin.take() {
+        use std::io::Write;
+        let _ = si.write_all(prompt.as_bytes());
+    }
+    let out = match child.wait_with_output() {
+        Ok(o) => o,
+        Err(_) => return (String::new(), "spirit gateway error".to_string()),
+    };
+    parse_spirit_verdict(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// CREDIBLE-192: parse the spirit judge's reply into (verdict, reason). Pure — unit-tested.
+fn parse_spirit_verdict(resp: &str) -> (String, String) {
+    for line in resp.lines() {
+        let l = line.trim();
+        if l.to_uppercase().starts_with("VERDICT:") {
+            let rest = l[8..].trim();
+            let rest_up = rest.to_uppercase();
+            for v in ["GENUINE", "STUB", "HACK", "PARTIAL"] {
+                if rest_up.starts_with(v) {
+                    let reason = rest
+                        .splitn(2, |c| c == '-' || c == '\u{2014}' || c == ':')
+                        .nth(1)
+                        .map(|s| s.trim().to_string())
+                        .unwrap_or_default();
+                    return (v.to_string(), reason);
+                }
+            }
+        }
+    }
+    // Fallback: a bare keyword anywhere (worst = STUB/HACK, so check those first).
+    let up = resp.to_uppercase();
+    for v in ["STUB", "HACK", "PARTIAL", "GENUINE"] {
+        if up.contains(v) {
+            return (
+                v.to_string(),
+                "inferred from unstructured reply".to_string(),
+            );
+        }
+    }
+    (String::new(), "unparseable spirit reply".to_string())
 }
 
 /// A single CI check-run: its name, lifecycle status, and (once completed) conclusion.
@@ -1347,6 +1437,8 @@ pub fn score_track(track: &Track, drive_verdict: Option<(Verdict, String)>) -> L
         // CREDIBLE-188: set by the caller (run/run_heat) which times the whole lap.
         wall_clock_s: 0,
         model_class: String::new(),
+        spirit_verdict: String::new(),
+        spirit_reason: String::new(),
     }
 }
 
@@ -1436,6 +1528,19 @@ pub fn run(args: &[String]) -> i32 {
     score.model_class = model_class_for_difficulty(&track.difficulty)
         .unwrap_or("default")
         .to_string();
+    // CREDIBLE-192: advisory SPIRIT judgment on the lap's diff (does it GENUINELY
+    // achieve the intent, or is it a stub/hack?). Only when we drove a lap.
+    if apply {
+        let chump_bin = std::env::var("CHUMP_BENCH_CHUMP_BIN")
+            .or_else(|_| std::env::var("CHUMP_BIN"))
+            .unwrap_or_else(|_| "chump".to_string());
+        let d = local_clone_dir(&track.repo);
+        if d.exists() {
+            let (v, r) = spirit_judge(&chump_bin, &track.task, &d);
+            score.spirit_verdict = v;
+            score.spirit_reason = r;
+        }
+    }
     if json {
         println!(
             "{}",
@@ -1461,6 +1566,12 @@ pub fn run(args: &[String]) -> i32 {
         "  effort:     {}s wall-clock · routed class '{}'",
         score.wall_clock_s, score.model_class
     );
+    if !score.spirit_verdict.is_empty() {
+        println!(
+            "  spirit:     {} — {} (advisory)",
+            score.spirit_verdict, score.spirit_reason
+        );
+    }
     println!("  RESULT:     {}", score.result);
     println!("  detail:     {}", score.detail);
     0
@@ -1570,6 +1681,17 @@ fn run_heat(args: &[String]) -> i32 {
         lap.model_class = model_class_for_difficulty(&track.difficulty)
             .unwrap_or("default")
             .to_string();
+        if apply {
+            let cbin = std::env::var("CHUMP_BENCH_CHUMP_BIN")
+                .or_else(|_| std::env::var("CHUMP_BIN"))
+                .unwrap_or_else(|_| "chump".to_string());
+            let d = local_clone_dir(&track.repo);
+            if d.exists() {
+                let (v, r) = spirit_judge(&cbin, &track.task, &d);
+                lap.spirit_verdict = v;
+                lap.spirit_reason = r;
+            }
+        }
         scores.push(lap);
     }
 
@@ -1585,22 +1707,28 @@ fn run_heat(args: &[String]) -> i32 {
     let (green, total, zt) = heat_summary(&scores);
     println!("── ChumpBench V1 scorecard — {green}/{total} green ──");
     println!(
-        "  {:<32} {:<8} {:<8} {:<6} {:<7} CLASS",
-        "TRACK", "MODE", "RESULT", "TOUCH", "WALL"
+        "  {:<32} {:<8} {:<8} {:<6} {:<7} {:<8} SPIRIT",
+        "TRACK", "MODE", "RESULT", "TOUCH", "WALL", "CLASS"
     );
     for s in &scores {
         let touch = s
             .human_touches
             .map(|t| t.to_string())
             .unwrap_or_else(|| "n/a".into());
+        let spirit = if s.spirit_verdict.is_empty() {
+            "-".to_string()
+        } else {
+            s.spirit_verdict.clone()
+        };
         println!(
-            "  {:<32} {:<8} {:<8} {:<6} {:<7} {}",
+            "  {:<32} {:<8} {:<8} {:<6} {:<7} {:<8} {}",
             s.track,
             s.mode,
             s.result,
             touch,
             format!("{}s", s.wall_clock_s),
-            s.model_class
+            s.model_class,
+            spirit
         );
     }
     let total_wall: u64 = scores.iter().map(|s| s.wall_clock_s).sum();
@@ -1633,6 +1761,8 @@ mod tests {
             detail: String::new(),
             wall_clock_s: 0,
             model_class: String::new(),
+            spirit_verdict: String::new(),
+            spirit_reason: String::new(),
         }
     }
 
@@ -1642,6 +1772,30 @@ mod tests {
             status: status.to_string(),
             conclusion: conclusion.to_string(),
         }
+    }
+
+    #[test]
+    fn credible192_parse_spirit_verdict() {
+        assert_eq!(
+            parse_spirit_verdict("VERDICT: GENUINE - cleanly implements the parser").0,
+            "GENUINE"
+        );
+        let (v, r) = parse_spirit_verdict("VERDICT: STUB - placeholder, does nothing");
+        assert_eq!(v, "STUB");
+        assert!(r.contains("placeholder"));
+        // em-dash separator + surrounding prose lines.
+        assert_eq!(
+            parse_spirit_verdict("here is my review\nVERDICT: HACK \u{2014} hardcodes the answer")
+                .0,
+            "HACK"
+        );
+        // Unstructured fallback: a bare keyword still classifies (worst-first).
+        assert_eq!(
+            parse_spirit_verdict("this looks like a stub to me honestly").0,
+            "STUB"
+        );
+        // Nothing parseable → empty verdict (advisory: treated as not-judged).
+        assert_eq!(parse_spirit_verdict("I cannot tell").0, "");
     }
 
     #[test]
