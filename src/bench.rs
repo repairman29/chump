@@ -1515,8 +1515,17 @@ pub fn run(args: &[String]) -> i32 {
         match drive_engine(&track, implement) {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("[bench] engine drive failed: {e:#} — scoring current state anyway");
-                None
+                // CREDIBLE-193: an engine-drive failure under --apply must NOT fall
+                // through to score the pre-existing clone. A prior lap's leftover fix
+                // sits in the reused clone, so grade_command passes → false PASS with
+                // no lap-authored diff (spirit: "no diff to judge"). Grade the lap a
+                // hard FAIL, using the engine error as the acceptance verdict —
+                // score_track's (Some(v), _) arm consumes it directly. Distinct from
+                // CREDIBLE-190 (engine-SUCCESS + non-wiped clone).
+                eprintln!(
+                    "[bench] engine drive FAILED: {e:#} — grading lap FAIL (refusing to score stale clone)"
+                );
+                Some((Verdict::Fail, format!("engine drive failed: {e:#}")))
             }
         }
     } else {
@@ -1957,6 +1966,49 @@ mod tests {
         assert_eq!(overall_result(Verdict::Pass, None, 0), "PASS");
         // acceptance pass but a human had to reach in → PARTIAL (the honest distinction)
         assert_eq!(overall_result(Verdict::Pass, Some(3), 0), "PARTIAL");
+    }
+
+    #[test]
+    fn credible193_engine_failure_grades_fail_not_stale_pass() {
+        // CREDIBLE-193: when the --apply engine drive FAILS, run() now hands
+        // score_track a Some((Verdict::Fail, <engine error>)) so the lap grades a
+        // hard FAIL — instead of falling through to grade_command on the STALE local
+        // clone, where a prior lap's leftover fix false-greened the acceptance
+        // (result=PASS, wall_clock_s=1, spirit="no diff to judge"). This pins that a
+        // failure drive-verdict maps to result="FAIL", never a stale PASS. The repo
+        // name has no local clone, so grade_command is never consulted.
+        let y = r#"
+id: rescue-nonexistent
+mode: RESCUE
+repo: test/credible193-nonexistent-bench-repo
+stack: javascript
+difficulty: easy
+task: "fix the bug"
+acceptance:
+  kind: command
+  check: "node -e \"process.exit(0)\""
+budget:
+  max_wall_clock_min: 30
+  max_human_touches: 0
+"#;
+        let t: Track = serde_yaml::from_str(y).unwrap();
+        let score = score_track(
+            &t,
+            Some((
+                Verdict::Fail,
+                "engine drive failed: no onboard scan".to_string(),
+            )),
+        );
+        assert_eq!(
+            score.result, "FAIL",
+            "engine-drive failure must grade FAIL, not score a stale clone"
+        );
+        assert_eq!(score.acceptance_verdict, Verdict::Fail);
+        assert!(
+            score.detail.contains("engine drive failed"),
+            "the engine error must be surfaced in the lap detail, got: {}",
+            score.detail
+        );
     }
 
     #[test]
