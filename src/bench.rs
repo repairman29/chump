@@ -850,6 +850,22 @@ fn parse_agent_effort(clone_dir: &Path) -> (u64, bool) {
     }
 }
 
+/// EFFECTIVE-352: the task-directed `--implement` prompt, with an explicit STOP-WHEN-DONE
+/// instruction. Without it the agent produced the correct fix early but kept re-writing to
+/// "double-check", looping to its iteration cap (the 1909s / 26-write flail CREDIBLE-190 made
+/// legible). Pure so the nudge is unit-testable without spawning an agent.
+fn build_implement_prompt(task: &str, comprehension: &str) -> String {
+    format!(
+        "{task}{comprehension}\n\nYou are working in an existing repository (your current \
+         directory). Make the change directly — edit or create the necessary files so the task \
+         is complete. Do not ask questions; implement fully.\n\n\
+         STOP WHEN DONE: make the MINIMAL change that completes the task, then STOP. Do NOT \
+         re-write files you already wrote to 'double-check', do not re-verify by rewriting, and \
+         do not keep polishing. Once the necessary files are written you are finished — end your \
+         turn."
+    )
+}
+
 fn drive_task_directed(chump: &str, track: &Track) -> Result<Option<(Verdict, String)>> {
     let dir = local_clone_dir(&track.repo);
     if let Some(parent) = dir.parent() {
@@ -968,12 +984,7 @@ fn drive_task_directed(chump: &str, track: &Track) -> Result<Option<(Verdict, St
         }
     }
     // The agent gets the TASK (not the acceptance command) and works in the clone.
-    let prompt = format!(
-        "{}{}\n\nYou are working in an existing repository (your current directory). \
-         Make the change directly — edit or create the necessary files so the task \
-         is complete. Do not ask questions; implement fully.",
-        track.task, comprehension
-    );
+    let prompt = build_implement_prompt(&track.task, &comprehension);
     // Prompt lives OUTSIDE the clone so the agent doesn't treat it as a repo file.
     let prompt_path = dir
         .parent()
@@ -2416,6 +2427,31 @@ budget:
         assert!(
             pf.contains("returned FAIL"),
             "a failed acceptance must surface as FAIL in the prompt"
+        );
+    }
+
+    #[test]
+    fn effective352_implement_prompt_tells_agent_to_stop_when_done() {
+        // EFFECTIVE-352: the --implement prompt must carry an explicit termination
+        // instruction so the agent stops after the minimal fix instead of looping to its
+        // iteration cap (the 1909s / 26-write flail). Also preserve the task + comprehension.
+        let p = build_implement_prompt("fix the add function", "\n\n=== CI LOG ===\nboom");
+        assert!(p.contains("fix the add function"), "keeps the task");
+        assert!(
+            p.contains("=== CI LOG ==="),
+            "keeps the comprehension block"
+        );
+        assert!(
+            p.contains("STOP WHEN DONE"),
+            "carries the stop-when-done instruction"
+        );
+        assert!(
+            p.contains("MINIMAL change") && p.contains("end your turn"),
+            "instructs a minimal change then terminate"
+        );
+        assert!(
+            p.to_lowercase().contains("do not") && p.contains("double-check"),
+            "explicitly forbids the re-write-to-double-check loop that caused the flail"
         );
     }
 
