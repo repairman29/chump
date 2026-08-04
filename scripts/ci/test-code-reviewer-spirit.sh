@@ -32,6 +32,12 @@ final_verdict() { # RESPONSE (via stdin) — echoes the post-SPIRIT verdict
     SPIRIT_LINE=$(echo "$RESPONSE" | grep -E '^SPIRIT:[[:space:]]*(GENUINE|PARTIAL|STUB)' | head -1)
     SPIRIT=$(echo "$SPIRIT_LINE" | sed -E 's/^SPIRIT:[[:space:]]*([A-Z]+).*/\1/')
     if [[ "$SPIRIT" == "STUB" && "$VERDICT" == "APPROVE" ]]; then VERDICT="CONCERN"; fi
+    # CREDIBLE-191 slice-2: CORRECTNESS + HARMONY lenses, same additive/fail-open rule.
+    local CORR HARM
+    CORR=$(echo "$RESPONSE" | grep -E '^CORRECTNESS:[[:space:]]*(SOUND|UNSURE|FALSE-GREEN)' | head -1 | sed -E 's/^CORRECTNESS:[[:space:]]*([A-Z-]+).*/\1/')
+    if [[ "$CORR" == "FALSE-GREEN" && "$VERDICT" == "APPROVE" ]]; then VERDICT="CONCERN"; fi
+    HARM=$(echo "$RESPONSE" | grep -E '^HARMONY:[[:space:]]*(FITS|HACKY|REGRESSION-RISK)' | head -1 | sed -E 's/^HARMONY:[[:space:]]*([A-Z-]+).*/\1/')
+    if [[ "$HARM" == "REGRESSION-RISK" && "$VERDICT" == "APPROVE" ]]; then VERDICT="CONCERN"; fi
     echo "$VERDICT"
 }
 
@@ -61,12 +67,38 @@ check "malformed SPIRIT keeps APPROVE" "APPROVE" \
 check "STUB leaves CONCERN" "CONCERN" \
     "$(printf 'CONCERN: new dep added\nSPIRIT: STUB - also faked\n' | final_verdict)"
 
-# 7. Structural guard: the live script still carries the gate (not silently removed).
+# --- CREDIBLE-191 slice-2: CORRECTNESS + HARMONY lenses ---
+# 7. FALSE-GREEN downgrades APPROVE (broken-but-green half of EFFECTIVE-351).
+check "FALSE-GREEN overrides APPROVE" "CONCERN" \
+    "$(printf 'APPROVE: ok\nSPIRIT: GENUINE - real\nCORRECTNESS: FALSE-GREEN - inverted condition, test never hits it\nHARMONY: FITS - fine\n' | final_verdict)"
+
+# 8. REGRESSION-RISK downgrades APPROVE.
+check "REGRESSION-RISK overrides APPROVE" "CONCERN" \
+    "$(printf 'APPROVE: ok\nSPIRIT: GENUINE - real\nCORRECTNESS: SOUND - right\nHARMONY: REGRESSION-RISK - caller foo() not updated\n' | final_verdict)"
+
+# 9. SOUND + FITS keep APPROVE (informational verdicts never block).
+check "SOUND+FITS keep APPROVE" "APPROVE" \
+    "$(printf 'APPROVE: ok\nSPIRIT: GENUINE - real\nCORRECTNESS: SOUND - right\nHARMONY: FITS - clean\n' | final_verdict)"
+
+# 10. HACKY / UNSURE are informational — do NOT block.
+check "HACKY+UNSURE keep APPROVE" "APPROVE" \
+    "$(printf 'APPROVE: ok\nCORRECTNESS: UNSURE - could not verify\nHARMONY: HACKY - band-aid but works\n' | final_verdict)"
+
+# 11. Fail-open: no correctness/harmony lines → verdict unchanged.
+check "absent new lenses keep APPROVE" "APPROVE" \
+    "$(printf 'APPROVE: ok\nSPIRIT: GENUINE - real\n' | final_verdict)"
+
+# 12. FALSE-GREEN does NOT upgrade a CONCERN.
+check "FALSE-GREEN leaves CONCERN" "CONCERN" \
+    "$(printf 'CONCERN: dep added\nCORRECTNESS: FALSE-GREEN - also wrong\n' | final_verdict)"
+
+# 13. Structural guard: the live script still carries all three lens gates.
 if grep -q 'SPIRIT: STUB overrides APPROVE' "$SCRIPT" \
-   && grep -qE '\^SPIRIT:\[\[:space:\]\]\*\(GENUINE\|PARTIAL\|STUB\)' "$SCRIPT"; then
-    echo "  ok: live script contains the SPIRIT gate"
+   && grep -q 'CORRECTNESS: FALSE-GREEN overrides APPROVE' "$SCRIPT" \
+   && grep -q 'HARMONY: REGRESSION-RISK overrides APPROVE' "$SCRIPT"; then
+    echo "  ok: live script contains the SPIRIT + CORRECTNESS + HARMONY gates"
 else
-    echo "  FAIL: SPIRIT gate missing from $SCRIPT"; fail=1
+    echo "  FAIL: a lens gate is missing from $SCRIPT"; fail=1
 fi
 
 if [[ $fail -eq 0 ]]; then echo "PASS"; else echo "FAILED"; exit 1; fi

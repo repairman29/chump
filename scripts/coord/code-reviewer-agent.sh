@@ -191,6 +191,16 @@ SPIRIT: GENUINE - <why the change genuinely does what the gap needs>
 SPIRIT: PARTIAL - <what real behaviour is still missing>
 SPIRIT: STUB - <what is faked: TODO/unimplemented!()/hardcoded-return/empty-body/assert-nothing test/shim that makes the AC only LOOK met>
 
+Line 3 — the CORRECTNESS lens, EXACTLY one of:
+CORRECTNESS: SOUND - <why the logic is actually right>
+CORRECTNESS: UNSURE - <what you could not verify>
+CORRECTNESS: FALSE-GREEN - <the change compiles / passes a shallow test but is logically WRONG: off-by-one, inverted condition, wrong variable, unhandled case the test doesn't hit, a test tautology that would pass even if the code were broken>
+
+Line 4 — the HARMONY lens, EXACTLY one of:
+HARMONY: FITS - <why it fits existing patterns and touches nothing it shouldn't>
+HARMONY: HACKY - <a workaround/band-aid that fits but adds debt (informational, not blocking)>
+HARMONY: REGRESSION-RISK - <a concrete existing behaviour this plausibly breaks: a caller not updated, a contract changed, a removed guard>
+
 Auto-approve criteria (ALL must hold):
   - Diff is under 200 LOC
   - No new unwrap()/expect() in production code paths (test code is fine)
@@ -209,6 +219,18 @@ a hardcoded or placeholder return that dodges the real logic, an empty function 
 test that asserts nothing, or a shim that makes the AC only LOOK met without the behaviour.
 A STUB verdict downgrades a would-be APPROVE to a blocking CONCERN even when every letter
 criterion above holds — this is the guard against the stub-false-green class (EFFECTIVE-351).
+
+CORRECTNESS lens (CREDIBLE-191) — separate from STUB. A change can be a genuine attempt
+(not a stub) and still be WRONG. Answer FALSE-GREEN when the diff compiles / passes its
+test but the logic is actually broken — an inverted condition, off-by-one, wrong variable,
+a case the test never exercises, or a tautological test that would pass even against broken
+code. FALSE-GREEN downgrades a would-be APPROVE to a blocking CONCERN (the broken-but-green
+half of EFFECTIVE-351). SOUND/UNSURE never block.
+
+HARMONY lens (CREDIBLE-191) — does the change fit without collateral damage. Answer
+REGRESSION-RISK when it plausibly breaks concrete existing behaviour (a caller left
+unupdated, a changed contract, a removed guard); that downgrades a would-be APPROVE to a
+blocking CONCERN. HACKY (fits but adds debt) and FITS are informational only.
 
 IMPORTANT — dependency evaluation: The pre-checker has already analysed Cargo.toml
 changes in this diff. Use the workspace dependency notes below (if present) as the
@@ -231,7 +253,7 @@ Diff:
 $DIFF_TRIMMED
 \`\`\`
 
-Your review (line 1 = APPROVE/CONCERN/ESCALATE, line 2 = SPIRIT: GENUINE/PARTIAL/STUB):
+Your review (line 1 = APPROVE/CONCERN/ESCALATE, line 2 = SPIRIT, line 3 = CORRECTNESS, line 4 = HARMONY):
 EOF
 )
 
@@ -406,6 +428,35 @@ if [[ "$SPIRIT" == "STUB" && "$VERDICT" == "APPROVE" ]]; then
     yellow "SPIRIT: STUB overrides APPROVE — letter-correct but fakes the behaviour (CREDIBLE-191)."
     VERDICT="CONCERN"
     REASON="stub/faked implementation (SPIRIT lens): ${_spirit_reason:-no genuine behaviour}"
+    VERDICT_LINE="CONCERN: $REASON"
+fi
+
+# ── 7c. CORRECTNESS + HARMONY lenses (CREDIBLE-191 slice-2) ───────────────────
+# Same additive + fail-open contract as SPIRIT above: an absent/unparseable line
+# never blocks; only an explicit FALSE-GREEN (logic wrong though it compiles/passes)
+# or REGRESSION-RISK (plausibly breaks existing behaviour) downgrades a would-be
+# APPROVE to a blocking CONCERN. SOUND/UNSURE/FITS/HACKY are informational. These
+# never upgrade a CONCERN/ESCALATE. Together with SPIRIT they complete the
+# multi-lens SCORING of stage B; the voting-PANEL restructure remains a later slice.
+CORRECTNESS_LINE=$(echo "$RESPONSE" | grep -E '^CORRECTNESS:[[:space:]]*(SOUND|UNSURE|FALSE-GREEN)' | head -1)
+CORRECTNESS=$(echo "$CORRECTNESS_LINE" | sed -E 's/^CORRECTNESS:[[:space:]]*([A-Z-]+).*/\1/')
+[[ -n "$CORRECTNESS" ]] && info "Correctness lens: $CORRECTNESS"
+if [[ "$CORRECTNESS" == "FALSE-GREEN" && "$VERDICT" == "APPROVE" ]]; then
+    _corr_reason=$(echo "$CORRECTNESS_LINE" | cut -d: -f2- | sed 's/^ *//')
+    yellow "CORRECTNESS: FALSE-GREEN overrides APPROVE — compiles/passes but logic is wrong (CREDIBLE-191)."
+    VERDICT="CONCERN"
+    REASON="broken-but-green (CORRECTNESS lens): ${_corr_reason:-logic wrong}"
+    VERDICT_LINE="CONCERN: $REASON"
+fi
+
+HARMONY_LINE=$(echo "$RESPONSE" | grep -E '^HARMONY:[[:space:]]*(FITS|HACKY|REGRESSION-RISK)' | head -1)
+HARMONY=$(echo "$HARMONY_LINE" | sed -E 's/^HARMONY:[[:space:]]*([A-Z-]+).*/\1/')
+[[ -n "$HARMONY" ]] && info "Harmony lens: $HARMONY"
+if [[ "$HARMONY" == "REGRESSION-RISK" && "$VERDICT" == "APPROVE" ]]; then
+    _harm_reason=$(echo "$HARMONY_LINE" | cut -d: -f2- | sed 's/^ *//')
+    yellow "HARMONY: REGRESSION-RISK overrides APPROVE — plausibly breaks existing behaviour (CREDIBLE-191)."
+    VERDICT="CONCERN"
+    REASON="regression risk (HARMONY lens): ${_harm_reason:-breaks existing behaviour}"
     VERDICT_LINE="CONCERN: $REASON"
 fi
 
