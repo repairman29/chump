@@ -278,6 +278,42 @@ fn run_inner(args: &[String]) -> Result<i32> {
         picked.title
     );
 
+    // CREDIBLE-198 (CREDIBLE-197 slice 2): VERIFY-BEFORE-EXECUTE. For a registry gap (--gap),
+    // if the acceptance is ALREADY satisfied in the repo (a Scout/Holler finding that was
+    // already fixed), auto-close it `already_satisfied` (no PR; INFRA-402 does not block that
+    // disposition) and skip the fix-agent — never burning an agent, or risking a no-op
+    // false-green, on settled work. FAIL-OPEN: skips ONLY on a positive SATISFIED verdict.
+    if let Some(gap_id) = opts.gap_id.as_deref() {
+        let verify_bin = std::env::var("CHUMP_IMPROVE_CHUMP_BIN")
+            .or_else(|_| std::env::var("CHUMP_BIN"))
+            .ok()
+            .or_else(|| {
+                std::env::current_exe()
+                    .ok()
+                    .map(|p| p.to_string_lossy().into_owned())
+            })
+            .unwrap_or_else(|| "chump".to_string());
+        if let Some(evidence) = verify_already_satisfied(&clone_dir, gap_id, &verify_bin) {
+            println!(
+                "[improve] VERIFY-BEFORE-EXECUTE (CREDIBLE-198): '{gap_id}' acceptance ALREADY \
+                 satisfied — {evidence}; auto-closing already_satisfied, skipping the fix-agent."
+            );
+            emit_already_satisfied_skipped(&opts.owner_repo, gap_id, &evidence);
+            let _ = Command::new(&verify_bin)
+                .args([
+                    "gap",
+                    "set",
+                    gap_id,
+                    "--status",
+                    "already_satisfied",
+                    "--evidence",
+                    &format!("verify-before-execute (chump improve): {evidence}"),
+                ])
+                .status();
+            return Ok(0);
+        }
+    }
+
     // ── Stage 3: IMPLEMENT (or COTG-1.4 RESUME) ───────────────────────────
     // COTG-1.4/INFRA-3486: durable resume — if a prior run for THIS gap already opened a PR
     // (journaled below), skip re-implementing (which would open a DUPLICATE PR) and resume
@@ -1512,6 +1548,133 @@ fn emit_redundant_work_skipped(repo: &str, gap_title: &str, reason: &str) {
         ],
         ..Default::default()
     });
+}
+
+/// CREDIBLE-198: emit `kind=already_satisfied_skipped` when the verify-before-execute gate
+/// finds a gap's acceptance already met and skips the fix-agent (sibling of
+/// `redundant_work_skipped`).
+///
+/// scanner-anchor: kind=already_satisfied_skipped (CREDIBLE-198)
+fn emit_already_satisfied_skipped(repo: &str, gap_id: &str, evidence: &str) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "already_satisfied_skipped".to_string(),
+        source: Some("chump-improve".to_string()),
+        fields: vec![
+            ("repo".to_string(), repo.to_string()),
+            ("gap".to_string(), gap_id.to_string()),
+            ("evidence".to_string(), evidence.to_string()),
+        ],
+        ..Default::default()
+    });
+}
+
+/// CREDIBLE-198 (CREDIBLE-197 slice 2): parse a read-only verify verdict of the shape
+/// `VERDICT: SATISFIED|NOT-SATISFIED - <reason>`. Returns `(satisfied, reason)`. FAIL-OPEN:
+/// anything unparseable/ambiguous returns `(false, …)` so the caller EXECUTES — we never
+/// false-close real work on a garbled reply. Pure; unit-tested.
+fn parse_satisfied_verdict(resp: &str) -> (bool, String) {
+    for line in resp.lines() {
+        let t = line.trim();
+        if t.to_uppercase().starts_with("VERDICT:") {
+            let body = t.splitn(2, ':').nth(1).unwrap_or("").trim();
+            // "NOT-SATISFIED" / "NOT SATISFIED" start with "NOT", not "SATISFIED".
+            let satisfied = body.to_uppercase().starts_with("SATISFIED");
+            return (satisfied, body.to_string());
+        }
+    }
+    (false, "unparseable verify reply — executing".to_string())
+}
+
+/// CREDIBLE-198 / CREDIBLE-197 slice 2: read-only check — is this REGISTRY gap's acceptance
+/// ALREADY satisfied by the current clone? Returns `Some(receipt)` if SATISFIED (the caller
+/// auto-closes it `already_satisfied` and skips the fix-agent), `None` otherwise. FAIL-OPEN:
+/// any doubt/error/gateway-down → `None` → the caller EXECUTES, so we never false-close real
+/// work. Mirrors the read-only LLM pattern of `bench.rs::spirit_judge`. Makes NO changes.
+fn verify_already_satisfied(clone_dir: &Path, gap_id: &str, chump_bin: &str) -> Option<String> {
+    // Real acceptance criteria from the registry — a `--gap` run's synthesized ProposedGap
+    // carries only a generic placeholder draft, so we must read the actual AC here.
+    let repo_root = crate::repo_path::repo_root();
+    let store = chump_gap_store::GapStore::open(&repo_root).ok()?;
+    let row = store.get(gap_id).ok()??;
+    let ac = chump_gap_store::parse_json_ac_list(&row.acceptance_criteria);
+    if ac.is_empty() {
+        return None; // nothing checkable → execute
+    }
+    let cd = clone_dir.to_string_lossy().to_string();
+    // Read-only repo context: recent commits + bounded heads of the files the AC names.
+    let log = Command::new("git")
+        .args(["-C", &cd, "log", "--oneline", "-25"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    let mut files_ctx = String::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for tok in ac.join(" ").split(|c: char| {
+        !(c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' || c == '/')
+    }) {
+        let ext_ok = tok
+            .rsplit('.')
+            .next()
+            .map(|e| !e.is_empty() && e.len() <= 4 && e.chars().all(|c| c.is_ascii_alphanumeric()))
+            .unwrap_or(false);
+        if !(tok.contains('.') && tok.len() >= 4 && ext_ok) {
+            continue;
+        }
+        if !seen.insert(tok.to_string()) || seen.len() > 6 {
+            continue;
+        }
+        if let Ok(found) = Command::new("git")
+            .args(["-C", &cd, "ls-files", &format!("*{tok}")])
+            .output()
+        {
+            if let Some(path) = String::from_utf8_lossy(&found.stdout).lines().next() {
+                if let Ok(content) = std::fs::read_to_string(Path::new(&cd).join(path)) {
+                    let head: String = content.lines().take(60).collect::<Vec<_>>().join("\n");
+                    files_ctx.push_str(&format!(
+                        "\n=== {path} (head) ===\n{}\n",
+                        head.chars().take(1500).collect::<String>()
+                    ));
+                }
+            }
+        }
+    }
+    let ac_text = ac
+        .iter()
+        .enumerate()
+        .map(|(i, c)| format!("{}. {c}", i + 1))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let prompt = format!(
+        "You are a strict reviewer. Are ALL of these acceptance criteria ALREADY satisfied by \
+         the CURRENT state of the repo shown below? Make NO changes. Answer SATISFIED only if you \
+         can point to concrete evidence for EACH criterion; if ANY is unmet or you are unsure, \
+         answer NOT-SATISFIED. Reply EXACTLY one line:\n\
+         VERDICT: SATISFIED|NOT-SATISFIED - <file:line evidence, or which criterion is unmet; \
+         <=25 words>\n\n\
+         === ACCEPTANCE CRITERIA ===\n{ac_text}\n\n\
+         === RECENT COMMITS ===\n{log}\n=== REPO FILES (heads) ===\n{}\n",
+        files_ctx.chars().take(6000).collect::<String>()
+    );
+    let model = std::env::var("CHUMP_VERIFY_MODEL").unwrap_or_else(|_| "opus".to_string());
+    let mut child = Command::new(chump_bin)
+        .args(["llm-complete", "--model", &model, "--max-tokens", "200"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    if let Some(mut si) = child.stdin.take() {
+        use std::io::Write;
+        let _ = si.write_all(prompt.as_bytes());
+    }
+    let out = child.wait_with_output().ok()?;
+    let (satisfied, reason) = parse_satisfied_verdict(&String::from_utf8_lossy(&out.stdout));
+    if satisfied {
+        Some(reason)
+    } else {
+        None // fail-open: NOT-SATISFIED / unparseable → execute
+    }
 }
 
 /// Emit `kind=improve_pr_remediation` — one per fix attempt on a HELD PR.
@@ -4187,5 +4350,31 @@ Some prose from the agent.
         let tmp = TempDir::new().unwrap();
         // a non-git directory → no-op, no error
         refresh_clone(tmp.path()).unwrap();
+    }
+
+    #[test]
+    fn credible198_parse_satisfied_verdict_and_fail_open() {
+        // CREDIBLE-198: the verify-before-execute parser reads SATISFIED / NOT-SATISFIED, and
+        // must FAIL-OPEN (=> not satisfied => execute) on anything unparseable — so a garbled
+        // reply can never false-close real work.
+        let (s, r) = parse_satisfied_verdict("VERDICT: SATISFIED - World.js:353 spawn off water");
+        assert!(s, "SATISFIED verdict parses as satisfied");
+        assert!(
+            r.contains("World.js:353"),
+            "reason carries the evidence, got: {r}"
+        );
+
+        let (s, _) = parse_satisfied_verdict("VERDICT: NOT-SATISFIED - lethality still kills bot");
+        assert!(!s, "NOT-SATISFIED must NOT read as satisfied");
+        let (s, _) = parse_satisfied_verdict("verdict: not satisfied - unmet");
+        assert!(!s, "case/space variant of NOT SATISFIED is still negative");
+
+        // FAIL-OPEN: no VERDICT line / garbage / empty / bare word => not satisfied => execute.
+        assert!(!parse_satisfied_verdict("the model rambled without a verdict").0);
+        assert!(!parse_satisfied_verdict("").0);
+        assert!(
+            !parse_satisfied_verdict("SATISFIED").0,
+            "a bare word without the VERDICT: prefix must NOT satisfy (conservative)"
+        );
     }
 }
