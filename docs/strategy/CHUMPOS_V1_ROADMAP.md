@@ -21,8 +21,13 @@ North Star). V1 is the first version where the loop *closes* and we can *count* 
   it drowns on vague-prompt + huge-repo; and it **cannot self-verify** (shipped a buggy test
   three times, reporting "done as requested"). The coloringbook run opened a clean, trailered,
   zero-touch PR that delivered **nothing** (a 4-line stub) and passed "verify."
-- **The judgment organ is the keystone gap** — nothing checks whether a change satisfies the
-  intent, so a do-nothing PR is indistinguishable from delivery.
+- **The judgment organ now has a working intent lens (2026-08-03).** The spirit judge
+  (CREDIBLE-192) asks *"does this change GENUINELY achieve the intent?"* — grounded by the
+  acceptance result + fuller intent so it stops false-STUB-ing real fixes (CREDIBLE-195), and
+  diffing the lap's actual commit range not `base…HEAD` so it isn't blind on --implement laps
+  (CREDIBLE-194). A do-nothing PR is **no longer** indistinguishable from delivery: the
+  coloringbook-style 4-line stub would now score STUB, not "verify." Advisory today (shown,
+  not gated); the keystone is landing it as a gate (CREDIBLE-191 panel).
 - **The integrity layer is now proven (2026-08-02).** A live rescue lap *false-greened and
   pushed junk to a real repo's main*; that caught, reverted, and drove a hardening pass that is
   merged and demonstrated live: honest, check-specific acceptance (CREDIBLE-186 — can't
@@ -30,6 +35,14 @@ North Star). V1 is the first version where the loop *closes* and we can *count* 
   comprehension-before-action (EFFECTIVE-349 — the agent gets the real failure log), and a
   deterministic, self-contained rescue track (CREDIBLE-187). Full-suite heat: **5/6 green,
   100% zero-touch**; the one miss was a python-3.14 harness bug, not a capability failure.
+- **The judge is trustworthy and the reliability instrument is live + a first fix is proven
+  (2026-08-03).** Beyond the integrity layer: the spirit judge now *sees* --implement laps
+  (CREDIBLE-194) and *judges them correctly* (CREDIBLE-195, proven STUB→GENUINE on a genuine
+  fix). The bench captures the agent-run's effort — `tool_calls` + `hit_iteration_cap` in the
+  scorecard (CREDIBLE-190) — so agent-loop flails are legible, not hidden behind wall-clock.
+  First reliability fix, measured: a STOP-WHEN-DONE nudge on the --implement prompt flipped
+  `hit_iteration_cap` true→false, `tool_calls` 30→7, wall-clock **1909s→288s (~6.6×)**, with
+  correctness held (EFFECTIVE-352). *Position: honest V1, entering V1.5.*
 - **The self-improving loop is real as primitives, not yet proven as one closed loop.** Intake,
   run, classify-failure, decompose, provision-tools, escalate, budget/page all exist — scattered
   across ~8 files. The drills prove *run job → succeed*; they do **not** yet prove *job exceeds
@@ -92,7 +105,7 @@ autonomy verified→gated→hands-off). This sits *over* the capability phases (
 | Rung | Done means | Metric |
 |---|---|---|
 | **V1** — honest machinery | runs a drill hands-off, scores it truthfully, ships safely | ✅ 5/6 heat green, 100% zero-touch (2026-08-02) |
-| **V1.5** — reliable + every branch fires | full suite green ×3 consecutive heats **and** each loop branch proven to fire | 3× consecutive full-suite green + 4 branch-proving tracks pass |
+| **V1.5** — reliable + every branch fires | full suite green ×3 consecutive heats **and** each loop branch proven to fire | 3× consecutive full-suite green + 4 branch-proving tracks pass — 🔜 **in progress (2026-08-03)**: judge trustworthy (192/194/195), reliability instrument live (190) + first fix proven ~6.6× (352); still need the 3× green streak + the 4 branch-proving tracks (decompose scoped: CREDIBLE-196) |
 | **V2** — real work, human-gated | real problems in your repos; real fixes; human approves before landing | 5 real deliverables, human-approved, honestly scored |
 | **V2.5** — real work, autonomous landing | lands real fixes hands-off (the MISSION-010 dream) | N autonomous real merges that *survive* |
 | **V3 / COTG** | a non-technical person's vision → a finished honest tool in their hands | 1 real person · 1 real tool · shipped & used |
