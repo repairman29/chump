@@ -1326,3 +1326,8 @@ CHUMP_REAL_BINARY
 CHUMP_BOT_MERGE_RECOVERY_MODE
 # CREDIBLE-192: model class for the bench SPIRIT judge (src/bench.rs spirit_judge); default opus. Overridable to trade cost/quality on the "does this genuinely achieve intent" lens.
 CHUMP_BENCH_SPIRIT_MODEL
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SKIP_MERGED_CHECK
