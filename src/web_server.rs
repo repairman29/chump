@@ -6768,7 +6768,10 @@ async fn handle_gap_queue(
             Option<String>,
             Option<String>,
         ) = match gap.status.as_str() {
-            "done" | "shipped" => (
+            // CREDIBLE-197: `already_satisfied` is a terminal disposition (acceptance
+            // verified already met, closed with an evidence receipt, no PR) — it must
+            // read as closed/blocked, never claimable.
+            "done" | "shipped" | "already_satisfied" => (
                 "blocked".to_string(),
                 Some("Gap is already closed/done".to_string()),
                 None,

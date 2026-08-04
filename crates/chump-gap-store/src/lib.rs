@@ -599,7 +599,8 @@ impl GapStore {
                ('done',                'legacy',       'shipped and merged'),
                ('wontfix',             'legacy',       'will not be implemented'),
                ('ready_to_ship',       'INFRA-2130',   'passed preflight; awaiting integration batch'),
-               ('bisect_quarantined',  'INFRA-2137',   'failed integration-bisect; needs operator review');
+               ('bisect_quarantined',  'INFRA-2137',   'failed integration-bisect; needs operator review'),
+               ('already_satisfied',   'CREDIBLE-197', 'acceptance verified already met in the repo; closed with an evidence receipt, no PR — a Scout/Holler finding that was already fixed');
             ",
         );
 
@@ -7738,6 +7739,81 @@ mod quarantine_tests {
             )
             .unwrap();
         assert_eq!(count, 2, "registry must contain both new statuses");
+    }
+
+    // CREDIBLE-197: an external gap whose acceptance is verified already-met (a
+    // Scout/Holler finding that was already fixed) closes as `already_satisfied`
+    // with an evidence RECEIPT and NO PR. The INFRA-402 no-fake-done guard keys only
+    // on status="done", so this needs no CHUMP_BYPASS_CLOSED_PR_GUARD; the status is
+    // registered + terminal (not 'open', so never re-picked/re-executed).
+    #[test]
+    fn credible197_already_satisfied_closes_without_pr_and_guard_intact() {
+        let (store, _dir) = test_store();
+
+        // The disposition is a registered status (honest for audit).
+        let reg: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM gap_status_registry WHERE status='already_satisfied'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(reg, 1, "already_satisfied must be a registered status");
+
+        // Close a gap as already_satisfied: NO closed_pr, with a verification receipt.
+        let id = store
+            .reserve("INFRA", "spawn already fixed", "P2", "s")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("already_satisfied".to_string()),
+                    evidence: Some(
+                        "AC already met: World.js:353 spawnX 17->16 off water; verified read-only"
+                            .to_string(),
+                    ),
+                    closed_date: Some("2026-08-03".to_string()),
+                    ..Default::default()
+                },
+            )
+            .expect(
+                "already_satisfied must close WITHOUT a closed_pr (INFRA-402 keys only on 'done')",
+            );
+
+        let row = store.get(&id).unwrap().unwrap();
+        assert_eq!(row.status, "already_satisfied");
+        assert_ne!(row.status, "open", "terminal — never re-picked");
+        assert!(
+            row.closed_pr.is_none(),
+            "no PR backs an already-satisfied close"
+        );
+        assert!(
+            row.evidence
+                .as_deref()
+                .unwrap_or("")
+                .contains("World.js:353"),
+            "the verification receipt is recorded in evidence, got: {:?}",
+            row.evidence
+        );
+
+        // The INFRA-402 guard is INTACT — a plain `done` without a PR still bails.
+        let id2 = store
+            .reserve("INFRA", "needs a real pr", "P2", "s")
+            .unwrap();
+        let err = store.set_fields(
+            &id2,
+            GapFieldUpdate {
+                status: Some("done".to_string()),
+                ..Default::default()
+            },
+        );
+        assert!(
+            err.is_err(),
+            "INFRA-402 must still block status=done without a closed_pr"
+        );
+        assert!(format!("{:#}", err.unwrap_err()).contains("INFRA-402"));
     }
 
     // 2. append_notes_seeds_empty: appending to a gap with no notes yields a
