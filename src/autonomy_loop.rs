@@ -299,18 +299,20 @@ fn spawn_probe_subtask(parent: &task_db::TaskRow) -> Result<i64> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// AUTO-008: decompose a complex task into subtasks derived from its acceptance bullets.
-/// Creates one child task per acceptance bullet, with the parent blocked pending them.
-/// Returns Ok(true) if decomposition occurred, Ok(false) if task is simple enough.
-fn auto_decompose_if_complex(task: &task_db::TaskRow) -> Result<bool> {
+/// CREDIBLE-196: the pure DECISION half of the auto-decompose branch — should this
+/// task be decomposed, and if so into which acceptance bullets? Returns None when
+/// the task is simple enough (complexity below the decompose threshold), has no
+/// acceptance section, or has fewer than 3 acceptance bullets; Some(bullets) when
+/// the self-improving loop's decompose branch should fire. Split out from the
+/// task_db side-effects in auto_decompose_if_complex so the branch-firing decision
+/// is unit-testable — proving the loop decomposes a too-big task and leaves a small
+/// one alone, without needing a task_db fixture.
+fn decompose_plan(task: &task_db::TaskRow) -> Option<Vec<String>> {
     if task_complexity_score(task) < decompose_threshold() {
-        return Ok(false);
+        return None;
     }
     let notes = task.notes.as_deref().unwrap_or("");
-    let acceptance_text = match crate::task_contract::acceptance(notes) {
-        Some(s) => s,
-        None => return Ok(false),
-    };
+    let acceptance_text = crate::task_contract::acceptance(notes)?;
     let bullets: Vec<String> = acceptance_text
         .lines()
         .filter_map(|l| {
@@ -325,8 +327,22 @@ fn auto_decompose_if_complex(task: &task_db::TaskRow) -> Result<bool> {
         })
         .collect();
     if bullets.len() < 3 {
-        return Ok(false);
+        return None;
     }
+    Some(bullets)
+}
+
+/// AUTO-008: decompose a complex task into subtasks derived from its acceptance bullets.
+/// Creates one child task per acceptance bullet, with the parent blocked pending them.
+/// Returns Ok(true) if decomposition occurred, Ok(false) if task is simple enough.
+/// The fire-or-not decision lives in decompose_plan (CREDIBLE-196); this half does
+/// the task_db side-effects once that decision says "fire".
+fn auto_decompose_if_complex(task: &task_db::TaskRow) -> Result<bool> {
+    let bullets = match decompose_plan(task) {
+        Some(b) => b,
+        None => return Ok(false),
+    };
+    let notes = task.notes.as_deref().unwrap_or("");
     let assignee = task.assignee.as_deref().unwrap_or("chump");
     let repo = task.repo.as_deref();
     let mut child_ids = Vec::new();
@@ -1745,6 +1761,66 @@ $ echo ok
         assert!(
             task_complexity_score(&task) >= 0.6,
             "complex task should meet or exceed decompose threshold"
+        );
+    }
+
+    // CREDIBLE-196: prove the self-improving loop's DECOMPOSE branch actually fires
+    // on a too-big task (and leaves a small one alone). Tests the pure decision half
+    // (decompose_plan) so no task_db fixture is needed.
+    #[test]
+    fn credible196_decompose_plan_fires_on_too_big_task() {
+        // 8 acceptance bullets + risks + a multi-step title → the branch must fire
+        // and hand back every bullet to split into subtasks.
+        let long_notes = format!(
+            "## Acceptance\n{}\n\n## Risks\nMay break things\n\n## Verify\n- [ ] cargo test\n",
+            (0..8)
+                .map(|i| format!("- [ ] Step {} and then do something or another\n", i))
+                .collect::<String>()
+        );
+        let task = make_task_row(
+            10,
+            "Refactor auth and migrate sessions or rollback then verify",
+            &long_notes,
+        );
+        let plan = decompose_plan(&task);
+        assert!(
+            matches!(&plan, Some(b) if b.len() == 8),
+            "decompose branch should fire on a too-big task and return its 8 bullets, got {:?}",
+            plan
+        );
+    }
+
+    #[test]
+    fn credible196_decompose_plan_leaves_a_small_task_alone() {
+        let task = make_task_row(
+            11,
+            "Fix typo",
+            "## Acceptance\n- [ ] done\n\n## Verify\n- [ ] cargo test\n",
+        );
+        assert!(
+            decompose_plan(&task).is_none(),
+            "a simple task must not trigger the decompose branch"
+        );
+    }
+
+    #[test]
+    fn credible196_decompose_plan_skips_when_too_few_bullets() {
+        // Scores ABOVE the complexity threshold (long notes → max len_score, plus
+        // risks) yet has only 2 acceptance bullets — the branch must NOT fire (a split
+        // needs >= 3 subtasks to be worth it). This isolates the bullet-count guard
+        // from the complexity-score guard.
+        let padding = "context ".repeat(160); // > 1000 chars → saturates len_score
+        let notes = format!(
+            "## Context\n{padding}\n\n## Acceptance\n- [ ] first thing\n- [ ] second thing\n\n## Risks\nmany\n\n## Verify\n- [ ] cargo test\n"
+        );
+        let task = make_task_row(12, "Do a big thing and another thing", &notes);
+        assert!(
+            task_complexity_score(&task) >= decompose_threshold(),
+            "fixture must clear the complexity threshold so this isolates the bullet-count guard"
+        );
+        assert!(
+            decompose_plan(&task).is_none(),
+            "a task above threshold but with < 3 bullets must not decompose"
         );
     }
 
