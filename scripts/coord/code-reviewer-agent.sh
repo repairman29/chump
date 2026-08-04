@@ -179,11 +179,17 @@ fi
 DIFF_TRIMMED=$(echo "$DIFF" | head -c 80000)
 
 PROMPT=$(cat <<EOF
-You are reviewing this Chump PR. Reply with EXACTLY one of these formats on the first line:
+You are reviewing this Chump PR. Reply on TWO lines:
 
+Line 1 — the verdict, EXACTLY one of:
 APPROVE: <one-sentence reason>
 CONCERN: <comma-separated list of concerns>
 ESCALATE: <reason this needs human review>
+
+Line 2 — the SPIRIT lens, EXACTLY one of:
+SPIRIT: GENUINE - <why the change genuinely does what the gap needs>
+SPIRIT: PARTIAL - <what real behaviour is still missing>
+SPIRIT: STUB - <what is faked: TODO/unimplemented!()/hardcoded-return/empty-body/assert-nothing test/shim that makes the AC only LOOK met>
 
 Auto-approve criteria (ALL must hold):
   - Diff is under 200 LOC
@@ -195,6 +201,14 @@ Auto-approve criteria (ALL must hold):
 Raise CONCERN if any of the above fail or if you spot bugs/issues worth a fix-up.
 ESCALATE if changes touch security boundaries, change behaviour in non-obvious ways,
 or you cannot confidently judge the change.
+
+SPIRIT lens (CREDIBLE-191) — letter-correct is not enough. Judge whether the diff
+GENUINELY does what the gap needs, not merely something that compiles and passes a
+shallow test. Answer STUB when the change FAKES satisfaction: an unimplemented!()/todo!(),
+a hardcoded or placeholder return that dodges the real logic, an empty function body, a
+test that asserts nothing, or a shim that makes the AC only LOOK met without the behaviour.
+A STUB verdict downgrades a would-be APPROVE to a blocking CONCERN even when every letter
+criterion above holds — this is the guard against the stub-false-green class (EFFECTIVE-351).
 
 IMPORTANT — dependency evaluation: The pre-checker has already analysed Cargo.toml
 changes in this diff. Use the workspace dependency notes below (if present) as the
@@ -217,7 +231,7 @@ Diff:
 $DIFF_TRIMMED
 \`\`\`
 
-Your verdict (one line, one of APPROVE/CONCERN/ESCALATE):
+Your review (line 1 = APPROVE/CONCERN/ESCALATE, line 2 = SPIRIT: GENUINE/PARTIAL/STUB):
 EOF
 )
 
@@ -375,6 +389,25 @@ fi
 
 VERDICT=$(echo "$VERDICT_LINE" | cut -d: -f1)
 REASON=$(echo "$VERDICT_LINE" | cut -d: -f2- | sed 's/^ //')
+
+# ── 7b. SPIRIT lens (CREDIBLE-191): stub-detection axis ──────────────────────
+# Additive + fail-open. An absent or unparseable SPIRIT line leaves the verdict
+# unchanged (preserves pre-CREDIBLE-191 behaviour, so a reviewer/model that
+# doesn't emit the line never blocks a merge). Only an explicit SPIRIT: STUB
+# downgrades a would-be APPROVE to a blocking CONCERN — the diff looks
+# letter-correct but fakes the behaviour (the EFFECTIVE-351 stub-false-green
+# class). STUB never *upgrades* a CONCERN/ESCALATE, and GENUINE/PARTIAL are
+# informational only in this slice.
+SPIRIT_LINE=$(echo "$RESPONSE" | grep -E '^SPIRIT:[[:space:]]*(GENUINE|PARTIAL|STUB)' | head -1)
+SPIRIT=$(echo "$SPIRIT_LINE" | sed -E 's/^SPIRIT:[[:space:]]*([A-Z]+).*/\1/')
+[[ -n "$SPIRIT" ]] && info "Spirit lens: $SPIRIT"
+if [[ "$SPIRIT" == "STUB" && "$VERDICT" == "APPROVE" ]]; then
+    _spirit_reason=$(echo "$SPIRIT_LINE" | cut -d: -f2- | sed 's/^ *//')
+    yellow "SPIRIT: STUB overrides APPROVE — letter-correct but fakes the behaviour (CREDIBLE-191)."
+    VERDICT="CONCERN"
+    REASON="stub/faked implementation (SPIRIT lens): ${_spirit_reason:-no genuine behaviour}"
+    VERDICT_LINE="CONCERN: $REASON"
+fi
 
 green "Verdict: $VERDICT"
 info "Reason: $REASON"
