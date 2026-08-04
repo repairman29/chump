@@ -464,6 +464,22 @@ green "Verdict: $VERDICT"
 info "Reason: $REASON"
 echo "$VERDICT_LINE"
 
+# ── 7d. Emit the structured verdict to ambient (CREDIBLE-191) ─────────────────
+# Make the judgment organ's decision a QUERYABLE signal, not just prose buried in
+# the PR comment's $RESPONSE dump: one review_verdict event per review carrying the
+# final letter verdict AND each lens outcome (spirit/correctness/harmony). This is
+# what feeds the learning loop — which lens caught what, over time — and gives the
+# fleet observability into review decisions. Fire-and-forget: it runs after the
+# verdict is final, never blocks or changes the review, and swallows any write
+# error. Registered in docs/observability/EVENT_REGISTRY.yaml (emit↔register gate).
+_rv_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
+if [[ -n "$_rv_amb" ]]; then
+    # scanner-anchor: "kind":"review_verdict"
+    printf '{"ts":"%s","kind":"review_verdict","gap_id":"%s","pr":"%s","verdict":"%s","spirit":"%s","correctness":"%s","harmony":"%s","loc":%s}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_ID:-}" "${PR:-}" "$VERDICT" "${SPIRIT:-}" "${CORRECTNESS:-}" "${HARMONY:-}" "${LOC:-0}" \
+        >> "$_rv_amb" 2>/dev/null || true
+fi
+
 # ── 8. Post review to GitHub (if --post) ─────────────────────────────────────
 COMMENT_BODY="🤖 **code-reviewer-agent** (automated, INFRA-AGENT-CODEREVIEW MVP):
 
