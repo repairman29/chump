@@ -2946,10 +2946,29 @@ if [[ "${CHUMP_SKIP_MERGED_CHECK:-0}" != "1" ]]; then
         _existing_state=$(gh pr view "$BRANCH" --json state --jq '.state' 2>/dev/null || echo "")
     fi
     if [[ "$_existing_state" == "MERGED" ]]; then
-        green "PR for $BRANCH already MERGED — skipping force-push (INFRA-306)."
-        info "Saved you the cargo cost on a race that's already settled."
-        info "Bypass for genuine recovery: CHUMP_SKIP_MERGED_CHECK=1 scripts/coord/bot-merge.sh ..."
-        exit 0
+        # INFRA-3532: a MERGED PR for this branch is normally a settled race (auto-merge
+        # fired on green CI) and skipping is correct. But branch-name REUSE — a new slice
+        # of an already-shipped gap re-claiming chump/<id>-claim — also lands here, and the
+        # old code exited 0: a SILENT no-op that looked like a successful ship while shipping
+        # nothing (the durable-fix "looks fixed but isn't" trap). Tell them apart by CONTENT,
+        # not commit count: squash-merge rewrites SHAs, so a rev-list check would false-positive
+        # on a genuine settled race. If HEAD's tree already equals origin/main the work is in
+        # (skip); if HEAD carries a real diff over main it is unshipped new work (fail loud).
+        if git diff --quiet origin/main HEAD 2>/dev/null; then
+            green "PR for $BRANCH already MERGED and HEAD adds nothing over main — skipping force-push (INFRA-306)."
+            info "Saved you the cargo cost on a race that's already settled."
+            info "Bypass for genuine recovery: CHUMP_SKIP_MERGED_CHECK=1 scripts/coord/bot-merge.sh ..."
+            exit 0
+        fi
+        red "INFRA-3532: $BRANCH has a MERGED PR but HEAD carries an unshipped diff over main."
+        red "This is branch-name reuse (a new slice of an already-shipped gap), NOT a settled race —"
+        red "a force-push here is swallowed and GitHub auto-deletes the poisoned branch, so the slice never ships."
+        info "Recovery — ship this slice on a FRESH branch:"
+        info "  git commit --amend --trailer \"Bot-Merge-Bypass: multi-slice branch reuse (INFRA-3532)\""
+        info "  git branch -f ${BRANCH}-s2 HEAD"
+        info "  CHUMP_BYPASS_BOT_MERGE=1 CHUMP_TEST_GATE=0 CHUMP_OFF_RAILS_CHECK=0 git push -u origin ${BRANCH}-s2"
+        info "  gh pr create --head ${BRANCH}-s2 --base main && gh pr merge <N> --auto --squash"
+        exit 22
     fi
 fi
 
