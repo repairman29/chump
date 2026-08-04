@@ -97,6 +97,13 @@ events:
     trigger: mock agent trajectory (position/velocity) projection finds an overlap within the lookahead window at or above the configurable confidence_threshold
     consumers: [dashboard (future, INFRA-1883)]
     fields_required: [ts, kind, agent_a, agent_b, predicted_ts_offset_s, confidence]
+
+  - kind: review_verdict
+    effect_metric: self
+    emitter: scripts/coord/code-reviewer-agent.sh (CREDIBLE-191 judgment panel)
+    trigger: the pre-ship code-reviewer finishes a review — one event per PR review, carrying the final letter verdict plus each multi-lens outcome (spirit/correctness/harmony)
+    consumers: [learning-loop (future — which lens catches what over time), observability]
+    fields_required: [ts, kind, verdict, spirit, correctness, harmony]
   - kind: heartbeat
     effect_metric: self
     emitter: crates/chump-coord/src/rpc.rs

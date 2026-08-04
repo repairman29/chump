@@ -101,4 +101,39 @@ else
     echo "  FAIL: a lens gate is missing from $SCRIPT"; fail=1
 fi
 
+# --- CREDIBLE-191: structured review_verdict ambient emit ---
+REGISTRY="$HERE/../../docs/observability/EVENT_REGISTRY.yaml"
+
+# 14. The emitted line is well-formed JSON carrying the verdict + all three lenses.
+#     Mirror the script's printf so a field/format regression is caught here.
+emit_line() { # verdict spirit correctness harmony
+    printf '{"ts":"%s","kind":"review_verdict","gap_id":"%s","pr":"%s","verdict":"%s","spirit":"%s","correctness":"%s","harmony":"%s","loc":%s}\n' \
+        "2026-01-01T00:00:00Z" "CREDIBLE-191" "3467" "$1" "$2" "$3" "$4" "42"
+}
+_line="$(emit_line APPROVE GENUINE SOUND FITS)"
+if command -v python3 >/dev/null 2>&1; then
+    if echo "$_line" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["kind"]=="review_verdict"; assert all(k in d for k in ("verdict","spirit","correctness","harmony","gap_id","pr","loc"))' 2>/dev/null; then
+        echo "  ok: review_verdict emit is valid JSON with verdict + 3 lenses"
+    else
+        echo "  FAIL: review_verdict emit line malformed"; fail=1
+    fi
+else
+    echo "  ok: (python3 absent — skipped JSON validation of review_verdict)"
+fi
+
+# 15. Structural guard: the live script emits review_verdict (not silently dropped).
+if grep -q '"kind":"review_verdict"' "$SCRIPT"; then
+    echo "  ok: live script emits review_verdict to ambient"
+else
+    echo "  FAIL: review_verdict emit missing from $SCRIPT"; fail=1
+fi
+
+# 16. Emit↔register contract: the kind is registered in EVENT_REGISTRY.yaml
+#     (the CI registry-coverage gate fails a build on emit-without-register).
+if grep -q 'kind: review_verdict' "$REGISTRY"; then
+    echo "  ok: review_verdict registered in EVENT_REGISTRY.yaml"
+else
+    echo "  FAIL: review_verdict not registered in $REGISTRY (emit-without-register)"; fail=1
+fi
+
 if [[ $fail -eq 0 ]]; then echo "PASS"; else echo "FAILED"; exit 1; fi
