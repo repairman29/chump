@@ -39,6 +39,14 @@ IS what customers like Marcus pay for.
 > below execute *inside* this arc. Outcome: **CHUMPOS**. Done-state: anyone
 > points it at a real problem, walks away, and gets a finished, honest tool.
 
+**Proving-ground status (2026-08-03).** The V1→V3 ladder is tracked in
+[DOC-074](strategy/CHUMPOS_V1_ROADMAP.md) against the ChumpBench proving ground.
+Position: **honest V1, entering V1.5** — the judge is trustworthy (CREDIBLE-192/194/195:
+a do-nothing PR now scores STUB, not "verify"), the reliability instrument is live
+(CREDIBLE-190), and the first reliability fix is proven (EFFECTIVE-352: an agent flail
+went 1909s→288s, ~6.6×, correctness held). Still needed for V1.5: a 3× consecutive
+full-suite green streak + the 4 branch-proving tracks (decompose/acquire/escalate/page).
+
 **How it's powered (two layers, both already live):** internal inference runs on
 the free-provider cascade (`CHUMP_CASCADE_ENABLED`, gemini-biased for reasoning,
 quality-tracked + auto-demoting); code-writing **workers** run on a swappable
