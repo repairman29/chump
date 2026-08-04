@@ -49,7 +49,15 @@ EXECUTE=0
 REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
 STALE_DAYS_THRESHOLD="${STALE_DAYS_THRESHOLD:-14}"
-BRANCH_PATTERNS="${BRANCH_PATTERNS:-claude/* worktree-*}"
+# ZERO-WASTE-037: the default MUST track the fleet's live branch namespaces, or
+# the reaper goes blind. The fleet migrated claude/* -> chump/* and now pushes the
+# bulk of work under wip/*; the old `claude/* worktree-*` default matched only ~5
+# of 674 accumulated refs (every run logged "0 reaped, N skipped (no PR)" over a
+# handful of branches). Deletion stays gated downstream by the merged/closed-PR +
+# age + open-PR + protected-branch checks, so widening what is *examined* is safe;
+# it never widens what is *deleted*. Keep this list in sync with `git ls-remote
+# --heads origin | sed 's#.*/##' | ...` prefixes when new namespaces appear.
+BRANCH_PATTERNS="${BRANCH_PATTERNS:-chump/* wip/* claude/* worktree-* chore/* fix/* ftue-verification/* test/*}"
 # INFRA-697: age threshold for merged/closed PR branches (days since close).
 CHUMP_BRANCH_REAPER_AGE_DAYS="${CHUMP_BRANCH_REAPER_AGE_DAYS:-7}"
 
