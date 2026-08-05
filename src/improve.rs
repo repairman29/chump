@@ -1562,10 +1562,20 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         wt
     };
 
+    // EFFECTIVE-354: cascade-free GROUNDING — grep the checkout for the gap's
+    // feature keywords and point the agent at likely-relevant source files, so a
+    // weaker cascade model doesn't have to explore blind. The dogfood stub (olive
+    // PR #7) was a model that made ONE tool call and never read any source; handing
+    // it concrete file:line starting points is the constraint-safe lift to try
+    // before reaching for a stronger (paid/Claude) provider.
+    let mut gap_description = build_gap_description(gap);
+    if let Some(grounding) = locate_relevant_files(&work_dir, gap) {
+        gap_description.push_str(&grounding);
+    }
     let input = ExternalRepoInput {
         external_repo: opts.owner_repo.clone(),
         repo_local_path: work_dir.to_string_lossy().to_string(),
-        proposed_gap_description: build_gap_description(gap),
+        proposed_gap_description: gap_description,
         base_branch,
         fork_owner: None, // direct-push to a branch; operator can set fork via --gap override
     };
@@ -3087,6 +3097,215 @@ fn detect_base_branch(clone_dir: &Path) -> String {
 }
 
 /// Build a human-readable description of the gap for the implement-agent prompt.
+/// EFFECTIVE-354: pull candidate feature keywords from a gap's title + evidence
+/// excerpt for the grounding locator. Strips a leading `[owner]` tag, drops
+/// punctuation, generic/process stopwords, pure-numeric and short (<4) tokens;
+/// dedups; caps the count. Pure + unit-tested.
+fn extract_keywords(gap: &ProposedGap) -> Vec<String> {
+    // Generic English + gap/process meta words that would match everywhere and add
+    // no feature signal. Domain nouns (meal, budget, search, cart, …) are kept.
+    const STOP: &[&str] = &[
+        "the",
+        "and",
+        "for",
+        "with",
+        "that",
+        "this",
+        "from",
+        "only",
+        "when",
+        "your",
+        "have",
+        "into",
+        "just",
+        "still",
+        "will",
+        "would",
+        "should",
+        "could",
+        "about",
+        "also",
+        "some",
+        "any",
+        "all",
+        "not",
+        "but",
+        "are",
+        "was",
+        "been",
+        "which",
+        "what",
+        "where",
+        "being",
+        "they",
+        "them",
+        "then",
+        "than",
+        "does",
+        "done",
+        "gap",
+        "issue",
+        "bug",
+        "bugs",
+        "fix",
+        "fixed",
+        "test",
+        "tests",
+        "change",
+        "changes",
+        "implement",
+        "implemented",
+        "verifiably",
+        "regression",
+        "acceptance",
+        "criteria",
+        "described",
+        "above",
+        "below",
+        "specific",
+        "rest",
+        "page",
+        "flow",
+        "works",
+        "work",
+        "working",
+        "silently",
+        "fails",
+        "fail",
+        "plain",
+        "mode",
+        "modes",
+    ];
+    // Strip a leading bracketed tag like "[olive] " (the repo/owner marker).
+    let title = gap.title.trim();
+    let title = if let Some(rest) = title.strip_prefix('[') {
+        rest.splitn(2, ']').nth(1).unwrap_or(rest)
+    } else {
+        title
+    };
+    let text = format!("{} {}", title, gap.source_of_evidence.excerpt).to_lowercase();
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for tok in text.split(|c: char| !c.is_alphanumeric()) {
+        if tok.len() < 4 {
+            continue;
+        }
+        if tok.chars().all(|c| c.is_numeric()) {
+            continue;
+        }
+        if STOP.contains(&tok) {
+            continue;
+        }
+        if seen.insert(tok.to_string()) {
+            out.push(tok.to_string());
+        }
+        if out.len() >= 10 {
+            break;
+        }
+    }
+    out
+}
+
+/// EFFECTIVE-354: format the ranked grep hits into a grounding block appended to
+/// the agent's task spec. Pure (no I/O) so it's unit-testable. `ranked` is
+/// (relative_path, distinct_keyword_matches, first_line), highest-relevance first.
+fn format_grounding_block(ranked: &[(String, u32, u32)], keywords: &[String]) -> String {
+    let lines: Vec<String> = ranked
+        .iter()
+        .take(8)
+        .map(|(p, c, l)| format!("  {p}:{l}  (matches {c} keyword(s))"))
+        .collect();
+    format!(
+        "\n\n\u{2501}\u{2501} LIKELY-RELEVANT SOURCE FILES (EFFECTIVE-354 grounding — grep, not a guess) \u{2501}\u{2501}\n\
+         Start in these files: read the ACTUAL implementation and EDIT it to fix the defect. \
+         Do NOT ship only a test — a test without a source change is a stub and will be rejected.\n{}\n\
+         Keywords searched: {}\n",
+        lines.join("\n"),
+        keywords.join(", "),
+    )
+}
+
+/// EFFECTIVE-354: grep the working checkout for the gap's keywords and return a
+/// ranked "likely-relevant source files" block. Ranks files by how many DISTINCT
+/// keywords they match. Cascade-free (ripgrep only). None if nothing useful found.
+fn locate_relevant_files(work_dir: &Path, gap: &ProposedGap) -> Option<String> {
+    let keywords = extract_keywords(gap);
+    if keywords.is_empty() {
+        return None;
+    }
+    let rg = std::env::var("CHUMP_IMPROVE_RG_BIN").unwrap_or_else(|_| "rg".to_string());
+    let wd = work_dir.to_string_lossy().to_string();
+    // path -> (distinct_keyword_count, earliest_line)
+    let mut hits: std::collections::HashMap<String, (u32, u32)> = std::collections::HashMap::new();
+    for kw in &keywords {
+        let out = Command::new(&rg)
+            .args([
+                "-i",
+                "-n",
+                "--no-heading",
+                "-m",
+                "5",
+                "-g",
+                "!*.lock",
+                "-g",
+                "!*.min.*",
+                "-g",
+                "!node_modules/**",
+                "-g",
+                "!dist/**",
+                "-g",
+                "!build/**",
+                "-g",
+                "!*.md",
+                kw,
+                &wd,
+            ])
+            .output();
+        let out = match out {
+            Ok(o) if o.status.success() => o,
+            _ => continue,
+        };
+        // distinct files matched by THIS keyword (so each keyword adds at most 1).
+        let mut files_this_kw: std::collections::HashMap<String, u32> =
+            std::collections::HashMap::new();
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let mut parts = line.splitn(3, ':');
+            let path = parts.next().unwrap_or("");
+            let lineno: u32 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+            if path.is_empty() {
+                continue;
+            }
+            let rel = path
+                .strip_prefix(&wd)
+                .unwrap_or(path)
+                .trim_start_matches('/')
+                .to_string();
+            if !is_source_file(&rel.to_ascii_lowercase()) {
+                continue;
+            }
+            let e = files_this_kw.entry(rel).or_insert(lineno);
+            if lineno < *e {
+                *e = lineno;
+            }
+        }
+        for (rel, firstline) in files_this_kw {
+            let e = hits.entry(rel).or_insert((0, firstline));
+            e.0 += 1;
+            if firstline < e.1 {
+                e.1 = firstline;
+            }
+        }
+    }
+    if hits.is_empty() {
+        return None;
+    }
+    let mut ranked: Vec<(String, u32, u32)> =
+        hits.into_iter().map(|(p, (c, l))| (p, c, l)).collect();
+    // most distinct keywords first; tie-break by path for determinism.
+    ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    Some(format_grounding_block(&ranked, &keywords))
+}
+
 fn build_gap_description(gap: &ProposedGap) -> String {
     let ac = gap
         .acceptance_criteria_draft
@@ -3307,6 +3526,83 @@ mod tests {
         assert!(is_test_file("tests/test_x.py"));
         assert!(is_test_file("app/foo.test.ts"));
         assert!(!is_test_file("src/foo.ts"));
+    }
+
+    // ── EFFECTIVE-354: grounding pre-step (grep locator for the agent) ──────
+
+    fn grounding_gap(title: &str, excerpt: &str) -> ProposedGap {
+        ProposedGap {
+            title: title.to_string(),
+            domain: "PRODUCT".to_string(),
+            priority: Priority::P2,
+            effort: Effort::S,
+            confidence: Confidence::High,
+            source_of_evidence: SourceOfEvidence {
+                input_path: "test".to_string(),
+                section: "PRODUCT-143".to_string(),
+                excerpt: excerpt.to_string(),
+            },
+            acceptance_criteria_draft: vec![],
+            layer: None,
+            doctrine_justification: None,
+        }
+    }
+
+    #[test]
+    fn effective354_extract_keywords_keeps_feature_nouns_drops_noise() {
+        let gap = grounding_gap(
+            "[olive] Meal and budget search modes silently fail ($0.00 / \"not found\")",
+            "Only plain grocery-list mode works; the meal and budget search return $0.00.",
+        );
+        let kws = extract_keywords(&gap);
+        // Feature nouns survive.
+        for want in ["search", "budget", "meal", "grocery"] {
+            assert!(
+                kws.contains(&want.to_string()),
+                "keyword '{want}' missing from {kws:?}"
+            );
+        }
+        // The [olive] owner tag, stopwords, and the numeric are dropped.
+        assert!(
+            !kws.contains(&"olive".to_string()),
+            "owner tag must be stripped: {kws:?}"
+        );
+        assert!(
+            !kws.iter()
+                .any(|k| ["modes", "fail", "only", "works"].contains(&k.as_str())),
+            "process/stopwords must be dropped: {kws:?}"
+        );
+        assert!(
+            !kws.iter().any(|k| k.chars().all(|c| c.is_numeric())),
+            "no pure numbers"
+        );
+    }
+
+    #[test]
+    fn effective354_extract_keywords_empty_for_generic_title() {
+        // All-stopword title yields nothing to ground on (locator returns None upstream).
+        let gap = grounding_gap("fix the bug", "");
+        assert!(extract_keywords(&gap).is_empty());
+    }
+
+    #[test]
+    fn effective354_format_grounding_block_lists_ranked_files() {
+        let ranked = vec![
+            ("src/search/meal.ts".to_string(), 3u32, 42u32),
+            ("src/search/budget.ts".to_string(), 2u32, 10u32),
+        ];
+        let kws = vec![
+            "search".to_string(),
+            "meal".to_string(),
+            "budget".to_string(),
+        ];
+        let block = format_grounding_block(&ranked, &kws);
+        assert!(block.contains("LIKELY-RELEVANT SOURCE FILES"));
+        assert!(block.contains("src/search/meal.ts:42"));
+        assert!(block.contains("matches 3 keyword"));
+        assert!(block.contains("Keywords searched: search, meal, budget"));
+        // Steers the agent to EDIT source, not just add a test (anti-stub framing).
+        assert!(block.to_lowercase().contains("edit"));
     }
 
     // ── MISSION-059: no-abandon remediation helpers ────────────────────────
