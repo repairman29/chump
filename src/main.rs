@@ -1494,6 +1494,10 @@ async fn main() -> Result<()> {
             eprintln!("chump agent-run: empty prompt (pass --prompt-file <f> or pipe via stdin)");
             std::process::exit(2);
         }
+        // CREDIBLE-189: capture chump's OWN root BEFORE CHUMP_REPO is repointed at
+        // --cwd below, so the per-run cost emit at exit lands in chump's ambient
+        // stream (where cost_watch/bench read it), not the external clone's.
+        let cost_emit_root = crate::repo_path::repo_root();
         // Root the agent's file tools at --cwd (the external clone/worktree) so its
         // edits land THERE, not in the chump repo. This is the external analog of a
         // linked worktree: gap/context come from chump, files live in the target.
@@ -1535,6 +1539,31 @@ async fn main() -> Result<()> {
             Ok(agent) => match agent.run(&prompt).await {
                 Ok(o) => {
                     print!("{}", o.reply);
+                    // CREDIBLE-189: emit this agent-run's model-token cost to CHUMP's
+                    // ambient session_end. The rows were bare, so the bench couldn't
+                    // attribute per-lap cost (bench.rs:124) — cost_watch/waste-tally/
+                    // kpi already read input_tokens/output_tokens off session_end.
+                    // agent-run is the gap-less primitive: key by env session/gap if
+                    // present, else a sentinel. (Model field is a follow-up slice —
+                    // needs a reliable cascade-model source + a signature change;
+                    // the bare-row token hole is the core of this gap.)
+                    let (in_tok, out_tok) = chump_cost_tracker::token_totals();
+                    if in_tok > 0 || out_tok > 0 {
+                        let sid = std::env::var("CHUMP_SESSION_ID")
+                            .unwrap_or_else(|_| "agent-run".to_string());
+                        let gid = std::env::var("CHUMP_GAP_ID").unwrap_or_default();
+                        crate::session_ledger::emit_session_end(
+                            &cost_emit_root,
+                            &sid,
+                            &gid,
+                            crate::session_ledger::Outcome::Shipped,
+                            Some(crate::session_ledger::TokenCounts {
+                                input_tokens: in_tok,
+                                output_tokens: out_tok,
+                                cache_read_tokens: 0,
+                            }),
+                        );
+                    }
                     return Ok(());
                 }
                 Err(e) => {

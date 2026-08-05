@@ -68,6 +68,17 @@ pub fn provider_daily_summary() -> String {
     format!("Provider usage: {}.", lines.join("; "))
 }
 
+/// CREDIBLE-189: the raw (input, output) model-token totals for this process, so a
+/// subprocess (e.g. `chump agent-run`) can emit its own per-run cost on exit — the
+/// in-process tracker is invisible to the parent otherwise, and `summary()` only
+/// returns a string. Mirrors `summary()`'s atomic loads.
+pub fn token_totals() -> (u64, u64) {
+    (
+        MODEL_INPUT_TOKENS.load(Ordering::Relaxed),
+        MODEL_OUTPUT_TOKENS.load(Ordering::Relaxed),
+    )
+}
+
 /// One-line summary for context or logs.
 pub fn summary() -> String {
     let tavily = TAVILY_CALLS.load(Ordering::Relaxed);
@@ -242,6 +253,22 @@ mod tests {
         assert!(s.contains("3 model requests"), "got: {s}");
         assert!(s.contains("300 in"), "got: {s}");
         assert!(s.contains("200 out"), "got: {s}");
+    }
+
+    #[test]
+    fn token_totals_reflects_recorded_completions() {
+        // CREDIBLE-189: the numeric getter a subprocess (agent-run) reads to emit
+        // its own per-run token cost on exit — must mirror what record_completion
+        // accumulated, not just the summary() string.
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        record_completion(1, 100, 50);
+        record_completion(2, 200, 150);
+        assert_eq!(
+            token_totals(),
+            (300, 200),
+            "input/output token totals should sum"
+        );
     }
 
     #[test]
