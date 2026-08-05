@@ -898,6 +898,171 @@ After ship, exit. Reply ONLY with the PR number.{epilogue}",
     )
 }
 
+/// How many grounded starting points to inject. Small on purpose: this is a
+/// pointer into the codebase, not a substitute for the agent doing its own
+/// reading, and a long list would push the epilogue's shipping contract further
+/// from where the agent acts.
+const ALMANAC_GROUNDING_HITS: usize = 5;
+
+/// Hard ceiling on the pre-query. Dispatch must never block on Almanac: a query
+/// is ~3s when inference is healthy, and if the box is unreachable the liveness
+/// probe alone can burn seconds before it degrades to keyword.
+const ALMANAC_GROUNDING_TIMEOUT_SECS: u64 = 12;
+
+/// Resolve the `almanac` CLI: `CHUMP_ALMANAC_BIN`, then the usual checkout.
+fn almanac_cli_bin() -> Option<String> {
+    if let Ok(b) = std::env::var("CHUMP_ALMANAC_BIN") {
+        if Path::new(&b).is_file() {
+            return Some(b);
+        }
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    [
+        format!("{home}/Projects/almanac/target/release/almanac"),
+        format!("{home}/Projects/almanac/target/debug/almanac"),
+    ]
+    .into_iter()
+    .find(|c| Path::new(c).is_file())
+}
+
+/// Run a child to completion under a wall-clock ceiling, killing it on timeout.
+/// `Command::output()` has no timeout, and an unbounded pre-query would let a
+/// wedged inference host stall every dispatch on the box.
+fn output_with_timeout(mut cmd: Command, limit: std::time::Duration) -> Option<Vec<u8>> {
+    let mut child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    return None;
+                }
+                let mut buf = Vec::new();
+                use std::io::Read;
+                child.stdout.take()?.read_to_end(&mut buf).ok()?;
+                return Some(buf);
+            }
+            Ok(None) => {
+                if start.elapsed() >= limit {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(_) => return None,
+        }
+    }
+}
+
+/// Phase D — proactive grounding.
+///
+/// Pre-query Almanac with the gap's own words and hand the agent grounded
+/// `path:line` starting points BEFORE it begins, rather than relying on it to
+/// remember that the tool exists. The static briefing directive
+/// (`context_assembly.rs`) is a nudge; this is the pull.
+///
+/// Every failure path returns `None` and the prompt is unchanged: no binary, no
+/// index, non-zero exit, unparseable output, timeout, or zero hits. A dispatch
+/// must never fail, hang, or wait on Almanac.
+///
+/// Honesty rules baked into the block, because an agent cannot verify these
+/// itself: a STALE index says so inline, and a degraded (keyword-only) answer
+/// says so too. Grounded-but-stale silently presented as current is worse than
+/// no context at all — the agent would trust `path:line` citations that moved.
+///
+/// Disable with `CHUMP_ALMANAC_ENABLED=0` (kills all Almanac use) or
+/// `CHUMP_ALMANAC_DISPATCH_GROUNDING=0` (kills only this pre-query).
+fn almanac_grounding_block(gap: &Gap, repo_root: &Path) -> Option<String> {
+    if std::env::var("CHUMP_ALMANAC_ENABLED").as_deref() == Ok("0")
+        || std::env::var("CHUMP_ALMANAC_DISPATCH_GROUNDING").as_deref() == Ok("0")
+    {
+        return None;
+    }
+    // The gap's title is the query. A bare id like "INFRA-3530" retrieves
+    // nothing useful, so if there is no title there is nothing worth asking.
+    let query = gap.title.trim();
+    if query.is_empty() {
+        return None;
+    }
+    let bin = almanac_cli_bin()?;
+
+    // Name the repo EXPLICITLY by path instead of relying on the CLI's default
+    // resolution. With ~100 repos in Almanac's registry a bare query fails with
+    // "multiple repos registered", and dispatch runs from a worktree whose cwd
+    // is not the registered repo root anyway.
+    let mut cmd = Command::new(bin);
+    cmd.current_dir(repo_root)
+        .arg("search")
+        .arg(query)
+        .arg(repo_root.as_os_str())
+        .arg("--json")
+        .arg("--limit")
+        .arg(ALMANAC_GROUNDING_HITS.to_string());
+    let out = output_with_timeout(
+        cmd,
+        std::time::Duration::from_secs(ALMANAC_GROUNDING_TIMEOUT_SECS),
+    )?;
+    let v: serde_json::Value = serde_json::from_slice(&out).ok()?;
+
+    let hits = v.get("hits")?.as_array()?;
+    if hits.is_empty() {
+        return None;
+    }
+
+    let mut block = String::from(
+        "\n\n---\n\n[Almanac — grounded starting points for this gap, pre-fetched]\n\
+         These came from searching the index for this gap's title. They are a map, not \
+         the answer: verify before you rely on any of them, and call almanac_search / \
+         almanac_api yourself for anything they do not cover.\n",
+    );
+    for h in hits {
+        let citation = h.get("citation").and_then(|c| c.as_str()).unwrap_or("");
+        if citation.is_empty() {
+            continue;
+        }
+        let kind = h.get("kind").and_then(|c| c.as_str()).unwrap_or("");
+        let name = h.get("name").and_then(|c| c.as_str()).unwrap_or("");
+        block.push_str(&format!("  - {citation}  ({kind} {name})\n"));
+    }
+
+    let stale = v
+        .get("grounding")
+        .and_then(|g| g.get("stale"))
+        .and_then(|s| s.as_bool())
+        .unwrap_or(false);
+    if stale {
+        block.push_str(
+            "  NOTE: the index is STALE (HEAD has moved past the indexed commit). Line \
+             numbers may have shifted — treat these as hints, not citations.\n",
+        );
+    }
+    if let Some(reason) = v.get("fallback_reason").and_then(|r| r.as_str()) {
+        block.push_str(&format!(
+            "  NOTE: semantic search degraded ({reason}) — these are keyword matches only, \
+             so conceptually-related files are probably missing.\n"
+        ));
+    }
+    Some(block)
+}
+
+/// `build_prompt` plus Almanac's pre-fetched grounding, when available.
+///
+/// Kept separate from `build_prompt` so that builder — and the
+/// `scripts/ci/test-subagent-epilogue-ref.sh` guard over it — stays unchanged,
+/// and so the grounding can be tested without spawning a subagent.
+pub fn build_prompt_grounded(gap: &Gap, repo_root: &Path) -> String {
+    let mut prompt = build_prompt(&gap.id, repo_root);
+    if let Some(block) = almanac_grounding_block(gap, repo_root) {
+        prompt.push_str(&block);
+    }
+    prompt
+}
+
 /// Derive the worktree path + branch name for a gap. Lowercased, underscores
 /// rewritten to hyphens (matching the conventions in musher.sh and the
 /// existing `.claude/worktrees/<name>/` tree).
@@ -948,7 +1113,7 @@ pub fn dispatch_gap_with<S: Spawner>(
         why,
     );
 
-    let prompt = build_prompt(&gap.id, repo_root);
+    let prompt = build_prompt_grounded(gap, repo_root);
     let (child, stderr_tail) = spawner
         .spawn_claude(&worktree, &prompt, backend)
         .with_context(|| format!("spawning claude for {}", gap.id))?;
@@ -1100,6 +1265,76 @@ mod tests {
             depends_on: None,
             closed_date: None,
         }
+    }
+
+    // --- Phase D: Almanac pre-fetched grounding -----------------------------
+    // These assert the FAILURE paths, because the whole design constraint is
+    // that a dispatch must never fail, hang, or wait on Almanac.
+
+    #[test]
+    fn grounding_is_skipped_when_disabled() {
+        let g = fake_gap("INFRA-1");
+        std::env::set_var("CHUMP_ALMANAC_DISPATCH_GROUNDING", "0");
+        assert!(almanac_grounding_block(&g, Path::new("/nonexistent")).is_none());
+        std::env::remove_var("CHUMP_ALMANAC_DISPATCH_GROUNDING");
+
+        std::env::set_var("CHUMP_ALMANAC_ENABLED", "0");
+        assert!(almanac_grounding_block(&g, Path::new("/nonexistent")).is_none());
+        std::env::remove_var("CHUMP_ALMANAC_ENABLED");
+    }
+
+    #[test]
+    fn grounding_is_skipped_without_a_title_to_query_with() {
+        // A bare id like "INFRA-3530" retrieves nothing useful; querying with it
+        // would spend seconds to inject noise.
+        let mut g = fake_gap("INFRA-3530");
+        g.title = "   ".into();
+        std::env::set_var("CHUMP_ALMANAC_BIN", "/definitely/not/a/binary");
+        assert!(almanac_grounding_block(&g, Path::new("/nonexistent")).is_none());
+        std::env::remove_var("CHUMP_ALMANAC_BIN");
+    }
+
+    #[test]
+    fn grounded_prompt_falls_back_to_the_plain_prompt_when_almanac_is_absent() {
+        // The load-bearing guarantee: no almanac binary must leave dispatch
+        // behaving exactly as it did before Phase D existed.
+        std::env::set_var("CHUMP_ALMANAC_DISPATCH_GROUNDING", "0");
+        let g = fake_gap("AUTO-013");
+        let plain = build_prompt(&g.id, Path::new("/nonexistent"));
+        let grounded = build_prompt_grounded(&g, Path::new("/nonexistent"));
+        std::env::remove_var("CHUMP_ALMANAC_DISPATCH_GROUNDING");
+        assert_eq!(plain, grounded);
+        assert!(grounded.contains("AUTO-013"));
+    }
+
+    #[test]
+    fn output_with_timeout_kills_a_hung_child() {
+        // Dispatch cannot be held hostage by a wedged inference host.
+        let mut cmd = Command::new("sleep");
+        cmd.arg("30");
+        let started = std::time::Instant::now();
+        let out = output_with_timeout(cmd, std::time::Duration::from_millis(300));
+        assert!(out.is_none(), "a timed-out child must yield no output");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "timeout did not actually bound the wait: {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn output_with_timeout_returns_stdout_on_success() {
+        let mut cmd = Command::new("echo");
+        cmd.arg("hello");
+        let out = output_with_timeout(cmd, std::time::Duration::from_secs(5)).unwrap();
+        assert_eq!(String::from_utf8_lossy(&out).trim(), "hello");
+    }
+
+    #[test]
+    fn output_with_timeout_rejects_a_nonzero_exit() {
+        // A failing almanac must not be parsed as an empty-but-valid answer.
+        let mut cmd = Command::new("false");
+        assert!(output_with_timeout(cmd, std::time::Duration::from_secs(5)).is_none());
     }
 
     #[test]
