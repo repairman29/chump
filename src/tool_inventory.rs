@@ -36,7 +36,9 @@ use crate::repo_allowlist_tool::{
     repo_allowlist_tools_enabled, RepoAuthorizeTool, RepoDeauthorizeTool,
 };
 use crate::repo_path;
-use crate::repo_tools::{GrepRepoTool, ListDirTool, PatchFileTool, ReadFileTool, WriteFileTool};
+use crate::repo_tools::{
+    GrepRepoTool, ListDirTool, PatchFileTool, ReadFileTool, StrReplaceTool, WriteFileTool,
+};
 use crate::run_test_tool::RunTestTool;
 use crate::sandbox_tool::{sandbox_enabled, SandboxTool};
 use crate::schedule_db;
@@ -141,6 +143,10 @@ const DISPATCH_FREE_TOOL_KEYS: &[&str] = &[
     "grep_repo",
     "almanac_search",
     "list_dir",
+    // EFFECTIVE-355: str_replace is the PRIMARY edit tool for open/weak models —
+    // anchored old->new, no @@ hunks to mis-format (patch_file) and no whole-file
+    // rewrite to truncate/clobber (write_file). patch_file stays as a fallback.
+    "str_replace",
     "patch_file",
     "git_commit",
 ];
@@ -405,6 +411,10 @@ inventory::submit! {
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(PatchFileTool), "patch_file").when_enabled(repo_path::repo_root_is_explicit)
+}
+inventory::submit! {
+    // EFFECTIVE-355: anchored edit tool — safe for weak/open models (can't clobber).
+    ToolEntry::new(|| Box::new(StrReplaceTool), "str_replace").when_enabled(repo_path::repo_root_is_explicit)
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(BattleQaTool), "battle_qa").when_enabled(repo_path::repo_root_is_explicit)

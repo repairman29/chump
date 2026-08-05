@@ -639,6 +639,141 @@ impl Tool for WriteFileTool {
     }
 }
 
+/// EFFECTIVE-355 (pure, unit-tested): compute the str_replace result for the given
+/// file content. `Ok(updated)` on a UNIQUE match; `Err(guidance)` for empty old_string,
+/// a no-op (old == new), no match, or an ambiguous (>1) match. The guidance strings are
+/// handed back to the model as a successful tool result so it can self-correct.
+fn str_replace_outcome(
+    existing: &str,
+    old_string: &str,
+    new_string: &str,
+) -> Result<String, String> {
+    if old_string.is_empty() {
+        return Err("REFUSED: old_string is empty. Use write_file to create a NEW file; to EDIT, copy the exact snippet to change into old_string.".to_string());
+    }
+    if old_string == new_string {
+        return Err(
+            "REFUSED: old_string == new_string (no-op). Put the CHANGED text in new_string."
+                .to_string(),
+        );
+    }
+    match existing.matches(old_string).count() {
+        0 => {
+            let excerpt: String = existing.chars().take(800).collect();
+            Err(format!(
+                "NO MATCH: old_string was not found — check exact whitespace/indentation, re-read the file, and copy the snippet verbatim. First 800 chars of the file:\n---\n{excerpt}\n---"
+            ))
+        }
+        1 => Ok(existing.replacen(old_string, new_string, 1)),
+        n => Err(format!(
+            "AMBIGUOUS: old_string matches {n} places. Add MORE surrounding lines to old_string so it identifies exactly ONE location, then retry."
+        )),
+    }
+}
+
+/// EFFECTIVE-355: anchored find-and-replace edit — the weak-model-friendly middle
+/// ground between patch_file (needs valid @@ hunks; open models can't produce them)
+/// and write_file (whole-file rewrite; open models truncate → clobber). The model
+/// supplies the EXACT existing snippet (`old_string`) + its replacement
+/// (`new_string`); it can only change the matched span, so it CANNOT nuke a file.
+pub struct StrReplaceTool;
+
+#[async_trait]
+impl Tool for StrReplaceTool {
+    fn name(&self) -> String {
+        "str_replace".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Replace an EXACT snippet in a file with new text — the safe, preferred way to make a \
+         targeted edit. Provide `path`, `old_string` (copied VERBATIM from the file, including \
+         whitespace and indentation), and `new_string`. `old_string` MUST match EXACTLY ONCE — \
+         read_file first and include enough surrounding lines to make it unique. No line numbers, \
+         no diff syntax, no @@ hunks. Prefer str_replace over write_file for edits; use write_file \
+         ONLY to create a brand-new file."
+            .to_string()
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "description": "File path relative to repo root" },
+                "old_string": { "type": "string", "description": "Exact text to find, copied verbatim from the file (incl. indentation). Must be unique." },
+                "new_string": { "type": "string", "description": "Replacement text" }
+            },
+            "required": ["path", "old_string", "new_string"]
+        })
+    }
+
+    async fn execute(&self, input: Value) -> Result<String> {
+        if let Err(e) = crate::limits::check_tool_input_len(&input) {
+            return Err(anyhow!("{}", e));
+        }
+        let path_str = get_path(&input)?;
+        let old_string = input
+            .get("old_string")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing old_string"))?;
+        let new_string = input
+            .get("new_string")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing new_string"))?;
+
+        // Read current content: prefer an ACP client fs, else local under the repo root.
+        let existing: String = match crate::acp_server::acp_maybe_read_text_file(
+            &path_str, None, None,
+        )
+        .await
+        {
+            Some(Ok(c)) => c,
+            Some(Err(e)) => {
+                return Err(anyhow!(
+                    "str_replace: could not read {path_str} via ACP: {e}"
+                ))
+            }
+            None => {
+                if !repo_path::repo_root_is_explicit() {
+                    return Err(anyhow!(
+                        "str_replace requires CHUMP_REPO or CHUMP_HOME to be set"
+                    ));
+                }
+                let path = repo_path::resolve_under_root_for_write(&path_str)
+                    .map_err(|e| anyhow!("{}", e))?;
+                if !path.is_file() {
+                    return Ok(format!(
+                            "REFUSED: {path_str} does not exist. str_replace only EDITS an existing file; use write_file to create a new file."
+                        ));
+                }
+                fs::read_to_string(&path).map_err(|e| anyhow!("read {path_str}: {e}"))?
+            }
+        };
+
+        let updated = match str_replace_outcome(&existing, old_string, new_string) {
+            Ok(u) => u,
+            // Guidance (empty/no-op/no-match/ambiguous) is returned to the model as a
+            // successful tool result so it can self-correct in the same turn.
+            Err(msg) => return Ok(msg),
+        };
+        let (old_len, new_len) = (existing.len(), updated.len());
+
+        // Write back: ACP client fs if present, else local.
+        if let Some(acp_result) =
+            crate::acp_server::acp_maybe_write_text_file(&path_str, &updated).await
+        {
+            return acp_result.map(|_| {
+                format!("str_replace: edited {path_str} (1 replacement, {old_len} → {new_len} bytes) via ACP")
+            });
+        }
+        let path =
+            repo_path::resolve_under_root_for_write(&path_str).map_err(|e| anyhow!("{}", e))?;
+        fs::write(&path, &updated).map_err(|e| anyhow!("write {path_str}: {e}"))?;
+        Ok(format!(
+            "str_replace: edited {path_str} (1 replacement, {old_len} → {new_len} bytes)"
+        ))
+    }
+}
+
 /// Apply a standard unified diff to one repo file. On context mismatch, returns Ok(...) with the
 /// real file excerpt so the model can self-correct in the same turn (no wasted Err).
 pub struct PatchFileTool;
@@ -878,6 +1013,44 @@ mod tests {
     use serial_test::serial;
     use std::fs;
     use std::path::PathBuf;
+
+    // ── EFFECTIVE-355: str_replace outcome logic (pure, no IO/env) ──────────
+
+    #[test]
+    fn str_replace_unique_match_replaces_only_that_span() {
+        let file = "line one\nfn search() { return 0.0; }\nline three\n";
+        let out = str_replace_outcome(file, "return 0.0;", "return computeTotal();").unwrap();
+        assert_eq!(
+            out,
+            "line one\nfn search() { return computeTotal(); }\nline three\n"
+        );
+        // The rest of the file is untouched — this is the anti-clobber guarantee.
+        assert!(out.contains("line one") && out.contains("line three"));
+    }
+
+    #[test]
+    fn str_replace_no_match_returns_guidance_not_error() {
+        let err = str_replace_outcome("hello world", "goodbye", "x").unwrap_err();
+        assert!(err.starts_with("NO MATCH"));
+        assert!(err.contains("hello world")); // shows the file so the model can self-correct
+    }
+
+    #[test]
+    fn str_replace_ambiguous_match_is_refused() {
+        let err = str_replace_outcome("x=1\nx=1\n", "x=1", "x=2").unwrap_err();
+        assert!(err.starts_with("AMBIGUOUS"), "got: {err}");
+        assert!(err.contains("2 places"));
+    }
+
+    #[test]
+    fn str_replace_empty_and_noop_are_refused() {
+        assert!(str_replace_outcome("abc", "", "x")
+            .unwrap_err()
+            .contains("empty"));
+        assert!(str_replace_outcome("abc", "abc", "abc")
+            .unwrap_err()
+            .contains("no-op"));
+    }
 
     /// Temp dir under current dir so canonicalize matches (avoid /tmp vs /private/tmp on macOS).
     fn test_dir(name: &str) -> PathBuf {
