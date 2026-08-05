@@ -3315,15 +3315,23 @@ mod tests {
         let clone_dir = tmp.path().join("clone");
         fs::create_dir_all(&clone_dir).unwrap();
 
+        // EFFECTIVE-353: --gap now LOADS the real gap from the chump store; for an
+        // ID absent from every store it fail-softs to the minimal synthesis whose
+        // title is the ID. Use a sentinel ID guaranteed absent so this stays
+        // deterministic regardless of the ambient state.db (a real ID like
+        // EFFECTIVE-177 now resolves to its stored descriptive title). The
+        // real-gap-loading path is covered by
+        // effective353_stored_gap_carries_real_title_description_and_json_ac.
         let opts = Opts {
             owner_repo: "test/repo".to_string(),
-            gap_id: Some("EFFECTIVE-177".to_string()),
+            gap_id: Some("NONEXISTENT-EFFECTIVE-353-SENTINEL".to_string()),
             apply: false,
             clone_dir: Some(clone_dir.clone()),
         };
 
         let picked = pick_gap(&opts, &clone_dir).unwrap().remove(0);
-        assert_eq!(picked.title, "EFFECTIVE-177");
+        // Single operator-chosen candidate; fail-soft placeholder carries the ID.
+        assert_eq!(picked.title, "NONEXISTENT-EFFECTIVE-353-SENTINEL");
     }
 
     /// Init a git repo in `dir` with one commit carrying `commit_msg`.
