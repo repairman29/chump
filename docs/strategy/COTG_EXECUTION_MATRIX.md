@@ -43,31 +43,32 @@ this matrix was being built — real merged PRs, checked as actual ancestors of 
 |---|---|---|---|
 | INFRA-3483 (COTG-1.1, typed FSM) | shipped | — | not independently re-checked below |
 | INFRA-3484 (COTG-1.2, deterministic ceremony) | shipped | — | not independently re-checked below |
-| INFRA-3485 (COTG-1.3, edit-verify gate) | shipped | — | **checked — see discrepancy below** |
+| INFRA-3485 (COTG-1.3, edit-verify gate) | shipped | #3396 (INFRA-3516) | ✅ verified 2026-08-04 — the hole IS closed (see below) |
 | INFRA-3486 (COTG-1.4, durable/resumable exec) | done | #3378 | ✅ merge SHA confirmed ancestor of main |
 | INFRA-3488 (COTG-1.6, task-fit model selection) | done | #3374 | ✅ merge SHA confirmed ancestor of main |
 | INFRA-3489 (COTG-2.1, intervention watchdog) | done | #3384 | ✅ merge SHA confirmed ancestor of main |
 | INFRA-3490 (COTG-2.2, gate self-heal) | done | #3381 | ✅ merge SHA confirmed ancestor of main |
 
-**⚠️ Discrepancy caught, not resolved — needs a human/agent look, don't just trust the
-label:** `INFRA-3485` (COTG-1.3, pre-commit edit-verification gate) shows `shipped` in
-the gap registry. But the specific hole this matrix's research identified — `fix_pr`
-(`src/improve.rs:1783`) and `remediate_held` (`:1861`) never call `verify_staged_edit()`
-— is **still present in current main** (re-checked directly against source after
-confirming the worktree isn't stale). `chump gap show INFRA-3516` — the gap that was
-tracking exactly this hole — now returns "not found," meaning it was either folded into
-INFRA-3485's shipped scope (in which case the AC wasn't fully met) or silently dropped.
-**This matches `gap-status-auto-flip-silent-noop`, one of this session's own named VOA
-wedge classes.** Recommend: don't pick new Phase-1 work assuming this is closed — verify
-`fix_pr`/`remediate_held` gating directly before building on top of it, and file a wedge
-(`chump voice --wedge-class gap-status-auto-flip-silent-noop ...`) if confirmed.
+**✅ Discrepancy RESOLVED — re-verified against current main 2026-08-04 (DOC-078).** The
+earlier warning was written against **pre-INFRA-3516** code; the hole it described is
+**closed**, and the line refs above (`improve.rs:1783`/`:1861`) no longer exist on main.
+INFRA-3516 (commit `b344ae92`, PR #3396) introduced ONE shared staging+commit ceremony,
+`guarded_stage_and_commit()` (`src/improve.rs:1085`), which calls `verify_staged_edit()`
+(`src/improve.rs:1013`) at `:1109` — after `git add -A` + junk-drop, before commit. Every
+real commit path now funnels through it: `deterministic_ship` → `:1151`; `fix_pr` (the CI
+remediation path) → `:2116`; `remediate_held` (`:2141`) has **no independent commit
+branch** — its only mutating arm is `Remediation::AgentFix => fix_pr(...)` at `:2177`, so
+it is covered transitively. So `fix_pr`/`remediate_held` **are** gated. No Phase-1 work
+remains here; treat INFRA-3485/COTG-1.3 as genuinely done. (Lesson kept: the original
+warning was right to distrust the label and verify against source — that discipline is
+what caught this was already fixed, not still broken.)
 
 **Remaining Phase 1 items (verify before assuming needed — labels have already proven
 unreliable once above):**
 
 | Order | Gap | What | Status | Model class |
 |---|---|---|---|---|
-| 1.1 | INFRA-3485 / COTG-1.3 | route `fix_pr`/`remediate_held` through `verify_staged_edit()` | registry says shipped; **code says the remediation path still isn't gated — verify first** | strong (touches the exact hole that leaked junk commits this week) |
+| ~~1.1~~ | INFRA-3485 / COTG-1.3 | route `fix_pr`/`remediate_held` through `verify_staged_edit()` | ✅ **DONE** (INFRA-3516 #3396) — both route through `guarded_stage_and_commit` → `verify_staged_edit` (verified 2026-08-04, DOC-078). No work remaining. | — |
 | 1.2 | — | extend checkpoint/resume (`src/improve.rs:1168-1199`) to `src/execute_gap.rs` — zero refs there as of this check | verify whether INFRA-3486's "done" PR covered this too, since it was scoped narrow originally | medium |
 
 ## Phase 2 — Make the loop measurable (pulls COTG-3.1 + 5.1 ahead of finishing Epic 2 — Front Door's override, and it's correct: don't build self-heal around an unmeasurable loop)
