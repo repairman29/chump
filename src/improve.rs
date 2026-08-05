@@ -412,6 +412,70 @@ fn run_inner(args: &[String]) -> Result<i32> {
 
 // ── Stage implementations ─────────────────────────────────────────────────
 
+/// EFFECTIVE-353: load a filed gap from the canonical chump gap store
+/// (`.chump/state.db` under the current repo root). Best-effort — returns None
+/// when the store can't be opened or the ID isn't present, so callers fail-soft
+/// to a placeholder synthesis. Runs before any clone/cwd change, so the repo
+/// root still resolves to the chump repo whose store holds the gap.
+fn load_stored_gap(gap_id: &str) -> Option<chump_gap_store::GapRow> {
+    let repo_root = crate::repo_path::repo_root();
+    let store = chump_gap_store::GapStore::open(&repo_root).ok()?;
+    store.get(gap_id).ok().flatten()
+}
+
+/// EFFECTIVE-353: map a stored `GapRow` into the `ProposedGap` the implement
+/// stage feeds the agent via `build_gap_description` — carrying the gap's REAL
+/// title, problem statement, and acceptance criteria (not a placeholder built
+/// from the bare ID). `acceptance_criteria` is stored as a JSON array of strings
+/// (serialized AS a string); non-JSON or empty falls back to a generic bullet so
+/// the agent still gets a runnable AC.
+fn proposed_gap_from_stored(row: &chump_gap_store::GapRow) -> ProposedGap {
+    use chump_handoff::external_repo_schema::{Confidence, Effort, Priority, SourceOfEvidence};
+
+    let priority = match row.priority.as_str() {
+        "P0" => Priority::P0,
+        "P2" => Priority::P2,
+        "P3" => Priority::P3,
+        _ => Priority::P1,
+    };
+    let mut ac: Vec<String> =
+        serde_json::from_str::<Vec<String>>(&row.acceptance_criteria).unwrap_or_default();
+    ac.retain(|s| !s.trim().is_empty());
+    if ac.is_empty() {
+        ac.push(format!("Change described in gap {} is implemented", row.id));
+        ac.push("At least one test proves the change".to_string());
+    }
+    // The problem statement the agent must read: prefer the full description,
+    // then notes, then the title (always non-empty).
+    let excerpt = if !row.description.trim().is_empty() {
+        row.description.clone()
+    } else if !row.notes.trim().is_empty() {
+        row.notes.clone()
+    } else {
+        row.title.clone()
+    };
+    let domain = if row.domain.trim().is_empty() {
+        "EFFECTIVE".to_string()
+    } else {
+        row.domain.clone()
+    };
+    ProposedGap {
+        title: row.title.clone(),
+        domain,
+        priority,
+        effort: Effort::S,
+        confidence: Confidence::High,
+        source_of_evidence: SourceOfEvidence {
+            input_path: format!("chump gap store ({})", row.id),
+            section: row.id.clone(),
+            excerpt,
+        },
+        acceptance_criteria_draft: ac,
+        layer: None,
+        doctrine_justification: None,
+    }
+}
+
 /// Stage 1: Pick the highest-confidence proposed gap from the latest scan.
 ///
 /// If `--gap` was specified, synthesise a minimal `ProposedGap` from the gap
@@ -421,8 +485,18 @@ fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<Vec<ProposedGap>> {
     use chump_handoff::external_repo_schema::{Confidence, Effort, Priority, SourceOfEvidence};
 
     if let Some(ref gap_id) = opts.gap_id {
-        // Synthesise a gap from the provided ID so downstream stages work uniformly.
-        // Operator chose the work explicitly — single candidate, no dedup-advance.
+        // EFFECTIVE-353: load the REAL filed gap (title/description/acceptance
+        // criteria) from the canonical chump gap store so the implementing agent
+        // works the ACTUAL job. Before this, the `--gap` path synthesised a
+        // placeholder from the bare ID — the agent was handed the literal string
+        // "PRODUCT-143" and a generic "Change described in gap … is implemented"
+        // AC, so it could not see (let alone fix) the real bug. Fail-soft to the
+        // minimal synthesis when the ID isn't in the store (keeps ad-hoc `--gap
+        // SOME-ID` working). Operator chose the work — single candidate, no
+        // dedup-advance either way.
+        if let Some(row) = load_stored_gap(gap_id) {
+            return Ok(vec![proposed_gap_from_stored(&row)]);
+        }
         return Ok(vec![ProposedGap {
             title: gap_id.clone(),
             domain: "EFFECTIVE".to_string(),
@@ -2888,6 +2962,70 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    // ── EFFECTIVE-353: --gap loads the REAL filed gap, not a placeholder ────
+
+    /// Build a GapRow via serde (it derives Deserialize; the tail fields carry
+    /// `#[serde(default)]`), so this test survives GapRow field additions.
+    fn stored_gap(json: serde_json::Value) -> chump_gap_store::GapRow {
+        serde_json::from_value(json).expect("construct GapRow")
+    }
+
+    #[test]
+    fn effective353_stored_gap_carries_real_title_description_and_json_ac() {
+        let row = stored_gap(serde_json::json!({
+            "id": "PRODUCT-143",
+            "domain": "PRODUCT",
+            "title": "[olive] Meal and budget search modes silently fail ($0.00)",
+            "description": "Meal and budget search return $0.00 / not found; only plain grocery-list mode works.",
+            "priority": "P2",
+            "effort": "s",
+            "status": "open",
+            "acceptance_criteria": "[\"The issue is verifiably fixed on the LIVE site\",\"No regression\"]",
+            "depends_on": "[]",
+            "notes": "",
+            "source_doc": "",
+            "created_at": 0,
+            "closed_at": null
+        }));
+
+        let pg = proposed_gap_from_stored(&row);
+        // The agent gets the REAL bug title, not the bare ID string.
+        assert_eq!(pg.title, row.title);
+        assert!(pg.title.contains("$0.00"));
+        // The real problem statement reaches the agent via the excerpt.
+        assert_eq!(pg.source_of_evidence.excerpt, row.description);
+        assert_eq!(pg.source_of_evidence.section, "PRODUCT-143");
+        // The stored JSON-array AC is parsed into real bullets — no placeholder.
+        assert_eq!(pg.acceptance_criteria_draft.len(), 2);
+        assert!(pg.acceptance_criteria_draft[0].contains("LIVE site"));
+        assert!(!pg
+            .acceptance_criteria_draft
+            .iter()
+            .any(|s| s.contains("Change described in gap")));
+        // Domain + priority mapped straight from the row.
+        assert_eq!(pg.domain, "PRODUCT");
+        assert!(matches!(pg.priority, Priority::P2));
+    }
+
+    #[test]
+    fn effective353_empty_ac_and_desc_fall_back_soft() {
+        let row = stored_gap(serde_json::json!({
+            "id": "X-1", "domain": "", "title": "just a title",
+            "description": "", "priority": "P9-bogus", "effort": "s",
+            "status": "open", "acceptance_criteria": "", "depends_on": "[]",
+            "notes": "", "source_doc": "", "created_at": 0, "closed_at": null
+        }));
+        let pg = proposed_gap_from_stored(&row);
+        // Empty AC → generic runnable fallback (never a naked empty list).
+        assert_eq!(pg.acceptance_criteria_draft.len(), 2);
+        assert!(pg.acceptance_criteria_draft[0].contains("X-1"));
+        // Empty description → excerpt falls back to the title.
+        assert_eq!(pg.source_of_evidence.excerpt, "just a title");
+        // Unknown priority string → safe P1 default; empty domain → EFFECTIVE.
+        assert!(matches!(pg.priority, Priority::P1));
+        assert_eq!(pg.domain, "EFFECTIVE");
+    }
+
     // ── MISSION-059: no-abandon remediation helpers ────────────────────────
 
     #[test]
@@ -3177,15 +3315,23 @@ mod tests {
         let clone_dir = tmp.path().join("clone");
         fs::create_dir_all(&clone_dir).unwrap();
 
+        // EFFECTIVE-353: --gap now LOADS the real gap from the chump store; for an
+        // ID absent from every store it fail-softs to the minimal synthesis whose
+        // title is the ID. Use a sentinel ID guaranteed absent so this stays
+        // deterministic regardless of the ambient state.db (a real ID like
+        // EFFECTIVE-177 now resolves to its stored descriptive title). The
+        // real-gap-loading path is covered by
+        // effective353_stored_gap_carries_real_title_description_and_json_ac.
         let opts = Opts {
             owner_repo: "test/repo".to_string(),
-            gap_id: Some("EFFECTIVE-177".to_string()),
+            gap_id: Some("NONEXISTENT-EFFECTIVE-353-SENTINEL".to_string()),
             apply: false,
             clone_dir: Some(clone_dir.clone()),
         };
 
         let picked = pick_gap(&opts, &clone_dir).unwrap().remove(0);
-        assert_eq!(picked.title, "EFFECTIVE-177");
+        // Single operator-chosen candidate; fail-soft placeholder carries the ID.
+        assert_eq!(picked.title, "NONEXISTENT-EFFECTIVE-353-SENTINEL");
     }
 
     /// Init a git repo in `dir` with one commit carrying `commit_msg`.

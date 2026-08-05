@@ -15069,7 +15069,16 @@ async fn main() -> Result<()> {
             eprintln!(
                 "[execute-gap] MISSION-046: gap {gap_id} is external_repo:{owner_repo} -> routing to `chump improve {owner_repo} --apply`"
             );
-            let code = improve::run(&[owner_repo, "--apply".to_string()]);
+            // EFFECTIVE-353: pass `--gap <ID>` so improve works the ACTUAL filed
+            // gap — not whatever its generic scout / GREEN-FIRST doctrine picks.
+            // Without this, `chump --execute-gap PRODUCT-143` silently ran the
+            // scout and worked unrelated work; the filed gap never got touched.
+            let code = improve::run(&[
+                owner_repo,
+                "--gap".to_string(),
+                gap_id.to_string(),
+                "--apply".to_string(),
+            ]);
             std::process::exit(code);
         }
         match execute_gap::execute_gap(gap_id).await {
