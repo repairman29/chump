@@ -1333,7 +1333,7 @@ mod tests {
     #[test]
     fn output_with_timeout_rejects_a_nonzero_exit() {
         // A failing almanac must not be parsed as an empty-but-valid answer.
-        let mut cmd = Command::new("false");
+        let cmd = Command::new("false");
         assert!(output_with_timeout(cmd, std::time::Duration::from_secs(5)).is_none());
     }
 
