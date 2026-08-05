@@ -1084,6 +1084,203 @@ fn first_github_pr_url(s: &str) -> Option<String> {
 /// A rejected edit does NOT commit — it bails with a specific reason (worktree left for
 /// debugging), never a broken PR. The destructive check is a conservative heuristic
 /// (near-total wipes only); the validity check is exact.
+/// CREDIBLE-200: does a path look like a source-code file (real work lives here)?
+/// A code extension AND not a test/doc/config/log path.
+fn is_source_file(path: &str) -> bool {
+    let p = path.to_ascii_lowercase();
+    if is_test_file(&p) {
+        return false;
+    }
+    let ext = p.rsplit('.').next().unwrap_or("");
+    let code = matches!(
+        ext,
+        "rs" | "py"
+            | "ts"
+            | "tsx"
+            | "js"
+            | "jsx"
+            | "mjs"
+            | "cjs"
+            | "go"
+            | "java"
+            | "rb"
+            | "c"
+            | "cc"
+            | "cpp"
+            | "h"
+            | "hpp"
+            | "cs"
+            | "kt"
+            | "swift"
+            | "php"
+            | "scala"
+            | "sql"
+            | "sh"
+            | "vue"
+            | "svelte"
+    );
+    // Exclude obvious non-source even with a code-ish ext (logs already dropped upstream).
+    code && !p.starts_with("logs/") && !p.contains("/logs/")
+}
+
+/// CREDIBLE-200: does a path look like a test file?
+fn is_test_file(path: &str) -> bool {
+    let p = path.to_ascii_lowercase();
+    let file = p.rsplit('/').next().unwrap_or(&p);
+    p.contains("/tests/")
+        || p.contains("/test/")
+        || p.contains("__tests__/")
+        || p.starts_with("tests/")
+        || p.starts_with("test/")
+        || file.starts_with("test_")
+        || file.starts_with("test-")
+        || file.ends_with("_test.py")
+        || file.ends_with("_test.go")
+        || file.ends_with("_test.rs")
+        || file.ends_with(".test.ts")
+        || file.ends_with(".test.tsx")
+        || file.ends_with(".test.js")
+        || file.ends_with(".spec.ts")
+        || file.ends_with(".spec.js")
+        || file.ends_with("_spec.rb")
+}
+
+/// CREDIBLE-200: is a single added line a MEANINGFUL assertion (asserts on something
+/// non-trivial), as opposed to a placeholder that is trivially true? Returns false
+/// for non-assertion lines and for trivially-true placeholders (assert True, 1==1,
+/// pass, assert_eq!(x, x), assert!(true), expect(true).toBe(true)).
+fn is_meaningful_assertion(raw: &str) -> bool {
+    let line = raw.trim_start_matches('+').trim();
+    let low = line.to_ascii_lowercase();
+    let looks_like_assert = low.starts_with("assert")
+        || low.contains("assert_eq!")
+        || low.contains("assert_ne!")
+        || low.contains("assert!(")
+        || low.contains("expect(")
+        || low.contains(".tobe")
+        || low.contains(".to_be")
+        || low.contains("assertequal")
+        || low.contains("asserttrue")
+        || low.contains("assertthat");
+    if !looks_like_assert {
+        return false;
+    }
+    !is_placeholder_assertion(&low)
+}
+
+/// CREDIBLE-200: is this assertion trivially true (a stub)? Whitespace-insensitive.
+fn is_placeholder_assertion(low: &str) -> bool {
+    let s: String = low.chars().filter(|c| !c.is_whitespace()).collect();
+    // Literal trivials.
+    const TRIVIAL: [&str; 7] = [
+        "asserttrue",
+        "assert(true)",
+        "assert!(true)",
+        "assertisnotnone(none)",
+        "expect(true).tobe(true)",
+        "expect(true).tobetruthy()",
+        "assertthat(true).istrue()",
+    ];
+    // `asserttrue` bare (python `assert True`) is a stub, but `self.asserttrue(cond)`
+    // (a real unittest call with an argument) is not — distinguish by the '('.
+    if s == "asserttrue" || s == "asserttrue:" {
+        return true;
+    }
+    if TRIVIAL.iter().any(|t| s == *t) {
+        return true;
+    }
+    // Identical operands around `==` → trivially true (assert 1==1, assert x==x).
+    if let Some(idx) = s.find("==") {
+        let left_raw = &s[..idx];
+        // the operand is the token after the last 'assert'/'('/'!'/',' boundary
+        let left = left_raw
+            .rsplit(|c| c == '(' || c == '!' || c == ',')
+            .next()
+            .unwrap_or("")
+            .trim_start_matches("assert");
+        let right = s[idx + 2..]
+            .split(|c| c == ')' || c == ',' || c == ';')
+            .next()
+            .unwrap_or("");
+        if !left.is_empty() && left == right {
+            return true;
+        }
+    }
+    // assert_eq!/assert_ne! with identical operands.
+    for pfx in ["assert_eq!(", "assert_ne!("] {
+        if let Some(rest) = s.strip_prefix(pfx) {
+            let inner = rest.trim_end_matches(|c| c == ')' || c == ';');
+            let parts: Vec<&str> = inner.split(',').collect();
+            if parts.len() >= 2 && !parts[0].is_empty() && parts[0] == parts[1] {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// CREDIBLE-200 (pure, unit-tested): a change is a STUB when it edits NO source file
+/// and adds only placeholder test assertions. Returns Some(reason) to block the ship.
+/// Fails OPEN (returns None) whenever a real source edit or a meaningful assertion is
+/// present — a legitimate test-only PR with real assertions ships normally.
+fn stub_reason(changed_paths: &[String], added_test_lines: &[String]) -> Option<String> {
+    // A real source edit means real work — never a stub.
+    if changed_paths.iter().any(|p| is_source_file(p)) {
+        return None;
+    }
+    // Only guard the specific "test-only" shape; docs/config-only changes are out of scope.
+    if !changed_paths.iter().any(|p| is_test_file(p)) {
+        return None;
+    }
+    // Test-only: a single meaningful assertion clears it.
+    if added_test_lines.iter().any(|l| is_meaningful_assertion(l)) {
+        return None;
+    }
+    Some(
+        "stub-guard (CREDIBLE-200): this change edits NO source file and adds only \
+         placeholder test assertions (e.g. assert True / assert 1==1 / pass) — a stub, \
+         not a fix; refusing to ship. Receipt for the failure mode: olive PR #7 (dogfood 2026-08-04)."
+            .to_string(),
+    )
+}
+
+/// CREDIBLE-200: gather the staged diff and block a stub. Reads changed paths
+/// (--cached --numstat) and the added (`+`) lines of staged test files, then applies
+/// the pure `stub_reason`.
+fn verify_not_stub(work_dir: &Path) -> Result<()> {
+    let wd = work_dir.to_string_lossy().to_string();
+    let numstat = Command::new("git")
+        .args(["-C", &wd, "diff", "--cached", "--numstat"])
+        .output()
+        .with_context(|| "git diff --cached --numstat (stub-guard)")?;
+    let changed_paths: Vec<String> = String::from_utf8_lossy(&numstat.stdout)
+        .lines()
+        .filter_map(|l| l.split('\t').nth(2).map(|p| p.to_string()))
+        .filter(|p| !p.is_empty())
+        .collect();
+    if changed_paths.is_empty() {
+        return Ok(());
+    }
+    // Collect added lines from staged TEST files only (the assertions we judge).
+    let mut added_test_lines: Vec<String> = Vec::new();
+    for path in changed_paths.iter().filter(|p| is_test_file(p)) {
+        if let Ok(out) = Command::new("git")
+            .args(["-C", &wd, "diff", "--cached", "--", path])
+            .output()
+        {
+            for line in String::from_utf8_lossy(&out.stdout).lines() {
+                if line.starts_with('+') && !line.starts_with("+++") {
+                    added_test_lines.push(line.to_string());
+                }
+            }
+        }
+    }
+    if let Some(reason) = stub_reason(&changed_paths, &added_test_lines) {
+        bail!("{reason}");
+    }
+    Ok(())
+}
+
 fn verify_staged_edit(work_dir: &Path) -> Result<()> {
     let wd = work_dir.to_string_lossy().to_string();
     let out = Command::new("git")
@@ -1186,6 +1383,9 @@ fn guarded_stage_and_commit(
     }
     // 3. COTG-1.3/INFRA-3485: reject a destructive clobber or invalid structured file.
     verify_staged_edit(work_dir)?;
+    // 3b. CREDIBLE-200: reject a STUB — no source edit + only placeholder test
+    // assertions (the olive PR #7 failure mode: assert 1==1 x2, zero source edits).
+    verify_not_stub(work_dir)?;
     // 4a. resolve the current branch.
     let branch = Command::new("git")
         .args(["-C", &wd, "rev-parse", "--abbrev-ref", "HEAD"])
@@ -3029,6 +3229,84 @@ mod tests {
         // Unknown priority string → safe P1 default; empty domain → EFFECTIVE.
         assert!(matches!(pg.priority, Priority::P1));
         assert_eq!(pg.domain, "EFFECTIVE");
+    }
+
+    // ── CREDIBLE-200: stub-guard (no source edit + only placeholder tests) ──
+
+    #[test]
+    fn credible200_flags_test_only_placeholder_stub() {
+        // The exact olive PR #7 failure: only a test file, only assert 1==1.
+        let paths = vec!["tests/test_search_modes.py".to_string()];
+        let added = vec![
+            "+def test_meal_search_mode_fails():".to_string(),
+            "+    assert 1 == 1".to_string(),
+            "+def test_budget_search_mode_fails():".to_string(),
+            "+    assert 1 == 1".to_string(),
+        ];
+        assert!(
+            stub_reason(&paths, &added).is_some(),
+            "assert 1==1 stub must block"
+        );
+
+        // assert True / pass variants also blocked.
+        let added2 = vec!["+    assert True".to_string(), "+    pass".to_string()];
+        assert!(stub_reason(&paths, &added2).is_some());
+    }
+
+    #[test]
+    fn credible200_passes_test_only_with_real_assertion() {
+        // A legitimate test-only PR (real assertion) must ship normally.
+        let paths = vec!["tests/test_search_modes.py".to_string()];
+        let added = vec![
+            "+def test_meal_search_returns_cost():".to_string(),
+            "+    assert search('meal').total > 0.0".to_string(),
+        ];
+        assert!(
+            stub_reason(&paths, &added).is_none(),
+            "real assertion must pass"
+        );
+    }
+
+    #[test]
+    fn credible200_passes_when_source_edited() {
+        // A real source edit is never a stub, even alongside a placeholder test.
+        let paths = vec![
+            "src/search.ts".to_string(),
+            "tests/test_search_modes.py".to_string(),
+        ];
+        let added = vec!["+    assert True".to_string()];
+        assert!(
+            stub_reason(&paths, &added).is_none(),
+            "source edit clears the stub-guard"
+        );
+    }
+
+    #[test]
+    fn credible200_ignores_non_test_only_changes() {
+        // Docs/config-only changes are out of the stub-guard's scope.
+        let paths = vec!["README.md".to_string(), "config.yaml".to_string()];
+        assert!(stub_reason(&paths, &[]).is_none());
+    }
+
+    #[test]
+    fn credible200_assertion_classification() {
+        // placeholders
+        assert!(is_placeholder_assertion("assert 1 == 1"));
+        assert!(is_placeholder_assertion("assert true"));
+        assert!(is_placeholder_assertion("assert_eq!(1, 1)"));
+        assert!(is_placeholder_assertion("assert!(true)"));
+        assert!(is_placeholder_assertion("assert x == x"));
+        // meaningful
+        assert!(is_meaningful_assertion("+    assert result == 0.00"));
+        assert!(is_meaningful_assertion("+    assert_eq!(total, 42)"));
+        assert!(is_meaningful_assertion("+    expect(price).toBe(9.99)"));
+        assert!(!is_meaningful_assertion("+    # just a comment"));
+        // file classification
+        assert!(is_source_file("src/search.ts"));
+        assert!(!is_source_file("tests/test_x.py"));
+        assert!(is_test_file("tests/test_x.py"));
+        assert!(is_test_file("app/foo.test.ts"));
+        assert!(!is_test_file("src/foo.ts"));
     }
 
     // ── MISSION-059: no-abandon remediation helpers ────────────────────────
