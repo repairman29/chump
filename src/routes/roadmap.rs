@@ -273,6 +273,7 @@ fn current_iso8601() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     const FIXTURE: &str = "## Week 1 \u{2014} User-facing front door (May 6 \u{2192} 13) \u{2705} SHIPPED\n\n**Outcome.** A solo dev with Ollama can run chump gen and get a working PR.\n\n**Implementing gaps:**\n- **INFRA-100** \u{2014} gap one (P0 m, pickable)\n- **INFRA-101** \u{2014} gap two (P1 s, in flight #1000)\n- **INFRA-NEW** \u{2014} gap three \u{2014} to be filed\n\n---\n\n## Week 3 \u{2014} Orchestrator MVP (May 22 \u{2192} 28) \u{1f3d7} IN PROGRESS\n\n**Outcome.** Operator types `chump orchestrate`.\n\n**Implementing gaps:**\n- **INFRA-200** \u{2014} gap (P1 m)\n";
 
@@ -360,6 +361,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_missing_file_returns_error_field_not_panic() {
         // Set CHUMP_REPO to a nonexistent dir so docs/ROADMAP.md cannot be read.
         let prev = std::env::var("CHUMP_REPO").ok();
