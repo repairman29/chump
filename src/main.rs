@@ -114,6 +114,7 @@ mod collision_prediction; // META-076: predictive collision detection (mock inpu
 mod completion;
 mod confidence; // EFFECTIVE-332: judgment-organ calibrated confidence-score primitive
 mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
+mod done_auditor; // INFRA-3495: anti-over-claim watchdog — audit DONE gaps for uncovered AC
 mod external_verify_merge; // CREDIBLE-096: chump external verify-merge
 mod front_door; // EFFECTIVE-330 (COTG-0.0): plain-language front-door mode router
 mod gen;
@@ -10637,6 +10638,25 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // INFRA-3495 (COTG-3.2): anti-over-claim watchdog. The gardener/
+            // audit-priorities audit OPEN gaps; this audits DONE gaps for
+            // hollowness — re-runs pr_ac_coverage against each closed gap's PR
+            // and flags any whose acceptance bullets shipped uncovered+unwaived
+            // (umbrella-done != actually-done). Emits over_claim_suspected and
+            // exits non-zero if any over-claim is found. Bounded to 100 done
+            // gaps (each check fetches its PR via gh).
+            "audit-done" => match crate::done_auditor::audit(&repo_root, 100) {
+                Ok(report) => {
+                    print!("{}", report.render());
+                    if report.failing() {
+                        std::process::exit(1);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("chump gap audit-done: {e:#}");
+                    std::process::exit(1);
+                }
+            },
             // INFRA-586: PM health signal for META-046 curation.
             // Checks: P0 ages, vague (no AC) pickable, double-encoded
             // depends_on, missing-dep refs, open-with-closed-pr, race-*

@@ -104,6 +104,12 @@ events:
     trigger: the pre-ship code-reviewer finishes a review — one event per PR review, carrying the final letter verdict plus each multi-lens outcome (spirit/correctness/harmony)
     consumers: [learning-loop (future — which lens catches what over time), observability]
     fields_required: [ts, kind, verdict, spirit, correctness, harmony]
+  - kind: over_claim_suspected
+    effect_metric: self
+    emitter: src/done_auditor.rs (INFRA-3495 anti-over-claim watchdog)
+    trigger: `chump gap audit-done` finds a DONE gap whose closed PR left acceptance bullets uncovered + unwaived (umbrella-done != actually-done) — pr_ac_coverage re-run after the fact
+    consumers: [gap-registry-health (future), observability]
+    fields_required: [ts, kind, gap_id, closed_pr, uncovered_bullets, total_bullets]
   - kind: heartbeat
     effect_metric: self
     emitter: crates/chump-coord/src/rpc.rs
