@@ -1164,8 +1164,13 @@ fn guarded_stage_and_commit(
 ) -> Result<String> {
     let wd = work_dir.to_string_lossy().to_string();
     // 1. stage, then drop the runtime droppings agent-run writes into the cwd.
+    // CREDIBLE-199: `logs/chump.log` is agent-run's OWN tool-call trace, written
+    // into the cwd (the external worktree). Without dropping it, the deterministic
+    // ship committed chump's trace file into the target repo — receipt: olive PR #7
+    // shipped logs/chump.log alongside the diff (dogfood 2026-08-04). Drop the exact
+    // trace path (not the whole logs/ dir) so a target repo's legitimate logs/ is untouched.
     let _ = Command::new("git").args(["-C", &wd, "add", "-A"]).status();
-    for junk in [".chump-locks", "sessions", ".chump"] {
+    for junk in [".chump-locks", "sessions", ".chump", "logs/chump.log"] {
         let _ = Command::new("git")
             .args(["-C", &wd, "reset", "-q", "HEAD", "--", junk])
             .status();
@@ -3942,6 +3947,9 @@ Some prose from the agent.
         fs::write(wd.join(".chump-locks/lease.json"), "{}").unwrap();
         fs::create_dir_all(wd.join("sessions")).unwrap();
         fs::write(wd.join("sessions/chump_memory.db"), "sqlite-junk").unwrap();
+        // CREDIBLE-199: agent-run's own tool-call trace, written into the cwd.
+        fs::create_dir_all(wd.join("logs")).unwrap();
+        fs::write(wd.join("logs/chump.log"), "1785905003 | write_file | ...\n").unwrap();
         let branch = guarded_stage_and_commit(wd, "fix(ci): x\n\ntrailer", &id, "for the test")
             .expect("a real edit must commit");
         assert_eq!(branch, "work", "returns the branch holding the commit");
@@ -3949,8 +3957,10 @@ Some prose from the agent.
             String::from_utf8(run(&["show", "--name-only", "--format=", "HEAD"]).stdout).unwrap();
         assert!(files.contains("app.txt"), "the real edit is committed");
         assert!(
-            !files.contains(".chump-locks") && !files.contains("sessions/"),
-            "runtime droppings must NOT enter the commit — got: {files:?}"
+            !files.contains(".chump-locks")
+                && !files.contains("sessions/")
+                && !files.contains("logs/chump.log"),
+            "runtime droppings (incl. logs/chump.log, CREDIBLE-199) must NOT enter the commit — got: {files:?}"
         );
 
         // (reject) a destructive clobber never commits (guard shared with the ship path).
