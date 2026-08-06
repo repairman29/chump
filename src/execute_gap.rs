@@ -572,18 +572,28 @@ fn build_free_tier_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
     let (locate_step, locate_rule) =
         free_tier_locate_step(crate::almanac_tool::almanac_available());
 
+    // EFFECTIVE-355: str_replace is the PRIMARY edit affordance for open/weak models —
+    // anchored old->new means no @@ hunks to mis-format (patch_file) and no whole-file
+    // rewrite to truncate/clobber (write_file). The clobber failure mode: an open model
+    // told to "rewrite the ENTIRE file" reproduced a 14KB file as 467 bytes and the
+    // ship guard had to reject it. str_replace can only change the snippet it names.
     let (edit_step, edit_rule) = if write_mode {
         (
-            "Step 3: write_file — rewrite the ENTIRE file with your change applied. \
-   Emit the complete new file contents, not a diff. This avoids the diff/context \
-   mismatches that weaker models produce.",
-            "- Use write_file (full file contents) for ALL modifications — never emit a unified diff.",
+            "Step 3: str_replace — make your edit by replacing an EXACT snippet. Read the file first, \
+   copy the exact text to change into `old_string` (verbatim, including indentation), and put the \
+   corrected text in `new_string`. `old_string` MUST match EXACTLY ONCE — include enough surrounding \
+   lines to be unique. Do NOT rewrite the whole file and do NOT emit a diff. Use write_file ONLY to \
+   create a brand-new file.",
+            "- Prefer str_replace (anchored old->new) for ALL edits; it changes only the snippet you name. write_file is ONLY for creating a new file — never rewrite an existing file whole.",
         )
     } else {
         (
-            "Step 3: patch_file — apply your change as a unified diff patch. \
-   Provide the old text and new text. Do NOT rewrite the entire file.",
-            "- Use patch_file for ALL modifications — it only changes what you specify.",
+            "Step 3: str_replace — make your edit by replacing an EXACT snippet. Read the file first, \
+   copy the exact text to change into `old_string` (verbatim, including indentation), and put the \
+   corrected text in `new_string`. `old_string` MUST match EXACTLY ONCE — include enough surrounding \
+   lines to be unique. Do NOT rewrite the whole file and do NOT emit a diff. For a large multi-site \
+   change you may fall back to patch_file.",
+            "- Prefer str_replace (anchored old->new) for ALL edits; it changes only the snippet you name.",
         )
     };
 
