@@ -1536,6 +1536,34 @@ fn clear_flow_checkpoint(opts: &Opts, gap: &ProposedGap) {
     }
 }
 
+/// EFFECTIVE-361: a git-porcelain status line that names a REAL (non-junk) edit.
+/// Ignores chump's own runtime droppings (.chump*, sessions/, logs/) — the same set
+/// the ship guard strips — so a bare log write doesn't count as "the agent edited".
+/// Pure + unit-tested.
+fn is_real_edit_status_line(line: &str) -> bool {
+    // porcelain v1: "XY <path>" (2 status chars + space + path); rename is "old -> new".
+    let path = line.get(3..).unwrap_or("").trim();
+    let path = path.rsplit(" -> ").next().unwrap_or(path).trim_matches('"');
+    if path.is_empty() {
+        return false;
+    }
+    !(path.starts_with(".chump") || path.starts_with("sessions/") || path.starts_with("logs/"))
+}
+
+/// EFFECTIVE-361: does the working tree have a real (non-junk) edit? Used to decide
+/// whether the implement agent actually applied its change or merely described it.
+fn work_dir_has_real_edits(work_dir: &Path) -> bool {
+    let out = Command::new("git")
+        .args(["-C", &work_dir.to_string_lossy(), "status", "--porcelain"])
+        .output();
+    match out {
+        Ok(o) => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .any(is_real_edit_status_line),
+        Err(_) => false,
+    }
+}
+
 fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<String> {
     use chump_handoff::contracts::{ExternalRepoContract, ExternalRepoInput};
     use chump_handoff::HandoffContract;
@@ -1655,9 +1683,57 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
     };
 
     // Capture output so we can extract the PR URL from the JSON block.
-    let out = cmd
+    let mut out = cmd
         .output()
         .with_context(|| format!("spawn improve backend `{backend}`"))?;
+
+    // EFFECTIVE-361 force-edit: capable models often DESCRIBE the fix (a correct
+    // diagnosis) without actually applying it — the run ends with no file mutation.
+    // If the agent produced no real edit, re-prompt it to APPLY the change with
+    // str_replace, up to N times, before we treat this provider as a no-change.
+    // Only for the default chump-local backend (the claude CLI path self-manages).
+    if backend != "claude" {
+        let tries: usize = std::env::var("CHUMP_IMPLEMENT_FORCE_EDIT_TRIES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2);
+        let chump_bin = std::env::var("CHUMP_IMPROVE_CHUMP_BIN")
+            .or_else(|_| std::env::var("CHUMP_BIN"))
+            .unwrap_or_else(|_| "chump".to_string());
+        let base_prompt = std::fs::read_to_string(&prompt_file).unwrap_or_default();
+        let mut attempt = 0;
+        while attempt < tries && out.status.success() && !work_dir_has_real_edits(&work_dir) {
+            attempt += 1;
+            eprintln!(
+                "[improve] force-edit {attempt}/{tries}: agent described the fix but edited no file — re-prompting to APPLY it via str_replace"
+            );
+            let forced = format!(
+                "{base_prompt}\n\n\u{2501}\u{2501} YOU HAVE NOT EDITED ANY FILE YET — you only described the change. \
+                 APPLY IT NOW: call str_replace (read the file, copy the EXACT snippet to change into old_string \
+                 with its indentation, put the corrected code in new_string). Make the real file edit this turn; \
+                 do NOT summarize again without editing."
+            );
+            let pf = match write_temp_prompt(&forced) {
+                Ok(p) => p,
+                Err(_) => break,
+            };
+            let mut c = Command::new(&chump_bin);
+            c.arg("agent-run")
+                .arg("--prompt-file")
+                .arg(&pf)
+                .arg("--cwd")
+                .arg(&work_dir);
+            id.apply_git_env(&mut c);
+            if std::env::var("CHUMP_PREFERRED_MODEL_CLASS").is_err() {
+                c.env("CHUMP_PREFERRED_MODEL_CLASS", improve_implement_class());
+            }
+            out = match c.output() {
+                Ok(o) => o,
+                Err(_) => break,
+            };
+            let _ = std::fs::remove_file(&pf);
+        }
+    }
 
     // Cleanup temp file.
     let _ = std::fs::remove_file(&prompt_file);
@@ -3603,6 +3679,24 @@ mod tests {
         assert!(block.contains("Keywords searched: search, meal, budget"));
         // Steers the agent to EDIT source, not just add a test (anti-stub framing).
         assert!(block.to_lowercase().contains("edit"));
+    }
+
+    // ── EFFECTIVE-361: force-edit real-edit detection ──────────────────────
+
+    #[test]
+    fn effective361_real_edit_status_line_ignores_junk() {
+        // Real source/test edits count.
+        assert!(is_real_edit_status_line(" M src/lib/agent/tools.ts"));
+        assert!(is_real_edit_status_line("?? src/new.rs"));
+        assert!(is_real_edit_status_line("A  tests/foo.py"));
+        assert!(is_real_edit_status_line(
+            "R  old.rs -> src/lib/agent/orchestrator.ts"
+        ));
+        // chump's own runtime droppings do NOT count as "the agent edited".
+        assert!(!is_real_edit_status_line("?? sessions/"));
+        assert!(!is_real_edit_status_line(" M logs/chump.log"));
+        assert!(!is_real_edit_status_line("?? .chump-locks/x.json"));
+        assert!(!is_real_edit_status_line(""));
     }
 
     // ── MISSION-059: no-abandon remediation helpers ────────────────────────
