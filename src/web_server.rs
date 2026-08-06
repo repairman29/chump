@@ -9,7 +9,7 @@ use axum::{
         sse::{Event, Sse},
         IntoResponse, Redirect, Response,
     },
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
     Json, Router,
 };
 use std::io::{ErrorKind, Write};
@@ -7025,6 +7025,382 @@ fn truncate_utf8(s: &str, max: usize) -> String {
 }
 
 /// POST /api/gap/claim/:id — Claim a gap and create a worktree for it.
+/// PRODUCT-176: JSON body for POST /api/gap. `domain` + `title` are required;
+/// everything else mirrors the `chump gap reserve` flags it replaces.
+#[derive(serde::Deserialize)]
+struct GapCreateBody {
+    domain: String,
+    title: String,
+    priority: Option<String>,
+    effort: Option<String>,
+    description: Option<String>,
+    /// AC list; omitted → the same default obs-ACs `chump gap reserve` writes.
+    acceptance_criteria: Option<Vec<String>>,
+    skills_required: Option<String>,
+    /// Tagged into skills_required as `external_repo:<owner/repo>` (MISSION-041
+    /// parity: skills_required is the routing key the picker actually parses).
+    external_repo: Option<String>,
+    outcome_id: Option<String>,
+    evidence: Option<String>,
+}
+
+/// PRODUCT-176: JSON body for PATCH /api/gap/{id}. Every field optional;
+/// present fields map onto [`gap_store::GapFieldUpdate`]. Store-side integrity
+/// guards (done-without-closed_pr, terminal-done reopen, title hijack) stay in
+/// force — this surface adds no bypass.
+#[derive(serde::Deserialize)]
+struct GapUpdateBody {
+    title: Option<String>,
+    description: Option<String>,
+    priority: Option<String>,
+    effort: Option<String>,
+    status: Option<String>,
+    acceptance_criteria: Option<Vec<String>>,
+    depends_on: Option<String>,
+    notes: Option<String>,
+    closed_pr: Option<i64>,
+    skills_required: Option<String>,
+    preferred_backend: Option<String>,
+    preferred_machine: Option<String>,
+    estimated_minutes: Option<String>,
+    required_model: Option<String>,
+    outcome_id: Option<String>,
+    evidence: Option<String>,
+}
+
+const VALID_PRIORITIES: [&str; 4] = ["P0", "P1", "P2", "P3"];
+const VALID_EFFORTS: [&str; 5] = ["xs", "s", "m", "l", "xl"];
+
+fn gap_api_error(
+    status: StatusCode,
+    msg: impl Into<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    (status, Json(serde_json::json!({ "error": msg.into() })))
+}
+
+fn gap_row_json(row: &gap_store::GapRow) -> serde_json::Value {
+    serde_json::json!({
+        "id": row.id,
+        "domain": row.domain,
+        "title": row.title,
+        "description": row.description,
+        "priority": row.priority,
+        "effort": row.effort,
+        "status": row.status,
+        "acceptance_criteria": row.acceptance_criteria,
+        "skills_required": row.skills_required,
+        "outcome_id": row.outcome_id,
+        "closed_pr": row.closed_pr,
+    })
+}
+
+/// POST /api/gap — create a gap over HTTP (PRODUCT-176).
+///
+/// Runs the same `reserve_verified` path as `chump gap reserve` (collision-safe
+/// across sessions via the pending-lease protocol) and enforces MISSION-045
+/// parity: P0/P1 without an `outcome_id` is refused, because an HTTP surface
+/// that skipped the outcome gate would be the bypass hole the intake firewall
+/// exists to close.
+async fn handle_gap_create(
+    headers: HeaderMap,
+    Json(body): Json<GapCreateBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !check_auth(&headers) {
+        return Err(gap_api_error(StatusCode::UNAUTHORIZED, "unauthorized"));
+    }
+    if !check_csrf(&headers) {
+        return Err(gap_api_error(StatusCode::FORBIDDEN, "missing CSRF token"));
+    }
+    let ip_key = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("local")
+        .to_string();
+    if !check_gap_rate_limit(&ip_key) {
+        return Err(gap_api_error(StatusCode::TOO_MANY_REQUESTS, "rate limited"));
+    }
+
+    let title = body.title.trim().to_string();
+    if title.is_empty() || title.len() > 200 {
+        return Err(gap_api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "title must be 1-200 chars",
+        ));
+    }
+    let domain = body.domain.trim().to_uppercase();
+    if domain.is_empty()
+        || domain.len() > 24
+        || !domain
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic())
+        || !domain
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(gap_api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "domain must start with a letter and contain only [A-Za-z0-9_-], max 24 chars",
+        ));
+    }
+    let priority = body.priority.as_deref().unwrap_or("P2").to_uppercase();
+    if !VALID_PRIORITIES.contains(&priority.as_str()) {
+        return Err(gap_api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("priority must be one of {VALID_PRIORITIES:?}"),
+        ));
+    }
+    let effort = body.effort.as_deref().unwrap_or("m").to_lowercase();
+    if !VALID_EFFORTS.contains(&effort.as_str()) {
+        return Err(gap_api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("effort must be one of {VALID_EFFORTS:?}"),
+        ));
+    }
+    // MISSION-045 parity: P0/P1 requires an outcome. The CLI refuses without
+    // --outcome; the HTTP surface must not become the workaround.
+    if (priority == "P0" || priority == "P1")
+        && body
+            .outcome_id
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty()
+    {
+        return Err(gap_api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "P0/P1 gaps require outcome_id (MISSION-045); use P2/P3 for exploration",
+        ));
+    }
+
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let store = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            return Err(gap_api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to open gap store: {e}"),
+            ))
+        }
+    };
+
+    let session_id =
+        get_session_id(&headers).unwrap_or_else(|| format!("web-api-{}", std::process::id()));
+    let id = match store.reserve_verified(&domain, &title, &priority, &effort, &session_id) {
+        Ok(id) => id,
+        Err(e) => {
+            return Err(gap_api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("reserve failed: {e}"),
+            ))
+        }
+    };
+
+    // Optional extras in one set_fields pass. Mirrors the CLI's warn-and-continue:
+    // the gap exists once reserve succeeds; extras failing must not orphan it.
+    let ac_json = match &body.acceptance_criteria {
+        Some(list) if !list.is_empty() => {
+            serde_json::to_string(list).unwrap_or_else(|_| "[]".into())
+        }
+        _ => {
+            let acs = crate::default_acceptance_criteria(&title, &domain);
+            serde_json::to_string(&acs).unwrap_or_else(|_| "[]".into())
+        }
+    };
+    let skills = match (
+        body.skills_required.as_deref(),
+        body.external_repo.as_deref(),
+    ) {
+        (Some(s), Some(r)) if !s.trim().is_empty() => {
+            Some(format!("{},external_repo:{}", s.trim(), r.trim()))
+        }
+        (_, Some(r)) => Some(format!("external_repo:{}", r.trim())),
+        (Some(s), None) if !s.trim().is_empty() => Some(s.trim().to_string()),
+        _ => None,
+    };
+    let update = gap_store::GapFieldUpdate {
+        description: body.description.clone(),
+        acceptance_criteria: Some(ac_json),
+        skills_required: skills,
+        outcome_id: body.outcome_id.clone(),
+        evidence: body.evidence.clone().filter(|e| !e.trim().is_empty()),
+        ..Default::default()
+    };
+    let mut warnings: Vec<String> = Vec::new();
+    if let Err(e) = store.set_fields(&id, update) {
+        warnings.push(format!("gap created but extras failed to apply: {e}"));
+    }
+
+    let row = store.get(&id).ok().flatten();
+    tracing::info!(
+        "gap-create: reserved {} via HTTP (session {})",
+        id,
+        session_id
+    );
+    let mut resp = match row {
+        Some(r) => gap_row_json(&r),
+        None => serde_json::json!({ "id": id }),
+    };
+    if !warnings.is_empty() {
+        resp["warnings"] = serde_json::json!(warnings);
+    }
+    Ok(Json(resp))
+}
+
+/// PATCH /api/gap/{id} — update fields on an existing gap (PRODUCT-176).
+///
+/// Thin HTTP mapping onto [`gap_store::GapStore::set_fields`], which carries
+/// the integrity guards (INFRA-402 done-needs-closed_pr, INFRA-456 terminal
+/// done + hijack). Guard refusals surface as 422 with the store's own message
+/// — never a silent success, never a 500 for a policy refusal.
+async fn handle_gap_update(
+    Path(gap_id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<GapUpdateBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !check_auth(&headers) {
+        return Err(gap_api_error(StatusCode::UNAUTHORIZED, "unauthorized"));
+    }
+    if !validate_gap_id(&gap_id) {
+        return Err(gap_api_error(StatusCode::BAD_REQUEST, "invalid gap id"));
+    }
+    if !check_csrf(&headers) {
+        return Err(gap_api_error(StatusCode::FORBIDDEN, "missing CSRF token"));
+    }
+    let ip_key = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("local")
+        .to_string();
+    if !check_gap_rate_limit(&ip_key) {
+        return Err(gap_api_error(StatusCode::TOO_MANY_REQUESTS, "rate limited"));
+    }
+
+    if let Some(p) = body.priority.as_deref() {
+        if !VALID_PRIORITIES.contains(&p.to_uppercase().as_str()) {
+            return Err(gap_api_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("priority must be one of {VALID_PRIORITIES:?}"),
+            ));
+        }
+    }
+    if let Some(e) = body.effort.as_deref() {
+        if !VALID_EFFORTS.contains(&e.to_lowercase().as_str()) {
+            return Err(gap_api_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("effort must be one of {VALID_EFFORTS:?}"),
+            ));
+        }
+    }
+
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let store = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            return Err(gap_api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to open gap store: {e}"),
+            ))
+        }
+    };
+
+    match store.get(&gap_id) {
+        Ok(Some(_)) => {}
+        Ok(None) => return Err(gap_api_error(StatusCode::NOT_FOUND, "gap not found")),
+        Err(e) => {
+            return Err(gap_api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("lookup failed: {e}"),
+            ))
+        }
+    }
+
+    // Status values are registry-checked (gap_status_registry is the canonical
+    // list; SQLite enforces nothing) so a typo'd status can't enter the store
+    // where no picker or gauge would ever match it again.
+    if let Some(s) = body.status.as_deref() {
+        match store.known_statuses() {
+            Ok(known) if !known.iter().any(|k| k == s) => {
+                return Err(gap_api_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("unknown status '{s}' — known: {}", known.join(", ")),
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    let has_any_field = body.title.is_some()
+        || body.description.is_some()
+        || body.priority.is_some()
+        || body.effort.is_some()
+        || body.status.is_some()
+        || body.acceptance_criteria.is_some()
+        || body.depends_on.is_some()
+        || body.notes.is_some()
+        || body.closed_pr.is_some()
+        || body.skills_required.is_some()
+        || body.preferred_backend.is_some()
+        || body.preferred_machine.is_some()
+        || body.estimated_minutes.is_some()
+        || body.required_model.is_some()
+        || body.outcome_id.is_some()
+        || body.evidence.is_some();
+    if !has_any_field {
+        return Err(gap_api_error(
+            StatusCode::BAD_REQUEST,
+            "no fields to update",
+        ));
+    }
+
+    let ac_json = body
+        .acceptance_criteria
+        .as_ref()
+        .map(|list| serde_json::to_string(list).unwrap_or_else(|_| "[]".into()));
+    let update = gap_store::GapFieldUpdate {
+        title: body.title.clone(),
+        description: body.description.clone(),
+        priority: body.priority.as_deref().map(str::to_uppercase),
+        effort: body.effort.as_deref().map(str::to_lowercase),
+        status: body.status.clone(),
+        acceptance_criteria: ac_json,
+        depends_on: body.depends_on.clone(),
+        notes: body.notes.clone(),
+        closed_pr: body.closed_pr,
+        skills_required: body.skills_required.clone(),
+        preferred_backend: body.preferred_backend.clone(),
+        preferred_machine: body.preferred_machine.clone(),
+        estimated_minutes: body.estimated_minutes.clone(),
+        required_model: body.required_model.clone(),
+        outcome_id: body.outcome_id.clone(),
+        evidence: body.evidence.clone(),
+        ..Default::default()
+    };
+
+    if let Err(e) = store.set_fields(&gap_id, update) {
+        // Integrity-guard refusals are client errors carrying the store's own
+        // explanation, not server faults.
+        return Err(gap_api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("{e}"),
+        ));
+    }
+
+    tracing::info!("gap-update: {} updated via HTTP", gap_id);
+    match store.get(&gap_id) {
+        Ok(Some(r)) => Ok(Json(gap_row_json(&r))),
+        _ => Ok(Json(
+            serde_json::json!({ "id": gap_id, "status": "updated" }),
+        )),
+    }
+}
+
 async fn handle_gap_claim(
     Path(gap_id): Path<String>,
     headers: HeaderMap,
@@ -8814,6 +9190,13 @@ fn build_api_router() -> Router {
         // domain/pillar and accepts ?status=&priority=&domain= query params.
         .route("/api/gaps", get(handle_gap_queue))
         .route("/api/gaps/search", get(handle_gaps_search))
+        // PRODUCT-176: the gap write surface — creation and field mutation were
+        // CLI-only (`chump gap reserve` / `chump gap set`), which made the web
+        // API read-plus-dispatch but never authoring. These two routes close
+        // that gap so ChumpOS organs (holler bridge, cockpit, future support
+        // loop) can drive the registry over HTTP with the same auth stack.
+        .route("/api/gap", post(handle_gap_create))
+        .route("/api/gap/{id}", patch(handle_gap_update))
         .route("/api/gap/claim/{id}", post(handle_gap_claim))
         .route("/api/gap/status/{id}", get(handle_gap_status))
         .route("/api/gap/{id}/status", get(handle_gap_workflow_status))
@@ -9258,6 +9641,268 @@ pub async fn start_web_server(port: u16) -> Result<()> {
 
 #[cfg(test)]
 mod api_battle_tests {
+    // ── PRODUCT-176: gap write surface (POST /api/gap, PATCH /api/gap/{id}) ──
+
+    /// Shared setup: point CHUMP_REPO at a fresh tempdir (GapStore creates its
+    /// schema on open), disable the live-PR scan + verify sleep (same opt-outs
+    /// the gap-store's own tests use), and raise the per-IP rate limit so the
+    /// serial test suite can't trip it.
+    ///
+    /// RESTORES (never bare-removes) the prior CHUMP_REPO on drop, panics
+    /// included. A bare remove_var leaves an unset-env window in which any
+    /// later repo_root() call can poison the process-wide chumpd_repo_root()
+    /// OnceLock with a live daemon's answer (the env-precedence check only
+    /// runs on the FIRST call ever) — under `cargo test`'s shared process
+    /// that cascades into repo_path/repo_tools failures whenever a chumpd
+    /// daemon is running. Found live shipping this gap: nextest (process per
+    /// test) passed 2734/2734 while the pre-push cargo-test gate failed 17
+    /// env-sensitive tests two modules away.
+    struct GapWriteEnv {
+        _dir: tempfile::TempDir,
+        prev_repo: Option<String>,
+    }
+    impl Drop for GapWriteEnv {
+        fn drop(&mut self) {
+            match self.prev_repo.take() {
+                Some(v) => std::env::set_var("CHUMP_REPO", v),
+                None => std::env::remove_var("CHUMP_REPO"),
+            }
+        }
+    }
+    fn gap_write_test_env() -> GapWriteEnv {
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_REPO", dir.path());
+        std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+        std::env::set_var("CHUMP_RESERVE_VERIFY", "0");
+        std::env::set_var("CHUMP_GAP_RATE_LIMIT", "10000");
+        std::env::remove_var("CHUMP_WEB_TOKEN");
+        GapWriteEnv {
+            _dir: dir,
+            prev_repo,
+        }
+    }
+
+    fn json_req(method: &str, uri: &str, body: serde_json::Value) -> Request<Body> {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("content-type", "application/json")
+            .header("x-csrf-token", "t")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn gap_create_happy_path_and_visible_in_list() {
+        let _dir = gap_write_test_env();
+        let mut app = build_api_router();
+
+        let req = json_req(
+            "POST",
+            "/api/gap",
+            serde_json::json!({
+                "domain": "product",
+                "title": "PRODUCT-176 test gap: created over HTTP",
+                "description": "created by gap_create_happy_path test",
+                "external_repo": "repairman29/holler"
+            }),
+        );
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id = v
+            .get("id")
+            .and_then(|x| x.as_str())
+            .expect("id in response");
+        assert!(
+            id.starts_with("PRODUCT-"),
+            "id should be PRODUCT-N, got {id}"
+        );
+        // Domain uppercased, defaults applied, extras landed.
+        assert_eq!(v.get("priority").and_then(|x| x.as_str()), Some("P2"));
+        assert_eq!(v.get("effort").and_then(|x| x.as_str()), Some("m"));
+        assert_eq!(v.get("status").and_then(|x| x.as_str()), Some("open"));
+        assert_eq!(
+            v.get("skills_required").and_then(|x| x.as_str()),
+            Some("external_repo:repairman29/holler"),
+            "MISSION-041 parity: external_repo must land in skills_required"
+        );
+        // Default obs-ACs applied when none supplied (never an empty AC set —
+        // EFFECTIVE-294: an AC-less gap is unclaimable).
+        let ac = v
+            .get("acceptance_criteria")
+            .and_then(|x| x.as_str())
+            .unwrap();
+        assert!(ac.starts_with('['), "AC stored as JSON list: {ac}");
+        assert_ne!(ac, "[]", "default ACs must be applied when none supplied");
+        assert!(v.get("warnings").is_none(), "no warnings expected: {v}");
+
+        // The gap is visible through the read surface.
+        let req = Request::builder()
+            .uri("/api/gaps")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let list = String::from_utf8_lossy(&body);
+        assert!(
+            list.contains(id),
+            "created gap {id} must appear in /api/gaps"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn gap_create_p0_without_outcome_is_refused() {
+        let _dir = gap_write_test_env();
+        let mut app = build_api_router();
+        let req = json_req(
+            "POST",
+            "/api/gap",
+            serde_json::json!({
+                "domain": "RESILIENT",
+                "title": "P0 without an outcome must be refused",
+                "priority": "P0"
+            }),
+        );
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(
+            res.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "MISSION-045 parity: the HTTP surface must not be the outcome-gate bypass"
+        );
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            v.get("error")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .contains("MISSION-045"),
+            "error must name the gate: {v}"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn gap_update_status_and_guard_rejection() {
+        let _dir = gap_write_test_env();
+        let mut app = build_api_router();
+
+        // Create a gap to mutate.
+        let req = json_req(
+            "POST",
+            "/api/gap",
+            serde_json::json!({ "domain": "INFRA", "title": "patch target gap" }),
+        );
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id = v.get("id").and_then(|x| x.as_str()).unwrap().to_string();
+
+        // Happy path: priority + notes update round-trips.
+        let req = json_req(
+            "PATCH",
+            &format!("/api/gap/{id}"),
+            serde_json::json!({ "priority": "p3", "notes": "updated over HTTP" }),
+        );
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            v.get("priority").and_then(|x| x.as_str()),
+            Some("P3"),
+            "lowercase input must normalize: {v}"
+        );
+
+        // INFRA-402 guard: flipping to done without closed_pr is a 422 carrying
+        // the store's own message — not a 500, not a silent success.
+        let req = json_req(
+            "PATCH",
+            &format!("/api/gap/{id}"),
+            serde_json::json!({ "status": "done" }),
+        );
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            v.get("error")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .contains("closed_pr"),
+            "guard message must surface: {v}"
+        );
+
+        // Unknown status is refused via the registry check.
+        let req = json_req(
+            "PATCH",
+            &format!("/api/gap/{id}"),
+            serde_json::json!({ "status": "tottaly-done" }),
+        );
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+        // Unknown gap is a 404.
+        let req = json_req(
+            "PATCH",
+            "/api/gap/INFRA-999999",
+            serde_json::json!({ "notes": "x" }),
+        );
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+        // Empty body is a 400.
+        let req = json_req("PATCH", &format!("/api/gap/{id}"), serde_json::json!({}));
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn gap_write_routes_require_auth_and_csrf() {
+        let _dir = gap_write_test_env();
+        std::env::set_var("CHUMP_WEB_TOKEN", "sekrit");
+        let mut app = build_api_router();
+
+        // No bearer token → 401 on both routes.
+        let req = json_req(
+            "POST",
+            "/api/gap",
+            serde_json::json!({ "domain": "INFRA", "title": "nope" }),
+        );
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+
+        let req = json_req(
+            "PATCH",
+            "/api/gap/INFRA-001",
+            serde_json::json!({ "notes": "nope" }),
+        );
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+
+        // Right token but no CSRF header → 403.
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/gap")
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer sekrit")
+            .body(Body::from(
+                serde_json::json!({ "domain": "INFRA", "title": "nope" }).to_string(),
+            ))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+        std::env::remove_var("CHUMP_WEB_TOKEN");
+    }
+
     use super::build_api_router;
     use axum::body::{to_bytes, Body};
     use axum::http::{Request, StatusCode};
