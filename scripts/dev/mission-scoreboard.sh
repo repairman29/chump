@@ -224,7 +224,9 @@ echo
 
 # ── ③ Deploy-lag (Goal 1 / MISSION-012 proxy) ───────────────────────────────
 bin="$(command -v chump 2>/dev/null || echo /opt/homebrew/bin/chump)"
-binep=$(stat -f %m "$bin" 2>/dev/null || stat -c %Y "$bin" 2>/dev/null || echo 0)
+# ~/.local/bin/chump is a symlink; un-resolved stat reads its creation date, not the build.
+bin="$(readlink -f "$bin" 2>/dev/null || echo "$bin")"
+binep=$(stat -L -f %m "$bin" 2>/dev/null || stat -L -c %Y "$bin" 2>/dev/null || echo 0)
 binbuilt=$(date -u -r "$binep" +%Y-%m-%dT%H:%MZ 2>/dev/null || date -u -d "@$binep" +%Y-%m-%dT%H:%MZ 2>/dev/null || echo '?')
 # Structural signal: do merges auto-deploy? Tied to MISSION-012's status, NOT a fuzzy
 # mtime diff (main commits constantly, so binary-mtime < latest-commit is almost always
@@ -265,5 +267,16 @@ elif [ "$total" -gt 0 ] && [ "$mission" -lt "$need" ]; then
 else
   echo "  🟡 ON-TRACK — mission-weighted + deploying, but BEAST not yet shipping. Push the onboard→BEAST path."
 fi
-echo "  Next lever: MISSION-012 (self-deploy) — until merges go live, the scoreboard can't move."
+# Next lever derives from the same signals as the verdict — never name a goal a line
+# above this already reported done.
+if [ "$stale" -eq 1 ]; then
+  nextlever="MISSION-012 (self-deploy) — until merges go live, the scoreboard can't move."
+elif [ "$beast_zt" -eq 0 ]; then
+  nextlever="MISSION-066 (zero-touch BEAST proof) — make ① YES."
+elif [ "$total" -gt 0 ] && [ "$mission" -lt "$need" ]; then
+  nextlever="mission-ship ratio ② ($ratio, target ≥ ⅔) — the scaling gate."
+else
+  nextlever="MISSION-066 repeatability — keep ① YES with autonomy dialed up."
+fi
+echo "  Next lever: $nextlever"
 exit "$rc"
