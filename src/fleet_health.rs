@@ -633,6 +633,12 @@ fn compute_binary_age() -> (f64, bool) {
         Ok(p) => p,
         Err(_) => return (0.0, false),
     };
+    // CREDIBLE-201: `current_exe()` can be a symlink (e.g. ~/.local/bin/chump → the
+    // cargo-install target). A symlink's own mtime is when the LINK was created, so
+    // stat'ing it reports a ~95-day-old binary while auto-deploy is verifiably
+    // rebuilding the target. Resolve to the real target first so the age reflects
+    // the actual deployed build, not a stale link.
+    let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
     let meta = match std::fs::metadata(&exe) {
         Ok(m) => m,
         Err(_) => return (0.0, false),
