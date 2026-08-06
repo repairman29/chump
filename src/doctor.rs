@@ -549,6 +549,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn version_check_always_passes() {
         let r = check_version();
         assert_eq!(r.status, CheckStatus::Pass);

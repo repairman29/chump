@@ -36,8 +36,8 @@
       "command": "/Users/jeffadkins/Projects/almanac/target/release/almanac-mcp",
       "args": [],
       "env": {
-        "ALMANAC_DB": "/Users/jeffadkins/Projects/almanac/indexes/chump-src.db",
-        "ALMANAC_EMBED_URL": "http://100.101.188.30:11434"
+        "ALMANAC_EMBED_URL": "http://100.101.188.30:11434",
+        "ALMANAC_DEFAULT_REPO": "chump"
       },
       "enabled": true
     }

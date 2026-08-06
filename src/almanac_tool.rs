@@ -40,7 +40,17 @@ fn almanac_mcp_bin() -> Option<String> {
     .find(|c| std::path::Path::new(c).is_file())
 }
 
-/// Resolve the Almanac index db: `ALMANAC_DB`, else the default chump index.
+/// Resolve the Almanac index db: `ALMANAC_DB`, else Almanac's live registry
+/// index for this repo, else the legacy single-crate snapshot.
+///
+/// The fallback order matters and was wrong until 2026-08-05: it pointed
+/// straight at `almanac/indexes/chump-src.db`, a frozen 2026-07-26 snapshot of
+/// `src/` alone (302 files). Almanac's live index for this repo lives in its
+/// registry at `~/.almanac/indexes/chump.db`, is re-indexed hourly when HEAD
+/// moves, and covers 6,792 files. So every fallback query hit a 10-day-old index
+/// that could not see `crates/`, `docs/`, `scripts/` or `e2e/` at all — measured
+/// 0/16 on a gold set of questions about those trees, where the live index
+/// scores 12/16.
 fn almanac_db() -> Option<String> {
     if let Ok(db) = std::env::var("ALMANAC_DB") {
         if !db.trim().is_empty() && std::path::Path::new(&db).is_file() {
@@ -48,8 +58,15 @@ fn almanac_db() -> Option<String> {
         }
     }
     let home = std::env::var("HOME").unwrap_or_default();
-    let c = format!("{home}/Projects/almanac/indexes/chump-src.db");
-    std::path::Path::new(&c).is_file().then_some(c)
+    [
+        // The live, hourly-refreshed registry index. Prefer it always.
+        format!("{home}/.almanac/indexes/chump.db"),
+        // Legacy snapshot, kept only so an almanac checkout predating the
+        // multi-repo registry still answers instead of going dark.
+        format!("{home}/Projects/almanac/indexes/chump-src.db"),
+    ]
+    .into_iter()
+    .find(|c| std::path::Path::new(c).is_file())
 }
 
 /// True when almanac_search is usable (binary + index present, not disabled).
