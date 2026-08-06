@@ -195,3 +195,17 @@ docs/business/contracts/
 
 # custom out-of-band cargo target dirs (INFRA-3289)
 .cargo-*-target/
+
+# ZERO-WASTE-041: fleet runtime state + repo-root scratch that regenerate every
+# session — never track, so they stop showing the main checkout as dirty.
+.chump/farmer-heartbeat
+.chump/*-state.json
+.chump/stranded/
+.chump/*.pid
+# common ad-hoc scratch files that accrete in the repo root
+/out.txt
+/append.txt
+/f.txt
+/path
+/migration.sql
+/schema_migration.sql
