@@ -506,16 +506,37 @@ process_worktree() {
 
     red "  REAPABLE: $reason"
 
-    # RESILIENT-029: stash-and-push uncommitted/unpushed work to a wip/ branch
-    # before reaping, so no work is silently destroyed.
-    # This runs for ALL reapable worktrees — clean ones skip the push step.
+    # RESILIENT-029 + RESILIENT-235: stash-and-push uncommitted/unpushed work to a
+    # wip/ branch before reaping, so no work is silently destroyed. This runs for
+    # ALL reapable worktrees — clean ones return immediately.
+    #
+    # RESILIENT-235 — FAIL CLOSED. Return codes are load-bearing; the caller MUST
+    # skip the destructive remove on a non-zero return:
+    #   0 = safe to reap (worktree clean, OR dirty work preserved on a VERIFIED
+    #       recovery ref that survives `git worktree remove`)
+    #   1 = UNSAFE, do NOT reap (git status unreadable, or dirty work could not be
+    #       proven preserved). A worktree we cannot prove clean is one we don't delete.
+    # Before this fix the fn swallowed git-status errors (2>/dev/null -> uncommitted=0
+    # -> "nothing to stash") and reaped live WIP whose branch HEAD merely sat on a
+    # merged BASE commit; a failed stash-push only warned and still reaped. Both
+    # destroyed real work (EFFECTIVE-354, EFFECTIVE-361).
     _wip_stash_work() {
         local wt="$1"
         # Only meaningful for git-linked worktrees (bare /tmp dirs have no git).
         [[ -f "$wt/.git" ]] || return 0
 
-        local uncommitted=0 unpushed=0
-        uncommitted=$(git -C "$wt" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+        # RESILIENT-235: read status with its EXIT CODE separated from its output. An
+        # unreadable status (e.g. gitdir back-ref corruption, INFRA-779) must NOT be
+        # misread as "clean" — it means we cannot prove the tree is safe to delete.
+        local status_out status_rc uncommitted=0 unpushed=0
+        status_out=$(git -C "$wt" status --porcelain 2>/dev/null)
+        status_rc=$?
+        if [[ $status_rc -ne 0 ]]; then
+            warn "  RESILIENT-235: 'git status' unreadable in $wt (rc=$status_rc) — cannot prove clean; REFUSING to reap"
+            return 1
+        fi
+        uncommitted=$(printf '%s' "$status_out" | grep -c . || true)
+        uncommitted="${uncommitted:-0}"
         # Try @{u} first (requires tracking branch); fall back to origin/<branch>
         # so we catch unpushed commits even when the remote branch was deleted.
         if git -C "$wt" rev-parse '@{u}' >/dev/null 2>&1; then
@@ -540,7 +561,7 @@ process_worktree() {
         fi
 
         if [[ "$uncommitted" -eq 0 && "$unpushed" -eq 0 ]]; then
-            return 0  # nothing to stash
+            return 0  # genuinely clean — safe to reap
         fi
 
         # Determine gap ID from claim file (best-effort).
@@ -568,22 +589,57 @@ process_worktree() {
         fi
 
         git -C "$wt" branch "$wip_branch" 2>/dev/null || true
+
+        # RESILIENT-235: VERIFY the work is actually preserved on a recoverable ref
+        # BEFORE we let the caller run the destructive remove. The wip/ branch ref
+        # lives in the COMMON git dir and survives `git worktree remove`, so a
+        # verified ref means the work is recoverable even if the push below fails or
+        # we are offline. Two conditions must BOTH hold:
+        #   (a) refs/heads/<wip_branch> exists, and
+        #   (b) the working tree is now clean (the auto-commit actually captured the
+        #       uncommitted changes — a failed commit would leave it dirty).
+        local ref_ok=0 post_out post_rc post_uncommitted=1
+        if git -C "$wt" rev-parse --verify --quiet "refs/heads/$wip_branch" >/dev/null 2>&1; then
+            # NOTE: `grep -c .` prints the count but EXITS 1 on zero matches, so a
+            # `|| echo N` fallback would append a second line and break the numeric
+            # test — use `|| true` and keep the printed "0".
+            post_out=$(git -C "$wt" status --porcelain 2>/dev/null); post_rc=$?
+            post_uncommitted=$(printf '%s' "$post_out" | grep -c . || true)
+            [[ $post_rc -eq 0 && "${post_uncommitted:-1}" -eq 0 ]] && ref_ok=1
+        fi
+        if [[ $ref_ok -eq 0 ]]; then
+            warn "  RESILIENT-235: could not preserve WIP to a recoverable ref ($wip_branch, post_uncommitted=${post_uncommitted}) — REFUSING to reap $wt"
+            log "WIP_PRESERVE_FAIL $wt gap=$gap_id branch=$wip_branch"
+            return 1
+        fi
+
+        # Best-effort push for OFF-machine recoverability. A push failure no longer
+        # costs the work — the verified LOCAL ref above already preserves it.
         if git -C "$wt" push "$REMOTE" "$wip_branch" 2>/dev/null; then
             info "  pushed wip branch: $wip_branch"
-            # scanner-anchor: "kind":"worktree_work_stashed_before_reap"
-            printf '{"ts":"%s","kind":"worktree_work_stashed_before_reap","gap_id":"%s","branch":"%s","uncommitted_lines":%d,"unpushed_commits":%d,"original_worktree":"%s"}\n' \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$gap_id" "$wip_branch" \
-                "$uncommitted" "$unpushed" "$wt" \
-                >> "$LOCKS_DIR/ambient.jsonl" 2>/dev/null || true
-            log "WIP_STASH $wt gap=$gap_id branch=$wip_branch uncommitted=$uncommitted unpushed=$unpushed"
         else
-            warn "  push of $wip_branch failed — work may be lost; check $REMOTE connectivity"
-            log "WIP_STASH_FAIL $wt gap=$gap_id branch=$wip_branch"
+            warn "  push of $wip_branch failed (offline?) — work preserved on LOCAL ref $wip_branch"
         fi
+        # scanner-anchor: "kind":"worktree_work_stashed_before_reap"
+        printf '{"ts":"%s","kind":"worktree_work_stashed_before_reap","gap_id":"%s","branch":"%s","uncommitted_lines":%d,"unpushed_commits":%d,"original_worktree":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$gap_id" "$wip_branch" \
+            "$uncommitted" "$unpushed" "$wt" \
+            >> "$LOCKS_DIR/ambient.jsonl" 2>/dev/null || true
+        log "WIP_STASH $wt gap=$gap_id branch=$wip_branch uncommitted=$uncommitted unpushed=$unpushed"
+        return 0
     }
 
     if [[ $DRY_RUN -eq 0 ]]; then
-        _wip_stash_work "$wt_path"
+        # RESILIENT-235: fail CLOSED. If the WIP guard cannot prove the worktree is
+        # clean OR cannot preserve its dirty work to a recoverable ref, it returns
+        # non-zero — we then SKIP the destructive remove entirely and leave the
+        # worktree for the next run (orphan-worktree-watchdog keeps surfacing it),
+        # rather than silently destroying uncommitted work.
+        if ! _wip_stash_work "$wt_path"; then
+            _emit_reaper_skipped "$wt_path" "wip_unsafe_refused_reap"
+            KEPT=$((KEPT+1))
+            return 0
+        fi
     else
         # Dry-run: just report what would happen.
         local _dr_uncommitted _dr_unpushed
