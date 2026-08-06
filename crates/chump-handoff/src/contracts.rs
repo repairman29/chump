@@ -483,7 +483,12 @@ Steps — EDIT ONLY, no git:
    instead of depending on you to run git correctly).
 2. Identify the behavioral defect or missing behavior, and write a test for it.
 3. Confirm the test FAILS on the base commit.
-4. Implement the change that makes the test pass.
+4. Implement the change that makes the test pass. HOW TO EDIT: use `str_replace`
+   (read the file first, copy the EXACT snippet to change into `old_string` with its
+   indentation, put the corrected text in `new_string` — it must match exactly once).
+   Do NOT rewrite an entire existing file with `write_file` — that truncates/clobbers
+   large files and the ship guard will reject it. `write_file` is ONLY for creating a
+   brand-new file.
 5. Confirm the test PASSES and the full suite is GREEN with your change.
 6. Leave EVERY change UNCOMMITTED in the working tree, then stop and briefly summarize:
    what you changed, which test proves it, and your self-verify result (failed on base,
