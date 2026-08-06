@@ -1504,6 +1504,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn c3_is_secret_env_var_allows_non_secrets() {
         assert!(!is_secret_env_var("CHUMP_REPO"));
         assert!(!is_secret_env_var("HOME"));
@@ -1513,6 +1514,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn c3_read_safe_env_blocks_secrets() {
         std::env::set_var("__TEST_FAKE_TOKEN", "value");
         let result = read_safe_env("__TEST_FAKE_TOKEN");
@@ -1523,6 +1525,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn c3_read_safe_env_allows_non_secret() {
         std::env::set_var("__TEST_SAFE_CONFIG", "some_value");
         let result = read_safe_env("__TEST_SAFE_CONFIG");
