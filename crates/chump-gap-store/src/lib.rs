@@ -2070,21 +2070,34 @@ impl GapStore {
 
         let now = unix_now();
         let iso = unix_to_iso_date(now);
+        // CREDIBLE-218: reconcile ANY non-terminal status, not just 'open'. A gap
+        // that merged while in an intermediate status (ready_to_ship / in_review /
+        // in_flight / claimed / blocked) was previously un-reconcilable here — the
+        // UPDATE only matched status='open' — so it became a permanent GHOST
+        // (merged on main, still shown open). We exclude only the DELIBERATE terminal
+        // statuses (already done, or an operator's superseded/wontfix/closed decision)
+        // so a real terminal choice is never silently flipped to done.
         let changed = if let Some(pr) = closed_pr {
             self.conn.execute(
                 "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2, closed_pr=?3
-                 WHERE id=?4 AND status='open'",
+                 WHERE id=?4 AND status NOT IN
+                   ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied')",
                 params![now, iso, pr, gap_id],
             )?
         } else {
             self.conn.execute(
                 "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2
-                 WHERE id=?3 AND status='open'",
+                 WHERE id=?3 AND status NOT IN
+                   ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied')",
                 params![now, iso, gap_id],
             )?
         };
         if changed == 0 {
-            bail!("gap {} not found or already done", gap_id);
+            bail!(
+                "gap {} not found, already done, or in a deliberate terminal status \
+                 (superseded/wontfix/closed)",
+                gap_id
+            );
         }
         let _ = self.conn.execute(
             "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
@@ -3722,8 +3735,28 @@ pub fn verify_proof_of_merge(repo_root: &Path, gap_id: &str, closed_pr: Option<i
     if !repo_root.join(".git").exists() {
         return true;
     }
+    // CREDIBLE-218: search the FULL history of main via git's own --grep, not just the
+    // last 200 commits. The old `-n 200` window meant a merge that landed more than 200
+    // commits ago could not be proven → `ship()` refused → the gap became a permanent
+    // ghost. `--grep` scans the entire commit message (subject + body) across all of
+    // main's history efficiently; `-F` fixed-strings + `-i` case-insensitive match the
+    // prior scanning semantics, and multiple `--grep` are OR'd by git's default, so the
+    // gap ID OR the PR marker `(#N)` proves the merge. `-n 1` stops at the first hit.
+    let mut args: Vec<String> = vec![
+        "log".into(),
+        "main".into(),
+        "-i".into(),
+        "-F".into(),
+        "-n".into(),
+        "1".into(),
+        "--format=%H".into(),
+        format!("--grep={gap_id}"),
+    ];
+    if let Some(n) = closed_pr {
+        args.push(format!("--grep=(#{n})"));
+    }
     let out = std::process::Command::new("git")
-        .args(["log", "main", "-n", "200", "--format=%s%n%b%n%H"])
+        .args(&args)
         .current_dir(repo_root)
         .output();
     let Ok(o) = out else {
@@ -3751,21 +3784,9 @@ pub fn verify_proof_of_merge(repo_root: &Path, gap_id: &str, closed_pr: Option<i
         // genuinely odd production state. Fail closed.
         return false;
     }
-    let body = String::from_utf8_lossy(&o.stdout);
-    let gap_needle = gap_id.to_uppercase();
-    let pr_needle = closed_pr.map(|n| format!("(#{n})"));
-    for line in body.lines() {
-        let upper = line.to_uppercase();
-        if upper.contains(&gap_needle) {
-            return true;
-        }
-        if let Some(p) = pr_needle.as_deref() {
-            if line.contains(p) {
-                return true;
-            }
-        }
-    }
-    false
+    // Success + a matching commit hash on stdout ⇒ the merge is proven anywhere in
+    // main's history. Success + empty ⇒ no commit mentions this gap/PR ⇒ not proven.
+    !String::from_utf8_lossy(&o.stdout).trim().is_empty()
 }
 
 /// INFRA-100: parse `2026-04-28T22:30:00Z` style ISO-8601 (lease files use
@@ -5021,6 +5042,54 @@ mod proof_of_merge_tests {
     }
 
     #[test]
+    fn credible218_merge_older_than_200_commits_is_proven() {
+        // CREDIBLE-218: a merge that landed MORE than 200 commits ago must still be
+        // provable. The old `-n 200` window silently missed it → ship() refused → the
+        // gap became a permanent ghost. Here the gap-mentioning commit is the OLDEST,
+        // buried under 205 newer commits.
+        let dir = tempdir().unwrap();
+        let init = std::process::Command::new("git")
+            .args(["init", "--initial-branch=main", "--quiet"])
+            .current_dir(dir.path())
+            .status();
+        if init.is_err() || !init.unwrap().success() {
+            return; // older git without --initial-branch
+        }
+        for (k, v) in [("user.email", "t@t.local"), ("user.name", "t")] {
+            let _ = std::process::Command::new("git")
+                .args(["config", k, v])
+                .current_dir(dir.path())
+                .status();
+        }
+        // Oldest commit carries the gap ID.
+        let _ = std::process::Command::new("git")
+            .args([
+                "commit",
+                "--allow-empty",
+                "-m",
+                "EFFECTIVE-9999: the real merge, buried deep",
+            ])
+            .current_dir(dir.path())
+            .status();
+        // 205 newer commits bury it past the old -n 200 window.
+        for i in 0..205 {
+            let _ = std::process::Command::new("git")
+                .args([
+                    "commit",
+                    "--allow-empty",
+                    "-m",
+                    &format!("chore: filler {i}"),
+                ])
+                .current_dir(dir.path())
+                .status();
+        }
+        assert!(
+            verify_proof_of_merge(dir.path(), "EFFECTIVE-9999", None),
+            "a merge >200 commits back must still be proven (CREDIBLE-218)"
+        );
+    }
+
+    #[test]
     fn empty_repo_with_no_commits_passes() {
         // Integration tests `git init` then immediately try to ship a
         // synthetic gap. Zero commits = test fixture, not production.
@@ -5493,6 +5562,49 @@ mod tests {
             PreflightResult::Done => {}
             other => panic!("expected Done, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn credible218_ship_reconciles_ready_to_ship() {
+        // CREDIBLE-218: a gap that merged while in an INTERMEDIATE status (not 'open')
+        // must be reconcilable by ship(). Previously the UPDATE only matched
+        // status='open', so ready_to_ship / in_review / in_flight gaps became permanent
+        // ghosts. (test_store has no .git, so verify_proof_of_merge passes through.)
+        let (store, _dir) = test_store();
+        let id = store.reserve("CREDIBLE", "ghosted gap", "P1", "s").unwrap();
+        store
+            .conn
+            .execute(
+                "UPDATE gaps SET status='ready_to_ship' WHERE id=?1",
+                params![id],
+            )
+            .unwrap();
+        store.ship(&id, "sess", Some(4242)).unwrap();
+        match store.preflight(&id).unwrap() {
+            PreflightResult::Done => {}
+            other => panic!("expected Done after reconciling ready_to_ship, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn credible218_ship_refuses_deliberate_terminal() {
+        // A superseded/wontfix gap is a deliberate operator decision — ship() must NOT
+        // silently flip it to done just because a commit mentions the ID.
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("CREDIBLE", "superseded gap", "P2", "s")
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "UPDATE gaps SET status='superseded' WHERE id=?1",
+                params![id],
+            )
+            .unwrap();
+        assert!(
+            store.ship(&id, "sess", None).is_err(),
+            "ship() must refuse to reconcile a deliberate terminal status"
+        );
     }
 
     #[test]
