@@ -2852,6 +2852,57 @@ events:
     expected_min_per_day: 0
     status: stable
 
+  - kind: tool_deployed_stage
+    effect_metric: self
+    emitter: scripts/ops/deploy-tool.sh (INFRA-3502)
+    trigger: >
+      COTG-5.1 deploy-to-usable-surface: a shipped tool was deployed to an
+      ephemeral per-lap STAGE surface (a Vercel preview URL, Dokku app, etc.)
+      and the stage URL was captured. This is the pre-verification surface —
+      the customer is NOT yet exposed to it.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, stage_url]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: tool_dod_passed
+    effect_metric: self
+    emitter: scripts/ops/deploy-tool.sh (INFRA-3502)
+    trigger: >
+      COTG-3.1 outcome-verification ran against the STAGE surface and passed
+      (Definition-of-Done command exited 0). Only a pass clears the artifact to
+      be promoted to the customer-facing surface.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, stage_url]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: tool_promoted
+    effect_metric: self
+    emitter: scripts/ops/deploy-tool.sh (INFRA-3502)
+    trigger: >
+      The already-verified stage artifact was atomically FLIPPED to the
+      customer-facing surface (e.g. `vercel promote <stage>`). No fresh build /
+      no re-deploy — the same artifact verified on stage. The customer URL is
+      printed to stdout only after this event.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, stage_url, customer_url]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: tool_promote_blocked
+    effect_metric: self
+    emitter: scripts/ops/deploy-tool.sh (INFRA-3502)
+    trigger: >
+      Promotion to the customer surface was BLOCKED — the deploy failed, no
+      stage URL was produced, the stage DoD/outcome-verification failed, or the
+      promote command itself failed. The customer-facing surface is left
+      untouched; an unverified artifact never reaches a user.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason]
+    expected_min_per_day: 0
+    status: stable
+
   - kind: merge_deploy_lag_ok
     effect_metric: self
     emitter: scripts/coord/merge-deploy-lag-watchdog.sh (INFRA-3454)
