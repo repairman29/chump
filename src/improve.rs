@@ -376,7 +376,14 @@ fn run_inner(args: &[String]) -> Result<i32> {
     // loop CONVERGE (land work) rather than merely TRY: a held PR that blocks a
     // dependent task is resolved in-cycle, never skipped, never left open-red.
     if verdict != "verified" {
-        verdict = remediate_held(&opts, &clone_dir, &picked.title, pr_num, &pr_url)?;
+        verdict = remediate_held(
+            &opts,
+            &clone_dir,
+            &picked.title,
+            &picked.acceptance_criteria_draft,
+            pr_num,
+            &pr_url,
+        )?;
     }
 
     emit_cycle_complete(&opts.owner_repo, &picked.title, &verdict, Some(&pr_url));
@@ -2431,6 +2438,11 @@ fn remediate_held(
     opts: &Opts,
     clone_dir: &Path,
     gap_title: &str,
+    // EFFECTIVE-367 (COTG): the gap's real acceptance criteria, threaded from the
+    // pipeline so the AC-coverage judge scores against the ACTUAL bullets instead of
+    // re-deriving them from the external PR's title (which carries no chump gap id →
+    // NoGapRef → no signal). Empty when the gap had no AC.
+    ac_bullets: &[String],
     pr_num: u64,
     pr_url: &str,
 ) -> Result<String> {
@@ -2481,7 +2493,9 @@ fn remediate_held(
         // below (confidence-GATED iteration is piece 4, pending calibration).
         // Scores gap-AC coverage, not CI-green, so it's advisory context for
         // RESCUE-class fixes.
-        if let Ok(cov) = crate::pr_ac_coverage::run(pr_num) {
+        if let Ok(cov) =
+            crate::pr_ac_coverage::run_with_ac(&opts.owner_repo, pr_num, gap_title, ac_bullets)
+        {
             let conf = cov.confidence();
             println!(
                 "[improve] remediate {} → AC-coverage confidence {conf:.3} ({:?})",
@@ -2752,7 +2766,11 @@ fn shepherd_own_prs(opts: &Opts, clone_dir: &Path) {
                 println!("[improve] shepherd: #{} verified + merged", pr.number)
             }
             Ok(_) => {
-                if let Err(e) = remediate_held(opts, clone_dir, &pr.title, pr.number, &pr.url) {
+                // EFFECTIVE-367: the shepherd sweep has no gap-AC in scope (it operates
+                // on open PRs, not a picked gap), so pass empty bullets — AC-coverage
+                // advises Pass rather than emitting a false NoGapRef signal.
+                if let Err(e) = remediate_held(opts, clone_dir, &pr.title, &[], pr.number, &pr.url)
+                {
                     eprintln!("[improve] shepherd: remediate #{} failed: {e}", pr.number);
                 }
             }
