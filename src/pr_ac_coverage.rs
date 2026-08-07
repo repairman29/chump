@@ -510,8 +510,96 @@ pub fn run(pr_number: u64) -> Result<AcCoverageResult, String> {
         }
     };
 
-    // Fetch diff
-    let diff = run_gh(&["pr", "diff", &pr_number.to_string()]).unwrap_or_default();
+    // EFFECTIVE-367: score against the resolved bullets (shared with run_with_ac).
+    Ok(score_against_bullets(
+        pr_number,
+        gap_id,
+        raw_bullets,
+        trailer_text,
+        None,
+    ))
+}
+
+/// EFFECTIVE-367 (COTG): score a PR against acceptance-criteria bullets the caller
+/// ALREADY holds — instead of re-deriving the gap id from the PR title (which
+/// external-repo PRs lack, degrading `run` to `NoGapRef` → no signal). `gap_id` is
+/// for logging/attribution; `repo` is `owner/name` when the PR lives in a different
+/// repo than the current one (external-improve path). Empty bullets ⇒ `Pass`.
+pub fn run_with_ac(
+    repo: &str,
+    pr_number: u64,
+    gap_id: &str,
+    bullets: &[String],
+) -> Result<AcCoverageResult, String> {
+    if std::env::var("CHUMP_AC_GATE_ENABLED").as_deref() == Ok("false") {
+        return Ok(AcCoverageResult {
+            pr_number,
+            gap_id: Some(gap_id.to_string()),
+            status: CoverageStatus::Disabled,
+            bullets: vec![],
+        });
+    }
+    if bullets.is_empty() {
+        return Ok(AcCoverageResult {
+            pr_number,
+            gap_id: Some(gap_id.to_string()),
+            status: CoverageStatus::Pass,
+            bullets: vec![],
+        });
+    }
+    // PR body + commit messages feed waiver parsing + check_coverage's commit_text.
+    let repo_opt = if repo.is_empty() { None } else { Some(repo) };
+    let pr_json_str = match repo_opt {
+        Some(r) => run_gh(&[
+            "pr",
+            "view",
+            &pr_number.to_string(),
+            "--repo",
+            r,
+            "--json",
+            "body,commits",
+        ]),
+        None => run_gh(&[
+            "pr",
+            "view",
+            &pr_number.to_string(),
+            "--json",
+            "body,commits",
+        ]),
+    }
+    .unwrap_or_default();
+    let body = json_extract_string(&pr_json_str, "body").unwrap_or_default();
+    let commit_bodies = extract_commit_messages(&pr_json_str);
+    let mut trailer_text = body;
+    for cb in &commit_bodies {
+        trailer_text.push('\n');
+        trailer_text.push_str(cb);
+    }
+    Ok(score_against_bullets(
+        pr_number,
+        gap_id.to_string(),
+        bullets.to_vec(),
+        trailer_text,
+        repo_opt,
+    ))
+}
+
+/// EFFECTIVE-367 (COTG): shared per-bullet scoring. Fetches the PR diff (in `repo`
+/// if given) and scores each bullet via `check_coverage`. Infallible — a diff-fetch
+/// failure yields an empty diff (bullets read as uncovered, i.e. fail-loud).
+fn score_against_bullets(
+    pr_number: u64,
+    gap_id: String,
+    raw_bullets: Vec<String>,
+    trailer_text: String,
+    repo: Option<&str>,
+) -> AcCoverageResult {
+    // Fetch diff (external repo via --repo when supplied).
+    let diff = match repo {
+        Some(r) => run_gh(&["pr", "diff", &pr_number.to_string(), "--repo", r]),
+        None => run_gh(&["pr", "diff", &pr_number.to_string()]),
+    }
+    .unwrap_or_default();
 
     // Parse waivers (0-based index per spec)
     let waivers = parse_waivers(&trailer_text);
@@ -593,12 +681,12 @@ pub fn run(pr_number: u64) -> Result<AcCoverageResult, String> {
         }
     }
 
-    Ok(AcCoverageResult {
+    AcCoverageResult {
         pr_number,
         gap_id: Some(gap_id),
         status,
         bullets,
-    })
+    }
 }
 
 // ── minimal JSON helpers (no serde_json dep) ──────────────────────────────────
@@ -1058,5 +1146,22 @@ mod redteam {
         // The divergence itself is the proof: same fixture, real checker
         // says Miss, broken checker says Pass. A redteam suite that could
         // not produce this divergence would have no discriminating power.
+    }
+
+    #[test]
+    fn effective367_run_with_ac_empty_bullets_is_pass_no_network() {
+        // EFFECTIVE-367: run_with_ac short-circuits on empty AC BEFORE any gh call,
+        // so it's safe to run offline. Empty bullets ⇒ nothing to check ⇒ Pass/Disabled
+        // (never NoGapRef), and the gap_id is carried through for attribution. This is
+        // the foundation guarantee: the caller's AC is honored, not re-derived from the PR.
+        let r = run_with_ac("repairman29/pvc", 999_999, "PRODUCT-145", &[])
+            .expect("empty-bullets path is infallible and makes no network call");
+        assert_eq!(r.gap_id.as_deref(), Some("PRODUCT-145"));
+        assert!(r.bullets.is_empty(), "empty AC ⇒ no bullets scored");
+        assert!(
+            matches!(r.status, CoverageStatus::Pass | CoverageStatus::Disabled),
+            "empty AC must be Pass (or Disabled if the gate env is off) — NEVER NoGapRef, got {:?}",
+            r.status
+        );
     }
 }
