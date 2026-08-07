@@ -473,6 +473,7 @@ Both are observable to you within ~minutes via `chump-coord watch` or the next s
 | [`docs/operations/INFERENCE_PROFILES.md`](./docs/operations/INFERENCE_PROFILES.md) | Local inference (vLLM-MLX 8000 / Ollama 11434) |
 | [`scripts/README.md`](./scripts/README.md) | Script taxonomy, canonical tool per task, entry points per directory (DOC-024) |
 | [`docs/process/EXTERNAL_REPO_USAGE.md`](./docs/process/EXTERNAL_REPO_USAGE.md) | Onboarding guide for non-Chump repos using Chump as a coordination platform (DOC-022) |
+| [`docs/ALMANAC.md`](./docs/ALMANAC.md) | Almanac protocol — the fleet reference desk: CLI/MCP surfaces, tool-by-question-shape table, seven trust rules with incident receipts, latency budget, voice contract for spoken turns (DOC-085) |
 
 ## Reality-check before alarm-class beliefs — ship-check FIRST (CREDIBLE-090)
 
