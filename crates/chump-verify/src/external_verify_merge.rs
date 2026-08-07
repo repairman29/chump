@@ -701,6 +701,8 @@ struct CheckInfo {
     name: String,
     is_advisory: bool,
     is_terminal: bool,
+    #[allow(dead_code)]
+    // EFFECTIVE-394: computed pass signal kept for struct symmetry; not yet read
     is_pass: bool,
     is_fail: bool,
 }
