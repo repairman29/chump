@@ -2700,6 +2700,11 @@ fn remediate_held(
         "\n[improve] MISSION-059: PR #{pr_num} HELD — remediating (no-abandon, up to {retries} attempt(s), branch={head_branch})"
     );
 
+    // EFFECTIVE-385 (decompose-on-review): remember the most recent set of unmet AC
+    // bullets so that, if the budget is exhausted without converging, we can carve
+    // the remainder into a scoped child gap instead of losing it.
+    let mut last_unmet: Vec<String> = Vec::new();
+
     for attempt in 0..retries {
         let model = model_for_attempt(attempt, &ladder);
 
@@ -2743,6 +2748,8 @@ fn remediate_held(
         } else {
             Vec::new()
         };
+        // EFFECTIVE-385: capture for the budget-exhausted decompose-on-review path.
+        last_unmet = unmet.clone();
 
         if !unmet.is_empty() {
             // EFFECTIVE-379: AC-incompleteness hold — scoped re-dispatch + re-judge.
@@ -2811,16 +2818,158 @@ fn remediate_held(
         }
     }
 
-    // Budget exhausted — CLOSE the PR (terminal, no open-red left behind).
+    // Budget exhausted. EFFECTIVE-385 (decompose-on-review): if the hold was AC
+    // incompleteness, carve the STILL-unmet bullets into a scoped child gap BEFORE
+    // closing — so the remaining work is captured and pickable, never lost (Jeff's
+    // "send back for correction, don't lose anything"). Best-effort: a filing
+    // failure must NOT block the close (no open-red left behind).
+    let child_note = if last_unmet.is_empty() {
+        String::new()
+    } else {
+        match file_ac_remainder_child_gap(opts, gap_title, &last_unmet, pr_num) {
+            Ok(child) => {
+                println!(
+                    "[improve] decompose-on-review: carved {} unmet AC bullet(s) into child gap {child}",
+                    last_unmet.len()
+                );
+                format!(
+                    " The {} still-unmet acceptance criterion(s) were carved into follow-up gap \
+                     {child} (pickable on a fresh branch), so no work is lost.",
+                    last_unmet.len()
+                )
+            }
+            Err(e) => {
+                eprintln!(
+                    "[improve] decompose-on-review: could not file child gap ({e}); closing without it"
+                );
+                String::new()
+            }
+        }
+    };
+
+    // CLOSE the PR (terminal, no open-red left behind).
     let reason = format!(
-        "chump improve (MISSION-059): could not get CI green after {retries} escalating fix \
-         attempt(s); closing rather than leaving this PR open-red. The underlying work will be \
-         re-proposed on a future cycle. Reopen after manual triage if the diff is salvageable."
+        "chump improve (MISSION-059): could not converge after {retries} escalating fix \
+         attempt(s); closing rather than leaving this PR open-red.{child_note} Reopen after \
+         manual triage if the diff is salvageable."
     );
     close_pr(opts, pr_num, &reason)?;
     emit_pr_closed(&opts.owner_repo, pr_num, pr_url, &reason);
     println!("[improve] PR #{pr_num} CLOSED after {retries} attempt(s) (no-abandon)");
     Ok("closed".to_string())
+}
+
+/// EFFECTIVE-385 (decompose-on-review): the pillar/domain a child gap inherits from
+/// its parent's ID prefix (`EFFECTIVE-379` → `EFFECTIVE`). Defaults to `EFFECTIVE`
+/// when the parent ID is empty or prefix-less. Pure — unit-tested.
+fn child_gap_domain_from_parent(parent_id: &str) -> String {
+    parent_id
+        .split('-')
+        .next()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("EFFECTIVE")
+        .to_uppercase()
+}
+
+/// EFFECTIVE-385 (decompose-on-review): when a HELD PR can't be converged within the
+/// remediate budget AND the hold is unmet acceptance criteria, carve the still-unmet
+/// bullets into a scoped CHILD gap before closing — so the remaining work is captured
+/// and pickable, never lost. Returns the child gap ID.
+///
+/// State.db is canonical, so the child is created via `chump gap reserve` + `chump gap
+/// set` (not a direct store write). Reserved at P2 — a remediation follow-up, not a
+/// top-priority unblocker — which also keeps the autonomous path clear of the P0/P1
+/// outcome+evidence intake firewall (MISSION-045). The parent + PR are recorded in the
+/// child's description (NOT as `depends_on`, which would wrongly block the child on a
+/// parent that is being closed unconverged).
+fn file_ac_remainder_child_gap(
+    opts: &Opts,
+    gap_title: &str,
+    unmet: &[String],
+    pr_num: u64,
+) -> Result<String> {
+    let parent = opts.gap_id.clone().unwrap_or_default();
+    let domain = child_gap_domain_from_parent(&parent);
+    let chump_bin = std::env::var("CHUMP_IMPROVE_CHUMP_BIN")
+        .or_else(|_| std::env::var("CHUMP_BIN"))
+        .unwrap_or_else(|_| "chump".to_string());
+    let short_title: String = gap_title.trim().chars().take(48).collect();
+    let title = format!(
+        "complete {parent}: {} unmet AC — {short_title}",
+        unmet.len()
+    );
+
+    let out = Command::new(&chump_bin)
+        .args([
+            "gap",
+            "reserve",
+            "--domain",
+            &domain,
+            "--title",
+            &title,
+            "--priority",
+            "P2",
+            "--effort",
+            "m",
+        ])
+        .output()
+        .with_context(|| "spawn `chump gap reserve` for decompose-on-review child")?;
+    if !out.status.success() {
+        bail!(
+            "`chump gap reserve` failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    // reserve prints the new ID as the last DOMAIN-NNN token on stdout.
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let child_id = stdout
+        .split_whitespace()
+        .rev()
+        .find(|t| {
+            t.contains('-')
+                && t.chars()
+                    .next()
+                    .map(|c| c.is_ascii_uppercase())
+                    .unwrap_or(false)
+                && t.rsplit('-')
+                    .next()
+                    .map(|n| n.chars().all(|c| c.is_ascii_digit()))
+                    .unwrap_or(false)
+        })
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            anyhow::anyhow!("could not parse child gap ID from reserve output: {stdout:?}")
+        })?;
+
+    let description = format!(
+        "Decompose-on-review remainder of {parent} (PR #{pr_num}). The parent PR passed CI but \
+         the AC judge (Gate 4, CREDIBLE-212) found the acceptance criteria below still UNMET after \
+         the remediate budget was exhausted; they are carved here so the work is not lost. Finish \
+         on a fresh branch."
+    );
+    let mut set_args: Vec<String> = vec![
+        "gap".into(),
+        "set".into(),
+        child_id.clone(),
+        "--description".into(),
+        description,
+    ];
+    for b in unmet {
+        set_args.push("--acceptance-criteria".into());
+        set_args.push(b.trim().to_string());
+    }
+    let set_out = Command::new(&chump_bin)
+        .args(&set_args)
+        .output()
+        .with_context(|| "spawn `chump gap set` for decompose-on-review child")?;
+    if !set_out.status.success() {
+        bail!(
+            "`chump gap set` failed for child {child_id}: {}",
+            String::from_utf8_lossy(&set_out.stderr).trim()
+        );
+    }
+    Ok(child_id)
 }
 
 // ── MISSION-061: external PR shepherd ──────────────────────────────────────
@@ -3932,6 +4081,16 @@ mod tests {
         // Unknown/empty is the safe default: attempt a real fix, not a blind rerun.
         assert_eq!(remediation_for_class(""), Remediation::AgentFix);
         assert_eq!(remediation_for_class("weird"), Remediation::AgentFix);
+    }
+
+    #[test]
+    fn effective385_child_gap_domain_inherits_parent_prefix() {
+        assert_eq!(child_gap_domain_from_parent("EFFECTIVE-379"), "EFFECTIVE");
+        assert_eq!(child_gap_domain_from_parent("credible-212"), "CREDIBLE");
+        assert_eq!(child_gap_domain_from_parent("MISSION-010"), "MISSION");
+        // Empty / prefix-less parent falls back to EFFECTIVE (never panics/empty).
+        assert_eq!(child_gap_domain_from_parent(""), "EFFECTIVE");
+        assert_eq!(child_gap_domain_from_parent("nodash"), "NODASH");
     }
 
     #[test]
