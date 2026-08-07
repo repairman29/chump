@@ -11734,6 +11734,80 @@ async fn main() -> Result<()> {
                     }
                 } // end else (COG-052 closed-gap path)
             }
+            // EFFECTIVE-386: AC-writer — generate SPECIFIC, testable acceptance
+            // criteria for a gap (the binding input the Gate-4 AC-judge needs).
+            "write-ac" => {
+                let gap_id = args.get(3).cloned().unwrap_or_default();
+                if gap_id.is_empty() || gap_id == "--help" || gap_id == "-h" {
+                    println!("Usage: chump gap write-ac <GAP-ID> [--apply]");
+                    println!(
+                        "  Generate SPECIFIC, testable acceptance criteria for the gap via the LLM."
+                    );
+                    println!(
+                        "  --apply   Persist them via `chump gap set --acceptance-criteria` (else dry-run print)."
+                    );
+                    println!(
+                        "  Model: CHUMP_AC_WRITER_MODEL, else CHUMP_AC_JUDGE_MODEL, else opus."
+                    );
+                    if gap_id.is_empty() {
+                        std::process::exit(2);
+                    }
+                    return Ok(());
+                }
+                let apply = args.iter().any(|a| a == "--apply");
+                let (title, desc) = match crate::pr_ac_coverage::gap_title_and_description(&gap_id)
+                {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("chump gap write-ac: {e}");
+                        std::process::exit(1);
+                    }
+                };
+                match crate::pr_ac_coverage::generate_ac(&title, &desc, "") {
+                    Some(bullets) => {
+                        println!(
+                            "[write-ac] {gap_id}: {} acceptance criterion(s) generated:",
+                            bullets.len()
+                        );
+                        for (i, b) in bullets.iter().enumerate() {
+                            println!("  {}. {b}", i + 1);
+                        }
+                        if apply {
+                            let self_bin = std::env::current_exe()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .unwrap_or_else(|_| "chump".to_string());
+                            let mut set_args: Vec<String> =
+                                vec!["gap".into(), "set".into(), gap_id.clone()];
+                            for b in &bullets {
+                                set_args.push("--acceptance-criteria".into());
+                                set_args.push(b.clone());
+                            }
+                            let ok = std::process::Command::new(&self_bin)
+                                .args(&set_args)
+                                .status()
+                                .map(|s| s.success())
+                                .unwrap_or(false);
+                            if ok {
+                                println!("[write-ac] applied to {gap_id} via `chump gap set`.");
+                            } else {
+                                eprintln!("[write-ac] failed to apply AC to {gap_id}");
+                                std::process::exit(1);
+                            }
+                        } else {
+                            println!(
+                                "[write-ac] dry-run — pass --apply to persist via `chump gap set`."
+                            );
+                        }
+                        return Ok(());
+                    }
+                    None => {
+                        eprintln!(
+                            "[write-ac] could not generate AC for {gap_id} (empty title or LLM unavailable)."
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            }
             "decompose" => {
                 // INFRA-1238: trap --help before positional validation.
                 if args

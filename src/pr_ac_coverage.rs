@@ -1000,11 +1000,192 @@ fn extract_json_string_at(s: &str) -> Option<ExtractResult> {
     })
 }
 
+// ── EFFECTIVE-386: AC-writer ────────────────────────────────────────────────
+// The AC-judge (Gate 4, EFFECTIVE-373) is only as good as the bullets it judges
+// against: generic boilerplate ("fixed on live site", "works correctly") is
+// unjudgeable, so a gap with vague AC silently passes the hard gate — the exact
+// false-green COTG exists to kill. The AC-writer generates bullets that NAME a
+// specific file/function/value AND an observable, independently-verifiable
+// outcome. It is the binding INPUT that makes the hard gate meaningful, and the
+// on-ramp that lets gap-less human PRs be judged on the same footing as agent work.
+
+/// Pull `(title, description)` for a gap from canonical state.db via `chump gap show`.
+pub(crate) fn gap_title_and_description(gap_id: &str) -> Result<(String, String), String> {
+    let chump_bin = std::env::var("CHUMP_REAL_BINARY").unwrap_or_else(|_| "chump".to_string());
+    let out = Command::new(&chump_bin)
+        .args(["gap", "show", gap_id, "--json"])
+        .output()
+        .map_err(|e| format!("cannot run `{chump_bin} gap show {gap_id} --json`: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "`chump gap show {gap_id} --json` failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .map_err(|e| format!("cannot parse `chump gap show {gap_id} --json`: {e}"))?;
+    let title = v
+        .get("title")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let desc = v
+        .get("description")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    Ok((title, desc))
+}
+
+/// Build the AC-writer prompt: emit specific, testable, file/value-naming acceptance
+/// bullets and BAN vague boilerplate. `context` is optional extra grounding (a PR
+/// diff, related files) — pass "" when unavailable.
+pub(crate) fn build_ac_writer_prompt(title: &str, description: &str, context: &str) -> String {
+    let ctx_block = if context.trim().is_empty() {
+        String::new()
+    } else {
+        format!("\nAdditional context (e.g. the diff or related code):\n{context}\n")
+    };
+    format!(
+        "You are writing ACCEPTANCE CRITERIA for a software task — the checklist a reviewer uses \
+         to decide whether the work is actually DONE.\n\n\
+         Task title: {title}\n\
+         Task description:\n{description}\n{ctx_block}\n\
+         Write 2 to 5 acceptance criteria. RULES — each bullet MUST:\n\
+         - name a SPECIFIC file, function, symbol, endpoint, flag, or value where it applies \
+         (e.g. `src/foo.rs`'s `bar()`, the `/join` route, the `--apply` flag) — never a vague area;\n\
+         - state an OBSERVABLE, independently-verifiable outcome (a named test passes, a value is \
+         returned, a page renders X, a command exits 0) that someone could check WITHOUT trusting \
+         the author;\n\
+         - be satisfiable by THIS task alone (no dependency on future work).\n\
+         BANNED: vague boilerplate — \"works correctly\", \"fixed on live site\", \"handles errors\", \
+         \"is tested\" with no specifics. Those are unjudgeable and will be rejected.\n\n\
+         Reply with EXACTLY one criterion per line, numbered, and NOTHING else:\n\
+         1. <specific, testable criterion>\n\
+         2. <...>\n"
+    )
+}
+
+/// Parse the model's reply into clean bullet strings (strips `1.`/`1)`/`-`/`*`/`•` markers).
+pub(crate) fn parse_ac_bullets(response: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for raw in response.lines() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // Only keep lines that carried a list marker (`1.`/`1)`/`-`/`*`/`•`). The
+        // prompt demands one numbered criterion per line, so an unmarked line is
+        // preamble/prose ("Here are the criteria:") — drop it, don't mistake it
+        // for a bullet.
+        if let Some(stripped) = strip_bullet_marker(line) {
+            let s = stripped.trim();
+            if s.len() >= 8 {
+                out.push(s.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// Strip a single leading list marker: `12.`, `12)`, `-`, `*`, or `•`. Returns
+/// `None` when the line has no marker (so the caller can reject prose).
+fn strip_bullet_marker(line: &str) -> Option<&str> {
+    let t = line.trim_start();
+    if let Some((num, tail)) = t.split_once(['.', ')']) {
+        if !num.is_empty() && num.len() <= 3 && num.chars().all(|c| c.is_ascii_digit()) {
+            return Some(tail.trim_start());
+        }
+    }
+    for m in ['-', '*', '•'] {
+        if let Some(rest) = t.strip_prefix(m) {
+            return Some(rest.trim_start());
+        }
+    }
+    None
+}
+
+/// Generate acceptance criteria for a gap via `chump llm-complete` (same rail as the
+/// AC-judge). Returns `None` on any failure so the caller keeps existing AC. Model via
+/// `CHUMP_AC_WRITER_MODEL`, falling back to `CHUMP_AC_JUDGE_MODEL`, then `opus`.
+pub(crate) fn generate_ac(title: &str, description: &str, context: &str) -> Option<Vec<String>> {
+    if title.trim().is_empty() {
+        return None;
+    }
+    let prompt = build_ac_writer_prompt(title, description, context);
+    let chump_bin = std::env::var("CHUMP_REAL_BINARY").unwrap_or_else(|_| "chump".to_string());
+    let model = std::env::var("CHUMP_AC_WRITER_MODEL")
+        .or_else(|_| std::env::var("CHUMP_AC_JUDGE_MODEL"))
+        .unwrap_or_else(|_| "opus".to_string());
+    let mut child = Command::new(&chump_bin)
+        .args(["llm-complete", "--model", &model, "--max-tokens", "400"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    if let Some(mut si) = child.stdin.take() {
+        use std::io::Write;
+        let _ = si.write_all(prompt.as_bytes());
+    }
+    let out = child.wait_with_output().ok()?;
+    let bullets = parse_ac_bullets(&String::from_utf8_lossy(&out.stdout));
+    if bullets.is_empty() {
+        None
+    } else {
+        Some(bullets)
+    }
+}
+
 // ── unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn effective386_parse_ac_bullets_strips_markers_and_prose() {
+        let reply = "Here are the criteria:\n\
+                     1. `src/join.rs`'s render_invite() returns the code from the URL path\n\
+                     2) A logged-out visitor hitting /join is redirected to /login (302)\n\
+                     - The `--apply` flag persists AC via `chump gap set` and exits 0\n\
+                     * cargo test join_page_renders passes\n\
+                     \n\
+                     ok";
+        let bullets = parse_ac_bullets(reply);
+        assert_eq!(
+            bullets.len(),
+            4,
+            "4 real bullets, prose/blank dropped: {bullets:?}"
+        );
+        assert_eq!(
+            bullets[0],
+            "`src/join.rs`'s render_invite() returns the code from the URL path"
+        );
+        assert!(bullets[1].starts_with("A logged-out visitor"));
+        assert!(bullets[2].starts_with("The `--apply` flag"));
+        assert!(bullets[3].starts_with("cargo test"));
+        // "ok" (len 2, no marker) is dropped by the min-length guard.
+        assert!(!bullets.iter().any(|b| b == "ok"));
+    }
+
+    #[test]
+    fn effective386_ac_writer_prompt_demands_specifics_bans_boilerplate() {
+        let p = build_ac_writer_prompt("wire the join page", "render the invite code", "");
+        // Carries the task.
+        assert!(p.contains("wire the join page"));
+        // Demands a specific file/function/value anchor + observable outcome.
+        assert!(p.contains("SPECIFIC file"));
+        assert!(p.contains("OBSERVABLE"));
+        assert!(p.contains("WITHOUT trusting"));
+        // Explicitly bans the boilerplate class the AC-judge can't catch.
+        assert!(p.contains("fixed on live site"));
+        assert!(p.contains("BANNED"));
+        // Optional context block is omitted when empty.
+        assert!(!p.contains("Additional context"));
+        let p2 = build_ac_writer_prompt("t", "d", "diff --git a/x b/x");
+        assert!(p2.contains("Additional context"));
+    }
 
     #[test]
     fn test_title_parser_extracts_gap_id() {
