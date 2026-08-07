@@ -18,7 +18,10 @@ questions go to Almanac BEFORE grep or agent fan-outs.
 2. **MCP server `almanac`** (wired via `chump-mcp.json`, for MCP-capable
    harnesses): `almanac_search_fleet`, `almanac_search`, `almanac_api`,
    `almanac_impact`, `almanac_architecture`, `almanac_neighbors`,
-   `almanac_status`. Same index, same answers.
+   `almanac_status`, `almanac_comprehend`, `almanac_why`. Same index, same
+   answers — except the last two, which read the live CHECKOUT (organs use
+   the filesystem; `why` uses git blame), so they are current but slower, and
+   a remote-cached repo with no worktree cannot answer them.
 
 ## Pick the tool by question shape
 
@@ -30,6 +33,8 @@ questions go to Almanac BEFORE grep or agent fan-outs.
 | "What breaks if I change this file?" | `almanac_impact` / `impact` | Transitive importers, level by level. LOWER BOUND — the `note` says how many edges resolved. |
 | Orienting in an unfamiliar repo | `almanac_architecture` / `architecture` | Instant + structural (modules, cross-module edges, hub files). Call FIRST, then search deep. |
 | One file's dependency picture | `almanac_neighbors` / `neighbors` | Imports / imported-by / unresolved externals. |
+| "Why does this line exist?" (before deleting/rewriting) | `almanac_why` / `whymap` | The commit + gap/issue refs that introduced it, and what to check first. The anti-Chesterton's-fence lookup. An unblameable line says so rather than inventing a reason. |
+| "Is it wired? What gates it? What flags govern it?" | `almanac_comprehend` / `comprehend` | WIRING + GATES + CONFIG organs in one call. EVERY organ states its own coverage and a partial map warns — outside Rust, `gate=none-recognized` means no guard of a KNOWN SHAPE was found, NOT "unprotected". |
 | "Can I trust these results?" | `almanac_status` / `stats` | Grounding commit vs current HEAD, stale flag, row counts. Call before load-bearing answers. |
 
 ## Trust rules — each one encodes a real incident
