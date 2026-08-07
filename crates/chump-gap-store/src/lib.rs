@@ -995,6 +995,25 @@ impl GapStore {
         Ok(row)
     }
 
+    /// PRODUCT-176: the set of status values this store recognizes, read from
+    /// the advisory `gap_status_registry` table (the canonical list — INFRA-2137
+    /// seeds it and later gaps extend it). Exposed so callers that accept a
+    /// status from outside the process (the web API's PATCH /api/gap/{id})
+    /// can reject unknown values instead of writing a typo'd status that no
+    /// picker, gauge, or curate pass will ever match. SQLite TEXT carries no
+    /// CHECK constraint here, so this registry is the only guard.
+    pub fn known_statuses(&self) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT status FROM gap_status_registry ORDER BY status")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
     /// Update mutable fields on an existing gap row. Pass None to leave a
     /// field unchanged. Used by `chump gap set` so agents can author
     /// description / acceptance / notes without hand-editing YAML.
@@ -5154,6 +5173,32 @@ mod tests {
     }
 
     // ── INFRA-100: cross-source picker tests ──────────────────────────
+
+    #[test]
+    fn known_statuses_reads_the_registry() {
+        // PRODUCT-176: the web PATCH surface validates incoming status values
+        // against gap_status_registry — this asserts the reader sees both the
+        // legacy seeds and the later INFRA-2137 additions.
+        let (store, _dir) = test_store();
+        let known = store.known_statuses().unwrap();
+        for s in [
+            "open",
+            "claimed",
+            "done",
+            "wontfix",
+            "bisect_quarantined",
+            "ready_to_ship",
+        ] {
+            assert!(
+                known.iter().any(|k| k == s),
+                "registry must contain '{s}': {known:?}"
+            );
+        }
+        assert!(
+            !known.iter().any(|k| k == "tottaly-done"),
+            "unknown stays unknown"
+        );
+    }
 
     #[test]
     fn reserve_with_external_bumps_past_open_pr_collisions() {
