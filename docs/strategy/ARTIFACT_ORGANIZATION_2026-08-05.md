@@ -52,6 +52,10 @@ produced verified zero-touch ships — into BEAST-MODE, its own predecessor. The
 artifact abstraction is the synthesis both missed: not job titles, not
 code-stages — **typed artifacts flowing through one gated pipeline.**
 
+![The registry-coordinated factory](../img/chumpos-registry-factory.svg)
+
+*Figure (added 2026-08-06, DOC-088): the coordination model — registry at the center instead of a hub agent, one worker per gap (linear inside, parallel across), gates as infrastructure, the human at ring-0, and the PEOPLE → holler/posse → intake feedback loop closing the six stages.*
+
 **Chump already implements 4 of the 6 stages.** Inputs → Process → Outputs →
 Quality Gates map onto gap(AC) → claim/worktree → diff → preflight/CI/judge.
 Missing: **Publication** (the pipeline ends at merge — the mechanical cause of
