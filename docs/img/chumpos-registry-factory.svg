@@ -1,0 +1,88 @@
+<svg viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ct cd" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+<title id="ct">ChumpOS: the registry-coordinated factory</title>
+<desc id="cd">Work flows from intake into a central registry of gaps. Parallel workers each claim one gap and run it linearly through a shared gate wall into origin main, then publishing, then Jeff at ring zero who holds the irreversible click, then people. Feedback from people returns to intake via holler and posse.</desc>
+<defs>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b5a4e"/></marker>
+</defs>
+<rect x="0" y="0" width="960" height="600" fill="#f3efe2"/>
+<text x="16" y="34" fill="#2b2b26" font-size="20" font-weight="600">CHUMPOS — THE REGISTRY-COORDINATED FACTORY</text>
+<text x="16" y="58" fill="#5b5a4e" font-size="13">distributed like a fleet, disciplined like a single agent</text>
+<text x="482" y="122" fill="#5b5a4e" font-size="12">parallel across tasks — never within</text>
+<g>
+<rect x="230" y="250" width="190" height="100" rx="10" fill="#edc97c" stroke="#8a6d2f"/>
+<text x="325" y="285" fill="#3a2f14" font-size="15" font-weight="600" text-anchor="middle">REGISTRY</text>
+<text x="325" y="308" fill="#5c4d26" font-size="12" text-anchor="middle">gaps · leases · events</text>
+<text x="325" y="326" fill="#5c4d26" font-size="12" text-anchor="middle">outcomes · votes</text>
+</g>
+<g>
+<rect x="16" y="270" width="170" height="64" rx="10" fill="none" stroke="#6b6a5c"/>
+<text x="101" y="296" fill="#2b2b26" font-size="14" font-weight="600" text-anchor="middle">INTAKE</text>
+<text x="101" y="316" fill="#5b5a4e" font-size="12" text-anchor="middle">Jeff · holler · posse</text>
+</g>
+<g>
+<rect x="480" y="140" width="155" height="64" rx="10" fill="#a9c6e8" stroke="#3f608a"/>
+<text x="557" y="166" fill="#16293f" font-size="14" font-weight="600" text-anchor="middle">WORKER A</text>
+<text x="557" y="186" fill="#2e4a6b" font-size="12" text-anchor="middle">one gap, linear</text>
+</g>
+<g>
+<rect x="480" y="280" width="155" height="64" rx="10" fill="#a9c6e8" stroke="#3f608a"/>
+<text x="557" y="306" fill="#16293f" font-size="14" font-weight="600" text-anchor="middle">WORKER B</text>
+<text x="557" y="326" fill="#2e4a6b" font-size="12" text-anchor="middle">one gap, linear</text>
+</g>
+<g>
+<rect x="480" y="420" width="155" height="64" rx="10" fill="#a9c6e8" stroke="#3f608a"/>
+<text x="557" y="446" fill="#16293f" font-size="14" font-weight="600" text-anchor="middle">WORKER C</text>
+<text x="557" y="466" fill="#2e4a6b" font-size="12" text-anchor="middle">one gap, linear</text>
+</g>
+<g>
+<rect x="680" y="130" width="110" height="360" rx="10" fill="none" stroke="#6b6a5c"/>
+<text x="735" y="290" fill="#2b2b26" font-size="14" font-weight="600" text-anchor="middle">GATES</text>
+<text x="735" y="312" fill="#5b5a4e" font-size="12" text-anchor="middle">preflight</text>
+<text x="735" y="330" fill="#5b5a4e" font-size="12" text-anchor="middle">CI · judge</text>
+<text x="735" y="348" fill="#5b5a4e" font-size="12" text-anchor="middle">auditor</text>
+</g>
+<g>
+<rect x="820" y="270" width="120" height="64" rx="10" fill="none" stroke="#6b6a5c"/>
+<text x="880" y="296" fill="#2b2b26" font-size="13" font-weight="600" text-anchor="middle">origin/main</text>
+<text x="880" y="316" fill="#5b5a4e" font-size="12" text-anchor="middle">merged truth</text>
+</g>
+<g>
+<rect x="780" y="430" width="160" height="64" rx="10" fill="none" stroke="#6b6a5c"/>
+<text x="860" y="456" fill="#2b2b26" font-size="14" font-weight="600" text-anchor="middle">PUBLISH</text>
+<text x="860" y="476" fill="#5b5a4e" font-size="12" text-anchor="middle">notes · posts · demos</text>
+</g>
+<g>
+<rect x="540" y="430" width="190" height="64" rx="10" fill="#edc97c" stroke="#8a6d2f"/>
+<text x="635" y="456" fill="#3a2f14" font-size="14" font-weight="600" text-anchor="middle">JEFF AT RING-0</text>
+<text x="635" y="476" fill="#5c4d26" font-size="12" text-anchor="middle">the irreversible click</text>
+</g>
+<g>
+<rect x="320" y="430" width="150" height="64" rx="10" fill="none" stroke="#6b6a5c"/>
+<text x="395" y="456" fill="#2b2b26" font-size="14" font-weight="600" text-anchor="middle">PEOPLE</text>
+<text x="395" y="476" fill="#5b5a4e" font-size="12" text-anchor="middle">tools in hands</text>
+</g>
+<g stroke="#5b5a4e" fill="none" stroke-width="1.3">
+<line x1="186" y1="302" x2="226" y2="302" marker-end="url(#ar)"/>
+<line x1="420" y1="282" x2="476" y2="176" marker-end="url(#ar)"/>
+<line x1="420" y1="300" x2="476" y2="312" marker-end="url(#ar)"/>
+<line x1="420" y1="318" x2="476" y2="448" marker-end="url(#ar)"/>
+<line x1="635" y1="172" x2="676" y2="172" marker-end="url(#ar)"/>
+<line x1="635" y1="312" x2="676" y2="312" marker-end="url(#ar)"/>
+<line x1="635" y1="452" x2="676" y2="452" marker-end="url(#ar)"/>
+<line x1="790" y1="302" x2="816" y2="302" marker-end="url(#ar)"/>
+<line x1="880" y1="334" x2="880" y2="426" marker-end="url(#ar)"/>
+<line x1="780" y1="462" x2="734" y2="462" marker-end="url(#ar)"/>
+<line x1="540" y1="462" x2="474" y2="462" marker-end="url(#ar)"/>
+<path d="M320,462 H101 V338" marker-end="url(#ar)"/>
+</g>
+<text x="430" y="270" fill="#5b5a4e" font-size="11">claim</text>
+<text x="890" y="385" fill="#5b5a4e" font-size="11">ship</text>
+<text x="140" y="450" fill="#5b5a4e" font-size="11">holler · posse findings</text>
+<g>
+<rect x="16" y="545" width="14" height="14" rx="3" fill="#edc97c" stroke="#8a6d2f"/>
+<text x="38" y="557" fill="#5b5a4e" font-size="12">coordination by artifact — and the human gate</text>
+<rect x="360" y="545" width="14" height="14" rx="3" fill="#a9c6e8" stroke="#3f608a"/>
+<text x="382" y="557" fill="#5b5a4e" font-size="12">one agent per task, linear inside</text>
+<text x="640" y="557" fill="#5b5a4e" font-size="12">outline = infrastructure, not agents</text>
+</g>
+</svg>
