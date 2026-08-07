@@ -1389,6 +1389,7 @@ dependencies = [
  "chump-agent-lease",
  "chump-ambient-cli",
  "chump-ast-crawler",
+ "chump-atomic-claim",
  "chump-cancel-registry",
  "chump-coord",
  "chump-cost-tracker",
@@ -1497,6 +1498,21 @@ dependencies = [
  "tree-sitter-rust",
  "tree-sitter-typescript",
  "walkdir",
+]
+
+[[package]]
+name = "chump-atomic-claim"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "chump-team",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "uuid 1.24.0",
 ]
 
 [[package]]

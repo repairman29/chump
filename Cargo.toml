@@ -38,6 +38,7 @@ members = [
     "crates/chumpd",
     "crates/chump-curator-supervisor",
     "crates/chump-inventory",
+    "crates/chump-atomic-claim",
 ]
 resolver = "2"
 
@@ -126,6 +127,7 @@ chump-team = { path = "crates/chump-team", version = "0.1.0" }
 chump-ast-crawler = { path = "crates/ast-crawler", version = "0.1.0" }
 chump-handoff = { path = "crates/chump-handoff", version = "0.1.0" } # INFRA-2108: external-repo schema
 chump-inventory = { path = "crates/chump-inventory", version = "0.1.0" } # EFFECTIVE-401: fleet inventory + tech-debt audit DB
+chump-atomic-claim = { path = "crates/chump-atomic-claim", version = "0.1.0" } # EFFECTIVE-399: atomic gap-claim + autonomy_level + worktree_build_cache
 # META-175: JetStream durable consumer per role — needed by web_server handle_fleet_wire_health.
 chump-coord = { path = "crates/chump-coord", version = "0.2.0" }
 async-nats = "0.50"
