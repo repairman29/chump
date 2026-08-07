@@ -1341,3 +1341,10 @@ CHUMP_IMPROVE_RG_BIN
 # Force-edit retries: how many times implement_gap re-prompts the agent to APPLY
 # a described-but-unapplied edit via str_replace (default 2; 0 disables).
 CHUMP_IMPLEMENT_FORCE_EDIT_TRIES
+
+# ── Tier 2: COTG AC-judge (EFFECTIVE-373) ─────────────────────────────────
+# CHUMP_AC_JUDGE_LLM=1 turns the LLM per-bullet AC judge on in run_with_ac (default
+# off; heuristic first-pass only). CHUMP_AC_JUDGE_MODEL picks the judge model
+# (default opus — the gate must be trustworthy).
+CHUMP_AC_JUDGE_LLM
+CHUMP_AC_JUDGE_MODEL

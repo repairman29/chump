@@ -4513,7 +4513,29 @@ async fn main() -> Result<()> {
                 std::process::exit(2);
             }
         };
-        match pr_ac_coverage::run(pr_number) {
+        // EFFECTIVE-373 (COTG): `--gap <ID>` scores the PR against that gap's REAL
+        // acceptance criteria via run_with_ac — external-PR safe (no title-parse
+        // NoGapRef). `--repo <owner/name>` for a PR in another repo. CHUMP_AC_JUDGE_LLM=1
+        // turns on the LLM judge. Without --gap it falls back to the title-parse run().
+        let gap_flag = args
+            .iter()
+            .position(|a| a == "--gap")
+            .and_then(|i| args.get(i + 1))
+            .cloned();
+        let repo_flag = args
+            .iter()
+            .position(|a| a == "--repo")
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+            .unwrap_or_default();
+        let coverage = match &gap_flag {
+            Some(gid) => {
+                let bullets = pr_ac_coverage::load_ac_bullets(gid).unwrap_or_default();
+                pr_ac_coverage::run_with_ac(&repo_flag, pr_number, gid, &bullets)
+            }
+            None => pr_ac_coverage::run(pr_number),
+        };
+        match coverage {
             Ok(result) => {
                 // print JSON summary
                 println!("{}", pr_ac_coverage::render_json(&result));

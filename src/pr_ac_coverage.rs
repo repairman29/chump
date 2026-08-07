@@ -123,7 +123,7 @@ pub fn parse_gap_id(title: &str) -> Option<String> {
 /// Load acceptance_criteria bullets from `docs/gaps/<GAP_ID>.yaml`.
 /// Supports `acceptance_criteria:` as a list-of-strings YAML block.
 /// The YAML file may be a list (starts with `- id:`) or a top-level object.
-fn load_ac_bullets(gap_id: &str) -> Result<Vec<String>, String> {
+pub(crate) fn load_ac_bullets(gap_id: &str) -> Result<Vec<String>, String> {
     // CREDIBLE-178: read acceptance criteria from the canonical state.db via
     // `chump gap show <ID> --json`, NOT the docs/gaps/<ID>.yaml mirror. That
     // per-file YAML mirror was removed by ZERO-WASTE-020, so the old file read
@@ -575,13 +575,54 @@ pub fn run_with_ac(
         trailer_text.push('\n');
         trailer_text.push_str(cb);
     }
-    Ok(score_against_bullets(
+    let mut result = score_against_bullets(
         pr_number,
         gap_id.to_string(),
         bullets.to_vec(),
         trailer_text,
         repo_opt,
-    ))
+    );
+    // EFFECTIVE-373 (COTG slice 2): the LLM judge is the REAL gate — the heuristic above
+    // is a cheap first pass. Opt-in for now (CHUMP_AC_JUDGE_LLM=1) until slice 3 makes it
+    // the default hard gate. It overrides each bullet's `covered` with the model's
+    // MET/UNMET/PARTIAL judgement and SURFACES the per-bullet reasoning durably (CREDIBLE-207
+    // — a gate that hides its reasoning is the failure we're fixing). An un-judged criterion
+    // stays as the heuristic said (fail-forward), so a total judge miss can't silently pass.
+    if std::env::var("CHUMP_AC_JUDGE_LLM").as_deref() == Ok("1") {
+        if let Some(verdicts) = llm_judge_ac(repo_opt, pr_number, gap_id, bullets) {
+            for v in &verdicts {
+                if let Some(b) = result.bullets.get_mut(v.index) {
+                    b.covered = v.status == JudgeStatus::Met;
+                    eprintln!(
+                        "ac-judge [{}] {:?}: {}",
+                        v.index + 1,
+                        v.status,
+                        &v.reason[..v.reason.len().min(120)]
+                    );
+                }
+            }
+            let missed = result
+                .bullets
+                .iter()
+                .filter(|b| !b.covered && !b.waived)
+                .count();
+            result.status = if missed > 0 {
+                CoverageStatus::Miss
+            } else {
+                CoverageStatus::Pass
+            };
+            ambient(
+                "ac_judge_llm",
+                vec![
+                    ("pr_number", pr_number.to_string()),
+                    ("gap_id", gap_id.to_string()),
+                    ("bullets", result.bullets.len().to_string()),
+                    ("missed", missed.to_string()),
+                ],
+            );
+        }
+    }
+    Ok(result)
 }
 
 /// EFFECTIVE-367 (COTG): shared per-bullet scoring. Fetches the PR diff (in `repo`
@@ -686,6 +727,167 @@ fn score_against_bullets(
         gap_id: Some(gap_id),
         status,
         bullets,
+    }
+}
+
+// ── EFFECTIVE-373 (COTG slice 2): the LLM AC judge ────────────────────────────
+// The heuristic check_coverage above is a cheap keyword first-pass that can't tell
+// "fixed the Stripe script but missed the join page" from "fixed everything". The LLM
+// judge reads the actual diff against each criterion and returns MET/UNMET/PARTIAL with
+// file:line reasoning — the REAL gate. It's an LLM call (~0 local CPU), so it's the
+// affordable brain of the compute-aware local gate (EFFECTIVE-372).
+
+/// Per-bullet judgement from the LLM AC judge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JudgeStatus {
+    Met,
+    Partial,
+    Unmet,
+}
+
+#[derive(Debug, Clone)]
+pub struct JudgeVerdict {
+    pub index: usize,
+    pub status: JudgeStatus,
+    pub reason: String,
+}
+
+/// Parse the judge's per-criterion reply lines:
+///   `BULLET <n>: MET|UNMET|PARTIAL - <reason>`
+/// `n` is 1-based in the reply → 0-based `index`. Pure + unit-tested. Robust to
+/// case, extra prose, and missing lines. A bullet with no parseable verdict is
+/// simply absent from the result — the CALLER treats an un-judged criterion as NOT
+/// proven met (fail-closed for the gate). CREDIBLE-207: this reasoning is durable
+/// data, never swallowed.
+pub(crate) fn parse_judge_verdicts(resp: &str, n_bullets: usize) -> Vec<JudgeVerdict> {
+    let mut out: Vec<JudgeVerdict> = Vec::new();
+    for line in resp.lines() {
+        // FORMAT-AGNOSTIC (live opus emits all of: "BULLET 1: MET -", "1. MET -",
+        // "1. BULLET 1: MET -"). Rather than anchor on a prefix, find the verdict
+        // KEYWORD anywhere on the line, then the first in-range bullet number.
+        let up = line.to_uppercase();
+        // UNMET before MET: "UNMET" contains "MET" as a substring.
+        let (status, kw): (JudgeStatus, &str) = if up.contains("UNMET") {
+            (JudgeStatus::Unmet, "UNMET")
+        } else if up.contains("PARTIAL") {
+            (JudgeStatus::Partial, "PARTIAL")
+        } else if up.contains("MET") {
+            (JudgeStatus::Met, "MET")
+        } else {
+            continue;
+        };
+        let idx1 = match first_bullet_number(line, n_bullets) {
+            Some(n) => n,
+            None => continue,
+        };
+        // Reason = text after the (first) keyword occurrence.
+        let kw_pos = up.find(kw).unwrap_or(0);
+        let reason = line[(kw_pos + kw.len()).min(line.len())..]
+            .trim_start_matches([' ', '-', ':', '—', '\t'])
+            .trim()
+            .to_string();
+        out.retain(|v| v.index != idx1 - 1); // last write wins on a repeat
+        out.push(JudgeVerdict {
+            index: idx1 - 1,
+            status,
+            reason,
+        });
+    }
+    out.sort_by_key(|v| v.index);
+    out
+}
+
+/// First run of ASCII digits on the line that parses to a value in `1..=n_bullets`
+/// (the criterion number). Ignores later numbers like `file.js:11` because the
+/// bullet number leads the line.
+fn first_bullet_number(line: &str, n_bullets: usize) -> Option<usize> {
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_digit() {
+            let start = i;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            if let Ok(n) = line[start..i].parse::<usize>() {
+                if (1..=n_bullets).contains(&n) {
+                    return Some(n);
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
+    None
+}
+
+/// EFFECTIVE-373: judge the PR diff against ALL `bullets` in ONE `chump llm-complete`
+/// call. Returns per-bullet verdicts, or `None` if the diff/model is unavailable or the
+/// reply is unparseable (the caller falls back to the heuristic first-pass, then may
+/// escalate). Judge model via `CHUMP_AC_JUDGE_MODEL` (default `opus` — the gate must be
+/// trustworthy; free→Claude escalation is the caller's job).
+pub(crate) fn llm_judge_ac(
+    repo: Option<&str>,
+    pr_number: u64,
+    gap_title: &str,
+    bullets: &[String],
+) -> Option<Vec<JudgeVerdict>> {
+    if bullets.is_empty() {
+        return None;
+    }
+    let diff = match repo {
+        Some(r) => run_gh(&["pr", "diff", &pr_number.to_string(), "--repo", r]),
+        None => run_gh(&["pr", "diff", &pr_number.to_string()]),
+    }
+    .ok()?;
+    if diff.trim().is_empty() {
+        return None;
+    }
+    let ac_text = bullets
+        .iter()
+        .enumerate()
+        .map(|(i, b)| format!("{}. {b}", i + 1))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let diff_trunc: String = diff.chars().take(60_000).collect();
+    let prompt = format!(
+        "You are a strict code reviewer deciding whether a PR satisfies a gap's acceptance \
+         criteria.\nGap: {gap_title}\n\n\
+         For EACH numbered criterion, judge whether the PR DIFF FULLY satisfies it — addressing \
+         EVERY place the criterion applies, not just one instance. Be skeptical: a change that \
+         fixes one occurrence but leaves another is PARTIAL, not MET; a criterion the diff never \
+         touches is UNMET.\n\n\
+         Reply with EXACTLY one line per criterion and nothing else:\n\
+         BULLET <n>: MET|UNMET|PARTIAL - <=20-word reason with file:line evidence\n\n\
+         === ACCEPTANCE CRITERIA ===\n{ac_text}\n\n\
+         === PR DIFF ===\n{diff_trunc}\n"
+    );
+    let chump_bin = std::env::var("CHUMP_REAL_BINARY").unwrap_or_else(|_| "chump".to_string());
+    let model = std::env::var("CHUMP_AC_JUDGE_MODEL").unwrap_or_else(|_| "opus".to_string());
+    let max_tokens = (bullets.len() * 45 + 120).to_string();
+    let mut child = Command::new(&chump_bin)
+        .args([
+            "llm-complete",
+            "--model",
+            &model,
+            "--max-tokens",
+            &max_tokens,
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    if let Some(mut si) = child.stdin.take() {
+        use std::io::Write;
+        let _ = si.write_all(prompt.as_bytes());
+    }
+    let out = child.wait_with_output().ok()?;
+    let verdicts = parse_judge_verdicts(&String::from_utf8_lossy(&out.stdout), bullets.len());
+    if verdicts.is_empty() {
+        None
+    } else {
+        Some(verdicts)
     }
 }
 
@@ -1163,5 +1365,45 @@ mod redteam {
             "empty AC must be Pass (or Disabled if the gate env is off) — NEVER NoGapRef, got {:?}",
             r.status
         );
+    }
+
+    #[test]
+    fn effective373_parse_judge_verdicts() {
+        // EFFECTIVE-373: the judge's per-bullet reply parses to MET/UNMET/PARTIAL with
+        // reasoning preserved (CREDIBLE-207 — never swallowed). Models the exact pvc#2
+        // shape: Stripe-script fixed (MET) but join-page missed (UNMET).
+        // Mix of the THREE real formats live opus emitted (2026-08-07): "BULLET n:",
+        // "n. BULLET n:", "n. STATUS". Format-agnostic parse must handle all.
+        let resp = "1. BULLET 1: MET - fixed FRIEND_CENTS in create-supporting-member-payment-links.js:11\n\
+                    BULLET 2: UNMET - join/page.tsx:76 not touched, still Friend ($49/yr)\n\
+                    (some prose the model added between lines)\n\
+                    3. PARTIAL - membership.ts updated but about page unchecked\n";
+        let v = parse_judge_verdicts(resp, 3);
+        assert_eq!(
+            v.len(),
+            3,
+            "three criteria parsed across mixed formats, got {v:?}"
+        );
+        assert_eq!(v[0].status, JudgeStatus::Met);
+        assert_eq!(v[1].status, JudgeStatus::Unmet);
+        assert!(
+            v[1].reason.contains("join/page.tsx:76"),
+            "reasoning preserved (CREDIBLE-207), got: {}",
+            v[1].reason
+        );
+        assert_eq!(v[2].status, JudgeStatus::Partial);
+        // UNMET must not be misread as MET (substring trap).
+        assert_eq!(
+            parse_judge_verdicts("BULLET 1: UNMET - nope", 1)[0].status,
+            JudgeStatus::Unmet
+        );
+        // fail-closed hygiene: out-of-range index, garbage, and no-verdict ⇒ nothing parsed.
+        assert!(parse_judge_verdicts("BULLET 9: MET - out of range", 3).is_empty());
+        assert!(parse_judge_verdicts("the model rambled with no verdict", 3).is_empty());
+        // bare "n. STATUS" form.
+        let v2 = parse_judge_verdicts("2. unmet - x", 3);
+        assert_eq!(v2.len(), 1);
+        assert_eq!(v2[0].index, 1);
+        assert_eq!(v2[0].status, JudgeStatus::Unmet);
     }
 }
