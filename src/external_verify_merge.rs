@@ -331,7 +331,20 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
     // block on vague boilerplate AC) and fails OPEN — a judge/load error is
     // logged and does NOT hold (a broken judge must never false-block a real fix).
     if std::env::var("CHUMP_AC_JUDGE_LLM").as_deref() == Ok("1") {
-        let bullets = crate::pr_ac_coverage::load_ac_bullets(&opts.gap).unwrap_or_default();
+        let stored = crate::pr_ac_coverage::load_ac_bullets(&opts.gap).unwrap_or_default();
+        // EFFECTIVE-387 (hands-free on-ramp): a PR with NO stored acceptance criteria
+        // makes Gate 4 a no-op — the exact false-green COTG kills (a gap-less human PR,
+        // or a gap filed with empty AC, sails through on CI alone). When synth is on,
+        // generate AC from the PR itself (title + body + diff) via the AC-writer and
+        // judge against THOSE, so "no AC" no longer means "unjudged". Opt-in
+        // (CHUMP_AC_SYNTH=1) + fails OPEN (synth failure → skip, never false-block).
+        let synth_enabled = std::env::var("CHUMP_AC_SYNTH").as_deref() == Ok("1");
+        let synth = if stored.is_empty() && synth_enabled {
+            synth_ac_for_pr(&opts)
+        } else {
+            None
+        };
+        let (bullets, synthesized) = select_gate_bullets(stored, synth_enabled, synth);
         if bullets.is_empty() {
             println!(
                 "\n[verify-merge] Gate 4: AC completeness — skipped (gap {} has no acceptance criteria)",
@@ -339,8 +352,9 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
             );
         } else {
             println!(
-                "\n[verify-merge] Gate 4: AC completeness — LLM-judging {} bullet(s) for gap {} ...",
+                "\n[verify-merge] Gate 4: AC completeness — LLM-judging {} {} bullet(s) for gap {} ...",
                 bullets.len(),
+                if synthesized { "SYNTHESIZED" } else { "stored" },
                 opts.gap
             );
             match crate::pr_ac_coverage::run_with_ac(&opts.repo, opts.pr, &opts.gap, &bullets) {
@@ -352,8 +366,9 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
                         .map(|b| b.index + 1)
                         .collect();
                     let reason = format!(
-                        "ac-incomplete: {} unmet acceptance bullet(s) {unmet:?} despite green CI",
-                        unmet.len()
+                        "ac-incomplete: {} unmet {} acceptance bullet(s) {unmet:?} despite green CI",
+                        unmet.len(),
+                        if synthesized { "synthesized" } else { "stored" }
                     );
                     println!("  FAIL: {reason}");
                     emit_held(&opts, &reason);
@@ -1531,6 +1546,66 @@ fn full_suite_command(runner: &TestRunner) -> Vec<String> {
     }
 }
 
+/// EFFECTIVE-387: decide which AC bullets Gate 4 judges. Stored bullets win; when
+/// there are none and synth is enabled, use the synthesized set (if it produced
+/// any); otherwise none (Gate 4 skips). Returns `(bullets, was_synthesized)`. Pure —
+/// unit-tested, so the on-ramp's selection logic is verifiable without the LLM.
+fn select_gate_bullets(
+    stored: Vec<String>,
+    synth_enabled: bool,
+    synth: Option<Vec<String>>,
+) -> (Vec<String>, bool) {
+    if !stored.is_empty() {
+        return (stored, false);
+    }
+    if synth_enabled {
+        if let Some(sb) = synth {
+            if !sb.is_empty() {
+                return (sb, true);
+            }
+        }
+    }
+    (Vec::new(), false)
+}
+
+/// EFFECTIVE-387: synthesize acceptance criteria for a PR that has none stored, by
+/// feeding its title + body + diff to the AC-writer (EFFECTIVE-386). Returns `None`
+/// on any failure so Gate 4 skips (fail-open). This is the hands-free-loop on-ramp:
+/// a gap-less PR gets judgeable criteria instead of a silent CI-only pass.
+fn synth_ac_for_pr(opts: &Opts) -> Option<Vec<String>> {
+    let pr = opts.pr.to_string();
+    let meta = Command::new(&opts.gh_bin)
+        .args([
+            "pr",
+            "view",
+            &pr,
+            "--repo",
+            &opts.repo,
+            "--json",
+            "title,body",
+        ])
+        .output()
+        .ok()?;
+    if !meta.status.success() {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(&meta.stdout).ok()?;
+    let title = v.get("title").and_then(|x| x.as_str()).unwrap_or("");
+    let body = v.get("body").and_then(|x| x.as_str()).unwrap_or("");
+    if title.trim().is_empty() {
+        return None;
+    }
+    let diff = Command::new(&opts.gh_bin)
+        .args(["pr", "diff", &pr, "--repo", &opts.repo])
+        .output()
+        .ok()?;
+    let diff_ctx: String = String::from_utf8_lossy(&diff.stdout)
+        .chars()
+        .take(40_000)
+        .collect();
+    crate::pr_ac_coverage::generate_ac(title, body, &diff_ctx)
+}
+
 /// Execute `gh pr merge <N> --repo <repo> --squash`.
 fn merge_pr(opts: &Opts) -> anyhow::Result<bool> {
     let status = Command::new(&opts.gh_bin)
@@ -1655,6 +1730,33 @@ fn emit_ambient_event(kind: &str, fields: &[(&str, &str)]) {
 
 #[cfg(test)]
 mod tests {
+    use super::select_gate_bullets;
+
+    #[test]
+    fn effective387_select_gate_bullets_prefers_stored_then_synth_then_none() {
+        let stored = vec!["real bullet".to_string()];
+        let synth = Some(vec!["synth bullet".to_string()]);
+        // Stored present → use stored, not synthesized (even if synth exists).
+        let (b, s) = select_gate_bullets(stored.clone(), true, synth.clone());
+        assert_eq!(b, stored);
+        assert!(!s);
+        // No stored + synth on + synth produced → use synth, flagged synthesized.
+        let (b, s) = select_gate_bullets(vec![], true, synth.clone());
+        assert_eq!(b, vec!["synth bullet".to_string()]);
+        assert!(s);
+        // No stored + synth OFF → none (Gate 4 skips), even if a synth result was passed.
+        let (b, s) = select_gate_bullets(vec![], false, synth.clone());
+        assert!(b.is_empty());
+        assert!(!s);
+        // No stored + synth on but synth failed/empty → none (fail-open skip).
+        let (b, s) = select_gate_bullets(vec![], true, None);
+        assert!(b.is_empty());
+        assert!(!s);
+        let (b, s) = select_gate_bullets(vec![], true, Some(vec![]));
+        assert!(b.is_empty());
+        assert!(!s);
+    }
+
     /// Git command for fixture repos with the hook-exported GIT_* environment
     /// scrubbed. When cargo test runs inside a git hook (pre-push -> chump
     /// preflight -> cargo test), git exports GIT_DIR/GIT_WORK_TREE/
