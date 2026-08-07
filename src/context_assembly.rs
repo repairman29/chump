@@ -210,6 +210,15 @@ pub fn assemble_context() -> String {
              grounded path:line answers in one call, cheaper and more reliable than re-reading files.\n\
              - Before writing code that calls a function or library: call almanac_api to get the EXACT \
              signature + a real usage example. Copy the real API; do not invent it.\n\
+             - Before EDITING a shared file: call almanac_impact — every file that transitively \
+             imports it, level by level (a stated lower bound, not a ceiling).\n\
+             - New to a repo: call almanac_architecture FIRST — modules, cross-module dependencies, \
+             hub files. Orient, then search.\n\
+             - Before DELETING or rewriting code that looks wrong: call almanac_why <path> <line> — \
+             the commit and gap refs that put it there. Do not remove a guard you cannot explain.\n\
+             - almanac_comprehend answers is-it-wired / what-gates-it / what-flags-govern-it. Each \
+             organ states its own coverage; outside Rust `gate=none-recognized` means no guard of a \
+             KNOWN SHAPE was found, never \"unprotected\".\n\
              - almanac_search_fleet finds which repo across the fleet does X; almanac_neighbors gives a \
              file's imports/callers; almanac_status reports index freshness.\n\
              Prefer Almanac; fall back to grep only when it returns nothing.\n\n",
