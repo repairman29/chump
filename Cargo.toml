@@ -177,6 +177,21 @@ wasi-common = "46"
 sha2 = "0.11.0"
 hex = "0.4.3"
 
+[profile.dev]
+# EFFECTIVE-393 (build-speed): the dev/test/CI profile. Cold builds of the
+# ~190k-line `chump` bin crate dominate fleet time — fresh `chump claim`
+# worktrees, CI, and the auto-deploy `cargo install` all pay it (~5m20s cold,
+# though a warm incremental touch-rebuild is only ~10s). Two mac-specific,
+# zero-external-tool link-time cuts:
+#   - split-debuginfo="unpacked": skip the slow dsymutil .dSYM-bundling step at
+#     link time (unpacked leaves .o debug info in place; backtraces still work).
+#   - debug=1 (line-tables-only): keep file:line in panics but drop the heavy
+#     variable/type debug tables — ZERO-WASTE-025 measured those at 94% of the
+#     artifact — cutting codegen + link + on-disk size on every cold build.
+# Inner-loop correctness (assertions/backtraces) is unchanged.
+split-debuginfo = "unpacked"
+debug = 1
+
 [profile.release]
 # ZERO-WASTE-025: ship without debug symbols. Measured 2026-07-23: the
 # debug=true binary was 906MB, of which 847MB (94%) was debug tables —
