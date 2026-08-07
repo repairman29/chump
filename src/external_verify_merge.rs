@@ -317,6 +317,58 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
         }
     }
 
+    // ── Gate 4: AC completeness (CREDIBLE-212 — EFFECTIVE-375 relocated) ────
+    // The EFFECTIVE-375 AC hard gate originally lived in improve.rs AFTER
+    // verify_and_merge returned — but gates 1/2/3 passing here fires the
+    // `--apply` merge below (merge_pr = `gh pr merge --squash`, immediate), so a
+    // "verified" verdict meant the PR was ALREADY merged. Flipping it to held
+    // post-merge gated nothing (cosmetic) and shoved an already-squash-merged PR
+    // into remediate_held. Co-locate the AC judge with gates 1/2/3, BEFORE the
+    // merge, so an UNMET acceptance criterion actually blocks the door — same
+    // shape as every gate above (emit_held + HELD verdict + early return).
+    //
+    // Opt-in (CHUMP_AC_JUDGE_LLM=1, until the AC-writer lands so we don't hard-
+    // block on vague boilerplate AC) and fails OPEN — a judge/load error is
+    // logged and does NOT hold (a broken judge must never false-block a real fix).
+    if std::env::var("CHUMP_AC_JUDGE_LLM").as_deref() == Ok("1") {
+        let bullets = crate::pr_ac_coverage::load_ac_bullets(&opts.gap).unwrap_or_default();
+        if bullets.is_empty() {
+            println!(
+                "\n[verify-merge] Gate 4: AC completeness — skipped (gap {} has no acceptance criteria)",
+                opts.gap
+            );
+        } else {
+            println!(
+                "\n[verify-merge] Gate 4: AC completeness — LLM-judging {} bullet(s) for gap {} ...",
+                bullets.len(),
+                opts.gap
+            );
+            match crate::pr_ac_coverage::run_with_ac(&opts.repo, opts.pr, &opts.gap, &bullets) {
+                Ok(cov) if cov.status == crate::pr_ac_coverage::CoverageStatus::Miss => {
+                    let unmet: Vec<usize> = cov
+                        .bullets
+                        .iter()
+                        .filter(|b| !b.covered && !b.waived)
+                        .map(|b| b.index + 1)
+                        .collect();
+                    let reason = format!(
+                        "ac-incomplete: {} unmet acceptance bullet(s) {unmet:?} despite green CI",
+                        unmet.len()
+                    );
+                    println!("  FAIL: {reason}");
+                    emit_held(&opts, &reason);
+                    println!("\nVerdict: HELD(ac-incomplete)");
+                    println!("  {reason}");
+                    return Ok(1);
+                }
+                Ok(_) => println!("  PASS: all acceptance bullets satisfied."),
+                Err(e) => {
+                    eprintln!("  (Gate 4 AC judge error — failing OPEN, not blocking: {e})")
+                }
+            }
+        }
+    }
+
     // ── All gates pass ────────────────────────────────────────────────────
     let proof = Proof {
         ci_checks: match &ci_result {
