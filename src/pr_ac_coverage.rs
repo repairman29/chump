@@ -1137,11 +1137,268 @@ pub(crate) fn generate_ac(title: &str, description: &str, context: &str) -> Opti
     }
 }
 
+// ── EFFECTIVE-388: repo grounding for the AC-writer ─────────────────────────
+// Without repo context the writer HALLUCINATES plausible-but-fake paths (on
+// EFFECTIVE-372 it cited `src/lib/gate.rs` + `src/tests/*` that don't exist; the
+// real file is `src/preflight.rs`). Grounding hands the model a ranked list of
+// files that ACTUALLY exist in the repo, so its "specific file" anchors are real.
+
+/// Stop-words that are never useful relevance tokens (English filler + a few
+/// gap-boilerplate words). Kept tiny on purpose; the length/shape filter does most
+/// of the work.
+fn is_context_stopword(w: &str) -> bool {
+    matches!(
+        w,
+        "the"
+            | "and"
+            | "for"
+            | "with"
+            | "that"
+            | "this"
+            | "from"
+            | "make"
+            | "gate"
+            | "test"
+            | "code"
+            | "change"
+            | "implement"
+            | "implemented"
+            | "relevant"
+            | "should"
+            | "when"
+            | "into"
+            | "than"
+            | "then"
+            | "path"
+            | "file"
+            | "files"
+            | "demote"
+            | "cloud"
+            | "gaps"
+    )
+}
+
+/// Pure: extract candidate file/symbol tokens from a gap's title + description —
+/// things that plausibly name real code (contain `_`/`/`/a code extension, are
+/// CamelCase, or are a long-ish lowercase word). Unit-tested so grounding's
+/// relevance signal is verifiable without a repo.
+pub(crate) fn extract_context_tokens(title: &str, description: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let text = format!("{title} {description}");
+    for raw in text.split(|c: char| {
+        c.is_whitespace()
+            || matches!(
+                c,
+                ',' | ';' | '"' | '(' | ')' | '[' | ']' | '{' | '}' | ':' | '`'
+            )
+    }) {
+        let t = raw.trim_matches(|c: char| matches!(c, '.' | '\'' | '<' | '>' | '?' | '!' | '#'));
+        if t.len() < 4 || t.len() > 60 {
+            continue;
+        }
+        let lower = t.to_ascii_lowercase();
+        if is_context_stopword(&lower) {
+            continue;
+        }
+        let has_underscore = t.contains('_');
+        let has_slash = t.contains('/');
+        let has_code_ext = [".rs", ".py", ".sh", ".ts", ".js", ".yaml", ".yml", ".toml"]
+            .iter()
+            .any(|e| t.ends_with(e));
+        let is_camel =
+            t.chars().any(|c| c.is_ascii_uppercase()) && t.chars().any(|c| c.is_ascii_lowercase());
+        let is_longish_ident =
+            t.len() >= 6 && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        let codey = has_underscore || has_slash || has_code_ext || is_camel || is_longish_ident;
+        if codey && !out.iter().any(|e: &String| e.eq_ignore_ascii_case(t)) {
+            out.push(t.to_string());
+        }
+    }
+    out.truncate(12);
+    out
+}
+
+/// Pure: rank real repo `files` by how many `tokens` each path contains (case-
+/// insensitive substring), most-relevant first, and cap at `limit`. Files matching
+/// no token still fill remaining slots (stable order) so the model always sees a
+/// real sample of the tree. Unit-tested.
+pub(crate) fn rank_files_by_relevance(
+    files: &[String],
+    tokens: &[String],
+    limit: usize,
+) -> Vec<String> {
+    let lc_tokens: Vec<String> = tokens.iter().map(|t| t.to_ascii_lowercase()).collect();
+    let mut scored: Vec<(usize, usize, &String)> = files
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            let fl = f.to_ascii_lowercase();
+            let score = lc_tokens.iter().filter(|t| fl.contains(t.as_str())).count();
+            (score, i, f)
+        })
+        .collect();
+    // Higher score first; ties keep original order (stable via the index).
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    scored
+        .into_iter()
+        .take(limit)
+        .map(|(_, _, f)| f.clone())
+        .collect()
+}
+
+/// Build a grounding context string for a gap: the real repo files most relevant
+/// to its title/description, so the writer anchors AC on paths that exist. Returns
+/// "" when the repo file list is unavailable (writer then runs ungrounded — no
+/// worse than before). Reads tracked files via `git ls-files` in the CWD repo.
+fn gather_repo_context(title: &str, description: &str) -> String {
+    let out = match Command::new("git").args(["ls-files"]).output() {
+        Ok(o) if o.status.success() => o,
+        _ => return String::new(),
+    };
+    let source_exts = [
+        ".rs", ".py", ".sh", ".ts", ".js", ".tsx", ".jsx", ".yaml", ".yml", ".toml", ".md", ".sql",
+    ];
+    let files: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| source_exts.iter().any(|e| l.ends_with(e)))
+        .filter(|l| !l.contains("/fixtures/") && !l.contains("/testdata/"))
+        .map(|l| l.to_string())
+        .collect();
+    if files.is_empty() {
+        return String::new();
+    }
+    let tokens = extract_context_tokens(title, description);
+    // Content matches (`git grep -l`) for the most distinctive tokens rank HIGHEST —
+    // filename matching alone misses the common case where the gap says "gate" but
+    // the code lives in `src/preflight.rs`. Bounded: top few tokens, capped hits,
+    // errors ignored (grounding degrades to filename ranking).
+    let mut content_hits: Vec<String> = Vec::new();
+    for tok in tokens.iter().filter(|t| t.len() >= 5).take(4) {
+        if let Ok(o) = Command::new("git")
+            .args(["grep", "-l", "-i", "-F", "--", tok])
+            .output()
+        {
+            if o.status.success() {
+                for l in String::from_utf8_lossy(&o.stdout).lines().take(8) {
+                    if source_exts.iter().any(|e| l.ends_with(e))
+                        && !content_hits.iter().any(|h| h == l)
+                    {
+                        content_hits.push(l.to_string());
+                    }
+                }
+            }
+        }
+    }
+    // Merge: content matches first (most relevant), then filename-ranked fill.
+    let ranked_by_name = rank_files_by_relevance(&files, &tokens, 40);
+    let mut ranked: Vec<String> = content_hits;
+    for f in ranked_by_name {
+        if ranked.len() >= 40 {
+            break;
+        }
+        if !ranked.iter().any(|r| r == &f) {
+            ranked.push(f);
+        }
+    }
+    let list = ranked
+        .iter()
+        .map(|f| format!("- {f}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "REAL files that exist in this repository (reference ONLY paths from this list, \
+         or a NEW path the task explicitly creates — do NOT invent file names):\n{list}"
+    )
+}
+
+/// EFFECTIVE-388: generate AC for a gap WITH repo grounding — the CLI entry point.
+/// Loads the gap's title/description, gathers real repo files as context, and calls
+/// `generate_ac` so the model names paths that exist. Falls back to ungrounded
+/// generation if the repo listing is unavailable.
+pub(crate) fn generate_ac_for_gap(gap_id: &str) -> Result<Vec<String>, String> {
+    let (title, desc) = gap_title_and_description(gap_id)?;
+    let context = gather_repo_context(&title, &desc);
+    generate_ac(&title, &desc, &context)
+        .ok_or_else(|| "AC generation failed (empty title or LLM unavailable)".to_string())
+}
+
+/// EFFECTIVE-388: split a bullet into the `path/like/tokens.ext` it cites (tokens
+/// containing a `/` and a dotted extension, or a bare `*.rs`-style name). Used to
+/// warn when generated AC references a path that does not exist. Pure — unit-tested.
+pub(crate) fn cited_paths(bullet: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for raw in bullet
+        .split(|c: char| c.is_whitespace() || matches!(c, '`' | ',' | ';' | '(' | ')' | '"' | '\''))
+    {
+        // Strip angle brackets and TRAILING sentence punctuation only — keep a
+        // LEADING dot so dotpaths like `.chump/x` / `.github/y` survive (stripping
+        // it wrongly flagged real dotfiles as non-existent).
+        let t = raw
+            .trim_matches(|c: char| matches!(c, '<' | '>'))
+            .trim_end_matches(|c: char| matches!(c, '.' | ':'));
+        let looks_like_path = (t.contains('/')
+            && t.rsplit('/')
+                .next()
+                .map(|f| f.contains('.'))
+                .unwrap_or(false))
+            || [".rs", ".py", ".sh", ".ts", ".js", ".yaml", ".yml", ".toml"]
+                .iter()
+                .any(|e| t.ends_with(e));
+        if looks_like_path && t.len() >= 4 && !out.iter().any(|e: &String| e == t) {
+            out.push(t.to_string());
+        }
+    }
+    out
+}
+
 // ── unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn effective388_extract_context_tokens_keeps_codey_drops_filler() {
+        let toks = extract_context_tokens(
+            "wire the join_page route",
+            "render src/preflight.rs and the CamelCase Widget; the gate should work",
+        );
+        // Codey tokens kept.
+        assert!(toks.iter().any(|t| t == "join_page"));
+        assert!(toks.iter().any(|t| t == "src/preflight.rs"));
+        assert!(toks.iter().any(|t| t == "CamelCase" || t == "Widget"));
+        // Filler / stopwords dropped.
+        assert!(!toks
+            .iter()
+            .any(|t| t == "the" || t == "gate" || t == "work" || t == "should"));
+    }
+
+    #[test]
+    fn effective388_rank_files_puts_token_matches_first() {
+        let files = vec![
+            "src/unrelated.rs".to_string(),
+            "src/preflight.rs".to_string(),
+            "docs/x.md".to_string(),
+            "src/join_page.rs".to_string(),
+        ];
+        let tokens = vec!["preflight".to_string(), "join_page".to_string()];
+        let ranked = rank_files_by_relevance(&files, &tokens, 3);
+        assert_eq!(ranked.len(), 3);
+        // The two token-matching files rank ahead of the non-matching ones.
+        assert!(ranked.contains(&"src/preflight.rs".to_string()));
+        assert!(ranked.contains(&"src/join_page.rs".to_string()));
+        assert_eq!(&ranked[2], "src/unrelated.rs"); // first non-match fills the last slot
+    }
+
+    #[test]
+    fn effective388_cited_paths_finds_real_looking_paths() {
+        let paths =
+            cited_paths("The `src/preflight.rs` gate and test_gate.rs must pass, see /join route");
+        assert!(paths.iter().any(|p| p == "src/preflight.rs"));
+        assert!(paths.iter().any(|p| p == "test_gate.rs"));
+        // "/join" has no extension on its final segment → not treated as a file path.
+        assert!(!paths.iter().any(|p| p == "/join"));
+    }
 
     #[test]
     fn effective386_parse_ac_bullets_strips_markers_and_prose() {

@@ -11755,22 +11755,36 @@ async fn main() -> Result<()> {
                     return Ok(());
                 }
                 let apply = args.iter().any(|a| a == "--apply");
-                let (title, desc) = match crate::pr_ac_coverage::gap_title_and_description(&gap_id)
-                {
-                    Ok(t) => t,
-                    Err(e) => {
-                        eprintln!("chump gap write-ac: {e}");
-                        std::process::exit(1);
-                    }
-                };
-                match crate::pr_ac_coverage::generate_ac(&title, &desc, "") {
-                    Some(bullets) => {
+                // EFFECTIVE-388: generate WITH repo grounding so the model names files
+                // that actually exist (the ungrounded path hallucinated src/lib/gate.rs
+                // etc. on EFFECTIVE-372).
+                match crate::pr_ac_coverage::generate_ac_for_gap(&gap_id) {
+                    Ok(bullets) => {
                         println!(
                             "[write-ac] {gap_id}: {} acceptance criterion(s) generated:",
                             bullets.len()
                         );
                         for (i, b) in bullets.iter().enumerate() {
                             println!("  {}. {b}", i + 1);
+                        }
+                        // EFFECTIVE-388: flag any cited path that does NOT exist on disk
+                        // (a task may legitimately create a new file, so WARN, don't drop).
+                        let mut ghost_paths: Vec<String> = Vec::new();
+                        for b in &bullets {
+                            for p in crate::pr_ac_coverage::cited_paths(b) {
+                                if !std::path::Path::new(&p).exists()
+                                    && !ghost_paths.iter().any(|g| g == &p)
+                                {
+                                    ghost_paths.push(p);
+                                }
+                            }
+                        }
+                        if !ghost_paths.is_empty() {
+                            eprintln!(
+                                "[write-ac] ⚠ {} cited path(s) do NOT exist on disk (verify — may be new files, or hallucinated): {}",
+                                ghost_paths.len(),
+                                ghost_paths.join(", ")
+                            );
                         }
                         if apply {
                             let self_bin = std::env::current_exe()
@@ -11800,10 +11814,8 @@ async fn main() -> Result<()> {
                         }
                         return Ok(());
                     }
-                    None => {
-                        eprintln!(
-                            "[write-ac] could not generate AC for {gap_id} (empty title or LLM unavailable)."
-                        );
+                    Err(e) => {
+                        eprintln!("[write-ac] could not generate AC for {gap_id}: {e}");
                         std::process::exit(1);
                     }
                 }
