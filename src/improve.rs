@@ -2565,7 +2565,10 @@ fn fix_pr_dispatch(
     // as the initial ship — junk-exclusion + verify_staged_edit — then push to the EXISTING
     // branch (no new PR). Before this, the agent ran freeform git and re-corrupted the PR.
     let title: String = gap_title.trim().chars().take(60).collect();
-    let msg = format!("fix({commit_kind}): {title} (PR #{pr_num})\n\n{}", id.trailer());
+    let msg = format!(
+        "fix({commit_kind}): {title} (PR #{pr_num})\n\n{}",
+        id.trailer()
+    );
     let _branch =
         guarded_stage_and_commit(clone_dir, &msg, &id, &format!("for the PR #{pr_num} fix"))?;
     if !Command::new("git")
@@ -2600,7 +2603,15 @@ fn fix_pr(
 ) -> Result<()> {
     let log_excerpt: String = failing_log.chars().take(6000).collect();
     let body = build_fix_prompt(repo, pr_num, head_branch, gap_title, &log_excerpt);
-    fix_pr_dispatch(clone_dir, pr_num, head_branch, gap_title, &body, "ci", model)
+    fix_pr_dispatch(
+        clone_dir,
+        pr_num,
+        head_branch,
+        gap_title,
+        &body,
+        "ci",
+        model,
+    )
 }
 
 /// EFFECTIVE-379: the fix prompt for an AC-incomplete PR — CI is GREEN but the
@@ -2652,7 +2663,15 @@ fn fix_pr_ac(
     model: &str,
 ) -> Result<()> {
     let body = build_ac_fix_prompt(repo, pr_num, head_branch, gap_title, unmet_bullets);
-    fix_pr_dispatch(clone_dir, pr_num, head_branch, gap_title, &body, "ac", model)
+    fix_pr_dispatch(
+        clone_dir,
+        pr_num,
+        head_branch,
+        gap_title,
+        &body,
+        "ac",
+        model,
+    )
 }
 
 /// MISSION-059: drive a HELD PR to a terminal state instead of abandoning it.
@@ -2692,7 +2711,8 @@ fn remediate_held(
         // re-dispatch scoped to EXACTLY the unmet bullets, fed the bullet TEXT (not
         // an empty log), and let verify_and_merge's Gate 4 re-judge it below.
         let cov =
-            crate::pr_ac_coverage::run_with_ac(&opts.owner_repo, pr_num, gap_title, ac_bullets).ok();
+            crate::pr_ac_coverage::run_with_ac(&opts.owner_repo, pr_num, gap_title, ac_bullets)
+                .ok();
         if let Some(c) = &cov {
             let conf = c.confidence();
             println!(
@@ -3920,7 +3940,13 @@ mod tests {
             "The /join page renders the invite code from the URL".to_string(),
             "A logged-out visitor is redirected to /login".to_string(),
         ];
-        let p = build_ac_fix_prompt("owner/repo", 42, "chump/x-claim", "wire the join page", &unmet);
+        let p = build_ac_fix_prompt(
+            "owner/repo",
+            42,
+            "chump/x-claim",
+            "wire the join page",
+            &unmet,
+        );
         // Every unmet bullet's TEXT is handed to the agent, numbered.
         assert!(p.contains("1. The /join page renders the invite code from the URL"));
         assert!(p.contains("2. A logged-out visitor is redirected to /login"));
