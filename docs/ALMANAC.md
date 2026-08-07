@@ -1,0 +1,102 @@
+# Almanac protocol — the fleet reference desk
+
+How any Chump agent (any harness) answers questions about code that exists
+across the ~95-repo fleet: "have we built X", "which repo does Y", "what's the
+exact signature", "what breaks if I touch this", "how is repo Z shaped".
+
+Almanac is the grounded multi-repo index. Every answer carries a
+`repo:path:line` citation. Standing order (workspace CLAUDE.md): fleet code
+questions go to Almanac BEFORE grep or agent fan-outs.
+
+## Surfaces
+
+1. **CLI (harness-neutral, canonical):** `~/Projects/almanac/target/release/almanac`
+   — subcommands `search`, `search-fleet`, `api`, `impact`, `architecture`,
+   `neighbors`, `stats`, `repos`, `coverage`, `usage`, `gc`. Bare runs resolve
+   inference via the `~/.almanac` machine config (helsinki as of 2026-08-01;
+   env overrides). `--help` on any subcommand.
+2. **MCP server `almanac`** (wired via `chump-mcp.json`, for MCP-capable
+   harnesses): `almanac_search_fleet`, `almanac_search`, `almanac_api`,
+   `almanac_impact`, `almanac_architecture`, `almanac_neighbors`,
+   `almanac_status`. Same index, same answers.
+
+## Pick the tool by question shape
+
+| Question shape | Tool | The thing to know |
+|---|---|---|
+| "Have we built X?" / "which repo does Y?" | `almanac_search_fleet` / `search-fleet` | Keyword across ALL repos, symbol-level, ranked cross-repo. |
+| Deep or conceptual question in ONE repo | `almanac_search` / `search` (with repo) | Default fusion (89% hit@5 in eval). Response `mode_used` + `granularity` say what actually ran — read them. |
+| "Exact signature / how do I call it?" | `almanac_api` / `api` | Verbatim signature + doc + a real cited usage. Copy the real API; never invent one. |
+| "What breaks if I change this file?" | `almanac_impact` / `impact` | Transitive importers, level by level. LOWER BOUND — the `note` says how many edges resolved. |
+| Orienting in an unfamiliar repo | `almanac_architecture` / `architecture` | Instant + structural (modules, cross-module edges, hub files). Call FIRST, then search deep. |
+| One file's dependency picture | `almanac_neighbors` / `neighbors` | Imports / imported-by / unresolved externals. |
+| "Can I trust these results?" | `almanac_status` / `stats` | Grounding commit vs current HEAD, stale flag, row counts. Call before load-bearing answers. |
+
+## Trust rules — each one encodes a real incident
+
+1. **A zero-hit is a claim, not a fact.** Read the response's `note` /
+   `fallback_reason` / warnings before repeating it — degradation is loud by
+   design (2026-08-01 hardening). Only a clean zero-hit means "not in the
+   index," and even then check the blind-spot list below.
+2. **Check grounding before load-bearing answers.** The index is a snapshot at
+   a commit; HEAD may have moved. Crons exist (refresh :00, discover-new-repos
+   :15) but verify with `almanac_status`, don't assume. Receipt: Chump spent a
+   week querying a frozen Jul-26 src/-only snapshot before the wiring was fixed
+   (2026-08-04).
+3. **A fusion label can hide a keyword answer.** Fusion's two semantic legs only
+   fire on embedded+summarized rows, so a half-fed repo answers keyword wearing
+   a fusion label. `almanac coverage` lists which repos have a real semantic
+   layer; per-response, trust `mode_used`.
+4. **Docs rank below code even when indexed** (INFRA-3529). And markdown was
+   structurally invisible until 2026-08-02 (almanac#3 — three stacked bugs). If
+   a doc you KNOW exists doesn't surface: try keyword mode, then re-index +
+   re-summarize that repo.
+5. **SQL is not indexed at all** (INFRA-3530). Schema / RLS / migration
+   questions go to Supabase (MCP or CLI) against the live schema, never to
+   Almanac. A SQL zero-hit means nothing.
+6. **Multi-word keyword queries OR-tokenize** (fixed 2026-08-01). A hit may
+   match one term, not all of them; scoring ranks multi-term matches up. Skim
+   the hit before declaring "found it."
+7. **The index locates; the file testifies.** Before asserting what code DOES,
+   read the cited file at the citation. Snippets and summaries are pointers,
+   not ground truth — and the working tree may have uncommitted changes the
+   index never saw.
+
+## Latency shaping (measured 2026-08-06, Apple Silicon)
+
+- Repo-scoped keyword ≈ **9ms**. Repo-scoped semantic ≈ **1.2s** (the
+  query-embedding round trip is nearly all of it). Fleet-wide keyword ≈
+  **2.5–4s** of real compute, not startup.
+- Therefore: keyword-first for lookups; fusion/semantic for conceptual asks;
+  fleet-wide only when the repo is unknown. All of it fits inside one voice
+  exchange.
+
+## Voice contract (Siri / spoken turns)
+
+Ported from olive's `VOICE_ADDENDUM` (`olive:src/lib/agent/orchestrator.ts:63`
+— production-tested; read-aloud formatting is the enemy). When the reply will
+be READ ALOUD:
+
+- 1–3 short sentences. Never markdown, never bullets, never enumerate a hit
+  list aloud.
+- Speak the VERDICT + count + repo names: "Yes — built three times: beast-mode,
+  olive, and smuggler. Receipts are in the log."
+- **Never speak a file path or line number.** Receipts (`repo:path:line`) go to
+  the turn log / screen. The spoken sentence is not the evidence; the citations
+  are (shop rule 1: facts over vibes).
+- Only numbers a tool returned THIS turn — no arithmetic, no recalled figures.
+- **Two-speed rule:** if the honest answer needs deep work (multi-file reads,
+  an impact walk, anything agentic), speak what the quick keyword pass found
+  plus "still digging — ask me again in a minute," and keep working
+  server-side. Never leave Siri hanging past a few seconds.
+
+## Not Almanac's job
+
+- **Live state** (deploys, DNS, published pages): verify in a browser —
+  dashboards lie (shop rule 2).
+- **Database schema/RLS**: Supabase (INFRA-3530, rule 5 above).
+- **Uncommitted work**: the index sees commits, not working trees — use git.
+- **Non-git directories**: invisible to discovery forever unless explicitly
+  registered (the opportunity-library blind spot, fixed 2026-08-05 as
+  workspace-docs). If a whole PROJECT seems missing, check `almanac repos`
+  before concluding anything.
