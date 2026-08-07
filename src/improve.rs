@@ -365,6 +365,42 @@ fn run_inner(args: &[String]) -> Result<i32> {
         pr_number.ok_or_else(|| anyhow::anyhow!("could not parse PR number from URL: {pr_url}"))?;
 
     let mut verdict = verify_and_merge(&opts, pr_num, &picked.title)?;
+
+    // EFFECTIVE-375 (COTG hard gate): CI/anti-cosmetic/no-regression passing is NOT
+    // "done" — an UNMET acceptance criterion means the fix is incomplete (pvc#2 shipped
+    // green CI while leaving the join page wrong). When the LLM AC-judge is on
+    // (CHUMP_AC_JUDGE_LLM=1), downgrade a would-be 'verified' to 'held' on any UNMET
+    // bullet so remediate_held re-works it instead of merging a partial. Opt-in until
+    // the AC-writer lands (a hard gate on vague AC would false-block); fails OPEN — a
+    // judge/gate error never false-holds.
+    let ac_gate_on = std::env::var("CHUMP_AC_JUDGE_LLM").as_deref() == Ok("1");
+    if verdict == "verified" && ac_gate_on && !picked.acceptance_criteria_draft.is_empty() {
+        let cov = crate::pr_ac_coverage::run_with_ac(
+            &opts.owner_repo,
+            pr_num,
+            &picked.title,
+            &picked.acceptance_criteria_draft,
+        );
+        let (ac_missed, unmet) = match &cov {
+            Ok(c) if c.status == crate::pr_ac_coverage::CoverageStatus::Miss => (
+                true,
+                c.bullets
+                    .iter()
+                    .filter(|b| !b.covered && !b.waived)
+                    .map(|b| b.index + 1)
+                    .collect::<Vec<_>>(),
+            ),
+            _ => (false, Vec::new()),
+        };
+        if ac_hard_gate_should_hold(&verdict, ac_gate_on, ac_missed) {
+            println!(
+                "[improve] EFFECTIVE-375 AC hard gate: HELD — {} unmet AC bullet(s) {unmet:?} despite green CI",
+                unmet.len()
+            );
+            verdict = "held".to_string();
+        }
+    }
+
     println!("[improve] verdict: {verdict}");
 
     // MISSION-059: NEVER abandon a HELD PR. Drive it to a terminal state
@@ -1845,6 +1881,14 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
 /// prints no Verdict: line — `parse_verdict` returns None and we bail loudly
 /// instead of silently reporting "verified". Verdict fabrication is the trust
 /// keystone failure we are preventing.
+/// EFFECTIVE-375 (COTG hard gate): decide whether an otherwise-verified PR must be
+/// HELD because the AC judge found an unmet criterion. Pure + unit-tested. Only a
+/// definite AC miss on a `verified` PR with the gate ON downgrades to held; every other
+/// state (gate off, no miss, already held/closed) passes through — fail-open by design.
+fn ac_hard_gate_should_hold(code_verdict: &str, gate_on: bool, ac_missed: bool) -> bool {
+    code_verdict == "verified" && gate_on && ac_missed
+}
+
 fn verify_and_merge(opts: &Opts, pr_num: u64, _gap_title: &str) -> Result<String> {
     // CREDIBLE-100: resolve the binary that's CURRENTLY RUNNING — it has the
     // `external verify-merge` subcommand. Prefer CHUMP_IMPROVE_CHUMP_BIN for
@@ -5282,5 +5326,31 @@ Some prose from the agent.
         assert!(!is_real_edit_status_line(""));
         assert!(!is_real_edit_status_line("M"));
         assert!(!is_real_edit_status_line(" M   "));
+    }
+
+    #[test]
+    fn effective375_ac_hard_gate_decision() {
+        // EFFECTIVE-375: only a definite AC miss on a verified PR with the gate ON
+        // downgrades to held. Everything else fails OPEN (passes the code verdict through).
+        assert!(
+            ac_hard_gate_should_hold("verified", true, true),
+            "green CI + gate on + AC miss ⇒ HELD (the pvc#2 case: green but incomplete)"
+        );
+        assert!(
+            !ac_hard_gate_should_hold("verified", true, false),
+            "green CI + AC fully met ⇒ verified"
+        );
+        assert!(
+            !ac_hard_gate_should_hold("verified", false, true),
+            "gate OFF ⇒ advisory only, never blocks (opt-in until AC-writer lands)"
+        );
+        assert!(
+            !ac_hard_gate_should_hold("held", true, true),
+            "already held ⇒ not this gate's call"
+        );
+        assert!(
+            !ac_hard_gate_should_hold("closed", true, true),
+            "closed ⇒ passthrough"
+        );
     }
 }
