@@ -376,7 +376,14 @@ fn run_inner(args: &[String]) -> Result<i32> {
     // loop CONVERGE (land work) rather than merely TRY: a held PR that blocks a
     // dependent task is resolved in-cycle, never skipped, never left open-red.
     if verdict != "verified" {
-        verdict = remediate_held(&opts, &clone_dir, &picked.title, pr_num, &pr_url)?;
+        verdict = remediate_held(
+            &opts,
+            &clone_dir,
+            &picked.title,
+            &picked.acceptance_criteria_draft,
+            pr_num,
+            &pr_url,
+        )?;
     }
 
     emit_cycle_complete(&opts.owner_repo, &picked.title, &verdict, Some(&pr_url));
@@ -1536,6 +1543,45 @@ fn clear_flow_checkpoint(opts: &Opts, gap: &ProposedGap) {
     }
 }
 
+/// EFFECTIVE-361: does a porcelain status line describe a REAL working-tree edit
+/// (not a chump-internal/session artifact)? Pure so it's unit-testable.
+fn is_real_edit_status_line(line: &str) -> bool {
+    // porcelain v1: "XY <path>" (XY = 2-char status, then a space, then the path).
+    let line = line.trim_end();
+    if line.len() < 4 {
+        return false;
+    }
+    let path = line[3..].trim();
+    // Rename/copy renders as "old -> new" — judge the destination path.
+    let path = path.rsplit(" -> ").next().unwrap_or(path).trim();
+    // Strip the quotes git adds around paths with special chars.
+    let path = path.trim_matches('"');
+    if path.is_empty() {
+        return false;
+    }
+    // Ignore chump's own bookkeeping so a heartbeat/log/session write never counts
+    // as "the agent made an edit."
+    let ignore = [".chump", "sessions/", "logs/", ".chump-locks"];
+    !ignore.iter().any(|p| path.starts_with(p))
+}
+
+/// EFFECTIVE-361: has the agent left a REAL edit in its work dir? Runs
+/// `git status --porcelain` and returns true if any line is a real edit. Fail-safe:
+/// on any git error it returns false (treated as "no real edit yet").
+fn work_dir_has_real_edits(work_dir: &Path) -> bool {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(work_dir)
+        .args(["status", "--porcelain"])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .any(is_real_edit_status_line),
+        _ => false,
+    }
+}
+
 fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<String> {
     use chump_handoff::contracts::{ExternalRepoContract, ExternalRepoInput};
     use chump_handoff::HandoffContract;
@@ -1655,12 +1701,70 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
     };
 
     // Capture output so we can extract the PR URL from the JSON block.
-    let out = cmd
+    let mut out = cmd
         .output()
         .with_context(|| format!("spawn improve backend `{backend}`"))?;
 
     // Cleanup temp file.
     let _ = std::fs::remove_file(&prompt_file);
+
+    // EFFECTIVE-361: force-edit — when the agent-run SUCCEEDED but only DESCRIBED the
+    // change without applying it (diagnose-not-execute, the real M1 wall), re-prompt it
+    // to APPLY the edit via str_replace. Capable models routinely narrate the fix and
+    // never call an edit tool; a short, explicit "you have not edited anything yet —
+    // apply it now with str_replace" nudge is the constraint-safe lift before escalating
+    // to a stronger (paid/Claude) provider. Gated off the claude backend (its own path
+    // applies edits) and skippable via CHUMP_IMPLEMENT_FORCE_EDIT_TRIES=0.
+    if backend != "claude" {
+        let tries: u32 = std::env::var("CHUMP_IMPLEMENT_FORCE_EDIT_TRIES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2);
+        let mut attempt = 0;
+        while attempt < tries && out.status.success() && !work_dir_has_real_edits(&work_dir) {
+            attempt += 1;
+            eprintln!(
+                "[improve] EFFECTIVE-361 force-edit: agent described but did not apply an edit \
+                 (attempt {attempt}/{tries}) — re-prompting to APPLY via str_replace"
+            );
+            let force_prompt = format!(
+                "YOU HAVE NOT EDITED ANY FILE YET — you only described the change. APPLY IT NOW.\n\n\
+                 Use the `str_replace` tool: copy the EXACT existing snippet you want to change into \
+                 `old_string` (include enough surrounding lines to be unique) and the replacement \
+                 text into `new_string`. Do NOT rewrite a whole file with write_file. Make the \
+                 smallest edit that satisfies the task below, then stop.\n\n{prompt}"
+            );
+            let pf = match write_temp_prompt(&force_prompt) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("[improve] force-edit: could not write prompt file: {e}");
+                    break;
+                }
+            };
+            let chump_bin = std::env::var("CHUMP_IMPROVE_CHUMP_BIN")
+                .or_else(|_| std::env::var("CHUMP_BIN"))
+                .unwrap_or_else(|_| "chump".to_string());
+            let mut c = Command::new(&chump_bin);
+            c.arg("agent-run")
+                .arg("--prompt-file")
+                .arg(&pf)
+                .arg("--cwd")
+                .arg(&work_dir);
+            id.apply_git_env(&mut c);
+            if std::env::var("CHUMP_PREFERRED_MODEL_CLASS").is_err() {
+                c.env("CHUMP_PREFERRED_MODEL_CLASS", improve_implement_class());
+            }
+            match c.output() {
+                Ok(o) => out = o,
+                Err(e) => {
+                    eprintln!("[improve] force-edit: re-run spawn failed: {e}");
+                    let _ = std::fs::remove_file(&pf);
+                    break;
+                }
+            }
+            let _ = std::fs::remove_file(&pf);
+        }
+    }
 
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -2431,6 +2535,11 @@ fn remediate_held(
     opts: &Opts,
     clone_dir: &Path,
     gap_title: &str,
+    // EFFECTIVE-367 (COTG): the gap's real acceptance criteria, threaded from the
+    // pipeline so the AC-coverage judge scores against the ACTUAL bullets instead of
+    // re-deriving them from the external PR's title (which carries no chump gap id →
+    // NoGapRef → no signal). Empty when the gap had no AC.
+    ac_bullets: &[String],
     pr_num: u64,
     pr_url: &str,
 ) -> Result<String> {
@@ -2481,7 +2590,9 @@ fn remediate_held(
         // below (confidence-GATED iteration is piece 4, pending calibration).
         // Scores gap-AC coverage, not CI-green, so it's advisory context for
         // RESCUE-class fixes.
-        if let Ok(cov) = crate::pr_ac_coverage::run(pr_num) {
+        if let Ok(cov) =
+            crate::pr_ac_coverage::run_with_ac(&opts.owner_repo, pr_num, gap_title, ac_bullets)
+        {
             let conf = cov.confidence();
             println!(
                 "[improve] remediate {} → AC-coverage confidence {conf:.3} ({:?})",
@@ -2752,7 +2863,11 @@ fn shepherd_own_prs(opts: &Opts, clone_dir: &Path) {
                 println!("[improve] shepherd: #{} verified + merged", pr.number)
             }
             Ok(_) => {
-                if let Err(e) = remediate_held(opts, clone_dir, &pr.title, pr.number, &pr.url) {
+                // EFFECTIVE-367: the shepherd sweep has no gap-AC in scope (it operates
+                // on open PRs, not a picked gap), so pass empty bullets — AC-coverage
+                // advises Pass rather than emitting a false NoGapRef signal.
+                if let Err(e) = remediate_held(opts, clone_dir, &pr.title, &[], pr.number, &pr.url)
+                {
                     eprintln!("[improve] shepherd: remediate #{} failed: {e}", pr.number);
                 }
             }
@@ -5106,5 +5221,24 @@ Some prose from the agent.
             !parse_satisfied_verdict("SATISFIED").0,
             "a bare word without the VERDICT: prefix must NOT satisfy (conservative)"
         );
+    }
+
+    #[test]
+    fn effective361_real_edit_status_line_ignores_junk() {
+        // EFFECTIVE-361: a REAL source edit counts; chump's own bookkeeping never does.
+        assert!(is_real_edit_status_line(" M src/lib/agent/orchestrator.ts"));
+        assert!(is_real_edit_status_line("A  new_file.rs"));
+        assert!(is_real_edit_status_line("?? untracked.txt"));
+        // rename → judge the destination path.
+        assert!(is_real_edit_status_line("R  old.rs -> src/renamed.rs"));
+        // chump bookkeeping / session / log writes must NOT count as an edit.
+        assert!(!is_real_edit_status_line(" M .chump/farmer-heartbeat"));
+        assert!(!is_real_edit_status_line("?? .chump-locks/claim-x.json"));
+        assert!(!is_real_edit_status_line(" M sessions/chump_memory.db"));
+        assert!(!is_real_edit_status_line("A  logs/run.log"));
+        // degenerate lines never crash / never count.
+        assert!(!is_real_edit_status_line(""));
+        assert!(!is_real_edit_status_line("M"));
+        assert!(!is_real_edit_status_line(" M   "));
     }
 }

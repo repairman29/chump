@@ -1336,3 +1336,8 @@ CHUMP_SKIP_MERGED_CHECK
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_IMPROVE_RG_BIN
+
+# ── Tier 2: external-repo implement tuning (EFFECTIVE-361) ─────────────────
+# Force-edit retries: how many times implement_gap re-prompts the agent to APPLY
+# a described-but-unapplied edit via str_replace (default 2; 0 disables).
+CHUMP_IMPLEMENT_FORCE_EDIT_TRIES
