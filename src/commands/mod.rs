@@ -23,6 +23,7 @@ pub mod durable_execution;
 pub mod durable_execution_journal;
 pub mod durable_resume;
 pub mod emit_event;
+pub mod gap;
 pub mod install_daemon;
 pub mod inventory;
 pub mod sibling_status;
