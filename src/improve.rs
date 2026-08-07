@@ -2450,16 +2450,22 @@ Output nothing but a one-line summary of what you changed."
 /// remediation path can no longer re-introduce runtime droppings or slip a destructive
 /// clobber past the guards (the BEAST PR #35 defect: remediation commits added 7 junk files
 /// + a -324 package.json gut the ship path would have rejected).
-fn fix_pr(
+// EFFECTIVE-379: the shared checkout → dispatch → guarded-commit → push ceremony
+// for BOTH the CI-failure fix (`fix_pr`) and the AC-incompleteness fix
+// (`fix_pr_ac`). The caller supplies the fully-built task prompt body (the part
+// that differs — a failing CI log vs. the unmet acceptance bullets) and a commit
+// kind tag (`ci` | `ac`); everything else — placing the PR branch at its remote
+// tip, spawning the backend agent (edit-only), and pushing the guarded commit to
+// the existing branch — is identical.
+fn fix_pr_dispatch(
     clone_dir: &Path,
-    repo: &str,
     pr_num: u64,
     head_branch: &str,
     gap_title: &str,
-    failing_log: &str,
+    task_prompt_body: &str,
+    commit_kind: &str,
     model: &str,
 ) -> Result<()> {
-    let log_excerpt: String = failing_log.chars().take(6000).collect();
     // MISSION-063: fixes are signed by the same named agent as the original work.
     let id = agent_identity();
     let cd = clone_dir.to_string_lossy().to_string();
@@ -2501,11 +2507,7 @@ fn fix_pr(
     {
         bail!("could not checkout PR branch {head_branch} (FETCH_HEAD) in {cd} for remediation");
     }
-    let prompt = format!(
-        "{}{}",
-        build_fix_prompt(repo, pr_num, head_branch, gap_title, &log_excerpt),
-        id.prompt_signature()
-    );
+    let prompt = format!("{}{}", task_prompt_body, id.prompt_signature());
     let prompt_file = write_temp_prompt(&prompt)?;
 
     // COTG-1.6/INFRA-3488: the fix-retry path must NOT default to claude either
@@ -2563,7 +2565,7 @@ fn fix_pr(
     // as the initial ship — junk-exclusion + verify_staged_edit — then push to the EXISTING
     // branch (no new PR). Before this, the agent ran freeform git and re-corrupted the PR.
     let title: String = gap_title.trim().chars().take(60).collect();
-    let msg = format!("fix(ci): {title} (PR #{pr_num})\n\n{}", id.trailer());
+    let msg = format!("fix({commit_kind}): {title} (PR #{pr_num})\n\n{}", id.trailer());
     let _branch =
         guarded_stage_and_commit(clone_dir, &msg, &id, &format!("for the PR #{pr_num} fix"))?;
     if !Command::new("git")
@@ -2582,6 +2584,75 @@ fn fix_pr(
         bail!("git push of the fix to {head_branch} failed in {cd}");
     }
     Ok(())
+}
+
+/// CI-failure remediation: build the failing-log fix prompt, then dispatch through
+/// the shared ceremony. Thin wrapper — EFFECTIVE-379 extracted the shared core into
+/// [`fix_pr_dispatch`] so the AC path can reuse it.
+fn fix_pr(
+    clone_dir: &Path,
+    repo: &str,
+    pr_num: u64,
+    head_branch: &str,
+    gap_title: &str,
+    failing_log: &str,
+    model: &str,
+) -> Result<()> {
+    let log_excerpt: String = failing_log.chars().take(6000).collect();
+    let body = build_fix_prompt(repo, pr_num, head_branch, gap_title, &log_excerpt);
+    fix_pr_dispatch(clone_dir, pr_num, head_branch, gap_title, &body, "ci", model)
+}
+
+/// EFFECTIVE-379: the fix prompt for an AC-incomplete PR — CI is GREEN but the
+/// AC judge (Gate 4 of external verify-merge, CREDIBLE-212) found specific unmet
+/// acceptance criteria. The CI path is useless here: `fetch_failing_log` returns
+/// nothing on green CI, so the agent would get an empty log. Instead we hand it
+/// the exact unmet-bullet TEXT and tell it to satisfy ONLY those.
+fn build_ac_fix_prompt(
+    repo: &str,
+    pr_num: u64,
+    head_branch: &str,
+    gap_title: &str,
+    unmet_bullets: &[String],
+) -> String {
+    let bullets = unmet_bullets
+        .iter()
+        .enumerate()
+        .map(|(i, b)| format!("{}. {}", i + 1, b.trim()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "You are COMPLETING an incomplete pull request in the repository `{repo}`.\n\n\
+PR #{pr_num} (branch `{head_branch}`) implements: {gap_title}\n\
+Its CI is GREEN, but an acceptance-criteria review found these criteria STILL UNMET:\n\n\
+--- UNMET ACCEPTANCE CRITERIA ---\n{bullets}\n--- END ---\n\n\
+The PR's branch is ALREADY checked out in your working directory. EDIT FILES ONLY:\n\
+1. Make the smallest real code changes so EACH unmet criterion above is satisfied. \
+Work ONLY on these criteria; do not refactor unrelated code or redo what the PR already did.\n\
+2. EDIT ONLY. Do NOT run git and do NOT touch version control at all — no stage, commit, \
+push, checkout, branch, merge, or PR open/close. The system commits your edits \
+deterministically (with the zero-touch trailer) and pushes them to the existing branch. \
+Running git yourself risks committing runtime junk or a destructive clobber.\n\
+3. If a criterion is genuinely already satisfied and the reviewer was wrong, make the \
+smallest change that makes it verifiable (a focused test or an explicit code path); do NOT \
+fabricate a no-op.\n\n\
+Output nothing but a one-line summary of what you changed."
+    )
+}
+
+/// EFFECTIVE-379: AC-incompleteness remediation — dispatch a fix scoped to ONLY
+/// the unmet acceptance bullets, reusing the same guarded ceremony as the CI path.
+fn fix_pr_ac(
+    clone_dir: &Path,
+    repo: &str,
+    pr_num: u64,
+    head_branch: &str,
+    gap_title: &str,
+    unmet_bullets: &[String],
+    model: &str,
+) -> Result<()> {
+    let body = build_ac_fix_prompt(repo, pr_num, head_branch, gap_title, unmet_bullets);
+    fix_pr_dispatch(clone_dir, pr_num, head_branch, gap_title, &body, "ac", model)
 }
 
 /// MISSION-059: drive a HELD PR to a terminal state instead of abandoning it.
@@ -2611,64 +2682,108 @@ fn remediate_held(
     );
 
     for attempt in 0..retries {
-        let log = fetch_failing_log(opts, &head_branch);
-        let class = crate::ci_summary::classify_log(&log, false);
-        let action = remediation_for_class(class);
         let model = model_for_attempt(attempt, &ladder);
-        println!(
-            "[improve] remediate {}/{}: class={class} action={action:?} model={model}",
-            attempt + 1,
-            retries
-        );
-        emit_pr_remediation(
-            &opts.owner_repo,
-            pr_num,
-            class,
-            &format!("{action:?}"),
-            attempt + 1,
-            model,
-        );
 
-        match action {
-            Remediation::Rerun => rerun_failed_checks(opts, &head_branch)?,
-            Remediation::AgentFix => fix_pr(
-                clone_dir,
-                &opts.owner_repo,
-                pr_num,
-                &head_branch,
-                gap_title,
-                &log,
-                model,
-            )?,
-        }
-
-        // EFFECTIVE-334 (judgment organ piece 3, observability): score the
-        // candidate fix's AC-coverage confidence so the loop + operators can see
-        // how well it satisfies the gap's acceptance criteria. Best-effort and
-        // NEVER blocks — the ship/iterate decision stays with verify_and_merge
-        // below (confidence-GATED iteration is piece 4, pending calibration).
-        // Scores gap-AC coverage, not CI-green, so it's advisory context for
-        // RESCUE-class fixes.
-        if let Ok(cov) =
-            crate::pr_ac_coverage::run_with_ac(&opts.owner_repo, pr_num, gap_title, ac_bullets)
-        {
-            let conf = cov.confidence();
+        // EFFECTIVE-334 + EFFECTIVE-379: score the PR's AC coverage ONCE per attempt.
+        // It serves two jobs: (1) observability (the fix-confidence signal), and
+        // (2) classifying the hold. When the AC judge (Gate 4, CREDIBLE-212) is on
+        // and finds unmet bullets, this is an AC-INCOMPLETENESS hold — CI is green,
+        // so `fetch_failing_log` has nothing to hand a fixer. Route it instead to a
+        // re-dispatch scoped to EXACTLY the unmet bullets, fed the bullet TEXT (not
+        // an empty log), and let verify_and_merge's Gate 4 re-judge it below.
+        let cov =
+            crate::pr_ac_coverage::run_with_ac(&opts.owner_repo, pr_num, gap_title, ac_bullets).ok();
+        if let Some(c) = &cov {
+            let conf = c.confidence();
             println!(
                 "[improve] remediate {} → AC-coverage confidence {conf:.3} ({:?})",
                 attempt + 1,
-                cov.status
+                c.status
             );
             emit_remediation_fix_confidence(
                 &opts.owner_repo,
                 pr_num,
                 attempt + 1,
                 conf,
-                &format!("{:?}", cov.status),
+                &format!("{:?}", c.status),
             );
         }
+        let ac_gate_on = std::env::var("CHUMP_AC_JUDGE_LLM").as_deref() == Ok("1");
+        let unmet: Vec<String> = if ac_gate_on {
+            match &cov {
+                Some(c) if c.status == crate::pr_ac_coverage::CoverageStatus::Miss => c
+                    .bullets
+                    .iter()
+                    .filter(|b| !b.covered && !b.waived)
+                    .filter_map(|b| ac_bullets.get(b.index).cloned())
+                    .filter(|s| !s.trim().is_empty())
+                    .collect(),
+                _ => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
 
-        // Re-verify: verify_and_merge polls check-runs until terminal, so this
-        // waits out a rerun or the pushed fix's fresh CI before judging.
+        if !unmet.is_empty() {
+            // EFFECTIVE-379: AC-incompleteness hold — scoped re-dispatch + re-judge.
+            println!(
+                "[improve] remediate {}/{}: AC-incomplete — {} unmet bullet(s), scoped re-dispatch model={model}",
+                attempt + 1,
+                retries,
+                unmet.len()
+            );
+            emit_pr_remediation(
+                &opts.owner_repo,
+                pr_num,
+                "ac-incomplete",
+                "AcFix",
+                attempt + 1,
+                model,
+            );
+            fix_pr_ac(
+                clone_dir,
+                &opts.owner_repo,
+                pr_num,
+                &head_branch,
+                gap_title,
+                &unmet,
+                model,
+            )?;
+        } else {
+            // CI-failure hold (MISSION-059): classify the failing log, rerun a
+            // flake for free, or re-spawn an escalating-model fix agent.
+            let log = fetch_failing_log(opts, &head_branch);
+            let class = crate::ci_summary::classify_log(&log, false);
+            let action = remediation_for_class(class);
+            println!(
+                "[improve] remediate {}/{}: class={class} action={action:?} model={model}",
+                attempt + 1,
+                retries
+            );
+            emit_pr_remediation(
+                &opts.owner_repo,
+                pr_num,
+                class,
+                &format!("{action:?}"),
+                attempt + 1,
+                model,
+            );
+            match action {
+                Remediation::Rerun => rerun_failed_checks(opts, &head_branch)?,
+                Remediation::AgentFix => fix_pr(
+                    clone_dir,
+                    &opts.owner_repo,
+                    pr_num,
+                    &head_branch,
+                    gap_title,
+                    &log,
+                    model,
+                )?,
+            }
+        }
+
+        // Re-verify: verify_and_merge polls check-runs until terminal (and re-runs
+        // Gate 4 when the AC judge is on), so an AC re-dispatch is re-judged here.
         let verdict = verify_and_merge(opts, pr_num, gap_title)?;
         println!("[improve] remediate {} → verdict: {verdict}", attempt + 1);
         if verdict == "verified" {
@@ -3797,6 +3912,26 @@ mod tests {
         // Unknown/empty is the safe default: attempt a real fix, not a blind rerun.
         assert_eq!(remediation_for_class(""), Remediation::AgentFix);
         assert_eq!(remediation_for_class("weird"), Remediation::AgentFix);
+    }
+
+    #[test]
+    fn effective379_ac_fix_prompt_scopes_to_unmet_bullets() {
+        let unmet = vec![
+            "The /join page renders the invite code from the URL".to_string(),
+            "A logged-out visitor is redirected to /login".to_string(),
+        ];
+        let p = build_ac_fix_prompt("owner/repo", 42, "chump/x-claim", "wire the join page", &unmet);
+        // Every unmet bullet's TEXT is handed to the agent, numbered.
+        assert!(p.contains("1. The /join page renders the invite code from the URL"));
+        assert!(p.contains("2. A logged-out visitor is redirected to /login"));
+        // It frames the hold correctly (green CI, unmet AC) — NOT a red-CI fix.
+        assert!(p.contains("CI is GREEN"));
+        assert!(p.contains("UNMET ACCEPTANCE CRITERIA"));
+        // The edit-only / no-git safety rail is preserved from the CI path.
+        assert!(p.contains("EDIT ONLY") || p.contains("EDIT FILES ONLY"));
+        assert!(p.contains("Do NOT run git"));
+        // It must NOT tell the agent CI is red (the empty-log bug this fixes).
+        assert!(!p.contains("CI is RED"));
     }
 
     #[test]
