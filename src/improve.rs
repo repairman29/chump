@@ -1802,6 +1802,48 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         }
     }
 
+    // EFFECTIVE-366: fail-through escalation to the Claude FINAL RUNG. If the free/sub
+    // cascade (+ EFFECTIVE-361 force-edit) landed NO real edit, escalate to sonnet/opus
+    // on the SAME worktree before giving up. Operator design (2026-08-06, after the M1
+    // proof pvc#2): spend Claude ONLY as the last resort — every cheaper tier failed to
+    // land the job first. M1 proved the free/sub models all avoid str_replace (they grab
+    // patch_file/run_cli, both fail); Claude reliably edits. The claude run is edit-first;
+    // deterministic_ship below turns its edits into the PR, same as the free path. Skip
+    // with CHUMP_IMPLEMENT_ESCALATE_CLAUDE=0.
+    if backend != "claude"
+        && std::env::var("CHUMP_IMPLEMENT_ESCALATE_CLAUDE").as_deref() != Ok("0")
+        && !work_dir_has_real_edits(&work_dir)
+    {
+        eprintln!(
+            "[improve] EFFECTIVE-366 escalation: free/sub cascade landed no edit — \
+             escalating to the Claude final rung (sonnet/opus)"
+        );
+        let claude_bin =
+            std::env::var("CHUMP_IMPROVE_CLAUDE_BIN").unwrap_or_else(|_| "claude".to_string());
+        let mut c = Command::new(&claude_bin);
+        c.arg("-p")
+            .arg(&prompt)
+            .arg("--dangerously-skip-permissions")
+            .args(["--model", "claude-sonnet-4-5"])
+            .current_dir(&work_dir);
+        id.apply_git_env(&mut c);
+        let oauth_path = configure_claude_auth_env(&mut c);
+        if oauth_path {
+            eprintln!("[improve] EFFECTIVE-366 escalation auth: using OAUTH token path for claude");
+        }
+        match c.output() {
+            Ok(o) => {
+                let code = o.status.code().unwrap_or(-1);
+                out = o;
+                eprintln!(
+                    "[improve] EFFECTIVE-366 escalation: claude rung exited {code} — real edits now: {}",
+                    work_dir_has_real_edits(&work_dir)
+                );
+            }
+            Err(e) => eprintln!("[improve] EFFECTIVE-366 escalation: claude spawn failed: {e}"),
+        }
+    }
+
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         bail!(
