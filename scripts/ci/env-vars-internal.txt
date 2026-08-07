@@ -1348,3 +1348,10 @@ CHUMP_IMPLEMENT_FORCE_EDIT_TRIES
 # (default opus — the gate must be trustworthy).
 CHUMP_AC_JUDGE_LLM
 CHUMP_AC_JUDGE_MODEL
+
+# ── Tier 2: external-implement fail-through (EFFECTIVE-366) ────────────────
+# CHUMP_IMPLEMENT_ESCALATE_CLAUDE=0 disables the free/sub→Claude final-rung
+# escalation in implement_gap. CHUMP_FREE_TIER_PATCH_FILE=1 re-admits patch_file
+# to the weak-model dispatch set (off by default so weak models use str_replace).
+CHUMP_IMPLEMENT_ESCALATE_CLAUDE
+CHUMP_FREE_TIER_PATCH_FILE

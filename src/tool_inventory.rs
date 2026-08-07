@@ -143,11 +143,15 @@ const DISPATCH_FREE_TOOL_KEYS: &[&str] = &[
     "grep_repo",
     "almanac_search",
     "list_dir",
-    // EFFECTIVE-355: str_replace is the PRIMARY edit tool for open/weak models —
-    // anchored old->new, no @@ hunks to mis-format (patch_file) and no whole-file
-    // rewrite to truncate/clobber (write_file). patch_file stays as a fallback.
+    // EFFECTIVE-355 / EFFECTIVE-361: str_replace is the ONLY surgical edit tool for
+    // open/weak models — anchored old->new, no @@ hunks to mis-format (patch_file)
+    // and no whole-file rewrite to truncate/clobber (write_file).
+    // patch_file is deliberately NOT here: live M1 dogfood (2026-08-06, nemotron/pvc)
+    // showed weak models GRAB patch_file even when str_replace is available and
+    // explicitly requested, then loop on invalid @@ hunks until timeout with no edit
+    // landing. Removing the trap forces the tool they can actually drive. Re-admit
+    // with CHUMP_FREE_TIER_PATCH_FILE=1 for a strong open model that needs it.
     "str_replace",
-    "patch_file",
     "git_commit",
 ];
 
@@ -159,12 +163,22 @@ fn free_tier_write_file_enabled() -> bool {
     std::env::var("CHUMP_FREE_TIER_WRITE_FILE").as_deref() == Ok("1")
 }
 
+/// EFFECTIVE-361: patch_file is off by default for weak-model dispatch (see
+/// DISPATCH_FREE_TOOL_KEYS). `CHUMP_FREE_TIER_PATCH_FILE=1` re-admits it for a
+/// strong open model that can produce valid unified-diff hunks.
+fn free_tier_patch_file_enabled() -> bool {
+    std::env::var("CHUMP_FREE_TIER_PATCH_FILE").as_deref() == Ok("1")
+}
+
 /// Register the slim free-tier dispatch tool set. Used by `execute_gap.rs`
 /// when `OPENAI_MODEL` resolves to a non-Claude family (INFRA-733).
 pub fn register_free_dispatch_tools(registry: &mut ToolRegistry) {
     let mut keys: Vec<&str> = DISPATCH_FREE_TOOL_KEYS.to_vec();
     if free_tier_write_file_enabled() {
         keys.push("write_file");
+    }
+    if free_tier_patch_file_enabled() {
+        keys.push("patch_file");
     }
     let mut entries: Vec<_> = inventory::iter::<ToolEntry>()
         // EFFECTIVE-324: honor per-tool `when_enabled` here (e.g. almanac_search
