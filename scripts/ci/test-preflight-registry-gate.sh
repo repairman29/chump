@@ -21,17 +21,17 @@ ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
 fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*"; exit 1; }
 
 # ── 1. Static checks ──────────────────────────────────────────────────────
-[[ -f "$REPO_ROOT/src/preflight.rs" ]] || fail "src/preflight.rs missing"
+[[ -f "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" ]] || fail "src/preflight.rs missing"
 
-grep -q "event-registry-audit" "$REPO_ROOT/src/preflight.rs" \
+grep -q "event-registry-audit" "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" \
     || fail "preflight.rs does not register the event-registry-audit gate"
 ok "preflight.rs declares the event-registry-audit gate"
 
-grep -q "CHUMP_PREFLIGHT_SKIP_REGISTRY" "$REPO_ROOT/src/preflight.rs" \
+grep -q "CHUMP_PREFLIGHT_SKIP_REGISTRY" "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" \
     || fail "preflight.rs does not honor CHUMP_PREFLIGHT_SKIP_REGISTRY bypass"
 ok "preflight.rs honors CHUMP_PREFLIGHT_SKIP_REGISTRY bypass env"
 
-grep -q "preflight_registry_bypassed" "$REPO_ROOT/src/preflight.rs" \
+grep -q "preflight_registry_bypassed" "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" \
     || fail "preflight.rs does not emit preflight_registry_bypassed on bypass"
 ok "preflight.rs emits preflight_registry_bypassed on bypass"
 

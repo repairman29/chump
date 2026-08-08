@@ -27,25 +27,25 @@ ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
 fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*"; exit 1; }
 
 # ── 1. Static checks ──────────────────────────────────────────────────────
-[[ -f "$REPO_ROOT/src/preflight.rs" ]] || fail "src/preflight.rs missing"
+[[ -f "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" ]] || fail "src/preflight.rs missing"
 
-grep -q -- '--pre-commit' "$REPO_ROOT/src/preflight.rs" \
+grep -q -- '--pre-commit' "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" \
     || fail "preflight.rs does not parse --pre-commit flag"
 ok "preflight.rs parses --pre-commit flag"
 
-grep -q "docs-delta-trailer" "$REPO_ROOT/src/preflight.rs" \
+grep -q "docs-delta-trailer" "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" \
     || fail "preflight.rs does not register docs-delta-trailer gate"
 ok "preflight.rs declares the docs-delta-trailer gate"
 
-grep -q "CHUMP_PREFLIGHT_SKIP_DOCSDELTA" "$REPO_ROOT/src/preflight.rs" \
+grep -q "CHUMP_PREFLIGHT_SKIP_DOCSDELTA" "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" \
     || fail "preflight.rs does not honor CHUMP_PREFLIGHT_SKIP_DOCSDELTA bypass"
 ok "preflight.rs honors CHUMP_PREFLIGHT_SKIP_DOCSDELTA bypass env"
 
-grep -q "preflight_docsdelta_bypassed" "$REPO_ROOT/src/preflight.rs" \
+grep -q "preflight_docsdelta_bypassed" "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" \
     || fail "preflight.rs does not emit preflight_docsdelta_bypassed on bypass"
 ok "preflight.rs emits preflight_docsdelta_bypassed on bypass"
 
-grep -q "INFRA-124" "$REPO_ROOT/src/preflight.rs" \
+grep -q "INFRA-124" "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" \
     || fail "preflight.rs missing INFRA-124 error marker"
 ok "preflight.rs error message carries INFRA-124 marker"
 
