@@ -1,0 +1,22 @@
+[package]
+name = "chump-kpi-report"
+version = "0.1.0"
+edition = "2021"
+description = "ChumpOS KPI / impact reporting: tokens-per-ship, ship-rate, mission-grade history, cost-savings-vs-Anthropic, leverage, handoff-rate, agent-throughput, and impact-rating sections. Extracted from the bin crate (EFFECTIVE-418 build-speed) so it compiles + caches independently of the 190k-line binary."
+repository = "https://github.com/repairman29/chump"
+license = "AGPL-3.0-only"
+
+[dependencies]
+serde_json = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chump-gap-store = { path = "../chump-gap-store", version = "0.2.0" }
+chump-waste-tally = { path = "../chump-waste-tally", version = "0.1.0" }
+
+[dev-dependencies]
+# Tests seed a real GapStore and poke it via conn_for_test() (test-helpers
+# feature) with rusqlite::params!.
+chump-gap-store = { path = "../chump-gap-store", version = "0.2.0", features = ["test-helpers"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[lints]
+workspace = true
