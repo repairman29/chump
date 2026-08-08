@@ -315,6 +315,15 @@ This is automated and happens at most once per head SHA." \
                 else
                     log "PR #${PR_NUM}: re-fired, but AUTO-MERGE RE-ARM FAILED — needs a human."
                 fi
+                # ── EVENT_REGISTRY coverage scanner-anchor (INFRA-1237/INFRA-1287) ──
+                # emit_ambient takes the kind as a POSITIONAL argument and builds
+                # the JSON with printf, so the coverage regex cannot see the
+                # literal. Anchor it in the scanner's detectable JSON form, same
+                # pattern as src/fleet_self_rescue_conductor.rs:138. This is a
+                # REAL emit (the call is on the next line), not a reservation:
+                #   "kind":"pr_rescue_ci_refire"
+                # Distinct from pr_rescue_triggered: that fires when CI ran and
+                # went RED; this fires when CI never ran at all.
                 emit_ambient "pr_rescue_ci_refire" "${PR_NUM}" "zero_runs_after_${AGE_MINUTES}m"
                 REFIRES=$(( ${REFIRES:-0} + 1 ))
                 RESCUED=$(( ${RESCUED:-0} + 1 ))
