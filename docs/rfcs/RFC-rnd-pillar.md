@@ -59,9 +59,24 @@ failures. Under R&D they are the product: a fast NO-GO is a successful run.
 
 ## Mechanics
 
-1. **Runs outside the picker.** The picker serves committed work with acceptance
-   criteria. R&D has a hypothesis and a ceiling instead. Precedent: all four above run
-   as scheduled loops or on-demand workflows, never through gap dispatch.
+1. **Reuses the gap pipeline — it does NOT need a parallel one.**
+   ⚠️ **CORRECTED 2026-08-08.** This RFC originally claimed R&D "runs outside the picker"
+   because it has a hypothesis and a ceiling rather than acceptance criteria. That is
+   wrong on inspection. `privateer`'s `voyage.mjs` writes **"What would count as
+   treasure"** and **"What would count as a chart"** into every pending chart, and those
+   two sections *are* specific, testable acceptance criteria. They are
+   **machine-generated** — the same move `EFFECTIVE-386` (AC-writer, shipped 2026-08-07)
+   makes for gaps, arrived at independently from the other direction.
+   So a voyage can ride what already exists: pick, claim, worktree, dispatch, ship.
+   Building R&D its own scheduler and dispatcher would be a **fifth hand-rolled cascade**
+   of exactly the shape the first real voyage catalogued (completion, embedding, TTS, STT
+   — `privateer/charts/2026-08-08-search-field.md`).
+   **Honest caveat:** a voyage filed as an external-repo gap inherits `EFFECTIVE-353` and
+   `EFFECTIVE-354` — external-repo execution currently hands agents placeholders and
+   stubs. Reusing the pipeline is a genuine test of that machinery, not a safe bet. The
+   interim, shipped 2026-08-08, is `privateer/tick.sh`: a monthly launchd tick that
+   *prepares* a voyage and broadcasts it, and deliberately does not sail, because an
+   unattended agent lacking a page-fetch tool would produce recall dressed as a chart.
 2. **Admission form = hypothesis + spend ceiling, not ACs.** "I think X. Ceiling: N
    free-tier calls and one overnight local run. If false, we learn Y." Deliberately
    cheap to write — expensive intake is precisely what strands ideas in an agent's
