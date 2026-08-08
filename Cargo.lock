@@ -1390,6 +1390,7 @@ dependencies = [
  "chump-ambient-cli",
  "chump-ast-crawler",
  "chump-atomic-claim",
+ "chump-bench",
  "chump-cancel-registry",
  "chump-coord",
  "chump-cost-tracker",
@@ -1514,6 +1515,16 @@ dependencies = [
  "tempfile",
  "tokio",
  "uuid 1.24.0",
+]
+
+[[package]]
+name = "chump-bench"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "serde_yaml",
 ]
 
 [[package]]
