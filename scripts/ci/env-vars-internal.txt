@@ -1357,3 +1357,14 @@ CHUMP_IMPLEMENT_ESCALATE_CLAUDE
 CHUMP_FREE_TIER_PATCH_FILE
 CHUMP_AC_WRITER_MODEL
 CHUMP_AC_SYNTH
+
+# CREDIBLE-215: override for the `almanac` CLI path used by `chump verify-reach`
+# (src/commands/reachability.rs:239). Tier 2/3 — a binary-path override for tests
+# and non-standard checkouts, not an operator-tunable setting.
+#
+# Why it surfaces now: the same var has existed in
+# crates/chump-orchestrator/src/dispatch.rs:914 for a while, but
+# test-env-var-coverage.sh scans ONLY $REPO_ROOT/src/ (line 24), so the crate
+# reader was out of scope. CREDIBLE-215 adds the first src/ reader, which pulls
+# it into the gate's view for the first time.
+CHUMP_ALMANAC_BIN
