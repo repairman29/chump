@@ -36,6 +36,10 @@ struct Step {
     /// Argv to run. First element is the binary; rest are args.
     argv: Vec<String>,
     /// Bucket this gate belongs to — used by `--scope` filtering.
+    // Populated by every `step()`; retained for `--scope` bucketing and debug
+    // output. Not read directly today — flagged only once this module became
+    // its own crate (EFFECTIVE-400); was reachable-as-live inside the bin.
+    #[allow(dead_code)]
     kind: GateKind,
 }
 
@@ -2593,6 +2597,9 @@ fn baseline_age_secs(cache: &BaselineCache) -> u64 {
 }
 
 /// Result of the diff-scoped attribution pass.
+// Reserved for the baseline-diff attribution pass; not constructed today.
+// Flagged only once this module became its own crate (EFFECTIVE-400).
+#[allow(dead_code)]
 struct BaselineDiff {
     /// Gates that PASS on baseline but FAIL on HEAD — caused by the diff.
     new_failures: Vec<String>,
