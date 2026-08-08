@@ -55,14 +55,25 @@ pass "override_env_recognized (src/version.rs unit test)"
 #    destructive path ──────────────────────────────────────────────────────
 # Grep is sufficient (the binary's behavior on a fresh build can't be a stale
 # fixture — the binary's baked SHA IS HEAD by construction in CI).
-if ! grep -q "fail_if_stale_for_destructive" "$REPO_ROOT/src/main.rs"; then
-    fail "src/main.rs does not call fail_if_stale_for_destructive — INFRA-825 wiring missing"
+# INFRA-1965 moved the `gap` command group (6,079 LOC) out of src/main.rs into
+# src/commands/gap.rs, and `gap dump --per-file` — the destructive path this
+# guards — went with it. Resolve to wherever the gap dispatch lives instead of
+# pinning to a path: the property worth asserting is "the destructive path is
+# guarded", not "the guard call is in main.rs".
+GAP_DISPATCH="$REPO_ROOT/src/main.rs"
+if grep -q "fail_if_stale_for_destructive" "$REPO_ROOT/src/commands/gap.rs" 2>/dev/null; then
+    GAP_DISPATCH="$REPO_ROOT/src/commands/gap.rs"
 fi
-gap_dump_count=$(grep -c 'fail_if_stale_for_destructive(&repo_root, "gap dump --per-file")' "$REPO_ROOT/src/main.rs" || echo 0)
+GAP_DISPATCH_REL="${GAP_DISPATCH#"$REPO_ROOT"/}"
+
+if ! grep -q "fail_if_stale_for_destructive" "$GAP_DISPATCH"; then
+    fail "$GAP_DISPATCH_REL does not call fail_if_stale_for_destructive — INFRA-825 wiring missing"
+fi
+gap_dump_count=$(grep -c 'fail_if_stale_for_destructive(&repo_root, "gap dump --per-file")' "$GAP_DISPATCH" || echo 0)
 if [[ "$gap_dump_count" -lt 1 ]]; then
-    fail "src/main.rs: gap dump --per-file is not guarded by fail_if_stale_for_destructive"
+    fail "$GAP_DISPATCH_REL: gap dump --per-file is not guarded by fail_if_stale_for_destructive"
 fi
-pass "main.rs wires the hard-fail into the remaining destructive path (gap dump --per-file)"
+pass "$GAP_DISPATCH_REL wires the hard-fail into the remaining destructive path (gap dump --per-file)"
 
 # ── Test 3 (ZERO-WASTE-020): gap ship --update-yaml is a documented no-op,
 #    not a guarded destructive path — the guard call was removed along with
@@ -70,9 +81,13 @@ pass "main.rs wires the hard-fail into the remaining destructive path (gap dump 
 #    check, so a future re-introduction of a real write there without the
 #    guard gets caught by Test 2's positive-wiring pattern above instead of
 #    silently reusing this no-op's text.
-if grep -q 'fail_if_stale_for_destructive(&repo_root,$' "$REPO_ROOT/src/main.rs" \
-    && grep -A1 'fail_if_stale_for_destructive(&repo_root,$' "$REPO_ROOT/src/main.rs" | grep -q '"gap ship --update-yaml"'; then
-    fail "src/main.rs: gap ship --update-yaml is still wired to fail_if_stale_for_destructive — ZERO-WASTE-020 removed the write this guarded; if a real write came back, it needs the guard back too"
+# Uses GAP_DISPATCH for the same INFRA-1965 reason as Test 2. This one matters
+# more than it looks: pointed at src/main.rs after the move it would pass
+# VACUOUSLY — the text it searches for is no longer in that file at all — so a
+# re-introduced unguarded write would sail through a green check.
+if grep -q 'fail_if_stale_for_destructive(&repo_root,$' "$GAP_DISPATCH" \
+    && grep -A1 'fail_if_stale_for_destructive(&repo_root,$' "$GAP_DISPATCH" | grep -q '"gap ship --update-yaml"'; then
+    fail "$GAP_DISPATCH_REL: gap ship --update-yaml is still wired to fail_if_stale_for_destructive — ZERO-WASTE-020 removed the write this guarded; if a real write came back, it needs the guard back too"
 fi
 pass "gap ship --update-yaml is a documented no-op (ZERO-WASTE-020), correctly unguarded"
 

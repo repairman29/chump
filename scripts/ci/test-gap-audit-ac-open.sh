@@ -184,10 +184,21 @@ else
 fi
 
 echo "[9. INFRA-936 referenced in source]"
-if grep -r "INFRA-936\|infra936" "$REPO_ROOT/src/main.rs" 2>/dev/null | grep -q "INFRA-936\|infra936"; then
-  ok "INFRA-936 referenced in src/main.rs"
+# INFRA-1965 moved the `gap` command group (6,079 LOC) out of src/main.rs into
+# src/commands/gap.rs. Search both rather than pinning to one path — the claim
+# is "the gate is referenced in the gap dispatch source", not "it lives in
+# main.rs", and a pure code move should not read as a missing reference.
+_infra936_src=""
+for _cand in "$REPO_ROOT/src/commands/gap.rs" "$REPO_ROOT/src/main.rs"; do
+  if grep -qE "INFRA-936|infra936" "$_cand" 2>/dev/null; then
+    _infra936_src="$_cand"
+    break
+  fi
+done
+if [[ -n "$_infra936_src" ]]; then
+  ok "INFRA-936 referenced in ${_infra936_src#"$REPO_ROOT"/}"
 else
-  fail "INFRA-936 not found in src/main.rs"
+  fail "INFRA-936 not found in src/commands/gap.rs or src/main.rs"
 fi
 
 echo

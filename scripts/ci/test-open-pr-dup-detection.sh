@@ -18,7 +18,16 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SRC="$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs"
+# INFRA-1965 moved the whole `gap` command group (6,079 LOC) out of src/main.rs
+# into src/commands/gap.rs, taking the reserve-time similarity check with it.
+# Every "$MAIN" assertion below is about that gap-reserve logic, so resolve to
+# wherever the gap dispatch actually lives: new home first, main.rs as the
+# pre-INFRA-1965 fallback. Pinning these greps to a path made a pure code move
+# read as deleted behaviour.
 MAIN="$REPO_ROOT/src/main.rs"
+if grep -q '"gap_reserve_similarity_warn"' "$REPO_ROOT/src/commands/gap.rs" 2>/dev/null; then
+    MAIN="$REPO_ROOT/src/commands/gap.rs"
+fi
 REGISTRY="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
 
 echo "=== INFRA-1982 open-PR dedup detection tests ==="
