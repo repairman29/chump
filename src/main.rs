@@ -134,7 +134,7 @@ mod intent_parser;
 mod interrupt_notify;
 mod intervention_watchdog; // COTG-2.1/INFRA-3489: log every human touch as an autonomy defect
 mod introspect_tool;
-mod inventory; // META-271: fleet inventory + tech-debt review-only audit DB
+pub use chump_inventory::inventory; // META-271: fleet inventory + tech-debt review-only audit DB (EFFECTIVE-401: extracted to crates/chump-inventory)
 mod job_log;
 mod kpi_report;
 mod lesson_action;

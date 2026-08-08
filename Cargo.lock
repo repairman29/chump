@@ -1394,6 +1394,7 @@ dependencies = [
  "chump-cost-tracker",
  "chump-gap-store",
  "chump-handoff",
+ "chump-inventory",
  "chump-mcp-lifecycle",
  "chump-messaging",
  "chump-orchestrator",
@@ -1706,6 +1707,20 @@ dependencies = [
  "tempfile",
  "tokio",
  "uuid 1.24.0",
+]
+
+[[package]]
+name = "chump-inventory"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]
