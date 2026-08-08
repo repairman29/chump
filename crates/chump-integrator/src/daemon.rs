@@ -162,6 +162,20 @@ impl IntegratorDaemon {
             return Ok(());
         }
 
+        // Dirty-tree gate (EFFECTIVE-417): the cycle switches branches and builds
+        // an integration branch off the working checkout — any uncommitted change
+        // is carried into the batch. Observed 2026-08-08: a dry-run cycle dragged
+        // 13 uncommitted gap-yamls onto the integration branch. Refuse on a dirty
+        // tree so a batch never ships contaminated. Fail-closed: if git status
+        // can't be read, hold (we can't prove the tree is clean).
+        if self.working_tree_is_dirty() {
+            eprintln!(
+                "[integrator] working tree DIRTY — holding cycle {cycle_id} (uncommitted changes would contaminate the batch)"
+            );
+            emit_event("integration_dirty_tree_hold", &[("cycle_id", &cycle_id)]);
+            return Ok(());
+        }
+
         // ── Step 1: CLAIM ────────────────────────────────────────────────
         let claimed = self.try_claim_integration_slot(&cycle_id).await;
         if !claimed {
@@ -576,6 +590,16 @@ impl IntegratorDaemon {
         val.get("is_red").and_then(|v| v.as_bool()).unwrap_or(false)
     }
 
+    /// Returns true if the repo working tree has uncommitted changes.
+    ///
+    /// The integration cycle switches branches and builds an integration branch
+    /// off `repo_root`; a dirty tree carries uncommitted files into the batch
+    /// (observed 2026-08-08, EFFECTIVE-417). Fail-closed: a `git status` error
+    /// returns `true` (hold) — we can't prove the tree is clean, so don't ship.
+    fn working_tree_is_dirty(&self) -> bool {
+        git_working_tree_dirty(&self.repo_root)
+    }
+
     /// Returns true if a candidate has the do-not-batch label.
     ///
     /// Checks three surfaces (case-insensitive):
@@ -959,10 +983,59 @@ fn emit_event(kind: &str, fields: &[(&str, &str)]) {
     }
 }
 
+/// True if `repo_root`'s working tree has uncommitted changes (`git status
+/// --porcelain` non-empty). Fail-closed: a git error returns `true` (hold),
+/// because we can't prove the tree is clean and the cycle would otherwise
+/// carry uncommitted files into the batch (EFFECTIVE-417).
+fn git_working_tree_dirty(repo_root: &Path) -> bool {
+    match std::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(repo_root)
+        .output()
+    {
+        Ok(out) => !out.stdout.is_empty(),
+        Err(e) => {
+            eprintln!("[integrator] git status failed ({e}); holding as dirty (fail-closed)");
+            true
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cycle::GapCandidate;
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let ok = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("git")
+            .status
+            .success();
+        assert!(ok, "git {args:?} failed");
+    }
+
+    #[test]
+    fn dirty_tree_detected_clean_and_dirty() {
+        let td = tempfile::tempdir().unwrap();
+        let p = td.path();
+        git(p, &["init", "-q", "-b", "main"]);
+        git(p, &["config", "user.email", "t@t"]);
+        git(p, &["config", "user.name", "t"]);
+        std::fs::write(p.join("a.txt"), "seed").unwrap();
+        git(p, &["add", "."]);
+        git(p, &["commit", "-q", "-m", "seed"]);
+        // clean tree → not dirty
+        assert!(!git_working_tree_dirty(p), "committed tree should be clean");
+        // uncommitted new file → dirty (the EFFECTIVE-417 contamination case)
+        std::fs::write(p.join("junk.txt"), "uncommitted").unwrap();
+        assert!(
+            git_working_tree_dirty(p),
+            "uncommitted file should read dirty"
+        );
+    }
 
     fn candidate(branch: &str, author: Option<&str>, tags: &str) -> GapCandidate {
         GapCandidate {
