@@ -1,0 +1,22 @@
+[package]
+name = "chump-db-pool"
+version = "0.1.0"
+edition = "2021"
+description = "Shared SQLite connection pool for chump_memory.db (WAL + busy_timeout, r2d2) plus its schema/migrations. Extracted from the bin crate (EFFECTIVE-406 build-speed) as the shared DB foundation so it compiles + caches independently of the 190k-line binary."
+repository = "https://github.com/repairman29/chump"
+license = "AGPL-3.0-only"
+
+[features]
+# Placeholder to mirror the bin's `encrypted-db` flag (sqlcipher design pending;
+# see the bin's Cargo.toml). Keeps `#[cfg(feature = "encrypted-db")]` in db_pool.rs
+# a known cfg so `unexpected_cfgs` does not fire under CI's `-D warnings`.
+encrypted-db = []
+
+[dependencies]
+anyhow = "1.0"
+r2d2 = "0.8"
+r2d2_sqlite = { version = "0.25", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[lints]
+workspace = true
