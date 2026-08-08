@@ -899,9 +899,9 @@ fn poll_ci_until_terminal(opts: &Opts) -> anyhow::Result<CiResult> {
     // context) stops self-closing autonomous PRs. When absent/unreadable,
     // classify_check falls back to the benign-infra predicate + env advisory
     // list. Force the old all-checks-block behavior with
-    // CHUMP_VERIFY_CI_REQUIRED_CHECKS_ONLY=0.
+    // CHUMP_VERIFY_CI_REQUIRED_ONLY=0.
     let required_contexts: Option<Vec<String>> =
-        if std::env::var("CHUMP_VERIFY_CI_REQUIRED_CHECKS_ONLY").as_deref() == Ok("0") {
+        if std::env::var("CHUMP_VERIFY_CI_REQUIRED_ONLY").as_deref() == Ok("0") {
             None
         } else {
             fetch_required_contexts(opts)
@@ -2292,7 +2292,7 @@ fi
         std::env::set_var("CHUMP_VERIFY_CI_POLL_SECS", "0");
         std::env::set_var("CHUMP_VERIFY_CI_WAIT_SECS", "3600");
         std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_NAMES");
-        std::env::remove_var("CHUMP_VERIFY_CI_REQUIRED_CHECKS_ONLY");
+        std::env::remove_var("CHUMP_VERIFY_CI_REQUIRED_ONLY");
     }
 
     /// The mission-blocker (Bug 1 / CREDIBLE-228 / originally filed as the
