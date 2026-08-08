@@ -2706,6 +2706,17 @@ events:
     consumers: [fleet-brief, kpi-report, waste-tally]
     fields_required: [ts, pr, detail]
 
+  - kind: pr_rescue_ci_refire
+    effect_metric: self
+    emitter: scripts/coord/pr-rescue.sh (RESILIENT-248)
+    trigger: an open, auto-merge-armed PR had ZERO check runs on its head SHA more
+      than PR_RESCUE_NOCI_MINUTES (default 25) after creation — the pull_request
+      event created no workflow runs at all. CI is re-fired via close/reopen and
+      auto-merge re-armed. Distinct from pr_rescue_triggered, which fires when CI
+      ran and went RED; this one fires when CI never ran. At most once per head SHA.
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, pr, detail]
+
   - kind: pr_rescue_timeout
     effect_metric: self
     emitter: scripts/coord/pr-rescue.sh (INFRA-1153)
