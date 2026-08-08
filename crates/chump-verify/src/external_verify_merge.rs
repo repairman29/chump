@@ -620,15 +620,56 @@ const PASS_CONCLUSIONS: &[&str] = &["success", "skipped", "neutral"];
 // These terminal conclusions are hard failures.
 const FAIL_CONCLUSIONS: &[&str] = &["failure", "cancelled", "timed_out", "action_required"];
 
+/// CREDIBLE-228: is this a known-benign infrastructure check that must never
+/// gate a merge? Motivating case: when a PR is authored by a bot whose commit
+/// email is not linked to a GitHub account, Vercel posts a FAILING commit
+/// status "GitHub couldn't verify an account for the commit" on *every* such
+/// commit. It is an account-linking artifact, not a code failure, so it must
+/// not hold the PR — otherwise every autonomous PR self-closes. Matched
+/// conservatively: the check must be Vercel's AND its message must mention
+/// verifying an account (apostrophe-robust substring).
+fn is_benign_infra_check(name_lower: &str, detail_lower: &str) -> bool {
+    name_lower.contains("vercel") && detail_lower.contains("verify an account")
+}
+
 /// Parse a single check entry from statusCheckRollup JSON.
-/// Returns `(name, is_advisory, is_terminal, is_pass, is_fail)`.
-fn classify_check(check: &serde_json::Value, advisory_substrings: &[String]) -> CheckInfo {
+///
+/// `required_contexts` is the base branch's branch-protection required-check
+/// set (CREDIBLE-228). When `Some(non-empty)`, ONLY checks whose name is in
+/// that set gate the merge — anything else is advisory. When `None` (no
+/// readable protection), fall back to the env advisory list plus the curated
+/// benign-infra predicate.
+fn classify_check(
+    check: &serde_json::Value,
+    advisory_substrings: &[String],
+    required_contexts: Option<&[String]>,
+) -> CheckInfo {
     let name = check
         .get("name")
         .or_else(|| check.get("context"))
         .and_then(|v| v.as_str())
         .unwrap_or("(unnamed)")
         .to_string();
+
+    // CREDIBLE-228: gather human-readable detail (commit-status `description` +
+    // check-run `output`) so the benign-infra predicate can inspect the message
+    // text, e.g. Vercel's "GitHub couldn't verify an account for the commit".
+    let mut detail = String::new();
+    for key in ["description", "title", "summary", "text"] {
+        if let Some(s) = check.get(key).and_then(|v| v.as_str()) {
+            detail.push_str(s);
+            detail.push(' ');
+        }
+    }
+    if let Some(output) = check.get("output") {
+        for key in ["title", "summary", "text"] {
+            if let Some(s) = output.get(key).and_then(|v| v.as_str()) {
+                detail.push_str(s);
+                detail.push(' ');
+            }
+        }
+    }
+    let detail_lower = detail.to_ascii_lowercase();
 
     let conclusion = check
         .get("conclusion")
@@ -684,9 +725,22 @@ fn classify_check(check: &serde_json::Value, advisory_substrings: &[String]) -> 
         || state == "error";
 
     let name_lower = name.to_ascii_lowercase();
-    let is_advisory = advisory_substrings
+    let env_advisory = advisory_substrings
         .iter()
         .any(|sub| name_lower.contains(sub.as_str()));
+    let benign = is_benign_infra_check(&name_lower, &detail_lower);
+    let is_advisory = match required_contexts {
+        // CREDIBLE-228: branch protection is the authority on what blocks a
+        // merge. A check NOT in the required set is advisory regardless of its
+        // conclusion — this is what stops Vercel's benign "couldn't verify an
+        // account" status from self-closing every bot-authored PR. The env
+        // override and benign predicate still force-advisory even a listed
+        // check, so an operator can always widen (never narrow) the set.
+        Some(ctxs) => env_advisory || benign || !ctxs.iter().any(|c| c.eq_ignore_ascii_case(&name)),
+        // No readable branch protection (or none configured): fall back to the
+        // env-configured advisory list PLUS the curated benign-infra predicate.
+        None => env_advisory || benign,
+    };
 
     CheckInfo {
         name,
@@ -733,6 +787,77 @@ fn fetch_check_runs(opts: &Opts) -> anyhow::Result<Vec<serde_json::Value>> {
         .unwrap_or_default())
 }
 
+/// `gh pr view <pr> --repo <repo> --json baseRefName` → the PR's base branch.
+/// CREDIBLE-228 helper. Returns `None` if gh fails or the field is missing.
+fn fetch_base_ref_name(opts: &Opts) -> Option<String> {
+    let output = Command::new(&opts.gh_bin)
+        .args([
+            "pr",
+            "view",
+            &opts.pr.to_string(),
+            "--repo",
+            &opts.repo,
+            "--json",
+            "baseRefName",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    v.get("baseRefName")
+        .and_then(|b| b.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+/// CREDIBLE-228: fetch the base branch's REQUIRED status-check contexts from
+/// branch protection. These are the only checks GitHub itself lets block a
+/// merge; anything else on the PR is advisory (e.g. Vercel's benign
+/// account-verification status).
+///
+/// Returns:
+///   `Some(contexts)` — protection is readable AND declares a non-empty
+///                      required set; only these checks gate Gate 1.
+///   `None`           — no base branch resolvable, protection unreadable (404 /
+///                      no admin / repo has none), or the required set is empty.
+///                      Callers then fall back to the benign-infra predicate.
+fn fetch_required_contexts(opts: &Opts) -> Option<Vec<String>> {
+    let base = fetch_base_ref_name(opts)?;
+    let output = Command::new(&opts.gh_bin)
+        .args([
+            "api",
+            &format!("repos/{}/branches/{}/protection", opts.repo, base),
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        // 404 on repos without branch protection, or 403 without admin scope.
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    let rsc = v.get("required_status_checks")?;
+    let mut contexts: Vec<String> = Vec::new();
+    // Classic API: required_status_checks.contexts = ["ctx", ...]
+    if let Some(arr) = rsc.get("contexts").and_then(|c| c.as_array()) {
+        contexts.extend(arr.iter().filter_map(|c| c.as_str()).map(|s| s.to_string()));
+    }
+    // Newer API: required_status_checks.checks = [{"context":"ctx",...}, ...]
+    if let Some(arr) = rsc.get("checks").and_then(|c| c.as_array()) {
+        contexts.extend(
+            arr.iter()
+                .filter_map(|c| c.get("context").and_then(|x| x.as_str()))
+                .map(|s| s.to_string()),
+        );
+    }
+    if contexts.is_empty() {
+        None
+    } else {
+        Some(contexts)
+    }
+}
+
 /// Poll the PR's check-runs until ALL non-advisory checks are terminal,
 /// then judge the result. Implements the CREDIBLE-102 wait-before-judge logic.
 ///
@@ -768,6 +893,27 @@ fn poll_ci_until_terminal(opts: &Opts) -> anyhow::Result<CiResult> {
         .filter(|s| !s.is_empty())
         .collect();
 
+    // CREDIBLE-228: query branch protection ONCE — the required-check set is
+    // stable across the poll. When present, only these checks gate Gate 1, so
+    // Vercel's benign "couldn't verify an account" status (never a required
+    // context) stops self-closing autonomous PRs. When absent/unreadable,
+    // classify_check falls back to the benign-infra predicate + env advisory
+    // list. Force the old all-checks-block behavior with
+    // CHUMP_VERIFY_CI_REQUIRED_CHECKS_ONLY=0.
+    let required_contexts: Option<Vec<String>> =
+        if std::env::var("CHUMP_VERIFY_CI_REQUIRED_CHECKS_ONLY").as_deref() == Ok("0") {
+            None
+        } else {
+            fetch_required_contexts(opts)
+        };
+    if let Some(ctxs) = &required_contexts {
+        println!(
+            "[verify-merge] Gate 1: branch protection declares {} required check(s) — {} — others are advisory",
+            ctxs.len(),
+            ctxs.join(", ")
+        );
+    }
+
     let started_at = std::time::Instant::now();
 
     loop {
@@ -798,7 +944,7 @@ fn poll_ci_until_terminal(opts: &Opts) -> anyhow::Result<CiResult> {
 
         let infos: Vec<CheckInfo> = checks
             .iter()
-            .map(|c| classify_check(c, &advisory_substrings))
+            .map(|c| classify_check(c, &advisory_substrings, required_contexts.as_deref()))
             .collect();
 
         // Partition into required vs advisory.
@@ -2099,6 +2245,176 @@ fi
                     CiResult::Red { .. } => "Red",
                     CiResult::TimedOut { .. } => "TimedOut",
                     CiResult::Green { .. } => unreachable!(),
+                }
+            ),
+        }
+    }
+
+    // ── CREDIBLE-228: required-checks-only Gate 1 ────────────────────────
+    //
+    // A fake gh that answers the three calls Gate 1 makes: statusCheckRollup,
+    // baseRefName, and `api .../protection`. `protection_ok=false` makes the
+    // protection call fail (exit 1) so the poll falls back to the benign-infra
+    // predicate — modelling a repo with no readable branch protection.
+    fn fake_gh_ci_protection(
+        dir: &std::path::Path,
+        rollup_json: &str,
+        base_ref: &str,
+        protection_json: &str,
+        protection_ok: bool,
+    ) -> String {
+        let protection_arm = if protection_ok {
+            format!("echo '{}'", protection_json.replace('\'', "'\\''"))
+        } else {
+            "echo 'Not Found' >&2; exit 1".to_string()
+        };
+        let script = format!(
+            r#"
+ARGS="$*"
+if echo "$ARGS" | grep -q "statusCheckRollup"; then
+    echo '{rollup}'
+elif echo "$ARGS" | grep -q "baseRefName"; then
+    echo '{{"baseRefName":"{base_ref}"}}'
+elif echo "$ARGS" | grep -q "baseRefOid"; then
+    echo '{{"baseRefOid":"aabbcc112233","headRefOid":"ddeeff445566"}}'
+elif echo "$ARGS" | grep -q "protection"; then
+    {protection_arm}
+else
+    echo '{{}}'
+fi
+"#,
+            rollup = rollup_json.replace('\'', "'\\''"),
+        );
+        write_fake_gh(dir, &script)
+    }
+
+    fn reset_ci_env() {
+        std::env::set_var("CHUMP_VERIFY_CI_POLL_SECS", "0");
+        std::env::set_var("CHUMP_VERIFY_CI_WAIT_SECS", "3600");
+        std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_NAMES");
+        std::env::remove_var("CHUMP_VERIFY_CI_REQUIRED_CHECKS_ONLY");
+    }
+
+    /// The mission-blocker (Bug 1 / CREDIBLE-228 / originally filed as the
+    /// CREDIBLE-106 symptom): a FAILING check that is NOT in the branch's
+    /// required-status-check set must NOT hold the PR. Branch protection lists
+    /// only "CI" as required; a failing "Vercel" status must be treated as
+    /// advisory → Gate 1 PASS, not HELD(ci).
+    #[test]
+    #[serial_test::serial]
+    fn test_ci_non_required_failing_check_does_not_gate() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let rollup = r#"{"statusCheckRollup":[
+            {"name":"CI","status":"COMPLETED","conclusion":"SUCCESS"},
+            {"context":"Vercel","state":"FAILURE","description":"GitHub couldn't verify an account for the commit author"}
+        ]}"#;
+        // Branch protection requires ONLY "CI".
+        let protection = r#"{"required_status_checks":{"contexts":["CI"]}}"#;
+        let gh_bin = fake_gh_ci_protection(tmp.path(), rollup, "main", protection, true);
+
+        reset_ci_env();
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
+        );
+
+        let opts = make_opts(&gh_bin);
+        let result = poll_ci_until_terminal(&opts).expect("poll_ci");
+
+        match result {
+            CiResult::Green {
+                check_count,
+                checks,
+            } => {
+                assert_eq!(
+                    check_count, 1,
+                    "only the required 'CI' check should gate; the failing non-required Vercel check must be advisory"
+                );
+                assert!(
+                    checks.iter().any(|c| c == "CI"),
+                    "expected 'CI' in passing list, got {:?}",
+                    checks
+                );
+            }
+            other => panic!(
+                "a failing NON-REQUIRED check must not cause HELD; expected Green, got: {}",
+                match other {
+                    CiResult::NoGates => "NoGates",
+                    CiResult::Red { .. } =>
+                        "Red (CREDIBLE-228 regression — self-closes autonomous PRs)",
+                    CiResult::TimedOut { .. } => "TimedOut",
+                    CiResult::Green { .. } => unreachable!(),
+                }
+            ),
+        }
+    }
+
+    /// Fallback path: when branch protection is UNREADABLE (404 / no admin),
+    /// the curated benign-infra predicate must still spare Vercel's
+    /// "couldn't verify an account" status from gating — no env config needed.
+    #[test]
+    #[serial_test::serial]
+    fn test_ci_benign_vercel_account_check_does_not_gate_on_fallback() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let rollup = r#"{"statusCheckRollup":[
+            {"name":"CI","status":"COMPLETED","conclusion":"SUCCESS"},
+            {"context":"Vercel","state":"FAILURE","description":"GitHub couldn't verify an account for the commit author"}
+        ]}"#;
+        // protection_ok=false → required_contexts is None → fallback to benign predicate.
+        let gh_bin = fake_gh_ci_protection(tmp.path(), rollup, "main", "", false);
+
+        reset_ci_env();
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
+        );
+
+        let opts = make_opts(&gh_bin);
+        let result = poll_ci_until_terminal(&opts).expect("poll_ci");
+
+        assert!(
+            matches!(result, CiResult::Green { .. }),
+            "benign Vercel account-verification status must not gate even without branch protection"
+        );
+    }
+
+    /// Guard: a REAL required check that fails still HELDs — the fix must not
+    /// turn Gate 1 into a rubber stamp.
+    #[test]
+    #[serial_test::serial]
+    fn test_ci_required_failing_check_still_gates() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let rollup = r#"{"statusCheckRollup":[
+            {"name":"CI","status":"COMPLETED","conclusion":"FAILURE"}
+        ]}"#;
+        let protection = r#"{"required_status_checks":{"contexts":["CI"]}}"#;
+        let gh_bin = fake_gh_ci_protection(tmp.path(), rollup, "main", protection, true);
+
+        reset_ci_env();
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
+        );
+
+        let opts = make_opts(&gh_bin);
+        let result = poll_ci_until_terminal(&opts).expect("poll_ci");
+
+        match result {
+            CiResult::Red { failing } => {
+                assert!(
+                    failing.iter().any(|f| f.contains("CI")),
+                    "expected required 'CI' in failing list, got {:?}",
+                    failing
+                );
+            }
+            other => panic!(
+                "a failing REQUIRED check must still HELD; expected Red, got: {}",
+                match other {
+                    CiResult::NoGates => "NoGates",
+                    CiResult::Green { .. } =>
+                        "Green (fix over-reached — Gate 1 became a rubber stamp)",
+                    CiResult::TimedOut { .. } => "TimedOut",
+                    CiResult::Red { .. } => unreachable!(),
                 }
             ),
         }
