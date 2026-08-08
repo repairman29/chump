@@ -23,35 +23,35 @@ echo "=== INFRA-1970 gap-ID lease uniqueness test ==="
 echo
 
 # 1. check_gap_id_uniqueness function present in atomic_claim.rs.
-if grep -q 'fn check_gap_id_uniqueness' "$REPO_ROOT/src/atomic_claim.rs"; then
+if grep -q 'fn check_gap_id_uniqueness' "$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs"; then
     ok "check_gap_id_uniqueness function exists"
 else
     fail "check_gap_id_uniqueness function missing from src/atomic_claim.rs"
 fi
 
 # 2. emit_claim_duplicate_gap_event function present.
-if grep -q 'fn emit_claim_duplicate_gap_event' "$REPO_ROOT/src/atomic_claim.rs"; then
+if grep -q 'fn emit_claim_duplicate_gap_event' "$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs"; then
     ok "emit_claim_duplicate_gap_event function exists"
 else
     fail "emit_claim_duplicate_gap_event function missing from src/atomic_claim.rs"
 fi
 
 # 3. scanner-anchor present for ambient event kind.
-if grep -q 'claim_duplicate_gap_blocked' "$REPO_ROOT/src/atomic_claim.rs"; then
+if grep -q 'claim_duplicate_gap_blocked' "$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs"; then
     ok "scanner-anchor 'claim_duplicate_gap_blocked' present"
 else
     fail "scanner-anchor 'claim_duplicate_gap_blocked' missing — ambient kind won't appear in registry"
 fi
 
 # 4. run_check_only wires gate 'gap-id-unique'.
-if grep -q '"gap-id-unique"' "$REPO_ROOT/src/atomic_claim.rs"; then
+if grep -q '"gap-id-unique"' "$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs"; then
     ok "gate 'gap-id-unique' wired in run_check_only"
 else
     fail "gate 'gap-id-unique' missing from run_check_only"
 fi
 
 # 5. CHUMP_CLAIM_ALLOW_DUPLICATE_GAP bypass env-var referenced in code.
-if grep -q 'CHUMP_CLAIM_ALLOW_DUPLICATE_GAP' "$REPO_ROOT/src/atomic_claim.rs"; then
+if grep -q 'CHUMP_CLAIM_ALLOW_DUPLICATE_GAP' "$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs"; then
     ok "CHUMP_CLAIM_ALLOW_DUPLICATE_GAP bypass env-var referenced"
 else
     fail "CHUMP_CLAIM_ALLOW_DUPLICATE_GAP bypass env-var missing"

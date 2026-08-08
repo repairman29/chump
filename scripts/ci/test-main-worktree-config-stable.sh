@@ -39,7 +39,7 @@ else
     fail "pre-commit-main-worktree-config.sh missing or not executable"
 fi
 
-if grep -q "INFRA-1060" "$REPO_ROOT/src/atomic_claim.rs" 2>/dev/null; then
+if grep -q "INFRA-1060" "$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs" 2>/dev/null; then
     ok "atomic_claim.rs has INFRA-1060 sanitizer"
 else
     fail "atomic_claim.rs missing INFRA-1060 sanitizer"
