@@ -112,7 +112,7 @@ use chump_gap_store as gap_store;
 // even when the CI rust-cache restores a stale build (fixes E0433 on Ubuntu).
 extern crate chump_ship;
 mod audit;
-mod bench; // DOC-072/EFFECTIVE-327: ChumpBench — run a track as a scoreable lap
+pub use chump_bench::bench; // DOC-072/EFFECTIVE-327: ChumpBench — run a track as a scoreable lap (EFFECTIVE-405: extracted to crates/chump-bench)
 mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod cartographer; // INFRA-1782: chump cartograph <repo-path> — ARCHITECTURE.md generation (INFRA-1746 phase 2)
 mod collision_prediction; // META-076: predictive collision detection (mock inputs), first impl of docs/design/COLLISION_PREDICTION_SCHEMA.md

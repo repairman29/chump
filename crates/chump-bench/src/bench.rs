@@ -12,8 +12,24 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// Locate the `comprehend` binary (almanac-organs). Honors `CHUMP_COMPREHEND_BIN`,
+/// else falls back to `~/.cargo/bin/comprehend`. Inlined here (EFFECTIVE-405) to keep
+/// this crate free of any inbound call to the bin — `comprehend_tool` stays in the bin
+/// and keeps its own copy for its own uses; this pure env/HOME lookup has no shared state.
+fn comprehend_bin() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("CHUMP_COMPREHEND_BIN") {
+        let pb = PathBuf::from(p);
+        if pb.exists() {
+            return Some(pb);
+        }
+    }
+    let home = std::env::var("HOME").ok()?;
+    let default = PathBuf::from(home).join(".cargo/bin/comprehend");
+    default.exists().then_some(default)
+}
 
 /// A track: the schema from `e2e/chumpbench/<track>.yaml`.
 #[derive(Debug, Deserialize)]
@@ -1488,7 +1504,7 @@ fn drive_engine(track: &Track, implement: bool) -> Result<Option<(Verdict, Strin
             // after-comprehend" as the next COMPREHEND layer (a follow-up wires
             // comprehend → emit docs/ONBOARDING_MAP.md so acceptance can pass
             // zero-touch). Mirrors the CREATE arm's honest-partial posture.
-            let bin = crate::comprehend_tool::comprehend_bin().ok_or_else(|| {
+            let bin = comprehend_bin().ok_or_else(|| {
                 anyhow::anyhow!("comprehend binary not found (set CHUMP_COMPREHEND_BIN)")
             })?;
             let dir = local_clone_dir(&track.repo);
