@@ -21,7 +21,10 @@ echo "=== FLEET-044: per-agent throughput tracker ==="
 echo
 
 TRACKER="$REPO_ROOT/scripts/ops/agent-throughput-tracker.sh"
-KPI_RS="$REPO_ROOT/src/kpi_report.rs"
+# EFFECTIVE-418: kpi_report moved to crates/chump-kpi-report; resolve
+# layout-agnostically so this test survives the extraction.
+source "$SCRIPT_DIR/lib/source-grep.sh"
+KPI_RS="$(find_rust_module kpi_report)"
 MAIN_RS="$REPO_ROOT/src/main.rs"
 
 # 1. tracker script exists and is executable

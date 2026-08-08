@@ -1399,6 +1399,7 @@ dependencies = [
  "chump-gap-store",
  "chump-handoff",
  "chump-inventory",
+ "chump-kpi-report",
  "chump-mcp-lifecycle",
  "chump-memory-db",
  "chump-messaging",
@@ -1779,6 +1780,17 @@ dependencies = [
  "serial_test",
  "tempfile",
  "tracing",
+]
+
+[[package]]
+name = "chump-kpi-report"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chump-gap-store",
+ "chump-waste-tally",
+ "rusqlite",
+ "serde_json",
 ]
 
 [[package]]
