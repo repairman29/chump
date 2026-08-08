@@ -54,7 +54,7 @@ echo "=== INFRA-1397 paramedic leader-failover tests ==="
 [[ -n "$BINARY" && -x "$BINARY" ]] || { fail "chump binary not found (run cargo build first)"; echo "FAIL"; exit 1; }
 ok "chump binary present ($BINARY)"
 
-SRC="$REPO_ROOT/src/paramedic.rs"
+SRC="$REPO_ROOT/crates/chump-paramedic/src/paramedic.rs"
 [[ -f "$SRC" ]] || { fail "src/paramedic.rs not found"; echo "FAIL"; exit 1; }
 ok "src/paramedic.rs present"
 

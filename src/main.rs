@@ -165,7 +165,7 @@ mod onboard; // INFRA-2108: chump onboard <repo-url-or-path>
 mod onboard_repo_tool;
 mod operator_presence;
 mod orchestrate;
-mod paramedic;
+pub use chump_paramedic::paramedic;
 mod patch_apply;
 mod pe_suite_status; // INFRA-2229: chump pe-suite status dashboard
 mod pending_peer_approval;
