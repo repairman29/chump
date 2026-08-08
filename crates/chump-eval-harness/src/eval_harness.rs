@@ -577,7 +577,7 @@ pub fn check_all_properties(
 
 /// Persist an eval case definition to the DB.
 pub fn save_eval_case(case: &EvalCase) -> Result<()> {
-    let conn = crate::db_pool::get()?;
+    let conn = chump_db_pool::db_pool::get()?;
     conn.execute(
         "INSERT OR REPLACE INTO chump_eval_cases \
          (id, name, category, input_text, expected_properties_json, scoring_weights_json, updated_at) \
@@ -596,7 +596,7 @@ pub fn save_eval_case(case: &EvalCase) -> Result<()> {
 
 /// Load all eval cases from the DB.
 pub fn load_eval_cases() -> Result<Vec<EvalCase>> {
-    let conn = crate::db_pool::get()?;
+    let conn = chump_db_pool::db_pool::get()?;
     let mut stmt = conn.prepare(
         "SELECT id, name, category, input_text, expected_properties_json, scoring_weights_json \
          FROM chump_eval_cases ORDER BY id",
@@ -633,7 +633,7 @@ pub fn load_eval_cases() -> Result<Vec<EvalCase>> {
 
 /// Persist an eval run result.
 pub fn save_eval_run(result: &EvalRunResult, agent_version: &str, model: &str) -> Result<()> {
-    let conn = crate::db_pool::get()?;
+    let conn = chump_db_pool::db_pool::get()?;
     conn.execute(
         "INSERT INTO chump_eval_runs \
          (eval_case_id, run_id, agent_version, model_used, scores_json, \
@@ -659,7 +659,7 @@ pub fn save_eval_run(result: &EvalRunResult, agent_version: &str, model: &str) -
 /// Compare current test results against the last battle_qa baseline.
 /// Returns a warning message if failures increased significantly.
 pub fn check_regression(current_passed: u32, current_failed: u32) -> Option<String> {
-    let conn = match crate::db_pool::get() {
+    let conn = match chump_db_pool::db_pool::get() {
         Ok(c) => c,
         Err(_) => return None,
     };
@@ -685,7 +685,7 @@ pub fn check_regression(current_passed: u32, current_failed: u32) -> Option<Stri
 
 /// Load the most recent N eval run results for a given case.
 pub fn recent_runs(eval_case_id: &str, limit: usize) -> Result<Vec<EvalRunResult>> {
-    let conn = crate::db_pool::get()?;
+    let conn = chump_db_pool::db_pool::get()?;
     let mut stmt = conn.prepare(
         "SELECT eval_case_id, run_id, scores_json, properties_passed_json, \
          properties_failed_json, duration_ms, raw_output \
