@@ -1402,6 +1402,7 @@ dependencies = [
  "chump-ship",
  "chump-team",
  "chump-tool-macro",
+ "chump-verify",
  "console-subscriber",
  "dhat",
  "dotenvy",
@@ -1911,6 +1912,18 @@ dependencies = [
  "quote",
  "serde_json",
  "syn 3.0.3",
+]
+
+[[package]]
+name = "chump-verify"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "chump-ambient-cli",
+ "serde_json",
+ "serial_test",
+ "tempfile",
 ]
 
 [[package]]
