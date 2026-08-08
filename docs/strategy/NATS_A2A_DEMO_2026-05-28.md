@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-28
+---
+
 # NATS A2A Substrate Demo — 2026-05-28
 
 **Authored:** 2026-05-28 by curator-opus-overnight.

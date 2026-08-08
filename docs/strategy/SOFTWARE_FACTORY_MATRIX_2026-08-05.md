@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap: DOC-089
+last_audited: 2026-08-08
+---
+
 # The Software-Factory Matrix — Chump audited against the 8-layer factory model
 
 > **What this is.** The operator's 2026-08-05 essay frames the goal as an

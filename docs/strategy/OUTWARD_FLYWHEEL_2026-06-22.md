@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-06-22
+---
+
 # The Outward Flywheel — discovery-driven roadmap (2026-06-22)
 
 > **What this is.** The roadmap for turning Chump from "a fleet that improves

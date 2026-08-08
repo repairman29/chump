@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap: DOC-089
+last_audited: 2026-08-08
+---
+
 # COTG Execution Matrix — verified status + graft sources (DOC-075)
 
 > **What this is.** `COTG_READINESS_BACKLOG.md` is the canonical design; `CHUMP_FRONT_DOOR.md`

@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap: DOC-089
+last_audited: 2026-08-08
+---
+
 # ChumpOS V1 — delivery roadmap (DOC-074)
 
 > **Plan of record** for shipping a publishable ChumpOS V1. Sibling of

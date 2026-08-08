@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-25
+---
+
 # THE FLOOR — Retrospective (Day-1 ship)
 
 **Status:** Companion to `docs/strategy/THE_FLOOR.md`

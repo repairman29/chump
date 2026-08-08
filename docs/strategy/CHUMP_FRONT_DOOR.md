@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap: DOC-089
+last_audited: 2026-08-08
+---
+
 # Chump Front Door — the entry architecture (DOC-071)
 
 > **Status:** spec of record for how ChumpOS *meets* a person and their work.

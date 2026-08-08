@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-29
+---
+
 # Live A2A Consensus Pipeline
 
 **Authored:** 2026-05-29 by curator-opus (INFRA-2151 / META-125 C1).

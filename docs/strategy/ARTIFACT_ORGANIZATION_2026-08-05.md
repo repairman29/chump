@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap: DOC-089
+last_audited: 2026-08-08
+---
+
 # The Artifact Organization — the fleet already contains the full software company
 
 > **What this is.** Sibling to [`SOFTWARE_FACTORY_MATRIX_2026-08-05.md`](./SOFTWARE_FACTORY_MATRIX_2026-08-05.md)

@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-06-03
+---
+
 # Commit→Merge Pipeline Audit (2026-06-03)
 
 > **Verdict: we are doing it wrong — structurally over-engineered and fail-closed.**

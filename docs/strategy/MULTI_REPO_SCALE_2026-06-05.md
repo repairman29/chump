@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-06-05
+---
+
 # Multi-Repo Scale Strategy
 
 > **Operator framing (2026-06-05):** *"I want this to scale to 100s of repos
