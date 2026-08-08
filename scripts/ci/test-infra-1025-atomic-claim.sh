@@ -8,7 +8,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ATOMIC="$REPO_ROOT/src/atomic_claim.rs"
+ATOMIC="$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs"
 GAP_CLAIM="$REPO_ROOT/scripts/coord/gap-claim.sh"
 
 PASS=0; FAIL=0

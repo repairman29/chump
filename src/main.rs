@@ -28,10 +28,13 @@ mod asi_telemetry;
 mod ask_jeff_db;
 mod ask_jeff_tool;
 mod assertion;
-mod atomic_claim;
+// EFFECTIVE-399: atomic_claim + its autonomy_level leaf dep extracted into
+// crates/chump-atomic-claim for build speed. Re-exported at crate root so every
+// existing `crate::atomic_claim::X` / `crate::autonomy_level::X` (and bare
+// `atomic_claim::X`) reference across the bin resolves with zero caller edits.
+pub use chump_atomic_claim::{atomic_claim, autonomy_level};
 mod auth;
 mod autonomy_fsm;
-mod autonomy_level; // RESILIENT-073: fleet kill switch — fail-closed pure file read
 mod autonomy_loop;
 mod autopilot;
 mod battle_qa_tool;

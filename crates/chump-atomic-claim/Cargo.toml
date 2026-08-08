@@ -1,0 +1,23 @@
+[package]
+name = "chump-atomic-claim"
+version = "0.1.0"
+edition = "2021"
+description = "ChumpOS atomic gap-claim engine: race-free claim/lease/worktree lifecycle plus the autonomy-level kill switch. Extracted from the bin crate (EFFECTIVE-399 build-speed) so it compiles + caches independently of the 190k-line binary."
+repository = "https://github.com/repairman29/chump"
+license = "AGPL-3.0-only"
+
+[dependencies]
+anyhow = "1.0"
+serde = { version = "1.0.118", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+uuid = { version = "1", features = ["v4"] }
+tokio = { version = "1", features = ["full"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+chump-team = { path = "../chump-team", version = "0.1.0" }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -18,7 +18,7 @@ set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT" || exit 2
-SRC="src/worktree_build_cache.rs"
+SRC="crates/chump-atomic-claim/src/worktree_build_cache.rs"
 REG="docs/observability/EVENT_REGISTRY.yaml"
 PASS=0; FAIL=0
 _p() { echo "[PASS] $1"; PASS=$((PASS+1)); }
@@ -38,7 +38,7 @@ grep -q 'worktree_build_cache_provisioned' "$SRC" 2>/dev/null \
     && _p "obs: worktree_build_cache_provisioned emitted" || _f "obs: provisioned event MISSING"
 grep -q 'worktree_build_cache_skip' "$SRC" 2>/dev/null \
     && _p "obs: worktree_build_cache_skip (with reason) emitted" || _f "obs: skip event MISSING"
-grep -q 'provision_worktree_build_cache' src/atomic_claim.rs 2>/dev/null \
+grep -q 'provision_worktree_build_cache' crates/chump-atomic-claim/src/atomic_claim.rs 2>/dev/null \
     && _p "wiring: atomic_claim invokes the provisioner on worktree creation" || _f "wiring: atomic_claim does NOT call provisioner"
 { grep -q 'kind: worktree_build_cache_provisioned' "$REG" && grep -q 'kind: worktree_build_cache_skip' "$REG"; } 2>/dev/null \
     && _p "registry: both event kinds registered in EVENT_REGISTRY.yaml" || _f "registry: event kind(s) NOT registered"
@@ -48,7 +48,7 @@ grep -q 'provision_worktree_build_cache' src/atomic_claim.rs 2>/dev/null \
 if [[ "${CHUMP_WTBC_CARGO_DISABLED:-0}" == "1" ]]; then
     echo "[SKIP] cargo unit tests (CHUMP_WTBC_CARGO_DISABLED=1)"
 elif command -v cargo >/dev/null 2>&1; then
-    if PATH="$HOME/.cargo/bin:$PATH" cargo test worktree_build_cache 2>&1 | tail -25 | grep -qE 'test result: ok'; then
+    if PATH="$HOME/.cargo/bin:$PATH" cargo test -p chump-atomic-claim worktree_build_cache 2>&1 | tail -25 | grep -qE 'test result: ok'; then
         _p "rust: worktree_build_cache unit tests pass (provision + config.toml + unique target-dir)"
     else
         _f "rust: worktree_build_cache unit tests FAILED"
