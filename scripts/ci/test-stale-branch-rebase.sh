@@ -9,7 +9,7 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SRC="$REPO_ROOT/src/paramedic.rs"
+SRC="$REPO_ROOT/crates/chump-paramedic/src/paramedic.rs"
 
 echo "=== INFRA-1429 stale-branch auto-rebase tests ==="
 
