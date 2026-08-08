@@ -999,7 +999,11 @@ fn diff_test_files(clone_dir: &Path, base: &str, head: &str) -> anyhow::Result<V
 }
 
 /// Heuristic: does this path look like a test file?
-fn is_test_file(path: &str) -> bool {
+///
+/// CREDIBLE-215 reuses this as the single source of truth for the TEST-ONLY
+/// verdict in `commands::reachability`, so it is `pub(crate)` — one definition
+/// of "is this a test file" shared by Gate 2 and the mechanical stub detector.
+pub(crate) fn is_test_file(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
     let stem = std::path::Path::new(&lower)
         .file_name()
