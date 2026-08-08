@@ -18,9 +18,18 @@ on:
         required: false
         default: ""
       stale_hours:
-        description: "Age threshold in hours (default: 4)"
+        description: "Age threshold in hours for the red-CI rebase path (default: 4)"
         required: false
         default: "4"
+      noci_minutes:
+        description: "RESILIENT-248: minutes with ZERO CI runs before re-firing (default: 25)"
+        required: false
+        default: "25"
+      dry_run:
+        description: "Log what would be re-fired without touching any PR"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -38,15 +47,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITHUB_REPOSITORY: ${{ github.repository }}
       PR_RESCUE_STALE_HOURS: ${{ inputs.stale_hours || '4' }}
+      PR_RESCUE_NOCI_MINUTES: ${{ inputs.noci_minutes || '25' }}
+      PR_RESCUE_DRY_RUN: ${{ inputs.dry_run == true && '1' || '0' }}
     steps:
+      # RESILIENT-248: an App token, NOT secrets.GITHUB_TOKEN.
+      #
+      # This is load-bearing, not hygiene. GitHub does not create workflow runs
+      # from events triggered by GITHUB_TOKEN. The zero-CI-runs rescue works by
+      # closing and reopening a PR to re-fire its `pull_request` event — done
+      # with GITHUB_TOKEN that reopen would produce EXACTLY the zero-run state
+      # it is trying to cure, while logging success. The instrument would report
+      # healthy while curing nothing, which is worse than not having it.
+      #
+      # Same App the queue driver uses (.github/workflows/queue-driver.yml:48).
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ secrets.QUEUE_DRIVER_APP_ID }}
+          private-key: ${{ secrets.QUEUE_DRIVER_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Run pr-rescue
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           if [[ -n "${{ inputs.pr_number }}" ]]; then
             bash scripts/coord/pr-rescue.sh --pr "${{ inputs.pr_number }}"
