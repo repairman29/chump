@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-24
+---
+
 # Ship Order Vision — Order the Gap Store by Wedge-Class Topology
 
 **Authored:** 2026-05-25 by opus-curator-overnight

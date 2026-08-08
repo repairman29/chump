@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-27
+---
+
 # Wizard-Daemon Model — META-109 Phase 1 + META-107 Phase 2
 
 > The DRIVE primitive that ties THE FLOOR's BUILD primitives into an autonomous loop.

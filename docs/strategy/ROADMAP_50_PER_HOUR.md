@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-16
+---
+
 # Roadmap — 50 PRs/hour by end of May 2026
 
 > **Mission:** scale the fleet from today's 5.6 PRs/hour 5-day average to a

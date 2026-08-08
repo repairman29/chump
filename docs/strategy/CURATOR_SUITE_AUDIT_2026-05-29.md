@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-06-01
+---
+
 # Curator Suite Audit — 2026-05-29
 
 **Authored by:** curator-opus-harvester (self-audit pass)

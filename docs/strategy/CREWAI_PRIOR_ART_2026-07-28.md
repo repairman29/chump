@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap: DOC-089
+last_audited: 2026-08-08
+---
+
 # CrewAI as prior art — what to borrow, and how it maps to ChumpOS
 
 > Filed 2026-07-28. Operator asked: "how is Chump different/same as CrewAI, and —

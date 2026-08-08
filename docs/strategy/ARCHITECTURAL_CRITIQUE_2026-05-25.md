@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-25
+---
+
 # Architectural Critique — Chump as of 2026-05-25
 
 **Authored:** 2026-05-25 by opus-curator-overnight (Principal Systems Architect framing, per operator request).

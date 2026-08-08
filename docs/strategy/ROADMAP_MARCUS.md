@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-29
+---
+
 # Marcus roadmap — deliver the experience Persona-1 asked for
 
 > **Status:** active 2026-05-16

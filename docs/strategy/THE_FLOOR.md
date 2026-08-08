@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-07-19
+---
+
 # THE FLOOR — foundational plan for 50/hr to feel boring
 
 **Status:** Plan-for-sign-off (2026-05-25)
