@@ -1305,7 +1305,15 @@ fn verify_staged_edit(work_dir: &Path) -> Result<()> {
         .args(["-C", &wd, "diff", "--cached", "--numstat"])
         .output()
         .with_context(|| "git diff --cached --numstat")?;
-    for line in String::from_utf8_lossy(&out.stdout).lines() {
+    verify_edit_numstat(work_dir, &String::from_utf8_lossy(&out.stdout))
+}
+
+/// EFFECTIVE-408: the same edit-verify checks (destructive-clobber + structured-file
+/// validity) applied to any `git diff … --numstat` output, factored out so both the
+/// staged ship gate (`verify_staged_edit`) and the pre-ship escalation probe
+/// (`working_tree_edit_is_broken`) share ONE rule set and can never drift.
+fn verify_edit_numstat(work_dir: &Path, numstat: &str) -> Result<()> {
+    for line in numstat.lines() {
         let mut parts = line.split('\t');
         let added = parts.next().unwrap_or("-");
         let deleted = parts.next().unwrap_or("-");
@@ -1354,6 +1362,27 @@ fn verify_staged_edit(work_dir: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// EFFECTIVE-408: does the worktree hold a landed-but-BROKEN edit that the ship gate
+/// (`verify_staged_edit` / COTG-1.3) would reject? Probes the UNCOMMITTED tree
+/// (`git diff HEAD --numstat`, which covers both staged and unstaged changes) with the
+/// same rules, BEFORE the deterministic ship stages anything. A weak model that lands
+/// an invalid-YAML/JSON edit or a destructive clobber is a *failed* attempt just like
+/// landing no edit at all — this lets the EFFECTIVE-366 ladder escalate to a stronger
+/// model instead of failing the whole run. Returns false if git can't be read (fail
+/// open — the ship gate remains the real backstop).
+fn working_tree_edit_is_broken(work_dir: &Path) -> bool {
+    let wd = work_dir.to_string_lossy().to_string();
+    let out = Command::new("git")
+        .args(["-C", &wd, "diff", "HEAD", "--numstat"])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => {
+            verify_edit_numstat(work_dir, &String::from_utf8_lossy(&o.stdout)).is_err()
+        }
+        _ => false,
+    }
 }
 
 /// COTG-1.2/INFRA-3484: the deterministic ship ceremony. The implement-agent is
@@ -1785,12 +1814,25 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
     // patch_file/run_cli, both fail); Claude reliably edits. The claude run is edit-first;
     // deterministic_ship below turns its edits into the PR, same as the free path. Skip
     // with CHUMP_IMPLEMENT_ESCALATE_CLAUDE=0.
+    //
+    // EFFECTIVE-408: also escalate when the cascade landed a BROKEN edit — one that the
+    // COTG-1.3 ship gate (invalid YAML/JSON/TOML, or a destructive clobber) would reject.
+    // A landed-but-rejected edit is a failed attempt exactly like landing no edit: without
+    // this, `deterministic_ship` below just bails RC=1 and the whole run fails instead of
+    // giving the next-stronger model a shot at fixing it.
+    let landed_no_edit = !work_dir_has_real_edits(&work_dir);
+    let landed_broken_edit = !landed_no_edit && working_tree_edit_is_broken(&work_dir);
     if backend != "claude"
         && std::env::var("CHUMP_IMPLEMENT_ESCALATE_CLAUDE").as_deref() != Ok("0")
-        && !work_dir_has_real_edits(&work_dir)
+        && (landed_no_edit || landed_broken_edit)
     {
+        let why = if landed_broken_edit {
+            "landed a broken edit (COTG-1.3 ship gate would reject it)"
+        } else {
+            "landed no edit"
+        };
         eprintln!(
-            "[improve] EFFECTIVE-366 escalation: free/sub cascade landed no edit — \
+            "[improve] EFFECTIVE-366 escalation: free/sub cascade {why} — \
              escalating to the Claude final rung (sonnet/opus)"
         );
         let claude_bin =
@@ -4982,6 +5024,79 @@ Some prose from the agent.
         assert!(
             r.is_err() && r.unwrap_err().to_string().contains("parses"),
             "invalid JSON must be rejected"
+        );
+    }
+
+    /// EFFECTIVE-408: a landed-but-BROKEN edit (invalid YAML, or a destructive clobber)
+    /// present in the UNCOMMITTED working tree is detected by `working_tree_edit_is_broken`
+    /// — the signal that drives EFFECTIVE-366 escalation. Before this fix, such a repo
+    /// state skipped escalation (an edit HAD landed → not the no-edit case) and then failed
+    /// at the ship gate instead of retrying with a stronger model. Also proves the
+    /// escalation decision (`landed_no_edit || landed_broken_edit`) fires on a broken edit.
+    /// Hermetic (git + serde). Note: probes the working tree WITHOUT staging, since
+    /// escalation happens before `deterministic_ship` stages anything.
+    #[test]
+    fn working_tree_broken_edit_triggers_escalation() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let wd = tmp.path();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(["-C", wd.to_str().unwrap()])
+                .args(args)
+                .output()
+                .unwrap();
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        let big_yaml = format!(
+            "root:\n{}\n",
+            (0..100)
+                .map(|i| format!("  k{i}: {i}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        fs::write(wd.join("big.yaml"), &big_yaml).unwrap();
+        fs::write(wd.join("conf.yml"), "a: 1\nb: 2\n").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "seed"]);
+
+        // (clean baseline) no uncommitted edits → not broken.
+        assert!(
+            !working_tree_edit_is_broken(wd),
+            "no edit must not read as broken"
+        );
+
+        // (good edit, unstaged) a valid small YAML edit → not broken → no escalation.
+        fs::write(wd.join("conf.yml"), "a: 1\nb: 2\nc: 3\n").unwrap();
+        assert!(
+            !working_tree_edit_is_broken(wd),
+            "a valid unstaged edit must not read as broken"
+        );
+        git(&["checkout", "-q", "--", "."]);
+
+        // (broken edit, unstaged) invalid YAML → broken → escalate. The weak model
+        // "landed" an edit (work_dir_has_real_edits would be true), but it's rejected.
+        fs::write(wd.join("conf.yml"), "a: 1\nb: [1, 2, 3\n").unwrap();
+        assert!(
+            working_tree_edit_is_broken(wd),
+            "invalid-YAML edit must read as broken (drives EFFECTIVE-366 escalation)"
+        );
+        // The escalation decision must fire: an edit landed (not no-edit) but it's broken.
+        let landed_no_edit = false;
+        let landed_broken_edit = !landed_no_edit && working_tree_edit_is_broken(wd);
+        assert!(
+            landed_no_edit || landed_broken_edit,
+            "broken landed edit must trigger the Claude-rung escalation, not fail the run"
+        );
+        git(&["checkout", "-q", "--", "."]);
+
+        // (destructive clobber, unstaged) near-total rewrite → broken → escalate.
+        fs::write(wd.join("big.yaml"), "x: 1\n").unwrap();
+        assert!(
+            working_tree_edit_is_broken(wd),
+            "a destructive clobber must read as broken"
         );
     }
 
