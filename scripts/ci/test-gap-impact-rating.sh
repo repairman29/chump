@@ -20,12 +20,24 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 echo "=== FLEET-048: gap impact rating ==="
 echo
 
-# 1. gap rate arm in main.rs
-if grep -q '"rate"' "$REPO_ROOT/src/main.rs" 2>/dev/null && \
-   grep -q 'gap_impact_rated' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
-    ok "main.rs: gap rate subcommand defined"
+# 1. gap rate arm — INFRA-1965 moved the whole `gap` command group (6,079 LOC)
+#    out of src/main.rs into src/commands/gap.rs. Check the new home first and
+#    keep main.rs as a fallback so this gate also passes on branches predating
+#    the move. The claim worth asserting is "the subcommand exists in the gap
+#    dispatch", not "it lives in one specific file" — pinning it to a path made
+#    a pure code move indistinguishable from a deleted feature.
+GAP_DISPATCH_SRC=""
+for _cand in "$REPO_ROOT/src/commands/gap.rs" "$REPO_ROOT/src/main.rs"; do
+    if grep -q '"rate"' "$_cand" 2>/dev/null && \
+       grep -q 'gap_impact_rated' "$_cand" 2>/dev/null; then
+        GAP_DISPATCH_SRC="$_cand"
+        break
+    fi
+done
+if [[ -n "$GAP_DISPATCH_SRC" ]]; then
+    ok "gap rate subcommand defined (${GAP_DISPATCH_SRC#"$REPO_ROOT"/})"
 else
-    fail "main.rs: gap rate subcommand missing"
+    fail "gap rate subcommand missing from both src/commands/gap.rs and src/main.rs"
 fi
 
 # 2. ImpactRatingSection struct
