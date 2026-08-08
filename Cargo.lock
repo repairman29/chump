@@ -1401,6 +1401,7 @@ dependencies = [
  "chump-orchestrator",
  "chump-perception",
  "chump-planner",
+ "chump-preflight",
  "chump-ship",
  "chump-team",
  "chump-tool-macro",
@@ -1892,6 +1893,14 @@ dependencies = [
  "serde",
  "tempfile",
  "toml 1.1.4+spec-1.1.0",
+]
+
+[[package]]
+name = "chump-preflight"
+version = "0.1.0"
+dependencies = [
+ "chump-ambient-cli",
+ "tempfile",
 ]
 
 [[package]]

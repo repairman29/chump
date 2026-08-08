@@ -25,6 +25,7 @@ members = [
     "crates/chump-team",
     "crates/chump-demo",
     "crates/ambient-cli",
+    "crates/chump-preflight",
     "crates/chump-verify",
     "crates/ast-crawler",
     "crates/chump-git-hooks",
@@ -122,6 +123,7 @@ chump-cost-tracker = { path = "crates/chump-cost-tracker", version = "0.2.0" }
 chump-gap-store = { path = "crates/chump-gap-store", version = "0.2.0" }
 chump-messaging = { path = "crates/chump-messaging", version = "0.2.0" }
 chump-ambient-cli = { path = "crates/ambient-cli", version = "0.1.0" }
+chump-preflight = { path = "crates/chump-preflight", version = "0.1.0" }
 chump-verify = { path = "crates/chump-verify", version = "0.1.0" }
 chump-team = { path = "crates/chump-team", version = "0.1.0" }
 chump-ast-crawler = { path = "crates/ast-crawler", version = "0.1.0" }

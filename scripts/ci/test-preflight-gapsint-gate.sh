@@ -2,7 +2,7 @@
 # scripts/ci/test-preflight-gapsint-gate.sh — INFRA-1831
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PREFLIGHT="$REPO_ROOT/src/preflight.rs"
+PREFLIGHT="$REPO_ROOT/crates/chump-preflight/src/preflight.rs"
 RESERVED="$REPO_ROOT/scripts/ci/event-registry-reserved.txt"
 failures=0
 ag() { grep -qE -- "$2" "$1" 2>/dev/null || { echo "FAIL: $3"; failures=$((failures+1)); }; }

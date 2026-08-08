@@ -15,7 +15,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PREFLIGHT="$REPO_ROOT/src/preflight.rs"
+PREFLIGHT="$REPO_ROOT/crates/chump-preflight/src/preflight.rs"
 RESERVED="$REPO_ROOT/scripts/ci/event-registry-reserved.txt"
 
 failures=0

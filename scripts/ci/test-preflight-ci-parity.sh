@@ -2,7 +2,7 @@
 # test-preflight-ci-parity.sh — INFRA-1867 (INFRA-1861 slice b) — widened META-268
 #
 # Smoke-check: every `run:` step in ALL .github/workflows/*.yml files is EITHER
-# mirrored in `chump preflight` (src/preflight.rs) OR listed as Tier-D in
+# mirrored in `chump preflight` (crates/chump-preflight/src/preflight.rs) OR listed as Tier-D in
 # docs/process/CI_GATES_INVENTORY.md OR explicitly allowlisted in
 # scripts/ci/preflight-ci-parity-exceptions.txt.
 #
@@ -26,7 +26,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
 WORKFLOWS_DIR=".github/workflows"
-PREFLIGHT_SRC="src/preflight.rs"
+PREFLIGHT_SRC="crates/chump-preflight/src/preflight.rs"
 GATES_INVENTORY="docs/process/CI_GATES_INVENTORY.md"
 EXCEPTIONS_FILE="scripts/ci/preflight-ci-parity-exceptions.txt"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-.chump-locks/ambient.jsonl}"
@@ -137,7 +137,7 @@ if exceptions_f.exists():
 info(f"Allowlisted exceptions loaded: {len(allowlisted)}")
 
 
-# ── 3. Extract mirrored paths from src/preflight.rs ─────────────────────────
+# ── 3. Extract mirrored paths from crates/chump-preflight/src/preflight.rs ─────────────────────────
 src_text = preflight_src.read_text()
 
 # Any string like "scripts/ci/test-foo.sh" inside preflight.rs is "mirrored"
@@ -375,7 +375,7 @@ for (wf_name, job, step_name, run_cmd) in gates:
         emit_ambient(step_name, ci_path)
         fail(f"Unmirrored gate in {wf_name} job='{job}': step='{step_name}'")
         fail(f"  run: {run_cmd[:120]}")
-        fail(f"  Fix: (a) add mirror in src/preflight.rs,")
+        fail(f"  Fix: (a) add mirror in crates/chump-preflight/src/preflight.rs,")
         fail(f"       (b) classify as Tier-D in docs/process/CI_GATES_INVENTORY.md,")
         fail(f"       (c) add to scripts/ci/preflight-ci-parity-exceptions.txt")
 
