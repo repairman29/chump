@@ -180,7 +180,7 @@ mod pr_fix_clippy;
 mod pr_rescue; // INFRA-1714: closed-loop PR rescue (chump pr-rescue)
 mod pr_triage;
 mod precision_controller;
-mod preflight; // INFRA-1670: local CI mirror — chump preflight subcommand
+pub use chump_preflight::preflight; // INFRA-1670: local CI mirror — chump preflight subcommand (extracted to crates/chump-preflight, EFFECTIVE-400)
 mod provider_bandit;
 mod provider_cascade;
 mod provider_quality;
