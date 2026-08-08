@@ -699,6 +699,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         "scripts/ci/test-merged-check-guard.sh",
         // INFRA-2295: stale-pr-rebase-bot 3-strike circuit-break
         "scripts/ci/test-stale-pr-rebase-bot.sh",
+        // RESILIENT-248: pr-rescue zero-CI-runs detector. Pure decision-function
+        // fixture — no network, no cargo, no GH_TOKEN, well under a second.
+        // Mirrored here rather than allowlisted precisely BECAUSE it can run
+        // locally; the exceptions file is for gates that genuinely cannot be.
+        "scripts/ci/test-pr-rescue-noci.sh",
         // RESILIENT-050: trunk-RED hold gate — fast (~2s), no network needed.
         "scripts/ci/test-reaper-trunk-red-hold.sh",
         // RESILIENT-066: fleet-pause autolift + pause-immune choir — Tier A,
