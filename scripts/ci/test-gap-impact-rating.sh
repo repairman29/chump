@@ -17,6 +17,11 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# EFFECTIVE-418: kpi_report moved to crates/chump-kpi-report; resolve
+# layout-agnostically so this test survives the extraction.
+source "$SCRIPT_DIR/lib/source-grep.sh"
+KPI_RS="$(find_rust_module kpi_report)"
+
 echo "=== FLEET-048: gap impact rating ==="
 echo
 
@@ -29,36 +34,36 @@ else
 fi
 
 # 2. ImpactRatingSection struct
-if grep -q 'pub struct ImpactRatingSection' "$REPO_ROOT/src/kpi_report.rs" 2>/dev/null; then
+if grep -q 'pub struct ImpactRatingSection' "$KPI_RS" 2>/dev/null; then
     ok "kpi_report.rs: ImpactRatingSection defined"
 else
     fail "kpi_report.rs: ImpactRatingSection missing"
 fi
 
 # 3. ImpactRatingEntry struct
-if grep -q 'pub struct ImpactRatingEntry' "$REPO_ROOT/src/kpi_report.rs" 2>/dev/null; then
+if grep -q 'pub struct ImpactRatingEntry' "$KPI_RS" 2>/dev/null; then
     ok "kpi_report.rs: ImpactRatingEntry defined"
 else
     fail "kpi_report.rs: ImpactRatingEntry missing"
 fi
 
 # 4. build_impact_section function
-if grep -q 'pub fn build_impact_section' "$REPO_ROOT/src/kpi_report.rs" 2>/dev/null; then
+if grep -q 'pub fn build_impact_section' "$KPI_RS" 2>/dev/null; then
     ok "kpi_report.rs: build_impact_section() defined"
 else
     fail "kpi_report.rs: build_impact_section() missing"
 fi
 
 # 5. render_text and render_json on ImpactRatingSection
-if grep -q 'fn render_text' "$REPO_ROOT/src/kpi_report.rs" 2>/dev/null && \
-   grep -q 'fn render_json' "$REPO_ROOT/src/kpi_report.rs" 2>/dev/null; then
+if grep -q 'fn render_text' "$KPI_RS" 2>/dev/null && \
+   grep -q 'fn render_json' "$KPI_RS" 2>/dev/null; then
     ok "kpi_report.rs: render_text() and render_json() present"
 else
     fail "kpi_report.rs: render methods missing"
 fi
 
 # 6. fleet_avg field
-if grep -q 'fleet_avg' "$REPO_ROOT/src/kpi_report.rs" 2>/dev/null; then
+if grep -q 'fleet_avg' "$KPI_RS" 2>/dev/null; then
     ok "kpi_report.rs: fleet_avg field present"
 else
     fail "kpi_report.rs: fleet_avg field missing"
@@ -66,7 +71,7 @@ fi
 
 # 7. rating range 1-5 validated
 if grep -q '1..=5' "$REPO_ROOT/src/main.rs" 2>/dev/null || \
-   grep -q '(1..=5)' "$REPO_ROOT/src/kpi_report.rs" 2>/dev/null; then
+   grep -q '(1..=5)' "$KPI_RS" 2>/dev/null; then
     ok "rating 1-5 range validated"
 else
     fail "rating 1-5 range validation missing"

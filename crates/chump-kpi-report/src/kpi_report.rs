@@ -11,6 +11,42 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::OnceLock;
+
+// ── EFFECTIVE-418: injected pricing function ─────────────────────────────────
+//
+// The one non-data outbound coupling this module had at extraction time was the
+// per-model pricing lookup (`session_ledger::cost_usd_from_tokens`, still inline
+// in the bin). Rather than promote that foundation module to a crate (out of
+// scope — the EFFECTIVE-406 trap), the pricing function is *injected* by the bin
+// at startup via [`set_cost_fn`], the same contract `chump-waste-tally` uses
+// (EFFECTIVE-411). This keeps the crate a clean leaf.
+
+/// Per-model pricing function signature: `(model_id, input, output, cache_read)
+/// -> usd`. Mirrors the source function the bin injects
+/// (`session_ledger::cost_usd_from_tokens`).
+pub type CostFn = fn(&str, u64, u64, u64) -> f64;
+
+/// Per-model pricing function, injected by the bin at startup (see `main.rs`,
+/// which registers `session_ledger::cost_usd_from_tokens`).
+static COST_FN: OnceLock<CostFn> = OnceLock::new();
+
+/// Register the per-model pricing function. Called once from `main()`. Idempotent
+/// (first writer wins); subsequent calls are ignored.
+pub fn set_cost_fn(f: CostFn) {
+    let _ = COST_FN.set(f);
+}
+
+/// Price a token bundle via the injected pricing function. Returns `0.0` when no
+/// pricing function has been registered — the bin always registers one at
+/// startup; the crate's own tests register a fixture pricing fn (see the test
+/// module) so the cost-asserting cases stay real.
+fn cost_usd_from_tokens(model_id: &str, input: u64, output: u64, cache_read: u64) -> f64 {
+    match COST_FN.get() {
+        Some(f) => f(model_id, input, output, cache_read),
+        None => 0.0,
+    }
+}
 
 // ── Existing INFRA-640 types (unchanged) ─────────────────────────────────────
 
@@ -656,7 +692,7 @@ pub fn build_full_report(repo_root: &Path, window_days: u64) -> KpiReport {
 }
 
 fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
-    let store = match crate::gap_store::GapStore::open(repo_root) {
+    let store = match chump_gap_store::GapStore::open(repo_root) {
         Ok(s) => s,
         Err(_) => return ShipRateSection::default(),
     };
@@ -805,11 +841,10 @@ fn build_cost_savings_section(repo_root: &Path, window_days: u64) -> CostSavings
         // Actual cost: use the model_id if present, else "unknown".
         let model = extract_field(line, "model_id").unwrap_or_default();
         let model_ref = if model.is_empty() { "unknown" } else { &model };
-        actual_cost += crate::session_ledger::cost_usd_from_tokens(model_ref, input, output, cache);
+        actual_cost += cost_usd_from_tokens(model_ref, input, output, cache);
 
         // Anthropic-only cost: always use Sonnet rates ("unknown" → Sonnet).
-        anthropic_cost +=
-            crate::session_ledger::cost_usd_from_tokens("unknown", input, output, cache);
+        anthropic_cost += cost_usd_from_tokens("unknown", input, output, cache);
     }
 
     CostSavingsSection {
@@ -820,7 +855,7 @@ fn build_cost_savings_section(repo_root: &Path, window_days: u64) -> CostSavings
 }
 
 fn build_leverage_section(repo_root: &Path) -> LeverageSection {
-    let store = match crate::gap_store::GapStore::open(repo_root) {
+    let store = match chump_gap_store::GapStore::open(repo_root) {
         Ok(s) => s,
         Err(_) => return LeverageSection::default(),
     };
@@ -919,7 +954,7 @@ pub fn build_report(repo_root: &Path, window_days: u64) -> TokensPerShipReport {
         .into_iter()
         .filter(|(gap_id, _)| shipped_gaps.contains(gap_id))
         .map(|(gap_id, (input, output, cache))| {
-            let cost = crate::session_ledger::cost_usd_from_tokens("unknown", input, output, cache);
+            let cost = cost_usd_from_tokens("unknown", input, output, cache);
             ShipTokens {
                 gap_id,
                 input_tokens: input,
@@ -1297,6 +1332,27 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    /// EFFECTIVE-418: fixture pricing fn injected in place of the bin's
+    /// `session_ledger::cost_usd_from_tokens`. Reproduces the exact rates the
+    /// real function returns for the models these tests exercise, so the
+    /// cost-asserting cases (`infra640_dollar_math`, `infra617_*`) stay real:
+    ///   - `together-deepseek-v3`: $0.85 / $0.85 / $0.00 per MTok
+    ///   - anything else (incl. "unknown" → Sonnet fallback): $3 / $15 / $0.30
+    fn fixture_price(model_id: &str, input: u64, output: u64, cache_read: u64) -> f64 {
+        let (i, o, c) = if model_id == "together-deepseek-v3" {
+            (0.85_f64, 0.85_f64, 0.0_f64)
+        } else {
+            (3.00_f64, 15.00_f64, 0.30_f64)
+        };
+        (input as f64 * i + output as f64 * o + cache_read as f64 * c) / 1_000_000.0
+    }
+
+    /// Register the fixture pricing fn. Idempotent (OnceLock, first-writer-wins);
+    /// safe to call from every cost-asserting test regardless of run order.
+    fn ensure_pricing() {
+        set_cost_fn(fixture_price);
+    }
+
     fn tempdir() -> std::path::PathBuf {
         let mut p = std::env::temp_dir();
         p.push(format!(
@@ -1324,7 +1380,7 @@ mod tests {
             .current_dir(dir)
             .output();
 
-        let store = crate::gap_store::GapStore::open(dir).unwrap();
+        let store = chump_gap_store::GapStore::open(dir).unwrap();
         for (title, closed_ts) in entries {
             let reserved = store.reserve("INFRA", title, "P1", "s").unwrap();
             let iso = unix_to_iso_date(*closed_ts);
@@ -1507,6 +1563,7 @@ mod tests {
 
     #[test]
     fn infra640_dollar_math() {
+        ensure_pricing();
         let tmp = tempdir();
         let ts = fixture_ts();
         write_ambient(
@@ -1618,6 +1675,7 @@ mod tests {
 
     #[test]
     fn infra617_cost_savings_computes_baseline() {
+        ensure_pricing();
         let tmp = tempdir();
         let ts = fixture_ts();
         // Session with together-deepseek-v3 (cheaper than Sonnet fallback).
@@ -1651,7 +1709,7 @@ mod tests {
             .output();
 
         let now = current_unix() as i64;
-        let store = crate::gap_store::GapStore::open(&tmp).unwrap();
+        let store = chump_gap_store::GapStore::open(&tmp).unwrap();
 
         // Reserve 3 gaps, capture auto-generated IDs.
         let id_x = store
@@ -1680,7 +1738,7 @@ mod tests {
         store
             .set_fields(
                 &id_y,
-                crate::gap_store::GapFieldUpdate {
+                chump_gap_store::GapFieldUpdate {
                     depends_on: Some(id_x.clone()),
                     status: None,
                     closed_date: None,
@@ -1706,7 +1764,7 @@ mod tests {
         store
             .set_fields(
                 &id_z,
-                crate::gap_store::GapFieldUpdate {
+                chump_gap_store::GapFieldUpdate {
                     depends_on: Some(id_x.clone()),
                     status: None,
                     closed_date: None,
@@ -1874,7 +1932,7 @@ mod tests {
 
     #[test]
     fn waste_kinds_includes_handoff_failed_and_timeout() {
-        use crate::waste_tally::WASTE_KINDS;
+        use chump_waste_tally::waste_tally::WASTE_KINDS;
         assert!(WASTE_KINDS.contains(&"review_handoff_failed"));
         assert!(WASTE_KINDS.contains(&"review_handoff_timeout"));
     }
