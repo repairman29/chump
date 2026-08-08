@@ -70,7 +70,7 @@ fn now_secs() -> i64 {
 }
 
 /// Resolve the repo root. Prefers CHUMP_REPO_ROOT (test override),
-/// then crate::repo_path::repo_root(), then current dir.
+/// then the git toplevel, then current dir.
 pub fn repo_root() -> PathBuf {
     if let Ok(r) = std::env::var("CHUMP_REPO_ROOT") {
         let p = PathBuf::from(r);

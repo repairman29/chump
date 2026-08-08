@@ -10,7 +10,7 @@
 
 use std::process::Command;
 
-use crate::ambient_emit::{emit, EmitArgs};
+use chump_ambient_cli::ambient_emit::{emit, EmitArgs};
 
 // ── public types ──────────────────────────────────────────────────────────────
 
@@ -123,7 +123,7 @@ pub fn parse_gap_id(title: &str) -> Option<String> {
 /// Load acceptance_criteria bullets from `docs/gaps/<GAP_ID>.yaml`.
 /// Supports `acceptance_criteria:` as a list-of-strings YAML block.
 /// The YAML file may be a list (starts with `- id:`) or a top-level object.
-pub(crate) fn load_ac_bullets(gap_id: &str) -> Result<Vec<String>, String> {
+pub fn load_ac_bullets(gap_id: &str) -> Result<Vec<String>, String> {
     // CREDIBLE-178: read acceptance criteria from the canonical state.db via
     // `chump gap show <ID> --json`, NOT the docs/gaps/<ID>.yaml mirror. That
     // per-file YAML mirror was removed by ZERO-WASTE-020, so the old file read
@@ -1315,7 +1315,7 @@ fn gather_repo_context(title: &str, description: &str) -> String {
 /// Loads the gap's title/description, gathers real repo files as context, and calls
 /// `generate_ac` so the model names paths that exist. Falls back to ungrounded
 /// generation if the repo listing is unavailable.
-pub(crate) fn generate_ac_for_gap(gap_id: &str) -> Result<Vec<String>, String> {
+pub fn generate_ac_for_gap(gap_id: &str) -> Result<Vec<String>, String> {
     let (title, desc) = gap_title_and_description(gap_id)?;
     let context = gather_repo_context(&title, &desc);
     generate_ac(&title, &desc, &context)
@@ -1325,7 +1325,7 @@ pub(crate) fn generate_ac_for_gap(gap_id: &str) -> Result<Vec<String>, String> {
 /// EFFECTIVE-388: split a bullet into the `path/like/tokens.ext` it cites (tokens
 /// containing a `/` and a dotted extension, or a bare `*.rs`-style name). Used to
 /// warn when generated AC references a path that does not exist. Pure — unit-tested.
-pub(crate) fn cited_paths(bullet: &str) -> Vec<String> {
+pub fn cited_paths(bullet: &str) -> Vec<String> {
     let mut out = Vec::new();
     for raw in bullet
         .split(|c: char| c.is_whitespace() || matches!(c, '`' | ',' | ';' | '(' | ')' | '"' | '\''))

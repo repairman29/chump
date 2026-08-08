@@ -20,6 +20,8 @@ mod agent_turn;
 // Re-exported at the crate root so existing `crate::ambient_emit::*` callers
 // (18+ across the binary) keep working without churn.
 pub use chump_ambient_cli::{ambient_emit, ambient_rotate, ambient_stream};
+// EFFECTIVE-394: verify cluster extracted to crates/chump-verify; re-export so existing crate::pr_ac_coverage / crate::external_verify_merge / crate::confidence references keep resolving unchanged.
+pub use chump_verify::{confidence, external_verify_merge, pr_ac_coverage};
 mod almanac_tool;
 mod approval_resolver;
 mod asi_telemetry;
@@ -112,10 +114,8 @@ mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod cartographer; // INFRA-1782: chump cartograph <repo-path> — ARCHITECTURE.md generation (INFRA-1746 phase 2)
 mod collision_prediction; // META-076: predictive collision detection (mock inputs), first impl of docs/design/COLLISION_PREDICTION_SCHEMA.md
 mod completion;
-mod confidence; // EFFECTIVE-332: judgment-organ calibrated confidence-score primitive
 mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod done_auditor; // INFRA-3495: anti-over-claim watchdog — audit DONE gaps for uncovered AC
-mod external_verify_merge; // CREDIBLE-096: chump external verify-merge
 mod front_door; // EFFECTIVE-330 (COTG-0.0): plain-language front-door mode router
 mod gen;
 mod genai_conv;
@@ -134,7 +134,7 @@ mod intent_parser;
 mod interrupt_notify;
 mod intervention_watchdog; // COTG-2.1/INFRA-3489: log every human touch as an autonomy defect
 mod introspect_tool;
-mod inventory; // META-271: fleet inventory + tech-debt review-only audit DB
+pub use chump_inventory::inventory; // META-271: fleet inventory + tech-debt review-only audit DB (EFFECTIVE-401: extracted to crates/chump-inventory)
 mod job_log;
 mod kpi_report;
 mod lesson_action;
@@ -174,7 +174,6 @@ mod plan_mode;
 mod platform_router;
 mod plugin;
 mod policy_override;
-mod pr_ac_coverage;
 mod pr_coupling_cost;
 mod pr_explain; // INFRA-1416: chump pr explain-block <PR>
 mod pr_fix_clippy;

@@ -1394,6 +1394,7 @@ dependencies = [
  "chump-cost-tracker",
  "chump-gap-store",
  "chump-handoff",
+ "chump-inventory",
  "chump-mcp-lifecycle",
  "chump-messaging",
  "chump-orchestrator",
@@ -1402,6 +1403,7 @@ dependencies = [
  "chump-ship",
  "chump-team",
  "chump-tool-macro",
+ "chump-verify",
  "console-subscriber",
  "dhat",
  "dotenvy",
@@ -1709,6 +1711,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-inventory"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "chump-mcp-adb"
 version = "0.1.0"
 dependencies = [
@@ -1911,6 +1927,18 @@ dependencies = [
  "quote",
  "serde_json",
  "syn 3.0.3",
+]
+
+[[package]]
+name = "chump-verify"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "chump-ambient-cli",
+ "serde_json",
+ "serial_test",
+ "tempfile",
 ]
 
 [[package]]
