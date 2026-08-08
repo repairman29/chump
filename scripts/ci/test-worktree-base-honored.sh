@@ -27,7 +27,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 echo "=== INFRA-1053 CHUMP_WORKTREE_BASE honored tests ==="
 
 # (a) Rust: atomic_claim.rs already honors CHUMP_WORKTREE_BASE.
-if grep -q 'CHUMP_WORKTREE_BASE' "$REPO_ROOT/src/atomic_claim.rs"; then
+if grep -q 'CHUMP_WORKTREE_BASE' "$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs"; then
     ok "atomic_claim.rs references CHUMP_WORKTREE_BASE"
 else
     fail "atomic_claim.rs missing CHUMP_WORKTREE_BASE wiring"
