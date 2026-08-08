@@ -2,9 +2,10 @@
 
 **One sentence:** Rust compiles and caches per *crate*, not per *file*, so the size of a
 crate is the cost of recompiling it — and the `chump` bin is one ~190k-line crate that
-recompiles wholesale on every change. This doc is the doctrine for pulling coherent
-subsystems out of the bin into their own library crates so they compile once and stay
-cached. **Keep the bin thin.**
+recompiles wholesale on every change. This doc is the doctrine for keeping the bin thin —
+in **two halves**: *crate-first* (new subsystems are born as their own library crates) and
+*retroactive extraction* (pulling existing subsystems out of the monolith). Both so code
+compiles once and stays cached. **Keep the bin thin — and stop it from re-bloating.**
 
 Worked examples this doctrine is distilled from:
 - **EFFECTIVE-394** → `crates/chump-verify` (pr_ac_coverage + external_verify_merge + confidence)
@@ -32,6 +33,48 @@ bin is the last big monolith. Shrinking it is the highest-leverage speed win we 
 moves the warm-incremental number. The win is (a) cumulative across a wave of extractions
 and (b) largest exactly where it hurts most — cold builds in CI, deploy, and fresh
 worktrees, where the extracted lines are now a cached dependency instead of source.
+
+---
+
+## The other half: crate-first for NEW code
+
+Everything else in this doc is **retroactive** — carving the existing monolith down. That is
+a finite, one-time cleanup, and by itself it *loses*, because the bin is a **moving target**.
+Measured 2026-08-08: one session extracted ~17k lines across seven crates, but the bin only
+net-dropped ~6.4k (190,651 → 184,233) — ~11k of *new* code landed in the bin in parallel.
+**Extract-only is bailing a leaking boat.** We reach the sweet-spot, then drift back up.
+
+The permanent fix is to stop putting new subsystems in the bin in the first place.
+
+**The rule — new code is born in the right place (the threshold matters):**
+
+| New code is… | Where it's born |
+|---|---|
+| A coherent **subsystem** — a command, engine, store, watcher, daemon: a named thing with a boundary that will grow | **its own crate** `crates/chump-<name>`, from the first commit — NOT "write it in the bin, extract later" |
+| A change/addition to an **existing** subsystem | **that subsystem's crate**, not the bin |
+| Trivial glue — CLI dispatch, arg parsing, wiring that `use`s the crates | **the bin** — that's what it's *for*; it stays thin |
+
+**When crate-first is NOT worth it** (don't cargo-cult it): a one-file helper under ~300
+lines with no clear boundary, or genuinely bin-only code (`main()`, top-level subcommand
+dispatch). A crate per tiny helper is overhead, not hygiene — the same size / coherence /
+low-coupling test from "WHEN to extract" below applies equally to "should this be *born* a
+crate."
+
+**The forcing function — or it rots into markdown nobody re-reads.** A rule that lives only
+in a doc becomes instance N of the fleet's most-repeated failure (no unscheduled instrument).
+Crate-first ships as a **CI gate**, not a suggestion:
+
+- A `bin-bloat-guard` check: when a PR adds a **new `src/*.rs` file to the bin** over a
+  threshold (start ~400 net-added lines), it flags — *"New N-line module in the bin. Should
+  this be `crates/chump-<name>`? Extract it, or justify with a one-line trailer."*
+- **Advisory first** (a PR comment) to calibrate the threshold, then promote to **blocking**
+  once trusted — the same advisory→blocking path the reviewer bot already uses.
+- It composes with the campaign: retroactive extraction carves the legacy bin *down*; the
+  guard keeps it *down*.
+
+**Two-line version:** Retroactive extraction is finite cleanup; crate-first is the standing
+discipline. New subsystems are born as crates, only glue lands in the bin, and a CI gate
+enforces it so the boat stops leaking.
 
 ---
 
