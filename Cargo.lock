@@ -1400,6 +1400,7 @@ dependencies = [
  "chump-mcp-lifecycle",
  "chump-messaging",
  "chump-orchestrator",
+ "chump-paramedic",
  "chump-perception",
  "chump-planner",
  "chump-preflight",
@@ -1867,6 +1868,18 @@ dependencies = [
  "serial_test",
  "tempfile",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "chump-paramedic"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
  "tracing",
 ]
 
