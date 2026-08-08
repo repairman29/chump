@@ -1400,6 +1400,7 @@ dependencies = [
  "chump-handoff",
  "chump-inventory",
  "chump-mcp-lifecycle",
+ "chump-memory-db",
  "chump-messaging",
  "chump-orchestrator",
  "chump-paramedic",
@@ -1864,6 +1865,26 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "chump-memory-db"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axonerai",
+ "chrono",
+ "chump-db-pool",
+ "r2d2",
+ "r2d2_sqlite",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tokio",
+ "tracing",
+ "uuid 1.24.0",
 ]
 
 [[package]]

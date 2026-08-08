@@ -42,6 +42,7 @@ members = [
     "crates/chump-inventory",
     "crates/chump-eval-harness",
     "crates/chump-db-pool",
+    "crates/chump-memory-db",
     "crates/chump-atomic-claim",
     "crates/chump-bench",
     "crates/chump-waste-tally",
@@ -137,6 +138,7 @@ chump-handoff = { path = "crates/chump-handoff", version = "0.1.0" } # INFRA-210
 chump-inventory = { path = "crates/chump-inventory", version = "0.1.0" } # EFFECTIVE-401: fleet inventory + tech-debt audit DB
 chump-eval-harness = { path = "crates/chump-eval-harness", version = "0.1.0" }
 chump-db-pool = { path = "crates/chump-db-pool", version = "0.1.0" }
+chump-memory-db = { path = "crates/chump-memory-db", version = "0.1.0" } # EFFECTIVE-410: memory store extracted from bin (build-speed)
 chump-atomic-claim = { path = "crates/chump-atomic-claim", version = "0.1.0" } # EFFECTIVE-399: atomic gap-claim + autonomy_level + worktree_build_cache
 chump-bench = { path = "crates/chump-bench", version = "0.1.0" } # EFFECTIVE-405: ChumpBench — run a track as a scoreable lap
 chump-waste-tally = { path = "crates/chump-waste-tally", version = "0.1.0" } # EFFECTIVE-411: waste-tally reports (build-speed extraction)
