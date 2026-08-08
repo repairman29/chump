@@ -1410,6 +1410,7 @@ dependencies = [
  "chump-team",
  "chump-tool-macro",
  "chump-verify",
+ "chump-waste-tally",
  "console-subscriber",
  "dhat",
  "dotenvy",
@@ -2014,6 +2015,14 @@ dependencies = [
  "serde_json",
  "serial_test",
  "tempfile",
+]
+
+[[package]]
+name = "chump-waste-tally"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
 ]
 
 [[package]]

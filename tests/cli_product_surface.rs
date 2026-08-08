@@ -26,9 +26,12 @@ fn read_src(name: &str) -> String {
 fn product_modules_declared_in_main_rs() {
     let src = main_rs();
     for module in &["gen", "mcp_discovery", "waste_tally"] {
+        // EFFECTIVE-411: waste_tally is extracted to crates/chump-waste-tally and
+        // re-exported (`pub use chump_waste_tally::waste_tally;`), so accept the
+        // re-export form as well as an inline `mod X;` declaration.
         assert!(
-            src.contains(&format!("mod {};", module)),
-            "mod {module}; not declared in main.rs"
+            src.contains(&format!("mod {};", module)) || src.contains(&format!("::{};", module)),
+            "module {module} not wired (neither `mod {module};` nor a `::{module};` re-export) in main.rs"
         );
     }
 }
@@ -131,7 +134,12 @@ fn waste_tally_window_flag_handled() {
 
 #[test]
 fn waste_tally_module_exports_build_report() {
-    let src = read_src("waste_tally.rs");
+    // EFFECTIVE-411: waste_tally moved to crates/chump-waste-tally/src/waste_tally.rs.
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let src = std::fs::read_to_string(
+        PathBuf::from(manifest).join("crates/chump-waste-tally/src/waste_tally.rs"),
+    )
+    .expect("cannot read crates/chump-waste-tally/src/waste_tally.rs");
     assert!(
         src.contains("pub fn build_report"),
         "waste_tally.rs does not export build_report"
