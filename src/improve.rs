@@ -1237,10 +1237,68 @@ fn is_placeholder_assertion(low: &str) -> bool {
     false
 }
 
-/// CREDIBLE-200 (pure, unit-tested): a change is a STUB when it edits NO source file
-/// and adds only placeholder test assertions. Returns Some(reason) to block the ship.
-/// Fails OPEN (returns None) whenever a real source edit or a meaningful assertion is
-/// present — a legitimate test-only PR with real assertions ships normally.
+/// CREDIBLE-232: is this ADDED test line an ACTUAL placeholder / no-op — the positive
+/// evidence of fake work? Whitespace-insensitive. Covers: a trivially-true assertion
+/// (`assert True` / `assert 1==1` / `expect(true).toBe(true)` / tautology — via
+/// `is_placeholder_assertion`), a bare `pass`, and skip/todo markers that declare the
+/// test unimplemented (`it.todo` / `test.skip` / `xit(` / `@pytest.mark.skip` /
+/// `#[ignore]` / `unimplemented!()` / `todo!()`). A line that does REAL work (parses,
+/// computes, or asserts on a non-literal) is NOT a placeholder and returns false.
+fn is_stub_placeholder_line(raw: &str) -> bool {
+    let line = raw.trim_start_matches('+').trim();
+    let low = line.to_ascii_lowercase();
+    let compact: String = low.chars().filter(|c| !c.is_whitespace()).collect();
+    // Bare python `pass` — an empty test body.
+    if low == "pass" {
+        return true;
+    }
+    // Skip / todo / not-implemented markers (the test declares itself unfinished).
+    if compact.contains("it.todo")
+        || compact.contains("test.todo")
+        || compact.contains("it.skip")
+        || compact.contains("test.skip")
+        || compact.contains("describe.skip")
+        || compact.starts_with("xit(")
+        || compact.starts_with("xtest(")
+        || compact.starts_with("xdescribe(")
+        || compact.contains("@pytest.mark.skip")
+        || compact.contains("@unittest.skip")
+        || compact == "#[ignore]"
+        || compact.contains("unimplemented!(")
+        || compact.contains("todo!(")
+    {
+        return true;
+    }
+    // A trivially-true assertion (only judge lines that actually look like assertions).
+    let looks_like_assert = low.starts_with("assert")
+        || low.contains("assert_eq!")
+        || low.contains("assert_ne!")
+        || low.contains("assert!(")
+        || low.contains("expect(")
+        || low.contains(".tobe")
+        || low.contains(".to_be")
+        || low.contains("assertequal")
+        || low.contains("asserttrue")
+        || low.contains("assertthat");
+    looks_like_assert && is_placeholder_assertion(&low)
+}
+
+/// CREDIBLE-200 / CREDIBLE-232 (pure, unit-tested): a change is a STUB only when its
+/// added test body is ACTUAL placeholder work. Returns Some(reason) to block the ship.
+///
+/// CREDIBLE-232 fix: the verdict is gated on the PRESENCE of a placeholder pattern, NOT
+/// on the absence of a *recognized* assertion syntax. The old rule blocked any test-only
+/// change for which no allowlisted assertion was found — which false-positived every
+/// legitimate test-only PR whose assertions it couldn't parse (olive #10: a real vitest
+/// that parses a workflow YAML and asserts the scan job's `if:` condition; and any ava
+/// `t.is` / tap `t.equal` style suite). Now the guard must POINT at a real stub pattern
+/// (`assert True` / `assert 1==1` / `expect(true).toBe(true)` / bare `pass` / `it.todo` /
+/// `test.skip` / tautology) before it refuses.
+///
+/// Fails OPEN (returns None) whenever ANY of these hold: a real source edit, a meaningful
+/// assertion (a comparison against a computed/parsed value), or the absence of any
+/// placeholder signal at all. Only a test-only change that is *positively* placeholder —
+/// no real assertion AND at least one placeholder pattern — is blocked.
 fn stub_reason(changed_paths: &[String], added_test_lines: &[String]) -> Option<String> {
     // A real source edit means real work — never a stub.
     if changed_paths.iter().any(|p| is_source_file(p)) {
@@ -1250,14 +1308,20 @@ fn stub_reason(changed_paths: &[String], added_test_lines: &[String]) -> Option<
     if !changed_paths.iter().any(|p| is_test_file(p)) {
         return None;
     }
-    // Test-only: a single meaningful assertion clears it.
+    // Test-only: a single meaningful assertion (real work) clears it.
     if added_test_lines.iter().any(|l| is_meaningful_assertion(l)) {
+        return None;
+    }
+    // CREDIBLE-232: with no meaningful assertion, block ONLY when there is POSITIVE
+    // evidence of a placeholder — otherwise the change may be a helper/fixture/setup or
+    // use an assertion syntax we don't recognize; fail open rather than reject real work.
+    if !added_test_lines.iter().any(|l| is_stub_placeholder_line(l)) {
         return None;
     }
     Some(
         "stub-guard (CREDIBLE-200): this change edits NO source file and adds only \
-         placeholder test assertions (e.g. assert True / assert 1==1 / pass) — a stub, \
-         not a fix; refusing to ship. Receipt for the failure mode: olive PR #7 (dogfood 2026-08-04)."
+         placeholder test assertions (e.g. assert True / assert 1==1 / pass / it.todo) — a \
+         stub, not a fix; refusing to ship. Receipt for the failure mode: olive PR #7 (dogfood 2026-08-04)."
             .to_string(),
     )
 }
@@ -3970,6 +4034,92 @@ mod tests {
         // assert True / pass variants also blocked.
         let added2 = vec!["+    assert True".to_string(), "+    pass".to_string()];
         assert!(stub_reason(&paths, &added2).is_some());
+    }
+
+    #[test]
+    fn credible232_olive10_real_parse_test_passes() {
+        // POSITIVE case (olive PR #10): a test-only vitest that parses a YAML workflow
+        // and asserts the scan job's if: condition. Real expect().toBe() assertions on a
+        // parsed value — NOT a stub. Must PASS the stub-guard.
+        let paths = vec!["test/unit/workflow-guards.test.ts".to_string()];
+        let added = vec![
+            "+".to_string(),
+            "+  it('scan job STILL runs on non-Dependabot PRs (no coverage lost)', () => {"
+                .to_string(),
+            "+    const workflowPath = join(process.cwd(), '.github/workflows/upshift-app-scan.yml')".to_string(),
+            "+    const yaml = readFileSync(workflowPath, 'utf-8')".to_string(),
+            "+    const jobsMatch = yaml.match(/^jobs:\\s*$/m)".to_string(),
+            "+    expect(jobsMatch, 'workflow must have jobs: section').toBeTruthy()".to_string(),
+            "+    const scanJobMatch = afterJobs.match(/^  scan:\\s*$/m)".to_string(),
+            "+    expect(scanJobMatch, 'scan job must exist').toBeTruthy()".to_string(),
+            "+    const ifMatch = scanJobSection.match(/^\\s{4}if:\\s*\\$\\{\\{\\s*([^}]+)\\s*\\}\\}/m)".to_string(),
+            "+    expect(ifMatch, 'scan job must have an if: condition at job level').toBeTruthy()".to_string(),
+            "+    const condition = ifMatch![1].trim()".to_string(),
+            "+    expect(condition).toBe(\"github.actor != 'dependabot[bot]'\")".to_string(),
+            "+    expect(condition).not.toBe('false')".to_string(),
+            "+    expect(condition).not.toContain('false')".to_string(),
+            "+  })".to_string(),
+        ];
+        let r = stub_reason(&paths, &added);
+        assert!(
+            r.is_none(),
+            "olive #10 is a real parse+assert test, NOT a stub — got block: {r:?}"
+        );
+    }
+
+    #[test]
+    fn credible232_unrecognized_assertion_syntax_passes() {
+        // POSITIVE case (the durable false-positive CLASS): a test-only change with REAL
+        // work whose assertion syntax isn't in the narrow allowlist (ava `t.is`, tap
+        // `t.equal`). No placeholder pattern anywhere → NOT a stub. This is the case that
+        // FAILED before CREDIBLE-232 (guard equated "no recognized assertion" with "stub").
+        let paths = vec!["test/config.test.ts".to_string()];
+        let added = vec![
+            "+  test('parses the timeout from config', () => {".to_string(),
+            "+    const cfg = parseConfig(readFileSync('config.yml', 'utf-8'))".to_string(),
+            "+    t.is(cfg.timeout, 30)".to_string(),
+            "+  })".to_string(),
+        ];
+        assert!(
+            stub_reason(&paths, &added).is_none(),
+            "a real test with an unrecognized assertion syntax is NOT a stub"
+        );
+    }
+
+    #[test]
+    fn credible232_placeholder_skip_todo_still_blocks() {
+        // NEGATIVE case: a genuinely fake test-only change (no real assertion, only a
+        // skip/todo marker or bare pass) must STILL be blocked — the guard's true purpose
+        // (catch fake work) is intact after the CREDIBLE-232 loosening.
+        let paths = vec!["test/pending.test.ts".to_string()];
+        // vitest it.todo placeholder
+        assert!(
+            stub_reason(
+                &paths,
+                &["+  it.todo('handles the empty cart')".to_string()]
+            )
+            .is_some(),
+            "it.todo placeholder must block"
+        );
+        // test.skip placeholder
+        assert!(
+            stub_reason(
+                &paths,
+                &["+  test.skip('computes the discount', () => {})".to_string()]
+            )
+            .is_some(),
+            "test.skip placeholder must block"
+        );
+        // bare pass + a tautology, python-style
+        let py = vec!["tests/test_pending.py".to_string()];
+        assert!(
+            stub_reason(
+                &py,
+                &["+def test_todo():".to_string(), "+    pass".to_string()]
+            )
+            .is_some(),
+            "bare pass body must block"
+        );
     }
 
     #[test]
