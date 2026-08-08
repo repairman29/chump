@@ -32,6 +32,10 @@
 #   GH_TOKEN              — GitHub token (exits 0 silently if absent)
 #   GITHUB_REPOSITORY     — <owner/repo> (fallback: git remote get-url origin)
 #   PR_RESCUE_STALE_HOURS — Only touch PRs blocked >= this many hours (default: 4)
+#   PR_RESCUE_NOCI_MINUTES — RESILIENT-248: minutes a PR may sit with ZERO CI
+#                            check runs before CI is re-fired (default: 25)
+#   PR_RESCUE_MAX_REFIRES — cap on zero-CI re-fires per scan (default: 3)
+#   PR_RESCUE_DRY_RUN     — 1 = log intended re-fires, touch nothing
 #
 # Exits:
 #   0 — completed (may have rescued 0 PRs)
@@ -41,6 +45,44 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 STALE_HOURS="${PR_RESCUE_STALE_HOURS:-4}"
+# RESILIENT-248: zero-CI-runs re-fire. SEPARATE threshold from STALE_HOURS on
+# purpose — STALE_HOURS=4 governs "CI went red, has it since passed on main",
+# where waiting is cheap. Total CI absence is a different failure on a different
+# clock: PR #3489 sat 2h35m with zero runs, then merged 9 minutes after a
+# close/reopen. Minutes, not hours.
+NOCI_MINUTES="${PR_RESCUE_NOCI_MINUTES:-25}"
+# Cap re-fires per scan. This path closes and reopens real PRs on a 2h cron;
+# a bug that flaps the whole queue must be bounded by construction.
+MAX_REFIRES="${PR_RESCUE_MAX_REFIRES:-3}"
+# Log intent without touching any PR.
+REFIRE_DRY_RUN="${PR_RESCUE_DRY_RUN:-0}"
+
+# RESILIENT-248: the re-fire decision, as a pure function — no API calls, no
+# globals — so scripts/ci/test-pr-rescue-noci.sh can prove it fires AND prove it
+# stays quiet. A detector nobody can demonstrate firing is the EFFECTIVE-407
+# failure class: a blind detector reads as a clean bill of health.
+#
+# Args: <check_count> <age_minutes> <threshold_minutes>
+# Exit: 0 = re-fire, 1 = leave alone.
+pr_rescue_should_refire() {
+    local check_count="${1:-}" age_min="${2:-}" threshold="${3:-}"
+    # Non-numeric means an API call failed. Refuse — never re-fire on a value
+    # we could not parse.
+    [[ "${check_count}" =~ ^[0-9]+$ ]] || return 1
+    [[ "${age_min}"     =~ ^-?[0-9]+$ ]] || return 1
+    [[ "${threshold}"   =~ ^[0-9]+$ ]] || return 1
+    # ZERO checks specifically. A single queued check means the trigger DID
+    # fire and CI is merely slow; re-firing that would cancel real work.
+    (( check_count == 0 )) || return 1
+    (( age_min >= threshold )) || return 1
+    return 0
+}
+
+# Let the test fixture source this file for its pure functions without running
+# the scan (which needs GH_TOKEN and hits the API).
+if [[ "${PR_RESCUE_LIB_ONLY:-0}" == "1" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
 # INFRA-1016: REST-only mode — skip auto-merge arm (unavailable via REST) and
 # do an immediate merge instead. Use when GraphQL bucket is exhausted.
 REST_ONLY="${CHUMP_PR_RESCUE_REST_ONLY:-0}"
@@ -205,6 +247,92 @@ for PR_NUM in ${PR_NUMBERS}; do
            print(int(dt.replace(tzinfo=datetime.timezone.utc).timestamp()))")"
     NOW_EPOCH="$(date -u +%s)"
     AGE_HOURS=$(( (NOW_EPOCH - CREATED_EPOCH) / 3600 ))
+
+    # ── RESILIENT-248: zero-CI-runs detector ──────────────────────────────────
+    # Runs BEFORE the staleness guard, because it has its own (much shorter)
+    # clock. PR #3489 stalled 2h35m — under STALE_HOURS=4 — and had zero failing
+    # checks, so the rebase path below skipped it on both counts. It hunts for
+    # RED; that PR was BLANK.
+    AGE_MINUTES=$(( (NOW_EPOCH - CREATED_EPOCH) / 60 ))
+    NOCI_HEAD_SHA="$(echo "${PR_META}" | python3 -c \
+        "import sys,json; print(json.load(sys.stdin)['head']['sha'])" 2>/dev/null || echo '')"
+
+    if [[ -n "${NOCI_HEAD_SHA}" ]]; then
+        # Count ALL check runs regardless of conclusion — queued and
+        # in_progress included. Only a true zero means the trigger never fired.
+        NOCI_COUNT="$(chump_gh api \
+            "repos/${REPO}/commits/${NOCI_HEAD_SHA}/check-runs?per_page=1" \
+            --jq '.total_count' 2>/dev/null || echo 'ERR')"
+
+        if pr_rescue_should_refire "${NOCI_COUNT}" "${AGE_MINUTES}" "${NOCI_MINUTES}"; then
+            # Idempotency: never re-fire the same head SHA twice. A PR whose CI
+            # is genuinely broken must not be flapped every 2h forever. The
+            # marker is a PR comment because it survives across workflow runs —
+            # this script keeps no state between invocations.
+            NOCI_MARKER="pr-rescue:refire sha=${NOCI_HEAD_SHA}"
+            ALREADY="$(chump_gh api \
+                "repos/${REPO}/issues/${PR_NUM}/comments?per_page=100" \
+                --jq "[.[] | select(.body | contains(\"${NOCI_MARKER}\"))] | length" \
+                2>/dev/null || echo '1')"
+
+            if [[ "${ALREADY}" != "0" ]]; then
+                log "PR #${PR_NUM}: zero CI runs but SHA ${NOCI_HEAD_SHA:0:8} already re-fired once — skip (not flapping it)."
+                SKIPPED=$((SKIPPED + 1))
+                continue
+            fi
+
+            if (( ${REFIRES:-0} >= MAX_REFIRES )); then
+                log "PR #${PR_NUM}: zero CI runs, but re-fire cap ${MAX_REFIRES} reached this scan — leaving for next run."
+                SKIPPED=$((SKIPPED + 1))
+                continue
+            fi
+
+            if [[ "${REFIRE_DRY_RUN}" == "1" ]]; then
+                log "PR #${PR_NUM}: DRY RUN — would re-fire CI (zero runs, age ${AGE_MINUTES}m >= ${NOCI_MINUTES}m)."
+                SKIPPED=$((SKIPPED + 1))
+                continue
+            fi
+
+            log "PR #${PR_NUM}: ZERO CI runs after ${AGE_MINUTES}m — re-firing via close/reopen."
+            # The marker goes down BEFORE the close/reopen. If the reopen fails
+            # we must still never retry this SHA blindly; a missing marker after
+            # a partial failure would reintroduce the flap risk.
+            chump_gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
+                -f body="<!-- ${NOCI_MARKER} -->
+🔄 **pr-rescue (RESILIENT-248)**: this PR had **zero CI check runs** ${AGE_MINUTES} minutes after its head commit, which means the \`pull_request\` event did not create any workflow runs. Re-firing CI via close/reopen and re-arming auto-merge.
+
+This is automated and happens at most once per head SHA." \
+                >/dev/null 2>&1 || log "PR #${PR_NUM}: WARN — marker comment failed; continuing."
+
+            if chump_gh pr close "${PR_NUM}" --repo "${REPO}" >/dev/null 2>&1 \
+               && chump_gh pr reopen "${PR_NUM}" --repo "${REPO}" >/dev/null 2>&1; then
+                # Close/reopen DROPS auto-merge — verified on #3489, whose
+                # timeline shows auto_merge_disabled at the close. Re-arming is
+                # not optional: without it a stalled PR becomes a green PR that
+                # sits forever, which is a quieter failure than the original.
+                if chump_gh pr merge "${PR_NUM}" --repo "${REPO}" --auto --squash >/dev/null 2>&1; then
+                    log "PR #${PR_NUM}: re-fired and auto-merge re-armed."
+                else
+                    log "PR #${PR_NUM}: re-fired, but AUTO-MERGE RE-ARM FAILED — needs a human."
+                fi
+                # ── EVENT_REGISTRY coverage scanner-anchor (INFRA-1237/INFRA-1287) ──
+                # emit_ambient takes the kind as a POSITIONAL argument and builds
+                # the JSON with printf, so the coverage regex cannot see the
+                # literal. Anchor it in the scanner's detectable JSON form, same
+                # pattern as src/fleet_self_rescue_conductor.rs:138. This is a
+                # REAL emit (the call is on the next line), not a reservation:
+                #   "kind":"pr_rescue_ci_refire"
+                # Distinct from pr_rescue_triggered: that fires when CI ran and
+                # went RED; this fires when CI never ran at all.
+                emit_ambient "pr_rescue_ci_refire" "${PR_NUM}" "zero_runs_after_${AGE_MINUTES}m"
+                REFIRES=$(( ${REFIRES:-0} + 1 ))
+                RESCUED=$(( ${RESCUED:-0} + 1 ))
+            else
+                log "PR #${PR_NUM}: re-fire FAILED at close/reopen — leaving alone."
+            fi
+            continue
+        fi
+    fi
 
     if [[ ${AGE_HOURS} -lt ${STALE_HOURS} ]]; then
         log "PR #${PR_NUM}: age ${AGE_HOURS}h < threshold ${STALE_HOURS}h — skip."
