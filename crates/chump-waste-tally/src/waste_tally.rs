@@ -40,6 +40,37 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::OnceLock;
+
+/// Per-model pricing function signature: `(model_id, input_tokens,
+/// output_tokens, cache_read_tokens) -> usd`. Mirrors the source function the
+/// bin injects (`session_ledger::cost_usd_from_tokens`).
+pub type CostFn = fn(&str, u64, u64, u64) -> f64;
+
+/// Per-model pricing function, injected by the bin at startup (see `main.rs`,
+/// which registers `session_ledger::cost_usd_from_tokens`). Extracted from the
+/// bin (EFFECTIVE-411) the module kept its single outbound coupling — the
+/// pricing lookup — as an injected fn pointer instead of a workspace dependency,
+/// so this crate stays a clean leaf.
+static COST_FN: OnceLock<CostFn> = OnceLock::new();
+
+/// Register the per-model pricing function. Called once from `main()`. Idempotent
+/// (first writer wins); subsequent calls are ignored.
+pub fn set_cost_fn(f: CostFn) {
+    let _ = COST_FN.set(f);
+}
+
+/// Price a token bundle via the injected pricing function. Returns `0.0` when no
+/// pricing function has been registered — intentional: the bin always registers
+/// one at startup, and the unit tests exercise event aggregation / report
+/// structure (never USD dollar values), so the unpriced fallback keeps tests
+/// hermetic without pulling the pricing subsystem into this crate.
+fn price(model: &str, input: u64, output: u64, cache_read: u64) -> f64 {
+    match COST_FN.get() {
+        Some(f) => f(model, input, output, cache_read),
+        None => 0.0,
+    }
+}
 
 /// Per-kind aggregate across the time window.
 #[derive(Debug, Clone, Default)]
@@ -105,8 +136,8 @@ pub struct WasteReport {
 ///     gap that hides cost elsewhere.
 ///
 /// Returns 0 when no estimate applies (kind is a session_end derivative or
-/// is otherwise observed-cost-only). Total cost is computed in USD via
-/// session_ledger::cost_usd_from_tokens at the "unknown" price tier.
+/// is otherwise observed-cost-only). Total cost is computed in USD via the
+/// injected pricing function (see `price`) at the "unknown" price tier.
 pub fn default_tokens_per_kind(kind: &str) -> u64 {
     match kind {
         "fleet_auth_fallback" => 200,
@@ -275,13 +306,13 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
             let output = extract_int_field(line, "output_tokens").unwrap_or(0);
             let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
             let model = extract_field(line, "model").unwrap_or_else(|| "unknown".to_string());
-            crate::session_ledger::cost_usd_from_tokens(&model, input, output, cache)
+            price(&model, input, output, cache)
         } else {
             // INFRA-951: non-session_end kinds — apply default token estimate
             // and price via the "unknown" tier so the USD column is non-zero.
             let est_tokens = default_tokens_per_kind(&kind);
             if est_tokens > 0 {
-                crate::session_ledger::cost_usd_from_tokens("unknown", est_tokens, 0, 0)
+                price("unknown", est_tokens, 0, 0)
             } else {
                 0.0
             }
@@ -629,7 +660,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
             let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
             let model = extract_field(line, "model").unwrap_or_else(|| "unknown".to_string());
             (
-                crate::session_ledger::cost_usd_from_tokens(&model, input, output, cache),
+                price(&model, input, output, cache),
                 input.saturating_add(output).saturating_add(cache),
             )
         } else {
@@ -637,10 +668,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
             // so the cost rollup includes them. Priced at "unknown" tier.
             let est_tokens = default_tokens_per_kind(&kind);
             if est_tokens > 0 {
-                (
-                    crate::session_ledger::cost_usd_from_tokens("unknown", est_tokens, 0, 0),
-                    est_tokens,
-                )
+                (price("unknown", est_tokens, 0, 0), est_tokens)
             } else {
                 (0.0, 0u64)
             }
@@ -792,7 +820,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
 
         for (sid, (inp, out, crd)) in orphan_tokens {
             total_in_window += 1;
-            let cost = crate::session_ledger::cost_usd_from_tokens("unknown", inp, out, crd);
+            let cost = price("unknown", inp, out, crd);
             let bucket = by_kind
                 .entry("session_token_orphan".to_string())
                 .or_insert_with(|| {
@@ -1657,6 +1685,14 @@ mod tests {
 
     #[test]
     fn infra639_partial_tokens_without_session_end_create_orphan_entry() {
+        // EFFECTIVE-411: pricing is injected by the bin at runtime; register a
+        // deterministic stub mirroring the real "unknown"-tier Sonnet defaults
+        // (input 3.0 / output 15.0 / cache 0.30 per MTk) so cost_usd is nonzero.
+        // set_cost_fn is idempotent (OnceLock, first-writer-wins), so this is
+        // safe under parallel test execution.
+        set_cost_fn(|_model, input, output, cache_read| {
+            (input as f64 * 3.0 + output as f64 * 15.0 + cache_read as f64 * 0.30) / 1_000_000.0
+        });
         let tmp = tempdir();
         let now_iso = chrono_now_iso();
         // Two partial events for the same orphaned session (no session_end).

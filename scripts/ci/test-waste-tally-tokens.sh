@@ -23,21 +23,21 @@ echo "=== INFRA-641 waste-tally --tokens test ==="
 echo
 
 # (a) tokens_burned field on WasteEntry
-if grep -qE 'pub tokens_burned: u64' "$REPO_ROOT/src/waste_tally.rs"; then
+if grep -qE 'pub tokens_burned: u64' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs"; then
     ok "tokens_burned field on WasteEntry"
 else
     fail "tokens_burned field missing on WasteEntry"
 fi
 
 # (b) total_tokens_burned field on WasteReport
-if grep -qE 'pub total_tokens_burned: u64' "$REPO_ROOT/src/waste_tally.rs"; then
+if grep -qE 'pub total_tokens_burned: u64' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs"; then
     ok "total_tokens_burned field on WasteReport"
 else
     fail "total_tokens_burned field missing on WasteReport"
 fi
 
 # (c) render_text_tokens method
-if grep -qE 'pub fn render_text_tokens' "$REPO_ROOT/src/waste_tally.rs"; then
+if grep -qE 'pub fn render_text_tokens' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs"; then
     ok "render_text_tokens method present"
 else
     fail "render_text_tokens method missing"
@@ -57,12 +57,12 @@ else
 fi
 
 # (e) tokens_burned in render_json
-if grep -q 'tokens_burned' "$REPO_ROOT/src/waste_tally.rs" && \
-   grep -A5 'fn render_json' "$REPO_ROOT/src/waste_tally.rs" | grep -q 'tokens_burned'; then
+if grep -q 'tokens_burned' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs" && \
+   grep -A5 'fn render_json' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs" | grep -q 'tokens_burned'; then
     ok "tokens_burned included in render_json"
 else
     # broader check: tokens_burned appears in the render_json block
-    if grep -q '"tokens_burned"' "$REPO_ROOT/src/waste_tally.rs"; then
+    if grep -q '"tokens_burned"' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs"; then
         ok "tokens_burned key in render_json output string"
     else
         fail "tokens_burned not found in render_json"
@@ -70,7 +70,7 @@ else
 fi
 
 # (f) infra641_ unit tests
-test_count=$(grep -cE 'fn infra641_' "$REPO_ROOT/src/waste_tally.rs" 2>/dev/null || echo 0)
+test_count=$(grep -cE 'fn infra641_' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs" 2>/dev/null || echo 0)
 if [[ "$test_count" -ge 3 ]]; then
     ok "infra641_ unit tests defined ($test_count fns)"
 else
@@ -78,7 +78,7 @@ else
 fi
 
 # (g) format_tokens helper
-if grep -qE 'fn format_tokens' "$REPO_ROOT/src/waste_tally.rs"; then
+if grep -qE 'fn format_tokens' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs"; then
     ok "format_tokens helper present"
 else
     fail "format_tokens helper missing"

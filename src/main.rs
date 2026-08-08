@@ -270,7 +270,11 @@ mod version;
 mod wasm_calc_tool;
 mod wasm_runner;
 mod wasm_text_tool;
-mod waste_tally;
+// EFFECTIVE-411: waste_tally extracted to crates/chump-waste-tally for build
+// speed. Re-exported so every existing `waste_tally::…` / `crate::waste_tally::…`
+// caller resolves unchanged. Per-model pricing is injected at startup (see
+// `main()` → `waste_tally::set_cost_fn`).
+pub use chump_waste_tally::waste_tally;
 mod web_brain;
 mod web_push_send;
 mod web_server;
@@ -1256,6 +1260,12 @@ async fn main() -> Result<()> {
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
+
+    // EFFECTIVE-411: inject per-model pricing into the extracted waste-tally
+    // crate. Registered once here so every code path (waste subcommands,
+    // fleet_status) prices tokens via session_ledger's rate table. Kept out of
+    // the crate itself to avoid pulling the pricing subsystem out of the bin.
+    waste_tally::set_cost_fn(session_ledger::cost_usd_from_tokens);
 
     // CREDIBLE-019: --verbose / --debug global flags (processed first so they
     // take effect even alongside --version or --help).
