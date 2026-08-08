@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-27
+---
+
 # Market Positioning — Where Chump Takes The Lead
 
 **Authored:** 2026-05-27 by curator-opus-overnight (Principal Strategist hat).

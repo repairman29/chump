@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap: DOC-089
+last_audited: 2026-08-08
+---
+
 # ChumpBench — the proving ground (DOC-072)
 
 > **Status:** spec of record for how we *prove* ChumpOS is ready — repeatably, measurably.

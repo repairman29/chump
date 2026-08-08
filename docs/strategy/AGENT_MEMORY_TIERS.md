@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-22
+---
+
 # Agent Memory Tiers — Tier 3 Leverage and the Migration Discipline
 
 > **Status:** Filed 2026-05-03 (DOC-016) after the META-025 measurement
