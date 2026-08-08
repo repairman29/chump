@@ -698,6 +698,14 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get install -y mold
 
+      - name: Wire mold as the linker (EFFECTIVE-396)
+        # INFRA-2242 apt-installed mold but never set RUSTFLAGS, so cargo kept
+        # linking with the default ld and the documented 10-15% link-phase win
+        # was never realized. Set it here (Linux only; macOS ld64 stays default).
+        # Appends to any pre-existing RUSTFLAGS rather than clobbering it.
+        if: runner.os == 'Linux'
+        run: echo "RUSTFLAGS=-Clink-arg=-fuse-ld=mold ${RUSTFLAGS:-}" >> "$GITHUB_ENV"
+
       # CREDIBLE-166: several fast-checks guards exercise `chump claim`, which
       # refuses when the RESILIENT-073 kill switch (~/.chump/AUTONOMY_LEVEL) is
       # 0/absent. Those guards were silently skipping under the old /tmp target
@@ -1236,6 +1244,14 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get install -y mold
 
+      - name: Wire mold as the linker (EFFECTIVE-396)
+        # INFRA-2242 apt-installed mold but never set RUSTFLAGS, so cargo kept
+        # linking with the default ld and the documented 10-15% link-phase win
+        # was never realized. Set it here (Linux only; macOS ld64 stays default).
+        # Appends to any pre-existing RUSTFLAGS rather than clobbering it.
+        if: runner.os == 'Linux'
+        run: echo "RUSTFLAGS=-Clink-arg=-fuse-ld=mold ${RUSTFLAGS:-}" >> "$GITHUB_ENV"
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
@@ -1315,6 +1331,14 @@ jobs:
       - name: Install mold linker (Linux only)
         if: runner.os == 'Linux'
         run: sudo apt-get install -y mold
+
+      - name: Wire mold as the linker (EFFECTIVE-396)
+        # INFRA-2242 apt-installed mold but never set RUSTFLAGS, so cargo kept
+        # linking with the default ld and the documented 10-15% link-phase win
+        # was never realized. Set it here (Linux only; macOS ld64 stays default).
+        # Appends to any pre-existing RUSTFLAGS rather than clobbering it.
+        if: runner.os == 'Linux'
+        run: echo "RUSTFLAGS=-Clink-arg=-fuse-ld=mold ${RUSTFLAGS:-}" >> "$GITHUB_ENV"
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
