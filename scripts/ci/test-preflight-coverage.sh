@@ -12,7 +12,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-PREFLIGHT_RS="$REPO_ROOT/src/preflight.rs"
+PREFLIGHT_RS="$REPO_ROOT/crates/chump-preflight/src/preflight.rs"
 
 if [ ! -f "$PREFLIGHT_RS" ]; then
   echo "FAIL: $PREFLIGHT_RS not found" >&2
