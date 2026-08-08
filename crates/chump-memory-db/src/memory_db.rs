@@ -57,7 +57,7 @@ fn json_path() -> PathBuf {
 
 #[cfg(not(test))]
 fn open_db() -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>> {
-    crate::db_pool::get()
+    chump_db_pool::db_pool::get()
 }
 
 #[cfg(test)]
@@ -131,7 +131,7 @@ struct JsonEntry {
 /// Returns true if the SQLite backend is available (pool or direct path can serve a connection).
 pub fn db_available() -> bool {
     #[cfg(not(test))]
-    return crate::db_pool::get().is_ok();
+    return chump_db_pool::db_pool::get().is_ok();
     #[cfg(test)]
     open_db().is_ok()
 }
@@ -879,7 +879,7 @@ pub fn memory_curate() -> Result<CurateResult> {
     // ── Phase 4: causal lesson obsolescence (MEM-003) ────────────────────
     // Mark chump_causal_lessons rows older than 90 days as stale.
     let causal_staled = {
-        let db_conn = crate::db_pool::get();
+        let db_conn = chump_db_pool::db_pool::get();
         match db_conn {
             Ok(c) => c
                 .execute(

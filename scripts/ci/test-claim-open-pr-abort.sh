@@ -18,7 +18,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SRC="$REPO_ROOT/src/atomic_claim.rs"
+SRC="$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs"
 
 ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
 fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*"; exit 1; }

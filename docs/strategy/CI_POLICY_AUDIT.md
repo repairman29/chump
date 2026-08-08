@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-29
+---
+
 # CI Policy Audit (META-133 — META-131 slice 1/N)
 
 > **Goal.** Inventory every CI check + every recent failure class so META-131 ("collapse 12 gates -> 1 verified aggregator") can be designed against reality, not memory.

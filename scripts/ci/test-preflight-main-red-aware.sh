@@ -47,7 +47,7 @@ fi
 
 # 1c. CHUMP_PREFLIGHT_SKIP must NOT appear as a read-site in src/preflight.rs
 # (only in comments that mention the deletion)
-if grep -v '^\s*//' "$REPO_ROOT/src/preflight.rs" \
+if grep -v '^\s*//' "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" \
     | grep -v '^\s*#\[doc' \
     | grep -v '^\s*//!' \
     | grep -qE 'std::env::var\("CHUMP_PREFLIGHT_SKIP"\)|env!.*CHUMP_PREFLIGHT_SKIP[^_]'; then
@@ -64,14 +64,14 @@ else
 fi
 
 # 1e. read_main_preflight_failing_gates function wired in
-if grep -q "read_main_preflight_failing_gates" "$REPO_ROOT/src/preflight.rs"; then
+if grep -q "read_main_preflight_failing_gates" "$REPO_ROOT/crates/chump-preflight/src/preflight.rs"; then
     ok "src/preflight.rs has read_main_preflight_failing_gates function"
 else
     fail "src/preflight.rs missing read_main_preflight_failing_gates function"
 fi
 
 # 1f. emit_main_red_skip function wired in
-if grep -q "emit_main_red_skip" "$REPO_ROOT/src/preflight.rs"; then
+if grep -q "emit_main_red_skip" "$REPO_ROOT/crates/chump-preflight/src/preflight.rs"; then
     ok "src/preflight.rs has emit_main_red_skip ambient emitter"
 else
     fail "src/preflight.rs missing emit_main_red_skip ambient emitter"

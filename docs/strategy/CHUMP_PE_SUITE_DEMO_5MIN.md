@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-29
+---
+
 # Chump P&E Suite — 5-Minute Demo Runbook
 
 > **Audience:** Marcus (Persona-1 / Hooked IC), external design reviewers, grant readers.

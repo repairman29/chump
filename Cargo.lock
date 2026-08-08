@@ -1389,19 +1389,29 @@ dependencies = [
  "chump-agent-lease",
  "chump-ambient-cli",
  "chump-ast-crawler",
+ "chump-atomic-claim",
+ "chump-bench",
  "chump-cancel-registry",
  "chump-coord",
  "chump-cost-tracker",
+ "chump-db-pool",
+ "chump-eval-harness",
  "chump-gap-store",
  "chump-handoff",
+ "chump-inventory",
  "chump-mcp-lifecycle",
+ "chump-memory-db",
  "chump-messaging",
  "chump-orchestrator",
+ "chump-paramedic",
  "chump-perception",
  "chump-planner",
+ "chump-preflight",
  "chump-ship",
  "chump-team",
  "chump-tool-macro",
+ "chump-verify",
+ "chump-waste-tally",
  "console-subscriber",
  "dhat",
  "dotenvy",
@@ -1498,6 +1508,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-atomic-claim"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "chump-team",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "uuid 1.24.0",
+]
+
+[[package]]
+name = "chump-bench"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+]
+
+[[package]]
 name = "chump-cancel-registry"
 version = "0.2.0"
 dependencies = [
@@ -1553,6 +1588,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-db-pool"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "r2d2",
+ "r2d2_sqlite",
+ "rusqlite",
+]
+
+[[package]]
 name = "chump-demo"
 version = "0.1.0"
 dependencies = [
@@ -1574,6 +1619,20 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-single-instance",
+ "tokio",
+]
+
+[[package]]
+name = "chump-eval-harness"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axonerai",
+ "chump-db-pool",
+ "rusqlite",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -1709,6 +1768,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-inventory"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "chump-mcp-adb"
 version = "0.1.0"
 dependencies = [
@@ -1795,6 +1868,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-memory-db"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axonerai",
+ "chrono",
+ "chump-db-pool",
+ "r2d2",
+ "r2d2_sqlite",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tokio",
+ "tracing",
+ "uuid 1.24.0",
+]
+
+[[package]]
 name = "chump-messaging"
 version = "0.2.0"
 dependencies = [
@@ -1823,6 +1916,18 @@ dependencies = [
  "serial_test",
  "tempfile",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "chump-paramedic"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
  "tracing",
 ]
 
@@ -1860,6 +1965,14 @@ dependencies = [
  "serde",
  "tempfile",
  "toml 1.1.4+spec-1.1.0",
+]
+
+[[package]]
+name = "chump-preflight"
+version = "0.1.0"
+dependencies = [
+ "chump-ambient-cli",
+ "tempfile",
 ]
 
 [[package]]
@@ -1911,6 +2024,26 @@ dependencies = [
  "quote",
  "serde_json",
  "syn 3.0.3",
+]
+
+[[package]]
+name = "chump-verify"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "chump-ambient-cli",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+]
+
+[[package]]
+name = "chump-waste-tally"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
 ]
 
 [[package]]

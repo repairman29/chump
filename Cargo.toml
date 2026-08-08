@@ -25,6 +25,9 @@ members = [
     "crates/chump-team",
     "crates/chump-demo",
     "crates/ambient-cli",
+    "crates/chump-paramedic",
+    "crates/chump-preflight",
+    "crates/chump-verify",
     "crates/ast-crawler",
     "crates/chump-git-hooks",
     "crates/chump-github-cache",
@@ -36,6 +39,13 @@ members = [
     "crates/chump-integrator",
     "crates/chumpd",
     "crates/chump-curator-supervisor",
+    "crates/chump-inventory",
+    "crates/chump-eval-harness",
+    "crates/chump-db-pool",
+    "crates/chump-memory-db",
+    "crates/chump-atomic-claim",
+    "crates/chump-bench",
+    "crates/chump-waste-tally",
 ]
 resolver = "2"
 
@@ -119,9 +129,19 @@ chump-cost-tracker = { path = "crates/chump-cost-tracker", version = "0.2.0" }
 chump-gap-store = { path = "crates/chump-gap-store", version = "0.2.0" }
 chump-messaging = { path = "crates/chump-messaging", version = "0.2.0" }
 chump-ambient-cli = { path = "crates/ambient-cli", version = "0.1.0" }
+chump-preflight = { path = "crates/chump-preflight", version = "0.1.0" }
+chump-verify = { path = "crates/chump-verify", version = "0.1.0" }
+chump-paramedic = { path = "crates/chump-paramedic", version = "0.1.0" }
 chump-team = { path = "crates/chump-team", version = "0.1.0" }
 chump-ast-crawler = { path = "crates/ast-crawler", version = "0.1.0" }
 chump-handoff = { path = "crates/chump-handoff", version = "0.1.0" } # INFRA-2108: external-repo schema
+chump-inventory = { path = "crates/chump-inventory", version = "0.1.0" } # EFFECTIVE-401: fleet inventory + tech-debt audit DB
+chump-eval-harness = { path = "crates/chump-eval-harness", version = "0.1.0" }
+chump-db-pool = { path = "crates/chump-db-pool", version = "0.1.0" }
+chump-memory-db = { path = "crates/chump-memory-db", version = "0.1.0" } # EFFECTIVE-410: memory store extracted from bin (build-speed)
+chump-atomic-claim = { path = "crates/chump-atomic-claim", version = "0.1.0" } # EFFECTIVE-399: atomic gap-claim + autonomy_level + worktree_build_cache
+chump-bench = { path = "crates/chump-bench", version = "0.1.0" } # EFFECTIVE-405: ChumpBench — run a track as a scoreable lap
+chump-waste-tally = { path = "crates/chump-waste-tally", version = "0.1.0" } # EFFECTIVE-411: waste-tally reports (build-speed extraction)
 # META-175: JetStream durable consumer per role — needed by web_server handle_fleet_wire_health.
 chump-coord = { path = "crates/chump-coord", version = "0.2.0" }
 async-nats = "0.50"
@@ -263,3 +283,4 @@ unknown_lints = "allow"
 # we just relaxed (observed on PR #1265 first attempt).
 [lints]
 workspace = true
+

@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-30
+---
+
 # Fleet wire v1 — best-in-class agent comms/OS
 
 **Date:** 2026-05-30

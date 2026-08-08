@@ -1,0 +1,16 @@
+[package]
+name = "chump-bench"
+version = "0.1.0"
+edition = "2021"
+description = "ChumpBench: run a track as a scoreable lap (RESCUE/IMPROVE/CREATE/COMPREHEND/FINISH) and score it. Extracted from the bin crate (EFFECTIVE-405 build-speed) so it compiles + caches independently of the 190k-line binary."
+repository = "https://github.com/repairman29/chump"
+license = "AGPL-3.0-only"
+
+[dependencies]
+anyhow = "1.0"
+serde = { version = "1.0.118", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+[lints]
+workspace = true

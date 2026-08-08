@@ -69,8 +69,8 @@ if command -v chump &>/dev/null && chump claim --help 2>&1 | grep -q '\-\-dry-ru
         pass "Test 1: chump claim --dry-run logged INFRA-2628 fetch line"
     else
         # Acceptable if dry-run exits before worktree — check the source directly.
-        if grep -q "INFRA-2628" "$REPO_ROOT/src/atomic_claim.rs" \
-           && grep -q "fetched.*base_branch" "$REPO_ROOT/src/atomic_claim.rs"; then
+        if grep -q "INFRA-2628" "$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs" \
+           && grep -q "fetched.*base_branch" "$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs"; then
             pass "Test 1: INFRA-2628 fetch log present in src/atomic_claim.rs (dry-run path skips worktree)"
         else
             fail "Test 1: INFRA-2628 fetch-before-worktree log line not found in claim output or source"
@@ -78,8 +78,8 @@ if command -v chump &>/dev/null && chump claim --help 2>&1 | grep -q '\-\-dry-ru
     fi
 else
     # chump binary not on PATH or no --dry-run flag: verify the source directly.
-    if grep -q "INFRA-2628" "$REPO_ROOT/src/atomic_claim.rs" \
-       && grep -q "fetched.*base_branch\|fetch.*worktree\|fresh.fetch" "$REPO_ROOT/src/atomic_claim.rs"; then
+    if grep -q "INFRA-2628" "$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs" \
+       && grep -q "fetched.*base_branch\|fetch.*worktree\|fresh.fetch" "$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs"; then
         pass "Test 1: INFRA-2628 fetch-before-worktree present in src/atomic_claim.rs (binary unavailable; source check)"
     else
         fail "Test 1: INFRA-2628 fetch-before-worktree NOT found in src/atomic_claim.rs"

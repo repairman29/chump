@@ -8,7 +8,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-type PooledConn = r2d2::PooledConnection<SqliteConnectionManager>;
+pub type PooledConn = r2d2::PooledConnection<SqliteConnectionManager>;
 
 static POOL: OnceLock<Pool<SqliteConnectionManager>> = OnceLock::new();
 

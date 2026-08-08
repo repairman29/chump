@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-16
+---
+
 # Roadmap Backlog — design-conversation items
 
 > **What this is.** Items that wanted design conversation before going into the

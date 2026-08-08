@@ -13,8 +13,10 @@ use std::path::PathBuf;
 
 fn atomic_claim_rs() -> String {
     let manifest = env!("CARGO_MANIFEST_DIR");
-    std::fs::read_to_string(PathBuf::from(manifest).join("src/atomic_claim.rs"))
-        .unwrap_or_else(|e| panic!("cannot read src/atomic_claim.rs: {e}"))
+    std::fs::read_to_string(
+        PathBuf::from(manifest).join("crates/chump-atomic-claim/src/atomic_claim.rs"),
+    )
+    .unwrap_or_else(|e| panic!("cannot read crates/chump-atomic-claim/src/atomic_claim.rs: {e}"))
 }
 
 fn event_registry_yaml() -> String {

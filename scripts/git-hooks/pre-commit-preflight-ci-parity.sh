@@ -54,7 +54,7 @@ echo "[pre-commit] preflight-vs-CI parity drift detected (INFRA-2120 / INFRA-186
 echo "[pre-commit] Your staged ci.yml has a gate that lacks a preflight mirror" >&2
 echo "[pre-commit] AND is not on the Tier-D inventory AND is not allowlisted." >&2
 echo "[pre-commit] Fix one of:" >&2
-echo "[pre-commit]   (a) add a mirror in src/preflight.rs," >&2
+echo "[pre-commit]   (a) add a mirror in crates/chump-preflight/src/preflight.rs," >&2
 echo "[pre-commit]   (b) classify as Tier-D in docs/process/CI_GATES_INVENTORY.md," >&2
 echo "[pre-commit]   (c) add an entry to scripts/ci/preflight-ci-parity-exceptions.txt" >&2
 echo "[pre-commit] See CLAUDE.md 'preflight-vs-CI parity allowlist' for details." >&2

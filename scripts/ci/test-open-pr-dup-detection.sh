@@ -17,7 +17,7 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SRC="$REPO_ROOT/src/atomic_claim.rs"
+SRC="$REPO_ROOT/crates/chump-atomic-claim/src/atomic_claim.rs"
 MAIN="$REPO_ROOT/src/main.rs"
 REGISTRY="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
 

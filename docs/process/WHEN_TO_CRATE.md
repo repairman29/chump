@@ -2,9 +2,10 @@
 
 **One sentence:** Rust compiles and caches per *crate*, not per *file*, so the size of a
 crate is the cost of recompiling it — and the `chump` bin is one ~190k-line crate that
-recompiles wholesale on every change. This doc is the doctrine for pulling coherent
-subsystems out of the bin into their own library crates so they compile once and stay
-cached. **Keep the bin thin.**
+recompiles wholesale on every change. This doc is the doctrine for keeping the bin thin —
+in **two halves**: *crate-first* (new subsystems are born as their own library crates) and
+*retroactive extraction* (pulling existing subsystems out of the monolith). Both so code
+compiles once and stays cached. **Keep the bin thin — and stop it from re-bloating.**
 
 Worked examples this doctrine is distilled from:
 - **EFFECTIVE-394** → `crates/chump-verify` (pr_ac_coverage + external_verify_merge + confidence)
@@ -32,6 +33,48 @@ bin is the last big monolith. Shrinking it is the highest-leverage speed win we 
 moves the warm-incremental number. The win is (a) cumulative across a wave of extractions
 and (b) largest exactly where it hurts most — cold builds in CI, deploy, and fresh
 worktrees, where the extracted lines are now a cached dependency instead of source.
+
+---
+
+## The other half: crate-first for NEW code
+
+Everything else in this doc is **retroactive** — carving the existing monolith down. That is
+a finite, one-time cleanup, and by itself it *loses*, because the bin is a **moving target**.
+Measured 2026-08-08: one session extracted ~17k lines across seven crates, but the bin only
+net-dropped ~6.4k (190,651 → 184,233) — ~11k of *new* code landed in the bin in parallel.
+**Extract-only is bailing a leaking boat.** We reach the sweet-spot, then drift back up.
+
+The permanent fix is to stop putting new subsystems in the bin in the first place.
+
+**The rule — new code is born in the right place (the threshold matters):**
+
+| New code is… | Where it's born |
+|---|---|
+| A coherent **subsystem** — a command, engine, store, watcher, daemon: a named thing with a boundary that will grow | **its own crate** `crates/chump-<name>`, from the first commit — NOT "write it in the bin, extract later" |
+| A change/addition to an **existing** subsystem | **that subsystem's crate**, not the bin |
+| Trivial glue — CLI dispatch, arg parsing, wiring that `use`s the crates | **the bin** — that's what it's *for*; it stays thin |
+
+**When crate-first is NOT worth it** (don't cargo-cult it): a one-file helper under ~300
+lines with no clear boundary, or genuinely bin-only code (`main()`, top-level subcommand
+dispatch). A crate per tiny helper is overhead, not hygiene — the same size / coherence /
+low-coupling test from "WHEN to extract" below applies equally to "should this be *born* a
+crate."
+
+**The forcing function — or it rots into markdown nobody re-reads.** A rule that lives only
+in a doc becomes instance N of the fleet's most-repeated failure (no unscheduled instrument).
+Crate-first ships as a **CI gate**, not a suggestion:
+
+- A `bin-bloat-guard` check: when a PR adds a **new `src/*.rs` file to the bin** over a
+  threshold (start ~400 net-added lines), it flags — *"New N-line module in the bin. Should
+  this be `crates/chump-<name>`? Extract it, or justify with a one-line trailer."*
+- **Advisory first** (a PR comment) to calibrate the threshold, then promote to **blocking**
+  once trusted — the same advisory→blocking path the reviewer bot already uses.
+- It composes with the campaign: retroactive extraction carves the legacy bin *down*; the
+  guard keeps it *down*.
+
+**Two-line version:** Retroactive extraction is finite cleanup; crate-first is the standing
+discipline. New subsystems are born as crates, only glue lands in the bin, and a CI gate
+enforces it so the boat stops leaking.
 
 ---
 
@@ -108,18 +151,39 @@ by then their dependencies are already crates and the cut is clean.
 7. **Wire the workspace.** Add `"crates/chump-<name>"` to root `Cargo.toml` `[workspace]`
    members, and `chump-<name> = { path = "crates/chump-<name>", version = "0.1.0" }` to the
    bin `[dependencies]`.
-8. **GATE — all three must be green, because CI runs all three.** In order:
+8. **Sweep for PATH-BASED references to the moved file (the parity sweep).** Many CI
+   scripts and integration tests read a source file **by path** to assert its contents
+   (claim-safety invariants, event-registry parity, gate contracts). These do not show up
+   as `crate::` refs and the compiler will not catch them — they fail at *runtime* in
+   `cargo test` and `fast-checks`. Before shipping, run:
+   ```bash
+   grep -rn 'src/<mod>\.rs' scripts/ tests/ .github/
+   ```
+   and repoint every **functional** reference (a file read / `grep` target / `SRC=` / a
+   `.join("src/<mod>.rs")`) to `crates/chump-<name>/src/<mod>.rs`. **Leave fixture-data and
+   comment mentions alone** — a script that passes `"src/<mod>.rs"` as an *example argument*
+   to test path-handling is not reading the real file; changing it would break that test.
+   Discriminator that works: functional refs almost always use `$REPO_ROOT/src/<mod>.rs` or
+   read the file; fixture data uses a bare quoted string in an array/arg list. Prefer the
+   repo's layout-agnostic helper (`scripts/ci/lib/source-grep.sh` `find_rust_module`) where
+   scripts already use it. **EFFECTIVE-399 (`atomic_claim`, the most source-audited module
+   in the repo) broke ~15 scripts + one integration test this way** — the `build + clippy`
+   gate compiled the test but never ran it, so it slipped to CI. The most-audited modules
+   have the largest parity surface; budget for it.
+9. **GATE — all four must be green, because CI runs all four.** In order:
    `cargo fmt --all`, then **`cargo build --workspace`** (exit 0), then
    **`cargo clippy --workspace --all-targets`** (exit 0 — CI runs it with `-D warnings`, so
    this is where the `[lints] workspace = true` omission bites), then
-   **`cargo test --workspace`** (or at least `-p chump-<name>` plus the bin's tests). A green
-   `cargo build -p chump-<name>` **alone is not enough** on two counts: (a) the *bin* must
-   build, to catch bare `<mod>::item` references to items you left private; (b) `build` is
-   not `clippy` and is not `test` — CI is stricter than a build. Gate on what CI actually
-   runs, not a cheaper subset.
-9. **Measure the win.** From the warm worktree: `touch src/main.rs && cargo build --workspace`
-   and confirm `chump-<name>` does **not** appear in the `Compiling …` lines — it stayed
-   cached. That "stayed cached" is the whole point; capture it for the PR.
+   **`cargo test --workspace`** — *run*, not just build; the failing `atomic_claim` parity
+   test compiled fine and only failed when executed — then **run the CI shell scripts that
+   audit the moved module** (`grep -rl '<mod>' scripts/ci/` → run each; the source-level
+   rounds are fast and need no build). A green `cargo build -p chump-<name>` **alone is not
+   enough**: (a) the *bin* must build, to catch bare `<mod>::item` references to items you
+   left private; (b) build is not clippy, is not `cargo test` *run*, and is not the shell
+   parity scripts. Gate on what CI actually runs, not a cheaper subset.
+10. **Measure the win.** From the warm worktree: `touch src/main.rs && cargo build --workspace`
+    and confirm `chump-<name>` does **not** appear in the `Compiling …` lines — it stayed
+    cached. That "stayed cached" is the whole point; capture it for the PR.
 
 Ship mechanics (manual fallback, CI flake handling, reconciliation) live in the ship-plumbing
 notes — the short version: bot-merge dies on the cold recompile under the CI tool cap, so push

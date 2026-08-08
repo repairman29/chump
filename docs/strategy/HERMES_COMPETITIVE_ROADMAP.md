@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-05
+---
+
 # HERMES_COMPETITIVE_ROADMAP
 
 **This document has been moved to a private repository.**
