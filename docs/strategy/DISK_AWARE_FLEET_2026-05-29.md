@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-29
+---
+
 # Disk-Aware Fleet Architecture — 2026-05-29
 
 > Status: design-call doc. Implements META-128 umbrella. Sub-gap coverage:

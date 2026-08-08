@@ -10,7 +10,7 @@
 
 use std::process::Command;
 
-use crate::ambient_emit::{emit, EmitArgs};
+use chump_ambient_cli::ambient_emit::{emit, EmitArgs};
 
 // ── public types ──────────────────────────────────────────────────────────────
 
@@ -123,7 +123,7 @@ pub fn parse_gap_id(title: &str) -> Option<String> {
 /// Load acceptance_criteria bullets from `docs/gaps/<GAP_ID>.yaml`.
 /// Supports `acceptance_criteria:` as a list-of-strings YAML block.
 /// The YAML file may be a list (starts with `- id:`) or a top-level object.
-pub(crate) fn load_ac_bullets(gap_id: &str) -> Result<Vec<String>, String> {
+pub fn load_ac_bullets(gap_id: &str) -> Result<Vec<String>, String> {
     // CREDIBLE-178: read acceptance criteria from the canonical state.db via
     // `chump gap show <ID> --json`, NOT the docs/gaps/<ID>.yaml mirror. That
     // per-file YAML mirror was removed by ZERO-WASTE-020, so the old file read
@@ -1000,11 +1000,449 @@ fn extract_json_string_at(s: &str) -> Option<ExtractResult> {
     })
 }
 
+// ── EFFECTIVE-386: AC-writer ────────────────────────────────────────────────
+// The AC-judge (Gate 4, EFFECTIVE-373) is only as good as the bullets it judges
+// against: generic boilerplate ("fixed on live site", "works correctly") is
+// unjudgeable, so a gap with vague AC silently passes the hard gate — the exact
+// false-green COTG exists to kill. The AC-writer generates bullets that NAME a
+// specific file/function/value AND an observable, independently-verifiable
+// outcome. It is the binding INPUT that makes the hard gate meaningful, and the
+// on-ramp that lets gap-less human PRs be judged on the same footing as agent work.
+
+/// Pull `(title, description)` for a gap from canonical state.db via `chump gap show`.
+pub(crate) fn gap_title_and_description(gap_id: &str) -> Result<(String, String), String> {
+    let chump_bin = std::env::var("CHUMP_REAL_BINARY").unwrap_or_else(|_| "chump".to_string());
+    let out = Command::new(&chump_bin)
+        .args(["gap", "show", gap_id, "--json"])
+        .output()
+        .map_err(|e| format!("cannot run `{chump_bin} gap show {gap_id} --json`: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "`chump gap show {gap_id} --json` failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .map_err(|e| format!("cannot parse `chump gap show {gap_id} --json`: {e}"))?;
+    let title = v
+        .get("title")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let desc = v
+        .get("description")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    Ok((title, desc))
+}
+
+/// Build the AC-writer prompt: emit specific, testable, file/value-naming acceptance
+/// bullets and BAN vague boilerplate. `context` is optional extra grounding (a PR
+/// diff, related files) — pass "" when unavailable.
+pub(crate) fn build_ac_writer_prompt(title: &str, description: &str, context: &str) -> String {
+    let ctx_block = if context.trim().is_empty() {
+        String::new()
+    } else {
+        format!("\nAdditional context (e.g. the diff or related code):\n{context}\n")
+    };
+    format!(
+        "You are writing ACCEPTANCE CRITERIA for a software task — the checklist a reviewer uses \
+         to decide whether the work is actually DONE.\n\n\
+         Task title: {title}\n\
+         Task description:\n{description}\n{ctx_block}\n\
+         Write 2 to 5 acceptance criteria. RULES — each bullet MUST:\n\
+         - name a SPECIFIC file, function, symbol, endpoint, flag, or value where it applies \
+         (e.g. `src/foo.rs`'s `bar()`, the `/join` route, the `--apply` flag) — never a vague area;\n\
+         - state an OBSERVABLE, independently-verifiable outcome (a named test passes, a value is \
+         returned, a page renders X, a command exits 0) that someone could check WITHOUT trusting \
+         the author;\n\
+         - be satisfiable by THIS task alone (no dependency on future work).\n\
+         BANNED: vague boilerplate — \"works correctly\", \"fixed on live site\", \"handles errors\", \
+         \"is tested\" with no specifics. Those are unjudgeable and will be rejected.\n\n\
+         Reply with EXACTLY one criterion per line, numbered, and NOTHING else:\n\
+         1. <specific, testable criterion>\n\
+         2. <...>\n"
+    )
+}
+
+/// Parse the model's reply into clean bullet strings (strips `1.`/`1)`/`-`/`*`/`•` markers).
+pub(crate) fn parse_ac_bullets(response: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for raw in response.lines() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // Only keep lines that carried a list marker (`1.`/`1)`/`-`/`*`/`•`). The
+        // prompt demands one numbered criterion per line, so an unmarked line is
+        // preamble/prose ("Here are the criteria:") — drop it, don't mistake it
+        // for a bullet.
+        if let Some(stripped) = strip_bullet_marker(line) {
+            let s = stripped.trim();
+            if s.len() >= 8 {
+                out.push(s.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// Strip a single leading list marker: `12.`, `12)`, `-`, `*`, or `•`. Returns
+/// `None` when the line has no marker (so the caller can reject prose).
+fn strip_bullet_marker(line: &str) -> Option<&str> {
+    let t = line.trim_start();
+    if let Some((num, tail)) = t.split_once(['.', ')']) {
+        if !num.is_empty() && num.len() <= 3 && num.chars().all(|c| c.is_ascii_digit()) {
+            return Some(tail.trim_start());
+        }
+    }
+    for m in ['-', '*', '•'] {
+        if let Some(rest) = t.strip_prefix(m) {
+            return Some(rest.trim_start());
+        }
+    }
+    None
+}
+
+/// Generate acceptance criteria for a gap via `chump llm-complete` (same rail as the
+/// AC-judge). Returns `None` on any failure so the caller keeps existing AC. Model via
+/// `CHUMP_AC_WRITER_MODEL`, falling back to `CHUMP_AC_JUDGE_MODEL`, then `opus`.
+pub(crate) fn generate_ac(title: &str, description: &str, context: &str) -> Option<Vec<String>> {
+    if title.trim().is_empty() {
+        return None;
+    }
+    let prompt = build_ac_writer_prompt(title, description, context);
+    let chump_bin = std::env::var("CHUMP_REAL_BINARY").unwrap_or_else(|_| "chump".to_string());
+    let model = std::env::var("CHUMP_AC_WRITER_MODEL")
+        .or_else(|_| std::env::var("CHUMP_AC_JUDGE_MODEL"))
+        .unwrap_or_else(|_| "opus".to_string());
+    let mut child = Command::new(&chump_bin)
+        .args(["llm-complete", "--model", &model, "--max-tokens", "400"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    if let Some(mut si) = child.stdin.take() {
+        use std::io::Write;
+        let _ = si.write_all(prompt.as_bytes());
+    }
+    let out = child.wait_with_output().ok()?;
+    let bullets = parse_ac_bullets(&String::from_utf8_lossy(&out.stdout));
+    if bullets.is_empty() {
+        None
+    } else {
+        Some(bullets)
+    }
+}
+
+// ── EFFECTIVE-388: repo grounding for the AC-writer ─────────────────────────
+// Without repo context the writer HALLUCINATES plausible-but-fake paths (on
+// EFFECTIVE-372 it cited `src/lib/gate.rs` + `src/tests/*` that don't exist; the
+// real file is `src/preflight.rs`). Grounding hands the model a ranked list of
+// files that ACTUALLY exist in the repo, so its "specific file" anchors are real.
+
+/// Stop-words that are never useful relevance tokens (English filler + a few
+/// gap-boilerplate words). Kept tiny on purpose; the length/shape filter does most
+/// of the work.
+fn is_context_stopword(w: &str) -> bool {
+    matches!(
+        w,
+        "the"
+            | "and"
+            | "for"
+            | "with"
+            | "that"
+            | "this"
+            | "from"
+            | "make"
+            | "gate"
+            | "test"
+            | "code"
+            | "change"
+            | "implement"
+            | "implemented"
+            | "relevant"
+            | "should"
+            | "when"
+            | "into"
+            | "than"
+            | "then"
+            | "path"
+            | "file"
+            | "files"
+            | "demote"
+            | "cloud"
+            | "gaps"
+    )
+}
+
+/// Pure: extract candidate file/symbol tokens from a gap's title + description —
+/// things that plausibly name real code (contain `_`/`/`/a code extension, are
+/// CamelCase, or are a long-ish lowercase word). Unit-tested so grounding's
+/// relevance signal is verifiable without a repo.
+pub(crate) fn extract_context_tokens(title: &str, description: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let text = format!("{title} {description}");
+    for raw in text.split(|c: char| {
+        c.is_whitespace()
+            || matches!(
+                c,
+                ',' | ';' | '"' | '(' | ')' | '[' | ']' | '{' | '}' | ':' | '`'
+            )
+    }) {
+        let t = raw.trim_matches(|c: char| matches!(c, '.' | '\'' | '<' | '>' | '?' | '!' | '#'));
+        if t.len() < 4 || t.len() > 60 {
+            continue;
+        }
+        let lower = t.to_ascii_lowercase();
+        if is_context_stopword(&lower) {
+            continue;
+        }
+        let has_underscore = t.contains('_');
+        let has_slash = t.contains('/');
+        let has_code_ext = [".rs", ".py", ".sh", ".ts", ".js", ".yaml", ".yml", ".toml"]
+            .iter()
+            .any(|e| t.ends_with(e));
+        let is_camel =
+            t.chars().any(|c| c.is_ascii_uppercase()) && t.chars().any(|c| c.is_ascii_lowercase());
+        let is_longish_ident =
+            t.len() >= 6 && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        let codey = has_underscore || has_slash || has_code_ext || is_camel || is_longish_ident;
+        if codey && !out.iter().any(|e: &String| e.eq_ignore_ascii_case(t)) {
+            out.push(t.to_string());
+        }
+    }
+    out.truncate(12);
+    out
+}
+
+/// Pure: rank real repo `files` by how many `tokens` each path contains (case-
+/// insensitive substring), most-relevant first, and cap at `limit`. Files matching
+/// no token still fill remaining slots (stable order) so the model always sees a
+/// real sample of the tree. Unit-tested.
+pub(crate) fn rank_files_by_relevance(
+    files: &[String],
+    tokens: &[String],
+    limit: usize,
+) -> Vec<String> {
+    let lc_tokens: Vec<String> = tokens.iter().map(|t| t.to_ascii_lowercase()).collect();
+    let mut scored: Vec<(usize, usize, &String)> = files
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            let fl = f.to_ascii_lowercase();
+            let score = lc_tokens.iter().filter(|t| fl.contains(t.as_str())).count();
+            (score, i, f)
+        })
+        .collect();
+    // Higher score first; ties keep original order (stable via the index).
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    scored
+        .into_iter()
+        .take(limit)
+        .map(|(_, _, f)| f.clone())
+        .collect()
+}
+
+/// Build a grounding context string for a gap: the real repo files most relevant
+/// to its title/description, so the writer anchors AC on paths that exist. Returns
+/// "" when the repo file list is unavailable (writer then runs ungrounded — no
+/// worse than before). Reads tracked files via `git ls-files` in the CWD repo.
+fn gather_repo_context(title: &str, description: &str) -> String {
+    let out = match Command::new("git").args(["ls-files"]).output() {
+        Ok(o) if o.status.success() => o,
+        _ => return String::new(),
+    };
+    let source_exts = [
+        ".rs", ".py", ".sh", ".ts", ".js", ".tsx", ".jsx", ".yaml", ".yml", ".toml", ".md", ".sql",
+    ];
+    let files: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| source_exts.iter().any(|e| l.ends_with(e)))
+        .filter(|l| !l.contains("/fixtures/") && !l.contains("/testdata/"))
+        .map(|l| l.to_string())
+        .collect();
+    if files.is_empty() {
+        return String::new();
+    }
+    let tokens = extract_context_tokens(title, description);
+    // Content matches (`git grep -l`) for the most distinctive tokens rank HIGHEST —
+    // filename matching alone misses the common case where the gap says "gate" but
+    // the code lives in `src/preflight.rs`. Bounded: top few tokens, capped hits,
+    // errors ignored (grounding degrades to filename ranking).
+    let mut content_hits: Vec<String> = Vec::new();
+    for tok in tokens.iter().filter(|t| t.len() >= 5).take(4) {
+        if let Ok(o) = Command::new("git")
+            .args(["grep", "-l", "-i", "-F", "--", tok])
+            .output()
+        {
+            if o.status.success() {
+                for l in String::from_utf8_lossy(&o.stdout).lines().take(8) {
+                    if source_exts.iter().any(|e| l.ends_with(e))
+                        && !content_hits.iter().any(|h| h == l)
+                    {
+                        content_hits.push(l.to_string());
+                    }
+                }
+            }
+        }
+    }
+    // Merge: content matches first (most relevant), then filename-ranked fill.
+    let ranked_by_name = rank_files_by_relevance(&files, &tokens, 40);
+    let mut ranked: Vec<String> = content_hits;
+    for f in ranked_by_name {
+        if ranked.len() >= 40 {
+            break;
+        }
+        if !ranked.iter().any(|r| r == &f) {
+            ranked.push(f);
+        }
+    }
+    let list = ranked
+        .iter()
+        .map(|f| format!("- {f}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "REAL files that exist in this repository (reference ONLY paths from this list, \
+         or a NEW path the task explicitly creates — do NOT invent file names):\n{list}"
+    )
+}
+
+/// EFFECTIVE-388: generate AC for a gap WITH repo grounding — the CLI entry point.
+/// Loads the gap's title/description, gathers real repo files as context, and calls
+/// `generate_ac` so the model names paths that exist. Falls back to ungrounded
+/// generation if the repo listing is unavailable.
+pub fn generate_ac_for_gap(gap_id: &str) -> Result<Vec<String>, String> {
+    let (title, desc) = gap_title_and_description(gap_id)?;
+    let context = gather_repo_context(&title, &desc);
+    generate_ac(&title, &desc, &context)
+        .ok_or_else(|| "AC generation failed (empty title or LLM unavailable)".to_string())
+}
+
+/// EFFECTIVE-388: split a bullet into the `path/like/tokens.ext` it cites (tokens
+/// containing a `/` and a dotted extension, or a bare `*.rs`-style name). Used to
+/// warn when generated AC references a path that does not exist. Pure — unit-tested.
+pub fn cited_paths(bullet: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for raw in bullet
+        .split(|c: char| c.is_whitespace() || matches!(c, '`' | ',' | ';' | '(' | ')' | '"' | '\''))
+    {
+        // Strip angle brackets and TRAILING sentence punctuation only — keep a
+        // LEADING dot so dotpaths like `.chump/x` / `.github/y` survive (stripping
+        // it wrongly flagged real dotfiles as non-existent).
+        let t = raw
+            .trim_matches(|c: char| matches!(c, '<' | '>'))
+            .trim_end_matches(|c: char| matches!(c, '.' | ':'));
+        let looks_like_path = (t.contains('/')
+            && t.rsplit('/')
+                .next()
+                .map(|f| f.contains('.'))
+                .unwrap_or(false))
+            || [".rs", ".py", ".sh", ".ts", ".js", ".yaml", ".yml", ".toml"]
+                .iter()
+                .any(|e| t.ends_with(e));
+        if looks_like_path && t.len() >= 4 && !out.iter().any(|e: &String| e == t) {
+            out.push(t.to_string());
+        }
+    }
+    out
+}
+
 // ── unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn effective388_extract_context_tokens_keeps_codey_drops_filler() {
+        let toks = extract_context_tokens(
+            "wire the join_page route",
+            "render src/preflight.rs and the CamelCase Widget; the gate should work",
+        );
+        // Codey tokens kept.
+        assert!(toks.iter().any(|t| t == "join_page"));
+        assert!(toks.iter().any(|t| t == "src/preflight.rs"));
+        assert!(toks.iter().any(|t| t == "CamelCase" || t == "Widget"));
+        // Filler / stopwords dropped.
+        assert!(!toks
+            .iter()
+            .any(|t| t == "the" || t == "gate" || t == "work" || t == "should"));
+    }
+
+    #[test]
+    fn effective388_rank_files_puts_token_matches_first() {
+        let files = vec![
+            "src/unrelated.rs".to_string(),
+            "src/preflight.rs".to_string(),
+            "docs/x.md".to_string(),
+            "src/join_page.rs".to_string(),
+        ];
+        let tokens = vec!["preflight".to_string(), "join_page".to_string()];
+        let ranked = rank_files_by_relevance(&files, &tokens, 3);
+        assert_eq!(ranked.len(), 3);
+        // The two token-matching files rank ahead of the non-matching ones.
+        assert!(ranked.contains(&"src/preflight.rs".to_string()));
+        assert!(ranked.contains(&"src/join_page.rs".to_string()));
+        assert_eq!(&ranked[2], "src/unrelated.rs"); // first non-match fills the last slot
+    }
+
+    #[test]
+    fn effective388_cited_paths_finds_real_looking_paths() {
+        let paths =
+            cited_paths("The `src/preflight.rs` gate and test_gate.rs must pass, see /join route");
+        assert!(paths.iter().any(|p| p == "src/preflight.rs"));
+        assert!(paths.iter().any(|p| p == "test_gate.rs"));
+        // "/join" has no extension on its final segment → not treated as a file path.
+        assert!(!paths.iter().any(|p| p == "/join"));
+    }
+
+    #[test]
+    fn effective386_parse_ac_bullets_strips_markers_and_prose() {
+        let reply = "Here are the criteria:\n\
+                     1. `src/join.rs`'s render_invite() returns the code from the URL path\n\
+                     2) A logged-out visitor hitting /join is redirected to /login (302)\n\
+                     - The `--apply` flag persists AC via `chump gap set` and exits 0\n\
+                     * cargo test join_page_renders passes\n\
+                     \n\
+                     ok";
+        let bullets = parse_ac_bullets(reply);
+        assert_eq!(
+            bullets.len(),
+            4,
+            "4 real bullets, prose/blank dropped: {bullets:?}"
+        );
+        assert_eq!(
+            bullets[0],
+            "`src/join.rs`'s render_invite() returns the code from the URL path"
+        );
+        assert!(bullets[1].starts_with("A logged-out visitor"));
+        assert!(bullets[2].starts_with("The `--apply` flag"));
+        assert!(bullets[3].starts_with("cargo test"));
+        // "ok" (len 2, no marker) is dropped by the min-length guard.
+        assert!(!bullets.iter().any(|b| b == "ok"));
+    }
+
+    #[test]
+    fn effective386_ac_writer_prompt_demands_specifics_bans_boilerplate() {
+        let p = build_ac_writer_prompt("wire the join page", "render the invite code", "");
+        // Carries the task.
+        assert!(p.contains("wire the join page"));
+        // Demands a specific file/function/value anchor + observable outcome.
+        assert!(p.contains("SPECIFIC file"));
+        assert!(p.contains("OBSERVABLE"));
+        assert!(p.contains("WITHOUT trusting"));
+        // Explicitly bans the boilerplate class the AC-judge can't catch.
+        assert!(p.contains("fixed on live site"));
+        assert!(p.contains("BANNED"));
+        // Optional context block is omitted when empty.
+        assert!(!p.contains("Additional context"));
+        let p2 = build_ac_writer_prompt("t", "d", "diff --git a/x b/x");
+        assert!(p2.contains("Additional context"));
+    }
 
     #[test]
     fn test_title_parser_extracts_gap_id() {

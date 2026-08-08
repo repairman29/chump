@@ -31,18 +31,18 @@ ok()   { printf 'PASS %s\n' "$*"; }
 fail() { printf 'FAIL %s\n' "$*" >&2; exit 1; }
 
 # ── Test 1: source contract — cargo check uses --workspace --all-targets ─────
-[[ -f "$REPO_ROOT/src/preflight.rs" ]] \
+[[ -f "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" ]] \
     || fail "src/preflight.rs missing"
 
 # The cargo check step must include both --workspace and --all-targets.
 # We check that the string "--all-targets" appears in a context near
 # "cargo", "check", and "--workspace" — a simple grep suffices because
 # the step definition is a single function call.
-grep -q '"--all-targets"' "$REPO_ROOT/src/preflight.rs" \
+grep -q '"--all-targets"' "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" \
     || fail "src/preflight.rs: cargo check step missing --all-targets (META-178 fix not present)"
 
 # Belt-and-suspenders: confirm --workspace is still there too (didn't regress).
-grep -q '"--workspace"' "$REPO_ROOT/src/preflight.rs" \
+grep -q '"--workspace"' "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" \
     || fail "src/preflight.rs: cargo check step missing --workspace"
 
 ok "[1/3] src/preflight.rs declares cargo check --workspace --all-targets"
@@ -102,7 +102,7 @@ ok "[2/3] docs-only staged diff does not invoke cargo gates"
 
 # ── Test 3: module comment + help text agree on --all-targets ────────────────
 # The top-of-file doc comment lists the gates; it must match the implementation.
-grep -q 'cargo check --workspace --all-targets' "$REPO_ROOT/src/preflight.rs" \
+grep -q 'cargo check --workspace --all-targets' "$REPO_ROOT/crates/chump-preflight/src/preflight.rs" \
     || fail "src/preflight.rs module doc or help text does not mention 'cargo check --workspace --all-targets'"
 
 ok "[3/3] module doc / help text consistent with --all-targets implementation"

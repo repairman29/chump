@@ -1355,3 +1355,5 @@ CHUMP_AC_JUDGE_MODEL
 # to the weak-model dispatch set (off by default so weak models use str_replace).
 CHUMP_IMPLEMENT_ESCALATE_CLAUDE
 CHUMP_FREE_TIER_PATCH_FILE
+CHUMP_AC_WRITER_MODEL
+CHUMP_AC_SYNTH

@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap: DOC-089
+last_audited: 2026-08-08
+---
+
 # The Stranger Gate and the Fleet Radio — inventory-first roadmaps
 
 > **What this is.** The two pointed missions the operator selected 2026-08-06 from

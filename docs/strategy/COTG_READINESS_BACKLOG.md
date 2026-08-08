@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap: DOC-089
+last_audited: 2026-08-08
+---
+
 # COTG — ChumpOS Outta The Gate: the readiness backlog
 
 > **What this is.** The full, grounded backlog to take ChumpOS from "the foundry

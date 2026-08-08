@@ -4,13 +4,17 @@
 # spanning all 5 modes; the runner's graders are present.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO_ROOT="$ROOT"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/source-grep.sh"
 PASS=0; FAIL=0
 ok(){ printf '  \033[0;32mPASS\033[0m %s\n' "$*"; PASS=$((PASS+1)); }
 fail(){ printf '  \033[0;31mFAIL\033[0m %s\n' "$*"; FAIL=$((FAIL+1)); }
 echo "=== chump bench + track-suite smoke ==="
-[ -f "$ROOT/src/bench.rs" ] && ok "src/bench.rs present" || fail "src/bench.rs missing"
-grep -q 'fn grade_check_conclusions' "$ROOT/src/bench.rs" && ok "ci-green grader present" || fail "ci-green grader missing"
-grep -q 'fn grade_command' "$ROOT/src/bench.rs" && ok "command grader present" || fail "command grader missing"
+# EFFECTIVE-405: bench.rs moved to crates/chump-bench/; locate it layout-agnostically.
+BENCH_RS="$(find_rust_module "bench")"
+[ -n "$BENCH_RS" ] && [ -f "$BENCH_RS" ] && ok "bench.rs present ($BENCH_RS)" || fail "bench.rs missing"
+grep -q 'fn grade_check_conclusions' "$BENCH_RS" && ok "ci-green grader present" || fail "ci-green grader missing"
+grep -q 'fn grade_command' "$BENCH_RS" && ok "command grader present" || fail "command grader missing"
 
 # All 5 modes covered by a track.
 for mode in RESCUE IMPROVE FINISH COMPREHEND CREATE; do

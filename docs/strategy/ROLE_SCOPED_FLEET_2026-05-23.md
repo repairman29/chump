@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-23
+---
+
 # Role-scoped fleet — migration vision (2026-05-23)
 
 > **Decision-of-record.** Operator-set top strategic priority,

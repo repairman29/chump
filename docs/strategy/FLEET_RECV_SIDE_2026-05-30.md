@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-29
+---
+
 # Fleet recv-side v0 — close the broadcast loop on the deployed NATS/A2A stack
 
 **Date:** 2026-05-30

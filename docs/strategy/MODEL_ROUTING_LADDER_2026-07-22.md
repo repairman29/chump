@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap: DOC-089
+last_audited: 2026-08-08
+---
+
 # Cost-tiered model routing — when M3 vs. when call up (EFFECTIVE-314)
 
 Operator ask (2026-07-22): *"know when to use M3 vs. when to call up the

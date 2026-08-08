@@ -20,11 +20,11 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 # ── 1. Source-contract check ───────────────────────────────────────────────
 # Catch refactors that drop the flag entirely.
-grep -q '"--scope"' src/preflight.rs \
+grep -q '"--scope"' crates/chump-preflight/src/preflight.rs \
     || fail "src/preflight.rs missing --scope flag (INFRA-1672 contract)"
-grep -q 'enum ScopeArg' src/preflight.rs \
+grep -q 'enum ScopeArg' crates/chump-preflight/src/preflight.rs \
     || fail "src/preflight.rs missing ScopeArg enum"
-grep -q 'fn scope_from_paths' src/preflight.rs \
+grep -q 'fn scope_from_paths' crates/chump-preflight/src/preflight.rs \
     || fail "src/preflight.rs missing scope_from_paths()"
 
 echo "[1/4] source contract: parse_args supports --scope ✓"

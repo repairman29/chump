@@ -36,6 +36,10 @@ struct Step {
     /// Argv to run. First element is the binary; rest are args.
     argv: Vec<String>,
     /// Bucket this gate belongs to — used by `--scope` filtering.
+    // Populated by every `step()`; retained for `--scope` bucketing and debug
+    // output. Not read directly today — flagged only once this module became
+    // its own crate (EFFECTIVE-400); was reachable-as-live inside the bin.
+    #[allow(dead_code)]
     kind: GateKind,
 }
 
@@ -882,7 +886,7 @@ fn free_disk_gb(path: &std::path::Path) -> Option<f64> {
 
 fn emit_disk_floor_breach(free_gb: f64, floor_gb: f64) {
     // scanner-anchor: kind=disk_floor_breach (RESILIENT-196)
-    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+    let _ = chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
         kind: "disk_floor_breach".to_string(),
         source: Some("chump-preflight".to_string()),
         fields: vec![
@@ -1032,7 +1036,7 @@ pub fn run(argv: &[String]) -> i32 {
     // lever). Per-gate skip flags preserved.
     if std::env::var("CHUMP_PREFLIGHT_SKIP_REGISTRY").as_deref() == Ok("1") {
         eprintln!("[preflight] skipping event-registry-audit (CHUMP_PREFLIGHT_SKIP_REGISTRY=1)");
-        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        let _ = chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
             kind: "preflight_registry_bypassed".to_string(),
             source: Some("chump-preflight".to_string()),
             fields: vec![(
@@ -1050,7 +1054,7 @@ pub fn run(argv: &[String]) -> i32 {
     }
     if std::env::var("CHUMP_PREFLIGHT_SKIP_ENVVARS").as_deref() == Ok("1") {
         eprintln!("[preflight] skipping env-var-coverage (CHUMP_PREFLIGHT_SKIP_ENVVARS=1)");
-        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        let _ = chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
             kind: "preflight_envvars_bypassed".to_string(),
             source: Some("chump-preflight".to_string()),
             fields: vec![(
@@ -1110,15 +1114,16 @@ pub fn run(argv: &[String]) -> i32 {
             eprintln!(
                 "[preflight] skipping chump-subcommand-help (CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1)"
             );
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_subcmdhelp_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_subcmdhelp_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             steps.push(step(
                 "chump-subcommand-help",
@@ -1141,15 +1146,16 @@ pub fn run(argv: &[String]) -> i32 {
         // emit (mirrors INFRA-1731 #2377 pattern).
         if std::env::var("CHUMP_PREFLIGHT_SKIP_ACGATE").as_deref() == Ok("1") {
             eprintln!("[preflight] skipping gap-preflight-ac-gate (CHUMP_PREFLIGHT_SKIP_ACGATE=1)");
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_acgate_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_ACGATE=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_acgate_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_ACGATE=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             steps.push(step(
                 "gap-preflight-ac-gate",
@@ -1165,15 +1171,16 @@ pub fn run(argv: &[String]) -> i32 {
         // Mirrors INFRA-1731 #2377 pattern: skip via env + audit emit.
         if std::env::var("CHUMP_PREFLIGHT_SKIP_GAPSINT").as_deref() == Ok("1") {
             eprintln!("[preflight] skipping gaps-integrity (CHUMP_PREFLIGHT_SKIP_GAPSINT=1)");
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_gapsint_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_GAPSINT=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_gapsint_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_GAPSINT=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             steps.push(step(
                 "gaps-integrity",
@@ -1196,15 +1203,16 @@ pub fn run(argv: &[String]) -> i32 {
             eprintln!(
                 "[preflight] skipping markdown-intra-doc-links (CHUMP_PREFLIGHT_SKIP_MDLINKS=1)"
             );
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_mdlinks_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_MDLINKS=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_mdlinks_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_MDLINKS=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             steps.push(step(
                 "markdown-intra-doc-links",
@@ -1226,15 +1234,16 @@ pub fn run(argv: &[String]) -> i32 {
         // scripts/ci/cargo-test-with-rerun.sh.
         if std::env::var("CHUMP_PREFLIGHT_SKIP_CARGOTEST").as_deref() == Ok("1") {
             eprintln!("[preflight] skipping cargo-test (CHUMP_PREFLIGHT_SKIP_CARGOTEST=1)");
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_cargotest_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_CARGOTEST=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_cargotest_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_CARGOTEST=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             // INFRA-2720: cargo-test-with-rerun.sh REQUIRES `-- <cmd> [args...]`.
             // Without the separator + cargo invocation the wrapper prints
@@ -1289,15 +1298,16 @@ pub fn run(argv: &[String]) -> i32 {
         // scripts/ci/test-system-integration.sh.
         if std::env::var("CHUMP_PREFLIGHT_SKIP_INTEGRATION").as_deref() == Ok("1") {
             eprintln!("[preflight] skipping integration-test (CHUMP_PREFLIGHT_SKIP_INTEGRATION=1)");
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_integration_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_INTEGRATION=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_integration_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_INTEGRATION=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             steps.push(step(
                 "integration-test",
@@ -1316,15 +1326,16 @@ pub fn run(argv: &[String]) -> i32 {
             eprintln!(
                 "[preflight] skipping chump-first-contract (CHUMP_PREFLIGHT_SKIP_CHUMPFIRST=1)"
             );
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_chumpfirst_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_CHUMPFIRST=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_chumpfirst_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_CHUMPFIRST=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             steps.push(step(
                 "chump-first-contract",
@@ -1339,15 +1350,16 @@ pub fn run(argv: &[String]) -> i32 {
         // own missing-dep skip-gracefully (node + chromedriver).
         if std::env::var("CHUMP_PREFLIGHT_SKIP_ACPSMOKE").as_deref() == Ok("1") {
             eprintln!("[preflight] skipping acp-smoke (CHUMP_PREFLIGHT_SKIP_ACPSMOKE=1)");
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_acpsmoke_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_ACPSMOKE=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_acpsmoke_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_ACPSMOKE=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             steps.push(step(
                 "acp-smoke",
@@ -1366,15 +1378,16 @@ pub fn run(argv: &[String]) -> i32 {
     if args.pre_commit {
         if std::env::var("CHUMP_PREFLIGHT_SKIP_DOCSDELTA").as_deref() == Ok("1") {
             eprintln!("[preflight] skipping docs-delta-trailer (CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1)");
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_docsdelta_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_docsdelta_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             let started_dd = Instant::now();
             eprint!("[preflight] docs-delta-trailer ... ");
@@ -1407,15 +1420,16 @@ pub fn run(argv: &[String]) -> i32 {
     if scope.includes(GateKind::Scripts) {
         if std::env::var("CHUMP_PREFLIGHT_SKIP_PRHYGIENE").as_deref() == Ok("1") {
             eprintln!("[preflight] skipping pr-hygiene (CHUMP_PREFLIGHT_SKIP_PRHYGIENE=1)");
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_prhygiene_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_PRHYGIENE=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_prhygiene_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_PRHYGIENE=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             steps.push(step(
                 "pr-hygiene",
@@ -1436,15 +1450,16 @@ pub fn run(argv: &[String]) -> i32 {
         // a CI round-trip on the install/uninstall path.
         if std::env::var("CHUMP_PREFLIGHT_SKIP_PIPEFAIL").as_deref() == Ok("1") {
             eprintln!("[preflight] skipping pipefail-race-sweep (CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1)");
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_pipefail_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_pipefail_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             steps.push(step(
                 "pipefail-race-sweep",
@@ -1462,15 +1477,16 @@ pub fn run(argv: &[String]) -> i32 {
             eprintln!(
                 "[preflight] skipping path-filter-coverage (CHUMP_PREFLIGHT_SKIP_PATHFILTER=1)"
             );
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_pathfilter_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_PATHFILTER=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_pathfilter_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_PATHFILTER=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             steps.push(step(
                 "path-filter-coverage",
@@ -1486,15 +1502,16 @@ pub fn run(argv: &[String]) -> i32 {
         // sits dormant because the daemon was never wired into the installer.
         if std::env::var("CHUMP_PREFLIGHT_SKIP_INSTALLMAP").as_deref() == Ok("1") {
             eprintln!("[preflight] skipping install-manifest (CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1)");
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_installmap_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1".to_string(),
-                )],
-                ..Default::default()
-            });
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_installmap_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
         } else {
             steps.push(step(
                 "install-manifest",
@@ -2077,7 +2094,7 @@ pub fn run(argv: &[String]) -> i32 {
         }
 
         // Emit ambient event per AC #7.
-        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        let _ = chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
             kind: "preflight_baseline_diff".to_string(),
             source: Some("chump-preflight".to_string()),
             fields: vec![
@@ -2218,7 +2235,7 @@ fn read_main_preflight_failing_gates(repo_root: &std::path::Path) -> Vec<String>
 /// because origin/main is already failing it.
 // scanner-anchor: "kind":"preflight_main_red_skip"
 fn emit_main_red_skip(gate: &str, trunk_fix_gap_id: &str) {
-    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+    let _ = chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
         kind: "preflight_main_red_skip".to_string(),
         source: Some("chump-preflight".to_string()),
         fields: vec![
@@ -2580,6 +2597,9 @@ fn baseline_age_secs(cache: &BaselineCache) -> u64 {
 }
 
 /// Result of the diff-scoped attribution pass.
+// Reserved for the baseline-diff attribution pass; not constructed today.
+// Flagged only once this module became its own crate (EFFECTIVE-400).
+#[allow(dead_code)]
 struct BaselineDiff {
     /// Gates that PASS on baseline but FAIL on HEAD — caused by the diff.
     new_failures: Vec<String>,

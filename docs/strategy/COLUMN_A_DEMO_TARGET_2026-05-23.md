@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: DOC-089
+last_audited: 2026-05-23
+---
+
 # Column A demo target — repo selection (2026-05-23)
 
 > **Decision-of-record.** Names the ONE repo Chump's first end-to-end
