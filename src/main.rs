@@ -148,7 +148,7 @@ mod local_openai;
 mod mcp_bridge;
 mod mcp_discovery;
 mod memory_brain_tool;
-mod memory_db;
+pub use chump_memory_db::memory_db;
 mod memory_graph;
 mod memory_graph_tool;
 mod memory_graph_viz;

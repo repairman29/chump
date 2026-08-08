@@ -131,7 +131,7 @@ gap_files() {
         COMP-*)  echo "src/browser_tool.rs,src/acp_server.rs,src/acp.rs,desktop/" ;;
         INFRA-*) echo ".github/workflows/,scripts/" ;;
         AGT-*)   echo "src/agent_loop/,src/autonomy_loop.rs,src/orchestrator" ;;
-        MEM-*)   echo "src/memory_db.rs,src/memory_tool.rs,src/memory_graph.rs" ;;
+        MEM-*)   echo "crates/chump-memory-db/src/memory_db.rs,src/memory_tool.rs,src/memory_graph.rs" ;;
         AUTO-*)  echo "src/tool_middleware.rs,scripts/" ;;
         *)       echo "" ;;
     esac
