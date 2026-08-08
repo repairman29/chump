@@ -45,7 +45,16 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   # INFRA-2118: per-run CARGO_TARGET_DIR — prevents cross-run build artifact collisions.
-  CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+  # EFFECTIVE-420: that collision hazard is real ONLY on self-hosted runners, where
+  # concurrent runs share a filesystem. audit defaults to ubuntu-latest (see runs-on
+  # below), an ephemeral VM where nothing can collide — and the per-run path made the
+  # target dir unreachable to Swatinem/rust-cache, so only ~/.cargo was ever cached
+  # (measured 2026-08-08: audit cache 207 MB vs ci-fast-checks 1159 MB). Every audit
+  # run therefore recompiled all deps cold: `cargo build --bin chump` took 295s in
+  # shard 1 and 300s in shard 4, against the <60s this file has promised since
+  # INFRA-582. Same conditional ci.yml:652 already uses for the same reason —
+  # ephemeral path when self-hosted, stable workspace path otherwise.
+  CARGO_TARGET_DIR: ${{ vars.RUNNER_AUDIT != '' && format('/tmp/cargo-target-{0}-{1}', github.run_id, github.run_attempt) || format('{0}/target', github.workspace) }}
   # INFRA-2452-fix: sccache R2 env vars (mirrors ci.yml workflow-level block).
   # RUSTC_WRAPPER is NOT set here — set per-job after sccache install to avoid
   # the binary-not-on-PATH failure class documented in ci.yml lines 68-71.

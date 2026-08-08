@@ -38,6 +38,11 @@ done
 AUTHOR="${AUTO_RESCUE_AUTHOR:-@me}"
 COOLDOWN_S="${AUTO_RESCUE_COOLDOWN_S:-1800}"
 MAX_PER_PR="${AUTO_RESCUE_MAX_PER_PR:-3}"
+# INFRA-3542 (COTG terminal disposition): a red-armed PR no fixer can clear, past
+# this age, is closed + its gap reopened for a clean redo. Conservative on purpose.
+PR_TERMINAL_HOURS="${PR_TERMINAL_HOURS:-6}"
+PR_TERMINAL_ENABLED="${PR_TERMINAL_ENABLED:-1}"
+CHECK_PR="${CHECK_PR:-}"   # set to a PR number to dry-run the terminal check on it and exit
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RESCUE_LOG="$REPO_ROOT/.chump-locks/pr-rescue.log"
@@ -272,6 +277,65 @@ handle_adjacent_string_eprintln() {
     return 0
 }
 
+# ── COTG terminal disposition (INFRA-3542) ────────────────────────────────────
+# A red-armed PR that no fix handler cleared, past the terminal age, is closed with
+# an honest comment and its gap reopened for a clean redo. Without this, unfixable-
+# real-red PRs (compile / test / audit failures — matching none of the handlers
+# above) rot armed forever, which is exactly how #3499/#3510/#3527 sat 22-31h.
+# Conservative: fires ONLY on auto-merge-armed + BLOCKED + a REQUIRED-check FAILURE
+# (never CANCELLED or pending — those are flakes for the rerun handlers) past
+# PR_TERMINAL_HOURS. Returns 0 iff it disposed the PR.
+try_terminal_dispose() {
+    local pr="$1"
+    [[ "$PR_TERMINAL_ENABLED" != "1" ]] && return 1
+    local j verdict
+    j=$(gh pr view "$pr" --repo repairman29/chump \
+        --json autoMergeRequest,mergeStateStatus,createdAt,headRefName,statusCheckRollup 2>/dev/null) || return 1
+    verdict=$(echo "$j" | python3 -c '
+import json,sys,datetime
+d=json.load(sys.stdin); hrs=float(sys.argv[1])
+armed=d.get("autoMergeRequest") is not None
+blocked=d.get("mergeStateStatus")=="BLOCKED"
+req={"audit","test","ACP protocol smoke test (Zed / JetBrains compatible)"}
+roll=d.get("statusCheckRollup") or []
+red=[c.get("name") for c in roll if c.get("name") in req and c.get("conclusion")=="FAILURE"]
+created=datetime.datetime.fromisoformat(d["createdAt"].replace("Z","+00:00"))
+age=(datetime.datetime.now(datetime.timezone.utc)-created).total_seconds()/3600
+if armed and blocked and red and age>=hrs:
+    print("DISPOSE|%s|%.1f|%s" % (d.get("headRefName",""), age, ",".join(red)))
+else:
+    print("SKIP|armed=%s blocked=%s red=%s age=%.1f" % (armed, blocked, ",".join(red) or "-", age))
+' "$PR_TERMINAL_HOURS" 2>/dev/null)
+
+    if [[ "$verdict" != DISPOSE* ]]; then
+        [[ $DRY_RUN -eq 1 ]] && say "  → terminal: PR #$pr not a candidate (${verdict#SKIP|})"
+        return 1
+    fi
+
+    local branch age red gap
+    branch=$(echo "$verdict" | cut -d'|' -f2)
+    age=$(echo "$verdict" | cut -d'|' -f3)
+    red=$(echo "$verdict" | cut -d'|' -f4)
+    # Gap id from the claim branch: chump/<gap-id>-claim → GAP-ID (upcased).
+    gap=$(echo "$branch" | sed -nE 's#^chump/([a-zA-Z]+-[0-9]+)-claim$#\1#p' | tr '[:lower:]' '[:upper:]')
+
+    if [[ $DRY_RUN -eq 1 ]]; then
+        say "  → TERMINAL (dry-run): PR #$pr armed+red[$red] ${age}h ≥ ${PR_TERMINAL_HOURS}h — WOULD close + reopen gap ${gap:-<unparsed:$branch>}"
+        return 1   # dry-run never acts
+    fi
+
+    local body
+    body="Auto-closed by pr-failure-auto-rescue (INFRA-3542, COTG self-heal): auto-merge was armed but required check(s) [$red] stayed RED for ${age}h and no fix handler could clear it. Closing so the queue stays honest.${gap:+ Gap ${gap} has been reopened for a clean redo.} This is not a rejection of the work — the branch is red and stale, and the fleet will pick it up fresh."
+    if ! gh pr close "$pr" --repo repairman29/chump --comment "$body" >/dev/null 2>&1; then
+        say "  terminal: gh pr close failed for #$pr"; return 1
+    fi
+    [[ -n "$gap" ]] && chump gap set "$gap" --status open >/dev/null 2>&1 || true
+    say "  → TERMINAL: closed PR #$pr (red[$red] ${age}h) + reopened gap ${gap:-<none>}"
+    log_rescue "$pr" "terminal_dispose" "closed_refiled"
+    emit_event "pr_auto_rescue_invoked" "\"pr\":$pr,\"handler\":\"terminal_dispose\",\"outcome\":\"closed_refiled\",\"gap\":\"${gap}\",\"age_h\":${age}"
+    return 0
+}
+
 # ── MAIN LOOP ─────────────────────────────────────────────────────────────────
 run_once() {
     say "scanning open PRs by $AUTHOR…"
@@ -291,6 +355,10 @@ for p in json.load(sys.stdin):
     local seen=0 rescued=0
     for pr in $prs; do
         seen=$((seen + 1))
+        # COTG terminal disposition (INFRA-3542) runs FIRST and self-gates on age,
+        # so an aged red-armed PR gets closed+refiled even if it maxed out on
+        # rescue attempts (or never matched any handler, so past-count is 0).
+        if try_terminal_dispose "$pr"; then rescued=$((rescued + 1)); continue; fi
         local past=$(count_past_rescues "$pr")
         if [[ "$past" -ge "$MAX_PER_PR" ]]; then
             continue
@@ -322,6 +390,13 @@ for p in json.load(sys.stdin):
     done
     say "scan complete: $seen PRs, $rescued action(s) taken"
 }
+
+if [[ -n "$CHECK_PR" ]]; then
+    DRY_RUN=1
+    say "terminal-dispose check for PR #$CHECK_PR (dry-run, no action):"
+    try_terminal_dispose "$CHECK_PR" || true
+    exit 0
+fi
 
 if [[ $LOOP -eq 1 ]]; then
     say "starting loop mode (interval 60s)…"
