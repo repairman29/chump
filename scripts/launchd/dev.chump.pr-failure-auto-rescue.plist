@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- INFRA-3542 (COTG self-heal): schedules the linchpin PR-failure daemon that
+     was written (INFRA-1600) but never scheduled — the reason #3499/#3510 rotted
+     armed-and-red for 22-31h. Interval-driven (one run_once per fire); the 6h
+     terminal age-gate doesn't need a persistent 60s loop. Install: copy to
+     ~/Library/LaunchAgents and `launchctl bootstrap gui/$UID <path>`. -->
+<plist version="1.0"><dict>
+  <key>Label</key><string>dev.chump.pr-failure-auto-rescue</string>
+  <key>ProgramArguments</key><array>
+    <string>/bin/bash</string>
+    <string>/Users/jeffadkins/Projects/Chump/scripts/coord/pr-failure-auto-rescue.sh</string>
+  </array>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>/Users/jeffadkins/.cargo/bin:/Users/jeffadkins/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartInterval</key><integer>900</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/jeffadkins/Projects/Chump/.chump-locks/pr-failure-auto-rescue.log</string>
+  <key>StandardErrorPath</key><string>/Users/jeffadkins/Projects/Chump/.chump-locks/pr-failure-auto-rescue.log</string>
+</dict></plist>
