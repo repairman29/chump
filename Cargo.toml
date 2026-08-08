@@ -125,7 +125,6 @@ chump-cost-tracker = { path = "crates/chump-cost-tracker", version = "0.2.0" }
 chump-gap-store = { path = "crates/chump-gap-store", version = "0.2.0" }
 chump-messaging = { path = "crates/chump-messaging", version = "0.2.0" }
 chump-ambient-cli = { path = "crates/ambient-cli",
-    "crates/chump-paramedic", version = "0.1.0" }
 chump-preflight = { path = "crates/chump-preflight", version = "0.1.0" }
 chump-verify = { path = "crates/chump-verify", version = "0.1.0" }
 chump-team = { path = "crates/chump-team", version = "0.1.0" }
@@ -276,4 +275,3 @@ unknown_lints = "allow"
 [lints]
 workspace = true
 
-chump-paramedic = { path = "crates/chump-paramedic", version = "0.1.0" }
