@@ -123,6 +123,7 @@ mod done_auditor; // INFRA-3495: anti-over-claim watchdog — audit DONE gaps fo
 mod front_door; // EFFECTIVE-330 (COTG-0.0): plain-language front-door mode router
 mod gen;
 mod genai_conv;
+mod git_safety; // RESILIENT-256: destructive-git guard + object-store WIP snapshot
 mod git_tools;
 mod github_rate_limit;
 mod health;
@@ -1308,6 +1309,24 @@ async fn main() -> Result<()> {
             version::chump_build_date(),
         );
         return Ok(());
+    }
+
+    // RESILIENT-256: `chump git-guard` runs on the Claude Code PreToolUse
+    // path, i.e. before EVERY Bash/Edit/Write an agent makes. It dispatches
+    // here — ahead of every other subcommand and before any store, config or
+    // network init — because a guard that adds latency to every tool call is
+    // a guard the operator turns off. Same in-binary shape as INFRA-825's
+    // stale-binary destructive-op guard, and deliberately NOT gated on
+    // binary freshness: refusing to protect uncommitted work because the
+    // binary is a few commits old would trade a real loss for a cosmetic one.
+    if args.get(1).map(String::as_str) == Some("git-guard") {
+        std::process::exit(git_safety::run_cli(&args));
+    }
+    // RESILIENT-256: the load-bearing half. Writes a dirty checkout into the
+    // object store (refs/wip/…) without touching its working tree or index,
+    // so `reset --hard` stops being unrecoverable even when it is correct.
+    if args.get(1).map(String::as_str) == Some("wip-snapshot") {
+        std::process::exit(git_safety::run_snapshot_cli(&args));
     }
 
     // INFRA-2054 (META-114 freshness cluster, binary-staleness layer):

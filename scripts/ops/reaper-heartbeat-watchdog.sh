@@ -58,7 +58,10 @@ done
 # scripts/ops/curator-supervisor-run.sh calls reaper_setup/reaper_finish, so it
 # stamps /tmp/chump-reaper-curator-supervisor.heartbeat on the standard path
 # this loop already reads. No new mechanism, one new name.
-[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog ci-flake pr-blocked distill curator-supervisor)
+# RESILIENT-256: added `wip`. The uncommitted-WIP watchdog is the only thing
+# standing between a 13-hour-old dirty tree and a permanent loss, so a silent
+# one is worse than a noisy one — it grades here like every other canary.
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog ci-flake pr-blocked distill curator-supervisor wip)
 
 # Per-reaper alert thresholds (seconds since last heartbeat).
 threshold_secs() {
@@ -77,6 +80,7 @@ threshold_secs() {
         # threshold would cry wolf every morning. 1h still turns a twelve-day
         # silence into an alert within one watchdog run (30 min).
         curator-supervisor) echo $((1 * 3600)) ;;
+        wip)         echo $((2 * 3600)) ;;   # 2h (cadence 30min × 4x — RESILIENT-256)
         *)           echo $((4 * 3600)) ;;
     esac
 }
@@ -138,7 +142,12 @@ for name in "${TARGETS[@]}"; do
             msg="daemon process ${name} has never heartbeated — heartbeat file missing at $hb. Check if the process is running."
             alert_kind="daemon_silent"
         else
-            msg="reaper ${name} has never heartbeated — heartbeat file missing at $hb. Install the launchd job (scripts/setup/install-stale-${name}-reaper-launchd.sh) or run the reaper manually once."
+            # RESILIENT-256: `wip` is installed by its own launchd script, not
+            # by the install-stale-*-reaper-launchd.sh family. Naming the
+            # wrong installer in the ALERT is how an alert gets ignored.
+            installer="scripts/setup/install-stale-${name}-reaper-launchd.sh"
+            [[ "$name" == "wip" ]] && installer="scripts/setup/install-wip-watchdog-launchd.sh"
+            msg="reaper ${name} has never heartbeated — heartbeat file missing at $hb. Install the launchd job (${installer}) or run the reaper manually once."
             alert_kind="reaper_silent"
         fi
         printf 'ALERT [%s] %s\n' "$alert_kind" "$msg" >&2
