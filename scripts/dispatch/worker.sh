@@ -225,11 +225,24 @@ _emit_worker_stuck() {
 }
 
 # FLEET-042: write heartbeat file with current epoch + gap_id.
+# CREDIBLE-099: also publish a CapabilityManifest so the worker itself
+# (not just the gap claim) is attributable via `chump fleet workers`.
+# Best-effort/non-blocking — a publish failure never breaks the worker loop.
 write_heartbeat() {
     local gap_id="${1:-none}"
     local now; now=$(date +%s)
     local heartbeat_file="/tmp/chump-fleet-worker-${AGENT_ID}.heartbeat"
     printf '%s %s\n' "$now" "$gap_id" > "$heartbeat_file" 2>/dev/null || true
+
+    local _cap_pub="$REPO_ROOT/scripts/coord/capability-publish.sh"
+    if [[ -x "$_cap_pub" ]]; then
+        CHUMP_SESSION_ID="${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+            CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-claude}" \
+            FLEET_MODEL="${FLEET_MODEL:-sonnet}" \
+            CHUMP_SKILLS="${WORKER_SKILLS:-}" \
+            CHUMP_CURRENT_GAP="$gap_id" \
+            "$_cap_pub" once >/dev/null 2>&1 || true
+    fi
 }
 
 # INFRA-620: re-read CLAUDE_CODE_OAUTH_TOKEN from ~/.chump/oauth-token.json

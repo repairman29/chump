@@ -19,6 +19,8 @@
 #   CHUMP_MACHINE_LABEL      — operator-set machine name (else hostname)
 #   CHUMP_GPU_LABEL          — only used when CHUMP_PUBLISH_HARDWARE=1
 #   CHUMP_IP_LABEL           — only used when CHUMP_PUBLISH_HARDWARE=1
+#   CHUMP_CURRENT_GAP        — CREDIBLE-099: gap_id this worker is on right
+#                              now, or "none". Surfaced by `chump fleet workers`.
 #
 # Writes:
 #   .chump-locks/capabilities/<session>.jsonl  — one JSONL line per emit (append)
@@ -57,6 +59,7 @@ build_manifest() {
     local machine
     machine="$(_machine)"
     local skills_csv="${CHUMP_SKILLS:-}"
+    local current_gap="${CHUMP_CURRENT_GAP:-none}"
     local gpu="null"
     local ip="null"
     if [[ "${CHUMP_PUBLISH_HARDWARE:-0}" == "1" ]]; then
@@ -81,7 +84,7 @@ print(json.dumps(skills, separators=(',', ':')))
         )"
     fi
     cat <<JSON
-{"schema_version":"chump-capability-v1","session_id":"$session","harness":"$harness","model_tier":"$model","skills":$skills_json,"machine":"$machine","gpu":$gpu,"ip":$ip,"started_at":"$ts","heartbeat_at":"$ts","ttl_seconds":300}
+{"schema_version":"chump-capability-v1","session_id":"$session","harness":"$harness","model_tier":"$model","skills":$skills_json,"machine":"$machine","gpu":$gpu,"ip":$ip,"current_gap":"$current_gap","started_at":"$ts","heartbeat_at":"$ts","ttl_seconds":300}
 JSON
 }
 

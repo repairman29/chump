@@ -76,6 +76,7 @@ for sid, m in latest.items():
         continue
     age_s = (now - hb_dt).total_seconds()
     if age_s <= ttl:
+        m["heartbeat_age_s"] = int(age_s)
         live.append(m)
     else:
         stale.append(m)
@@ -95,14 +96,21 @@ case "${1:-list}" in
         else
             collect | python3 -c "
 import json, sys
+from datetime import datetime, timezone
 d = json.load(sys.stdin)
 live = d['live']
-print(f'{\"session_id\":<48} {\"harness\":<12} {\"model\":<10} {\"machine\":<14} {\"skills\":<40} {\"heartbeat_at\":<20}')
+now = datetime.now(timezone.utc)
+print(f'{\"session_id\":<40} {\"harness\":<10} {\"model\":<8} {\"machine\":<12} {\"current_gap\":<16} {\"hb_age_s\":>8} {\"skills\":<30}')
 print('-' * 150)
 for m in sorted(live, key=lambda x: x.get('heartbeat_at', ''), reverse=True):
-    skills = ','.join(m.get('skills', []))[:40] or '-'
-    print(f\"{m.get('session_id','?'):<48} {m.get('harness','?'):<12} {m.get('model_tier','?'):<10} {(m.get('machine') or '-'):<14} {skills:<40} {m.get('heartbeat_at',''):<20}\")
-print(f\"\\n({len(live)} live session(s); {d['stale_count']} stale excluded)\")
+    skills = ','.join(m.get('skills', []))[:30] or '-'
+    hb = m.get('heartbeat_at', '')
+    try:
+        age = int((now - datetime.fromisoformat(hb.replace('Z', '+00:00'))).total_seconds())
+    except Exception:
+        age = -1
+    print(f\"{m.get('session_id','?'):<40} {m.get('harness','?'):<10} {m.get('model_tier','?'):<8} {(m.get('machine') or '-'):<12} {(m.get('current_gap') or 'none'):<16} {age:>8} {skills:<30}\")
+print(f\"\\n({len(live)} live worker(s); {d['stale_count']} stale excluded)\")
 "
         fi
         ;;

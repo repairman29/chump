@@ -7265,6 +7265,32 @@ async fn main() -> Result<()> {
                     });
                 std::process::exit(status.code().unwrap_or(1));
             }
+            // CREDIBLE-099: worker-presence roster. The gap claim (NATS-KV /
+            // .chump-locks/claim-*.json) records WHAT is claimed; this command
+            // is the WHO/WHAT-registers-itself half — the live CapabilityManifest
+            // roster published by worker.sh's write_heartbeat() every cycle
+            // (scripts/coord/capability-publish.sh) and read back here.
+            // Thin wrapper per .claude/README.md pattern — the capability
+            // lives in scripts/coord/chump-capabilities.sh, this just exposes
+            // it as `chump fleet workers` so any harness gets the same roster.
+            "workers" => {
+                let as_json = args.iter().any(|a| a == "--json");
+                let script = repo_root.join("scripts/coord/chump-capabilities.sh");
+                if !script.exists() {
+                    eprintln!("chump fleet workers: missing {}", script.display());
+                    std::process::exit(1);
+                }
+                let mut cmd = std::process::Command::new("bash");
+                cmd.arg(&script).arg("list");
+                if as_json {
+                    cmd.arg("--json");
+                }
+                let status = cmd.status().unwrap_or_else(|e| {
+                    eprintln!("chump fleet workers: {e}");
+                    std::process::exit(1);
+                });
+                std::process::exit(status.code().unwrap_or(1));
+            }
             // INFRA-1446: work-discovery query — who is working on a given topic?
             // Usage: chump fleet whoworkson <topic> [--json]
             // Sources: (a) .chump-locks/claim-*.json lease files,
@@ -8234,7 +8260,7 @@ async fn main() -> Result<()> {
             }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|workers|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
                 );
                 eprintln!("Kill switch (RESILIENT-073):");
                 eprintln!(
