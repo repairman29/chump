@@ -45,6 +45,15 @@ PR_TERMINAL_ENABLED="${PR_TERMINAL_ENABLED:-1}"
 CHECK_PR="${CHECK_PR:-}"   # set to a PR number to dry-run the terminal check on it and exit
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# RESILIENT-263: operator escalation to the phone (Discord DM). Sourced, not
+# required — if the helper is missing this daemon must still run, so define a
+# no-op fallback rather than let a missing notifier take down PR automation.
+# shellcheck source=lib/notify-operator.sh
+if [[ -f "$SCRIPT_DIR/lib/notify-operator.sh" ]]; then
+    source "$SCRIPT_DIR/lib/notify-operator.sh"
+else
+    notify_operator() { echo "[notify-operator] MISSING lib/notify-operator.sh" >&2; return 0; }
+fi
 RESCUE_LOG="$REPO_ROOT/.chump-locks/pr-rescue.log"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 
@@ -274,6 +283,12 @@ handle_adjacent_string_eprintln() {
     [[ $DRY_RUN -eq 1 ]] && return 0
     log_rescue "$pr" "adjacent_string_eprintln" "operator_alert"
     emit_event "pr_auto_rescue_invoked" "\"pr\":$pr,\"handler\":\"adjacent_string_eprintln\",\"outcome\":\"operator_alert\""
+    # RESILIENT-263: this outcome has been called `operator_alert` since
+    # INFRA-1600 while alerting no operator — it wrote a log line and an ambient
+    # event and stopped. Now it actually reaches the phone. This is the
+    # "no handler can fix it, a human must decide" case, which is precisely what
+    # the operator asked to be told about.
+    notify_operator "$(printf '⚠️ **PR #%s needs you** — no auto-handler can fix it.\n\nPattern: `adjacent_string_eprintln` (from a union-merge). Fixing it means identifying the specific `eprintln!` call and combining the string literals — deliberately not automated, because guessing at it would corrupt the message.\n\nhttps://github.com/repairman29/chump/pull/%s\n\nLeft open, not closed.' "$pr" "$pr")" || true
     return 0
 }
 
@@ -333,6 +348,24 @@ else:
     say "  → TERMINAL: closed PR #$pr (red[$red] ${age}h) + reopened gap ${gap:-<none>}"
     log_rescue "$pr" "terminal_dispose" "closed_refiled"
     emit_event "pr_auto_rescue_invoked" "\"pr\":$pr,\"handler\":\"terminal_dispose\",\"outcome\":\"closed_refiled\",\"gap\":\"${gap}\",\"age_h\":${age}"
+
+    # RESILIENT-263: this is the moment a production line stops — a PR the fleet
+    # had already armed for merge is destroyed. Until now the operator's only
+    # notice was a GitHub comment he had to go looking for. PR #3510 died right
+    # here on 2026-08-08 and he found out hours later, by asking.
+    #
+    # The "on main right now" lookup is the load-bearing part: it is exactly the
+    # question that separates a real failure from a false red, and exactly the
+    # one he would otherwise have to go answer by hand at 11pm.
+    local on_main="unknown" first_red
+    first_red="$(echo "$red" | tr ',' '\n' | head -1 | sed 's/^ *//;s/ *$//')"
+    if [[ -n "$first_red" ]]; then
+        on_main="$(gh run list --branch main --limit 15 --json conclusion,name \
+            --jq "[.[] | select(.name==\"${first_red}\")][0].conclusion // \"no-recent-run\"" \
+            2>/dev/null || echo "lookup-failed")"
+    fi
+    notify_operator "$(printf '🛑 **Auto-closed PR #%s** — a line stopped.\n\nRed required check(s): `%s`\nStayed red: **%sh**\n`%s` on main right now: **%s**\nGap: %s (reopened)\n\nhttps://github.com/repairman29/chump/pull/%s\n\nIf that check is **green on main**, this was probably a false red and the work is fine — reopen and re-run. RESILIENT-262 tracks making that call automatically instead of asking you.' \
+        "$pr" "${red:-?}" "$age" "${first_red:-?}" "$on_main" "${gap:-<none>}" "$pr")" || true
     return 0
 }
 
