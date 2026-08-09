@@ -1,9 +1,9 @@
 {
-  "_read_me_first": "GENERATED FILE \u2014 do not hand-edit. Regenerate with `bash scripts/dev/build-capabilities-registry.sh`. This snapshot is only trustworthy until 2026-09-08T16:45:00Z. If today is on or after that date, this catalog is STALE: re-run the generator before quoting anything in it as the current state of the repo. Verify freshness with `bash scripts/ci/check-capabilities-freshness.sh`.",
+  "_read_me_first": "GENERATED FILE \u2014 do not hand-edit. Regenerate with `bash scripts/dev/build-capabilities-registry.sh`. This snapshot is only trustworthy until 2026-09-08T16:48:48Z. If today is on or after that date, this catalog is STALE: re-run the generator before quoting anything in it as the current state of the repo. Verify freshness with `bash scripts/ci/check-capabilities-freshness.sh`.",
   "schema_version": 1,
   "repo": "repairman29/chump",
-  "generated_at": "2026-08-09T16:45:00Z",
-  "stale_after": "2026-09-08T16:45:00Z",
+  "generated_at": "2026-08-09T16:48:48Z",
+  "stale_after": "2026-09-08T16:48:48Z",
   "staleness_policy": {
     "max_age_days": 30,
     "regenerate_cmd": "bash scripts/dev/build-capabilities-registry.sh",
@@ -16,6 +16,7 @@
   },
   "generator_version": "dev",
   "cli_source": "src/main.rs:print_help",
+  "overlay_status": "applied",
   "related_registries": [
     {
       "name": "privateer charter",

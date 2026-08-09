@@ -113,6 +113,7 @@ now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00
 
 # ── Optional curated overlay ─────────────────────────────────────────────────
 overlay = {}
+overlay_status = "absent"
 if overlay_path.exists():
     try:
         import yaml  # type: ignore
@@ -123,9 +124,19 @@ if overlay_path.exists():
             pid = entry.get("primitive_id")
             if pid:
                 overlay[pid] = entry
-    except Exception:
-        # Overlay parse failure is non-fatal; auto-generated values remain.
-        pass
+        overlay_status = "applied"
+    except Exception as e:
+        # CREDIBLE-240: this used to be a bare `pass`. A missing PyYAML on the
+        # runner silently dropped every hand-curated when_to_use string and
+        # produced a *different, quieter* registry that looked perfectly fine —
+        # the exact silent-degradation failure this gap is about. Say it.
+        overlay_status = f"FAILED:{type(e).__name__}"
+        print(
+            f"[build-capabilities-registry] WARNING: overlay {overlay_path} could not be "
+            f"applied ({e}); every curated when_to_use is MISSING from this registry. "
+            f"Install PyYAML (pip install pyyaml) and re-run.",
+            file=sys.stderr,
+        )
 
 def apply_overlay(primitive: dict) -> dict:
     """Merge curated overlay into a primitive entry, overlay wins on conflict."""
@@ -616,6 +627,7 @@ registry = {
     },
     "generator_version": os.environ.get("GIT_SHA", "dev"),
     "cli_source": cli_source,
+    "overlay_status": overlay_status,
     "related_registries": related_registries,
     "cli_commands": cli_commands,
     "event_kinds": event_kinds,
