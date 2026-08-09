@@ -699,6 +699,12 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         "scripts/ci/test-merged-check-guard.sh",
         // INFRA-2295: stale-pr-rebase-bot 3-strike circuit-break
         "scripts/ci/test-stale-pr-rebase-bot.sh",
+        // RESILIENT-266: discord gateway daemon guard. Pure shell — asserts the
+        // liveness alarm does not route through the gateway it checks, that the
+        // runner refuses a second instance, and that a stale pidfile is never
+        // mistaken for a live process. Mirrored, not allowlisted: it runs
+        // locally in well under a second.
+        "scripts/ci/test-discord-gateway.sh",
         // RESILIENT-248: pr-rescue zero-CI-runs detector. Pure decision-function
         // fixture — no network, no cargo, no GH_TOKEN, well under a second.
         // Mirrored here rather than allowlisted precisely BECAUSE it can run
