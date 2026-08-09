@@ -82,6 +82,21 @@ else
     bad "unconfigured returned rc=$rc — must never break the caller"
 fi
 
+# 8. Chunk, never truncate. The first cut of notify-operator.sh capped at 1900
+#    chars and appended an ellipsis — which drops the tail, and on an escalation
+#    the tail is the link and the ask. Assert the truncation pattern is gone and
+#    that a long message splits into numbered parts.
+if grep -qE 'content="\$\{content:0:1899\}' "$LIB"; then
+    bad "notify-operator still TRUNCATES long messages (drops the link and the ask)"
+else
+    ok "no truncation of long messages"
+fi
+if grep -q "i}/{len(out)}" "$LIB"; then
+    ok "long messages split into numbered parts"
+else
+    bad "no chunking — a >2000 char alert will be rejected or lose content"
+fi
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ $FAIL -eq 0 ]] || exit 1

@@ -87,12 +87,6 @@ notify_operator() {
         return 0
     fi
 
-    # Discord hard-caps message content at 2000 chars (discord_dm.rs:52 truncates
-    # the same way). Truncate rather than let the API 400 and lose the alert.
-    if (( ${#content} > 1900 )); then
-        content="${content:0:1899}…"
-    fi
-
     local api="https://discord.com/api/v10"
     local ch_json ch_id
     ch_json="$(curl -sS --max-time 10 -X POST "${api}/users/@me/channels" \
@@ -111,19 +105,72 @@ notify_operator() {
         return 1
     fi
 
-    local code
-    code="$(printf '%s' "$content" \
-        | python3 -c 'import json,sys;print(json.dumps({"content":sys.stdin.read()}))' \
-        | curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
-            -X POST "${api}/channels/${ch_id}/messages" \
-            -H "Authorization: Bot ${token}" \
-            -H "Content-Type: application/json" \
-            --data @- 2>/dev/null)" || true
+    # CHUNK RATHER THAN TRUNCATE. Discord hard-caps message content at 2000
+    # chars. The first cut of this file truncated at 1900 and appended "…",
+    # which silently drops the tail — and on an escalation the tail is the link
+    # and the ask, i.e. the part that lets the operator act. Split on paragraph
+    # then line then word boundaries, and number the parts so a message arriving
+    # out of order is still readable.
+    #
+    # Approach borrowed from openclaw's src/discord/chunk.ts (MIT). Rewritten
+    # here, not copied — see DOC-093 for the port policy.
+    local -a parts=()
+    while IFS= read -r part; do
+        [[ -n "$part" ]] && parts+=("$(printf '%b' "$part")")
+    done < <(printf '%s' "$content" | python3 -c '
+import sys
+LIMIT = 1900
+text = sys.stdin.read()
+out, buf = [], ""
+def flush():
+    global buf
+    if buf.strip():
+        out.append(buf.rstrip("\n"))
+    buf = ""
+for para in text.split("\n"):
+    # A single line longer than LIMIT still has to be broken; do it on words.
+    while len(para) > LIMIT:
+        cut = para.rfind(" ", 0, LIMIT)
+        if cut <= 0:
+            cut = LIMIT
+        if len(buf) + len(para[:cut]) + 1 > LIMIT:
+            flush()
+        buf += para[:cut] + "\n"
+        para = para[cut:].lstrip()
+    if len(buf) + len(para) + 1 > LIMIT:
+        flush()
+    buf += para + "\n"
+flush()
+for i, chunk in enumerate(out, 1):
+    if len(out) > 1:
+        chunk = f"({i}/{len(out)}) " + chunk
+    # One line per part; escape newlines so bash read can take it whole.
+    print(chunk.replace("\\", "\\\\").replace("\n", "\\n"))
+' 2>/dev/null)
 
-    if [[ "$code" == "200" || "$code" == "201" ]]; then
-        echo "[notify-operator] delivered (HTTP ${code})" >&2
+    if (( ${#parts[@]} == 0 )); then parts=("$content"); fi
+
+    local code sent=0 failed=0
+    for part in "${parts[@]}"; do
+        code="$(printf '%s' "$part" \
+            | python3 -c 'import json,sys;print(json.dumps({"content":sys.stdin.read()}))' \
+            | curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+                -X POST "${api}/channels/${ch_id}/messages" \
+                -H "Authorization: Bot ${token}" \
+                -H "Content-Type: application/json" \
+                --data @- 2>/dev/null)" || true
+        if [[ "$code" == "200" || "$code" == "201" ]]; then
+            sent=$((sent + 1))
+        else
+            failed=$((failed + 1))
+            echo "[notify-operator] FAIL: part returned HTTP ${code:-000}" >&2
+        fi
+    done
+
+    if (( failed == 0 && sent > 0 )); then
+        echo "[notify-operator] delivered (${sent} part(s))" >&2
         return 0
     fi
-    echo "[notify-operator] FAIL: send returned HTTP ${code:-000}" >&2
+    echo "[notify-operator] FAIL: ${failed} of $((sent + failed)) part(s) failed" >&2
     return 1
 }
