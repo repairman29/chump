@@ -10684,6 +10684,36 @@ async fn main() -> Result<()> {
             // (umbrella-done != actually-done). Emits over_claim_suspected and
             // exits non-zero if any over-claim is found. Bounded to 100 done
             // gaps (each check fetches its PR via gh).
+            // CREDIBLE-233 AC #3: sweep every DONE gap with a numeric closed_pr
+            // and flag the ones whose cited PR never actually touched the gap
+            // (the RESILIENT-048/#3165 shape) — makes the backlog this hole
+            // created visible instead of grandfathered in. Read-only, exits
+            // non-zero if any misattributed closure is found.
+            "audit-closed-pr" => {
+                let all_gaps = match store.list(None) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump gap audit-closed-pr: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+                let flagged = gap_store::audit_closed_pr_attribution(&repo_root, &all_gaps);
+                if flagged.is_empty() {
+                    println!(
+                        "chump gap audit-closed-pr: no misattributed closures found ({} done gaps checked)",
+                        all_gaps.iter().filter(|g| g.status == "done").count()
+                    );
+                } else {
+                    println!(
+                        "chump gap audit-closed-pr: {} misattributed closure(s) found:",
+                        flagged.len()
+                    );
+                    for m in &flagged {
+                        println!("  {} closed_pr={} — {}", m.gap_id, m.closed_pr, m.reason);
+                    }
+                    std::process::exit(1);
+                }
+            }
             "audit-done" => match crate::done_auditor::audit(&repo_root, 100) {
                 Ok(report) => {
                     print!("{}", report.render());

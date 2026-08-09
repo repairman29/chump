@@ -1047,6 +1047,34 @@ impl GapStore {
                         );
                     }
                 }
+
+                // CREDIBLE-233: `chump gap ship` runs the mis-attribution guard
+                // (verify_proof_of_merge's commit_references_gap check); `chump gap set
+                // --status done --closed-pr N` is the other write path that flips a gap
+                // to done and was NOT gated at all — exactly how RESILIENT-048 got closed
+                // against PR #3165, which never touched it. Mirror the same check here.
+                // Reuses CHUMP_BYPASS_CLOSED_PR_GUARD as the escape hatch since both
+                // guards protect the same invariant (an honest closed_pr on a done gap).
+                let pr_to_check = if fields.closed_pr.unwrap_or(0) != 0 {
+                    fields.closed_pr
+                } else {
+                    self.conn
+                        .query_row("SELECT closed_pr FROM gaps WHERE id=?", [gap_id], |row| {
+                            row.get::<_, Option<i64>>(0)
+                        })
+                        .ok()
+                        .flatten()
+                };
+                if std::env::var("CHUMP_BYPASS_CLOSED_PR_GUARD").as_deref() != Ok("1")
+                    && !verify_proof_of_merge(&self.repo_root, gap_id, pr_to_check)
+                {
+                    bail!(
+                        "CREDIBLE-233: refusing to flip {gap_id} to status=done — closed_pr \
+                         {pr_to_check:?} does not touch this gap's YAML, mention its ID in the \
+                         commit message, or reference it in the diff. Set \
+                         CHUMP_BYPASS_CLOSED_PR_GUARD=1 to override (audited)."
+                    );
+                }
             }
         }
 
@@ -2058,13 +2086,42 @@ impl GapStore {
             }
         }
 
-        if !verify_proof_of_merge(&self.repo_root, gap_id, closed_pr) {
+        // CREDIBLE-233: audited escape hatch for the mis-attribution guard added to
+        // verify_proof_of_merge above. Genuine cases exist (e.g. a merge commit whose
+        // diff was rewritten by a squash that dropped the gap's YAML change) but they
+        // must be visible, not silent — mirrors the CHUMP_BYPASS_CLOSED_PR_GUARD /
+        // off-rails bypass-trailer pattern used elsewhere in this file.
+        let touch_check_bypassed =
+            std::env::var("CHUMP_SHIP_TOUCH_CHECK_BYPASS").as_deref() == Ok("1");
+        if touch_check_bypassed {
+            use std::io::Write as _;
+            let ts = unix_to_iso_full(unix_now());
+            let pr_field = closed_pr
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| "null".into());
+            let line = format!(
+                "{{\"ts\":\"{ts}\",\"kind\":\"ship_touch_check_bypassed\",\
+                 \"gap_id\":\"{gap_id}\",\"closed_pr\":{pr_field}}}\n"
+            );
+            let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
+        if !touch_check_bypassed && !verify_proof_of_merge(&self.repo_root, gap_id, closed_pr) {
             bail!(
                 "INFRA-1392 PROOF-OF-MERGE: refusing to flip {gap_id} to status=done — \
-                 no commit on local main carries this gap ID. Either (a) wait for the \
-                 actual merge to land on main, or (b) ensure the merge commit subject \
-                 mentions {gap_id}. Auto-fetch from origin/main already ran; if the \
-                 commit is not yet on main, wait for the merge to land and retry."
+                 either no commit on local main carries this gap ID / PR marker, or \
+                 (CREDIBLE-233) the cited PR merged but its diff never touched this \
+                 gap's YAML, mentioned its ID, or matched it in the commit message. \
+                 Either (a) wait for the actual merge to land on main, (b) ensure the \
+                 merge commit subject mentions {gap_id}, or (c) if this really is a \
+                 legitimate merge whose diff doesn't literally reference the gap, set \
+                 CHUMP_SHIP_TOUCH_CHECK_BYPASS=1 (audited to ambient.jsonl)."
             );
         }
 
@@ -3784,9 +3841,137 @@ pub fn verify_proof_of_merge(repo_root: &Path, gap_id: &str, closed_pr: Option<i
         // genuinely odd production state. Fail closed.
         return false;
     }
-    // Success + a matching commit hash on stdout ⇒ the merge is proven anywhere in
-    // main's history. Success + empty ⇒ no commit mentions this gap/PR ⇒ not proven.
-    !String::from_utf8_lossy(&o.stdout).trim().is_empty()
+    // Success + a matching commit hash on stdout ⇒ *some* commit references the gap
+    // ID or the PR marker. Success + empty ⇒ no such commit ⇒ not proven.
+    let hash = String::from_utf8_lossy(&o.stdout).trim().to_string();
+    if hash.is_empty() {
+        return false;
+    }
+    // CREDIBLE-233: the `--grep` above OR-matches gap_id vs "(#N)" — a commit
+    // whose subject mentions ONLY the PR number proves that PR #N merged, not
+    // that PR #N had anything to do with THIS gap. Any squash-merge commit for
+    // PR #N always contains "(#N)" in its subject regardless of what the PR
+    // touched, so a bogus `closed_pr` sailed through as long as *some* PR by
+    // that number existed on main. RESILIENT-048 was closed against PR #3165
+    // this way — #3165 merged fine but changed four unrelated docs/YAML files,
+    // none of them RESILIENT-048's. When a `closed_pr` is supplied, additionally
+    // require the found commit to actually reference the gap: either its own
+    // YAML file is among the changed files, the gap ID appears in the commit
+    // message, or the gap ID appears in the diff content.
+    if closed_pr.is_some() && !commit_references_gap(repo_root, gap_id, &hash) {
+        return false;
+    }
+    true
+}
+
+/// CREDIBLE-233: does `commit_hash` actually reference `gap_id` — via its own
+/// commit message, a changed file named after the gap's YAML, or the gap ID
+/// appearing literally in the diff content? Used as the second gate after
+/// `verify_proof_of_merge` locates a candidate commit purely by PR-number
+/// match, so a PR that merged but touched nothing related to the gap cannot
+/// close it.
+fn commit_references_gap(repo_root: &Path, gap_id: &str, commit_hash: &str) -> bool {
+    let needle = gap_id.to_lowercase();
+
+    // (1) commit message (subject + body).
+    if let Ok(o) = std::process::Command::new("git")
+        .args(["log", "-1", "--format=%B", commit_hash])
+        .current_dir(repo_root)
+        .output()
+    {
+        if o.status.success()
+            && String::from_utf8_lossy(&o.stdout)
+                .to_lowercase()
+                .contains(&needle)
+        {
+            return true;
+        }
+    }
+
+    // (2) changed files — the gap's own YAML (docs/gaps/<ID>.yaml) is the
+    // clearest possible signal that this commit closed THIS gap.
+    let yaml_needle = format!("{needle}.yaml");
+    if let Ok(o) = std::process::Command::new("git")
+        .args([
+            "diff-tree",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            commit_hash,
+        ])
+        .current_dir(repo_root)
+        .output()
+    {
+        if o.status.success()
+            && String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .any(|f| f.to_lowercase().contains(&yaml_needle))
+        {
+            return true;
+        }
+    }
+
+    // (3) diff content — the gap ID mentioned somewhere in the actual change
+    // (a code comment, a doc reference, a filed follow-up) is weaker than
+    // (1)/(2) but still stronger than "a PR with this number merged".
+    if let Ok(o) = std::process::Command::new("git")
+        .args(["show", commit_hash, "--format=", "-p"])
+        .current_dir(repo_root)
+        .output()
+    {
+        if o.status.success()
+            && String::from_utf8_lossy(&o.stdout)
+                .to_lowercase()
+                .contains(&needle)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// One DONE gap whose `closed_pr` cites a commit that never referenced it —
+/// the RESILIENT-048/#3165 shape. `reason` explains what search failed.
+#[derive(Debug, Clone)]
+pub struct MisattributedClosure {
+    pub gap_id: String,
+    pub closed_pr: i64,
+    pub reason: String,
+}
+
+/// CREDIBLE-233 AC #3: sweep every DONE gap with a numeric `closed_pr` and
+/// flag the ones whose cited PR's merge commit never actually referenced the
+/// gap (neither in the commit message, nor via the gap's own YAML file, nor
+/// anywhere in the diff) — the same check `ship()` / `set_fields()` now run
+/// at close time, applied retroactively so the backlog this hole created
+/// becomes visible instead of grandfathered in. Read-only: never mutates.
+pub fn audit_closed_pr_attribution(repo_root: &Path, gaps: &[GapRow]) -> Vec<MisattributedClosure> {
+    if !repo_root.join(".git").exists() {
+        return Vec::new();
+    }
+    let mut flagged = Vec::new();
+    for g in gaps {
+        if g.status != "done" {
+            continue;
+        }
+        let Some(pr) = g.closed_pr else { continue };
+        if pr <= 0 {
+            continue;
+        }
+        if !verify_proof_of_merge(repo_root, &g.id, Some(pr)) {
+            flagged.push(MisattributedClosure {
+                gap_id: g.id.clone(),
+                closed_pr: pr,
+                reason: format!(
+                    "no commit on main referencing PR #{pr} mentions {}, touches its YAML, \
+                     or references it in the diff",
+                    g.id
+                ),
+            });
+        }
+    }
+    flagged
 }
 
 /// INFRA-100: parse `2026-04-28T22:30:00Z` style ISO-8601 (lease files use
@@ -5175,7 +5360,15 @@ mod proof_of_merge_tests {
     }
 
     #[test]
-    fn real_repo_with_pr_number_in_subject_passes_when_closed_pr_set() {
+    fn credible233_pr_number_match_alone_no_longer_proves_relation() {
+        // CREDIBLE-233: this used to be `..._passes_when_closed_pr_set` and
+        // asserted the OLD (buggy) behaviour — a commit whose subject mentions
+        // ONLY the PR number, with no file changes and no mention of the gap
+        // ID anywhere, was accepted as proof. That is exactly the shape of the
+        // RESILIENT-048 / PR #3165 mis-attribution: #3165 merged fine (so the
+        // "(#3165)" marker is genuine) but never touched RESILIENT-048 at all.
+        // A gap must not be closable against a PR that "merged nearby" but
+        // never referenced it.
         let dir = tempdir().unwrap();
         let init = std::process::Command::new("git")
             .args(["init", "--initial-branch=main", "--quiet"])
@@ -5192,9 +5385,10 @@ mod proof_of_merge_tests {
             .args(["config", "user.name", "test"])
             .current_dir(dir.path())
             .status();
-        // Subject mentions only the PR number (squash-merge convention),
-        // NOT the gap ID. The gap-ID branch of the check should miss but
-        // the `(#PR)` branch should hit.
+        // Subject mentions only the PR number (squash-merge convention); the
+        // commit is empty (no files changed) and never mentions the gap ID —
+        // "a PR that only edited unrelated docs" is the same shape (diff has
+        // content, but none of it references the gap).
         let _ = std::process::Command::new("git")
             .args([
                 "commit",
@@ -5204,18 +5398,90 @@ mod proof_of_merge_tests {
             ])
             .current_dir(dir.path())
             .status();
-        assert!(verify_proof_of_merge(
-            dir.path(),
-            "INFRA-NO-MATCH",
-            Some(4242)
-        ));
-        // Without the closed_pr hint, no match.
+        assert!(
+            !verify_proof_of_merge(dir.path(), "INFRA-NO-MATCH", Some(4242)),
+            "PR-number-only match with no gap reference in message/files/diff must NOT prove closure"
+        );
+        // Without the closed_pr hint, no match either (pre-existing behaviour).
         assert!(!verify_proof_of_merge(dir.path(), "INFRA-NO-MATCH", None));
         // Wrong PR number — no match.
         assert!(!verify_proof_of_merge(
             dir.path(),
             "INFRA-NO-MATCH",
             Some(9999)
+        ));
+    }
+
+    #[test]
+    fn credible233_pr_that_touches_gap_yaml_passes() {
+        // The positive case: the merge commit changes docs/gaps/<ID>.yaml —
+        // the strongest possible signal that this PR closed this gap.
+        let dir = tempdir().unwrap();
+        let init = std::process::Command::new("git")
+            .args(["init", "--initial-branch=main", "--quiet"])
+            .current_dir(dir.path())
+            .status();
+        if init.is_err() || !init.unwrap().success() {
+            return;
+        }
+        for (k, v) in [("user.email", "test@test.local"), ("user.name", "test")] {
+            let _ = std::process::Command::new("git")
+                .args(["config", k, v])
+                .current_dir(dir.path())
+                .status();
+        }
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        std::fs::create_dir_all(&gaps_dir).unwrap();
+        std::fs::write(gaps_dir.join("INFRA-8800.yaml"), "status: done\n").unwrap();
+        let _ = std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(dir.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args(["commit", "-m", "feat: ship a thing (#5001)"])
+            .current_dir(dir.path())
+            .status();
+        assert!(verify_proof_of_merge(dir.path(), "INFRA-8800", Some(5001)));
+    }
+
+    #[test]
+    fn credible233_pr_that_touches_unrelated_docs_only_fails() {
+        // AC #4: a gap cannot be closed against a PR that only edited
+        // unrelated docs — mirrors the real RESILIENT-048/#3165 shape (real
+        // file changes, none of them related to this gap).
+        let dir = tempdir().unwrap();
+        let init = std::process::Command::new("git")
+            .args(["init", "--initial-branch=main", "--quiet"])
+            .current_dir(dir.path())
+            .status();
+        if init.is_err() || !init.unwrap().success() {
+            return;
+        }
+        for (k, v) in [("user.email", "test@test.local"), ("user.name", "test")] {
+            let _ = std::process::Command::new("git")
+                .args(["config", k, v])
+                .current_dir(dir.path())
+                .status();
+        }
+        let docs_dir = dir.path().join("docs");
+        std::fs::create_dir_all(&docs_dir).unwrap();
+        std::fs::write(docs_dir.join("RED_LETTER.md"), "unrelated notes\n").unwrap();
+        let _ = std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(dir.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args([
+                "commit",
+                "-m",
+                "chore(cold-water): Red Letter issue #17 (#3165)",
+            ])
+            .current_dir(dir.path())
+            .status();
+        assert!(!verify_proof_of_merge(
+            dir.path(),
+            "RESILIENT-048",
+            Some(3165)
         ));
     }
 }
