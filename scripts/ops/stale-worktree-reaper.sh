@@ -93,7 +93,7 @@ trap 'rc=$?; [[ $rc -ne 0 ]] && reaper_finish fail "{\"exit\":$rc}"' EXIT
 DRY_RUN=1
 AGE_MIN_HOURS=1
 LOG_FRESH_MIN=10
-# RESILIENT-263: a worktree younger than this is NEVER reaped as "merged".
+# RESILIENT-267: a worktree younger than this is NEVER reaped as "merged".
 # `git worktree add -b <new> main` creates a branch with zero commits, which is
 # by ancestry an ancestor of origin/main — so the merged test below returned
 # true for a worktree that had never merged anything and, on 2026-08-09, deleted
@@ -169,7 +169,7 @@ _emit_worktree_reap_protected() {
     log "REAP_PROTECTED $wt_path via fresh heartbeat in $lease"
 }
 
-# RESILIENT-263 --------------------------------------------------------------
+# RESILIENT-267 --------------------------------------------------------------
 # Did this branch ever make a commit of its own?
 #
 # The distinction that matters: a branch whose work was merged still POINTS at
@@ -491,7 +491,14 @@ process_worktree() {
         remote_exists=1
     fi
 
-    # RESILIENT-263: "is an ancestor of origin/main" is NOT "was merged into
+    # RESILIENT-267 (RECURRENCE of RESILIENT-099, which was marked done on
+    # 2026-06-05). That gap saw the same misreading and fixed it as "active lease
+    # must hard-block reap" — protecting LEASED worktrees while leaving the
+    # predicate below false. A worktree from a bare `git worktree add` holds no
+    # chump lease and inherited none of that protection, so the bug returned.
+    # Fix the predicate, not the symptom.
+    #
+    # RESILIENT-267: "is an ancestor of origin/main" is NOT "was merged into
     # origin/main". A branch created by `git worktree add -b <new> main` has
     # ZERO commits of its own, so it is trivially an ancestor and this test
     # returned true for work that had never been merged because it had never
@@ -654,7 +661,7 @@ process_worktree() {
             return 0  # genuinely clean — safe to reap
         fi
 
-        # RESILIENT-263: name the rescue branch after the worktree it came FROM.
+        # RESILIENT-267: name the rescue branch after the worktree it came FROM.
         #
         # This used to be `ls claim-*.json | head -1` — literally whichever claim
         # file sorted first in the locks dir, with no connection to the worktree
