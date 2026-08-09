@@ -139,7 +139,7 @@ mod intervention_watchdog; // COTG-2.1/INFRA-3489: log every human touch as an a
 mod introspect_tool;
 pub use chump_inventory::inventory; // META-271: fleet inventory + tech-debt review-only audit DB (EFFECTIVE-401: extracted to crates/chump-inventory)
 mod job_log;
-mod kpi_report;
+pub use chump_kpi_report::kpi_report; // EFFECTIVE-418: extracted to crates/chump-kpi-report (build-speed)
 mod lesson_action;
 mod lesson_embeddings;
 mod limits;
@@ -1266,6 +1266,11 @@ async fn main() -> Result<()> {
     // fleet_status) prices tokens via session_ledger's rate table. Kept out of
     // the crate itself to avoid pulling the pricing subsystem out of the bin.
     waste_tally::set_cost_fn(session_ledger::cost_usd_from_tokens);
+
+    // EFFECTIVE-418: same injection for the extracted kpi-report crate — its
+    // cost-savings + tokens-per-ship sections price tokens via the same rate
+    // table, kept out of the crate to avoid promoting the pricing subsystem.
+    kpi_report::set_cost_fn(session_ledger::cost_usd_from_tokens);
 
     // CREDIBLE-019: --verbose / --debug global flags (processed first so they
     // take effect even alongside --version or --help).
