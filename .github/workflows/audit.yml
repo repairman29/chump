@@ -656,6 +656,12 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-install-gh-shim-worktree-safe.sh
 
+      # RESILIENT-263. shard-3 deliberately: pure shell, no chump binary, and
+      # shards 1/4 are the ones paying the cold cargo build.
+      - name: operator escalation channel is wired (RESILIENT-263)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-notify-operator.sh
+
       # RESILIENT-248. Deliberately on shard-3: it needs no chump binary, and
       # shards 1/4 are the ones that pay the cold cargo build (7m/6m vs 1m).
       - name: pr-rescue zero-CI-runs detector (RESILIENT-248)
