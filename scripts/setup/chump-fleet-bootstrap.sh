@@ -76,6 +76,12 @@ REQUIRED_DAEMONS=(
     # pure bash, no cargo dep. Without this, the pause-deadlock self-seals
     # (RESILIENT-066 root cause) and the fleet cannot auto-recover.
     "dev.chump.farmer|scripts/setup/install-farmer-launchd.sh"
+    # RESILIENT-256: wip-watchdog — snapshots stale uncommitted work into the
+    # object store (refs/wip/…) so a `git reset --hard` stops being
+    # unrecoverable. REQUIRED rather than optional because the 2026-08-09 loss
+    # (~574 lines, 13h uncommitted, gone for good) is exactly what an
+    # opt-in-and-therefore-uninstalled data-loss guard fails to prevent.
+    "dev.chump.wip-watchdog|scripts/setup/install-wip-watchdog-launchd.sh"
     "com.chump.wake-recovery|scripts/setup/install-wake-recovery.sh"
     "com.chump.fleet-pool-keeper|scripts/setup/install-fleet-pool-keeper.sh"
     # RESILIENT-220: inventory-rebuild-cadence — weekly `chump inventory rebuild`

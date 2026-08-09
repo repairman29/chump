@@ -19,6 +19,26 @@
     ],
     "PreToolUse": [
       {
+        "_chump_tag": "resilient-256-git-guard",
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v chump >/dev/null 2>&1 && exec chump git-guard --hook || exit 0"
+          }
+        ]
+      },
+      {
+        "_chump_tag": "resilient-256-git-guard",
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v chump >/dev/null 2>&1 && exec chump git-guard --hook-write || exit 0"
+          }
+        ]
+      },
+      {
         "matcher": "Edit|Write",
         "hooks": [
           {
