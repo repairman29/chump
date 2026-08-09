@@ -26,8 +26,20 @@ source "$SCRIPT_DIR/../lib/scrub-git-env.sh"
 
 # Handle absolute CARGO_TARGET_DIR correctly (INFRA-runner-chump sets it to an
 # absolute path; naively prepending REPO_ROOT produces garbage).
-TARGET_DIR="${CARGO_TARGET_DIR:-${REPO_ROOT}/target}"
-BINARY="${TARGET_DIR}/debug/chump"
+# Resolve via the shared helper, not the env var. CARGO_TARGET_DIR is set in
+# .cargo/config.toml here, NOT in the environment — so reading the env var
+# resolved to $REPO_ROOT/target, which does not exist, and every invocation
+# below died with exit 127 and printed NOTHING. preflight reported the gate as
+# failed with no reason, on 2026-08-09, blocking a push for an hour.
+# discover-chump-bin.sh resolves through `cargo metadata`, which knows about
+# the config file. 131 scripts under scripts/ci/ still hardcode the env-var
+# form; only 14 use this helper.
+source "$SCRIPT_DIR/lib/discover-chump-bin.sh"
+BINARY="$CHUMP_BIN"
+if [ ! -x "$BINARY" ]; then
+    echo "FAIL: no chump binary found (CHUMP_BIN=$BINARY). Build with 'cargo build --bin chump'." >&2
+    exit 1
+fi
 
 # Build if needed
 if [[ ! -x "$BINARY" ]]; then
@@ -115,6 +127,13 @@ VALUES
 SQL
 
 # ── Tests 1-3: verify gap data in database ────────────────────────────────────
+# CHUMP_REPO must be exported BEFORE these run, not at the picker section
+# further down. It is unset above (W-012) and the fixture is reached by `cd`
+# alone — but chump resolves its repo root itself rather than trusting cwd, so
+# tests 1-3 were querying the REAL state.db and asking it for INFRA-1000, a
+# fixture gap that only exists in the temp database. "gap INFRA-1000 not found"
+# was the truth; the question was wrong.
+export CHUMP_REPO="$REPO"
 echo "--- Tests 1-3: gap data verification ---"
 OUT1=$("$BINARY" gap show INFRA-1000 --json 2>&1)
 if echo "$OUT1" | grep -q "INFRA-1000"; then
