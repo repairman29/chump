@@ -145,7 +145,7 @@ fn a2a_team_block(is_mabel: bool) -> String {
     }
 }
 
-pub fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
+pub fn chump_system_prompt(context: &str, is_mabel: bool, voice: bool) -> String {
     // PRODUCT-065: web-slim early exit — ultra-compact prompt for local models.
     // Benchmarked: Chump's full system prompt + 6 tools = 35s on M4/qwen3:8b.
     // This 200-char prompt + 6 tools = ~10s. The prompt IS the bottleneck.
@@ -333,15 +333,64 @@ pub fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     let is_interactive = std::env::var("CHUMP_HEARTBEAT_TYPE")
         .map(|v| v.is_empty())
         .unwrap_or(true);
-    if is_interactive {
+    let final_prompt = if is_interactive {
         format!(
             "{}\n\n## Intent → action (Discord)\n{}",
             with_team, INTENT_ACTION_COMPACT
         )
     } else {
         with_team
+    };
+    // EFFECTIVE-422: appends VOICE_ADDENDUM LAST so it wins primacy at the end
+    // of context (where small models attend most). Only when this agent turn
+    // originated from /api/voice/ask (voice=true). The honesty rail for code
+    // + short spoken-format rules apply only to voice turns.
+    if voice {
+        format!("{}\n{}", final_prompt, VOICE_ADDENDUM)
+    } else {
+        final_prompt
     }
 }
+
+/// EFFECTIVE-422 — Voice Advisor addendum, appended to the base Chump system
+/// prompt when the agent turn originated from `/api/voice/ask` (Siri Shortcut).
+/// Generalizes Olive's "numbers never invented" → "repo/PR/gate claims never
+/// invented." Forces spoken-format discipline so replies are TTS-friendly.
+///
+/// See docs/design/VOICE_ADVISOR.md §1 for the rationale and the Olive
+/// `VOICE_ADDENDUM` precedent (olive/src/lib/agent/orchestrator.ts:63).
+pub const VOICE_ADDENDUM: &str = "
+
+VOICE ADDENDUM — this reply WILL be read aloud by text-to-speech. Hard rules:
+
+SOURCE OF TRUTH (the honesty rail, for code):
+- You are advising on ChumpOS and the fleet around it. Every concrete claim — a PR's
+  status, a CI gate's name, a bypass env, a file's path, a function's signature, a
+  repo's structure, whether something exists — MUST come from a tool result you got
+  THIS turn or a prior turn of this session. NEVER invent, estimate, or guess a
+  repo/PR/gate/file fact. If you don't have it, say you don't know, or call a tool.
+- Call almanac_search FIRST for any question about code, a repo, or \"where does X
+  live.\" It spans the whole fleet (Chump, olive, jarvis, upshift, almanac itself,…),
+  not just ChumpOS — so a question about any repo routes through the same tool.
+- If a tool is unavailable (almanac_search not registered, run_cli gated off), say so
+  plainly — \"I can't search the codebase right now\" — do not paper over it with a
+  plausible-sounding answer. Silence about a failed tool is the one thing that breaks
+  trust fastest.
+- Destructive-by-voice stays advisory. You can describe a gap, a gate, a fix; you do
+  NOT ship, merge, or mutate repos from a voice turn. The irreversible action stays a
+  tap in the app/web UI — same rail as Olive's checkout.
+
+VOICE OUTPUT FORMAT:
+- 1 to 3 short sentences. NEVER bullet points, NEVER markdown (no **, no lists, no
+  headers, no code spans). Plain speech, contractions, no symbols.
+- Name the one thing that matters (the gate that's blocking, the file the symbol lives
+  in, the PR number). The screen — if one's attached — shows the rest.
+- If you ran tools, say what you found, not \"let me check\" — by the time you speak,
+  the tool already ran.
+- End with one short question at most, and only when a decision genuinely branches.
+
+When the user says \"done\", \"stop\", \"that's all\", \"goodbye\", or similar — end the
+turn cleanly; the route handles session close.";
 
 #[cfg(test)]
 mod meta013_snapshot {
@@ -360,7 +409,8 @@ mod meta013_snapshot {
         std::env::remove_var("CHUMP_LIGHT_INTERACTIVE");
         std::env::remove_var("CHUMP_AIR_GAP_MODE");
         std::env::remove_var("CHUMP_MABEL");
-        let prompt = super::chump_system_prompt("## Test context\nseed=meta-013-baseline\n", false);
+        let prompt =
+            super::chump_system_prompt("## Test context\nseed=meta-013-baseline\n", false, false);
         assert!(
             prompt.contains("HARD RULES"),
             "must contain HARD RULES section"
@@ -383,6 +433,41 @@ mod meta013_snapshot {
             len > 2000 && len < 20000,
             "prompt length {} outside 2-20 KB",
             len
+        );
+    }
+
+    /// EFFECTIVE-422: voice=true appends VOICE_ADDENDUM (the spoken-output +
+    /// source-of-truth discipline the agent uses when called from
+    /// /api/voice/ask). voice=false must NOT append it — the plain PWA chat
+    /// path is for rich replies, not spoken-friendly plain text.
+    #[test]
+    fn chump_system_prompt_voice_addendum_only_when_voice() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("CHUMP_THINKING");
+        std::env::remove_var("CHUMP_CASCADE_ENABLED");
+        std::env::remove_var("CHUMP_LIGHT_INTERACTIVE");
+        std::env::remove_var("CHUMP_AIR_GAP_MODE");
+        std::env::remove_var("CHUMP_MABEL");
+        let with_voice = super::chump_system_prompt("## Test\nseed=eff-422\n", false, true);
+        let without_voice = super::chump_system_prompt("## Test\nseed=eff-422\n", false, false);
+        assert!(
+            with_voice.contains(super::VOICE_ADDENDUM),
+            "voice=true must append VOICE_ADDENDUM"
+        );
+        assert!(
+            !without_voice.contains(super::VOICE_ADDENDUM),
+            "voice=false must NOT append VOICE_ADDENDUM"
+        );
+        assert!(
+            with_voice.len() > without_voice.len(),
+            "voice=true prompt must be longer than the non-voice counterpart"
+        );
+        // The honesty rail for code must be present when voice is on — the user
+        // hears the answer, can't scroll, so the agent must ground every claim
+        // in a tool result rather than invent a plausible-sounding one.
+        assert!(
+            with_voice.contains("MUST come from a tool result"),
+            "voice addendum must enforce source-of-truth discipline"
         );
     }
 }

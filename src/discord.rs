@@ -277,7 +277,11 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     Ok(Agent::new(
         provider,
         registry,
-        Some(chump_system_prompt(typed.context_str(), env_is_mabel())),
+        Some(chump_system_prompt(
+            typed.context_str(),
+            env_is_mabel(),
+            false,
+        )),
         Some(session_manager),
     ))
 }
@@ -624,7 +628,7 @@ async fn run_one_discord_turn(
     chump_log::log_message_with_request_id(channel_id.get(), user_name, content, Some(&request_id));
 
     let reply = if !tool_policy::tools_requiring_approval().is_empty() {
-        match build_chump_agent_web_components(&channel_id.to_string(), None) {
+        match build_chump_agent_web_components(&channel_id.to_string(), None, false) {
             Ok(b) => {
                 let (event_tx, mut event_rx) = stream_events_mod::event_channel();
                 #[cfg(feature = "mistralrs-infer")]

@@ -71,6 +71,13 @@ struct ChatRequest {
     /// When **`CHUMP_POLICY_OVERRIDE_API=1`**, register a time-boxed relax for this session before the agent runs.
     #[serde(default)]
     policy_override: Option<PolicyOverrideInline>,
+    /// EFFECTIVE-422 — when true, the VOICE_ADDENDUM is appended to the system
+    /// prompt so replies stay TTS-friendly (short, plain speech, grounded in
+    /// tool results). Mirrors Olive's `ctx.spoken` flag
+    /// (olive/src/lib/agent/orchestrator.ts:133). Set by /api/voice/ask; the
+    /// plain /api/chat leaves it false so the PWA keeps its full rich reply.
+    #[serde(default)]
+    voice: Option<bool>,
 }
 
 #[derive(serde::Deserialize)]
@@ -4074,8 +4081,12 @@ async fn handle_chat(
         session_id: session_id.clone(),
     });
     let bot = body.bot.as_deref();
-    let built = agent_factory::build_chump_agent_web_components(&session_id, bot)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let built = agent_factory::build_chump_agent_web_components(
+        &session_id,
+        bot,
+        body.voice.unwrap_or(false),
+    )
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     #[cfg(feature = "mistralrs-infer")]
     let streaming_provider = StreamingProvider::new_with_mistral_stream(
         built.provider,
@@ -4158,6 +4169,154 @@ async fn handle_brain_graph_stats(
     let stats =
         crate::memory_graph_viz::graph_stats().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(stats))
+}
+
+// ── EFFECTIVE-422: Voice advisor — Siri Shortcut seam into /api/chat ────────
+
+#[derive(serde::Deserialize)]
+struct VoiceAskBody {
+    /// Dictated phrase the Siri Shortcut POSTs (see docs/design/VOICE_ADVISOR.md §3).
+    #[serde(default)]
+    text: String,
+}
+
+/// POST /api/voice/ask — Siri Shortcut ("Ask Chump") entry point. Mirrors Olive's
+/// `olive/src/app/api/voice/ask/route.ts` shape: takes `{ text }`, returns
+/// `{ spoken, end }` JSON the Shortcut loops on (`end: "no"` keeps the mic open,
+/// `"yes"` closes the conversation). Reuses the SAME agent loop /api/chat uses —
+/// `voice: Some(true)` flips on the VOICE_ADDENDUM so the reply stays TTS-friendly.
+///
+/// Auth: same `CHUMP_WEB_TOKEN` Bearer guard as /api/chat (check_auth, :295).
+/// Session: a stable id (`CHUMP_VOICE_SESSION_ID`, default "voice") so the
+/// voice conversation has its own persisted context thread in web_sessions_db.
+/// Almanac_search is already a registered tool — the agent "talks to ChumpOS" by
+/// asking the same brain, this is just another door.
+async fn handle_voice_ask(headers: HeaderMap, Json(body): Json<VoiceAskBody>) -> Response {
+    if !check_auth(&headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
+    let text = body.text.trim();
+    if text.is_empty() {
+        return Json(serde_json::json!({
+            "spoken": "Didn't catch that. Say hey Siri, ask Chump, and your question.",
+            "end": "yes",
+        }))
+        .into_response();
+    }
+    // Terminal phrases close the conversation cleanly (mirrors Olive's EXIT regex
+    // at olive/src/app/api/voice/ask/route.ts:136). Defers to no agent round-trip.
+    const EXIT: &str = r"(?i)^\s*(that'?\s*(?:it|all)|i'?\s*m done|all done|we'?\s*re done|done|nothing else|no,?\s*that'?\s*(?:it|all)|stop|goodbye|bye|thanks?)\s*[.!]?\s*$";
+    if regex::Regex::new(EXIT)
+        .ok()
+        .map(|r| r.is_match(text))
+        .unwrap_or(false)
+    {
+        return Json(serde_json::json!({
+            "spoken": "Closing out. Say hey Siri, ask Chump, when you need me.",
+            "end": "yes",
+        }))
+        .into_response();
+    }
+
+    // Pin one stable session id for the voice conversation so it has its own
+    // persisted context thread in web_sessions_db (separate from web/Discord).
+    let voice_session_id = std::env::var("CHUMP_VOICE_SESSION_ID")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "voice".to_string());
+
+    // Reuse the SAME /api/chat agent-spawn body by handing the request through
+    // handle_chat's kill-gate wrapper. We SYNTHESIZE a ChatRequest that mirrors
+    // what /api/chat would build, but with voice=true, and drain the SSE stream
+    // to a single spoken string instead of returning the stream to the client.
+    let chat_body = ChatRequest {
+        message: text.to_string(),
+        session_id: Some(voice_session_id.clone()),
+        attachments: None,
+        bot: None,
+        policy_override: None,
+        voice: Some(true),
+    };
+
+    // Run the kill-gate (cost threshold) the same way /api/chat does, then
+    // drain the SSE response to a single string.
+    let sse_response = handle_chat_with_kill_gate(headers, Json(chat_body)).await;
+    let spoken = match drain_sse_response(sse_response).await {
+        Ok(s) => s,
+        Err(code) => return (code, "stream drain failed").into_response(),
+    };
+    Json(serde_json::json!({
+        "spoken": spoken,
+        "end": "no",
+    }))
+    .into_response()
+}
+
+/// Drain an `Sse<...>` response body to a single string by parsing event
+/// payloads. Extracts `turn_complete.full_text` or `text_complete.text` or
+/// `turn_error.error` from the SSE event stream.
+///
+/// EXPECTED EVENT PAYLOAD SHAPE: handle_chat (and agent_event_stream, :146) emit
+/// `Event::default().event(event_type).data(serde_json::to_string(&ev))`. So
+/// each line is `event:<type>\ndata:<json>\n\n` (SSE wire format). We split on
+/// the double-newline boundary and parse the `data:` line's JSON.
+async fn drain_sse_response(response: Response) -> Result<String, StatusCode> {
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    parse_sse_to_spoken(&String::from_utf8_lossy(&bytes)).ok_or(StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+/// EFFECTIVE-422 — pure SSE wire-format parser used by /api/voice/ask.
+/// Mirrors `agent_event_stream` (web_server.rs:146): each chunk is
+/// `event:<type>\ndata:<json>\n\n`. Returns the spoken string the
+/// Shortcut will speak, or None when no turn/text/error event arrived.
+///
+/// Event types consumed (see `src/stream_events.rs:8-78`):
+///   turn_complete.full_text ← the final reply (preferred)
+///   text_complete.text       ← fallback if turn_complete never fires
+///   turn_error.error         ← surface plainly
+fn parse_sse_to_spoken(body: &str) -> Option<String> {
+    let mut last_text = String::new();
+    for chunk in body.split("\n\n") {
+        let mut event_type: Option<&str> = None;
+        let mut data_line: Option<&str> = None;
+        for line in chunk.lines() {
+            if let Some(rest) = line.strip_prefix("event:") {
+                event_type = Some(rest.trim());
+            } else if let Some(rest) = line.strip_prefix("data:") {
+                data_line = Some(rest.trim());
+            }
+        }
+        let Some(t) = event_type else { continue };
+        let Some(json_str) = data_line else { continue };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) else {
+            continue;
+        };
+        match t {
+            "turn_complete" => {
+                if let Some(text) = v.get("full_text").and_then(|x| x.as_str()) {
+                    return Some(text.to_string());
+                }
+            }
+            "text_complete" => {
+                if let Some(text) = v.get("text").and_then(|x| x.as_str()) {
+                    last_text = text.to_string();
+                }
+            }
+            "turn_error" => {
+                if let Some(err) = v.get("error").and_then(|x| x.as_str()) {
+                    return Some(format!("Chump hit an error: {err}"));
+                }
+            }
+            _ => {}
+        }
+    }
+    if last_text.is_empty() {
+        None
+    } else {
+        Some(last_text)
+    }
 }
 
 // ── FLEET-003b: atomic blackboard exchange endpoint ──────────────────────────
@@ -9025,6 +9184,7 @@ fn build_api_router() -> Router {
         // INFRA-1207 client-side fallback).
         .route("/api/roadmap", get(routes::roadmap::handle_roadmap))
         .route("/api/chat", post(handle_chat_with_kill_gate))
+        .route("/api/voice/ask", post(handle_voice_ask))
         .route("/api/stop", post(handle_stop))
         .route("/api/tts", get(handle_tts))
         .route("/api/inject-hint", post(handle_inject_hint))
@@ -9637,6 +9797,84 @@ pub async fn start_web_server(port: u16) -> Result<()> {
 
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod effective_422_voice_advisor {
+    //! EFFECTIVE-422: pins the SSE→spoken-string parser that /api/voice/ask uses
+    //! to convert an agent run's `AgentEvent` stream into a single text payload
+    //! the Siri Shortcut speaks. Mirrors `agent_event_stream` (parent mod:146),
+    //! which emits `event:<type>\ndata:<json>\n\n` for each AgentEvent variant.
+
+    use super::parse_sse_to_spoken;
+
+    fn sse(event_type: &str, data_json: &str) -> String {
+        format!("event:{event_type}\ndata:{data_json}\n\n")
+    }
+
+    #[test]
+    fn turn_complete_full_text_wins() {
+        // text_complete arrives first, then turn_complete — turn_complete is
+        // authoritative (it carries the full reply for the turn).
+        let body = format!(
+            "{}{}",
+            sse("text_complete", r#"{"text":"partial"}"#),
+            sse(
+                "turn_complete",
+                r#"{"request_id":"r1","full_text":"final","duration_ms":10,"tool_calls_count":1,"model_calls_count":2}"#
+            )
+        );
+        assert_eq!(parse_sse_to_spoken(&body).as_deref(), Some("final"));
+    }
+
+    #[test]
+    fn text_complete_is_fallback_when_no_turn_complete() {
+        // Sanity: agent_event_stream always emits turn_complete or turn_error
+        // before closing, but parse_sse_to_spoken must degrade gracefully to
+        // text_complete if a buggy client never emits the capstone event.
+        let body = sse("text_complete", r#"{"text":"partial-only"}"#);
+        let parsed = parse_sse_to_spoken(&body);
+        assert_eq!(
+            parsed.as_deref(),
+            Some("partial-only"),
+            "should return Some when text_complete arrives alone"
+        );
+    }
+
+    #[test]
+    fn turn_error_surfaces_plainly() {
+        // Voice users get the error string spoken, not silence — the honesty
+        // rule "silence about a failed tool breaks trust" applies here too.
+        let body = sse("turn_error", r#"{"request_id":"r1","error":"oops"}"#);
+        assert_eq!(
+            parse_sse_to_spoken(&body).as_deref(),
+            Some("Chump hit an error: oops")
+        );
+    }
+
+    #[test]
+    fn irrelevant_events_are_skipped() {
+        // turn_start / thinking / tool_call_start etc. carry no spoken payload.
+        let body = format!(
+            "{}{}{}{}",
+            sse("turn_start", r#"{"request_id":"r1","timestamp":"t"}"#),
+            sse("thinking", r#"{"elapsed_ms":250}"#),
+            sse(
+                "tool_call_start",
+                r#"{"tool_name":"almanac_search","tool_input":{},"call_id":"c1"}"#
+            ),
+            sse(
+                "turn_complete",
+                r#"{"request_id":"r1","full_text":"after tools","duration_ms":500,"tool_calls_count":1,"model_calls_count":1}"#
+            )
+        );
+        assert_eq!(parse_sse_to_spoken(&body).as_deref(), Some("after tools"));
+    }
+
+    #[test]
+    fn empty_body_yields_none() {
+        assert_eq!(parse_sse_to_spoken(""), None);
+    }
 }
 
 #[cfg(test)]
