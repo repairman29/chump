@@ -170,6 +170,65 @@ if command -v launchctl &>/dev/null && [[ "$(uname)" == "Darwin" ]]; then
     fi
 fi
 
+# ── RESILIENT-246: curator liveness ───────────────────────────────────────
+# The curator is chump's product-management layer (pillar balance, PR unstick,
+# backlog restock). It died ~2026-08-01 with launchd exit 78 and nobody noticed
+# for twelve days.
+#
+# Note the INFRA-2040 block above ALREADY computed _sfd_dead_count and would
+# have listed com.chump.curator-supervisor(exit=78) every single run — but line
+# ~165 ANDs that signal with _merge_stale (no merge in 12h). Chump merges many
+# times an hour, so _merge_stale is ~always 0 and the dead-daemon list was
+# computed and then discarded. The brief knew, and said nothing.
+#
+# This line is deliberately UNCONDITIONAL. Curator silence is reported on its
+# own evidence, never gated behind a second unrelated condition.
+_curator_pass_age=""      # since the supervisor last completed a pass
+_curator_action_age=""    # since the curator last FILED something
+_curator_stale=0
+
+_cur_last_pass="$LOCK_DIR/curator-supervisor-last-pass.json"
+if [[ -f "$_cur_last_pass" ]]; then
+    _cp_m=$(stat -f%m "$_cur_last_pass" 2>/dev/null || stat -c%Y "$_cur_last_pass" 2>/dev/null || echo 0)
+    _cp_h=$(( (now_epoch - _cp_m) / 3600 ))
+    _curator_pass_age="${_cp_h}h"
+    # Supervisor cadence is 300s; >1h means ~12 missed cycles.
+    [[ "$_cp_h" -ge 1 ]] && _curator_stale=1
+else
+    _curator_pass_age="never"
+    _curator_stale=1
+fi
+
+# Newest curator-filed-* artifact = the last real product-management ACTION.
+_cur_newest=$(ls -t "$LOCK_DIR"/curator-filed-*.json 2>/dev/null | head -1 || true)
+[[ -z "$_cur_newest" && -f "$LOCK_DIR/curator-sessions.json" ]] && _cur_newest="$LOCK_DIR/curator-sessions.json"
+if [[ -n "$_cur_newest" && -f "$_cur_newest" ]]; then
+    _ca_m=$(stat -f%m "$_cur_newest" 2>/dev/null || stat -c%Y "$_cur_newest" 2>/dev/null || echo 0)
+    _ca_h=$(( (now_epoch - _ca_m) / 3600 ))
+    if [[ "$_ca_h" -ge 24 ]]; then
+        _curator_action_age="$(( _ca_h / 24 ))d"
+    else
+        _curator_action_age="${_ca_h}h"
+    fi
+    # Curator files work roughly daily; 48h is two missed days.
+    [[ "$_ca_h" -ge 48 ]] && _curator_stale=1
+else
+    _curator_action_age="never"
+    _curator_stale=1
+fi
+
+# launchd truth: exit 78 means launchd could not spawn the job at all, which
+# writes NOTHING to either log. Surface the code so the silence is diagnosable.
+_curator_launchd="unknown"
+if command -v launchctl &>/dev/null && [[ "$(uname)" == "Darwin" ]]; then
+    _curator_launchd="$(launchctl list 2>/dev/null \
+        | awk '$3 == "com.chump.curator-supervisor" {print "exit=" $2; f=1} END {if(!f) print "not-loaded"}')"
+    case "$_curator_launchd" in
+        exit=0) ;;
+        *) _curator_stale=1 ;;
+    esac
+fi
+
 # ── Auto-fixed counts from ambient (last 24h) ────────────────────────────
 auto_lint_fixes=0
 auto_flake_reruns=0
@@ -247,6 +306,19 @@ stalls_str=""
 echo "Stalls > 4h: ${#stalls_4h[@]}${stalls_str}"
 echo "Auto-fixed: lint=$auto_lint_fixes flake-rerun=$auto_flake_reruns"
 echo "Manual rescues: $manual_rescues"
+# RESILIENT-246: always print curator liveness, loudly when stale.
+if [[ "$_curator_stale" -eq 1 ]]; then
+    if [[ -t 1 ]]; then
+        printf '\033[1;31mCurator: last pass %s | last action %s | launchd %s  *** CURATOR SILENT — no pillar rebalance or PR unstick is happening; run: bash scripts/setup/install-curator-supervisor.sh ***\033[0m\n' \
+            "$_curator_pass_age" "$_curator_action_age" "$_curator_launchd"
+    else
+        printf 'Curator: last pass %s | last action %s | launchd %s  *** CURATOR SILENT — no pillar rebalance or PR unstick is happening; run: bash scripts/setup/install-curator-supervisor.sh ***\n' \
+            "$_curator_pass_age" "$_curator_action_age" "$_curator_launchd"
+    fi
+else
+    printf 'Curator: last pass %s | last action %s | launchd %s\n' \
+        "$_curator_pass_age" "$_curator_action_age" "$_curator_launchd"
+fi
 
 # ── Shipped last 6h grouped by pillar ────────────────────────────────────
 if [[ "$ships_6h" -gt 0 ]]; then

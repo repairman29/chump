@@ -1136,6 +1136,36 @@ events:
     trigger: reaper missed expected cadence
     consumers: [fleet-brief, operator-recall]
 
+  - kind: curator_silent
+    effect_metric: self
+    emitter: scripts/ops/reaper-heartbeat-watchdog.sh (RESILIENT-246)
+    trigger: curator-supervisor missed expected cadence, or its launchd job is not loaded / exiting non-zero
+    consumers: [fleet-brief, operator-recall]
+
+  - kind: curator_cannot_start
+    effect_metric: self
+    emitter: scripts/ops/curator-supervisor-run.sh (RESILIENT-246)
+    trigger: supervisor binary missing or not executable — the failure that used to surface only as a silent launchd exit 78
+    consumers: [fleet-brief, operator-recall]
+
+  - kind: curator_pass_failed
+    effect_metric: self
+    emitter: scripts/ops/curator-supervisor-run.sh (RESILIENT-246)
+    trigger: supervisor binary ran but exited non-zero
+    consumers: [fleet-brief, operator-recall]
+
+  - kind: curator_bin_disposable
+    effect_metric: self
+    emitter: scripts/ops/curator-supervisor-run.sh (RESILIENT-246)
+    trigger: supervisor is running from target/release, a reapable build path whose disappearance caused the twelve-day outage
+    consumers: [fleet-brief, operator-recall]
+
+  - kind: curator_supervisor_pass
+    effect_metric: self
+    emitter: scripts/ops/curator-supervisor-run.sh (RESILIENT-246)
+    trigger: every supervisor invocation — written to .chump-locks/curator-supervisor-last-pass.json on success AND failure so freshness is gradeable
+    consumers: [fleet-brief, reaper-heartbeat-watchdog]
+
   - kind: stale_gap_lock_reaped
     effect_metric: self
     emitter: scripts/ops/stale-gap-lock-reaper.sh (INFRA-676)
@@ -4922,6 +4952,43 @@ events:
       1d and FLEET_AGE_D to 2d for this run. Emitted once per run when escalation fires.
     consumers: [fleet-brief, disk-health-monitor, ops-audit]
     fields_required: [ts, kind, free_gb, disk_critical_gb, fingerprint_age_d, fleet_age_d]
+
+  # ── RESILIENT-273: disk-critical-reactor shared-target self-heal (2026-08-09) ─
+  # The reactor's terminal tier reclaims the bloated shared cargo target that the
+  # delegated reaper structurally cannot (it holds the dir the fleet builds into).
+  # DRY-RUN by default; armed via CHUMP_DISK_REACTOR_QUIESCE_EXECUTE=1.
+  - kind: disk_reactor_quiesce_dryrun
+    effect_metric: disk_free_gb
+    emitter: scripts/coord/disk-critical-reactor.sh (RESILIENT-273)
+    trigger: >
+      Shared target exceeded SHARED_TARGET_CAP_GB while quiesce-execute was OFF
+      (default). Reports what the self-heal would reclaim without touching disk.
+    consumers: [fleet-brief, disk-health-monitor, ops-audit]
+    fields_required: [ts, kind, target, target_gb, cap_gb, note]
+  - kind: disk_reactor_quiesce_started
+    effect_metric: disk_free_gb
+    emitter: scripts/coord/disk-critical-reactor.sh (RESILIENT-273)
+    trigger: >
+      Armed self-heal began: stops the fleet, boots out the deploy daemons that
+      ignore AUTONOMY_LEVEL, and kills in-flight builds before pruning.
+    consumers: [fleet-brief, disk-health-monitor, ops-audit]
+    fields_required: [ts, kind, target, target_gb, cap_gb]
+  - kind: disk_reactor_quiesce_aborted
+    effect_metric: disk_free_gb
+    emitter: scripts/coord/disk-critical-reactor.sh (RESILIENT-273)
+    trigger: >
+      Self-heal refused to delete because builds were still holding the target
+      after the bounded quiescence wait (RESILIENT-112 guard). Daemons restored.
+    consumers: [fleet-brief, disk-health-monitor, ops-audit]
+    fields_required: [ts, kind, reason, remaining_builds, waited_s]
+  - kind: disk_reactor_quiesce_reclaimed
+    effect_metric: disk_free_gb
+    emitter: scripts/coord/disk-critical-reactor.sh (RESILIENT-273)
+    trigger: >
+      Self-heal pruned the over-cap shared target after confirming quiescence,
+      then restored the deploy daemons. Reports GB freed.
+    consumers: [fleet-brief, disk-health-monitor, ops-audit]
+    fields_required: [ts, kind, target, reclaimed_gb_approx, free_gb_after]
 
   # ── INFRA-1237: emit-without-register reconciliation (2026-05-14) ────────
   # 19 kinds that were fired in production but missing from the registry.
