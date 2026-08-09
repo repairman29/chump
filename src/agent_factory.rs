@@ -60,7 +60,11 @@ pub fn build_chump_agent_cli() -> Result<(ChumpAgent, Session<crate::session::Re
     let agent = ChumpAgent::new(
         provider,
         registry,
-        Some(chump_system_prompt(typed.context_str(), env_is_mabel())),
+        Some(chump_system_prompt(
+            typed.context_str(),
+            env_is_mabel(),
+            false,
+        )),
         Some(session_manager),
         None, // no event channel for CLI
         // max_iterations: env-overridable for unattended dispatched-gap mode where
@@ -79,9 +83,13 @@ pub fn build_chump_agent_cli() -> Result<(ChumpAgent, Session<crate::session::Re
 
 /// Web agent components for streaming or non-streaming use.
 /// `bot`: Some("mabel") | Some("chump") | None (use CHUMP_MABEL env).
+/// `voice`: when true, the VOICE_ADDENDUM is appended to the system prompt so
+/// replies stay short, plain-speech, and grounded in tool results — for the
+/// `/api/voice/ask` Siri-Shortcut entry point (EFFECTIVE-422).
 pub fn build_chump_agent_web_components(
     session_id: &str,
     bot: Option<&str>,
+    voice: bool,
 ) -> Result<WebAgentBuild> {
     let session_id = if session_id.trim().is_empty() {
         "default"
@@ -119,7 +127,7 @@ pub fn build_chump_agent_web_components(
         provider,
         registry,
         session_manager,
-        system_prompt: chump_system_prompt(typed.context_str(), is_mabel),
+        system_prompt: chump_system_prompt(typed.context_str(), is_mabel, voice),
         #[cfg(feature = "mistralrs-infer")]
         mistral_for_stream,
     })
@@ -128,7 +136,7 @@ pub fn build_chump_agent_web_components(
 /// Build Chump agent for web mode: same as CLI but session under sessions/web/<session_id>.
 #[allow(dead_code)] // public API for web server or callers that want a full Agent
 pub fn build_chump_agent_web(session_id: &str) -> Result<Agent> {
-    let b = build_chump_agent_web_components(session_id, None)?;
+    let b = build_chump_agent_web_components(session_id, None, false)?;
     Ok(Agent::new(
         b.provider,
         b.registry,

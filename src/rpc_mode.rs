@@ -205,7 +205,7 @@ pub async fn run_rpc_loop() -> Result<()> {
                     tracing::warn!("rpc_mode: failed to send WebSessionReady event: {e}");
                 }
 
-                let built = agent_factory::build_chump_agent_web_components(&sid, bot)?;
+                let built = agent_factory::build_chump_agent_web_components(&sid, bot, false)?;
                 #[cfg(feature = "mistralrs-infer")]
                 let streaming_provider = StreamingProvider::new_with_mistral_stream(
                     built.provider,
