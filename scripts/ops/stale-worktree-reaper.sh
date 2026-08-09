@@ -93,6 +93,14 @@ trap 'rc=$?; [[ $rc -ne 0 ]] && reaper_finish fail "{\"exit\":$rc}"' EXIT
 DRY_RUN=1
 AGE_MIN_HOURS=1
 LOG_FRESH_MIN=10
+# RESILIENT-263: a worktree younger than this is NEVER reaped as "merged".
+# `git worktree add -b <new> main` creates a branch with zero commits, which is
+# by ancestry an ancestor of origin/main — so the merged test below returned
+# true for a worktree that had never merged anything and, on 2026-08-09, deleted
+# /tmp/chump-r246 about 35 minutes after it was created, while a session was
+# editing in it. Every new worktree is exposed between `worktree add` and its
+# first commit; this closes that window by clock as well as by semantics.
+NEW_WORKTREE_GRACE_MIN="${CHUMP_REAPER_NEW_WORKTREE_GRACE_MIN:-240}"
 FORCE_SKIP_PROCESS_CHECK=0
 # INFRA-1074: CHUMP_REAPER_SAFETY_CHECK=0 disables heartbeat+index safety checks
 # (for testing the reaper itself without tripping the guards).
@@ -160,6 +168,64 @@ _emit_worktree_reap_protected() {
         "\"lease\":\"$(basename "$lease")\",\"ttl_s\":${CHUMP_LEASE_HEARTBEAT_TTL_S:-600}"
     log "REAP_PROTECTED $wt_path via fresh heartbeat in $lease"
 }
+
+# RESILIENT-263 --------------------------------------------------------------
+# Did this branch ever make a commit of its own?
+#
+# The distinction that matters: a branch whose work was merged still POINTS at
+# a commit it authored, even though that commit is now contained in the base.
+# A branch created and never committed to points at the base commit it was
+# forked from — it authored nothing, so there is nothing that could have been
+# merged. `merge-base --is-ancestor` cannot tell these apart; both answer yes.
+#
+# The test is the branch tip itself: if the tip is a commit that origin/main
+# ALREADY had, the branch never wrote anything. If the tip is a commit reachable
+# only because this branch created it, it did.
+branch_has_own_commits() {
+    local branch="$1" tip base_tip
+    tip=$(git rev-parse --verify --quiet "$branch" 2>/dev/null) || return 1
+    # Every commit the base can reach. A fresh branch's tip is in this set by
+    # definition; a branch that authored a commit and had it merged has a tip
+    # that entered the set only via that merge, so we additionally require the
+    # tip to differ from the base's own tip lineage at fork time — approximated
+    # by: the tip is not reachable from base EXCLUDING commits the branch
+    # introduced. In practice the cheap, reliable signal is the reflog.
+    #
+    # `git reflog show <branch>` on a freshly created branch has exactly one
+    # entry ("branch: Created from ..."). Any commit, amend, or reset adds more.
+    local reflog_entries
+    reflog_entries=$(git reflog show "$branch" 2>/dev/null | grep -c . || true)
+    if [[ "${reflog_entries:-0}" -gt 1 ]]; then
+        return 0   # the branch was moved after creation: it did something
+    fi
+    # No reflog (pruned, or a clone) — fall back to comparing against the
+    # remote-tracking base. If the tip is exactly a commit the base already
+    # points at or precedes, treat it as empty and REFUSE to call it merged.
+    base_tip=$(git rev-parse --verify --quiet "$REMOTE/$BASE" 2>/dev/null) || return 1
+    [[ "$tip" != "$base_tip" ]] && ! git merge-base --is-ancestor "$tip" "$base_tip^" 2>/dev/null
+}
+
+# Is this worktree too young to be judged merged?
+#
+# Uses the worktree's `.git` FILE, which git writes once at `worktree add` and
+# does not touch afterwards — unlike the directory mtime, which every edit bumps
+# and which would therefore keep an actively-used worktree permanently "new".
+worktree_within_grace() {
+    local wt_path="$1"
+    [[ "${NEW_WORKTREE_GRACE_MIN:-0}" -gt 0 ]] || return 1
+    [[ -e "$wt_path/.git" ]] || return 1
+    [[ -n "$(find "$wt_path/.git" -maxdepth 0 -mmin "-${NEW_WORKTREE_GRACE_MIN}" 2>/dev/null)" ]]
+}
+
+# Best-effort ambient event that never breaks the reaper if the helper is absent.
+reaper_ambient_event() {
+    local kind="$1" fields="$2"
+    local out="${LOCKS_DIR:-$REPO_ROOT/.chump-locks}/ambient.jsonl"
+    [[ -d "$(dirname "$out")" ]] || return 0
+    printf '{"ts":"%s","kind":"%s","reaper":"worktree",%s}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$kind" "$fields" >>"$out" 2>/dev/null || true
+}
+# -----------------------------------------------------------------------------
 
 green "=== stale-worktree-reaper (repo: $REPO_ROOT) ==="
 [[ $DRY_RUN -eq 1 ]] && info "Dry-run mode — no worktrees will be removed. Use --execute to act."
@@ -425,7 +491,31 @@ process_worktree() {
         remote_exists=1
     fi
 
+    # RESILIENT-263: "is an ancestor of origin/main" is NOT "was merged into
+    # origin/main". A branch created by `git worktree add -b <new> main` has
+    # ZERO commits of its own, so it is trivially an ancestor and this test
+    # returned true for work that had never been merged because it had never
+    # existed. On 2026-08-09 that reaped /tmp/chump-r246 ~35 minutes after
+    # creation, out from under a session actively editing it
+    # (.chump-locks/ambient.jsonl, reason "branch merged into origin/main").
+    #
+    # A real merge leaves evidence: the branch made at least one commit of its
+    # own. `branch_has_own_commits` looks for that, and the grace window below
+    # is the belt to its braces — either one alone would have prevented this.
     if [[ -n "$wt_branch" ]] && git merge-base --is-ancestor "$wt_branch" "$REMOTE/$BASE" 2>/dev/null; then
+        if ! branch_has_own_commits "$wt_branch"; then
+            info "  SKIP: $wt_branch is an ancestor of $REMOTE/$BASE but has NO commits of its own —"
+            info "        never merged, just never started. Reaping this deletes live work."
+            reaper_ambient_event "worktree_reap_skipped_empty_branch" \
+                "\"worktree\":\"$wt_path\",\"branch\":\"$wt_branch\"" 2>/dev/null || true
+            SKIPPED=$((SKIPPED+1)); return 0
+        fi
+        if worktree_within_grace "$wt_path"; then
+            info "  SKIP: $wt_path is younger than ${NEW_WORKTREE_GRACE_MIN}min — too new to call merged"
+            reaper_ambient_event "worktree_reap_skipped_too_new" \
+                "\"worktree\":\"$wt_path\",\"branch\":\"$wt_branch\",\"grace_min\":${NEW_WORKTREE_GRACE_MIN}" 2>/dev/null || true
+            SKIPPED=$((SKIPPED+1)); return 0
+        fi
         reapable=1; reason="branch merged into $REMOTE/$BASE"
     elif [[ $remote_exists -eq 0 ]]; then
         reapable=1; reason="origin branch deleted"
@@ -564,18 +654,44 @@ process_worktree() {
             return 0  # genuinely clean — safe to reap
         fi
 
-        # Determine gap ID from claim file (best-effort).
+        # RESILIENT-263: name the rescue branch after the worktree it came FROM.
+        #
+        # This used to be `ls claim-*.json | head -1` — literally whichever claim
+        # file sorted first in the locks dir, with no connection to the worktree
+        # being reaped. On 2026-08-09 it stashed /tmp/chump-r246's work onto
+        # wip/resilient-262-<ts>, sending anyone looking for that work to a
+        # branch named after an unrelated gap. A rescue you cannot find is not a
+        # rescue.
+        #
+        # Order of preference, most specific first:
+        #   1. a claim file that actually NAMES this worktree
+        #   2. the worktree's own branch name (resilient-246-curator -> RESILIENT-246)
+        #   3. the worktree directory name (/tmp/chump-r246 -> R246)
         local claim_file gap_id ts wip_branch
-        claim_file=$(ls "$LOCKS_DIR/claim-"*.json 2>/dev/null | head -1 || true)
-        gap_id="unknown"
-        if [[ -n "$claim_file" && -f "$claim_file" ]]; then
+        gap_id=""
+        for claim_file in "$LOCKS_DIR"/claim-*.json; do
+            [[ -f "$claim_file" ]] || continue
+            grep -qF "$wt" "$claim_file" 2>/dev/null || continue
             if command -v jq >/dev/null 2>&1; then
-                gap_id=$(jq -r '.gap_id // "unknown"' "$claim_file" 2>/dev/null || echo "unknown")
+                gap_id=$(jq -r '.gap_id // ""' "$claim_file" 2>/dev/null || true)
             else
                 gap_id=$(grep -oE '"gap_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$claim_file" \
-                    | head -1 | sed -E 's/.*"([^"]+)"$/\1/' || echo "unknown")
+                    | head -1 | sed -E 's/.*"([^"]+)"$/\1/' || true)
             fi
+            [[ -n "$gap_id" && "$gap_id" != "null" ]] && break
+            gap_id=""
+        done
+        if [[ -z "$gap_id" ]]; then
+            # DOMAIN-123 out of the branch name, e.g. resilient-246-curator.
+            local _wt_branch_now
+            _wt_branch_now=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+            gap_id=$(printf '%s' "$_wt_branch_now" \
+                | grep -oiE '^[a-z][a-z-]*-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]' || true)
         fi
+        if [[ -z "$gap_id" ]]; then
+            gap_id=$(basename "$wt" | sed 's/^chump-//' | tr '[:lower:]' '[:upper:]')
+        fi
+        [[ -n "$gap_id" ]] || gap_id="unknown"
         ts=$(date +%s)
         wip_branch="wip/$(echo "$gap_id" | tr '[:upper:]' '[:lower:]')-${ts}"
 

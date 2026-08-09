@@ -1136,6 +1136,36 @@ events:
     trigger: reaper missed expected cadence
     consumers: [fleet-brief, operator-recall]
 
+  - kind: curator_silent
+    effect_metric: self
+    emitter: scripts/ops/reaper-heartbeat-watchdog.sh (RESILIENT-246)
+    trigger: curator-supervisor missed expected cadence, or its launchd job is not loaded / exiting non-zero
+    consumers: [fleet-brief, operator-recall]
+
+  - kind: curator_cannot_start
+    effect_metric: self
+    emitter: scripts/ops/curator-supervisor-run.sh (RESILIENT-246)
+    trigger: supervisor binary missing or not executable — the failure that used to surface only as a silent launchd exit 78
+    consumers: [fleet-brief, operator-recall]
+
+  - kind: curator_pass_failed
+    effect_metric: self
+    emitter: scripts/ops/curator-supervisor-run.sh (RESILIENT-246)
+    trigger: supervisor binary ran but exited non-zero
+    consumers: [fleet-brief, operator-recall]
+
+  - kind: curator_bin_disposable
+    effect_metric: self
+    emitter: scripts/ops/curator-supervisor-run.sh (RESILIENT-246)
+    trigger: supervisor is running from target/release, a reapable build path whose disappearance caused the twelve-day outage
+    consumers: [fleet-brief, operator-recall]
+
+  - kind: curator_supervisor_pass
+    effect_metric: self
+    emitter: scripts/ops/curator-supervisor-run.sh (RESILIENT-246)
+    trigger: every supervisor invocation — written to .chump-locks/curator-supervisor-last-pass.json on success AND failure so freshness is gradeable
+    consumers: [fleet-brief, reaper-heartbeat-watchdog]
+
   - kind: stale_gap_lock_reaped
     effect_metric: self
     emitter: scripts/ops/stale-gap-lock-reaper.sh (INFRA-676)
