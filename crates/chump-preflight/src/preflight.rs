@@ -699,6 +699,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         "scripts/ci/test-merged-check-guard.sh",
         // INFRA-2295: stale-pr-rebase-bot 3-strike circuit-break
         "scripts/ci/test-stale-pr-rebase-bot.sh",
+        // RESILIENT-263: operator escalation channel wiring. Pure shell, no
+        // cargo, no network — asserts the daemon actually calls notify_operator
+        // and that the token is never echoed. Mirrored rather than allowlisted
+        // because it CAN run locally.
+        "scripts/ci/test-notify-operator.sh",
         // RESILIENT-248: pr-rescue zero-CI-runs detector. Pure decision-function
         // fixture — no network, no cargo, no GH_TOKEN, well under a second.
         // Mirrored here rather than allowlisted precisely BECAUSE it can run
