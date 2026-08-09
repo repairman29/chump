@@ -1381,3 +1381,8 @@ CLAUDE_PROJECT_DIR
 CHUMP_DISCORD_ENABLED
 # detected in: (standard input)
 CHUMP_READY_DM_USER_ID
+# RESILIENT-254: overrides the organ-registry path so the commitment-rot
+# SLO tests can point at a fixture instead of the real
+# scripts/coord/daemon-expectations.yaml. Test-only; nothing for an
+# operator to tune, so internal rather than Tier 1.
+CHUMP_ORGAN_REGISTRY

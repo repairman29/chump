@@ -48,6 +48,12 @@ schema_version: 1
 last_audit: "2026-05-15"
 
 flakes:
+  - test: proof_of_merge_tests::credible218_merge_older_than_200_commits_is_proven
+    reason: "builds a fixture repo by shelling out to `git commit --allow-empty` 205 times in a loop, and every one of those calls discards its result (`let _ = ...status()`). Under CI contention any single commit that fails leaves the repo short of 200 commits, and the >200-commits-back assertion then fails on a repo that was never built correctly. Passes 3/3 locally; observed twice on 2026-08-09 in PRs that do not touch chump-gap-store (#3542, #3547). The durable fix is to CHECK the status in that loop and fail the fixture setup loudly instead of asserting against a half-built repo."
+    tracking_gap: CREDIBLE-218
+    added: "2026-08-09"
+    last_observed: "2026-08-09"
+    max_reruns: 1
   - test: doctor::tests::repo_env_missing_is_warn_not_fail
     reason: "test removes CHUMP_REPO/CHUMP_HOME and asserts check_repo_env returns Warn, but parallel tests in cargo test can set those env vars between this test's remove_var and check_repo_env call → assert fails with left=Pass right=Warn"
     tracking_gap: INFRA-977
