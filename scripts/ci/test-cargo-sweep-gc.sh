@@ -16,17 +16,25 @@ fail() { echo "  FAIL: $1" >&2; fails=$((fails + 1)); }
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 AMB="$WORK/ambient.jsonl"; : > "$AMB"
 
-echo "== 1. cargo-sweep absent → skip + emit cargo_sweep_gc_skipped (not a silent pass) =="
+# ZERO-WASTE-054: cargo is checked FIRST (the launchd-env bug). FAKEBIN gives the
+# later tests a resolvable cargo so they reach the check they mean to exercise.
+FAKEBIN="$WORK/bin"; mkdir -p "$FAKEBIN"
+mkcargo() { printf '#!/bin/sh\nexit 0\n' > "$FAKEBIN/cargo"; chmod +x "$FAKEBIN/cargo"; }
+
+echo "== 1a. cargo NOT on PATH → skip cargo-not-found (ZERO-WASTE-054: the launchd bug) =="
 : > "$AMB"
 PATH="/usr/bin:/bin" HOME="$WORK" CHUMP_AMBIENT_LOG="$AMB" CHUMP_REPO="$WORK" bash "$GC" >/dev/null 2>&1
 rc=$?
-(( rc == 0 )) && pass "exits 0 when cargo-sweep absent" || fail "should exit 0, got $rc"
-grep -q '"kind":"cargo_sweep_gc_skipped"' "$AMB" && pass "emitted cargo_sweep_gc_skipped" || fail "must emit skipped event, not go silent"
-grep -q 'cargo-sweep-not-installed' "$AMB" && pass "skip reason recorded" || fail "skip reason missing"
+(( rc == 0 )) && pass "exits 0 when cargo absent" || fail "should exit 0, got $rc"
+grep -q 'cargo-not-found' "$AMB" && pass "skipped with cargo-not-found (not a silent no-op)" || fail "must skip cargo-not-found"
 
-echo "== 2. no Cargo.toml at repo → skip + emit (with cargo-sweep 'present') =="
-: > "$AMB"
-FAKEBIN="$WORK/bin"; mkdir -p "$FAKEBIN"; printf '#!/bin/sh\nexit 0\n' > "$FAKEBIN/cargo-sweep"; chmod +x "$FAKEBIN/cargo-sweep"
+echo "== 1b. cargo present but cargo-sweep absent → skip cargo-sweep-not-installed =="
+: > "$AMB"; mkcargo
+PATH="$FAKEBIN:/usr/bin:/bin" HOME="$WORK" CHUMP_AMBIENT_LOG="$AMB" CHUMP_REPO="$WORK" bash "$GC" >/dev/null 2>&1
+grep -q 'cargo-sweep-not-installed' "$AMB" && pass "skip reason cargo-sweep-not-installed" || fail "skip reason missing"
+
+echo "== 2. no Cargo.toml at repo → skip no-cargo-toml (cargo + cargo-sweep both 'present') =="
+: > "$AMB"; mkcargo; printf '#!/bin/sh\nexit 0\n' > "$FAKEBIN/cargo-sweep"; chmod +x "$FAKEBIN/cargo-sweep"
 PATH="$FAKEBIN:/usr/bin:/bin" HOME="$WORK" CHUMP_AMBIENT_LOG="$AMB" CHUMP_REPO="$WORK" bash "$GC" >/dev/null 2>&1
 grep -q '"kind":"cargo_sweep_gc_skipped"' "$AMB" && grep -q 'no-cargo-toml' "$AMB" \
   && pass "no-Cargo.toml → skipped+reason" || fail "should skip with no-cargo-toml reason"
