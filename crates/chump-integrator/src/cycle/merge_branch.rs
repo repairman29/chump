@@ -12,11 +12,12 @@
 //!
 //! ## Conflict handling
 //!
-//! On any merge conflict, the cycle **aborts immediately** (no auto-resolve).
-//! The function calls `git merge --abort`, emits
-//! `kind=integration_merge_conflict`, and returns `Err`. Partial merges
-//! already applied in this cycle are left on the integration branch for the
-//! caller to reset.
+//! On a merge conflict the offending candidate is **skipped, not fatal**
+//! (RESILIENT-269): the function calls `git merge --abort`, records the gap in
+//! `conflicts`, and continues to the next candidate — exactly like a
+//! fetch-failure (CREDIBLE-158). The successfully merged gaps stay on the
+//! integration branch; the caller ships them and treats `conflicts` as the
+//! drop-list. One bad branch never dead-letters the whole batch.
 //!
 //! ## Cross-references
 //!
@@ -36,7 +37,8 @@ use super::GapCandidate;
 pub struct IntegrationBranchOutcome {
     /// Gaps successfully merged into the integration branch.
     pub merged_gaps: Vec<MergedGap>,
-    /// Gaps that caused a conflict (at most one — we abort on first conflict).
+    /// Gaps skipped due to a merge conflict or fetch failure (RESILIENT-269:
+    /// each is dropped and the rest of the batch still ships — not a cycle-abort).
     pub conflicts: Vec<ConflictRecord>,
 }
 
@@ -119,7 +121,12 @@ pub async fn build_integration_branch(
             .with_context(|| format!("git merge failed for {}", candidate.gap_id))?;
 
         if !merge_status.success() {
-            // Conflict — collect conflicted files then abort.
+            // RESILIENT-269: a single conflicting branch must not dead-letter the
+            // whole batch — abort THIS merge, record the conflict, and skip to the
+            // next candidate, exactly like the CREDIBLE-158 fetch-failure path
+            // above. Batching only lands if one bad branch can be dropped and the
+            // rest still ship; aborting the cycle on the first conflict (the old
+            // behavior) meant the integrator never landed a batch at all.
             let conflicted_files = list_conflicted_files(repo_root).await.unwrap_or_default();
 
             let _ = Command::new("git")
@@ -128,16 +135,22 @@ pub async fn build_integration_branch(
                 .status()
                 .await;
 
+            eprintln!(
+                "[integrator] merge conflict on {} ({}) — skipping, shipping the rest",
+                candidate.gap_id,
+                if conflicted_files.is_empty() {
+                    "no files reported".to_string()
+                } else {
+                    conflicted_files.join(",")
+                }
+            );
+
             conflicts.push(ConflictRecord {
                 gap_id: candidate.gap_id.clone(),
                 conflicted_files,
             });
 
-            // Abort the whole cycle on first conflict.
-            return Ok(IntegrationBranchOutcome {
-                merged_gaps,
-                conflicts,
-            });
+            continue;
         }
 
         // 4. Amend commit to add trailers.
@@ -451,8 +464,11 @@ mod tests {
         );
     }
 
+    // RESILIENT-269: a conflicting candidate is skipped, NOT fatal — a later
+    // clean candidate must still merge. (A edits README → clean; B edits README
+    // → conflicts, skipped; C edits a different file → still merges.)
     #[tokio::test]
-    async fn test_conflict_aborts_with_structured_error() {
+    async fn test_conflict_skips_candidate_and_continues() {
         let (_dir, repo) = init_repo_with_commits().await;
 
         // Both branches edit the same line in README.md → guaranteed conflict.
@@ -508,6 +524,37 @@ mod tests {
                 .await
                 .unwrap();
         }
+        // Branch C (off main) edits a DIFFERENT file → merges clean even after B
+        // conflicts. This is the RESILIENT-269 behavior under test.
+        tokio::process::Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(&repo)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await
+            .unwrap();
+        tokio::process::Command::new("git")
+            .args(["checkout", "-b", "chump/infra-0004c"])
+            .current_dir(&repo)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await
+            .unwrap();
+        tokio::fs::write(repo.join("FEATURE_C.md"), "# feature c\n")
+            .await
+            .unwrap();
+        for args in [vec!["add", "FEATURE_C.md"], vec!["commit", "-m", "c"]] {
+            tokio::process::Command::new("git")
+                .args(&args)
+                .current_dir(&repo)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .await
+                .unwrap();
+        }
 
         // Integration branch off main.
         tokio::process::Command::new("git")
@@ -538,21 +585,32 @@ mod tests {
         let candidates = vec![
             make_candidate("INFRA-0004A", "chump/infra-0004a", None),
             make_candidate("INFRA-0004B", "chump/infra-0004b", None),
+            make_candidate("INFRA-0004C", "chump/infra-0004c", None),
         ];
         let outcome = build_integration_branch(&candidates, "integration/test-004", &repo)
             .await
             .unwrap();
 
-        // First merge (A) should succeed; second (B) should conflict.
+        // A merges, B conflicts and is SKIPPED, C still merges after B.
+        let merged_ids: Vec<&str> = outcome
+            .merged_gaps
+            .iter()
+            .map(|m| m.gap_id.as_str())
+            .collect();
         assert_eq!(
             outcome.merged_gaps.len(),
-            1,
-            "first merge should have succeeded"
+            2,
+            "A and C should both merge despite B's conflict, got: {merged_ids:?}"
+        );
+        assert!(merged_ids.contains(&"INFRA-0004A"));
+        assert!(
+            merged_ids.contains(&"INFRA-0004C"),
+            "C must merge AFTER B was skipped — proves skip-and-continue"
         );
         assert_eq!(
             outcome.conflicts.len(),
             1,
-            "second merge should have conflicted"
+            "only B should be recorded as a conflict"
         );
         assert_eq!(outcome.conflicts[0].gap_id, "INFRA-0004B");
     }
