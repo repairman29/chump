@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- ZERO-WASTE-053: steady-state cargo-target GC. Runs scripts/ops/cargo-sweep-gc.sh
+     every 30 min to hold the shared target under CHUMP_CARGO_TARGET_CAP_MB via
+     cargo-sweep LRU eviction (safe mid-build). This is what lets chump run for days
+     without a disk wedge on a single-disk box. Install: sed __REPO_ROOT__ -> the
+     checkout, copy to ~/Library/LaunchAgents, then `launchctl bootstrap gui/$UID`. -->
+<plist version="1.0"><dict>
+  <key>Label</key><string>dev.chump.cargo-sweep-gc</string>
+  <key>ProgramArguments</key><array>
+    <string>/bin/bash</string>
+    <string>__REPO_ROOT__/scripts/ops/cargo-sweep-gc.sh</string>
+  </array>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>__HOME__/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>CHUMP_REPO</key><string>__REPO_ROOT__</string>
+    <key>CHUMP_CARGO_TARGET_CAP_MB</key><string>20000</string>
+  </dict>
+  <key>StartInterval</key><integer>1800</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>__HOME__/.chump/logs/cargo-sweep-gc.out</string>
+  <key>StandardErrorPath</key><string>__HOME__/.chump/logs/cargo-sweep-gc.err</string>
+</dict></plist>

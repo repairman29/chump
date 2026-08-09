@@ -181,6 +181,17 @@ else
         >> "${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}" 2>/dev/null || true
 fi
 
+# ZERO-WASTE-053: keep the shared target BOUNDED so chump runs for days without a
+# disk wedge (single-disk Mac, no relocation possible). Two write-volume cuts, set
+# via env (no Cargo.toml edit) so they apply to every fleet build:
+#   - CARGO_INCREMENTAL=0: fleet workers build each gap ONCE, so per-crate
+#     incremental state is pure waste (~3.7GB observed) that also churns deps/.
+#   - CARGO_PROFILE_DEV_DEBUG=line-tables-only: keep backtraces, drop the fat full
+#     debug info — the single biggest per-artifact size cut.
+# Callers may override by exporting these before sourcing this file.
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
+export CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-line-tables-only}"
+
 # Per-worker counter of consecutive empty picks. Reset on every
 # successful pick.
 _starve_count=0
