@@ -65,10 +65,13 @@ jobs:
           python-version: "3.11"
 
       - name: Install PyYAML
+        if: runner.os == 'Linux'  # INFRA-1539: Linux-only guard on pip-install
         # Not optional. Without it the generator cannot read
         # docs/CAPABILITIES_OVERLAY.yaml, silently drops every curated
         # when_to_use string, and produces a different content hash — which
-        # would make this job fight the previous run forever.
+        # would make this job fight the previous run forever. The
+        # overlay_status assertion below is the backstop if this step is ever
+        # skipped by the guard above.
         run: pip install --quiet pyyaml
 
       - name: Record pre-run content hash
@@ -96,9 +99,18 @@ jobs:
           set -euo pipefail
           reg="docs/CAPABILITIES_REGISTRY.json"
           sha="$(python3 -c "import json;print(json.load(open('$reg')).get('content_sha256',''))")"
+          overlay="$(python3 -c "import json;print(json.load(open('$reg')).get('overlay_status',''))")"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           if [[ -z "$sha" ]]; then
             echo "::error::generator produced no content_sha256 — refusing to commit"
+            exit 1
+          fi
+          # A degraded generation (no PyYAML -> overlay dropped) yields a valid
+          # but quietly poorer catalog with a different hash. Committing that
+          # would delete every curated when_to_use string and then fight the
+          # next healthy run. Refuse.
+          if [[ "$overlay" != "applied" && "$overlay" != "absent" ]]; then
+            echo "::error::overlay_status=$overlay — generation was degraded, refusing to commit"
             exit 1
           fi
           if [[ "$sha" == "${{ steps.before.outputs.sha }}" ]]; then
