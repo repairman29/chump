@@ -1,9 +1,9 @@
 {
-  "_read_me_first": "GENERATED FILE \u2014 do not hand-edit. Regenerate with `bash scripts/dev/build-capabilities-registry.sh`. This snapshot is only trustworthy until 2026-09-08T16:56:54Z. If today is on or after that date, this catalog is STALE: re-run the generator before quoting anything in it as the current state of the repo. Verify freshness with `bash scripts/ci/check-capabilities-freshness.sh`.",
+  "_read_me_first": "GENERATED FILE \u2014 do not hand-edit. Regenerate with `bash scripts/dev/build-capabilities-registry.sh`. This snapshot is only trustworthy until 2026-09-08T17:39:51Z. If today is on or after that date, this catalog is STALE: re-run the generator before quoting anything in it as the current state of the repo. Verify freshness with `bash scripts/ci/check-capabilities-freshness.sh`.",
   "schema_version": 1,
   "repo": "repairman29/chump",
-  "generated_at": "2026-08-09T16:56:54Z",
-  "stale_after": "2026-09-08T16:56:54Z",
+  "generated_at": "2026-08-09T17:39:51Z",
+  "stale_after": "2026-09-08T17:39:51Z",
   "staleness_policy": {
     "max_age_days": 30,
     "regenerate_cmd": "bash scripts/dev/build-capabilities-registry.sh",
@@ -1749,6 +1749,51 @@
       "consumers": [
         "fleet-brief",
         "operator-recall"
+      ],
+      "fields_required": []
+    },
+    {
+      "name": "curator_silent",
+      "emitter": "scripts/ops/reaper-heartbeat-watchdog.sh (RESILIENT-246)",
+      "consumers": [
+        "fleet-brief",
+        "operator-recall"
+      ],
+      "fields_required": []
+    },
+    {
+      "name": "curator_cannot_start",
+      "emitter": "scripts/ops/curator-supervisor-run.sh (RESILIENT-246)",
+      "consumers": [
+        "fleet-brief",
+        "operator-recall"
+      ],
+      "fields_required": []
+    },
+    {
+      "name": "curator_pass_failed",
+      "emitter": "scripts/ops/curator-supervisor-run.sh (RESILIENT-246)",
+      "consumers": [
+        "fleet-brief",
+        "operator-recall"
+      ],
+      "fields_required": []
+    },
+    {
+      "name": "curator_bin_disposable",
+      "emitter": "scripts/ops/curator-supervisor-run.sh (RESILIENT-246)",
+      "consumers": [
+        "fleet-brief",
+        "operator-recall"
+      ],
+      "fields_required": []
+    },
+    {
+      "name": "curator_supervisor_pass",
+      "emitter": "scripts/ops/curator-supervisor-run.sh (RESILIENT-246)",
+      "consumers": [
+        "fleet-brief",
+        "reaper-heartbeat-watchdog"
       ],
       "fields_required": []
     },
@@ -13735,6 +13780,19 @@
       ]
     },
     {
+      "crate_name": "chump-kpi-report",
+      "crate_path": "crates/chump-kpi-report",
+      "crate_kind": "lib",
+      "entry_file": "crates/chump-kpi-report/src/lib.rs",
+      "public_items": [
+        {
+          "name": "kpi_report",
+          "kind": "mod",
+          "line": 17
+        }
+      ]
+    },
+    {
       "crate_name": "chump-mcp-lifecycle",
       "crate_path": "crates/chump-mcp-lifecycle",
       "crate_kind": "lib",
@@ -16456,6 +16514,61 @@
       "purpose_one_line": "ambient event emitted by scripts/ops/reaper-heartbeat-watchdog.sh (INFRA-120)",
       "when_to_use": "",
       "example_invocation": "scripts/dev/ambient-emit.sh reaper_silent key=value",
+      "version": "git-sha"
+    },
+    {
+      "primitive_id": "event-curator-silent",
+      "kind": "event",
+      "file_paths": [
+        "docs/observability/EVENT_REGISTRY.yaml"
+      ],
+      "purpose_one_line": "ambient event emitted by scripts/ops/reaper-heartbeat-watchdog.sh (RESILIENT-246)",
+      "when_to_use": "",
+      "example_invocation": "scripts/dev/ambient-emit.sh curator_silent key=value",
+      "version": "git-sha"
+    },
+    {
+      "primitive_id": "event-curator-cannot-start",
+      "kind": "event",
+      "file_paths": [
+        "docs/observability/EVENT_REGISTRY.yaml"
+      ],
+      "purpose_one_line": "ambient event emitted by scripts/ops/curator-supervisor-run.sh (RESILIENT-246)",
+      "when_to_use": "",
+      "example_invocation": "scripts/dev/ambient-emit.sh curator_cannot_start key=value",
+      "version": "git-sha"
+    },
+    {
+      "primitive_id": "event-curator-pass-failed",
+      "kind": "event",
+      "file_paths": [
+        "docs/observability/EVENT_REGISTRY.yaml"
+      ],
+      "purpose_one_line": "ambient event emitted by scripts/ops/curator-supervisor-run.sh (RESILIENT-246)",
+      "when_to_use": "",
+      "example_invocation": "scripts/dev/ambient-emit.sh curator_pass_failed key=value",
+      "version": "git-sha"
+    },
+    {
+      "primitive_id": "event-curator-bin-disposable",
+      "kind": "event",
+      "file_paths": [
+        "docs/observability/EVENT_REGISTRY.yaml"
+      ],
+      "purpose_one_line": "ambient event emitted by scripts/ops/curator-supervisor-run.sh (RESILIENT-246)",
+      "when_to_use": "",
+      "example_invocation": "scripts/dev/ambient-emit.sh curator_bin_disposable key=value",
+      "version": "git-sha"
+    },
+    {
+      "primitive_id": "event-curator-supervisor-pass",
+      "kind": "event",
+      "file_paths": [
+        "docs/observability/EVENT_REGISTRY.yaml"
+      ],
+      "purpose_one_line": "ambient event emitted by scripts/ops/curator-supervisor-run.sh (RESILIENT-246)",
+      "when_to_use": "",
+      "example_invocation": "scripts/dev/ambient-emit.sh curator_supervisor_pass key=value",
       "version": "git-sha"
     },
     {
@@ -24808,6 +24921,17 @@
       "version": "0.1.0"
     },
     {
+      "primitive_id": "crate-chump-kpi-report",
+      "kind": "crate",
+      "file_paths": [
+        "crates/chump-kpi-report/src/lib.rs"
+      ],
+      "purpose_one_line": "lib crate, 1 public items",
+      "when_to_use": "",
+      "example_invocation": "use chump_kpi_report;",
+      "version": "0.1.0"
+    },
+    {
       "primitive_id": "crate-chump-mcp-lifecycle",
       "kind": "crate",
       "file_paths": [
@@ -25149,5 +25273,5 @@
       "version": "git-sha"
     }
   ],
-  "content_sha256": "a69607c8fc1f78b949e3514e2fc638afca12496b095b4a79e50b6886ad4d12b7"
+  "content_sha256": "91a625bf6e1c6a366b5d42b1b43e6c81055abea145b189db9b2674e1d341517c"
 }
