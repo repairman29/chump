@@ -1,0 +1,36 @@
+name: EU runner privilege smoke (RESILIENT-253)
+
+# Manually-dispatched proof that the Helsinki `chumpd-eu-runner` self-hosted
+# GitHub Actions runner executes jobs as the unprivileged `ghrunner` user,
+# not root, and cannot read the host's fleet credentials (NATS conf).
+# See docs/process/SELF_HOSTED_RUNNERS.md#eu-runner-privilege-de-privilege
+# for the full writeup. Run on demand — this runner is not wired into any
+# automatic CI lane today (CHUMP_SELF_HOSTED_ENABLED=false), so this is the
+# only real (non-inspection) proof the lane still works post de-privilege.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  privilege-check:
+    runs-on: [self-hosted, chumpd-host]
+    steps:
+      - name: confirm non-root execution
+        run: |
+          echo "whoami: $(whoami)"
+          if [ "$(id -u)" -eq 0 ]; then
+            echo "FAIL: job is running as root (uid 0)"
+            exit 1
+          fi
+          echo "PASS: running as uid $(id -u) ($(whoami))"
+      - name: confirm fleet credentials are unreadable
+        run: |
+          if cat /etc/nats/nats.conf 2>/dev/null; then
+            echo "FAIL: /etc/nats/nats.conf was readable by the runner user"
+            exit 1
+          fi
+          echo "PASS: /etc/nats/nats.conf is unreadable by $(whoami)"
+      - name: basic checkout + build sanity
+        uses: actions/checkout@v6
+      - name: cargo check smoke
+        run: cargo check -p chump --bin chump 2>&1 | tail -20 || echo "(cargo unavailable or slow — non-blocking for this smoke)"

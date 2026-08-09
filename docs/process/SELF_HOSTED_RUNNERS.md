@@ -706,3 +706,64 @@ bash scripts/ci/test-pi-mesh-installer-shape.sh
 
 Checks: installer syntax, required labels, systemd unit emission,
 offline cache path, platform guard, META-064 bypass trailer.
+
+## EU runner privilege de-privilege (RESILIENT-253, 2026-08-09)
+
+A third runner class exists alongside the macOS (`macos-arm64`) and Pi
+(`linux-arm64`) lanes above: `chumpd-eu-runner`, registered to
+`repairman29/chump` on the Helsinki Hetzner box (labels: `self-hosted`,
+`Linux`, `X64`, `chumpd-host`). That same host also runs the fleet's NATS
+bus (credentialed in `/etc/nats/nats.conf`), the almanac embedder (Ollama),
+`rerank_server.py`, and SearXNG. No `ci.yml`/`audit.yml`/`integrations.yml`
+job currently routes to it — every self-hosted routing expression requires
+the `macos-arm64` + `chump-fleet` labels, which this runner doesn't carry,
+and the master switch `CHUMP_SELF_HOSTED_ENABLED` is `false` fleet-wide
+(all CI runs on GitHub-hosted `ubuntu-latest` today). It stays registered
+and its `actions.runner.*.service` stays listening, in case a job ever
+targets `chumpd-host` directly or the routing expands later.
+
+**The problem.** A registered self-hosted runner executes whatever a
+workflow instructs, with the runner process's own OS privileges. Found
+running as `root` (2026-08-09 audit) — fine only because `repairman29/chump`
+is private and only trusted collaborators can add workflow content. The
+day that repo's visibility flips public, a stranger's PR becomes root on
+the same box that carries the fleet's event bus and credentials.
+
+**The fix — dedicated unprivileged user (cheapest of the RESILIENT-253
+options, and GitHub's own recommendation).** Not ephemeral-mode and not
+containerized: this runner already has no CI jobs routed to it, so the
+attack surface is "someone flips a repo-var or adds a workflow step
+without noticing this constraint" rather than "every job leaks state
+between runs" — a dedicated non-root account closes the privilege gap
+without adding operational complexity (container runtime, per-job
+re-registration) that this lane doesn't currently need.
+
+1. A `ghrunner` system user (`useradd -r -m -s /usr/sbin/nologin ghrunner`,
+   uid/gid own group) owns `/home/ghrunner/actions-runner` and the systemd
+   unit runs `User=ghrunner` (was `User=root` / unset under `/root/actions-runner`).
+2. `/etc/nats/nats.conf` is `600 root:root` — unreadable by `ghrunner`
+   (verified: `su -s /bin/bash ghrunner -c 'cat /etc/nats/nats.conf'` →
+   `Permission denied`). Same for `/root/rerank_server.py` and anything
+   else still root-owned on that host.
+3. The old `/root/actions-runner` registration was retired; `chumpd-eu-runner`
+   now registers exclusively from `/home/ghrunner/actions-runner`.
+
+**Proof the lane still works post-migration** — since nothing currently
+routes CI here, "inspection" (service file, `ps`, `su -c cat`) isn't proof
+the *runner itself* still executes jobs correctly as the new user. Dispatch
+the smoke workflow on demand:
+
+```bash
+gh workflow run eu-runner-privilege-smoke.yml -R repairman29/chump
+gh run watch -R repairman29/chump   # or: gh run list --workflow=eu-runner-privilege-smoke.yml
+```
+
+[`.github/workflows/eu-runner-privilege-smoke.yml`](../../.github/workflows/eu-runner-privilege-smoke.yml)
+asserts non-root execution, confirms `/etc/nats/nats.conf` is unreadable,
+and runs a `cargo check` sanity step — a real job dispatched to the
+`chumpd-host` label, not an inspection.
+
+**Gate.** [`RELEASE_CHECKLIST.md`](../../../RELEASE_CHECKLIST.md) item 13
+(RUNNER PRIVILEGE) makes this a blocking release-auditor check: no repo
+may go public while a self-hosted runner registered to it runs as root or
+shares a host with fleet credentials readable by the runner's user.
