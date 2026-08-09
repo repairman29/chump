@@ -295,8 +295,13 @@ impl IntegratorDaemon {
             }
         };
 
-        if !merge_outcome.conflicts.is_empty() {
-            let conflict = &merge_outcome.conflicts[0];
+        // RESILIENT-269: conflicting/stale candidates are SKIPPED by
+        // build_integration_branch (like CREDIBLE-158 fetch-failures), not a
+        // cycle-abort. Emit one event per skipped conflict for audit, then keep
+        // going as long as *something* merged cleanly. Only abort when the batch
+        // is empty — a batch of zero is nothing to ship. This is what lets one
+        // bad branch be dropped while the rest of the batch still lands.
+        for conflict in &merge_outcome.conflicts {
             emit_event(
                 "integration_merge_conflict",
                 &[
@@ -306,8 +311,15 @@ impl IntegratorDaemon {
                 ],
             );
             eprintln!(
-                "[integrator] cycle {cycle_id} aborted — merge conflict on {}",
+                "[integrator] cycle {cycle_id} skipped {} on merge conflict — shipping the rest",
                 conflict.gap_id
+            );
+        }
+
+        if merge_outcome.merged_gaps.is_empty() {
+            eprintln!(
+                "[integrator] cycle {cycle_id} aborted — no candidate merged cleanly ({} skipped)",
+                merge_outcome.conflicts.len()
             );
             return Ok(());
         }
@@ -328,7 +340,19 @@ impl IntegratorDaemon {
         // the offending gap, quarantine it, rebuild the integration branch
         // without it, and retry.  After 3 quarantine passes we abort entirely.
         const MAX_QUARANTINE_CYCLES: usize = 3;
-        let mut remaining_candidates = candidates.clone();
+        // RESILIENT-269: only the gaps that actually merged are in the
+        // integration branch — quarantine/bisect must operate on those, not on
+        // the full candidate set (which still includes the skipped conflicts).
+        let merged_ids: std::collections::HashSet<&str> = merge_outcome
+            .merged_gaps
+            .iter()
+            .map(|mg| mg.gap_id.as_str())
+            .collect();
+        let mut remaining_candidates: Vec<_> = candidates
+            .iter()
+            .filter(|c| merged_ids.contains(c.gap_id.as_str()))
+            .cloned()
+            .collect();
         let mut quarantine_count: usize = 0;
 
         loop {
