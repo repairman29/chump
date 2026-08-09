@@ -21,6 +21,25 @@
     CHUMP_CURATOR_SUPERVISOR_DRY_RUN      (default unset)
     CHUMP_CURATOR_HEARTBEAT_STALL_M       (default 10)
     RUST_LOG                              (default info)
+
+  RESILIENT-246 (2026-08-09) — WHY ProgramArguments IS /bin/bash + A SCRIPT:
+
+  This plist used to put the release BINARY directly in ProgramArguments:
+      <string>/Users/.../Chump/target/release/chump-curator-supervisor</string>
+  target/release is disposable (cargo clean, cargo-target-reaper, disk-pressure
+  reaps). When that binary vanished ~2026-08-01, launchd could not spawn the
+  job and returned exit status 78 (EX_CONFIG) every StartInterval for twelve
+  days. Because launchd fails BEFORE the process exists, it never opened
+  StandardOutPath/StandardErrorPath — both logs stayed byte-for-byte silent.
+  There was no error to find; the logs just stopped. Nothing alerted.
+
+  Now ProgramArguments is /bin/bash (which always exists) running a
+  version-controlled script, exactly like dev.chump.reaper-watchdog. launchd
+  can always spawn it, so a missing binary is now a loud ALERT from a running
+  process instead of a silent pre-spawn 78. The runner also stamps a heartbeat
+  that the existing reaper-heartbeat-watchdog grades.
+
+  Do NOT "simplify" this back to a direct binary path. That is the bug.
 -->
 <plist version="1.0">
 <dict>
@@ -35,17 +54,24 @@
     <key>RunAtLoad</key>
     <true/>
 
-    <!-- Binary path substituted by install-curator-supervisor.sh -->
+    <!-- RESILIENT-246: /bin/bash + repo script, never a target/ build artifact. -->
     <key>ProgramArguments</key>
     <array>
-        <string>CHUMP_CURATOR_SUPERVISOR_BIN_PLACEHOLDER</string>
+        <string>/bin/bash</string>
+        <string>-lc</string>
+        <string>CHUMP_REPO_ROOT_PLACEHOLDER/scripts/ops/curator-supervisor-run.sh</string>
     </array>
+
+    <key>WorkingDirectory</key>
+    <string>CHUMP_REPO_ROOT_PLACEHOLDER</string>
 
     <!-- Environment — repo root substituted at install time. -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <string>/usr/local/bin:/opt/homebrew/bin:CHUMP_HOME_PLACEHOLDER/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>CHUMP_HOME_PLACEHOLDER</string>
         <key>CHUMP_REPO_ROOT</key>
         <string>CHUMP_REPO_ROOT_PLACEHOLDER</string>
         <key>CHUMP_CURATOR_SUPERVISOR_MODE</key>
