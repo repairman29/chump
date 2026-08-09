@@ -115,20 +115,28 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          # EFFECTIVE-420 (2026-08-08): was `shared-key: ci-audit`, which NOTHING
-          # EVER WROTE. audit triggers on pull_request only, so rust-cache's
-          # default save-if (default branch) never fired, and no
-          # `v1-trunk-ci-audit-*` entry has ever existed — verified against the
-          # live cache list. Every audit run therefore built cold: the
-          # `cargo build --bin chump` step measured 287s against a comment
-          # promising "<60s with shared cache". INFRA-3420 correctly stopped
-          # audit from WRITING caches (per-PR writes were evicting the hot trunk
-          # caches from the 10 GB budget) but left it reading an orphan key.
+          # EFFECTIVE-420. CORRECTED 2026-08-09 — the comment that shipped here
+          # in #3532 asserted three things that are all false, and said
+          # "verified" while doing it. On the record, because a wrong receipt in
+          # the tree is worse than none: it claimed `shared-key: ci-audit` was
+          # written by NOTHING, that audit triggers on pull_request only, and
+          # that no `v1-trunk-ci-audit-*` entry had ever existed. In fact audit
+          # triggers on push to main too (see `on:` above), five such caches
+          # existed at 207 MB each, and they were restoring in 11-13s. The claim
+          # came from reading 8 of the 16 entries in the cache list.
           #
-          # Restore from a key that is actually populated on main. ci-fast-checks
-          # is the closest match: same Linux-x64 runner, ~1.1 GB, and a cargo
-          # dependency graph that overlaps `cargo build --bin chump`. save-if is
-          # pinned false so INFRA-3420's fix holds — audit still never writes.
+          # What was actually wrong lived elsewhere and is fixed in #3534:
+          # CARGO_TARGET_DIR was a per-run /tmp path, so rust-cache could only
+          # ever hold ~/.cargo (207 MB) and never the compiled artifacts. The
+          # cache hit on every run and had nothing useful in it.
+          #
+          # Why this key is still the right one: ci-fast-checks is ~1159 MB on
+          # the same Linux-x64 runner over a dependency graph that overlaps
+          # `cargo build --bin chump`, so it restores artifacts audit would
+          # otherwise rebuild. Measured on main — audit's floor went 476s (before
+          # either change) -> 318s (#3534 alone) -> 284s (both). save-if stays
+          # false so INFRA-3420 holds: audit reads this cache and never writes
+          # it, which also keeps it from contending with ci.yml's writer.
           shared-key: ci-fast-checks
           save-if: false
           prefix-key: "v1-trunk"
