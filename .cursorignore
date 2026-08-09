@@ -1,9 +1,0 @@
-# Build outputs and runtime dirs — keeps Cursor fast and avoids indexing multi-GB trees
-/target
-ChumpMenu/.build
-sessions/
-logs/
-.fastembed_cache/
-archive/
-.venv/
-target-android/

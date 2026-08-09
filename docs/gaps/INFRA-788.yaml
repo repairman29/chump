@@ -1,9 +1,0 @@
-- id: INFRA-788
-  domain: INFRA
-  title: "EFFECTIVE: Gemini-first cascade — enable paid-tier billing + correct rate limits in .env"
-  status: done
-  priority: P1
-  effort: xs
-  closed_pr: 1451
-  outcome_id: MISSION-010
-

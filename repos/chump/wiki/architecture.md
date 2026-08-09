@@ -1,1 +1,0 @@
-Chump is a self-hosted AI coding agent with persistent memory and autonomous task execution.
