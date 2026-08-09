@@ -129,6 +129,51 @@ digest instead of reading ambient streams.
 
 ---
 
+## Fleet fabric — managing the machines ChumpOS runs on (2026-08-09)
+
+> **Operator directive (Jeff, 2026-08-09).** We need to figure out how to
+> **manage the hardware and various machines ChumpOS uses** — disk reaping on
+> all of them, job distribution, the works — and the **Linux-node provisioning
+> experience must be productized for COTG** once we figure it out.
+
+**Why now.** Bringing `helsinki` (a free, always-on tailnet Linux box, currently
+running only the NATS broker at 100% idle) online as a shipping node exposed that
+we have *no machine-management fabric*. Everything we've hardened — disk reaping
+(cargo-sweep GC ZERO-WASTE-053/054, RESILIENT-273 self-heal), the farmer auth
+probe (the launchd-PATH class fixed 2026-08-09), token refresh (macOS-Keychain-only,
+so a Linux node can't self-refresh) — is **Mac-singleton**. A second machine has
+none of it, and provisioning one today is a bespoke, undocumented slog.
+
+**The gap, concretely (helsinki audit 2026-08-09):** it's a *lapsed partial node* —
+chump binary present but stale (0.2.0, Jul 23); `~/.chump/` has old `state.db` +
+`AUTONOMY_LEVEL` + a `node-refresh-logs/` dir (someone already fought the
+Linux-token problem); but **no node/npm** (claude CLI can't install), **`gh` not
+authed** (can't push PRs), **no git checkout** (can't make worktrees), and **no
+model auth** (the oauth refresh is Keychain-bound to the Mac).
+
+**Two workstreams this seeds (file as gaps when picked up):**
+
+1. **Machine fabric — RESILIENT/ZERO-WASTE.** A per-host agent + a machine
+   registry so disk reaping, job/worker distribution (the NATS push-routing
+   FLEET-034 already exists but runs no remote workers), auth/token sync, binary
+   freshness, and health all run on *every* node, not just the Mac. The
+   duty-officer design ([design/DUTY_OFFICER.md](design/DUTY_OFFICER.md),
+   RESILIENT-274) is the natural owner — its playbook registry should be
+   per-host, and its per-business instantiation is the same shape as per-machine.
+
+2. **Linux-node provisioning → COTG product.** The "empty Linux box → shipping
+   ChumpOS node" path must become a **repeatable, productized onboarding**
+   (one command / documented SOP), because that *is* how a COTG customer stands
+   up their own capacity. What we learn dragging helsinki across the line
+   (token push-sync Mac→node, claude-CLI install, gh device-auth, checkout +
+   binary bootstrap, farmer/worker wiring) is the first draft of that product.
+
+**Prereqs already in hand:** NATS broker live on helsinki; push-routing
+(FLEET-034) exists; disk-reaping + auth-probe fixes are Mac-proven and portable;
+subscription-oauth chosen as the model-auth mode (operator, 2026-08-09).
+
+---
+
 ## Shipped from week-of-2026-05-16 bets ✅
 
 | Bet | Gap | Status |
