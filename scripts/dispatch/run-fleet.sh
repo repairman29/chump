@@ -602,8 +602,11 @@ if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$_db" ]]; then
     _db_open=$(sqlite3 "$_db" "SELECT COUNT(*) FROM gaps WHERE status='open';" 2>/dev/null || echo 0)
 fi
 # Count open gaps visible on origin/main via the tracked state.sql mirror.
-_sql_open=$(git show "origin/main:.chump/state.sql" 2>/dev/null \
-    | grep -c "^INSERT.*'open'" 2>/dev/null || echo 0)
+# grep -c prints "0" AND exits 1 on zero-match; the old `|| echo 0` then wrote a
+# SECOND "0", yielding "0\n0" and a `((` syntax error (VOA-004). Capture the count
+# as-is and default only if the whole expansion is empty.
+_sql_open=$(git show "origin/main:.chump/state.sql" 2>/dev/null | grep -c "^INSERT.*'open'" 2>/dev/null)
+_sql_open=${_sql_open:-0}
 if (( _db_open < _sql_open )); then
     echo "[run-fleet] INFRA-465: state.db has $_db_open open gaps, origin/main has $_sql_open — running 'chump gap import'"
     (cd "$REPO_ROOT" && chump gap import) \
