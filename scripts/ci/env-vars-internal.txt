@@ -1370,3 +1370,7 @@ CHUMP_THINKING
 CHUMP_VOICE_SESSION_ID
 # detected in: (standard input)
 CHUMP_WEB_TOKEN
+# RESILIENT-256: injected by the Claude Code harness, not by chump.
+# Read to locate the project root inside a PreToolUse hook; there is
+# nothing for an operator to tune, so it is internal rather than Tier 1.
+CLAUDE_PROJECT_DIR
