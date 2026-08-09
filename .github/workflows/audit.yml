@@ -132,7 +132,6 @@ jobs:
           shared-key: ci-fast-checks
           save-if: false
           prefix-key: "v1-trunk"
-          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # INFRA-2452-fix: restore sccache R2 compile cache dropped during audit extraction.
       # Mirrors the ci.yml cargo-test job pattern (lines 1245-1303).
