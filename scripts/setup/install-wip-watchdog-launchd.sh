@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
 # install-wip-watchdog-launchd.sh — RESILIENT-256 (2026-08-09)
 #
-# Install the uncommitted-WIP watchdog LaunchAgent. Runs every 30 minutes;
+# Install the uncommitted-WIP watchdog LaunchAgent. Runs every 5 minutes;
 # snapshots any checkout whose uncommitted work has gone idle past the
 # threshold into refs/wip/… (object store), and ALERTs into ambient.jsonl.
+#
+# 5 minutes, not 30, and the threshold is 15 MINUTES, not 3 hours. The old
+# pairing only ever caught ABANDONED work — "idle" is measured from the newest
+# mtime among dirty files, so anything actively being edited had an age near
+# zero and was never snapshotted. What protects a live session is a threshold
+# short enough that ordinary pauses checkpoint you.
+#
+# This cadence is only affordable because snapshots now dedup by tree hash and
+# prune to CHUMP_WIP_RETAIN per branch. Without those, idle work minted a fresh
+# anchored ref every single run.
 #
 # Exactly the shape of scripts/setup/install-reaper-watchdog-launchd.sh
 # (dev.chump.reaper-watchdog), so the fleet has one launchd pattern, not two.
@@ -42,7 +52,7 @@ cat >"$DEST" <<EOF
   <!-- Every 30 minutes. Cheap: one `git status` per checkout, and a snapshot
        only for trees that have been idle past the threshold. -->
   <key>StartInterval</key>
-  <integer>1800</integer>
+  <integer>300</integer>
   <key>RunAtLoad</key>
   <false/>
   <key>StandardOutPath</key>
