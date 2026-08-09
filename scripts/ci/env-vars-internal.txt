@@ -1374,4 +1374,6 @@ CHUMP_WEB_TOKEN
 # AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
+CHUMP_DISCORD_ENABLED
+# detected in: (standard input)
 CHUMP_READY_DM_USER_ID

@@ -95,12 +95,21 @@ telegram = []
 # docs/operations/BROWSER_AUTOMATION.md). V2 will pull in chromiumoxide / thirtyfour and
 # enable the real `browser` tool backend.
 browser-automation = []
-# SECURITY-004 Path B: Discord gateway (serenity). Default OFF because
-# serenity 0.12.5 (latest crates.io) pins tokio-tungstenite 0.21 →
-# tokio-rustls 0.25 → rustls 0.22 → rustls-webpki 0.102.8 (HIGH DoS,
-# RUSTSEC-2026-0104). Default builds drop the entire vulnerable chain.
-# Build with `--features discord` to opt back in (still vulnerable until
-# serenity v0.13 ships; track via RELIABILITY-001 / SECURITY-005).
+# SECURITY-004 Path B: Discord gateway (serenity).
+#
+# RESILIENT-266 (2026-08-09): the vulnerable chain is GONE. This used to read
+# "still vulnerable until serenity v0.13 ships" because the dep opted into
+# rustls_backend, pulling tokio-tungstenite 0.21 → rustls 0.22 →
+# rustls-webpki 0.102.8 (RUSTSEC-2026-0104, HIGH DoS). The dep now uses
+# native_tls_backend (see the serenity line below), which drops that chain
+# entirely — verified: cargo tree -i rustls-webpki@0.102.8 --features discord
+# matches no packages. SECURITY-005's runtime gate in main.rs is removed.
+#
+# Default is STILL OFF, but now purely on COST, not security: measured
+# 2026-08-09 on this machine, --features discord adds +6.2MB to the binary
+# (55.7MB → 62.2MB) and takes 14m27s to build cold. Opt in with
+# `--features discord`, or use scripts/setup/install-discord-gateway.sh
+# which builds and installs the launchd daemon in one step.
 discord = ["dep:serenity"]
 # Sprint A1 (Defense Trinity): encrypted-at-rest SQLite via sqlcipher.
 # Disabled by default — requires a passphrase strategy (CHUMP_DB_PASSPHRASE env var
@@ -173,7 +182,7 @@ serde_json = "1.0"
 toml = { version = "1.1", features = ["parse"] }
 base64 = "0.23"
 aes-gcm = "0.11"
-serenity = { version = "0.12", optional = true, default-features = false, features = ["client", "gateway", "model", "http", "utils", "cache", "rustls_backend"] }
+serenity = { version = "0.12", optional = true, default-features = false, features = ["client", "gateway", "model", "http", "utils", "cache", "native_tls_backend"] }
 fastembed = { version = "5", optional = true }
 once_cell = { version = "1.19", optional = true }
 axum = { version = "0.8", features = ["macros", "json", "multipart"] }

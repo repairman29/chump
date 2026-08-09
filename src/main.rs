@@ -16395,32 +16395,33 @@ async fn main() -> Result<()> {
                  Set the env var and re-run with --discord."
                 ));
             }
-            // SECURITY-005: serenity 0.12.5 (latest on crates.io) pins
-            // tokio-tungstenite 0.21 → rustls 0.22 → rustls-webpki 0.102.8,
-            // which carries RUSTSEC-2026-0104 (HIGH): DoS via panic on
-            // malformed CRL BIT STRING. The Discord gateway is the only
-            // chump path that hits this transitive — REST-only callers
-            // (a2a_tool, discord_dm) use the safe rustls 0.23 chain.
-            // Until upstream serenity ships a tungstenite bump, gate
-            // gateway start behind an explicit acknowledgment so an
-            // operator can't be silently exposed to the panic risk.
-            // Remove this block when `cargo audit` shows 0
-            // rustls-webpki 0.102.x advisories AND `cargo tree -i
-            // rustls-webpki@0.102.8` returns empty (SECURITY-005 closes).
-            let rustls_acked = env::var("CHUMP_ALLOW_DISCORD_RUSTLS")
-                .map(|v| v.trim() == "1")
-                .unwrap_or(false);
-            if !rustls_acked {
-                return Err(anyhow::anyhow!(
-                    "Discord gateway start is gated by SECURITY-005 — serenity 0.12.5 \
-                 (latest) pins vulnerable rustls-webpki 0.102.8 (RUSTSEC-2026-0104 \
-                 HIGH: DoS via panic on malformed CRL BIT STRING). To start anyway, \
-                 set CHUMP_ALLOW_DISCORD_RUSTLS=1 and accept the panic risk. \
-                 Track upstream: https://github.com/serenity-rs/serenity for a \
-                 tungstenite/rustls bump. Revisit this gate when SECURITY-005 \
-                 closes (cargo audit shows 0 rustls-webpki 0.102.x advisories)."
-                ));
-            }
+            // SECURITY-005 CLOSED 2026-08-09 (RESILIENT-266). The gate that
+            // stood here required CHUMP_ALLOW_DISCORD_RUSTLS=1 because serenity
+            // pulled tokio-tungstenite 0.21 -> rustls 0.22 -> rustls-webpki
+            // 0.102.8 (RUSTSEC-2026-0104 HIGH: DoS via panic on malformed CRL
+            // BIT STRING).
+            //
+            // It is removed rather than bypassed, because the vulnerable crate
+            // is no longer in the graph at all. Cargo.toml's serenity dep had
+            // explicitly opted into "rustls_backend"; it now uses
+            // "native_tls_backend", which drops the entire vulnerable chain.
+            //
+            // Neither version route could have worked, and both were tried:
+            // a [patch] to 0.103 cannot satisfy rustls 0.22's ^0.102, and
+            // `cargo update --precise` has nowhere to go because 0.102.8 IS the
+            // newest 0.102.x — there is no fixed release in that line.
+            //
+            // Verified: `cargo tree -i rustls-webpki@0.102.8 --features discord`
+            // returns "did not match any packages", and Cargo.lock now carries
+            // only rustls-webpki 0.101.7 and 0.103.13. That is the exact
+            // removal condition the old gate named for itself.
+            //
+            // TRADE-OFF, recorded so it is not rediscovered: native-tls pulls
+            // openssl 0.10.81 / openssl-sys 0.9.117 / security-framework 3.7.0.
+            // macOS uses Security.framework; LINUX NEEDS SYSTEM OPENSSL, which
+            // rustls did not. If the Linux fleet node fails to build the
+            // discord feature, that is why — and the fix is a build dep, not a
+            // revert to a known-vulnerable chain.
             eprintln!("Chump version {}", version::chump_version());
             if let Some(port) = env::var("CHUMP_HEALTH_PORT")
                 .ok()
