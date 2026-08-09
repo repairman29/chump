@@ -1474,6 +1474,8 @@ mod tests {
 
     #[test]
     fn infra640_percentiles_and_top5() {
+        ensure_pricing(); // top5 sorts by cost_usd; without pricing (nextest isolates
+                          // each test in its own process) all costs are 0 and the ordering breaks.
         let tmp = tempdir();
         let ts = fixture_ts();
         let lines: Vec<String> = (1..=5u64)
