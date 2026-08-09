@@ -262,6 +262,26 @@ def _auto_flip_gaps_done(pr: dict, payload: dict) -> int:
     gap_ids = _extract_gap_ids(pr)
     if not gap_ids:
         return 0
+    # CREDIBLE-268 (interim SUPPRESS, operator decision 2026-08-09): the title+body
+    # regex over-matches and closes every gap a PR merely CITES — 30 flips across 8
+    # PRs today, ~22 collateral, including the two gaps documenting destroyed PRs
+    # (closed by #3556 citing them). Auto-flip is suppressed until the durable
+    # extraction fix lands (extract from TITLE only / require a `Closes:` trailer,
+    # AND route through `chump gap ship` so PROOF-OF-MERGE adjudicates + closed_date
+    # is written). This guard leaves the cache-feed side of the receiver fully alive.
+    # NOT silent: emits gap_autoflip_suppressed naming what it WOULD have flipped.
+    # Re-enable only with the extraction fix in place via CHUMP_WEBHOOK_AUTOFLIP=1.
+    if os.environ.get("CHUMP_WEBHOOK_AUTOFLIP", "0") != "1":
+        _emit_ambient({
+            "ts": _now_iso(),
+            "kind": "gap_autoflip_suppressed",
+            "merged_pr": pr.get("number"),
+            "would_have_flipped": gap_ids,
+            "reason": "CREDIBLE-268 over-match; suppressed pending durable fix",
+        })
+        log.info("CREDIBLE-268: auto-flip SUPPRESSED for PR #%s (would have flipped %s)",
+                 pr.get("number"), gap_ids)
+        return 0
     pr_number = pr.get("number")
     chump_bin = os.environ.get("CHUMP_BIN", "chump")
     flipped = 0
