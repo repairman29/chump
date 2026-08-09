@@ -392,5 +392,40 @@ if [[ -x "$_chump" ]]; then
     printf "  %-12s %s\n" "RESILIENT"  "$(_fmt_count "$_p_res")"
     printf "  %-12s %s\n" "ZERO-WASTE" "$(_fmt_count "$_p_zw")"
     unset _open_gaps _p_eff _p_cred _p_res _p_zw
+
+    # ── RESILIENT-254: Layer-5 commitment rot ─────────────────────────────
+    # Layers 1-4 measure FLOW; Layer 5 measures ROT — a load-bearing organ
+    # that stopped acting, an outcome with open children that hasn't moved,
+    # a priority tier that has become a one-way door. The brief surfaces it
+    # because a check nobody reads is the exact failure this layer fixes:
+    # on 2026-08-08 the curator had been dead 12 days and nothing said so.
+    #
+    # `--layer L5` is the fast path (see fleet_health::check_slos_for_layer);
+    # a full --slo-check re-scans the whole ambient log and takes minutes,
+    # which a SessionStart hook cannot afford. Wrapped in a timeout anyway —
+    # the brief must never be the thing that hangs a session.
+    _rot_timeout=""
+    if command -v gtimeout >/dev/null 2>&1; then
+        _rot_timeout="gtimeout 20"
+    elif command -v timeout >/dev/null 2>&1; then
+        _rot_timeout="timeout 20"
+    fi
+    _rot_out="$($_rot_timeout "$_chump" health --slo-check --layer L5 2>/dev/null || true)"
+    _rot_breaches="$(echo "$_rot_out" | grep '✗ BREACH' || true)"
+    if [[ -n "$_rot_breaches" ]]; then
+        _rot_n="$(echo "$_rot_breaches" | grep -c .)"
+        echo ""
+        if [[ -t 1 ]]; then
+            printf '\033[1;33mCommitment rot (L5) — %s breach(es):\033[0m\n' "$_rot_n"
+        else
+            echo "Commitment rot (L5) — ${_rot_n} breach(es):"
+        fi
+        # Print each breach line plus its └─ detail, which names the organ /
+        # outcome / tier. A breach the operator can't act on is just noise.
+        echo "$_rot_out" | grep -A1 '✗ BREACH' | grep -v '^--$'
+        echo "  → docs/process/FLEET_SLOS.md §Layer 5"
+        unset _rot_n
+    fi
+    unset _rot_out _rot_breaches _rot_timeout
 fi
 unset _chump

@@ -24,7 +24,11 @@ static SCAN_FAILED_WARNED: AtomicBool = AtomicBool::new(false);
 
 // ────────────────────────── Data types ──────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+// RESILIENT-254 added `Default`: the Layer-5 rot checks are unit-tested by
+// building synthetic GapRows, and spelling out 25 fields per fixture is how
+// tests stop being written. Every field is already Default-able; the derive
+// adds no runtime behaviour and no production caller constructs a default row.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct GapRow {
     pub id: String,
     pub domain: String,
@@ -112,9 +116,14 @@ pub struct OutcomeRow {
     pub title: String,
     pub priority: String,
     pub definition_of_done: String,
-    pub status: String, // "open" | "done"
+    pub status: String, // "open" | "done" | "parked"
     pub created_at: i64,
     pub closed_at: Option<i64>,
+    /// RESILIENT-254: why this outcome is parked. Empty unless
+    /// `status == "parked"`. FLEET_SLOS.md L5-SLO-2 skips parked outcomes, so
+    /// the reason is the receipt that the silence is a decision, not neglect.
+    #[serde(default)]
+    pub parked_reason: String,
 }
 
 /// MISSION-033: first-class Repo object.
@@ -630,6 +639,14 @@ impl GapStore {
         let _ = self
             .conn
             .execute("ALTER TABLE gaps ADD COLUMN outcome_id TEXT", []);
+        // RESILIENT-254: deliberate parking, with the reason attached. An
+        // outcome parked on purpose is exempt from the Layer-5 commitment-aging
+        // SLO; the reason column is what keeps "parked" from becoming a place
+        // work goes to die quietly.
+        let _ = self.conn.execute(
+            "ALTER TABLE outcomes ADD COLUMN parked_reason TEXT NOT NULL DEFAULT ''",
+            [],
+        );
 
         // CREDIBLE-107: evidence column for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
         // Nullable TEXT — no default — so existing rows stay NULL (no evidence required
@@ -4345,10 +4362,32 @@ impl GapStore {
         Ok(())
     }
 
+    /// RESILIENT-254: set an outcome's lifecycle status, carrying the reason
+    /// when it is being parked.
+    ///
+    /// Parking is the escape valve that keeps FLEET_SLOS.md Layer 5 honest: an
+    /// outcome that is stalled ON PURPOSE (the ACG advisory track is the
+    /// standing example) must be expressible, or the layer pages for it every
+    /// day and the operator learns to skip the whole layer. Advisory as ever —
+    /// this never gates a child gap from closing.
+    ///
+    /// Un-parking clears the reason so a stale why can't outlive the parking.
+    pub fn set_outcome_status(&self, id: &str, status: &str, reason: &str) -> Result<usize> {
+        let reason = if status == "parked" { reason } else { "" };
+        let changed = self.conn.execute(
+            "UPDATE outcomes SET status=?2, parked_reason=?3 WHERE id=?1",
+            params![id, status, reason],
+        )?;
+        if changed == 0 {
+            bail!("outcome {} not found", id);
+        }
+        Ok(changed)
+    }
+
     /// Fetch one outcome by ID. Returns None if not found.
     pub fn get_outcome(&self, id: &str) -> Result<Option<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,parked_reason
              FROM outcomes WHERE id=?1",
         )?;
         stmt.query_row(params![id], |r| {
@@ -4360,6 +4399,7 @@ impl GapStore {
                 status: r.get(4)?,
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
+                parked_reason: r.get(7).unwrap_or_default(),
             })
         })
         .optional()
@@ -4369,7 +4409,7 @@ impl GapStore {
     /// List all outcomes, ordered by id.
     pub fn list_outcomes(&self) -> Result<Vec<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,parked_reason
              FROM outcomes ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -4381,6 +4421,7 @@ impl GapStore {
                 status: r.get(4)?,
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
+                parked_reason: r.get(7).unwrap_or_default(),
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -4419,7 +4460,7 @@ impl GapStore {
     /// Keeps existing per-gap P0 checks intact — adds outcome-level view alongside.
     pub fn list_p0_outcomes(&self) -> Result<Vec<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,parked_reason
              FROM outcomes WHERE priority='P0' AND status='open' ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -4431,6 +4472,7 @@ impl GapStore {
                 status: r.get(4)?,
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
+                parked_reason: r.get(7).unwrap_or_default(),
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)

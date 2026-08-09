@@ -55,6 +55,7 @@ mod ci_summary;
 mod cli_tool;
 mod cluster_mesh;
 mod codebase_digest_tool;
+mod commitment_rot; // RESILIENT-254: FLEET_SLOS.md Layer 5 — commitment aging
 mod comprehend_tool;
 mod config_validation;
 mod consciousness_traits;
@@ -2469,7 +2470,7 @@ async fn main() -> Result<()> {
     // Emits kind=fleet_health to ambient.jsonl on each run.
     if args.get(1).map(String::as_str) == Some("health") {
         if args.iter().any(|a| a == "--help" || a == "help") {
-            println!("Usage: chump health [--json] [--watch] [--slo-check] [--temp]");
+            println!("Usage: chump health [--json] [--watch] [--slo-check [--layer LN]] [--temp]");
             println!();
             println!("Composite fleet health score (0-100) rolling up fleet-status, waste-tally,");
             println!("cost-watch, mission-grade, pr-stuck, version-skew, auth, and ghost-gaps.");
@@ -2479,11 +2480,17 @@ async fn main() -> Result<()> {
             println!("  --json       output in JSON format");
             println!("  --watch      refresh every 30 s (clear screen between runs)");
             println!("  --slo-check  exit non-zero if any SLO is breached");
+            println!(
+                "  --layer LN   RESILIENT-254: evaluate one SLO layer only (L1..L5). --layer L5"
+            );
+            println!("               (commitment aging) is a fast path that skips the ambient-log");
+            println!("               scans in L1-L3, so the fleet-brief can afford it.");
             println!("  --temp       INFRA-1992: report floor-temperature only (COLD/WARM/HOT)");
             println!();
             println!("Example:");
             println!("  chump health");
             println!("  chump health --slo-check   # use in CI");
+            println!("  chump health --slo-check --layer L5   # commitment-rot only (fast)");
             println!("  chump health --temp        # one-word floor-temp signal");
             println!("  chump health --temp --json # full floor-temp report with component counts");
             return Ok(());
@@ -2491,6 +2498,12 @@ async fn main() -> Result<()> {
         let want_json = args.iter().any(|a| a == "--json");
         let watch = args.iter().any(|a| a == "--watch");
         let slo_check = args.iter().any(|a| a == "--slo-check");
+        // RESILIENT-254: optional single-layer selector, e.g. `--layer L5`.
+        let slo_layer = args
+            .windows(2)
+            .find(|w| w[0] == "--layer")
+            .and_then(|w| w.get(1))
+            .cloned();
         let want_temp = args.iter().any(|a| a == "--temp");
         let repo_root = repo_path::repo_root();
 
@@ -2526,7 +2539,14 @@ async fn main() -> Result<()> {
         }
 
         if slo_check {
-            let results = fleet_health::check_slos(&repo_root);
+            let results = fleet_health::check_slos_for_layer(&repo_root, slo_layer.as_deref());
+            if results.is_empty() {
+                eprintln!(
+                    "chump health --slo-check: no SLOs match --layer {} (known layers: L1 L2 L3 L4 L5)",
+                    slo_layer.as_deref().unwrap_or("")
+                );
+                std::process::exit(2);
+            }
             if want_json {
                 println!("{}", fleet_health::render_slo_json(&results));
             } else {
@@ -3541,15 +3561,64 @@ async fn main() -> Result<()> {
                         });
                 }
             }
+            // RESILIENT-254: deliberate parking, with a stated reason.
+            // FLEET_SLOS.md L5-SLO-2 skips parked outcomes entirely — a layer
+            // that pages for work parked ON PURPOSE (the ACG advisory track is
+            // the standing example) teaches the operator to ignore the layer.
+            // Parking is a decision with a why, never a silent absence.
+            "park" | "unpark" => {
+                let id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump outcome {sub} <outcome-id> [--reason \"why\"]");
+                    std::process::exit(2);
+                });
+                if store.get_outcome(&id).ok().flatten().is_none() {
+                    eprintln!("chump outcome {sub}: no such outcome '{id}'");
+                    std::process::exit(1);
+                }
+                let parking = sub == "park";
+                let reason = oflag("--reason").unwrap_or_default();
+                if parking && reason.trim().is_empty() {
+                    eprintln!(
+                        "chump outcome park: --reason is required — parking without a stated why is\n\
+                         indistinguishable from neglect, which is the thing L5-SLO-2 exists to catch."
+                    );
+                    std::process::exit(2);
+                }
+                let status = if parking { "parked" } else { "open" };
+                match store.set_outcome_status(&id, status, &reason) {
+                    Ok(_) => {
+                        if json_out {
+                            println!(
+                                r#"{{"id":"{id}","status":"{status}","parked_reason":"{}"}}"#,
+                                reason.replace('"', "'")
+                            );
+                        } else if parking {
+                            println!("outcome {id} parked — L5-SLO-2 will not evaluate it");
+                            println!("  reason: {reason}");
+                            println!("  un-park with: chump outcome unpark {id}");
+                        } else {
+                            println!("outcome {id} un-parked — L5-SLO-2 evaluates it again");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump outcome {sub}: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             _ => {
                 println!("Usage: chump outcome <sub> [args]");
                 println!();
                 println!("Subcommands:");
                 println!("  create --id X --title T [--priority P] [--dod D]");
-                println!("  list [--status open|done] [--json]");
+                println!("  list [--status open|done|parked] [--json]");
                 println!("  show <outcome-id> [--json]");
                 println!("  link <gap-id> --outcome <outcome-id>");
                 println!("  unlink <gap-id>");
+                println!(
+                    "  park <outcome-id> --reason \"why\"   (RESILIENT-254: exempt from L5-SLO-2)"
+                );
+                println!("  unpark <outcome-id>");
                 println!("  bootstrap   (seed 8 outcomes: MISSION-010/012/032 + META-067 + 4 pillar outcomes)");
                 println!("  backfill [--dry-run] [--apply]");
                 println!();
@@ -6171,9 +6240,23 @@ async fn main() -> Result<()> {
                 }
 
                 if want_json {
+                    // RESILIENT-254: Layer-5 rot, additive — existing consumers
+                    // keep every field they had.
+                    let rot_json = commitment_rot::check_rot_slos(&repo_root);
+                    let rot_breaches: Vec<serde_json::Value> = rot_json
+                        .iter()
+                        .filter(|r| r.breached)
+                        .map(|r| {
+                            serde_json::json!({
+                                "id": r.id, "target": r.target,
+                                "current": r.current, "detail": r.detail,
+                            })
+                        })
+                        .collect();
                     let out = serde_json::json!({
                         "ts": ts_iso,
                         "window_h": window_secs / 3600,
+                        "commitment_rot_breaches": rot_breaches,
                         "ships_24h": ships,
                         "ships_1h": ships_1h,
                         "fleet_stalled": fleet_stalled,
@@ -6229,6 +6312,25 @@ async fn main() -> Result<()> {
                     println!("Manual rescues: {manual_rescues}");
                     if alerts > 0 {
                         println!("Alerts(30m): {alerts}");
+                    }
+                    // RESILIENT-254: Layer-5 commitment rot. Every other line
+                    // above measures FLOW; these measure whether a promise is
+                    // rotting — a load-bearing organ that stopped acting, an
+                    // outcome with open children that hasn't moved, a priority
+                    // tier that has become a one-way door. Surfaced here (and
+                    // in scripts/dispatch/fleet-brief.sh, the harness-neutral
+                    // twin) because a check nobody reads is the exact failure
+                    // mode Layer 5 exists to fix: on 2026-08-08 the curator had
+                    // been dead 12 days and no surface said so.
+                    let rot = commitment_rot::check_rot_slos(&repo_root);
+                    let rot_breaches: Vec<_> = rot.iter().filter(|r| r.breached).collect();
+                    if !rot_breaches.is_empty() {
+                        println!("\nCommitment rot (L5) — {} breach(es):", rot_breaches.len());
+                        for r in &rot_breaches {
+                            println!("  ✗ {}  [{}]  {}", r.id, r.current, r.target);
+                            println!("      └─ {}", r.detail);
+                        }
+                        println!("  → docs/process/FLEET_SLOS.md §Layer 5");
                     }
                     if !suggestions.iter().all(|s| s.starts_with('✓')) {
                         println!("\nActions:");

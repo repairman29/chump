@@ -72,3 +72,81 @@ daemons:
       - disk_ok
     min_per_hour: 1
     eligibility: "true"
+
+# ── LOAD-BEARING ORGANS (RESILIENT-254 — FLEET_SLOS.md Layer 5) ──────────────
+#
+# Read by `chump health --slo-check` (L5-SLO-1), NOT by daemon-silence-monitor.sh.
+# The key is `organ:` (not `daemon:`) precisely so the bash monitor's parser —
+# which switches on lines starting with "  - daemon: " — skips this section.
+#
+# Why a second list instead of reusing `daemons:` above:
+#   `daemons:`             → "LOADED but quiet for an hour" → ambient warning
+#                            (kind=daemon_silent). Skips anything not LOADED.
+#   `load_bearing_organs:` → "has not ACTED inside its own grace window,
+#                            loaded or not" → SLO BREACH, non-zero exit from
+#                            `chump health --slo-check`.
+#
+# The distinction is the whole point of RESILIENT-254. On 2026-08-08 the opus
+# curator had been dead for 12 days — the plist was exiting 78 every 600 s
+# (RESILIENT-246) — and no layer of the fleet noticed, because:
+#   1. it was never listed in `daemons:` above, and
+#   2. `daemon_silent` is an ambient event nobody escalates on.
+# Not-loaded is a breach here, not an excuse.
+#
+# Fields:
+#   organ             launchd label. DOCUMENTATION ONLY — liveness is measured
+#                     from ambient evidence, never from `launchctl list`, because
+#                     "loaded" and "working" are different claims.
+#   description       what stops progressing when this organ stops.
+#   evidence_kinds    ambient `kind` values that PROVE the organ acted. A
+#                     heartbeat counts only if the organ emits it as part of
+#                     doing its job.
+#   max_silence_secs  grace window. Longer than this since the newest evidence
+#                     event = breach. Set it to several of the organ's own
+#                     cycles so one skipped run is not a page.
+#   parked            OPTIONAL. Non-empty string = deliberately parked; the
+#                     organ is reported as `parked` and NEVER breaches
+#                     (FLEET_SLOS.md L5 criterion: a layer that pages for
+#                     parked-on-purpose work trains the operator to ignore it).
+#                     The value is the REASON — parking is a decision with a
+#                     stated why, not a silent absence. Delete the key to un-park.
+load_bearing_organs:
+  - organ: com.chump.opus-curator
+    description: >-
+      primary fleet decision-maker — P0 inflation, vague-gap decomposition,
+      pillar balance, stale-PR and waste audits. When it stops, the queue keeps
+      being worked but stops being STEERED, and nothing in the fleet says so.
+    evidence_kinds:
+      - curator_decision
+      - system_gap_tick
+      - curator_paused
+    # StartInterval=600 in launchd/com.chump.opus-curator.plist → 6 cycles of
+    # grace before we call it dead.
+    max_silence_secs: 3600
+
+  - organ: dev.chump.farmer
+    description: >-
+      worker dispatcher — picks gaps and starts sessions. When it stops, the
+      floor goes quiet and committed work ages with nobody on it.
+    evidence_kinds:
+      - farmer_heartbeat
+    # StartInterval=60 → 15 cycles of grace.
+    max_silence_secs: 900
+
+  - organ: com.chump.trunk-sentinel
+    description: >-
+      trunk RED/GREEN detector. When it stops, a red trunk stops being a fleet
+      event and every downstream ship silently queues behind it.
+    # NOTE: the `daemons:` list above registers this under the label
+    # `dev.chump.trunk-sentinel`; the installed label on the operator's host is
+    # `com.chump.trunk-sentinel`, so the bash monitor's LOADED check never
+    # matches it. Fixing that entry is a separate change (it would break
+    # scripts/ci/test-daemon-silence-monitor.sh's synthetic launchctl fixture);
+    # L5-SLO-1 does not read launchctl at all, so it is unaffected.
+    evidence_kinds:
+      - trunk_sentinel_tick
+      - trunk_state_change
+      - trunk_recovered
+      - trunk_red_persistent
+    # StartInterval=60 → 15 cycles of grace.
+    max_silence_secs: 900

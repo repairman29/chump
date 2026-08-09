@@ -202,7 +202,8 @@ _chump() {{
           _arguments \
             '--json[output as JSON]' \
             '--watch[refresh every 30s]' \
-            '--slo-check[exit non-zero on SLO breach]'
+            '--slo-check[exit non-zero on SLO breach]' \
+            '--layer[evaluate one SLO layer only: L1..L5]:layer:(L1 L2 L3 L4 L5)'
           ;;
         waste-tally)
           _arguments \
@@ -329,7 +330,7 @@ _chump_complete() {{
       COMPREPLY=($(compgen -W "zsh bash fish" -- "$cur"))
       ;;
     health)
-      COMPREPLY=($(compgen -W "--json --watch --slo-check" -- "$cur"))
+      COMPREPLY=($(compgen -W "--json --watch --slo-check --layer" -- "$cur"))
       ;;
     waste-tally)
       COMPREPLY=($(compgen -W "--window --by-close-reason --json" -- "$cur"))
@@ -491,6 +492,7 @@ pub fn fish() -> String {
             .to_string(),
     );
     lines.push("complete -c chump -n '__fish_seen_subcommand_from health' -l slo-check -d 'Exit non-zero on SLO breach'".to_string());
+    lines.push("complete -c chump -n '__fish_seen_subcommand_from health' -l layer -d 'Evaluate one SLO layer only (L1..L5)'".to_string());
     lines.push(
         "complete -c chump -n '__fish_seen_subcommand_from waste-tally' -l json -d 'JSON output'"
             .to_string(),

@@ -1177,7 +1177,34 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
         },
     });
 
+    // RESILIENT-254 — Layer 5: commitment aging. Appended here (rather than
+    // living in a parallel command) so a rot breach inherits `--slo-check`'s
+    // non-zero exit exactly like every other layer.
+    results.extend(crate::commitment_rot::check_rot_slos(repo_root));
+
     results
+}
+
+/// Evaluate one layer, or all of them when `layer` is None.
+///
+/// `--layer L5` is a genuine fast path, not a filter: Layers 1–3 scan the whole
+/// ambient log through `parse_iso8601_to_unix`, which forks `date(1)` once per
+/// matching line (~69k forks on the operator's host — minutes of wall clock).
+/// The fleet-brief runs on every session start and cannot afford that, so the
+/// L5 path skips those layers entirely.
+pub fn check_slos_for_layer(repo_root: &Path, layer: Option<&str>) -> Vec<SloResult> {
+    let Some(layer) = layer else {
+        return check_slos(repo_root);
+    };
+    let layer = layer.to_uppercase();
+    if layer == "L5" {
+        return crate::commitment_rot::check_rot_slos(repo_root);
+    }
+    let prefix = format!("{layer}-");
+    check_slos(repo_root)
+        .into_iter()
+        .filter(|r| r.id.starts_with(&prefix))
+        .collect()
 }
 
 pub fn render_slo_text(results: &[SloResult]) -> String {

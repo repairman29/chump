@@ -575,6 +575,16 @@ jobs:
       - name: Plist no-tmp-paths gate (INFRA-2419)
         run: bash scripts/ci/test-plist-no-tmp-paths.sh
 
+      # RESILIENT-254: FLEET_SLOS.md Layer 5 (commitment aging) gate.
+      # Static half always runs: the doc declares L5-SLO-1..3 in the four-column
+      # shape, the organ registry declares the curator, the new section uses
+      # '- organ:' so daemon-silence-monitor.sh's parser stays out of it, and no
+      # per-gap due dates crept in. CLI half runs only where a chump binary that
+      # knows --layer exists, and SKIPS cleanly otherwise rather than faking a
+      # pass on a stale binary.
+      - name: Commitment-rot SLO gate (RESILIENT-254)
+        run: bash scripts/ci/test-commitment-rot-slo.sh
+
       # INFRA-1621: PWA JavaScript parse gate (advisory initially).
       # Runs `node --check` on every web/v2/*.js file. Catches truncation /
       # syntax errors like the 2026-05-14 commit c64ddd676 that lopped off
