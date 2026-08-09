@@ -1,0 +1,34 @@
+name: EU runner smoke (RESILIENT-253)
+
+# Manual canary for the Helsinki self-hosted runner (chumpd-eu-runner,
+# labels: self-hosted/Linux/X64/chumpd-host). No production job currently
+# routes to this label set (CHUMP_SELF_HOSTED_ENABLED=false and no ci.yml
+# job requests "chumpd-host") — this workflow is the only way to prove the
+# runner still executes real GitHub Actions jobs after RESILIENT-253
+# de-privileged it from root to a dedicated "ghrunner" user.
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, Linux, X64, chumpd-host]
+    steps:
+      - name: whoami
+        run: |
+          whoami
+          id
+          if [ "$(whoami)" = "root" ]; then
+            echo "::error::runner executed this job as root"
+            exit 1
+          fi
+      - name: fleet credentials must stay unreadable
+        run: |
+          if cat /etc/nats/nats.conf 2>/dev/null; then
+            echo "::error::runner user can read /etc/nats/nats.conf"
+            exit 1
+          fi
+          echo "confirmed: /etc/nats/nats.conf not readable by $(whoami)"
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: basic repo access
+        run: git log -1 --oneline
