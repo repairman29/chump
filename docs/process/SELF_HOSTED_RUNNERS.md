@@ -706,3 +706,41 @@ bash scripts/ci/test-pi-mesh-installer-shape.sh
 
 Checks: installer syntax, required labels, systemd unit emission,
 offline cache path, platform guard, META-064 bypass trailer.
+
+## De-privileged EU runner (RESILIENT-253, 2026-08-09)
+
+A third runner — `chumpd-eu-runner` (labels `self-hosted, Linux, X64,
+chumpd-host`) on the Hetzner helsinki box — is registered to
+`repairman29/chump` outside the M4/Pi mesh documented above. A 2026-08-09
+audit found it executing as **root** on the same host as the fleet's NATS
+bus (`/etc/nats/nats.conf`), the almanac embedder (Ollama), and
+`rerank_server.py`. No production workflow currently routes to its label
+set (`CHUMP_SELF_HOSTED_ENABLED=false`, and no `ci.yml`/`integrations.yml`
+job requests `chumpd-host` — those all target `macos-arm64`/`chump-fleet`),
+so this was a latent risk, not an active one: acceptable only because the
+repo is private and only trusted collaborators can push workflow content.
+
+**Fix applied:** the systemd unit
+(`/etc/systemd/system/actions.runner.repairman29-chump.chumpd-eu-runner.service`)
+now runs as a dedicated unprivileged user (`ghrunner`, home
+`/home/ghrunner`) instead of `root`. Chosen over ephemeral/containerized
+because it's the cheapest fix that fully removes the root-RCE surface
+without touching the (currently unused) job-execution path — GitHub's own
+runner docs recommend a dedicated non-root service account as the
+baseline. Verified:
+- `ps -o user=,args=` on the runner processes shows `ghrunner`, not `root`.
+- `su -s /bin/bash ghrunner -c 'cat /etc/nats/nats.conf'` → Permission
+  denied (file is `0600 root:root`; `/var/lib/nats/jetstream` is `0700
+  root:root`).
+- The runner reconnected to GitHub and reports `status: online` under the
+  new user.
+- `.github/workflows/eu-runner-smoke.yml` (`workflow_dispatch`, pinned to
+  `chumpd-host`) is the durable canary: it asserts the job did NOT run as
+  root and that the NATS conf is still unreadable, then does a real
+  checkout — this is the "real workflow run" proof, since no existing
+  production lane exercises this runner to regress-test against.
+
+Gate: [`RELEASE_CHECKLIST.md`](https://github.com/repairman29/workspace-docs/blob/main/RELEASE_CHECKLIST.md)
+§13 RUNNER PRIVILEGE now blocks any repo-visibility flip while a
+self-hosted runner still runs as root or shares a host with fleet
+credentials — evaluated by the release-auditor agent.
