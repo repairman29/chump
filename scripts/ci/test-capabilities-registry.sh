@@ -233,7 +233,12 @@ drift_out="$(mktemp -t chump-capreg-regen-XXXXXX.json)"
 # shellcheck disable=SC2064
 trap "rm -f '$tmp' '${backdated:-}' '${fresh_copy:-}' '$drift_out'" EXIT
 
-if bash scripts/dev/build-capabilities-registry.sh --out "$drift_out" --quiet 2>/dev/null; then
+if ! python3 -c "import yaml" 2>/dev/null; then
+    # Without PyYAML the generator cannot apply docs/CAPABILITIES_OVERLAY.yaml,
+    # so its output legitimately differs from the committed file. Comparing
+    # anyway would report drift that isn't there. Skip loudly instead.
+    echo "SKIP: drift comparison needs PyYAML (pip install pyyaml) — overlay would be dropped"
+elif bash scripts/dev/build-capabilities-registry.sh --out "$drift_out" --quiet 2>/dev/null; then
     committed_sha="$(python3 -c "import json;print(json.load(open('$REGISTRY')).get('content_sha256',''))")"
     regen_sha="$(python3 -c "import json;print(json.load(open('$drift_out')).get('content_sha256',''))")"
     if [[ -z "$regen_sha" ]]; then

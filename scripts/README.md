@@ -54,6 +54,8 @@ Less-used directories (small scope):
 | **Watch ambient** | `scripts/dev/ambient-watch.sh` | Tail ambient.jsonl with formatting |
 | **Rebuild capabilities registry** | `scripts/dev/build-capabilities-registry.sh` | Canonical source for `docs/CAPABILITIES_REGISTRY.json` (Quartermaster artifact, INFRA-1729) |
 | **Generate registry for foreign repo** | `scripts/ops/generate-capabilities-registry.sh <repo-path>` | Column A `chump ingest` wrapper; writes `<repo-path>/docs/CAPABILITIES_REGISTRY.json` |
+| **Check capabilities freshness** | `scripts/ci/check-capabilities-freshness.sh` | Is the catalog stale? Loud `[STALE]` banner past 30d; `--strict` to block (CREDIBLE-240) |
+| **Which provider fronts a tool** | `scripts/ops/capability-provider-join.sh` | Joins the capabilities registry to `privateer/charter.json` (CREDIBLE-240) |
 | **Install hooks** | `scripts/setup/install-hooks.sh` | Idempotent; run after worktree add |
 | **Install ambient** | `scripts/setup/install-ambient-hooks.sh` | SessionStart/PreToolUse hooks for matrix wiring |
 | **Fix bare worktree** | `scripts/setup/fix-worktree-show-toplevel.sh` | Heals `core.bare=true` poison (INFRA-810) |

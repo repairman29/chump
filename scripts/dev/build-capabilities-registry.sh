@@ -597,13 +597,26 @@ related_registries = [
         "name": "privateer charter",
         "path": "../privateer/charter.json",
         "repo": "repairman29/privateer",
-        "holds": "provider needs (completion, search, embedding, rerank, tts, "
-                 "stt, ocr, vision, code-sandbox) and the cascade status of each",
-        "this_registry_holds": "the tools/primitives chump exposes",
-        "join": "charter.needs[].incumbent is a '<repo>:<path>' string (e.g. "
-                "'chump:src/provider_cascade.rs'). Match its path part against "
-                "primitives[].file_paths / crate_apis[].entry_file here to "
-                "answer 'which provider does this tool front'.",
+        "holds": "capability NEEDS and the provider backing each one "
+                 "(completion, search, embedding, rerank, tts, stt, ocr, "
+                 "vision, code-sandbox), plus its cascade status",
+        "this_registry_holds": "the TOOLS and primitives chump exposes",
+        "answers_together": "which provider does this tool front",
+        "join": "charter.needs[].incumbent is a '<repo>:<path>' string, e.g. "
+                "'chump:crates/mcp-servers/chump-mcp-tavily'. Split on the "
+                "first ':'; when the repo part is 'chump', match the path part "
+                "against crate_apis[].crate_path (crate-directory incumbents), "
+                "then crate_apis[].entry_file, then primitives[].file_paths. "
+                "Run scripts/ops/capability-provider-join.sh to do this.",
+        "join_caveats": "Verified 2026-08-09, not assumed: of the 9 needs in "
+                        "charter.json only 'search' resolves to a primitive "
+                        "here (crate chump-mcp-tavily). 'completion' names "
+                        "chump:src/provider_cascade.rs, which is plain source "
+                        "this registry does not catalogue as a primitive — the "
+                        "path is real, the join target is not. The other 7 "
+                        "incumbents live in other repos (almanac, olive) or "
+                        "are unexplored. Do not read a missing match as "
+                        "'chump has no such capability'.",
         "direction": "chump -> privateer (this pointer). The reverse edge is "
                      "the `incumbent` field inside charter.json.",
     }

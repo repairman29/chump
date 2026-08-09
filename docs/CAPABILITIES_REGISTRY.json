@@ -1,9 +1,9 @@
 {
-  "_read_me_first": "GENERATED FILE \u2014 do not hand-edit. Regenerate with `bash scripts/dev/build-capabilities-registry.sh`. This snapshot is only trustworthy until 2026-09-08T16:48:48Z. If today is on or after that date, this catalog is STALE: re-run the generator before quoting anything in it as the current state of the repo. Verify freshness with `bash scripts/ci/check-capabilities-freshness.sh`.",
+  "_read_me_first": "GENERATED FILE \u2014 do not hand-edit. Regenerate with `bash scripts/dev/build-capabilities-registry.sh`. This snapshot is only trustworthy until 2026-09-08T16:56:54Z. If today is on or after that date, this catalog is STALE: re-run the generator before quoting anything in it as the current state of the repo. Verify freshness with `bash scripts/ci/check-capabilities-freshness.sh`.",
   "schema_version": 1,
   "repo": "repairman29/chump",
-  "generated_at": "2026-08-09T16:48:48Z",
-  "stale_after": "2026-09-08T16:48:48Z",
+  "generated_at": "2026-08-09T16:56:54Z",
+  "stale_after": "2026-09-08T16:56:54Z",
   "staleness_policy": {
     "max_age_days": 30,
     "regenerate_cmd": "bash scripts/dev/build-capabilities-registry.sh",
@@ -22,9 +22,11 @@
       "name": "privateer charter",
       "path": "../privateer/charter.json",
       "repo": "repairman29/privateer",
-      "holds": "provider needs (completion, search, embedding, rerank, tts, stt, ocr, vision, code-sandbox) and the cascade status of each",
-      "this_registry_holds": "the tools/primitives chump exposes",
-      "join": "charter.needs[].incumbent is a '<repo>:<path>' string (e.g. 'chump:src/provider_cascade.rs'). Match its path part against primitives[].file_paths / crate_apis[].entry_file here to answer 'which provider does this tool front'.",
+      "holds": "capability NEEDS and the provider backing each one (completion, search, embedding, rerank, tts, stt, ocr, vision, code-sandbox), plus its cascade status",
+      "this_registry_holds": "the TOOLS and primitives chump exposes",
+      "answers_together": "which provider does this tool front",
+      "join": "charter.needs[].incumbent is a '<repo>:<path>' string, e.g. 'chump:crates/mcp-servers/chump-mcp-tavily'. Split on the first ':'; when the repo part is 'chump', match the path part against crate_apis[].crate_path (crate-directory incumbents), then crate_apis[].entry_file, then primitives[].file_paths. Run scripts/ops/capability-provider-join.sh to do this.",
+      "join_caveats": "Verified 2026-08-09, not assumed: of the 9 needs in charter.json only 'search' resolves to a primitive here (crate chump-mcp-tavily). 'completion' names chump:src/provider_cascade.rs, which is plain source this registry does not catalogue as a primitive \u2014 the path is real, the join target is not. The other 7 incumbents live in other repos (almanac, olive) or are unexplored. Do not read a missing match as 'chump has no such capability'.",
       "direction": "chump -> privateer (this pointer). The reverse edge is the `incumbent` field inside charter.json."
     }
   ],
@@ -25147,5 +25149,5 @@
       "version": "git-sha"
     }
   ],
-  "content_sha256": "b0ee01b04b1f638f4617ad7d29dbeb0b1cc01587a8822d6abbc91a3455ad7b47"
+  "content_sha256": "a69607c8fc1f78b949e3514e2fc638afca12496b095b4a79e50b6886ad4d12b7"
 }
