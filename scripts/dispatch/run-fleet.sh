@@ -460,18 +460,42 @@ if [[ "${CHUMP_GH_PROBE_SKIP:-0}" != "1" && "$FLEET_DRY_RUN" != "1" ]]; then
         exit 1
     fi
 
-    _gh_probe_rc=0
-    timeout "${CHUMP_GH_PROBE_TIMEOUT:-10}" gh api /rate_limit --silent 2>/dev/null || _gh_probe_rc=$?
+    # RESILIENT-264: the gh probe is a convenience pre-check — every worker
+    # re-checks its own gh auth before each push/merge (worker.sh). So a SINGLE
+    # transient probe failure (rate-limit blip / API slowness / cold exit-124 at
+    # the launch moment) must NOT abort the entire fleet launch with 0 panes.
+    # Mirror the sibling auth-probe hardening (:INFRA-621 below): retry N times
+    # with a short backoff and succeed on the first green one, and honor
+    # CHUMP_FLEET_FORCE_LAUNCH=1 as proceed-with-warning on terminal failure.
+    # Precedent: 2026-08-09 — 6/6 launches aborted here on transient gh blips
+    # while the single-shot `exit 1` gate ignored FORCE_LAUNCH entirely.
+    _gh_probe_rc=1
+    _gh_probe_attempts="${CHUMP_FLEET_GH_PROBE_ATTEMPTS:-3}"
+    for _gh_attempt in $(seq 1 "$_gh_probe_attempts"); do
+        _gh_probe_rc=0
+        timeout "${CHUMP_GH_PROBE_TIMEOUT:-10}" gh api /rate_limit --silent 2>/dev/null || _gh_probe_rc=$?
+        [[ $_gh_probe_rc -eq 0 ]] && break
+        if [[ "$_gh_attempt" -lt "$_gh_probe_attempts" ]]; then
+            echo "[run-fleet] CREDIBLE-032: gh probe attempt $_gh_attempt/$_gh_probe_attempts failed (rc=$_gh_probe_rc); retrying in 3s..." >&2
+            sleep 3
+        fi
+    done
     if [[ $_gh_probe_rc -ne 0 ]]; then
-        echo "[run-fleet] CREDIBLE-032: gh API call failed (exit=${_gh_probe_rc}) — halting fleet launch" >&2
-        printf '{"ts":"%s","kind":"gh_errored","source":"run-fleet","exit_code":%d,"note":"gh api /rate_limit failed — CREDIBLE-032"}\n' \
+        echo "[run-fleet] CREDIBLE-032: gh API call failed (exit=${_gh_probe_rc}) after ${_gh_probe_attempts} attempts" >&2
+        printf '{"ts":"%s","kind":"gh_errored","source":"run-fleet","exit_code":%d,"note":"gh api /rate_limit failed after retries — CREDIBLE-032/RESILIENT-264"}\n' \
             "$_gh_probe_ts" "$_gh_probe_rc" >> "$_gh_probe_amb" 2>/dev/null || true
         # backward-compat alias
         printf '{"ts":"%s","kind":"github_unreachable","source":"run-fleet","exit_code":%d,"note":"alias for gh_errored — CREDIBLE-032"}\n' \
             "$_gh_probe_ts" "$_gh_probe_rc" >> "$_gh_probe_amb" 2>/dev/null || true
-        exit 1
+        if [[ "${CHUMP_FLEET_FORCE_LAUNCH:-0}" != "1" ]]; then
+            echo "[run-fleet] CREDIBLE-032: halting fleet launch (set CHUMP_FLEET_FORCE_LAUNCH=1 to proceed anyway — workers re-check gh themselves)" >&2
+            exit 1
+        else
+            echo "[run-fleet] WARNING: CHUMP_FLEET_FORCE_LAUNCH=1 — proceeding despite gh probe failure (RESILIENT-264)" >&2
+        fi
+    else
+        echo "[run-fleet] INFRA-539: GitHub API reachable — proceeding"
     fi
-    echo "[run-fleet] INFRA-539: GitHub API reachable — proceeding"
 fi
 
 # INFRA-621: launch-time auth verification. Probe the detected auth path with
@@ -602,8 +626,11 @@ if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$_db" ]]; then
     _db_open=$(sqlite3 "$_db" "SELECT COUNT(*) FROM gaps WHERE status='open';" 2>/dev/null || echo 0)
 fi
 # Count open gaps visible on origin/main via the tracked state.sql mirror.
-_sql_open=$(git show "origin/main:.chump/state.sql" 2>/dev/null \
-    | grep -c "^INSERT.*'open'" 2>/dev/null || echo 0)
+# grep -c prints "0" AND exits 1 on zero-match; the old `|| echo 0` then wrote a
+# SECOND "0", yielding "0\n0" and a `((` syntax error (VOA-004). Capture the count
+# as-is and default only if the whole expansion is empty.
+_sql_open=$(git show "origin/main:.chump/state.sql" 2>/dev/null | grep -c "^INSERT.*'open'" 2>/dev/null)
+_sql_open=${_sql_open:-0}
 if (( _db_open < _sql_open )); then
     echo "[run-fleet] INFRA-465: state.db has $_db_open open gaps, origin/main has $_sql_open — running 'chump gap import'"
     (cd "$REPO_ROOT" && chump gap import) \
