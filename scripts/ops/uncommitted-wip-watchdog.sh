@@ -35,7 +35,6 @@
 # Env:
 #   CHUMP_WIP_THRESHOLD_H   hours before uncommitted work is "stale" (default 3)
 #   CHUMP_WIP_ROOTS         colon-separated scan roots (default: ~/Projects)
-#   CHUMP_WIP_NO_SNAPSHOT=1 alert but never write a snapshot ref
 #
 # launchd: scripts/setup/install-wip-watchdog-launchd.sh (every 30 min).
 # Graded by scripts/ops/reaper-heartbeat-watchdog.sh under the name `wip`.
@@ -155,7 +154,14 @@ while IFS= read -r co; do
     age_h=$(( age / 3600 ))
 
     snap_ref="none"
-    if [[ "$DRY_RUN" -eq 0 && "${CHUMP_WIP_NO_SNAPSHOT:-0}" != "1" && -n "$CHUMP_BIN" ]]; then
+    # There is deliberately no env override here. The one that used to sit in
+    # this condition gated on exactly what DRY_RUN already gates on, so it
+    # bought nothing — and every
+    # bypass-shaped CHUMP_* var costs a slot against the EFFECTIVE-094 debt
+    # ceiling, which this branch blew (239 > 238). Paying the addition tax by
+    # NOT adding is cheaper than asking the operator to raise a ceiling for a
+    # duplicate of a flag that already exists.
+    if [[ "$DRY_RUN" -eq 0 && -n "$CHUMP_BIN" ]]; then
         if out="$("$CHUMP_BIN" wip-snapshot --dir "$co" --quiet 2>&1)"; then
             snap_ref="$(awk '{print $2}' <<<"$out")"
             [[ -n "$snap_ref" ]] && SNAPPED=$(( SNAPPED + 1 )) || snap_ref="clean"
