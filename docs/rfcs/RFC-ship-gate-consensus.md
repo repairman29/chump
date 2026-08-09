@@ -1,6 +1,6 @@
 # RFC — the ship gate: point the consensus machine at the decision we make forty times a day
 
-**Status:** Draft — decisions marked ⬜ are the operator's
+**Status:** Draft — 4 of 5 decisions made 2026-08-09; one ⬜ remains
 **Date:** 2026-08-09
 **Related:** [RFC-agent-governance.md](RFC-agent-governance.md), `crates/chump-coord/src/consensus.rs`, `.claude/agents/deliberator.md`, RELEASE_CHECKLIST.md (the release-auditor gate), RESILIENT-256 / RESILIENT-267 (the reaper incidents this is written from)
 
@@ -146,14 +146,34 @@ rejects. A ship gate that reports "no objections" when it has not actually looke
 be the largest instance of the very pattern it exists to stop. **It must distinguish
 "checked and clean" from "did not check" in its output, every time.**
 
-## Decisions for the operator
+## Decisions — operator, 2026-08-09
 
-⬜ Tier thresholds — is 3 the right quorum for destructive, or 2?
-⬜ Does `Inconclusive` block the merge, or only annotate it?
-⬜ Which three advisors sit on the destructive panel?
-⬜ Post-merge verification: build it now, or land the pre-merge gate first and measure?
-⬜ Should a receipt-less `Approve` be silently discarded (as `Timeout` is today), or
-   reported back to the advisor as a rejected vote? The second is louder and slower.
+✅ **`Inconclusive` BLOCKS the merge** and escalates to the operator via the deliberator's
+existing 24h grace window. This makes it a real gate rather than advice.
+
+  Consequence to design for: **a stalled panel is now a stalled PR.** Advisor liveness
+  becomes load-bearing, and this fleet has already run a dead organ for twelve days
+  without noticing (RESILIENT-246, curator exit 78). The ship gate must carry its own
+  liveness check before it can block anything — reuse the reaper-watchdog pattern, do not
+  invent a second one.
+
+✅ **Quorum is 3 for the destructive tier, disagreeing BY CONSTRUCTION** — three distinct
+lenses, not three runs of one prompt. Proposed lenses: *correctness* (does the claim
+hold), *blast radius* (what does this destroy if wrong), *prior art* (has this been tried
+and reverted before — RESILIENT-099 was `done` and described the bug exactly). Redundancy
+catches nothing that diversity does not.
+
+✅ **A receipt-less `Approve` is silently discarded**, exactly as `Vote::Timeout` is
+today. Reuses `timeout_doesnt_count_toward_quorum` — no new code, no retry loop on the
+merge path, no way for a bouncing advisor to ping-pong a PR.
+
+✅ **Land the pre-merge gate first, then measure.** Run it a week, see what it actually
+catches, and only then decide whether post-merge verification earns its cost. Two gates
+built on one untested theory is how this becomes ceremony.
+
+⬜ **Which three advisors sit the destructive panel** — still open. The bench has 20.
+`fresh-eyes`, `ci-audit` and `curator-opus-historian` map cleanly onto the three lenses
+above, but that is a suggestion, not a decision.
 
 ## Open questions
 
