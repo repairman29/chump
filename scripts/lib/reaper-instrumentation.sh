@@ -210,6 +210,19 @@ reaper_check_disk_headroom() {
                 "$ts" "${REAPER_NAME:-unknown}" >&2
             return 0
         fi
+        # RESILIENT-256: a second, distinct exemption — jobs that prevent
+        # PERMANENT loss. Set REAPER_DISK_EXEMPT=1 with a reason in
+        # REAPER_DISK_EXEMPT_WHY. Kept separate from REAPER_FREES_DISK so the
+        # log says something true: the WIP watchdog does not free disk, it
+        # writes a few KB of git objects. Disk pressure is exactly when
+        # agents start running `git clean -fdx` and `reset --hard` to make
+        # room, so switching the data-loss guard off then is backwards.
+        if [[ "${REAPER_DISK_EXEMPT:-0}" == "1" ]]; then
+            printf '[%s] disk critically low — %s continuing: %s (RESILIENT-256)\n' \
+                "$ts" "${REAPER_NAME:-unknown}" \
+                "${REAPER_DISK_EXEMPT_WHY:-prevents permanent loss}" >&2
+            return 0
+        fi
         printf '[%s] disk critically low — %s exiting early to avoid ENOSPC heartbeat failure\n' \
             "$ts" "${REAPER_NAME:-unknown}" >&2
         exit 0
