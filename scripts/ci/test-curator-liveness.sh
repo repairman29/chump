@@ -122,7 +122,6 @@ fi
 echo
 echo "[live: a curator that cannot start is REPORTED]"
 SANDBOX="$(mktemp -d)"
-trap 'rm -rf "$SANDBOX"' EXIT
 
 # Give the runner a repo-shaped sandbox with its own .chump-locks so the real
 # ambient.jsonl is never touched, and point it at a binary that does not exist.
@@ -134,6 +133,7 @@ cp "$REPO_ROOT/scripts/lib/reaper-instrumentation.sh" "$SANDBOX/scripts/lib/"
 MISSING_OUT="$SANDBOX/missing.out"
 set +e
 ( cd "$SANDBOX" && \
+  CHUMP_DISK_CRITICAL_PCT=0 \
   CHUMP_CURATOR_SUPERVISOR_BIN="$SANDBOX/definitely-not-a-real-binary" \
   bash scripts/ops/curator-supervisor-run.sh ) >"$MISSING_OUT" 2>&1
 MISSING_RC=$?
@@ -174,6 +174,7 @@ chmod +x "$FAKE_BIN"
 
 set +e
 ( cd "$SANDBOX" && \
+  CHUMP_DISK_CRITICAL_PCT=0 \
   CHUMP_CURATOR_SUPERVISOR_BIN="$FAKE_BIN" \
   bash scripts/ops/curator-supervisor-run.sh ) >"$SANDBOX/ok.out" 2>&1
 OK_RC=$?
@@ -193,6 +194,7 @@ printf '#!/bin/bash\necho boom >&2\nexit 3\n' > "$FAKE_BIN"
 chmod +x "$FAKE_BIN"
 set +e
 ( cd "$SANDBOX" && \
+  CHUMP_DISK_CRITICAL_PCT=0 \
   CHUMP_CURATOR_SUPERVISOR_BIN="$FAKE_BIN" \
   bash scripts/ops/curator-supervisor-run.sh ) >"$SANDBOX/bad.out" 2>&1
 BAD_RC=$?
@@ -227,6 +229,58 @@ if grep -q 'reaper_setup curator-supervisor' "$RUNNER"; then
     ok "runner calls reaper_setup curator-supervisor (stamps the graded path)"
 else
     fail "runner does not use reaper instrumentation — watchdog would see nothing"
+fi
+
+# ── 6b. LIVE: the watchdog actually ALERTS on a stale curator ─────────────
+# Static wiring checks prove the name is registered; this proves the alert
+# fires. The watchdog and the instrumentation lib are copied into a sandbox
+# with their /tmp heartbeat prefix rewritten, so the real fleet heartbeats and
+# the real ambient.jsonl are never touched.
+echo
+echo "[live: watchdog alerts on a stale curator]"
+WD_BOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX" "$WD_BOX"' EXIT
+mkdir -p "$WD_BOX/.chump-locks" "$WD_BOX/scripts/ops" "$WD_BOX/scripts/lib"
+git -C "$WD_BOX" init -q 2>/dev/null
+sed "s|/tmp/chump-reaper-|$WD_BOX/hb-|g" "$WATCHDOG" > "$WD_BOX/scripts/ops/reaper-heartbeat-watchdog.sh"
+sed "s|/tmp/chump-reaper-|$WD_BOX/hb-|g" "$REPO_ROOT/scripts/lib/reaper-instrumentation.sh" \
+    > "$WD_BOX/scripts/lib/reaper-instrumentation.sh"
+
+# Stale by 5h — well past the 1h curator threshold.
+STALE_TS=$(date -u -r $(($(date +%s) - 5*3600)) +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+        || date -u -d "@$(($(date +%s) - 5*3600))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+        || date -u +%Y-%m-%dT%H:%M:%SZ)
+printf 'ts=%s\nstatus=ok\nduration=1\ncounts={}\n' "$STALE_TS" \
+    > "$WD_BOX/hb-curator-supervisor.heartbeat"
+
+set +e
+( cd "$WD_BOX" && CHUMP_DISK_CRITICAL_PCT=0 bash scripts/ops/reaper-heartbeat-watchdog.sh curator-supervisor ) \
+    >"$WD_BOX/wd.out" 2>&1
+set -e
+
+if grep -q 'curator_silent' "$WD_BOX/wd.out"; then
+    ok "watchdog prints a curator_silent ALERT for a 5h-stale heartbeat"
+else
+    fail "watchdog did not alert on a stale curator (out: $(tail -3 "$WD_BOX/wd.out"))"
+fi
+if grep -q '"kind":"curator_silent"' "$WD_BOX/.chump-locks/ambient.jsonl" 2>/dev/null; then
+    ok "watchdog emits curator_silent into ambient.jsonl"
+else
+    fail "watchdog emitted no curator_silent event to ambient.jsonl"
+fi
+
+# And it must stay quiet when the curator is fresh.
+printf 'ts=%s\nstatus=ok\nduration=1\ncounts={}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    > "$WD_BOX/hb-curator-supervisor.heartbeat"
+: > "$WD_BOX/.chump-locks/ambient.jsonl"
+set +e
+( cd "$WD_BOX" && CHUMP_DISK_CRITICAL_PCT=0 bash scripts/ops/reaper-heartbeat-watchdog.sh curator-supervisor ) \
+    >"$WD_BOX/wd2.out" 2>&1
+set -e
+if grep -q '"kind":"curator_silent"' "$WD_BOX/.chump-locks/ambient.jsonl" 2>/dev/null; then
+    fail "watchdog falsely alerted on a fresh curator heartbeat"
+else
+    ok "watchdog stays quiet when the curator heartbeat is fresh"
 fi
 
 # ── 7. fleet-brief reports it, ungated ────────────────────────────────────
