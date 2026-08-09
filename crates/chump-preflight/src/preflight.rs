@@ -704,6 +704,12 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // runner refuses a second instance, and that a stale pidfile is never
         // mistaken for a live process. Mirrored, not allowlisted: it runs
         // locally in well under a second.
+        // RESILIENT-263: operator escalation channel wiring. Pure shell — no
+        // cargo, no network. This mirror was written on the 263 branch but PR
+        // #3544 MERGED BEFORE IT WAS PUSHED, so main landed the audit.yml step
+        // without it and main's fast-checks went red at 20:15:44. Carried here
+        // so this PR unbreaks main rather than needing a separate fix.
+        "scripts/ci/test-notify-operator.sh",
         "scripts/ci/test-discord-gateway.sh",
         // RESILIENT-248: pr-rescue zero-CI-runs detector. Pure decision-function
         // fixture — no network, no cargo, no GH_TOKEN, well under a second.
