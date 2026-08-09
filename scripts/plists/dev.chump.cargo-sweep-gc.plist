@@ -12,7 +12,7 @@
     <string>__REPO_ROOT__/scripts/ops/cargo-sweep-gc.sh</string>
   </array>
   <key>EnvironmentVariables</key><dict>
-    <key>PATH</key><string>__HOME__/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PATH</key><string>__HOME__/bin:__HOME__/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>CHUMP_REPO</key><string>__REPO_ROOT__</string>
     <key>CHUMP_CARGO_TARGET_CAP_MB</key><string>20000</string>
   </dict>

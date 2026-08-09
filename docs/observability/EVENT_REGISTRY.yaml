@@ -5005,11 +5005,21 @@ events:
     effect_metric: disk_free_gb
     emitter: scripts/ops/cargo-sweep-gc.sh (ZERO-WASTE-053)
     trigger: >
-      The GC no-oped because cargo-sweep is not installed or the repo Cargo.toml
-      was not found — surfaced so a silently-absent GC does not masquerade as a
-      bounded target.
+      The GC no-oped because cargo (ZERO-WASTE-054) or cargo-sweep is not on PATH,
+      or the repo Cargo.toml was not found — surfaced so a silently-absent GC does
+      not masquerade as a bounded target.
     consumers: [fleet-brief, disk-health-monitor, ops-audit]
     fields_required: [ts, kind, reason]
+  - kind: cargo_sweep_gc_errored
+    effect_metric: disk_free_gb
+    emitter: scripts/ops/cargo-sweep-gc.sh (ZERO-WASTE-054)
+    trigger: >
+      cargo-sweep exited non-zero (e.g. cargo metadata failed under launchd's
+      minimal env). Emitted instead of cargo_sweep_gc_ran so an errored GC can
+      never masquerade as a clean 'nothing to clean' pass — the disk safety net
+      failing silently is worse than no safety net.
+    consumers: [fleet-brief, disk-health-monitor, ops-audit]
+    fields_required: [ts, kind, cap_mb, rc, error]
 
   # ── INFRA-1237: emit-without-register reconciliation (2026-05-14) ────────
   # 19 kinds that were fired in production but missing from the registry.

@@ -30,9 +30,19 @@ emit() { printf '{"ts":"%s",%s}\n' "$(ts)" "$1" >> "$AMB" 2>/dev/null || true; }
 # Scanner anchors for the event-registry verify rule (emit() escapes quotes):
 #   "kind":"cargo_sweep_gc_ran"
 #   "kind":"cargo_sweep_gc_skipped"
+#   "kind":"cargo_sweep_gc_errored"
 
-export PATH="$HOME/.cargo/bin:$PATH"
+# ZERO-WASTE-054: locate the REAL cargo. On this host cargo is $HOME/bin/cargo;
+# ~/.cargo/bin/cargo is only a symlink to the rustup shim, which resolves under
+# launchd's minimal env but then fails `cargo metadata` (cargo-not-found) — so the
+# GC silently no-op'd every 30 min while looking alive. Prepend the real dirs.
+export PATH="$HOME/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "[cargo-sweep-gc] cargo not on PATH — cargo-sweep needs it for metadata; skipping" >&2
+  emit "\"kind\":\"cargo_sweep_gc_skipped\",\"reason\":\"cargo-not-found\""
+  exit 0
+fi
 if ! command -v cargo-sweep >/dev/null 2>&1; then
   echo "[cargo-sweep-gc] cargo-sweep not installed — skipping (install: cargo install cargo-sweep)" >&2
   emit "\"kind\":\"cargo_sweep_gc_skipped\",\"reason\":\"cargo-sweep-not-installed\""
@@ -48,6 +58,18 @@ fi
 # .cargo/config target-dir (the shared target). So run it from the repo root.
 out="$(cd "$REPO_ROOT" && cargo-sweep sweep --maxsize "$CAP_MB" $DRY . 2>&1)"
 rc=$?
+
+# ZERO-WASTE-054 HONEST SIGNAL: a GC that ERRORED must never report "nothing to
+# clean" — that silent no-op is worse than no GC (the disk safety net looks alive
+# while it's dead). Surface the real error and exit non-zero so launchd/observers
+# see the failure.
+if [[ $rc -ne 0 ]]; then
+  err="$(printf '%s' "$out" | grep -iE 'error|failed|no such|not found' | head -2 | tr '\n' ' ')"
+  echo "[cargo-sweep-gc] ERROR rc=$rc: ${err:-$out}" >&2
+  emit "\"kind\":\"cargo_sweep_gc_errored\",\"cap_mb\":$CAP_MB,\"rc\":$rc,\"error\":\"$(printf '%s' "${err:-see-log}" | tr '"' "'" | cut -c1-200)\""
+  exit "$rc"
+fi
+
 cleaned="$(printf '%s' "$out" | grep -oiE '(Would clean|Cleaned):? *[0-9.]+ *[KMG]i?B' | head -1)"
 cleaned="${cleaned:-nothing to clean}"
 
