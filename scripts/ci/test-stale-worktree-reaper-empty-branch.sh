@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-stale-worktree-reaper-empty-branch.sh — RESILIENT-263
+# test-stale-worktree-reaper-empty-branch.sh — RESILIENT-267
 #
 # Proves the reaper does not mistake "never started" for "already merged".
 #
@@ -55,7 +55,7 @@ PASS=0; FAIL=0
 ok()   { echo "  [PASS] $*"; PASS=$((PASS+1)); }
 fail() { echo "  [FAIL] $*" >&2; FAIL=$((FAIL+1)); }
 
-echo "=== RESILIENT-263: reaper must not treat an empty branch as merged ==="
+echo "=== RESILIENT-267: reaper must not treat an empty branch as merged ==="
 
 # ── Structural checks ─────────────────────────────────────────────────────────
 
@@ -206,5 +206,5 @@ else
 fi
 
 echo ""
-echo "=== RESILIENT-263 empty-branch safety: PASS=$PASS FAIL=$FAIL ==="
+echo "=== RESILIENT-267 empty-branch safety: PASS=$PASS FAIL=$FAIL ==="
 [[ $FAIL -eq 0 ]] || exit 1
