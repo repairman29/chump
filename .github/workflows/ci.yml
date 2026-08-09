@@ -749,6 +749,24 @@ jobs:
         # blocking. Promote to --strict once the long-tail cleanup is done.
         run: bash scripts/ci/test-doc-freshness.sh
 
+      - name: capabilities registry gate (CREDIBLE-240)
+        # docs/CAPABILITIES_REGISTRY.json is indexed by almanac, so a stale or
+        # broken catalog gets served to agents with a file:line receipt. This
+        # gate was written in May 2026 and never wired to CI — the catalog then
+        # sat 11 weeks stale with nothing complaining. Wiring it now.
+        # Hard-fails on: unparseable JSON, schema violations, dangling
+        # file_paths receipts, or a freshness checker that silently trusts a
+        # backdated timestamp. Content drift is reported as WARN — the on-merge
+        # regenerator in capabilities-registry.yml is what fixes that on main.
+        run: bash scripts/ci/test-capabilities-registry.sh
+
+      - name: capabilities freshness report (CREDIBLE-240, advisory)
+        # Says the catalog's age out loud in the CI log. Advisory for the same
+        # reason as the release-staleness gate (INFRA-2475): a wall-clock check
+        # must not hard-fail a required check and freeze the fleet.
+        continue-on-error: true
+        run: bash scripts/ci/check-capabilities-freshness.sh
+
       - name: no-claude-leak audit (INFRA-1051, warn-only, changed-only)
         # Prevents NEW Claude-specific references from leaking into product-
         # layer code (src/, scripts/coord/, scripts/dispatch/, scripts/ops/).

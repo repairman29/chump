@@ -117,6 +117,147 @@ else
     echo "PASS: drift detection caught injected stale entry (rc=$drift_rc)"
 fi
 
+# ── 5. Freshness: a backdated generated_at must be FLAGGED (CREDIBLE-240) ────
+#
+# The failure this guards against: the committed catalog sat 11 weeks stale
+# while almanac served it with a file:line receipt, and nothing anywhere said
+# it was old. Below we deliberately backdate a copy and assert the freshness
+# checker refuses to pass it silently.
+FRESHNESS="$REPO_ROOT/scripts/ci/check-capabilities-freshness.sh"
+if [[ ! -f "$FRESHNESS" ]]; then
+    echo "FAIL: missing freshness checker: $FRESHNESS"
+    FAIL=1
+else
+    backdated="$(mktemp -t chump-capreg-backdated-XXXXXX.json)"
+    fresh_copy="$(mktemp -t chump-capreg-fresh-XXXXXX.json)"
+    # shellcheck disable=SC2064
+    trap "rm -f '$tmp' '$backdated' '$fresh_copy'" EXIT
+
+    REGISTRY="$REGISTRY" BACKDATED="$backdated" FRESH_COPY="$fresh_copy" python3 - <<'PYEOF'
+import json, os
+from datetime import datetime, timedelta, timezone
+
+doc = json.load(open(os.environ["REGISTRY"]))
+
+old = datetime.now(timezone.utc) - timedelta(days=999)
+doc["generated_at"] = old.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+json.dump(doc, open(os.environ["BACKDATED"], "w"), indent=2)
+
+now = datetime.now(timezone.utc).replace(microsecond=0)
+doc["generated_at"] = now.isoformat().replace("+00:00", "Z")
+json.dump(doc, open(os.environ["FRESH_COPY"], "w"), indent=2)
+PYEOF
+
+    # 5a. Backdated + --strict must exit non-zero.
+    stale_rc=0
+    stale_out="$(bash "$FRESHNESS" --registry "$backdated" --strict 2>&1)" || stale_rc=$?
+    if [[ "$stale_rc" -eq 0 ]]; then
+        echo "FAIL: backdated generated_at (999d) silently trusted — checker exited 0 under --strict"
+        FAIL=1
+    else
+        echo "PASS: backdated generated_at flagged under --strict (rc=$stale_rc)"
+    fi
+
+    # 5b. ...and it must SAY so, not merely exit non-zero. A silent non-zero is
+    #     unreadable in a CI log; the banner is what a human or agent sees.
+    if ! grep -q '\[STALE\]' <<<"$stale_out"; then
+        echo "FAIL: backdated registry produced no [STALE] banner; output was:"
+        printf '  %s\n' "$stale_out"
+        FAIL=1
+    else
+        echo "PASS: backdated registry prints a loud [STALE] banner"
+    fi
+
+    # 5c. Advisory (default) mode must still say STALE even though it exits 0 —
+    #     otherwise promoting the gate to blocking would be the only way to
+    #     ever learn the catalog had rotted.
+    advisory_out="$(bash "$FRESHNESS" --registry "$backdated" 2>&1)" || true
+    if ! grep -q '\[STALE\]' <<<"$advisory_out"; then
+        echo "FAIL: advisory mode stayed silent on a 999-day-old registry"
+        FAIL=1
+    else
+        echo "PASS: advisory mode still reports [STALE] out loud"
+    fi
+
+    # 5d. A genuinely fresh registry must pass — a checker that flags
+    #     everything teaches everyone to ignore it.
+    fresh_rc=0
+    fresh_out="$(bash "$FRESHNESS" --registry "$fresh_copy" --strict 2>&1)" || fresh_rc=$?
+    if [[ "$fresh_rc" -ne 0 ]]; then
+        echo "FAIL: freshly-stamped registry was flagged (rc=$fresh_rc):"
+        printf '  %s\n' "$fresh_out"
+        FAIL=1
+    else
+        echo "PASS: freshly-stamped registry passes --strict"
+    fi
+fi
+
+# ── 6. Self-reporting fields are present (CREDIBLE-240) ──────────────────────
+# A reader who only ever sees the JSON — an agent handed a chunk of it by
+# almanac — must be able to judge freshness without running anything.
+if ! REGISTRY="$REGISTRY" python3 - <<'PYEOF'
+import json, os, sys
+doc = json.load(open(os.environ["REGISTRY"]))
+missing = [k for k in ("_read_me_first", "stale_after", "staleness_policy",
+                       "content_sha256", "related_registries") if k not in doc]
+if missing:
+    print(f"missing self-reporting fields: {missing}")
+    sys.exit(1)
+if "stale" not in doc["_read_me_first"].lower():
+    print("_read_me_first does not mention staleness")
+    sys.exit(1)
+# AC#5: the cross-reference must actually name charter.json.
+if not any("charter.json" in json.dumps(r) for r in doc["related_registries"]):
+    print("related_registries does not reference privateer/charter.json")
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+then
+    echo "FAIL: registry is missing its self-reporting metadata"
+    FAIL=1
+else
+    echo "PASS: registry self-reports staleness policy + charter cross-reference"
+fi
+
+# ── 7. Content-drift signal (CREDIBLE-240, informational) ────────────────────
+#
+# Regenerate into a scratch file and compare `content_sha256` — the hash over
+# the substantive sections only, excluding timestamps. This is the exact
+# comparison .github/workflows/capabilities-registry.yml uses to decide whether
+# to commit, so running it here proves the signal works.
+#
+# Informational on purpose: a PR that legitimately adds a crate or event kind
+# SHOULD drift, and the on-merge workflow regenerates main straight after. Set
+# CHUMP_CAPABILITIES_DRIFT_STRICT=1 to make drift a hard failure.
+drift_out="$(mktemp -t chump-capreg-regen-XXXXXX.json)"
+# shellcheck disable=SC2064
+trap "rm -f '$tmp' '${backdated:-}' '${fresh_copy:-}' '$drift_out'" EXIT
+
+if ! python3 -c "import yaml" 2>/dev/null; then
+    # Without PyYAML the generator cannot apply docs/CAPABILITIES_OVERLAY.yaml,
+    # so its output legitimately differs from the committed file. Comparing
+    # anyway would report drift that isn't there. Skip loudly instead.
+    echo "SKIP: drift comparison needs PyYAML (pip install pyyaml) — overlay would be dropped"
+elif bash scripts/dev/build-capabilities-registry.sh --out "$drift_out" --quiet 2>/dev/null; then
+    committed_sha="$(python3 -c "import json;print(json.load(open('$REGISTRY')).get('content_sha256',''))")"
+    regen_sha="$(python3 -c "import json;print(json.load(open('$drift_out')).get('content_sha256',''))")"
+    if [[ -z "$regen_sha" ]]; then
+        echo "WARN: regenerated registry has no content_sha256 — drift signal unavailable"
+    elif [[ "$committed_sha" == "$regen_sha" ]]; then
+        echo "PASS: committed registry matches a fresh generation (content_sha256=${regen_sha:0:12})"
+    else
+        echo "WARN: capabilities registry has DRIFTED from the repo"
+        echo "      committed   : ${committed_sha:0:12}"
+        echo "      regenerated : ${regen_sha:0:12}"
+        echo "      Fix: bash scripts/dev/build-capabilities-registry.sh"
+        if [[ "${CHUMP_CAPABILITIES_DRIFT_STRICT:-0}" == "1" ]]; then
+            FAIL=1
+        fi
+    fi
+else
+    echo "WARN: could not regenerate for the drift comparison — skipping"
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     exit 1
 fi
