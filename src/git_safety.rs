@@ -56,6 +56,17 @@ pub const WRITE_GUARD_ENV: &str = "CHUMP_PRIMARY_WRITE_GUARD";
 /// live sibling session. Override with `CHUMP_SIBLING_WINDOW_H`.
 pub const DEFAULT_SIBLING_WINDOW_H: u64 = 6;
 
+/// How many `refs/wip/<branch>/…` snapshots to retain per branch.
+///
+/// Snapshots are anchored so gc cannot reap them, so without a cap they grow
+/// forever: the watchdog re-snapshots whenever work is idle past its
+/// threshold, and idle work stays idle, so an untouched dirty checkout
+/// produced a fresh ref on EVERY run. At the shipped 30-minute cadence across
+/// ~40 checkouts that is ~1,900 refs/day, and the whole point of tightening
+/// the cadence is to make it more frequent still. Override with
+/// `CHUMP_WIP_RETAIN`; 0 disables pruning.
+pub const DEFAULT_WIP_RETAIN: usize = 20;
+
 /// Paths under a primary checkout that are *supposed* to be written there —
 /// coordination surfaces that have no meaning inside a linked worktree.
 /// Writing these in the primary is never a doctrine violation.
@@ -952,7 +963,31 @@ pub fn snapshot(dir: &Path) -> Result<Option<SnapshotResult>, String> {
     };
     cleanup();
 
-    let git_ref = format!("refs/wip/{branch_slug}/{}", now_epoch());
+    // Dedup by TREE, not by commit. commit-tree stamps a timestamp, so an
+    // unchanged working tree still yields a brand-new commit hash every run —
+    // which is exactly how idle work minted a ref per cycle forever. The tree
+    // hash is content-addressed: identical content, identical tree, nothing
+    // new to record.
+    if let Some(prev) = newest_wip_tree(dir, &branch_slug) {
+        if prev == tree {
+            return Ok(None);
+        }
+    }
+
+    // Epoch SECONDS alone is not unique: two snapshots inside the same second
+    // produce the same ref name and update-ref silently overwrites the first.
+    // Found by the retention test — 12 rapid snapshots yielded 3 refs, not 12,
+    // so a burst of real edits would have quietly lost checkpoints. The commit
+    // hash disambiguates, and it cannot collide here because identical trees
+    // are already deduped above.
+    // MILLISECONDS, zero-padded to 13 digits. Seconds were not enough: two
+    // snapshots in the same second collided on the ref name and update-ref
+    // silently overwrote the first, and `--sort=-committerdate` tied among
+    // them so pruning could discard the NEWEST work while keeping older
+    // siblings. Millisecond precision makes the name unique and, because the
+    // width is fixed, lexical order on refname IS chronological order — which
+    // is what both the dedup lookup and the prune rely on.
+    let git_ref = format!("refs/wip/{branch_slug}/{:013}", now_epoch_ms());
     let out = Command::new("git")
         .arg("-C")
         .arg(dir)
@@ -965,11 +1000,93 @@ pub fn snapshot(dir: &Path) -> Result<Option<SnapshotResult>, String> {
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }
+    prune_wip_refs(dir, &branch_slug);
+
     Ok(Some(SnapshotResult {
         commit,
         git_ref,
         files: dirty.len(),
     }))
+}
+
+/// Tree hash of the most recent snapshot for this branch, if any.
+///
+/// Sorted by committerdate rather than by the epoch in the ref name: the name
+/// is generated from our own clock and a backwards step (NTP correction,
+/// sleep/wake) would otherwise make an older snapshot sort newest and defeat
+/// the dedup silently.
+fn newest_wip_tree(dir: &Path, branch_slug: &str) -> Option<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args([
+            "for-each-ref",
+            "--sort=-refname",
+            "--count=1",
+            "--format=%(objectname)",
+            &format!("refs/wip/{branch_slug}/"),
+        ])
+        .output()
+        .ok()?;
+    let commit = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if commit.is_empty() {
+        return None;
+    }
+    let tree = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["rev-parse", &format!("{commit}^{{tree}}")])
+        .output()
+        .ok()?;
+    let tree = String::from_utf8_lossy(&tree.stdout).trim().to_string();
+    (!tree.is_empty()).then_some(tree)
+}
+
+/// Keep the newest `CHUMP_WIP_RETAIN` snapshots for this branch, delete the rest.
+///
+/// Best-effort and deliberately silent on failure: losing a prune is a slow
+/// leak, but a prune that aborts the caller would mean a failed cleanup costs
+/// you the snapshot itself — the opposite of the point.
+fn prune_wip_refs(dir: &Path, branch_slug: &str) {
+    let retain = std::env::var("CHUMP_WIP_RETAIN")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_WIP_RETAIN);
+    if retain == 0 {
+        return;
+    }
+    let Ok(out) = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args([
+            "for-each-ref",
+            "--sort=-refname",
+            "--format=%(refname)",
+            &format!("refs/wip/{branch_slug}/"),
+        ])
+        .output()
+    else {
+        return;
+    };
+    let refs: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    for old in refs.into_iter().skip(retain) {
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["update-ref", "-d", &old])
+            .output();
+    }
+}
+
+fn now_epoch_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
 }
 
 fn now_epoch() -> u64 {

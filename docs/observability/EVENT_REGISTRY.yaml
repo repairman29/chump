@@ -8747,6 +8747,20 @@ events:
     consumers: [fleet-brief, ops-audit, waste-tally]
     fields_required: [ts, kind, gap_id, pr_number]
     status: stable
+  - kind: gap_autoflip_suppressed
+    effect_metric: credible
+    emitter: scripts/ops/github-webhook-receiver.py _auto_flip_gaps_done (CREDIBLE-268)
+    # scanner-anchor: "kind":"gap_autoflip_suppressed"
+    trigger: >
+      A merged PR referenced gap IDs, but auto-flip is SUPPRESSED
+      (CREDIBLE-268 interim, operator decision 2026-08-09): the title+body
+      extraction over-matched and closed every gap a PR merely cited. Names
+      the gap IDs it WOULD have flipped so the suppression is auditable, not
+      silent. Cleared when CHUMP_WEBHOOK_AUTOFLIP=1 (set only once the durable
+      title-only / Closes:-trailer + gap-ship-routed fix lands).
+    consumers: [ops-audit]
+    fields_required: [ts, kind, merged_pr, would_have_flipped, reason]
+    status: stable
   # ── INFRA-1526: post-rebase hunk-drop detector ───────────────────────────
 
   - kind: rebase_hunk_dropped

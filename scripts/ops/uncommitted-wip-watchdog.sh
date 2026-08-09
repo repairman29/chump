@@ -30,10 +30,12 @@
 #   scripts/ops/uncommitted-wip-watchdog.sh --dry-run       # report only
 #   scripts/ops/uncommitted-wip-watchdog.sh --quiet         # ALERT only
 #   scripts/ops/uncommitted-wip-watchdog.sh --root DIR      # extra scan root
-#   scripts/ops/uncommitted-wip-watchdog.sh --threshold-h N # default 3
+#   scripts/ops/uncommitted-wip-watchdog.sh --threshold-min N # default 15
 #
 # Env:
-#   CHUMP_WIP_THRESHOLD_H   hours before uncommitted work is "stale" (default 3)
+#   CHUMP_WIP_THRESHOLD_MIN minutes idle before work is snapshotted (default 15)
+#   CHUMP_WIP_THRESHOLD_H   legacy, in hours; converted to minutes if set
+#   CHUMP_WIP_RETAIN        snapshots kept per branch (default 20, 0 = keep all)
 #   CHUMP_WIP_ROOTS         colon-separated scan roots (default: ~/Projects)
 #
 # launchd: scripts/setup/install-wip-watchdog-launchd.sh (every 30 min).
@@ -55,14 +57,28 @@ source "$SCRIPT_DIR/../lib/reaper-instrumentation.sh"
 
 DRY_RUN=0
 QUIET=0
-THRESHOLD_H="${CHUMP_WIP_THRESHOLD_H:-3}"
+# Minutes, not hours. The threshold is measured from the NEWEST mtime among
+# dirty files, so it means "you have not touched anything in N" — not "the work
+# is N old". At 3h that only ever caught ABANDONED work: anything you were
+# actively editing had an age near zero and was never snapshotted at all, which
+# is precisely how a 40-minute-old actively-edited change was lost on
+# 2026-08-09. What protects a live session is a threshold short enough that
+# ordinary pauses — a meeting, a coffee, a context switch — checkpoint you.
+# Hours could not express that, so minutes are now the unit. The old
+# CHUMP_WIP_THRESHOLD_H still works and is converted.
+THRESHOLD_MIN="${CHUMP_WIP_THRESHOLD_MIN:-15}"
+if [[ -n "${CHUMP_WIP_THRESHOLD_H:-}" ]]; then
+    THRESHOLD_MIN=$(( CHUMP_WIP_THRESHOLD_H * 60 ))
+fi
+THRESHOLD_H="$(( THRESHOLD_MIN / 60 ))"   # retained for the existing report line
 declare -a EXTRA_ROOTS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)     DRY_RUN=1; shift ;;
         --quiet)       QUIET=1; shift ;;
-        --threshold-h) THRESHOLD_H="${2:?--threshold-h needs a number}"; shift 2 ;;
+        --threshold-h) THRESHOLD_MIN=$(( ${2:?--threshold-h needs a number} * 60 )); shift 2 ;;
+        --threshold-min) THRESHOLD_MIN="${2:?--threshold-min needs a number}"; shift 2 ;;
         --root)        EXTRA_ROOTS+=("${2:?--root needs a path}"); shift 2 ;;
         -h|--help)     sed -n '2,45p' "$0" | sed -E 's/^#[[:space:]]?//'; exit 0 ;;
         *)             echo "unknown arg: $1" >&2; exit 2 ;;
@@ -78,7 +94,7 @@ export REAPER_DISK_EXEMPT=1
 export REAPER_DISK_EXEMPT_WHY="snapshots are KB; the loss they prevent is permanent, and disk pressure is when destructive git gets run"
 reaper_check_disk_headroom
 
-THRESHOLD_S=$(( THRESHOLD_H * 3600 ))
+THRESHOLD_S=$(( THRESHOLD_MIN * 60 ))
 NOW=$(date +%s)
 
 # chump may not be on PATH under launchd; fall back to the repo build.
