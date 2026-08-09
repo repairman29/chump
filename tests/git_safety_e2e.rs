@@ -645,3 +645,104 @@ fn the_guard_and_the_watchdog_are_reachable_from_the_repo() {
         );
     }
 }
+
+// ───────────────── snapshot dedup + retention (RESILIENT-256 follow-up) ────
+//
+// The watchdog snapshots whenever dirty work is idle past its threshold, and
+// idle work stays idle — so before dedup, an untouched dirty checkout minted a
+// fresh ANCHORED ref on every single run. At the original 30-minute cadence
+// across ~40 checkouts that is roughly 1,900 refs/day, and the point of the
+// follow-up was to run FAR more often than that. Without these two properties
+// the tighter cadence is unaffordable.
+
+fn snap(dir: &Path, retain: Option<&str>) -> String {
+    let mut c = Command::new(CHUMP);
+    c.args(["wip-snapshot", "--dir"]).arg(dir).arg("--quiet");
+    if let Some(r) = retain {
+        c.env("CHUMP_WIP_RETAIN", r);
+    }
+    let o = c.output().expect("run chump wip-snapshot");
+    String::from_utf8_lossy(&o.stdout).trim().to_string()
+}
+
+fn wip_ref_count(dir: &Path) -> usize {
+    git_ok(dir, &["for-each-ref", "--format=%(refname)", "refs/wip/"])
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .count()
+}
+
+#[test]
+fn an_unchanged_dirty_tree_is_snapshotted_once_not_once_per_run() {
+    let d = fixture_repo();
+    std::fs::write(d.join("README.md"), "dirty\n").unwrap();
+
+    let first = snap(&d, None);
+    assert!(!first.is_empty(), "the first snapshot must be recorded");
+    // Two more runs with byte-identical content. commit-tree stamps a
+    // timestamp, so without tree-level dedup each of these mints a new commit
+    // and a new ref even though nothing changed.
+    assert!(
+        snap(&d, None).is_empty(),
+        "an unchanged tree must not re-snapshot"
+    );
+    assert!(
+        snap(&d, None).is_empty(),
+        "still unchanged, still nothing new"
+    );
+    assert_eq!(wip_ref_count(&d), 1, "three runs, one ref");
+}
+
+#[test]
+fn changed_content_still_produces_a_new_snapshot() {
+    // The dedup must not be so eager that it stops protecting real edits —
+    // that would turn a safety net into a silent no-op, which is worse than
+    // having none.
+    let d = fixture_repo();
+    std::fs::write(d.join("README.md"), "first\n").unwrap();
+    assert!(!snap(&d, None).is_empty());
+    std::fs::write(d.join("README.md"), "second\n").unwrap();
+    assert!(!snap(&d, None).is_empty(), "an edit MUST be captured");
+    assert_eq!(wip_ref_count(&d), 2);
+}
+
+#[test]
+fn retention_caps_the_refs_and_keeps_the_newest() {
+    let d = fixture_repo();
+    for i in 0..12 {
+        std::fs::write(d.join("README.md"), format!("v{i}\n")).unwrap();
+        snap(&d, Some("4"));
+    }
+    assert_eq!(wip_ref_count(&d), 4, "retention must cap the ref set");
+
+    // Capping is only useful if it keeps the RIGHT ones. The newest snapshot
+    // is the one an operator reaches for after a destructive command.
+    let newest = git_ok(
+        &d,
+        &[
+            "for-each-ref",
+            "--sort=-refname",
+            "--count=1",
+            "--format=%(objectname)",
+            "refs/wip/",
+        ],
+    );
+    let body = git_ok(&d, &["show", &format!("{}:README.md", newest.trim())]);
+    assert_eq!(
+        body.trim(),
+        "v11",
+        "the most recent work must survive pruning"
+    );
+}
+
+#[test]
+fn retention_can_be_disabled() {
+    // 0 = keep everything, for anyone who would rather pay the refs than risk
+    // losing a checkpoint.
+    let d = fixture_repo();
+    for i in 0..6 {
+        std::fs::write(d.join("README.md"), format!("v{i}\n")).unwrap();
+        snap(&d, Some("0"));
+    }
+    assert_eq!(wip_ref_count(&d), 6, "retain=0 must keep every snapshot");
+}
