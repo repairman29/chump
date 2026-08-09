@@ -40,6 +40,20 @@ Warn if PR diff            # reason: uses steps.filter.outputs.code — GitHub A
 # ── Release / staleness (requires live GitHub API state) ─────────────────────
 check-release-staleness.sh # reason: calls GitHub releases API; Tier-D
 
+# ── Capabilities registry (CREDIBLE-240) ─────────────────────────────────────
+# The GATE itself (test-capabilities-registry.sh) IS mirrored — see the
+# "capabilities-registry" step in crates/chump-preflight/src/preflight.rs.
+# Only the wall-clock report and the regeneration job's operational steps are
+# allowlisted here.
+check-capabilities-freshness.sh   # reason: wall-clock advisory report, not a pass/fail gate; same Tier-D shape as check-release-staleness.sh above
+Record pre-run content hash       # reason: capabilities-registry.yml plumbing — reads content_sha256 into GITHUB_OUTPUT; nothing to assert locally
+Regenerate capabilities registry  # reason: capabilities-registry.yml writes the artifact on main; locally this is just `bash scripts/dev/build-capabilities-registry.sh`, not a gate
+Compare content hash              # reason: capabilities-registry.yml commit-or-not decision via GITHUB_OUTPUT; GitHub Actions only
+Validate the regenerated registry # reason: capabilities-registry.yml pre-commit safety net; that same script IS mirrored in preflight as "capabilities-registry"
+Commit and push (content changed only)   # reason: capabilities-registry.yml pushes to main with GITHUB_TOKEN; must never run locally
+Freshness report                  # reason: capabilities-registry.yml advisory report against HEAD's committed copy; GitHub Actions only
+Job summary                       # reason: capabilities-registry.yml writes GITHUB_STEP_SUMMARY; not a gate
+
 # ── Runner / self-hosted health (runner-specific) ────────────────────────────
 test-self-hosted-runner-deps.sh  # reason: probes runner PATH for CLIs; runner-specific; Tier-D
 test-workflow-linux-guard.sh     # reason: awk sweep of ci.yml for Linux-only guards; CI-meta gate

@@ -12,10 +12,61 @@
   ],
   "additionalProperties": true,
   "properties": {
+    "_read_me_first": {
+      "type": "string",
+      "description": "CREDIBLE-240. Plain-language banner at the head of the document, stating that this is a generated file and naming the date after which it must not be believed. It lives inside the artifact because almanac indexes this JSON and can hand an agent a chunk of it with a file:line receipt — that reader may never see any surrounding documentation."
+    },
     "schema_version": {
       "type": "integer",
       "const": 1,
       "description": "Bump on breaking schema changes."
+    },
+    "stale_after": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "CREDIBLE-240. generated_at + staleness_policy.max_age_days, as an absolute timestamp. Stated absolutely so a reader that cannot execute code (an LLM quoting this file) can judge freshness by comparing today's date, with no arithmetic."
+    },
+    "staleness_policy": {
+      "type": "object",
+      "description": "CREDIBLE-240. How freshness is defined and who enforces it.",
+      "additionalProperties": true,
+      "properties": {
+        "max_age_days": {"type": "integer", "minimum": 1},
+        "regenerate_cmd": {"type": "string"},
+        "check_cmd": {"type": "string"},
+        "enforced_by": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "content_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "CREDIBLE-240. SHA-256 over the substantive sections only (schema_version, repo, cli_commands, event_kinds, crate_apis, mcp_tools, primitives, related_registries) — timestamps deliberately excluded. Lets the regeneration job tell 'the repo changed' apart from 'time passed', so it commits on real drift rather than once per run."
+    },
+    "cli_source": {
+      "type": "string",
+      "description": "CREDIBLE-240. Where cli_commands came from: 'src/main.rs:print_help' (deterministic source parse, preferred), 'chump --help (PATH binary — not reproducible)', or 'none'. Recorded because parsing a PATH binary makes the output depend on whichever build happens to be installed on the generating machine."
+    },
+    "overlay_status": {
+      "type": "string",
+      "description": "CREDIBLE-240. 'applied' | 'absent' | 'FAILED:<Error>'. A missing PyYAML used to drop every curated when_to_use string from docs/CAPABILITIES_OVERLAY.yaml without a word; this field makes that degradation visible in the artifact itself."
+    },
+    "related_registries": {
+      "type": "array",
+      "description": "CREDIBLE-240. Sibling catalogs and how to join to them. This registry holds TOOLS; privateer/charter.json holds PROVIDERS. Without an explicit pointer, 'which provider does this tool front' had no answer in either file.",
+      "items": {
+        "type": "object",
+        "required": ["name", "path", "join"],
+        "additionalProperties": true,
+        "properties": {
+          "name": {"type": "string"},
+          "path": {"type": "string"},
+          "repo": {"type": "string"},
+          "holds": {"type": "string"},
+          "this_registry_holds": {"type": "string"},
+          "join": {"type": "string", "description": "How to correlate rows across the two files."},
+          "direction": {"type": "string"}
+        }
+      }
     },
     "repo": {
       "type": "string",
@@ -63,7 +114,7 @@
     },
     "crate_apis": {
       "type": "array",
-      "description": "Public APIs of every top-level crate (extracted from crates/*/src/lib.rs via the chump-ast-crawler).",
+      "description": "Every crate in the workspace. Discovery reads [workspace].members from the root Cargo.toml, falling back to a recursive scan of crates/. CREDIBLE-240 widened this from the original one-level, library-only 'crates/*/src/lib.rs' scan, which silently omitted 14 of chump's 47 packages — including all 7 crates under crates/mcp-servers/, every binary-only crate, and the root package.",
       "items": {
         "type": "object",
         "required": ["crate_name"],
@@ -71,6 +122,15 @@
         "properties": {
           "crate_name": {"type": "string", "minLength": 1},
           "crate_path": {"type": "string"},
+          "crate_kind": {
+            "type": "string",
+            "enum": ["lib", "bin", "lib+bin", "other"],
+            "description": "CREDIBLE-240. Which entry points the crate has. public_items is only populated for lib and lib+bin."
+          },
+          "entry_file": {
+            "type": "string",
+            "description": "CREDIBLE-240. Repo-relative path to src/lib.rs, src/main.rs, or Cargo.toml — whichever the crate actually has. Primitives cite this instead of assuming src/lib.rs, which produced dangling receipts for binary crates."
+          },
           "public_items": {
             "type": "array",
             "items": {
@@ -89,7 +149,7 @@
     },
     "mcp_tools": {
       "type": "array",
-      "description": "MCP tools — sourced from chump-mcp.json server descriptors plus #[chump_tool] macro annotations in src/.",
+      "description": "MCP tools — sourced from chump-mcp.json server descriptors plus #[chump_tool] macro annotations in src/. CREDIBLE-240: servers marked enabled:false are LISTED with enabled:false rather than dropped. Omitting them made the catalog assert that a wired-but-switched-off server did not exist at all.",
       "items": {
         "type": "object",
         "required": ["name"],
@@ -98,7 +158,9 @@
           "name": {"type": "string", "minLength": 1},
           "description": {"type": "string"},
           "schema": {"type": "string"},
-          "source": {"type": "string", "description": "chump-mcp.json | chump_tool_macro | inventory_registration"}
+          "source": {"type": "string", "description": "chump-mcp.json | chump_tool_macro | inventory_registration"},
+          "enabled": {"type": "boolean", "description": "CREDIBLE-240. False for servers declared in chump-mcp.json but switched off."},
+          "file_path": {"type": "string", "description": "CREDIBLE-240. Where the tool is actually defined — chump-mcp.json for server descriptors, the .rs file for macro-registered tools."}
         }
       }
     },

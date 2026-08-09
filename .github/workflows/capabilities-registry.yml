@@ -1,0 +1,180 @@
+name: Capabilities registry
+
+# CREDIBLE-240 — keep docs/CAPABILITIES_REGISTRY.json honest.
+#
+# The catalog was generated once (2026-05-23) and then never again. Eleven
+# weeks later almanac started indexing JSON, so agents asking "what can the
+# fleet do?" got May's answer back with a file:line receipt attached: 17 crates
+# instead of 47, no almanac MCP server, no MCP-server crates at all. A wrong
+# answer with a citation is worse than no answer.
+#
+# This workflow regenerates the catalog whenever an input that feeds it lands
+# on main, plus once a day as a backstop for inputs nobody thought to list.
+#
+# Commit discipline: the generator stamps a new `generated_at` on every run, so
+# a naive "git diff --quiet" would commit every single day forever. Instead the
+# registry carries `content_sha256` — a hash over the substantive sections only
+# (crates, events, CLI, MCP tools, primitives), deliberately excluding the
+# timestamps. We commit if and only if that hash moves.
+#
+# Event registry (INFRA-755 + scanner-anchor pattern):
+#   scanner-anchor: "kind":"capabilities_registry_refreshed" emitted by
+#   scripts/dev/build-capabilities-registry.sh (INFRA-1729)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'chump-mcp.json'
+      - 'chump-brain/skills/**'
+      - 'docs/observability/EVENT_REGISTRY.yaml'
+      - 'docs/CAPABILITIES_OVERLAY.yaml'
+      - 'scripts/dev/build-capabilities-registry.sh'
+      - 'scripts/ops/generate-capabilities-registry.sh'
+  schedule:
+    # 05:20 UTC daily — backstop for inputs the paths filter above misses.
+    - cron: '20 5 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+# Never let two regenerations race for the same push to main.
+concurrency:
+  group: capabilities-registry
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML
+        if: runner.os == 'Linux'  # INFRA-1539: Linux-only guard on pip-install
+        # Not optional. Without it the generator cannot read
+        # docs/CAPABILITIES_OVERLAY.yaml, silently drops every curated
+        # when_to_use string, and produces a different content hash — which
+        # would make this job fight the previous run forever. The
+        # overlay_status assertion below is the backstop if this step is ever
+        # skipped by the guard above.
+        run: pip install --quiet pyyaml
+
+      - name: Record pre-run content hash
+        id: before
+        run: |
+          set -euo pipefail
+          reg="docs/CAPABILITIES_REGISTRY.json"
+          if [[ -f "$reg" ]]; then
+            sha="$(python3 -c "import json;print(json.load(open('$reg')).get('content_sha256',''))")"
+            gen="$(python3 -c "import json;print(json.load(open('$reg')).get('generated_at',''))")"
+          else
+            sha=""
+            gen=""
+          fi
+          echo "sha=$sha"     >> "$GITHUB_OUTPUT"
+          echo "gen_at=$gen"  >> "$GITHUB_OUTPUT"
+          echo "[before] content_sha256=${sha:-<none>} generated_at=${gen:-<none>}"
+
+      - name: Regenerate capabilities registry
+        run: bash scripts/dev/build-capabilities-registry.sh
+
+      - name: Compare content hash
+        id: after
+        run: |
+          set -euo pipefail
+          reg="docs/CAPABILITIES_REGISTRY.json"
+          sha="$(python3 -c "import json;print(json.load(open('$reg')).get('content_sha256',''))")"
+          overlay="$(python3 -c "import json;print(json.load(open('$reg')).get('overlay_status',''))")"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [[ -z "$sha" ]]; then
+            echo "::error::generator produced no content_sha256 — refusing to commit"
+            exit 1
+          fi
+          # A degraded generation (no PyYAML -> overlay dropped) yields a valid
+          # but quietly poorer catalog with a different hash. Committing that
+          # would delete every curated when_to_use string and then fight the
+          # next healthy run. Refuse.
+          if [[ "$overlay" != "applied" && "$overlay" != "absent" ]]; then
+            echo "::error::overlay_status=$overlay — generation was degraded, refusing to commit"
+            exit 1
+          fi
+          if [[ "$sha" == "${{ steps.before.outputs.sha }}" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "[after] content unchanged ($sha) — nothing to commit"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "[after] content CHANGED: ${{ steps.before.outputs.sha }} -> $sha"
+          fi
+
+      - name: Validate the regenerated registry
+        # Never commit a catalog that fails its own schema / receipt checks.
+        run: bash scripts/ci/test-capabilities-registry.sh
+
+      - name: Commit and push (content changed only)
+        if: steps.after.outputs.changed == 'true'
+        env:
+          BEFORE_SHA: ${{ steps.before.outputs.sha }}
+          AFTER_SHA: ${{ steps.after.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name  "capabilities-registry[bot]"
+          git config user.email "capabilities-registry@chump.local"
+          git add docs/CAPABILITIES_REGISTRY.json
+          git commit -m "$(printf 'chore(capabilities): regenerate CAPABILITIES_REGISTRY.json\n\ncontent_sha256 %s -> %s\nGenerated by .github/workflows/capabilities-registry.yml (CREDIBLE-240).\n' \
+            "${BEFORE_SHA:-<none>}" "$AFTER_SHA")"
+          git push origin main || {
+            echo "::warning::push to main rejected (main moved) — the next run regenerates from the newer HEAD"
+            exit 0
+          }
+          echo "[commit] pushed regenerated registry"
+
+      - name: Freshness report
+        id: freshness
+        # Checks the version that is actually COMMITTED at HEAD, not the
+        # freshly-restamped working copy — otherwise this would report FRESH
+        # every single run by construction and tell us nothing.
+        # Advisory: it reports, it does not block.
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          git show HEAD:docs/CAPABILITIES_REGISTRY.json > /tmp/committed-registry.json
+          bash scripts/ci/check-capabilities-freshness.sh \
+            --registry /tmp/committed-registry.json | tee /tmp/freshness.txt
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Capabilities registry"
+            echo
+            if [[ "${{ steps.after.outputs.changed }}" == "true" ]]; then
+              echo "**Regenerated and committed** — the catalog had drifted from the repo."
+              echo
+              echo "- content_sha256: \`${{ steps.before.outputs.sha }}\` → \`${{ steps.after.outputs.sha }}\`"
+            else
+              echo "**Re-verified, no commit** — regenerating produced byte-identical content."
+              echo
+              echo "- content_sha256: \`${{ steps.after.outputs.sha }}\` (unchanged)"
+              echo "- The catalog is accurate as of $(date -u +%Y-%m-%dT%H:%M:%SZ), even though"
+              echo "  its \`generated_at\` still reads \`${{ steps.before.outputs.gen_at }}\`."
+            fi
+            echo
+            echo '```'
+            cat /tmp/freshness.txt 2>/dev/null || echo "(freshness check produced no output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
