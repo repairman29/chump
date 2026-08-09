@@ -7237,6 +7237,21 @@ events:
     expected_volume: "rare; should be near-zero in healthy fleet operation"
     status: stable
     # payload: {gap_id: string, behind: u64, ts: string}
+  - kind: ship_touch_check_bypassed
+    effect_metric: credible
+    emitter: crates/chump-gap-store/src/lib.rs GapStore::ship() + set_fields() (CREDIBLE-233)
+    trigger: >
+      Emitted when `chump gap ship --closed-pr N` or `chump gap set --status
+      done --closed-pr N` refuses the touch check (the cited PR's merge
+      commit diff touched neither the gap's own YAML nor any file outside
+      docs/gaps/ or docs/audits/ — the RESILIENT-048/#3165 mis-attribution
+      shape) but the caller supplied CHUMP_SHIP_TOUCH_BYPASS_REASON, so the
+      close proceeds with an audit trail instead of blocking silently.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_id, closed_pr, reason]
+    expected_volume: "rare; every occurrence is a deliberate override worth reviewing"
+    status: stable
+    # payload: {gap_id: string, closed_pr: i64, reason: string, ts: string}
   - kind: per_gap_branch_pruned
     effect_metric: zero-waste
     emitter: scripts/ops/chump-post-integration-prune.sh (INFRA-2138)

@@ -10828,6 +10828,26 @@ async fn main() -> Result<()> {
                     .filter(|g| g.status == "done" && g.closed_pr.is_some())
                     .collect();
 
+                // CREDIBLE-233: --flag-touch-mismatch — audit EXISTING done gaps
+                // whose closed_pr's merge-commit diff touched neither the gap's
+                // own YAML nor any file outside docs/gaps/ or docs/audits/ (the
+                // RESILIENT-048/#3165 shape: closed against an unrelated PR).
+                // Opt-in and gated behind the flag because it shells out to git
+                // per candidate gap — cheap per-call, but not worth paying on
+                // every default audit-priorities invocation.
+                let flag_touch_mismatch = args.iter().any(|a| a == "--flag-touch-mismatch");
+                let touch_mismatches: Vec<&gap_store::GapRow> = if flag_touch_mismatch {
+                    done_with_closed_pr
+                        .iter()
+                        .filter(|g| {
+                            !gap_store::verify_pr_touched_gap(&repo_root, &g.id, g.closed_pr)
+                        })
+                        .copied()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+
                 // MISSION-008: outcome-aware P0 budget view (additive — existing per-gap
                 // checks remain intact; this is an advisory overlay alongside them).
                 let p0_outcomes = store.list_p0_outcomes().unwrap_or_default();
@@ -10880,6 +10900,12 @@ async fn main() -> Result<()> {
                         "missing_evidence_count": missing_evidence.len(),
                         "missing_evidence": missing_evidence.iter().take(5).map(|g| {
                             serde_json::json!({"id": g.id, "priority": g.priority, "domain": g.domain, "title": g.title})
+                        }).collect::<Vec<_>>(),
+                        // CREDIBLE-233: touch-mismatch audit (only populated with --flag-touch-mismatch)
+                        "touch_mismatch_checked": flag_touch_mismatch,
+                        "touch_mismatch_count": touch_mismatches.len(),
+                        "touch_mismatches": touch_mismatches.iter().map(|g| {
+                            serde_json::json!({"id": g.id, "title": g.title, "closed_pr": g.closed_pr})
                         }).collect::<Vec<_>>(),
                     });
                     // MISSION-030: inject by-outcome rollup into JSON when flag set.
@@ -11019,6 +11045,22 @@ async fn main() -> Result<()> {
                         );
                     }
                     println!();
+                    if flag_touch_mismatch {
+                        println!(
+                            "Touch-mismatch (CREDIBLE-233 — done gaps whose closed_pr diff \
+                             touched neither their YAML nor a non-doc file): {}",
+                            touch_mismatches.len()
+                        );
+                        for g in &touch_mismatches {
+                            println!(
+                                "  {} — {} (closed_pr=#{})",
+                                g.id,
+                                g.title,
+                                g.closed_pr.unwrap_or(0)
+                            );
+                        }
+                        println!();
+                    }
                     println!("race-* test pollution (open): {}", race_pollution.len());
                     for g in &race_pollution {
                         println!("  {} — {}", g.id, g.title);

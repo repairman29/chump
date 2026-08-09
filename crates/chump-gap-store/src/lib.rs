@@ -1047,6 +1047,48 @@ impl GapStore {
                         );
                     }
                 }
+                // CREDIBLE-233: `chump gap set --status done --closed-pr N` is the
+                // same false-green surface as `chump gap ship --closed-pr N` — a
+                // freshly-supplied closed_pr must plausibly touch the gap it
+                // closes. Only checked when THIS call supplies the PR number
+                // (not when flipping status on a row whose closed_pr was already
+                // set by an earlier, already-checked call).
+                if let Some(pr) = fields.closed_pr {
+                    if !verify_pr_touched_gap(&self.repo_root, gap_id, Some(pr)) {
+                        let bypass_reason = std::env::var("CHUMP_SHIP_TOUCH_BYPASS_REASON").ok();
+                        match bypass_reason {
+                            Some(reason) if !reason.trim().is_empty() => {
+                                use std::io::Write as _;
+                                let ts = unix_to_iso_full(unix_now());
+                                let reason_escaped = reason.replace('"', "'");
+                                let line = format!(
+                                    "{{\"ts\":\"{ts}\",\"kind\":\"ship_touch_check_bypassed\",\
+                                     \"gap_id\":\"{gap_id}\",\"closed_pr\":{pr},\
+                                     \"reason\":\"{reason_escaped}\"}}\n"
+                                );
+                                let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+                                if let Ok(mut f) = std::fs::OpenOptions::new()
+                                    .create(true)
+                                    .append(true)
+                                    .open(&amb)
+                                {
+                                    let _ = f.write_all(line.as_bytes());
+                                }
+                            }
+                            _ => {
+                                bail!(
+                                    "CREDIBLE-233 TOUCH-CHECK: refusing to close {gap_id} against \
+                                     PR #{pr} via `chump gap set` — its merge commit touched \
+                                     neither docs/gaps/{gap_id}.yaml nor any file outside \
+                                     docs/gaps/ or docs/audits/, so it does not plausibly \
+                                     implement this gap (the RESILIENT-048/#3165 shape). Set \
+                                     CHUMP_SHIP_TOUCH_BYPASS_REASON=<why> to close it anyway — \
+                                     logged to ambient.jsonl for audit."
+                                );
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -2066,6 +2108,45 @@ impl GapStore {
                  mentions {gap_id}. Auto-fetch from origin/main already ran; if the \
                  commit is not yet on main, wait for the merge to land and retry."
             );
+        }
+
+        if !verify_pr_touched_gap(&self.repo_root, gap_id, closed_pr) {
+            let bypass_reason = std::env::var("CHUMP_SHIP_TOUCH_BYPASS_REASON").ok();
+            match bypass_reason {
+                Some(reason) if !reason.trim().is_empty() => {
+                    // Audited bypass: log to ambient.jsonl before proceeding.
+                    // Best-effort — never blocks the ship on a write failure.
+                    use std::io::Write as _;
+                    let ts = unix_to_iso_full(unix_now());
+                    let pr = closed_pr.unwrap_or(0);
+                    let reason_escaped = reason.replace('"', "'");
+                    let line = format!(
+                        "{{\"ts\":\"{ts}\",\"kind\":\"ship_touch_check_bypassed\",\
+                         \"gap_id\":\"{gap_id}\",\"closed_pr\":{pr},\
+                         \"reason\":\"{reason_escaped}\"}}\n"
+                    );
+                    let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&amb)
+                    {
+                        let _ = f.write_all(line.as_bytes());
+                    }
+                }
+                _ => {
+                    bail!(
+                        "CREDIBLE-233 TOUCH-CHECK: refusing to close {gap_id} against PR \
+                         #{} — its merge commit touched neither docs/gaps/{gap_id}.yaml nor \
+                         any file outside docs/gaps/ or docs/audits/, so it does not \
+                         plausibly implement this gap (the RESILIENT-048/#3165 shape). If \
+                         this closure is deliberate (e.g. a doc-only supersession decision), \
+                         set CHUMP_SHIP_TOUCH_BYPASS_REASON=<why> and retry — the bypass is \
+                         logged to ambient.jsonl for audit.",
+                        closed_pr.unwrap_or(0)
+                    );
+                }
+            }
         }
 
         let now = unix_now();
@@ -3789,6 +3870,88 @@ pub fn verify_proof_of_merge(repo_root: &Path, gap_id: &str, closed_pr: Option<i
     !String::from_utf8_lossy(&o.stdout).trim().is_empty()
 }
 
+/// CREDIBLE-233: whether the merge commit cited by `closed_pr` plausibly
+/// TOUCHED the gap it claims to close, as opposed to merely mentioning the
+/// gap ID or PR number in a commit message (which `verify_proof_of_merge`
+/// already checks). Root incident: RESILIENT-048 was marked done against
+/// PR #3165, whose diff was exactly four files — `docs/audits/RED_LETTER.md`
+/// plus three unrelated gap YAMLs — and implemented none of RESILIENT-048's
+/// acceptance criteria. Nothing enforced that the numbered PR was related.
+///
+/// The check is intentionally cheap and mechanical, not semantic: it finds
+/// the merge commit's changed-file list and asks whether it contains either
+/// (a) the gap's own YAML mirror `docs/gaps/<gap_id>.yaml` (the ordinary
+/// `--update-yaml` ship path always touches this), or (b) any file outside
+/// `docs/gaps/` and `docs/audits/` (a real source/script/test/doc edit that
+/// plausibly implements the gap). A PR whose diff is confined to unrelated
+/// gap-registry bookkeeping and the Red Letter audit trail fails both and is
+/// flagged NotTouched.
+///
+/// Fails OPEN (returns true) whenever the signal can't be computed — no
+/// `.git` (test fixtures / fresh repos), git binary missing, merge commit
+/// not locatable, or an empty diff list — mirroring `verify_proof_of_merge`'s
+/// fail-open posture so this never blocks on infra weirdness, only on a
+/// diff it could actually inspect and found unrelated.
+pub fn verify_pr_touched_gap(repo_root: &Path, gap_id: &str, closed_pr: Option<i64>) -> bool {
+    if !repo_root.join(".git").exists() {
+        return true;
+    }
+    let Some(pr) = closed_pr else {
+        return true;
+    };
+    let commit_out = std::process::Command::new("git")
+        .args([
+            "log",
+            "main",
+            "-i",
+            "-F",
+            "-n",
+            "1",
+            "--format=%H",
+            &format!("--grep=(#{pr})"),
+        ])
+        .current_dir(repo_root)
+        .output();
+    let Ok(c) = commit_out else {
+        return true;
+    };
+    if !c.status.success() {
+        return true;
+    }
+    let sha = String::from_utf8_lossy(&c.stdout).trim().to_string();
+    if sha.is_empty() {
+        // Not locatable by PR marker — verify_proof_of_merge (gap-ID grep)
+        // already covers the "not proven at all" case; nothing further to
+        // check here.
+        return true;
+    }
+    let diff_out = std::process::Command::new("git")
+        .args(["diff-tree", "--no-commit-id", "--name-only", "-r", &sha])
+        .current_dir(repo_root)
+        .output();
+    let Ok(d) = diff_out else {
+        return true;
+    };
+    if !d.status.success() {
+        return true;
+    }
+    let files: Vec<String> = String::from_utf8_lossy(&d.stdout)
+        .lines()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if files.is_empty() {
+        return true;
+    }
+    let own_yaml = format!("docs/gaps/{gap_id}.yaml");
+    if files.iter().any(|f| f == &own_yaml) {
+        return true;
+    }
+    files
+        .iter()
+        .any(|f| !f.starts_with("docs/gaps/") && !f.starts_with("docs/audits/"))
+}
+
 /// INFRA-100: parse `2026-04-28T22:30:00Z` style ISO-8601 (lease files use
 /// this) into a unix timestamp. Returns None on parse failure rather than
 /// panicking — leases that don't carry a heartbeat / expiry are simply not
@@ -5217,6 +5380,161 @@ mod proof_of_merge_tests {
             "INFRA-NO-MATCH",
             Some(9999)
         ));
+    }
+}
+
+#[cfg(test)]
+mod touch_check_tests {
+    //! CREDIBLE-233: pure-function tests for `verify_pr_touched_gap`, and an
+    //! integration test proving `GapStore::ship()` refuses to close a gap
+    //! against a PR that only touched unrelated docs — the RESILIENT-048 /
+    //! PR #3165 shape this gap corrects.
+    use super::*;
+    use tempfile::tempdir;
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .ok();
+    }
+
+    fn init_repo(dir: &std::path::Path) {
+        git(dir, &["init", "--initial-branch=main", "--quiet"]);
+        git(dir, &["config", "user.email", "test@test.local"]);
+        git(dir, &["config", "user.name", "test"]);
+        std::fs::write(dir.join("README.md"), b"init").ok();
+        git(dir, &["add", "README.md"]);
+        git(dir, &["commit", "--quiet", "-m", "chore: initial"]);
+    }
+
+    #[test]
+    fn fixture_without_git_dir_passes_through() {
+        let dir = tempdir().unwrap();
+        assert!(verify_pr_touched_gap(dir.path(), "INFRA-9600", Some(1)));
+    }
+
+    #[test]
+    fn no_closed_pr_passes_through() {
+        let dir = tempdir().unwrap();
+        init_repo(dir.path());
+        assert!(verify_pr_touched_gap(dir.path(), "INFRA-9601", None));
+    }
+
+    #[test]
+    fn pr_touching_only_unrelated_docs_is_flagged_not_touched() {
+        // The RESILIENT-048 shape: a merge commit whose diff is confined to
+        // docs/gaps/ (other gaps' YAMLs) and docs/audits/ — never the gap's
+        // own YAML, never a source file.
+        let dir = tempdir().unwrap();
+        init_repo(dir.path());
+        std::fs::create_dir_all(dir.path().join("docs/gaps")).unwrap();
+        std::fs::create_dir_all(dir.path().join("docs/audits")).unwrap();
+        std::fs::write(
+            dir.path().join("docs/gaps/OTHER-1.yaml"),
+            b"- id: OTHER-1\n  status: done\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("docs/audits/RED_LETTER.md"), b"issue #17").unwrap();
+        git(dir.path(), &["add", "."]);
+        git(
+            dir.path(),
+            &["commit", "--quiet", "-m", "chore(cold-water): Red Letter issue #17 (#3165)"],
+        );
+        assert!(
+            !verify_pr_touched_gap(dir.path(), "RESILIENT-9602", Some(3165)),
+            "a diff confined to unrelated gap YAMLs + audit docs must NOT be treated as touching the gap"
+        );
+    }
+
+    #[test]
+    fn pr_touching_own_yaml_is_touched() {
+        let dir = tempdir().unwrap();
+        init_repo(dir.path());
+        std::fs::create_dir_all(dir.path().join("docs/gaps")).unwrap();
+        std::fs::write(
+            dir.path().join("docs/gaps/INFRA-9603.yaml"),
+            b"- id: INFRA-9603\n  status: done\n",
+        )
+        .unwrap();
+        git(dir.path(), &["add", "."]);
+        git(
+            dir.path(),
+            &["commit", "--quiet", "-m", "chore: close INFRA-9603 (#4242)"],
+        );
+        assert!(verify_pr_touched_gap(dir.path(), "INFRA-9603", Some(4242)));
+    }
+
+    #[test]
+    fn pr_touching_a_source_file_is_touched() {
+        let dir = tempdir().unwrap();
+        init_repo(dir.path());
+        std::fs::write(dir.path().join("src.rs"), b"fn main() {}").unwrap();
+        git(dir.path(), &["add", "."]);
+        git(
+            dir.path(),
+            &["commit", "--quiet", "-m", "feat(INFRA-9604): implement it (#5555)"],
+        );
+        assert!(verify_pr_touched_gap(dir.path(), "INFRA-9604", Some(5555)));
+    }
+
+    #[test]
+    fn ship_refuses_when_pr_touched_only_unrelated_docs() {
+        // Integration-level proof: `GapStore::ship()` itself refuses, not
+        // just the pure-function check.
+        let dir = tempdir().unwrap();
+        init_repo(dir.path());
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+            std::env::remove_var("CHUMP_SHIP_TOUCH_BYPASS_REASON");
+        }
+        let store = GapStore::open(dir.path()).unwrap();
+        let gap_id = store
+            .reserve("RESILIENT", "touch-check refuses on unrelated PR", "P1", "s")
+            .unwrap();
+        store
+            .claim(&gap_id, "test-session", "/worktrees/test", 3600)
+            .unwrap();
+        // Commit the gap ID (so proof-of-merge passes) but only touch an
+        // unrelated doc — the mis-attribution shape.
+        std::fs::create_dir_all(dir.path().join("docs/audits")).unwrap();
+        std::fs::write(dir.path().join("docs/audits/RED_LETTER.md"), b"unrelated").unwrap();
+        git(dir.path(), &["add", "."]);
+        let msg = format!("chore: unrelated doc touch ({gap_id}) (#3165)");
+        git(dir.path(), &["commit", "--quiet", "-m", &msg]);
+
+        let result = store.ship(&gap_id, "test-session", Some(3165));
+        assert!(
+            result.is_err(),
+            "ship() must refuse to close against a PR that touched only unrelated docs"
+        );
+        let err_msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            err_msg.contains("CREDIBLE-233 TOUCH-CHECK"),
+            "expected touch-check error message, got: {err_msg}"
+        );
+
+        // With an audited bypass reason set, the same ship() call succeeds.
+        unsafe {
+            std::env::set_var("CHUMP_SHIP_TOUCH_BYPASS_REASON", "test: deliberate doc-only close");
+        }
+        let bypassed = store.ship(&gap_id, "test-session", Some(3165));
+        unsafe {
+            std::env::remove_var("CHUMP_SHIP_TOUCH_BYPASS_REASON");
+        }
+        assert!(
+            bypassed.is_ok(),
+            "ship() with CHUMP_SHIP_TOUCH_BYPASS_REASON set must succeed; got: {bypassed:?}"
+        );
+        let amb = dir.path().join(".chump-locks").join("ambient.jsonl");
+        let content = std::fs::read_to_string(&amb).unwrap_or_default();
+        assert!(
+            content.contains("ship_touch_check_bypassed"),
+            "expected bypass to be logged to ambient.jsonl; got: {content}"
+        );
     }
 }
 

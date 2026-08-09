@@ -1,7 +1,7 @@
 - id: RESILIENT-048
   domain: RESILIENT
   title: "RESILIENT P0: chump gap reserve / claim auto-FAFO-check — surface prior closed gaps + merged PRs + abandoned branches matching new gap scope BEFORE filer commits to it"
-  status: done
+  status: superseded
   priority: P1
   effort: s
   description: |
@@ -16,6 +16,7 @@
     - "Cross-references: INFRA-2237 (the cycle 7 incident where this would have caught my error), CHUMP_PLAYBOOK §0.7 TRIAGE FIRST (the broader discipline this implements at gap-file layer)"
     - "This gap is META — implementing it teaches the substrate to teach itself. Per operator framing 2026-05-30T10:08Z: 'we've tried this already and it doesnt f'n work... cant you see this in the ambient stream or logs?'"
   closed_date: '2026-07-21'
-  closed_pr: 3165
   outcome_id: RESILIENT-000
+  notes: |
+    [2026-08-09T17:09:53Z] CREDIBLE-233: closed against PR #3165 which did not implement any AC (title/files unrelated — chore(cold-water) Red Letter issue #17, touched only docs/audits/RED_LETTER.md + 3 unrelated gap YAMLs). Correcting the record: superseded by INFRA-1149 (partial — lexical title-similarity check at reserve time, done) + ZERO-WASTE-045 (open — the real semantic-dedupe fix this gap actually asked for). The false closed_pr:3165 attribution does not survive this correction.
 
