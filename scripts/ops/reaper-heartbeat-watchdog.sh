@@ -51,7 +51,14 @@ done
 # which is exactly the gap we want to detect (the canary died with the
 # canaries it was supposed to grade).
 # INFRA-683: added pr-watch and distill as non-reaper heartbeat targets.
-[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog ci-flake pr-blocked distill)
+# RESILIENT-246: added curator-supervisor. The curator is chump's
+# product-management layer (pillar balance, PR unstick, backlog restock) and it
+# died on ~2026-08-01 with launchd exit 78, unnoticed for twelve days, because
+# nothing graded it. It is graded HERE rather than by a new bespoke watchdog:
+# scripts/ops/curator-supervisor-run.sh calls reaper_setup/reaper_finish, so it
+# stamps /tmp/chump-reaper-curator-supervisor.heartbeat on the standard path
+# this loop already reads. No new mechanism, one new name.
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog ci-flake pr-blocked distill curator-supervisor)
 
 # Per-reaper alert thresholds (seconds since last heartbeat).
 threshold_secs() {
@@ -65,8 +72,28 @@ threshold_secs() {
         ci-flake)    echo $((2 * 3600)) ;;   # 2h (cadence 1h × 2x — INFRA-375)
         pr-blocked)  echo $((2 * 3600)) ;;   # 2h (cadence 1h × 2x — INFRA-550)
         distill)     echo $((1 * 3600)) ;;   # 1h (INFRA-683: async process, not a reaper)
+        # RESILIENT-246: supervisor cadence is 300s, so 1h is 12 missed cycles.
+        # Deliberately not 2x cadence: this laptop sleeps, and a 10-minute
+        # threshold would cry wolf every morning. 1h still turns a twelve-day
+        # silence into an alert within one watchdog run (30 min).
+        curator-supervisor) echo $((1 * 3600)) ;;
         *)           echo $((4 * 3600)) ;;
     esac
+}
+
+# RESILIENT-246: launchd_exit_status LABEL — second column of `launchctl list`,
+# or "absent" when the job is not loaded at all.
+#
+# Heartbeat freshness alone cannot see the failure that caused this gap. When
+# launchd cannot spawn ProgramArguments[0] it returns 78 (EX_CONFIG) BEFORE the
+# process exists, so no heartbeat is written, no log line appears, and both
+# StandardOutPath and StandardErrorPath stay empty. A missing heartbeat is
+# indistinguishable from "never installed". Reading the exit status is what
+# turns that silence into a diagnosis.
+# scanner-anchor: "kind":"curator_silent"
+launchd_exit_status() {
+    launchctl list 2>/dev/null \
+        | awk -v l="$1" '$3 == l {print $2; found=1} END {if (!found) print "absent"}'
 }
 
 reaper_setup watchdog
@@ -79,14 +106,35 @@ NOW=$(date +%s)
 for name in "${TARGETS[@]}"; do
     # INFRA-683: pr-watch and distill are non-reaper processes that write heartbeats
     is_daemon=0
+    is_curator=0
     case "$name" in
         pr-watch) hb="/tmp/chump-pr-watch.heartbeat"; is_daemon=1 ;;
         distill)  hb="/tmp/chump-distill.heartbeat"; is_daemon=1 ;;
+        # RESILIENT-246: standard heartbeat path, but a launchd-managed job, so
+        # the alert text names the label and its real exit status.
+        curator-supervisor) hb="/tmp/chump-reaper-${name}.heartbeat"; is_curator=1 ;;
         *)        hb="/tmp/chump-reaper-${name}.heartbeat" ;;
     esac
+
+    # RESILIENT-246: for launchd-managed targets, read the job's exit status so
+    # the alert can say WHY it is silent instead of only that it is silent.
+    curator_hint=""
+    if [[ $is_curator -eq 1 ]]; then
+        _cst="$(launchd_exit_status com.chump.curator-supervisor)"
+        case "$_cst" in
+            absent) curator_hint=" launchd job com.chump.curator-supervisor is NOT LOADED — reinstall: bash scripts/setup/install-curator-supervisor.sh" ;;
+            0)      curator_hint=" launchd reports last exit 0, so the job is spawning but not stamping a heartbeat — check ~/Library/Logs/Chump/curator-supervisor.err.log" ;;
+            78)     curator_hint=" launchd reports exit 78 (EX_CONFIG): it CANNOT SPAWN the program, so no logs are written at all. This is the RESILIENT-246 failure. Reinstall: bash scripts/setup/install-curator-supervisor.sh" ;;
+            *)      curator_hint=" launchd reports last exit ${_cst} — see ~/Library/Logs/Chump/curator-supervisor.err.log" ;;
+        esac
+    fi
+
     threshold=$(threshold_secs "$name")
     if [[ ! -f "$hb" ]]; then
-        if [[ $is_daemon -eq 1 ]]; then
+        if [[ $is_curator -eq 1 ]]; then
+            msg="curator-supervisor has never heartbeated — heartbeat file missing at $hb. The curator is chump's product-management layer; while it is silent nothing rebalances pillars or unsticks PRs.${curator_hint}"
+            alert_kind="curator_silent"
+        elif [[ $is_daemon -eq 1 ]]; then
             msg="daemon process ${name} has never heartbeated — heartbeat file missing at $hb. Check if the process is running."
             alert_kind="daemon_silent"
         else
@@ -122,7 +170,10 @@ for name in "${TARGETS[@]}"; do
     threshold_h=$(( threshold / 3600 ))
 
     if [[ $age -gt $threshold ]]; then
-        if [[ $is_daemon -eq 1 ]]; then
+        if [[ $is_curator -eq 1 ]]; then
+            msg="curator-supervisor has not run in ${age_h}h (threshold ${threshold_h}h). Last heartbeat at ${ts_line:-unknown}. The curator is chump's product-management layer; while it is silent nothing rebalances pillars or unsticks PRs.${curator_hint}"
+            alert_kind="curator_silent"
+        elif [[ $is_daemon -eq 1 ]]; then
             msg="daemon process ${name} has not run in ${age_h}h (threshold ${threshold_h}h). Last heartbeat at ${ts_line:-unknown}. Check if the process is running."
             alert_kind="daemon_silent"
         else
