@@ -34,6 +34,22 @@ PAGE_THRESHOLD="${CHUMP_DISK_REACTOR_PAGE_THRESHOLD_PCT:-5}"
 STATE_DIR="$REPO_ROOT/.chump-locks"
 LAST_FIRE_FILE="$STATE_DIR/disk-critical-reactor.last"
 
+# RESILIENT-273: the terminal self-heal the reactor was missing. The delegated
+# disk-pressure-reaper can NOT reclaim the shared cargo target while the fleet is
+# building into it (its mtime/hot guard sees everything as "hot"), so at real
+# disk-critical it freed 0 bytes and this reactor just paged a human (2026-08-09,
+# shared target bloated to ~150GB, disk 4% free). This tier reclaims it the way a
+# human had to: quiesce every writer — including the deploy daemons that IGNORE
+# AUTONOMY_LEVEL and respawn cargo builds — then prune, then restore. DRY-RUN by
+# default (like the integrator daemon); set CHUMP_DISK_REACTOR_QUIESCE_EXECUTE=1
+# to arm. Hard guard: never deletes unless the dir is truly quiescent (0 builds).
+SHARED_TARGET="${CHUMP_SHARED_TARGET:-$HOME/.cargo/chump-shared-target}"
+SHARED_TARGET_CAP_GB="${CHUMP_SHARED_TARGET_CAP_GB:-50}"
+QUIESCE_EXECUTE="${CHUMP_DISK_REACTOR_QUIESCE_EXECUTE:-0}"
+# Daemons that keep spawning cargo builds and do NOT honor AUTONOMY_LEVEL=0.
+QUIESCE_DAEMONS="${CHUMP_DISK_REACTOR_QUIESCE_DAEMONS:-com.chump.auto-deploy com.chump.refresh-runner-binary}"
+QUIESCE_WAIT_S="${CHUMP_DISK_REACTOR_QUIESCE_WAIT_S:-90}"
+
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 emit() {
@@ -60,6 +76,87 @@ tier_for() {
   fi
 }
 
+# Apparent size of the shared target in GB (test override for CI: no real 50GB dir).
+shared_target_gb() {
+  if [[ -n "${CHUMP_SHARED_TARGET_GB_OVERRIDE:-}" ]]; then
+    echo "$CHUMP_SHARED_TARGET_GB_OVERRIDE"; return 0
+  fi
+  [[ -d "$SHARED_TARGET" ]] || { echo 0; return 0; }
+  du -sg "$SHARED_TARGET" 2>/dev/null | awk '{print $1}' || echo 0
+}
+
+# Count live cargo/rustc build processes writing the shared target. chumpd (the
+# supervisor) and this reactor's own worktree are excluded.
+build_procs() {
+  ps aux 2>/dev/null | grep -E 'rustc|cargo (build|test|fix)|refresh-runner' \
+    | grep -v grep | grep -v 'chumpd' | grep -v 'resilient-273' | wc -l | tr -d ' '
+}
+
+restore_quiesce_daemons() {
+  local uid; uid="$(id -u)"
+  local lbl p
+  for lbl in $QUIESCE_DAEMONS; do
+    p="$HOME/Library/LaunchAgents/${lbl}.plist"
+    [[ -f "$p" ]] && launchctl bootstrap "gui/$uid" "$p" 2>/dev/null || true
+  done
+}
+
+# Scanner anchors for the event-registry verify rule (src/verify/rules/event_registry.rs):
+# the emit() helper below escapes quotes, so these literals give the detector a
+# contiguous "kind":"..." to match. Emitted for real in quiesce_and_reclaim():
+#   "kind":"disk_reactor_quiesce_dryrun"
+#   "kind":"disk_reactor_quiesce_started"
+#   "kind":"disk_reactor_quiesce_aborted"
+#   "kind":"disk_reactor_quiesce_reclaimed"
+#
+# RESILIENT-273: the terminal reclaim. Only fires when the shared target is over
+# the hard cap. DRY-RUN unless CHUMP_DISK_REACTOR_QUIESCE_EXECUTE=1. Returns 0 if
+# it reclaimed (or would in dry-run), 1 if not applicable / aborted for safety.
+quiesce_and_reclaim() {
+  local cur_gb; cur_gb="$(shared_target_gb)"; cur_gb="${cur_gb:-0}"
+  if (( cur_gb <= SHARED_TARGET_CAP_GB )); then
+    return 1  # not the shared-target-bloat failure mode; nothing to do here
+  fi
+
+  if [[ "$QUIESCE_EXECUTE" != "1" ]]; then
+    emit "\"kind\":\"disk_reactor_quiesce_dryrun\",\"target\":\"$SHARED_TARGET\",\"target_gb\":$cur_gb,\"cap_gb\":$SHARED_TARGET_CAP_GB,\"note\":\"would quiesce builds+daemons and prune; set CHUMP_DISK_REACTOR_QUIESCE_EXECUTE=1 to arm\""
+    echo "[disk-critical-reactor] DRY-RUN: $SHARED_TARGET is ${cur_gb}GB > ${SHARED_TARGET_CAP_GB}GB cap — would quiesce + reclaim (arm with CHUMP_DISK_REACTOR_QUIESCE_EXECUTE=1)" >&2
+    return 0
+  fi
+
+  emit "\"kind\":\"disk_reactor_quiesce_started\",\"target\":\"$SHARED_TARGET\",\"target_gb\":$cur_gb,\"cap_gb\":$SHARED_TARGET_CAP_GB"
+  # 1. Stop the fleet go-switch + tear down the tmux fleet.
+  echo 0 > "$HOME/.chump/AUTONOMY_LEVEL" 2>/dev/null || true
+  tmux kill-session -t chump-fleet 2>/dev/null || true
+  # 2. Bootout the deploy daemons that ignore AUTONOMY_LEVEL and respawn builds.
+  local uid; uid="$(id -u)"
+  local lbl
+  for lbl in $QUIESCE_DAEMONS; do launchctl bootout "gui/$uid/$lbl" 2>/dev/null || true; done
+  # 3. Kill in-flight builds.
+  pkill -x rustc 2>/dev/null || true
+  pkill -f 'cargo build' 2>/dev/null || true
+  pkill -f 'refresh-runner-binary' 2>/dev/null || true
+  pkill -f 'auto-deploy.sh' 2>/dev/null || true
+  # 4. Wait for true quiescence (bounded).
+  local waited=0 remaining
+  remaining="$(build_procs)"
+  while (( remaining > 0 && waited < QUIESCE_WAIT_S )); do
+    sleep 3; waited=$((waited + 3)); remaining="$(build_procs)"
+  done
+  # 5. HARD GUARD (RESILIENT-112): never delete while a build still holds the dir.
+  if (( remaining > 0 )); then
+    emit "\"kind\":\"disk_reactor_quiesce_aborted\",\"reason\":\"not_quiescent\",\"remaining_builds\":$remaining,\"waited_s\":$waited"
+    restore_quiesce_daemons
+    return 1
+  fi
+  # 6. Prune, then restore the daemons.
+  rm -rf "$SHARED_TARGET" 2>/dev/null || true
+  local after_gb; after_gb="$(free_gb)"; after_gb="${after_gb:-0}"
+  emit "\"kind\":\"disk_reactor_quiesce_reclaimed\",\"target\":\"$SHARED_TARGET\",\"reclaimed_gb_approx\":$cur_gb,\"free_gb_after\":$after_gb"
+  restore_quiesce_daemons
+  return 0
+}
+
 react() {
   local now last
   now=$(date +%s)
@@ -83,10 +180,20 @@ react() {
 
   local post_pct
   post_pct=$(free_pct)
+
+  # RESILIENT-273: if the delegated reaper didn't recover headroom AND the shared
+  # cargo target is over its hard cap, that's the bloat the reaper structurally
+  # can't touch — run the terminal quiesce-prune self-heal BEFORE paging a human,
+  # then re-check. Paging is the last resort, not the first (and only) response.
+  if (( post_pct < PAGE_THRESHOLD )); then
+    quiesce_and_reclaim || true
+    post_pct=$(free_pct)
+  fi
+
   if (( post_pct < PAGE_THRESHOLD )); then
     if [[ -x "$RECALL" ]]; then
       "$RECALL" --condition DISK_CRITICAL \
-        --reason "post-reactor disk still ${post_pct}% free (<${PAGE_THRESHOLD}%); tier-${esc_tier} reap did not recover sufficient headroom" \
+        --reason "post-reactor disk still ${post_pct}% free (<${PAGE_THRESHOLD}%); tier-${esc_tier} reap + shared-target quiesce did not recover sufficient headroom" \
         >> /tmp/chump-disk-critical-reactor.out.log 2>&1 || true
     fi
   fi
@@ -104,6 +211,12 @@ main() {
     esac
   done
 }
+
+# RESILIENT-273: one-shot self-heal hook for tests + manual runs. Honors the same
+# DRY-RUN default, so a bare invocation only reports.
+if [[ "${1:-}" == "--quiesce-check" ]]; then
+  quiesce_and_reclaim; exit $?
+fi
 
 # Allow one-shot mode for testing: emit + process a single event from stdin
 if [[ "${1:-}" == "--once" ]]; then
