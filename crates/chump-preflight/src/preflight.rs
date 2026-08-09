@@ -1693,6 +1693,15 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-no-claude-leak.sh"],
             GateKind::Scripts,
         ));
+        // CREDIBLE-240: docs/CAPABILITIES_REGISTRY.json is indexed by almanac,
+        // so a broken catalog or a dangling file_paths receipt gets served to
+        // agents with a file:line citation. Hermetic and ~2s — safe for the
+        // fast local loop, same shape as the doc-freshness mirror above.
+        steps.push(step(
+            "capabilities-registry",
+            &["bash", "scripts/ci/test-capabilities-registry.sh"],
+            GateKind::Scripts,
+        ));
         steps.push(step(
             "no-verify-audit",
             &["bash", "scripts/ci/test-no-verify-audit.sh"],
