@@ -1,0 +1,8 @@
+[Unit]
+Description=Run unmerged-work triage every 20 min
+[Timer]
+OnBootSec=6min
+OnUnitActiveSec=20min
+Persistent=true
+[Install]
+WantedBy=timers.target
