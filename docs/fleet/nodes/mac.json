@@ -1,0 +1,21 @@
+{
+  "node_id": "Jeffs-MacBook-Air-10",
+  "tailnet_ip": "100.89.67.76",
+  "os": "Darwin",
+  "hardware": {
+    "cpu_cores": 10,
+    "ram_gb": 24,
+    "disk_free_gb": 80,
+    "disk_total_gb": 460,
+    "gpu_present": true,
+    "gpu_name": "Apple Silicon (Metal, no CUDA)",
+    "gpu_vram_mb": 0,
+    "always_on": false
+  },
+  "roles_fit": ["build-worker","ci-runner","atc-interactive"],
+  "services_running": ["chump-worker","nats:broker"],
+  "capability": {
+    "vram_gb": 0,
+    "supported_task_classes": ["build","ship","coord"]
+  }
+}
