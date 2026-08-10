@@ -268,6 +268,7 @@ mod vector6_verify;
 mod vector7_swarm_verify;
 mod verify; // CREDIBLE-155: unified policy engine — chump verify subcommand
 mod version;
+mod vision_intake; // INFRA-3480: chump intake "<plain-language problem>" [--json] [--create]
 mod wasm_calc_tool;
 mod wasm_runner;
 mod wasm_text_tool;
@@ -2957,6 +2958,29 @@ async fn main() -> Result<()> {
     }
 
     // MISSION-008 / MISSION-030: `chump outcome <sub>` — first-class Outcome object commands.
+    // INFRA-3480: chump intake "<plain-language problem>" [--json] [--create]
+    // CREATE-mode conversational intake — plain-language restatement, 1-3
+    // clarifying questions, and a proposed definition-of-done. Never emits
+    // software jargon (structurally enforced in VisionIntakeContract::validate).
+    if args.get(1).map(String::as_str) == Some("intake") {
+        let json_out = args.iter().any(|a| a == "--json");
+        let create = args.iter().any(|a| a == "--create");
+        let text = args
+            .iter()
+            .skip(2)
+            .find(|a| !a.starts_with("--"))
+            .cloned()
+            .unwrap_or_else(|| {
+                eprintln!("Usage: chump intake \"<plain-language problem>\" [--json] [--create]");
+                std::process::exit(2);
+            });
+        if let Err(e) = vision_intake::run(&text, json_out, create).await {
+            eprintln!("chump intake: {e:#}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
     // chump outcome new|create --id X --title T [--priority P] [--dod D]
     // chump outcome list [--status open|done] [--json]
     // chump outcome show <id> [--json]
@@ -3103,11 +3127,12 @@ async fn main() -> Result<()> {
                                 })
                                 .collect();
                             println!(
-                                r#"{{"outcome_id":"{}","title":"{}","priority":"{}","status":"{}","total":{},"open":{},"done":{},"other":{},"advisory":true,"gaps":[{}]}}"#,
+                                r#"{{"outcome_id":"{}","title":"{}","priority":"{}","status":"{}","definition_of_done":"{}","total":{},"open":{},"done":{},"other":{},"advisory":true,"gaps":[{}]}}"#,
                                 r.outcome.id,
                                 r.outcome.title.replace('"', "\\\""),
                                 r.outcome.priority,
                                 r.outcome.status,
+                                r.outcome.definition_of_done.replace('"', "\\\""),
                                 r.total,
                                 r.open,
                                 r.done,
