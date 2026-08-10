@@ -7373,6 +7373,34 @@ events:
     expected_volume: "0-1 per incident declaration; N step-milestone events per active incident"
     # payload: {status: "active"|"resolved"|"escalated"|"false_positive", trigger: string, step: number|null, action: string|null, ts: string}
 
+  # RESILIENT-274 — scripts/coord/duty-officer-loop.sh
+  - kind: duty_officer_action
+    effect_metric: resilient
+    emitter: scripts/coord/duty-officer-loop.sh (RESILIENT-274)
+    trigger: >
+      Emitted every time the duty-officer standing loop routes a firing
+      health signal through docs/process/PLAYBOOK_REGISTRY.yaml: T1
+      (verdict=healed), T2 (verdict=refuted after a reality-check false
+      positive, or runbook_needed for an agent to execute), or T3
+      (verdict=suppressed via the quiet gate, or paged to the operator).
+      An unregistered signal emits verdict=unregistered and defaults to page.
+    consumers: [orchestrator, curator-opus-incident-commander, fleet-brief, kpi-report]
+    fields_required: [ts, kind, signal, tier, verdict, detail]
+    expected_volume: "0-N per tick, proportional to firing signals in the ambient window"
+    # payload: {signal: string, tier: 1|2|3, verdict: "healed"|"refuted"|"runbook_needed"|"suppressed"|"paged"|"unregistered", detail: string, ts: string}
+
+  - kind: duty_officer_heartbeat
+    effect_metric: resilient
+    emitter: scripts/coord/duty-officer-loop.sh (RESILIENT-274)
+    trigger: >
+      Emitted on each `duty-officer-loop.sh heartbeat` invocation to prove
+      the standing loop is alive, carrying the current registered-signal
+      count from PLAYBOOK_REGISTRY.yaml.
+    consumers: [orchestrator, fleet-brief]
+    fields_required: [ts, kind, registry_signals]
+    expected_volume: "1 per loop tick cadence (launchd-scheduled)"
+    # payload: {registry_signals: number, ts: string}
+
   # META-127 C3e — curator-opus-architecture-coach (INFRA-2223)
   - kind: arch_fit_query
     effect_metric: credible
