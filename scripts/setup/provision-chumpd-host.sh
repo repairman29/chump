@@ -182,6 +182,20 @@ install_linux_deps() {
   ensure_swap
 }
 
+# EFFECTIVE-426: fast linker (mold on Linux, lld on macOS) — cheapest big
+# build-speed win, applies to every worker's incremental rebuilds. Runs on
+# both OS_KIND branches (the script itself is OS-aware) and is best-effort:
+# a failure here must not block the rest of provisioning.
+install_fast_linker() {
+  local script="$CHUMPD_PROVISION_DIR/scripts/setup/install-fast-linker.sh"
+  if [[ ! -f "$script" ]]; then
+    warn "scripts/setup/install-fast-linker.sh not found in checkout — skipping fast-linker wiring"
+    return 0
+  fi
+  run "install + wire fast linker (mold/lld)" bash "$script" || \
+    warn "fast-linker install failed — continuing with default linker"
+}
+
 # ── OS / arch detection ──────────────────────────────────────────────────
 OS_KIND=""
 case "$(uname -s)" in
@@ -319,6 +333,12 @@ if [[ -d "$CHUMPD_PROVISION_DIR/.git" ]]; then
 else
   run "clone $CHUMPD_PROVISION_REPO_URL -> $CHUMPD_PROVISION_DIR" \
     git clone --branch "$CHUMPD_PROVISION_BRANCH" "$CHUMPD_PROVISION_REPO_URL" "$CHUMPD_PROVISION_DIR"
+fi
+
+# ── Fast linker (EFFECTIVE-426) ───────────────────────────────────────────
+if [[ "$MODE" != "dry-run" ]]; then
+  log "-- fast linker --"
+  install_fast_linker
 fi
 
 # ── Build ──────────────────────────────────────────────────────────────

@@ -122,3 +122,8 @@ install-discord-gateway.sh
 # not something a bootstrap script should make silently. The repo-local
 # .claude/settings.json wiring ships unconditionally and needs no installer.
 install-git-guard-hook.sh
+# reason: EFFECTIVE-426 — invoked from provision-chumpd-host.sh (fleet-host
+# path) AND runnable standalone by a developer on their own machine. It's
+# not a REQUIRED_DAEMONS entry because it installs a build-speed optimization
+# (mold/lld linker), not a service the fleet depends on to function.
+install-fast-linker.sh
