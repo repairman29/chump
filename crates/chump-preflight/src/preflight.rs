@@ -3488,7 +3488,10 @@ mod tests {
             "crates/bar/src/lib.rs".to_string(),
         ];
         let names = changed_crate_names(root, &paths).expect("should scope");
-        assert_eq!(names, vec!["chump-bar".to_string(), "chump-foo".to_string()]);
+        assert_eq!(
+            names,
+            vec!["chump-bar".to_string(), "chump-foo".to_string()]
+        );
     }
 
     #[test]
