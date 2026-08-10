@@ -1166,6 +1166,43 @@ events:
     trigger: every supervisor invocation — written to .chump-locks/curator-supervisor-last-pass.json on success AND failure so freshness is gradeable
     consumers: [fleet-brief, reaper-heartbeat-watchdog]
 
+  - kind: curator_fleet_outage
+    effect_metric: self
+    emitter: crates/chump-curator-supervisor/src/main.rs (RESILIENT-246)
+    trigger: >
+      EVERY curator role reports never-started in the same tick. That is one
+      launcher-level fault (fleet-autopilot never spawned them, or the tmux
+      server is gone), not six independent ones, so it files a single P0 and
+      takes NO automated remediation — there is no pane to respawn.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [roles]
+
+  - kind: curator_supervisor_blind
+    effect_metric: self
+    emitter: crates/chump-curator-supervisor/src/main.rs (RESILIENT-246)
+    trigger: >
+      the heartbeat scan could not cover the stall threshold — ambient stream
+      missing, unreadable, or rotated so recently that its oldest retained
+      timestamp is newer than the cutoff. The supervisor cannot distinguish a
+      dead curator from an unobservable one, so it reports that instead of
+      guessing. Emitted once per tick, NOT once per role: a blind scan is one
+      observability problem, and fanning it out would file six phantom curator
+      gaps at every nightly log rotation.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [check, why]
+
+  - kind: curator_supervisor_remediation_withheld
+    effect_metric: self
+    emitter: crates/chump-curator-supervisor/src/main.rs (RESILIENT-246)
+    trigger: >
+      a curator failure was filed but auto-remediation was deliberately not
+      attempted, because the state is not one remediation can address — a role
+      that never started has no pane to respawn, and an unobservable role must
+      not be acted on at all. Pairs with the gap so the operator can see that
+      the quiet after a page is a decision, not a dropped ball.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [role, heartbeat, why]
+
   - kind: stale_gap_lock_reaped
     effect_metric: self
     emitter: scripts/ops/stale-gap-lock-reaper.sh (INFRA-676)

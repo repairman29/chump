@@ -10,8 +10,12 @@
 //! 1. **error_pattern_scan** — regex match in last 50 log lines for known
 //!    fatal patterns (`unknown subcommand`, `Traceback`, `panic`, `fatal:`,
 //!    `exit 1`). Triggered when ≥ 2 matches found.
-//! 2. **silent_stall_check** — no `curator_heartbeat` ambient event with
-//!    matching role in the last 10 minutes.
+//! 2. **heartbeat state** (RESILIENT-246) — four-way, not boolean:
+//!    `Fresh` / `Stalled` / `NeverSeen` / `Blind`. Accepts both the generic
+//!    `curator_heartbeat` kind (stub roles) and each productized role's own
+//!    `<role>_heartbeat` kind. Only `Stalled` is auto-remediated; a role that
+//!    never started has no pane to respawn, and a scan that cannot cover the
+//!    threshold window reports its blindness instead of guessing.
 //! 3. **crash_loop_check** — last 100 log lines are ≥ 80% error-class lines.
 //! 4. **productivity_drop_check** — zero state.db gap mutations attributed
 //!    to the role's session_id in the past 1 hour.
@@ -193,8 +197,7 @@ struct DetectionResult {
     role: String,
     error_pattern_triggered: bool,
     error_pattern_sample: Option<String>,
-    silent_stall_triggered: bool,
-    last_heartbeat_ago: Option<Duration>,
+    heartbeat: HeartbeatState,
     crash_loop_triggered: bool,
     productivity_drop_triggered: bool,
 }
@@ -202,9 +205,23 @@ struct DetectionResult {
 impl DetectionResult {
     fn is_failing(&self) -> bool {
         self.error_pattern_triggered
-            || self.silent_stall_triggered
+            || self.heartbeat.is_failing()
             || self.crash_loop_triggered
             || self.productivity_drop_triggered
+    }
+
+    /// Whether auto-remediation (tmux respawn, Sonnet sub-agent) is coherent
+    /// for this result. A role that never started has no pane to respawn, and
+    /// an unobservable role must not be acted on at all — in both cases the
+    /// honest move is to report and stop.
+    fn is_remediable(&self) -> bool {
+        if matches!(self.heartbeat, HeartbeatState::Blind { .. }) {
+            return false;
+        }
+        self.error_pattern_triggered
+            || self.crash_loop_triggered
+            || self.productivity_drop_triggered
+            || self.heartbeat.is_remediable()
     }
 
     fn failure_summary(&self) -> String {
@@ -219,12 +236,8 @@ impl DetectionResult {
                 parts.push("error_pattern".to_string());
             }
         }
-        if self.silent_stall_triggered {
-            let ago = self
-                .last_heartbeat_ago
-                .map(|d| format!("{}s ago", d.as_secs()))
-                .unwrap_or_else(|| "never".to_string());
-            parts.push(format!("silent_stall(last_heartbeat={})", ago));
+        if self.heartbeat.is_failing() {
+            parts.push(self.heartbeat.summary());
         }
         if self.crash_loop_triggered {
             parts.push("crash_loop".to_string());
@@ -283,17 +296,46 @@ async fn run_tick(cfg: &Config) -> Result<()> {
         CURATOR_ROLES.len()
     );
 
+    // One pass over ambient for the whole tick, shared by all roles.
+    let roles: Vec<&str> = CURATOR_ROLES.iter().map(|(r, _)| *r).collect();
+    let scan = HeartbeatScan::collect(&cfg.ambient_path, &roles)?;
+
+    // If the scan cannot see far enough back, it cannot speak to ANY role's
+    // absence. Say so once, as a supervisor problem, and skip the heartbeat
+    // verdicts for this tick — the other three checks still run. Fanning this
+    // out into six curator gaps would file six false reports every time the
+    // ambient log rotates.
+    let blind_reason = scan.coverage_gap(cfg.stall_threshold);
+    if let Some(why) = &blind_reason {
+        warn!(
+            why = %why,
+            "HEARTBEAT CHECK BLIND — cannot distinguish a dead curator from an \
+             unobservable one; reporting no heartbeat verdicts this tick"
+        );
+        emit_ambient(
+            &cfg.ambient_path,
+            &serde_json::json!({
+                "ts": Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                "kind": "curator_supervisor_blind",
+                "check": "heartbeat",
+                "why": why,
+            }),
+        );
+    }
+
     let mut failures: Vec<DetectionResult> = Vec::new();
+    let mut checked = 0usize;
 
     for (role, _loop_script) in CURATOR_ROLES {
-        let result = check_role(cfg, role).await;
+        let result = check_role(cfg, role, &scan, blind_reason.is_some()).await;
         match result {
             Ok(det) => {
+                checked += 1;
                 if det.is_failing() {
                     warn!(role, summary = %det.failure_summary(), "curator failure detected");
                     failures.push(det);
                 } else {
-                    debug!(role, "healthy");
+                    debug!(role, hb = %det.heartbeat.summary(), "healthy");
                 }
             }
             Err(e) => {
@@ -303,7 +345,42 @@ async fn run_tick(cfg: &Config) -> Result<()> {
     }
 
     if failures.is_empty() {
-        info!("all curators healthy");
+        // Only claim health for roles actually checked. If check_role errored
+        // out for some, saying "all curators healthy" would repeat the very
+        // mistake this file is about.
+        if blind_reason.is_some() {
+            // The log-based checks passed, but the heartbeat dimension was
+            // never assessed. "All curators healthy" here is precisely the
+            // sentence this fix exists to delete.
+            warn!(
+                "{checked} curators pass the log-based checks, but heartbeat state is \
+                 UNKNOWN this tick — this is not a clean bill of health"
+            );
+        } else if checked == CURATOR_ROLES.len() {
+            info!("all {checked} curators healthy");
+        } else {
+            warn!(
+                "{checked}/{} curators verified healthy — {} could not be checked; \
+                 the rest are UNKNOWN, not healthy",
+                CURATOR_ROLES.len(),
+                CURATOR_ROLES.len() - checked
+            );
+        }
+        return Ok(());
+    }
+
+    // RESILIENT-246: when EVERY role reports never-started, the fault is one
+    // level up — fleet-autopilot never spawned them, or the tmux server is
+    // gone. Six identical gaps and six respawn attempts would describe six
+    // symptoms of one cause, and respawning a pane inside a tmux session that
+    // does not exist is not remediation. Report it once, loudly, and stop.
+    let all_never_started = failures.len() == CURATOR_ROLES.len()
+        && failures
+            .iter()
+            .all(|d| matches!(d.heartbeat, HeartbeatState::NeverSeen));
+
+    if all_never_started {
+        report_fleet_wide_curator_outage(cfg, &failures).await?;
         return Ok(());
     }
 
@@ -317,9 +394,92 @@ async fn run_tick(cfg: &Config) -> Result<()> {
     Ok(())
 }
 
+/// Every curator is absent at once: file ONE gap against the launcher rather
+/// than one per role, and take no automated remediation.
+async fn report_fleet_wide_curator_outage(
+    cfg: &Config,
+    failures: &[DetectionResult],
+) -> Result<()> {
+    let roles: Vec<&str> = failures.iter().map(|d| d.role.as_str()).collect();
+    warn!(
+        roles = %roles.join(","),
+        "ALL {} curators report never-started — treating as ONE launcher-level outage, \
+         not {} independent failures; no auto-restart, no sub-agents",
+        failures.len(),
+        failures.len(),
+    );
+
+    let ts = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    emit_ambient(
+        &cfg.ambient_path,
+        &serde_json::json!({
+            "ts": ts,
+            "kind": "curator_fleet_outage",
+            "roles": roles,
+            "detail": "no heartbeat from any curator role across the covered window; \
+                       suspect fleet-autopilot / tmux server, not the individual roles",
+            "remediation": "none attempted — nothing to restart",
+        }),
+    );
+
+    // Dedupe on a stable fingerprint so this pages once per TTL, not per tick.
+    let fp = "curator-fleet:all-never-started".to_string();
+    let sentinel_path = cfg
+        .sentinel_dir
+        .join(format!("{}.sentinel", fp.replace(':', "_")));
+    if sentinel_path.exists() {
+        if let Ok(meta) = fs::metadata(&sentinel_path) {
+            if let Ok(modified) = meta.modified() {
+                if let Ok(elapsed) = SystemTime::now().duration_since(modified) {
+                    if elapsed < cfg.sentinel_ttl {
+                        info!("fleet outage already paged within TTL — not re-filing");
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+
+    if cfg.dry_run {
+        info!("dry run — would file P0 fleet-wide curator outage gap");
+        write_sentinel(&sentinel_path, &fp)?;
+        return Ok(());
+    }
+
+    let det = DetectionResult {
+        role: "ALL".to_string(),
+        heartbeat: HeartbeatState::NeverSeen,
+        ..Default::default()
+    };
+    match file_curator_gap(
+        cfg,
+        &det,
+        "P0",
+        &format!(
+            "No heartbeat from any of the {} curator roles ({}).\n\
+         Every role reports never-started, so this is one launcher-level outage.\n\
+         Check: tmux has-session -t chump-curators; bash scripts/coord/fleet-autopilot.sh",
+            failures.len(),
+            roles.join(", "),
+        ),
+    ) {
+        Ok(gap_id) => {
+            info!(gap_id = %gap_id, "filed fleet-wide curator outage gap");
+            write_sentinel(&sentinel_path, &fp)?;
+        }
+        Err(e) => warn!(err = %e, "could not file fleet outage gap"),
+    }
+    Ok(())
+}
+
 // ── per-role detection ─────────────────────────────────────────────────────
 
-async fn check_role(cfg: &Config, role: &str) -> Result<DetectionResult> {
+async fn check_role(
+    cfg: &Config,
+    role: &str,
+    scan: &HeartbeatScan,
+    blind: bool,
+) -> Result<DetectionResult> {
     let mut det = DetectionResult {
         role: role.to_string(),
         ..Default::default()
@@ -334,10 +494,15 @@ async fn check_role(cfg: &Config, role: &str) -> Result<DetectionResult> {
         det.error_pattern_sample = sample;
     }
 
-    // 2. silent_stall_check — no heartbeat ambient event in last N minutes
-    let (stalled, last_ago) = silent_stall_check(&cfg.ambient_path, role, cfg.stall_threshold)?;
-    det.silent_stall_triggered = stalled;
-    det.last_heartbeat_ago = last_ago;
+    // 2. heartbeat state — fresh / stalled / never-seen / unobservable.
+    //    When the tick is blind the verdict is Unassessed, NOT Fresh: writing
+    //    "fresh(0s ago)" for a curator we never observed would be the same
+    //    confident lie in a new coat.
+    det.heartbeat = if blind {
+        HeartbeatState::Unassessed
+    } else {
+        scan.state_for(role, cfg.stall_threshold)
+    };
 
     // 3. crash_loop_check — last 100 log lines ≥ 80% error-class
     if log_path.exists() {
@@ -386,52 +551,262 @@ fn error_pattern_scan(
     Ok((match_count >= min_matches, first_match))
 }
 
-fn silent_stall_check(
-    ambient_path: &Path,
-    role: &str,
-    threshold: Duration,
-) -> Result<(bool, Option<Duration>)> {
-    if !ambient_path.exists() {
-        // No ambient file yet — treat as stalled only if file truly missing.
-        return Ok((false, None));
+// ── heartbeat observation (RESILIENT-246) ──────────────────────────────────
+//
+// The original `silent_stall_check` collapsed three different situations into
+// one `false`, i.e. "healthy":
+//
+//   1. a heartbeat was seen recently                     — genuinely healthy
+//   2. no heartbeat has EVER been seen for this role     — the role is dead
+//   3. the supervisor could not look (no ambient file,
+//      or the window did not reach back far enough)      — unknown
+//
+// Only (1) is health. (2) and (3) are both forms of not-knowing, and the
+// supervisor logged "all curators healthy" on every tick for the entire time
+// the six curators were not running at all — zero heartbeat events of any
+// naming exist across 30k retained ambient lines and three days of history.
+//
+// Absence of evidence is not evidence of health. Each case now has its own
+// state, and each gets a different response.
+
+/// What the supervisor was able to OBSERVE about one role's heartbeat.
+#[derive(Debug, Clone, PartialEq)]
+enum HeartbeatState {
+    /// Heartbeat seen within the stall threshold.
+    Fresh { ago: Duration },
+    /// Heartbeat seen, but older than the threshold. It was alive and stopped:
+    /// there is a real process to restart, so normal remediation applies.
+    Stalled { ago: Duration },
+    /// The scan demonstrably covered the threshold window and found no
+    /// heartbeat for this role at all. The role never came up. A failure — but
+    /// a different one from `Stalled`, because there is no live process to
+    /// restart and the fault is usually upstream of the role itself.
+    NeverSeen,
+    /// The supervisor could not observe. Reported loudly, never remediated:
+    /// you cannot restart what you cannot see, and guessing here is how a
+    /// nightly log rotation turns into six false P0s.
+    Blind { why: String },
+    /// The tick reported its blindness once, at tick level, and skipped the
+    /// per-role verdict. Not a failure — but explicitly NOT a claim of health
+    /// either, so it can never be mistaken for `Fresh` in a log or a summary.
+    Unassessed,
+}
+
+impl HeartbeatState {
+    fn is_failing(&self) -> bool {
+        !matches!(
+            self,
+            HeartbeatState::Fresh { .. } | HeartbeatState::Unassessed
+        )
     }
 
-    // Scan the last 500 lines of ambient.jsonl for curator_heartbeat events for this role.
-    let lines = tail_lines(ambient_path, 500)?;
-    let mut latest_ts: Option<chrono::DateTime<Utc>> = None;
+    /// True only where restarting a pane or spawning a sub-agent is a coherent
+    /// response. `NeverSeen` and `Blind` are deliberately excluded.
+    fn is_remediable(&self) -> bool {
+        matches!(self, HeartbeatState::Stalled { .. })
+    }
 
-    for line in &lines {
-        let Ok(v) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        let kind = v.get("kind").and_then(|k| k.as_str()).unwrap_or("");
-        if kind != "curator_heartbeat" {
-            continue;
-        }
-        let event_role = v.get("role").and_then(|r| r.as_str()).unwrap_or("");
-        if event_role != role {
-            continue;
-        }
-        if let Some(ts_str) = v.get("ts").and_then(|t| t.as_str()) {
-            if let Ok(ts) = ts_str.parse::<chrono::DateTime<Utc>>() {
-                if latest_ts.map(|prev| ts > prev).unwrap_or(true) {
-                    latest_ts = Some(ts);
-                }
+    fn summary(&self) -> String {
+        match self {
+            HeartbeatState::Fresh { ago } => format!("fresh({}s ago)", ago.as_secs()),
+            HeartbeatState::Stalled { ago } => {
+                format!("silent_stall(last_heartbeat={}s ago)", ago.as_secs())
+            }
+            HeartbeatState::NeverSeen => {
+                "never_started(no heartbeat of any kind in the covered window)".to_string()
+            }
+            HeartbeatState::Blind { why } => format!("heartbeat_unobservable({why})"),
+            HeartbeatState::Unassessed => {
+                "heartbeat_not_assessed(scan blind this tick)".to_string()
             }
         }
     }
+}
 
-    match latest_ts {
-        None => {
-            // No heartbeat found — check if this role even has a log file to
-            // avoid false positives on unstarted roles.
-            Ok((false, None))
+impl Default for HeartbeatState {
+    /// Blind, not Fresh. A result that was never populated must not read as
+    /// healthy — that is the same mistake one level up.
+    fn default() -> Self {
+        HeartbeatState::Blind {
+            why: "not checked".to_string(),
         }
-        Some(ts) => {
-            let now = Utc::now();
-            let ago = (now - ts).to_std().unwrap_or(Duration::from_secs(0));
-            let stalled = ago > threshold;
-            Ok((stalled, Some(ago)))
+    }
+}
+
+/// The ambient kind a given role actually emits.
+///
+/// This is the defect that kept the fail-open invisible: the supervisor watched
+/// for `curator_heartbeat`, but the four productized curators each emit their
+/// OWN kind — `handoff_heartbeat`, `ci_audit_heartbeat`, `decompose_heartbeat`,
+/// `md_links_heartbeat` (see `_cmd_heartbeat` in `scripts/coord/*-loop.sh`).
+/// Only the two stub roles (shepherd, target), which do no real work, emit the
+/// generic kind from `fleet-autopilot.sh`. The detector was subscribed to a
+/// channel no working curator has ever published to.
+///
+/// Fixing the fail-open WITHOUT fixing this would page all four productized
+/// roles as dead on every tick, forever, while they were running perfectly.
+fn heartbeat_kind_for(role: &str) -> String {
+    format!("{}_heartbeat", role.replace('-', "_"))
+}
+
+/// Does this ambient event count as a heartbeat for `role`?
+fn heartbeat_matches(v: &Value, role: &str) -> bool {
+    let kind = v.get("kind").and_then(|k| k.as_str()).unwrap_or("");
+    if kind.is_empty() {
+        return false;
+    }
+    // A role-specific kind is unambiguous on its own, so no role field is
+    // required. decompose-loop.sh writes role="curator-opus-decompose", not
+    // "decompose" — demanding an exact match here would drop its heartbeats.
+    if kind == heartbeat_kind_for(role) {
+        return true;
+    }
+    // The generic kind is shared across roles, so it must name its own.
+    if kind == "curator_heartbeat" {
+        let event_role = v.get("role").and_then(|r| r.as_str()).unwrap_or("");
+        return event_role == role || event_role.contains(role);
+    }
+    false
+}
+
+/// One pass over the ambient stream, shared by every role in a tick.
+struct HeartbeatScan {
+    /// Newest heartbeat per role.
+    latest: std::collections::HashMap<String, chrono::DateTime<Utc>>,
+    /// Oldest parsable timestamp observed. This is the evidence of how far
+    /// back the scan actually reached.
+    oldest_seen: Option<chrono::DateTime<Utc>>,
+    /// Set when the supervisor could not observe at all.
+    blind: Option<String>,
+}
+
+impl HeartbeatScan {
+    /// Read the ambient stream once and index heartbeats for every role.
+    ///
+    /// Reads the whole retained file rather than a fixed line count. The old
+    /// 500-line window covered ~12 minutes at this fleet's measured 42
+    /// lines/min, against a 10-minute threshold: a 1.2x margin. Any chattier
+    /// and the window would be NARROWER than the threshold, so a perfectly
+    /// healthy curator's heartbeat would scroll out of view and read as
+    /// absent. A window that must be re-tuned whenever the fleet gets busier
+    /// is not a check. Reading once per tick instead of once per role also
+    /// cuts the I/O it replaces by 6x.
+    fn collect(ambient_path: &Path, roles: &[&str]) -> Result<Self> {
+        let mut scan = HeartbeatScan {
+            latest: std::collections::HashMap::new(),
+            oldest_seen: None,
+            blind: None,
+        };
+
+        if !ambient_path.exists() {
+            scan.blind = Some(format!(
+                "ambient stream absent at {}",
+                ambient_path.display()
+            ));
+            return Ok(scan);
+        }
+
+        let lines = match tail_lines(ambient_path, usize::MAX) {
+            Ok(l) => l,
+            Err(e) => {
+                scan.blind = Some(format!("ambient stream unreadable: {e}"));
+                return Ok(scan);
+            }
+        };
+
+        for line in &lines {
+            let Ok(v) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
+            let Some(ts) = v
+                .get("ts")
+                .and_then(|t| t.as_str())
+                .and_then(|s| s.parse::<chrono::DateTime<Utc>>().ok())
+            else {
+                continue;
+            };
+            // Coverage is tracked against every timestamped event, not just
+            // heartbeats: any line proves the scan reached back that far.
+            if scan.oldest_seen.map(|o| ts < o).unwrap_or(true) {
+                scan.oldest_seen = Some(ts);
+            }
+            for role in roles {
+                if heartbeat_matches(&v, role) {
+                    let slot = scan.latest.entry((*role).to_string()).or_insert(ts);
+                    if ts > *slot {
+                        *slot = ts;
+                    }
+                }
+            }
+        }
+
+        if scan.oldest_seen.is_none() {
+            scan.blind = Some("ambient stream has no parsable timestamps".to_string());
+        }
+        Ok(scan)
+    }
+
+    /// Can this scan support a claim about ANY role's absence?
+    ///
+    /// Coverage is a property of the scan, not of a role: same file, same
+    /// cutoff. So a blind scan is one supervisor-level problem, not six
+    /// curator-level ones, and must be reported once rather than fanned out
+    /// into a gap per role on every nightly rotation.
+    fn coverage_gap(&self, threshold: Duration) -> Option<String> {
+        if let Some(why) = &self.blind {
+            return Some(why.clone());
+        }
+        let now = Utc::now();
+        let cutoff = now - chrono::Duration::from_std(threshold).unwrap_or_default();
+        match self.oldest_seen {
+            Some(oldest) if oldest > cutoff => Some(format!(
+                "retained ambient covers only {}s of the {}s threshold (rotated recently?)",
+                (now - oldest).num_seconds().max(0),
+                threshold.as_secs()
+            )),
+            Some(_) => None,
+            None => Some("no timestamps in ambient stream".to_string()),
+        }
+    }
+
+    /// Classify one role against the stall threshold.
+    fn state_for(&self, role: &str, threshold: Duration) -> HeartbeatState {
+        if let Some(why) = &self.blind {
+            return HeartbeatState::Blind { why: why.clone() };
+        }
+        let now = Utc::now();
+
+        if let Some(ts) = self.latest.get(role) {
+            let ago = (now - *ts).to_std().unwrap_or(Duration::from_secs(0));
+            return if ago > threshold {
+                HeartbeatState::Stalled { ago }
+            } else {
+                HeartbeatState::Fresh { ago }
+            };
+        }
+
+        // Nothing found. Before calling the role dead, prove the scan actually
+        // looked across the whole threshold window. ambient.jsonl rotates
+        // nightly; right after a rotation the retained file can be seconds
+        // old, and "no heartbeat in the last 5 seconds" is not evidence that a
+        // curator died. Without this guard every rotation pages all six roles.
+        let cutoff = now - chrono::Duration::from_std(threshold).unwrap_or_default();
+        match self.oldest_seen {
+            Some(oldest) if oldest <= cutoff => HeartbeatState::NeverSeen,
+            Some(oldest) => {
+                let covered = (now - oldest).num_seconds().max(0);
+                HeartbeatState::Blind {
+                    why: format!(
+                        "retained ambient covers only {}s of the {}s threshold \
+                         (rotated recently?) — absence is not yet evidence",
+                        covered,
+                        threshold.as_secs()
+                    ),
+                }
+            }
+            None => HeartbeatState::Blind {
+                why: "no timestamps in ambient stream".to_string(),
+            },
         }
     }
 }
@@ -654,6 +1029,31 @@ async fn handle_failure(cfg: &Config, det: &DetectionResult, multi_failure: bool
             autorestart_curator(cfg, det).await?;
             record_spawn_activation(cfg, det)?;
         }
+        return Ok(());
+    }
+
+    // RESILIENT-246: the gap is filed either way, but automated remediation
+    // only runs where it is coherent. A role that never started has no pane to
+    // respawn, and a role we could not observe must not be acted on at all —
+    // acting on an unknown is how a detector bug becomes a fleet incident.
+    if !det.is_remediable() {
+        let ts = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        emit_ambient(
+            &cfg.ambient_path,
+            &serde_json::json!({
+                "ts": ts,
+                "kind": "curator_supervisor_remediation_withheld",
+                "role": det.role,
+                "gap_id": gap_id_for_sonnet,
+                "heartbeat": det.heartbeat.summary(),
+                "why": "state is not remediable — reported, not acted on",
+            }),
+        );
+        info!(
+            role = %det.role,
+            hb = %det.heartbeat.summary(),
+            "reported without remediation — nothing coherent to restart"
+        );
         return Ok(());
     }
 
@@ -1306,53 +1706,286 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_silent_stall_no_ambient_file() {
-        let dir = TempDir::new().unwrap();
-        let ambient = dir.path().join("ambient.jsonl");
-        // File does not exist.
-        let (stalled, ago) =
-            silent_stall_check(&ambient, "decompose", Duration::from_secs(600)).unwrap();
-        assert!(!stalled, "no ambient file → should not stall");
-        assert!(ago.is_none());
-    }
+    // ── RESILIENT-246: heartbeat truth ───────────────────────────────────────
+    //
+    // The previous version of this block contained
+    //
+    //     assert!(!stalled, "no ambient file → should not stall");
+    //
+    // which asserted the bug: with no ambient stream at all, the supervisor was
+    // required to report health. A test that pins a fail-open in place is part
+    // of the fail-open, and it is why this survived review. It is inverted
+    // below.
 
-    #[test]
-    fn test_silent_stall_with_old_heartbeat() {
-        let dir = TempDir::new().unwrap();
-        let ambient = dir.path().join("ambient.jsonl");
-        // Write a heartbeat from 30 minutes ago.
-        let old_ts = (Utc::now() - chrono::Duration::minutes(30))
+    const THRESH: Duration = Duration::from_secs(600);
+    const ROLES: &[&str] = &["decompose", "handoff", "ci-audit", "md-links", "shepherd"];
+
+    fn ts_ago(mins: i64) -> String {
+        (Utc::now() - chrono::Duration::minutes(mins))
             .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
-        let line = format!(
-            "{{\"ts\":\"{old_ts}\",\"kind\":\"curator_heartbeat\",\"role\":\"decompose\",\"session\":\"x\"}}\n"
-        );
-        fs::write(&ambient, line).unwrap();
+            .to_string()
+    }
 
-        let (stalled, ago) =
-            silent_stall_check(&ambient, "decompose", Duration::from_secs(600)).unwrap();
-        assert!(
-            stalled,
-            "30-min-old heartbeat should stall at 10min threshold"
+    /// Write an ambient file, always including one old non-heartbeat line so
+    /// the scan can prove it covered the threshold window (otherwise every
+    /// fixture is legitimately Blind).
+    fn ambient_with(dir: &TempDir, body: &str) -> PathBuf {
+        let p = dir.path().join("ambient.jsonl");
+        let anchor = format!(
+            "{{\"ts\":\"{}\",\"kind\":\"farmer_heartbeat\"}}\n",
+            ts_ago(120)
         );
-        assert!(ago.is_some());
-        assert!(ago.unwrap() > Duration::from_secs(1000)); // ~30 min in seconds
+        fs::write(&p, format!("{anchor}{body}")).unwrap();
+        p
+    }
+
+    fn state(p: &Path, role: &str) -> HeartbeatState {
+        HeartbeatScan::collect(p, ROLES)
+            .unwrap()
+            .state_for(role, THRESH)
     }
 
     #[test]
-    fn test_silent_stall_with_fresh_heartbeat() {
+    fn test_no_ambient_file_is_blind_not_healthy() {
         let dir = TempDir::new().unwrap();
-        let ambient = dir.path().join("ambient.jsonl");
-        let fresh_ts = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-        let line = format!(
-            "{{\"ts\":\"{fresh_ts}\",\"kind\":\"curator_heartbeat\",\"role\":\"decompose\",\"session\":\"x\"}}\n"
+        let ambient = dir.path().join("does-not-exist.jsonl");
+        let st = state(&ambient, "decompose");
+        assert!(
+            matches!(st, HeartbeatState::Blind { .. }),
+            "a missing ambient stream means the supervisor cannot see, not that \
+             the curator is well; got {st:?}"
         );
-        fs::write(&ambient, line).unwrap();
+        assert!(st.is_failing(), "Blind must never read as healthy");
+        assert!(
+            !st.is_remediable(),
+            "Blind must never trigger a restart — you cannot restart what you cannot see"
+        );
+    }
 
-        let (stalled, _) =
-            silent_stall_check(&ambient, "decompose", Duration::from_secs(600)).unwrap();
-        assert!(!stalled, "fresh heartbeat should not stall");
+    #[test]
+    fn test_never_heartbeated_is_dead_not_healthy() {
+        // The live condition on 2026-08-09: ambient full of other traffic,
+        // reaching well past the threshold, and not one curator heartbeat.
+        let dir = TempDir::new().unwrap();
+        let ambient = ambient_with(&dir, "");
+        let st = state(&ambient, "decompose");
+        assert_eq!(
+            st,
+            HeartbeatState::NeverSeen,
+            "a role that has never heartbeated across a fully covered window is dead"
+        );
+        assert!(st.is_failing(), "NeverSeen must page");
+        assert!(
+            !st.is_remediable(),
+            "NeverSeen has no live pane to respawn — report, do not fork-bomb"
+        );
+    }
+
+    #[test]
+    fn test_stalled_heartbeat_still_detected_and_remediable() {
+        let dir = TempDir::new().unwrap();
+        let ambient = ambient_with(
+            &dir,
+            &format!(
+                "{{\"ts\":\"{}\",\"kind\":\"curator_heartbeat\",\"role\":\"decompose\"}}\n",
+                ts_ago(30)
+            ),
+        );
+        match state(&ambient, "decompose") {
+            HeartbeatState::Stalled { ago } => {
+                assert!(ago > Duration::from_secs(1000), "~30 min, got {ago:?}");
+            }
+            other => panic!("30-min-old heartbeat must stall, got {other:?}"),
+        }
+        assert!(
+            state(&ambient, "decompose").is_remediable(),
+            "a role that was alive and went quiet IS the case restart was built for"
+        );
+    }
+
+    #[test]
+    fn test_fresh_heartbeat_is_healthy() {
+        let dir = TempDir::new().unwrap();
+        let ambient = ambient_with(
+            &dir,
+            &format!(
+                "{{\"ts\":\"{}\",\"kind\":\"curator_heartbeat\",\"role\":\"decompose\"}}\n",
+                ts_ago(1)
+            ),
+        );
+        let st = state(&ambient, "decompose");
+        assert!(matches!(st, HeartbeatState::Fresh { .. }), "got {st:?}");
+        assert!(!st.is_failing());
+    }
+
+    #[test]
+    fn test_productized_roles_emit_their_own_kind_and_are_seen() {
+        // The mismatch that hid the fail-open. Each productized curator emits
+        // <role>_heartbeat, NOT curator_heartbeat. Before this fix all four
+        // were invisible; after the fail-open fix alone, all four would have
+        // been paged as dead while running perfectly.
+        let dir = TempDir::new().unwrap();
+        let now = ts_ago(0);
+        let body = format!(
+            "{{\"ts\":\"{now}\",\"kind\":\"handoff_heartbeat\",\"role\":\"handoff\"}}\n\
+             {{\"ts\":\"{now}\",\"kind\":\"ci_audit_heartbeat\",\"role\":\"ci-audit\"}}\n\
+             {{\"ts\":\"{now}\",\"kind\":\"md_links_heartbeat\",\"role\":\"md-links\"}}\n\
+             {{\"ts\":\"{now}\",\"kind\":\"decompose_heartbeat\",\"role\":\"curator-opus-decompose\"}}\n"
+        );
+        let ambient = ambient_with(&dir, &body);
+        for role in ["handoff", "ci-audit", "md-links", "decompose"] {
+            let st = state(&ambient, role);
+            assert!(
+                matches!(st, HeartbeatState::Fresh { .. }),
+                "{role} emits {} and must be recognised; got {st:?}",
+                heartbeat_kind_for(role)
+            );
+        }
+    }
+
+    #[test]
+    fn test_decompose_role_field_mismatch_does_not_hide_it() {
+        // decompose-loop.sh writes role="curator-opus-decompose". An exact
+        // role-field match would drop every one of its heartbeats.
+        let dir = TempDir::new().unwrap();
+        let ambient = ambient_with(
+            &dir,
+            &format!(
+                "{{\"ts\":\"{}\",\"kind\":\"decompose_heartbeat\",\"role\":\"curator-opus-decompose\"}}\n",
+                ts_ago(0)
+            ),
+        );
+        assert!(matches!(
+            state(&ambient, "decompose"),
+            HeartbeatState::Fresh { .. }
+        ));
+    }
+
+    #[test]
+    fn test_one_roles_heartbeat_does_not_vouch_for_another() {
+        let dir = TempDir::new().unwrap();
+        let ambient = ambient_with(
+            &dir,
+            &format!(
+                "{{\"ts\":\"{}\",\"kind\":\"handoff_heartbeat\",\"role\":\"handoff\"}}\n",
+                ts_ago(0)
+            ),
+        );
+        assert!(matches!(
+            state(&ambient, "handoff"),
+            HeartbeatState::Fresh { .. }
+        ));
+        assert_eq!(
+            state(&ambient, "ci-audit"),
+            HeartbeatState::NeverSeen,
+            "handoff being alive says nothing about ci-audit"
+        );
+    }
+
+    #[test]
+    fn test_short_window_after_rotation_is_blind_not_a_mass_page() {
+        // ambient.jsonl rotates nightly. Seconds after a rotation the retained
+        // file cannot cover a 10-minute threshold, so "no heartbeat" proves
+        // nothing. Without this, every rotation would page all six roles at
+        // once — turning a truth fix into a recurring 3am incident.
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("ambient.jsonl");
+        fs::write(
+            &p,
+            format!(
+                "{{\"ts\":\"{}\",\"kind\":\"farmer_heartbeat\"}}\n",
+                ts_ago(1)
+            ),
+        )
+        .unwrap();
+        let st = state(&p, "decompose");
+        assert!(
+            matches!(st, HeartbeatState::Blind { .. }),
+            "a 1-minute-deep file cannot disprove a 10-minute threshold; got {st:?}"
+        );
+        assert!(!st.is_remediable(), "never act on an unproven absence");
+    }
+
+    #[test]
+    fn test_busy_fleet_cannot_scroll_a_heartbeat_out_of_view() {
+        // The old scan read a fixed 500 lines. At the fleet's measured 42
+        // lines/min that covered ~12 minutes against a 10-minute threshold —
+        // and a busier fleet would invert it. Bury a fresh heartbeat under
+        // 5,000 lines of unrelated traffic: it must still be found.
+        let dir = TempDir::new().unwrap();
+        let mut body = format!(
+            "{{\"ts\":\"{}\",\"kind\":\"decompose_heartbeat\",\"role\":\"decompose\"}}\n",
+            ts_ago(1)
+        );
+        for _ in 0..5_000 {
+            body.push_str(&format!(
+                "{{\"ts\":\"{}\",\"kind\":\"farmer_heartbeat\"}}\n",
+                ts_ago(0)
+            ));
+        }
+        let ambient = ambient_with(&dir, &body);
+        assert!(
+            matches!(state(&ambient, "decompose"), HeartbeatState::Fresh { .. }),
+            "a healthy curator must not be declared dead just because the fleet got chatty"
+        );
+    }
+
+    #[test]
+    fn test_coverage_is_a_scan_property_not_a_per_role_one() {
+        // Blindness is one supervisor problem, not six curator problems: same
+        // file, same cutoff. Reporting it per-role would file six phantom
+        // gaps every time the ambient log rotates.
+        let dir = TempDir::new().unwrap();
+        let shallow = dir.path().join("shallow.jsonl");
+        fs::write(
+            &shallow,
+            format!(
+                "{{\"ts\":\"{}\",\"kind\":\"farmer_heartbeat\"}}\n",
+                ts_ago(1)
+            ),
+        )
+        .unwrap();
+        assert!(
+            HeartbeatScan::collect(&shallow, ROLES)
+                .unwrap()
+                .coverage_gap(THRESH)
+                .is_some(),
+            "a 1-minute-deep file cannot support a 10-minute absence claim"
+        );
+
+        let deep = ambient_with(&dir, "");
+        assert!(
+            HeartbeatScan::collect(&deep, ROLES)
+                .unwrap()
+                .coverage_gap(THRESH)
+                .is_none(),
+            "a 2-hour-deep file covers the threshold and CAN prove absence"
+        );
+    }
+
+    #[test]
+    fn test_unassessed_is_not_a_claim_of_health() {
+        let st = HeartbeatState::Unassessed;
+        assert!(
+            !st.is_failing(),
+            "the tick already reported its blindness — do not double-page per role"
+        );
+        assert!(!st.is_remediable(), "never act on something never assessed");
+        let s = st.summary();
+        assert!(
+            !s.contains("fresh") && s.contains("not_assessed"),
+            "an unassessed role must never render as fresh; got {s:?}"
+        );
+    }
+
+    #[test]
+    fn test_default_detection_result_is_not_healthy() {
+        let det = DetectionResult::default();
+        assert!(
+            det.is_failing(),
+            "an unpopulated DetectionResult must not read as a healthy curator"
+        );
+        assert!(!det.is_remediable(), "and must not trigger remediation");
     }
 
     // ── RESILIENT-040 anti-race helper tests ─────────────────────────────────

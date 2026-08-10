@@ -18,9 +18,25 @@ REPO_ROOT="${CHUMP_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || ech
 BIN="${CHUMP_CURATOR_SUPERVISOR_BIN:-}"
 
 # ── resolve binary ─────────────────────────────────────────────────────────
+# This block used to hardcode "$REPO_ROOT/target/{debug,release}". That stopped
+# being where cargo writes once .cargo/config.toml pointed CARGO_TARGET_DIR at
+# the shared target dir, so the script would build the binary successfully and
+# then fail to find it — every run, on main, for everyone. The test that should
+# have caught the curator fail-open could not locate its own binary.
+#
+# Ask cargo where it puts things instead of assuming.
+cargo_target_dir() {
+    (cd "$REPO_ROOT" && PATH="$HOME/.cargo/bin:$PATH" \
+        cargo metadata --format-version 1 --no-deps 2>/dev/null) \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])' 2>/dev/null \
+        || echo "$REPO_ROOT/target"
+}
+
 if [[ -z "$BIN" ]]; then
-    RELEASE_BIN="$REPO_ROOT/target/release/chump-curator-supervisor"
-    DEBUG_BIN="$REPO_ROOT/target/debug/chump-curator-supervisor"
+    TARGET_DIR="${CARGO_TARGET_DIR:-$(cargo_target_dir)}"
+    [[ -n "$TARGET_DIR" ]] || TARGET_DIR="$REPO_ROOT/target"
+    RELEASE_BIN="$TARGET_DIR/release/chump-curator-supervisor"
+    DEBUG_BIN="$TARGET_DIR/debug/chump-curator-supervisor"
     if [[ -f "$RELEASE_BIN" ]]; then
         BIN="$RELEASE_BIN"
     elif [[ -f "$DEBUG_BIN" ]]; then
@@ -91,10 +107,15 @@ CHUMP_REPO_ROOT="$REPO_ROOT" \
 RUST_LOG=info \
     "$BIN" 2>&1 || true   # supervisor exits 0 even on detected failures
 
+# NOTE: `grep -c` prints its count AND exits 1 on no-match, so `|| echo 0`
+# appends a second line and "0\n0" turns `[[ -gt ]]` into a syntax error — which
+# bash reports and then SKIPS the assertion, so the test passes regardless.
+# Use `|| true`: grep has already printed the 0.
+
 # Assert: at least one curator_supervisor_dry_run event was emitted.
-FILED_COUNT=$(grep -c '"action":"would-file-gap"' "$AMBIENT" 2>/dev/null || echo 0)
-RESPAWN_COUNT=$(grep -c '"action":"would-respawn-pane"' "$AMBIENT" 2>/dev/null || echo 0)
-SONNET_COUNT=$(grep -c '"action":"would-spawn-sonnet"' "$AMBIENT" 2>/dev/null || echo 0)
+FILED_COUNT=$(grep -c '"action":"would-file-gap"' "$AMBIENT" 2>/dev/null || true)
+RESPAWN_COUNT=$(grep -c '"action":"would-respawn-pane"' "$AMBIENT" 2>/dev/null || true)
+SONNET_COUNT=$(grep -c '"action":"would-spawn-sonnet"' "$AMBIENT" 2>/dev/null || true)
 
 echo "[test-curator-supervisor] would-file-gap events:    $FILED_COUNT"
 echo "[test-curator-supervisor] would-respawn-pane events: $RESPAWN_COUNT"
@@ -145,7 +166,11 @@ RUST_LOG=info \
 
 AMBIENT_LINES_AFTER=$(wc -l < "$AMBIENT" | tr -d ' ')
 NEW_LINES=$(( AMBIENT_LINES_AFTER - AMBIENT_LINES_BEFORE ))
-NEW_FILED=$(grep '"action":"would-file-gap"' "$AMBIENT" 2>/dev/null | tail -"$NEW_LINES" | wc -l | tr -d ' ' || echo 0)
+# Count matches among the lines ADDED by run 2, not the last N matches overall:
+# `grep | tail -N` would re-count historical matches the moment run 2 emits any
+# line at all, turning a passing dedup into a phantom failure.
+NEW_FILED=$(tail -n +$((AMBIENT_LINES_BEFORE + 1)) "$AMBIENT" 2>/dev/null \
+    | grep -c '"action":"would-file-gap"' || true)
 
 echo "[test-curator-supervisor] new ambient lines in run 2: $NEW_LINES"
 echo "[test-curator-supervisor] new would-file-gap in run 2: $NEW_FILED"
@@ -179,7 +204,7 @@ mkdir -p "$SENTINEL_DIR"
 } > "$LOG_DIR/curator-decompose.log"
 
 # Snapshot ambient before run 3.
-PRE_RUN3_LINES=$(wc -l < "$AMBIENT" 2>/dev/null || echo 0)
+PRE_RUN3_LINES=$(wc -l < "$AMBIENT" 2>/dev/null || true)
 
 CHUMP_CURATOR_SUPERVISOR_LOG_DIR="$LOG_DIR" \
   CHUMP_CURATOR_SUPERVISOR_AMBIENT="$AMBIENT" \
@@ -190,9 +215,9 @@ CHUMP_CURATOR_SUPERVISOR_LOG_DIR="$LOG_DIR" \
   "$BIN"
 
 BREAKER_COUNT=$(tail -n +$((PRE_RUN3_LINES + 1)) "$AMBIENT" 2>/dev/null \
-    | grep -c '"kind":"curator_supervisor_circuit_broken"' || echo 0)
+    | grep -c '"kind":"curator_supervisor_circuit_broken"' || true)
 NEW_SPAWN_COUNT=$(tail -n +$((PRE_RUN3_LINES + 1)) "$AMBIENT" 2>/dev/null \
-    | grep -c '"action":"would-spawn-sonnet"' || echo 0)
+    | grep -c '"action":"would-spawn-sonnet"' || true)
 
 echo "[test-curator-supervisor] curator_supervisor_circuit_broken events in run 3: $BREAKER_COUNT"
 echo "[test-curator-supervisor] would-spawn-sonnet events in run 3: $NEW_SPAWN_COUNT"
