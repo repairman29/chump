@@ -379,6 +379,13 @@ fn run_inner(args: &[String]) -> Result<i32> {
     let pr_num =
         pr_number.ok_or_else(|| anyhow::anyhow!("could not parse PR number from URL: {pr_url}"))?;
 
+    // CREDIBLE-215: mechanical stub detection, ahead of the CI round —
+    // does the PR's diff have any resolved import path to the gap's
+    // named target? Advisory only (never blocks); a REACHES/TEST-ONLY/
+    // UNRELATED print here is one CI round cheaper than catching a stub
+    // in review.
+    run_verify_reaches_advisory(&opts, &picked, pr_num);
+
     let mut verdict = verify_and_merge(&opts, pr_num, &picked.title)?;
 
     // EFFECTIVE-375 → CREDIBLE-212 (COTG AC hard gate, RELOCATED): the AC judge
@@ -2026,6 +2033,54 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
 // `external verify-merge` (before the merge), so the "downgrade verified→held"
 // decision no longer exists at this layer — verify_and_merge simply returns
 // HELD(ac-incomplete) when Gate 4 blocks.
+/// CREDIBLE-215: advisory mechanical-stub check, run before VERIFY-MERGE so a
+/// REACHES/TEST-ONLY/UNRELATED verdict is visible ahead of the CI round. Best
+/// effort: any failure (no target resolvable, `gh pr diff` unavailable,
+/// almanac unreachable) is swallowed — this must never block the ship path.
+fn run_verify_reaches_advisory(opts: &Opts, picked: &ProposedGap, pr_num: u64) {
+    let Some(target) = crate::commands::reachability::extract_target_from_text(&format!(
+        "{}\n{}",
+        picked.title,
+        picked.acceptance_criteria_draft.join("\n")
+    )) else {
+        return;
+    };
+
+    let gh_bin = std::env::var("CHUMP_IMPROVE_GH_BIN").unwrap_or_else(|_| "gh".to_string());
+    let out = Command::new(&gh_bin)
+        .args([
+            "pr",
+            "diff",
+            &pr_num.to_string(),
+            "--repo",
+            &opts.owner_repo,
+            "--name-only",
+        ])
+        .output();
+    let Ok(out) = out else { return };
+    if !out.status.success() {
+        return;
+    }
+    let diff_names = String::from_utf8_lossy(&out.stdout).to_string();
+
+    let tmp = std::env::temp_dir().join(format!("verify-reaches-{pr_num}.txt"));
+    if std::fs::write(&tmp, &diff_names).is_err() {
+        return;
+    }
+
+    let tmp_path = tmp.to_string_lossy().to_string();
+    let rc = crate::commands::reachability::run(&[
+        "--gap".to_string(),
+        picked.title.clone(),
+        "--target".to_string(),
+        target,
+        "--diff".to_string(),
+        tmp_path,
+    ]);
+    let _ = std::fs::remove_file(&tmp);
+    let _ = rc;
+}
+
 fn verify_and_merge(opts: &Opts, pr_num: u64, _gap_title: &str) -> Result<String> {
     // CREDIBLE-100: resolve the binary that's CURRENTLY RUNNING — it has the
     // `external verify-merge` subcommand. Prefer CHUMP_IMPROVE_CHUMP_BIN for

@@ -26,6 +26,7 @@ pub mod durable_resume;
 pub mod emit_event;
 pub mod install_daemon;
 pub mod inventory;
+pub mod reachability;
 pub mod roadmap_from_vision;
 pub mod sibling_status;
 pub mod source_resolve;
