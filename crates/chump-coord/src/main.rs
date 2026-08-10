@@ -137,6 +137,26 @@ async fn main() -> Result<()> {
                             // Also emit INTENT to JetStream for real-time fanout
                             let _ = c.emit_intent(&sess, gap_id, &files_env).await;
 
+                            // CREDIBLE-254 (CREDIBLE-099 slice): also write this
+                            // worker's presence record to the `chump_workers` KV
+                            // bucket, pointed at the gap just claimed. Preserves
+                            // `started_at` for a worker already registered (e.g.
+                            // via spawn_worker_tool); synthesizes a fresh record
+                            // otherwise. Non-fatal — presence storage never blocks
+                            // the claim itself.
+                            if let Err(e) = chump_coord::presence::update_presence_gap(
+                                &c.workers_kv,
+                                &sess,
+                                Some(gap_id.to_string()),
+                            )
+                            .await
+                            {
+                                eprintln!(
+                                    "[chump-coord] presence update failed (non-fatal): {}",
+                                    e
+                                );
+                            }
+
                             std::process::exit(0);
                         }
                         Ok(false) => {
@@ -931,6 +951,21 @@ async fn main() -> Result<()> {
                                 "{}\t{}\t{}\t{}",
                                 env.gap_id, env.priority, env.class, env.machine
                             );
+                            // CREDIBLE-254 (CREDIBLE-099 slice): keep the
+                            // worker's presence record pointed at the gap it
+                            // just won. Non-fatal.
+                            if let Err(e) = chump_coord::presence::update_presence_gap(
+                                &client.workers_kv,
+                                &sess,
+                                Some(env.gap_id.clone()),
+                            )
+                            .await
+                            {
+                                eprintln!(
+                                    "[chump-coord worker] presence update failed (non-fatal): {}",
+                                    e
+                                );
+                            }
                             if once {
                                 break 'outer;
                             }
