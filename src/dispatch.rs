@@ -966,26 +966,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn preflight_bails_when_script_missing() {
-        let opts = DispatchOptions {
-            gap_id: "INFRA-191",
-            work: WorkBackend::Interactive,
-            auto_merge: false,
-            skip_tests: true,
-            paths: None,
-            // Deliberately point at a directory that has no scripts/coord/
-            // tree so the missing-file branch fires.
-            repo_root: PathBuf::from("/tmp"),
-        };
-        let ws = ws_with_dir(&opts, PathBuf::from("/tmp"));
-        let err = preflight(&ws).unwrap_err();
-        let msg = format!("{err:#}");
-        assert!(
-            msg.contains("gap-preflight.sh missing"),
-            "expected missing-file error, got: {msg}"
-        );
-    }
+    // INFRA-987: `preflight_bails_when_script_missing` was retired here. `preflight()`
+    // no longer shells to the removed scripts/coord/gap-preflight.sh — it delegates to
+    // the `chump gap preflight` subcommand via current_exe(). That subcommand is the
+    // one worker.sh uses (INFRA-379) and is covered by its own integration tests; the
+    // old "missing-file" failure mode this asserted no longer exists.
 
     #[test]
     fn ship_bails_when_script_missing() {
@@ -1211,21 +1196,41 @@ mod tests {
     }
 
     #[test]
-    fn claim_bails_when_script_missing() {
+    fn claim_writes_lease_via_primitive() {
+        // INFRA-987: claim() no longer shells to the removed gap-claim.sh — it writes a
+        // lease via agent_lease::claim_gap into the worktree's .chump-locks/ (CHUMP_REPO
+        // is pinned to working_dir). Verify the lease-only claim succeeds and lands a
+        // lease file, rather than the old "script missing" bail.
+        let tmp = std::env::temp_dir().join(format!(
+            "chump-dispatch-claim-{}-{}",
+            std::process::id(),
+            "test-001"
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("mk tmp worktree");
         let opts = DispatchOptions {
             gap_id: "TEST-001",
             work: WorkBackend::Interactive,
             auto_merge: false,
             skip_tests: true,
             paths: None,
-            repo_root: PathBuf::from("/tmp"),
+            repo_root: tmp.clone(),
         };
-        let ws = ws_with_dir(&opts, PathBuf::from("/tmp"));
-        let err = claim(&ws).unwrap_err();
-        let msg = format!("{err:#}");
+        let ws = ws_with_dir(&opts, tmp.clone());
+        let res = claim(&ws);
+        let locks = tmp.join(".chump-locks");
+        let wrote_lease = std::fs::read_dir(&locks)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .any(|e| e.path().extension().map(|x| x == "json").unwrap_or(false))
+            })
+            .unwrap_or(false);
+        let _ = std::fs::remove_dir_all(&tmp);
+        res.expect("lease-only claim should succeed in a writable dir");
         assert!(
-            msg.contains("gap-claim.sh missing"),
-            "expected missing-file error, got: {msg}"
+            wrote_lease,
+            "expected a lease .json under {}",
+            locks.display()
         );
     }
 
