@@ -27,5 +27,6 @@ pub mod install_daemon;
 pub mod inventory;
 pub mod roadmap_from_vision;
 pub mod sibling_status;
+pub mod source_resolve;
 pub mod voice;
 pub mod vote;

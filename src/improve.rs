@@ -246,6 +246,21 @@ fn run_inner(args: &[String]) -> Result<i32> {
     let gh_bin = std::env::var("CHUMP_IMPROVE_GH_BIN").unwrap_or_else(|_| "gh".to_string());
     let mut chosen: Option<ProposedGap> = None;
     for cand in &candidates {
+        // INFRA-3508 (COTG-S.1): before the repo-local dedup check, resolve the
+        // candidate against repo -> arsenal -> world prior art. A DONE-HERE /
+        // EXISTS-IN-ARSENAL / EXISTS-IN-WORLD verdict means the Flow would build
+        // something that already exists elsewhere — skip it the same as a
+        // redundant-in-this-repo hit. HALF-DONE-HERE and NOT-FOUND proceed (a
+        // half-built capability should be finished, not re-sourced; a novel one
+        // is genuinely new work).
+        if let Some(reason) = sourcing_resolver_reason(cand) {
+            println!(
+                "[improve] SKIP (sourced elsewhere): {} — {reason}",
+                cand.title
+            );
+            emit_redundant_work_skipped(&opts.owner_repo, &cand.title, &reason);
+            continue;
+        }
         match dedup_check(&opts.owner_repo, &clone_dir, cand, &gh_bin)? {
             DedupResult::Redundant { reason } => {
                 println!("[improve] SKIP (redundant): {} — {reason}", cand.title);
@@ -692,6 +707,49 @@ fn confidence_sort_key(c: &chump_handoff::external_repo_schema::Confidence) -> u
         Confidence::High => 0,
         Confidence::Med => 1,
         Confidence::Low => 2,
+    }
+}
+
+// ── Sourcing resolver wiring (INFRA-3508, COTG-S.1) ───────────────────────
+
+/// Resolve `cand` against the tiered sourcing resolver
+/// (`crate::sourcing_resolver::resolve_sourcing`). Returns `Some(reason)` when
+/// the candidate should be skipped because it already exists — repo-tier
+/// scans the chump checkout itself (`CHUMP_REPO_ROOT`, defaulting to the
+/// current dir), since the arsenal catalog (`docs/arsenal/GLOBAL_ARSENAL.json`)
+/// lives there regardless of which external repo `improve` is targeting.
+/// `HALF-DONE-HERE` and `NOT-FOUND` return `None` (proceed): a half-built
+/// capability should be finished, not re-sourced, and a genuinely novel one is
+/// new work.
+fn sourcing_resolver_reason(cand: &ProposedGap) -> Option<String> {
+    use crate::sourcing_resolver::{resolve_sourcing, SourcingVerdict};
+
+    let title_core = cand
+        .title
+        .splitn(2, ':')
+        .nth(1)
+        .unwrap_or(&cand.title)
+        .trim();
+    if title_core.is_empty() {
+        return None;
+    }
+
+    let repo_root = std::env::var("CHUMP_REPO_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let arsenal_json = repo_root.join("docs/arsenal/GLOBAL_ARSENAL.json");
+
+    let resolution = resolve_sourcing(title_core, &repo_root, &arsenal_json);
+    let receipt = resolution.receipts.first();
+    match resolution.verdict {
+        SourcingVerdict::DoneHere
+        | SourcingVerdict::ExistsInArsenal
+        | SourcingVerdict::ExistsInWorld => Some(format!(
+            "sourcing resolver: {} ({})",
+            resolution.verdict.as_str(),
+            receipt.map(|r| r.detail.as_str()).unwrap_or("no receipt")
+        )),
+        SourcingVerdict::HalfDoneHere | SourcingVerdict::NotFound => None,
     }
 }
 
