@@ -1762,6 +1762,19 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // RESILIENT-271: coord-assign-launchd gate. Verifies the
+        // com.chump.coord-assign plist + installer that wires the built
+        // `chump-coord assign` push-routing daemon (FLEET-034 / INFRA-2476)
+        // into launchd — without it the daemon was built code-on-disk but
+        // never ran, so preferred_machine could never route work via the
+        // mesh. Pure static plist-lint + installer dry-run against a temp
+        // HOME with a stubbed launchctl; no real launchd touched, <1s.
+        steps.push(step(
+            "coord-assign-launchd",
+            &["bash", "scripts/ci/test-coord-assign-launchd.sh"],
+            GateKind::Scripts,
+        ));
+
         // INFRA-2429: no-new-bypass-env-vars gate. Catches new CHUMP_*_BYPASS,
         // CHUMP_*_SKIP, and CHUMP_IGNORE_* introductions before push, enforcing
         // the operator zero-bypass thesis. Runs in the Scripts scope because it

@@ -18,6 +18,7 @@ install-chump-fleet-daemon.sh
 install-chump-planner-launchd.sh
 install-ci-flake-rerun-launchd.sh
 install-claude-tmp-cleanup-launchd.sh
+install-coord-assign-launchd.sh
 install-curator-jit-scheduler-launchd.sh
 install-curator-launchd.sh
 install-daemon-activator.sh
