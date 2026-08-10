@@ -1054,9 +1054,10 @@ jobs:
         # — a different code path than every real `chump preflight` run
         # (which always has a fresh chump on PATH), so CI was exercising
         # something preflight never does and stayed green while trunk was red.
-        run: |
-          cargo build --bin chump 2>&1 | tail -3
-          PATH="${CARGO_TARGET_DIR:-$(pwd)/target}/debug:$PATH" bash scripts/ci/test-docs-delta-guard.sh
+        # Kept as a single `run:` line (not `run: |`) so the INFRA-1867
+        # preflight-parity matcher, which only scans the first line of
+        # multi-line blocks, still finds the test-docs-delta-guard.sh mirror.
+        run: cargo build --bin chump 2>&1 | tail -3 && PATH="${CARGO_TARGET_DIR:-$(pwd)/target}/debug:$PATH" bash scripts/ci/test-docs-delta-guard.sh
 
       - name: gap-status-flip guard (INFRA-158)
         run: bash scripts/ci/test-gap-status-flip.sh
