@@ -1,0 +1,10 @@
+[Unit]
+Description=Chump headless fleet worker %i (RESILIENT-283)
+After=network-online.target
+[Service]
+Type=simple
+ExecStart=/root/Projects/chump/scripts/dispatch/worker-run.sh %i
+Restart=always
+RestartSec=10
+[Install]
+WantedBy=multi-user.target
