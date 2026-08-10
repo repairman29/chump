@@ -24,6 +24,15 @@ CHUMP_GH_REQUIRED=1                 # Set to 0 to skip GitHub PR state checks en
                                     # when gh CLI is absent. Default is fail-closed.
                                     # (CREDIBLE-031)
 
+# ── Webhook receiver (github-webhook-receiver.py) ─────────────────────────────
+
+CHUMP_WEBHOOK_AUTOFLIP=0            # Set to 1 to enable auto-flip-to-done on merged PRs
+                                    # (chump gap ship, title/Closes: trailer extraction
+                                    # only). Default 0: suppressed, only emits
+                                    # gap_autoflip_suppressed naming what would have
+                                    # flipped. No escape hatch to widen extraction back to
+                                    # full title+body scan — that was the bug. (CREDIBLE-268)
+
 # ── Worker / fleet ───────────────────────────────────────────────────────────
 
 CHUMP_SKIP_SUBAGENT_ARCHIVE=0       # Set to 1 to skip post-cycle subagent transcript

@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
-# test-gap-closure-consistency.sh — CREDIBLE-028 + CREDIBLE-039 + CREDIBLE-031:
-# detect premature gap closure AND stale-post-merge gaps.
+# test-gap-closure-consistency.sh — CREDIBLE-028 + CREDIBLE-039 + CREDIBLE-031
+# + CREDIBLE-268: detect premature gap closure, stale-post-merge gaps, AND
+# gaps closed by a PR that never touched the files their ACs name.
 #
 # Forward mode (CREDIBLE-028): queries state.db for gaps with status=done and
 # closed_pr=N, then verifies each PR is actually merged on GitHub.
+#
+# File-overlap check (CREDIBLE-268 FIX 3): for each forward-mode gap whose PR
+# IS merged, extracts file-path-looking tokens from the gap's
+# acceptance_criteria and compares them against the PR's changed-file list.
+# ACs that name files but share none with the PR diff are the fingerprint of
+# an over-broad auto-flip (e.g. a PR merely CITING a gap rather than doing
+# its work) — see PR #3556, which changed 2 files and closed 5 gaps by
+# citing them. Extension of the existing forward-mode gate, not a new
+# detector (deliberate: MINE BEFORE BUILD).
 #
 # Reverse mode (CREDIBLE-039): queries state.db for gaps with status=open and
 # closed_pr=N, then checks if that PR is merged → emits stale_post_merge_gap.
@@ -141,6 +151,57 @@ emit_alert() {
 }
 
 overall_drift=0
+FILE_OVERLAP_IDS=()
+
+# ── File-overlap check (CREDIBLE-268 FIX 3) ─────────────────────────────────
+# For a done gap whose PR merged, extract file-path-looking tokens from the
+# gap's acceptance_criteria and compare them against the PR's changed-file
+# list. If the ACs name files but the PR touched NONE of them, that is the
+# fingerprint of a closure that rode in on a citation rather than the work
+# itself (PR #3556: 2 files changed, 5 gaps closed by naming them in prose).
+#
+# Deliberately advisory, not blocking by default: filenames named in ACs are
+# a design sketch, not a contract, so a real implementation can legitimately
+# land in different files than first proposed. Emits gap_closed_no_file_overlap
+# for operator review; only affects overall_drift under --strict (same as
+# every other check in this gate).
+check_file_overlap() {
+    local gap_id="$1" pr_num="$2"
+    local ac_text
+    ac_text="$(sqlite3 "$DB" "SELECT acceptance_criteria FROM gaps WHERE id='$gap_id';" 2>/dev/null || true)"
+    [[ -z "$ac_text" ]] && return 0
+
+    # File-path-looking tokens: at least one '/', ending in a word-ish extension.
+    local ac_files=()
+    while IFS= read -r tok; do
+        [[ -n "$tok" ]] && ac_files+=("$tok")
+    done < <(grep -oE '[A-Za-z0-9_./-]+/[A-Za-z0-9_./-]+\.[A-Za-z0-9]{1,5}' <<<"$ac_text" | sort -u)
+    [[ ${#ac_files[@]} -eq 0 ]] && return 0
+
+    local pr_files
+    pr_files="$(gh pr view "$pr_num" --json files --jq '.files[].path' 2>/dev/null || echo "ERROR")"
+    [[ "$pr_files" == "ERROR" ]] && return 0
+
+    local overlap=0
+    local f
+    for f in "${ac_files[@]}"; do
+        if grep -qF "$f" <<<"$pr_files" || grep -qF "$(basename "$f")" <<<"$pr_files"; then
+            overlap=1
+            break
+        fi
+    done
+
+    if [[ "$overlap" -eq 0 ]]; then
+        warn "$gap_id: PR #$pr_num touched none of the files its ACs name (${ac_files[*]:0:3})"
+        FILE_OVERLAP_IDS+=("$gap_id:#$pr_num")
+        if [[ "$EMIT_ALERT" -eq 1 ]]; then
+            emit_alert "gap_closed_no_file_overlap" \
+                '"gap_id":"'"$gap_id"'","pr":'"$pr_num"',"ac_files_sample":"'"${ac_files[0]}"'"'
+        fi
+        [[ "$STRICT" -eq 1 ]] && overall_drift=1
+    fi
+    return 0
+}
 
 # ── Forward mode: done gaps with closed_pr, verify PR is merged ────────────
 run_forward_check() {
@@ -200,6 +261,7 @@ run_forward_check() {
             fi
         else
             pass "$gap_id: PR #$pr_num merged ($merged_at)"
+            check_file_overlap "$gap_id" "$pr_num"
         fi
     done
 
@@ -302,6 +364,12 @@ if [[ "$GH_FAIL_COUNT" -gt 0 ]]; then
         fi
         [[ "$STRICT" -eq 1 ]] && overall_drift=1
     fi
+fi
+
+if [[ ${#FILE_OVERLAP_IDS[@]} -gt 0 ]]; then
+    echo ""
+    echo "File-overlap: ${#FILE_OVERLAP_IDS[@]} gap(s) closed by a PR that touched none of the files their ACs name:"
+    for d in "${FILE_OVERLAP_IDS[@]}"; do echo "  $d"; done
 fi
 
 echo ""
