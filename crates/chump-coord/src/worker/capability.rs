@@ -60,6 +60,27 @@ pub fn extract_external_repo(gap: &GapRow) -> Option<String> {
     })
 }
 
+/// Tag used in `skills_required` to mark a gap as workspace-scoped (RESILIENT-292):
+/// its acceptance criteria require reading/writing files one level above the
+/// claiming repo (sibling dirs under `~/Projects/`, e.g. `~/Projects/.claude/`,
+/// `~/Projects/posse/`). A fleet-worker's linked worktree has no filesystem path
+/// to those dirs, so this tag routes the gap to an operator/ATC session instead
+/// of the standard pull-loop worker.
+///
+/// When present the picker skips the gap unless `CHUMP_WORKSPACE_SCOPE_PICK_OK=1`
+/// (set by operator/ATC sessions that run with real `~/Projects` access, i.e.
+/// NOT a fleet-worker linked worktree).
+pub const WORKSPACE_SCOPE_SKILL_TAG: &str = "workspace_scope";
+
+/// Returns `true` if any entry in `skills_required` equals
+/// [`WORKSPACE_SCOPE_SKILL_TAG`], indicating this gap requires filesystem
+/// access outside the claiming repo's own tree.
+pub fn has_workspace_scope_tag(gap: &GapRow) -> bool {
+    gap.skills_required
+        .split(',')
+        .any(|s| s.trim() == WORKSPACE_SCOPE_SKILL_TAG)
+}
+
 /// Per-worker capability view used by [`crate::worker::loop_body`].
 ///
 /// Skills are matched against `gap.skills_required`; machine against
@@ -135,6 +156,21 @@ impl WorkerCapability {
             }
         }
 
+        // Workspace-scope gate (RESILIENT-292): gaps tagged `workspace_scope`
+        // require filesystem access outside the claiming repo's own tree
+        // (sibling dirs under `~/Projects/`). A standard fleet-worker's linked
+        // worktree cannot reach those dirs, so these gaps are only pickable
+        // when CHUMP_WORKSPACE_SCOPE_PICK_OK=1 — set by an operator/ATC session
+        // that actually has real `~/Projects` access.
+        if has_workspace_scope_tag(gap) {
+            let pick_ok = env::var("CHUMP_WORKSPACE_SCOPE_PICK_OK")
+                .map(|v| v.trim() == "1")
+                .unwrap_or(false);
+            if !pick_ok {
+                return false;
+            }
+        }
+
         // Skills: parse comma-separated string from gap.
         let gap_skills: Vec<String> = gap
             .skills_required
@@ -145,6 +181,11 @@ impl WorkerCapability {
             // strip them before the standard skill-match logic so they do not
             // cause unrelated workers to be filtered out when the env gate is open.
             .filter(|s| !s.starts_with(EXTERNAL_REPO_SKILL_PREFIX))
+            // Workspace-scope tag is likewise a routing hint, not a skill
+            // requirement — strip it so it doesn't filter out ATC/operator
+            // workers that opted in via the env gate above but have no
+            // matching WORKER_SKILLS entry.
+            .filter(|s| s != WORKSPACE_SCOPE_SKILL_TAG)
             .collect();
         if !gap_skills.is_empty() {
             if self.skills.is_empty() {
@@ -442,5 +483,80 @@ mod tests {
         );
         let g2 = gap_with("rust", "", "");
         assert_eq!(extract_external_repo(&g2), None);
+    }
+
+    // ── workspace_scope tag tests (RESILIENT-292) ────────────────────────────
+    // Mirrors the external_repo tests above. This is the "receipt" that a
+    // previously-blocked workspace-scoped gap (e.g. CREDIBLE-234, which
+    // released its claim 13 times because /root/Projects/ has no path to
+    // sibling workspace dirs) becomes pickable once routed through the new
+    // ATC/operator-only gate instead of the standard fleet pull loop.
+
+    #[test]
+    #[serial]
+    fn workspace_scope_gap_skipped_by_default() {
+        std::env::remove_var("CHUMP_WORKSPACE_SCOPE_PICK_OK");
+        let w = WorkerCapability {
+            skills: vec![],
+            machine: None,
+            backend: None,
+            session_id: "s".to_string(),
+        };
+        let g = gap_with("workspace_scope", "", "");
+        assert!(
+            !w.matches(&g),
+            "workspace-scoped gap must be skipped by a standard fleet worker when \
+             CHUMP_WORKSPACE_SCOPE_PICK_OK is unset"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn workspace_scope_gap_picked_by_atc_session() {
+        // Simulates an operator/ATC session (real ~/Projects access) opting in.
+        std::env::set_var("CHUMP_WORKSPACE_SCOPE_PICK_OK", "1");
+        let w = WorkerCapability {
+            skills: vec![],
+            machine: None,
+            backend: None,
+            session_id: "atc".to_string(),
+        };
+        let g = gap_with("workspace_scope", "", "");
+        assert!(
+            w.matches(&g),
+            "previously-blocked workspace-scoped gap must be pickable by an \
+             ATC/operator session with CHUMP_WORKSPACE_SCOPE_PICK_OK=1"
+        );
+        std::env::remove_var("CHUMP_WORKSPACE_SCOPE_PICK_OK");
+    }
+
+    #[test]
+    #[serial]
+    fn workspace_scope_tag_does_not_count_as_skill_requirement() {
+        std::env::set_var("CHUMP_WORKSPACE_SCOPE_PICK_OK", "1");
+        let w = WorkerCapability {
+            skills: vec![],
+            machine: None,
+            backend: None,
+            session_id: "s".to_string(),
+        };
+        let g = gap_with("workspace_scope", "", "");
+        assert!(
+            w.matches(&g),
+            "workspace_scope tag alone must not act as a skill filter"
+        );
+        std::env::remove_var("CHUMP_WORKSPACE_SCOPE_PICK_OK");
+    }
+
+    #[test]
+    fn has_workspace_scope_tag_detects_tag() {
+        let g_yes = gap_with("workspace_scope", "", "");
+        let g_mixed = gap_with("rust,workspace_scope", "", "");
+        let g_no = gap_with("rust,python", "", "");
+        let g_empty = gap_with("", "", "");
+        assert!(has_workspace_scope_tag(&g_yes));
+        assert!(has_workspace_scope_tag(&g_mixed));
+        assert!(!has_workspace_scope_tag(&g_no));
+        assert!(!has_workspace_scope_tag(&g_empty));
     }
 }

@@ -595,6 +595,7 @@ Run `bash scripts/coord/dispatch-health-check.sh` to scan ps aux for hung commit
 
 - [META-116](../gaps/META-116.yaml) — this addendum's source gap
 - [`scripts/coord/dispatch-health-check.sh`](../../scripts/coord/dispatch-health-check.sh) — the operational tool
+- [`AGENTS.md` → Workspace-scoped gaps](../../AGENTS.md#workspace-scoped-gaps--route-to-operatoratc-dont-fleet-dispatch-resilient-292) — a fleet-worker's linked worktree has no filesystem path to sibling `~/Projects/` dirs; gaps tagged `skills_required: workspace_scope` route to an operator/ATC session instead of a dispatched subagent
 
 ## No-operator-escalation (extends no-clarifying-questions)
 
