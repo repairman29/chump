@@ -56,6 +56,25 @@ PILLAR_TAGS = {"EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE", "MISSION"}
 # Canonical copy lives in _pick_gap.py; keep in sync.
 _DEFAULT_ACTIVE_MISSION = "MISSION-010"
 
+# RESILIENT-272: manufactured "pillar starved" self-referential gaps are
+# banned by CLAUDE.md Mission-Driver §2 ("Do NOT file 1-2 gaps to refill a
+# starved pillar") — filing them never actually refills the named pillar
+# (they're INFRA/MISSION meta-work about the pillar, not real work IN it).
+# A helsinki 2nd-host fleet observed grinding 0/10 on exactly this junk
+# class (INFRA-2789 "MISSION-ZERO-WASTE: pillar starved", INFRA-2802
+# "MISSION-RESILIENT: pillar starved") because these titles literally match
+# the starved-pillar rebalance boost below, so the picker kept ranking them
+# ahead of real work. Canonical copy lives in _pick_gap.py; keep in sync.
+_MANUFACTURED_PILLAR_STARVED_RE = re.compile(
+    r"^mission-(effective|credible|resilient|zero-waste):\s*.*pillar starved\b",
+    re.IGNORECASE,
+)
+
+
+def is_manufactured_pillar_starved_junk(title: str) -> bool:
+    """True when `title` is a self-referential 'pillar starved' junk gap."""
+    return bool(_MANUFACTURED_PILLAR_STARVED_RE.match((title or "").lstrip()))
+
 
 def extract_pillar(title: str) -> str:
     """Extract pillar tag from gap title (e.g. 'EFFECTIVE: foo bar' → 'EFFECTIVE')."""
@@ -603,6 +622,10 @@ def main() -> int:
             continue
         notes = (g.get("notes") or "").lstrip()
         if notes.upper().startswith("SUPERSEDED"):
+            continue
+        # RESILIENT-272: never pick manufactured "pillar starved" junk gaps
+        # (banned by CLAUDE.md Mission-Driver §2) — see helper docstring above.
+        if is_manufactured_pillar_starved_junk(g.get("title", "")):
             continue
         p = (g.get("priority") or "").upper()
         if prio_filter and p not in prio_filter:
