@@ -131,14 +131,14 @@ def extract_claims_regex(text: str, doc_name: str) -> list[dict]:
             if not span or span in seen_spans:
                 continue
             seen_spans.add(span)
-            claims.append({"text": span, "kind": "symbol", "doc": doc_name, "line": lineno})
+            claims.append({"text": span, "claim_type": "symbol", "doc": doc_name, "line": lineno})
 
     stripped = CODE_SPAN_RE.sub(" ", text)
     for sentence in SENTENCE_SPLIT_RE.split(stripped.replace("\n", " ")):
         sentence = sentence.strip().lstrip("-*# ").rstrip()
         lower = sentence.lower()
         if len(sentence) >= 8 and any(v in lower for v in CAPABILITY_VERBS):
-            claims.append({"text": sentence, "kind": "capability", "doc": doc_name, "line": 0})
+            claims.append({"text": sentence, "claim_type": "capability", "doc": doc_name, "line": 0})
     return claims
 
 
@@ -162,7 +162,7 @@ def extract_claims_llm(text: str, doc_name: str) -> list[dict]:
         raw = payload.get("response", "")
         parsed = json.loads(re.search(r"\[.*\]", raw, re.DOTALL).group(0))
         return [
-            {"text": item["text"].strip(), "kind": "capability", "doc": doc_name, "line": 0}
+            {"text": item["text"].strip(), "claim_type": "capability", "doc": doc_name, "line": 0}
             for item in parsed
             if isinstance(item, dict) and item.get("text")
         ]
@@ -261,7 +261,7 @@ def audit(repo: str, index_dir: Path, doc_globs: list[str], use_llm: bool) -> di
             claims += extract_claims_llm(text, doc_name)
 
         for claim in claims:
-            if claim["kind"] == "symbol":
+            if claim["claim_type"] == "symbol":
                 verdict = ground_symbol(claim["text"], files, symbols)
             else:
                 verdict = ground_capability(claim["text"], files, symbols)
@@ -304,7 +304,7 @@ def main() -> int:
         for c in result["claims"]:
             marker = {"grounded": "OK", "ungrounded": "XX", "unverifiable": "??"}[c["verdict"]]
             cite = f" ({c['citation']})" if c["citation"] else ""
-            print(f"  [{marker}] {c['kind']:10s} {c['text'][:70]}{cite}")
+            print(f"  [{marker}] {c['claim_type']:10s} {c['text'][:70]}{cite}")
 
     return 0  # signal, not a gate — MISSION-045
 
