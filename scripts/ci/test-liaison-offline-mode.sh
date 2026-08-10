@@ -65,10 +65,10 @@ fi
 
 # ── (c) debounce: second call within window does NOT emit ───────────────────
 printf '\n== c) debounce — second call within window is silent ==\n'
-count_before=$(grep -c '"kind":"liaison_cache_offline_read"' "$TMP_AMBIENT" 2>/dev/null || echo 0)
+count_before=$(grep -c '"kind":"liaison_cache_offline_read"' "$TMP_AMBIENT" 2>/dev/null || true)
 TMPDIR="$TMP_TMPDIR" CHUMP_GITHUB_MODE=offline \
     cache_lookup_pr 999998 >/dev/null 2>&1 || true
-count_after=$(grep -c '"kind":"liaison_cache_offline_read"' "$TMP_AMBIENT" 2>/dev/null || echo 0)
+count_after=$(grep -c '"kind":"liaison_cache_offline_read"' "$TMP_AMBIENT" 2>/dev/null || true)
 if [[ "$count_after" -eq "$count_before" ]]; then
     ok "second call within 60s debounce window did not re-emit (count stayed at $count_before)"
 else

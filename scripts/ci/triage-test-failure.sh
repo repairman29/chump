@@ -118,8 +118,8 @@ classify() {
 CLASS="$(classify "$FAILURES" "$CATALOG_TESTS")"
 
 # ── Build detail line ─────────────────────────────────────────────────────
-fail_count() { echo "$FAILURES" | grep -c . 2>/dev/null || echo 0; }
-catalog_count() { echo "$CATALOG_TESTS" | grep -c . 2>/dev/null || echo 0; }
+fail_count() { echo "$FAILURES" | grep -c . 2>/dev/null || true; }
+catalog_count() { echo "$CATALOG_TESTS" | grep -c . 2>/dev/null || true; }
 
 n_fail="$(fail_count)"
 n_cat="$(catalog_count)"

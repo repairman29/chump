@@ -64,8 +64,8 @@ else
 fi
 
 # Criterion 4 (informational): five gotchas have a disposition
-gotcha_count=$(grep -cE '^## [0-9]+\. ' "$DOC" || echo 0)
-disposition_count=$(grep -cE 'Tracked by|tracked by|INFRA-[0-9]+|doc-only|no good guard|no enforcement' "$DOC" || echo 0)
+gotcha_count=$(grep -cE '^## [0-9]+\. ' "$DOC" || true)
+disposition_count=$(grep -cE 'Tracked by|tracked by|INFRA-[0-9]+|doc-only|no good guard|no enforcement' "$DOC" || true)
 if [[ "$gotcha_count" -ge 5 ]] && [[ "$disposition_count" -ge 5 ]]; then
     ok "$gotcha_count gotchas / $disposition_count disposition markers (heuristic)"
 else

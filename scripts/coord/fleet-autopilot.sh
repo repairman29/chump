@@ -418,7 +418,7 @@ cmd_status() {
     # Recent ambient activity (last 5 min, any kind)
     local recent_events
     if [[ -f "$AMBIENT" ]]; then
-        recent_events=$(tail -200 "$AMBIENT" 2>/dev/null | grep -cE "$(perl -e 'use POSIX qw(strftime); print strftime("%Y-%m-%dT%H:%M", gmtime(time-300))')" || echo 0)
+        recent_events=$(tail -200 "$AMBIENT" 2>/dev/null | grep -cE "$(perl -e 'use POSIX qw(strftime); print strftime("%Y-%m-%dT%H:%M", gmtime(time-300))')" || true)
     else
         recent_events=0
     fi

@@ -981,6 +981,9 @@ jobs:
       - name: hardcoded-date guard (INFRA-971)
         run: bash scripts/ci/test-hardcoded-date-guard.sh
 
+      - name: grep-c-echo0 idiom guard (RESILIENT-281)
+        run: bash scripts/ci/test-precommit-grep-c-echo0.sh
+
       - name: gap-divergence guard (INFRA-783)
         run: bash scripts/ci/test-gap-divergence-guard.sh
 

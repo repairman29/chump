@@ -1990,4 +1990,20 @@ if [ -x "$CSS_TOKEN_HOOK" ]; then
     fi
 fi
 
+# 20. grep -c ... || echo 0 idiom guard (RESILIENT-281)
+# ------------------------------------------------------------------
+# Refuses staged shell additions of 'grep -c ... || echo 0' — grep -c
+# prints its count AND exits 1 on zero matches, so the fallback appends
+# a second "0" line, producing $'0\n0' and a silent bash "syntax error
+# in expression" on any numeric comparison against it.
+# Fix: '|| true' instead of '|| echo 0'.
+# Bypass: '# chump-fmt: grep-c-echo0-ok' per-line, or
+#   CHUMP_GREP_C_ECHO0_CHECK=0 (with 'Grep-C-Echo0-Bypass: <reason>' trailer).
+GREP_C_ECHO0_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-grep-c-echo0.sh"
+if [ -x "$GREP_C_ECHO0_HOOK" ]; then
+    if ! "$GREP_C_ECHO0_HOOK"; then
+        exit 1
+    fi
+fi
+
 exit 0

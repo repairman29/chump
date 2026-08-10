@@ -46,12 +46,13 @@ _subjects_24h="$(_git_log_24h)"
 _subjects_6h="$(_git_log_6h)"
 _subjects_1h="$(_git_log_1h)"
 
-ships_24h=$(echo "$_subjects_24h" | grep -c . 2>/dev/null || echo 0)
-ships_6h=$(echo "$_subjects_6h"  | grep -c . 2>/dev/null || echo 0)
-ships_1h=$(echo "$_subjects_1h"  | grep -c . 2>/dev/null || echo 0)
-[[ -z "$_subjects_24h" ]] && ships_24h=0
-[[ -z "$_subjects_6h"  ]] && ships_6h=0
-[[ -z "$_subjects_1h"  ]] && ships_1h=0
+# RESILIENT-281: `grep -c . || true` already yields "0" on zero matches
+# (grep -c prints its count even on the no-match exit-1 path); the old
+# `[[ -z ... ]] && ships_X=0` band-aid patched around the `|| echo 0`
+# double-line bug and is redundant now that the root idiom is fixed.
+ships_24h=$(echo "$_subjects_24h" | grep -c . 2>/dev/null || true)
+ships_6h=$(echo "$_subjects_6h"  | grep -c . 2>/dev/null || true)
+ships_1h=$(echo "$_subjects_1h"  | grep -c . 2>/dev/null || true)
 rate_per_hr=$(awk "BEGIN{printf \"%.1f\", ($ships_24h)/24}" 2>/dev/null)
 
 # ── Classify pillar + domain from commit subjects (24h) ──────────────────

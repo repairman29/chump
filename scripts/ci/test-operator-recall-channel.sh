@@ -211,7 +211,7 @@ CHUMP_OPERATOR_RECALL_COOLDOWN_SECS=9999 \
 CHUMP_OPERATOR_RECALL_URL="http://127.0.0.1:${MOCK_WEBHOOK_PORT}" \
 "$RECALL_SCRIPT" 2>/dev/null || true
 
-_count1=$(grep -c "operator_recall" "$_amb4" 2>/dev/null || echo 0)
+_count1=$(grep -c "operator_recall" "$_amb4" 2>/dev/null || true)
 
 # Second emission should be suppressed.
 CHUMP_AMBIENT_LOG="$_amb4" \
@@ -219,7 +219,7 @@ CHUMP_OPERATOR_RECALL_COOLDOWN_SECS=9999 \
 CHUMP_OPERATOR_RECALL_URL="http://127.0.0.1:${MOCK_WEBHOOK_PORT}" \
 "$RECALL_SCRIPT" 2>/dev/null || true
 
-_count2=$(grep -c "operator_recall" "$_amb4" 2>/dev/null || echo 0)
+_count2=$(grep -c "operator_recall" "$_amb4" 2>/dev/null || true)
 
 if [[ "$_count1" == "$_count2" ]] && (( _count1 > 0 )); then
     _ok "cooldown: duplicate suppressed within window"

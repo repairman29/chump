@@ -125,7 +125,7 @@ else
     fail "live: target-dir override missing"
 fi
 # Critical: must NOT have duplicate [build] sections — TOML rejects.
-build_count=$(grep -c "^\[build\]$" "$TMP_TEST_WT/.cargo/config.toml" 2>/dev/null || echo 0)
+build_count=$(grep -c "^\[build\]$" "$TMP_TEST_WT/.cargo/config.toml" 2>/dev/null || true)
 if [[ "$build_count" == "1" ]]; then
     ok "live: exactly one [build] section (no TOML duplicate-key error)"
 else

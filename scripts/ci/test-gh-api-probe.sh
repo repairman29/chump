@@ -26,7 +26,7 @@ else
 fi
 
 # 2. bot-merge.sh calls gh_api_probe (appears >=2 times: definition + call)
-_bm_count=$(grep -c 'gh_api_probe' "$BM" 2>/dev/null || echo 0)
+_bm_count=$(grep -c 'gh_api_probe' "$BM" 2>/dev/null || true)
 if [[ "$_bm_count" -ge 2 ]]; then
     ok "gh_api_probe called in bot-merge.sh"
 else

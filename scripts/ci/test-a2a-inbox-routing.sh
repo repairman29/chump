@@ -154,7 +154,7 @@ LOCK_DIR="$LOCK_DIR" CHUMP_SESSION_ID="$ENV_SESSION" \
     CHUMP_GAP_ID="$GAP_ID" \
     bash "$INBOX_SH" read --since all --no-advance >/dev/null 2>&1 || true
 
-alias_resolved_count="$(grep -c '"kind":"a2a_inbox_alias_resolved"' "$AMBIENT" 2>/dev/null || echo 0)"
+alias_resolved_count="$(grep -c '"kind":"a2a_inbox_alias_resolved"' "$AMBIENT" 2>/dev/null || true)"
 if [[ "$alias_resolved_count" -ge 1 ]]; then
     pass "ambient: kind=a2a_inbox_alias_resolved emitted ($alias_resolved_count event(s))"
 else

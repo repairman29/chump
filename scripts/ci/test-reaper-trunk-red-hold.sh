@@ -148,7 +148,7 @@ else
 fi
 
 # ── Test 7: ambient event emitted exactly once for trunk-RED ─────────────────
-_event_count=$(grep -c '"kind":"reaper_holding_for_trunk_red"' "$_ambient" 2>/dev/null || echo 0)
+_event_count=$(grep -c '"kind":"reaper_holding_for_trunk_red"' "$_ambient" 2>/dev/null || true)
 if [[ "$_event_count" -eq 1 ]]; then
     echo "PASS 7: kind=reaper_holding_for_trunk_red emitted exactly once"
     pass=$((pass+1))

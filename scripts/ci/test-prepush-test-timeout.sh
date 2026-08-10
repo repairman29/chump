@@ -40,7 +40,7 @@ assert_grep '_PREPUSH_TEST_TIMEOUT_S="\$\{CHUMP_PREPUSH_TEST_TIMEOUT_S:-' \
 
 # 2. cargo-test-with-rerun.sh invocation wrapped in timeout.
 # We look for the two `timeout "${_PREPUSH_TEST_TIMEOUT_S}s"` invocations.
-n_timeout=$(grep -cE 'timeout "\$\{_PREPUSH_TEST_TIMEOUT_S\}s"' "$HOOK" 2>/dev/null || echo 0)
+n_timeout=$(grep -cE 'timeout "\$\{_PREPUSH_TEST_TIMEOUT_S\}s"' "$HOOK" 2>/dev/null || true)
 if [[ "$n_timeout" -lt 2 ]]; then
     echo "FAIL: pre-push should wrap BOTH cargo-test invocations in 'timeout \${_PREPUSH_TEST_TIMEOUT_S}s' (found $n_timeout/2)"
     failures=$((failures + 1))

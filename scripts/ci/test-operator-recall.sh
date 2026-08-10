@@ -257,14 +257,14 @@ REPO_ROOT="$REPO_ROOT" \
 CHUMP_OPERATOR_RECALL_COOLDOWN_SECS=9999 \
 "$RECALL_SCRIPT" 2>/dev/null || true
 
-_count1=$(grep -c '"kind":"operator_recall"' "$_amb6" 2>/dev/null || echo 0)
+_count1=$(grep -c '"kind":"operator_recall"' "$_amb6" 2>/dev/null || true)
 
 CHUMP_AMBIENT_LOG="$_amb6" \
 REPO_ROOT="$REPO_ROOT" \
 CHUMP_OPERATOR_RECALL_COOLDOWN_SECS=9999 \
 "$RECALL_SCRIPT" 2>/dev/null || true
 
-_count2=$(grep -c '"kind":"operator_recall"' "$_amb6" 2>/dev/null || echo 0)
+_count2=$(grep -c '"kind":"operator_recall"' "$_amb6" 2>/dev/null || true)
 
 if [[ "$_count1" == "$_count2" ]] && (( _count1 > 0 )); then
     _ok "cooldown: second emit suppressed within cooldown window"

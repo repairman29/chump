@@ -142,7 +142,7 @@ fi
 
 # ── Test 3: cache_lookup_checks hit ──────────────────────────────────────────
 echo "--- Test 3: cache_lookup_checks hit ---"
-PREV_HIT=$(grep -c '"helper":"cache_lookup_checks".*"kind":"cache_hit"\|"kind":"cache_hit".*"helper":"cache_lookup_checks"' "$_emit_log" 2>/dev/null || echo 0)
+PREV_HIT=$(grep -c '"helper":"cache_lookup_checks".*"kind":"cache_hit"\|"kind":"cache_hit".*"helper":"cache_lookup_checks"' "$_emit_log" 2>/dev/null || true)
 (
     export CHUMP_CACHE_DB="$CACHE_DB"; export CHUMP_REPO="$TMP"
     mkdir -p "$TMP/.git"; cd "$TMP"
@@ -158,14 +158,14 @@ fi
 
 # ── Test 4: cache_lookup_checks miss ─────────────────────────────────────────
 echo "--- Test 4: cache_lookup_checks miss (unknown sha) ---"
-PREV_MISS=$(grep -c '"kind":"cache_miss"' "$_emit_log" 2>/dev/null || echo 0)
+PREV_MISS=$(grep -c '"kind":"cache_miss"' "$_emit_log" 2>/dev/null || true)
 (
     export CHUMP_CACHE_DB="$CACHE_DB"; export CHUMP_REPO="$TMP"
     mkdir -p "$TMP/.git"; cd "$TMP"
     source "$REPO_ROOT/scripts/coord/lib/github_cache.sh"
     cache_lookup_checks unknownsha999 >/dev/null 2>/dev/null || true
 )
-NEW_MISS=$(grep -c '"kind":"cache_miss"' "$_emit_log" 2>/dev/null || echo 0)
+NEW_MISS=$(grep -c '"kind":"cache_miss"' "$_emit_log" 2>/dev/null || true)
 if [[ "$NEW_MISS" -gt "$PREV_MISS" ]]; then
     ok "cache_lookup_checks emits cache_miss for unknown sha"
 else

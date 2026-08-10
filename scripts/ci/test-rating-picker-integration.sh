@@ -35,7 +35,7 @@ done
 ok "wrote 5 gap_impact_rated events to synthetic ambient.jsonl"
 
 # Verify event count
-COUNT=$(grep -c '"gap_impact_rated"' "$AMBIENT" || echo 0)
+COUNT=$(grep -c '"gap_impact_rated"' "$AMBIENT" || true)
 if [ "$COUNT" -eq 5 ]; then
     ok "ambient.jsonl contains exactly 5 gap_impact_rated events"
 else

@@ -115,7 +115,7 @@ else
 fi
 
 # 12. Unit tests exist.
-test_count=$(grep -cE '#\[test\]' "$REPO_ROOT/src/mission_grade.rs" 2>/dev/null || echo 0)
+test_count=$(grep -cE '#\[test\]' "$REPO_ROOT/src/mission_grade.rs" 2>/dev/null || true)
 if [[ "$test_count" -ge 5 ]]; then
     ok "in-tree unit tests defined ($test_count)"
 else

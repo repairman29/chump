@@ -44,6 +44,7 @@
 | `git-identity` (jeffadkins1@ for commits) | not on CI (commit-time) | `pre-commit-git-identity.sh` | Pre-commit only — would be redundant in preflight |
 | `hardcoded-date` (no `2025-` literals in new code) | `fast-checks` job (`test-hardcoded-date-guard.sh`) | `pre-commit-hardcoded-dates.sh` | Pre-commit catches at edit time |
 | `ac-completeness` (filed gaps have AC) | `pr-hygiene` job | `pre-commit-ac-completeness.sh` (commit-time) | Pre-commit fires; CI is the backstop |
+| `grep-c-echo0` (no `grep -c ... \|\| echo 0` idiom in new shell) | `fast-checks` job (`test-precommit-grep-c-echo0.sh`) | `pre-commit-grep-c-echo0.sh` | Pre-commit catches at edit time (RESILIENT-281) |
 
 ## Tier C — missing local mirror, MIRRORABLE 🎯
 

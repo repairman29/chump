@@ -125,7 +125,7 @@ _no_inflight_pr_for_skew() {
         branch_prefix="chump/$(printf '%s' "$gap_id" | tr '[:upper:]' '[:lower:]')"
         pr_count="$(gh pr list --state open --json number \
             --search "head:${branch_prefix}" 2>/dev/null | \
-            grep -c '"number"' 2>/dev/null || echo 0)"
+            grep -c '"number"' 2>/dev/null || true)"
         if [[ "$pr_count" -gt 0 ]]; then
             _log "in-flight PR for ${gap_id} — skipping version-skew restart"
             return 1

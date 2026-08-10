@@ -100,7 +100,7 @@ cd "$TMP/fake-repo"
 git init -q && git config user.email t@t.test && git config user.name t
 echo "x" > x && git add . && git commit -qm init
 CHUMP_AMBIENT_OVERRIDE="$AMB" bash "$LB" --window 24h --emit-ambient >/dev/null 2>&1
-DIGESTS=$(grep -c '"kind":"api_cost_digest_emitted"' "$TMP/fake-repo/.chump-locks/ambient.jsonl" 2>/dev/null || echo 0)
+DIGESTS=$(grep -c '"kind":"api_cost_digest_emitted"' "$TMP/fake-repo/.chump-locks/ambient.jsonl" 2>/dev/null || true)
 [[ "$DIGESTS" -eq 1 ]] || fail "expected 1 digest event, got $DIGESTS in $TMP/fake-repo/.chump-locks/ambient.jsonl"
 LINE=$(grep '"kind":"api_cost_digest_emitted"' "$TMP/fake-repo/.chump-locks/ambient.jsonl")
 for f in '"window_hours":24' '"total_calls":5' '"top_script":"bot-merge.sh"' '"top_api":"pr merge"' ; do

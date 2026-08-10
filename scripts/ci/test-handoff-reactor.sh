@@ -141,7 +141,7 @@ CHUMP_SESSION_ID="test-reactor-$$" \
 LOCK_DIR="$tmpdir_cd" \
 "$LOOP_SCRIPT" react-feedback "$CORR_COOLDOWN" "$RATIONALE_GOOD" >/dev/null 2>&1 || true
 
-vote_count1="$(grep -c '"kind":"handoff_contract_vote"' "$amb_cd" 2>/dev/null || echo 0)"
+vote_count1="$(grep -c '"kind":"handoff_contract_vote"' "$amb_cd" 2>/dev/null || true)"
 
 # Second vote (same corr_id, same tmpdir with cooldown file) should be skipped.
 CHUMP_FLEET_WIRE_V1=1 \
@@ -150,7 +150,7 @@ CHUMP_SESSION_ID="test-reactor-$$" \
 LOCK_DIR="$tmpdir_cd" \
 "$LOOP_SCRIPT" react-feedback "$CORR_COOLDOWN" "$RATIONALE_GOOD" >/dev/null 2>&1 || true
 
-vote_count2="$(grep -c '"kind":"handoff_contract_vote"' "$amb_cd" 2>/dev/null || echo 0)"
+vote_count2="$(grep -c '"kind":"handoff_contract_vote"' "$amb_cd" 2>/dev/null || true)"
 
 if (( vote_count1 == 1 && vote_count2 == 1 )); then
     _ok "cooldown: second vote suppressed (still 1 vote event)"

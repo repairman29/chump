@@ -71,7 +71,7 @@ echo "$notes2" | grep -q "second note" \
 pass "Test 2: prior notes preserved — both 'first note' and 'second note' present"
 
 # ── Test 3: two entries separated by newline ──────────────────────────────────
-entry_count="$(echo "$notes2" | grep -cE "^\[20[0-9]{2}" || echo 0)"
+entry_count="$(echo "$notes2" | grep -cE "^\[20[0-9]{2}" || true)"
 [[ "$entry_count" -ge 2 ]] \
     || fail "Test 3: expected ≥2 timestamped entries, got $entry_count (notes: $notes2)"
 pass "Test 3: two --add-note calls produce 2 timestamped entries (newline-separated)"

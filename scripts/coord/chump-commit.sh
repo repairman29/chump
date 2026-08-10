@@ -765,7 +765,7 @@ if [[ "$_has_code_staged" -eq 1 ]] && [[ -f "$_envvar_file" ]]; then
                 done <<<"$_new_envvars"
             } >> "$_envvar_file"
             git add "$_envvar_file" 2>/dev/null || true
-            _count=$(echo "$_new_envvars" | grep -c '.' || echo 0)
+            _count=$(echo "$_new_envvars" | grep -c '.' || true)
             printf '{"ts":"%s","kind":"auto_envvar_applied","session":"%s","count":%s}\n' \
                 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                 "${CHUMP_SESSION_ID:-${SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}}" \

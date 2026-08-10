@@ -300,7 +300,7 @@ else
 fi
 
 # Stub log should NOT contain any POST from this run.
-LATEST_POST_COUNT=$(grep -c "POST " "${STUB_LOG:-/dev/null}" 2>/dev/null || echo 0)
+LATEST_POST_COUNT=$(grep -c "POST " "${STUB_LOG:-/dev/null}" 2>/dev/null || true)
 if [[ "$LATEST_POST_COUNT" -eq 0 ]]; then
     ok "no POST sent to stub when bypass set"
 else

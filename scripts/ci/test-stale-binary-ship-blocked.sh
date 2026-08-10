@@ -58,7 +58,7 @@ pass "override_env_recognized (src/version.rs unit test)"
 if ! grep -q "fail_if_stale_for_destructive" "$REPO_ROOT/src/main.rs"; then
     fail "src/main.rs does not call fail_if_stale_for_destructive — INFRA-825 wiring missing"
 fi
-gap_dump_count=$(grep -c 'fail_if_stale_for_destructive(&repo_root, "gap dump --per-file")' "$REPO_ROOT/src/main.rs" || echo 0)
+gap_dump_count=$(grep -c 'fail_if_stale_for_destructive(&repo_root, "gap dump --per-file")' "$REPO_ROOT/src/main.rs" || true)
 if [[ "$gap_dump_count" -lt 1 ]]; then
     fail "src/main.rs: gap dump --per-file is not guarded by fail_if_stale_for_destructive"
 fi

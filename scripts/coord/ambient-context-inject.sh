@@ -386,7 +386,7 @@ out_file.write_text('\n'.join(lines))
                             "$_TS" "$_COUNT" >> "$AMBIENT_LOG" 2>/dev/null || true
                         # scanner-anchor: "kind":"inbox_lane_filtered"
                         if [[ "${CHUMP_INBOX_LANE_FILTER:-1}" != "0" ]]; then
-                            _SHOWN=$(grep -c '^\[' "$_INBOX_TMP" 2>/dev/null || echo 0)
+                            _SHOWN=$(grep -c '^\[' "$_INBOX_TMP" 2>/dev/null || true)
                             if [[ "$_COUNT" -gt "$_SHOWN" ]] 2>/dev/null; then
                                 printf '{"ts":"%s","kind":"inbox_lane_filtered","source":"ambient-context-inject","total":%s,"shown":%s,"session":"%s"}\n' \
                                     "$_TS" "$_COUNT" "$_SHOWN" "$SESSION_ID" >> "$AMBIENT_LOG" 2>/dev/null || true

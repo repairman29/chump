@@ -141,7 +141,7 @@ echo ""
 # ── Assert exactly one ship_plan_advisory event was emitted ──────────────────
 [[ -f "$AMB" ]] || fail "ambient log not created"
 
-advisory_count=$(grep -c '"kind":"ship_plan_advisory"' "$AMB" 2>/dev/null || echo 0)
+advisory_count=$(grep -c '"kind":"ship_plan_advisory"' "$AMB" 2>/dev/null || true)
 [[ "$advisory_count" -eq 1 ]] \
     && ok "exactly one ship_plan_advisory event emitted" \
     || fail "expected 1 ship_plan_advisory event, got $advisory_count"
@@ -183,7 +183,7 @@ HARNESS2_EOF
 chmod +x "$TMP/harness2.sh"
 
 PATH="$SHIM_DIR:$PATH" CHUMP_BOT_MERGE_SHADOW_PLAN=0 bash "$TMP/harness2.sh" 2>&1 >/dev/null
-suppressed_count=$(grep -c '"kind":"ship_plan_advisory"' "$AMB2" 2>/dev/null || echo 0)
+suppressed_count=$(grep -c '"kind":"ship_plan_advisory"' "$AMB2" 2>/dev/null || true)
 [[ "$suppressed_count" -eq 0 ]] \
     && ok "CHUMP_BOT_MERGE_SHADOW_PLAN=0 suppresses advisory (no event emitted)" \
     || fail "expected 0 events with opt-out, got $suppressed_count"

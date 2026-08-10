@@ -70,7 +70,7 @@ else
 fi
 
 # (f) infra641_ unit tests
-test_count=$(grep -cE 'fn infra641_' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs" 2>/dev/null || echo 0)
+test_count=$(grep -cE 'fn infra641_' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs" 2>/dev/null || true)
 if [[ "$test_count" -ge 3 ]]; then
     ok "infra641_ unit tests defined ($test_count fns)"
 else

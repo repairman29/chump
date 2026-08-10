@@ -17,7 +17,7 @@ fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
 if grep -qE "grep -cE.*\|\| echo 0|grep -c[^|]*\|\| echo 0" "$BM"; then
     fail "bot-merge.sh still has 'grep -c ... || echo 0' — replace with '|| true'"
 fi
-ok "No grep -c ... || echo 0 patterns found in bot-merge.sh"
+ok "No grep -c ... || true patterns found in bot-merge.sh"
 
 # 2. _cognition_touched assignment uses || true
 if ! grep -q "grep -cE.*|| true" "$BM"; then

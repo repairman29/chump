@@ -21,7 +21,7 @@ write_report() {
     echo "Failures: $count. See $FAILURES_TXT" >> "$REPORT"
   fi
 }
-trap 'write_report "INTERRUPTED" "$(grep -c "^FAIL " "$FAILURES_TXT" 2>/dev/null || echo 0)"; exit 130' INT TERM
+trap 'write_report "INTERRUPTED" "$(grep -c "^FAIL " "$FAILURES_TXT" 2>/dev/null || true)"; exit 130' INT TERM
 
 # Preflight: model server must be reachable
 if ! ./scripts/ci/check-heartbeat-preflight.sh &>/dev/null; then
@@ -38,7 +38,7 @@ if ./scripts/ci/battle-qa.sh; then
 fi
 
 # Run finished with failures; summarize
-FAIL_COUNT=$(grep -c '^FAIL ' "$FAILURES_TXT" 2>/dev/null || echo 0)
+FAIL_COUNT=$(grep -c '^FAIL ' "$FAILURES_TXT" 2>/dev/null || true)
 write_report "FAIL" "$FAIL_COUNT"
 echo "=== Battle QA: $FAIL_COUNT failure(s) ==="
 echo "Details: $FAILURES_TXT"

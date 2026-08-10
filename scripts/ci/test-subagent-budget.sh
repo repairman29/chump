@@ -74,12 +74,12 @@ else
 fi
 
 # Idempotency — re-run should NOT double-alert (already marked).
-prior_alerts=$(grep -c '"kind":"subagent_budget_exceeded"' "$fixture/.chump-locks/ambient.jsonl" || echo 0)
+prior_alerts=$(grep -c '"kind":"subagent_budget_exceeded"' "$fixture/.chump-locks/ambient.jsonl" || true)
 CHUMP_SUBAGENT_LOCK_DIR="$fixture/.chump-locks" \
       CHUMP_AMBIENT_LOG="$fixture/.chump-locks/ambient.jsonl" \
       CHUMP_SUBAGENT_BUDGET_MIN=5 \
       bash "$REAPER" 2>&1 >/dev/null || true
-new_alerts=$(grep -c '"kind":"subagent_budget_exceeded"' "$fixture/.chump-locks/ambient.jsonl" || echo 0)
+new_alerts=$(grep -c '"kind":"subagent_budget_exceeded"' "$fixture/.chump-locks/ambient.jsonl" || true)
 if [[ "$new_alerts" -eq "$prior_alerts" ]]; then
     pass "idempotent: re-run does not double-alert (still $prior_alerts)"
 else

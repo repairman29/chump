@@ -85,7 +85,7 @@ for needle in \
 done
 
 # META-122: 6 curator roles declared
-curator_role_count=$(grep -c '"shepherd\|"target\|"handoff\|"ci-audit\|"decompose\|"md-links' "$TARGET" 2>/dev/null || echo 0)
+curator_role_count=$(grep -c '"shepherd\|"target\|"handoff\|"ci-audit\|"decompose\|"md-links' "$TARGET" 2>/dev/null || true)
 if [[ "$curator_role_count" -ge 6 ]]; then
     ok "META-122: 6 curator roles present in CURATOR_ROLES"
 else

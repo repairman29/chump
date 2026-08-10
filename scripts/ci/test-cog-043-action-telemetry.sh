@@ -75,7 +75,7 @@ fi
 echo "  NOTE: bot-merge.sh integration deferred to follow-up PR (sensitive-path escalation)"
 
 # --- 9. unit tests defined (full run lives in cargo test --workspace) ---
-test_count=$(grep -cE 'fn cog043_' "$REPO_ROOT/src/lesson_action.rs" 2>/dev/null || echo 0)
+test_count=$(grep -cE 'fn cog043_' "$REPO_ROOT/src/lesson_action.rs" 2>/dev/null || true)
 if [[ "$test_count" -ge 5 ]]; then
     ok "in-tree cog043_ unit tests defined ($test_count fns; full run via cargo test --workspace)"
 else

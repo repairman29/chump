@@ -47,8 +47,8 @@ grep -q 'fn emit_cascade_backoff_event' "$REPO_ROOT/src/provider_cascade.rs" \
 pass "emit_cascade_backoff_event helper present"
 
 # ── (g) all three retry paths wire the pre/post events ───────────────────────
-pre_count=$(grep -c 'emit_cascade_backoff_event.*pre_sleep' "$REPO_ROOT/src/provider_cascade.rs" || echo 0)
-post_count=$(grep -c 'emit_cascade_backoff_event.*post_retry' "$REPO_ROOT/src/provider_cascade.rs" || echo 0)
+pre_count=$(grep -c 'emit_cascade_backoff_event.*pre_sleep' "$REPO_ROOT/src/provider_cascade.rs" || true)
+post_count=$(grep -c 'emit_cascade_backoff_event.*post_retry' "$REPO_ROOT/src/provider_cascade.rs" || true)
 [[ "$pre_count" -ge 3 ]] \
     || fail "Expected >=3 pre_sleep event calls (one per exhaustion path), found $pre_count"
 [[ "$post_count" -ge 3 ]] \
