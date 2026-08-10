@@ -4920,6 +4920,29 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, proposed_title, top_match_id, top_match_score]
 
+  # ── ZERO-WASTE-045: Almanac-corpus dedupe check at reserve time ───────────
+  - kind: gap_reserve_almanac_dedupe_hit
+    effect_metric: self
+    emitter: src/main.rs gap reserve handler (ZERO-WASTE-045)
+    trigger: chump gap reserve found a near-match for the proposed title in
+      the Almanac index over docs/gaps/*.yaml (open AND long-shipped gaps,
+      unlike the state.db check which only sees a 30-day closed window).
+      Advisory only — never blocks; recorded so a DOC-082-style re-file of an
+      already-SHIPPED gap gets caught before it happens.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, proposed_title, match_id, match_status, match_score]
+
+  - kind: gap_reserve_dedupe_check_skipped
+    effect_metric: self
+    emitter: src/main.rs gap reserve handler (ZERO-WASTE-045)
+    trigger: chump gap reserve could not run the Almanac-corpus dedupe check
+      (almanac-mcp binary or index unreachable, or the search call errored).
+      Printed loudly to stderr AND emitted here — never a silent skip
+      (cf CREDIBLE-214). Dedupe coverage falls back to the state.db-only
+      check (open + 30-day-closed window).
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, reason]
+
   - kind: target_artifact_reaped
     effect_metric: self
     emitter: scripts/coord/target-dir-reaper.sh (INFRA-1349)

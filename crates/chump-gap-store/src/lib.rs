@@ -4230,6 +4230,40 @@ pub fn load_gap_from_yaml(repo_root: &std::path::Path, gap_id: &str) -> Result<O
     }))
 }
 
+/// ZERO-WASTE-045: given a list of candidate gap IDs (typically extracted
+/// from an Almanac full-text-search hit over `docs/gaps/*.yaml`), load each
+/// candidate straight from its YAML file and score it against `proposed_title`
+/// with `title_jaccard`. Unlike `similarity_candidates` (which only sees
+/// state.db's `open` + recently-closed-`done` rows), this reads YAML directly,
+/// so it surfaces gaps that shipped long ago and dropped out of state.db's
+/// closed-lookback window — the DOC-082 failure mode this gap fixes was
+/// re-filing something already SHIPPED, not something open.
+///
+/// Returns `(id, title, status, score)` tuples with `score >= threshold`,
+/// sorted by descending score. IDs that fail to load (missing/malformed YAML,
+/// or don't parse) are silently skipped — this is a best-effort dedupe
+/// signal, not a source of truth.
+pub fn shipped_gap_dedupe_candidates(
+    repo_root: &std::path::Path,
+    proposed_title: &str,
+    candidate_ids: &[String],
+    threshold: f64,
+) -> Vec<(String, String, String, f64)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut scored: Vec<(String, String, String, f64)> = candidate_ids
+        .iter()
+        .filter(|id| seen.insert((*id).clone()))
+        .filter_map(|id| load_gap_from_yaml(repo_root, id).ok().flatten())
+        .map(|g| {
+            let score = GapStore::title_jaccard(proposed_title, &g.title);
+            (g.id, g.title, g.status, score)
+        })
+        .filter(|(_, _, _, score)| *score >= threshold)
+        .collect();
+    scored.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+    scored
+}
+
 /// INFRA-1411: returns true when `ac_string` either is empty OR every
 /// item is a TODO/TBD/placeholder string. Used by `chump gap show` to
 /// trigger the YAML fallback even when state.db has a row.
@@ -7608,6 +7642,80 @@ meta:
         assert!(
             result.is_err() || matches!(result, Ok(false)),
             "dump_per_file_single on unknown gap should fail or return false"
+        );
+    }
+
+    // ZERO-WASTE-045: shipped_gap_dedupe_candidates tests. This is what a
+    // reserve-time Almanac-corpus search feeds into: a list of candidate IDs
+    // (found via full-text search over docs/gaps/*.yaml) get loaded straight
+    // from YAML and scored, so long-shipped gaps that fell out of state.db's
+    // closed-lookback window still surface as near-matches.
+    #[test]
+    fn shipped_gap_dedupe_candidates_surfaces_old_shipped_gap() {
+        let dir = tempfile::tempdir().unwrap();
+        let gaps_dir = dir.path().join("docs/gaps");
+        std::fs::create_dir_all(&gaps_dir).unwrap();
+        std::fs::write(
+            gaps_dir.join("ZERO-WASTE-999.yaml"),
+            "- id: ZERO-WASTE-999\n  domain: ZERO-WASTE\n  title: \"dedupe gaps at reserve time via almanac index\"\n  status: done\n  priority: P1\n  effort: m\n  closed_pr: 4242\n",
+        )
+        .unwrap();
+
+        let candidates = shipped_gap_dedupe_candidates(
+            dir.path(),
+            "dedupe gaps at reserve time using almanac index",
+            &["ZERO-WASTE-999".to_string()],
+            0.5,
+        );
+        assert_eq!(
+            candidates.len(),
+            1,
+            "near-identical shipped gap must surface"
+        );
+        assert_eq!(candidates[0].0, "ZERO-WASTE-999");
+        assert_eq!(
+            candidates[0].2, "done",
+            "status must be the ground-truth YAML status"
+        );
+        assert!(candidates[0].3 >= 0.5);
+    }
+
+    #[test]
+    fn shipped_gap_dedupe_candidates_filters_below_threshold() {
+        let dir = tempfile::tempdir().unwrap();
+        let gaps_dir = dir.path().join("docs/gaps");
+        std::fs::create_dir_all(&gaps_dir).unwrap();
+        std::fs::write(
+            gaps_dir.join("INFRA-1.yaml"),
+            "- id: INFRA-1\n  domain: INFRA\n  title: \"completely unrelated topic about disk pressure\"\n  status: done\n  priority: P2\n  effort: s\n  closed_pr: 1\n",
+        )
+        .unwrap();
+
+        let candidates = shipped_gap_dedupe_candidates(
+            dir.path(),
+            "dedupe gaps at reserve time using almanac index",
+            &["INFRA-1".to_string()],
+            0.5,
+        );
+        assert!(
+            candidates.is_empty(),
+            "unrelated title must not surface as a candidate"
+        );
+    }
+
+    #[test]
+    fn shipped_gap_dedupe_candidates_skips_missing_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("docs/gaps")).unwrap();
+        let candidates = shipped_gap_dedupe_candidates(
+            dir.path(),
+            "anything",
+            &["DOES-NOT-EXIST-1".to_string()],
+            0.0,
+        );
+        assert!(
+            candidates.is_empty(),
+            "nonexistent gap ID must be skipped, not error"
         );
     }
 
