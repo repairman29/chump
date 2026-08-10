@@ -98,16 +98,27 @@ else
     fail "doc-swap was rejected; net delta is 0, should pass"
 fi
 
-# ── case 3: bypass env CHUMP_DOCS_DELTA_CHECK=0 → guard skips ────────────────
+# ── case 3: Verify-Bypass trailer → guard skips ───────────────────────────────
+# CREDIBLE-155 (commit ab7ab2fa, 2026-07-19) ported docs-delta into the
+# `chump verify` unified policy engine and collapsed every rule onto ONE
+# audited bypass surface: the `Verify-Bypass: <rule-id>: <reason>` commit
+# trailer (src/verify/mod.rs module doc: "ONE bypass surface"). The
+# CHUMP_DOCS_DELTA_CHECK=0 env var still works, but only via the legacy
+# fallback path in scripts/git-hooks/commit-msg (legacy_docs_delta_check()),
+# which only runs when no `chump` binary with `verify --stage` support is on
+# PATH — never true on a machine that just built chump, which is every real
+# preflight run. This case exercises the real, current, audited bypass
+# instead of the retired env-var semantics (RESILIENT-244 AC#1).
 reset_sandbox
 echo "# new3" > "$SANDBOX/docs/new3.md"
 echo "// 3" >> "$SANDBOX/src/lib.rs"
 git -C "$SANDBOX" add docs/new3.md src/lib.rs
-if env $SANDBOX_ENV CHUMP_DOCS_DELTA_CHECK=0 \
-    git -C "$SANDBOX" -c user.email=t@t -c user.name=t commit -q -m "bypassed doc-add" >/dev/null 2>&1; then
-    pass "CHUMP_DOCS_DELTA_CHECK=0 bypasses the guard"
+if env $SANDBOX_ENV \
+    git -C "$SANDBOX" -c user.email=t@t -c user.name=t commit -q \
+        -m "bypassed doc-add" -m "Verify-Bypass: docs-delta: test exercises the audited bypass surface" >/dev/null 2>&1; then
+    pass "Verify-Bypass: docs-delta trailer bypasses the guard"
 else
-    fail "bypass env didn't allow doc-add"
+    fail "Verify-Bypass: docs-delta trailer didn't allow doc-add"
 fi
 
 # ── case 4: docs-only commit (no .rs staged) → guard now fires (INFRA-257) ───

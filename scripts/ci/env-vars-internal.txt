@@ -1485,3 +1485,4 @@ CHUMP_WORKSPACE_SCOPE_PICK_OK
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_CONDUCTOR_SHORT_WINDOW_MIN
+CHUMP_DOCS_DELTA_CHECK
