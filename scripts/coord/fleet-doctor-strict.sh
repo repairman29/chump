@@ -649,6 +649,206 @@ print(len(s)); print(" ".join(s[:5]))
         "no starved proposals — every open proposal aged past ${grace_h}h has a consensus_result (fleet is deciding)" ""
 }
 
+# ── Check 11 (RESILIENT-257): Ops-defect self-diagnosis + auto-file VOA ────────
+#
+# Broadens fleet-doctor from "is the fleet healthy" to "is the fleet's OWN ops
+# tooling behaving correctly" — the factory catching its own sloppy ops
+# without a human noticing. Two defect classes:
+#
+#   A. broken-daemon-exit  — any com/dev.chump.* launchd daemon with a
+#      non-zero last exit code, independent of merge-staleness (broader than
+#      check 8's silent-fleet-death gate, which only fires when BOTH
+#      merge-staleness AND a dead daemon hold).
+#   B. false-positive-alert — an operator_recall (AUTH_DEAD/COST_CAP/
+#      CI_BROKEN/QUEUE_STARVE) alert fired in the look-back window while
+#      ground truth (recent merges into origin/main) shows the fleet was
+#      actually shipping — the alert lied (CREDIBLE-090 Verify-before-alarm,
+#      applied as a *check* instead of a discipline a human has to remember).
+#
+# When either class fires, this check FAILs *and* auto-files a VOA
+# (docs/gaps/VOA-NNNN.yaml + docs/voice/VOA-NNNN-FULL.yaml, no --ship/no PR)
+# via `chump voice`, so the defect becomes visible without a human having to
+# notice and file it by hand. Dedup: skip re-filing if a VOA with the same
+# wedge_class was already filed within OPS_DEFECT_VOA_DEDUP_HOURS.
+#
+# Thresholds (override via env)
+#   OPS_DEFECT_ALERT_WINDOW_HOURS  default 2   — look-back for operator_recall alerts
+#   OPS_DEFECT_SHIP_WINDOW_HOURS   default 1   — ground-truth ship-rate window
+#   OPS_DEFECT_VOA_DEDUP_HOURS     default 24  — don't re-file same wedge_class
+#   CHUMP_OPS_DEFECT_AUTOFILE      default 1   — set 0 to report-only, no VOA write
+#   OPS_DEFECT_DAEMON_STATUS_CMD   test hook — overrides launchctl scan; must
+#                                   print `label<TAB>exit_code` lines on stdout
+#   OPS_DEFECT_SHIP_COUNT_OVERRIDE test hook — overrides the git-log ship count
+check_ops_defect_selfdiag() {
+    local alert_window_h="${OPS_DEFECT_ALERT_WINDOW_HOURS:-2}"
+    local ship_window_h="${OPS_DEFECT_SHIP_WINDOW_HOURS:-1}"
+    local dedup_h="${OPS_DEFECT_VOA_DEDUP_HOURS:-24}"
+    local autofile="${CHUMP_OPS_DEFECT_AUTOFILE:-1}"
+    local amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+
+    local defects=()
+    local wedge_class=""
+
+    # ── Sub-check A: broken daemon exit codes (any, not gated by merge-staleness) ──
+    local broken_daemons=()
+    if [[ -n "${OPS_DEFECT_DAEMON_STATUS_CMD:-}" ]]; then
+        while IFS=$'\t' read -r label code; do
+            [[ -z "$label" ]] && continue
+            [[ "$code" != "0" ]] && broken_daemons+=("$label(exit=$code)")
+        done < <(eval "$OPS_DEFECT_DAEMON_STATUS_CMD" 2>/dev/null || true)
+    elif command -v launchctl &>/dev/null && [[ "$(uname)" == "Darwin" ]]; then
+        local uid
+        uid="$(id -u)"
+        while IFS= read -r label; do
+            [[ -z "$label" ]] && continue
+            local print_out exit_code
+            print_out="$(launchctl print "gui/$uid/$label" 2>/dev/null \
+                || launchctl print "system/$label" 2>/dev/null \
+                || true)"
+            exit_code="$(echo "$print_out" \
+                | grep -E 'last exit code\s*=' \
+                | grep -oE '[-]?[0-9]+' \
+                | head -1 \
+                || true)"
+            [[ -z "$exit_code" ]] && continue
+            [[ "$exit_code" != "0" ]] && broken_daemons+=("$label(exit=$exit_code)")
+        done < <(launchctl list 2>/dev/null \
+            | awk '{print $3}' \
+            | grep -E '^(com|dev)\.chump\.' \
+            || true)
+    fi
+    if [[ "${#broken_daemons[@]}" -gt 0 ]]; then
+        defects+=("broken-daemon-exit: ${broken_daemons[*]}")
+        wedge_class="broken-daemon-exit"
+    fi
+
+    # ── Sub-check B: alert fired while ship-rate ground truth was healthy ─────
+    local false_positive_alerts=()
+    if [[ -f "$amb" ]] && command -v python3 &>/dev/null; then
+        local now_ts alert_cut
+        now_ts="$(date -u +%s)"
+        alert_cut=$(( now_ts - alert_window_h * 3600 ))
+        while IFS=$'\t' read -r cond reason; do
+            [[ -z "$cond" ]] && continue
+            false_positive_alerts+=("$cond ($reason)")
+        done < <(python3 -c '
+import sys, json, datetime
+cut = int(sys.argv[1])
+def epoch(ts):
+    try:
+        return int(datetime.datetime.strptime(ts.replace("Z","+0000"),"%Y-%m-%dT%H:%M:%S%z").timestamp())
+    except Exception:
+        return 0
+try:
+    f = open(sys.argv[2])
+except Exception:
+    sys.exit(0)
+for line in f:
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    if d.get("kind") != "operator_recall":
+        continue
+    if epoch(d.get("ts", "")) >= cut:
+        cond = d.get("condition", "?")
+        reason = str(d.get("reason", ""))[:60]
+        print(cond + "\t" + reason)
+' "$alert_cut" "$amb" 2>/dev/null || true)
+    fi
+
+    if [[ "${#false_positive_alerts[@]}" -gt 0 ]]; then
+        local ship_count
+        if [[ -n "${OPS_DEFECT_SHIP_COUNT_OVERRIDE:-}" ]]; then
+            ship_count="$OPS_DEFECT_SHIP_COUNT_OVERRIDE"
+        else
+            ship_count="$(git -C "$REPO_ROOT" log origin/main --since="${ship_window_h} hours ago" --oneline 2>/dev/null | wc -l | tr -d ' ')"
+        fi
+        if [[ "${ship_count:-0}" -gt 0 ]]; then
+            defects+=("false-positive-alert: ${false_positive_alerts[*]} fired in the last ${alert_window_h}h while ${ship_count} commit(s) merged into origin/main in the last ${ship_window_h}h (ground truth: fleet was shipping)")
+            [[ -z "$wedge_class" ]] && wedge_class="false-positive-alert"
+        fi
+    fi
+
+    if [[ "${#defects[@]}" -eq 0 ]]; then
+        register_check "ops-defect" "pass" \
+            "no broken-daemon-exit and no false-positive alerts detected (alert window ${alert_window_h}h, ship window ${ship_window_h}h)" \
+            ""
+        return
+    fi
+
+    local detail="ops-defect(s) detected: ${defects[*]}"
+    local remedy="chump voice --wedge-class $wedge_class --minutes-lost 10 --fix-shape gate --fix '<describe fix>'"
+
+    # ── Dedup: skip auto-file if same wedge_class VOA filed within dedup window ──
+    local already_filed=0
+    if [[ -f "$amb" ]] && command -v python3 &>/dev/null; then
+        already_filed="$(python3 -c '
+import sys, json, datetime
+cut = int(sys.argv[1])
+wc = sys.argv[2]
+def epoch(ts):
+    try:
+        return int(datetime.datetime.strptime(ts.replace("Z","+0000"),"%Y-%m-%dT%H:%M:%S%z").timestamp())
+    except Exception:
+        return 0
+found = 0
+try:
+    f = open(sys.argv[3])
+except Exception:
+    print(0)
+    sys.exit(0)
+for line in f:
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    if d.get("kind") != "voice_of_agent_filed":
+        continue
+    if d.get("wedge_class") != wc:
+        continue
+    if epoch(d.get("ts", "")) >= cut:
+        found = 1
+print(found)
+' "$(( $(date -u +%s) - dedup_h * 3600 ))" "$wedge_class" "$amb" 2>/dev/null || echo 0)"
+    fi
+
+    if [[ "$autofile" == "1" && "$already_filed" != "1" ]] && command -v "$CHUMP_BIN" &>/dev/null; then
+        local minutes_lost=10
+        [[ "${#broken_daemons[@]}" -gt 0 && "${#false_positive_alerts[@]}" -gt 0 ]] && minutes_lost=20
+        local fix_text="fleet-doctor detected ${wedge_class}: ${defects[*]}"
+        fix_text="${fix_text:0:400}"
+        local voice_out voice_rc
+        voice_rc=0
+        voice_out="$("$CHUMP_BIN" voice \
+            --wedge-class "$wedge_class" \
+            --minutes-lost "$minutes_lost" \
+            --fix-shape gate \
+            --fix "$fix_text" \
+            --evidence "fleet-doctor-strict.sh" \
+            --target-repo anonymous 2>&1)" || voice_rc=$?
+        if [[ "$voice_rc" -eq 0 ]]; then
+            local voa_id
+            voa_id="$(echo "$voice_out" | grep -oE 'VOA-[0-9]+' | head -1)"
+            detail="${detail}; auto-filed ${voa_id:-VOA} via 'chump voice'"
+            remedy="review the auto-filed VOA under docs/gaps/${voa_id:-VOA-NNNN}.yaml and docs/voice/${voa_id:-VOA-NNNN}-FULL.yaml"
+        else
+            detail="${detail}; VOA auto-file FAILED (rc=$voice_rc): $(echo "$voice_out" | tail -1)"
+        fi
+    elif [[ "$already_filed" == "1" ]]; then
+        detail="${detail}; VOA already filed for wedge_class=$wedge_class within ${dedup_h}h — not re-filing"
+    fi
+
+    register_check "ops-defect" "fail" "$detail" "$remedy"
+}
+
+# When sourced for testing (FLEET_DOCTOR_SOURCED=1), stop here — the test
+# harness calls individual check_* functions directly instead of paying for
+# the full (networked) sweep.
+if [[ "${FLEET_DOCTOR_SOURCED:-0}" == "1" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 # ── Run all checks ─────────────────────────────────────────────────────────────
 check_binary
 check_leases
@@ -660,6 +860,7 @@ check_pillar_coverage
 check_silent_fleet_death
 check_a2a_consensus
 check_required_status_checks
+check_ops_defect_selfdiag
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then
