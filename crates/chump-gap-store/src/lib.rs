@@ -149,6 +149,28 @@ pub struct LeaseRow {
     pub expires_at: i64,
 }
 
+/// ZERO-WASTE-045: one title-similar hit from [`GapStore::dedupe_scan_gap_corpus`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct DedupeCorpusMatch {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    /// Where the match came from, e.g. `docs/gaps/INFRA-2591.yaml` — printed
+    /// so a human or agent can jump straight to it (AC#1).
+    pub citation: String,
+    pub score: f64,
+}
+
+/// ZERO-WASTE-045: outcome of a corpus-wide dedupe scan. `Unavailable` is
+/// distinct from `Ran(vec![])` — the former means the check itself could not
+/// run (missing/unreadable/corrupt corpus) and must be surfaced loudly, the
+/// latter means it ran and found nothing (CREDIBLE-214: no silent skip).
+#[derive(Debug, Clone, PartialEq)]
+pub enum DedupeCorpusResult {
+    Ran(Vec<DedupeCorpusMatch>),
+    Unavailable(String),
+}
+
 // ────────────────────────── DB open/migrate ──────────────────────────
 
 pub struct GapStore {
@@ -908,6 +930,122 @@ impl GapStore {
         scored.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
         scored.truncate(top_n);
         Ok(scored)
+    }
+
+    /// ZERO-WASTE-045: scan the *full* `docs/gaps/*.yaml` corpus (open,
+    /// closed, and shipped — no recency window) for title-similar gaps
+    /// before a new ID is minted.
+    ///
+    /// `similarity_candidates` above only looks at `status='open'` rows plus
+    /// a 30-day "recently closed" window in `state.db`, so anything shipped
+    /// more than a month ago is invisible to it. The DOC-082 failure mode
+    /// this gap was filed against (three re-filings inside one session,
+    /// 2026-08-07) was re-filing something already SHIPPED, not something
+    /// open — so this reads the on-disk per-gap YAML directory directly,
+    /// which already holds every gap ever filed regardless of status. No new
+    /// index is built; this is the same corpus almanac's `chump` index
+    /// covers.
+    ///
+    /// Returns `Unavailable(reason)` — never a silent empty result — when
+    /// the corpus can't be read at all (missing directory, unreadable, or
+    /// every file failing to parse), so callers can print a loud "dedupe
+    /// check did not run" instead of pretending zero matches means "no
+    /// duplicates" (CREDIBLE-214: no silent skip).
+    pub fn dedupe_scan_gap_corpus(
+        repo_root: &Path,
+        proposed_title: &str,
+        top_n: usize,
+        min_score: f64,
+    ) -> DedupeCorpusResult {
+        let per_file_dir = repo_root.join("docs").join("gaps");
+        if !per_file_dir.is_dir() {
+            return DedupeCorpusResult::Unavailable(format!(
+                "{} not found",
+                per_file_dir.display()
+            ));
+        }
+        let dir_entries = match std::fs::read_dir(&per_file_dir) {
+            Ok(rd) => rd,
+            Err(e) => {
+                return DedupeCorpusResult::Unavailable(format!(
+                    "reading {}: {e}",
+                    per_file_dir.display()
+                ));
+            }
+        };
+        let mut files: Vec<_> = dir_entries
+            .flatten()
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s == "yaml")
+                    .unwrap_or(false)
+            })
+            .collect();
+        files.sort_by_key(|e| e.file_name());
+        if files.is_empty() {
+            return DedupeCorpusResult::Unavailable(format!(
+                "{} contains no .yaml files (empty or stale corpus)",
+                per_file_dir.display()
+            ));
+        }
+
+        let mut scored: Vec<DedupeCorpusMatch> = Vec::new();
+        let mut parse_errors = 0usize;
+        for entry in &files {
+            let content = match std::fs::read_to_string(entry.path()) {
+                Ok(c) => c,
+                Err(_) => {
+                    parse_errors += 1;
+                    continue;
+                }
+            };
+            // Per-file YAML is a single-element list: `- id: ...`
+            let parsed: std::result::Result<Vec<YamlGap>, _> = serde_yaml::from_str(&content);
+            let gaps = match parsed {
+                Ok(g) => g,
+                Err(_) => {
+                    parse_errors += 1;
+                    continue;
+                }
+            };
+            for g in gaps {
+                if g.title.trim().is_empty() {
+                    continue;
+                }
+                let score = Self::title_jaccard(proposed_title, &g.title);
+                if score >= min_score {
+                    scored.push(DedupeCorpusMatch {
+                        id: g.id.clone(),
+                        title: g.title.clone(),
+                        status: if g.status.trim().is_empty() {
+                            "unknown".to_string()
+                        } else {
+                            g.status.clone()
+                        },
+                        citation: format!("docs/gaps/{}.yaml", g.id),
+                        score,
+                    });
+                }
+            }
+        }
+
+        if parse_errors == files.len() {
+            return DedupeCorpusResult::Unavailable(format!(
+                "all {} files under {} failed to parse (stale/corrupt corpus)",
+                files.len(),
+                per_file_dir.display()
+            ));
+        }
+
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        scored.truncate(top_n);
+        DedupeCorpusResult::Ran(scored)
     }
 
     /// Get a single gap by ID.
@@ -7542,6 +7680,93 @@ meta:
         let n1: u32 = id1.split('-').next_back().unwrap().parse().unwrap();
         let n2: u32 = id2.split('-').next_back().unwrap().parse().unwrap();
         assert!(n2 > n1, "IDs must increment: {id1} then {id2}");
+    }
+
+    // ZERO-WASTE-045: corpus-wide dedupe check tests.
+
+    fn write_gap_yaml(gaps_dir: &Path, id: &str, title: &str, status: &str) {
+        std::fs::create_dir_all(gaps_dir).unwrap();
+        let content = format!(
+            "- id: {id}\n  domain: INFRA\n  title: \"{title}\"\n  status: {status}\n  priority: P2\n  effort: s\n"
+        );
+        std::fs::write(gaps_dir.join(format!("{id}.yaml")), content).unwrap();
+    }
+
+    #[test]
+    fn dedupe_scan_gap_corpus_surfaces_shipped_near_match() {
+        let dir = TempDir::new().unwrap();
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        // This gap SHIPPED long ago — outside any "recently closed" window,
+        // which is exactly the DOC-082 failure mode (re-filing something
+        // already shipped, not something open). AC#3.
+        write_gap_yaml(
+            &gaps_dir,
+            "CREDIBLE-217",
+            "CONFIG-organ cadence sweep",
+            "done",
+        );
+        write_gap_yaml(&gaps_dir, "INFRA-1", "unrelated alpha beta", "open");
+
+        let result = GapStore::dedupe_scan_gap_corpus(
+            dir.path(),
+            "CONFIG-organ cadence sweep audit",
+            5,
+            0.6,
+        );
+        match result {
+            DedupeCorpusResult::Ran(matches) => {
+                assert!(
+                    matches.iter().any(|m| m.id == "CREDIBLE-217"),
+                    "expected CREDIBLE-217 to surface as a near-match, got {matches:?}"
+                );
+                let m = matches.iter().find(|m| m.id == "CREDIBLE-217").unwrap();
+                assert_eq!(m.status, "done");
+                assert_eq!(m.citation, "docs/gaps/CREDIBLE-217.yaml");
+            }
+            other => panic!("expected Ran(_) with a match, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dedupe_scan_gap_corpus_no_match_for_unrelated_title() {
+        let dir = TempDir::new().unwrap();
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        write_gap_yaml(&gaps_dir, "INFRA-1", "unrelated alpha beta", "open");
+
+        // Without this gap's dedupe logic, every "near-identical" title check
+        // is a no-op (the function didn't exist) — this test only passes once
+        // dedupe_scan_gap_corpus actually filters by similarity.
+        let result = GapStore::dedupe_scan_gap_corpus(
+            dir.path(),
+            "totally different subject matter entirely",
+            5,
+            0.6,
+        );
+        match result {
+            DedupeCorpusResult::Ran(matches) => {
+                assert!(
+                    matches.is_empty(),
+                    "unrelated title should not surface a match: {matches:?}"
+                );
+            }
+            other => panic!("expected Ran(vec![]), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dedupe_scan_gap_corpus_unavailable_when_corpus_missing() {
+        let dir = TempDir::new().unwrap();
+        // No docs/gaps/ directory at all.
+        let result = GapStore::dedupe_scan_gap_corpus(dir.path(), "anything", 5, 0.6);
+        match result {
+            DedupeCorpusResult::Unavailable(reason) => {
+                assert!(
+                    !reason.is_empty(),
+                    "reason must be non-empty (AC#4: never silent)"
+                );
+            }
+            other => panic!("expected Unavailable(_) for a missing corpus, got {other:?}"),
+        }
     }
 
     #[test]

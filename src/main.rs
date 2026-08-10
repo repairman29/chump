@@ -9340,6 +9340,81 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // ── ZERO-WASTE-045: corpus-wide dedupe check (docs/gaps/*.yaml) ────
+                // INFRA-1149 above only sees `status='open'` rows plus a 30-day
+                // "recently closed" window in state.db — anything shipped more than
+                // a month ago is invisible to it. Three live receipts (2026-08-07)
+                // showed the real failure mode is re-filing something already
+                // SHIPPED. This scans the full per-gap YAML directory (open,
+                // closed, superseded, shipped — no recency window) and, on a
+                // near-match, requires an explicit `--force-duplicate` to proceed —
+                // the choice is then recorded in the new gap's notes so a later
+                // audit can see the dupe was considered, not missed (AC#2).
+                //
+                // Degrades loudly, never silently (AC#4, cf CREDIBLE-214): if the
+                // corpus can't be read, reserve still works but says so.
+                let dedupe_check_disabled = args.iter().any(|a| a == "--no-dedupe-check")
+                    || std::env::var("CHUMP_GAP_RESERVE_NO_DEDUPE_CHECK").as_deref() == Ok("1");
+                let mut corpus_dupe_notice: Option<String> = None;
+                if dedupe_check_disabled {
+                    if !quiet {
+                        eprintln!("[reserve] ZERO-WASTE-045: corpus dedupe check skipped via --no-dedupe-check");
+                    }
+                } else {
+                    let dedupe_min_score: f64 = std::env::var("CHUMP_GAP_RESERVE_DEDUPE_MIN_SCORE")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0.6);
+                    match gap_store::GapStore::dedupe_scan_gap_corpus(
+                        &worktree_root,
+                        &title,
+                        5,
+                        dedupe_min_score,
+                    ) {
+                        gap_store::DedupeCorpusResult::Unavailable(reason) => {
+                            // AC#4: never a silent skip.
+                            eprintln!(
+                                "[reserve] ZERO-WASTE-045: corpus dedupe check DID NOT RUN — {reason}"
+                            );
+                        }
+                        gap_store::DedupeCorpusResult::Ran(matches) if !matches.is_empty() => {
+                            eprintln!();
+                            eprintln!(
+                                "[reserve] ZERO-WASTE-045: corpus dedupe check — proposed: \"{title}\""
+                            );
+                            for m in &matches {
+                                eprintln!(
+                                    "  {:.2}  {} ({}) — \"{}\" [{}]",
+                                    m.score, m.id, m.status, m.title, m.citation
+                                );
+                            }
+                            let summary = matches
+                                .iter()
+                                .map(|m| format!("{} ({})", m.id, m.status))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            if force_duplicate {
+                                eprintln!(
+                                    "[reserve] proceeding via --force-duplicate; recording dupe-considered note."
+                                );
+                                corpus_dupe_notice = Some(format!(
+                                    "[ZERO-WASTE-045] dedupe check flagged possible duplicate(s): {summary} — proceeded via --force-duplicate."
+                                ));
+                            } else {
+                                eprintln!();
+                                eprintln!(
+                                    "[reserve] BLOCK: near-match(es) found in docs/gaps/ corpus (score ≥ {dedupe_min_score:.2})."
+                                );
+                                eprintln!(
+                                    "Re-run with --force-duplicate to proceed anyway (recorded in gap notes), or --no-dedupe-check to skip this check."
+                                );
+                                std::process::exit(1);
+                            }
+                        }
+                        gap_store::DedupeCorpusResult::Ran(_) => {} // ran, no near-matches
+                    }
+                }
+
                 // ── INFRA-1152: pillar-balance guard ─────────────────────────────────
                 // Parse proposed pillar from title prefix, then check current
                 // open-pickable distribution and warn/block overweighted pillars.
@@ -9711,6 +9786,16 @@ async fn main() -> Result<()> {
                     Ok(id) => {
                         if !quiet {
                             eprintln!(" done {id}");
+                        }
+
+                        // ZERO-WASTE-045: record that a corpus near-match was
+                        // considered (not missed) when --force-duplicate was used.
+                        if let Some(ref note) = corpus_dupe_notice {
+                            if let Err(e) = store.append_notes_for_gap(&id, note) {
+                                if !quiet {
+                                    eprintln!("warning: failed to record dedupe note: {e}");
+                                }
+                            }
                         }
 
                         // INFRA-756: set acceptance_criteria if not empty (default obs-ACs or custom)
