@@ -2946,6 +2946,57 @@ events:
     expected_min_per_day: 0
     status: stable
 
+  - kind: checkout_synced
+    effect_metric: self
+    emitter: scripts/ops/checkout-sync.sh (MISSION-027)
+    trigger: >
+      The running checkout (the one the fleet's scripts/daemons/picker execute
+      out of) fast-forwarded to a newer origin/main. Complements
+      binary_auto_deployed — that event covers the compiled binary,
+      this one covers the checkout's script/config state which
+      MISSION-012's auto-deploy never touched.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, old_sha, new_sha, stash_pop_ok]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: checkout_sync_failed
+    effect_metric: self
+    emitter: scripts/ops/checkout-sync.sh (MISSION-027)
+    trigger: >
+      checkout-sync.sh could not fast-forward the running checkout to
+      origin/main — either the stash of legit local edits failed, or the
+      merge --ff-only itself failed (diverged history). The checkout is left
+      at its prior SHA rather than forced.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: checkout_sync_dirty_tree_protected
+    effect_metric: self
+    emitter: scripts/ops/checkout-sync.sh (MISSION-027)
+    trigger: >
+      checkout-sync.sh found legit local edits (beyond the disposable
+      runtime-state allowlist) in the running checkout and stashed them
+      before fast-forwarding, rather than discarding them.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, stash_msg]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: checkout_sync_skipped
+    effect_metric: self
+    emitter: scripts/ops/checkout-sync.sh (MISSION-027)
+    trigger: >
+      checkout-sync.sh ran but had nothing to do this cycle — already
+      current with origin/main, not on the main branch, or a fetch failure
+      (offline).
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, reason]
+    expected_min_per_day: 0
+    status: stable
+
   - kind: tool_deployed_stage
     effect_metric: self
     emitter: scripts/ops/deploy-tool.sh (INFRA-3502)
