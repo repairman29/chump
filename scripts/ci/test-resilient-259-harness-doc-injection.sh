@@ -79,6 +79,37 @@ else
     fail "AGENTS.md missing the chump voice friction-reporting pointer"
 fi
 
+# ── 4. AGENTS.md defines the 4 pillars instead of a dangling "below" ref ──
+if grep -q '^## The 4 pillars' "$AGENTS_MD"; then
+    ok "AGENTS.md defines the 4 pillars (Credible/Effective/Resilient/Zero-Waste)"
+else
+    fail "AGENTS.md still lacks a 4-pillars definition section"
+fi
+
+for pillar in Credible Effective Resilient Zero-Waste; do
+    if grep -q "\*\*$pillar\*\*" "$AGENTS_MD"; then
+        ok "AGENTS.md pillar section names $pillar"
+    else
+        fail "AGENTS.md pillar section missing $pillar"
+    fi
+done
+
+# ── 5. AGENTS.md carries the harness-agnostic ship-discipline hard rules,
+#      not just CLAUDE.md (the Claude-Code-only overlay per its own header) ──
+if grep -q '^## Ship discipline' "$AGENTS_MD"; then
+    ok "AGENTS.md defines a Ship discipline hard-rules section"
+else
+    fail "AGENTS.md missing the Ship discipline hard-rules section"
+fi
+
+for rule in 'Never push directly to' 'Auto-merge is the default' 'no-verify' 'wip-snapshot'; do
+    if grep -qi "$rule" "$AGENTS_MD"; then
+        ok "AGENTS.md Ship discipline mentions: $rule"
+    else
+        fail "AGENTS.md Ship discipline missing: $rule"
+    fi
+done
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]
