@@ -5202,22 +5202,47 @@ async fn main() -> Result<()> {
             .cloned()
             .unwrap_or_default();
 
+        let repo_root = repo_path::repo_root();
         let work = match backend.as_str() {
-            "interactive" | "claude" /* alias */ => dispatch::WorkBackend::Interactive,
-            "headless" => dispatch::WorkBackend::Headless {
-                model: model.clone(),
-                prompt: prompt.clone(),
-            },
+            "interactive" => dispatch::WorkBackend::Interactive,
+            // EFFECTIVE: `--backend claude` is a historical alias for `interactive` — it
+            // does NOT run a model (the caller must have already made the edits). On a
+            // fresh node this silently no-op'd the work (found 2026-08-09). Keep the
+            // behavior (test-pr-cost-telemetry.sh relies on it) but WARN loudly and point
+            // at headless, so the trap isn't silent.
+            "claude" => {
+                eprintln!(
+                    "[dispatch] note: --backend claude == interactive — dispatch does NOT run the \
+                     model, so no code gets written unless the caller already made the changes. To \
+                     have chump write the code with Claude, use: --backend headless"
+                );
+                dispatch::WorkBackend::Interactive
+            }
+            "headless" => {
+                // EFFECTIVE: auto-build the work prompt from the gap when --prompt is
+                // omitted, so `chump dispatch <GAP> --backend headless` works with no
+                // hand-written prompt (parity with `chump --execute-gap`).
+                let work_prompt = if prompt.trim().is_empty() {
+                    eprintln!(
+                        "[dispatch] no --prompt given; auto-building the work prompt from gap {gap_id}"
+                    );
+                    execute_gap::build_execute_gap_prompt(&gap_id, &repo_root)
+                } else {
+                    prompt.clone()
+                };
+                dispatch::WorkBackend::Headless {
+                    model: model.clone(),
+                    prompt: work_prompt,
+                }
+            }
             "exec-gap" | "chump-local" /* alias */ => dispatch::WorkBackend::ExecGap,
             other => {
                 eprintln!(
-                    "chump dispatch: unknown --backend {other:?}; expected one of: interactive, headless, exec-gap"
+                    "chump dispatch: unknown --backend {other:?}; expected one of: interactive, claude, headless, exec-gap"
                 );
                 std::process::exit(2);
             }
         };
-
-        let repo_root = repo_path::repo_root();
         let opts = dispatch::DispatchOptions {
             gap_id: &gap_id,
             work,
