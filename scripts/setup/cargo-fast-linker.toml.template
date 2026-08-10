@@ -1,0 +1,26 @@
+# cargo-fast-linker.toml.template — EFFECTIVE-426
+#
+# Reference copy of the fast-linker section that
+# scripts/setup/install-fast-linker.sh appends to the gitignored
+# .cargo/config.toml. .cargo/config.toml itself can't be committed (paths
+# and installed-linker presence vary per machine — see .gitignore line 172),
+# so THIS file is the propagating, version-controlled source of truth: run
+# the install script (directly, or via provision-chumpd-host.sh on a fresh
+# fleet host) to materialize it into .cargo/config.toml for your host triple.
+#
+# Linux (mold — installed via apt-get install mold):
+#   [target.x86_64-unknown-linux-gnu]
+#   rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+#
+# macOS Apple Silicon (lld — installed via `brew install llvm`):
+#   [target.aarch64-apple-darwin]
+#   rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+#
+# macOS Intel (lld — installed via `brew install llvm`):
+#   [target.x86_64-apple-darwin]
+#   rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+#
+# Measured warm incremental rebuild (touch src/main.rs, `cargo build --bin
+# chump`) on closetjunky (Linux, x86_64-unknown-linux-gnu, gcc 15, mold
+# 2.40.4): ~49.6s with the default bfd linker -> see EFFECTIVE-426 PR
+# description for the mold delta measured on this host.
