@@ -644,6 +644,38 @@ pub async fn register_worker_rpc_handlers(
     Ok(())
 }
 
+/// Like [`register_worker_rpc_handlers`] but also registers this worker's
+/// [`crate::presence::WorkerPresence`] record in the `chump_workers` NATS-KV
+/// bucket (CREDIBLE-246 / CREDIBLE-099 slice) and refreshes it every 60s
+/// alongside the existing ambient heartbeat, so a worker's presence — not
+/// just its RPC handlers — is discoverable in NATS.
+pub async fn register_worker_rpc_handlers_with_presence(
+    nats: &async_nats::Client,
+    session_id: &str,
+    presence_kv: &async_nats::jetstream::kv::Store,
+) -> Result<(), RpcError> {
+    register_worker_rpc_handlers(nats, session_id).await?;
+
+    let presence = crate::presence::build_presence(session_id, None);
+    if let Err(e) = crate::presence::register_presence(presence_kv, &presence).await {
+        eprintln!("[presence] register failed (non-fatal): {}", e);
+    }
+
+    let kv_clone = presence_kv.clone();
+    let session_clone = session_id.to_string();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            if let Err(e) = crate::presence::refresh_presence(&kv_clone, &session_clone).await {
+                eprintln!("[presence] heartbeat refresh failed (non-fatal): {}", e);
+            }
+        }
+    });
+
+    Ok(())
+}
+
 // ── Ambient helper ───────────────────────────────────────────────────────────
 
 fn append_ambient(line: &str) -> std::io::Result<()> {

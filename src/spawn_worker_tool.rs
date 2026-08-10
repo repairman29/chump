@@ -202,18 +202,40 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
             "spawn_worker: created ephemeral worktree"
         );
 
+        // INFRA-1588: Register worker RPC handlers if NATS is available.
+        // CREDIBLE-246 (CREDIBLE-099 slice): also register a presence
+        // record in the `chump_workers` NATS-KV bucket so this worker is
+        // discoverable — not just its RPC endpoints. Declared outside the
+        // `result` block so the terminal-mark below (after `.await`) can
+        // still see them.
+        let session_id = format!("worker-{}", uuid);
+        let mut presence_kv: Option<async_nats::jetstream::kv::Store> = None;
+
         // Run the agent in the isolated worktree
         let result = async {
             let provider = provider_cascade::global_provider();
             let mut registry = ToolRegistry::new();
             tool_inventory::register_worker_tools(&mut registry);
 
-            // INFRA-1588: Register worker RPC handlers if NATS is available.
-            let session_id = format!("worker-{}", uuid);
             if let Ok(nats_url) = std::env::var("NATS_URL") {
                 if let Ok(nats) = async_nats::connect(nats_url).await {
-                    let _ =
-                        chump_coord::rpc::register_worker_rpc_handlers(&nats, &session_id).await;
+                    let js = async_nats::jetstream::new(nats.clone());
+                    match chump_coord::presence::init_workers_bucket(&js).await {
+                        Ok(kv) => {
+                            let _ = chump_coord::rpc::register_worker_rpc_handlers_with_presence(
+                                &nats,
+                                &session_id,
+                                &kv,
+                            )
+                            .await;
+                            presence_kv = Some(kv);
+                        }
+                        Err(_) => {
+                            let _ =
+                                chump_coord::rpc::register_worker_rpc_handlers(&nats, &session_id)
+                                    .await;
+                        }
+                    }
                 }
             }
 
@@ -302,6 +324,12 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
         .await;
 
         repo_path::clear_working_repo();
+
+        // CREDIBLE-246: mark this worker's presence record Terminal now that
+        // it has shipped its patch (or exited via error, handled below).
+        if let Some(kv) = &presence_kv {
+            let _ = chump_coord::presence::mark_terminal(kv, &session_id).await;
+        }
 
         let (success, patch, files_changed, test_results, summary) = result?;
 
