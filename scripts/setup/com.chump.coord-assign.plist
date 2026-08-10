@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.coord-assign.plist — RESILIENT-271 (FLEET-034 / INFRA-2476)
+
+  Launchd user agent that keeps the `chump-coord assign` push-routing
+  daemon running at all times. It watches state.db for open+unclaimed gaps
+  and publishes WorkEnvelopes to chump.work.<priority>.<class>.<machine> on
+  NATS, which is what lets `preferred_machine` actually steer a gap to a
+  chosen runner (host-targeted dispatch). Pairs with com.chump.mesh-worker
+  (the consumer half) — see scripts/setup/com.chump.mesh-worker.plist.
+
+  Fail-open: if NATS is unreachable, `chump-coord assign` logs and exits 0
+  immediately; the pull fleet (scripts/dispatch/worker.sh) handles
+  everything with no daemon dependency. ThrottleInterval backs off restarts
+  so an unreachable broker doesn't tight-loop launchd.
+
+  Install:   scripts/setup/install-coord-assign-launchd.sh
+  Uninstall: scripts/setup/install-coord-assign-launchd.sh (pass "uninstall")
+  Status:    launchctl print gui/$(id -u)/com.chump.coord-assign
+  Logs:      ~/Library/Logs/Chump/coord-assign.out.log
+
+  Tunable env vars:
+    CHUMP_NATS_URL   broker (default nats://127.0.0.1:4222)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.coord-assign</string>
+
+    <!-- Run immediately on load and keep running if it exits. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Back off 10s on crash/NATS-unreachable exit rather than tight-loop. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>COORD_BIN_PLACEHOLDER</string>
+        <string>assign</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>REPO_ROOT_PLACEHOLDER</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:CARGO_BIN_PLACEHOLDER:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>HOME_PLACEHOLDER</string>
+        <key>CHUMP_NATS_URL</key>
+        <string>nats://127.0.0.1:4222</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>LOG_DIR_PLACEHOLDER/coord-assign.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>LOG_DIR_PLACEHOLDER/coord-assign.err.log</string>
+</dict>
+</plist>
