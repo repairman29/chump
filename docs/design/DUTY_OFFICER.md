@@ -46,6 +46,8 @@ Response is a deliberate **mix, routed by how deterministic the fix is.** Not ev
 
 The load-bearing artifact. A single machine-readable registry maps every known health **signal** to its **tier** and **action**. This is what turns "we have playbooks" into "the playbooks run."
 
+**Shipped (slice 1 + slice 2 skeleton):** [`docs/process/PLAYBOOK_REGISTRY.yaml`](../process/PLAYBOOK_REGISTRY.yaml) is the real registry (13 signals across all 3 tiers, seeded from this session's evidence table in §1) and [`scripts/coord/duty-officer-loop.sh`](../../scripts/coord/duty-officer-loop.sh) is the standing-loop skeleton that reads it — `tick` scans recent ambient signals, `route <signal>` routes one signal T1→T2→T3, `heartbeat` proves liveness. T1 routes to the real auto-heal scripts (e.g. `disk-critical-reactor.sh`); T2 runs the reality-check gate before confirming a signal is real; T3 pages through the existing quiet gate (`scripts/coord/operator-escalation-registry.txt`) — never a second escalation path. Smoke-tested in `scripts/ci/test-duty-officer-loop.sh`.
+
 ```yaml
 # docs/process/PLAYBOOK_REGISTRY.yaml (proposed)
 - signal: disk_critical                      # ambient kind OR a derived metric
