@@ -118,6 +118,18 @@ heal() {
   log "replaced; new inode=$(stat -c '%i' "$bin" 2>/dev/null || stat -f '%i' "$bin" 2>/dev/null || echo ?)"
 }
 
+# ZERO-WASTE-052: heal()'s tmp copy (mktemp -t chump-doctor-fresh-XXXXXX) is
+# meant to be short-lived — mv'd into place within the same heal() call. If
+# the process is killed/times out between `cp` and the final `mv` (observed:
+# 68 orphans, 19GB, oldest 19 days) the tmp file leaks forever since nothing
+# else ever revisits it. Sweep anything older than 1h on every invocation.
+reap_stale_doctor_fresh_tmp() {
+  local tmpdir="${TMPDIR:-/tmp}"
+  find "$tmpdir" -maxdepth 1 -name 'chump-doctor-fresh-*' -mmin +60 -print -delete 2>/dev/null \
+    | while read -r f; do log "reaped stale heal-tmp: $f"; done
+  return 0
+}
+
 reap_zombies() {
   local zombies
   # grep exits 1 when no matches; || true prevents set -e from aborting (INFRA-585)
@@ -326,6 +338,7 @@ main() {
     if probe "$bin"; then
       log "$bin probe OK in <${TIMEOUT}s — no heal needed"
       reap_zombies
+      reap_stale_doctor_fresh_tmp
       exit 0
     fi
     log "$bin probe timed out (>${TIMEOUT}s) — proceeding to heal"
@@ -339,6 +352,7 @@ main() {
   if probe "$bin"; then
     log "post-heal probe OK — chump is responsive again"
     reap_zombies
+    reap_stale_doctor_fresh_tmp
     exit 0
   fi
 
@@ -350,4 +364,9 @@ main() {
   exit 1
 }
 
-main "$@"
+# ZERO-WASTE-052: guard so scripts/ci/test-chump-doctor-fresh-reap.sh can
+# source this file for reap_stale_doctor_fresh_tmp() without triggering a
+# real heal/probe cycle.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
