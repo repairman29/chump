@@ -9141,3 +9141,15 @@ events:
       CHUMP_ALLOW_STALE_DESTRUCTIVE).
     consumers: [ops-audit, consensus-bypass-leaderboard]
     fields_required: [ts, kind, cmd, gap]
+
+  - kind: vision_intake
+    effect_metric: self
+    emitter: src/vision_intake.rs (INFRA-3480)
+    trigger: >
+      `chump intake "<plain-language problem>"` ran one conversational
+      intake turn through VisionIntakeContract (crates/chump-handoff). The
+      payload is a verbatim user problem statement, so the event is tagged
+      data_tier=third_party_content per the privacy-tier data-handling
+      contract; the LLM call itself is pinned to PrivacyTier::Safe.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, data_tier]

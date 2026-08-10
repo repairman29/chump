@@ -1919,3 +1919,372 @@ mod external_repo_bar_aware_tests {
         );
     }
 }
+
+// ── (g) VisionIntakeContract ───────────────────────────────────────────────
+//
+// INFRA-3480: CREATE-mode conversational intake. Sits downstream of the
+// front-door router (src/front_door.rs, EFFECTIVE-330) — that layer decides
+// CREATE vs FIX vs UNSURE; this contract owns turning a free-text CREATE
+// problem statement into a plain-language restatement + clarifying questions
+// + proposed definition-of-done. The golden-transcript guarantee (no software
+// jargon ever reaches the user) is enforced structurally in `Output::validate`,
+// not left to prompt discipline alone.
+
+/// Case-insensitive, word-boundary software-jargon banlist. Any of these
+/// leaking into `restatement`, a clarifying question, or `proposed_dod` is a
+/// [`ValidationError`] — see [`VisionIntakeOutput::validate`].
+const JARGON_BANLIST: &[&str] = &[
+    "pull request",
+    "pr",
+    "branch",
+    "ci",
+    "test",
+    "deploy",
+    "commit",
+    "merge",
+    "repository",
+    "repo",
+    "gap",
+];
+
+/// True if `term` appears in `haystack` on a word boundary (case-insensitive).
+///
+/// A plain substring check would reject "prepare" for containing "pr" or
+/// "greeting" for containing "gap"-adjacent letters; this walks each match of
+/// `term` and only counts it when the characters immediately before/after are
+/// not alphanumeric (or the match sits at a string edge).
+fn contains_banned_term(haystack: &str, term: &str) -> bool {
+    let text = haystack.to_lowercase();
+    let term = term.to_lowercase();
+    let hbytes = text.as_bytes();
+    if term.is_empty() || hbytes.len() < term.len() {
+        return false;
+    }
+    let mut search_from = 0usize;
+    while let Some(rel) = text[search_from..].find(&term) {
+        let start = search_from + rel;
+        let end = start + term.len();
+        let before_ok = start == 0 || !hbytes[start - 1].is_ascii_alphanumeric();
+        let after_ok = end >= hbytes.len() || !hbytes[end].is_ascii_alphanumeric();
+        if before_ok && after_ok {
+            return true;
+        }
+        search_from = start + 1;
+    }
+    false
+}
+
+/// Scan every banlist term against `haystack`; returns the first hit (for the
+/// `ValidationError` message) or `None` when clean.
+fn first_jargon_hit(haystack: &str) -> Option<&'static str> {
+    JARGON_BANLIST
+        .iter()
+        .find(|term| contains_banned_term(haystack, term))
+        .copied()
+}
+
+/// Input to the vision-intake subagent: the user's free-text problem
+/// statement plus any prior clarifying answers already gathered (empty on the
+/// first turn).
+#[derive(Debug, Clone, Serialize)]
+pub struct VisionIntakeInput {
+    /// The user's problem statement, verbatim, in their own words.
+    pub problem: String,
+    /// Answers to previously asked clarifying questions, in order asked.
+    /// Empty on the first turn of a conversation.
+    pub prior_answers: Vec<String>,
+}
+
+/// Output from vision-intake: a plain-language restatement of the problem,
+/// 1-3 clarifying questions, and a plain-language proposed definition-of-done.
+///
+/// None of the three fields may contain software-vocabulary terms — see
+/// [`JARGON_BANLIST`]. This is the load-bearing guarantee of INFRA-3480: a
+/// non-technical founder never sees "PR", "branch", "CI", etc. in this flow.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct VisionIntakeOutput {
+    /// Plain-language restatement of the user's problem, proving it was understood.
+    pub restatement: String,
+    /// 1-3 plain-language clarifying questions.
+    pub clarifying_questions: Vec<String>,
+    /// Plain-language proposed definition-of-done for the resulting outcome.
+    pub proposed_dod: String,
+}
+
+impl Validate for VisionIntakeOutput {
+    fn validate(&self) -> Result<(), ValidationError> {
+        if self.restatement.trim().is_empty() {
+            return Err(ValidationError::new("restatement cannot be empty"));
+        }
+        if self.clarifying_questions.is_empty() || self.clarifying_questions.len() > 3 {
+            return Err(ValidationError::new(format!(
+                "clarifying_questions must contain 1-3 entries, got {}",
+                self.clarifying_questions.len()
+            )));
+        }
+        for (i, q) in self.clarifying_questions.iter().enumerate() {
+            if q.trim().is_empty() {
+                return Err(ValidationError::new(format!(
+                    "clarifying_questions[{i}] cannot be empty"
+                )));
+            }
+        }
+        if self.proposed_dod.trim().is_empty() {
+            return Err(ValidationError::new("proposed_dod cannot be empty"));
+        }
+
+        if let Some(term) = first_jargon_hit(&self.restatement) {
+            return Err(ValidationError::new(format!(
+                "restatement leaks software jargon term {term:?} — vision intake must stay in plain language"
+            )));
+        }
+        for (i, q) in self.clarifying_questions.iter().enumerate() {
+            if let Some(term) = first_jargon_hit(q) {
+                return Err(ValidationError::new(format!(
+                    "clarifying_questions[{i}] leaks software jargon term {term:?} — vision intake must stay in plain language"
+                )));
+            }
+        }
+        if let Some(term) = first_jargon_hit(&self.proposed_dod) {
+            return Err(ValidationError::new(format!(
+                "proposed_dod leaks software jargon term {term:?} — vision intake must stay in plain language"
+            )));
+        }
+
+        Ok(())
+    }
+}
+
+/// Subagent reads a free-text CREATE-mode problem statement and reflects back
+/// a plain-language restatement + 1-3 clarifying questions + a proposed
+/// definition-of-done. Used by `chump intake "<text>"` (src/vision_intake.rs).
+pub struct VisionIntakeContract;
+
+impl HandoffContract for VisionIntakeContract {
+    type Input = VisionIntakeInput;
+    type Output = VisionIntakeOutput;
+
+    fn name() -> &'static str {
+        "VisionIntakeContract"
+    }
+
+    fn prompt(input: &Self::Input) -> String {
+        let prior_str = if input.prior_answers.is_empty() {
+            "(none yet — this is the first turn)".to_string()
+        } else {
+            input
+                .prior_answers
+                .iter()
+                .enumerate()
+                .map(|(i, a)| format!("{}. {a}", i + 1))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        format!(
+            r#"You are a friendly intake assistant talking to someone who wants to
+describe a problem they want solved. They are NOT a software engineer — they
+may never have written code. Your job is to make them feel heard and to
+gather just enough detail to scope the work, entirely in plain language.
+
+Problem statement (their words):
+{problem}
+
+Prior answers already gathered:
+{prior_str}
+
+Instructions:
+1. Write a `restatement` — 1-3 sentences reflecting their problem back in
+   plain language, proving you understood it.
+2. Write 1 to 3 `clarifying_questions` — plain-language questions that would
+   help scope the work. Ask about outcomes and constraints, not implementation.
+3. Write a `proposed_dod` — a plain-language description of what "done" would
+   look like to the person asking, from their point of view.
+
+HARD RULE: none of the three fields may use software-engineering vocabulary.
+Never write any of these words or phrases, in any form: "PR" / "pull request",
+"branch", "CI", "test", "deploy", "commit", "merge", "repo" / "repository",
+"gap". Describe outcomes the way you'd explain them to a friend, not a
+developer. Violating this rule will cause your response to be rejected.
+
+Emit a SINGLE fenced JSON block (no other JSON, no commentary outside the block):
+
+```json
+{{
+  "restatement": "<1-3 plain-language sentences>",
+  "clarifying_questions": ["<question 1>", "<question 2 (optional)>", "<question 3 (optional)>"],
+  "proposed_dod": "<plain-language description of done>"
+}}
+```
+"#,
+            problem = input.problem,
+            prior_str = prior_str,
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests_vision_intake {
+    use super::*;
+    use crate::transport::StubTransport;
+
+    fn good_output() -> VisionIntakeOutput {
+        VisionIntakeOutput {
+            restatement: "You want a simple way for customers to book a time slot online \
+                          without calling your office."
+                .into(),
+            clarifying_questions: vec![
+                "How many time slots do you usually offer in a day?".into(),
+                "Should customers be able to cancel a booking themselves?".into(),
+            ],
+            proposed_dod: "A customer can pick an open time, get a confirmation, and you can \
+                           see all upcoming bookings in one place."
+                .into(),
+        }
+    }
+
+    #[test]
+    fn accepts_clean_output() {
+        assert!(good_output().validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_empty_restatement() {
+        let mut o = good_output();
+        o.restatement = "   ".into();
+        let err = o.validate().unwrap_err();
+        assert!(err.message().contains("restatement cannot be empty"));
+    }
+
+    #[test]
+    fn rejects_zero_clarifying_questions() {
+        let mut o = good_output();
+        o.clarifying_questions = vec![];
+        let err = o.validate().unwrap_err();
+        assert!(err.message().contains("1-3 entries"));
+    }
+
+    #[test]
+    fn rejects_too_many_clarifying_questions() {
+        let mut o = good_output();
+        o.clarifying_questions = vec!["a".into(), "b".into(), "c".into(), "d".into()];
+        let err = o.validate().unwrap_err();
+        assert!(err.message().contains("1-3 entries"));
+    }
+
+    #[test]
+    fn rejects_empty_dod() {
+        let mut o = good_output();
+        o.proposed_dod = "".into();
+        let err = o.validate().unwrap_err();
+        assert!(err.message().contains("proposed_dod cannot be empty"));
+    }
+
+    /// AC #2 — a jargon leak anywhere is a hard `ValidationError`, proven by
+    /// feeding jargon-laden output through `validate()` directly.
+    #[test]
+    fn vision_intake_rejects_jargon_leak() {
+        let mut o = good_output();
+        o.restatement = "We'll open a PR against your repo once the branch is ready.".into();
+        let err = o.validate().unwrap_err();
+        assert!(
+            err.message().contains("software jargon"),
+            "expected jargon rejection, got: {}",
+            err.message()
+        );
+    }
+
+    #[test]
+    fn rejects_jargon_in_clarifying_question() {
+        let mut o = good_output();
+        o.clarifying_questions = vec!["Should we run the test suite before we merge?".into()];
+        let err = o.validate().unwrap_err();
+        assert!(err.message().contains("clarifying_questions[0]"));
+    }
+
+    #[test]
+    fn rejects_jargon_in_dod() {
+        let mut o = good_output();
+        o.proposed_dod = "The commit is merged and deployed.".into();
+        let err = o.validate().unwrap_err();
+        assert!(err.message().contains("proposed_dod"));
+    }
+
+    #[test]
+    fn word_boundary_does_not_false_positive_on_substrings() {
+        // "prepare" contains "pr", "greeting" is nowhere near "gap" but this
+        // guards the boundary logic explicitly for a "gap"-adjacent word.
+        let mut o = good_output();
+        o.restatement = "We will prepare a gapless schedule so nothing overlaps.".into();
+        // "gapless" contains "gap" as a substring but not on a word boundary.
+        assert!(o.validate().is_ok());
+    }
+
+    /// AC #3 — golden-transcript: drive 3 vague, non-technical visions through
+    /// the full dispatch pipeline via `StubTransport` and assert the produced
+    /// restatement + questions + DoD contain zero banlist terms.
+    #[tokio::test]
+    async fn golden_transcript_no_jargon_leak() {
+        let clean_reply = r#"Here you go:
+```json
+{
+  "restatement": "You want your regular customers to get a friendly reminder before their membership runs out.",
+  "clarifying_questions": ["How many days before it runs out should the reminder go out?", "Should the reminder go by text, email, or both?"],
+  "proposed_dod": "Every customer gets a heads-up message a few days before their membership ends, automatically."
+}
+```"#;
+        let visions = [
+            "People keep forgetting to renew their gym membership and we lose them.",
+            "I run a small bakery and I want customers to be able to order a custom cake without emailing back and forth ten times.",
+            "My team keeps double-booking the same meeting room and it's causing fights.",
+        ];
+        for vision in visions {
+            let stub = StubTransport::new(clean_reply);
+            let input = VisionIntakeInput {
+                problem: vision.to_string(),
+                prior_answers: vec![],
+            };
+            let output = crate::dispatch::<VisionIntakeContract>(&stub, "test-agent", input)
+                .await
+                .unwrap_or_else(|e| {
+                    panic!("golden transcript dispatch failed for {vision:?}: {e}")
+                });
+
+            for term in JARGON_BANLIST {
+                assert!(
+                    !contains_banned_term(&output.restatement, term),
+                    "restatement leaked jargon {term:?} for vision {vision:?}"
+                );
+                for q in &output.clarifying_questions {
+                    assert!(
+                        !contains_banned_term(q, term),
+                        "clarifying question leaked jargon {term:?} for vision {vision:?}"
+                    );
+                }
+                assert!(
+                    !contains_banned_term(&output.proposed_dod, term),
+                    "proposed_dod leaked jargon {term:?} for vision {vision:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn prompt_interpolates_problem() {
+        let input = VisionIntakeInput {
+            problem: "Customers can't find our opening hours.".into(),
+            prior_answers: vec![],
+        };
+        let p = VisionIntakeContract::prompt(&input);
+        assert!(p.contains(&input.problem));
+    }
+
+    #[test]
+    fn prompt_bans_jargon_explicitly() {
+        let input = VisionIntakeInput {
+            problem: "test".into(),
+            prior_answers: vec![],
+        };
+        let p = VisionIntakeContract::prompt(&input).to_lowercase();
+        assert!(p.contains("pull request") && p.contains("branch") && p.contains("commit"));
+    }
+}

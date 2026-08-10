@@ -99,6 +99,10 @@ pub use contracts::{
     RoadmapPriority,
     SubGap,
     TriggerReason,
+    // (g) VisionIntakeContract
+    VisionIntakeContract,
+    VisionIntakeInput,
+    VisionIntakeOutput,
 };
 
 /// Model tier hint for the dispatched subagent.
