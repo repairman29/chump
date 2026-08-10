@@ -5135,6 +5135,16 @@ events:
       failing silently is worse than no safety net.
     consumers: [fleet-brief, disk-health-monitor, ops-audit]
     fields_required: [ts, kind, cap_mb, rc, error]
+  - kind: cargo_sweep_gc_time_pruned
+    effect_metric: disk_free_gb
+    emitter: scripts/ops/cargo-sweep-gc.sh (RESILIENT-239)
+    trigger: >
+      Age-based prune pass (cargo-sweep --time <days> --recursive) ran after the
+      maxsize LRU pass, dropping fingerprint/artifact entries untouched in
+      CHUMP_CARGO_SWEEP_TIME_DAYS days. Bounds file COUNT (the per-invocation
+      stat-walk tax) rather than just total bytes, which --maxsize alone does not.
+    consumers: [fleet-brief, disk-health-monitor, ops-audit]
+    fields_required: [ts, kind, time_days, dry_run, result, rc]
 
   # ── INFRA-1237: emit-without-register reconciliation (2026-05-14) ────────
   # 19 kinds that were fired in production but missing from the registry.

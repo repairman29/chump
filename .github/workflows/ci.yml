@@ -49,6 +49,12 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # RESILIENT-239: CI runners are fresh worktrees per job — an incremental
+  # cache from a run that ends when the job does buys nothing but I/O tax
+  # (extra fingerprint files to stat every invocation). Disable it here;
+  # interactive/local checkouts keep incremental on (worker.sh sets its own
+  # default separately for fleet workers sharing chump-shared-target).
+  CARGO_INCREMENTAL: "0"
   # INFRA-1395: grace-window flag — set to '1' by required-check-monitor.sh
   # workflow_dispatch for PRs opened before grace_until. Jobs guarded with
   # `if: env.SKIP_GRACE_CHECKS != '1' || github.event_name != 'workflow_dispatch'`

@@ -18,10 +18,12 @@
 # Env:
 #   CHUMP_REPO                 repo root (default /Users/jeffadkins/Projects/Chump)
 #   CHUMP_CARGO_TARGET_CAP_MB  hard cap in MB (default 20000 = 20 GB)
+#   CHUMP_CARGO_SWEEP_TIME_DAYS  age-based prune horizon in days (default 14; RESILIENT-239)
 set -uo pipefail
 
 REPO_ROOT="${CHUMP_REPO:-/Users/jeffadkins/Projects/Chump}"
 CAP_MB="${CHUMP_CARGO_TARGET_CAP_MB:-20000}"
+TIME_DAYS="${CHUMP_CARGO_SWEEP_TIME_DAYS:-14}"
 AMB="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 DRY=""; [[ "${1:-}" == "--dry-run" ]] && DRY="--dry-run"
 
@@ -31,6 +33,7 @@ emit() { printf '{"ts":"%s",%s}\n' "$(ts)" "$1" >> "$AMB" 2>/dev/null || true; }
 #   "kind":"cargo_sweep_gc_ran"
 #   "kind":"cargo_sweep_gc_skipped"
 #   "kind":"cargo_sweep_gc_errored"
+#   "kind":"cargo_sweep_gc_time_pruned"
 
 # ZERO-WASTE-054: locate the REAL cargo. On this host cargo is $HOME/bin/cargo;
 # ~/.cargo/bin/cargo is only a symlink to the rustup shim, which resolves under
@@ -75,4 +78,17 @@ cleaned="${cleaned:-nothing to clean}"
 
 echo "[cargo-sweep-gc] cap=${CAP_MB}MB $([ -n "$DRY" ] && echo dry-run || echo execute) -> ${cleaned} (rc=$rc)"
 emit "\"kind\":\"cargo_sweep_gc_ran\",\"cap_mb\":$CAP_MB,\"dry_run\":$([ -n "$DRY" ] && echo true || echo false),\"result\":\"$(printf '%s' "$cleaned" | tr '"' "'")\",\"rc\":$rc"
+
+# RESILIENT-239: age-based prune complements the maxsize LRU pass above. --maxsize
+# only fires once the cap is hit; --time --recursive walks the fingerprint tree and
+# drops anything untouched in $TIME_DAYS days regardless of total size, which is what
+# actually bounds file COUNT (the 363k-file stat-walk tax) rather than just bytes.
+# Non-fatal: a failure here doesn't invalidate the maxsize pass that already ran.
+time_out="$(cd "$REPO_ROOT" && cargo-sweep sweep --time "$TIME_DAYS" --recursive $DRY . 2>&1)"
+time_rc=$?
+time_cleaned="$(printf '%s' "$time_out" | grep -oiE '(Would clean|Cleaned):? *[0-9.]+ *[KMG]i?B' | head -1)"
+time_cleaned="${time_cleaned:-nothing to clean}"
+echo "[cargo-sweep-gc] time-prune days=${TIME_DAYS} recursive $([ -n "$DRY" ] && echo dry-run || echo execute) -> ${time_cleaned} (rc=$time_rc)"
+emit "\"kind\":\"cargo_sweep_gc_time_pruned\",\"time_days\":$TIME_DAYS,\"dry_run\":$([ -n "$DRY" ] && echo true || echo false),\"result\":\"$(printf '%s' "$time_cleaned" | tr '"' "'")\",\"rc\":$time_rc"
+
 exit 0
