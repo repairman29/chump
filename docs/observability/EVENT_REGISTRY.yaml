@@ -1605,6 +1605,13 @@ events:
     trigger: PR BLOCKED > 4h with no progress
     consumers: [audit-log, fleet]
 
+  - kind: pr_lander_beat
+    effect_metric: self
+    emitter: scripts/dispatch/pr-lander-beat.sh (RESILIENT-288)
+    trigger: the PR-lander beat ran on the primary node; records how many stranded
+      green PRs it armed this pass. Observability so the sweep is provable, not assumed.
+    consumers: [ambient]
+
   - kind: armed_pr_needs_conflict_resolution
     effect_metric: pr_rescue_action_within_4h
     emitter: scripts/coord/armed-pr-rebaser.sh (INFRA-3473)

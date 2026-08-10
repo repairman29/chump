@@ -261,6 +261,36 @@ export CHUMP_AUTH_MODE="oauth"
 
 ---
 
+## Bake in the PR-lander (so green PRs actually merge) — RESILIENT-288
+
+The workers open PRs; something has to *land* them. `bot-merge --auto-merge` arms
+auto-merge at ship time, but if a worker's turn ends before that step finishes, the
+PR sits green-but-unarmed until the reaper closes it (the 2026-08-10 #3584 orphan:
+CLEAN + all-green + 3.5h, never merged). The durable fix is a node timer that arms
+any stranded green PR every ~10 min — **not an agent remembering to sweep.**
+
+Install on the primary (always-on) node — root paths shown; adjust for a non-root node:
+
+```bash
+sudo cp scripts/dispatch/chump-pr-lander.service /etc/systemd/system/
+sudo cp scripts/dispatch/chump-pr-lander.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now chump-pr-lander.timer
+```
+
+Verify it is baked in and actually working (don't assume — read the `armed=N` line):
+
+```bash
+systemctl list-timers chump-pr-lander.timer     # next run is scheduled
+sudo systemctl start chump-pr-lander.service     # fire once now
+journalctl -u chump-pr-lander.service -n 20      # look for "beat done — armed=N"
+```
+
+The beat is `scripts/dispatch/pr-lander-beat.sh` (idempotent, `--dry-run` supported);
+it only arms PRs the node's `gh` user authored and never force-pushes or closes.
+Global off-switch: `CHUMP_PR_LANDER_SKIP=1`. It emits `kind=pr_lander_beat` to
+ambient every run so the sweep is observable, not assumed.
+
 ## Next: join a NATS fleet (optional)
 
 If you later need **cross-machine coordination** (multiple nodes sharing work):

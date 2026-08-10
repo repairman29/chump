@@ -1,0 +1,13 @@
+# RESILIENT-288 — fires the PR-lander beat every ~10 min on the primary node.
+# This is the "baked into the OS" half: the sweep runs on a timer, not on an
+# agent's memory. Enable: systemctl enable --now chump-pr-lander.timer
+[Unit]
+Description=Run the Chump PR-lander beat every 10 minutes (RESILIENT-288)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
