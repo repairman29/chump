@@ -136,6 +136,16 @@ async fn main() -> Result<()> {
                             // Also emit INTENT to JetStream for real-time fanout
                             let _ = c.emit_intent(&sess, gap_id, &files_env).await;
 
+                            // CREDIBLE-254 (CREDIBLE-099 slice): register this
+                            // worker's presence record in the `chump_workers`
+                            // KV bucket on claim — best-effort, must never
+                            // block the claim itself.
+                            let presence = chump_coord::presence::build_presence(
+                                &sess,
+                                Some(gap_id.to_string()),
+                            );
+                            let _ = c.register_worker_presence(&presence).await;
+
                             std::process::exit(0);
                         }
                         Ok(false) => {
