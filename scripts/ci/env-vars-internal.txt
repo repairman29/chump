@@ -1440,3 +1440,10 @@ CHUMP_STRANDED_EXTERNAL
 CHUMP_STRANDED_ROOTS
 # detected in: (standard input)
 CHUMP_STRANDED_STASH_D
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_AGENT_MODEL
+# detected in: (standard input)
+CHUMP_CLAIM_LINT

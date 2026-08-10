@@ -13,6 +13,7 @@ pub mod add_env_var;
 pub mod add_path_filter;
 pub mod add_raw_gh_allowlist;
 pub mod bootstrap;
+pub mod claim_lint;
 pub mod config;
 pub mod consensus_tally;
 pub mod contract_scan;
