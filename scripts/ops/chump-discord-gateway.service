@@ -1,0 +1,27 @@
+# RESILIENT-266 — Chump Discord receive gateway (serenity-free), install template.
+# Runs the outbound Gateway WebSocket client so the fleet can HEAR the operator
+# (DMs + button interactions), replying via REST. Belongs on an ALWAYS-ON node
+# (helsinki), never a laptop that sleeps. Needs: python3 + `python3-websockets`
+# (apt install python3-websockets), and DISCORD_TOKEN + CHUMP_READY_DM_USER_ID in
+# ~/.chump/providers.env.
+#
+# Install (as root on the node):
+#   cp scripts/ops/chump-discord-gateway.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now chump-discord-gateway
+#   systemctl status chump-discord-gateway    # expect: active + "READY as <bot>"
+#
+# For free-text DM commands (status/ping/help), enable the MESSAGE CONTENT intent
+# in the Discord dev portal, then run with CHUMP_DISCORD_GW_INTENTS=36864.
+[Unit]
+Description=Chump Discord receive gateway (RESILIENT-266, serenity-free)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -lc 'cd /root/Projects/chump && set -a && source /root/.chump/providers.env && set +a && export CHUMP_REPO=/root/Projects/chump && exec /usr/bin/python3 scripts/ops/discord-gateway.py'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+"""discord-gateway.py — RESILIENT-266 serenity-free Discord receive gateway.
+
+Opens an OUTBOUND WebSocket to Discord's gateway (no inbound endpoint, no domain,
+no TLS to terminate, no serenity → sidesteps SECURITY-004's vulnerable rustls-webpki).
+Receives operator DMs + button-click interactions and acts on them, replying via the
+Discord REST API (the same path notify-operator.sh already uses).
+
+This is the RECEIVE half of Chump<->operator Discord. The SEND half is
+scripts/coord/lib/notify-operator.sh (bash+curl). Together = two-way.
+
+Env:
+  DISCORD_TOKEN            bot token (required)
+  CHUMP_READY_DM_USER_ID   the ONLY user whose DMs/buttons are honored (required)
+  CHUMP_REPO               repo root for status/exec commands (default cwd)
+  CHUMP_DISCORD_GW_INTENTS override the intents bitfield (default DIRECT_MESSAGES)
+
+Command surface (DM the bot):
+  status | brief   → fleet ship-rate + recent merges
+  ping             → pong (liveness)
+  help             → this list
+Button interactions (custom_id "approve:<id>" / "deny:<id>") are acknowledged and
+logged to ambient; wiring them to the approval resolver is the next slice.
+
+Run: DISCORD_TOKEN=... CHUMP_READY_DM_USER_ID=... python3 discord-gateway.py
+Needs: pip install websockets
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+try:
+    import websockets
+except ImportError:
+    sys.stderr.write("discord-gateway: needs `pip install websockets`\n")
+    sys.exit(3)
+
+GATEWAY = "wss://gateway.discord.gg/?v=10&encoding=json"
+API = "https://discord.com/api/v10"
+TOKEN = os.environ.get("DISCORD_TOKEN", "").strip()
+OPERATOR = os.environ.get("CHUMP_READY_DM_USER_ID", "").strip()
+REPO = os.environ.get("CHUMP_REPO", os.getcwd())
+AMBIENT = Path(REPO) / ".chump-locks" / "ambient.jsonl"
+# DIRECT_MESSAGES (1<<12). Interactions are delivered regardless of intents.
+# MESSAGE_CONTENT (1<<15) is privileged; enable it in the dev portal to read DM text.
+INTENTS = int(os.environ.get("CHUMP_DISCORD_GW_INTENTS", str(1 << 12)))
+
+# Opcodes
+OP_DISPATCH, OP_HEARTBEAT, OP_IDENTIFY = 0, 1, 2
+OP_RECONNECT, OP_INVALID_SESSION, OP_HELLO, OP_HEARTBEAT_ACK = 7, 9, 10, 11
+
+
+def now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def emit(kind: str, **extra) -> None:
+    """Best-effort ambient event — mirrors the fleet's observability."""
+    try:
+        AMBIENT.parent.mkdir(parents=True, exist_ok=True)
+        rec = {"ts": now(), "kind": kind, **extra}
+        with AMBIENT.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, separators=(",", ":")) + "\n")
+    except Exception:
+        pass
+
+
+def _curl_post(url: str, payload: dict) -> int:
+    """POST JSON with the bot auth. Returns HTTP code (0 on transport error)."""
+    try:
+        out = subprocess.run(
+            ["curl", "-sS", "--max-time", "10", "-o", "/dev/null",
+             "-w", "%{http_code}", "-X", "POST", url,
+             "-H", f"Authorization: Bot {TOKEN}",
+             "-H", "Content-Type: application/json",
+             "-d", json.dumps(payload)],
+            capture_output=True, text=True, timeout=15,
+        )
+        return int(out.stdout.strip() or 0)
+    except Exception:
+        return 0
+
+
+def send_dm(content: str) -> None:
+    """Open the operator DM channel and post a message (REST, no serenity)."""
+    try:
+        ch = subprocess.run(
+            ["curl", "-sS", "--max-time", "10", "-X", "POST",
+             f"{API}/users/@me/channels",
+             "-H", f"Authorization: Bot {TOKEN}",
+             "-H", "Content-Type: application/json",
+             "-d", json.dumps({"recipient_id": OPERATOR})],
+            capture_output=True, text=True, timeout=15,
+        )
+        ch_id = json.loads(ch.stdout).get("id")
+        if ch_id:
+            _curl_post(f"{API}/channels/{ch_id}/messages", {"content": content[:1990]})
+    except Exception:
+        pass
+
+
+def run_status() -> str:
+    """Cheap ground-truth status the operator can ask for from their phone."""
+    try:
+        merges = subprocess.run(
+            ["git", "-C", REPO, "log", "origin/main", "--since=1 hour ago", "--oneline"],
+            capture_output=True, text=True, timeout=15,
+        ).stdout.strip().splitlines()
+        head = subprocess.run(
+            ["git", "-C", REPO, "log", "origin/main", "--oneline", "-1"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        n = len(merges)
+        lines = "\n".join(f"• {m}" for m in merges[:6]) or "• (none in last hour)"
+        return f"**Fleet status** — {n} merge(s) in the last hour.\nHEAD: {head}\n{lines}"
+    except Exception as e:
+        return f"status error: {e}"
+
+
+def handle_command(text: str) -> str:
+    cmd = text.strip().lower().split()[0] if text.strip() else ""
+    if cmd in ("status", "brief", "fleet"):
+        return run_status()
+    if cmd == "ping":
+        return "pong ✅ (gateway online, receiving)"
+    if cmd in ("help", "?", "commands"):
+        return ("Chump gateway — try: `status` (ship-rate + recent merges), "
+                "`ping` (liveness), `help`. Approve/deny buttons on alert cards are "
+                "acknowledged; full dispatch wiring is the next slice.")
+    return (f"unknown command `{text.strip()[:40]}` — try `help`. "
+            "(I'm the Chump receive gateway; I can report status now, dispatch soon.)")
+
+
+async def gateway_loop() -> None:
+    seq = None
+    async with websockets.connect(GATEWAY, max_size=2**20) as ws:
+        hello = json.loads(await ws.recv())
+        interval = hello["d"]["heartbeat_interval"] / 1000.0
+
+        async def heartbeat():
+            while True:
+                await asyncio.sleep(interval)
+                try:
+                    await ws.send(json.dumps({"op": OP_HEARTBEAT, "d": seq}))
+                except Exception:
+                    return
+
+        await ws.send(json.dumps({
+            "op": OP_IDENTIFY,
+            "d": {"token": TOKEN, "intents": INTENTS,
+                  "properties": {"os": "linux", "browser": "chump", "device": "chump"}},
+        }))
+        hb = asyncio.create_task(heartbeat())
+        emit("discord_gateway_connected", intents=INTENTS)
+        print(f"[discord-gateway] connected, intents={INTENTS}", flush=True)
+
+        try:
+            async for raw in ws:
+                msg = json.loads(raw)
+                if msg.get("s") is not None:
+                    seq = msg["s"]
+                op = msg.get("op")
+                if op in (OP_RECONNECT, OP_INVALID_SESSION):
+                    print("[discord-gateway] reconnect requested", flush=True)
+                    return
+                if op != OP_DISPATCH:
+                    continue
+                t, d = msg.get("t"), msg.get("d", {})
+
+                if t == "READY":
+                    u = d.get("user", {})
+                    print(f"[discord-gateway] READY as {u.get('username')}#{u.get('discriminator')}", flush=True)
+                    continue
+
+                if t == "MESSAGE_CREATE":
+                    # DMs only (guild_id absent), from the operator only, ignore our own.
+                    if d.get("guild_id") or str(d.get("author", {}).get("id")) != OPERATOR:
+                        continue
+                    content = d.get("content", "")
+                    if not content:  # MESSAGE_CONTENT intent off → empty; nudge once
+                        send_dm("(I received your DM but can't read its text — enable the "
+                                "MESSAGE CONTENT intent in the Discord dev portal. Buttons "
+                                "and `status` still work.)")
+                        continue
+                    emit("discord_operator_command", command=content[:120])
+                    print(f"[discord-gateway] operator: {content[:80]}", flush=True)
+                    send_dm(handle_command(content))
+                    continue
+
+                if t == "INTERACTION_CREATE":
+                    inter_id, tok = d.get("id"), d.get("token")
+                    custom_id = d.get("data", {}).get("custom_id", "")
+                    uid = str(d.get("member", {}).get("user", {}).get("id")
+                              or d.get("user", {}).get("id"))
+                    if uid != OPERATOR:
+                        # ACK so the client doesn't error, but do nothing.
+                        _curl_post(f"{API}/interactions/{inter_id}/{tok}/callback",
+                                   {"type": 4, "data": {"content": "not authorized", "flags": 64}})
+                        continue
+                    emit("discord_operator_interaction", custom_id=custom_id)
+                    print(f"[discord-gateway] button: {custom_id}", flush=True)
+                    # Phase 1: acknowledge with an ephemeral confirmation. Wiring
+                    # custom_id -> approval_resolver / dispatch is the next slice.
+                    _curl_post(f"{API}/interactions/{inter_id}/{tok}/callback",
+                               {"type": 4, "data": {
+                                   "content": f"received `{custom_id}` ✅ (action wiring lands next slice)",
+                                   "flags": 64}})
+                    continue
+        finally:
+            hb.cancel()
+
+
+async def main() -> None:
+    if not TOKEN or not OPERATOR:
+        sys.stderr.write("discord-gateway: DISCORD_TOKEN and CHUMP_READY_DM_USER_ID required\n")
+        sys.exit(2)
+    backoff = 2
+    while True:
+        try:
+            await gateway_loop()
+            backoff = 2
+        except Exception as e:
+            emit("discord_gateway_disconnected", error=str(e)[:160])
+            print(f"[discord-gateway] disconnected: {e}; retry in {backoff}s", flush=True)
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, 60)
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

@@ -64,6 +64,10 @@ if [[ -f "$LAST_ALARM" ]]; then
     fi
 fi
 
+# RESILIENT-274: classify as a playbook'd signal — the gateway now runs under
+# systemd (Restart=always) on helsinki, so "down" auto-recovers. The escalation
+# gate suppresses this (logs, no phone page); it pages only halt/novel signals.
+CHUMP_NOTIFY_KIND=discord_gateway_down \
 notify_operator "$(printf '📵 **Chump Discord gateway is DOWN.**\n\nNo gateway process is running, so **replies and button taps are going nowhere right now.** Outbound alerts (like this one) still work — they use REST and need no bot.\n\nRestart:\n```\nlaunchctl kickstart -k gui/$(id -u)/ai.chump.discord-gateway\n```\n\nThis check exists because `operator-recall` sat `enabled = true` with zero processes from 2026-05-08 and nothing noticed for three months. Rate-limited to once per 6h.')" \
     && echo "$now" > "$LAST_ALARM" 2>/dev/null || true
 

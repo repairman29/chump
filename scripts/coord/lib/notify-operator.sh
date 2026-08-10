@@ -74,9 +74,67 @@ _notify_env() {
     done < <(_notify_env_files)
 }
 
+# RESILIENT-274 escalation discipline. Operator decision (Jeff, 2026-08-10):
+# "don't hear from the fleet unless it's way out of line or we don't have a
+# playbook for it." Quiet by default. A page reaches the phone ONLY when the
+# signal is halt-class OR novel (no playbook). Known signals that have an
+# auto-heal / runbook are SUPPRESSED here — logged to ambient, not DM'd — so the
+# escalation channel never cries wolf (a muted channel is the RESILIENT-262 dead
+# operator-recall handler all over again).
+#
+# Classification input (both optional, set by the caller):
+#   CHUMP_NOTIFY_KIND      the ambient/signal kind (e.g. discord_gateway_down)
+#   CHUMP_NOTIFY_SEVERITY  set to "halt" to force a page regardless of registry
+# Registry: scripts/coord/operator-escalation-registry.txt — "<kind><TAB>suppress|page".
+# Rules: halt severity → PAGE. kind in registry → its verdict. Unknown kind or
+# no kind → PAGE (fail loud: "no playbook → tell me").
+_notify_ambient_log() {
+    local root; root="$(_notify_repo_root)"
+    printf '%s\n' "${CHUMP_AMBIENT_LOG:-${root}/.chump-locks/ambient.jsonl}"
+}
+
+_notify_emit() {  # kind, extra_json_fragment
+    local log; log="$(_notify_ambient_log)"
+    mkdir -p "$(dirname "$log")" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"%s"%s}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "${2:-}" >> "$log" 2>/dev/null || true
+}
+
+# Returns "page" or "suppress" on stdout. Default is PAGE (novel/no-playbook).
+# Whitespace-split (space OR tab); anything after the verdict is an inline comment.
+_notify_escalation_verdict() {
+    local kind="$1" root reg k verdict _rest
+    [[ -n "$kind" ]] || { echo "page"; return; }   # unclassified caller → page
+    root="$(_notify_repo_root)"
+    reg="${root}/scripts/coord/operator-escalation-registry.txt"
+    [[ -f "$reg" ]] || { echo "page"; return; }    # no registry → fail loud
+    while read -r k verdict _rest; do
+        [[ -z "$k" || "$k" == \#* ]] && continue
+        if [[ "$kind" == "$k" ]]; then
+            [[ "$verdict" == "suppress" ]] && echo "suppress" || echo "page"
+            return
+        fi
+    done < "$reg"
+    echo "page"                                    # unknown kind = novel = page
+}
+
 notify_operator() {
     local content="${1:-}"
     [[ -n "${content//[[:space:]]/}" ]] || return 0
+
+    # Escalation gate — suppress known-playbook'd routine before touching Discord.
+    local _kind="${CHUMP_NOTIFY_KIND:-}" _sev="${CHUMP_NOTIFY_SEVERITY:-}"
+    if [[ "$_sev" != "halt" ]]; then
+        local _verdict; _verdict="$(_notify_escalation_verdict "$_kind")"
+        if [[ "$_verdict" == "suppress" ]]; then
+            _notify_emit "operator_notify_suppressed" ",\"signal\":\"${_kind}\",\"reason\":\"has-playbook\""
+            echo "[notify-operator] SUPPRESSED (playbook exists, quiet-by-default): kind=${_kind}" >&2
+            return 0
+        fi
+        # Page-worthy: record whether it was classified or fell through as novel.
+        [[ -n "$_kind" ]] && _notify_emit "operator_paged" ",\"signal\":\"${_kind}\",\"class\":\"registry-page\"" \
+                          || _notify_emit "operator_paged" ",\"class\":\"unclassified-caller\""
+    fi
 
     local token uid
     token="$(_notify_env DISCORD_TOKEN)"
