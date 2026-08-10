@@ -138,3 +138,37 @@ lives in the separate repairman29/almanac repo, which isn't guaranteed to be
 checked out in every chump worktree. `usage.jsonl`'s format is a stable,
 documented, append-only contract any consumer can read without the almanac
 binary being present.
+
+## Census: duplicate-implementation detection (EFFECTIVE-391)
+
+A single `search-fleet` query for "retry exponential backoff" (2026-08-07)
+returned implementations in a dozen repos — several of them provably the
+SAME code (same symbol, same line), not convergent design. `smugglers/
+shared-utils/retry-patterns/` proves an extraction ALREADY happened and
+never propagated to `bulwark`, which still carries its own copy. That is
+the fleet's latent-value shape: not missing capability, unpropagated
+capability.
+
+`scripts/dev/almanac-census.py "<concept>"` turns a keyword hit-list into a
+census: one row per capability (grouped by exact symbol name), literal
+copies flagged by structural identity (same symbol + same start line;
+`verbatim` when the relative path also matches, `moved` when it doesn't —
+a copy can survive a path change even when the symbol/line don't), an
+extractability score built from real `almanac impact`/`neighbors` data
+that refuses to score on partial inputs (states exactly which of
+importer-count / coupling / test-presence it couldn't get), and a named
+"already extracted, N repos have not adopted it" call-out when a site's
+path matches a shared/common-library convention.
+
+```bash
+python3 scripts/dev/almanac-census.py "retry exponential backoff" [--json]
+# offline / CI: python3 scripts/dev/almanac-census.py "<concept>" \
+#   --fixture scripts/dev/fixtures/almanac-census-retry-example.json
+```
+
+Chump-side, same posture as the zero-hits miner above. **Honest about
+vocabulary**: `search-fleet` is keyword-only, so this groups strictly by
+exact symbol name — differently-named implementations of the same idea
+never merge into one row. Every report states its `retrieval_mode` and
+carries the fleet's last known embedding-coverage percentage so a reader
+knows how much of the fleet that blind spot still covers.
