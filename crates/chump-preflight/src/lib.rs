@@ -4,4 +4,5 @@
 //! The bin re-exports this module (`pub use chump_preflight::preflight;`) so
 //! existing `preflight::run(..)` callers stay unchanged.
 
+pub mod artifact_gates;
 pub mod preflight;

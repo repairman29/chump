@@ -514,6 +514,17 @@ impl GapStore {
         let _ = self
             .conn
             .execute("ALTER TABLE gaps ADD COLUMN shipped_in TEXT", []);
+        // EFFECTIVE-363: artifact_type — what kind of artifact this gap produces
+        // (code | doc | release-note | copy | design | deck | analytics-report | ...).
+        // Default 'code' so every pre-existing row (and every caller that never
+        // sets it) keeps behaving exactly as before — the pipeline was code-typed
+        // in practice already, this just makes that assumption explicit and
+        // overridable. Drives per-type gate dispatch in `chump preflight`
+        // (see crates/chump-preflight/src/artifact_gates.rs).
+        let _ = self.conn.execute(
+            "ALTER TABLE gaps ADD COLUMN artifact_type TEXT NOT NULL DEFAULT 'code'",
+            [],
+        );
         // Backfill closed_date for done rows that predate the column. Idempotent:
         // only touches rows where closed_date is empty AND closed_at is set, so
         // re-running is a no-op once the row is healed. UTC matches `unix_to_iso_date`.
@@ -630,6 +641,14 @@ impl GapStore {
         let _ = self
             .conn
             .execute("ALTER TABLE gaps ADD COLUMN outcome_id TEXT", []);
+        // EFFECTIVE-363: outcomes get the same artifact_type default as gaps,
+        // so an outcome that rolls up non-code artifacts (release notes, decks,
+        // design passes) can be tagged too. Advisory only, like the rest of
+        // the outcomes table.
+        let _ = self.conn.execute(
+            "ALTER TABLE outcomes ADD COLUMN artifact_type TEXT NOT NULL DEFAULT 'code'",
+            [],
+        );
 
         // CREDIBLE-107: evidence column for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
         // Nullable TEXT — no default — so existing rows stay NULL (no evidence required
@@ -1223,6 +1242,12 @@ impl GapStore {
                 vals.push(Box::new(v));
             }
         }
+        // EFFECTIVE-363: artifact_type. Falls back to 'code' on empty string
+        // rather than NULL — the column is NOT NULL DEFAULT 'code'.
+        if let Some(v) = fields.artifact_type {
+            sets.push("artifact_type=?");
+            vals.push(Box::new(if v.is_empty() { "code".to_string() } else { v }));
+        }
         if sets.is_empty() {
             return Ok(());
         }
@@ -1234,6 +1259,19 @@ impl GapStore {
             bail!("gap {} not found", gap_id);
         }
         Ok(())
+    }
+
+    /// EFFECTIVE-363: read a gap's `artifact_type` (code | doc | release-note |
+    /// copy | design | deck | analytics-report | ...). Callers that need to
+    /// dispatch per-type quality gates (e.g. `chump preflight --artifact-type`)
+    /// use this instead of pulling the whole `Gap` row.
+    pub fn get_artifact_type(&self, gap_id: &str) -> Result<String> {
+        let v: String = self.conn.query_row(
+            "SELECT artifact_type FROM gaps WHERE id=?1",
+            [gap_id],
+            |r| r.get(0),
+        )?;
+        Ok(v)
     }
 
     /// Reserve a new gap ID atomically using a per-domain counter row.
@@ -2595,6 +2633,11 @@ pub struct GapFieldUpdate {
     /// CREDIBLE-107: evidence blob for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
     /// None leaves unchanged; Some(text) stores the evidence; Some("") clears it.
     pub evidence: Option<String>,
+    /// EFFECTIVE-363: artifact_type (code | doc | release-note | copy | design |
+    /// deck | analytics-report | ...). None leaves unchanged. Empty string is
+    /// rejected the same way any other required-with-default column would be —
+    /// callers should pass the literal type, not clear it back to blank.
+    pub artifact_type: Option<String>,
 }
 
 /// Render one gap as a YAML block-list entry. Field order matches the
@@ -8151,5 +8194,42 @@ mod quarantine_tests {
 
         let count = store.repo_gap_count("foo/bar").unwrap();
         assert_eq!(count, 2, "expected 2 (only open foo/bar gaps); got {count}");
+    }
+
+    // EFFECTIVE-363: artifact_type defaults to 'code' for every gap (old and
+    // new), no migration breakage, and `chump gap set --artifact-type` round
+    // trips through set_fields/get_artifact_type.
+    #[test]
+    fn artifact_type_defaults_to_code_and_round_trips() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("EFFECTIVE", "artifact-type-test", "P1", "xs")
+            .unwrap();
+
+        assert_eq!(store.get_artifact_type(&id).unwrap(), "code");
+
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    artifact_type: Some("release-note".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(store.get_artifact_type(&id).unwrap(), "release-note");
+
+        // Empty string is treated as "reset to the default", not "clear to
+        // NULL" — the column is NOT NULL DEFAULT 'code'.
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    artifact_type: Some(String::new()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(store.get_artifact_type(&id).unwrap(), "code");
     }
 }
