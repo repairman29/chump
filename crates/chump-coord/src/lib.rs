@@ -71,6 +71,7 @@ pub mod mission;
 /// Public surface re-exports `events` types + exposes durable_consumer_name,
 /// max_ack_pending, and layer_enabled helpers.
 pub mod nats_primary;
+pub mod presence;
 pub mod rpc;
 pub mod scratchpad;
 pub mod work_board;
@@ -166,6 +167,11 @@ pub struct CoordClient {
     /// Workers publish their CapabilityManifest here at startup and every
     /// 30s heartbeat; TTL = 5 min. Picker reads this to route gaps.
     pub capabilities_kv: kv::Store,
+    /// CREDIBLE-246 (CREDIBLE-099 slice): worker presence KV bucket.
+    /// Distinct from `gaps_kv` (which registers the CLAIM) — this bucket
+    /// registers the WORKER itself (worker_id, backend, machine, skills,
+    /// harness, current_gap, status).
+    pub workers_kv: kv::Store,
 }
 
 /// Parse credentials out of a `nats://[user[:pass]@]host:port` URL.
@@ -265,6 +271,9 @@ impl CoordClient {
         // INFRA-1120 Layer 2c: capability manifests KV bucket.
         let capabilities_kv = capability::init_capabilities_bucket(&js).await?;
 
+        // CREDIBLE-246 (CREDIBLE-099 slice): worker presence KV bucket.
+        let workers_kv = presence::init_workers_bucket(&js).await?;
+
         Ok(Self {
             nats,
             js,
@@ -272,6 +281,7 @@ impl CoordClient {
             work_board_kv,
             help_requests_kv,
             capabilities_kv,
+            workers_kv,
         })
     }
 
@@ -469,6 +479,52 @@ impl CoordClient {
     /// per gap during the 7-day release gate).
     pub async fn list_capabilities(&self) -> Result<Vec<capability::CapabilityManifest>> {
         capability::list_capabilities(&self.capabilities_kv).await
+    }
+
+    // ── Worker presence API (CREDIBLE-246 / CREDIBLE-099 slice) ───────────────
+
+    /// AC-1: register a worker presence record in the `chump_workers` KV
+    /// bucket. Call once at worker startup, alongside RPC handler
+    /// registration.
+    pub async fn register_worker_presence(
+        &self,
+        presence: &presence::WorkerPresence,
+    ) -> Result<()> {
+        presence::register_presence(&self.workers_kv, presence).await
+    }
+
+    /// AC-2: update the current-gap field (and `updated_at`) for a
+    /// registered worker — call when the worker picks a new gap.
+    pub async fn update_worker_presence_gap(
+        &self,
+        worker_id: &str,
+        current_gap: Option<String>,
+    ) -> Result<()> {
+        presence::update_presence_gap(&self.workers_kv, worker_id, current_gap).await
+    }
+
+    /// AC-2: refresh a worker's presence heartbeat (`updated_at`) without
+    /// changing other fields.
+    pub async fn refresh_worker_presence(&self, worker_id: &str) -> Result<()> {
+        presence::refresh_presence(&self.workers_kv, worker_id).await
+    }
+
+    /// AC-2: mark a worker's presence `Terminal` — call on ship or exit.
+    pub async fn mark_worker_terminal(&self, worker_id: &str) -> Result<()> {
+        presence::mark_terminal(&self.workers_kv, worker_id).await
+    }
+
+    /// Read a single worker's presence record.
+    pub async fn worker_presence(
+        &self,
+        worker_id: &str,
+    ) -> Result<Option<presence::WorkerPresence>> {
+        presence::get_presence(&self.workers_kv, worker_id).await
+    }
+
+    /// List every worker presence record currently in the bucket.
+    pub async fn list_worker_presence(&self) -> Result<Vec<presence::WorkerPresence>> {
+        presence::list_presence(&self.workers_kv).await
     }
 }
 
