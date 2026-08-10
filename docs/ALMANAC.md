@@ -105,3 +105,36 @@ be READ ALOUD:
   registered (the opportunity-library blind spot, fixed 2026-08-05 as
   workspace-docs). If a whole PROJECT seems missing, check `almanac repos`
   before concluding anything.
+
+## Mining the zero-hit log (EFFECTIVE-380)
+
+Every almanac CLI/MCP call appends to `~/.almanac/usage.jsonl` (surface,
+tool, repo, query, `hits`, mode, duration — schema in
+`crates/almanac-core/src/usage.rs`), and a **zero-hit is a question the
+fleet actually asked, in its own words, that the index could not answer** —
+free capability-backlog signal, if it's ever read.
+
+`scripts/dev/almanac-zero-hits.py --log ~/.almanac/usage.jsonl` (add
+`--json` for machine consumption) clusters zero-hit queries into ranked
+themes and classifies each as:
+
+- **`unsupported-artifact`** — the query names SQL (INFRA-3530, deliberate
+  deferral) or an unindexed source language (CREDIBLE-210 class: swift/
+  kotlin/c/cpp/ruby/java).
+- **`retrieval-miss`** — a proximity `git grep` against this checkout found
+  >= 2 of the query's distinctive words within 6 lines of each other, i.e.
+  the content exists and the miss is a quality bug, not absence.
+- **`absent`** — neither of the above matched; treated as genuinely missing
+  unless a human spots evidence the heuristic couldn't reach.
+
+Every cluster states its classification method inline so a reader can
+disagree — the `git grep` proximity check is a coarse proxy (see
+[`ALMANAC_ZERO_HITS_FIRST_RUN.md`](observability/ALMANAC_ZERO_HITS_FIRST_RUN.md)
+for a worked false-positive example) and should be read as a triage aid
+over the raw log, not an oracle.
+
+This tool is **chump-side**, not almanac-side: the almanac CLI/binary itself
+lives in the separate repairman29/almanac repo, which isn't guaranteed to be
+checked out in every chump worktree. `usage.jsonl`'s format is a stable,
+documented, append-only contract any consumer can read without the almanac
+binary being present.
