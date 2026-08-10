@@ -697,7 +697,21 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
         fi
 
         if [[ "$ANY_RS" == "1" ]]; then
-            echo "[pre-push] INFRA-761: running cargo test --bin chump --tests (full suite)..." >&2
+            # CREDIBLE-278: cargo test threads all tests in one process, so
+            # tests that touch process-global env (e.g. CHUMP_REPO) race each
+            # other and false-red locally on a tree CI proves green — CI runs
+            # cargo-nextest, which gives every test its own process. Match CI
+            # here: prefer nextest, and fail LOUD (never silent) when absent.
+            _TEST_RUNNER_CMD=()
+            if command -v cargo-nextest &>/dev/null; then
+                echo "[pre-push] CREDIBLE-278: running cargo nextest run --bin chump --tests (full suite; process-isolated, matches CI)..." >&2
+                _TEST_RUNNER_CMD=(cargo nextest run --bin chump --tests --no-fail-fast)
+            else
+                echo "[pre-push] WARN CREDIBLE-278: cargo-nextest not found on PATH — falling back to 'cargo test'." >&2
+                echo "[pre-push] WARN CREDIBLE-278: cargo test THREADS tests in one process and can false-red on env races that nextest (CI's runner) does not hit." >&2
+                echo "[pre-push] WARN CREDIBLE-278: install for a gate that matches CI: cargo install cargo-nextest --locked" >&2
+                _TEST_RUNNER_CMD=(cargo test --bin chump --tests --no-fail-fast --quiet)
+            fi
             echo "[pre-push] (one-time per tree-hash; cached at $CACHE_MARKER on green)" >&2
             echo "[pre-push] Bypass: CHUMP_TEST_GATE=0 git push  (with Test-Gate-Bypass: trailer)" >&2
 
@@ -825,7 +839,7 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
                     ${_PREPUSH_WRAPPER_OVERRIDE[@]:+"${_PREPUSH_WRAPPER_OVERRIDE[@]}"} \
                     timeout "${_PREPUSH_TEST_TIMEOUT_S}s" \
                     bash "$_RERUN_SCRIPT" -- \
-                        cargo test --bin chump --tests --no-fail-fast --quiet \
+                        "${_TEST_RUNNER_CMD[@]}" \
                         ${_SKIP_ARGS[@]:+"${_SKIP_ARGS[@]}"}); then
                     mkdir -p "$CACHE_DIR"
                     date -u +%Y-%m-%dT%H:%M:%SZ > "$CACHE_MARKER"
@@ -867,7 +881,7 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
                 if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
                     ${_PREPUSH_WRAPPER_OVERRIDE[@]:+"${_PREPUSH_WRAPPER_OVERRIDE[@]}"} \
                     timeout "${_PREPUSH_TEST_TIMEOUT_S}s" \
-                    cargo test --bin chump --tests --no-fail-fast --quiet \
+                    "${_TEST_RUNNER_CMD[@]}" \
                         ${_SKIP_ARGS[@]:+"${_SKIP_ARGS[@]}"}) 2>&1 \
                     | tee "$_TEST_LOG" | tail -200; then
                     mkdir -p "$CACHE_DIR"

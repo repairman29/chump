@@ -1418,3 +1418,10 @@ CHUMP_ROUND_PRIVACY
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_CURL_BIN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_REBASE_DETECT
+# detected in: (standard input)
+CHUMP_TEST_GATE_FAKE_RC

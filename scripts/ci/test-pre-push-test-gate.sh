@@ -47,8 +47,10 @@ cat > "$TMP/bin/cargo" <<'MOCK'
 #!/usr/bin/env bash
 case "$1" in
     fmt) exit 0 ;;
-    test)
-        # Honour CHUMP_TEST_GATE_FAKE_RC; default green.
+    test|nextest)
+        # Honour CHUMP_TEST_GATE_FAKE_RC; default green. CREDIBLE-278:
+        # `nextest` mocked identically to `test` so this suite stays hermetic
+        # regardless of which runner the pre-push hook picks.
         rc="${CHUMP_TEST_GATE_FAKE_RC:-0}"
         if [[ "$rc" != "0" ]]; then
             echo "test failed: synthetic mock failure"
@@ -61,6 +63,16 @@ case "$1" in
 esac
 MOCK
 chmod +x "$TMP/bin/cargo"
+
+# CREDIBLE-278: also shadow the real `cargo-nextest` plugin binary (if the
+# host has one installed) so `command -v cargo-nextest` inside the hook
+# resolves to this hermetic no-op rather than a real toolchain, keeping the
+# suite deterministic regardless of what's installed on the machine running it.
+cat > "$TMP/bin/cargo-nextest" <<'MOCK'
+#!/usr/bin/env bash
+exit 0
+MOCK
+chmod +x "$TMP/bin/cargo-nextest"
 
 # Set up an isolated bare "origin" + clone so the hook has refs to push.
 mkdir -p "$TMP/origin.git" && (cd "$TMP/origin.git" && git init --bare -q)
@@ -104,7 +116,7 @@ git add README.md
 git commit -qm "docs only"
 OUT=$(run_hook)
 RC=$?
-if [[ "$RC" -eq 0 ]] && ! echo "$OUT" | grep -q "INFRA-761: running cargo test"; then
+if [[ "$RC" -eq 0 ]] && ! echo "$OUT" | grep -qE "(INFRA-761: running cargo test|CREDIBLE-278: running cargo nextest)"; then
     ok "docs-only push skipped the test gate"
 else
     fail "docs-only push should skip (rc=$RC, out=$OUT)"
@@ -137,7 +149,7 @@ fi
 echo "--- Test 3: re-push of same tree → cache hit, guard skips ---"
 OUT=$(run_hook)
 RC=$?
-if [[ "$RC" -eq 0 ]] && ! echo "$OUT" | grep -q "running cargo test"; then
+if [[ "$RC" -eq 0 ]] && ! echo "$OUT" | grep -qE "running cargo (test|nextest)"; then
     ok "cache hit silently skipped re-test"
 else
     fail "cache hit should skip (rc=$RC, out=$OUT)"
@@ -170,7 +182,7 @@ fi
 echo "--- Test 5: CHUMP_TEST_GATE=0 → guard skips even on red tests ---"
 OUT=$(CHUMP_TEST_GATE=0 CHUMP_TEST_GATE_FAKE_RC=101 run_hook)
 RC=$?
-if [[ "$RC" -eq 0 ]] && ! echo "$OUT" | grep -q "INFRA-761: running cargo test"; then
+if [[ "$RC" -eq 0 ]] && ! echo "$OUT" | grep -qE "(INFRA-761: running cargo test|CREDIBLE-278: running cargo nextest)"; then
     ok "bypass env skipped the gate"
 else
     fail "bypass env should skip (rc=$RC, out=$OUT)"
