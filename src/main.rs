@@ -1971,6 +1971,15 @@ async fn main() -> Result<()> {
         std::process::exit(commands::bootstrap::run(&sub_args));
     }
 
+    // `chump roadmap-from-vision <vision> --domain D [--outcome ID] [--max-gaps N] [--apply]`
+    // (EFFECTIVE-425, COTG spine slice 1) — vision string -> validated Roadmap JSON;
+    // with --apply, files each GapDraft via `chump gap reserve --outcome <id>` so
+    // MISSION-045 / pillar / similarity gates apply. See commands::roadmap_from_vision.
+    if args.get(1).map(String::as_str) == Some("roadmap-from-vision") {
+        let sub_args: Vec<String> = args.iter().skip(1).cloned().collect();
+        std::process::exit(commands::roadmap_from_vision::run(&sub_args).await);
+    }
+
     // INFRA-2399 author-time helper commands (add-env-var / emit-event /
     // install-daemon / add-path-filter / add-raw-gh-allowlist).
     // Extracted to commands::dispatch_authoring (INFRA-3298, slice 2 of INFRA-3287).
