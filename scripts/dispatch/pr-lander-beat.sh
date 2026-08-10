@@ -26,10 +26,10 @@
 #   bash scripts/dispatch/pr-lander-beat.sh              # apply
 #   bash scripts/dispatch/pr-lander-beat.sh --dry-run    # report only
 #
-# Global off-switch: CHUMP_PR_LANDER_SKIP=1.
+# Off-switch: CHUMP_PR_LANDER_ENABLED=0 (default on).
 set -uo pipefail
 
-[[ "${CHUMP_PR_LANDER_SKIP:-0}" == "1" ]] && { echo "[pr-lander] CHUMP_PR_LANDER_SKIP=1 — exit"; exit 0; }
+[[ "${CHUMP_PR_LANDER_ENABLED:-1}" == "0" ]] && { echo "[pr-lander] disabled via CHUMP_PR_LANDER_ENABLED=0 — exit"; exit 0; }
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
