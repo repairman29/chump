@@ -164,6 +164,56 @@ fn comprehend_directive(available: bool) -> Option<&'static str> {
     )
 }
 
+/// [Almanac — grounded code intelligence] directive text. `enabled` mirrors
+/// `CHUMP_ALMANAC_ENABLED != 0`.
+///
+/// CREDIBLE-223: `almanac_impact`/`almanac_neighbors` walk RESOLVED `use`
+/// imports only — inline `crate::`/`self::`/`super::` path references (the
+/// dominant intra-crate call style in Rust) are invisible to the edge
+/// walker, so a caller/callee reached only via an inline path never appears
+/// in either tool's output. That's a SILENT lower bound: the tool returns a
+/// clean, non-empty result with no indication anything was skipped. Measured
+/// on this repo (EFFECTIVE-394 crate-extraction validation): `almanac_impact`
+/// on a file with 3 real inline-path callers reported only the 1 caller
+/// reached via a `use` import (edges_resolved 492/2545, 19%); `almanac_impact`
+/// on another file reported `total_affected=0` despite a live inline-path
+/// caller; `almanac_neighbors` reported `imported_by=[]`/no neighbors despite
+/// an inline-path importer. This directive makes that caveat loud instead of
+/// silent, and names grep + the compiler as the authoritative cross-check for
+/// Rust coupling until the edge walker resolves inline paths too.
+fn almanac_directive(enabled: bool) -> Option<&'static str> {
+    if !enabled {
+        return None;
+    }
+    Some(
+        "[Almanac — grounded code intelligence, via the almanac_* MCP tools]\n\
+         - For \"where/how does X work\" in this codebase: call almanac_search FIRST — it returns \
+         grounded path:line answers in one call, cheaper and more reliable than re-reading files.\n\
+         - Before writing code that calls a function or library: call almanac_api to get the EXACT \
+         signature + a real usage example. Copy the real API; do not invent it.\n\
+         - Before EDITING a shared file: call almanac_impact — every file that transitively \
+         imports it, level by level (a stated lower bound, not a ceiling).\n\
+         - New to a repo: call almanac_architecture FIRST — modules, cross-module dependencies, \
+         hub files. Orient, then search.\n\
+         - Before DELETING or rewriting code that looks wrong: call almanac_why <path> <line> — \
+         the commit and gap refs that put it there. Do not remove a guard you cannot explain.\n\
+         - almanac_comprehend answers is-it-wired / what-gates-it / what-flags-govern-it. Each \
+         organ states its own coverage; outside Rust `gate=none-recognized` means no guard of a \
+         KNOWN SHAPE was found, never \"unprotected\".\n\
+         - almanac_search_fleet finds which repo across the fleet does X; almanac_neighbors gives a \
+         file's imports/callers; almanac_status reports index freshness.\n\
+         - CAVEAT for Rust (CREDIBLE-223): almanac_impact/almanac_neighbors resolve `use` imports \
+         only — inline `crate::`/`self::`/`super::` path references (the dominant intra-crate call \
+         style in this codebase) are NOT walked, so a non-empty result can still silently omit real \
+         callers/callees, and an empty result does not mean \"no coupling\". Check the returned \
+         edges_resolved/edges_total fraction; when it's low, or before a crate-extraction/blast-radius \
+         decision, cross-check with `grep -rn crate::<symbol>` (and the compiler) as the authoritative \
+         source for Rust coupling — Almanac is a cross-check, not the final word, until inline paths \
+         are walked too.\n\
+         Prefer Almanac; fall back to grep only when it returns nothing.\n\n",
+    )
+}
+
 pub fn assemble_context() -> String {
     const INITIAL_CAP: usize = 4096;
     let mut out = String::with_capacity(INITIAL_CAP);
@@ -200,29 +250,11 @@ pub fn assemble_context() -> String {
     // deps). Make the agent reach for it by reflex instead of grepping/guessing.
     // Static directive (no per-prompt call); the agent pulls via the almanac_* MCP
     // tools. Disable with CHUMP_ALMANAC_ENABLED=0.
-    if std::env::var("CHUMP_ALMANAC_ENABLED")
+    let almanac_enabled = std::env::var("CHUMP_ALMANAC_ENABLED")
         .map(|v| v != "0")
-        .unwrap_or(true)
-    {
-        out.push_str(
-            "[Almanac — grounded code intelligence, via the almanac_* MCP tools]\n\
-             - For \"where/how does X work\" in this codebase: call almanac_search FIRST — it returns \
-             grounded path:line answers in one call, cheaper and more reliable than re-reading files.\n\
-             - Before writing code that calls a function or library: call almanac_api to get the EXACT \
-             signature + a real usage example. Copy the real API; do not invent it.\n\
-             - Before EDITING a shared file: call almanac_impact — every file that transitively \
-             imports it, level by level (a stated lower bound, not a ceiling).\n\
-             - New to a repo: call almanac_architecture FIRST — modules, cross-module dependencies, \
-             hub files. Orient, then search.\n\
-             - Before DELETING or rewriting code that looks wrong: call almanac_why <path> <line> — \
-             the commit and gap refs that put it there. Do not remove a guard you cannot explain.\n\
-             - almanac_comprehend answers is-it-wired / what-gates-it / what-flags-govern-it. Each \
-             organ states its own coverage; outside Rust `gate=none-recognized` means no guard of a \
-             KNOWN SHAPE was found, never \"unprotected\".\n\
-             - almanac_search_fleet finds which repo across the fleet does X; almanac_neighbors gives a \
-             file's imports/callers; almanac_status reports index freshness.\n\
-             Prefer Almanac; fall back to grep only when it returns nothing.\n\n",
-        );
+        .unwrap_or(true);
+    if let Some(directive) = almanac_directive(almanac_enabled) {
+        out.push_str(directive);
     }
 
     // ChumpOS comprehension organs (INFRA-3458) — "understand a repo BEFORE you
@@ -1015,6 +1047,52 @@ mod cos_weekly_tests {
         assert!(
             d.contains("registered but in NO profile"),
             "surfaces the defined-but-not-wired trap"
+        );
+    }
+
+    // CREDIBLE-223: almanac_impact/almanac_neighbors silently under-report Rust
+    // coupling because they only walk resolved `use` imports, not inline
+    // `crate::`/`self::`/`super::` path references. Without this directive text,
+    // an agent has no reason to doubt a clean, non-empty almanac_impact result —
+    // this proves the caveat text is present and gated the same way as the rest
+    // of the almanac directive.
+    #[test]
+    fn almanac_directive_gated_on_enabled() {
+        assert!(
+            almanac_directive(false).is_none(),
+            "no directive when Almanac is disabled — never advertise an unusable tool"
+        );
+        let d = almanac_directive(true).expect("directive present when Almanac is enabled");
+        assert!(d.contains("almanac_impact") && d.contains("almanac_neighbors"));
+        assert!(
+            d.contains("crate::") && d.contains("self::") && d.contains("super::"),
+            "names the inline-path forms the edge walker misses"
+        );
+        assert!(
+            d.contains("edges_resolved") || d.contains("edges_total"),
+            "points the agent at the resolved-edge fraction, not a bare claim"
+        );
+        assert!(
+            d.to_lowercase().contains("grep"),
+            "names grep as the authoritative cross-check for Rust coupling"
+        );
+    }
+
+    #[test]
+    fn almanac_directive_fails_without_inline_path_caveat() {
+        // Guards against regressing to the pre-CREDIBLE-223 text, which only
+        // called almanac_impact "a stated lower bound, not a ceiling" without
+        // ever naming inline crate:: paths as the specific silent gap.
+        let old_text = "Before EDITING a shared file: call almanac_impact — every file that \
+             transitively imports it, level by level (a stated lower bound, not a ceiling).";
+        assert!(
+            !old_text.contains("crate::"),
+            "sanity: the pre-fix directive text did not name inline-path refs"
+        );
+        let d = almanac_directive(true).unwrap();
+        assert!(
+            d.contains("crate::"),
+            "current directive must name inline-path refs"
         );
     }
 }
