@@ -9142,6 +9142,23 @@ events:
     consumers: [ops-audit, consensus-bypass-leaderboard]
     fields_required: [ts, kind, cmd, gap]
 
+  - kind: stranded_work
+    effect_metric: self
+    emitter: scripts/coord/stranded-work-detector.sh (ZERO-WASTE-039)
+    trigger: >
+      A checkout carries work with no registration artifact that any gate,
+      detector, picker, or session-start digest would otherwise see: dirty
+      tracked files idle >24h, a local branch with unmerged `git cherry`
+      '+' commits >24h old, HEAD not on the default branch, or a stash
+      >7 days old. Surfaced only — the detector never auto-commits and
+      never auto-files a gap (MISSION-045: a signal is not work). A
+      dated zero-loss patch of any dirty diff is written under
+      .chump/stranded/ BEFORE this event fires. Precedent: the 2026-08-05
+      almanac Phase D integration sat dirty in Chump's own checkout for
+      4-5 days while the fleet independently re-shipped the same work.
+    consumers: [fleet-brief, freshness-preamble, ops-audit]
+    fields_required: [ts, kind, checkout, dirty, ahead_branches, aged_stashes, not_on_main, patch]
+
   - kind: vision_intake
     effect_metric: self
     emitter: src/vision_intake.rs (INFRA-3480)
