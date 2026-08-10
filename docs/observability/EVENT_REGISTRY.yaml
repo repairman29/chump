@@ -2386,6 +2386,22 @@ events:
     trigger: an event needs operator attention
     consumers: [discord, telegram messaging adapter]
 
+  - kind: operator_paged
+    effect_metric: self
+    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-274)
+    trigger: the notify_operator escalation gate classified a signal as
+      page-worthy (halt-class, or a novel/no-playbook kind per
+      operator-escalation-registry.txt) and DM'd the operator's phone.
+    consumers: [discord]
+
+  - kind: operator_notify_suppressed
+    effect_metric: self
+    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-274)
+    trigger: the notify_operator escalation gate suppressed a routine alert
+      because the signal kind has a playbook (auto-heal/runbook); logged to
+      ambient, NOT DM'd — quiet-by-default escalation discipline.
+    consumers: [ambient]
+
   - kind: operator_page
     effect_metric: self
     emitter: scripts/dispatch/operator-page.sh (INFRA-1774)
