@@ -69,6 +69,12 @@ if [[ "${1:-}" == "--monitor" ]]; then
     "$(date -u +%FT%TZ)" "$status" "$crit_fail" "$warn_fail" "$(hostname -s)" \
     >> /root/Projects/chump/.chump-locks/ambient.jsonl 2>/dev/null || true
   if (( crit_fail > 0 )); then
+    # Record the incomplete-heartbeat event to ambient (observable + satisfies the
+    # event-registry coverage gate: node_heartbeat_incomplete is a real emit here,
+    # not only a CHUMP_NOTIFY_KIND label the scanner can't see).
+    printf '{"ts":"%s","kind":"node_heartbeat_incomplete","crit":%d,"node":"%s"}\n' \
+      "$(date -u +%FT%TZ)" "$crit_fail" "$(hostname -s)" \
+      >> /root/Projects/chump/.chump-locks/ambient.jsonl 2>/dev/null || true
     # notify-operator.sh is a sourced lib; call its function via a subshell. The
     # escalation gate decides page-vs-suppress (node_heartbeat_incomplete is novel
     # → pages the operator's phone).
