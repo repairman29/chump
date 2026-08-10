@@ -412,6 +412,7 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
         let merge_result = merge_pr(&opts)?;
         if merge_result {
             println!("[verify-merge] PR #{} merged successfully.", opts.pr);
+            run_outcome_probe(&opts);
         } else {
             eprintln!("[verify-merge] merge command failed — check gh output above.");
             return Ok(1);
@@ -433,6 +434,15 @@ struct Opts {
     apply: bool,
     /// Path to `gh` binary; resolved from PATH, overridable via CHUMP_GH_BIN.
     gh_bin: String,
+    /// CREDIBLE-COTG-3.1: URL to fetch AFTER a successful --apply merge, to
+    /// prove the shipped change actually changed observable, live behavior —
+    /// not just that CI + the anti-cosmetic gates were satisfied in the repo
+    /// checkout. `None` skips the probe entirely (opt-in, so repos with no
+    /// live surface — libraries, CLIs — aren't forced to supply one).
+    outcome_probe_url: Option<String>,
+    /// Substring that must appear in the probe response body for the outcome
+    /// to be considered proven. Required alongside `outcome_probe_url`.
+    outcome_probe_contains: Option<String>,
 }
 
 impl Opts {
@@ -443,6 +453,8 @@ impl Opts {
         let mut gap = String::new();
         let mut clone_dir: Option<PathBuf> = None;
         let mut apply = false;
+        let mut outcome_probe_url: Option<String> = None;
+        let mut outcome_probe_contains: Option<String> = None;
 
         let mut i = 0;
         while i < args.len() {
@@ -473,6 +485,22 @@ impl Opts {
                 "--apply" => {
                     apply = true;
                 }
+                "--outcome-probe-url" => {
+                    i += 1;
+                    outcome_probe_url = Some(
+                        args.get(i)
+                            .context("--outcome-probe-url requires a value")?
+                            .clone(),
+                    );
+                }
+                "--outcome-probe-contains" => {
+                    i += 1;
+                    outcome_probe_contains = Some(
+                        args.get(i)
+                            .context("--outcome-probe-contains requires a value")?
+                            .clone(),
+                    );
+                }
                 _ => {}
             }
             i += 1;
@@ -487,6 +515,11 @@ impl Opts {
         if !repo.contains('/') {
             anyhow::bail!("--repo must be in owner/repo format, got {:?}", repo);
         }
+        if outcome_probe_url.is_some() != outcome_probe_contains.is_some() {
+            anyhow::bail!(
+                "--outcome-probe-url and --outcome-probe-contains must be passed together"
+            );
+        }
 
         let gh_bin = std::env::var("CHUMP_GH_BIN").unwrap_or_else(|_| "gh".to_string());
 
@@ -497,6 +530,8 @@ impl Opts {
             clone_dir,
             apply,
             gh_bin,
+            outcome_probe_url,
+            outcome_probe_contains,
         })
     }
 }
@@ -569,7 +604,8 @@ enum RegressionResult {
 fn print_usage() {
     println!("Usage: chump external verify-merge \\");
     println!("    --pr <N> --repo <owner/repo> --gap <ID> \\");
-    println!("    [--clone-dir <path>] [--apply]");
+    println!("    [--clone-dir <path>] [--apply] \\");
+    println!("    [--outcome-probe-url <url> --outcome-probe-contains <substring>]");
     println!();
     println!("Gates (ALL must pass):");
     println!("  1. Repo CI green — polls check-runs until all terminal; all must be green.");
@@ -583,6 +619,12 @@ fn print_usage() {
     println!();
     println!("Verdict: MERGE (all pass) or HELD(<reason>).");
     println!("Dry-run by default; --apply executes the merge.");
+    println!();
+    println!("Post-merge outcome probe (opt-in) — after a successful --apply merge,");
+    println!("fetches --outcome-probe-url and asserts --outcome-probe-contains appears");
+    println!("in the response body. Proves the LIVE outcome, not just the repo checkout.");
+    println!("Never gates the merge (already happened); emits");
+    println!("kind=outcome_probe_verified / outcome_probe_failed to ambient.jsonl.");
     println!();
     println!("Kill-switch: CHUMP_EXTERNAL_VERIFY_MERGE_DISABLED=1");
     println!("Deps timeout: CHUMP_VERIFY_DEPS_TIMEOUT_SECS (default 600)");
@@ -1754,6 +1796,97 @@ fn synth_ac_for_pr(opts: &Opts) -> Option<Vec<String>> {
     crate::pr_ac_coverage::generate_ac(title, body, &diff_ctx)
 }
 
+// ── Post-merge LIVE outcome probe (CREDIBLE-COTG-3.1) ───────────────────────
+//
+// Gates 1-4 prove the PR is well-formed (CI green, a real behavioral test,
+// no regression, AC covered) — but every one of them runs against the repo
+// checkout, BEFORE the merge lands anywhere live. None of them prove the
+// *outcome* the PR was written to cause: e.g. a broken-link fix that leaves
+// the link broken because it fixed the wrong file, or a deploy config change
+// that never actually rolls out. The outcome probe closes that gap: after
+// --apply merges the PR, fetch a caller-supplied live URL and assert the
+// expected substring is now present. Opt-in (`--outcome-probe-url` +
+// `--outcome-probe-contains`) since most gaps have no single live surface to
+// check, and it can never hold the merge — the PR is already merged by the
+// time this runs, so a probe failure is a durable-fix signal for a human /
+// follow-up gap, not something this process can undo.
+
+/// Pure matcher — no I/O — so the "does the outcome match" logic is testable
+/// without a live network fetch. Case-sensitive, trims neither side (a probe
+/// author who wants insensitivity/trimming controls that in the substring
+/// they pass in).
+fn outcome_probe_matches(content: &str, expected_substring: &str) -> bool {
+    content.contains(expected_substring)
+}
+
+/// Fetch `url` via `curl` (already a fleet-wide dependency; avoids adding
+/// reqwest to chump-verify, which is deliberately kept dependency-light for
+/// compile speed — see the crate-level doc comment in Cargo.toml).
+fn fetch_url_for_probe(url: &str, curl_bin: &str) -> anyhow::Result<String> {
+    let out = Command::new(curl_bin)
+        .args(["-sL", "--max-time", "20", url])
+        .output()
+        .map_err(|e| anyhow::anyhow!("curl: {e}"))?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "curl exited {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Runs the post-merge outcome probe if configured; no-ops if the opts don't
+/// carry `outcome_probe_url` + `outcome_probe_contains`. Never returns an
+/// error to the caller — a probe failure is logged + emitted to ambient, but
+/// the merge already happened and cannot be gated retroactively.
+fn run_outcome_probe(opts: &Opts) {
+    let (Some(url), Some(expected)) = (&opts.outcome_probe_url, &opts.outcome_probe_contains)
+    else {
+        return;
+    };
+
+    println!("\n[verify-merge] Outcome probe: fetching {url} ...");
+    let curl_bin = std::env::var("CHUMP_CURL_BIN").unwrap_or_else(|_| "curl".to_string());
+    match fetch_url_for_probe(url, &curl_bin) {
+        Ok(body) => {
+            if outcome_probe_matches(&body, expected) {
+                println!("  PASS: live outcome confirmed (found {expected:?} at {url})");
+                emit_outcome_probe(opts, url, true, "match found");
+            } else {
+                println!("  FAIL: live outcome NOT confirmed — {expected:?} not found at {url}");
+                emit_outcome_probe(opts, url, false, "substring not found in probe response");
+            }
+        }
+        Err(e) => {
+            println!("  FAIL: outcome probe fetch error: {e:#}");
+            emit_outcome_probe(opts, url, false, &format!("fetch error: {e}"));
+        }
+    }
+}
+
+/// Emit `kind=outcome_probe_verified` / `kind=outcome_probe_failed`.
+/// ambient-kind: outcome_probe_verified  CREDIBLE-COTG-3.1 emitter: crates/chump-verify/src/external_verify_merge.rs
+/// ambient-kind: outcome_probe_failed  CREDIBLE-COTG-3.1 emitter: crates/chump-verify/src/external_verify_merge.rs
+fn emit_outcome_probe(opts: &Opts, url: &str, passed: bool, note: &str) {
+    let kind = if passed {
+        "outcome_probe_verified"
+    } else {
+        "outcome_probe_failed"
+    };
+    emit_ambient_event(
+        kind,
+        &[
+            ("pr", &opts.pr.to_string()),
+            ("repo", &opts.repo),
+            ("gap", &opts.gap),
+            ("url", url),
+            ("note", note),
+        ],
+    );
+}
+
 /// Execute `gh pr merge <N> --repo <repo> --squash`.
 fn merge_pr(opts: &Opts) -> anyhow::Result<bool> {
     let status = Command::new(&opts.gh_bin)
@@ -1942,6 +2075,8 @@ mod tests {
             clone_dir: None,
             apply: false,
             gh_bin: gh_bin.to_string(),
+            outcome_probe_url: None,
+            outcome_probe_contains: None,
         }
     }
 
@@ -2750,5 +2885,98 @@ exit 0
             vec!["fail_new".to_string()],
             "only new failure should be detected"
         );
+    }
+
+    // ── CREDIBLE-COTG-3.1: post-merge outcome probe ────────────────────────
+
+    #[test]
+    fn outcome_probe_matches_when_substring_present() {
+        let body = "<html><body>Deployed: v2.3.1 — fix confirmed live</body></html>";
+        assert!(outcome_probe_matches(body, "fix confirmed live"));
+    }
+
+    #[test]
+    fn outcome_probe_matches_false_when_substring_absent() {
+        // Without the outcome_probe_matches implementation this would panic
+        // (function undefined); with it, a body that never got the fix must
+        // report false so the probe is reported as HELD/failed, not silently
+        // treated as verified.
+        let body = "<html><body>Deployed: v2.3.0 — old content</body></html>";
+        assert!(!outcome_probe_matches(body, "fix confirmed live"));
+    }
+
+    #[test]
+    fn outcome_probe_matches_is_case_sensitive() {
+        let body = "Status: OK";
+        assert!(!outcome_probe_matches(body, "status: ok"));
+        assert!(outcome_probe_matches(body, "Status: OK"));
+    }
+
+    #[test]
+    fn opts_parse_accepts_outcome_probe_flags() {
+        let args: Vec<String> = [
+            "--pr",
+            "42",
+            "--repo",
+            "owner/repo",
+            "--gap",
+            "CREDIBLE-3494",
+            "--outcome-probe-url",
+            "https://example.com/status",
+            "--outcome-probe-contains",
+            "healthy",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        let opts = Opts::parse(&args).expect("parse should succeed");
+        assert_eq!(
+            opts.outcome_probe_url.as_deref(),
+            Some("https://example.com/status")
+        );
+        assert_eq!(opts.outcome_probe_contains.as_deref(), Some("healthy"));
+    }
+
+    #[test]
+    fn opts_parse_omits_outcome_probe_flags_by_default() {
+        let args: Vec<String> = ["--pr", "42", "--repo", "owner/repo", "--gap", "GAP-1"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        let opts = Opts::parse(&args).expect("parse should succeed");
+        assert!(opts.outcome_probe_url.is_none());
+        assert!(opts.outcome_probe_contains.is_none());
+    }
+
+    #[test]
+    fn opts_parse_rejects_outcome_probe_url_without_contains() {
+        let args: Vec<String> = [
+            "--pr",
+            "42",
+            "--repo",
+            "owner/repo",
+            "--gap",
+            "GAP-1",
+            "--outcome-probe-url",
+            "https://example.com",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        let err = match Opts::parse(&args) {
+            Err(e) => e,
+            Ok(_) => panic!("must require both flags together"),
+        };
+        assert!(err.to_string().contains("must be passed together"));
+    }
+
+    #[test]
+    fn run_outcome_probe_noop_when_unconfigured() {
+        // No url/contains configured — must not attempt any I/O or panic.
+        let opts = make_opts("gh");
+        run_outcome_probe(&opts);
     }
 }
