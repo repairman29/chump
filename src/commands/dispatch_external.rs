@@ -44,5 +44,16 @@ pub fn try_dispatch(args: &[String]) -> Option<i32> {
         return Some(crate::external_verify_merge::run(&sub_args));
     }
 
+    // `chump verify-reaches --gap <ID> --diff <name-only-file>` (CREDIBLE-215) —
+    // mechanical stub detection: does any changed file have a resolved
+    // import path (via almanac's graph) to the gap's stated target?
+    // REACHES / TEST-ONLY / UNRELATED, always advisory (exit 0) — UNRELATED
+    // is a review signal, not an auto-reject (almanac's graph is a lower
+    // bound over resolved intra-repo edges only).
+    if args.get(1).map(String::as_str) == Some("verify-reaches") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        return Some(crate::commands::reachability::run(&sub_args));
+    }
+
     None
 }
