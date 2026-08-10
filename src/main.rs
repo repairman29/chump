@@ -68,6 +68,7 @@ mod cost_tracker;
 mod cost_watch;
 mod counterfactual;
 mod dashboard;
+mod sourcing_resolver; // INFRA-3508 (COTG-S.1): repo -> arsenal -> world prior-art resolver
 pub use chump_db_pool::db_pool;
 mod decompose_task_tool;
 mod delegate_tool;
@@ -1886,6 +1887,14 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("voice") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(commands::voice::run(&sub_args));
+    }
+
+    // `chump source-resolve "<capability keyword>"` (INFRA-3508, COTG-S.1) —
+    // resolve a capability against repo -> arsenal -> world prior art BEFORE
+    // building. See src/sourcing_resolver.rs for the tiered resolution logic.
+    if args.get(1).map(String::as_str) == Some("source-resolve") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::source_resolve::run(&sub_args));
     }
 
     // `chump intervention-watchdog [--window H] [--apply] [--json]` (COTG-2.1/INFRA-3489) —
