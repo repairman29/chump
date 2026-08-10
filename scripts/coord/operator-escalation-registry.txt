@@ -38,6 +38,7 @@ ci_flake_rerun	suppress	# nextest flake wrapper + manual rerun playbook
 
 # ── PAGE: halt-class or no automated remedy → reach the operator ──────────────
 # (Unlisted kinds also page by default; these document intent + catch typos.)
+node_heartbeat_incomplete	page	# RESILIENT-290: a critical always-on service is down — fleet may stop/lose work
 pr_auto_closed_no_reopen	page	# RESILIENT-263 origin: real work destroyed, needs a human
 credential_rotation_needed	page	# T2 — only the operator can rotate a live secret
 fleet_stopped_unexpected	page	# halt-class — fleet down with no self-recovery

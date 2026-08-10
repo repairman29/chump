@@ -2400,6 +2400,21 @@ events:
     trigger: an event needs operator attention
     consumers: [discord, telegram messaging adapter]
 
+  - kind: node_heartbeat
+    effect_metric: self
+    emitter: scripts/ops/node-heartbeat-check.sh --monitor (RESILIENT-290)
+    trigger: the node heartbeat self-monitor ran; records status + crit/warn
+      counts of the always-on critical set (worker, pr-lander, auth, gh, disk,
+      nats, discord). Observability every 15 min — proves the node is watching itself.
+    consumers: [ambient]
+
+  - kind: node_heartbeat_incomplete
+    effect_metric: self
+    emitter: scripts/ops/node-heartbeat-check.sh --monitor (RESILIENT-290)
+    trigger: a CRITICAL always-on service is down (crit>0) — the fleet may stop or
+      lose work. Pages the operator via the escalation gate (novel/no-playbook).
+    consumers: [discord]
+
   - kind: operator_paged
     effect_metric: self
     emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-274)
