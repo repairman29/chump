@@ -1,0 +1,16 @@
+# RESILIENT-288 — the automated ATC ship-lander. Arms green-but-unarmed PRs so
+# the fleet's work actually merges, instead of orphaning until an agent
+# "remembers" to sweep. Paired with chump-pr-lander.timer (every ~10 min).
+# Path defaults target the primary node (helsinki, root). Non-root nodes: adjust
+# the two paths + providers.env location per LINUX_NODE_ONBOARDING.md.
+[Unit]
+Description=Chump PR-lander beat — arm green PRs so they merge (RESILIENT-288)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Source providers.env for GH_TOKEN (export-format, so source it in a shell
+# rather than systemd EnvironmentFile which can't parse `export KEY=val`).
+Environment=HOME=/root
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/dispatch/pr-lander-beat.sh'
