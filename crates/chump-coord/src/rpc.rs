@@ -558,12 +558,16 @@ pub async fn ask_capability(
 /// Register all 5 standard RPC method handlers for a worker session.
 ///
 /// Called from worker startup when a NATS connection is available.
-/// Each handler returns a simple "not implemented" stub reply so peers
-/// get an explicit error rather than a timeout.
+/// Emits a `session_start` ambient event, starts a background heartbeat,
+/// and subscribes handlers for the 5 standard peer-RPC methods so the
+/// worker is a live, queryable participant rather than silent/unattributed.
+///
+/// Returns a success payload `{"registered": true, "session_id": "<id>"}`
+/// once every handler is subscribed.
 pub async fn register_worker_rpc_handlers(
     nats: &async_nats::Client,
     session_id: &str,
-) -> Result<(), RpcError> {
+) -> Result<serde_json::Value, RpcError> {
     // INFRA-1588: Emit session_start to ambient for worker attribution.
     let start_event = format!(
         "{{\"ts\":\"{}\",\"session\":\"{}\",\"kind\":\"session_start\",\"role\":\"worker\"}}",
@@ -641,7 +645,7 @@ pub async fn register_worker_rpc_handlers(
     })
     .await?;
 
-    Ok(())
+    Ok(serde_json::json!({"registered": true, "session_id": session_id}))
 }
 
 // ── Ambient helper ───────────────────────────────────────────────────────────
