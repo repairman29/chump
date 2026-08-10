@@ -715,28 +715,22 @@ fn current_branch(repo_root: &Path) -> Result<String> {
 
 fn preflight(ws: &Workspace) -> Result<()> {
     let opts = ws.opts();
-    // Scripts live in the main repo (worktrees share them via the
-    // shared .git/, but path resolution is rooted at repo_root for
-    // clarity).
-    let script = opts.repo_root.join("scripts/coord/gap-preflight.sh");
-    if !script.exists() {
-        bail!(
-            "gap-preflight.sh missing at {} — is repo_root set correctly?",
-            script.display()
-        );
-    }
-    let status = Command::new("bash")
-        .arg(&script)
-        .arg(opts.gap_id)
-        // INFRA-302 blocker (3): run from the worktree so any
-        // worktree-scoped state (lease files at `<wt>/.chump-locks/`)
-        // is visible to the script.
+    // INFRA-987 completion: scripts/coord/gap-preflight.sh was deleted (#2014) in
+    // favor of the `chump gap preflight` subcommand. worker.sh migrated (INFRA-379)
+    // but this dispatch caller was missed, so a fresh install (no gap-preflight.sh)
+    // failed here with "gap-preflight.sh missing". Shell out to our own binary's
+    // subcommand — the exact check worker.sh uses.
+    let exe = std::env::current_exe().context("resolve chump binary for gap preflight")?;
+    let status = Command::new(&exe)
+        .args(["gap", "preflight", opts.gap_id])
+        // INFRA-302 blocker (3): run from the worktree so any worktree-scoped
+        // state (lease files at `<wt>/.chump-locks/`) is visible to the check.
         .current_dir(ws.working_dir())
         .status()
-        .context("invoke gap-preflight.sh")?;
+        .context("invoke chump gap preflight")?;
     if !status.success() {
         bail!(
-            "gap-preflight.sh rejected {} (exit {})",
+            "chump gap preflight rejected {} (exit {})",
             opts.gap_id,
             status.code().unwrap_or(-1)
         );
@@ -746,31 +740,35 @@ fn preflight(ws: &Workspace) -> Result<()> {
 
 fn claim(ws: &Workspace) -> Result<()> {
     let opts = ws.opts();
-    let script = opts.repo_root.join("scripts/coord/gap-claim.sh");
-    if !script.exists() {
-        bail!("gap-claim.sh missing at {}", script.display());
+    // INFRA-987 completion: scripts/coord/gap-claim.sh was deleted (#2014) and its
+    // lease-write ported to Rust. dispatch already created the worktree in
+    // Workspace::new, so it needs a LEASE-ONLY claim — NOT `chump claim`, which is the
+    // FULL atomic claim (creates its OWN worktree AND trips the RESILIENT-073 autonomy
+    // kill-switch). Call the lease primitive directly.
+    let paths_vec: Vec<&str> = opts
+        .paths
+        .map(|p| {
+            p.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let ttl_secs = std::env::var("CHUMP_GAP_CLAIM_TTL_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(3600);
+    // The lease must land in THIS worktree's `.chump-locks/` (as gap-claim.sh did via
+    // cwd=working_dir). `agent_lease::locks_dir()` resolves via CHUMP_REPO; point it at
+    // the worktree for the duration of the claim (same pattern as execute_gap.rs:999).
+    let prev_repo = std::env::var("CHUMP_REPO").ok();
+    std::env::set_var("CHUMP_REPO", ws.working_dir());
+    let result = crate::agent_lease::claim_gap(opts.gap_id, &paths_vec, ttl_secs, "dispatch");
+    match prev_repo {
+        Some(p) => std::env::set_var("CHUMP_REPO", p),
+        None => std::env::remove_var("CHUMP_REPO"),
     }
-    let mut cmd = Command::new("bash");
-    cmd.arg(&script).arg(opts.gap_id);
-    if let Some(paths) = opts.paths {
-        cmd.arg("--paths").arg(paths);
-    }
-    // INFRA-302 blocker (3): run from the worktree. gap-claim.sh's
-    // worktree-scoped session-ID resolution
-    // (`.chump-locks/.wt-session-id`, see CLAUDE.md "Session ID
-    // resolution") needs the worktree as cwd to get a stable per-worktree
-    // session ID.
-    let status = cmd
-        .current_dir(ws.working_dir())
-        .status()
-        .context("invoke gap-claim.sh")?;
-    if !status.success() {
-        bail!(
-            "gap-claim.sh failed for {} (exit {})",
-            opts.gap_id,
-            status.code().unwrap_or(-1)
-        );
-    }
+    result.with_context(|| format!("lease-claim {} failed", opts.gap_id))?;
     Ok(())
 }
 
@@ -968,26 +966,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn preflight_bails_when_script_missing() {
-        let opts = DispatchOptions {
-            gap_id: "INFRA-191",
-            work: WorkBackend::Interactive,
-            auto_merge: false,
-            skip_tests: true,
-            paths: None,
-            // Deliberately point at a directory that has no scripts/coord/
-            // tree so the missing-file branch fires.
-            repo_root: PathBuf::from("/tmp"),
-        };
-        let ws = ws_with_dir(&opts, PathBuf::from("/tmp"));
-        let err = preflight(&ws).unwrap_err();
-        let msg = format!("{err:#}");
-        assert!(
-            msg.contains("gap-preflight.sh missing"),
-            "expected missing-file error, got: {msg}"
-        );
-    }
+    // INFRA-987: `preflight_bails_when_script_missing` was retired here. `preflight()`
+    // no longer shells to the removed scripts/coord/gap-preflight.sh — it delegates to
+    // the `chump gap preflight` subcommand via current_exe(). That subcommand is the
+    // one worker.sh uses (INFRA-379) and is covered by its own integration tests; the
+    // old "missing-file" failure mode this asserted no longer exists.
 
     #[test]
     fn ship_bails_when_script_missing() {
@@ -1213,21 +1196,41 @@ mod tests {
     }
 
     #[test]
-    fn claim_bails_when_script_missing() {
+    fn claim_writes_lease_via_primitive() {
+        // INFRA-987: claim() no longer shells to the removed gap-claim.sh — it writes a
+        // lease via agent_lease::claim_gap into the worktree's .chump-locks/ (CHUMP_REPO
+        // is pinned to working_dir). Verify the lease-only claim succeeds and lands a
+        // lease file, rather than the old "script missing" bail.
+        let tmp = std::env::temp_dir().join(format!(
+            "chump-dispatch-claim-{}-{}",
+            std::process::id(),
+            "test-001"
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("mk tmp worktree");
         let opts = DispatchOptions {
             gap_id: "TEST-001",
             work: WorkBackend::Interactive,
             auto_merge: false,
             skip_tests: true,
             paths: None,
-            repo_root: PathBuf::from("/tmp"),
+            repo_root: tmp.clone(),
         };
-        let ws = ws_with_dir(&opts, PathBuf::from("/tmp"));
-        let err = claim(&ws).unwrap_err();
-        let msg = format!("{err:#}");
+        let ws = ws_with_dir(&opts, tmp.clone());
+        let res = claim(&ws);
+        let locks = tmp.join(".chump-locks");
+        let wrote_lease = std::fs::read_dir(&locks)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .any(|e| e.path().extension().map(|x| x == "json").unwrap_or(false))
+            })
+            .unwrap_or(false);
+        let _ = std::fs::remove_dir_all(&tmp);
+        res.expect("lease-only claim should succeed in a writable dir");
         assert!(
-            msg.contains("gap-claim.sh missing"),
-            "expected missing-file error, got: {msg}"
+            wrote_lease,
+            "expected a lease .json under {}",
+            locks.display()
         );
     }
 

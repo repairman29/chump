@@ -110,6 +110,9 @@ CHUMP_VERSION
 CHUMP_GAP_SHIP_STALE_CHECK
 CHUMP_GAP_SHIP_SKIP_STALE_CHECK
 CHUMP_GAP_SHIP_STALE_THRESHOLD
+# Lease TTL (seconds) for a claimed gap; read by dispatch::claim (INFRA-987) and the
+# atomic-claim layer. Default 3600. Internal tuning knob, not an operator setting.
+CHUMP_GAP_CLAIM_TTL_SECS
 CHUMP_BYPASS_BLACKBOARD
 CHUMP_BYPASS_CLOSED_PR_GUARD
 CHUMP_BYPASS_NEUROMOD
