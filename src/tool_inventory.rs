@@ -545,7 +545,8 @@ inventory::submit! {
 #[cfg(test)]
 mod tests {
     use super::{
-        LIGHT_CHAT_TOOL_KEYS, LIGHT_PROFILE_CRITICAL_TOOLS, WEB_SLIM_TOOL_KEYS, WORKER_TOOL_KEYS,
+        DISPATCH_FREE_TOOL_KEYS, LIGHT_CHAT_TOOL_KEYS, LIGHT_PROFILE_CRITICAL_TOOLS,
+        WEB_SLIM_TOOL_KEYS, WORKER_TOOL_KEYS,
     };
 
     /// Guard against the regression that hit qwen3:8b on 2026-04-15:
@@ -658,6 +659,30 @@ mod tests {
             "WEB_SLIM_TOOL_KEYS has {} tools but max is 6 (PRODUCT-065 benchmark: \
              >6 tools causes 120s+ inference on M4/qwen3:8b)",
             WEB_SLIM_TOOL_KEYS.len()
+        );
+    }
+
+    /// EFFECTIVE-360: patch_file must stay OUT of the default free-tier dispatch
+    /// set. Weak/open models (nemotron/pvc dogfood, 2026-08-06) grab patch_file
+    /// over str_replace even when explicitly told to prefer str_replace, then
+    /// loop on malformed `@@` hunks until timeout with zero edits landed (12
+    /// observed failed diffs). str_replace is the only surgical edit tool those
+    /// models can reliably drive. Re-admission is opt-in via
+    /// `CHUMP_FREE_TIER_PATCH_FILE=1` (see `free_tier_patch_file_enabled`), not
+    /// baked into the default key list — this test pins that.
+    #[test]
+    fn dispatch_free_tool_keys_excludes_patch_file_by_default() {
+        assert!(
+            !DISPATCH_FREE_TOOL_KEYS.contains(&"patch_file"),
+            "DISPATCH_FREE_TOOL_KEYS must not include 'patch_file' by default — weak models \
+             loop on malformed @@ hunks instead of using str_replace. Re-admit only via the \
+             CHUMP_FREE_TIER_PATCH_FILE=1 opt-in path in register_free_dispatch_tools, not by \
+             adding it back to this list."
+        );
+        assert!(
+            DISPATCH_FREE_TOOL_KEYS.contains(&"str_replace"),
+            "DISPATCH_FREE_TOOL_KEYS must include 'str_replace' as the surgical edit tool for \
+             weak/open models now that patch_file is excluded by default"
         );
     }
 }
