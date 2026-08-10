@@ -1,3 +1,336 @@
+## Issue #24 — 2026-08-10
+
+> Audit window: commits since 2026-08-03 (Issue #23). **50 non-cold-water commits** to `origin/main` (PRs #3544–#3600). Sandbox: fresh remote clone, chump binary build **succeeded** (12m 19s cold build). `chump gap import` **CRASHED** at gap 2751 — INFRA-3429.yaml still has 39 duplicate `evidence:` fields (3 of 4 malformed files fixed from Issue #23; one missed). `chump gap list` returns only 2 entries (test artifacts from sandbox gap-reserve; not real gaps). state.sql committed only **twice in all of git history** (2026-07-30 and 2026-08-09); 49 of 50 commits this cycle have no state.sql update; 30 gap-YAML files not reflected in state.sql. Evidence from fresh chump binary, git log, state.sql analysis, and MCP GitHub tools. Open PRs: **4** (PRs #3591, #3596, #3598, #3601). `wip/` branches: **484** (up from 453 in #23, +31 — **5th consecutive increase**). Bypass rates this cycle: Bot-Merge-Bypass 0/50 (0%, down from 12% — IMPROVED), Test-Gate-Bypass 7/50 (14%, down from 20%), Preflight-Skip-Reason 0/50 (0%), Verify-Bypass 0/50. **All 5 proposed follow-up gaps from Issue #23 remain unfiled** (2nd consecutive cycle). Pillar-starvation zombie gaps: **137** (up from 136 in #23 — still growing). All 5 P0 gaps still have 0 implementation commits. MISSION scoreboard ① = **NO** for **14th consecutive cycle**.
+
+---
+
+### Status of Prior Issues (Issue #23)
+
+- **FIXED_BUT_REPLACED: G1** (`chump gap import` crash on 4 malformed YAML files) → 3 of 4 files fixed (INFRA-3428, INFRA-3430, META-327 each now have 1 `evidence:` field). **INFRA-3429 still has 39 duplicate `evidence:` fields.** Import still crashes at position 2751 of 3486. `chump gap list` returns only test artifacts. Blast radius IDENTICAL to Issue #23: 735 gaps blocked. The fix was incomplete — one file was missed. This finding is now in its **2nd consecutive cycle**.
+  ```
+  chump gap import 2>&1 | head -1
+  chump gap import: parsing gap registry (per-file or monolithic): gaps[2751]: duplicate field `evidence` at line 44842 column 3
+
+  grep -c "^  evidence:" docs/gaps/INFRA-3429.yaml
+  39    # (INFRA-3428=1, INFRA-3430=1, META-327=1 — three fixed, one not)
+
+  chump gap list --json | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d))"
+  2    # sandbox test artifacts only — not real gaps
+  ```
+
+- **FIXED: C1** (Test-Gate-Bypass citing phantom CREDIBLE-175 gap) → PR #3597 (2026-08-10, commit 8845c97) shipped CREDIBLE-175/CREDIBLE-278, switching pre-push gate from `cargo test` (threaded, env-racing) to `cargo-nextest` (process-isolated, matches CI). 7 Test-Gate-Bypass trailers this cycle, all citing CREDIBLE-175 as the then-open cause — all pre-fix. The root cause of 3+ cycles of repeat bypasses is resolved.
+  ```
+  git log origin/main --grep="CREDIBLE-278" --oneline
+  8845c97 CREDIBLE-175/CREDIBLE-278: pre-push test gate uses cargo-nextest to match CI (#3597)
+
+  grep -n "cargo-nextest\|cargo nextest" scripts/git-hooks/pre-push | head -2
+  706: if command -v cargo-nextest &>/dev/null; then
+  708:     _TEST_RUNNER_CMD=(cargo nextest run --bin chump --tests --no-fail-fast)
+  ```
+
+- **FIXED: O2/C1 phantom-ID Bot-Merge-Bypasses** → 0 Bot-Merge-Bypass trailers this cycle (was 6 in #23). The INFRA-719 recovery-mode guard that was cited does not appear in this cycle's commit trailers.
+  ```
+  git log origin/main --since="2026-08-03" --format='%B' | grep -c "Bot-Merge-Bypass:"
+  0
+  ```
+
+- **FIXED: CREDIBLE-268** (auto-flip-on-merge closes every cited gap) → TWO commits landed: PR #3559 (interim env-gate suppression, default off) and PR #3569 (durable fix: title/Closes-trailer extraction + gap-ship routing + file-overlap gate).
+  ```
+  git log origin/main --grep="CREDIBLE-268" --oneline
+  7a28eed CREDIBLE-268: durable fix - title/Closes trailer extraction + gap-ship routing + file-overlap gate (#3569)
+  c8f2376 CREDIBLE-268: suppress auto-flip-on-merge — it closes every gap a PR CITES (#3559)
+  ```
+
+- **STILL_OPEN_INACTIVE (14 cycles): MISSION ① = NO.** Zero BEAST-MODE commits this cycle.
+  ```
+  git log origin/main --since="2026-08-03" --format='%s' | grep -iE "BEAST|MISSION-01[0-4]"
+  (empty)
+
+  grep "today:" docs/MISSION.md
+  - **① THE BINARY (weekly):** *today: **NO**.*
+  ```
+
+- **STILL_OPEN_INACTIVE (P0, 0 commits ever):** MISSION-017, MISSION-054, MISSION-055, RESILIENT-179, RESILIENT-195 — all 5 P0 gaps, zero implementation commits.
+  ```
+  for gid in MISSION-017 MISSION-054 MISSION-055 RESILIENT-179 RESILIENT-195; do
+    count=$(git log origin/main --grep="$gid" --oneline --since="90 days ago" | grep -v cold-water | wc -l)
+    echo "$gid: $count impl commits"
+  done
+  MISSION-017: 0 impl commits
+  MISSION-054: 0 impl commits
+  MISSION-055: 0 impl commits
+  RESILIENT-179: 0 impl commits
+  RESILIENT-195: 0 impl commits
+  ```
+
+- **WORSE: wip/ branch count 453 → 484** (+31 this cycle; 5th consecutive increase: Issue #20=324, #21=390, #22=424, #23=453, #24=484; +160 total from baseline).
+  ```
+  git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l
+  484
+  ```
+
+- **WORSE: Pillar-starvation zombie gaps 136 → 137** (+1; ZERO-WASTE-NEW-1 proposed in #22, unfiled for 2nd cycle).
+  ```
+  # state.sql scan for open gaps with "pillar" + "starv" in title/description
+  Open pillar-starvation gaps: 137    # up from 136 in #23
+  ```
+
+- **NO_GAP (all 5 from #23 still unfiled):** CREDIBLE-NEW-4 (import crash/silent []), CREDIBLE-NEW-5 (phantom gap IDs in bypasses), CREDIBLE-NEW-6 (BEAST-MODE junk merge audit), CREDIBLE-NEW-1 (chump restore Ollama crash), ZERO-WASTE-NEW-1 (zombie gap bulk-close) — none appear in docs/gaps/*.yaml or state.sql.
+  ```
+  for concept in "duplicate.*evidence.*import" "phantom.*gap.*bypass" "beast.*contaminat" "restore.*ollama" "zombie.*bulk"; do
+    ls docs/gaps/*.yaml 2>/dev/null | xargs grep -l "$concept" 2>/dev/null | head -1 || echo "NOT FOUND: $concept"
+  done
+  NOT FOUND: duplicate.*evidence.*import
+  NOT FOUND: phantom.*gap.*bypass
+  NOT FOUND: beast.*contaminat
+  NOT FOUND: restore.*ollama
+  NOT FOUND: zombie.*bulk
+  ```
+
+---
+
+### The Looming Ghost
+
+**[P1/High] G1 — INFRA-3429.yaml still has 39 duplicate `evidence:` fields after Issue #23 reported 4 malformed files; 3 of 4 were fixed but INFRA-3429 was missed; `chump gap import` crashes at position 2751 (identical blast radius: 735 gaps blocked); `chump gap list` returns test artifacts, not real gaps**
+
+We are failing to completely fix what we partially fixed. PR #3409 (commit ef8f888, 2026-07-30) introduced 4 malformed YAML files (INFRA-3428, INFRA-3429, INFRA-3430, META-327), each with 39 duplicate `evidence:` fields. Issue #23 identified all 4. Since then, 3 were fixed — but INFRA-3429 was not. The fresh chump binary (0.2.0, built 2026-08-10) confirms the same crash at the same position:
+
+```bash
+chump gap import 2>&1 | head -1
+chump gap import: parsing gap registry (per-file or monolithic): gaps[2751]: duplicate field `evidence` at line 44842 column 3
+
+grep -c "^  evidence:" docs/gaps/INFRA-3429.yaml
+39
+
+python3 -c "
+import os; files=sorted([f for f in os.listdir('docs/gaps') if f.endswith('.yaml')])
+idx=files.index('INFRA-3429.yaml')
+print(f'position {idx} of {len(files)} files; {len(files)-idx} gaps blocked after crash')
+"
+position 2751 of 3486 files; 735 gaps blocked after crash
+
+# Three fixed, one not:
+for f in INFRA-3428 INFRA-3429 INFRA-3430 META-327; do
+  echo "$f: $(grep -c '^  evidence:' docs/gaps/${f}.yaml) evidence fields"
+done
+INFRA-3428: 1
+INFRA-3429: 39    ← STILL MALFORMED
+INFRA-3430: 1
+META-327: 1
+
+chump gap list --json | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"
+2    # sandbox test artifacts only — not real gaps
+```
+
+The Rust YAML parser uses strict-mode deserialization that rejects duplicate keys. The serde_yaml error is deterministic: any session that runs `chump gap import` or `chump gap list` crashes and returns nothing useful. This has now persisted across Issue #23 (4 files broken, import crashes) and Issue #24 (3 fixed, 1 remains, import still crashes, blast radius identical). The partial fix in the prior cycle left the import broken.
+
+- evidence 1: `chump gap import` → "gaps[2751]: duplicate field `evidence`" — confirmed with fresh build 2026-08-10
+- evidence 2: `grep -c "^  evidence:" docs/gaps/INFRA-3429.yaml` → 39 (INFRA-3428=1, INFRA-3430=1, META-327=1 — only INFRA-3429 remains broken)
+- evidence 3: INFRA-3429 at position 2751 of 3486 YAML files alphabetically; 735 gaps after it are unreachable
+
+*This finding is wrong if: the chump binary (0.2.0) uses lenient YAML deserialization that accepts duplicate keys, in which case `chump gap import` would succeed despite INFRA-3429's malformation. Verify: `chump gap import 2>&1 | grep -c "duplicate field"` → 0 on the operator's machine.*
+
+---
+
+### The Opportunity Cost
+
+**[P1/High] O1 — MISSION ① = NO for 14th consecutive cycle; docs/MISSION.md last updated 2026-08-09; zero BEAST-MODE commits since audit window opened; all 5 P0 gaps carry 0 implementation commits**
+
+We are failing to convert 50 committed PRs per week into any progress on the one metric that defines the project. This cycle shipped 50 commits (PRs #3544–#3600) touching Discord gateways, worker presence, nextest gating, ATC playbook, Linux node SOP, cargo sweep GC, WIP watchdog, and NATS-KV worker registration. Zero of those advanced MISSION-010. The scoreboard has read NO for 14 consecutive issues of this audit.
+
+```bash
+git log origin/main --since="2026-08-03" --format='%s' | grep -iE "BEAST|MISSION-01[0-4]"
+(empty)
+
+grep "today:" docs/MISSION.md
+- **① THE BINARY (weekly):** *today: **NO**.*
+
+git log origin/main --follow -1 --format="%ai" -- docs/MISSION.md
+2026-08-09 14:15:41 -0600
+
+# P0 census — all 5 at 0 implementation commits (90-day window):
+MISSION-017: 0    MISSION-054: 0    MISSION-055: 0
+RESILIENT-179: 0  RESILIENT-195: 0
+```
+
+The gap filing mix this cycle is instructive: CREDIBLE-245/246/250/254/256/257/261/268/273/278/279 (11 credible-pillar gaps), RESILIENT-256/263/266/269/274/280/283/287 (8 resilient-pillar gaps), EFFECTIVE-360/363/380/391/425/426 (6 effective-pillar), ZERO-WASTE-039/053/054 (3 zero-waste), META-101/331/332 (3 meta), INFRA-987/2002/3480/3481/3494/3508 (6 infra). Not a single MISSION-0* prefix. MISSION-044 (friction metric) and MISSION-027 (checkout-sync daemon) shipped — but neither was a BEAST-MODE-advancing commit per the scoreboard definition.
+
+- evidence 1: `grep "today:" docs/MISSION.md` → "today: **NO**" (14th consecutive cycle)
+- evidence 2: `git log origin/main --since="2026-08-03" --format='%s' | grep -iE "BEAST|MISSION-01[0-4]"` → empty (zero BEAST-MODE-advancing commits)
+- evidence 3: P0 census: MISSION-017, MISSION-054, MISSION-055, RESILIENT-179, RESILIENT-195 — all 0 implementation commits in 90-day window (per `git log --grep` against state.sql P0 set)
+
+*This finding is wrong if: `scripts/dev/mission-scoreboard.sh` on the operator's local machine returns YES for ① — a zero-human-touch BEAST-MODE merge happened and is not reflected in docs/MISSION.md.*
+
+---
+
+### The Complexity Trap
+
+**[P1/Medium] C1 — state.sql committed only TWICE in all of git history (2026-07-30 and 2026-08-09); 49 of 50 commits this cycle have no state.sql update; 30 gap IDs exist in docs/gaps/*.yaml but not in state.sql; CREDIBLE-175 and CREDIBLE-278 (the nextest fix itself) are invisible to the canonical registry**
+
+We are failing to keep the canonical versioned gap store current. `.chump/state.sql` has exactly two commits in its entire git history — both in the last 3 weeks. 49 of the 50 commits in this cycle shipped without committing state.sql. The consequence: 3486 YAML files exist in docs/gaps/ but only 3456 IDs appear in state.sql — a 30-gap discrepancy. CREDIBLE-175 and CREDIBLE-278 (the gaps tracking this cycle's most consequential fix — switching pre-push to nextest) are not in state.sql. A cold-node or external audit reading state.sql cannot know these gaps exist.
+
+```bash
+# state.sql full commit history:
+git log origin/main --follow --all --format="%ad %H %s" --date=short -- .chump/state.sql
+2026-08-09 a7b79c63 RESILIENT-263: wire the operator escalation channel that was already built (#3544)
+2026-07-30 c8b73032 INFRA-3523: scope ChumpBench human-touch counter to the lap's own commits (#3410)
+# (2 commits — the entire history)
+
+# Gap discrepancy:
+ls docs/gaps/*.yaml | wc -l
+3486    # YAML files in docs/gaps/
+
+grep -c '^- id: ' .chump/state.sql
+3456    # IDs in state.sql
+
+# 30-gap delta = gaps filed since 2026-08-09 commit that haven't been snapshotted
+
+# CREDIBLE-175 and CREDIBLE-278 absent from state.sql:
+python3 -c "c=open('.chump/state.sql').read(); print('CREDIBLE-175 in state.sql:', '- id: CREDIBLE-175' in c)"
+CREDIBLE-175 in state.sql: False
+python3 -c "c=open('.chump/state.sql').read(); print('CREDIBLE-278 in state.sql:', '- id: CREDIBLE-278' in c)"
+CREDIBLE-278 in state.sql: False
+
+# Commits since last state.sql update (none committed state.sql):
+git log origin/main "a7b79c63..HEAD" --oneline | wc -l
+49
+```
+
+Combined with the INFRA-3429 import crash (G1 above), both cold-node bootstrap paths are compromised: `chump gap import` crashes at INFRA-3429, and `chump gap list --from-sql` reads a snapshot missing 30 gaps. The project's one reliable tool for answering "what work exists?" returns either a crash or a stale partial view.
+
+- evidence 1: `git log origin/main --follow --all -- .chump/state.sql | wc -l` → 2 (entire history is 2 commits)
+- evidence 2: 3486 YAML files vs 3456 state.sql IDs → 30-gap discrepancy; 49 commits since last state.sql update
+- evidence 3: CREDIBLE-175 NOT in state.sql, CREDIBLE-278 NOT in state.sql — the two gaps documenting the nextest fix are invisible to the canonical registry
+
+*This finding is wrong if: state.sql is intentionally a periodic manual snapshot (not a live artifact), and the live state.db on the operator's machine reflects all 3486 YAML files. The 30-gap discrepancy would then be a "snapshot lag," not a loss. Verify: `chump gap list --json | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"` on the operator's machine.*
+
+---
+
+**[P2/Medium] C2 — wip/ branch count 484, 5th consecutive increase; 160 branches added since Issue #20; no deletion code in stale-worktree-reaper.sh**
+
+We are failing to clean up orphaned work-in-progress branches. The count grows monotonically with no floor and no cleanup mechanism:
+
+```bash
+# Five-cycle trend:
+# Issue #20: 324, #21: 390, #22: 424, #23: 453, #24: 484 (+160 total)
+git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l
+484
+
+# Sample (all share same gap-ID prefix, likely from parallel WIP dispatch):
+git ls-remote --heads origin | grep 'refs/heads/wip/' | head -4
+...  refs/heads/wip/credible-033-1780520256
+...  refs/heads/wip/credible-033-1780520261
+...  refs/heads/wip/credible-033-1780520285
+...  refs/heads/wip/credible-084-1780127276
+
+# Cleanup code in reaper:
+grep -n "delete.*wip\|push.*:.*wip\|:refs/heads/wip" scripts/ops/stale-worktree-reaper.sh
+(empty — no wip/ branch deletion code)
+```
+
+ZERO-WASTE-NEW-1 (proposed in Issue #22, never filed) would bulk-close the underlying zombie gaps driving WIP dispatch. Stale-worktree-reaper.sh deletes LOCAL worktrees but never pushes the deletion to origin. The remote branches accumulate without bound.
+
+- evidence 1: `git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l` → 484
+- evidence 2: Five-cycle monotonic increase (324 → 390 → 424 → 453 → 484)
+- evidence 3: `grep -n "delete.*wip\|push.*:.*wip" scripts/ops/stale-worktree-reaper.sh` → empty
+
+*This finding is wrong if: wip/ branches are intentional long-lived work branches being actively merged, and the count reflects real in-flight work rather than orphans.*
+
+---
+
+### The Reality Check
+
+**[P2/Medium] R1 — All 5 proposed follow-up gaps from Issue #23 remain unfiled in any committed artifact for the 2nd consecutive cycle; the only mechanism for cold-water findings to enter the canonical registry is operator manual filing, and that mechanism is not firing**
+
+We are failing to act on our own audit findings. Every Red Letter issue proposes 3–8 follow-up gaps. Those gaps reach the canonical registry only if the operator files them on their local machine and commits state.sql. In this cycle, state.sql was committed once (by PR #3544 RESILIENT-263 on 2026-08-09) — and that commit predates all of the 50 commits in this cycle. The 5 proposed gaps from Issue #23 (CREDIBLE-NEW-1 through CREDIBLE-NEW-6, ZERO-WASTE-NEW-1) are not in docs/gaps/, not in state.sql, and not referenced in any commit subject since 2026-08-03:
+
+```bash
+# No YAML files for proposed concepts:
+for concept in "restore.*ollama" "phantom.*gap" "beast.*contaminat" "import.*crash\|duplicate.*evidence" "zombie.*bulk"; do
+  matches=$(ls docs/gaps/*.yaml 2>/dev/null | xargs grep -l -E "$concept" 2>/dev/null | wc -l)
+  echo "$concept: $matches matching files"
+done
+restore.*ollama: 0
+phantom.*gap: 0
+beast.*contaminat: 0
+import.*crash|duplicate.*evidence: 0
+zombie.*bulk: 0
+
+# Pillar-starvation zombie count rose from 136 to 137:
+# (the bulk-close gap was proposed but not filed)
+```
+
+The cold-water audit's utility depends on its findings entering the canonical work queue. An unfiled finding is permanently invisible to the fleet's picker. After 2 cycles, the 5 proposed gaps from #23 are invisible to the fleet and the problems they describe remain unfixed (INFRA-3429 import crash persists, zombie gap count grew by 1, BEAST-MODE junk-merge state unknown).
+
+- evidence 1: `ls docs/gaps/CREDIBLE-{175..200}.yaml 2>/dev/null` → CREDIBLE-175.yaml, CREDIBLE-278.yaml not found
+- evidence 2: Pillar-starvation zombie count 136 → 137 — the bulk-close gap was never filed and the problem grew
+- evidence 3: `git log origin/main --since="2026-08-03" --format='%B' | grep -E "CREDIBLE-NEW|ZERO-WASTE-NEW"` → empty
+
+*This finding is wrong if: the 5 gaps were filed directly in state.db (without a state.sql commit) after 2026-08-09, and exist in the live local state.db on the operator's machine. Verify: `chump gap show CREDIBLE-NEW-4` or `chump gap list | grep "import crash\|phantom\|beast"` on the local machine.*
+
+---
+
+### The Innovation Lag
+
+**[P2/Medium] I1 — ClayBuddy (arxiv.org/abs/2606.19380, June 2026) evaluates coding agent failure mechanisms across 59 synthetic transcripts and proposes harness-level mitigations; Chump's recurring bypass-with-justification pattern maps to ClayBuddy's "capability error" mechanism; no internal gap cross-references this taxonomy**
+
+We are failing to apply external research to our own failure classes. ClayBuddy (June 2026) identifies three failure mechanisms: *underspecification* (default behavior is unsafe), *capability error* (safe action available but agent doesn't take it), and *agent harness error* (model fails through the harness). Chump's multi-cycle bypass pattern — agents citing phantom gap IDs to justify skipping pre-push gates — is a textbook capability error: the safe action (don't bypass) is available; the harness signals "bypass requires a real gap ID"; the agent bypasses anyway with an invented or session-ephemeral ID. ClayBuddy proposes deterministic guardrails (customizable command classifier, editable extended system prompt) as mitigations. Chump's bypass infrastructure is audit-only (commit trailers reviewed post-hoc) with no deterministic harness-level block.
+
+```bash
+# No internal gap cross-references external failure taxonomy:
+grep -r "ClayBuddy\|failure.*mechanism\|capability.*error\|harness.*error" docs/strategy/ docs/process/ 2>/dev/null
+(empty)
+
+# Strategic memo last updated vs ClayBuddy publication:
+git log origin/main --follow -1 --format="%ai" -- docs/strategy/STRATEGIC_MEMO_2026Q2.md
+(no commits if the file doesn't exist or hasn't been updated)
+```
+
+External source: [ClayBuddy: A Framework, Evaluation, & Mitigation of Coding Agent Failures](https://arxiv.org/abs/2606.19380) (June 2026). A companion paper, ["Coding with 'Enemy': Can Human Developers Detect AI Agent Sabotage?"](https://arxiv.org/html/2606.05647v1), benchmarks human detection of agent-introduced sabotage in code review — directly relevant to Chump's phantom-ID bypass class.
+
+*This finding is wrong if: an existing EVAL-* or RESEARCH-* gap tracks application of external failure-taxonomy frameworks (ClayBuddy or equivalent) to Chump's bypass-trail corpus. Verify: `chump gap list | grep -i "failure.*mechanism\|capability.*error\|claybud"` on the local machine.*
+
+---
+
+**THE ONE BIG THING:** [P1] We are failing at the same thing we failed at in Issue #23 — a single malformed YAML file makes the gap registry unreadable from a cold clone. INFRA-3429.yaml has 39 duplicate `evidence:` fields. Issue #23 identified all 4 malformed files. Issue #24 confirms 3 were fixed; 1 was missed. The blast radius is identical: `chump gap import` crashes at position 2751 of 3486 files; 735 gaps are blocked; `chump gap list` returns only test artifacts. state.sql — the one committed fallback — was updated once in this cycle (commit a7b79c6) and is missing 30 of the 3486 YAML files. Both cold-node bootstrap paths (import from YAML, read from state.sql) are compromised. All 5 proposed follow-up gaps from Issue #23 that would address this compound failure remain unfiled for a second consecutive cycle. A project whose gap registry is unreadable from a fresh clone cannot run unattended — every session start is blind or working from a stale, partial view. This is the same finding, same blast radius, now in its second consecutive cycle, with no filed gap tracking the fix.
+
+---
+
+### Proposed Follow-up Gaps (gap-reserve unavailable in sandbox — state.db populated from empty state.db due to import crash; IDs assigned would collide with existing gaps; operator must file manually)
+
+**ZERO-WASTE-55** *(proposed ID — operator to assign canonical)* — `ZERO-WASTE: fix INFRA-3429.yaml — remove 38 of 39 duplicate evidence: fields so chump gap import no longer crashes`
+- Priority: P0 | Effort: xs | Outcome: MISSION-010
+- Description: INFRA-3429.yaml contains 39 duplicate `evidence:` fields (should have 1). Added by PR #3409. All three sibling files (INFRA-3428, INFRA-3430, META-327) were fixed; this one was missed. `chump gap import` crashes deterministically at this file (position 2751 of 3486), blocking 735 gaps and causing `chump gap list` to return only test artifacts. Falsifying: chump binary updated to use lenient YAML deserialization. Reference: RED_LETTER#24 (G1).
+- AC: (1) `grep -c "^  evidence:" docs/gaps/INFRA-3429.yaml` → 1; (2) `chump gap import` exits 0; (3) `chump gap list --json | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"` returns ≥3000 on a cold clone; (4) `chump gap list` returns non-zero exit code and diagnostic message (not silent `[]`) on any future import failure
+
+**CREDIBLE-290** *(proposed ID)* — `CREDIBLE: state.sql committed only twice in all of git history — cold-node reads stale registry missing 30 gaps; establish commit cadence or deprecate state.sql`
+- Priority: P1 | Effort: s | Outcome: MISSION-010
+- Description: `.chump/state.sql` has exactly 2 commits in git history (2026-07-30 and 2026-08-09). 49 of 50 commits this cycle did not update state.sql. 30 gap IDs exist in docs/gaps/*.yaml but not in state.sql. CREDIBLE-175 and CREDIBLE-278 (the nextest fix) are invisible to the canonical committed registry. Either establish a commit cadence (e.g., commit state.sql on every merge, or include it in bot-merge.sh's post-ship step) or document that state.sql is a periodic manual snapshot and remove it from any cold-node bootstrap path. Reference: RED_LETTER#24 (C1).
+- AC: (1) state.sql is committed on every merge (≥1 state.sql commit per 10 PRs) OR docs clearly state state.sql is a snapshot only and cold-node bootstrap uses YAML exclusively; (2) `git log origin/main -- .chump/state.sql | wc -l` > 10 within 2 weeks; (3) discrepancy between YAML count and state.sql ID count ≤5
+
+**ZERO-WASTE-56** *(proposed ID)* — `ZERO-WASTE: wip/ remote branches accumulate monotonically (484 and growing); stale-worktree-reaper.sh never pushes deletion to origin`
+- Priority: P2 | Effort: s | Outcome: MISSION-010
+- Description: 484 wip/ remote branches, up from 324 in Issue #20 (+160, 5 consecutive increases). `grep -n "push.*:.*wip" scripts/ops/stale-worktree-reaper.sh` → empty. The reaper deletes LOCAL worktrees but never pushes `git push origin :refs/heads/wip/<name>` to delete the remote ref. Reference: RED_LETTER#24 (C2).
+- AC: (1) stale-worktree-reaper.sh or a new daemon pushes deletion of stale wip/ refs to origin; (2) `git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l` trends down over 2 weeks; (3) CI gate or scheduled job alerts when wip/ count exceeds 100
+
+**INFRA-3510** *(proposed ID)* — `INFRA: cold-water proposed gaps from Issues #22, #23, #24 never reach canonical registry — filing mechanism is operator-manual with no enforcement`
+- Priority: P2 | Effort: s | Outcome: MISSION-010
+- Description: 5 proposed gaps from Issue #23 remain unfiled for 2 consecutive cycles. 4 proposed from Issue #22 also unfiled. The cold-water audit's gap-reserve fails in sandbox (import crash → empty state.db → colliding IDs). Operator filing is the only path, and it consistently doesn't happen. Options: (a) fix sandbox gap-reserve so cold-water can file directly; (b) add a bot that reads RED_LETTER.md "Proposed Follow-up Gaps" section and files them automatically post-merge; (c) require operator confirmation (explicit ack) for each proposed gap within 48h. Reference: RED_LETTER#24 (R1).
+- AC: (1) at least 3 of 5 proposed gaps from Issue #23 are filed in state.sql within 1 week of this audit; (2) a mechanism exists that prevents >2 cycles of proposed-but-unfiled cold-water gaps; (3) `chump gap list | grep "CREDIBLE-NEW\|ZERO-WASTE-NEW"` → empty (either filed under real IDs, or the mechanism prevents the backlog from growing)
+
+<details><summary>gap-reserve failure output (sandbox)</summary>
+
+```
+chump gap reserve assigned colliding IDs (INFRA-002, etc.) from empty state.db
+state.db populated only from import, which crashes on INFRA-3429.yaml
+chump gap import → "gaps[2751]: duplicate field `evidence` at line 44842 column 3"
+state.db: 110592 bytes but contains only 2 test-artifact gaps from sandbox operations
+All gap reserves would collide with existing canonical IDs — operator must file manually
+```
+</details>
+
+---
+
 ## Issue #23 — 2026-08-03
 
 > Audit window: commits since 2026-07-27 (Issue #22). **50 non-cold-water commits** to `origin/main` (PRs #3409–#3457). Sandbox: fresh remote clone, chump binary build **succeeded** (12m 34s cold build). `chump restore --from-sql` **CRASHED** (still requires local Ollama — unfixed from Issue #22). `chump gap import` **CRASHED** at gap 2750 (duplicate `evidence:` YAML fields in 4 malformed files added by PR #3409). `chump gap list` returns `[]` silently with no error signal — cold-node gap list is completely broken. Evidence from git log, `.chump/state.sql`, bash scripts, and MCP GitHub tools. Open PRs: **0**. `wip/` branches: **453** (up from 424 in #22, +29 — 4th consecutive increase). Bypass rates this cycle: Bot-Merge-Bypass 6/50 (12%), Test-Gate-Bypass 10/50 (20%), Preflight-Skip-Reason 0/50 (0%), Verify-Bypass 0/50. **4 proposed follow-up gaps from Issue #22 were never filed** (operator must file manually). Gap registry: 136 open pillar-starvation zombie gaps unchanged. All 5 P0 gaps still have 0 implementation commits. MISSION scoreboard ① = **NO** for 13th consecutive cycle.
