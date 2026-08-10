@@ -131,6 +131,24 @@ if [[ -x "$bootstrap_script" || -f "$bootstrap_script" ]]; then
     fi
 fi
 
+# ── signal (e): stranded-work count (ZERO-WASTE-039, fail-soft) ────────────────
+# Surface-only — dry-run so no patch is written and no ambient event fires
+# just from checking freshness; the daily sweeper (stranded-work-detector.sh
+# without --dry-run) is what actually snapshots + WARNs. Bounded by a short
+# timeout so a slow/huge Projects tree never blocks the session-start digest.
+stranded_count="unavailable"
+stranded_script="$REPO_ROOT/scripts/coord/stranded-work-detector.sh"
+if [[ -x "$stranded_script" || -f "$stranded_script" ]]; then
+    set +e
+    stranded_out="$(timeout 10 bash "$stranded_script" --checkout "$REPO_ROOT" --dry-run --json 2>/dev/null | grep '"summary":true' | tail -1)"
+    set -e
+    if [[ -n "$stranded_out" ]]; then
+        parsed_count="$(printf '%s' "$stranded_out" | python3 -c \
+            'import json,sys; d=json.load(sys.stdin); print(d.get("stranded_checkouts","unavailable"))' 2>/dev/null || echo "unavailable")"
+        [[ "$parsed_count" =~ ^[0-9]+$ ]] && stranded_count="$parsed_count"
+    fi
+fi
+
 # ── classification ─────────────────────────────────────────────────────────────
 # CRITICAL_STALE iff:
 #   - commits_behind known AND > CRITICAL_COMMITS_MIN  OR
@@ -161,11 +179,11 @@ fi
 
 # ── emit ───────────────────────────────────────────────────────────────────────
 if [[ $EMIT_JSON -eq 1 ]]; then
-    printf '{"state":"%s","commits_behind":"%s","binary_age_s":"%s","cron_health":"%s","bootstrap_check":"%s"}\n' \
-        "$state" "$commits_behind" "$binary_age_s" "$cron_health" "$bootstrap_check"
+    printf '{"state":"%s","commits_behind":"%s","binary_age_s":"%s","cron_health":"%s","bootstrap_check":"%s","stranded_count":"%s"}\n' \
+        "$state" "$commits_behind" "$binary_age_s" "$cron_health" "$bootstrap_check" "$stranded_count"
 else
-    printf 'Freshness: %s (commits-behind=%s, binary-age=%ss, cron-health=%s, bootstrap=%s)\n' \
-        "$state" "$commits_behind" "$binary_age_s" "$cron_health" "$bootstrap_check"
+    printf 'Freshness: %s (commits-behind=%s, binary-age=%ss, cron-health=%s, bootstrap=%s, stranded=%s)\n' \
+        "$state" "$commits_behind" "$binary_age_s" "$cron_health" "$bootstrap_check" "$stranded_count"
 fi
 
 case "$state" in

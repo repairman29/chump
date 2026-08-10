@@ -82,6 +82,11 @@ REQUIRED_DAEMONS=(
     # (~574 lines, 13h uncommitted, gone for good) is exactly what an
     # opt-in-and-therefore-uninstalled data-loss guard fails to prevent.
     "dev.chump.wip-watchdog|scripts/setup/install-wip-watchdog-launchd.sh"
+    # ZERO-WASTE-039: stranded-work — daily fleet-wide sweep for dirty
+    # checkouts / ahead-branches / aged stashes that no gate or picker ever
+    # sees (the 2026-08-05 almanac Phase D incident: +313 lines dirty for
+    # 4-5 days, invisible to the fleet, re-shipped independently as #3477).
+    "dev.chump.stranded-work|scripts/setup/install-stranded-work-launchd.sh"
     "com.chump.wake-recovery|scripts/setup/install-wake-recovery.sh"
     "com.chump.fleet-pool-keeper|scripts/setup/install-fleet-pool-keeper.sh"
     # RESILIENT-220: inventory-rebuild-cadence — weekly `chump inventory rebuild`
