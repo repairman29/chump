@@ -771,6 +771,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // INFRA-2391: `chump demo` subcommand smoke — asserts --help and an
         // end-to-end --dry-run both exit 0. Pure local, no network.
         "scripts/ci/test-chump-demo-smoke.sh",
+        // INFRA-3481: go/no-go gate smoke — asserts `chump gonogo --json` exit
+        // codes per CHUMP_GONOGO_FORCE_VERDICT and that `chump bootstrap` honors
+        // the gate (blocks on NO-GO, bypasses on CHUMP_GONOGO_SKIP=1). Pure
+        // local, no network (force-verdict/skip seams avoid the live LLM rail).
+        "scripts/ci/test-gonogo.sh",
     ];
     candidates
         .iter()

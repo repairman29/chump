@@ -125,6 +125,7 @@ mod genai_conv;
 mod git_safety; // RESILIENT-256: destructive-git guard + object-store WIP snapshot
 mod git_tools;
 mod github_rate_limit;
+mod gonogo; // INFRA-3481: honest go/no-go gate on the CREATE/build path (evidence-before-build)
 mod health;
 mod health_server;
 mod hitl_escalation;
@@ -1969,6 +1970,15 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("bootstrap") {
         let sub_args: Vec<String> = args.iter().skip(1).cloned().collect();
         std::process::exit(commands::bootstrap::run(&sub_args));
+    }
+
+    // `chump gonogo <vision> [--json] [--tier xs|s|m|l]` (INFRA-3481) — honest
+    // go/no-go gate on a user's vision, ahead of the CREATE/build path. Exits
+    // non-zero for NO-GO / NO-GO-ON-COST, 0 for GO / NEEDS-NARROWING. See
+    // src/gonogo.rs for the doctrine + LLM rail.
+    if args.get(1).map(String::as_str) == Some("gonogo") {
+        let sub_args: Vec<String> = args.iter().skip(1).cloned().collect();
+        std::process::exit(gonogo::run(&sub_args));
     }
 
     // INFRA-2399 author-time helper commands (add-env-var / emit-event /

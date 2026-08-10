@@ -193,6 +193,7 @@ enum FailureClass {
     ScaffoldingBuildCheck,
     GapReserveFailed,
     GitInitFailed,
+    GoNoGoBlocked,
 }
 
 impl FailureClass {
@@ -203,6 +204,7 @@ impl FailureClass {
             FailureClass::ScaffoldingBuildCheck => "scaffolding_build_check",
             FailureClass::GapReserveFailed => "gap_reserve_failed",
             FailureClass::GitInitFailed => "git_init_failed",
+            FailureClass::GoNoGoBlocked => "gonogo_blocked",
         }
     }
 }
@@ -309,6 +311,28 @@ fn run_bootstrap(args: BootstrapArgs) -> Result<(), ()> {
     let start = Instant::now();
     let target_dir = &args.dir;
     let intent = &args.intent;
+
+    // ── INFRA-3481: honest go/no-go gate, ahead of ANY mutation ─────────────
+    // CHUMP_GONOGO_SKIP=1 bypasses entirely (today's behavior). Otherwise the
+    // gate runs and fails open when the LLM rail is unavailable — see
+    // gonogo::run_gonogo_gate doc comment.
+    if std::env::var("CHUMP_GONOGO_SKIP").as_deref() != Ok("1") {
+        let gate = crate::gonogo::run_gonogo_gate(intent, "m");
+        if gate.verdict.blocks_build() {
+            eprintln!(
+                "chump bootstrap: go/no-go gate blocked build: {}",
+                gate.verdict.as_str()
+            );
+            eprintln!("  {}", gate.reason);
+            emit_failure(
+                "bootstrap_failed",
+                FailureClass::GoNoGoBlocked,
+                intent,
+                target_dir,
+            );
+            return Err(());
+        }
+    }
 
     // Resolve session ID for ambient events.
     let session_id = std::env::var("CHUMP_SESSION_ID")
