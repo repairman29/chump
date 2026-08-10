@@ -476,6 +476,122 @@ fn build_handoff_rate_section(repo_root: &Path, window_days: u64) -> HandoffRate
     section
 }
 
+// ── Claim-Lint Bust Rate Section (CREDIBLE-208) ─────────────────────────────
+
+/// Per-model claim-lint bust rate, aggregated from `kind=claim_lint_result`
+/// events in ambient.jsonl.
+#[derive(Debug, Clone, Default)]
+pub struct ClaimBustRow {
+    pub model: String,
+    pub total_claims: u64,
+    pub ungrounded_claims: u64,
+    pub runs: u64,
+    pub busts: u64,
+}
+
+impl ClaimBustRow {
+    pub fn bust_rate_pct(&self) -> f64 {
+        if self.runs == 0 {
+            0.0
+        } else {
+            (self.busts as f64 / self.runs as f64) * 100.0
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct ClaimBustSection {
+    pub rows: Vec<ClaimBustRow>,
+}
+
+impl ClaimBustSection {
+    pub fn render_text(&self) -> String {
+        let mut out = String::new();
+        out.push_str("═══ Claim-Lint Bust Rate (CREDIBLE-208) ═══\n");
+        if self.rows.is_empty() {
+            out.push_str("  No claim_lint_result events found.\n");
+            return out;
+        }
+        out.push_str(&format!(
+            "  {:<24} {:>6} {:>10} {:>12} {:>10}\n",
+            "model", "runs", "busts", "bust_rate%", "claims"
+        ));
+        for row in &self.rows {
+            out.push_str(&format!(
+                "  {:<24} {:>6} {:>10} {:>11.1}% {:>10}\n",
+                row.model,
+                row.runs,
+                row.busts,
+                row.bust_rate_pct(),
+                row.total_claims,
+            ));
+        }
+        out
+    }
+
+    pub fn render_json(&self) -> String {
+        let rows_json: Vec<String> = self
+            .rows
+            .iter()
+            .map(|r| {
+                format!(
+                    r#"{{"model":"{}","runs":{},"busts":{},"bust_rate_pct":{:.1},"total_claims":{},"ungrounded_claims":{}}}"#,
+                    json_escape(&r.model),
+                    r.runs,
+                    r.busts,
+                    r.bust_rate_pct(),
+                    r.total_claims,
+                    r.ungrounded_claims,
+                )
+            })
+            .collect();
+        format!(r#"{{"models":[{}]}}"#, rows_json.join(","))
+    }
+}
+
+/// Scan ambient.jsonl and aggregate claim_lint_result events per model.
+pub fn build_claim_bust_section(repo_root: &Path) -> ClaimBustSection {
+    use std::collections::BTreeMap;
+
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    let mut map: BTreeMap<String, ClaimBustRow> = BTreeMap::new();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "claim_lint_result" {
+            continue;
+        }
+        let model = extract_field(line, "model").unwrap_or_else(|| "unknown".to_string());
+        let bust = extract_field(line, "bust").as_deref() == Some("true");
+        let total_claims: u64 = extract_field(line, "total_claims")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let ungrounded: u64 = extract_field(line, "ungrounded_count")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+
+        let row = map.entry(model.clone()).or_insert_with(|| ClaimBustRow {
+            model: model.clone(),
+            ..Default::default()
+        });
+        row.runs += 1;
+        if bust {
+            row.busts += 1;
+        }
+        row.total_claims += total_claims;
+        row.ungrounded_claims += ungrounded;
+    }
+
+    let mut rows: Vec<ClaimBustRow> = map.into_values().collect();
+    rows.sort_by(|a, b| {
+        b.bust_rate_pct()
+            .partial_cmp(&a.bust_rate_pct())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    ClaimBustSection { rows }
+}
+
 // ── Combined KPI Report ──────────────────────────────────────────────────────
 
 /// Full KPI report wrapping all sections.
