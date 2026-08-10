@@ -10301,6 +10301,8 @@ async fn main() -> Result<()> {
                     ("required-model", "--required-model"),
                     ("outcome_id", "--outcome"),
                     ("outcome-id", "--outcome"),
+                    ("artifact_type", "--artifact-type"),
+                    ("artifact-type", "--artifact-type"),
                 ];
                 // Normalise: rewrite bare positional field name at args[4] to its
                 // canonical `--flag` form in a local mutable shadow. We only apply
@@ -10466,6 +10468,8 @@ async fn main() -> Result<()> {
                     outcome_id: flag_local("--outcome"),
                     // CREDIBLE-107: evidence blob for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
                     evidence: flag_local("--evidence"),
+                    // EFFECTIVE-363: artifact_type (code | doc | release-note | copy | ...).
+                    artifact_type: flag_local("--artifact-type"),
                 };
                 match store.set_fields(&gap_id, update) {
                     Ok(()) => {

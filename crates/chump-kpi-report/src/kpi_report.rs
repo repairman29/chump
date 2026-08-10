@@ -1760,6 +1760,7 @@ mod tests {
                     required_model: None,
                     outcome_id: None,
                     evidence: None,
+                    artifact_type: None,
                 },
             )
             .unwrap();
@@ -1786,6 +1787,7 @@ mod tests {
                     required_model: None,
                     outcome_id: None,
                     evidence: None,
+                    artifact_type: None,
                 },
             )
             .unwrap();
