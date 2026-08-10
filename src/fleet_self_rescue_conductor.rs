@@ -102,6 +102,17 @@ fn pickable_p0p1(repo_root: &Path) -> i64 {
     }
 }
 
+/// Short-window lookback (minutes) for the RECENT-stall detector (RESILIENT-295).
+/// The 3h window alone hides a fresh stall behind old merges: 11 merges 3h ago
+/// reads HEALTHY even if the last 75 minutes shipped nothing while armed PRs pile
+/// up. Default 45min per the gap evidence's suggested 30-60min range; tunable.
+fn short_window_minutes() -> u64 {
+    std::env::var("CHUMP_CONDUCTOR_SHORT_WINDOW_MIN")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(45)
+}
+
 /// Count merges on origin/main within `since` (git's --since syntax).
 /// Returns -1 when git can't answer (so the caller does not infer "wedge").
 fn recent_merges(repo_root: &Path, since: &str) -> i64 {
@@ -153,6 +164,37 @@ fn count_objections(repo_root: &Path, corr: &str) -> i64 {
 //   "kind":"conductor_standdown"
 //   "kind":"conductor_acted"
 //
+/// Pure wedge-detection decision (RESILIENT-295): given ground-truth counts,
+/// decide the stall reason (empty = healthy). Split out from `tick()` so the
+/// RECENT-stall short-window logic is unit-testable without a real git repo.
+fn wedge_reason(
+    merges: i64,
+    merges_short: i64,
+    pickable: i64,
+    paused: bool,
+    short_min: u64,
+) -> String {
+    let mut reason = String::new();
+    if merges == 0 && pickable > 0 {
+        reason = format!("no merges in 3h while {pickable} P0/P1 gaps pickable");
+    } else if merges_short == 0 && pickable > 0 {
+        // The 3h window (merges > 0) hides a RECENT stall — old merges keep the
+        // long window green while the last `short_min` minutes shipped nothing
+        // and gaps keep piling up pickable.
+        reason = format!(
+            "no merges in last {short_min}min (merges_3h={merges} is stale) while {pickable} P0/P1 gaps pickable"
+        );
+    }
+    if paused {
+        if reason.is_empty() {
+            reason = "fleet-paused sentinel present".into();
+        } else {
+            reason.push_str("; fleet-paused sentinel present");
+        }
+    }
+    reason
+}
+
 /// One conductor tick. `execute=false` is dry-run (default).
 /// `grace_secs` is the objection window before acting (skipped in dry-run).
 pub fn tick(repo_root: &Path, execute: bool, grace_secs: u64) -> Outcome {
@@ -169,29 +211,28 @@ pub fn tick(repo_root: &Path, execute: bool, grace_secs: u64) -> Outcome {
 
     // 2. detect wedge by GROUND TRUTH (CREDIBLE-090 — not detector-trust)
     let merges = recent_merges(repo_root, "3 hours ago");
+    let short_min = short_window_minutes();
+    let merges_short = recent_merges(repo_root, &format!("{short_min} minutes ago"));
     let pickable = pickable_p0p1(repo_root);
     let paused = pause_path(repo_root).exists();
-    let mut reason = String::new();
-    if merges == 0 && pickable > 0 {
-        reason = format!("no merges in 3h while {pickable} P0/P1 gaps pickable");
-    }
-    if paused {
-        if reason.is_empty() {
-            reason = "fleet-paused sentinel present".into();
-        } else {
-            reason.push_str("; fleet-paused sentinel present");
-        }
-    }
+    let reason = wedge_reason(merges, merges_short, pickable, paused, short_min);
 
     if reason.is_empty() {
         let m = merges.to_string();
+        let ms = merges_short.to_string();
         let p = pickable.to_string();
         emit(
             repo_root,
             "conductor_tick",
-            &[("state", "healthy"), ("merges_3h", &m), ("pickable", &p)],
+            &[
+                ("state", "healthy"),
+                ("merges_3h", &m),
+                ("merges_short", &ms),
+                ("short_window_min", &short_min.to_string()),
+                ("pickable", &p),
+            ],
         );
-        println!("[conductor] HEALTHY — merges_3h={merges}, pickable={pickable}, paused={paused}. No action.");
+        println!("[conductor] HEALTHY — merges_3h={merges}, merges_{short_min}m={merges_short}, pickable={pickable}, paused={paused}. No action.");
         return Outcome::Healthy;
     }
 
@@ -349,6 +390,43 @@ mod tests {
         let al = root.join(".chump/AUTONOMY_LEVEL");
         std::fs::write(&al, level).unwrap();
         std::env::set_var("CHUMP_AUTONOMY_LEVEL_FILE", &al);
+    }
+
+    #[test]
+    fn recent_stall_hidden_by_3h_window_is_still_flagged() {
+        // RESILIENT-295: merges_3h=11 (old merges keep the long window green)
+        // but merges_short=0 in the last 45min while gaps are pickable — the
+        // conductor must NOT report healthy here.
+        let reason = wedge_reason(11, 0, 8, false, 45);
+        assert!(
+            !reason.is_empty(),
+            "3h window hid a recent stall — conductor stayed silent"
+        );
+        assert!(reason.contains("45min"));
+        assert!(reason.contains("merges_3h=11"));
+    }
+
+    #[test]
+    fn healthy_when_both_windows_show_merges() {
+        let reason = wedge_reason(11, 2, 8, false, 45);
+        assert!(
+            reason.is_empty(),
+            "both windows healthy but flagged: {reason}"
+        );
+    }
+
+    #[test]
+    fn long_window_zero_still_takes_priority_reason() {
+        // merges=0 in 3h already wedges via the original detector; the message
+        // should stay the original (simpler) phrasing, not the short-window one.
+        let reason = wedge_reason(0, 0, 3, false, 45);
+        assert!(reason.contains("no merges in 3h"));
+    }
+
+    #[test]
+    fn no_pickable_gaps_means_healthy_even_if_short_window_zero() {
+        let reason = wedge_reason(11, 0, 0, false, 45);
+        assert!(reason.is_empty(), "no pickable gaps but flagged: {reason}");
     }
 
     #[test]
