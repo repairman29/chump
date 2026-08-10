@@ -41,3 +41,24 @@ build_harness_cmd() {
             ;;
     esac
 }
+
+# hard_rules_doc_name — RESILIENT-259
+#
+# The worker prompt tells the agent where to find the full operating-rules
+# text if it needs more than the inline briefing. That doc differs by
+# harness: CLAUDE.md is explicitly the Claude-Code-only overlay (its own
+# header says so) — non-Claude harnesses (opencode, codex) never read it and
+# should be pointed at AGENTS.md, the canonical harness-agnostic doc, instead.
+#
+# Input: HARNESS_SPAWN_MODE (claude-p | opencode-prompt | codex-prompt | ...)
+# Output: prints the doc basename to point the agent at.
+hard_rules_doc_name() {
+    case "${1:-${HARNESS_SPAWN_MODE:-claude-p}}" in
+        claude-p)
+            echo "CLAUDE.md"
+            ;;
+        *)
+            echo "AGENTS.md"
+            ;;
+    esac
+}
