@@ -112,9 +112,14 @@ pub struct OutcomeRow {
     pub title: String,
     pub priority: String,
     pub definition_of_done: String,
-    pub status: String, // "open" | "done"
+    pub status: String, // "open" | "done" | "parked"
     pub created_at: i64,
     pub closed_at: Option<i64>,
+    /// RESILIENT-254: why an "open, no movement" outcome is deliberately
+    /// parked rather than rotting unnoticed. Set via `chump outcome park`.
+    /// Only meaningful when status == "parked"; NULL otherwise.
+    #[serde(default)]
+    pub park_reason: Option<String>,
 }
 
 /// MISSION-033: first-class Repo object.
@@ -649,6 +654,14 @@ impl GapStore {
             "ALTER TABLE outcomes ADD COLUMN artifact_type TEXT NOT NULL DEFAULT 'code'",
             [],
         );
+
+        // RESILIENT-254: park_reason lets an outcome that has open children
+        // but no recent movement declare itself DELIBERATELY parked, so the
+        // commitment-rot SLO (L5-SLO-2) doesn't page on a decision the
+        // operator already made. NULL unless status == 'parked'.
+        let _ = self
+            .conn
+            .execute("ALTER TABLE outcomes ADD COLUMN park_reason TEXT", []);
 
         // CREDIBLE-107: evidence column for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
         // Nullable TEXT — no default — so existing rows stay NULL (no evidence required
@@ -4391,7 +4404,7 @@ impl GapStore {
     /// Fetch one outcome by ID. Returns None if not found.
     pub fn get_outcome(&self, id: &str) -> Result<Option<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason
              FROM outcomes WHERE id=?1",
         )?;
         stmt.query_row(params![id], |r| {
@@ -4403,6 +4416,7 @@ impl GapStore {
                 status: r.get(4)?,
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
+                park_reason: r.get(7)?,
             })
         })
         .optional()
@@ -4412,7 +4426,7 @@ impl GapStore {
     /// List all outcomes, ordered by id.
     pub fn list_outcomes(&self) -> Result<Vec<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason
              FROM outcomes ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -4424,9 +4438,36 @@ impl GapStore {
                 status: r.get(4)?,
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
+                park_reason: r.get(7)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// RESILIENT-254: mark an outcome as deliberately parked — it has open
+    /// children that aren't moving, but that's a decision, not rot. Excluded
+    /// from the L5-SLO-2 commitment-rot breach as long as status=='parked'.
+    pub fn park_outcome(&self, id: &str, reason: &str) -> Result<()> {
+        let n = self.conn.execute(
+            "UPDATE outcomes SET status='parked', park_reason=?2 WHERE id=?1",
+            params![id, reason],
+        )?;
+        if n == 0 {
+            anyhow::bail!("outcome '{}' not found", id);
+        }
+        Ok(())
+    }
+
+    /// Reverse of `park_outcome` — reopen a parked outcome for SLO tracking.
+    pub fn unpark_outcome(&self, id: &str) -> Result<()> {
+        let n = self.conn.execute(
+            "UPDATE outcomes SET status='open', park_reason=NULL WHERE id=?1 AND status='parked'",
+            params![id],
+        )?;
+        if n == 0 {
+            anyhow::bail!("outcome '{}' not found or not parked", id);
+        }
+        Ok(())
     }
 
     /// Advisory rollup of child-gap progress for one outcome.
@@ -4462,7 +4503,7 @@ impl GapStore {
     /// Keeps existing per-gap P0 checks intact — adds outcome-level view alongside.
     pub fn list_p0_outcomes(&self) -> Result<Vec<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason
              FROM outcomes WHERE priority='P0' AND status='open' ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -4474,9 +4515,45 @@ impl GapStore {
                 status: r.get(4)?,
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
+                park_reason: r.get(7)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// RESILIENT-254 (L5-SLO-2): outcomes that are open, have ≥1 open child
+    /// gap, and have shown no child-gap completion movement since `since_unix`.
+    /// Parked outcomes (status=='parked') are excluded by construction — a
+    /// parked outcome never has status=='open' so it never reaches this query.
+    pub fn stale_outcomes(&self, since_unix: i64) -> Result<Vec<OutcomeRow>> {
+        let outcomes = self.list_outcomes()?;
+        let all_gaps = self.list(None)?;
+        let mut out = Vec::new();
+        for o in outcomes {
+            if o.status != "open" {
+                continue;
+            }
+            // Give a freshly-created outcome a full window before judging it —
+            // "no movement yet" and "no movement in ages" aren't the same thing.
+            if o.created_at >= since_unix {
+                continue;
+            }
+            let children: Vec<&GapRow> = all_gaps
+                .iter()
+                .filter(|g| g.outcome_id.as_deref() == Some(o.id.as_str()))
+                .collect();
+            let open_children = children.iter().filter(|g| g.status == "open").count();
+            if open_children == 0 {
+                continue;
+            }
+            let recent_movement = children
+                .iter()
+                .any(|g| g.closed_at.is_some_and(|c| c >= since_unix));
+            if !recent_movement {
+                out.push(o);
+            }
+        }
+        Ok(out)
     }
 
     /// List gaps that belong to a given outcome_id.

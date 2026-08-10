@@ -729,6 +729,17 @@ fn scan_ambient_2h(repo_root: &Path, cutoff_unix: u64) -> (u64, u64, u64, u64, S
 
 const NOISE_KINDS: &[&str] = &["heartbeat", "session_start", "bash_call"];
 
+/// RESILIENT-254 (L5-SLO-1): the load-bearing curator roles a `curator_heartbeat`
+/// event should exist for (mirrors the roles list in `chump fleet curator-status`).
+const CURATOR_ROLES: &[&str] = &[
+    "shepherd",
+    "target",
+    "handoff",
+    "ci-audit",
+    "decompose",
+    "md-links",
+];
+
 /// Collect the last ≤5 non-noise events from ambient.jsonl for display.
 fn collect_ambient_recent(repo_root: &Path) -> Vec<AmbientSummary> {
     let ambient = repo_root.join(".chump-locks/ambient.jsonl");
@@ -1177,7 +1188,154 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
         },
     });
 
+    // ── Layer 5 — Commitment Rot (RESILIENT-254) ────────────────────────────
+    // Every SLO above measures FLOW or CAPACITY. None measures whether a
+    // PROMISE is rotting: an organ that stopped acting, an outcome that
+    // stopped moving, a P1 sitting unclaimed with no verdict on why. This
+    // layer is CLASS-level by design — no per-gap due dates (see AC5).
+
+    // L5-SLO-1: organ liveness. A role counts as "active" if it has EVER
+    // heartbeated (curator_heartbeat in ambient.jsonl); once active, its
+    // most recent heartbeat must be < 96h old. Roles that never heartbeated
+    // are not yet installed — silence there is a bootstrap fact, not rot.
+    // Deliberate retirement is expressed via CHUMP_SLO_PARKED_ROLES (comma
+    // list) so a role that's intentionally stood down doesn't page.
+    let organ_stale_secs = 96 * 3600u64;
+    let parked_roles: std::collections::HashSet<String> = std::env::var("CHUMP_SLO_PARKED_ROLES")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let mut stale_organs: Vec<String> = Vec::new();
+    for role in CURATOR_ROLES {
+        if parked_roles.contains(*role) {
+            continue;
+        }
+        let Some(last_hb) = latest_kind_ts_for_role(&contents, "curator_heartbeat", role) else {
+            continue; // never heartbeated — not installed, not a breach
+        };
+        if now.saturating_sub(last_hb) > organ_stale_secs {
+            stale_organs.push((*role).to_string());
+        }
+    }
+    results.push(SloResult {
+        id: "L5-SLO-1",
+        target: "organ liveness: curator_heartbeat < 96h for every active role",
+        current: format!("{} stale", stale_organs.len()),
+        breached: !stale_organs.is_empty(),
+        detail: if stale_organs.is_empty() {
+            "every role with a heartbeat history is fresh within 96h (target: <96h)".into()
+        } else {
+            format!(
+                "stale role(s) with no heartbeat in >96h: {} — restart the curator loop \
+                 (see docs/process/CLAUDE_GOTCHAS.md) or park it: \
+                 CHUMP_SLO_PARKED_ROLES={} (target: <96h)",
+                stale_organs.join(", "),
+                stale_organs.join(",")
+            )
+        },
+    });
+
+    // L5-SLO-2: outcome movement. An outcome with open children and no child
+    // completion in 21 days is rotting, UNLESS it's `chump outcome park`ed —
+    // parking is the expressible "deliberate, not rot" signal (AC4).
+    let outcome_stale_secs = 21 * 24 * 3600i64;
+    let since = now as i64 - outcome_stale_secs;
+    let stale_outcomes = crate::gap_store::GapStore::open(repo_root)
+        .and_then(|gs| gs.stale_outcomes(since))
+        .unwrap_or_default();
+    results.push(SloResult {
+        id: "L5-SLO-2",
+        target: "outcome movement: open-children outcomes ship a child within 21d",
+        current: format!("{} stale", stale_outcomes.len()),
+        breached: !stale_outcomes.is_empty(),
+        detail: if stale_outcomes.is_empty() {
+            "every open outcome with open children has moved in the last 21d (target: <21d)".into()
+        } else {
+            format!(
+                "no-movement outcome(s): {} — either the outcome is actually blocked (file/unblock \
+                 the child gaps) or it's parked on purpose: `chump outcome park <id> --reason ...` \
+                 (target: <21d)",
+                stale_outcomes
+                    .iter()
+                    .map(|o| o.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        },
+    });
+
+    // L5-SLO-3: priority tier is not a one-way door. Proxy: count of open P2
+    // gaps older than 90 days with no exit (promotion or close). A healthy
+    // P2 tier cycles gaps out; a one-way-door P2 tier just accumulates age.
+    let p2_stale_days = 90i64;
+    let p2_stale_cutoff = now as i64 - p2_stale_days * 24 * 3600;
+    let stale_p2 = crate::gap_store::GapStore::open(repo_root)
+        .and_then(|gs| gs.list(Some("open")))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|g| g.priority == "P2" && g.created_at < p2_stale_cutoff)
+        .count();
+    results.push(SloResult {
+        id: "L5-SLO-3",
+        target: "P2 is not a one-way door: 0 open P2 gaps > 90d old",
+        current: format!("{}", stale_p2),
+        breached: stale_p2 > 0,
+        detail: format!(
+            "{} open P2 gap(s) older than {}d with no promotion/close (target: 0) — \
+             review: promote what still matters, close what doesn't",
+            stale_p2, p2_stale_days
+        ),
+    });
+
+    // L5-SLO-4: a P1 gap unclaimed for N days is either wrong, blocked, or
+    // mis-prioritized — the SLO forces that verdict to be written down
+    // (in notes, or via a priority/status change), not left silent.
+    let p1_stale_days = 5i64;
+    let p1_stale_cutoff = now as i64 - p1_stale_days * 24 * 3600;
+    let stale_p1: Vec<String> = crate::gap_store::GapStore::open(repo_root)
+        .and_then(|gs| gs.list(Some("open")))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|g| g.priority == "P1" && g.created_at < p1_stale_cutoff)
+        .map(|g| g.id)
+        .collect();
+    results.push(SloResult {
+        id: "L5-SLO-4",
+        target: "P1 unclaimed < 5d — else say wrong/blocked/mis-prioritized",
+        current: format!("{} unclaimed", stale_p1.len()),
+        breached: !stale_p1.is_empty(),
+        detail: if stale_p1.is_empty() {
+            "no P1 gap has sat open >5d (target: <5d)".into()
+        } else {
+            format!(
+                "P1 gap(s) open >{}d with no verdict: {} — reprioritize, unblock, or record why \
+                 in notes (target: <5d)",
+                p1_stale_days,
+                stale_p1.join(", ")
+            )
+        },
+    });
+
     results
+}
+
+/// RESILIENT-254: latest unix ts of `kind==kind_name` events carrying
+/// `"role":"<role>"`, or None if no such event exists in the window.
+fn latest_kind_ts_for_role(contents: &str, kind_name: &str, role: &str) -> Option<u64> {
+    let kind_needle = format!(r#""kind":"{}""#, kind_name);
+    let role_needle = format!(r#""role":"{}""#, role);
+    let mut latest: Option<u64> = None;
+    for line in contents.lines() {
+        if !line.contains(&kind_needle) || !line.contains(&role_needle) {
+            continue;
+        }
+        if let Some(ts) = extract_field(line, "ts").and_then(|t| parse_iso8601_to_unix(&t)) {
+            latest = Some(latest.map_or(ts, |l: u64| l.max(ts)));
+        }
+    }
+    latest
 }
 
 pub fn render_slo_text(results: &[SloResult]) -> String {
@@ -1358,6 +1516,168 @@ mod tests {
         assert_eq!(letter_grade(60), "D");
         assert_eq!(letter_grade(59), "F");
         assert_eq!(letter_grade(0), "F");
+    }
+
+    fn iso_days_ago(days: i64) -> String {
+        (chrono::Utc::now() - chrono::Duration::days(days))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string()
+    }
+
+    // RESILIENT-254 AC2: L5-SLO-1 organ liveness must catch a curator that
+    // went dead and silent — proven by backdating a curator_heartbeat event
+    // 12 days (the real RESILIENT-246 incident duration), not asserted.
+    #[test]
+    fn test_l5_slo1_catches_12_day_dead_curator() {
+        let tmp = tempdir();
+        let stale_ts = iso_days_ago(12);
+        let lines = [format!(
+            r#"{{"kind":"curator_heartbeat","role":"shepherd","ts":"{}"}}"#,
+            stale_ts
+        )];
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+
+        let results = check_slos(&tmp);
+        let l5_1 = results
+            .iter()
+            .find(|r| r.id == "L5-SLO-1")
+            .expect("L5-SLO-1 present");
+        assert!(
+            l5_1.breached,
+            "a curator silent for 12 days must breach organ liveness: {:?}",
+            l5_1
+        );
+        assert!(l5_1.detail.contains("shepherd"), "names the stale role");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_l5_slo1_passes_when_heartbeat_fresh() {
+        let tmp = tempdir();
+        let fresh_ts = now_iso();
+        let lines = [format!(
+            r#"{{"kind":"curator_heartbeat","role":"shepherd","ts":"{}"}}"#,
+            fresh_ts
+        )];
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+
+        let results = check_slos(&tmp);
+        let l5_1 = results
+            .iter()
+            .find(|r| r.id == "L5-SLO-1")
+            .expect("L5-SLO-1 present");
+        assert!(
+            !l5_1.breached,
+            "a fresh heartbeat must not breach: {:?}",
+            l5_1
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_l5_slo1_parked_role_does_not_breach() {
+        let tmp = tempdir();
+        let stale_ts = iso_days_ago(12);
+        let lines = [format!(
+            r#"{{"kind":"curator_heartbeat","role":"shepherd","ts":"{}"}}"#,
+            stale_ts
+        )];
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+
+        // Deliberately retired role must be expressible and must not breach.
+        std::env::set_var("CHUMP_SLO_PARKED_ROLES", "shepherd");
+        let results = check_slos(&tmp);
+        std::env::remove_var("CHUMP_SLO_PARKED_ROLES");
+
+        let l5_1 = results
+            .iter()
+            .find(|r| r.id == "L5-SLO-1")
+            .expect("L5-SLO-1 present");
+        assert!(
+            !l5_1.breached,
+            "a role parked via CHUMP_SLO_PARKED_ROLES must not breach: {:?}",
+            l5_1
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // RESILIENT-254 AC3: L5-SLO-2 must catch an outcome with open children
+    // and no movement, using MOP-BUCKET's actual shape (0% done, open
+    // children, no closed_at) as the test case.
+    #[test]
+    fn test_l5_slo2_catches_stalled_outcome_mop_bucket_shape() {
+        let tmp = tempdir();
+        let gs = crate::gap_store::GapStore::open(&tmp).expect("open store");
+        let old_created = current_unix() as i64 - 40 * 24 * 3600; // outcome is 40d old
+        gs.create_outcome("MOP-BUCKET", "Mop up the bucket backlog", "P1", "")
+            .unwrap();
+        // Backdate the outcome's created_at directly (create_outcome stamps "now").
+        gs.conn_for_test()
+            .execute(
+                "UPDATE outcomes SET created_at=?1 WHERE id='MOP-BUCKET'",
+                rusqlite::params![old_created],
+            )
+            .unwrap();
+        gs.conn_for_test()
+            .execute(
+                "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at,outcome_id)
+                 VALUES('MOP-BUCKET-A','RESILIENT','Child A','P2','s','open',?1,'MOP-BUCKET')",
+                rusqlite::params![old_created],
+            )
+            .unwrap();
+
+        let results = check_slos(&tmp);
+        let l5_2 = results
+            .iter()
+            .find(|r| r.id == "L5-SLO-2")
+            .expect("L5-SLO-2 present");
+        assert!(
+            l5_2.breached,
+            "an outcome with open children and zero movement in 40d must breach: {:?}",
+            l5_2
+        );
+        assert!(
+            l5_2.detail.contains("MOP-BUCKET"),
+            "names the stale outcome"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_l5_slo2_parked_outcome_does_not_breach() {
+        let tmp = tempdir();
+        let gs = crate::gap_store::GapStore::open(&tmp).expect("open store");
+        let old_created = current_unix() as i64 - 40 * 24 * 3600;
+        gs.create_outcome("MOP-BUCKET", "Mop up the bucket backlog", "P1", "")
+            .unwrap();
+        gs.conn_for_test()
+            .execute(
+                "UPDATE outcomes SET created_at=?1 WHERE id='MOP-BUCKET'",
+                rusqlite::params![old_created],
+            )
+            .unwrap();
+        gs.conn_for_test()
+            .execute(
+                "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at,outcome_id)
+                 VALUES('MOP-BUCKET-A','RESILIENT','Child A','P2','s','open',?1,'MOP-BUCKET')",
+                rusqlite::params![old_created],
+            )
+            .unwrap();
+        gs.park_outcome("MOP-BUCKET", "waiting on operator prioritization call")
+            .unwrap();
+
+        let results = check_slos(&tmp);
+        let l5_2 = results
+            .iter()
+            .find(|r| r.id == "L5-SLO-2")
+            .expect("L5-SLO-2 present");
+        assert!(
+            !l5_2.breached,
+            "a deliberately parked outcome must not breach L5-SLO-2 (else the layer trains \
+             the operator to ignore it): {:?}",
+            l5_2
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]

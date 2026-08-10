@@ -392,5 +392,23 @@ if [[ -x "$_chump" ]]; then
     printf "  %-12s %s\n" "RESILIENT"  "$(_fmt_count "$_p_res")"
     printf "  %-12s %s\n" "ZERO-WASTE" "$(_fmt_count "$_p_zw")"
     unset _open_gaps _p_eff _p_cred _p_res _p_zw
+
+    # RESILIENT-254: surface SLO breaches here so a breach is never just a
+    # non-zero exit code nobody sees — "a check nobody reads is the failure
+    # mode being fixed." Full detail: `chump health --slo-check`.
+    _slo_json="$("$_chump" health --slo-check --json 2>/dev/null || true)"
+    _slo_breaches=$(echo "$_slo_json" | grep -o '"slo_breaches":[0-9]*' | head -1 | cut -d: -f2)
+    if [[ -n "$_slo_breaches" && "$_slo_breaches" -gt 0 ]]; then
+        _slo_ids=$(echo "$_slo_json" | grep -oE '"id":"[A-Z0-9-]+","target":"[^"]*","current":"[^"]*","breached":true' | grep -oE '^"id":"[A-Z0-9-]+"' | cut -d'"' -f4 | tr '\n' ' ')
+        echo ""
+        if [[ -t 1 ]]; then
+            printf '\033[1;31mSLO breaches: %s (%s)  — see docs/process/FLEET_SLOS.md, or: chump health --slo-check\033[0m\n' \
+                "$_slo_breaches" "$_slo_ids"
+        else
+            printf 'SLO breaches: %s (%s)  — see docs/process/FLEET_SLOS.md, or: chump health --slo-check\n' \
+                "$_slo_breaches" "$_slo_ids"
+        fi
+    fi
+    unset _slo_json _slo_breaches _slo_ids
 fi
 unset _chump
