@@ -391,7 +391,7 @@ mod tests {
              {{\"ts\":\"{}\",\"session\":\"worker-a\",\"kind\":\"gap_shipped\",\"gap\":\"X-2\"}}\n\
              {{\"ts\":\"{}\",\"session\":\"worker-b\",\"kind\":\"gap_shipped\",\"gap\":\"X-3\"}}\n\
              {{\"ts\":\"{}\",\"session\":\"worker-a\",\"kind\":\"gap_shipped\",\"gap\":\"X-4\"}}\n\
-             {{\"ts\":\"{}\",\"session\":\"worker-a\",\"kind\":\"other_event\"}}\n\
+             {{\"ts\":\"{}\",\"session\":\"worker-a\",\"kind\":\"gap_claimed\"}}\n\
              not json at all\n",
             today.to_rfc3339(),
             today.to_rfc3339(),
