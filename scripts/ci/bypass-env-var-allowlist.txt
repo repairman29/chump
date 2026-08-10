@@ -78,13 +78,3 @@ CHUMP_SCCACHE_HIT_RATE_CHECK
 # pause; emits kind=binary_auto_deploy_skipped. Deletion path: when daemon gains
 # an explicit pause/resume CLI (MISSION-013 or later) we remove this env var.
 CHUMP_SKIP_AUTO_DEPLOY
-
-# CHUMP_SKIP_CHECKOUT_SYNC — operator escape hatch for the MISSION-027
-# checkout-sync launchd daemon (scripts/ops/checkout-sync.sh), mirroring
-# CHUMP_SKIP_AUTO_DEPLOY above. Set=1 to make checkout-sync.sh exit 0
-# immediately (useful during manual checkout surgery or incident response
-# when the fast-forward cycle should be paused without uninstalling the
-# plist). Bypass-Justification: MISSION-027 — genuine operational escape
-# valve for daemon pause; emits kind=checkout_sync_skipped. Deletion path:
-# when the daemon gains an explicit pause/resume CLI we remove this env var.
-CHUMP_SKIP_CHECKOUT_SYNC

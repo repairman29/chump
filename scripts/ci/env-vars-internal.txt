@@ -1409,8 +1409,6 @@ CHUMP_OPERATOR_RECALL_COOLDOWN_SECS
 # detected in: (standard input)
 CHUMP_CHECKOUT_SYNC_INTERVAL
 # detected in: (standard input)
-CHUMP_SKIP_CHECKOUT_SYNC
-# detected in: (standard input)
 CHUMP_SYNC_DISPOSABLE_PATHS
 # detected in: (standard input)
 CHUMP_SYNC_TARGET_DIR

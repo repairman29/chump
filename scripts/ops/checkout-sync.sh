@@ -32,7 +32,6 @@
 #   CHUMP_SYNC_TARGET_DIR   — checkout to sync (default: this script's repo root).
 #                             Point this at the fleet's running checkout when
 #                             invoking from elsewhere (dedicated fleet checkout).
-#   CHUMP_SKIP_CHECKOUT_SYNC — set 1 to exit 0 immediately (bypass)
 #   CHUMP_SYNC_DISPOSABLE_PATHS — space-separated override of the disposable
 #                             runtime-state allowlist (default set below)
 
@@ -69,12 +68,6 @@ emit_ambient() {
 }
 
 log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG"; }
-
-# Bypass
-if [[ "${CHUMP_SKIP_CHECKOUT_SYNC:-0}" == "1" ]]; then
-    log "BYPASS: CHUMP_SKIP_CHECKOUT_SYNC=1"
-    exit 0
-fi
 
 cd "$REPO_ROOT" || { log "FATAL: cannot cd to $REPO_ROOT"; exit 1; }
 
