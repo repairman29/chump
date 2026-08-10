@@ -361,6 +361,177 @@ fn staged_paths(repo_root: &std::path::Path) -> Vec<String> {
         .collect()
 }
 
+// ── EFFECTIVE-372: crate-scoped `cargo check` ───────────────────────────────
+//
+// `cargo check --workspace --all-targets` re-checks every crate in the
+// workspace even when the staged diff touches exactly one. On this repo's
+// ~70-crate workspace that's the single slowest step in the BLOCKING gate.
+// Scoping to `-p <changed-crate>` (one `-p` per crate actually touched)
+// keeps the gate fast for the common single-crate PR while still falling
+// back to the full workspace check whenever scoping can't be proven safe
+// (root Cargo.toml/Cargo.lock changed, or a changed path can't be resolved
+// to a crate root).
+
+/// Returns true if `text` (a Cargo.toml's contents) has a `[package]` table.
+/// Distinguishes a crate manifest (which may also carry `[workspace]` at the
+/// repo root) from a virtual-manifest-only Cargo.toml.
+fn toml_has_package_section(text: &str) -> bool {
+    text.lines().any(|l| l.trim() == "[package]")
+}
+
+/// Extract `name = "..."` from the `[package]` table of a Cargo.toml.
+fn package_name_from_cargo_toml(text: &str) -> Option<String> {
+    let mut in_package = false;
+    for line in text.lines() {
+        let t = line.trim();
+        if let Some(section) = t.strip_prefix('[') {
+            in_package = section.trim_end_matches(']') == "package";
+            continue;
+        }
+        if in_package {
+            if let Some(rest) = t.strip_prefix("name") {
+                let rest = rest.trim_start();
+                if let Some(rest) = rest.strip_prefix('=') {
+                    let v = rest.trim().trim_matches('"');
+                    return Some(v.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Walk up from `rel_path`'s parent directory to the nearest ancestor
+/// (inclusive of `repo_root`) whose `Cargo.toml` has a `[package]` table.
+/// Returns that directory, or `None` if none is found before `repo_root`.
+fn crate_root_for_file(repo_root: &std::path::Path, rel_path: &str) -> Option<std::path::PathBuf> {
+    let file_path = repo_root.join(rel_path);
+    let mut dir = file_path.parent()?.to_path_buf();
+    loop {
+        let cargo_toml = dir.join("Cargo.toml");
+        if cargo_toml.is_file() {
+            if let Ok(text) = std::fs::read_to_string(&cargo_toml) {
+                if toml_has_package_section(&text) {
+                    return Some(dir);
+                }
+            }
+        }
+        if dir == repo_root {
+            return None;
+        }
+        dir = dir.parent()?.to_path_buf();
+    }
+}
+
+/// Given the staged/changed paths, determine which crate package names the
+/// blocking `cargo check` gate needs to cover. Returns `None` when scoping
+/// can't be proven safe — the caller should fall back to `--workspace`:
+///   - no rust-relevant paths changed
+///   - the root `Cargo.toml` or `Cargo.lock` changed (workspace-wide impact:
+///     member list, dependency graph, or the root package itself)
+///   - any changed rust file can't be resolved to a crate root
+fn changed_crate_names(repo_root: &std::path::Path, paths: &[String]) -> Option<Vec<String>> {
+    let rust_paths: Vec<&String> = paths
+        .iter()
+        .filter(|p| {
+            let lower = p.to_lowercase();
+            lower.ends_with(".rs") || lower.ends_with("build.rs")
+        })
+        .collect();
+    if rust_paths.is_empty() {
+        return None;
+    }
+    if paths.iter().any(|p| p == "Cargo.toml" || p == "Cargo.lock") {
+        return None;
+    }
+    let mut names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for p in rust_paths {
+        let dir = crate_root_for_file(repo_root, p)?;
+        let cargo_toml = dir.join("Cargo.toml");
+        let text = std::fs::read_to_string(&cargo_toml).ok()?;
+        let name = package_name_from_cargo_toml(&text)?;
+        names.insert(name);
+    }
+    if names.is_empty() {
+        None
+    } else {
+        Some(names.into_iter().collect())
+    }
+}
+
+/// Cap `cargo check -j` at a sane ceiling (~6) so a scoped, single-crate
+/// check doesn't monopolize every core on the machine, and back off to a
+/// single job under a load-aware-defer: when 1-minute load average already
+/// exceeds available CPUs, the machine is busy (another cargo build,
+/// another agent) — deferring to 1 job avoids compounding the contention
+/// instead of racing it.
+fn compute_check_jobs(cpus: usize, load1: f64) -> usize {
+    let cap = cpus.clamp(1, 6);
+    if load1 > cpus as f64 {
+        1
+    } else {
+        cap
+    }
+}
+
+/// Best-effort CPU count; defaults to 4 if unavailable (matches CI runner
+/// baseline so behavior is predictable when detection fails).
+fn available_cpus() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+}
+
+/// Best-effort 1-minute load average from `/proc/loadavg` (Linux). Returns
+/// 0.0 (i.e. "not busy") on any platform/parse failure so the gate never
+/// deadlocks waiting on a signal it can't read.
+fn load_average_1m() -> f64 {
+    std::fs::read_to_string("/proc/loadavg")
+        .ok()
+        .and_then(|s| s.split_whitespace().next().map(|s| s.to_string()))
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(0.0)
+}
+
+/// Build the blocking `cargo check` step, scoped to the changed crate(s)
+/// when scoping is safe, falling back to `--workspace` otherwise. Always
+/// applies the jobs cap + `nice` (see `compute_check_jobs`).
+fn cargo_check_step(repo_root: &std::path::Path, paths: &[String]) -> Step {
+    let jobs = compute_check_jobs(available_cpus(), load_average_1m());
+    let mut argv: Vec<String> = vec![
+        "nice".to_string(),
+        "-n".to_string(),
+        "10".to_string(),
+        "cargo".to_string(),
+        "check".to_string(),
+    ];
+    let name: &'static str = match changed_crate_names(repo_root, paths) {
+        Some(names) if !names.is_empty() => {
+            for n in &names {
+                argv.push("-p".to_string());
+                argv.push(n.clone());
+            }
+            eprintln!(
+                "[preflight] cargo check scoped to crate(s): {}",
+                names.join(", ")
+            );
+            "cargo check (scoped)"
+        }
+        _ => {
+            argv.push("--workspace".to_string());
+            "cargo check"
+        }
+    };
+    argv.push("--all-targets".to_string());
+    argv.push("--jobs".to_string());
+    argv.push(jobs.to_string());
+    Step {
+        name,
+        argv,
+        kind: GateKind::Rust,
+    }
+}
+
 /// Resolve the user's `--scope` argument into a concrete `Scope`. `Auto`
 /// consults the staged diff via `git diff --cached --name-only`.
 fn resolve_scope(arg: ScopeArg, repo_root: &std::path::Path) -> Scope {
@@ -1152,11 +1323,13 @@ pub fn run(argv: &[String]) -> i32 {
         // passes cargo check in the defining crate but misses dependent crates
         // whose test initializers (in #[cfg(test)] blocks) reference the old
         // struct layout — exactly the INFRA-2134 trunk-RED root cause.
-        steps.push(step(
-            "cargo check",
-            &["cargo", "check", "--workspace", "--all-targets"],
-            GateKind::Rust,
-        ));
+        //
+        // EFFECTIVE-372: scoped to the changed crate(s) (`-p <crate>` per
+        // touched crate) + capped jobs + nice + load-aware-defer, falling
+        // back to `--workspace` whenever scoping can't be proven safe (see
+        // `changed_crate_names`). Still `--all-targets` either way so the
+        // INFRA-2134 test-initializer coverage above is unaffected.
+        steps.push(cargo_check_step(&repo_root, &staged_paths(&repo_root)));
         // MISSION-064: event-registry-audit + env-var-coverage moved to the
         // ALWAYS-ON section above (they now run for any scope, not just rust).
         // INFRA-1789: chump-subcommand-help regression gate. Catches the
@@ -3226,5 +3399,171 @@ mod tests {
         assert_eq!(json_str("hello"), "\"hello\"");
         assert_eq!(json_str("say \"hi\""), "\"say \\\"hi\\\"\"");
         assert_eq!(json_str("back\\slash"), "\"back\\\\slash\"");
+    }
+
+    // ── EFFECTIVE-372: crate-scoped cargo check ─────────────────────────────
+
+    /// Builds a tiny 2-crate workspace fixture on disk:
+    ///   <root>/Cargo.toml            [package] name="root-pkg" + [workspace]
+    ///   <root>/src/main.rs
+    ///   <root>/crates/foo/Cargo.toml [package] name="chump-foo"
+    ///   <root>/crates/foo/src/lib.rs
+    ///   <root>/crates/bar/Cargo.toml [package] name="chump-bar"
+    ///   <root>/crates/bar/src/lib.rs
+    fn make_fixture_workspace() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"root-pkg\"\nversion = \"0.1.0\"\n\n[workspace]\nmembers = [\"crates/foo\", \"crates/bar\"]\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/main.rs"), "fn main() {}\n").unwrap();
+
+        for (dir_name, pkg_name) in [("foo", "chump-foo"), ("bar", "chump-bar")] {
+            let crate_dir = root.join("crates").join(dir_name);
+            std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+            std::fs::write(
+                crate_dir.join("Cargo.toml"),
+                format!("[package]\nname = \"{pkg_name}\"\nversion = \"0.1.0\"\n"),
+            )
+            .unwrap();
+            std::fs::write(crate_dir.join("src/lib.rs"), "").unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn toml_has_package_section_detects_package_table() {
+        assert!(toml_has_package_section(
+            "[package]\nname = \"x\"\n\n[workspace]\nmembers = []\n"
+        ));
+        assert!(!toml_has_package_section(
+            "[workspace]\nmembers = [\"a\", \"b\"]\n"
+        ));
+    }
+
+    #[test]
+    fn package_name_from_cargo_toml_extracts_name() {
+        let text = "[package]\nname = \"chump-foo\"\nversion = \"0.1.0\"\n";
+        assert_eq!(
+            package_name_from_cargo_toml(text),
+            Some("chump-foo".to_string())
+        );
+        assert_eq!(package_name_from_cargo_toml("[workspace]\n"), None);
+    }
+
+    #[test]
+    fn crate_root_for_file_finds_nested_crate_not_workspace_root() {
+        let fixture = make_fixture_workspace();
+        let root = fixture.path();
+        let found = crate_root_for_file(root, "crates/foo/src/lib.rs").unwrap();
+        assert_eq!(found, root.join("crates/foo"));
+    }
+
+    #[test]
+    fn crate_root_for_file_falls_back_to_workspace_root_package() {
+        let fixture = make_fixture_workspace();
+        let root = fixture.path();
+        let found = crate_root_for_file(root, "src/main.rs").unwrap();
+        assert_eq!(found, root.to_path_buf());
+    }
+
+    #[test]
+    fn changed_crate_names_scopes_to_single_touched_crate() {
+        let fixture = make_fixture_workspace();
+        let root = fixture.path();
+        let paths = vec!["crates/foo/src/lib.rs".to_string()];
+        let names = changed_crate_names(root, &paths).expect("should scope");
+        assert_eq!(names, vec!["chump-foo".to_string()]);
+    }
+
+    #[test]
+    fn changed_crate_names_covers_multiple_touched_crates() {
+        let fixture = make_fixture_workspace();
+        let root = fixture.path();
+        let paths = vec![
+            "crates/foo/src/lib.rs".to_string(),
+            "crates/bar/src/lib.rs".to_string(),
+        ];
+        let names = changed_crate_names(root, &paths).expect("should scope");
+        assert_eq!(
+            names,
+            vec!["chump-bar".to_string(), "chump-foo".to_string()]
+        );
+    }
+
+    #[test]
+    fn changed_crate_names_falls_back_on_root_cargo_toml_change() {
+        let fixture = make_fixture_workspace();
+        let root = fixture.path();
+        let paths = vec![
+            "crates/foo/src/lib.rs".to_string(),
+            "Cargo.toml".to_string(),
+        ];
+        assert_eq!(
+            changed_crate_names(root, &paths),
+            None,
+            "root Cargo.toml touching the member list must fall back to full workspace"
+        );
+    }
+
+    #[test]
+    fn changed_crate_names_falls_back_on_no_rust_paths() {
+        let fixture = make_fixture_workspace();
+        let root = fixture.path();
+        let paths = vec!["docs/README.md".to_string()];
+        assert_eq!(changed_crate_names(root, &paths), None);
+    }
+
+    #[test]
+    fn compute_check_jobs_caps_at_six() {
+        assert_eq!(compute_check_jobs(16, 0.0), 6);
+        assert_eq!(compute_check_jobs(2, 0.0), 2);
+        assert_eq!(compute_check_jobs(1, 0.0), 1);
+    }
+
+    #[test]
+    fn compute_check_jobs_defers_to_one_under_load() {
+        // Load average already exceeds available CPUs -> back off to 1 job
+        // rather than compounding contention (load-aware-defer).
+        assert_eq!(compute_check_jobs(8, 20.0), 1);
+    }
+
+    #[test]
+    fn cargo_check_step_scopes_argv_to_changed_crate_not_workspace() {
+        let fixture = make_fixture_workspace();
+        let root = fixture.path();
+        let paths = vec!["crates/foo/src/lib.rs".to_string()];
+        let step = cargo_check_step(root, &paths);
+        assert!(
+            step.argv.iter().any(|a| a == "-p"),
+            "scoped step must pass -p <crate>, argv={:?}",
+            step.argv
+        );
+        assert!(
+            step.argv.contains(&"chump-foo".to_string()),
+            "scoped step must target the changed crate's package name, argv={:?}",
+            step.argv
+        );
+        assert!(
+            !step.argv.iter().any(|a| a == "--workspace"),
+            "scoped step must NOT run the full workspace check, argv={:?}",
+            step.argv
+        );
+    }
+
+    #[test]
+    fn cargo_check_step_falls_back_to_workspace_when_scoping_unsafe() {
+        let fixture = make_fixture_workspace();
+        let root = fixture.path();
+        let paths = vec!["Cargo.lock".to_string()];
+        let step = cargo_check_step(root, &paths);
+        assert!(
+            step.argv.iter().any(|a| a == "--workspace"),
+            "unscoped fallback must run --workspace, argv={:?}",
+            step.argv
+        );
     }
 }
