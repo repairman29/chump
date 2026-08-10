@@ -3678,6 +3678,37 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
             fi
         fi
 
+        # ── 6.6 Claim-lint gate (CREDIBLE-208) ────────────────────────────────
+        # Ground the HEAD commit message's claims (structured Files-Touched /
+        # Symbols-Touched / Tests-Run trailers, or NL backtick tokens) against
+        # the diff vs main. A PR with no structured/backtick claims is a
+        # no-op here (extract returns empty, exit 0) — this only fires when
+        # an agent actually made a checkable claim. Bounce names the exact
+        # ungrounded claim. Bypass: CHUMP_CLAIM_LINT=0.
+        if [[ "${CHUMP_CLAIM_LINT:-1}" != "0" ]] && command -v chump >/dev/null 2>&1; then
+            _cl_gap="${GAP_IDS[0]:-unknown}"
+            set +e
+            _cl_out="$(chump claim-lint --range "origin/main...HEAD" --model "${CHUMP_AGENT_MODEL:-unknown}" --gap-id "$_cl_gap" 2>&1)"
+            _cl_rc=$?
+            set -e
+            case $_cl_rc in
+                0)
+                    if ! echo "$_cl_out" | grep -qF "no checkable claims"; then
+                        green "CREDIBLE-208: claim-lint grounded — proceeding."
+                    fi
+                    ;;
+                1)
+                    red "CREDIBLE-208: claim-lint BOUNCE — ship-time claim does not ground against the diff:"
+                    red "$_cl_out"
+                    red "  Fix the claim (or the code) and re-push. Bypass: CHUMP_CLAIM_LINT=0 scripts/coord/bot-merge.sh ..."
+                    exit 1
+                    ;;
+                *)
+                    yellow "CREDIBLE-208: claim-lint errored (exit $_cl_rc) — not blocking (non-fatal tool failure)."
+                    ;;
+            esac
+        fi
+
         # ── Pre-merge CI gate (INFRA-CHOKE prevention) ────────────────────────────
         # Before arming auto-merge, verify that all required CI checks are passing.
         # If Release job or Crate Publish dry-run are failing, abort with a diagnostic

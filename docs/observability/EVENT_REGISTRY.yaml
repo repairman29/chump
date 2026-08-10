@@ -2723,6 +2723,17 @@ events:
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, pr, gap, note]
 
+  # ── Claim-lint bust rate (CREDIBLE-208) ──────────────────────────────────
+  - kind: claim_lint_result
+    effect_metric: self
+    emitter: src/commands/claim_lint.rs (chump claim-lint)
+    trigger: >
+      chump claim-lint ran against a commit/PR's ship-time claims (structured
+      trailers or NL backtick tokens) and ground each one against the diff —
+      one event per invocation, whether the run grounds clean or busts.
+    consumers: [kpi-report, fleet-brief]
+    fields_required: [ts, kind, gap_id, model, total_claims, ungrounded_count, bust]
+
   # ── Review-as-Handoff telemetry (INFRA-773) ──────────────────────────────
   - kind: review_handoff_initiated
     effect_metric: self

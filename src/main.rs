@@ -923,6 +923,8 @@ fn print_help() {
     );
     println!("  kpi report --agents  per-agent throughput (ships/fails/P50)");
     println!("  kpi report --agents --date YYYY-MM-DD  specific date");
+    println!("  kpi report --claims  claim-lint bust-rate per model (CREDIBLE-208)");
+    println!("  claim-lint --range <base>..<head>  ground ship-time claims against the diff (CREDIBLE-208)");
     println!("  cost-watch  (alias: cs)  real-time inference spend + per-slot breakdown");
     println!("  cost record-pr     attach cost metadata to a merged PR");
     println!("  pr-coupling-cost   cost of PRs that move together (coupling smell)");
@@ -1945,6 +1947,16 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("sibling-status") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(commands::sibling_status::run(&sub_args));
+    }
+
+    // `chump claim-lint --range <base>..<head> [--message-file <path>]
+    //   [--test-log <path>] [--model <name>] [--gap-id <id>] [--json]
+    //   [--no-emit]` (CREDIBLE-208) — pre-ship bullshit gate: ground an
+    // agent's claims (commit/PR text) against the diff. Bounces (exit 1)
+    // with the specific ungrounded claim named on any bust.
+    if args.get(1).map(String::as_str) == Some("claim-lint") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::claim_lint::run(&sub_args));
     }
 
     // `chump inventory <rebuild|show|debt-report|...>` (META-271) —
@@ -14771,8 +14783,20 @@ async fn main() -> Result<()> {
         let only_tokens = args.iter().any(|a| a == "--tokens-per-ship");
         let want_impact = args.iter().any(|a| a == "--impact");
         let want_agents = args.iter().any(|a| a == "--agents");
+        let want_claims = args.iter().any(|a| a == "--claims");
 
         let repo_root = repo_path::repo_root();
+
+        // CREDIBLE-208: --claims shows claim-lint bust-rate per model.
+        if want_claims {
+            let section = kpi_report::build_claim_bust_section(&repo_root);
+            if want_json {
+                println!("{}", section.render_json());
+            } else {
+                print!("{}", section.render_text());
+            }
+            return Ok(());
+        }
 
         // FLEET-048: --impact shows gap impact ratings section only.
         if want_impact {
