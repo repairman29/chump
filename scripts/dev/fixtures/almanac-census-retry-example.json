@@ -1,0 +1,21 @@
+[
+  {"repo": "postsub", "path": "src/services/retryService.js", "line": 6, "symbol": "RetryService", "importer_count": 4, "coupling": 3, "has_tests": true},
+  {"repo": "beast-mode", "path": "src/services/retryService.js", "line": 6, "symbol": "RetryService", "importer_count": 2, "coupling": 5, "has_tests": false},
+  {"repo": "slidemate", "path": "src/services/retryService.js", "line": 6, "symbol": "RetryService", "importer_count": 1, "coupling": 2, "has_tests": true},
+
+  {"repo": "bulwark", "path": "src/retry-patterns.js", "line": 10, "symbol": "RetryPatterns", "importer_count": 3, "coupling": 4, "has_tests": false},
+  {"repo": "smugglers", "path": "shared-utils/retry-patterns/index.js", "line": 10, "symbol": "RetryPatterns", "importer_count": 6, "coupling": 1, "has_tests": true},
+
+  {"repo": "beast-mode", "path": "lib/backoff.js", "line": 20, "symbol": "ExponentialBackoff", "importer_count": 1, "coupling": 1, "has_tests": true},
+  {"repo": "beast-mode", "path": "utils/retry.py", "line": 15, "symbol": "retry_with_backoff", "importer_count": 0, "coupling": 0, "has_tests": false},
+  {"repo": "beast-mode", "path": "workers/retry_helper.rb", "line": 8, "symbol": "RetryHelper", "coupling": 2},
+
+  {"repo": "code-roach", "path": "src/retry.py", "line": 12, "symbol": "retry_with_backoff", "importer_count": 2, "coupling": 2, "has_tests": true},
+  {"repo": "coderoach", "path": "src/retry.py", "line": 12, "symbol": "retry_attempt", "importer_count": 1, "coupling": 1, "has_tests": false},
+  {"repo": "echeovid", "path": "src/utils/retry.js", "line": 5, "symbol": "withRetry", "importer_count": 2, "coupling": 3, "has_tests": true},
+  {"repo": "maclawd", "path": "ios/RetryPolicy.swift", "line": 9, "symbol": "RetryPolicy", "importer_count": 1, "coupling": 1, "has_tests": false},
+  {"repo": "openclaw", "path": "src/retry/backoff.go", "line": 14, "symbol": "Backoff", "importer_count": 3, "coupling": 2, "has_tests": true},
+  {"repo": "smuggler", "path": "src/retry.js", "line": 7, "symbol": "retryRequest", "importer_count": 1, "coupling": 1, "has_tests": false},
+  {"repo": "smuggler", "path": "src/utils/backoffTimer.js", "line": 3, "symbol": "BackoffTimer", "importer_count": 0, "coupling": 0, "has_tests": false},
+  {"repo": "trove-web", "path": "lib/retryFetch.js", "line": 11, "symbol": "retryFetch", "importer_count": 2, "coupling": 1, "has_tests": true}
+]
