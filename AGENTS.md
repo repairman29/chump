@@ -644,6 +644,45 @@ not just Claude Code sessions:
   a `reset --hard` or `checkout -- .` can never destroy another session's
   in-flight work.
 
+## Workspace-scoped gaps — route to operator/ATC, don't fleet-dispatch (RESILIENT-292)
+
+A fleet-worker claims a **linked worktree scoped to a single repo**
+(`/root/Projects/chump/.claude/worktrees/<slug>`). It has **no filesystem
+path** to sibling workspace-level directories — `~/Projects/.claude/`,
+`~/Projects/posse/`, `~/Projects/privateer/`, or any other repo one level
+above the claiming repo. A gap whose acceptance criteria require reading or
+writing real content at that level cannot be honestly shipped from an
+isolated fleet-worker clone: the only options from inside the sandbox are
+fabricate (a CREDIBLE violation) or decline. CREDIBLE-234 hit this wall 13
+times across fresh sandboxes before RESILIENT-292 landed — each session
+independently re-confirmed the same blocker and released the claim, which is
+pure waste (13 dispatches, zero shippable progress).
+
+**Decision (2026-08-10): route, don't provision.** Rather than mirror
+sibling repos into every fleet-worker sandbox (expensive, staleness-prone,
+and grows with every new workspace dir), workspace-scoped gaps are tagged
+and routed to a session that already has real `~/Projects` access — an
+operator or ATC session, not a fleet-dispatched worker.
+
+- **Filing convention.** Any gap whose evidence/description references paths
+  outside the claiming repo's own tree — sibling dirs under `~/Projects/`
+  that are not the repo being worked in — MUST carry the
+  `skills_required` tag `workspace_scope` at filing time:
+  `chump gap set <ID> --skills-required workspace_scope` (additive; combine
+  with other tags via comma-join).
+- **Enforcement.** `WorkerCapability::matches` (`crates/chump-coord/src/worker/capability.rs`)
+  gates any gap tagged `workspace_scope` behind `CHUMP_WORKSPACE_SCOPE_PICK_OK=1`
+  — mirrors the existing `external_repo:` / `CHUMP_EXTERNAL_REPO_PICK_OK`
+  pattern (INFRA-2113). Standard fleet workers never set this env var, so
+  they skip the gap instead of claiming-and-releasing it. An operator/ATC
+  session that is NOT running inside a fleet-worker linked worktree (i.e.
+  has real `~/Projects` access) exports `CHUMP_WORKSPACE_SCOPE_PICK_OK=1`
+  before picking.
+- **Not a manufacture-more-gaps lever.** This tag routes existing
+  workspace-scoped work to the right session; it is not a reason to file new
+  workspace-level gaps for their own sake (see the anti-bloat balance-lever
+  rule in `CLAUDE.md`).
+
 ## Mission Driver — loop discipline (INFRA-2208, 2026-05-29)
 
 Every /loop / scheduled-job / babysit-prs tick must end in **one** of:
