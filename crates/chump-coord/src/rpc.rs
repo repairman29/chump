@@ -677,6 +677,64 @@ pub async fn register_worker_rpc_handlers_with_presence(
         }
     });
 
+    // CREDIBLE-250 (CREDIBLE-099 slice): "register-worker" RPC handler — lets
+    // a peer explicitly (re)register a `WorkerPresence` record for this
+    // session over NATS RPC, distinct from the self-registration above which
+    // only runs once at this worker's own startup. The handler itself is a
+    // sync closure (per `serve_rpc_with_nats`'s bound), so the actual async
+    // KV write happens on a background task fed via an unbounded channel;
+    // the handler acks immediately with a success response once the request
+    // is queued.
+    let (register_tx, mut register_rx) =
+        tokio::sync::mpsc::unbounded_channel::<crate::presence::WorkerPresence>();
+    let register_kv = presence_kv.clone();
+    tokio::spawn(async move {
+        while let Some(presence) = register_rx.recv().await {
+            if let Err(e) = crate::presence::register_presence(&register_kv, &presence).await {
+                eprintln!(
+                    "[presence] register-worker RPC store failed (non-fatal): {}",
+                    e
+                );
+            }
+        }
+    });
+
+    let register_session = session_id.to_string();
+    serve_rpc_with_nats(Some(nats), session_id, "register-worker", move |args| {
+        let worker_id = args
+            .get("worker_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&register_session)
+            .to_string();
+        let current_gap = args
+            .get("current_gap")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let mut presence = crate::presence::build_presence(&worker_id, current_gap);
+        if let Some(backend) = args.get("backend").and_then(|v| v.as_str()) {
+            presence.backend = backend.to_string();
+        }
+        if let Some(machine) = args.get("machine").and_then(|v| v.as_str()) {
+            presence.machine = Some(machine.to_string());
+        }
+        if let Some(harness) = args.get("harness").and_then(|v| v.as_str()) {
+            presence.harness = harness.to_string();
+        }
+        if let Some(skills) = args.get("skills").and_then(|v| v.as_array()) {
+            presence.skills = skills
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect();
+        }
+
+        let result = serde_json::json!({"registered": true, "worker_id": presence.worker_id});
+        register_tx
+            .send(presence)
+            .map_err(|e| format!("register-worker channel closed: {}", e))?;
+        Ok(result)
+    })
+    .await?;
+
     Ok(())
 }
 
