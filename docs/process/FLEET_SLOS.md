@@ -55,6 +55,41 @@ These SLOs guard the CI pipeline from compounding jams.
 
 ---
 
+## Layer 5 — Commitment Rot (RESILIENT-254)
+
+Layers 1–4 all measure **flow** (ship-time, waste, restart success) or
+**capacity** (P0 budget, pillar balance). None of them measure whether a
+**promise is rotting** — an organ that stopped acting, a stated campaign
+that stopped moving, a priority tier that quietly became a one-way door.
+2026-08-08 surfaced four real instances in one session, none caught by any
+SLO above: a curator dead 12 days with no alert (RESILIENT-246), MOP-BUCKET
+at 0% with both children parked below the picker threshold, the factory
+matrix's three missing chairs parked since 2026-08-05, and 153 P2 gaps where
+P2 functionally means never.
+
+This layer is **deliberately class-level, not per-gap due dates** — a
+deadline on every gap is theatre. The unit is the organ, the outcome, the
+priority tier, the class — never an individual gap's calendar date.
+
+| SLO ID | Target | Measurement source | Escalation |
+|--------|--------|--------------------|------------|
+| L5-SLO-1 | Organ liveness: every curator role that has ever heartbeated stays < 96h stale | latest `kind=curator_heartbeat` per role in `ambient.jsonl` (roles: shepherd, target, handoff, ci-audit, decompose, md-links) | Restart the curator loop (`docs/process/CLAUDE_GOTCHAS.md`); if deliberately retired, express it via `CHUMP_SLO_PARKED_ROLES=<role>` so it stops paging |
+| L5-SLO-2 | Outcome movement: an open outcome with open children ships a child gap within 21d | `outcomes` + `gaps.outcome_id` + `gaps.closed_at` (`chump outcome show <id>`) | Either the outcome is actually blocked (unblock the children) or it's parked on purpose — say so: `chump outcome park <id> --reason "..."` (never breaches once parked; `chump outcome unpark <id>` re-arms) |
+| L5-SLO-3 | Priority tier is not a one-way door: 0 open P2 gaps older than 90d | `gaps` table, `priority='P2' AND status='open' AND created_at < now-90d` | Review the P2 backlog: promote what still matters, close what doesn't |
+| L5-SLO-4 | A P1 gap unclaimed > 5d must say why: wrong, blocked, or mis-prioritized | `gaps` table, `priority='P1' AND status='open' AND created_at < now-5d` | Reprioritize, unblock, or record the verdict in the gap's `notes` |
+
+Escalation for every row above is proportionate: a fleet-brief line and a
+`docs/process/FLEET_SLOS.md` pointer, never an operator page. L5-SLO-1 and
+L5-SLO-2 are the only two rows with an escalation-valve ("parked") — that's
+intentional: an organ or outcome can be *deliberately* stood down, and a
+breach that fires on a decision the operator already made would train the
+operator to ignore this layer (the same failure mode this layer exists to
+fix). L5-SLO-3 and L5-SLO-4 have no parking valve because they're
+backlog-hygiene reviews, not individual on/off decisions — the response is
+always "look at the list," never "silence the whole SLO."
+
+---
+
 ## Measurement summary
 
 ```
@@ -63,6 +98,9 @@ chump health --json             # raw data including ghost_gaps, pillars_starved
 chump waste-tally --since 7d --tokens   # L2-SLO-2 source
 chump gap list --status closed  # L2-SLO-1 source (ship-time)
 chump gap audit-priorities      # L2-SLO-3 source (P0 count)
+chump outcome show <id>         # L5-SLO-2 source (outcome + child movement)
+chump outcome park <id> --reason "..."   # deliberately exempt an outcome from L5-SLO-2
+chump fleet curator-status      # L5-SLO-1 source (per-role heartbeat/mutation view)
 ```
 
 ---

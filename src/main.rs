@@ -3615,6 +3615,55 @@ async fn main() -> Result<()> {
                         });
                 }
             }
+            // RESILIENT-254: `park <outcome-id> --reason "..."` — declare that
+            // an outcome with open, non-moving children is parked ON PURPOSE.
+            // Excludes it from the L5-SLO-2 commitment-rot breach so a
+            // deliberate decision doesn't train the operator to ignore SLOs.
+            "park" => {
+                let oid = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump outcome park <outcome-id> --reason \"...\"");
+                    std::process::exit(2);
+                });
+                let reason = oflag("--reason").unwrap_or_else(|| {
+                    eprintln!("chump outcome park: --reason required (why is this on hold?)");
+                    std::process::exit(2);
+                });
+                match store.park_outcome(&oid, &reason) {
+                    Ok(()) => {
+                        if json_out {
+                            println!(
+                                r#"{{"outcome_id":"{oid}","status":"parked","park_reason":"{}"}}"#,
+                                reason.replace('"', "\\\"")
+                            );
+                        } else {
+                            println!("{} parked: {}", oid, reason);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump outcome park: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "unpark" => {
+                let oid = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump outcome unpark <outcome-id>");
+                    std::process::exit(2);
+                });
+                match store.unpark_outcome(&oid) {
+                    Ok(()) => {
+                        if json_out {
+                            println!(r#"{{"outcome_id":"{oid}","status":"open"}}"#);
+                        } else {
+                            println!("{} unparked (status: open)", oid);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump outcome unpark: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             _ => {
                 println!("Usage: chump outcome <sub> [args]");
                 println!();
@@ -3624,6 +3673,10 @@ async fn main() -> Result<()> {
                 println!("  show <outcome-id> [--json]");
                 println!("  link <gap-id> --outcome <outcome-id>");
                 println!("  unlink <gap-id>");
+                println!(
+                    "  park <outcome-id> --reason \"...\"   (RESILIENT-254: exempt from L5-SLO-2)"
+                );
+                println!("  unpark <outcome-id>");
                 println!("  bootstrap   (seed 8 outcomes: MISSION-010/012/032 + META-067 + 4 pillar outcomes)");
                 println!("  backfill [--dry-run] [--apply]");
                 println!();
