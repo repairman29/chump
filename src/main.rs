@@ -9313,6 +9313,12 @@ async fn main() -> Result<()> {
                 let force_duplicate = args.iter().any(|a| a == "--force-duplicate");
                 let similarity_enabled =
                     std::env::var("CHUMP_GAP_RESERVE_NO_SIMILARITY").as_deref() != Ok("1");
+                // ZERO-WASTE-045: near-matches surfaced by either the state.db
+                // check below or the Almanac-corpus check further down get
+                // accumulated here, then written into the new gap's `notes`
+                // field after reserve succeeds — so a later audit can see the
+                // dupe was *considered*, not missed (AC2).
+                let mut dedupe_considered: Vec<String> = Vec::new();
                 if similarity_enabled && !force_duplicate {
                     let warn_threshold: f64 = std::env::var("CHUMP_GAP_RESERVE_SIMILARITY_WARN")
                         .ok()
@@ -9354,6 +9360,9 @@ async fn main() -> Result<()> {
                                          check for duplicate work (open-PR gate fires at claim time).",
                                         top_score, block_threshold, top_id
                                     );
+                                    dedupe_considered.push(format!(
+                                        "state.db near-match {top_id} (score {top_score:.2})"
+                                    ));
                                     let _ = std::fs::OpenOptions::new()
                                         .append(true)
                                         .create(true)
@@ -9370,6 +9379,9 @@ async fn main() -> Result<()> {
                                         "[reserve] WARN (score {:.2} ≥ {:.2}): potential overlap with {}.",
                                         top_score, warn_threshold, top_id
                                     );
+                                    dedupe_considered.push(format!(
+                                        "state.db near-match {top_id} (score {top_score:.2})"
+                                    ));
                                     let _ = std::fs::OpenOptions::new()
                                         .append(true)
                                         .create(true)
@@ -9388,6 +9400,116 @@ async fn main() -> Result<()> {
                             // Non-fatal: warn but don't block filing
                             if !quiet {
                                 eprintln!("[reserve] similarity check skipped (db error): {e}");
+                            }
+                        }
+                    }
+                }
+
+                // ── ZERO-WASTE-045: Almanac-corpus dedupe check ──────────────────────
+                // The state.db check above only sees `open` gaps + `done` gaps closed
+                // within the last 30 days. Almanac's index already holds all 3,489+
+                // rows under docs/gaps/ (open AND long-shipped), so query it too — the
+                // DOC-082 failures this gap fixes were all re-filing something already
+                // SHIPPED, not something open. AC4: never a silent skip — if Almanac
+                // isn't reachable, say so loudly rather than pretending the corpus was
+                // searched.
+                if similarity_enabled {
+                    let ambient_path = worktree_root.join(".chump-locks").join("ambient.jsonl");
+                    let ts = unix_ts();
+                    if !crate::almanac_tool::almanac_available() {
+                        eprintln!(
+                            "[reserve] ZERO-WASTE-045: Almanac dedupe check DID NOT RUN (almanac \
+                             unavailable) — dedupe coverage is limited to state.db's open + \
+                             30-day-closed window; long-shipped duplicates will not be caught."
+                        );
+                        let _ = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                            .and_then(|mut f| {
+                                use std::io::Write;
+                                writeln!(
+                                    f,
+                                    r#"{{"ts":"{ts}","kind":"gap_reserve_dedupe_check_skipped","reason":"almanac_unavailable"}}"#
+                                )
+                            });
+                    } else {
+                        match crate::almanac_tool::search_gap_corpus(&title) {
+                            Err(e) => {
+                                eprintln!(
+                                    "[reserve] ZERO-WASTE-045: Almanac dedupe check DID NOT RUN \
+                                     (search error: {e}) — dedupe coverage is limited to \
+                                     state.db's open + 30-day-closed window."
+                                );
+                                let _ = std::fs::OpenOptions::new()
+                                    .append(true)
+                                    .create(true)
+                                    .open(&ambient_path)
+                                    .and_then(|mut f| {
+                                        use std::io::Write;
+                                        writeln!(
+                                            f,
+                                            r#"{{"ts":"{ts}","kind":"gap_reserve_dedupe_check_skipped","reason":"almanac_search_error"}}"#
+                                        )
+                                    });
+                            }
+                            Ok(output) => {
+                                let candidate_ids =
+                                    crate::almanac_tool::extract_gap_ids_from_search_output(
+                                        &output,
+                                    );
+                                let warn_threshold: f64 =
+                                    std::env::var("CHUMP_GAP_RESERVE_SIMILARITY_WARN")
+                                        .ok()
+                                        .and_then(|v| v.parse().ok())
+                                        .unwrap_or(0.65);
+                                let hits = gap_store::shipped_gap_dedupe_candidates(
+                                    &worktree_root,
+                                    &title,
+                                    &candidate_ids,
+                                    warn_threshold,
+                                );
+                                if !hits.is_empty() {
+                                    eprintln!();
+                                    eprintln!(
+                                        "[reserve] ZERO-WASTE-045: Almanac corpus dedupe check — \
+                                         proposed: \"{}\"",
+                                        title
+                                    );
+                                    for (hid, htitle, hstatus, hscore) in &hits {
+                                        eprintln!(
+                                            "  {:.2}  {} ({}) — \"{}\"  [docs/gaps/{}.yaml]",
+                                            hscore, hid, hstatus, htitle, hid
+                                        );
+                                        dedupe_considered.push(format!(
+                                            "almanac near-match {hid} status={hstatus} (score {hscore:.2})"
+                                        ));
+                                        let safe_title = title.replace(['"', '\\'], "");
+                                        let _ = std::fs::OpenOptions::new()
+                                            .append(true)
+                                            .create(true)
+                                            .open(&ambient_path)
+                                            .and_then(|mut f| {
+                                                use std::io::Write;
+                                                writeln!(
+                                                    f,
+                                                    r#"{{"ts":"{ts}","kind":"gap_reserve_almanac_dedupe_hit","proposed_title":"{safe_title}","match_id":"{hid}","match_status":"{hstatus}","match_score":{hscore:.3}}}"#
+                                                )
+                                            });
+                                    }
+                                    if force_duplicate {
+                                        eprintln!(
+                                            "[reserve] --force-duplicate: proceeding despite the \
+                                             above; recorded in the new gap's notes for audit."
+                                        );
+                                    } else {
+                                        eprintln!(
+                                            "[reserve] advisory only — proceeding. Pass \
+                                             --force-duplicate to record an explicit override, or \
+                                             investigate the match(es) above first."
+                                        );
+                                    }
+                                }
                             }
                         }
                     }
@@ -9764,6 +9886,31 @@ async fn main() -> Result<()> {
                     Ok(id) => {
                         if !quiet {
                             eprintln!(" done {id}");
+                        }
+
+                        // ZERO-WASTE-045 AC2: any near-match surfaced above (state.db or
+                        // Almanac corpus) gets written into the new gap's notes, so a
+                        // later audit can see the dupe was considered, not missed —
+                        // regardless of whether --force-duplicate was used to proceed.
+                        if !dedupe_considered.is_empty() {
+                            let note = format!(
+                                "DEDUPE-CHECK (ZERO-WASTE-045): {} considered at reserve time{}.",
+                                dedupe_considered.join("; "),
+                                if force_duplicate {
+                                    " — proceeded via --force-duplicate"
+                                } else {
+                                    " — proceeded (advisory-only, no override flag used)"
+                                }
+                            );
+                            let update = gap_store::GapFieldUpdate {
+                                notes: Some(note),
+                                ..Default::default()
+                            };
+                            if let Err(e) = store.set_fields(&id, update) {
+                                if !quiet {
+                                    eprintln!("warning: failed to record dedupe-check notes: {e}");
+                                }
+                            }
                         }
 
                         // INFRA-756: set acceptance_criteria if not empty (default obs-ACs or custom)

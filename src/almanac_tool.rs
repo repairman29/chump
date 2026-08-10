@@ -146,6 +146,45 @@ fn run_almanac_search(bin: &str, db: &str, query: &str) -> Result<String> {
     Ok(result.trim().to_string())
 }
 
+/// ZERO-WASTE-045: run a one-shot `almanac_search` query and return the raw
+/// result text. `pub(crate)` wrapper over the same plumbing `AlmanacSearchTool`
+/// uses, so `chump gap reserve` can search the full Almanac-indexed
+/// `docs/gaps/*.yaml` corpus (3,489+ rows, including gaps shipped long
+/// enough ago to have dropped out of state.db's closed-lookback window)
+/// without going through the agent tool-call surface.
+pub(crate) fn search_gap_corpus(query: &str) -> Result<String> {
+    let bin = almanac_mcp_bin().ok_or_else(|| anyhow!("almanac-mcp binary not found"))?;
+    let db = almanac_db().ok_or_else(|| anyhow!("almanac index (ALMANAC_DB) not found"))?;
+    run_almanac_search(&bin, &db, query)
+}
+
+/// ZERO-WASTE-045: pull `docs/gaps/<ID>.yaml` gap IDs out of an Almanac
+/// search result. Almanac results cite `path:line` (and sometimes
+/// `path:line-line`); this scans for any path segment under `docs/gaps/`
+/// and lifts the `.yaml` stem as a candidate gap ID. Pure + unit-tested so
+/// the extraction logic doesn't require a live almanac-mcp binary to verify.
+pub(crate) fn extract_gap_ids_from_search_output(output: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for token in output.split(|c: char| c.is_whitespace() || c == '"' || c == '\'') {
+        let Some(idx) = token.find("docs/gaps/") else {
+            continue;
+        };
+        let rest = &token[idx + "docs/gaps/".len()..];
+        let Some(yaml_idx) = rest.find(".yaml") else {
+            continue;
+        };
+        let id = &rest[..yaml_idx];
+        if id.is_empty() || id.contains('/') {
+            continue;
+        }
+        if seen.insert(id.to_string()) {
+            ids.push(id.to_string());
+        }
+    }
+    ids
+}
+
 #[async_trait]
 impl Tool for AlmanacSearchTool {
     fn name(&self) -> String {
@@ -247,6 +286,38 @@ mod tests {
     #[test]
     fn extract_result_text_empty_on_no_result() {
         assert_eq!(extract_result_text(&json!({"id": 1})), "");
+    }
+
+    // ZERO-WASTE-045: extract_gap_ids_from_search_output tests.
+    #[test]
+    fn extract_gap_ids_finds_single_hit() {
+        let out = "docs/gaps/ZERO-WASTE-045.yaml:1 dedupe gaps at reserve time";
+        assert_eq!(
+            extract_gap_ids_from_search_output(out),
+            vec!["ZERO-WASTE-045".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_gap_ids_finds_multiple_hits_dedups() {
+        let out = "docs/gaps/INFRA-1149.yaml:3 title similarity\n\
+                    docs/gaps/INFRA-1149.yaml:9 similarity_candidates\n\
+                    docs/gaps/CREDIBLE-217.yaml:1 CONFIG-organ cadence sweep";
+        assert_eq!(
+            extract_gap_ids_from_search_output(out),
+            vec!["INFRA-1149".to_string(), "CREDIBLE-217".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_gap_ids_ignores_non_gap_paths() {
+        let out = "src/main.rs:9299 reserve-time similarity check\ndocs/process/CLAUDE_GOTCHAS.md:1 notes";
+        assert!(extract_gap_ids_from_search_output(out).is_empty());
+    }
+
+    #[test]
+    fn extract_gap_ids_empty_on_empty_input() {
+        assert!(extract_gap_ids_from_search_output("").is_empty());
     }
 
     #[test]
