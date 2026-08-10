@@ -85,6 +85,64 @@ PROD_PATHS = [
 # or fixtures (e.g. `src/foo/tests/bar.rs`).
 SKIP_PATTERNS = ('/tests/', '/test_', '_test.rs', '/fixtures/')
 
+# INFRA-3583: SKIP_PATTERNS only catches tests that live in their own file
+# (path-based). It misses the far more common Rust idiom — an inline
+# `#[cfg(test)] mod tests { ... }` block inside an ordinary src/ or crates/
+# file. A test fixture string like `"kind":"other_event"` inside that block
+# reads as a real emit site to the grep-based scanner, flagging a false
+# EMIT-NO-REG every time a PR's test fixture happens to pick an unregistered
+# kind name (see CREDIBLE-257 / PR #3583 — the same class fired on
+# `other_event` and, in principle, could fire on any never-registered
+# fixture string). Rather than reactively renaming fixtures PR by PR,
+# precompute the line ranges of inline `#[cfg(test)]` module blocks per
+# Rust file and skip any grep hit that falls inside one — the same "this is
+# test code" judgment SKIP_PATTERNS already makes for whole files, just
+# applied at block granularity via brace-depth tracking (best-effort; does
+# not attempt full Rust parsing, e.g. braces inside string/char literals
+# are not specially handled).
+_TEST_MOD_RANGE_CACHE = {}
+
+def _rust_test_mod_ranges(path):
+    if path in _TEST_MOD_RANGE_CACHE:
+        return _TEST_MOD_RANGE_CACHE[path]
+    ranges = []
+    if path.endswith('.rs'):
+        try:
+            src_lines = pathlib.Path(path).read_text(errors='replace').splitlines()
+        except OSError:
+            src_lines = []
+        n = len(src_lines)
+        i = 0
+        while i < n:
+            if re.match(r'^\s*#\[cfg\(test\)\]\s*$', src_lines[i]):
+                j = i + 1
+                while j < n and src_lines[j].strip() == '':
+                    j += 1
+                if j < n and re.search(r'\bmod\s+\w+\s*\{', src_lines[j]):
+                    depth = 0
+                    started = False
+                    k = j
+                    while k < n:
+                        depth += src_lines[k].count('{') - src_lines[k].count('}')
+                        if '{' in src_lines[k]:
+                            started = True
+                        if started and depth <= 0:
+                            break
+                        k += 1
+                    # 1-indexed inclusive line range covering the whole block.
+                    ranges.append((i + 1, k + 1))
+                    i = k + 1
+                    continue
+            i += 1
+    _TEST_MOD_RANGE_CACHE[path] = ranges
+    return ranges
+
+def _in_rust_test_mod(path, lineno):
+    for start, end in _rust_test_mod_ranges(path):
+        if start <= lineno <= end:
+            return True
+    return False
+
 def grep_lines(pattern, paths):
     """Run grep -rEnI, return list of `path:lineno:content` strings."""
     existing = [p for p in paths if pathlib.Path(p).exists()]
@@ -106,8 +164,10 @@ def extract_kinds(lines, kind_re):
         parts = line.split(':', 2)
         if len(parts) < 3:
             continue
-        path = parts[0]
+        path, lineno_s = parts[0], parts[1]
         if any(p in path for p in SKIP_PATTERNS):
+            continue
+        if lineno_s.isdigit() and _in_rust_test_mod(path, int(lineno_s)):
             continue
         m = re.search(kind_re, parts[2])
         if m:
@@ -158,8 +218,10 @@ def extract_kinds_no_prefix_emit(lines, kind_re):
         parts = line.split(':', 2)
         if len(parts) < 3:
             continue
-        path = parts[0]
+        path, lineno_s = parts[0], parts[1]
         if any(p in path for p in SKIP_PATTERNS):
+            continue
+        if lineno_s.isdigit() and _in_rust_test_mod(path, int(lineno_s)):
             continue
         content = parts[2]
         if '_emit_ambient' in content:

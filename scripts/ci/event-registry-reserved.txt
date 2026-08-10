@@ -817,3 +817,21 @@ opencode_harness_install_unverified    # reason: EFFECTIVE-320 — install-openc
 fix_verify_passed    # reason: CREDIBLE-170 — execute_gap ship-path verify gate verdict
 fix_verify_failed    # reason: CREDIBLE-170 — execute_gap ship-path verify gate verdict
 judgment_organ_redteam_regression    # reason: CREDIBLE-177 — emitter lives in scripts/ci/test-judgment-organ-redteam.sh, a path class the event-registry-coverage scanner's PROD_PATHS intentionally excludes (CI/test-runner wrappers, not production daemons); emit is a real printf to ambient.jsonl, verified firing by manually forcing a fixture mismatch and confirming the line appears
+
+# INFRA-3583: these 8 kinds were only ever "emitted" from the scanner's point
+# of view via #[cfg(test)] mod fixtures inside src/ or crates/ files (e.g.
+# src/fleet_resize.rs, crates/chump-waste-tally/src/waste_tally.rs). Fixing
+# the scanner to stop counting inline test-module strings as real emit sites
+# (INFRA-3583, companion of the CREDIBLE-257 other_event false-positive)
+# correctly reclassified them from "emitted" to true register-without-emit
+# orphans. No production code currently emits any of these — reserved here
+# rather than blocking this scanner fix on implementing 8 unrelated emit
+# sites; each is a real candidate for either an emitter or `deprecated: true`.
+cycle_end              # reason: INFRA-3583 — only referenced in src/bin/bandit-replay.rs #[cfg(test)] fixture; no production emitter found
+execution_timeout      # reason: INFRA-3583 — only referenced in src/blocker_detect.rs #[cfg(test)] fixture; no production emitter found
+file_edit               # reason: INFRA-3583 — only referenced in src/briefing.rs / crates/chump-waste-tally #[cfg(test)] fixtures; no production emitter found
+lesson_applied          # reason: INFRA-3583 — only referenced in src/lesson_action.rs #[cfg(test)] fixture; no production emitter found
+missing_attribution     # reason: INFRA-3583 — only referenced in crates/chump-waste-tally/src/waste_tally.rs #[cfg(test)] fixture; no production emitter found
+pr_merged               # reason: INFRA-3583 — only referenced in src/briefing.rs / src/fleet_resize.rs #[cfg(test)] fixtures; no production emitter found
+review_handoff_initiated    # reason: INFRA-3583 — only referenced in crates/chump-kpi-report/src/kpi_report.rs #[cfg(test)] fixture; no production emitter found
+waste_category_report   # reason: INFRA-3583 — only referenced in crates/chump-waste-tally/src/waste_tally.rs #[cfg(test)] fixture; no production emitter found
