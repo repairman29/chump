@@ -243,6 +243,15 @@ write_heartbeat() {
     printf '%s %s\n' "$now" "$gap_id" > "$heartbeat_file" 2>/dev/null || true
 }
 
+# CREDIBLE-256: remove the heartbeat file so a health monitor never treats an
+# exited/shipped worker as still alive. Registered as an EXIT trap below so
+# it fires on ship, error, and signal-driven exits alike.
+remove_heartbeat() {
+    local heartbeat_file="/tmp/chump-fleet-worker-${AGENT_ID}.heartbeat"
+    rm -f "$heartbeat_file" 2>/dev/null || true
+}
+trap remove_heartbeat EXIT
+
 # INFRA-620: re-read CLAUDE_CODE_OAUTH_TOKEN from ~/.chump/oauth-token.json
 # before each claude -p spawn. Prevents auth_storm when the inherited token
 # expires after ~30-60min in subscription mode (the parent Claude Code app

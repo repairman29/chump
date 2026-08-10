@@ -140,6 +140,50 @@ async fn mark_terminal_on_ship_or_exit() {
 
 #[tokio::test]
 #[serial]
+async fn deregister_removes_record_on_ship_or_exit() {
+    let bucket = unique_bucket();
+    let Some(client) = connect_or_skip("deregister", &bucket).await else {
+        return;
+    };
+
+    let worker_id = format!("worker-{}", &Uuid::new_v4().to_string()[..8]);
+    let presence = build_presence(&worker_id, Some("GAP-Y".to_string()));
+    client
+        .register_worker_presence(&presence)
+        .await
+        .expect("register");
+
+    assert!(
+        client
+            .worker_presence(&worker_id)
+            .await
+            .expect("get")
+            .is_some(),
+        "record should exist after registration"
+    );
+
+    client
+        .deregister_worker_presence(&worker_id)
+        .await
+        .expect("deregister_worker_presence");
+
+    let after = client.worker_presence(&worker_id).await.expect("get");
+    assert!(
+        after.is_none(),
+        "record should be gone from the KV bucket after deregistration"
+    );
+
+    // Deregistering again (e.g. a double-exit) must not error.
+    client
+        .deregister_worker_presence(&worker_id)
+        .await
+        .expect("deregister_worker_presence is idempotent");
+
+    std::env::remove_var("CHUMP_NATS_WORKERS_BUCKET");
+}
+
+#[tokio::test]
+#[serial]
 async fn list_worker_presence_returns_all_registered_workers() {
     let bucket = unique_bucket();
     let Some(client) = connect_or_skip("list_presence", &bucket).await else {

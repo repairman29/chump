@@ -190,6 +190,18 @@ pub async fn mark_terminal(kv: &kv::Store, worker_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// CREDIBLE-256 AC-1: remove a worker's presence record from the
+/// `chump_workers` KV bucket outright — call on ship or exit. Unlike
+/// [`mark_terminal`] (which keeps the record for audit until TTL purge),
+/// this deletes it immediately so "who's currently alive" queries never see
+/// a worker that has already shipped/exited. `kv.delete` on an already-gone
+/// key is a no-op in async-nats, so this is safe to call unconditionally.
+pub async fn deregister_presence(kv: &kv::Store, worker_id: &str) -> Result<()> {
+    kv.delete(worker_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("workers KV delete failed: {}", e))
+}
+
 /// Read a single worker's presence record, or `None` if never registered
 /// (or already purged by TTL).
 pub async fn get_presence(kv: &kv::Store, worker_id: &str) -> Result<Option<WorkerPresence>> {
