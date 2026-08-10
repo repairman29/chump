@@ -163,6 +163,11 @@ def _extract_gap_ids(pr: dict) -> list[str]:
 
     Looks for patterns like 'INFRA-1234' or 'CREDIBLE-001' anywhere in the
     PR title or body. Returns a deduped list preserving first-seen order.
+
+    Used by _auto_release_sibling_leases (lease release is non-destructive —
+    freeing a lease that cites a gap in passing is harmless). NOT used by
+    _auto_flip_gaps_done, which needs a tighter signal — see
+    _extract_gap_ids_for_closure below (CREDIBLE-268).
     """
     import re
 
@@ -175,6 +180,49 @@ def _extract_gap_ids(pr: dict) -> list[str]:
             if match not in seen:
                 seen.add(match)
                 ordered.append(match)
+    return ordered
+
+
+def _extract_gap_ids_for_closure(pr: dict) -> list[str]:
+    """CREDIBLE-268 FIX 1: extract gap IDs that a merged PR is entitled to
+    CLOSE — deliberately narrower than _extract_gap_ids.
+
+    The full title+body scan over-matched: any gap merely CITED in a PR body
+    (a "why this matters" link, an AC cross-reference, a doc analyzing a past
+    incident) got flipped to done alongside the gap the PR actually shipped.
+    30 flips across 8 PRs on 2026-08-09, ~22 of them collateral.
+
+    Two signals only, both opt-in by construction:
+      1. PR TITLE — gap IDs named in the title are the PR's stated intent
+         (the convention every ship already follows: "GAP-ID: short title").
+      2. Explicit `Closes: ID[, ID2, ...]` trailer, one per line, anywhere in
+         the body — an explicit author assertion, not an incidental mention.
+
+    Body text OUTSIDE a `Closes:` trailer is never scanned. Cross-references
+    remain free-form prose (nothing to change about how authors write ACs or
+    handoff docs) — they just no longer double as a closure signal.
+    """
+    import re
+
+    pattern = re.compile(r"\b([A-Z][A-Z-]+-\d+)\b")
+    closes_pattern = re.compile(r"(?im)^closes:\s*(.+)$")
+
+    seen: set[str] = set()
+    ordered: list[str] = []
+
+    title = pr.get("title") or ""
+    for match in pattern.findall(title):
+        if match not in seen:
+            seen.add(match)
+            ordered.append(match)
+
+    body = pr.get("body") or ""
+    for trailer_line in closes_pattern.findall(body):
+        for match in pattern.findall(trailer_line):
+            if match not in seen:
+                seen.add(match)
+                ordered.append(match)
+
     return ordered
 
 
@@ -246,10 +294,21 @@ def _auto_flip_gaps_done(pr: dict, payload: dict) -> int:
     which has filesystem access to state.db — fixing the root cause of the broken
     .github/workflows/auto-flip-on-merge.yml, which runs in CI where the canonical
     state.db does not exist, so merged gaps stayed 'open' and got re-claimed (the
-    ghost-gap waste pattern). Mirrors the merged-PR guard + gap-id extraction used
-    by _auto_release_sibling_leases.
+    ghost-gap waste pattern).
 
-    Only fires on action=closed AND merged=true. Idempotent: re-flipping an
+    CREDIBLE-268 FIX 1: gap-id extraction uses _extract_gap_ids_for_closure
+    (title + explicit `Closes:` trailer only), NOT the broad title+body scan
+    used by _auto_release_sibling_leases — a PR merely CITING a gap must not
+    be able to close it.
+
+    CREDIBLE-268 FIX 2: routes through `chump gap ship`, not `chump gap set
+    --status done`. `gap set` bypassed the INFRA-1392 PROOF-OF-MERGE guard
+    (which lives on the ship path only) and never wrote closed_date — both
+    of which produced the falsely-closed gaps' exact fingerprint (closed_pr
+    set, closed_date empty, no PROOF-OF-MERGE check run). `gap ship` closes
+    both gaps in one change.
+
+    Only fires on action=closed AND merged=true. Idempotent: re-shipping an
     already-done gap is harmless (a non-zero rc is logged, not raised). Emits
     kind=gap_flipped_done_on_merge per flip. To disable, stop the receiver
     (no env escape hatch on purpose — the EFFECTIVE-094 bypass-var ceiling
@@ -259,18 +318,14 @@ def _auto_flip_gaps_done(pr: dict, payload: dict) -> int:
     """
     if payload.get("action") != "closed" or not pr.get("merged"):
         return 0
-    gap_ids = _extract_gap_ids(pr)
+    gap_ids = _extract_gap_ids_for_closure(pr)
     if not gap_ids:
         return 0
-    # CREDIBLE-268 (interim SUPPRESS, operator decision 2026-08-09): the title+body
-    # regex over-matches and closes every gap a PR merely CITES — 30 flips across 8
-    # PRs today, ~22 collateral, including the two gaps documenting destroyed PRs
-    # (closed by #3556 citing them). Auto-flip is suppressed until the durable
-    # extraction fix lands (extract from TITLE only / require a `Closes:` trailer,
-    # AND route through `chump gap ship` so PROOF-OF-MERGE adjudicates + closed_date
-    # is written). This guard leaves the cache-feed side of the receiver fully alive.
-    # NOT silent: emits gap_autoflip_suppressed naming what it WOULD have flipped.
-    # Re-enable only with the extraction fix in place via CHUMP_WEBHOOK_AUTOFLIP=1.
+    # CREDIBLE-268 (interim SUPPRESS, operator decision 2026-08-09): kept in
+    # place even after the title/Closes: extraction fix landed — the fix
+    # removes the over-match, but re-enabling by default is a separate
+    # operator call. Re-enable via CHUMP_WEBHOOK_AUTOFLIP=1 once the fixed
+    # extraction has run in production without incident.
     if os.environ.get("CHUMP_WEBHOOK_AUTOFLIP", "0") != "1":
         _emit_ambient({
             "ts": _now_iso(),
@@ -288,8 +343,9 @@ def _auto_flip_gaps_done(pr: dict, payload: dict) -> int:
     for gid in gap_ids:
         try:
             result = subprocess.run(
-                [chump_bin, "gap", "set", gid,
-                 "--status", "done", "--closed-pr", str(pr_number)],
+                [chump_bin, "gap", "ship", gid,
+                 "--closed-pr", str(pr_number),
+                 "--session", "webhook-auto-flip"],
                 cwd=str(_repo_root()),
                 capture_output=True,
                 text=True,

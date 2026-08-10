@@ -8798,6 +8798,20 @@ events:
     consumers: [ops-audit]
     fields_required: [ts, kind, merged_pr, would_have_flipped, reason]
     status: stable
+  - kind: gap_closed_no_file_overlap
+    effect_metric: credible
+    emitter: scripts/ci/test-gap-closure-consistency.sh check_file_overlap (CREDIBLE-268)
+    # scanner-anchor: "kind":"gap_closed_no_file_overlap"
+    trigger: >
+      Forward-mode check found a done gap whose closed_pr merged, but the
+      PR's changed-file list shares nothing with the file-path-looking
+      tokens in the gap's acceptance_criteria — the fingerprint of a closure
+      that rode in on a citation rather than the work itself (PR #3556: 2
+      files changed, 5 gaps closed by naming them in prose). Advisory —
+      filenames in ACs are a design sketch, not a contract.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, gap_id, pr, ac_files_sample]
+    status: stable
   # ── INFRA-1526: post-rebase hunk-drop detector ───────────────────────────
 
   - kind: rebase_hunk_dropped
