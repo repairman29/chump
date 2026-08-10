@@ -1,0 +1,13 @@
+- id: RESILIENT-296
+  domain: RESILIENT
+  title: "RESILIENT: pr-failure-auto-rescue 7h-close (INFRA-3542) has no freshness gate — false-closed a PR minutes after a fix was pushed + CI re-running (RESILIENT-263 class)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"pr-failure-auto-rescue 7h-close (INFRA-3542) has no freshness gate — false-closed a PR minutes after a fix was pushed + CI re-running (RESILIENT-263 class)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  evidence: |
+    COMMAND: gh pr view 3598 --json comments. OUTPUT: auto-rescue closed #3598 saying audit stayed RED 7.1h, at 21:37 — minutes after a fix was pushed at ~21:0x and CI was re-running; branch survived so work not lost but it was wrongly deleted. THEORY: the 7h-cumulative-red close reads stale history and lacks a freshness gate; add skip-close-if-updated-within-N-min (mirror the reaper INFRA-1195 freshness window). ALT: (a) remove the 7h close — rejected, it is the recycler; (b) hand-reopen — rejected, RESILIENT-263 destroyed-work class.
+

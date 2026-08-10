@@ -1,0 +1,14 @@
+- id: EFFECTIVE-434
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [COTG] no recycle path for a genuinely-buggy PR — fix daemon declines logic bugs, reaper only closes SUPERSEDED work, so a failing-CI PR on an open gap sits BLOCKED forever"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - detect a PR failed >=N CI attempts with no auto-fix handler match AND gap not done
+    - close it + respawn the gap (fresh attempt) with the CI failure recorded in the gap notes
+    - cap total respawns (default 3) then escalate to operator instead of infinite recycle
+    - runs on the primary node (helsinki), not Mac-only
+    - "EVIDENCE 2026-08-10: PRs 3609/3606/3598/3596/3591 sat BLOCKED 2-7h on real test/audit failures; pr-failure-auto-rescue declined (not its patterns), stale-pr-reaper skipped (gaps not done) — fell through both"
+  outcome_id: COTG
+
