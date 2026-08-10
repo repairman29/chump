@@ -6119,15 +6119,17 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, pr, failure_class, attempt_number]
 
-  # META-100: RUNNER_GHOST_ONLINE detection — operator-recall condition (e).
+  # META-100/META-101: QUEUE_SATURATED detection — operator-recall condition (e).
   # Fired by scripts/dispatch/operator-recall.sh when queued workflow_runs
   # older than CHUMP_RUNNER_QUEUE_THRESHOLD_S exist AND ≥1 self-hosted runner
   # is online+idle (the contradiction that caused 14 PRs to wait 17h on
   # 2026-05-24). This event fires before the operator_recall page so consumers
   # can track detection frequency independently of cooldown-gated paging.
+  # As of META-101 the paged operator_recall condition classifies into
+  # RUNNERS_GHOSTED or QUEUE_SATURATED_GH_HOSTED per docs/process/CI_RUNNER_HEALTH.md.
   - kind: runner_ghost_online_detected
     effect_metric: self
-    emitter: scripts/dispatch/operator-recall.sh (META-100)
+    emitter: scripts/dispatch/operator-recall.sh (META-100/META-101)
     trigger: >
       operator-recall.sh detected ≥1 queued workflow_run older than
       CHUMP_RUNNER_QUEUE_THRESHOLD_S (default 300s) while at least one
