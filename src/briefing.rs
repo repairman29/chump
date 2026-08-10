@@ -124,6 +124,14 @@ pub struct GapBriefing {
     /// (`CHUMP_BRIEFING_COMPREHEND=0`), the subprocess times out, or the
     /// report is empty. Best-effort: never blocks the rest of the briefing.
     pub comprehension: Option<String>,
+    /// RESILIENT-258: "how we work here" block — the exact almanac command
+    /// (with repo + gap-relevant query pre-filled), the `chump voice`
+    /// friction-report one-liner, and the organs entrypoint, all rendered
+    /// with this gap's own ID/title so the practice is advertised AT THE
+    /// POINT OF WORK instead of living only in CLAUDE.md (which is read
+    /// once and skipped thereafter). Always populated — deterministic
+    /// string construction, no subprocess calls, never `None`.
+    pub practices_block: String,
 }
 
 /// Build a briefing for the given gap ID. Returns `gap_not_found = true` when
@@ -205,6 +213,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
             scratchpad_context: Vec::new(),
             fleet_mode: crate::fleet_mode::compute(""),
             comprehension: None,
+            practices_block: String::new(),
         };
     };
 
@@ -318,6 +327,12 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
     // or produce nothing. Never blocks the rest of the briefing.
     let comprehension = build_comprehension(root);
 
+    // RESILIENT-258: advertise mine-almanac / holler-friction / use-organs
+    // AT THE POINT OF WORK — in the briefing itself, with this gap's own
+    // ID/title/domain pre-filled into the exact commands, not just in
+    // CLAUDE.md (read once, then skipped every subsequent session).
+    let practices_block = build_practices_block(root, &gap_id, &parsed.title, &parsed.domain);
+
     GapBriefing {
         gap_id,
         gap_title: parsed.title,
@@ -339,6 +354,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         scratchpad_context,
         fleet_mode,
         comprehension,
+        practices_block,
     }
 }
 
@@ -1084,6 +1100,87 @@ fn build_comprehension(root: &Path) -> Option<String> {
     }
 }
 
+/// Resolve the repo name almanac expects for its `--repo` flag: the git
+/// remote `origin` basename (stripped of `.git`), falling back to the
+/// checkout directory's basename when there's no remote (e.g. a fresh
+/// `git init`) or `git` isn't available. Best-effort — never fails, never
+/// blocks the briefing.
+pub fn derive_repo_name(root: &Path) -> String {
+    let from_remote = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| {
+            let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            let name = url
+                .rsplit('/')
+                .next()
+                .unwrap_or("")
+                .trim_end_matches(".git");
+            if name.is_empty() {
+                None
+            } else {
+                Some(name.to_string())
+            }
+        });
+
+    from_remote.unwrap_or_else(|| {
+        root.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("repo")
+            .to_string()
+    })
+}
+
+/// RESILIENT-258: build the "how we work here" block — the exact
+/// almanac-mining command, the `chump voice` friction-report one-liner, and
+/// the comprehension-organs entrypoint, all with THIS gap's own repo/ID/
+/// title/domain pre-filled. The gap (via `chump --briefing`) is the agent's
+/// context at work-time; CLAUDE.md is read once and skipped, so the
+/// practices we want (mine almanac before build, holler friction via
+/// `chump voice`, use the comprehend organs) have to be advertised where the
+/// agent actually looks — not just documented in a manual nobody re-reads.
+///
+/// Deterministic string construction only (no subprocess beyond the cheap
+/// `git remote get-url` in [`derive_repo_name`]) — always populated, never
+/// blocks or degrades the rest of the briefing.
+pub fn build_practices_block(
+    root: &Path,
+    gap_id: &str,
+    gap_title: &str,
+    gap_domain: &str,
+) -> String {
+    let repo = derive_repo_name(root);
+    let query = if gap_title.trim().is_empty() {
+        gap_id.to_string()
+    } else {
+        gap_title.trim().to_string()
+    };
+    let domain_hint = if gap_domain.trim().is_empty() {
+        "this area".to_string()
+    } else {
+        gap_domain.trim().to_string()
+    };
+
+    format!(
+        "- **Mine almanac first** — before writing code that touches {domain_hint}, ground in \
+         what's already indexed instead of grepping blind:\n  \
+         `~/Projects/almanac/target/release/almanac search --repo {repo} \"{query}\"`\n  \
+         New to this area? `almanac architecture --repo {repo}` first.\n\
+         - **Use the organs** — before editing a shared file, check what's wired/gated/configured: \
+         `almanac comprehend --repo {repo}`; before deleting or rewriting a line that looks wrong: \
+         `almanac why --repo {repo} <path> <line>`.\n\
+         - **Holler friction** — if something about {gap_id} surprises you or wastes time, file it \
+         instead of silently working around it:\n  \
+         `chump voice --wedge-class <short-id> --minutes-lost <n> --workaround \"<what you did>\" \
+         --fix-shape <doc|tooling|gate|new-subcommand|other> --fix \"<what should exist instead>\" \
+         --evidence {gap_id}`\n"
+    )
+}
+
 /// Render the briefing as agent-readable markdown.
 /// INFRA-1548: JSON rendering with schema_version:1 for harness consumers.
 pub fn render_json(b: &GapBriefing) -> String {
@@ -1109,7 +1206,7 @@ pub fn render_json(b: &GapBriefing) -> String {
             r#""gap_effort":"{effort}","gap_domain":"{domain}","gap_not_found":{nf},"#,
             r#""gap_acceptance":{ac},"depends_on":[{deps}],"#,
             r#""relevant_reflections":[{refs}],"similar_closed_prs":[{prs}],"#,
-            r#""comprehension":{comp},"fleet_mode":{fleet_mode}}}"#
+            r#""comprehension":{comp},"practices_block":"{practices}","fleet_mode":{fleet_mode}}}"#
         ),
         id = escape(&b.gap_id),
         title = escape(&b.gap_title),
@@ -1130,6 +1227,7 @@ pub fn render_json(b: &GapBriefing) -> String {
             .as_deref()
             .map(|s| format!("\"{}\"", escape(s)))
             .unwrap_or_else(|| "null".to_string()),
+        practices = escape(&b.practices_block),
         fleet_mode = crate::fleet_mode::render_json(&b.fleet_mode),
     )
 }
@@ -1164,6 +1262,15 @@ pub fn render_markdown(b: &GapBriefing) -> String {
         out.push_str(&format!("- Depends on: {}\n", b.depends_on.join(", ")));
     }
     out.push('\n');
+
+    // RESILIENT-258: "how we work here" — advertised at point-of-work, with
+    // this gap's own repo/ID/title/domain pre-filled into the commands, so
+    // the practice happens because it's in front of the agent right now.
+    if !b.practices_block.is_empty() {
+        out.push_str("## How we work here\n\n");
+        out.push_str(&b.practices_block);
+        out.push('\n');
+    }
 
     // INFRA-1718: fleet-mode snapshot — auth/backend/effort/cost ceiling,
     // computed fresh at briefing time.
@@ -1591,6 +1698,94 @@ gaps:
         assert!(md.contains("## Similar Closed PRs"));
         assert!(md.contains("#123"));
         assert!(md.contains("Depends on: MEM-006"));
+    }
+
+    #[test]
+    fn build_practices_block_prefills_repo_gap_and_domain() {
+        let dir = tempfile::tempdir().unwrap();
+        // No git remote in this bare tempdir — falls back to dir basename,
+        // exercised separately below. Here we just check the gap-specific
+        // fields land in the right commands.
+        let block = build_practices_block(
+            dir.path(),
+            "RESILIENT-258",
+            "advertise practices",
+            "resilient",
+        );
+        assert!(
+            block.contains("almanac search --repo"),
+            "missing almanac search command: {block}"
+        );
+        assert!(
+            block.contains("\"advertise practices\""),
+            "gap title not pre-filled into almanac query: {block}"
+        );
+        assert!(
+            block.contains("almanac comprehend --repo"),
+            "missing organs (comprehend) command: {block}"
+        );
+        assert!(
+            block.contains("chump voice"),
+            "missing chump voice friction one-liner: {block}"
+        );
+        assert!(
+            block.contains("--evidence RESILIENT-258"),
+            "voice one-liner doesn't reference this gap's ID: {block}"
+        );
+        assert!(
+            block.contains("touches resilient"),
+            "domain hint not pre-filled: {block}"
+        );
+    }
+
+    #[test]
+    fn build_practices_block_never_empty_even_without_title_or_domain() {
+        let dir = tempfile::tempdir().unwrap();
+        let block = build_practices_block(dir.path(), "X-1", "", "");
+        assert!(!block.is_empty());
+        assert!(block.contains("X-1"));
+    }
+
+    #[test]
+    fn derive_repo_name_falls_back_to_dir_basename_without_remote() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_dir = dir.path().join("my-repo-checkout");
+        fs::create_dir_all(&repo_dir).unwrap();
+        let name = derive_repo_name(&repo_dir);
+        assert_eq!(name, "my-repo-checkout");
+    }
+
+    #[test]
+    fn render_markdown_includes_how_we_work_here_section() {
+        let b = GapBriefing {
+            gap_id: "RESILIENT-258".into(),
+            gap_title: "advertise practices".into(),
+            practices_block: build_practices_block(
+                Path::new("/nonexistent"),
+                "RESILIENT-258",
+                "advertise practices",
+                "resilient",
+            ),
+            ..Default::default()
+        };
+        let md = render_markdown(&b);
+        assert!(md.contains("## How we work here"));
+        assert!(md.contains("almanac search --repo"));
+        assert!(md.contains("chump voice"));
+    }
+
+    #[test]
+    fn render_markdown_omits_how_we_work_here_when_empty() {
+        // Before RESILIENT-258, this section did not exist at all — a gap
+        // with an empty practices_block (e.g. the not-found early return)
+        // must not render a half-empty header.
+        let b = GapBriefing {
+            gap_id: "X-1".into(),
+            practices_block: String::new(),
+            ..Default::default()
+        };
+        let md = render_markdown(&b);
+        assert!(!md.contains("## How we work here"));
     }
 
     #[test]
