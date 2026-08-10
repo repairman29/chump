@@ -12,6 +12,17 @@ const DISCORD_API: &str = "https://discord.com/api/v10";
 /// If DISCORD_TOKEN and CHUMP_READY_DM_USER_ID are set, send the message as a DM to that user.
 /// No-op if message is empty or env vars are missing. Logs errors but does not fail the process.
 pub async fn send_dm_if_configured(message: &str) {
+    // RESILIENT-287: never fire a real operator DM from inside a test run.
+    // A fleet node runs `cargo test` with providers.env sourced, so
+    // DISCORD_TOKEN + CHUMP_READY_DM_USER_ID are set and the "no-op in test
+    // env" assumption fails open — that is how discord_shim's approval unit
+    // test DM'd the operator "[to:user-9] approve?" at 3:21AM. cfg!(test) is
+    // true only when this crate is compiled under `cargo test`, so the live
+    // --discord daemon is unaffected. Opt back in for a deliberate send-path
+    // test with CHUMP_ALLOW_TEST_DM=1.
+    if cfg!(test) && std::env::var_os("CHUMP_ALLOW_TEST_DM").is_none() {
+        return;
+    }
     let message = message.trim();
     if message.is_empty() {
         return;
