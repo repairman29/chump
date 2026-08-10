@@ -1470,3 +1470,6 @@ CHUMP_CARGO_TARGET_CAP_MB
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_OPS_DEFECT_AUTOFILE
+CHUMP_GAP_RESERVE_DEDUPE_MIN_SCORE
+# detected in: (standard input)
+CHUMP_GAP_RESERVE_NO_DEDUPE_CHECK
