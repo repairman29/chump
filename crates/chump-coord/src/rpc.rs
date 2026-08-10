@@ -735,6 +735,41 @@ pub async fn register_worker_rpc_handlers_with_presence(
     })
     .await?;
 
+    // CREDIBLE-261 (CREDIBLE-099 slice): "deregister-worker" RPC handler —
+    // lets a peer explicitly remove this session's `WorkerPresence` record
+    // from the `chump_workers` NATS-KV bucket, e.g. on graceful shutdown.
+    // Mirrors the register-worker handler above: sync closure hands off to a
+    // background task over an unbounded channel, and acks immediately once
+    // the request is queued.
+    let (deregister_tx, mut deregister_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let deregister_kv = presence_kv.clone();
+    tokio::spawn(async move {
+        while let Some(worker_id) = deregister_rx.recv().await {
+            if let Err(e) = crate::presence::deregister_presence(&deregister_kv, &worker_id).await {
+                eprintln!(
+                    "[presence] deregister-worker RPC removal failed (non-fatal): {}",
+                    e
+                );
+            }
+        }
+    });
+
+    let deregister_session = session_id.to_string();
+    serve_rpc_with_nats(Some(nats), session_id, "deregister-worker", move |args| {
+        let worker_id = args
+            .get("worker_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&deregister_session)
+            .to_string();
+
+        let result = serde_json::json!({"deregistered": true, "worker_id": worker_id});
+        deregister_tx
+            .send(worker_id)
+            .map_err(|e| format!("deregister-worker channel closed: {}", e))?;
+        Ok(result)
+    })
+    .await?;
+
     Ok(())
 }
 
