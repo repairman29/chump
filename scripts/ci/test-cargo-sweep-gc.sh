@@ -41,10 +41,21 @@ grep -q '"kind":"cargo_sweep_gc_skipped"' "$AMB" && grep -q 'no-cargo-toml' "$AM
 
 echo "== 3. the emit anchors + registry entries exist (verify-rule + honesty) =="
 grep -q '"kind":"cargo_sweep_gc_ran"' "$GC" && grep -q '"kind":"cargo_sweep_gc_skipped"' "$GC" \
+  && grep -q '"kind":"cargo_sweep_gc_time_pruned"' "$GC" \
   && pass "scanner anchors present in GC" || fail "scanner anchors missing"
 REG="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
 grep -q 'kind: cargo_sweep_gc_ran' "$REG" && grep -q 'kind: cargo_sweep_gc_skipped' "$REG" \
+  && grep -q 'kind: cargo_sweep_gc_time_pruned' "$REG" \
   && pass "both kinds registered" || fail "kinds not registered in EVENT_REGISTRY.yaml"
+
+echo "== 3b. RESILIENT-239: age-based prune pass runs with --time --recursive =="
+WORK2="$(mktemp -d)"; trap 'rm -rf "$WORK" "$WORK2"' EXIT
+: > "$WORK2/Cargo.toml"
+AMB2="$WORK2/ambient.jsonl"; : > "$AMB2"
+PATH="$FAKEBIN:/usr/bin:/bin" HOME="$WORK2" CHUMP_AMBIENT_LOG="$AMB2" CHUMP_REPO="$WORK2" \
+  CHUMP_CARGO_SWEEP_TIME_DAYS=14 bash "$GC" --dry-run >/dev/null 2>&1
+grep -q '"kind":"cargo_sweep_gc_time_pruned"' "$AMB2" && grep -q '"time_days":14' "$AMB2" \
+  && pass "time-prune pass emitted with configured horizon" || fail "time-prune pass missing/wrong horizon"
 
 echo "== 4. plist template is well-formed + points at the GC =="
 PLIST="$REPO_ROOT/scripts/plists/dev.chump.cargo-sweep-gc.plist"
