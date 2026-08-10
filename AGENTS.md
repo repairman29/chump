@@ -44,6 +44,28 @@ See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the 4-pillar mission and active t
 direction, and [`docs/architecture/TEAM_OF_AGENTS.md`](./docs/architecture/TEAM_OF_AGENTS.md) for the
 multi-agent design.
 
+## Mine the almanac before you build or holler (RESILIENT-259)
+
+**Before implementing anything that might already exist somewhere in the
+fleet, ask the almanac first.** [`docs/ALMANAC.md`](./docs/ALMANAC.md) is
+the fleet reference desk — a grounded index across the ~95-repo fleet that
+answers "have we built X", "which repo does Y", "what's the exact
+signature", with `repo:path:line` receipts on every hit. Checking it is
+cheaper than a grep fan-out or a from-scratch implementation, and it is
+**harness-agnostic** — every agent, not just Claude Code sessions, should
+reach for it first.
+
+**When you hit friction — a tool that doesn't do what its docs say, a
+confusing error, a workflow that fought you — file it with `chump voice`
+before you holler on a broadcast channel or escalate.** `chump voice` (see
+[`docs/process/VOICE_OF_AGENT.md`](./docs/process/VOICE_OF_AGENT.md)) files
+a lightweight voice-of-agent (VOA) signal without the overhead of a full
+gap — it is the low-friction path for "this bit me" that keeps friction
+visible to the fleet instead of dying with your session. Reserve NATS
+broadcasts and operator escalation (see "No-operator-escalation
+discipline" below) for things that need a decision or a vote, not for
+"logging that something was annoying."
+
 ## Build commands
 
 ```bash

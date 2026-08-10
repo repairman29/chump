@@ -1017,6 +1017,10 @@ It reports WIRING (live vs registered-but-unwired), GATES (CI/hook gates + bypas
 and CONFIG drift — ground in how this repo is wired instead of rediscovering by trial.
 "
                 fi
+                # RESILIENT-259: point the agent at the right operating-rules
+                # doc for its harness — CLAUDE.md is Claude-Code-only, non-
+                # Claude harnesses (opencode, codex) read AGENTS.md instead.
+                _hard_rules_doc="$(hard_rules_doc_name "${HARNESS_SPAWN_MODE:-claude-p}")"
                 prompt="Ship gap ${GAP_ID}.
 
 The gap is already claimed for this session; lease is in .chump-locks/.
@@ -1028,7 +1032,7 @@ watch'. Spend tokens on the implementation, not on discovery.
 ${gap_yaml}
 ${comprehend_hint}
 
-══ HARD RULES (full text in CLAUDE.md if you need it) ══
+══ HARD RULES (full text in ${_hard_rules_doc} if you need it) ══
 - Work ONLY in this worktree: ${wt_path}
 - Commit via: scripts/coord/chump-commit.sh <files…> -m \"msg\"
 - Ship via:   scripts/coord/bot-merge.sh --gap ${GAP_ID} --auto-merge --fast
@@ -1062,7 +1066,15 @@ that fails these checks.
 
 When done, reply with the PR number only (e.g. \"#1234\")."
             else
-                prompt="Ship gap $GAP_ID in this repository. Read CLAUDE.md and AGENTS.md first. The gap is already claimed for this session; the lease is in .chump-locks/. Implement the gap per its description, commit via scripts/coord/chump-commit.sh, and ship via scripts/coord/bot-merge.sh --gap $GAP_ID --auto-merge. Reply with the PR number only."
+                # RESILIENT-259: non-Claude harnesses never read CLAUDE.md
+                # (it's the Claude-Code-only overlay) — only tell them to
+                # read it when this worker is actually driving Claude.
+                if [[ "${HARNESS_SPAWN_MODE:-claude-p}" == "claude-p" ]]; then
+                    _read_first="CLAUDE.md and AGENTS.md"
+                else
+                    _read_first="AGENTS.md"
+                fi
+                prompt="Ship gap $GAP_ID in this repository. Read ${_read_first} first. The gap is already claimed for this session; the lease is in .chump-locks/. Implement the gap per its description, commit via scripts/coord/chump-commit.sh, and ship via scripts/coord/bot-merge.sh --gap $GAP_ID --auto-merge. Reply with the PR number only."
             fi
             # INFRA-515 (2026-05-06): default flipped haiku → sonnet.
             # Live fleet validation found haiku asks "should I implement
