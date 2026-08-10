@@ -1,0 +1,28 @@
+# VOA-008 — Voice of the Agent, full report.
+# Auto-filed by `chump voice` (INFRA-2258).
+# See docs/process/VOICE_OF_AGENT.md for protocol.
+
+id: VOA-008
+filed_at: "2026-08-10T06:04:02Z"
+
+reporter:
+  agent_role: unknown-role
+  chump_version: "0.2.0"
+  target_repo: "opt-in:full"
+  target_repo_disclosure: opt-in:full
+  session_id: "(elided)"
+
+wedge_observations:
+
+  - wedge_class: node-disk-hygiene-missing
+    minutes_lost: 25
+    workaround_used:
+      summary: "manually ssh'd each node, stopped dead ollama + cleaned cargo cache at 92-94% disk"
+    proposed_fix:
+      shape: tooling
+      fix: "Node onboarding (LINUX_NODE_ONBOARDING SOP / RESILIENT-283 worker-run) must install + enable the disk-hygiene layer on EVERY node, not just helsinki: cargo-sweep GC (ZERO-WASTE-053) to bound the shared target + the RESILIENT-273 disk reactor + a stop/purge of unused local services (ollama on both nodes was idle-but-2.8G). closetjunky hit 94% disk with none of it, and the fleet's cargo target grows unbounded into the operator's own disk. This is the storage-inventory phase META-331 flags as missing (INFRA-3582 node contract)."
+    impact_estimate_minutes_per_session: 25
+    evidence:
+      - "closetjunky 94% disk / 6.7G free: ~/.cargo 7.5G + target 2.1G + ollama 2.2G"
+      - "no cargo-sweep installed; helsinki has the GC (ZERO-WASTE-053)"
+      - "closetjunky does not; both nodes ran an idle ollama holding 2.2-2.8G"

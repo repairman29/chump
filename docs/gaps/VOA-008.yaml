@@ -1,0 +1,19 @@
+- id: VOA-008
+  domain: VOA
+  title: "VOICE-OF-AGENT VOA-008: node-disk-hygiene-missing — 25 min lost; fix-shape: tooling"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Full friction report at docs/voice/VOA-008-FULL.yaml with wedge_class=node-disk-hygiene-missing, minutes_lost=25
+    - Proposed fix (tooling): "Node onboarding (LINUX_NODE_ONBOARDING SOP / RESILIENT-283 worker-run) must install + enable the disk-hygiene layer on EVERY node, not just helsinki: cargo-sweep GC (ZERO-WASTE-053) to bound the shared target + the RESILIENT-273 disk reactor + a stop/purge of unused local services (ollama on both nodes was idle-but-2.8G). closetjunky hit 94% disk with none of it, and the fleet's cargo target grows unbounded into the operator's own disk. This is the storage-inventory phase META-331 flags as missing (INFRA-3582 node contract)."
+    - Evidence references documented in FULL report
+  notes: |
+    [2026-08-10T06:04:02Z] Auto-filed by `chump voice` (INFRA-2258).
+    Wedge class: node-disk-hygiene-missing
+    Minutes lost: 25
+    Evidence:
+    - "closetjunky 94% disk / 6.7G free: ~/.cargo 7.5G + target 2.1G + ollama 2.2G"
+    - "no cargo-sweep installed; helsinki has the GC (ZERO-WASTE-053)"
+    - "closetjunky does not; both nodes ran an idle ollama holding 2.2-2.8G"
+    See docs/voice/VOA-008-FULL.yaml for full report.
