@@ -133,6 +133,12 @@ API, not the INFRA-518 runbook.
 | **WS5** | **Delivery last-mile (E5)** | deploy a verified result to a usable surface (URL/app), user-language hand-off | COTG-5.x |
 | **WS6** | **Publish V1** | release-auditor gate → the full public release | RELEASE_CHECKLIST, GIVEAWAY_SOP |
 
+**Bucket-GO line (CREDIBLE-206).** RELEASE_CHECKLIST's release-auditor gate
+must read [`docs/VENDOR_LEDGER.md`](../VENDOR_LEDGER.md) before any surface
+enters WS6 — every free/trial dependency the surface touches needs a
+VERIFIED (not assumed) at-limit-behavior row in that ledger. A surface with
+an ASSUMED row is not bucket-GO.
+
 **Throughout:** productize relentlessly (each friction becomes a tool) and **dogfood** even more
 relentlessly (run `chump preflight`, ship via `bot-merge.sh`, no `--no-verify` / gate bypass —
 we cannot ask the OS to be reliable while routing around its reliability).
