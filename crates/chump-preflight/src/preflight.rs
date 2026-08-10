@@ -412,6 +412,12 @@ struct Args {
     /// network markers). Closes the "local preflight != CI" gap that makes a
     /// failure cost a ~20-min CI round-trip instead of one local pass.
     full: bool,
+    /// EFFECTIVE-363: dispatch by artifact_type instead of assuming cargo.
+    /// When set to a type registered in `artifact_gates::REGISTRY` (e.g.
+    /// "release-note"), preflight runs *only* that type's gates and skips
+    /// the cargo-shaped pipeline entirely. Unset or "code" runs the normal
+    /// pipeline below unchanged.
+    artifact_type: Option<String>,
 }
 
 fn parse_args(argv: &[String]) -> Args {
@@ -425,6 +431,7 @@ fn parse_args(argv: &[String]) -> Args {
         pre_commit: false,
         vs_ref: None,
         full: false,
+        artifact_type: None,
     };
     let mut i = 0;
     while i < argv.len() {
@@ -463,6 +470,15 @@ fn parse_args(argv: &[String]) -> Args {
             }
             s if s.starts_with("--vs=") => {
                 a.vs_ref = Some(s["--vs=".len()..].to_string());
+            }
+            "--artifact-type" => {
+                if i + 1 < argv.len() {
+                    a.artifact_type = Some(argv[i + 1].clone());
+                    i += 1;
+                }
+            }
+            s if s.starts_with("--artifact-type=") => {
+                a.artifact_type = Some(s["--artifact-type=".len()..].to_string());
             }
             _ => {} // ignore unknowns for forward-compat
         }
@@ -510,6 +526,12 @@ OPTIONS:
                     Baseline cached at .chump/preflight-baseline.json (TTL 1h,
                     keyed by REF HEAD SHA). Falls back to normal mode when REF
                     is unreachable. Pairs with --json for structured output.
+    --artifact-type <T>  EFFECTIVE-363: dispatch by artifact_type instead of
+                    assuming cargo. When T is registered in
+                    artifact_gates::REGISTRY (e.g. \"release-note\"), runs
+                    only that type's gates and skips the cargo pipeline
+                    entirely. Unregistered T (including the default \"code\")
+                    falls through to the normal pipeline below.
     -h, --help      This message
 
 BYPASS:
@@ -995,6 +1017,23 @@ pub fn run(argv: &[String]) -> i32 {
             repo_root.display()
         );
         return 2;
+    }
+
+    // EFFECTIVE-363: artifact_type dispatch happens before any cargo-shaped
+    // scope logic runs — a non-code, *registered* artifact_type (e.g.
+    // "release-note") never touches cargo at all, it runs only its
+    // registered gates and returns immediately. An unregistered type
+    // (including the default "code") falls through to the normal pipeline
+    // below unchanged.
+    if let Some(t) = &args.artifact_type {
+        if t != "code" && crate::artifact_gates::gates_for(t).is_some() {
+            return crate::artifact_gates::dispatch(&repo_root, t, args.keep_going);
+        } else if t != "code" {
+            eprintln!(
+                "chump preflight: no gate registry entry for --artifact-type '{}' — falling back to the cargo pipeline",
+                t
+            );
+        }
     }
 
     // INFRA-2422: read main-preflight state BEFORE scope so we can report
