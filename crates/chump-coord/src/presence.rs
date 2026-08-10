@@ -236,6 +236,47 @@ pub async fn list_presence(kv: &kv::Store) -> Result<Vec<WorkerPresence>> {
     Ok(out)
 }
 
+/// CREDIBLE-257: count how many `kind=gap_shipped` ambient events each
+/// session logged today (UTC), keyed by `session` (the same identifier as
+/// `WorkerPresence::worker_id`). Read from the ambient audit trail rather
+/// than NATS-KV — ships are a historical fact, not live state, and
+/// `gap_shipped` events already carry `session` + `ts`
+/// (see `src/execute_gap.rs`'s `# scanner-anchor: "kind":"gap_shipped"`).
+///
+/// Missing or unreadable ambient log => empty map (best-effort, never
+/// errors — a worker list should still render without ship counts).
+pub fn ships_today_counts(
+    ambient_path: &std::path::Path,
+) -> std::collections::HashMap<String, u32> {
+    let mut counts = std::collections::HashMap::new();
+    let Ok(contents) = std::fs::read_to_string(ambient_path) else {
+        return counts;
+    };
+    let today = Utc::now().date_naive();
+    for line in contents.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if v.get("kind").and_then(|k| k.as_str()) != Some("gap_shipped") {
+            continue;
+        }
+        let Some(session) = v.get("session").and_then(|s| s.as_str()) else {
+            continue;
+        };
+        let Some(ts) = v.get("ts").and_then(|t| t.as_str()) else {
+            continue;
+        };
+        let Ok(parsed) = DateTime::parse_from_rfc3339(ts) else {
+            continue;
+        };
+        if parsed.with_timezone(&Utc).date_naive() != today {
+            continue;
+        }
+        *counts.entry(session.to_string()).or_insert(0) += 1;
+    }
+    counts
+}
+
 async fn put_presence(kv: &kv::Store, presence: &WorkerPresence) -> Result<()> {
     let payload: Bytes = serde_json::to_vec(presence)
         .context("serialize WorkerPresence")?
@@ -333,5 +374,47 @@ mod tests {
         assert_eq!(p.backend, "unknown");
         assert_eq!(p.harness, "manual");
         assert_eq!(p.current_gap, None);
+    }
+
+    #[test]
+    fn ships_today_counts_matches_todays_gap_shipped_by_session() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-presence-ships-today-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ambient.jsonl");
+        let today = Utc::now();
+        let yesterday = today - chrono::Duration::days(1);
+        let lines = format!(
+            "{{\"ts\":\"{}\",\"session\":\"worker-a\",\"kind\":\"gap_shipped\",\"gap\":\"X-1\"}}\n\
+             {{\"ts\":\"{}\",\"session\":\"worker-a\",\"kind\":\"gap_shipped\",\"gap\":\"X-2\"}}\n\
+             {{\"ts\":\"{}\",\"session\":\"worker-b\",\"kind\":\"gap_shipped\",\"gap\":\"X-3\"}}\n\
+             {{\"ts\":\"{}\",\"session\":\"worker-a\",\"kind\":\"gap_shipped\",\"gap\":\"X-4\"}}\n\
+             {{\"ts\":\"{}\",\"session\":\"worker-a\",\"kind\":\"gap_claimed\"}}\n\
+             not json at all\n",
+            today.to_rfc3339(),
+            today.to_rfc3339(),
+            today.to_rfc3339(),
+            yesterday.to_rfc3339(),
+            today.to_rfc3339(),
+        );
+        std::fs::write(&path, lines).unwrap();
+
+        let counts = ships_today_counts(&path);
+        assert_eq!(counts.get("worker-a"), Some(&2));
+        assert_eq!(counts.get("worker-b"), Some(&1));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn ships_today_counts_missing_file_returns_empty() {
+        let path = std::env::temp_dir().join(format!(
+            "chump-presence-ships-today-missing-{}.jsonl",
+            uuid::Uuid::new_v4()
+        ));
+        let counts = ships_today_counts(&path);
+        assert!(counts.is_empty());
     }
 }

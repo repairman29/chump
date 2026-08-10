@@ -13,6 +13,7 @@
 //!   watch                      — stream live events (ctrl-c to stop)
 //!   work-board <sub> [args …]  — FLEET-008 shared subtask queue (post|list|claim|complete|fail|show)
 //!   help-request <sub> [args …] — FLEET-010 help-seeking protocol (post|list|claim|complete|fail|show)
+//!   workers [--json]           — CREDIBLE-257: list registered workers + live state
 //!
 //! Environment:
 //!   CHUMP_NATS_URL             — default nats://127.0.0.1:4222
@@ -949,6 +950,82 @@ async fn main() -> Result<()> {
             }
         }
 
+        // ── workers ───────────────────────────────────────────────────────────
+        // CREDIBLE-257 (CREDIBLE-099 slice): harness-neutral verb to list
+        // registered workers with their live state. Reads the `chump_workers`
+        // NATS-KV bucket (CREDIBLE-246) and cross-references
+        // `.chump-locks/ambient.jsonl` (kind=gap_shipped) for today's ship count.
+        "workers" => {
+            let json_out = args.iter().any(|a| a == "--json");
+
+            let client = match CoordClient::connect_or_skip().await {
+                Some(c) => c,
+                None => {
+                    eprintln!("[chump-coord workers] NATS unavailable — no presence data");
+                    if json_out {
+                        println!("[]");
+                    }
+                    std::process::exit(0);
+                }
+            };
+
+            let records = client.list_worker_presence().await.unwrap_or_default();
+
+            let ambient_path = std::path::PathBuf::from(
+                env::var("CHUMP_AMBIENT_LOG")
+                    .unwrap_or_else(|_| ".chump-locks/ambient.jsonl".to_string()),
+            );
+            let ships_today = chump_coord::presence::ships_today_counts(&ambient_path);
+
+            let now = chrono::Utc::now();
+            if json_out {
+                let rows: Vec<serde_json::Value> = records
+                    .iter()
+                    .map(|p| {
+                        let heartbeat_age = now.signed_duration_since(p.updated_at).num_seconds();
+                        serde_json::json!({
+                            "worker_id": p.worker_id,
+                            "backend": p.backend,
+                            "machine": p.machine,
+                            "skills": p.skills,
+                            "current_gap": p.current_gap,
+                            "status": p.status,
+                            "heartbeat_age_secs": heartbeat_age,
+                            "ships_today": ships_today.get(&p.worker_id).copied().unwrap_or(0),
+                        })
+                    })
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&rows).unwrap_or_else(|_| "[]".to_string())
+                );
+            } else if records.is_empty() {
+                println!("[chump-coord workers] no registered workers");
+            } else {
+                println!(
+                    "{:<28} {:<10} {:<14} {:<20} {:<18} {:>10} {:>6}",
+                    "WORKER_ID", "BACKEND", "MACHINE", "SKILLS", "CURRENT_GAP", "HB_AGE_S", "SHIPS"
+                );
+                for p in &records {
+                    let heartbeat_age = now.signed_duration_since(p.updated_at).num_seconds();
+                    println!(
+                        "{:<28} {:<10} {:<14} {:<20} {:<18} {:>10} {:>6}",
+                        p.worker_id,
+                        p.backend,
+                        p.machine.as_deref().unwrap_or("-"),
+                        if p.skills.is_empty() {
+                            "-".to_string()
+                        } else {
+                            p.skills.join(",")
+                        },
+                        p.current_gap.as_deref().unwrap_or("-"),
+                        heartbeat_age,
+                        ships_today.get(&p.worker_id).copied().unwrap_or(0),
+                    );
+                }
+            }
+        }
+
         // ── scratch ───────────────────────────────────────────────────────────
         // INFRA-1826: file-backed scratchpad get/set/cas for A2A seed keys.
         // Uses .chump-locks/scratch/<key>.json; no NATS required.
@@ -1099,6 +1176,10 @@ COMMANDS
   worker [--once] [--subjects CSV]
                              FLEET-034 NATS subscriber — first-ack-wins via atomic claim.
                              Reads WORKER_SKILLS, WORKER_MACHINE, WORKER_BACKEND from env.
+  workers [--json]           CREDIBLE-257 — list registered workers + live state
+                             (worker_id, backend, machine, skills, current_gap,
+                             heartbeat_age_secs, ships_today) from chump_workers KV
+                             (CREDIBLE-246) cross-referenced with ambient.jsonl.
   help-request <sub> [args …] FLEET-010 help-seeking protocol
                              post <blocker-type> "<description>" [--parent-subtask SUBTASK-…] [--parent-gap FLEET-…] [--needed-capability "…"] [--blocking]
                                   blocker-type: timeout|missing_capability|unknown_task_class|other

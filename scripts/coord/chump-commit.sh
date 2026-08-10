@@ -534,9 +534,14 @@ if [[ "${CHUMP_AUTO_LEASE_FROM_MSG:-1}" != "0" ]]; then
         _state_db="$REPO_ROOT/.chump/state.db"
         _known_prefixes=""
         if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$_state_db" ]]; then
-            _known_prefixes=$(sqlite3 "$_state_db" \
+            # RESILIENT-065-class guard: an empty/uninitialized state.db (no
+            # `gaps` table — e.g. a fresh worktree checkout) makes sqlite3
+            # exit non-zero; under `set -euo pipefail` that silently aborts
+            # this script before it ever reaches `git commit`. `|| true`
+            # keeps the fallback prefix list path (below) reachable instead.
+            _known_prefixes=$( (sqlite3 "$_state_db" \
                 "SELECT DISTINCT substr(id,1,instr(id,'-')-1) FROM gaps;" 2>/dev/null \
-                | tr '\n' '|' | sed 's/|$//')
+                | tr '\n' '|' | sed 's/|$//') || true)
         fi
         if [[ -z "$_known_prefixes" ]]; then
             _known_prefixes="INFRA|CREDIBLE|EFFECTIVE|RESILIENT|EVAL|COG|DOC|FLEET|META|PRODUCT|SMOKE|ACP|AGT|AUTO|COMP|FRONTIER|MEM|QUALITY|RELIABILITY|RESEARCH|SECURITY|SENSE|SWARM|UX"
