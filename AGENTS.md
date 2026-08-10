@@ -44,6 +44,25 @@ See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the 4-pillar mission and active t
 direction, and [`docs/architecture/TEAM_OF_AGENTS.md`](./docs/architecture/TEAM_OF_AGENTS.md) for the
 multi-agent design.
 
+## The 4 pillars (RESILIENT-259)
+
+Every gap, from any harness, is graded on these four qualities — they are
+**how** the fleet moves toward the mission, not the mission itself:
+
+- **Credible** — measurement over vibes. Claims about "shipped" / "working" /
+  "healthy" are backed by receipts (a test, a log line, a ground-truth check),
+  not self-report. See [Reality-check](#reality-check-before-alarm-class-beliefs--ship-check-first-credible-090)
+  and [Durable-fix doctrine](#durable-fix-doctrine--no-band-aids-credible-105) below.
+- **Effective** — user-facing progress. Work rolls up to an outcome in
+  `docs/MISSION.md`, not fleet-internal plumbing for its own sake.
+- **Resilient** — the fleet keeps shipping through failure: wedges get
+  unstuck, leases don't leak, uncommitted work reaches the object store early.
+- **Zero-Waste** — no duplicate implementations, no idle loop ticks, no
+  token burn without a ship-class outcome (see "Mission Driver — loop
+  discipline" below).
+
+Full pillar SLO targets: [`docs/process/FLEET_SLOS.md`](./docs/process/FLEET_SLOS.md).
+
 ## Mine the almanac before you build or holler (RESILIENT-259)
 
 **Before implementing anything that might already exist somewhere in the
@@ -590,6 +609,40 @@ clean daemon, **and** file the missing reaper lock (RESILIENT-112).
 - Audit leaderboard: `scripts/dev/operator-escalation-leaderboard.sh` shows agents-per-day with unjustified escalations
 - SLO target: < 1 unjustified escalation per fleet-day
 - This rule extends to sub-agents via [`docs/process/SUBAGENT_DISPATCH.md`](./docs/process/SUBAGENT_DISPATCH.md)
+
+## Ship discipline — core hard rules (RESILIENT-259, harness-agnostic)
+
+These apply to **any** agent that claims/ships a gap through the `chump`
+CLI and `bot-merge.sh` pipeline — Claude Code, opencode, Codex, or manual —
+not just Claude Code sessions:
+
+- **Never push directly to `main`.** Every change lands via a PR.
+- **Auto-merge is the default.** `bot-merge.sh --auto-merge` arms it. Once
+  armed, treat the PR as frozen — new work goes in a new PR.
+- **PRs are intent-atomic**, not file-count-bounded. One logical change per PR.
+- **`--no-verify` is the reason most regressions ship.** Use very sparingly.
+- **Mutate gaps via `chump gap …` only** — `.chump/state.db` is canonical.
+  Use `chump gap show <ID>` to inspect; never hand-edit `docs/gaps/*.yaml`.
+- **Commit often** (every 30 min) — use `scripts/coord/chump-commit.sh <files> -m "msg"`,
+  not bare `git commit`.
+- **Rebase if your branch is more than 15 commits behind main.**
+- **Never leave a lease behind** — release the claim or delete
+  `.chump-locks/<session>.json` when the gap ships or is abandoned.
+- **Off-rails guard (RESILIENT-025/026): claim contract enforced at commit +
+  push.** When a `.chump-locks/claim-*.json` exists, the pre-commit hook
+  blocks any commit whose subject doesn't contain the claimed gap ID
+  (RESILIENT-025, always on), and the pre-push hook blocks pushes from the
+  wrong branch. Path-scope enforcement (RESILIENT-026) is opt-in — it only
+  fires when the claim declared paths via `chump claim --paths CSV`. Disable
+  (rare): `CHUMP_OFF_RAILS_CHECK=0`.
+- **Uncommitted work is the ONE class git cannot recover — commit early
+  (RESILIENT-256).** Unstaged changes never enter the object store: no
+  reflog entry, no stash, `git fsck --lost-found` finds nothing. Use `chump
+  wip-snapshot [--dir D]` to write a dirty tree to `refs/wip/<branch>/<epoch>`
+  without touching the working tree, and never work in a shared primary
+  checkout — use a linked worktree (`scripts/dev/own-worktree.sh <slug>`) so
+  a `reset --hard` or `checkout -- .` can never destroy another session's
+  in-flight work.
 
 ## Mission Driver — loop discipline (INFRA-2208, 2026-05-29)
 
