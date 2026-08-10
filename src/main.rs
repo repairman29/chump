@@ -9752,6 +9752,83 @@ async fn main() -> Result<()> {
                 }
                 // ── end MISSION-045 outcome gate ────────────────────────────────────────
 
+                // ── ZERO-WASTE-045: full-corpus dedupe check ────────────────────────────
+                // INFRA-1149 above only warns against open + recently-closed (30d) gaps.
+                // DOC-082 failures were re-filing gaps already SHIPPED, sometimes months
+                // old — outside that window. state.db already holds the full docs/gaps/
+                // corpus (every status, no cutoff) — this is a query over data that
+                // already exists, not new indexing. A near-match does not hard-block:
+                // --dedupe-ack "<reason>" records the considered-but-proceeded decision
+                // into the new gap's notes so a later audit can see it, not just miss it
+                // (AC2). Never a silent skip (CREDIBLE-214): a corpus-read failure prints
+                // a loud WARN and proceeds without blocking (AC4).
+                let no_dedupe_check = args.iter().any(|a| a == "--no-dedupe-check");
+                let dedupe_ack = flag("--dedupe-ack");
+                let mut dedupe_note: Option<String> = None;
+                if !no_dedupe_check {
+                    let dedupe_threshold: f64 = std::env::var("CHUMP_GAP_DEDUPE_BLOCK")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0.6);
+                    match store.similarity_candidates_full_corpus(&title, 5) {
+                        Ok(candidates) => {
+                            let hits: Vec<_> = candidates
+                                .iter()
+                                .filter(|(_, _, _, score)| *score >= dedupe_threshold)
+                                .collect();
+                            if !hits.is_empty() {
+                                eprintln!();
+                                eprintln!(
+                                    "[reserve] ZERO-WASTE-045: dedupe check — proposed title is similar to existing gap(s):"
+                                );
+                                for (cid, ctitle, cstatus, cscore) in &hits {
+                                    eprintln!(
+                                        "  {:.2}  {} ({}) — \"{}\"  [docs/gaps/{}.yaml]",
+                                        cscore, cid, cstatus, ctitle, cid
+                                    );
+                                }
+                                match dedupe_ack.as_deref().map(str::trim) {
+                                    Some(reason) if !reason.is_empty() => {
+                                        let (top_id, _, top_status, top_score) = hits[0];
+                                        eprintln!(
+                                            "[reserve] proceeding with --dedupe-ack: {reason}"
+                                        );
+                                        dedupe_note = Some(format!(
+                                            "DEDUPE-CHECK (ZERO-WASTE-045): near-match {top_id} ({top_status}, score {top_score:.2}) considered — proceeding: {reason}"
+                                        ));
+                                    }
+                                    _ => {
+                                        eprintln!();
+                                        eprintln!(
+                                            "[reserve] BLOCKED: near-duplicate gap(s) found above threshold {:.2}.",
+                                            dedupe_threshold
+                                        );
+                                        eprintln!("[reserve] Either:");
+                                        eprintln!(
+                                            "  - pick up the existing gap instead of filing a new one, or"
+                                        );
+                                        eprintln!(
+                                            "  - pass --dedupe-ack \"<why this isn't a duplicate>\" to proceed and record the decision, or"
+                                        );
+                                        eprintln!(
+                                            "  - pass --no-dedupe-check to skip this check entirely."
+                                        );
+                                        std::process::exit(1);
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "[reserve] WARN: ZERO-WASTE-045 dedupe check did NOT run (corpus read error: {e}) — proceeding without a duplicate check."
+                            );
+                        }
+                    }
+                } else if !quiet {
+                    eprintln!("[reserve] dedupe check skipped (--no-dedupe-check)");
+                }
+                // ── end ZERO-WASTE-045 dedupe check ─────────────────────────────────────
+
                 // INFRA-216: use reserve_verified so sibling sessions on the
                 // same host (shared .chump-locks/) detect and resolve ID
                 // collisions within the 200ms verification window.
@@ -9764,6 +9841,20 @@ async fn main() -> Result<()> {
                     Ok(id) => {
                         if !quiet {
                             eprintln!(" done {id}");
+                        }
+
+                        // ZERO-WASTE-045: record the dedupe-ack decision on the new gap so
+                        // a later audit sees the near-dupe was considered, not missed.
+                        if let Some(ref note) = dedupe_note {
+                            let update = gap_store::GapFieldUpdate {
+                                notes: Some(note.clone()),
+                                ..Default::default()
+                            };
+                            if let Err(e) = store.set_fields(&id, update) {
+                                if !quiet {
+                                    eprintln!("warning: failed to record dedupe note: {e}");
+                                }
+                            }
                         }
 
                         // INFRA-756: set acceptance_criteria if not empty (default obs-ACs or custom)

@@ -1480,3 +1480,4 @@ CHUMP_REBALANCE
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_WORKSPACE_SCOPE_PICK_OK
+CHUMP_GAP_DEDUPE_BLOCK

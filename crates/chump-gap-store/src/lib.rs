@@ -923,6 +923,47 @@ impl GapStore {
         Ok(scored)
     }
 
+    /// ZERO-WASTE-045: like `similarity_candidates`, but searches the FULL
+    /// gap corpus — every status, no closed-within-N-days cutoff.
+    ///
+    /// `similarity_candidates` exists to warn on likely-active duplicates and
+    /// deliberately windows closed gaps to keep the DB scan cheap; it misses
+    /// the DOC-082 failure mode this gap targets, which is re-filing a gap
+    /// that already SHIPPED months ago. state.db is populated from the full
+    /// docs/gaps/ corpus (~3,489 rows across every status), so this is a
+    /// query over data that already exists — no new indexing.
+    /// Returns `[(gap_id, title, status, score)]` sorted descending by score,
+    /// capped at `top_n`.
+    pub fn similarity_candidates_full_corpus(
+        &self,
+        proposed_title: &str,
+        top_n: usize,
+    ) -> Result<Vec<(String, String, String, f64)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title, status FROM gaps ORDER BY id")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+
+        let mut scored: Vec<(String, String, String, f64)> = rows
+            .filter_map(|r| r.ok())
+            .map(|(id, title, status)| {
+                let score = Self::title_jaccard(proposed_title, &title);
+                (id, title, status, score)
+            })
+            .filter(|(_, _, _, score)| *score > 0.0)
+            .collect();
+
+        scored.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(top_n);
+        Ok(scored)
+    }
+
     /// Get a single gap by ID.
     ///
     /// INFRA-630: if `gap_id` looks like an 8-char hex short-prefix (all
@@ -7781,6 +7822,62 @@ meta:
         assert!(
             candidates_0.iter().any(|(id, _, _, _)| id == &id_open),
             "should include open gaps regardless of lookback"
+        );
+    }
+
+    // ZERO-WASTE-045: full-corpus dedupe search must surface gaps SHIPPED
+    // long ago — the DOC-082 failure mode that `similarity_candidates`'s
+    // 30-day lookback cannot see. This test fails without
+    // `similarity_candidates_full_corpus` (AC5).
+    #[test]
+    fn similarity_candidates_full_corpus_finds_long_shipped_gap() {
+        let (store, _dir) = test_store();
+        let id_shipped = store
+            .reserve(
+                "ZERO-WASTE",
+                "dedupe gaps at reserve time via almanac",
+                "P1",
+                "m",
+            )
+            .unwrap();
+        store.ship(&id_shipped, "test-session", None).unwrap();
+
+        // Backdate closed_at to well outside any reasonable lookback window
+        // (400 days ago) to simulate a gap shipped long in the past.
+        let old_ts = {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                .saturating_sub(400 * 86_400)
+        };
+        store
+            .conn_for_test()
+            .execute(
+                "UPDATE gaps SET closed_at = ?1 WHERE id = ?2",
+                params![old_ts as i64, id_shipped],
+            )
+            .unwrap();
+
+        // The windowed check (default 30-day lookback) must NOT find it.
+        let windowed = store
+            .similarity_candidates("dedupe gaps at reserve time via almanac index", 5, 30)
+            .unwrap();
+        assert!(
+            !windowed.iter().any(|(id, _, _, _)| id == &id_shipped),
+            "windowed similarity_candidates should not see a gap shipped 400 days ago"
+        );
+
+        // The full-corpus check MUST find it regardless of how long ago it
+        // shipped.
+        let full = store
+            .similarity_candidates_full_corpus("dedupe gaps at reserve time via almanac index", 5)
+            .unwrap();
+        assert!(
+            full.iter()
+                .any(|(id, _, status, _)| id == &id_shipped && status == "done"),
+            "similarity_candidates_full_corpus should surface the long-shipped near-duplicate"
         );
     }
 
