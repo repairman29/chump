@@ -239,8 +239,17 @@ _emit_worker_stuck() {
 write_heartbeat() {
     local gap_id="${1:-none}"
     local now; now=$(date +%s)
-    local heartbeat_file="/tmp/chump-fleet-worker-${AGENT_ID}.heartbeat"
+    local heartbeat_file="${CHUMP_HEARTBEAT_DIR:-/tmp}/chump-fleet-worker-${AGENT_ID}.heartbeat"
     printf '%s %s\n' "$now" "$gap_id" > "$heartbeat_file" 2>/dev/null || true
+}
+
+# CREDIBLE-256 (CREDIBLE-099 slice): remove the heartbeat file on ship/exit
+# so a dead/exited worker's stale file can't be mistaken for a live-but-wedged
+# one by chumpd's heartbeat-age check (crates/chumpd/src/main.rs) or
+# fleet-worker-watchdog.sh.
+remove_heartbeat() {
+    local heartbeat_file="${CHUMP_HEARTBEAT_DIR:-/tmp}/chump-fleet-worker-${AGENT_ID}.heartbeat"
+    rm -f "$heartbeat_file" 2>/dev/null || true
 }
 
 # INFRA-620: re-read CLAUDE_CODE_OAUTH_TOKEN from ~/.chump/oauth-token.json
@@ -342,6 +351,10 @@ _sigterm_wip_checkpoint() {
     exit 0
 }
 trap '_sigterm_wip_checkpoint' INT TERM
+# CREDIBLE-256: remove the heartbeat file on any exit path (normal loop
+# exit, or after the INT/TERM handler above runs `exit 0`) — EXIT fires
+# last regardless of how the script terminates.
+trap 'remove_heartbeat' EXIT
 
 # Hard rule from CLAUDE.md: never auto-pickup these — they need human judgment.
 # 2026-05-08: SWARM-* added — that domain belongs to chump-proprietary

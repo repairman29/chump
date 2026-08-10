@@ -1389,3 +1389,8 @@ CHUMP_READY_DM_USER_ID
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_NATS_WORKERS_BUCKET
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_HEARTBEAT_DIR

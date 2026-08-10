@@ -190,6 +190,17 @@ pub async fn mark_terminal(kv: &kv::Store, worker_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// CREDIBLE-256 (CREDIBLE-099 slice): deregister a worker on ship/exit by
+/// deleting its presence record from the `chump_workers` KV bucket outright,
+/// rather than leaving a `Terminal` tombstone (as [`mark_terminal`] does).
+/// Non-fatal if the record is already gone — deregistration should never
+/// block a worker's shutdown path.
+pub async fn deregister_presence(kv: &kv::Store, worker_id: &str) -> Result<()> {
+    kv.delete(worker_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("workers KV delete failed: {}", e))
+}
+
 /// Read a single worker's presence record, or `None` if never registered
 /// (or already purged by TTL).
 pub async fn get_presence(kv: &kv::Store, worker_id: &str) -> Result<Option<WorkerPresence>> {
