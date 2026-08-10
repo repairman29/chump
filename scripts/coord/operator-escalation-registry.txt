@@ -1,0 +1,44 @@
+# operator-escalation-registry.txt — RESILIENT-274 escalation discipline.
+#
+# Operator decision (Jeff, 2026-08-10): "don't hear from the fleet unless it's
+# way out of line or we don't have a playbook for it." This file is the playbook
+# ledger that notify-operator.sh consults: QUIET by default, page the phone only
+# for halt-class or novel (no-playbook) signals.
+#
+# Format:  <signal-kind><TAB>suppress|page      (# comments + blank lines ignored)
+#   suppress = has an auto-heal/runbook → log it, DON'T DM the operator.
+#   page     = no automated remedy / operator must decide → DM the phone.
+# A kind NOT listed here defaults to PAGE (fail loud — an unknown signal is, by
+# definition, one we have no playbook for). CHUMP_NOTIFY_SEVERITY=halt always pages.
+#
+# When you add an auto-heal/runbook for a signal, add it here as `suppress` in the
+# SAME change — that is how a playbook "silences" its own alert honestly.
+
+# ── SUPPRESS: known signals with a playbook (auto-heal or runbook) ────────────
+discord_gateway_down	suppress	# systemd Restart=always auto-recovers the gateway
+disk_critical	suppress	# RESILIENT-273 self-heal + ZERO-WASTE cargo-sweep GC
+disk_critical_reactor_fired	suppress	# the self-heal firing IS the remedy
+farmer_auth_dead	suppress	# CREDIBLE-090 #1 false-positive; ship-check-first, not a page
+farmer_auth_ok	suppress	# routine heartbeat
+cargo_sweep_gc_ran	suppress	# GC observability, not an incident
+cargo_sweep_gc_skipped	suppress
+cargo_sweep_gc_errored	suppress	# GC self-reports; disk reactor is the backstop
+worker_circuit_open	suppress	# worker.sh auto-cools-down and retries
+worker_cooldown	suppress
+pr_repair	suppress	# pr-failure-auto-rescue daemon handles it
+graphql_exhausted	suppress	# INFRA-1040 self-throttle + REST pivot handle it
+gh_self_throttled	suppress
+queue_health_check_failed	suppress	# monitor assumes-healthy; not operator-actionable
+reaper_silent	suppress	# has install runbook (install-stale-*-reaper)
+fleet_wedge	suppress	# INFRA-518 scaling back-off is the runbook
+gap_autoflip_suppressed	suppress	# CREDIBLE-268 informational audit trail
+oauth_token_refreshed	suppress
+ci_flake_rerun	suppress	# nextest flake wrapper + manual rerun playbook
+
+# ── PAGE: halt-class or no automated remedy → reach the operator ──────────────
+# (Unlisted kinds also page by default; these document intent + catch typos.)
+pr_auto_closed_no_reopen	page	# RESILIENT-263 origin: real work destroyed, needs a human
+credential_rotation_needed	page	# T2 — only the operator can rotate a live secret
+fleet_stopped_unexpected	page	# halt-class — fleet down with no self-recovery
+security_incident	page	# always a human decision
+operator_decision_required	page	# explicit T3 hand-off
