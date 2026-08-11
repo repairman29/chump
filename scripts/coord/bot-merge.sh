@@ -430,6 +430,7 @@ _bm_completed_emit() {
 #   14 — test-fail       (cargo test suite failure)
 #   15 — push-fail       (force-with-lease rejected or network error)
 #   16 — pr-create-fail  (gh pr create failed or PR not visible after create)
+#   21 — dor-gate-fail   (CREDIBLE-270 definition-of-ready gate: chump preflight not green locally)
 _bm_fail() {
     local step="${1:-unknown}" code="${2:-1}" msg="${3:-}"
     local ambient="${CHUMP_AMBIENT_LOG:-${CHUMP_REPO:-.chump-locks}/ambient.jsonl}"
@@ -3346,6 +3347,21 @@ if [[ -z "$EXISTING_PR" ]]; then
             _bm_fail "pr-create" 19 "INFRA-1219 dedup gate refused — open PR already exists for $GAP_ID"
         fi
     fi
+
+    # CREDIBLE-270: definition-of-ready gate — refuse to open a PR unless
+    # `chump preflight` is green locally. Skipped under --fast (same
+    # rationale as the --fast clippy skip above: CI is the gate, agent task
+    # budget is the constraint) so this mirrors non-fast/human-developer
+    # ergonomics rather than adding a second, contradictory local-check path.
+    _DOR_GATE="$REPO_ROOT/scripts/coord/definition-of-ready-gate.sh"
+    if [[ $FAST -eq 0 && -x "$_DOR_GATE" && "${CHUMP_DOR_DISABLE:-0}" != "1" ]]; then
+        stage_start "definition-of-ready gate (chump preflight)"
+        if ! "$_DOR_GATE" "${GAP_ID:-}"; then
+            _bm_fail "pr-create" 21 "CREDIBLE-270 definition-of-ready gate refused — chump preflight not green locally"
+        fi
+        stage_done
+    fi
+
     stage_start "gh pr create"
     # Build a body from the gap IDs cited in commits since base diverged.
     COMMIT_LOG=$(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --oneline 2>/dev/null | head -20)
