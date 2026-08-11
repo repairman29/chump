@@ -871,6 +871,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
     // failed-on-CI-but-would-have-passed-locally in the last 48h.
     let candidates = [
         "scripts/ci/test-event-registry-coverage.sh",
+        // INFRA-3579: integrations.yml pull_request concurrency group must stay
+        // keyed on github.sha (not pull_request.number) — regression of this
+        // guard reintroduces the 0-step CANCELLED self-hosted checkout class
+        // that INFRA-1655 root-caused to concurrency-group cancellation.
+        "scripts/ci/test-integrations-yml-concurrency-group-key.sh",
         // MISSION-045: outcome-gate keystone — proves P0/P1 reserves are blocked
         // without an outcome (when outcomes exist), the audited flag + empty-DB
         // skip work. Fast (~2s), pure local (chump binary + temp dirs, no network).
