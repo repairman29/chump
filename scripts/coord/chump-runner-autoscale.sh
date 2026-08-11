@@ -77,6 +77,29 @@ list_busy_runners() {
     --jq '.runners[] | select(.status=="online" and .busy==true and (.labels[].name | contains("chump-fleet"))) | "\(.id)\t\(.name)"' 2>/dev/null
 }
 
+daemon_liveness() {
+  # INFRA-3547 recommendation 2 / INFRA-1655 slice: --status previously only
+  # reported queue/runner counts via gh api, never whether the autoscale
+  # decision loop itself is installed+running. That left "is the daemon
+  # actually alive" as a manual launchctl check the operator had to remember,
+  # and produced no signal at all when run off the launchd host (INFRA-3559
+  # hit this in a Linux worktree). Report an explicit state either way.
+  if ! command -v launchctl >/dev/null 2>&1; then
+    echo "daemon: not_applicable (no launchd on this host — run on the macOS fleet host to check)"
+    return
+  fi
+  local plist="$HOME/Library/LaunchAgents/com.chump.runner-autoscale.plist"
+  if [ ! -f "$plist" ]; then
+    echo "daemon: not_installed (no plist at $plist)"
+    return
+  fi
+  if launchctl print "gui/$UID/com.chump.runner-autoscale" >/dev/null 2>&1; then
+    echo "daemon: running (gui/$UID/com.chump.runner-autoscale loaded)"
+  else
+    echo "daemon: installed_but_not_running (plist present, not loaded — launchctl bootstrap gui/$UID $plist)"
+  fi
+}
+
 cmd_status() {
   local online queued idle busy
   online=$(count_online)
@@ -86,6 +109,7 @@ cmd_status() {
   echo "online=$online (idle=$idle busy=$busy)  queued_workflows=$queued  min=$MIN_RUNNERS  max=$MAX_RUNNERS"
   list_idle_runners | sed 's/^/  idle: /'
   list_busy_runners | sed 's/^/  busy: /'
+  daemon_liveness
 }
 
 # Read sustained-state from STATE_FILE.

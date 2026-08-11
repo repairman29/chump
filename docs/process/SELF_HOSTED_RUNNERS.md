@@ -706,14 +706,23 @@ instead of missing hardware.
    ```bash
    CHUMP_RUNNER_M4_MAX=<n> scripts/setup/install-runner-autoscale.sh
    ```
-2. **Confirm the autoscale daemon is actually installed and running**
-   before re-enabling self-hosted lanes (INFRA-3403) — `--status` should
-   show a live decision loop, not just a plist on disk:
+2. ~~**Confirm the autoscale daemon is actually installed and running**~~
+   **Done (2026-08-11, INFRA-3561 slice).** `--status` previously only
+   reported queue/runner counts via `gh api`; it never checked whether the
+   decision loop itself was installed or running, so an operator running it
+   off the launchd host (as INFRA-3559 found, from a Linux worktree) got no
+   usable signal either way. `--status` now also prints an explicit
+   `daemon: running|installed_but_not_running|not_installed|not_applicable`
+   line based on `launchctl print gui/$UID/com.chump.runner-autoscale`:
    ```bash
    scripts/coord/chump-runner-autoscale.sh --status
    ```
-   An autoscaler that isn't running provides no queue-contention mitigation
-   regardless of `MAX_RUNNERS`.
+   On a non-launchd host (e.g. this Linux worktree) it reports
+   `not_applicable` instead of silently producing nothing — still not a
+   substitute for running the check on the actual macOS fleet host before
+   re-enabling self-hosted lanes, but no longer ambiguous about *why* the
+   check didn't answer the question. An autoscaler that isn't running
+   provides no queue-contention mitigation regardless of `MAX_RUNNERS`.
 3. **Restore lanes one at a time (already required by INFRA-3403)** so any
    residual queue-contention signal is attributable to a single lane, not a
    blended signal across 5 newly-reactivated job types at once.
