@@ -132,6 +132,16 @@ DISPATCH_SCRIPT = Path(REPO) / "scripts" / "dispatch" / "discord-command-agent.s
 MAX_CONCURRENT_DISPATCHES = int(os.environ.get("CHUMP_DISCORD_AGENT_MAX_CONCURRENT", "1"))
 _dispatch_semaphore: "asyncio.Semaphore | None" = None
 
+# INFRA-3597: The Advisor — DISTINCT from the ops command agent above. The
+# ops agent ACTS on a DM (may file gaps); the Advisor only reads + replies,
+# never mutates anything. Reached with an explicit "advisor"/"advise" prefix
+# so Jeff can choose "act on this" (default free text -> ops agent) vs. "just
+# tell me" (advisor prefix) from the same DM thread.
+ADVISOR_SCRIPT = Path(REPO) / "scripts" / "dispatch" / "discord-advisor-agent.sh"
+ADVISOR_TRIGGERS = ("advisor", "advise")
+MAX_CONCURRENT_ADVISOR_DISPATCHES = int(os.environ.get("CHUMP_DISCORD_ADVISOR_MAX_CONCURRENT", "1"))
+_advisor_semaphore: "asyncio.Semaphore | None" = None
+
 
 def handle_command(text: str) -> str:
     cmd = text.strip().lower().split()[0] if text.strip() else ""
@@ -141,9 +151,24 @@ def handle_command(text: str) -> str:
         return "pong ✅ (gateway online, receiving)"
     if cmd in ("help", "?", "commands"):
         return ("Chump gateway — try: `status` (ship-rate + recent merges), "
-                "`ping` (liveness), `help`, or any free-text command/question — "
-                "a fresh Chump agent will read board state, act, and reply.")
+                "`ping` (liveness), `help`, `advisor <question>` (read-only "
+                "Advisor — knows the fleet, never acts), or any other "
+                "free-text command/question — a fresh Chump agent will read "
+                "board state, act, and reply.")
     return ""
+
+
+def extract_advisor_question(text: str) -> "str | None":
+    """Returns the question text if `text` opens with an Advisor trigger
+    word ("advisor"/"advise"), else None. Case-insensitive; the trigger word
+    itself is stripped from what's handed to the Advisor agent."""
+    stripped = text.strip()
+    if not stripped:
+        return None
+    parts = stripped.split(None, 1)
+    if parts[0].lower() not in ADVISOR_TRIGGERS:
+        return None
+    return parts[1].strip() if len(parts) > 1 else ""
 
 
 async def dispatch_command_agent(text: str) -> None:
@@ -173,6 +198,37 @@ async def dispatch_command_agent(text: str) -> None:
         except Exception as e:
             emit("discord_command_agent_dispatch_failed", reason=str(e)[:160])
             send_dm(f"(couldn't start the command agent: {e})")
+
+
+async def dispatch_advisor_agent(question: str) -> None:
+    """INFRA-3597 DISPATCH: hand an "advisor"-prefixed DM to a fresh, bounded,
+    READ-ONLY `claude -p` agent (scripts/dispatch/discord-advisor-agent.sh)
+    that knows the fleet (almanac + live state) and replies via
+    notify_operator itself — it never acts. Fire-and-forget from the
+    gateway's perspective, same shape as dispatch_command_agent above."""
+    global _advisor_semaphore
+    if _advisor_semaphore is None:
+        _advisor_semaphore = asyncio.Semaphore(MAX_CONCURRENT_ADVISOR_DISPATCHES)
+    # scanner-anchor: "kind":"discord_advisor_agent_dispatch_failed"
+    async with _advisor_semaphore:
+        if not question:
+            send_dm("(ask me something — e.g. `advisor what's blocking PR 2780`.)")
+            return
+        if not ADVISOR_SCRIPT.exists():
+            emit("discord_advisor_agent_dispatch_failed", reason="script_missing")
+            send_dm("(advisor dispatch script is missing — cannot answer that yet.)")
+            return
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "bash", str(ADVISOR_SCRIPT), question,
+                cwd=REPO,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+        except Exception as e:
+            emit("discord_advisor_agent_dispatch_failed", reason=str(e)[:160])
+            send_dm(f"(couldn't start the advisor agent: {e})")
 
 
 async def gateway_loop() -> None:
@@ -228,6 +284,17 @@ async def gateway_loop() -> None:
                         continue
                     emit("discord_operator_command", command=content[:120])
                     print(f"[discord-gateway] operator: {content[:80]}", flush=True)
+                    advisor_question = extract_advisor_question(content)
+                    if advisor_question is not None:
+                        # INFRA-3597: explicit "advisor"/"advise" prefix routes
+                        # to the read-only Advisor instead of the ops command
+                        # agent — checked first so it wins even over quick
+                        # built-ins (e.g. "advisor status" asks the Advisor
+                        # to explain status, not run the built-in).
+                        # scanner-anchor: "kind":"discord_advisor_command"
+                        emit("discord_advisor_command", question=advisor_question[:120])
+                        asyncio.create_task(dispatch_advisor_agent(advisor_question))
+                        continue
                     reply = handle_command(content)
                     if reply:
                         send_dm(reply)

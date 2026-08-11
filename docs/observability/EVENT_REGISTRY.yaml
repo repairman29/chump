@@ -1671,6 +1671,57 @@ events:
       (missing script, spawn error) — surfaced to the operator directly.
     consumers: [ambient]
 
+  - kind: discord_advisor_command
+    effect_metric: self
+    emitter: scripts/ops/discord-gateway.py (INFRA-3597)
+    trigger: Jeff's DM opened with an "advisor"/"advise" trigger word — the
+      gateway routed it to the read-only Advisor instead of the ops command
+      agent (INFRA-3596).
+    consumers: [ambient]
+    fields_required: [ts, kind, question]
+
+  - kind: discord_advisor_agent_dispatched
+    effect_metric: self
+    emitter: scripts/dispatch/discord-advisor-agent.sh (INFRA-3597)
+    trigger: the gateway handed an "advisor"-prefixed DM off to this script,
+      which is about to invoke a fresh, READ-ONLY `claude -p` agent to answer
+      it via almanac + live fleet state.
+    consumers: [ambient]
+    fields_required: [ts, kind, question]
+
+  - kind: discord_advisor_agent_beat
+    effect_metric: self
+    emitter: scripts/dispatch/discord-advisor-agent.sh (INFRA-3597)
+    trigger: the fresh `claude -p` Advisor agent invoked for a Jeff DM
+      finished (or timed out); records the exit code so the dispatch is
+      provable even with no desktop Claude session open.
+    consumers: [ambient]
+    fields_required: [ts, kind, exit_code, node]
+
+  - kind: discord_advisor_agent_completed
+    effect_metric: self
+    emitter: Advisor agent invoked by scripts/dispatch/discord-advisor-agent.sh (INFRA-3597)
+    trigger: the Advisor itself finished answering Jeff's question and
+      replied (or attempted to reply) via notify_operator.
+    consumers: [ambient]
+    fields_required: [ts, kind, question, replied]
+
+  - kind: discord_advisor_agent_failed
+    effect_metric: pr_rescue_action_within_4h
+    emitter: scripts/dispatch/discord-advisor-agent.sh (INFRA-3597)
+    trigger: the `claude -p` Advisor agent exited non-zero (crash/timeout/
+      budget cap) before it could reply itself; the dispatch script sends a
+      fallback notify_operator DM so Jeff is never left in silence (same
+      discipline as discord_command_agent_failed, RESILIENT-263).
+    consumers: [audit-log, fleet]
+
+  - kind: discord_advisor_agent_dispatch_failed
+    effect_metric: self
+    emitter: scripts/ops/discord-gateway.py (INFRA-3597)
+    trigger: the gateway could not even start the advisor-agent subprocess
+      (missing script, spawn error) — surfaced to Jeff directly.
+    consumers: [ambient]
+
   - kind: armed_pr_needs_conflict_resolution
     effect_metric: pr_rescue_action_within_4h
     emitter: scripts/coord/armed-pr-rebaser.sh (INFRA-3473)
