@@ -1522,3 +1522,6 @@ CHUMP_NOTIFY_KIND
 CHUMP_DOR_DISABLE
 # detected in: (standard input)
 CHUMP_DOR_SKIP
+CHUMP_OPENCODE_MAX_FILES
+# detected in: (standard input)
+CHUMP_OPENCODE_SKIP_SIZE_GUARD
