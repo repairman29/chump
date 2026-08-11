@@ -880,6 +880,45 @@ No new information surfaced — this slice confirms the INFRA-3546 findings
 are still current and nothing has regressed or changed in the runner pool
 or historical job metadata.
 
+### System-information re-verification (2026-08-11, INFRA-3576 fleet-2 slice)
+
+INFRA-3576 carries the identical three candidate-root-cause AC as the
+INFRA-3546/INFRA-3558 slices above. Re-ran the same script against the same
+incident-window run plus the live runner registry a second time — output is
+byte-identical to the INFRA-3558 re-verification:
+
+```
+$ scripts/dev/analyze-infra1655-system-info.sh 26193207185
+stale_runner_registration: RULED_OUT — 3/5 self-hosted job(s) had a live
+  runner_id/runner_name assigned (a stale/deregistered runner cannot
+  receive a job dispatch)
+5/5 self-hosted job(s) executed ZERO steps before CANCELLED — consistent
+  with cancel-before-dispatch, NOT a mid-checkout disk/network failure
+network_issues: RULED_OUT as sole cause — overlapping push present,
+  consistent with concurrency-group cancellation (INFRA-1852)
+disk_full: RULED_OUT as sole cause — cancellation is externally triggered
+  (concurrency group), not runner-local resource exhaustion
+
+$ gh api repos/repairman29/chump/actions/runners --jq '.runners[] | {name,os,status}'
+{"name":"chumpd-eu-runner","os":"Linux","status":"online"}
+```
+
+1. **Disk full — ruled out.** No step (including `actions/checkout@v6`)
+   ever started on the cancelled self-hosted jobs, so nothing could hit a
+   full disk.
+2. **Stale runner registration — ruled out.** 3/5 self-hosted jobs had a
+   live `runner_id`/`runner_name` assigned at incident time, which a
+   stale/deregistered runner cannot receive.
+3. **Network issues — ruled out.** Zero-step evidence rules out a
+   mid-`git clone`/`fetch` blip; synchronized cancellation across
+   independent physical Macs plus an overlapping newer push on the same
+   branch points to concurrency-group cancellation (INFRA-1852), not a
+   per-machine network fault.
+
+No new information surfaced across three independent re-verifications
+(INFRA-3546, INFRA-3558, INFRA-3576) — the runner pool and historical job
+metadata remain unchanged.
+
 ### Queue contention re-verification (2026-08-11, INFRA-3559 fleet-1 slice)
 
 INFRA-3559 carries the same AC as the INFRA-3547 slice above (queue
