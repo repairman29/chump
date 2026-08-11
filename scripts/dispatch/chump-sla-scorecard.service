@@ -8,6 +8,13 @@
 # CHUMP_REPO_ROOT is REQUIRED: the script's default $HOME/Projects/Chump is
 # capital-C and does not exist on case-sensitive Linux (see
 # docs/process/LINUX_NODE_ONBOARDING.md).
+#
+# WorkingDirectory is REQUIRED (INFRA-3598): merge-sla-scorecard.sh resolves
+# the target repo via `gh repo view` (cwd-based nameWithOwner detection), not
+# CHUMP_REPO_ROOT. Without it systemd's default cwd (/) makes `gh repo view`
+# return empty and the unit fails every cycle with "no repo nwo; skip" — the
+# live FAILED state this gap's proof step found on helsinki, independent of
+# the already-merged INFRA-3592 ratchet fix.
 [Unit]
 Description=Chump merge-SLA scorecard — flag PRs open past the SLA ratchet unmerged with no owner (RESILIENT-302)
 After=network-online.target
@@ -17,4 +24,5 @@ Wants=network-online.target
 Type=oneshot
 Environment=HOME=/root
 Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+WorkingDirectory=/root/Projects/chump
 ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/coord/merge-sla-scorecard.sh --apply'

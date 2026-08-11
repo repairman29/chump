@@ -48,4 +48,26 @@ for unit in chump-pr-lander chump-armed-rebaser chump-board-cycle chump-sla-scor
 done
 ok "all 5 system-unit organs (pr-lander, armed-rebaser, board-cycle, sla-scorecard, organ-watchdog) have tracked .service+.timer pairs"
 
+# ── Test: sla-scorecard unit has WorkingDirectory (INFRA-3598) ─────────────
+# merge-sla-scorecard.sh resolves its target repo via `gh repo view`, which
+# is cwd-based. Without WorkingDirectory, systemd's default cwd (/) makes
+# the unit fail every cycle with "no repo nwo; skip" regardless of any
+# CHUMP_REPO_ROOT env var (the script never reads that var for gh calls).
+grep -q '^WorkingDirectory=' "$REPO_ROOT/scripts/dispatch/chump-sla-scorecard.service" \
+    || fail "chump-sla-scorecard.service missing WorkingDirectory= (gh repo view is cwd-based; INFRA-3598)"
+ok "chump-sla-scorecard.service sets WorkingDirectory so gh repo view resolves"
+
+# ── Test: --auto from an ephemeral worktree must NOT bake that path into ───
+# the persisted node-refresh unit's CHUMP_NODE_REPO (INFRA-3598). Simulate by
+# copying the script tree into a fake ".claude/worktrees/<gap>/" path and
+# running --check-propagation (a lightweight dry-run stub) — since the real
+# script requires root + a live systemd bus for the full --auto path, this
+# test instead asserts the source-level guard exists and covers the exact
+# path shape node-refresh sessions run from.
+grep -q '/.claude/worktrees/' "$SCRIPT" \
+    || fail "install-helsinki-atc.sh missing the ephemeral-worktree guard for CHUMP_NODE_REPO"
+grep -q 'Not propagating it as CHUMP_NODE_REPO' "$SCRIPT" \
+    || fail "install-helsinki-atc.sh guard doesn't skip CHUMP_NODE_REPO propagation for worktree paths"
+ok "install-helsinki-atc.sh guards against baking an ephemeral worktree into CHUMP_NODE_REPO"
+
 echo "ALL PASS"
