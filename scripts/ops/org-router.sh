@@ -4,7 +4,18 @@
 # router in chump-coord assign). Reads class/route_keywords/status from org/**/*.md. Keyword
 # match here; the production version swaps in an LLM intent classifier on free inference.
 intent="$*"
-[ -z "$intent" ] && { echo "usage: org-router.sh <intent text>"; exit 1; }
+[ -z "$intent" ] && { echo "usage: org-router.sh [--llm] <intent text>"; exit 1; }
+LLM=0; [ "$1" = "--llm" ] && { LLM=1; shift; intent="$*"; }
+if [ "$LLM" = "1" ]; then
+  # brain: read intent -> class on FREE inference (fixes the keyword misroute)
+  cls_line="$(bash "$(dirname "$0")/classify-intent.sh" "$intent" 2>/dev/null)"
+  want="${cls_line##*class=}"
+  f="$(grep -rl "^class: ${want}\b" org 2>/dev/null | head -1)"
+  st="$(grep -m1 '^status:' "$f" 2>/dev/null | sed 's/status:[[:space:]]*//')"
+  echo "intent: \"$intent\""; echo "  -> class=$want  chair=$f  (status: $st)  [LLM-classified, free inference]"
+  case "$st" in *online*) echo "     staffed — a live chair takes it." ;; *) echo "     DORMANT — routes correctly, nobody staffed. Activation demanded." ;; esac
+  exit 0
+fi
 best_f=""; best_cls=""; best_st=""; best_score=0
 while IFS= read -r f; do
   cls=$(grep -m1 '^class:' "$f" 2>/dev/null | sed 's/class:[[:space:]]*//'); [ -z "$cls" ] && continue
