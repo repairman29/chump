@@ -123,6 +123,16 @@ def run_status() -> str:
         return f"status error: {e}"
 
 
+QUICK_COMMANDS = ("status", "brief", "fleet", "ping", "help", "?", "commands")
+
+DISPATCH_SCRIPT = Path(REPO) / "scripts" / "dispatch" / "discord-command-agent.sh"
+# INFRA-3596: cap concurrent fresh-agent dispatches so a burst of DMs can't
+# fan out unbounded `claude -p` processes (cost + resource guard alongside
+# the per-invocation --max-budget-usd inside the script itself).
+MAX_CONCURRENT_DISPATCHES = int(os.environ.get("CHUMP_DISCORD_AGENT_MAX_CONCURRENT", "1"))
+_dispatch_semaphore: "asyncio.Semaphore | None" = None
+
+
 def handle_command(text: str) -> str:
     cmd = text.strip().lower().split()[0] if text.strip() else ""
     if cmd in ("status", "brief", "fleet"):
@@ -131,10 +141,38 @@ def handle_command(text: str) -> str:
         return "pong ✅ (gateway online, receiving)"
     if cmd in ("help", "?", "commands"):
         return ("Chump gateway — try: `status` (ship-rate + recent merges), "
-                "`ping` (liveness), `help`. Approve/deny buttons on alert cards are "
-                "acknowledged; full dispatch wiring is the next slice.")
-    return (f"unknown command `{text.strip()[:40]}` — try `help`. "
-            "(I'm the Chump receive gateway; I can report status now, dispatch soon.)")
+                "`ping` (liveness), `help`, or any free-text command/question — "
+                "a fresh Chump agent will read board state, act, and reply.")
+    return ""
+
+
+async def dispatch_command_agent(text: str) -> None:
+    """INFRA-3596 DISPATCH: hand a free-text operator command to a fresh,
+    bounded `claude -p` agent (scripts/dispatch/discord-command-agent.sh) that
+    reads board state and replies via notify_operator itself. Fire-and-forget
+    from the gateway's perspective — awaiting the subprocess here would block
+    the single-threaded gateway loop (heartbeats, other DMs) for the agent's
+    full runtime, so this runs as a background task instead."""
+    global _dispatch_semaphore
+    if _dispatch_semaphore is None:
+        _dispatch_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DISPATCHES)
+    # scanner-anchor: "kind":"discord_command_agent_dispatch_failed"
+    async with _dispatch_semaphore:
+        if not DISPATCH_SCRIPT.exists():
+            emit("discord_command_agent_dispatch_failed", reason="script_missing")
+            send_dm("(command agent dispatch script is missing — cannot act on that yet.)")
+            return
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "bash", str(DISPATCH_SCRIPT), text,
+                cwd=REPO,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+        except Exception as e:
+            emit("discord_command_agent_dispatch_failed", reason=str(e)[:160])
+            send_dm(f"(couldn't start the command agent: {e})")
 
 
 async def gateway_loop() -> None:
@@ -190,7 +228,16 @@ async def gateway_loop() -> None:
                         continue
                     emit("discord_operator_command", command=content[:120])
                     print(f"[discord-gateway] operator: {content[:80]}", flush=True)
-                    send_dm(handle_command(content))
+                    reply = handle_command(content)
+                    if reply:
+                        send_dm(reply)
+                    else:
+                        # Not a quick built-in — hand off to a fresh helsinki
+                        # Sonnet agent (INFRA-3596) that reads board state,
+                        # may act (file a gap), and replies itself via
+                        # notify_operator. Backgrounded so the gateway loop
+                        # (heartbeats, future messages) stays responsive.
+                        asyncio.create_task(dispatch_command_agent(content))
                     continue
 
                 if t == "INTERACTION_CREATE":
