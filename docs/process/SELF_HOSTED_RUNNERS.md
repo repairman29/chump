@@ -847,6 +847,45 @@ No new information surfaced — this slice confirms the INFRA-3546 findings
 are still current and nothing has regressed or changed in the runner pool
 or historical job metadata.
 
+### Queue contention re-verification (2026-08-11, INFRA-3559 fleet-1 slice)
+
+INFRA-3559 carries the same AC as the INFRA-3547 slice above (queue
+contention "identified or ruled out" as a root cause, with recommendations
+documented). Re-checked whether anything has changed since INFRA-3547/3549
+landed:
+
+1. **Root-cause verdict unchanged.** Queue contention remains a
+   contributing/amplifying factor, not the root cause — the concurrency-group
+   cancellation bug (INFRA-1852, fixed on `main`) is still the primary
+   trigger. No new evidence surfaced that would move queue contention from
+   "amplifier" to "root cause."
+2. **The config-gap fix from INFRA-3549 is confirmed live on `main`:**
+   ```
+   $ grep -n 'MAX_RUNNERS=' scripts/coord/chump-runner-autoscale.sh
+   42:MAX_RUNNERS="${CHUMP_RUNNER_M4_MAX:-4}"
+   $ grep -n 'CHUMP_RUNNER_M4_MAX' scripts/setup/install-runner-autoscale.sh
+   78:        <string>${CHUMP_RUNNER_M4_MAX:-4}</string>
+   ```
+   Both the autoscale loop's default ceiling and the launchd-plist installer
+   default now match the documented 4-runner fleet capacity — recommendation
+   (1) from INFRA-3547 is done, not just proposed.
+3. **Daemon-liveness check (recommendation 2) cannot be verified from this
+   session.** `chump-runner-autoscale.sh --status` requires a `gh api`
+   round-trip against the live runner registry and (for the launchd-plist
+   check) execution on the actual Mac mini fleet host — this slice ran in a
+   Linux worktree, not on `jeffs-macbook-air-10-X` hardware, so `--status`
+   returned no usable output here. This remains an operator action item to
+   run on the fleet host before re-enabling more self-hosted lanes
+   (INFRA-3403), not something a slice in this environment can close.
+4. **No new queue-contention-specific finding beyond INFRA-3547.** The
+   structural fix recommendation (Merge Queue, INFRA-1377) and the
+   one-lane-at-a-time restoration discipline (INFRA-3403) both stand
+   unchanged.
+
+This slice confirms the INFRA-3547 findings are still current; the one
+actionable gap it identified (autoscaler ceiling) has since shipped
+(INFRA-3549), and no regression or new contention signal has appeared.
+
 ---
 
 ## Pi mesh provisioner (INFRA-1543)
