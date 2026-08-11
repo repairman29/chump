@@ -995,6 +995,62 @@ No new information surfaced — this slice confirms the INFRA-3546/INFRA-3558
 findings are still current and nothing has regressed or changed in the
 runner pool or historical job metadata.
 
+### Queue contention re-verification (2026-08-11, INFRA-3577 fleet-1 slice)
+
+Same AC as INFRA-3547/INFRA-3559 above. Re-checked whether anything changed
+since INFRA-3559, given three more INFRA-1655-slice PRs landed on `main` in
+the interim (INFRA-3561, INFRA-3574, INFRA-3588):
+
+1. **Root-cause verdict unchanged.** Queue contention is still a
+   contributing/amplifying factor, not the root cause — the
+   concurrency-group cancellation bug (INFRA-1852) remains the primary
+   trigger. No new evidence moves this classification.
+2. **Recommendation 2 from INFRA-3547 ("confirm the autoscale daemon is
+   actually installed and running") is now fully closed, not just
+   partially.** INFRA-3559 could only report that `--status` returned no
+   usable signal from a non-launchd (Linux) host. Since then, INFRA-3588
+   shipped the daemon-liveness line itself:
+   ```
+   $ grep -n 'daemon:' scripts/coord/chump-runner-autoscale.sh
+   88:    echo "daemon: not_applicable (no launchd on this host — run on the macOS fleet host to check)"
+   93:    echo "daemon: not_installed (no plist at $plist)"
+   97:    echo "daemon: running (gui/$UID/com.chump.runner-autoscale loaded)"
+   99:    echo "daemon: installed_but_not_running (plist present, not loaded — launchctl bootstrap gui/$UID $plist)"
+   ```
+   Run from this Linux worktree, `--status` now explicitly reports
+   `not_applicable` instead of the ambiguous no-output result INFRA-3559
+   hit — the tool itself is done; running it on the actual macOS fleet host
+   to get `running`/`installed_but_not_running` before re-enabling more
+   self-hosted lanes (INFRA-3403) remains the one operator action item, as
+   before.
+3. **MAX_RUNNERS=4 config fix (INFRA-3549) remains live** — confirmed via
+   `grep -n 'MAX_RUNNERS=' scripts/coord/chump-runner-autoscale.sh` and
+   `grep -n 'CHUMP_RUNNER_M4_MAX' scripts/setup/install-runner-autoscale.sh`,
+   both still `4`. INFRA-3561 (regression guard for this fix) has also
+   landed since INFRA-3559.
+4. **No new queue-contention-specific finding.** Merge Queue (INFRA-1377)
+   as the structural fix and one-lane-at-a-time restoration (INFRA-3403)
+   both still stand as the outstanding recommendations; nothing in the
+   three PRs that landed since INFRA-3559 touches queue behavior itself —
+   INFRA-3574/INFRA-3562 are reproduction-attempt slices (still
+   `runner_absent`, per the sections above), INFRA-3561 is a regression
+   guard, and INFRA-3588 is the daemon-status improvement covered in (2).
+
+**Recommendations (unchanged from INFRA-3547, now fully tracked):**
+1. ~~Raise `CHUMP_RUNNER_M4_MAX` to match real capacity~~ — done (INFRA-3549).
+2. ~~Confirm the autoscale daemon is installed/running~~ — tooling done
+   (INFRA-3588); running the check on the actual fleet host is the
+   remaining operator step, not a code gap.
+3. Restore self-hosted lanes one at a time (INFRA-3403) so any residual
+   contention signal is attributable to a single lane.
+4. Merge Queue (INFRA-1377) remains the structural fix that makes queue
+   contention moot by serializing merges before they reach CI.
+
+No further queue-contention investigation slices are warranted beyond
+watching for (3)/(4) to land — the analysis has been independently
+re-confirmed three times (INFRA-3547, INFRA-3559, INFRA-3577) with no
+change in verdict.
+
 ---
 
 ## Pi mesh provisioner (INFRA-1543)
