@@ -1967,7 +1967,8 @@ async fn run_agent_turn(
     });
 
     // Build agent with event_tx so it streams progress.
-    let build = crate::agent_factory::build_chump_agent_web_components(session_id, None, false)?;
+    let build =
+        crate::agent_factory::build_chump_agent_web_components(session_id, None, false, false)?;
 
     // Extend the registry with session-scoped MCP tools (ACP-001 follow-up).
     // Each `AcpMcpProxyTool` holds its own `Arc<SessionMcpPool>`, so the LLM

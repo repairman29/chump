@@ -64,6 +64,7 @@ pub fn build_chump_agent_cli() -> Result<(ChumpAgent, Session<crate::session::Re
             typed.context_str(),
             env_is_mabel(),
             false,
+            false,
         )),
         Some(session_manager),
         None, // no event channel for CLI
@@ -86,10 +87,17 @@ pub fn build_chump_agent_cli() -> Result<(ChumpAgent, Session<crate::session::Re
 /// `voice`: when true, the VOICE_ADDENDUM is appended to the system prompt so
 /// replies stay short, plain-speech, and grounded in tool results — for the
 /// `/api/voice/ask` Siri-Shortcut entry point (EFFECTIVE-422).
+/// `advisor`: when true (INFRA-3597 — The Advisor), the registry is
+/// restricted to `tool_inventory::register_advisor_tools` (read-only —
+/// almanac_search, read_file, list_dir, grep_repo, memory_brain, no
+/// write/run/git) and ADVISOR_ADDENDUM is appended to the system prompt.
+/// Structural: the model literally has no write tool to reach for this turn,
+/// mirroring the CREDIBLE-181 review-only pattern.
 pub fn build_chump_agent_web_components(
     session_id: &str,
     bot: Option<&str>,
     voice: bool,
+    advisor: bool,
 ) -> Result<WebAgentBuild> {
     let session_id = if session_id.trim().is_empty() {
         "default"
@@ -115,10 +123,14 @@ pub fn build_chump_agent_web_components(
     let provider = crate::provider_cascade::global_provider();
 
     let mut registry = ToolRegistry::new();
-    crate::tool_inventory::register_from_inventory(&mut registry);
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(
-        MemoryTool::for_discord(0),
-    )));
+    if advisor {
+        crate::tool_inventory::register_advisor_tools(&mut registry);
+    } else {
+        crate::tool_inventory::register_from_inventory(&mut registry);
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            MemoryTool::for_discord(0),
+        )));
+    }
 
     let is_mabel = bot
         .map(|b| b.eq_ignore_ascii_case("mabel"))
@@ -127,7 +139,7 @@ pub fn build_chump_agent_web_components(
         provider,
         registry,
         session_manager,
-        system_prompt: chump_system_prompt(typed.context_str(), is_mabel, voice),
+        system_prompt: chump_system_prompt(typed.context_str(), is_mabel, voice, advisor),
         #[cfg(feature = "mistralrs-infer")]
         mistral_for_stream,
     })
@@ -136,7 +148,7 @@ pub fn build_chump_agent_web_components(
 /// Build Chump agent for web mode: same as CLI but session under sessions/web/<session_id>.
 #[allow(dead_code)] // public API for web server or callers that want a full Agent
 pub fn build_chump_agent_web(session_id: &str) -> Result<Agent> {
-    let b = build_chump_agent_web_components(session_id, None, false)?;
+    let b = build_chump_agent_web_components(session_id, None, false, false)?;
     Ok(Agent::new(
         b.provider,
         b.registry,

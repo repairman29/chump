@@ -217,6 +217,32 @@ pub fn register_review_only_tools(registry: &mut ToolRegistry) {
     }
 }
 
+/// Tool keys for the Advisor (INFRA-3597). Read-only + almanac_search: enough
+/// to answer any question about the whole fleet grounded in the almanac index
+/// and live repo state, but NO write_file, patch_file, run_cli, git, or cargo
+/// — the Advisor converses and advises, it does not act. Structural
+/// enforcement mirrors REVIEW_ONLY_TOOL_KEYS (CREDIBLE-181): a registry that
+/// never contains a write tool can never call one, regardless of what the
+/// model decides to try.
+const ADVISOR_TOOL_KEYS: &[&str] = &[
+    "almanac_search",
+    "grep_repo",
+    "list_dir",
+    "memory_brain",
+    "read_file",
+];
+
+/// Register the Advisor's read-only tool set (INFRA-3597 — "The Advisor").
+pub fn register_advisor_tools(registry: &mut ToolRegistry) {
+    let mut entries: Vec<_> = inventory::iter::<ToolEntry>()
+        .filter(|e| ADVISOR_TOOL_KEYS.contains(&e.sort_key) && e.enabled())
+        .collect();
+    entries.sort_by(|a, b| a.sort_key.cmp(b.sort_key));
+    for entry in entries {
+        registry.register(tool_middleware::wrap_tool((entry.factory)()));
+    }
+}
+
 /// Tool keys for `chump gen` (PRODUCT-050/051). Read ops for context exploration,
 /// patch_file + run_cli for iterative code editing and cargo check loops.
 /// Excludes git_commit — gen.rs owns the commit step after the agent finishes.
