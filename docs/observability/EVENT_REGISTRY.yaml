@@ -1629,6 +1629,26 @@ events:
     consumers: [ambient]
     fields_required: [ts, kind, sla_breaches, stalls_classified]
 
+  - kind: board_ceo_briefing_beat
+    effect_metric: self
+    emitter: scripts/dispatch/board-ceo-briefing-beat.sh (INFRA-3601)
+    trigger: the board CEO-briefing beat ran on the primary node (on boot + hourly);
+      records the claude -p briefing agent's exit code so the beat's execution is
+      provable, not assumed, even with no desktop Claude session open.
+    consumers: [ambient]
+
+  - kind: board_ceo_briefing_posted
+    effect_metric: self
+    emitter: board-ceo-briefing agent invoked by scripts/dispatch/board-ceo-briefing-beat.sh (INFRA-3601)
+    trigger: the board strategic layer computed the one thing, the one bottleneck,
+      operator-only decisions, and the on-mission drift check (against
+      docs/MISSION.md / docs/strategy/NORTH_STAR.md), and successfully posted the
+      briefing to operator Discord via scripts/coord/lib/notify-operator.sh.
+      Distinct from board_cycle_report_posted (the ops SLA scorecard) — this is
+      the strategy layer.
+    consumers: [ambient]
+    fields_required: [ts, kind, drift_verdict]
+
   - kind: discord_command_agent_dispatched
     effect_metric: self
     emitter: scripts/dispatch/discord-command-agent.sh (INFRA-3596)
