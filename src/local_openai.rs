@@ -924,6 +924,13 @@ impl LocalOpenAIProvider {
         Self::with_fallback(base_url, None, api_key, model)
     }
 
+    /// CREDIBLE-266: model name this slot was configured with, so callers
+    /// (the cascade, phase-timing logs) can attribute which model answered
+    /// without re-deriving it from env vars.
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
     /// Build with optional fallback URL (e.g. from CHUMP_FALLBACK_API_BASE). If primary fails after retries, one attempt is made to the fallback.
     /// Request timeout from CHUMP_MODEL_REQUEST_TIMEOUT_SECS (default 300s for slow 14B).
     pub fn with_fallback(

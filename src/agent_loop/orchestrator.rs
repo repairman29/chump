@@ -308,6 +308,25 @@ impl ChumpAgent {
             let total_ms = ctx.turn_start.elapsed().as_millis();
             let phases = ctx.phase_timings.phases_total_ms();
             let other_ms = total_ms.saturating_sub(phases);
+            // CREDIBLE-266: name which cascade slot/model actually served this
+            // turn (and any slots that failed over before it) alongside the
+            // existing INFRA-185 timings. None when the active provider isn't
+            // a cascade (e.g. a single pinned model) — never logs credentials,
+            // only slot name + model name.
+            let provider_slot = crate::provider_cascade::get_last_used_slot()
+                .unwrap_or_else(|| "unknown".to_string());
+            let model = crate::provider_cascade::get_last_used_model()
+                .unwrap_or_else(|| "unknown".to_string());
+            let failovers = crate::provider_cascade::get_last_failovers();
+            let failover_summary = if failovers.is_empty() {
+                String::new()
+            } else {
+                failovers
+                    .iter()
+                    .map(|f| format!("{}:{}", f.slot, f.reason))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            };
             tracing::info!(
                 request_id = %request_id,
                 compaction_ms = ctx.phase_timings.compaction_ms,
@@ -316,7 +335,15 @@ impl ChumpAgent {
                 other_ms = other_ms,
                 rounds = ctx.phase_timings.rounds,
                 total_ms = total_ms,
+                provider_slot = %provider_slot,
+                model = %model,
+                failovers = %failover_summary,
                 "phase timings (INFRA-185)"
+            );
+            crate::provider_cascade::emit_provider_slot_ambient_event(
+                &request_id,
+                &provider_slot,
+                &model,
             );
         }
 
