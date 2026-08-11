@@ -75,7 +75,7 @@ cmd_install() {
         <key>CHUMP_RUNNER_MIN</key>
         <string>${CHUMP_RUNNER_MIN:-1}</string>
         <key>CHUMP_RUNNER_M4_MAX</key>
-        <string>${CHUMP_RUNNER_M4_MAX:-2}</string>
+        <string>${CHUMP_RUNNER_M4_MAX:-4}</string>
     </dict>
 </dict>
 </plist>

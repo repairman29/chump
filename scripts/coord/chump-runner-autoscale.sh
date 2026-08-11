@@ -8,7 +8,14 @@
 # Scale-up:   queue_depth > online * 2 sustained 2 min AND online < max
 # Scale-down: runner idle > 10 min AND online > min
 #
-# Slice 1 scope: M4 only (single machine, max 2 runners). Pi mesh follow-up.
+# Slice 1 scope: M4 only. Pi mesh follow-up.
+#
+# CHUMP_RUNNER_M4_MAX default raised 2->4 (INFRA-3549, INFRA-1655 slice):
+# the fleet's actual physical M4 count is 4 (see "Capacity guidance" in
+# docs/process/SELF_HOSTED_RUNNERS.md); a ceiling of 2 capped the
+# queue-contention mitigation this autoscaler exists to provide, which
+# INFRA-3547 found amplified the 2026-05-20/21 checkout@v6 flake blast
+# radius. Override via CHUMP_RUNNER_M4_MAX if physical count changes.
 #
 # Usage:
 #   scripts/coord/chump-runner-autoscale.sh                # foreground loop
@@ -32,7 +39,7 @@ source "$(dirname "$0")/lib/github_cache.sh"
 REPO_OWNER="${CHUMP_REPO_OWNER:-repairman29}"
 REPO_NAME="${CHUMP_REPO_NAME:-chump}"
 MIN_RUNNERS="${CHUMP_RUNNER_MIN:-1}"
-MAX_RUNNERS="${CHUMP_RUNNER_M4_MAX:-2}"
+MAX_RUNNERS="${CHUMP_RUNNER_M4_MAX:-4}"
 POLL_INTERVAL_SECS="${CHUMP_RUNNER_POLL_SECS:-60}"
 SUSTAIN_SECS="${CHUMP_RUNNER_SUSTAIN_SECS:-120}"
 IDLE_REAP_SECS="${CHUMP_RUNNER_IDLE_REAP_SECS:-600}"

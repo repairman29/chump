@@ -626,12 +626,18 @@ instead of missing hardware.
 
 **Recommendations:**
 
-1. **Raise `CHUMP_RUNNER_M4_MAX` to match real capacity.** Set it to the
-   live physical runner count (4, per Capacity guidance) rather than the
-   `2` default baked into `install-runner-autoscale.sh`, so the autoscaler
-   can actually use the hardware that exists:
+1. ~~**Raise `CHUMP_RUNNER_M4_MAX` to match real capacity.**~~ **Done
+   (2026-08-11, INFRA-3549 slice).** The default in both
+   `scripts/coord/chump-runner-autoscale.sh` and
+   `scripts/setup/install-runner-autoscale.sh` is now `4` (was `2`), so a
+   fresh install/launch picks up real fleet capacity without an explicit
+   override:
    ```bash
-   CHUMP_RUNNER_M4_MAX=4 scripts/setup/install-runner-autoscale.sh
+   scripts/setup/install-runner-autoscale.sh   # now installs with MAX=4 by default
+   ```
+   Override still available for a different physical count:
+   ```bash
+   CHUMP_RUNNER_M4_MAX=<n> scripts/setup/install-runner-autoscale.sh
    ```
 2. **Confirm the autoscale daemon is actually installed and running**
    before re-enabling self-hosted lanes (INFRA-3403) — `--status` should
@@ -653,6 +659,33 @@ instead of missing hardware.
    the concurrency-group keying bug (the actual root cause) is already
    fixed on `main`, and the remaining exposure is capacity headroom, which
    (1)-(2) close directly.
+
+### Fix landed: autoscale ceiling raised to match fleet capacity (2026-08-11, INFRA-3549 slice)
+
+The concurrency-group cancellation bug itself was already fixed on `main`
+(INFRA-1852, 2026-05-23). The one remaining actionable gap from the
+INFRA-3546/3547 investigation slices was the config mismatch: the
+autoscaler that exists specifically to relieve self-hosted queue
+contention was capped at `MAX_RUNNERS=2` while the fleet has 4 physical
+M4 runners, so it could never use more than half of actual capacity to
+absorb queue depth.
+
+**Fix:** raised the `CHUMP_RUNNER_M4_MAX` default from `2` to `4` in both
+places it's baked in:
+- `scripts/coord/chump-runner-autoscale.sh` (the decision-loop script's own fallback)
+- `scripts/setup/install-runner-autoscale.sh` (the launchd-plist installer's default)
+
+Verified: `scripts/coord/chump-runner-autoscale.sh --status` and `--once`
+read `MAX_RUNNERS` via `${CHUMP_RUNNER_M4_MAX:-4}` with no other code path
+hardcoding the old ceiling; `scripts/ci/test-autoscale-decisions.sh` does
+not assert a specific default value, so the change doesn't require a test
+update. `CHUMP_RUNNER_M4_MAX` remains overridable for any future change in
+physical runner count.
+
+This does not itself re-enable self-hosted lanes — that still follows the
+one-lane-at-a-time restoration order above (INFRA-3403) — but it removes
+the config ceiling that would otherwise blunt the autoscaler once
+restoration resumes.
 
 ### Operator note
 
