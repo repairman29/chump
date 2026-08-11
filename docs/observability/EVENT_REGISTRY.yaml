@@ -5349,6 +5349,16 @@ events:
     consumers: [fleet-brief, ops-audit, curator]
     fields_required: [ts, kind, pr, gap, target, age_h, failing_check]
 
+  - kind: sla_breach
+    effect_metric: sla_breach_paged_within_1_cycle
+    emitter: scripts/coord/merge-sla-scorecard.sh (RESILIENT-302)
+    trigger: open PR unmerged past CHUMP_SLA_MERGE_THRESHOLD_S (default 1800s
+      = 30m hard threshold, operator 2026-08-11) with no active claim-lease
+      owner and no prior escalation still inside its resend cooldown; routed
+      to the operator via notify-operator.sh (Discord DM).
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, pr, age_s, threshold_s, gap]
+
   - kind: pre_restart
     effect_metric: self
     emitter: src/main.rs (chump fleet restart prep)
