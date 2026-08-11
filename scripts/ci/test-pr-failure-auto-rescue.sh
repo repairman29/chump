@@ -167,6 +167,52 @@ else
     fail "stale-updated red-armed PR unexpectedly deferred: $out_stale"
 fi
 
+# Test 10 (functional, RESILIENT-299): a PR that is armed + BLOCKED + a
+# required check RED past PR_TERMINAL_HOURS, whose updatedAt is ALSO stale
+# (so it would otherwise dispose per test 9), must be LEFT OPEN when >=2
+# other open PRs share the same failing check — a systemic gate outage, not
+# a per-PR failure (the #3633/#3623/#3598 reap class this gap fixes).
+FAKE_BIN2="$(mktemp -d)"
+trap 'rm -rf "$FAKE_BIN2"' EXIT
+
+STUB_LIST="$FAKE_BIN2/list.json"
+cat > "$STUB_LIST" <<'EOF'
+[
+  {"number": 4001, "statusCheckRollup": [{"name": "audit", "conclusion": "FAILURE"}]},
+  {"number": 4002, "statusCheckRollup": [{"name": "audit", "conclusion": "FAILURE"}]},
+  {"number": 3598, "statusCheckRollup": [{"name": "audit", "conclusion": "FAILURE"}]}
+]
+EOF
+
+cat > "$FAKE_BIN2/gh" <<EOF
+#!/usr/bin/env bash
+if [[ "\$1" == "pr" && "\$2" == "view" ]]; then
+    cat "\$GH_STUB_JSON_FILE"
+    exit 0
+fi
+if [[ "\$1" == "pr" && "\$2" == "list" ]]; then
+    cat "$STUB_LIST"
+    exit 0
+fi
+exit 0
+EOF
+chmod +x "$FAKE_BIN2/gh"
+
+out_systemic=$(PATH="$FAKE_BIN2:$PATH" GH_STUB_JSON_FILE="$STUB_JSON_STALE" \
+    PR_TERMINAL_HOURS=6 PR_TERMINAL_FRESHNESS_MIN=10 \
+    CHECK_PR=3598 bash "$DAEMON" 2>&1)
+
+if echo "$out_systemic" | grep -q "SKIP CLOSE (RESILIENT-299)"; then
+    ok "systemic shared-red PR (N>=2) is left open, not reaped"
+else
+    fail "systemic shared-red PR was not deferred: $out_systemic"
+fi
+if echo "$out_systemic" | grep -q "WOULD close"; then
+    fail "systemic shared-red PR unexpectedly produced a WOULD-close diagnostic"
+else
+    ok "no WOULD-close diagnostic for systemic shared-red PR"
+fi
+
 echo
 echo "=== Summary: $PASS passed, $FAIL failed ==="
 if (( FAIL > 0 )); then

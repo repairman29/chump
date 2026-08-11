@@ -299,6 +299,39 @@ handle_adjacent_string_eprintln() {
     return 0
 }
 
+# RESILIENT-299: count other OPEN PRs (excluding $1) whose statusCheckRollup
+# has a FAILURE conclusion on any of the check names in the comma-separated
+# list $2 (e.g. "audit,test"). Prints "SYSTEMIC|<check>|<n>" for the first
+# check found FAILURE on >=2 other PRs, else "ISOLATED".
+count_shared_red_prs() {
+    local pr="$1"; local red_csv="$2"
+    [[ -z "$red_csv" ]] && { echo "ISOLATED"; return; }
+    local list
+    list=$(gh pr list --repo repairman29/chump --state open --limit 100 \
+           --json number,statusCheckRollup 2>/dev/null) || { echo "ISOLATED"; return; }
+    echo "$list" | python3 -c "
+import json, sys
+pr = int(sys.argv[1])
+red = [c.strip() for c in sys.argv[2].split(',') if c.strip()]
+try:
+    prs = json.load(sys.stdin)
+except Exception:
+    print('ISOLATED'); sys.exit(0)
+for name in red:
+    n = 0
+    for p in prs:
+        if p.get('number') == pr:
+            continue
+        roll = p.get('statusCheckRollup') or []
+        if any(c.get('name') == name and c.get('conclusion') == 'FAILURE' for c in roll):
+            n += 1
+    if n >= 2:
+        print('SYSTEMIC|%s|%d' % (name, n))
+        sys.exit(0)
+print('ISOLATED')
+" "$pr" "$red_csv"
+}
+
 # ── COTG terminal disposition (INFRA-3542) ────────────────────────────────────
 # A red-armed PR that no fix handler cleared, past the terminal age, is closed with
 # an honest comment and its gap reopened for a clean redo. Without this, unfixable-
@@ -359,6 +392,27 @@ else:
     red=$(echo "$verdict" | cut -d'|' -f4)
     # Gap id from the claim branch: chump/<gap-id>-claim → GAP-ID (upcased).
     gap=$(echo "$branch" | sed -nE 's#^chump/([a-zA-Z]+-[0-9]+)-claim$#\1#p' | tr '[:lower:]' '[:upper:]')
+
+    # RESILIENT-299: before disposing, check whether this PR's red is unique
+    # to it, or shared across other open PRs — i.e. a systemic gate outage
+    # (e.g. the bypass-var ceiling bug) rather than a per-PR failure. If N>=2
+    # other open PRs share the same failing check, this is fleet-wide red;
+    # closing this PR would be reaping good work for someone else's outage
+    # (#3633, #3623, #3598).
+    local shared_verdict
+    shared_verdict=$(count_shared_red_prs "$pr" "$red")
+    if [[ "$shared_verdict" == SYSTEMIC* ]]; then
+        local _check _n
+        _check=$(echo "$shared_verdict" | cut -d'|' -f2)
+        _n=$(echo "$shared_verdict" | cut -d'|' -f3)
+        say "  → terminal: PR #$pr SKIP CLOSE (RESILIENT-299) — check '$_check' is red on $_n other open PR(s), systemic gate outage, not per-PR failure"
+        emit_event "curator_skip_active_rebase" "\"pr\":$pr,\"reason\":\"systemic_shared_red\",\"check\":\"${_check}\",\"shared_count\":${_n}"
+        if [[ $DRY_RUN -ne 1 ]]; then
+            notify_operator "$(printf '⚠️ **Systemic red detected — PR #%s left OPEN** (RESILIENT-299)\n\nCheck `%s` is FAILING on %s other open PR(s) too — this looks like a fleet-wide gate outage, not a per-PR bug. auto-rescue is refusing to close it.\n\nhttps://github.com/repairman29/chump/pull/%s' \
+                "$pr" "$_check" "$_n" "$pr")" || true
+        fi
+        return 1
+    fi
 
     if [[ $DRY_RUN -eq 1 ]]; then
         say "  → TERMINAL (dry-run): PR #$pr armed+red[$red] ${age}h ≥ ${PR_TERMINAL_HOURS}h — WOULD close + reopen gap ${gap:-<unparsed:$branch>}"
