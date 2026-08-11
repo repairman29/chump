@@ -1050,6 +1050,26 @@ No further queue-contention investigation slices are warranted beyond
 watching for (3)/(4) to land — the analysis has been independently
 re-confirmed three times (INFRA-3547, INFRA-3559, INFRA-3577) with no
 change in verdict.
+### Regression guard for the concurrency-group fix (2026-08-11, INFRA-3579 fleet-2 slice)
+
+The actual root cause of the original cancellation incident — ci.yml's
+`concurrency:` group keying non-push events on PR number instead of the
+commit SHA — was already fixed on `main` (INFRA-1852, 2026-05-23). That
+fix had no regression guard, unlike the sibling INFRA-3549 autoscale-ceiling
+fix which INFRA-3561 guarded with `test-runner-autoscale-max-default.sh`.
+
+**Fix:** added `scripts/ci/test-ci-concurrency-group-key.sh`, which asserts
+`ci.yml`'s top-level `group:` line contains `github.sha` and does **not**
+contain `pull_request.number`, and that `cancel-in-progress:` is a bare
+`true`. Wired into both `chump preflight` (`crates/chump-preflight/src/preflight.rs`)
+and `ci.yml` itself, mirroring the INFRA-3561 wiring pattern. If the
+concurrency group key ever reverts to PR-number keying, this test fails
+locally and in CI before the regression can reintroduce the cancelled-audit
+false-failure pattern.
+
+This closes the last open gap from the INFRA-1655 investigation slices: both
+identified structural root causes (concurrency-group keying, autoscale
+ceiling) now have fixes on `main` **and** regression guards protecting them.
 
 ---
 
