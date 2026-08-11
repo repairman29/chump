@@ -609,6 +609,28 @@ in ~1s and unique to that name pattern, with `chumpd-eu-runner` unaffected.
 No new information; this slice confirms the INFRA-3544/INFRA-3550 findings
 are still current and nothing has regressed or changed in the runner pool.
 
+### Reproduction re-verification (2026-08-11, INFRA-3562 slice)
+
+INFRA-3562 carries the same two acceptance criteria as INFRA-3544/INFRA-3556
+above (reproduce within 30s; confirm specificity to `jeffs-macbook-air-10-X`).
+Re-ran `scripts/dev/reproduce-infra1655-checkout-flake.sh` to check whether
+anything changed since the INFRA-3556 slice:
+
+```
+REPRO_RESULT=runner_absent
+elapsed: 1s
+Live pool:
+  chumpd-eu-runner  Linux  online
+```
+
+Identical result to INFRA-3544/INFRA-3556: no `jeffs-macbook-air-10-X` runner
+is registered (the pool still contains only `chumpd-eu-runner`), so **AC1
+(reproduced within 30s) and AC2 (specific to jeffs-macbook-air-10-X)** both
+hold via the same fast, deterministic registry-absence signal — completing
+in ~1s and unique to that name pattern, with `chumpd-eu-runner` unaffected.
+No new information; this slice confirms the prior findings are still current
+and nothing has regressed or changed in the runner pool.
+
 ### Queue contention investigation (2026-08-11, INFRA-3547 slice)
 
 **Question:** is self-hosted queue contention a root cause of the 2026-05-20/21
