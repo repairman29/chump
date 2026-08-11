@@ -17,4 +17,5 @@ Wants=network-online.target
 Type=oneshot
 Environment=HOME=/root
 Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+Environment=CHUMP_ORGAN_WATCHDOG_CLONE_REFRESH=1
 ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/organ-watchdog.sh'
