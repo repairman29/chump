@@ -518,6 +518,19 @@ for exactly this scenario, but #2297 (the PR that shipped INFRA-1567) was
 itself stuck in the same loop. Master-toggle bypass was used to escape
 the chicken-and-egg.
 
+**Reproduction (INFRA-3544, INFRA-1655 slice):**
+`scripts/ci/test-infra1655-runner-checkout-flake-repro.sh` reproduces the
+mechanism in <30s without touching live hardware or the GitHub API: a
+fixed-size self-hosted pool (4 runners) queues under contention long enough
+that `actions/checkout@v6` is still in-flight when a same-group fixup-push
+cancel arrives (pre-INFRA-1852 PR-number-keyed `concurrency.group`,
+`cancel-in-progress: true`), while the effectively-unbounded github-hosted
+pool dequeues fast enough to finish checkout first under identical push
+cadence — confirming the failure is specific to the constrained
+jeffs-macbook-air-10-X lane, not a general checkout flake. The script also
+regression-guards that the INFRA-1852 per-SHA fix (below) is still present
+on `ci.yml`.
+
 ### Required steps to restore self-hosted routing
 
 Don't blindly flip the variables back. Follow this order:
