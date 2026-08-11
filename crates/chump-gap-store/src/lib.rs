@@ -1165,6 +1165,19 @@ impl GapStore {
             }
         }
 
+        // INFRA-3580: reopening a gap (status -> open) logically retracts its
+        // close, but until now closed_pr/closed_date stayed stamped with the
+        // old value — exactly the state scripts/ci/test-gap-closure-consistency.sh
+        // flags as `stale_post_merge_gap`. Auto-clear them on --status open,
+        // gated behind the same CHUMP_ALLOW_RECYCLE flag as the reopen itself
+        // (so this can't quietly rewrite shipping history without operator
+        // authorization) and only when the caller didn't explicitly supply a
+        // new closed_pr/closed_date in the same call.
+        let auto_clear_closure = fields.status.as_deref() == Some("open")
+            && std::env::var("CHUMP_ALLOW_RECYCLE").as_deref() == Ok("1")
+            && fields.closed_pr.is_none()
+            && fields.closed_date.is_none();
+
         let mut sets: Vec<&str> = Vec::new();
         let mut vals: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
         if let Some(v) = fields.title {
@@ -1210,10 +1223,16 @@ impl GapStore {
         if let Some(v) = fields.closed_date {
             sets.push("closed_date=?");
             vals.push(Box::new(v));
+        } else if auto_clear_closure {
+            sets.push("closed_date=?");
+            vals.push(Box::new(String::new()));
         }
         if let Some(v) = fields.closed_pr {
             sets.push("closed_pr=?");
             vals.push(Box::new(v));
+        } else if auto_clear_closure {
+            sets.push("closed_pr=?");
+            vals.push(Box::new(Option::<i64>::None));
         }
         if let Some(v) = fields.skills_required {
             sets.push("skills_required=?");
@@ -6132,6 +6151,89 @@ mod tests {
         );
         std::env::remove_var("CHUMP_ALLOW_RECYCLE");
         result.expect("CHUMP_ALLOW_RECYCLE=1 should bypass recycled-ID guard");
+    }
+
+    #[test]
+    #[serial_test::serial(recycle_bypass_env)]
+    fn infra3580_reopen_clears_stale_closed_pr() {
+        // Reopening a gap (status -> open) must retract closed_pr/closed_date
+        // too, or the row lands in the exact shape
+        // scripts/ci/test-gap-closure-consistency.sh flags as
+        // stale_post_merge_gap: status=open with closed_pr still set.
+        std::env::remove_var("CHUMP_ALLOW_RECYCLE");
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "test gap", "P1", "s").unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    closed_pr: Some(42),
+                    closed_date: Some("2026-08-01".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        std::env::set_var("CHUMP_ALLOW_RECYCLE", "1");
+        let result = store.set_fields(
+            &id,
+            GapFieldUpdate {
+                status: Some("open".into()),
+                ..Default::default()
+            },
+        );
+        std::env::remove_var("CHUMP_ALLOW_RECYCLE");
+        result.expect("reopen should succeed");
+
+        let (status, closed_pr, closed_date): (String, Option<i64>, String) = store
+            .conn
+            .query_row(
+                "SELECT status, closed_pr, closed_date FROM gaps WHERE id=?",
+                [&id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "open");
+        assert_eq!(closed_pr, None, "closed_pr must be cleared on reopen");
+        assert_eq!(closed_date, "", "closed_date must be cleared on reopen");
+
+        // Without CHUMP_ALLOW_RECYCLE, an explicit --closed-pr/--closed-date
+        // pair on the same call is still honored verbatim (no silent clear
+        // of caller-supplied values).
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    closed_pr: Some(99),
+                    closed_date: Some("2026-08-05".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        std::env::set_var("CHUMP_ALLOW_RECYCLE", "1");
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("open".into()),
+                    closed_pr: Some(100),
+                    closed_date: Some("2026-08-06".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        std::env::remove_var("CHUMP_ALLOW_RECYCLE");
+        let (closed_pr2, closed_date2): (Option<i64>, String) = store
+            .conn
+            .query_row(
+                "SELECT closed_pr, closed_date FROM gaps WHERE id=?",
+                [&id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(closed_pr2, Some(100));
+        assert_eq!(closed_date2, "2026-08-06");
     }
 
     #[test]
