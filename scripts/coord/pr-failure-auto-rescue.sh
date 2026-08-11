@@ -42,6 +42,13 @@ MAX_PER_PR="${AUTO_RESCUE_MAX_PER_PR:-3}"
 # this age, is closed + its gap reopened for a clean redo. Conservative on purpose.
 PR_TERMINAL_HOURS="${PR_TERMINAL_HOURS:-6}"
 PR_TERMINAL_ENABLED="${PR_TERMINAL_ENABLED:-1}"
+# RESILIENT-296: freshness gate mirroring the reaper's INFRA-1195 window — skip
+# the terminal close if the PR was updated (a fix pushed, CI re-kicked) more
+# recently than this many minutes ago, even if the cumulative-red age looks
+# terminal. Without this, a fix pushed at minute X can be closed at minute
+# X+few because the age computation only looks at PR createdAt, not the most
+# recent activity (#3598 false-closed 2026-08-10 this way).
+PR_TERMINAL_FRESHNESS_MIN="${PR_TERMINAL_FRESHNESS_MIN:-10}"
 CHECK_PR="${CHECK_PR:-}"   # set to a PR number to dry-run the terminal check on it and exit
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -305,22 +312,41 @@ try_terminal_dispose() {
     [[ "$PR_TERMINAL_ENABLED" != "1" ]] && return 1
     local j verdict
     j=$(gh pr view "$pr" --repo repairman29/chump \
-        --json autoMergeRequest,mergeStateStatus,createdAt,headRefName,statusCheckRollup 2>/dev/null) || return 1
+        --json autoMergeRequest,mergeStateStatus,createdAt,updatedAt,headRefName,statusCheckRollup 2>/dev/null) || return 1
     verdict=$(echo "$j" | python3 -c '
 import json,sys,datetime
-d=json.load(sys.stdin); hrs=float(sys.argv[1])
+d=json.load(sys.stdin); hrs=float(sys.argv[1]); fresh_min=float(sys.argv[2])
 armed=d.get("autoMergeRequest") is not None
 blocked=d.get("mergeStateStatus")=="BLOCKED"
 req={"audit","test","ACP protocol smoke test (Zed / JetBrains compatible)"}
 roll=d.get("statusCheckRollup") or []
 red=[c.get("name") for c in roll if c.get("name") in req and c.get("conclusion")=="FAILURE"]
 created=datetime.datetime.fromisoformat(d["createdAt"].replace("Z","+00:00"))
-age=(datetime.datetime.now(datetime.timezone.utc)-created).total_seconds()/3600
+now=datetime.datetime.now(datetime.timezone.utc)
+age=(now-created).total_seconds()/3600
+updated=d.get("updatedAt")
+fresh_age_min=None
+if updated:
+    updated_dt=datetime.datetime.fromisoformat(updated.replace("Z","+00:00"))
+    fresh_age_min=(now-updated_dt).total_seconds()/60
 if armed and blocked and red and age>=hrs:
-    print("DISPOSE|%s|%.1f|%s" % (d.get("headRefName",""), age, ",".join(red)))
+    if fresh_age_min is not None and fresh_age_min < fresh_min:
+        print("FRESH|%s|%.1f|%.1f" % (d.get("headRefName",""), age, fresh_age_min))
+    else:
+        print("DISPOSE|%s|%.1f|%s" % (d.get("headRefName",""), age, ",".join(red)))
 else:
     print("SKIP|armed=%s blocked=%s red=%s age=%.1f" % (armed, blocked, ",".join(red) or "-", age))
-' "$PR_TERMINAL_HOURS" 2>/dev/null)
+' "$PR_TERMINAL_HOURS" "$PR_TERMINAL_FRESHNESS_MIN" 2>/dev/null)
+
+    if [[ "$verdict" == FRESH* ]]; then
+        # RESILIENT-296: PR was updated (fix pushed, CI re-running) more
+        # recently than the freshness window — the cumulative-red history is
+        # stale. Defer instead of destroying in-flight work (#3598 class).
+        local _fresh_age; _fresh_age=$(echo "$verdict" | cut -d'|' -f4)
+        say "  → terminal: PR #$pr SKIP CLOSE (RESILIENT-296) — updated ${_fresh_age}m ago (< ${PR_TERMINAL_FRESHNESS_MIN}m freshness window), deferring"
+        emit_event "curator_skip_active_rebase" "\"pr\":$pr,\"reason\":\"updated_within_freshness_window\",\"age_minutes\":${_fresh_age}"
+        return 1
+    fi
 
     if [[ "$verdict" != DISPOSE* ]]; then
         [[ $DRY_RUN -eq 1 ]] && say "  → terminal: PR #$pr not a candidate (${verdict#SKIP|})"
