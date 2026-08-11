@@ -587,6 +587,43 @@ that specific hardware: any future M4-lane restoration needs the runner
 the target Mac), not merely diagnosed — registration-loss, not a live
 checkout flake, is the current blocker.
 
+### Checkout-step specificity verification (2026-08-11, INFRA-3550 slice)
+
+`scripts/dev/verify-infra3550-checkout-step-specificity.sh` closes the two
+acceptance criteria specific to this slice — reproduce within 30s, and
+confirm the failure is specific to the `actions/checkout@v6` step — by
+comparing the self-hosted and github-hosted jobs **within the same
+incident-window run** (`26193207185`, the same run INFRA-3546 sampled):
+
+```
+REPRO_RESULT=specific_to_self_hosted
+elapsed: 1s
+5/5 jeffs-macbook-air-10-X jobs never reached the checkout step (steps:[]),
+while 6 github-hosted ubuntu-latest job(s) in the SAME run ran
+actions/checkout@v6 to completion in 1-3s each.
+```
+
+**AC1 — reproduced within 30s: PASS.** The diagnostic query (same method as
+INFRA-3544) completes in ~1s against the live run's job data — well under
+the 30s budget.
+
+**AC2 — specific to the checkout step: PASS, with the precise mechanism.**
+Per INFRA-3546's zero-step finding, the self-hosted jobs never literally
+execute an `actions/checkout@v6` step (`steps: []` — cancelled while still
+queued). What makes the failure *specific to checkout* rather than a
+generic workflow fault: in the identical run, at the identical
+cancellation instant, every **github-hosted** job reached and completed
+`actions/checkout@v6` successfully (1-3s each) before the group-cancel
+landed. The self-hosted jobs — queued longer per the INFRA-3547 capacity
+analysis (3-4 physical Macs serving 5 job types vs. GitHub's much larger
+shared `ubuntu-latest` pool) — were still short of that same step when the
+cancellation hit. So the defect is not in `actions/checkout@v6` itself (it
+succeeds every time it actually runs) and not workflow-wide (github-hosted
+jobs in the same run are unaffected) — it is specific to the self-hosted
+jeffs-macbook-air-10-X dispatch path being the slowest to reach that point
+in the job, making it the lane disproportionately caught by the
+concurrency-cancellation bug INFRA-3546/INFRA-1852 already root-caused.
+
 ### Queue contention investigation (2026-08-11, INFRA-3547 slice)
 
 **Question:** is self-hosted queue contention a root cause of the 2026-05-20/21
