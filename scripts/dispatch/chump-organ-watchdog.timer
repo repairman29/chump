@@ -1,0 +1,14 @@
+# INFRA-3595 — pairs with chump-organ-watchdog.service. Fires every 5
+# minutes so a failed organ is caught + healed within one short cycle
+# (AC 1: "within one cycle") rather than sitting failed for a 15-20min
+# window like the other organ timers.
+[Unit]
+Description=Run the Chump organ watchdog every 5 minutes (INFRA-3595)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

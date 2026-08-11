@@ -1,0 +1,20 @@
+# INFRA-3595 — self-heal watchdog for the ATC organ roster. No human restarts
+# a failed chump-* organ: this unit scans for failed chump-*.service units
+# (typically stuck `failed (Result: start-limit-hit)` after a oneshot fails a
+# few times in a row) and enabled-but-inactive chump-*.timer units, then
+# systemctl reset-failed + restart/start them. Emits organ_self_healed per
+# unit healed.
+#
+# CHUMP_REPO_ROOT is REQUIRED: the script's default $HOME/Projects/Chump is
+# capital-C and does not exist on case-sensitive Linux (see
+# docs/process/LINUX_NODE_ONBOARDING.md).
+[Unit]
+Description=Chump organ watchdog — self-heal failed chump-* organs (INFRA-3595)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/organ-watchdog.sh'

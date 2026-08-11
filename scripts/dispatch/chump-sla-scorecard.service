@@ -1,13 +1,15 @@
 # INFRA-3593 — tracks the merge-SLA scorecard unit live-hacked onto helsinki on
 # 2026-08-11 alongside chump-armed-rebaser and chump-node-refresh. Runs
-# scripts/coord/merge-sla-scorecard.sh --apply: flags PRs open >30m unmerged
-# with no owner as a board BREACH and pages the operator (RESILIENT-302).
+# scripts/coord/merge-sla-scorecard.sh --apply: flags PRs open past the
+# CHUMP_SLA_BREACH_MINUTES ratchet (default 60m, tightening toward 30m as
+# p90 falls — INFRA-3592) unmerged with no owner as a board BREACH and pages
+# the operator (RESILIENT-302).
 #
 # CHUMP_REPO_ROOT is REQUIRED: the script's default $HOME/Projects/Chump is
 # capital-C and does not exist on case-sensitive Linux (see
 # docs/process/LINUX_NODE_ONBOARDING.md).
 [Unit]
-Description=Chump merge-SLA scorecard — flag PRs open >30m unmerged with no owner (RESILIENT-302)
+Description=Chump merge-SLA scorecard — flag PRs open past the SLA ratchet unmerged with no owner (RESILIENT-302)
 After=network-online.target
 Wants=network-online.target
 
