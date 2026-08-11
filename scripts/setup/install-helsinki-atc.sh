@@ -16,13 +16,22 @@
 #   chump-organ-watchdog (INFRA-3595)    — self-heals any failed chump-*
 #                                           organ (reset-failed + restart), no
 #                                           human step required
+#   chump-board-ceo-briefing (INFRA-3601) — board strategy layer: one thing,
+#                                           bottleneck, operator-only
+#                                           decisions, on-mission drift check,
+#                                           on boot + hourly. Distinct from
+#                                           chump-board-cycle (the ops SLA
+#                                           scorecard, which watches the
+#                                           factory) — this watches the
+#                                           mission.
 #
 # Before RESILIENT-300, these were live-hacked directly into /etc/systemd/system
 # and ~/.config/systemd/user — a node rebuild silently lost ATC. This script is
 # the single, idempotent entrypoint that re-establishes the whole roster from
 # tracked repo files.
 #
-# pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog are SYSTEM units
+# pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog,
+# board-ceo-briefing are SYSTEM units
 # (root-owned, /etc/systemd/system) — this script must run as root (or via
 # sudo). node-refresh is a USER unit (systemd --user) — installed by
 # delegating to install-node-refresh-systemd.sh.
@@ -82,8 +91,10 @@ SYSTEM_UNITS=(
   chump-sla-scorecard.timer
   chump-organ-watchdog.service
   chump-organ-watchdog.timer
+  chump-board-ceo-briefing.service
+  chump-board-ceo-briefing.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
@@ -115,7 +126,7 @@ if [[ "$(id -u)" != "0" ]]; then
   exit 1
 fi
 
-echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog) =="
+echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog, board-ceo-briefing) =="
 CHANGED_UNITS=()
 for unit in "${SYSTEM_UNITS[@]}"; do
   src="$REPO_ROOT/scripts/dispatch/$unit"
