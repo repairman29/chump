@@ -52,9 +52,21 @@ if [[ "${1:-}" != "--self-test" ]]; then
   _ceiling_file="$REPO_ROOT/scripts/ci/bypass-var-ceiling.txt"
   _ceiling="$(grep -oE '^[0-9]+' "$_ceiling_file" 2>/dev/null | head -1 || true)"
   _ceiling="${_ceiling:-99999}"
+  # Counter correctness (RESILIENT-297). Two classes were being counted as
+  # production bypass debt when they are not:
+  #   1. --exclude this file itself. The --self-test cases below embed synthetic
+  #      props (CHUMP_BRAND_NEW_BYPASS, CHUMP_XYZ_SKIP, ...) that exist ONLY to
+  #      exercise the diff-scanner. They are test doubles, never real toggles;
+  #      counting them inflated the true tree count by 6.
+  #   2. Drop command-VALUED vars (…_CMD). CHUMP_DUTY_OFFICER_REALITY_CHECK_CMD
+  #      names a command to RUN — it is not a check-disabling toggle. The greedy
+  #      _CHECK branch matched it as a false positive.
+  # This is a ratchet-DOWN of the honest baseline, not a bypass: the true count
+  # falls, and the ceiling file falls with it.
   _now="$(grep -rhoE 'CHUMP_[A-Z0-9_]*(BYPASS|SKIP|IGNORE|_CHECK|NO_)[A-Z0-9_]*' \
             "$REPO_ROOT/scripts" "$REPO_ROOT/src" "$REPO_ROOT/crates" 2>/dev/null \
-            | sort -u | wc -l | tr -d ' ')"
+            --exclude='test-no-new-bypass-env-vars.sh' \
+            | grep -vE '_CMD$' | sort -u | wc -l | tr -d ' ')"
   if [ "${_now:-0}" -gt "$_ceiling" ]; then
     {
       echo "[bypass-lint] FAIL (EFFECTIVE-094 debt-ceiling): bypass/skip/check var count ${_now} > ceiling ${_ceiling}."
