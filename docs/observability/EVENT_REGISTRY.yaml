@@ -5563,6 +5563,32 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, healed, dry_run]
 
+  - kind: node_binary_refresh_fetch_stale
+    effect_metric: node_binary_refresh_fetch_failure_rate
+    emitter: scripts/ops/node-refresh-chump.sh (INFRA-3598)
+    trigger: git fetch origin main failed on a fleet node's mirror checkout.
+      Previously this only logged a local WARN and silently reused the
+      last-fetched origin/main ref, which can already equal the installed
+      SHA — presenting as "already current" forever even though the node
+      can't see new merges (the "helsinki clone stale" failure mode
+      INFRA-3598 exists to catch). Now surfaced to the fleet.
+    consumers: [fleet-brief, ops-audit, curator]
+    fields_required: [ts, kind, reason]
+
+  - kind: self_deploy_audit
+    effect_metric: self_deploy_loop_health
+    emitter: scripts/ops/self-deploy-audit.sh (INFRA-3598)
+    trigger: every audit cycle (chump-self-deploy-audit.timer, every 10m) —
+      the single board-verifiable proof that the merge->deploy loop is
+      actually running: mirror clone currency vs origin/main, tracked
+      chump-*.service/.timer drift vs what's live in
+      /etc/systemd/system, and whether any chump-* organ is currently
+      failed. status=fail with the specific reason(s) when any check
+      doesn't hold; status=pass otherwise.
+    consumers: [fleet-brief, ops-audit, curator, operator-recall]
+    fields_required: [ts, kind, status, local_sha, main_sha, lag_commits,
+      lag_minutes, drifted_units, failed_organs, reasons]
+
   - kind: pre_restart
     effect_metric: self
     emitter: src/main.rs (chump fleet restart prep)

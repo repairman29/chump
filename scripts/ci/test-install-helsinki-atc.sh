@@ -42,10 +42,10 @@ grep -q '"reason":"not_root"' "$TMP/.chump-locks/ambient.jsonl" \
 ok "--auto (non-root) is non-fatal and emits organ_units_deploy_failed reason=not_root"
 
 # ── Test: the roster references files that actually exist ──────────────────
-for unit in chump-pr-lander chump-armed-rebaser chump-board-cycle chump-sla-scorecard chump-organ-watchdog; do
+for unit in chump-pr-lander chump-armed-rebaser chump-board-cycle chump-sla-scorecard chump-organ-watchdog chump-self-deploy-audit; do
     [ -f "$REPO_ROOT/scripts/dispatch/${unit}.service" ] || fail "missing scripts/dispatch/${unit}.service"
     [ -f "$REPO_ROOT/scripts/dispatch/${unit}.timer" ] || fail "missing scripts/dispatch/${unit}.timer"
 done
-ok "all 5 system-unit organs (pr-lander, armed-rebaser, board-cycle, sla-scorecard, organ-watchdog) have tracked .service+.timer pairs"
+ok "all 6 system-unit organs (pr-lander, armed-rebaser, board-cycle, sla-scorecard, organ-watchdog, self-deploy-audit) have tracked .service+.timer pairs"
 
 echo "ALL PASS"

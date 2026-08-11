@@ -37,9 +37,16 @@
 set -uo pipefail
 
 # --- resolve the mirror checkout to build from -------------------------------
+# INFRA-3598: helsinki's real clone lives at ~/Projects/chump (lowercase —
+# case-sensitive Linux). The candidate list used to only try the macOS-style
+# "Projects/Chump" (capital C), which never exists on helsinki — silently
+# falling through to "no repo found" whenever CHUMP_NODE_REPO wasn't
+# explicitly baked into the systemd unit's Environment=. Both cases are
+# tried now so a fresh install without an explicit override still finds the
+# real clone.
 REPO_ROOT="${CHUMP_NODE_REPO:-}"
 if [[ -z "$REPO_ROOT" ]]; then
-    for candidate in "$HOME/chump-host" "$HOME/Projects/Chump" "$HOME/chump"; do
+    for candidate in "$HOME/chump-host" "$HOME/Projects/chump" "$HOME/Projects/Chump" "$HOME/chump"; do
         if [[ -d "$candidate/.git" ]]; then REPO_ROOT="$candidate"; break; fi
     done
 fi
@@ -76,7 +83,20 @@ cd "$REPO_ROOT" || { log "FATAL: cannot cd $REPO_ROOT"; emit node_binary_refresh
 # These nodes are pure BUILD MIRRORS (no operator WIP), so a hard reset to
 # origin/main is the correct "make current" operation. If a node ever grows a
 # real working tree, guard this behind a clean-tree check.
-git fetch origin main --quiet 2>>"$LOG" || log "WARN: git fetch failed (offline?); building local main"
+#
+# INFRA-3598: a fetch failure used to only log a WARN to the local logfile —
+# invisible to the fleet. Worse, the SHA comparison below then silently
+# reused the LAST successfully-fetched origin/main ref, which can already
+# equal the installed SHA — presenting as "already current" forever even
+# though the node has been unable to see new merges. Emit an ambient alarm
+# so a stuck fetch (auth expiry, network) is observable instead of masquerading
+# as a healthy, up-to-date node (the exact "helsinki clone stale" failure
+# mode this gap exists to catch).
+# scanner-anchor: "kind":"node_binary_refresh_fetch_stale"
+if ! git fetch origin main --quiet 2>>"$LOG"; then
+    log "WARN: git fetch failed (offline? auth expired?); building from last-known local main"
+    emit node_binary_refresh_fetch_stale "\"reason\":\"fetch_failed\""
+fi
 MAIN_SHA="$(git rev-parse --short=12 origin/main 2>/dev/null || git rev-parse --short=12 HEAD)"
 log "origin/main = $MAIN_SHA  (repo: $REPO_ROOT)"
 

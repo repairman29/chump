@@ -1,0 +1,13 @@
+# INFRA-3598 — pairs with chump-self-deploy-audit.service. Fires every
+# 10 minutes so a stale clone or a failed organ is caught well within the
+# gap's "N minutes, no human" acceptance bar.
+[Unit]
+Description=Run the Chump self-deploy audit every 10 minutes (INFRA-3598)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

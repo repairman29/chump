@@ -1,0 +1,19 @@
+# INFRA-3598 — audits the merge->deploy loop itself: clone currency vs
+# origin/main, live unit drift vs tracked repo copies, and any failed
+# chump-* organ. Emits kind=self_deploy_audit every cycle so the board can
+# verify the loop is actually running instead of trusting it's present on
+# disk (INFRA-3593 was marked done with no way to check that).
+#
+# CHUMP_REPO_ROOT is REQUIRED: the script's default $HOME/Projects/Chump is
+# capital-C and does not exist on case-sensitive Linux (see
+# docs/process/LINUX_NODE_ONBOARDING.md).
+[Unit]
+Description=Chump self-deploy audit — prove the merge->deploy loop is live (INFRA-3598)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_SELF_DEPLOY_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/self-deploy-audit.sh'

@@ -16,16 +16,20 @@
 #   chump-organ-watchdog (INFRA-3595)    — self-heals any failed chump-*
 #                                           organ (reset-failed + restart), no
 #                                           human step required
+#   chump-self-deploy-audit (INFRA-3598) — proves the merge->deploy loop is
+#                                           actually running: clone currency,
+#                                           unit drift, organ health, emitted
+#                                           as kind=self_deploy_audit
 #
 # Before RESILIENT-300, these were live-hacked directly into /etc/systemd/system
 # and ~/.config/systemd/user — a node rebuild silently lost ATC. This script is
 # the single, idempotent entrypoint that re-establishes the whole roster from
 # tracked repo files.
 #
-# pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog are SYSTEM units
-# (root-owned, /etc/systemd/system) — this script must run as root (or via
-# sudo). node-refresh is a USER unit (systemd --user) — installed by
-# delegating to install-node-refresh-systemd.sh.
+# pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog,
+# self-deploy-audit are SYSTEM units (root-owned, /etc/systemd/system) — this
+# script must run as root (or via sudo). node-refresh is a USER unit
+# (systemd --user) — installed by delegating to install-node-refresh-systemd.sh.
 #
 # Idempotent: safe to re-run any time (e.g. after a node rebuild, or to pick up
 # unit-file changes) — copies + daemon-reload + enable --now every time.
@@ -82,8 +86,10 @@ SYSTEM_UNITS=(
   chump-sla-scorecard.timer
   chump-organ-watchdog.service
   chump-organ-watchdog.timer
+  chump-self-deploy-audit.service
+  chump-self-deploy-audit.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-self-deploy-audit.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
@@ -115,7 +121,7 @@ if [[ "$(id -u)" != "0" ]]; then
   exit 1
 fi
 
-echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog) =="
+echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog, self-deploy-audit) =="
 CHANGED_UNITS=()
 for unit in "${SYSTEM_UNITS[@]}"; do
   src="$REPO_ROOT/scripts/dispatch/$unit"
