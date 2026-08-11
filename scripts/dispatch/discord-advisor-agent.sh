@@ -119,13 +119,19 @@ saying so — a silent failure is worse than an honest one."
 # itself; this comment is the pairing anchor the registry gate scans for
 # since the literal above lives inside an escaped-quote bash string).
 
-ALLOWED_TOOLS="Bash(${ALMANAC_BIN}*) Bash(git log*) Bash(git status*) Bash(git diff*) Bash(git fetch*) Bash(gh pr list*) Bash(gh pr view*) Bash(gh issue list*) Bash(sqlite3*) Bash(chump gap list*) Bash(chump gap view*) Bash(chump --briefing*) Bash(cat*) Bash(tail*) Bash(source scripts/coord/lib/notify-operator.sh*) Bash(scripts/coord/lib/notify-operator.sh*) Bash(printf*) Bash(echo*)"
+ALLOWED_TOOLS=(
+    "Bash(${ALMANAC_BIN}*)" "Bash(git log*)" "Bash(git status*)" "Bash(git diff*)"
+    "Bash(git fetch*)" "Bash(gh pr list*)" "Bash(gh pr view*)" "Bash(gh issue list*)"
+    "Bash(sqlite3*)" "Bash(chump gap list*)" "Bash(chump gap view*)" "Bash(chump --briefing*)"
+    "Bash(cat*)" "Bash(tail*)" "Bash(source scripts/coord/lib/notify-operator.sh*)"
+    "Bash(scripts/coord/lib/notify-operator.sh*)" "Bash(printf*)" "Bash(echo*)"
+)
 
 cycle_output=""
 cycle_rc=0
 CLAUDE_ARGS=(-p "$PROMPT"
     --tools "Read,Grep,Glob,Bash"
-    --allowedTools $ALLOWED_TOOLS
+    --allowedTools "${ALLOWED_TOOLS[@]}"
     --disallowedTools "Edit,Write,NotebookEdit"
     --permission-mode dontAsk
     --max-budget-usd "$BUDGET_USD"
