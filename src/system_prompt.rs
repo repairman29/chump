@@ -145,7 +145,7 @@ fn a2a_team_block(is_mabel: bool) -> String {
     }
 }
 
-pub fn chump_system_prompt(context: &str, is_mabel: bool, voice: bool) -> String {
+pub fn chump_system_prompt(context: &str, is_mabel: bool, voice: bool, advisor: bool) -> String {
     // PRODUCT-065: web-slim early exit — ultra-compact prompt for local models.
     // Benchmarked: Chump's full system prompt + 6 tools = 35s on M4/qwen3:8b.
     // This 200-char prompt + 6 tools = ~10s. The prompt IS the bottleneck.
@@ -345,10 +345,15 @@ pub fn chump_system_prompt(context: &str, is_mabel: bool, voice: bool) -> String
     // of context (where small models attend most). Only when this agent turn
     // originated from /api/voice/ask (voice=true). The honesty rail for code
     // + short spoken-format rules apply only to voice turns.
-    if voice {
+    let with_voice = if voice {
         format!("{}\n{}", final_prompt, VOICE_ADDENDUM)
     } else {
         final_prompt
+    };
+    if advisor {
+        format!("{}\n{}", with_voice, ADVISOR_ADDENDUM)
+    } else {
+        with_voice
     }
 }
 
@@ -392,6 +397,42 @@ VOICE OUTPUT FORMAT:
 When the user says \"done\", \"stop\", \"that's all\", \"goodbye\", or similar — end the
 turn cleanly; the route handles session close.";
 
+/// INFRA-3597 — The Advisor addendum, appended to the base Chump system prompt
+/// when the agent turn originated from `/api/advisor/ask` (the Discord DM
+/// advisor surface). Distinct from `VOICE_ADDENDUM`: this is a text turn (full
+/// markdown OK, no spoken-format constraint), but the same honesty rail and
+/// the same hard "advisor only" boundary apply — the Advisor's whole job is to
+/// KNOW everything (almanac_search as the proxy for the whole fleet) and TALK
+/// to Jeff, never to act. This turn's tool registry is ALSO restricted to
+/// `tool_inventory::register_advisor_tools` (read-only) — the addendum below
+/// is belt, the registry restriction is suspenders (same two-layer pattern as
+/// CREDIBLE-181's review-only tools).
+///
+/// See docs/design/VOICE_ADVISOR.md for the shared brain/knowledge/transport
+/// rationale this reuses.
+pub const ADVISOR_ADDENDUM: &str = "
+
+ADVISOR ADDENDUM — this turn came in over the Advisor surface (Discord DM). Hard rules:
+
+- You are The Advisor: your whole job is to KNOW everything about the operation (almanac
+  as the proxy for the whole fleet, plus whatever live state you can read) and TALK to
+  Jeff about it. You are NOT a developer here — you do not write code, edit files, run
+  commands, ship, merge, or take any destructive or ops action, even if asked. Your tool
+  belt this turn is read-only by construction (almanac_search, read_file, list_dir,
+  grep_repo, memory_brain) — there is no write/run/git tool available to reach for.
+- Call almanac_search FIRST for any question about code, a repo, a PR, or fleet state.
+  It spans the whole fleet, not just ChumpOS.
+- Every concrete claim — a PR's status, a CI gate's name, a file's path, a function's
+  signature, whether something exists — MUST come from a tool result this turn or a
+  prior turn of this session. NEVER invent, estimate, or guess. If you don't know, say
+  so, or call a tool.
+- If Jeff asks for something actionable (ship this, fix that, file a gap, restart a
+  daemon), do NOT attempt it. Say plainly that it's outside what the Advisor does and
+  that it needs to go through the ops/board layer (e.g. dispatch, a gap, the fleet
+  loop) — you can describe what SHOULD happen, you just don't do it yourself.
+- Normal text formatting is fine here (markdown, lists) — this is a DM, not a spoken
+  reply. Keep answers grounded and no longer than they need to be to actually answer.";
+
 #[cfg(test)]
 mod meta013_snapshot {
     //! META-013 acceptance criterion: chump_system_prompt() output structure
@@ -409,8 +450,12 @@ mod meta013_snapshot {
         std::env::remove_var("CHUMP_LIGHT_INTERACTIVE");
         std::env::remove_var("CHUMP_AIR_GAP_MODE");
         std::env::remove_var("CHUMP_MABEL");
-        let prompt =
-            super::chump_system_prompt("## Test context\nseed=meta-013-baseline\n", false, false);
+        let prompt = super::chump_system_prompt(
+            "## Test context\nseed=meta-013-baseline\n",
+            false,
+            false,
+            false,
+        );
         assert!(
             prompt.contains("HARD RULES"),
             "must contain HARD RULES section"
@@ -448,8 +493,9 @@ mod meta013_snapshot {
         std::env::remove_var("CHUMP_LIGHT_INTERACTIVE");
         std::env::remove_var("CHUMP_AIR_GAP_MODE");
         std::env::remove_var("CHUMP_MABEL");
-        let with_voice = super::chump_system_prompt("## Test\nseed=eff-422\n", false, true);
-        let without_voice = super::chump_system_prompt("## Test\nseed=eff-422\n", false, false);
+        let with_voice = super::chump_system_prompt("## Test\nseed=eff-422\n", false, true, false);
+        let without_voice =
+            super::chump_system_prompt("## Test\nseed=eff-422\n", false, false, false);
         assert!(
             with_voice.contains(super::VOICE_ADDENDUM),
             "voice=true must append VOICE_ADDENDUM"
@@ -468,6 +514,39 @@ mod meta013_snapshot {
         assert!(
             with_voice.contains("MUST come from a tool result"),
             "voice addendum must enforce source-of-truth discipline"
+        );
+    }
+
+    /// INFRA-3597: advisor=true appends ADVISOR_ADDENDUM (the "know
+    /// everything, act on nothing" boundary the Discord DM advisor surface
+    /// uses). advisor=false must NOT append it.
+    #[test]
+    fn chump_system_prompt_advisor_addendum_only_when_advisor() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("CHUMP_THINKING");
+        std::env::remove_var("CHUMP_CASCADE_ENABLED");
+        std::env::remove_var("CHUMP_LIGHT_INTERACTIVE");
+        std::env::remove_var("CHUMP_AIR_GAP_MODE");
+        std::env::remove_var("CHUMP_MABEL");
+        let with_advisor =
+            super::chump_system_prompt("## Test\nseed=infra-3597\n", false, false, true);
+        let without_advisor =
+            super::chump_system_prompt("## Test\nseed=infra-3597\n", false, false, false);
+        assert!(
+            with_advisor.contains(super::ADVISOR_ADDENDUM),
+            "advisor=true must append ADVISOR_ADDENDUM"
+        );
+        assert!(
+            !without_advisor.contains(super::ADVISOR_ADDENDUM),
+            "advisor=false must NOT append ADVISOR_ADDENDUM"
+        );
+        assert!(
+            with_advisor.contains("NOT a developer here"),
+            "advisor addendum must state the advisor-only boundary"
+        );
+        assert!(
+            with_advisor.contains("needs to go through the ops/board layer"),
+            "advisor addendum must hand off actionable items rather than act"
         );
     }
 }

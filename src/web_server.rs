@@ -78,6 +78,13 @@ struct ChatRequest {
     /// plain /api/chat leaves it false so the PWA keeps its full rich reply.
     #[serde(default)]
     voice: Option<bool>,
+    /// INFRA-3597 — when true, the agent registry is restricted to
+    /// `tool_inventory::register_advisor_tools` (read-only) and
+    /// ADVISOR_ADDENDUM is appended to the system prompt. Set by
+    /// `/api/advisor/ask` (the Discord DM advisor surface); the plain
+    /// `/api/chat` leaves it false so the PWA keeps its full developer belt.
+    #[serde(default)]
+    advisor: Option<bool>,
 }
 
 #[derive(serde::Deserialize)]
@@ -4085,6 +4092,7 @@ async fn handle_chat(
         &session_id,
         bot,
         body.voice.unwrap_or(false),
+        body.advisor.unwrap_or(false),
     )
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     #[cfg(feature = "mistralrs-infer")]
@@ -4236,6 +4244,7 @@ async fn handle_voice_ask(headers: HeaderMap, Json(body): Json<VoiceAskBody>) ->
         bot: None,
         policy_override: None,
         voice: Some(true),
+        advisor: None,
     };
 
     // Run the kill-gate (cost threshold) the same way /api/chat does, then
@@ -4317,6 +4326,70 @@ fn parse_sse_to_spoken(body: &str) -> Option<String> {
     } else {
         Some(last_text)
     }
+}
+
+// ── INFRA-3597: The Advisor — Discord DM text seam into /api/chat ───────────
+
+#[derive(serde::Deserialize)]
+struct AdvisorAskBody {
+    /// The DM text the Discord advisor bridge POSTs.
+    #[serde(default)]
+    text: String,
+}
+
+/// POST /api/advisor/ask — Discord DM ("The Advisor") entry point. Distinct
+/// from `/api/voice/ask` (spoken, TTS-friendly): this is a text reply, full
+/// markdown OK. Reuses the SAME agent loop /api/chat and /api/voice/ask use —
+/// `advisor: Some(true)` restricts the tool registry to
+/// `tool_inventory::register_advisor_tools` (read-only) and appends
+/// ADVISOR_ADDENDUM so the agent knows it converses and advises, never acts.
+///
+/// Auth: same `CHUMP_WEB_TOKEN` Bearer guard as /api/chat (check_auth).
+/// Session: a stable id (`CHUMP_ADVISOR_SESSION_ID`, default "advisor") so
+/// the DM conversation has its own persisted context thread in
+/// web_sessions_db, separate from web/voice/Discord-developer sessions.
+/// This route running on the ChumpOS web server (not the desktop app) is
+/// what makes the Advisor always-available with the desktop app closed.
+async fn handle_advisor_ask(headers: HeaderMap, Json(body): Json<AdvisorAskBody>) -> Response {
+    if !check_auth(&headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
+    let text = body.text.trim();
+    if text.is_empty() {
+        return Json(serde_json::json!({
+            "reply": "Didn't catch a question — ask me anything about the operation.",
+        }))
+        .into_response();
+    }
+
+    // Pin one stable session id for the advisor conversation so it has its
+    // own persisted context thread in web_sessions_db (separate from
+    // web/voice/Discord-developer sessions).
+    let advisor_session_id = std::env::var("CHUMP_ADVISOR_SESSION_ID")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "advisor".to_string());
+
+    // Reuse the SAME /api/chat agent-spawn body by handing the request
+    // through handle_chat's kill-gate wrapper, but with advisor=true so the
+    // agent gets the read-only tool registry + ADVISOR_ADDENDUM. Drain the
+    // SSE stream to a single reply string instead of returning the stream.
+    let chat_body = ChatRequest {
+        message: text.to_string(),
+        session_id: Some(advisor_session_id.clone()),
+        attachments: None,
+        bot: None,
+        policy_override: None,
+        voice: None,
+        advisor: Some(true),
+    };
+
+    let sse_response = handle_chat_with_kill_gate(headers, Json(chat_body)).await;
+    let reply = match drain_sse_response(sse_response).await {
+        Ok(s) => s,
+        Err(code) => return (code, "stream drain failed").into_response(),
+    };
+    Json(serde_json::json!({ "reply": reply })).into_response()
 }
 
 // ── FLEET-003b: atomic blackboard exchange endpoint ──────────────────────────
@@ -9185,6 +9258,7 @@ fn build_api_router() -> Router {
         .route("/api/roadmap", get(routes::roadmap::handle_roadmap))
         .route("/api/chat", post(handle_chat_with_kill_gate))
         .route("/api/voice/ask", post(handle_voice_ask))
+        .route("/api/advisor/ask", post(handle_advisor_ask))
         .route("/api/stop", post(handle_stop))
         .route("/api/tts", get(handle_tts))
         .route("/api/inject-hint", post(handle_inject_hint))
