@@ -4,13 +4,21 @@
 #
 # WHY THIS EXISTS. #3621 rotted 18h unmerged and nothing on the board owned
 # that as a violation — no goal, no threshold, no page. Operator decision
-# (Jeff, 2026-08-11): HARD THRESHOLD 30 MINUTES. Any open PR unmerged >30m
-# must have (a) merged, (b) a named owner actively working it (an active
-# claim lease for the gap the PR closes), or (c) an escalation already sent
-# to the operator — otherwise it is a board BREACH.
+# (Jeff, 2026-08-11): open PRs unmerged past the breach threshold must have
+# (a) merged, (b) a named owner actively working it (an active claim lease
+# for the gap the PR closes), or (c) an escalation already sent to the
+# operator — otherwise it is a board BREACH.
 #
 # Board cadence is 15m (docs/process/SCHEDULING_LAYERS.md daemon pattern via
-# `chump cron install`), so a fresh 30m breach is caught within one cycle.
+# `chump cron install`), so a fresh breach is caught within one cycle.
+#
+# RATCHET NOTE (INFRA-3592). The threshold starts loose (60m) and tightens
+# as the tail improves: 60 -> 45 -> 30, moving down a notch once p90 (see
+# scorecard output below) settles comfortably under the next line. Benchmark
+# 2026-08-11: p50=14m p90=299m — p90 is nowhere near 60m yet, so 60m is the
+# honest starting line rather than a threshold nothing can ever hit. Tighten
+# via CHUMP_SLA_BREACH_MINUTES as the p90 trend improves; don't hand-edit the
+# default without a fresh benchmark to justify the new line.
 #
 # Usage:
 #   scripts/coord/merge-sla-scorecard.sh             # dry-run, prints scorecard
@@ -39,7 +47,8 @@ source "${SCRIPT_DIR}/lib/ambient-write.sh"
 # shellcheck source=lib/notify-operator.sh
 [[ -f "${SCRIPT_DIR}/lib/notify-operator.sh" ]] && source "${SCRIPT_DIR}/lib/notify-operator.sh"
 
-THRESHOLD_S="${CHUMP_SLA_MERGE_THRESHOLD_S:-1800}"                    # 30m, hard threshold
+THRESHOLD_MINUTES="${CHUMP_SLA_BREACH_MINUTES:-60}"                   # ratchet: 60 -> 45 -> 30
+THRESHOLD_S="${CHUMP_SLA_MERGE_THRESHOLD_S:-$((THRESHOLD_MINUTES * 60))}"
 RESEND_COOLDOWN_S="${CHUMP_SLA_BREACH_RESEND_COOLDOWN_S:-1800}"       # 30m
 
 APPLY=0
@@ -75,6 +84,8 @@ breach_count=0
 owned_count=0
 escalated_count=0
 skipped_dedup=0
+ages_tmp="$(mktemp)"
+trap 'rm -f "$prs_tmp" "$ages_tmp"' EXIT
 
 while IFS='|' read -r pr_num created_at title head_ref; do
     [ -z "$pr_num" ] && continue
@@ -89,6 +100,7 @@ except Exception: print(0)
 " "$created_at" 2>/dev/null || echo 0)"
     [ "$created_epoch" = "0" ] && continue
     age_s=$(( now_epoch - created_epoch ))
+    echo "$age_s" >> "$ages_tmp"
     [ "$age_s" -lt "$THRESHOLD_S" ] && continue
 
     gap_id="$(echo "$title" | grep -oE '[A-Z]+-[0-9]+' | head -1)"
@@ -149,5 +161,23 @@ except Exception: print('')
     fi
 done < "$prs_tmp"
 
-echo "[merge-sla-scorecard] open=$open_count breaches=$breach_count owned=$owned_count escalated=$escalated_count skipped-dedup=$skipped_dedup threshold_s=$THRESHOLD_S"
+# p50/p90 of open-PR age so the tail is visible alongside the breach count —
+# the ratchet (see header) tightens THRESHOLD_MINUTES as p90 falls.
+p50=0
+p90=0
+if [ -s "$ages_tmp" ]; then
+    read -r p50 p90 <<EOF
+$(python3 -c "
+import sys
+ages = sorted(int(l) for l in open(sys.argv[1]) if l.strip())
+def pct(p):
+    if not ages: return 0
+    idx = min(len(ages) - 1, int(round((p / 100.0) * (len(ages) - 1))))
+    return ages[idx]
+print(pct(50), pct(90))
+" "$ages_tmp")
+EOF
+fi
+
+echo "[merge-sla-scorecard] open=$open_count breaches=$breach_count owned=$owned_count escalated=$escalated_count skipped-dedup=$skipped_dedup threshold_s=$THRESHOLD_S p50_s=$p50 p90_s=$p90"
 exit 0
