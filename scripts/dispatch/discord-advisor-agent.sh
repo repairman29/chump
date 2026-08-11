@@ -103,10 +103,11 @@ you got this turn. NEVER invent, estimate, or guess a repo/PR/gate/file \
 fact. If you don't know, say so, or call a tool.
 4. Compose a terse, useful reply (a few sentences, conversational — this may \
 be read aloud per the voice slice later, so avoid markdown tables/headers) \
-and send it to Jeff via: 'source scripts/coord/lib/notify-operator.sh && \
-CHUMP_NOTIFY_KIND=discord_advisor_reply notify_operator \"<reply>\"'. This \
-is the ONLY way your answer reaches Jeff — you MUST call it before \
-stopping, even if the question was unclear (reply saying so).
+and send it to Jeff via this EXACT single-command form (do not use 'source' \
++ '&&' — that compound is denied outright): \
+'CHUMP_NOTIFY_KIND=discord_advisor_reply scripts/coord/lib/notify-operator.sh \
+\"<reply>\"'. This is the ONLY way your answer reaches Jeff — you MUST call \
+it before stopping, even if the question was unclear (reply saying so).
 5. Append exactly one line to .chump-locks/ambient.jsonl (via printf, JSON-\
 escaping the question text yourself):
    {\"ts\":\"<utc>\",\"kind\":\"discord_advisor_agent_completed\",\"question\":\"<escaped question>\",\"replied\":<true|false>}
@@ -119,13 +120,53 @@ saying so — a silent failure is worse than an honest one."
 # itself; this comment is the pairing anchor the registry gate scans for
 # since the literal above lives inside an escaped-quote bash string).
 
-ALLOWED_TOOLS="Bash(${ALMANAC_BIN}*) Bash(git log*) Bash(git status*) Bash(git diff*) Bash(git fetch*) Bash(gh pr list*) Bash(gh pr view*) Bash(gh issue list*) Bash(sqlite3*) Bash(chump gap list*) Bash(chump gap view*) Bash(chump --briefing*) Bash(cat*) Bash(tail*) Bash(source scripts/coord/lib/notify-operator.sh*) Bash(scripts/coord/lib/notify-operator.sh*) Bash(printf*) Bash(echo*)"
+ALLOWED_TOOLS=(
+    "Bash(${ALMANAC_BIN}*)"
+    "Bash(git log*)"
+    "Bash(git status*)"
+    "Bash(git diff*)"
+    "Bash(git fetch*)"
+    "Bash(gh pr list*)"
+    "Bash(gh pr view*)"
+    "Bash(gh issue list*)"
+    "Bash(sqlite3*)"
+    "Bash(chump gap list*)"
+    "Bash(chump gap view*)"
+    "Bash(chump --briefing*)"
+    "Bash(cat*)"
+    "Bash(tail*)"
+    "Bash(CHUMP_NOTIFY_KIND=discord_advisor_reply scripts/coord/lib/notify-operator.sh*)"
+    "Bash(scripts/coord/lib/notify-operator.sh*)"
+    "Bash(printf*)"
+    "Bash(echo*)"
+)
+
+# INFRA-3602: OAUTH defensive read — the Discord gateway invokes this script
+# from a bare process (launchd/cron-style), not an interactive `claude`
+# session, so CLAUDE_CODE_OAUTH_TOKEN is not inherited. Same pattern as
+# fix-trunk-dispatcher.sh's INFRA-2340 fix: load it from the fleet's
+# refreshed copy at ~/.chump/oauth-token.json if neither auth env var is
+# already set (env wins for explicit overrides / api-key mode).
+if [[ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
+    if [[ -r "$HOME/.chump/oauth-token.json" ]]; then
+        _token=$(python3 -c "import json; print(json.load(open('$HOME/.chump/oauth-token.json')).get('token',''))" 2>/dev/null)
+        if [[ -n "$_token" ]]; then
+            export CLAUDE_CODE_OAUTH_TOKEN="$_token"
+            log "loaded CLAUDE_CODE_OAUTH_TOKEN from ~/.chump/oauth-token.json (len=${#_token})"
+        else
+            log "WARN: ~/.chump/oauth-token.json present but token key empty"
+        fi
+        unset _token
+    else
+        log "WARN: no CLAUDE_CODE_OAUTH_TOKEN, no ANTHROPIC_API_KEY, no readable ~/.chump/oauth-token.json — advisor will likely 401"
+    fi
+fi
 
 cycle_output=""
 cycle_rc=0
 CLAUDE_ARGS=(-p "$PROMPT"
     --tools "Read,Grep,Glob,Bash"
-    --allowedTools $ALLOWED_TOOLS
+    --allowedTools "${ALLOWED_TOOLS[@]}"
     --disallowedTools "Edit,Write,NotebookEdit"
     --permission-mode dontAsk
     --max-budget-usd "$BUDGET_USD"
