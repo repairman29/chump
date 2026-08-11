@@ -33,8 +33,8 @@ git -C "$TMP/repo" init -q
 git -C "$TMP/repo" -c user.email=t@t -c user.name=t add -A
 git -C "$TMP/repo" -c user.email=t@t -c user.name=t commit -q -m s
 
-# old unowned PR (created 1h ago) → BREACH
-old_ts="$(date -u -v -1H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)"
+# old unowned PR (created 2h ago) → BREACH (clear of the 60m default threshold)
+old_ts="$(date -u -v -2H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '-2 hours' +%Y-%m-%dT%H:%M:%SZ)"
 echo "100|$old_ts|feat(INFRA-3001): old unowned PR|chump/foo" > "$TMP/list.json"
 # fresh PR (5m ago) → SKIPPED (under threshold)
 fresh_ts="$(date -u -v -5M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '-5 minutes' +%Y-%m-%dT%H:%M:%SZ)"
@@ -82,6 +82,19 @@ out4=$(cd "$TMP/repo" && bash scripts/coord/merge-sla-scorecard.sh --apply --coo
 echo "$out4" | grep -q "escalated=1" \
     || fail "--cooldown 0 must let resend through: $out4"
 ok "--cooldown 0 disables dedup"
+
+# ── Test 5: scorecard reports p50/p90, threshold defaults to 60m ───────────
+echo "$out4" | grep -q "threshold_s=3600" \
+    || fail "expected default threshold_s=3600 (60m, CHUMP_SLA_BREACH_MINUTES default): $out4"
+echo "$out4" | grep -Eq "p50_s=[0-9]+ p90_s=[0-9]+" \
+    || fail "expected p50_s/p90_s in scorecard output: $out4"
+ok "scorecard reports p50/p90 and defaults threshold to 60m"
+
+# ── Test 6: CHUMP_SLA_BREACH_MINUTES overrides the threshold ───────────────
+out5=$(cd "$TMP/repo" && CHUMP_SLA_BREACH_MINUTES=15 bash scripts/coord/merge-sla-scorecard.sh 2>&1)
+echo "$out5" | grep -q "threshold_s=900" \
+    || fail "CHUMP_SLA_BREACH_MINUTES=15 should set threshold_s=900: $out5"
+ok "CHUMP_SLA_BREACH_MINUTES overrides threshold_s"
 
 echo
 echo "All RESILIENT-302 merge-sla-scorecard tests passed."
