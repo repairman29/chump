@@ -947,6 +947,13 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // scripts/coord/chump-runner-autoscale.sh or
         // scripts/setup/install-runner-autoscale.sh. Pure grep, no network, <1s.
         "scripts/ci/test-runner-autoscale-max-default.sh",
+        // CREDIBLE-269: `verified` aggregator decision-logic guard — proves
+        // scripts/ci/aggregator-verified.sh's lane classification (PASS/FAIL/
+        // PENDING) matches docs/design/CI_VERIFIED_AGGREGATOR.md §2.2-2.3.
+        // Pure bash, no network, no GitHub context needed — the ci.yml
+        // `verified` job step itself IS GitHub-context-dependent (needs.*.result)
+        // and is allowlisted separately in preflight-ci-parity-exceptions.txt.
+        "scripts/ci/test-aggregator-verified.sh",
     ];
     candidates
         .iter()

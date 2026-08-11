@@ -169,6 +169,11 @@ CI_YML_INFRA_JOBS = {
     "audit-required", "clippy-stub", "cargo-test-stub",
     "fast-checks-stub", "audit-stub",
     "tauri-cowork-e2e", "e2e",  # META-267: matrixed pwa/battle-sim/golden-path into single job
+    # CREDIBLE-269: `verified` is the same shape as the *-required rollups
+    # above — an `if: always()` aggregator over needs.*.result, not an
+    # independently-runnable local gate. Its decision logic is mirrored
+    # separately via scripts/ci/aggregator-verified.sh + test-aggregator-verified.sh.
+    "verified",
 }
 
 # Sibling workflow jobs that are purely infrastructure/release/cloud — not

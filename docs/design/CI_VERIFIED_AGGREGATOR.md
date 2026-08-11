@@ -1,6 +1,19 @@
 # CI `verified` Aggregator — Architecture Spec (META-134)
 
-> **Status:** Design v1 — pre-build review surface.
+> **Status:** Week 1 (shadow) landed — CREDIBLE-269 (SHIP-INFRA 1/7, 2026-08-11).
+> `scripts/ci/aggregator-verified.sh` implements the §2.2-2.3 lane-classification
+> decision logic (unit-tested by `scripts/ci/test-aggregator-verified.sh`) and a
+> `verified` job in `.github/workflows/ci.yml` runs it on every PR over the
+> ci.yml-local lanes (`fast-checks`, `clippy`, `cargo-test`, `pr-hygiene`, `test`),
+> emitting `kind=verified_aggregator_decision` to `ambient.jsonl`. **Not yet
+> required by branch protection or ruleset 15133729** — `test` + `audit` +
+> `ACP protocol smoke test` remain the three enforced contexts
+> (`docs/baselines/branch-protection-main.json`). `audit` (audit.yml) and
+> `ACP protocol smoke test` (editor-integration.yml) live in separate
+> workflows, so folding them into this same-workflow `needs:` graph isn't
+> possible — a cross-workflow aggregator (Checks-API poll, §6 Week 2/3 below)
+> is the next SHIP-INFRA slice before branch-protection/ruleset can be flipped
+> to require only `verified`.
 > **Slice of:** META-131 (CI Required-Check Productization).
 > **Pair doc:** [`docs/strategy/CI_POLICY_AUDIT.md`](../strategy/CI_POLICY_AUDIT.md) (META-133 — inventory of today's state).
 > **Filed:** 2026-05-30, owner: curator-opus-handoff.
