@@ -469,6 +469,39 @@ jobs:
           fi
           echo "All shards green (or appropriately skipped / cascade-cancelled)."
 
+  # ── verified: single legible aggregator (CREDIBLE-269, SHIP-INFRA 1/7) ────
+  # Foundation slice of the `verified` aggregator described in
+  # docs/design/CI_VERIFIED_AGGREGATOR.md (META-134): one job that classifies
+  # every ci.yml lane's result via scripts/ci/aggregator-verified.sh and
+  # prints a single PASS/FAIL/PENDING verdict + emits
+  # kind=verified_aggregator_decision to ambient.jsonl for offline audit.
+  #
+  # Week-1 (shadow) scope: this job runs on every PR but branch protection
+  # does NOT yet require it — `test` + `audit` + `ACP protocol smoke test`
+  # remain the enforced contexts (docs/baselines/branch-protection-main.json).
+  # audit.yml and editor-integration.yml are separate workflows, so folding
+  # their lanes into this same-workflow `needs:` graph isn't possible; a
+  # cross-workflow aggregator (Checks-API poll) is the follow-up slice before
+  # branch-protection/ruleset can be flipped to require only `verified`.
+  verified:
+    name: verified
+    needs: [fast-checks, clippy, cargo-test, pr-hygiene, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v7
+      - name: Aggregate lane verdicts (CREDIBLE-269 / META-134)
+        run: |
+          bash scripts/ci/aggregator-verified.sh \
+            --lane "fast-checks=${{ needs.fast-checks.result }}" \
+            --lane "clippy=${{ needs.clippy.result }}" \
+            --lane "cargo-test=${{ needs.cargo-test.result }}" \
+            --lane "pr-hygiene=${{ needs.pr-hygiene.result }}" \
+            --lane "test=${{ needs.test.result }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha || github.sha }}"
+
   # ── PR hygiene (CREDIBLE-042/043) ─────────────────────────────────────────
   # Runs on EVERY pull_request regardless of which paths changed. Catches the
   # two PR-shape failure classes that produced the worst incidents in early
