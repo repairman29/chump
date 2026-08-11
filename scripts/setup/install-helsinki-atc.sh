@@ -2,17 +2,20 @@
 # scripts/setup/install-helsinki-atc.sh — RESILIENT-300
 #
 # Establishes the full "ATC roster" on the primary node (helsinki) from a
-# fresh clone: the trio of self-maintenance daemons that keep the shipping
-# pipeline moving without an agent having to remember them:
+# fresh clone: the self-maintenance daemons that keep the shipping pipeline
+# moving without an agent having to remember them:
 #
 #   chump-pr-lander      (RESILIENT-288) — arms green-but-unarmed PRs so they merge
 #   chump-armed-rebaser  (INFRA-3473)    — rebases armed PRs that drift BEHIND/DIRTY
 #   chump-node-refresh   (RESILIENT-200) — keeps the installed chump binary current
+#   chump-board-cycle    (INFRA-3590)    — Sonnet board-cycle agent: SLA score +
+#                                           stall classify + Discord report, zero
+#                                           desktop session required
 #
-# Before this gap (RESILIENT-300), all three were live-hacked directly into
-# /etc/systemd/system and ~/.config/systemd/user — a node rebuild silently lost
-# ATC. This script is the single, idempotent entrypoint that re-establishes the
-# whole roster from tracked repo files.
+# Before RESILIENT-300, these were live-hacked directly into /etc/systemd/system
+# and ~/.config/systemd/user — a node rebuild silently lost ATC. This script is
+# the single, idempotent entrypoint that re-establishes the whole roster from
+# tracked repo files.
 #
 # pr-lander + armed-rebaser are SYSTEM units (root-owned, /etc/systemd/system) —
 # this script must run as root (or via sudo). node-refresh is a USER unit
@@ -36,8 +39,10 @@ SYSTEM_UNITS=(
   chump-pr-lander.timer
   chump-armed-rebaser.service
   chump-armed-rebaser.timer
+  chump-board-cycle.service
+  chump-board-cycle.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
