@@ -158,6 +158,38 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _notify_operator_escalation(kind: str, message: str) -> None:
+    """CREDIBLE-275: route a destructive-class ambient event through the
+    RESILIENT-263 escalation channel (scripts/coord/lib/notify-operator.sh),
+    not just ambient.jsonl.
+
+    Why this exists: EVENT_REGISTRY.yaml declared consumers=[fleet-brief,
+    ops-audit, waste-tally] for gap_flipped_done_on_merge, but none of those
+    tools ever read the kind — 30 auto-flips across 8 PRs went unnoticed
+    (CREDIBLE-268). notify_operator is a real, grep-verifiable consumer: it
+    reads CHUMP_NOTIFY_KIND, consults scripts/coord/operator-escalation-registry.txt,
+    and either DMs the operator or (quiet-by-default) writes a distinct
+    operator_notify_suppressed ambient event — either way, something acts on
+    the signal instead of it sitting unread.
+
+    Best-effort; a broken notifier must not break the receiver it reports on.
+    """
+    lib = _repo_root() / "scripts" / "coord" / "lib" / "notify-operator.sh"
+    if not lib.is_file():
+        return
+    try:
+        subprocess.run(
+            ["bash", "-c", 'source "$0" && notify_operator "$1"', str(lib), message],
+            cwd=str(_repo_root()),
+            env={**os.environ, "CHUMP_NOTIFY_KIND": kind},
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (subprocess.SubprocessError, OSError) as e:
+        log.warning("CREDIBLE-275: notify_operator errored for kind=%s: %s", kind, e)
+
+
 def _extract_gap_ids(pr: dict) -> list[str]:
     """Extract gap IDs from PR title + body.
 
@@ -364,6 +396,11 @@ def _auto_flip_gaps_done(pr: dict, payload: dict) -> int:
             })
             log.info("CREDIBLE-092: flipped gap %s -> done (merged via PR #%s)",
                      gid, pr_number)
+            _notify_operator_escalation(
+                "gap_flipped_done_on_merge",
+                f"Gap {gid} auto-flipped to done on merge of PR "
+                f"#{pr_number} (github.com/repairman29/chump/pull/{pr_number}).",
+            )
         else:
             log.warning("CREDIBLE-092: flip gap %s failed (rc=%s): %s",
                         gid, result.returncode, (result.stderr or "").strip()[:200])

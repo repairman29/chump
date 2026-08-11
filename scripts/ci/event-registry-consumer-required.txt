@@ -1,0 +1,15 @@
+# event-registry-consumer-required.txt — CREDIBLE-275 ratchet.
+#
+# Kinds listed here MUST have at least one declared `consumers:` entry in
+# EVENT_REGISTRY.yaml that actually references the kind string in code
+# (verified by scripts/ci/test-event-registry-coverage.sh). This is a
+# ratchet, not a blanket requirement — most of the registry's consumers
+# fields are undischarged documentation today (see the
+# unverified-consumers count the gate reports every run). Add a kind here
+# only once you've wired a real consumer for it; that turns "large backlog"
+# into a shrinking, honestly-tracked debt list instead of a boil-the-ocean
+# fix.
+#
+# Format: one kind per line, optional trailing `# reason` comment.
+
+gap_flipped_done_on_merge	# CREDIBLE-275: destructive (closes gaps); wired to scripts/coord/lib/notify-operator.sh (RESILIENT-263 escalation sink)

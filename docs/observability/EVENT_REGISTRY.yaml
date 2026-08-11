@@ -8900,15 +8900,20 @@ events:
 
   - kind: gap_flipped_done_on_merge
     effect_metric: zero_waste
-    emitter: scripts/ops/github-webhook-receiver.py _auto_flip_merged_gaps (CREDIBLE-092)
+    emitter: scripts/ops/github-webhook-receiver.py _auto_flip_gaps_done (CREDIBLE-092)
     # scanner-anchor: "kind":"gap_flipped_done_on_merge"
     trigger: >
       Webhook receiver saw a pull_request closed event with merged=true whose
-      title/branch referenced gap IDs still open in state.db, and flipped each
-      to status=done with the PR number. Kills the ghost-gap waste pattern
-      where merged gaps stayed open and got re-claimed (the CI-side
-      auto-flip-on-merge.yml could never reach the canonical state.db).
-    consumers: [fleet-brief, ops-audit, waste-tally]
+      TITLE named a gap ID (or whose body had an explicit `Closes: <ID>`
+      trailer — see _extract_gap_ids_for_closure, CREDIBLE-268 FIX 1), still
+      open in state.db, and flipped each to status=done with the PR number.
+      Kills the ghost-gap waste pattern where merged gaps stayed open and got
+      re-claimed (the CI-side auto-flip-on-merge.yml could never reach the
+      canonical state.db). CREDIBLE-275: this trigger prose previously said
+      "title/branch" — the code has never read the branch name, only title
+      and (pre-CREDIBLE-268) the full body; that drift is exactly what let
+      30 collateral gap closures across 8 PRs go unnoticed (CREDIBLE-268).
+    consumers: [scripts/coord/operator-escalation-registry.txt (RESILIENT-263 notify-operator.sh playbook ledger; wired via CHUMP_NOTIFY_KIND, CREDIBLE-275)]
     fields_required: [ts, kind, gap_id, pr_number]
     status: stable
   - kind: gap_autoflip_suppressed
