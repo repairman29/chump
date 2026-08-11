@@ -5512,6 +5512,29 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, healed, dry_run]
 
+  - kind: organ_clone_refreshed
+    effect_metric: self
+    emitter: scripts/ops/organ-watchdog.sh (INFRA-3598,
+      CHUMP_ORGAN_WATCHDOG_CLONE_REFRESH=1 on the production unit only)
+    trigger: the watchdog's deploy clone was behind origin/main and got
+      fast-forwarded before reconciling chump-*.service/.timer units — proof
+      the clone this watchdog reads tracked units from auto-stays-current
+      (INFRA-3598 AC 5), fixing the false-done gap where node-refresh-
+      chump.sh's unprivileged install-helsinki-atc.sh --auto call silently
+      no-op'd and never reached a working merge->deploy loop.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, prev_sha, new_sha]
+
+  - kind: organ_clone_refresh_failed
+    effect_metric: self
+    emitter: scripts/ops/organ-watchdog.sh (INFRA-3598)
+    trigger: the watchdog's deploy-clone fetch or hard-reset to origin/main
+      failed (offline, or a broken checkout) — surfaced so a stale deploy
+      clone (and therefore stale reconciled units) is observable rather than
+      silently perpetuating a false-done deploy loop.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason]
+
   - kind: pre_restart
     effect_metric: self
     emitter: src/main.rs (chump fleet restart prep)
