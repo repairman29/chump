@@ -32,6 +32,7 @@ queue_health_check_failed	suppress	# monitor assumes-healthy; not operator-actio
 reaper_silent	suppress	# has install runbook (install-stale-*-reaper)
 fleet_wedge	suppress	# INFRA-518 scaling back-off is the runbook
 gap_autoflip_suppressed	suppress	# CREDIBLE-268 informational audit trail
+gap_flipped_done_on_merge	suppress	# CREDIBLE-275: routine when correct (title/Closes:-scoped extraction); wiring this as a real consumer gives it an audited operator_notify_suppressed trail instead of the void it sat in before
 oauth_token_refreshed	suppress
 ci_flake_rerun	suppress	# nextest flake wrapper + manual rerun playbook
 

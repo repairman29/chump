@@ -322,6 +322,149 @@ while i < len(lines):
                 kinds_missing_effect_metric.append(kind_name)
     i += 1
 
+# ── CREDIBLE-275: consumer verification + emitter/trigger drift ────────────
+# The gate above only ever says the word "emitter" — it never checks whether
+# a declared consumer actually reads the kind it claims to watch, and it
+# never checks whether the declared emitter path/function even exists. Both
+# gaps let EVENT_REGISTRY.yaml's gap_flipped_done_on_merge entry lie for
+# months: three phantom consumers (fleet-brief, ops-audit, waste-tally, none
+# of which reference the kind) and an emitter function name
+# (_auto_flip_merged_gaps) that was never the real function
+# (_auto_flip_gaps_done) — see CREDIBLE-268 for what that hid.
+#
+# Per-kind consumers + emitter, reusing the same '- kind:' block boundaries
+# as the effect_metric scan above.
+kind_consumers = {}
+kind_emitter = {}
+i = 0
+while i < len(lines):
+    m = re.match(r'^\s*-\s+kind:\s*([A-Za-z0-9_]+)', lines[i])
+    if m:
+        kind_name = m.group(1)
+        j = i + 1
+        while j < len(lines) and not re.match(r'^\s*-\s+kind:', lines[j]):
+            cm = re.match(r'^\s+consumers:\s*\[(.*)\]\s*$', lines[j])
+            if cm:
+                kind_consumers[kind_name] = cm.group(1)
+            em = re.match(r'^\s+emitter:\s*(\S.*)$', lines[j])
+            if em:
+                kind_emitter[kind_name] = em.group(1).strip()
+            j += 1
+    i += 1
+
+
+def _split_consumers(raw):
+    """Split a `consumers: [...]` inner string on top-level commas only —
+    entries may contain their own parenthesized commas, e.g.
+    'dashboard (future, INFRA-1883)'."""
+    parts, buf, depth = [], "", 0
+    for ch in raw:
+        if ch in "([<":
+            depth += 1
+        elif ch in ")]>":
+            depth = max(0, depth - 1)
+        if ch == "," and depth == 0:
+            parts.append(buf.strip())
+            buf = ""
+        else:
+            buf += ch
+    if buf.strip():
+        parts.append(buf.strip())
+    return [p for p in parts if p]
+
+
+_CONSUMER_STOPWORDS = {
+    "future", "chump", "dashboard", "panel", "adapter", "messaging",
+    "operator", "audit", "findings", "view", "watch", "watchdog",
+    "web", "cockpit", "report", "wired", "escalation", "sink",
+}
+
+
+def _consumer_tokens(name):
+    base = re.sub(r'\([^)]*\)', '', name)
+    base = re.sub(r'<[^>]*>', '', base)
+    toks = re.findall(r'[a-zA-Z0-9]+', base.lower())
+    return [t for t in toks if len(t) >= 4 and t not in _CONSUMER_STOPWORDS]
+
+
+_repo_files_cache = None
+
+
+def _repo_files():
+    global _repo_files_cache
+    if _repo_files_cache is None:
+        proc = subprocess.run(['git', 'ls-files'], capture_output=True, text=True)
+        _repo_files_cache = [
+            f for f in proc.stdout.splitlines()
+            if f and not f.startswith('docs/') and 'node_modules' not in f
+        ]
+    return _repo_files_cache
+
+
+_file_content_cache = {}
+
+
+def _read_cached(path):
+    if path not in _file_content_cache:
+        try:
+            _file_content_cache[path] = pathlib.Path(path).read_text(errors='replace')
+        except OSError:
+            _file_content_cache[path] = ""
+    return _file_content_cache[path]
+
+
+def _emitter_path(emitter_raw):
+    """First whitespace-separated token that looks like a repo-relative path."""
+    for tok in emitter_raw.split():
+        tok = tok.strip('()')
+        if '/' in tok and not tok.startswith('('):
+            return tok
+    return None
+
+
+def _consumer_verified(kind_name, consumers_raw, emitter_file):
+    for cname in _split_consumers(consumers_raw):
+        toks = _consumer_tokens(cname)
+        if not toks:
+            continue
+        candidates = [f for f in _repo_files()
+                      if any(t in f.lower() for t in toks) and f != emitter_file]
+        for f in candidates:
+            if kind_name in _read_cached(f):
+                return True, cname, f
+    return False, None, None
+
+
+unverified_consumer_kinds = []
+missing_emitter_kinds = []
+for kind_name, consumers_raw in kind_consumers.items():
+    if not consumers_raw.strip():
+        continue
+    emitter_raw = kind_emitter.get(kind_name, "")
+    emitter_file = _emitter_path(emitter_raw)
+    if emitter_file and not pathlib.Path(emitter_file).is_file():
+        missing_emitter_kinds.append((kind_name, emitter_file))
+    verified, _, _ = _consumer_verified(kind_name, consumers_raw, emitter_file)
+    if not verified:
+        unverified_consumer_kinds.append(kind_name)
+
+# Ratchet: only these specific kinds FAIL the build on unverified consumers.
+# Everything else is reported (see AC2's "large first-run backlog"), not
+# enforced — the backlog is real fleet-wide debt, not something one gap
+# should mass-fix. Add a kind here only once you've actually wired a real
+# consumer for it (see gap_flipped_done_on_merge / CREDIBLE-275 for the
+# pattern: scripts/coord/lib/notify-operator.sh via CHUMP_NOTIFY_KIND).
+required_consumer_kinds = set()
+required_path = pathlib.Path('scripts/ci/event-registry-consumer-required.txt')
+if required_path.is_file():
+    for ln in required_path.read_text().splitlines():
+        s = ln.split('#', 1)[0].strip()
+        if s:
+            required_consumer_kinds.add(s)
+required_consumer_failures = sorted(
+    k for k in required_consumer_kinds if k in unverified_consumer_kinds
+)
+
 # ── Report ──
 print(f"[event-registry-audit] mode={mode}")
 print(f"[event-registry-audit] registered={len(registered)} "
@@ -348,6 +491,22 @@ if register_without_emit:
             print(f"  ... +{len(register_without_emit)-5} more "
                   f"(run with CHUMP_REGISTRY_GATE_MODE=report for full list)")
 
+# CREDIBLE-275: the size of this count IS the write-only-telemetry finding —
+# see AC2. Reported every run regardless of mode; not gated on 'report'.
+print(f"[event-registry-audit] missing-emitter-file: {len(missing_emitter_kinds)}")
+for k, f in missing_emitter_kinds[:5]:
+    print(f"  MISSING-EMITTER: {k} -> {f}")
+if len(missing_emitter_kinds) > 5:
+    print(f"  ... +{len(missing_emitter_kinds)-5} more")
+print(f"[event-registry-audit] unverified-consumers (declared, none reference "
+      f"the kind): {len(unverified_consumer_kinds)}")
+if mode == 'report':
+    for k in sorted(unverified_consumer_kinds):
+        print(f"  UNVERIFIED-CONSUMER: {k}")
+if required_consumer_failures:
+    print(f"[event-registry-audit] REQUIRED consumer verification FAILED for: "
+          f"{', '.join(required_consumer_failures)}")
+
 # ── Exit policy ──
 if mode == 'report':
     sys.exit(0)
@@ -372,6 +531,17 @@ if kinds_missing_effect_metric:
           "EVENT_REGISTRY_FORMAT.md for guidance.",
           file=sys.stderr)
     sys.exit(3)
+# CREDIBLE-275: kinds in scripts/ci/event-registry-consumer-required.txt must
+# have at least one declared consumer that actually references the kind.
+# Ratchet, not a blanket requirement — see the comment at required_path above.
+if required_consumer_failures:
+    print("[event-registry-audit] FAIL: required-consumer verification — "
+          "these kinds are in scripts/ci/event-registry-consumer-required.txt "
+          "but none of their declared consumers reference the kind in code. "
+          "Wire a real consumer (see gap_flipped_done_on_merge / CREDIBLE-275) "
+          "or remove the kind from the required-consumer list.",
+          file=sys.stderr)
+    sys.exit(4)
 print("[event-registry-audit] OK")
 sys.exit(0)
 PYEOF
