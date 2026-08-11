@@ -587,6 +587,73 @@ that specific hardware: any future M4-lane restoration needs the runner
 the target Mac), not merely diagnosed — registration-loss, not a live
 checkout flake, is the current blocker.
 
+### Queue contention investigation (2026-08-11, INFRA-3547 slice)
+
+**Question:** is self-hosted queue contention a root cause of the 2026-05-20/21
+checkout flake (independent of the concurrency-group cancellation bug the
+INFRA-3546 slice identified), and does the current queue configuration need
+adjustment?
+
+**Finding: queue contention is a contributing/amplifying factor, not the root
+cause.** INFRA-3546 established the primary trigger as PR-number-keyed
+`concurrency:` cancellation (fixed by INFRA-1852). Queue contention explains
+*why self-hosted jobs specifically* — and not the parallel github-hosted
+`ubuntu-latest` jobs on the same PRs — were the ones caught mid-queue and
+showing `steps: []` at cancellation time: at incident time there were only
+3-4 physical Mac minis serving 5 self-hosted job types (`audit`, `coverage`,
+`e2e-pwa`, `e2e-golden-path`, `tauri-cowork-e2e`) across every open PR, so a
+self-hosted job routinely sat queued for longer than a github-hosted job
+(which draws from GitHub's much larger shared pool) needed to start and
+finish. The longer queued-but-not-started window is what made self-hosted
+jobs disproportionately likely to still be pending — and therefore
+cancellable with zero steps run — when a follow-up push cancelled the
+concurrency group. Queue depth did not *cause* the cancellation; it widened
+the blast radius of the cancellation bug onto self-hosted jobs.
+
+**Config gap found while investigating.** `scripts/coord/chump-runner-autoscale.sh`
+(INFRA-1535 slice 1) already exists to scale the M4 runner pool up when
+`queue_depth > online * 2` sustained 2 min — this is the queue-contention
+mitigation the fleet built for exactly this failure mode. But its ceiling,
+`CHUMP_RUNNER_M4_MAX` (also hardcoded as the launchd-plist default in
+`scripts/setup/install-runner-autoscale.sh`), defaults to **2**, while the
+"Capacity guidance" section above (line ~432) documents **4** macOS-ARM64
+runners as the actual current fleet size. An autoscaler capped at 2 can't
+relieve contention across 4+ physical runners — it will report `online=2` as
+already "at max" while runners 3/4 sit unused for scale-up. This is a
+latent version of the same mechanism that produced the original incident:
+the queue depth vs. capacity mismatch, just enforced by a config ceiling
+instead of missing hardware.
+
+**Recommendations:**
+
+1. **Raise `CHUMP_RUNNER_M4_MAX` to match real capacity.** Set it to the
+   live physical runner count (4, per Capacity guidance) rather than the
+   `2` default baked into `install-runner-autoscale.sh`, so the autoscaler
+   can actually use the hardware that exists:
+   ```bash
+   CHUMP_RUNNER_M4_MAX=4 scripts/setup/install-runner-autoscale.sh
+   ```
+2. **Confirm the autoscale daemon is actually installed and running**
+   before re-enabling self-hosted lanes (INFRA-3403) — `--status` should
+   show a live decision loop, not just a plist on disk:
+   ```bash
+   scripts/coord/chump-runner-autoscale.sh --status
+   ```
+   An autoscaler that isn't running provides no queue-contention mitigation
+   regardless of `MAX_RUNNERS`.
+3. **Restore lanes one at a time (already required by INFRA-3403)** so any
+   residual queue-contention signal is attributable to a single lane, not a
+   blended signal across 5 newly-reactivated job types at once.
+4. **Merge Queue remains the structural fix for convoy thrash** (see "Plan
+   tier note" above, INFRA-1377) — it eliminates the repeated
+   cancel-and-requeue pattern at the source rather than relying on
+   capacity to outrun it. Queue contention becomes moot once concurrent
+   in-flight PRs are serialized before they reach CI.
+5. No further scheduler/queue-ordering change is warranted beyond (1)-(4):
+   the concurrency-group keying bug (the actual root cause) is already
+   fixed on `main`, and the remaining exposure is capacity headroom, which
+   (1)-(2) close directly.
+
 ### Operator note
 
 Hardware economics matter — the dual RTX 6000 Blackwell roadmap is
