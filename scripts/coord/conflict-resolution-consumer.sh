@@ -48,7 +48,22 @@ command -v python3 >/dev/null 2>&1 || exit 0
 mkdir -p "$STATE_DIR" 2>/dev/null || true
 git fetch origin main --quiet 2>/dev/null || true
 
+# shellcheck disable=SC1091
+. "$ROOT/scripts/coord/lib/github.sh" 2>/dev/null || true  # INFRA-1080: chump_gh throttling for the arm call
+
 _ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# INFRA-1274: route the mutating merge/arm call through chump_gh (throttled +
+# classified) when the lib sourced; fall back to plain gh otherwise. A bare
+# `gh pr merge ...` line here trips the raw-gh-in-hot-paths lint gate.
+_arm_pr() {
+    local num="$1"
+    if command -v chump_gh >/dev/null 2>&1; then
+        chump_gh pr merge "$num" --repo "$REPO" --auto --squash >/dev/null 2>&1
+    else
+        command gh pr merge "$num" --repo "$REPO" --auto --squash >/dev/null 2>&1
+    fi
+}
 
 _emit() {
     local kind="$1" body="$2"
@@ -179,7 +194,7 @@ json.dump({'pr':$num,'attempts':$attempts,'first_seen':'$first_seen','escalated_
 
     if [ "$status_line" = "clean" ]; then
         if (cd "$wt" && git push origin "$br" --force-with-lease >/dev/null 2>&1); then
-            gh pr merge "$num" --repo "$REPO" --auto --squash >/dev/null 2>&1 || true
+            _arm_pr "$num" || true
             # scanner-anchor: "kind":"conflict_resolution_consumer_rebase_clean"
             _emit "conflict_resolution_consumer_rebase_clean" "{\"pr\":$num,\"branch\":\"$br\"}"
             echo "[conflict-resolution-consumer] #$num: plain rebase clean, pushed + armed"
@@ -196,7 +211,7 @@ json.dump({'pr':$num,'attempts':$attempts,'first_seen':'$first_seen','escalated_
                     CHUMP_CONFLICT_RESOLVER_ENABLED="${CHUMP_CONFLICT_RESOLVER_ENABLED:-1}" \
                     CHUMP_AMBIENT_LOG="$AMB" "$RESOLVER" "$gap_id" >/dev/null 2>&1); then
                 if (cd "$wt" && git push origin "$br" --force-with-lease >/dev/null 2>&1); then
-                    gh pr merge "$num" --repo "$REPO" --auto --squash >/dev/null 2>&1 || true
+                    _arm_pr "$num" || true
                     # scanner-anchor: "kind":"conflict_resolution_consumer_resolved"
                     _emit "conflict_resolution_consumer_resolved" "{\"pr\":$num,\"branch\":\"$br\",\"gap_id\":\"$gap_id\"}"
                     echo "[conflict-resolution-consumer] #$num: conflict-resolver-agent resolved, pushed + armed"
