@@ -58,13 +58,50 @@ worktree_is_active() {
   local lock_dir="$repo_root/.chump-locks"
 
   # ── 1. Fresh lease referencing this worktree ───────────────────────────────
+  # RESILIENT-218: `chump claim` writes worktrees at the deterministic path
+  # <base>/chump-<gap_id.lower()> (crates/chump-atomic-claim), but its lease
+  # JSON (write_basic_lease) never carries the worktree path or basename —
+  # only session_id/paths/taken_at/expires_at/heartbeat_at/purpose/gap_id.
+  # `grep -q "$base" "$lease"` therefore silently fails to correlate a real
+  # lease to its worktree (e.g. basename "chump-effective-330" never appears
+  # in a lease whose purpose is "gap:EFFECTIVE-330"), so a genuinely-claimed
+  # worktree can fall through this guard entirely once its git-index/
+  # uncommitted/unpushed signals (checks 2-3 below) go quiet — the exact
+  # tier3-destroys-a-live-claim incident in RESILIENT-218's evidence. Derive
+  # the gap_id the worktree basename implies and match it directly against
+  # each lease's gap_id field (a real field lookup) in addition to the old
+  # substring grep, which stays as a fallback for leases that do embed the
+  # worktree path/basename in free text.
   if [ -z "$reason" ] && [ -d "$lock_dir" ]; then
     local base; base="$(basename "$wt")"
+    local expected_gap=""
+    case "$base" in
+      chump-*) expected_gap="$(printf '%s' "${base#chump-}" | tr '[:lower:]' '[:upper:]')" ;;
+    esac
     local lease
     for lease in "$lock_dir"/*.json; do
       [ -f "$lease" ] || continue
       case "$lease" in */inbox/*) continue ;; esac
-      grep -q "$base" "$lease" 2>/dev/null || continue
+      if ! grep -q "$base" "$lease" 2>/dev/null; then
+        # No substring match — only proceed if the lease's gap_id field
+        # directly matches the gap this worktree's basename implies.
+        if [ -n "$expected_gap" ]; then
+          local gap_match
+          gap_match="$(LEASE="$lease" EXPECTED="$expected_gap" python3 - <<'PY' 2>/dev/null
+import json, os
+lease = os.environ["LEASE"]; expected = os.environ["EXPECTED"]
+try:
+    d = json.load(open(lease))
+    print("1" if str(d.get("gap_id", "")).upper() == expected else "0")
+except Exception:
+    print("0")
+PY
+)"
+          [ "$gap_match" = "1" ] || continue
+        else
+          continue
+        fi
+      fi
       local fresh
       fresh="$(LEASE="$lease" LEASE_MIN="$lease_min" python3 - <<'PY' 2>/dev/null
 import json, os, time, datetime

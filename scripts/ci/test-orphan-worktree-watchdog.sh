@@ -264,6 +264,38 @@ else
     fail "T5: expected detect event for t5-noclaim, none found. ambient: $(cat "$FAKE_AMBIENT")"
 fi
 
+# ── T6: RESILIENT-218 — realistic claim (purpose has no worktree-path/branch
+#        substring, only gap_id) for a chump-<gap> worktree → claim_gap_id
+#        resolves via direct gap_id field match, not null ─────────────────────
+echo "--- T6: realistic gap_id-only claim → claim_gap_id resolves (RESILIENT-218) ---"
+WT6=$(make_worktree "effective-330")
+echo "uncommitted work" > "$WT6/work.txt"
+git -C "$WT6" add work.txt
+DEAD_SID6="dead-session-t6-$(date +%s)"
+# Realistic chump-claim schema (crates/chump-atomic-claim write_basic_lease):
+# purpose is "gap:<GAP-ID>" only — no worktree path, no branch text.
+cat > "$FAKE_LOCKS/claim-effective-330-${DEAD_SID6}.json" <<EOF
+{
+    "session_id": "$DEAD_SID6",
+    "gap_id": "EFFECTIVE-330",
+    "purpose": "gap:EFFECTIVE-330",
+    "taken_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+backdate_mtime "$WT6" 1800
+
+: > "$FAKE_AMBIENT"
+# shellcheck disable=SC2119
+run_watchdog_in_repo > /dev/null 2>&1 || true
+event_line="$(grep "orphan_worktree_detected" "$FAKE_AMBIENT" | grep "effective-330" || true)"
+if [[ -z "$event_line" ]]; then
+    fail "T6: expected detect event for effective-330, none found. ambient: $(cat "$FAKE_AMBIENT")"
+elif echo "$event_line" | grep -q '"claim_gap_id":"EFFECTIVE-330"'; then
+    pass "T6: realistic gap_id-only claim → claim_gap_id:EFFECTIVE-330 (not null)"
+else
+    fail "T6: claim_gap_id did not resolve to EFFECTIVE-330 — the RESILIENT-218 bug. event: $event_line"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 if [[ $FAILURES -eq 0 ]]; then

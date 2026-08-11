@@ -41,6 +41,23 @@ if worktree_is_active "$WT_UNCO" "$FAKE_REPO"; then pass "uncommitted → active
 WT_UNPUSH="$TMP/chump-unpush"; git_init "$WT_UNPUSH"; commit_one "$WT_UNPUSH"; age_index "$WT_UNPUSH"
 if worktree_is_active "$WT_UNPUSH" "$FAKE_REPO"; then pass "unpushed (HEAD on no remote) → active"; else fail "unpushed NOT protected"; fi
 
+# ── 3b. RESILIENT-218: realistic lease (no worktree-path field, only
+#        gap_id — the actual `chump claim` schema) for a chump-<gap> named
+#        worktree → ACTIVE via direct gap_id field match, not substring grep.
+WT_REAL="$TMP/chump-effective-330"; git_init "$WT_REAL"; commit_one "$WT_REAL"; age_index "$WT_REAL"
+BARE_REAL="$TMP/remote-real.git"; git init -q --bare "$BARE_REAL"
+git -C "$WT_REAL" remote add origin "$BARE_REAL" 2>/dev/null || true
+git -C "$WT_REAL" push -q origin HEAD:refs/heads/chump/effective-330 2>/dev/null
+git -C "$WT_REAL" branch --set-upstream-to=origin/chump/effective-330 2>/dev/null || true
+now_iso2="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf '{"session_id":"claim-effective-330-999-123","paths":[],"taken_at":"%s","expires_at":"2099-01-01T00:00:00Z","heartbeat_at":"%s","purpose":"gap:EFFECTIVE-330","gap_id":"EFFECTIVE-330"}\n' \
+  "$now_iso2" "$now_iso2" > "$FAKE_REPO/.chump-locks/claim-effective-330-999-123.json"
+if worktree_is_active "$WT_REAL" "$FAKE_REPO"; then
+  pass "RESILIENT-218: realistic gap_id-only lease → active (no false claim_gap_id:null destroy)"
+else
+  fail "RESILIENT-218: realistic gap_id-only lease NOT protected — this is the tier3-destroys-live-claim bug"
+fi
+
 # ── 4. clean + pushed + old index + no lease → REAPABLE ──────────────────────
 BARE="$TMP/remote.git"; git init -q --bare "$BARE"
 WT_CLEAN="$TMP/chump-clean"; git clone -q "$BARE" "$WT_CLEAN" 2>/dev/null
