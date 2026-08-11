@@ -709,6 +709,17 @@ one-lane-at-a-time restoration order above (INFRA-3403) — but it removes
 the config ceiling that would otherwise blunt the autoscaler once
 restoration resumes.
 
+### Regression guard for the autoscale ceiling fix (2026-08-11, INFRA-3561 slice)
+
+The INFRA-3549 fix above (raising `CHUMP_RUNNER_M4_MAX` default from `2` to
+`4`) had nothing guarding it against silently reverting. `chump preflight`
+and `.github/workflows/ci.yml` now both run
+`scripts/ci/test-runner-autoscale-max-default.sh`, which asserts the
+`CHUMP_RUNNER_M4_MAX:-4` default is present in both
+`scripts/coord/chump-runner-autoscale.sh` and
+`scripts/setup/install-runner-autoscale.sh`. If either place regresses
+back to `2` (or drifts out of sync with the other), the test fails.
+
 ### Operator note
 
 Hardware economics matter — the dual RTX 6000 Blackwell roadmap is
