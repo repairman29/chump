@@ -889,8 +889,22 @@ fn release(ws: &Workspace) -> Result<()> {
     // INFRA-302 blocker (3): release from the worktree so the same
     // session-ID resolution that wrote the lease (under
     // `<worktree>/.chump-locks/`) sees it for cleanup.
+    //
+    // RESILIENT-293: dispatch always knows exactly which session it's
+    // releasing (the current one) — this is never an interactive call.
+    // Without `--force`, `chump --release` prints "Confirm? [y/N]" and
+    // blocks on `stdin::read_line`. Under `--backend headless` there is no
+    // TTY feeding that prompt, so the subprocess (and the whole dispatch
+    // cycle behind it) hangs indefinitely instead of failing fast. Passing
+    // `--force` skips the prompt entirely, matching the non-interactive
+    // nature of this call site. `.stdin(Stdio::null())` is a second,
+    // defense-in-depth guard: even if a future code path re-adds a prompt,
+    // reading from a closed stdin returns immediately (EOF) instead of
+    // blocking on an inherited-but-never-fed pipe.
     let status = Command::new(&chump)
         .arg("--release")
+        .arg("--force")
+        .stdin(std::process::Stdio::null())
         .current_dir(ws.working_dir())
         .status()
         .with_context(|| format!("spawning chump --release (binary: {})", chump.display()))?;
@@ -900,34 +914,48 @@ fn release(ws: &Workspace) -> Result<()> {
     Ok(())
 }
 
-/// Release the lease with one retry on transient failure. On second failure:
+/// Release the lease with retries on transient failure (e.g. a sibling
+/// worker holding a brief SQLite write-lock on the fleet's shared state.db —
+/// "database is locked" under load, RESILIENT-293). On final failure:
 /// - emits `kind=lease_release_failed` to ambient.jsonl (INFRA-1243)
 /// - logs via `tracing::error!`
 /// - propagates via `bail!` so the dispatch caller sees the failure
 ///
 /// Lease files carry a TTL so a missed release auto-recovers; this function
 /// makes the gap deliberate and observable rather than silently lost.
+///
+/// RESILIENT-293: bumped from a single 500ms retry to 4 attempts with
+/// exponential backoff (250ms → 2s, ~3.75s total budget). A hot node under
+/// fleet load can hold a sibling worker's write-lock on state.db for longer
+/// than one 500ms window; a single retry wasn't enough headroom to ride out
+/// that contention, so `chump dispatch --backend headless` aborted (and
+/// leaked the lease until TTL) on nodes that were otherwise healthy.
 fn release_with_retry(ws: &Workspace) -> Result<()> {
-    match release(ws) {
-        Ok(()) => return Ok(()),
-        Err(e) => {
-            eprintln!("[dispatch] WARNING: lease release failed (attempt 1/2), retrying: {e:#}");
+    const MAX_ATTEMPTS: u32 = 4;
+    let mut delay_ms: u64 = 250;
+    for attempt in 1..=MAX_ATTEMPTS {
+        match release(ws) {
+            Ok(()) => return Ok(()),
+            Err(e) if attempt < MAX_ATTEMPTS => {
+                eprintln!(
+                    "[dispatch] WARNING: lease release failed (attempt {attempt}/{MAX_ATTEMPTS}), retrying: {e:#}"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                delay_ms = (delay_ms * 2).min(2000);
+            }
+            Err(e) => {
+                let msg = format!("{e:#}");
+                emit_lease_release_failed(ws.opts().gap_id, &msg);
+                tracing::error!(
+                    gap_id = ws.opts().gap_id,
+                    error = %e,
+                    "lease release failed after {MAX_ATTEMPTS} attempts — lease may persist until TTL"
+                );
+                bail!("lease release failed after {MAX_ATTEMPTS} attempts: {e:#}");
+            }
         }
     }
-    std::thread::sleep(std::time::Duration::from_millis(500));
-    match release(ws) {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            let msg = format!("{e:#}");
-            emit_lease_release_failed(ws.opts().gap_id, &msg);
-            tracing::error!(
-                gap_id = ws.opts().gap_id,
-                error = %e,
-                "lease release failed after 2 attempts — lease may persist until TTL"
-            );
-            bail!("lease release failed after 2 attempts: {e:#}");
-        }
-    }
+    unreachable!("loop always returns via Ok/bail! within MAX_ATTEMPTS iterations");
 }
 
 /// Emit a `lease_release_failed` event to ambient.jsonl (INFRA-1243).
@@ -1384,8 +1412,8 @@ mod tests {
         let err = release_with_retry(&ws).unwrap_err();
         let msg = format!("{err:#}");
         assert!(
-            msg.contains("failed after 2 attempts"),
-            "expected '2 attempts' in error message, got: {msg}"
+            msg.contains("failed after 4 attempts"),
+            "expected '4 attempts' in error message, got: {msg}"
         );
 
         let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
@@ -1438,6 +1466,162 @@ mod tests {
             msg.contains("chump --release exited with"),
             "expected exit-status error, got: {msg}"
         );
+    }
+
+    // ── RESILIENT-293: headless release must never block on stdin ────────────
+
+    /// `release()` must pass `--force` to the `chump --release` subprocess so
+    /// the interactive "Confirm? [y/N]" prompt (src/main.rs) is never
+    /// triggered. Before the fix, this call had no `--force`, so under
+    /// `--backend headless` (no TTY feeding stdin) the subprocess would hang
+    /// forever on `stdin::read_line`.
+    ///
+    /// The fake `chump` binary here exits 1 unless invoked with `--force` —
+    /// exactly mirroring the real binary's behavior of only skipping the
+    /// prompt (and thus succeeding non-interactively) when `--force` is
+    /// present. Without the fix, this test fails because `release()` returns
+    /// `Err("chump --release exited with exit status: 1")`.
+    #[test]
+    fn release_passes_force_flag_to_avoid_interactive_prompt() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        let dir = tmp.path();
+
+        let target_dir = dir.join("target/release");
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let fake_chump = target_dir.join("chump");
+        std::fs::write(
+            &fake_chump,
+            "#!/usr/bin/env bash\n\
+             for a in \"$@\"; do [ \"$a\" = \"--force\" ] && exit 0; done\n\
+             exit 1\n",
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(&fake_chump).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&fake_chump, perms).unwrap();
+
+        let opts = DispatchOptions {
+            gap_id: "RESILIENT-293-FORCE",
+            work: WorkBackend::Interactive,
+            auto_merge: false,
+            skip_tests: true,
+            paths: None,
+            repo_root: dir.to_path_buf(),
+        };
+        let ws = ws_with_dir(&opts, dir.to_path_buf());
+
+        let result = release(&ws);
+        assert!(
+            result.is_ok(),
+            "release() must pass --force so the fake binary (and by extension \
+             the real one) never hits the interactive confirm prompt, got: {result:?}"
+        );
+    }
+
+    /// `release()` must run with stdin closed (`Stdio::null`), so that even
+    /// if a prompt is ever (re-)triggered, a `read_line` call sees immediate
+    /// EOF instead of blocking on an inherited-but-unfed pipe — the second,
+    /// defense-in-depth half of the RESILIENT-293 fix.
+    #[test]
+    fn release_runs_with_stdin_closed() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        let dir = tmp.path();
+
+        let target_dir = dir.join("target/release");
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let fake_chump = target_dir.join("chump");
+        // `read` on a closed stdin returns immediately with a non-zero exit
+        // (no data): if stdin were inherited (a live, unfed pipe) this would
+        // hang instead of returning promptly, and the test would time out.
+        std::fs::write(&fake_chump, "#!/usr/bin/env bash\nread -r line\nexit 0\n").unwrap();
+        let mut perms = std::fs::metadata(&fake_chump).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&fake_chump, perms).unwrap();
+
+        let opts = DispatchOptions {
+            gap_id: "RESILIENT-293-STDIN",
+            work: WorkBackend::Interactive,
+            auto_merge: false,
+            skip_tests: true,
+            paths: None,
+            repo_root: dir.to_path_buf(),
+        };
+        let ws = ws_with_dir(&opts, dir.to_path_buf());
+
+        // If this call hangs, the test binary itself will hang/timeout —
+        // that failure mode is the bug this test guards against.
+        let result = release(&ws);
+        assert!(
+            result.is_ok(),
+            "release() should complete promptly with stdin closed, got: {result:?}"
+        );
+    }
+
+    /// `release_with_retry` must survive transient failures that clear up
+    /// within the retry budget (simulating a sibling worker's brief
+    /// "database is locked" hold on state.db under fleet load). Before the
+    /// RESILIENT-293 bump (1 retry / 500ms), a lock held across the single
+    /// retry window aborted the whole dispatch cycle; the 4-attempt,
+    /// exponential-backoff budget (~3.75s) rides it out.
+    #[test]
+    #[serial_test::serial(ambient_env)]
+    fn release_with_retry_survives_transient_failures_within_budget() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        let dir = tmp.path();
+
+        let target_dir = dir.join("target/release");
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let fake_chump = target_dir.join("chump");
+        let counter = dir.join("attempts");
+        std::fs::write(&counter, "0").unwrap();
+        // Fails on the first 3 invocations ("database is locked"), succeeds
+        // on the 4th — exactly the attempt budget release_with_retry now has.
+        std::fs::write(
+            &fake_chump,
+            format!(
+                "#!/usr/bin/env bash\n\
+                 n=$(cat '{counter}')\n\
+                 n=$((n + 1))\n\
+                 echo \"$n\" > '{counter}'\n\
+                 if [ \"$n\" -lt 4 ]; then exit 1; fi\n\
+                 exit 0\n",
+                counter = counter.display()
+            ),
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(&fake_chump).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&fake_chump, perms).unwrap();
+
+        let ambient = dir.join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", ambient.to_string_lossy().as_ref());
+
+        let opts = DispatchOptions {
+            gap_id: "RESILIENT-293-RETRY",
+            work: WorkBackend::Interactive,
+            auto_merge: false,
+            skip_tests: true,
+            paths: None,
+            repo_root: dir.to_path_buf(),
+        };
+        let ws = ws_with_dir(&opts, dir.to_path_buf());
+
+        let result = release_with_retry(&ws);
+        assert!(
+            result.is_ok(),
+            "release_with_retry should survive 3 transient failures within its \
+             4-attempt budget, got: {result:?}"
+        );
+        let final_count = std::fs::read_to_string(&counter).unwrap();
+        assert_eq!(final_count.trim(), "4", "expected exactly 4 attempts");
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
     }
 
     // ── RESILIENT-203: opencode repo-size guard ───────────────────────────────
