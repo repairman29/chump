@@ -334,6 +334,54 @@ fn do_work(ws: &Workspace) -> Result<()> {
     }
 }
 
+/// RESILIENT-203: opencode's project init/context-load does not scale to
+/// the full Chump repo (746k LOC) — reproduced hanging deterministically at
+/// `init` on BOTH `opencode-go/kimi-k2.7-code` and `opencode-go/deepseek-v4-pro`,
+/// so it is model-independent, not a model-quality problem. Left unguarded,
+/// `wait_with_hang_detection` burns its full timeout on every large-repo
+/// dispatch before giving up. Fail fast instead by counting tracked files
+/// before spawning; point the operator at `CHUMP_WORK_BACKEND=chump-local`
+/// (the proven cheap-fleet path — native `chump --execute-gap` tools are
+/// scoped to the worktree, not a repo-wide scan).
+const OPENCODE_MAX_TRACKED_FILES: u64 = 5_000;
+
+/// Count tracked files in `working_dir` and bail if the count exceeds the
+/// threshold where opencode is known to hang at init. Returns `Ok(())`
+/// (does not block) when the file count can't be determined — e.g. `git`
+/// isn't available or `working_dir` isn't a git repo — since that's not the
+/// condition this guard exists to catch.
+fn opencode_repo_size_guard(working_dir: &Path) -> Result<()> {
+    let max_files: u64 = std::env::var("CHUMP_OPENCODE_MAX_FILES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(OPENCODE_MAX_TRACKED_FILES);
+
+    let output = Command::new("git")
+        .arg("ls-files")
+        .current_dir(working_dir)
+        .output();
+    let output = match output {
+        Ok(o) if o.status.success() => o,
+        _ => return Ok(()),
+    };
+    let file_count = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .count() as u64;
+
+    if file_count > max_files {
+        bail!(
+            "opencode repo-size guard (RESILIENT-203): {file_count} tracked files \
+             in {} exceeds the {max_files}-file threshold where opencode's \
+             init/context-load hangs deterministically (reproduced \
+             model-independently on the 746k-LOC Chump repo). Use \
+             CHUMP_WORK_BACKEND=chump-local instead.",
+            working_dir.display()
+        );
+    }
+    Ok(())
+}
+
 /// EFFECTIVE-017 — `WorkBackend::Opencode`.
 fn spawn_opencode(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     let opts = ws.opts();
@@ -343,6 +391,8 @@ fn spawn_opencode(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
             opts.gap_id
         );
     }
+    opencode_repo_size_guard(ws.working_dir())
+        .with_context(|| format!("opencode repo-size guard for gap {}", opts.gap_id))?;
     let mut cmd = Command::new("opencode");
     cmd.arg("-p").arg(prompt).arg("--auto-approve");
     if !model.is_empty() {
@@ -1387,6 +1437,67 @@ mod tests {
         assert!(
             msg.contains("chump --release exited with"),
             "expected exit-status error, got: {msg}"
+        );
+    }
+
+    // ── RESILIENT-203: opencode repo-size guard ───────────────────────────────
+
+    /// Creates a git repo at `dir` with `n` tracked files committed, so
+    /// `git ls-files` reports exactly `n`.
+    fn init_git_repo_with_n_files(dir: &Path, n: usize) {
+        let run = |args: &[&str]| {
+            let status = Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .status()
+                .expect("spawn git");
+            assert!(status.success(), "git {args:?} failed");
+        };
+        run(&["init", "-q"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["config", "user.name", "test"]);
+        for i in 0..n {
+            std::fs::write(dir.join(format!("file{i}.txt")), "x").unwrap();
+        }
+        run(&["add", "-A"]);
+        run(&["commit", "-q", "-m", "init"]);
+    }
+
+    /// Below the threshold, the guard is a no-op.
+    #[test]
+    #[serial_test::serial(opencode_size_guard_env)]
+    fn opencode_repo_size_guard_allows_small_repo() {
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        init_git_repo_with_n_files(tmp.path(), 3);
+
+        std::env::set_var("CHUMP_OPENCODE_MAX_FILES", "10");
+
+        let result = opencode_repo_size_guard(tmp.path());
+
+        std::env::remove_var("CHUMP_OPENCODE_MAX_FILES");
+        assert!(result.is_ok(), "expected Ok for small repo, got {result:?}");
+    }
+
+    /// Above the threshold, the guard fails fast with a message pointing at
+    /// the chump-local fallback — this is the behavior that replaces
+    /// letting opencode hang at init until `wait_with_hang_detection`'s
+    /// timeout expires (the RESILIENT-203 failure mode).
+    #[test]
+    #[serial_test::serial(opencode_size_guard_env)]
+    fn opencode_repo_size_guard_blocks_large_repo() {
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        init_git_repo_with_n_files(tmp.path(), 5);
+
+        std::env::set_var("CHUMP_OPENCODE_MAX_FILES", "2");
+
+        let result = opencode_repo_size_guard(tmp.path());
+
+        std::env::remove_var("CHUMP_OPENCODE_MAX_FILES");
+        let err = result.expect_err("expected Err for large repo");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("chump-local"),
+            "expected fallback guidance in error, got: {msg}"
         );
     }
 }
