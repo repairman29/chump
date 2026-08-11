@@ -1612,6 +1612,23 @@ events:
       green PRs it armed this pass. Observability so the sweep is provable, not assumed.
     consumers: [ambient]
 
+  - kind: board_cycle_beat
+    effect_metric: self
+    emitter: scripts/dispatch/board-cycle-beat.sh (INFRA-3590)
+    trigger: the board-cycle beat ran on the primary node (helsinki); records the
+      claude -p board-cycle agent's exit code so the beat's execution is provable,
+      not assumed, even with no desktop Claude session open.
+    consumers: [ambient]
+
+  - kind: board_cycle_report_posted
+    effect_metric: self
+    emitter: board-cycle agent invoked by scripts/dispatch/board-cycle-beat.sh (INFRA-3590)
+    trigger: the board-cycle agent scored the 30-minute merge SLA, classified any
+      PR stalls, and successfully posted the terse board report to operator Discord
+      via scripts/coord/lib/notify-operator.sh.
+    consumers: [ambient]
+    fields_required: [ts, kind, sla_breaches, stalls_classified]
+
   - kind: armed_pr_needs_conflict_resolution
     effect_metric: pr_rescue_action_within_4h
     emitter: scripts/coord/armed-pr-rebaser.sh (INFRA-3473)

@@ -1,0 +1,14 @@
+# INFRA-3590 — fires the board-cycle beat every ~15 min on the primary node,
+# so the 30-minute merge SLA is checked well inside its own window. This is
+# the "baked into the OS" half: the board runs on a timer, not on a desktop
+# session being open. Enable: systemctl enable --now chump-board-cycle.timer
+[Unit]
+Description=Run the Chump board-cycle beat every 15 minutes (INFRA-3590)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

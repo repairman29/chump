@@ -1,0 +1,18 @@
+# INFRA-3590 — the board-on-helsinki MVP: fires ONE Sonnet board-cycle agent
+# (score SLAs, classify PR stalls) and posts a terse report to operator
+# Discord, with zero desktop Claude session open. Paired with
+# chump-board-cycle.timer (every ~15 min). Path defaults target the primary
+# node (helsinki, root). Non-root nodes: adjust the two paths + providers.env
+# location per LINUX_NODE_ONBOARDING.md.
+[Unit]
+Description=Chump board-cycle beat — Sonnet board agent, SLA score + stall classify + Discord report (INFRA-3590)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Source providers.env for ANTHROPIC/CLAUDE + DISCORD_TOKEN credentials (export
+# format, so source it in a shell rather than systemd EnvironmentFile which
+# can't parse `export KEY=val`).
+Environment=HOME=/root
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/dispatch/board-cycle-beat.sh'
