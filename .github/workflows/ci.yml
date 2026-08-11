@@ -1063,6 +1063,9 @@ jobs:
       - name: runner-autoscale MAX_RUNNERS default regression guard (INFRA-3561 / INFRA-3549 / INFRA-1655)
         run: bash scripts/ci/test-runner-autoscale-max-default.sh
 
+      - name: ci.yml concurrency-group key regression guard (INFRA-3579 / INFRA-1852 / INFRA-1655)
+        run: bash scripts/ci/test-ci-concurrency-group-key.sh
+
       - name: model-registry schema validation (INFRA-739)
         run: bash scripts/ci/test-model-registry.sh
 
