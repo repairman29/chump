@@ -1541,3 +1541,8 @@ CHUMP_OPENCODE_SKIP_SIZE_GUARD
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_NODE_REPO
+CHUMP_CONFLICT_CONSUMER_MAX_ATTEMPTS
+# detected in: (standard input)
+CHUMP_CONFLICT_RESOLUTION_CONSUMER_INTERVAL
+# detected in: (standard input)
+CHUMP_CONFLICT_RESOLVER_ENABLED

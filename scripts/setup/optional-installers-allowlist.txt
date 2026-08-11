@@ -117,6 +117,7 @@ install-checkout-sync-launchd.sh
 install-node-refresh-systemd.sh
 install-opencode-harness.sh
 install-armed-pr-rebaser-launchd.sh
+install-conflict-resolution-consumer-launchd.sh
 install-discord-gateway.sh
 # reason: RESILIENT-256 — writes PreToolUse hooks into USER-scope
 # ~/.claude/settings.json, which affects every Claude Code session on the

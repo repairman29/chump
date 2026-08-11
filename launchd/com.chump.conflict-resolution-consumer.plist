@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.conflict-resolution-consumer — RESILIENT-301 LaunchAgent
+  (accountability organ for armed_pr_needs_conflict_resolution).
+
+  Runs scripts/coord/conflict-resolution-consumer.sh every 900s (~15 min).
+  Consumes PRs flagged by armed-pr-rebaser.sh (INFRA-3473) PLUS open PRs
+  that are green + DIRTY + unarmed (nobody had even flagged those). Tries
+  a plain rebase first, then dispatches conflict-resolver-agent.sh
+  (INFRA-1488) on real conflicts, and escalates to the operator after
+  CHUMP_CONFLICT_CONSUMER_MAX_ATTEMPTS failed rounds.
+
+  Build/checkout isolation: all work happens in
+  /tmp/conflict-resolution-consumer-<N> worktrees. The main checkout is
+  NEVER touched.
+
+  INSTALLATION (do not hand-copy this file — it has placeholder paths):
+    scripts/setup/install-conflict-resolution-consumer-launchd.sh
+    launchctl list | grep chump.conflict-resolution-consumer
+
+  Manual run:
+    launchctl start com.chump.conflict-resolution-consumer
+    tail /path/to/Chump/.chump-locks/conflict-resolution-consumer.log
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.conflict-resolution-consumer</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/coord/conflict-resolution-consumer.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <key>StartInterval</key>
+  <integer>900</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/path/to/Chump/.chump-locks/conflict-resolution-consumer.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/path/to/Chump/.chump-locks/conflict-resolution-consumer.log</string>
+
+  <key>ThrottleInterval</key>
+  <integer>300</integer>
+</dict>
+</plist>
