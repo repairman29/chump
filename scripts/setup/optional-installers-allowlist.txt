@@ -129,3 +129,11 @@ install-git-guard-hook.sh
 # not a REQUIRED_DAEMONS entry because it installs a build-speed optimization
 # (mold/lld linker), not a service the fleet depends on to function.
 install-fast-linker.sh
+
+# reason: RESILIENT-300 — installs the primary-node (helsinki) ATC roster
+# (pr-lander + armed-rebaser system timers, node-refresh user timer). It is
+# node-specific bring-up, not something every fleet checkout runs — a laptop
+# dev checkout has no business enabling these. Invoked manually per
+# docs/process/LINUX_NODE_ONBOARDING.md when standing up/rebuilding the
+# primary shipping node.
+install-helsinki-atc.sh

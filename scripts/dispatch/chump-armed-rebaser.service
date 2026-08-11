@@ -1,0 +1,20 @@
+# RESILIENT-300 — tracks the live unit installed on helsinki by INFRA-3473.
+# Runs scripts/coord/armed-pr-rebaser.sh: for each open ARMED PR whose
+# mergeStateStatus is DIRTY or BEHIND, rebases the branch on origin/main in a
+# throwaway worktree and (only on a CLEAN rebase) force-pushes. Once a PR is
+# armed and bot-merge exits, nothing else re-rebases it when main advances —
+# this is what keeps it from drifting to BEHIND/DIRTY and sitting until reaped.
+#
+# CHUMP_REPO_ROOT is REQUIRED: the script's default $HOME/Projects/Chump is
+# capital-C and does not exist on case-sensitive Linux (see
+# docs/process/LINUX_NODE_ONBOARDING.md).
+[Unit]
+Description=Chump armed-PR rebaser — rebase armed BEHIND/DIRTY PRs so they land (INFRA-3473)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/coord/armed-pr-rebaser.sh'

@@ -291,6 +291,46 @@ it only arms PRs the node's `gh` user authored and never force-pushes or closes.
 Global off-switch: `CHUMP_PR_LANDER_SKIP=1`. It emits `kind=pr_lander_beat` to
 ambient every run so the sweep is observable, not assumed.
 
+## Bake in the full ATC roster (armed-rebaser + node-refresh) — RESILIENT-300
+
+pr-lander alone isn't enough: once a PR is armed and bot-merge exits, nothing
+re-rebases it when main advances, so it drifts to BEHIND/DIRTY and stalls until
+the reaper closes it (INFRA-3473's `armed-pr-rebaser.sh`) — and none of this
+runs unless the *node's own `chump` binary* stays current with origin/main
+(RESILIENT-200's `node-refresh-chump.sh`). Before this gap, both were
+live-hacked directly into `/etc/systemd/system` / `~/.config/systemd/user` —
+not tracked anywhere — so a node rebuild silently lost ATC.
+
+One idempotent script installs the whole roster (pr-lander + armed-rebaser +
+node-refresh) from tracked repo files:
+
+```bash
+sudo bash scripts/setup/install-helsinki-atc.sh          # install + enable all 3
+sudo bash scripts/setup/install-helsinki-atc.sh --check   # exit 0 iff all 3 timers active
+```
+
+**Two gotchas that will otherwise waste an hour re-discovering them:**
+
+1. **`CHUMP_REPO_ROOT` is case-sensitive and has no safe default.** The
+   scripts' fallback (`$HOME/Projects/Chump`) is capital-C — that path does
+   not exist on a case-sensitive Linux filesystem, only the lowercase
+   `~/Projects/chump` clone does. Every ATC unit hardcodes
+   `CHUMP_REPO_ROOT=/root/Projects/chump` (or passes `CHUMP_NODE_REPO`
+   explicitly for node-refresh) for exactly this reason — don't let a future
+   edit drop back to the default and silently break on the next rebuild.
+2. **`/usr/local/bin/chump` is a symlink, not a copy, and it must point at
+   node-refresh's install target.** `node-refresh-chump.sh` installs to
+   `CHUMP_NODE_BIN` (default `~/.local/bin/chump`) and swaps it in atomically;
+   it never touches `/usr/local/bin/chump` directly. On helsinki,
+   `/usr/local/bin/chump -> /root/.local/bin/chump` so that PATH resolution
+   (`/usr/local/bin` ahead of `~/.cargo/bin` for non-login shells, cron, and
+   systemd units) picks up each refresh automatically. If you ever `cp` a
+   binary to `/usr/local/bin/chump` on this node (as step 5 above suggests for
+   a fresh box) you **replace the symlink with a stale copy** — node-refresh
+   will keep updating `~/.local/bin/chump` underneath it while
+   `/usr/local/bin/chump` silently drifts. Re-point it once ATC is installed:
+   `ln -sf ~/.local/bin/chump /usr/local/bin/chump`.
+
 ## Next: join a NATS fleet (optional)
 
 If you later need **cross-machine coordination** (multiple nodes sharing work):

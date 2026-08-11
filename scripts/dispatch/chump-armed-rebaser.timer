@@ -1,0 +1,11 @@
+# RESILIENT-300 — pairs with chump-armed-rebaser.service. Fires every 20 min.
+[Unit]
+Description=Run the Chump armed-PR rebaser every 20 minutes (INFRA-3473)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
