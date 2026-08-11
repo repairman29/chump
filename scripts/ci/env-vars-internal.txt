@@ -1517,6 +1517,17 @@ CHUMP_RUNNER_MIN
 
 # AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
 # Replace the AUTO marker with a real description on the next commit.
+CHUMP_DUTY_OFFICER_ESCALATION_REGISTRY
+# detected in: (standard input)
+CHUMP_DUTY_OFFICER_EXECUTE
+# detected in: (standard input)
+CHUMP_DUTY_OFFICER_NOTIFY_CMD
+# detected in: (standard input)
+CHUMP_DUTY_OFFICER_REALITY_CHECK_CMD
+# detected in: (standard input)
+CHUMP_DUTY_OFFICER_REGISTRY
+# detected in: (standard input)
+CHUMP_DUTY_OFFICER_WINDOW_N
 # detected in: (standard input)
 CHUMP_NOTIFY_KIND
 CHUMP_DOR_DISABLE

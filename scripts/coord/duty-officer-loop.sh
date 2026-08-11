@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+# scripts/coord/duty-officer-loop.sh — RESILIENT-274
+#
+# The standing loop that makes docs/design/DUTY_OFFICER.md real: reads
+# firing health signals, looks each up in docs/process/PLAYBOOK_REGISTRY.yaml,
+# and routes it T1 (executable auto-heal) -> T2 (agent-run runbook) ->
+# T3 (escalate) — paging the operator ONLY at T3, and only through the quiet
+# gate (scripts/coord/operator-escalation-registry.txt).
+#
+# Usage:
+#   duty-officer-loop.sh tick              # one scan of recent ambient signals
+#   duty-officer-loop.sh route <signal>    # route a single named signal (manual/test)
+#   duty-officer-loop.sh heartbeat         # emit kind=duty_officer_heartbeat
+#   duty-officer-loop.sh status            # print registry coverage summary
+#   duty-officer-loop.sh help
+#
+# Every routed signal emits kind=duty_officer_action to ambient with
+# {signal, tier, verdict, detail}. verdict is one of:
+#   healed        — T1 action ran (verify is the operator's job to confirm; this
+#                   loop logs that the action fired, not that verify passed)
+#   refuted       — T2 reality-check said the signal is a false positive; dropped
+#   runbook_needed — T2 signal confirmed real; an agent must run the runbook
+#   suppressed    — T3 signal has a page=false playbook entry; logged, not paged
+#   paged         — T3 signal paged the operator via notify-operator.sh
+#   unregistered  — signal has no registry entry; treated as T3/page (novel)
+#
+# Env overrides (mirrors the *-loop.sh pattern; all optional):
+#   CHUMP_AMBIENT_LOG                    ambient.jsonl path
+#   CHUMP_DUTY_OFFICER_REGISTRY          PLAYBOOK_REGISTRY.yaml path
+#   CHUMP_DUTY_OFFICER_ESCALATION_REGISTRY  operator-escalation-registry.txt path
+#   CHUMP_DUTY_OFFICER_REALITY_CHECK_CMD reality-check command (T2 gate)
+#   CHUMP_DUTY_OFFICER_NOTIFY_CMD        notify command (T3 page)
+#   CHUMP_DUTY_OFFICER_WINDOW_N          how many recent ambient lines to scan (default 200)
+#   CHUMP_DUTY_OFFICER_EXECUTE           1 = actually run T1 action scripts (default 0 = log-only)
+#
+# Rust-First-Bypass: bash glue over existing ambient/registry/notify primitives,
+#   mirrors the observability/fresh-eyes loop shape, no state mutation beyond
+#   ambient emit — same class as those two already-shipped loops.
+
+set -uo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+REGISTRY="${CHUMP_DUTY_OFFICER_REGISTRY:-$REPO_ROOT/docs/process/PLAYBOOK_REGISTRY.yaml}"
+ESCALATION_REGISTRY="${CHUMP_DUTY_OFFICER_ESCALATION_REGISTRY:-$REPO_ROOT/scripts/coord/operator-escalation-registry.txt}"
+REALITY_CHECK_CMD="${CHUMP_DUTY_OFFICER_REALITY_CHECK_CMD:-}"
+NOTIFY_CMD="${CHUMP_DUTY_OFFICER_NOTIFY_CMD:-}"
+WINDOW_N="${CHUMP_DUTY_OFFICER_WINDOW_N:-200}"
+EXECUTE="${CHUMP_DUTY_OFFICER_EXECUTE:-0}"
+
+_ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# scanner-anchor: "kind":"duty_officer_action"
+_emit_action() {
+    local signal="$1" tier="$2" verdict="$3" detail="$4"
+    local line
+    line="$(printf '{"ts":"%s","kind":"duty_officer_action","signal":"%s","tier":%s,"verdict":"%s","detail":"%s"}\n' \
+        "$(_ts)" "$signal" "$tier" "$verdict" "$detail")"
+    echo "$line"
+    [[ -n "$AMBIENT" ]] && echo "$line" >> "$AMBIENT" 2>/dev/null || true
+}
+
+# scanner-anchor: "kind":"duty_officer_heartbeat"
+cmd_heartbeat() {
+    local n_signals
+    n_signals="$(_registry_signal_count)"
+    local line
+    line="$(printf '{"ts":"%s","kind":"duty_officer_heartbeat","registry_signals":%s}\n' "$(_ts)" "$n_signals")"
+    echo "$line"
+    [[ -n "$AMBIENT" ]] && echo "$line" >> "$AMBIENT" 2>/dev/null || true
+}
+
+_registry_signal_count() {
+    [[ -f "$REGISTRY" ]] || { echo 0; return; }
+    grep -cE '^\s*-\s*signal:' "$REGISTRY" 2>/dev/null || echo 0
+}
+
+# Extract the registry block for a named signal (from its "- signal:" line up
+# to the next "- signal:" line or EOF).
+_registry_block() {
+    local sig="$1"
+    [[ -f "$REGISTRY" ]] || return 1
+    awk -v sig="$sig" '
+        /^\s*-\s*signal:/ {
+            if (found) exit
+            line=$0; sub(/^\s*-\s*signal:\s*/, "", line); gsub(/^[ \t]+|[ \t]+$/, "", line)
+            if (line == sig) { found=1; print; next }
+            found=0; next
+        }
+        found { print }
+    ' "$REGISTRY"
+}
+
+_registry_field() { # _registry_field <block> <field-name>
+    printf '%s\n' "$1" | grep -E "^\s*${2}:" | head -1 | sed -E "s/^\s*${2}:\s*//" | sed -E 's/^"|"$//g'
+}
+
+# Look up the page/suppress verdict from the quiet gate for T3 signals.
+_escalation_verdict() {
+    local sig="$1"
+    [[ -f "$ESCALATION_REGISTRY" ]] || { echo page; return; }
+    while read -r k verdict _rest; do
+        [[ -z "$k" || "$k" == \#* ]] && continue
+        if [[ "$sig" == "$k" ]]; then
+            [[ "$verdict" == "suppress" ]] && echo suppress || echo page
+            return
+        fi
+    done < "$ESCALATION_REGISTRY"
+    echo page
+}
+
+_reality_check() { # returns 0 CONFIRMED, 1 REFUTED, 2 UNVERIFIED
+    if [[ -n "$REALITY_CHECK_CMD" ]]; then
+        eval "$REALITY_CHECK_CMD"
+        return $?
+    fi
+    if [[ -x "$REPO_ROOT/scripts/dev/reality-check.sh" ]]; then
+        "$REPO_ROOT/scripts/dev/reality-check.sh" "duty-officer signal fired" --detector "$1" 2>/dev/null
+        return $?
+    fi
+    return 2
+}
+
+_notify() {
+    local msg="$1" sig="$2"
+    if [[ -n "$NOTIFY_CMD" ]]; then
+        eval "$NOTIFY_CMD" "$msg"
+        return
+    fi
+    # shellcheck source=/dev/null
+    if [[ -f "$REPO_ROOT/scripts/coord/lib/notify-operator.sh" ]]; then
+        # shellcheck disable=SC1091
+        source "$REPO_ROOT/scripts/coord/lib/notify-operator.sh"
+        CHUMP_NOTIFY_KIND="$sig" notify_operator "$msg" 2>/dev/null || true
+    fi
+}
+
+# Route a single signal through the registry. This is the load-bearing
+# T1 -> T2 -> T3 decision made real (DUTY_OFFICER.md §4).
+cmd_route() {
+    local sig="${1:?signal required}"
+    local block; block="$(_registry_block "$sig")"
+
+    if [[ -z "$block" ]]; then
+        _emit_action "$sig" 3 unregistered "no registry entry — novel signal, defaults to page"
+        _notify "duty-officer: unregistered signal fired: $sig" "$sig"
+        return 0
+    fi
+
+    local tier action fp_class
+    tier="$(_registry_field "$block" tier)"
+    action="$(_registry_field "$block" action)"
+    fp_class="$(_registry_field "$block" false_positive_class)"
+
+    case "$tier" in
+        1)
+            local action_script="$REPO_ROOT/${action#./}"
+            if [[ "$EXECUTE" == "1" && -x "$action_script" ]]; then
+                "$action_script" >/dev/null 2>&1 || true
+            fi
+            _emit_action "$sig" 1 healed "action=${action}"
+            ;;
+        2)
+            if [[ -n "$fp_class" && "$fp_class" != "none" ]]; then
+                if ! _reality_check "$sig"; then
+                    _emit_action "$sig" 2 refuted "false_positive_class=${fp_class}"
+                    return 0
+                fi
+            fi
+            _emit_action "$sig" 2 runbook_needed "runbook=${action}"
+            ;;
+        3)
+            local verdict; verdict="$(_escalation_verdict "$sig")"
+            if [[ "$verdict" == suppress ]]; then
+                _emit_action "$sig" 3 suppressed "action=${action}"
+            else
+                _emit_action "$sig" 3 paged "action=${action}"
+                _notify "duty-officer T3: ${sig} — ${action}" "$sig"
+            fi
+            ;;
+        *)
+            _emit_action "$sig" 0 unregistered "malformed registry tier for signal=${sig}"
+            ;;
+    esac
+}
+
+# Scan the last N ambient lines, route every kind that has a registry entry.
+cmd_tick() {
+    [[ -f "$AMBIENT" ]] || { echo "[duty-officer] no ambient stream at $AMBIENT — nothing to scan"; return 0; }
+    local kinds
+    kinds="$(tail -n "$WINDOW_N" "$AMBIENT" 2>/dev/null | grep -oE '"kind":"[a-zA-Z0-9_]+"' | sed -E 's/"kind":"([a-zA-Z0-9_]+)"/\1/' | sort -u)"
+    [[ -z "$kinds" ]] && { echo "[duty-officer] tick: no signals in window"; return 0; }
+    local any=0
+    while read -r k; do
+        [[ -z "$k" ]] && continue
+        _registry_block "$k" >/dev/null 2>&1
+        if [[ -n "$(_registry_block "$k")" ]]; then
+            cmd_route "$k"
+            any=1
+        fi
+    done <<< "$kinds"
+    [[ "$any" == 0 ]] && echo "[duty-officer] tick: no registered signals fired this window"
+    return 0
+}
+
+cmd_status() {
+    local n; n="$(_registry_signal_count)"
+    echo "PLAYBOOK_REGISTRY.yaml: $REGISTRY"
+    echo "registered signals: $n"
+    [[ -f "$REGISTRY" ]] && grep -E '^\s*-\s*signal:|^\s*tier:' "$REGISTRY" | paste - - | sed 's/^\s*//'
+}
+
+cmd_help() {
+    sed -n '2,25p' "$0" | grep -E '^#' | sed 's/^# \{0,1\}//'
+}
+
+main() {
+    local sub="${1:-tick}"
+    case "$sub" in
+        tick)      cmd_tick ;;
+        route)     shift; cmd_route "${1:-}" ;;
+        heartbeat) cmd_heartbeat ;;
+        status)    cmd_status ;;
+        help|-h|--help) cmd_help; exit 0 ;;
+        *) echo "[duty-officer] unknown subcommand: $sub" >&2; cmd_help >&2; exit 2 ;;
+    esac
+}
+
+main "$@"

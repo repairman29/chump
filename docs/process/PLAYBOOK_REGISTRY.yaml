@@ -1,0 +1,120 @@
+# PLAYBOOK_REGISTRY.yaml — RESILIENT-274 slice 1 (docs/design/DUTY_OFFICER.md §3/§8).
+#
+# The load-bearing artifact for the duty-officer standing loop
+# (scripts/coord/duty-officer-loop.sh). Maps a health SIGNAL to a TIER
+# (1=executable auto-heal, 2=agent-run runbook, 3=escalate) and an ACTION.
+#
+# Consumed by duty-officer-loop.sh `tick` / `route <signal>`. Kept in sync
+# with scripts/coord/operator-escalation-registry.txt (the page/suppress
+# binary this registry supersets with tier + action + verify).
+#
+# Format (one block per signal):
+#   - signal: <ambient kind or derived-metric name>
+#     tier: 1 | 2 | 3
+#     detect: <human-readable trigger condition — the loop's actual detection
+#              lives in duty-officer-loop.sh; this is the documented intent>
+#     action: <T1: script to run> | <T2: runbook doc to execute agent-side>
+#     verify: <the OUTCOME to confirm — never "exit 0 == fixed">
+#     false_positive_class: none | <name> — a known false-positive gets a
+#              reality-check gate before ANY action fires (CREDIBLE-090).
+#     reality_check: <command run first when false_positive_class != none>
+
+signals:
+  # ── T1: executable auto-heal (code/daemon fires, no agent, no operator) ──
+  - signal: disk_critical
+    tier: 1
+    detect: "ambient kind=disk_critical (free_gb below threshold)"
+    action: scripts/coord/disk-critical-reactor.sh
+    verify: "df shows free_gb recovered above CHUMP_DISK_REACTOR_PAGE_THRESHOLD_PCT"
+    false_positive_class: none
+
+  - signal: shared_target_bloat
+    tier: 1
+    detect: "shared cargo target dir exceeds cap while fleet builds into it"
+    action: scripts/coord/disk-critical-reactor.sh
+    verify: "shared target dir back under cap after quiesce+prune"
+    false_positive_class: none
+
+  - signal: cargo_sweep_gc_skipped
+    tier: 1
+    detect: "ambient kind=cargo_sweep_gc_skipped — GC ran but found nothing owed to PATH drift"
+    action: "N/A — self-reporting; disk-critical-reactor.sh is the backstop"
+    verify: "next disk_critical (if any) is handled by the reactor"
+    false_positive_class: none
+
+  - signal: worker_circuit_open
+    tier: 1
+    detect: "ambient kind=worker_circuit_open (RESILIENT production back-pressure breaker)"
+    action: "N/A — worker.sh auto-cools-down and retries; no external action needed"
+    verify: "ambient kind=worker_cooldown followed by resumed ship activity"
+    false_positive_class: none
+
+  - signal: gh_probe_transient_fail
+    tier: 1
+    detect: "run-fleet gh-probe returns non-zero on a single check (2026-08-09 incident)"
+    action: "retry gh-probe with backoff; honor force-launch override"
+    verify: "run-fleet launches on retry"
+    false_positive_class: none
+
+  - signal: integrator_first_conflict_abort
+    tier: 1
+    detect: "batch integrator aborts the whole batch on the first merge conflict (2026-08-09 incident)"
+    action: "skip the conflicting item, continue integrating the rest of the batch"
+    verify: "batch completes with only the conflicting item held back"
+    false_positive_class: none
+
+  # ── T2: agent-run runbook (REALITY_CHECK first, then the matching doc) ──
+  - signal: pr_pipeline_wedged
+    tier: 2
+    detect: "0 merges in 2h AND >3 PRs armed-but-blocked"
+    reality_check: "git log origin/main --since=2h -- . | wc -l  # is anything actually merging?"
+    action: docs/process/SHIP_ASSIST_PLAYBOOK.md
+    verify: "git log origin/main --since=30m shows new merges after the runbook runs"
+    false_positive_class: "brief-window false-alarm — a 2h window can catch a genuinely quiet period"
+
+  - signal: fleet_wedge
+    tier: 2
+    detect: "ambient kind=fleet_wedge"
+    reality_check: "scripts/dispatch/fleet-status.sh — confirm workers are actually stalled"
+    action: docs/process/SHEPHERD_LOOP_PLAYBOOK.md
+    verify: "fleet-status.sh shows workers active again"
+    false_positive_class: none
+
+  - signal: pr_stuck_cluster
+    tier: 2
+    detect: "ambient kind=pr_stuck, >=3 in 2h"
+    reality_check: "scripts/dev/reality-check.sh — is trunk actually red, or is this N unrelated stalls?"
+    action: scripts/coord/pr-rescue.sh
+    verify: "the flagged PRs merge or are explicitly deprioritized with a follow-up gap"
+    false_positive_class: none
+
+  - signal: ci_gate_unmirrored
+    tier: 2
+    detect: "a CI parity break blocks every PR for hours (2026-08-09 incident)"
+    reality_check: "gh pr checks <recent-PR> — confirm the same gate is red fleet-wide, not one PR"
+    action: docs/process/PROCEDURES.md#preflight-vs-ci-parity-allowlist
+    verify: "PRs resume merging after the gate is allowlisted/mirrored"
+    false_positive_class: none
+
+  # ── T3: escalate (novel or halt-class ONLY, per the 4 triggers in AGENTS.md) ──
+  - signal: farmer_auth_dead
+    tier: 3
+    detect: "ambient kind=farmer_auth_dead"
+    reality_check: "git log origin/main --since=1h  # ship-check-first, CREDIBLE-090"
+    action: "SUPPRESS unless reality_check also shows 0 ships in 1h — known #1 false-positive"
+    verify: "n/a — this is the suppression case, not an action"
+    false_positive_class: "farmer_auth_dead — mis-called 4x historically (CREDIBLE-090)"
+
+  - signal: escalation_channel_dead
+    tier: 3
+    detect: "duty-officer startup notify-channel self-check fails (DUTY_OFFICER.md §5)"
+    action: "page via the only channel that might still work + file INFRA gap"
+    verify: "operator confirms receipt through an alternate channel"
+    false_positive_class: none
+
+  - signal: unclassified_signal
+    tier: 3
+    detect: "a firing signal has no entry in this registry — novel by definition"
+    action: "notify-operator.sh (kind unclassified → operator-escalation-registry.txt defaults to page)"
+    verify: "operator triages; if recurring, add a registry entry so it stops paging"
+    false_positive_class: none
