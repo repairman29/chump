@@ -709,6 +709,33 @@ one-lane-at-a-time restoration order above (INFRA-3403) — but it removes
 the config ceiling that would otherwise blunt the autoscaler once
 restoration resumes.
 
+### Queue contention re-confirmation (2026-08-11, INFRA-3559 slice)
+
+**Question (same as the INFRA-3547 slice above):** is queue contention a
+root cause of the INFRA-1655 checkout flake, and are there further
+recommendations to reduce it?
+
+**Finding: no new information — the INFRA-3547 investigation above already
+answers both AC items and remains current.** Re-checked against present
+state:
+
+- **AC1 (contention identified/ruled out):** confirmed still standing —
+  queue contention is a contributing/amplifying factor (self-hosted jobs
+  disproportionately caught mid-queue by the concurrency-cancellation bug),
+  not the root cause (INFRA-3546's concurrency-group keying, fixed by
+  INFRA-1852).
+- **AC2 (recommendations documented):** confirmed still standing — see the
+  five-item list above. Item (1), raising `CHUMP_RUNNER_M4_MAX` from `2` to
+  `4`, has since shipped (INFRA-3549 slice, verified via
+  `scripts/coord/chump-runner-autoscale.sh --status` reading
+  `${CHUMP_RUNNER_M4_MAX:-4}`). Items (2)-(5) — confirm the autoscale daemon
+  is running, restore self-hosted lanes one at a time (INFRA-3403), land
+  Merge Queue as the structural fix (INFRA-1377), no further scheduler
+  change warranted — remain open follow-ups, not this slice's scope.
+
+No config or code changes needed for this slice; filing a duplicate
+investigation would re-derive the same finding already recorded above.
+
 ### Operator note
 
 Hardware economics matter — the dual RTX 6000 Blackwell roadmap is
