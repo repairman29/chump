@@ -52,20 +52,27 @@ if [[ "${1:-}" != "--self-test" ]]; then
   _ceiling_file="$REPO_ROOT/scripts/ci/bypass-var-ceiling.txt"
   _ceiling="$(grep -oE '^[0-9]+' "$_ceiling_file" 2>/dev/null | head -1 || true)"
   _ceiling="${_ceiling:-99999}"
-  # Counter correctness (RESILIENT-297). Two classes were being counted as
-  # production bypass debt when they are not:
-  #   1. --exclude this file itself. The --self-test cases below embed synthetic
-  #      props (CHUMP_BRAND_NEW_BYPASS, CHUMP_XYZ_SKIP, ...) that exist ONLY to
-  #      exercise the diff-scanner. They are test doubles, never real toggles;
-  #      counting them inflated the true tree count by 6.
-  #   2. Drop command-VALUED vars (…_CMD). CHUMP_DUTY_OFFICER_REALITY_CHECK_CMD
-  #      names a command to RUN — it is not a check-disabling toggle. The greedy
-  #      _CHECK branch matched it as a false positive.
-  # This is a ratchet-DOWN of the honest baseline, not a bypass: the true count
-  # falls, and the ceiling file falls with it.
+  # Counter correctness (RESILIENT-297). The scan matched var-name STRINGS in any
+  # file under scripts/src/crates — including prose that merely NAMES a var rather
+  # than using it. Three classes were inflating the count as a result:
+  #   1. --exclude this linter's own file. Its --self-test cases below embed
+  #      synthetic props (CHUMP_BRAND_NEW_BYPASS, CHUMP_XYZ_SKIP, ...) to exercise
+  #      the diff-scanner — test doubles, never real toggles.
+  #   2. --exclude the ceiling file itself. bypass-var-ceiling.txt is this gate's
+  #      DOCUMENTATION: its changelog names every var it signs off on. Scanning it
+  #      double-counts each documented var (once at its real use-site, once in the
+  #      prose) and, worse, counts vars that live ONLY in the changelog — so the
+  #      act of DOCUMENTING a sign-off raised the very count it documents. The
+  #      linter's own bookkeeping files must not be part of its input.
+  #   3. Drop command-VALUED vars (…_CMD). CHUMP_DUTY_OFFICER_REALITY_CHECK_CMD
+  #      names a command to RUN — not a check-disabling toggle; the greedy _CHECK
+  #      branch matched it as a false positive.
+  # This is a ratchet-DOWN of the honest baseline, not a bypass: the true count of
+  # real bypass USE-SITES falls, and the ceiling file falls with it.
   _now="$(grep -rhoE 'CHUMP_[A-Z0-9_]*(BYPASS|SKIP|IGNORE|_CHECK|NO_)[A-Z0-9_]*' \
             "$REPO_ROOT/scripts" "$REPO_ROOT/src" "$REPO_ROOT/crates" 2>/dev/null \
             --exclude='test-no-new-bypass-env-vars.sh' \
+            --exclude='bypass-var-ceiling.txt' \
             | grep -vE '_CMD$' | sort -u | wc -l | tr -d ' ')"
   if [ "${_now:-0}" -gt "$_ceiling" ]; then
     {

@@ -29,11 +29,17 @@
 #     deployed lag watchdog. Trail: the watchdog ambient event. Deletion path: when
 #     the watchdog heal is proven safe enough to be non-optional.
 # 238 -> 234 (2026-08-11, RESILIENT-297): a ratchet-DOWN, not a bump. The counter
-# was over-counting by two classes (fixed this commit in test-no-new-bypass-env-
-# vars.sh): (a) 6 synthetic props inside the linter's own --self-test file
-# (CHUMP_BRAND_NEW_BYPASS, CHUMP_XYZ_SKIP, ...) — test doubles, never real toggles;
-# (b) command-VALUED …_CMD vars the greedy _CHECK branch matched. True production
-# baseline is therefore 232, and main had drifted to sit exactly AT the phantom-
+# matched var-name STRINGS in any scanned file, including prose that merely NAMES a
+# var. Fixed this commit (in test-no-new-bypass-env-vars.sh) by excluding the
+# linter's own two bookkeeping files from its own scan, plus a command-var filter:
+#   (a) the --self-test file, whose synthetic props (CHUMP_BRAND_NEW_BYPASS, etc.)
+#       are test doubles, never real toggles;
+#   (b) THIS ceiling file — its changelog names every var it signs off on, so
+#       scanning it double-counted documented vars and counted changelog-only names
+#       (the act of documenting a sign-off raised the count it documents);
+#   (c) command-VALUED …_CMD vars the greedy _CHECK branch matched as false hits.
+# True baseline of real bypass USE-SITES is therefore 232 (down from the counted
+# 238 the phantom prose inflated it to). Main had drifted to sit exactly AT that
 # inflated 238 with zero headroom — jamming every PR that added even one var.
 # New ceiling 234 = true 232 + operator sign-off for TWO genuine new escape hatches
 # landing concurrently (bumped together so trunk stays green regardless of merge
@@ -43,7 +49,6 @@
 #   - CHUMP_OPENCODE_SKIP_SIZE_GUARD (#3646, RESILIENT-203): skip the opencode
 #     repo-size fail-fast guard. Deletion path: when the guard learns a per-repo
 #     size budget instead of a hard cap.
-# Net documented debt 238 -> 234 (down 4) even while admitting 2 real vars, because
-# the 6 phantom fixtures + CMD false-positives are no longer counted. The OS hole
-# that let main drift to the ceiling uncaught (push-event skips the whole-tree
-# count when the diff is empty) is filed as RESILIENT-298.
+# Net documented debt 238 -> 234 (down 4) even while admitting 2 real vars.
+# RESILIENT-298 tracks the deeper residual: the count is still string-mention based,
+# so a var named in a comment ANYWHERE outside these two meta-files inflates it.
