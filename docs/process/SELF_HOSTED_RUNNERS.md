@@ -709,6 +709,38 @@ one-lane-at-a-time restoration order above (INFRA-3403) — but it removes
 the config ceiling that would otherwise blunt the autoscaler once
 restoration resumes.
 
+### Queue contention re-verification (2026-08-11, INFRA-3559 slice)
+
+INFRA-3559 carries the same question as the INFRA-3547 slice above: is
+queue contention a root cause (or contributing factor) of the checkout
+flake, and is the recommended mitigation still current? Re-checked both
+halves of the finding rather than re-deriving them:
+
+1. **Root-cause classification still holds.** No new evidence changes the
+   INFRA-3547 conclusion — queue contention is a contributing/amplifying
+   factor (self-hosted jobs sat queued long enough to still be pending,
+   and therefore cancellable, when the INFRA-3546 concurrency-group bug
+   fired), not the root cause itself.
+2. **Recommendation (1) — ceiling fix — confirmed landed.**
+   `CHUMP_RUNNER_M4_MAX` still defaults to `4` in both
+   `scripts/coord/chump-runner-autoscale.sh` and
+   `scripts/setup/install-runner-autoscale.sh` (INFRA-3549); no regression.
+3. **Recommendation (2) — daemon liveness — checked, currently not
+   installed.** `launchctl list | grep autoscale` returns no match on this
+   machine: the autoscale daemon is not running as a scheduled service.
+   Running `scripts/coord/chump-runner-autoscale.sh --once` works
+   correctly (`decide: online=0 queued=0 scale_up_polls=0`, since
+   self-hosted lanes are still toggled off per INFRA-1655), confirming the
+   script itself is functional — the gap is only that nothing schedules
+   it yet. This reiterates INFRA-3547 recommendation (2) as still open:
+   install the daemon (`scripts/setup/install-runner-autoscale.sh`) before
+   or during INFRA-3403 lane-by-lane restoration, otherwise the
+   raised ceiling from (1) has no decision loop to act on it.
+
+No new recommendations beyond what INFRA-3547 already documented; this
+slice's contribution is confirming which of those recommendations are
+done vs. still pending.
+
 ### Operator note
 
 Hardware economics matter — the dual RTX 6000 Blackwell roadmap is
