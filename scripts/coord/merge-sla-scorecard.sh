@@ -30,6 +30,8 @@ LOCK_DIR="$REPO_ROOT/.chump-locks"
 BREACH_SENT_DIR="$LOCK_DIR/.sla-breach-sent"
 mkdir -p "$BREACH_SENT_DIR" 2>/dev/null || true
 
+# shellcheck source=lib/github.sh
+source "${SCRIPT_DIR}/lib/github.sh"
 # shellcheck source=lib/github_cache.sh
 [[ -f "${SCRIPT_DIR}/lib/github_cache.sh" ]] && source "${SCRIPT_DIR}/lib/github_cache.sh"
 # shellcheck source=lib/ambient-write.sh
@@ -52,12 +54,13 @@ while [ $# -gt 0 ]; do
 done
 
 command -v gh >/dev/null 2>&1 || { echo "[merge-sla-scorecard] gh missing; skip"; exit 0; }
-repo="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)"
+CHUMP_GH_SCRIPT="merge-sla-scorecard.sh"
+repo="$(chump_gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)"
 [ -z "$repo" ] && { echo "[merge-sla-scorecard] no repo nwo; skip" >&2; exit 1; }
 
 prs_tmp="$(mktemp)"
 trap 'rm -f "$prs_tmp"' EXIT
-gh api "repos/$repo/pulls?state=open&per_page=100" \
+chump_gh api "repos/$repo/pulls?state=open&per_page=100" \
     --jq '.[] | "\(.number)|\(.created_at)|\(.title)|\(.head.ref)"' \
     > "$prs_tmp" 2>/dev/null
 
