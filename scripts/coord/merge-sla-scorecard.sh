@@ -52,14 +52,15 @@ while [ $# -gt 0 ]; do
 done
 
 command -v gh >/dev/null 2>&1 || { echo "[merge-sla-scorecard] gh missing; skip"; exit 0; }
-repo="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)"
-[ -z "$repo" ] && { echo "[merge-sla-scorecard] no repo nwo; skip" >&2; exit 1; }
+declare -F cache_query_open_prs >/dev/null 2>&1 || { echo "[merge-sla-scorecard] github_cache.sh lib missing; skip" >&2; exit 1; }
 
+# INFRA-1274: cache-first — no raw `gh api` here. cache_query_open_prs reads
+# .chump/github_cache.db (fed by the webhook receiver); cache_lookup_pr below
+# resolves per-PR created_at from the same cache, only falling back to a REST
+# call (inside lib/, exempt from the hot-path lint gate) on a cache miss.
 prs_tmp="$(mktemp)"
 trap 'rm -f "$prs_tmp"' EXIT
-gh api "repos/$repo/pulls?state=open&per_page=100" \
-    --jq '.[] | "\(.number)|\(.created_at)|\(.title)|\(.head.ref)"' \
-    > "$prs_tmp" 2>/dev/null
+cache_query_open_prs > "$prs_tmp" 2>/dev/null
 
 if [ ! -s "$prs_tmp" ]; then
     echo "[merge-sla-scorecard] no open PRs — 0 breaches"
@@ -73,17 +74,19 @@ owned_count=0
 escalated_count=0
 skipped_dedup=0
 
-while IFS='|' read -r pr_num created_at title head_ref; do
+while IFS=$'\t' read -r pr_num title head_ref; do
     [ -z "$pr_num" ] && continue
     open_count=$((open_count + 1))
 
+    pr_payload="$(cache_lookup_pr "$pr_num" 2>/dev/null)"
     created_epoch="$(python3 -c "
 from datetime import datetime
-import sys
-v = sys.argv[1].replace('Z','+00:00')
-try: print(int(datetime.fromisoformat(v).timestamp()))
+import json, sys
+try:
+    v = json.loads(sys.argv[1]).get('created_at', '').replace('Z','+00:00')
+    print(int(datetime.fromisoformat(v).timestamp()))
 except Exception: print(0)
-" "$created_at" 2>/dev/null || echo 0)"
+" "$pr_payload" 2>/dev/null || echo 0)"
     [ "$created_epoch" = "0" ] && continue
     age_s=$(( now_epoch - created_epoch ))
     [ "$age_s" -lt "$THRESHOLD_S" ] && continue
