@@ -1514,3 +1514,10 @@ CHUMP_WT_SCAN_TMP
 CHUMP_RUNNER_M4_MAX
 # detected in: (standard input)
 CHUMP_RUNNER_MIN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_DOR_DISABLE
+# detected in: (standard input)
+CHUMP_DOR_SKIP

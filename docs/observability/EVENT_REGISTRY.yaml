@@ -4595,6 +4595,32 @@ events:
     trigger: bypass env var set but no --justification supplied; gate still refuses
     consumers: [operator-recall]
     fields_required: [ts, kind, source, gap, dup_kind, dup_pr, reason]
+  # ── CREDIBLE-270: definition-of-ready gate (no PR opens until chump ───────
+  #    preflight is green locally) ────────────────────────────────────────
+  - kind: definition_of_ready_gate_passed
+    effect_metric: self
+    emitter: scripts/coord/definition-of-ready-gate.sh (CREDIBLE-270)
+    trigger: chump preflight (or the fmt/clippy/check fallback) passed locally before gh pr create
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, source, gap]
+  - kind: definition_of_ready_gate_blocked
+    effect_metric: self
+    emitter: scripts/coord/definition-of-ready-gate.sh (CREDIBLE-270)
+    trigger: chump preflight failed locally; gh pr create refused
+    consumers: [fleet-brief, waste-tally, operator-recall]
+    fields_required: [ts, kind, source, gap]
+  - kind: definition_of_ready_bypassed
+    effect_metric: self
+    emitter: scripts/coord/definition-of-ready-gate.sh (CREDIBLE-270)
+    trigger: CHUMP_DOR_SKIP=1 with --skip-reason; PR creation proceeds despite a non-green local preflight (audit-logged with reason)
+    consumers: [audit-log, operator-recall]
+    fields_required: [ts, kind, source, gap, skip_reason]
+  - kind: definition_of_ready_bypass_rejected
+    effect_metric: self
+    emitter: scripts/coord/definition-of-ready-gate.sh (CREDIBLE-270)
+    trigger: bypass env var set but no --skip-reason supplied; gate still refuses
+    consumers: [operator-recall]
+    fields_required: [ts, kind, source, gap, reason]
   # ── INFRA-1063: cargo build-dir lock contention telemetry ─────────────────
   - kind: cargo_lock_wait
     effect_metric: self
