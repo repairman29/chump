@@ -30,7 +30,7 @@ pub struct BulletResult {
     pub covered: bool,
     pub waived: bool,
     pub waive_reason: Option<String>,
-    /// Which rule numbers (1–4) matched.
+    /// Which rule numbers (1–5) matched.
     pub rules_hit: Vec<u8>,
     /// CREDIBLE-281: true when this bullet is a proof/verification AC (its
     /// text asserts a live outcome via a `PROVEN-BY <outcome>` / `PROOF:`
@@ -378,9 +378,81 @@ fn rule_d(bullet: &str, diff: &str) -> bool {
     false
 }
 
-/// Check which rules (1–4) cover a bullet given diff text and commit messages.
+/// CREDIBLE-281: true when a bullet asserts a PROOF AC -- "PROVEN-BY <live
+/// outcome>" -- rather than a descriptive AC ("do X"). Proof-ACs describe an
+/// outcome that must be observed TRUE in live state (an organ green, an
+/// event emitted, an endpoint responding), not a shape of code in the diff.
+/// INFRA-3598's AC ("PROVEN-BY: the scorecard organ recovers to green") was
+/// marked done while the scorecard was still red -- rules (a)-(d) below
+/// keyword-matched "scorecard" in the diff and called that "covered". A
+/// proof-AC must never be satisfiable that way (rule 5 below is the only
+/// path).
+pub fn is_proof_ac(bullet: &str) -> bool {
+    let lower = bullet.to_ascii_lowercase();
+    lower.contains("proven-by") || lower.contains("proven by")
+}
+
+/// Extract an embedded live-check command from a proof-AC bullet, written as
+/// `[[check: <shell-command>]]` (alias `[[verify: ...]]`) anywhere in the
+/// bullet text. This is the ONLY way a proof-AC can be marked covered --
+/// there is no textual/keyword fallback, by design.
+pub fn extract_proof_check(bullet: &str) -> Option<String> {
+    for tag in ["[[check:", "[[verify:"] {
+        if let Some(start) = bullet.find(tag) {
+            let after = &bullet[start + tag.len()..];
+            if let Some(end) = after.find("]]") {
+                let cmd = after[..end].trim();
+                if !cmd.is_empty() {
+                    return Some(cmd.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Execute a proof-AC's embedded live-check command via `sh -c` and report
+/// whether the stated live outcome is actually true RIGHT NOW -- e.g.
+/// `systemctl is-active chump-sla-scorecard.timer`, `curl -f <url>`, or
+/// `grep -q deploy-recovered-marker .chump-locks/ambient.jsonl`.
+/// `CHUMP_REPO_ROOT`, when set, becomes the working directory so relative
+/// script paths in the check command resolve. Any exec failure counts as
+/// unverified (fail-closed), never as covered.
+fn run_proof_check(cmd: &str) -> bool {
+    let mut c = Command::new("sh");
+    c.arg("-c").arg(cmd);
+    if let Ok(root) = std::env::var("CHUMP_REPO_ROOT") {
+        c.current_dir(root);
+    }
+    matches!(c.output(), Ok(out) if out.status.success())
+}
+
+/// Rule (e): the ONLY rule that can cover a proof-AC bullet. True iff the
+/// bullet embeds a `[[check: ...]]` (or `[[verify: ...]]`) command AND that
+/// command exits 0 when executed live, right now.
+fn rule_e(bullet: &str) -> bool {
+    match extract_proof_check(bullet) {
+        Some(cmd) => run_proof_check(&cmd),
+        None => false,
+    }
+}
+
+/// Check which rules (1–5) cover a bullet given diff text and commit messages.
+///
+/// CREDIBLE-281: a proof-AC (see [`is_proof_ac`]) skips rules (a)-(d)
+/// entirely -- those are diff/commit-text keyword matches, and keyword
+/// matching is exactly how INFRA-3598's unmet "scorecard recovers to green"
+/// AC slipped past this gate as done. A proof-AC can ONLY be covered by rule
+/// (e): an embedded live-check command that is actually executed and
+/// actually passes.
 fn check_coverage(bullet: &str, diff: &str, commit_text: &str) -> Vec<u8> {
     let mut hit = Vec::new();
+    if is_proof_ac(bullet) {
+        if rule_e(bullet) {
+            hit.push(5);
+        }
+        return hit;
+    }
     if rule_a(bullet, diff) {
         hit.push(1);
     }
@@ -1874,6 +1946,64 @@ mod tests {
             !b.covered,
             "LLM judge must not override a proof bullet's live-outcome verdict"
         );
+    }
+
+    #[test]
+    fn test_is_proof_ac_detects_marker() {
+        assert!(is_proof_ac(
+            "PROVEN-BY: the scorecard organ recovers to green"
+        ));
+        assert!(is_proof_ac("proven by the endpoint returning 200"));
+        assert!(!is_proof_ac("the CLI prints a usage string"));
+    }
+
+    #[test]
+    fn test_extract_proof_check_parses_embedded_command() {
+        let bullet = "PROVEN-BY the healthcheck endpoint responds [[check: true]]";
+        assert_eq!(extract_proof_check(bullet), Some("true".to_string()));
+        assert_eq!(extract_proof_check("PROVEN-BY nothing embedded here"), None);
+    }
+
+    #[test]
+    fn test_check_coverage_proof_ac_infra_3598_class_false_done_rejected() {
+        // CREDIBLE-281: this is the exact shape of INFRA-3598's AC -- free
+        // text "PROVEN-BY <live outcome>" with no embedded live-check. Old
+        // behavior: rule (b) keyword-matched "scorecard"/"organ"/"green" in
+        // the diff and called it covered even though the scorecard was still
+        // red. New behavior: a proof-AC with no [[check: ...]] can NEVER be
+        // covered by diff/commit text, no matter how thoroughly the diff
+        // discusses the outcome.
+        let bullet = "PROVEN-BY: the scorecard organ recovers to green";
+        let diff = concat!(
+            "+++ b/scripts/ops/organ-watchdog.sh\n",
+            "+# fixes the scorecard organ so it recovers to green\n",
+            "+echo scorecard organ green recovers\n",
+        );
+        let commit_text = "Closes-AC: PROVEN-BY: the scorecard organ recovers to green";
+        assert!(
+            check_coverage(bullet, diff, commit_text).is_empty(),
+            "proof-AC with no embedded live-check must never be marked covered by text heuristics"
+        );
+    }
+
+    #[test]
+    fn test_check_coverage_proof_ac_covered_when_live_check_passes() {
+        let bullet = "PROVEN-BY the deploy loop is healthy [[check: true]]";
+        assert_eq!(check_coverage(bullet, "", ""), vec![5]);
+    }
+
+    #[test]
+    fn test_check_coverage_proof_ac_uncovered_when_live_check_fails() {
+        let bullet = "PROVEN-BY the deploy loop is healthy [[check: false]]";
+        assert!(check_coverage(bullet, "", "").is_empty());
+    }
+
+    #[test]
+    fn test_check_coverage_descriptive_ac_unaffected() {
+        // Non-proof bullets keep using rules (a)-(d) exactly as before.
+        let bullet = "docs/README.md exists";
+        let diff = concat!("+++ b/docs/README.md\n", "+hello world\n",);
+        assert_eq!(check_coverage(bullet, diff, ""), vec![1]);
     }
 
     #[test]
