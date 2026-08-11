@@ -5441,6 +5441,35 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason]
 
+  - kind: organ_self_healed
+    effect_metric: organ_self_heal_rate
+    emitter: scripts/ops/organ-watchdog.sh (INFRA-3595)
+    trigger: a chump-*.service organ was found in ActiveState=failed (or a
+      chump-*.timer enabled but inactive) and the watchdog cleared it with
+      `systemctl reset-failed` + restart/start with no human step — the
+      operator directive that the board must never hand-restart an organ.
+    consumers: [fleet-brief, ops-audit, curator]
+    fields_required: [ts, kind, unit, action]
+
+  - kind: organ_self_heal_failed
+    effect_metric: self
+    emitter: scripts/ops/organ-watchdog.sh (INFRA-3595)
+    trigger: the watchdog found a failed/inactive chump-* organ but the
+      reset-failed or restart/start call itself errored — surfaced so a
+      genuinely broken organ (not just a start-limit latch) pages the board
+      instead of looping silently forever.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, unit, step]
+
+  - kind: organ_watchdog_tick
+    effect_metric: self
+    emitter: scripts/ops/organ-watchdog.sh (INFRA-3595)
+    trigger: every watchdog cycle, success or no-op — the heartbeat proving
+      the watchdog itself is alive (paired with reaper-heartbeat-watchdog's
+      cadence-grading pattern so a dead watchdog is itself observable).
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, healed, dry_run]
+
   - kind: pre_restart
     effect_metric: self
     emitter: src/main.rs (chump fleet restart prep)

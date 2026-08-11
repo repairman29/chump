@@ -13,13 +13,16 @@
 #                                           desktop session required
 #   chump-sla-scorecard  (RESILIENT-302) — flags PRs open >30m unmerged with no
 #                                           owner as a board BREACH
+#   chump-organ-watchdog (INFRA-3595)    — self-heals any failed chump-*
+#                                           organ (reset-failed + restart), no
+#                                           human step required
 #
 # Before RESILIENT-300, these were live-hacked directly into /etc/systemd/system
 # and ~/.config/systemd/user — a node rebuild silently lost ATC. This script is
 # the single, idempotent entrypoint that re-establishes the whole roster from
 # tracked repo files.
 #
-# pr-lander, armed-rebaser, sla-scorecard, board-cycle are SYSTEM units
+# pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog are SYSTEM units
 # (root-owned, /etc/systemd/system) — this script must run as root (or via
 # sudo). node-refresh is a USER unit (systemd --user) — installed by
 # delegating to install-node-refresh-systemd.sh.
@@ -77,8 +80,10 @@ SYSTEM_UNITS=(
   chump-board-cycle.timer
   chump-sla-scorecard.service
   chump-sla-scorecard.timer
+  chump-organ-watchdog.service
+  chump-organ-watchdog.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
@@ -110,7 +115,7 @@ if [[ "$(id -u)" != "0" ]]; then
   exit 1
 fi
 
-echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board-cycle) =="
+echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog) =="
 CHANGED_UNITS=()
 for unit in "${SYSTEM_UNITS[@]}"; do
   src="$REPO_ROOT/scripts/dispatch/$unit"
