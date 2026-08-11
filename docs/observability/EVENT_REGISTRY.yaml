@@ -1620,6 +1620,40 @@ events:
       state) for a human / conflict-resolver to resolve.
     consumers: [audit-log, fleet]
 
+  # ── RESILIENT-301: consumer/accountability organ for armed_pr_needs_conflict_resolution ──
+  - kind: conflict_resolution_consumer_tick
+    effect_metric: pr_rescue_action_within_4h
+    emitter: scripts/coord/conflict-resolution-consumer.sh (RESILIENT-301)
+    trigger: standing sweep completed; records how many candidate PRs (flagged +
+      green-DIRTY-unarmed) were examined, resolved, and escalated this pass.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, body]
+
+  - kind: conflict_resolution_consumer_rebase_clean
+    effect_metric: pr_rescue_action_within_4h
+    emitter: scripts/coord/conflict-resolution-consumer.sh (RESILIENT-301)
+    trigger: a flagged/green-DIRTY-unarmed PR turned out to be a plain rebase
+      (no real conflict); rebased clean, pushed, and auto-merge armed.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, body]
+
+  - kind: conflict_resolution_consumer_resolved
+    effect_metric: pr_rescue_action_within_4h
+    emitter: scripts/coord/conflict-resolution-consumer.sh (RESILIENT-301)
+    trigger: a real conflict was resolved by dispatching conflict-resolver-agent.sh
+      against the branch's owning gap; rebase continued clean, pushed, and armed.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, body]
+
+  - kind: conflict_resolution_consumer_escalated
+    effect_metric: pr_rescue_action_within_4h
+    emitter: scripts/coord/conflict-resolution-consumer.sh (RESILIENT-301)
+    trigger: a PR remained conflicted after CHUMP_CONFLICT_CONSUMER_MAX_ATTEMPTS
+      rounds of plain-rebase + agent-resolution attempts; escalated to the
+      operator with PR#, age, and reason via broadcast ALERT.
+    consumers: [fleet-brief, operator-recall, watchdog]
+    fields_required: [ts, kind, body]
+
   - kind: pr_stuck_cycle_1_rebase_attempted
     effect_metric: pr_auto_closed_for_respawn_within_30m
     emitter: scripts/ops/stale-pr-reaper.sh (INFRA-1410)
