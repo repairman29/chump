@@ -1,0 +1,13 @@
+# INFRA-3593 — pairs with chump-sla-scorecard.service. Fires every 15 min, in
+# step with the board cadence documented in merge-sla-scorecard.sh (a fresh
+# 30m breach is caught within one cycle).
+[Unit]
+Description=Run the Chump merge-SLA scorecard every 15 minutes (RESILIENT-302)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -5411,6 +5411,36 @@ events:
     consumers: [fleet-brief, ops-audit, operator-recall]
     fields_required: [ts, kind, pr, age_s, threshold_s, gap]
 
+  - kind: organ_units_deployed
+    effect_metric: organ_unit_drift_auto_healed
+    emitter: scripts/setup/install-helsinki-atc.sh --auto (INFRA-3593, called
+      from scripts/ops/node-refresh-chump.sh after every fast-forward)
+    trigger: a merge that changed a tracked chump-*.service/.timer file
+      (RESILIENT-300 roster) was auto-installed on helsinki with no human
+      step; lists only the units whose content actually differed from what
+      was live in /etc/systemd/system.
+    consumers: [fleet-brief, ops-audit, curator]
+    fields_required: [ts, kind, units, auto]
+
+  - kind: organ_units_deploy_skipped
+    effect_metric: self
+    emitter: scripts/setup/install-helsinki-atc.sh --auto (INFRA-3593)
+    trigger: auto-deploy ran but every tracked chump-*.service/.timer file
+      already matched what was live — no-op on the common path, still
+      observable proof the check ran each refresh cycle.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, auto]
+
+  - kind: organ_units_deploy_failed
+    effect_metric: self
+    emitter: scripts/setup/install-helsinki-atc.sh --auto (INFRA-3593)
+    trigger: auto-deploy was invoked without root privileges and could not
+      write /etc/systemd/system — the calling worker context structurally
+      cannot install system units; surfaced for the board instead of
+      silently no-op'ing.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason]
+
   - kind: pre_restart
     effect_metric: self
     emitter: src/main.rs (chump fleet restart prep)

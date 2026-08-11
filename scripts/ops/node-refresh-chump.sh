@@ -100,6 +100,21 @@ git reset --hard "origin/main" >>"$LOG" 2>&1 || {
     exit 1
 }
 
+# --- INFRA-3593: auto-deploy any changed chump-*.service/.timer organ units --
+# The mirror just landed whatever merged into origin/main, including any
+# chump-*.service/.timer edits (RESILIENT-300 roster). Hand off to
+# install-helsinki-atc.sh --auto so a merge auto-installs on helsinki with no
+# human step — same "keep current with origin/main" contract this script
+# already applies to the binary, extended to the systemd units. Best-effort:
+# a failure here must not block the binary refresh above.
+DEPLOY_ORGANS="$REPO_ROOT/scripts/setup/install-helsinki-atc.sh"
+if [[ -f "$DEPLOY_ORGANS" ]]; then
+    NODE_AMBIENT="$NODE_AMBIENT" bash "$DEPLOY_ORGANS" --auto >>"$LOG" 2>&1 \
+        || log "WARN: install-helsinki-atc.sh --auto exited non-zero (non-fatal)"
+else
+    log "WARN: $DEPLOY_ORGANS not found; skipping organ-unit auto-deploy"
+fi
+
 # --- resolve cargo -----------------------------------------------------------
 CARGO=""
 for candidate in "$HOME/.cargo/bin/cargo" "$(command -v cargo 2>/dev/null)" "/usr/local/bin/cargo"; do
