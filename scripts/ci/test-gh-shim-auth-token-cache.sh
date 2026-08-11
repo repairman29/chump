@@ -73,7 +73,7 @@ else
     fail "Test 1b: cache file not created at $CACHE_FILE"
 fi
 
-CALL_COUNT=$(grep -c "CALL: gh auth token" "$CALL_LOG" 2>/dev/null || echo 0)
+CALL_COUNT=$(grep -c "CALL: gh auth token" "$CALL_LOG" 2>/dev/null || true)
 if [[ "$CALL_COUNT" -eq 1 ]]; then
     ok "Test 1c: real gh called exactly once on miss"
 else
@@ -93,7 +93,7 @@ else
     fail "Test 2a: expected 'fake-token-abc123', got '$RESULT2'"
 fi
 
-CALL_COUNT2=$(grep -c "CALL: gh auth token" "$CALL_LOG" 2>/dev/null || echo 0)
+CALL_COUNT2=$(grep -c "CALL: gh auth token" "$CALL_LOG" 2>/dev/null || true)
 if [[ "$CALL_COUNT2" -eq 0 ]]; then
     ok "Test 2b: real gh NOT called on cache hit"
 else
@@ -107,7 +107,7 @@ RESULT3=$(HOME="$FAKE_HOME" CHUMP_GH_TOKEN_CACHE_TTL_S=0 CHUMP_AMBIENT_LOG="$AMB
     CHUMP_GH_NO_TOKEN_CACHE=0 PATH="$MOCK_DIR:$PATH" \
     bash "$SHIM" auth token 2>/dev/null)
 
-CALL_COUNT3=$(grep -c "CALL: gh auth token" "$CALL_LOG" 2>/dev/null || echo 0)
+CALL_COUNT3=$(grep -c "CALL: gh auth token" "$CALL_LOG" 2>/dev/null || true)
 if [[ "$CALL_COUNT3" -ge 1 ]]; then
     ok "Test 3: real gh called after TTL=0 (expired)"
 else
@@ -125,7 +125,7 @@ HOME="$FAKE_HOME" CHUMP_GH_TOKEN_CACHE_TTL_S=300 CHUMP_AMBIENT_LOG="$AMBIENT" \
     CHUMP_GH_NO_TOKEN_CACHE=1 PATH="$MOCK_DIR:$PATH" \
     bash "$SHIM" auth token >/dev/null 2>&1 || true
 
-CALL_COUNT4=$(grep -c "CALL: gh auth token" "$CALL_LOG" 2>/dev/null || echo 0)
+CALL_COUNT4=$(grep -c "CALL: gh auth token" "$CALL_LOG" 2>/dev/null || true)
 if [[ "$CALL_COUNT4" -ge 2 ]]; then
     ok "Test 4: bypass always calls real gh ($CALL_COUNT4 calls for 2 invocations)"
 else
@@ -140,7 +140,7 @@ rm -f "$CALL_LOG"
 HOME="$FAKE_HOME" CHUMP_GH_NO_TOKEN_CACHE=0 PATH="$MOCK_DIR:$PATH" \
     CHUMP_GH_NO_SHIM=0 \
     bash "$SHIM" pr list 2>/dev/null || true
-CALL_COUNT5=$(grep -c "CALL: gh pr list" "$CALL_LOG" 2>/dev/null || echo 0)
+CALL_COUNT5=$(grep -c "CALL: gh pr list" "$CALL_LOG" 2>/dev/null || true)
 if [[ "$CALL_COUNT5" -ge 1 ]]; then
     ok "Test 5: 'gh pr list' reaches real gh (not intercepted by token cache)"
 else

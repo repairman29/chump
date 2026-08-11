@@ -1227,6 +1227,9 @@ jobs:
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
 
+      - name: grep -c || echo 0 idiom guard smoke (RESILIENT-281)
+        run: bash scripts/ci/test-grep-c-echo0-guard.sh
+
   # ── Shard 2: clippy ───────────────────────────────────────────────────────
   # Workspace-wide clippy with -D warnings. Runs in parallel with cargo-test
   # and fast-checks. Target wall-clock: 3-5 min.

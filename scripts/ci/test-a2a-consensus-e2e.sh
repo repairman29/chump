@@ -63,7 +63,7 @@ done
 
 # The real vote tool must produce kind=vote in ambient — the exact shape the
 # tally depends on. If this is < 3 the vote tool's output drifted.
-vc="$(grep -c '"kind":"vote"' "$AMB" 2>/dev/null || echo 0)"
+vc="$(grep -c '"kind":"vote"' "$AMB" 2>/dev/null || true)"
 if [[ "$vc" -ge 3 ]]; then
     ok "3 real \`chump vote\` events landed in ambient as kind=vote (got $vc)"
 else

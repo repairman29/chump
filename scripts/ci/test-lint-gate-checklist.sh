@@ -52,7 +52,7 @@ if [[ "$RETROACTIVE" -eq 1 ]]; then
     while IFS= read -r script; do
         base="$(basename "$script" .sh)"
         fixture="$REPO_ROOT/scripts/ci/${base}-self-fixture.sh"
-        skip_comment=$(grep -c 'Self-fixture-skip:' "$REPO_ROOT/$script" 2>/dev/null || echo 0)
+        skip_comment=$(grep -c 'Self-fixture-skip:' "$REPO_ROOT/$script" 2>/dev/null || true)
         if [[ -f "$fixture" ]]; then
             ok "$script — self-fixture present"
         elif [[ "$skip_comment" -gt 0 ]]; then

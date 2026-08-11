@@ -42,7 +42,7 @@ mkdir -p "$FAKE_WT_BASE/wt-alpha"
 mkdir -p "$FAKE_WT_BASE/wt-beta"
 
 out="$(CHUMP_WORKTREE_BASE="$FAKE_WT_BASE" CHUMP_WT_SCAN_TMP=0 scan_worktrees)"
-count=$(echo "$out" | grep -c "wt-" 2>/dev/null || echo 0)
+count=$(echo "$out" | grep -c "wt-" 2>/dev/null || true)
 if [[ "$count" -ge 2 ]]; then
     ok "scan_worktrees yields worktree dirs from CHUMP_WORKTREE_BASE"
 else

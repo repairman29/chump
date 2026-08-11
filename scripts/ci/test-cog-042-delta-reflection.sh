@@ -64,7 +64,7 @@ else
 fi
 
 # --- 5. unit tests defined (cog042_ prefix) ---
-test_count=$(grep -cE 'fn cog042_' "$REPO_ROOT/src/reflect_delta.rs" 2>/dev/null || echo 0)
+test_count=$(grep -cE 'fn cog042_' "$REPO_ROOT/src/reflect_delta.rs" 2>/dev/null || true)
 if [[ "$test_count" -ge 5 ]]; then
     ok "in-tree cog042_ unit tests defined ($test_count fns; full run via cargo test --workspace)"
 else

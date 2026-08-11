@@ -12,7 +12,7 @@
 #   3. If either branch edited existing steps or inserted in the middle, refuse (exit 1)
 #
 # Bugs fixed (INFRA-1205):
-#   - grep -c exits 1 on 0 matches; "|| echo 0" inside $() also fires, producing
+#   - grep -c exits 1 on 0 matches; "|| true" inside $() also fires, producing
 #     "0\n0" in the variable and "[[ 0\n0 -lt N ]]" syntax error.  Fixed by
 #     putting the fallback assignment outside the subshell: $(…) || var=0
 #   - grep lacked -E; "(name|uses)" was treated as a BRE literal, never matching.

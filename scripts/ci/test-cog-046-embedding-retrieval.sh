@@ -81,7 +81,7 @@ else
 fi
 
 # --- 7. unit tests defined ---
-test_count=$(grep -cE 'fn cog046_' "$REPO_ROOT/src/lesson_embeddings.rs" 2>/dev/null || echo 0)
+test_count=$(grep -cE 'fn cog046_' "$REPO_ROOT/src/lesson_embeddings.rs" 2>/dev/null || true)
 if [[ "$test_count" -ge 7 ]]; then
     ok "in-tree cog046_ unit tests defined ($test_count fns; full run via cargo test --workspace)"
 else

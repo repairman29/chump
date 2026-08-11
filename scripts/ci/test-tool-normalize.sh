@@ -62,7 +62,7 @@ else
 fi
 
 # 5. Non-streaming path wired
-count=$(grep -c 'tool_normalize::normalize_tool_args' "$REPO_ROOT/src/local_openai.rs" 2>/dev/null || echo 0)
+count=$(grep -c 'tool_normalize::normalize_tool_args' "$REPO_ROOT/src/local_openai.rs" 2>/dev/null || true)
 if [[ "$count" -ge 2 ]]; then
     ok "5: normalizer wired into both streaming and non-streaming paths ($count occurrences)"
 else

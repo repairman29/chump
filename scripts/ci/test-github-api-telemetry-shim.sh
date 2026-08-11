@@ -64,7 +64,7 @@ echo "$out" | grep -q "$SHIM_DIR/gh" \
     || fail "which gh did not resolve to shim. out: $out"
 
 # Verify ambient got both calls
-ambient_count=$(grep -c 'github_api_call' "$AMBIENT" 2>/dev/null || echo 0)
+ambient_count=$(grep -c 'github_api_call' "$AMBIENT" 2>/dev/null || true)
 [[ "$ambient_count" -ge 2 ]] \
     && ok "$ambient_count github_api_call events in ambient" \
     || fail "expected ≥2 ambient events, got $ambient_count"
@@ -108,7 +108,7 @@ bash -c "
     source '$LIB'
     CHUMP_GH_NO_SHIM=1 gh --version >/dev/null
 " 2>&1 >/dev/null
-ambient_after=$(grep -c 'github_api_call' "$AMBIENT" 2>/dev/null || echo 0)
+ambient_after=$(grep -c 'github_api_call' "$AMBIENT" 2>/dev/null || true)
 [[ "$ambient_after" -eq 0 ]] \
     && ok "CHUMP_GH_NO_SHIM=1 per-call bypass: no ambient event recorded" \
     || fail "per-call bypass failed: $ambient_after events recorded"

@@ -1990,4 +1990,19 @@ if [ -x "$CSS_TOKEN_HOOK" ]; then
     fi
 fi
 
+# ------------------------------------------------------------------
+# 20. grep -c ... || echo 0 idiom guard (RESILIENT-281)
+# ------------------------------------------------------------------
+# Fires on staged scripts/**/*.sh. `grep -c` already prints "0" (and exits
+# 1) on zero matches, so `|| echo 0` appends a duplicate line that breaks
+# downstream numeric comparisons ([[ -gt 0 ]], (( == 0 ))) with a silent
+# bash "syntax error in expression". Bypass: 'Grep-C-Echo0-Bypass: <reason>'
+# commit trailer.
+GREP_C_ECHO0_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-grep-c-echo0-guard.sh"
+if [ -x "$GREP_C_ECHO0_HOOK" ]; then
+    if ! "$GREP_C_ECHO0_HOOK"; then
+        exit 1
+    fi
+fi
+
 exit 0

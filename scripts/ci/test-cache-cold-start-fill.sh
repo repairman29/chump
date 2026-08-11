@@ -97,7 +97,7 @@ echo "$RESULT" | grep -q "103:CLEAN" || fail "PR 103 (was not cold) shouldn't ch
 ok "cold rows 101+102 warmed via REST fetch; warm row 103 left alone"
 
 # Assert: two kind=cache_warmed events emitted.
-WARMED=$(grep -c '"kind":"cache_warmed"' "$AMB" 2>/dev/null || echo 0)
+WARMED=$(grep -c '"kind":"cache_warmed"' "$AMB" 2>/dev/null || true)
 [[ "$WARMED" -eq 2 ]] || fail "expected 2 cache_warmed events, got $WARMED in $(cat "$AMB" 2>/dev/null)"
 ok "emitted 2 kind=cache_warmed events (one per warmed row)"
 

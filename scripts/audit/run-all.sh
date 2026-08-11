@@ -92,7 +92,7 @@ if have cargo-audit; then
         printf '**OK** — no known vulnerabilities in the dependency tree.\n\n' >> "$OUT"
     else
         # cargo-audit exits 1 when vulnerabilities found; still parseable
-        ADV_COUNT=$(grep -c '"advisory"' "$TMP/audit.json" 2>/dev/null || echo 0)
+        ADV_COUNT=$(grep -c '"advisory"' "$TMP/audit.json" 2>/dev/null || true)
         printf '**%s vulnerability advisor(ies)** reported.\n\n```\n' "$ADV_COUNT" >> "$OUT"
         cat "$TMP/audit.err" >> "$OUT" 2>/dev/null || true
         # Also include a trimmed summary from the JSON
@@ -168,7 +168,7 @@ if [[ "$QUICK" == "1" ]]; then
 else
     # Only `--bin chump` to keep runtime bounded; workspace-wide pedantic is too noisy for a weekly run.
     if cargo clippy --bin chump -- -W clippy::pedantic 2>"$TMP/clippy.err" >"$TMP/clippy.out"; then
-        W_COUNT=$(grep -c '^warning' "$TMP/clippy.err" 2>/dev/null || echo 0)
+        W_COUNT=$(grep -c '^warning' "$TMP/clippy.err" 2>/dev/null || true)
         if [[ "$W_COUNT" -gt 0 ]]; then
             printf '**%s pedantic warnings** — see raw output for details:\n\n```\n' "$W_COUNT" >> "$OUT"
             head -80 "$TMP/clippy.err" >> "$OUT"

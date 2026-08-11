@@ -141,7 +141,7 @@ for page in 2 3 4 5 6 7 8 9 10; do
     ALL_BRANCHES+=$'\n'"$PAGE_RESULT"
 done
 
-TOTAL=$(echo "$ALL_BRANCHES" | grep -c . || echo 0)
+TOTAL=$(echo "$ALL_BRANCHES" | grep -c . || true)
 echo "[branch-reaper] Total remote branches: $TOTAL"
 
 PRUNED=0

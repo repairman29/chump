@@ -70,7 +70,7 @@ for bot in pmm docubot evangelist copybot; do
 done
 
 # Count of default_enabled: false → must equal 4 (foundation invariant)
-disabled_count="$(grep -cE '^\s*default_enabled:\s*false' "$BOTS_YAML" 2>/dev/null || echo 0)"
+disabled_count="$(grep -cE '^\s*default_enabled:\s*false' "$BOTS_YAML" 2>/dev/null || true)"
 if [[ "${disabled_count:-0}" -ne 4 ]]; then
     echo "FAIL: bots.yaml expected 4 'default_enabled: false' entries, found $disabled_count"
     failures=$((failures + 1))

@@ -61,7 +61,7 @@ else
 fi
 
 # Unit tests defined
-test_count=$(grep -cE 'fn infra477_' "$REPO_ROOT/src/session_ledger.rs" 2>/dev/null || echo 0)
+test_count=$(grep -cE 'fn infra477_' "$REPO_ROOT/src/session_ledger.rs" 2>/dev/null || true)
 if [[ "$test_count" -ge 5 ]]; then
     ok "in-tree infra477_ unit tests defined ($test_count fns; full run via cargo test --workspace)"
 else

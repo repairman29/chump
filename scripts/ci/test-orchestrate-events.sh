@@ -139,7 +139,7 @@ printf 'list open gaps\nshow mission grade\nexit\n' | \
     CHUMP_AMBIENT_IN_PROMPT="$AMB2" \
     "$CHUMP" orchestrate >/dev/null 2>&1 || true
 
-EVENT_COUNT=$(grep -c '"kind":"orchestrate_intent"' "$AMB2" 2>/dev/null || echo 0)
+EVENT_COUNT=$(grep -c '"kind":"orchestrate_intent"' "$AMB2" 2>/dev/null || true)
 if [[ "$EVENT_COUNT" -ge 2 ]]; then
     ok "loop emits one event per intent ($EVENT_COUNT events for 2 intents)"
 else

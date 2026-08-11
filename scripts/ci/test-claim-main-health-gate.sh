@@ -77,7 +77,7 @@ ambient_count_since() {
         echo 0
         return
     fi
-    tail -n +"$((offset + 1))" "$AMBIENT_LOG" 2>/dev/null | grep -c "$pattern" || echo 0
+    tail -n +"$((offset + 1))" "$AMBIENT_LOG" 2>/dev/null | grep -c "$pattern" || true
 }
 
 ambient_line_count() {

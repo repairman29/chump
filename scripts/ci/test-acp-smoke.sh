@@ -128,7 +128,7 @@ fi
 # ── Extract responses by id (responses may arrive out of order) ──────────────
 # Filter out non-JSON lines (e.g. tracing noise on stdout).
 VALID_JSON=$(grep -E '^\{.*\}$' "$TMPOUT" 2>/dev/null || true)
-LINE_COUNT=$(echo "$VALID_JSON" | grep -c '^{' 2>/dev/null || echo 0)
+LINE_COUNT=$(echo "$VALID_JSON" | grep -c '^{' 2>/dev/null || true)
 
 if [[ "$LINE_COUNT" -lt 2 ]]; then
   echo "FAIL: Expected at least 2 JSON response lines, got $LINE_COUNT" >&2

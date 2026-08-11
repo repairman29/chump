@@ -48,7 +48,7 @@ fi
 # ── Test 3: cleanup_lease called on claim failure path ─────────────────────────
 echo "--- Test 3: spawn_gap_workflow calls cleanup_lease on claim failure ---"
 if grep -q 'cleanup_lease' "$WEB_SERVER" 2>/dev/null; then
-    _cleanup_count=$(grep -c 'cleanup_lease' "$WEB_SERVER" 2>/dev/null || echo 0)
+    _cleanup_count=$(grep -c 'cleanup_lease' "$WEB_SERVER" 2>/dev/null || true)
     if [[ "${_cleanup_count:-0}" -ge 2 ]]; then
         ok "Test 3: cleanup_lease called in multiple error paths ($_cleanup_count times)"
     else
@@ -88,7 +88,7 @@ fi
 # ── Test 7: Rust unit tests for spawn_error_tests module ─────────────────────
 echo "--- Test 7: spawn_error_tests module exists with CREDIBLE-021 tests ---"
 if grep -q 'spawn_error_tests\|credible021_' "$WEB_SERVER" 2>/dev/null; then
-    _test_count=$(grep -c 'fn credible021_' "$WEB_SERVER" 2>/dev/null || echo 0)
+    _test_count=$(grep -c 'fn credible021_' "$WEB_SERVER" 2>/dev/null || true)
     if [[ "${_test_count:-0}" -ge 4 ]]; then
         ok "Test 7: spawn_error_tests module has ${_test_count} CREDIBLE-021 Rust tests"
     else

@@ -152,14 +152,14 @@ echo "=== Test (d): kind=lease_broad_dir_claim emitted to ambient.jsonl on overr
 REAL_AMBIENT="$REPO_ROOT/.chump-locks/ambient.jsonl"
 before_count=0
 if [[ -f "$REAL_AMBIENT" ]]; then
-    before_count="$(grep -c '"kind":"lease_broad_dir_claim"' "$REAL_AMBIENT" 2>/dev/null || echo 0)"
+    before_count="$(grep -c '"kind":"lease_broad_dir_claim"' "$REAL_AMBIENT" 2>/dev/null || true)"
 fi
 
 CHUMP_LEASE_ALLOW_BROAD_DIRS=1 run_claim_breadth "src" > /dev/null 2>&1 || true
 
 after_count=0
 if [[ -f "$REAL_AMBIENT" ]]; then
-    after_count="$(grep -c '"kind":"lease_broad_dir_claim"' "$REAL_AMBIENT" 2>/dev/null || echo 0)"
+    after_count="$(grep -c '"kind":"lease_broad_dir_claim"' "$REAL_AMBIENT" 2>/dev/null || true)"
 fi
 
 if [[ "$after_count" -gt "$before_count" ]]; then

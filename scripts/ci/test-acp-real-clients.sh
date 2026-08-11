@@ -120,7 +120,7 @@ run_acp_server() {
     while [[ $i -lt 15 ]]; do
       if [[ -s "$outfile" ]]; then
         local lc
-        lc=$(grep -c '^\{' "$outfile" 2>/dev/null || echo 0)
+        lc=$(grep -c '^\{' "$outfile" 2>/dev/null || true)
         [[ "$lc" -ge 2 ]] && break
       fi
       i=$((i + 1))

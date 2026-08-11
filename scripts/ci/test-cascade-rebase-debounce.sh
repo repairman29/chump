@@ -135,8 +135,8 @@ PID3=$!
 
 wait $PID1 $PID2 $PID3
 
-triggered=$(grep -c '"kind":"cascade_rebase_triggered"' "$AMBIENT" 2>/dev/null || echo 0)
-skipped=$(grep -c '"kind":"cascade_rebase_skipped_duplicate"' "$AMBIENT" 2>/dev/null || echo 0)
+triggered=$(grep -c '"kind":"cascade_rebase_triggered"' "$AMBIENT" 2>/dev/null || true)
+skipped=$(grep -c '"kind":"cascade_rebase_skipped_duplicate"' "$AMBIENT" 2>/dev/null || true)
 
 if [[ "$triggered" -eq 1 ]]; then
     ok "Test 1: exactly 1 worker fired cascade_rebase_triggered (got $triggered)"
@@ -159,7 +159,7 @@ bash -c "
     cascade_rebase_if_hot
 " 2>/dev/null || true
 
-skipped2=$(grep -c '"kind":"cascade_rebase_skipped_duplicate"' "$AMBIENT" 2>/dev/null || echo 0)
+skipped2=$(grep -c '"kind":"cascade_rebase_skipped_duplicate"' "$AMBIENT" 2>/dev/null || true)
 if [[ "$skipped2" -ge 3 ]]; then
     ok "Test 4: serial re-call with same SHA skipped (lock still held)"
 else
@@ -176,7 +176,7 @@ bash -c "
     cascade_rebase_if_hot
 " 2>/dev/null || true
 
-triggered2=$(grep -c '"kind":"cascade_rebase_triggered"' "$AMBIENT" 2>/dev/null || echo 0)
+triggered2=$(grep -c '"kind":"cascade_rebase_triggered"' "$AMBIENT" 2>/dev/null || true)
 if [[ "$triggered2" -eq 2 ]]; then
     ok "Test 5: different SHA acquired new lock and fired cascade (total triggered=$triggered2)"
 else

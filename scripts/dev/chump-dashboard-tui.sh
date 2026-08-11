@@ -143,11 +143,11 @@ _pillar_pickable() {
         if printf '%s' "$gaps" | grep -q "re-run to list"; then
             gaps="$("$CHUMP_BIN" gap list --status open 2>/dev/null || true)"
         fi
-        eff="$(printf '%s' "$gaps" | grep -cE '\bEFFECTIVE\b' 2>/dev/null || echo 0)"
-        cred="$(printf '%s' "$gaps" | grep -cE '\bCREDIBLE\b' 2>/dev/null || echo 0)"
-        res="$(printf '%s' "$gaps" | grep -cE '\bRESILIENT\b' 2>/dev/null || echo 0)"
-        zw="$(printf '%s' "$gaps" | grep -cE '\bZERO-WASTE\b' 2>/dev/null || echo 0)"
-        miss="$(printf '%s' "$gaps" | grep -cE '\bMISSION\b' 2>/dev/null || echo 0)"
+        eff="$(printf '%s' "$gaps" | grep -cE '\bEFFECTIVE\b' 2>/dev/null || true)"
+        cred="$(printf '%s' "$gaps" | grep -cE '\bCREDIBLE\b' 2>/dev/null || true)"
+        res="$(printf '%s' "$gaps" | grep -cE '\bRESILIENT\b' 2>/dev/null || true)"
+        zw="$(printf '%s' "$gaps" | grep -cE '\bZERO-WASTE\b' 2>/dev/null || true)"
+        miss="$(printf '%s' "$gaps" | grep -cE '\bMISSION\b' 2>/dev/null || true)"
     fi
     printf '%s\t%s\t%s\t%s\t%s' "$eff" "$cred" "$res" "$zw" "$miss"
 }

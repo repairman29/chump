@@ -108,7 +108,7 @@ fi
 
 # 13. rate limit wired in gap handlers
 if grep -q 'check_gap_rate_limit' "$WS" 2>/dev/null; then
-    _rl_count=$(grep -c 'check_gap_rate_limit' "$WS" 2>/dev/null || echo 0)
+    _rl_count=$(grep -c 'check_gap_rate_limit' "$WS" 2>/dev/null || true)
     if [[ "$_rl_count" -ge 2 ]]; then
         ok "web_server.rs: check_gap_rate_limit() called in gap handlers (${_rl_count}x)"
     else
@@ -120,7 +120,7 @@ fi
 
 # 14. gap_security_headers_middleware wired in build_api_router
 if grep -q 'gap_security_headers_middleware' "$WS" 2>/dev/null; then
-    _count=$(grep -c 'gap_security_headers_middleware' "$WS" 2>/dev/null || echo 0)
+    _count=$(grep -c 'gap_security_headers_middleware' "$WS" 2>/dev/null || true)
     if [[ "$_count" -ge 2 ]]; then
         ok "web_server.rs: gap_security_headers_middleware wired in router (def + layer)"
     else
