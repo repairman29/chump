@@ -1629,6 +1629,48 @@ events:
     consumers: [ambient]
     fields_required: [ts, kind, sla_breaches, stalls_classified]
 
+  - kind: discord_command_agent_dispatched
+    effect_metric: self
+    emitter: scripts/dispatch/discord-command-agent.sh (INFRA-3596)
+    trigger: the gateway (scripts/ops/discord-gateway.py) handed a free-text
+      operator DM command off to this script, which is about to invoke a fresh
+      bounded `claude -p` agent to read board state, act, and reply.
+    consumers: [ambient]
+    fields_required: [ts, kind, command]
+
+  - kind: discord_command_agent_beat
+    effect_metric: self
+    emitter: scripts/dispatch/discord-command-agent.sh (INFRA-3596)
+    trigger: the fresh `claude -p` command agent invoked for an operator DM
+      finished (or timed out); records the exit code so the dispatch is
+      provable, not assumed, even with no desktop Claude session open.
+    consumers: [ambient]
+    fields_required: [ts, kind, exit_code, node]
+
+  - kind: discord_command_agent_completed
+    effect_metric: self
+    emitter: command agent invoked by scripts/dispatch/discord-command-agent.sh (INFRA-3596)
+    trigger: the command agent itself finished acting on the operator's DM
+      command and replied (or attempted to reply) via notify_operator.
+    consumers: [ambient]
+    fields_required: [ts, kind, command, replied]
+
+  - kind: discord_command_agent_failed
+    effect_metric: pr_rescue_action_within_4h
+    emitter: scripts/dispatch/discord-command-agent.sh (INFRA-3596)
+    trigger: the `claude -p` command agent exited non-zero (crash/timeout/
+      budget cap) before it could reply itself; the dispatch script sends a
+      fallback notify_operator DM so the operator is never left in silence
+      (the exact failure mode RESILIENT-263 exists to prevent).
+    consumers: [audit-log, fleet]
+
+  - kind: discord_command_agent_dispatch_failed
+    effect_metric: self
+    emitter: scripts/ops/discord-gateway.py (INFRA-3596)
+    trigger: the gateway could not even start the command-agent subprocess
+      (missing script, spawn error) — surfaced to the operator directly.
+    consumers: [ambient]
+
   - kind: armed_pr_needs_conflict_resolution
     effect_metric: pr_rescue_action_within_4h
     emitter: scripts/coord/armed-pr-rebaser.sh (INFRA-3473)
