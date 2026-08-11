@@ -919,6 +919,50 @@ This slice confirms the INFRA-3547 findings are still current; the one
 actionable gap it identified (autoscaler ceiling) has since shipped
 (INFRA-3549), and no regression or new contention signal has appeared.
 
+### System-information re-verification (2026-08-11, INFRA-3576 fleet-2 slice)
+
+INFRA-3576 carries the same three candidate-root-cause AC as the
+INFRA-3546/INFRA-3558 slices above (disk full / stale runner registration /
+network issues — each "identified or ruled out"). Re-ran both signals again
+to confirm nothing has changed since INFRA-3558:
+
+```
+$ scripts/dev/analyze-infra1655-system-info.sh 26193207185
+stale_runner_registration: RULED_OUT — 3/5 self-hosted job(s) had a live
+  runner_id/runner_name assigned (a stale/deregistered runner cannot
+  receive a job dispatch)
+5/5 self-hosted job(s) executed ZERO steps before CANCELLED — consistent
+  with cancel-before-dispatch, NOT a mid-checkout disk/network failure
+network_issues: RULED_OUT as sole cause — overlapping push present,
+  consistent with concurrency-group cancellation (INFRA-1852)
+disk_full: RULED_OUT as sole cause — cancellation is externally triggered
+  (concurrency group), not runner-local resource exhaustion
+
+$ gh api repos/repairman29/chump/actions/runners --jq '.runners[] | {name,os,status}'
+{"name":"chumpd-eu-runner","os":"Linux","status":"online"}
+```
+
+**All three AC conditions hold, unchanged from INFRA-3546/INFRA-3558:**
+
+1. **Disk full — ruled out.** Same zero-step evidence: no step (including
+   `actions/checkout@v6`) ever started running on the cancelled self-hosted
+   jobs at incident time, so nothing could hit a full disk.
+2. **Stale runner registration — ruled out.** At incident time, 3/5
+   self-hosted jobs had a live `runner_id`/`runner_name` assigned, which a
+   stale/deregistered runner cannot receive. The live registry today still
+   shows no `jeffs-macbook-air-10-X` entry — fully deregistered, per
+   INFRA-3544/INFRA-3556/INFRA-3558 — a current re-registration prerequisite,
+   not evidence of an incident-time registration fault.
+3. **Network issues — ruled out.** Same zero-step evidence rules out a
+   mid-`git clone`/`fetch` blip; the synchronized cancellation across
+   independent physical Macs plus the overlapping newer push on the same
+   branch/PR still points to the concurrency-group cancellation (INFRA-1852)
+   as the trigger, not an independent per-machine network fault.
+
+No new information surfaced — this slice confirms the INFRA-3546/INFRA-3558
+findings are still current and nothing has regressed or changed in the
+runner pool or historical job metadata.
+
 ---
 
 ## Pi mesh provisioner (INFRA-1543)
