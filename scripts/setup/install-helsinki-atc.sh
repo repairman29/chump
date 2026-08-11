@@ -156,8 +156,34 @@ if [[ ! -f "$NODE_REFRESH_INSTALLER" ]]; then
   echo "ERROR: $NODE_REFRESH_INSTALLER not found" >&2
   exit 1
 fi
-CHUMP_NODE_REPO="$REPO_ROOT" bash "$NODE_REFRESH_INSTALLER" \
-  || echo "WARN: node-refresh user-unit install failed (non-fatal; system units above still installed)" >&2
+# INFRA-3598: never bake an EPHEMERAL session worktree
+# (.claude/worktrees/<gap>-<ts>/) into the persisted node-refresh unit's
+# CHUMP_NODE_REPO. This script's own REPO_ROOT is "wherever this file
+# currently lives on disk" — fine for the SYSTEM_UNITS copy step above
+# (idempotent, re-copies from wherever it's invoked), but fatal for
+# node-refresh: that env var gets written into ~/.config/systemd/user's
+# Environment= line and persists there until the next install. A worktree
+# invocation (e.g. an agent session manually re-running this script to test
+# a change) would clobber the shared timer to build from a scratch dir that
+# gets deleted at session end, silently breaking "helsinki clone auto-stays-
+# current" until someone notices and reinstalls from a stable mirror. Proof:
+# exactly this happened on 2026-08-11 (unit found pointing at an
+# infra-3593-fleet-1-* worktree that no longer matched a live checkout).
+#
+# If REPO_ROOT looks ephemeral, DON'T pass CHUMP_NODE_REPO at all — the
+# installer's own fallback chain (CHUMP_NODE_REPO env -> $HOME/chump-host ->
+# $HOME/Projects/Chump -> its own $0-relative path) already tries
+# $HOME/chump-host next, which is the stable mirror on helsinki.
+if [[ "$REPO_ROOT" == *"/.claude/worktrees/"* ]]; then
+  echo "  NOTE: this script is running from an ephemeral worktree ($REPO_ROOT)."
+  echo "        Not propagating it as CHUMP_NODE_REPO — letting the installer"
+  echo "        fall back to a stable mirror (\$HOME/chump-host or similar)."
+  bash "$NODE_REFRESH_INSTALLER" \
+    || echo "WARN: node-refresh user-unit install failed (non-fatal; system units above still installed)" >&2
+else
+  CHUMP_NODE_REPO="$REPO_ROOT" bash "$NODE_REFRESH_INSTALLER" \
+    || echo "WARN: node-refresh user-unit install failed (non-fatal; system units above still installed)" >&2
+fi
 
 echo ""
 echo "== ATC roster status =="
