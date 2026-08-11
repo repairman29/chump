@@ -1,6 +1,8 @@
 ---
 department: RUN/support
 status: missing
+class: support
+route_keywords: [help, broken, question, stuck, confused, support, issue, how do, error using]
 keystone: knowledge-base + support agent
 driven_by: new (unfiled)
 mines: slidemate KB engine; echeo SupportChatbot

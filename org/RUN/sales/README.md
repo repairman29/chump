@@ -1,6 +1,8 @@
 ---
 department: RUN/sales
 status: missing
+class: sales
+route_keywords: [pay, price, pricing, buy, purchase, revenue, sell, subscribe, upgrade, customer, billing]
 keystone: pricing page + decks + outliner
 driven_by: new (unfiled)
 mines: beast-mode PRICING_90_PERCENT_MARGIN_STRATEGY.md, COMPETITIVE_PRICING_ANALYSIS.md, PR_PITCH_DECK.md; slidemate decks

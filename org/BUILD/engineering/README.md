@@ -1,6 +1,8 @@
 ---
 department: BUILD/engineering
 status: online
+class: build
+route_keywords: [bug, fix, crash, implement, feature, refactor, code, gap, failing test]
 ---
 # Engineering — the build floor
 

@@ -2,6 +2,8 @@
 chair: publisher
 department: RUN/publication
 status: dormant
+class: publication
+route_keywords: [shipped, launch, announce, tell, untold, release, publish, told, unknown, market]
 owns: launch-post
 gate: captain-approved-and-posted
 driven_by: [EFFECTIVE-364, EFFECTIVE-365]
