@@ -42,7 +42,7 @@ DPID=$!
 sleep 20
 
 # 1. two workers spawned
-spawned=$(grep -c '"kind":"chumpd_worker_spawned"' "$FIX/repo/.chump-locks/ambient.jsonl" 2>/dev/null || echo 0)
+spawned=$(grep -c '"kind":"chumpd_worker_spawned"' "$FIX/repo/.chump-locks/ambient.jsonl" 2>/dev/null || true)
 if [[ "$spawned" -ge 2 ]]; then ok "spawned >=2 workers (got $spawned)"; else fail "expected 2 spawns, got $spawned"; fi
 
 # 2. status JSON has pids

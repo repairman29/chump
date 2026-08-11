@@ -62,7 +62,7 @@ done
 echo "--- Test 9: Rust unit tests for workflow_e2e_tests ---"
 
 if grep -q 'credible020_' "$WS" 2>/dev/null; then
-    _count=$(grep -c 'fn credible020_' "$WS" 2>/dev/null || echo 0)
+    _count=$(grep -c 'fn credible020_' "$WS" 2>/dev/null || true)
     if [[ "${_count:-0}" -ge 2 ]]; then
         ok "Test 9: workflow_e2e_tests has ${_count} credible020_* tests"
     else

@@ -97,7 +97,7 @@ ambient_last_kind() {
 
 ambient_incident_count() {
     local sandbox="$1"
-    grep -c '"kind":"post_push_auto_close_recovered"' "$sandbox/.chump-locks/ambient.jsonl" 2>/dev/null || echo 0
+    grep -c '"kind":"post_push_auto_close_recovered"' "$sandbox/.chump-locks/ambient.jsonl" 2>/dev/null || true
 }
 
 # ── T6: bash -n syntax check (runs first — no sandbox needed) ────────────────

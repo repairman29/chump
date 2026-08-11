@@ -73,7 +73,7 @@ count_kind() {
     local file="$1"
     local kind="$2"
     [[ -f "$file" ]] || { echo 0; return; }
-    grep -c "\"kind\":\"${kind}\"" "$file" 2>/dev/null || echo 0
+    grep -c "\"kind\":\"${kind}\"" "$file" 2>/dev/null || true
 }
 
 # ── Test 1: per-gap escalation ────────────────────────────────────────────────

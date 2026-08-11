@@ -17,7 +17,7 @@ ok()   { echo "  ok: $1"; }
 fail() { echo "  FAIL: $1"; fails=$((fails+1)); }
 
 # (1) No haiku model_class routes remain.
-# grep -c prints "0" AND exits 1 on no-match, so don't append `|| echo 0`
+# grep -c prints "0" AND exits 1 on no-match, so don't append `|| true`
 # (that double-prints) — capture the count and swallow grep's exit code.
 n="$(grep -c 'model_class: haiku' "$RY" 2>/dev/null)" || true
 [[ "${n:-0}" -eq 0 ]] && ok "routing.yaml has 0 'model_class: haiku' routes" || fail "routing.yaml still has $n haiku route(s)"

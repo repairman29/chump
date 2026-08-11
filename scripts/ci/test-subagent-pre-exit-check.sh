@@ -85,7 +85,7 @@ fi
 # ── ambient-emit cross-check: ensure subagent_idle_without_pr was emitted ───
 printf '\n== ambient-emit cross-check ==\n'
 EMIT_COUNT=$(tail -50 .chump-locks/ambient.jsonl 2>/dev/null \
-    | grep -c '"kind":"subagent_idle_without_pr"' 2>/dev/null || echo 0)
+    | grep -c '"kind":"subagent_idle_without_pr"' 2>/dev/null || true)
 if [[ "$EMIT_COUNT" -ge 1 ]]; then
     ok "subagent_idle_without_pr emitted to ambient ($EMIT_COUNT in recent tail)"
 else

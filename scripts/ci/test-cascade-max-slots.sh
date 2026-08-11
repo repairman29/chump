@@ -28,7 +28,7 @@ for model in "gemini-2.5-flash-lite" "gemini-3-flash-preview" "gemini-3.1-flash-
 done
 
 # 4. Count Gemini free-tier entries in rates file
-gemini_count=$(grep -cE "model_id: gemini-(2\.5-flash-lite|3-flash-preview|3\.1-flash-lite|3-pro-preview)" "$RATES" 2>/dev/null || echo 0)
+gemini_count=$(grep -cE "model_id: gemini-(2\.5-flash-lite|3-flash-preview|3\.1-flash-lite|3-pro-preview)" "$RATES" 2>/dev/null || true)
 [[ "$gemini_count" -eq 4 ]] || fail "Expected 4 new Gemini entries, found $gemini_count"
 ok "All 4 Gemini model pricing entries present"
 

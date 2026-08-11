@@ -115,8 +115,8 @@ fi
 
 # S6: main.rs --execute-gap arm calls emit_terminal_outcome on both Ok and Err paths
 MAIN_SRC="$REPO_ROOT/src/main.rs"
-ok_emits=$(grep -c 'emit_terminal_outcome.*Shipped' "$MAIN_SRC" 2>/dev/null || echo 0)
-err_emits=$(grep -c 'emit_terminal_outcome.*Blocked' "$MAIN_SRC" 2>/dev/null || echo 0)
+ok_emits=$(grep -c 'emit_terminal_outcome.*Shipped' "$MAIN_SRC" 2>/dev/null || true)
+err_emits=$(grep -c 'emit_terminal_outcome.*Blocked' "$MAIN_SRC" 2>/dev/null || true)
 if [[ "$ok_emits" -ge 1 && "$err_emits" -ge 1 ]]; then
     ok "S6: main.rs emits Shipped on Ok and Blocked on Err"
 else
@@ -190,7 +190,7 @@ fi
 # The emit lines must have: ts, session, kind, gap_id, emitter
 REQUIRED_FIELDS='\"ts\"\|\"session\"\|\"kind\"\|\"gap_id\"\|\"emitter\"'
 for kind in gap_shipped gap_blocked gap_deferred; do
-    emit_line_count=$(grep -c "\"kind\":\"$kind\"" "$EXEC_GAP_SRC" 2>/dev/null || echo 0)
+    emit_line_count=$(grep -c "\"kind\":\"$kind\"" "$EXEC_GAP_SRC" 2>/dev/null || true)
     # The format! macro line may span multiple lines; check for the kind string
     if grep -q "\"kind\":\"$kind\"" "$EXEC_GAP_SRC" 2>/dev/null; then
         ok "U1: emit format for $kind found in source"

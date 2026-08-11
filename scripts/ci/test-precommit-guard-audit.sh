@@ -43,7 +43,7 @@ fi
 # ── 3. Raw-YAML removal note is condensed (not the 17-line block) ─────────
 echo
 echo "[3. Section 3b condensed to 1 line]"
-RAWBLOCK_LINES=$(grep -c "INFRA-094.*INFRA-200\|Raw-YAML-edit guard\|CHUMP_RAW_YAML_LOCK.*no-op\|Historical bypass" "$HOOK" 2>/dev/null || echo 0)
+RAWBLOCK_LINES=$(grep -c "INFRA-094.*INFRA-200\|Raw-YAML-edit guard\|CHUMP_RAW_YAML_LOCK.*no-op\|Historical bypass" "$HOOK" 2>/dev/null || true)
 if [ "$RAWBLOCK_LINES" -gt 2 ]; then
     fail "section 3b raw-YAML note is still expanded (found $RAWBLOCK_LINES matching lines, expected ≤ 2)"
 else

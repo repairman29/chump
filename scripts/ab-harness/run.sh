@@ -246,8 +246,8 @@ run_trial() {
   local tool_calls
   tool_calls=$(
     {
-      grep -cE "🔧 Executing tool: " "$tmp_out" 2>/dev/null || echo 0
-      grep -cE "tool_call_start|Using tool '" "$tmp_err" 2>/dev/null || echo 0
+      grep -cE "🔧 Executing tool: " "$tmp_out" 2>/dev/null || true
+      grep -cE "tool_call_start|Using tool '" "$tmp_err" 2>/dev/null || true
     } | python3.12 -c "import sys; print(sum(int(l.strip() or 0) for l in sys.stdin))" 2>/dev/null
   ) || tool_calls=0
   tool_calls=${tool_calls:-0}

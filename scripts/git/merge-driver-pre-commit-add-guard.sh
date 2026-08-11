@@ -24,9 +24,9 @@ if [[ ! -f "$ANCESTOR" ]] || [[ ! -f "$OURS" ]] || [[ ! -f "$THEIRS" ]]; then
 fi
 
 # Count guard block patterns (if [ ... ] blocks) to detect pure-add scenarios.
-ancestor_guard_count=$(grep -c '^\s*if\s\+\[' "$ANCESTOR" || echo 0)
-ours_guard_count=$(grep -c '^\s*if\s\+\[' "$OURS" || echo 0)
-theirs_guard_count=$(grep -c '^\s*if\s\+\[' "$THEIRS" || echo 0)
+ancestor_guard_count=$(grep -c '^\s*if\s\+\[' "$ANCESTOR" || true)
+ours_guard_count=$(grep -c '^\s*if\s\+\[' "$OURS" || true)
+theirs_guard_count=$(grep -c '^\s*if\s\+\[' "$THEIRS" || true)
 
 # Pure-add scenario: ours and theirs both >= ancestor (added, didn't delete/edit).
 if [[ $ours_guard_count -lt $ancestor_guard_count ]] || [[ $theirs_guard_count -lt $ancestor_guard_count ]]; then

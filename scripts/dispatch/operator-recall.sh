@@ -391,7 +391,7 @@ PYEOF
 
 # (a) AUTH_DEAD — fleet_auth_storm with action=worker_exit
 _auth_exits=$(_scan_ambient "$_auth_window" '"kind":"fleet_auth_storm"' \
-    | grep -c '"action":"worker_exit"' 2>/dev/null || echo 0)
+    | grep -c '"action":"worker_exit"' 2>/dev/null || true)
 _auth_exits="${_auth_exits//[[:space:]]/}"
 if (( _auth_exits >= _auth_threshold )); then
     _reason="fleet_auth_storm with action=worker_exit seen ${_auth_exits}x in last ${_auth_window}s (threshold=${_auth_threshold}); auth credentials appear fully dead"
@@ -433,7 +433,7 @@ _ci_hits=$(echo "$_ci_raw" | grep -ic '"reason".*ci\|ci.*fail\|check.*fail\|all.
 _ci_hits="${_ci_hits//[[:space:]]/}"
 # Fall back: count any pr_stuck if no reason field — conservative
 if (( _ci_hits == 0 )); then
-    _total_stuck=$(echo "$_ci_raw" | grep -c '"kind":"pr_stuck"' 2>/dev/null || echo 0)
+    _total_stuck=$(echo "$_ci_raw" | grep -c '"kind":"pr_stuck"' 2>/dev/null || true)
     _total_stuck="${_total_stuck//[[:space:]]/}"
     if (( _total_stuck >= _ci_threshold * 2 )); then
         _ci_hits=$_ci_threshold

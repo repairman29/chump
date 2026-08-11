@@ -346,7 +346,7 @@ EMIT_COUNT=0
 [[ -f "$D/emit-calls.log" ]] && EMIT_COUNT="$(wc -l < "$D/emit-calls.log" | tr -d ' ')"
 
 AMBIENT="$D/.chump-locks/ambient.jsonl"
-RATE_LIMITED="$(grep -c '"decision":"rate_limited"' "$AMBIENT" 2>/dev/null || echo 0)"
+RATE_LIMITED="$(grep -c '"decision":"rate_limited"' "$AMBIENT" 2>/dev/null || true)"
 
 if [[ "$EMIT_COUNT" -eq 3 ]]; then
     ok "T9: exactly 3 emit calls (rate limit=3)"
@@ -460,7 +460,7 @@ SECOND_BCAST_COUNT=0
 [[ -f "$D/bcast-calls.log" ]] && SECOND_BCAST_COUNT="$(wc -l < "$D/bcast-calls.log" | tr -d ' ')"
 
 AMBIENT="$D/.chump-locks/ambient.jsonl"
-DEDUP_COUNT="$(grep -c '"decision":"broadcast_deduped"' "$AMBIENT" 2>/dev/null || echo 0)"
+DEDUP_COUNT="$(grep -c '"decision":"broadcast_deduped"' "$AMBIENT" 2>/dev/null || true)"
 
 if [[ "$FIRST_BCAST_COUNT" -ge 1 ]]; then
     ok "T13: first run broadcast (count=$FIRST_BCAST_COUNT)"

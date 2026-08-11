@@ -77,7 +77,7 @@ fi
 
 # ── Check 4: Verify each shard has at least one gate ─────────────────────────
 for shard in 1 2 3 4; do
-  count=$(grep -c "if: matrix.shard == $shard" "$AUDIT_YML" 2>/dev/null || echo 0)
+  count=$(grep -c "if: matrix.shard == $shard" "$AUDIT_YML" 2>/dev/null || true)
   if [[ "$count" -eq 0 ]]; then
     echo "FAIL: shard $shard has no gated steps (if: matrix.shard == $shard)" >&2
     fail=1

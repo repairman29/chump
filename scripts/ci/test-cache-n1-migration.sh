@@ -210,7 +210,7 @@ else
 fi
 
 # Count total cache_hit events emitted
-hit_count="$(grep -c '"kind":"cache_hit"' "$AMBIENT_LOG" 2>/dev/null || echo 0)"
+hit_count="$(grep -c '"kind":"cache_hit"' "$AMBIENT_LOG" 2>/dev/null || true)"
 echo "  INFO: total cache_hit events in ambient.jsonl: $hit_count"
 
 echo ""

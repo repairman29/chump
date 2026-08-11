@@ -74,7 +74,7 @@ for tpl in EFFECTIVE CREDIBLE RESILIENT; do
     f="$TEMPLATES_DIR/${tpl}-gap-template.md"
     [[ -f "$f" ]] || continue
     # Count lines under acceptance_criteria that start with '  -'
-    ac_count=$(grep -c '^  - ' "$f" 2>/dev/null || echo 0)
+    ac_count=$(grep -c '^  - ' "$f" 2>/dev/null || true)
     if [[ "$ac_count" -ge 2 ]]; then
         ok "5-${tpl}: ${tpl} template has ${ac_count} AC example(s) (≥2)"
     else

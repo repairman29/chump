@@ -156,7 +156,7 @@ UNTRACKED_COUNT=0
 if [[ -d "$MAIN_WORKTREE/docs/gaps" ]]; then
     UNTRACKED_COUNT="$(git -C "$MAIN_WORKTREE" ls-files \
         --others --exclude-standard docs/gaps/ 2>/dev/null \
-        | grep -c '\.yaml$' || echo 0)"
+        | grep -c '\.yaml$' || true)"
 fi
 
 # ── Step 4: Count commits behind origin/main ─────────────────────────────────

@@ -72,7 +72,7 @@ else
 fi
 
 # 8. Documented kinds match the constant. (Smoke check on count.)
-kind_count=$(grep -cE '^    "[a-z_]+",$' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs" 2>/dev/null || echo 0)
+kind_count=$(grep -cE '^    "[a-z_]+",$' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs" 2>/dev/null || true)
 if [[ "$kind_count" -ge 10 ]]; then
     ok "WASTE_KINDS has >=10 entries (got $kind_count)"
 else
@@ -80,7 +80,7 @@ else
 fi
 
 # 9. infra488_ unit tests defined.
-test_count=$(grep -cE 'fn infra488_' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs" 2>/dev/null || echo 0)
+test_count=$(grep -cE 'fn infra488_' "$REPO_ROOT/crates/chump-waste-tally/src/waste_tally.rs" 2>/dev/null || true)
 if [[ "$test_count" -ge 5 ]]; then
     ok "in-tree infra488_ unit tests defined ($test_count fns)"
 else

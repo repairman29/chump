@@ -54,7 +54,7 @@ sleep 1
 CHUMP_AMBIENT_LOG="$AMB" bash "$EMIT" --role curator-opus-ci-audit --lane CREDIBLE \
     --wake-mode manual --session-id "$SESSION_ID" >/dev/null 2>&1
 
-LINES=$(grep -c '"kind":"role_card"' "$AMB" 2>/dev/null || echo 0)
+LINES=$(grep -c '"kind":"role_card"' "$AMB" 2>/dev/null || true)
 [[ "$LINES" -eq 3 ]] && ok "3 role_card lines written to ambient" || fail "expected 3 role_card lines, got $LINES"
 
 RESULT=$(CHUMP_AMBIENT_LOG="$AMB" bash "$QUERY" --session-id "$SESSION_ID")

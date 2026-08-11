@@ -72,7 +72,7 @@ NEW_VARS="$(
 } >> "$ENVVAR_FILE"
 
 git add "$ENVVAR_FILE" 2>/dev/null || true
-COUNT="$(printf '%s\n' "$NEW_VARS" | grep -c '.' || echo 0)"
+COUNT="$(printf '%s\n' "$NEW_VARS" | grep -c '.' || true)"
 _emit auto_envvar_applied ",\"count\":${COUNT},\"hook\":\"pre-commit\""
 echo "[pre-commit] RESILIENT-207: auto-documented $COUNT new CHUMP_* env var(s) → env-vars-internal.txt" >&2
 echo "  $(printf '%s' "$NEW_VARS" | tr '\n' ' ')" >&2

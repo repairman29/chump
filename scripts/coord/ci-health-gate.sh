@@ -85,7 +85,7 @@ if [[ -f "$CACHE_LIB" ]]; then
                 # cache_query_behind_prs returns one number per line (the PR numbers that are BEHIND/BLOCKED)
                 blocked_rows="$(cache_query_behind_prs 2>/dev/null || true)"
                 total_blocked=0
-                [[ -n "$blocked_rows" ]] && total_blocked="$(printf '%s\n' "$blocked_rows" | grep -c . || echo 0)"
+                [[ -n "$blocked_rows" ]] && total_blocked="$(printf '%s\n' "$blocked_rows" | grep -c . || true)"
             fi
             if [[ "$total_open" -gt 0 ]]; then
                 blocked_pct=$(( total_blocked * 100 / total_open ))

@@ -181,8 +181,8 @@ if [[ ! -f "$FAKE_AMBIENT" ]]; then
     exit 1
 fi
 
-FINDING_COUNT="$(grep -c '"kind":"inventory_agent_sync_finding"' "$FAKE_AMBIENT" 2>/dev/null || echo 0)"
-RUN_COUNT="$(grep -c '"kind":"inventory_agent_sync_run"' "$FAKE_AMBIENT" 2>/dev/null || echo 0)"
+FINDING_COUNT="$(grep -c '"kind":"inventory_agent_sync_finding"' "$FAKE_AMBIENT" 2>/dev/null || true)"
+RUN_COUNT="$(grep -c '"kind":"inventory_agent_sync_run"' "$FAKE_AMBIENT" 2>/dev/null || true)"
 
 if [[ "$FINDING_COUNT" -ne 1 ]]; then
     echo "[test-inventory-agent-sync] FAIL: expected 1 inventory_agent_sync_finding event, got $FINDING_COUNT" >&2

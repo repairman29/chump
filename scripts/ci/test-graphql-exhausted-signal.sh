@@ -56,7 +56,7 @@ ok "remaining=3000 (above threshold 100): no exhausted event"
 rm -f "$AMB" "$TMP/.graphql-exhausted-since"
 FAKE_CORE=4500 FAKE_GQL=0 FAKE_RESET="$FUTURE_RESET" \
     chump_gh_record "pr view" 50 1 "test-harness"
-n=$(grep -c '"kind":"graphql_exhausted"' "$AMB" 2>/dev/null || echo 0)
+n=$(grep -c '"kind":"graphql_exhausted"' "$AMB" 2>/dev/null || true)
 [[ "$n" -eq 1 ]] || fail "expected 1 exhausted event, got $n: $(cat "$AMB")"
 ok "remaining=0: exactly one graphql_exhausted event fires"
 
@@ -85,7 +85,7 @@ rm -f "$AMB"
 echo "$(( $(date +%s) - 60 ))" >"$TMP/.graphql-exhausted-since"
 FAKE_CORE=4500 FAKE_GQL=0 FAKE_RESET="$FUTURE_RESET" \
     chump_gh_record "pr view" 50 1 "test-harness"
-n=$(grep -c '"kind":"graphql_exhausted"' "$AMB" 2>/dev/null || echo 0)
+n=$(grep -c '"kind":"graphql_exhausted"' "$AMB" 2>/dev/null || true)
 [[ "$n" -eq 1 ]] || fail "expected new event after window expiry, got $n: $(cat "$AMB")"
 ok "new reset window (past flag): event fires again"
 

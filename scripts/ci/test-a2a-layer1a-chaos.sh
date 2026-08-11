@@ -134,7 +134,7 @@ log "running roundtrip test with NATS up..."
 # ── Phase 2: kill NATS mid-session, assert fleet_a2a_degraded within 5s ──────
 
 log "=== Phase 2: kill NATS, assert degraded within 5s ==="
-DEGRADED_BEFORE=$(grep -c '"kind":"fleet_a2a_degraded"' "$AMBIENT_LOG" 2>/dev/null || echo 0)
+DEGRADED_BEFORE=$(grep -c '"kind":"fleet_a2a_degraded"' "$AMBIENT_LOG" 2>/dev/null || true)
 
 # Start a long-running subscriber in background that will see the drop
 (
@@ -171,7 +171,7 @@ wait "$SUBSCRIBER_PID" 2>/dev/null || true
 # ── Phase 3: restart NATS, assert fleet_a2a_recovered ────────────────────────
 
 log "=== Phase 3: restart NATS, assert recovery ==="
-RECOVERED_BEFORE=$(grep -c '"kind":"fleet_a2a_recovered"' "$AMBIENT_LOG" 2>/dev/null || echo 0)
+RECOVERED_BEFORE=$(grep -c '"kind":"fleet_a2a_recovered"' "$AMBIENT_LOG" 2>/dev/null || true)
 
 start_nats || { fail "nats-server restart"; exit 1; }
 

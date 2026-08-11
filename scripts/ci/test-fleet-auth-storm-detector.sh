@@ -187,7 +187,7 @@ set -e
 if [[ $EXIT_RC -eq 3 ]] && grep -qE '"action":"worker_exit"' "$AMBIENT"; then
     ok "5 consecutive failures → exit rc=3 + ALERT action=worker_exit"
 else
-    fail "expected exit rc=3 with worker_exit ALERT; got rc=$EXIT_RC, ambient: $(grep -c worker_exit "$AMBIENT" 2>/dev/null || echo 0) match(es)"
+    fail "expected exit rc=3 with worker_exit ALERT; got rc=$EXIT_RC, ambient: $(grep -c worker_exit "$AMBIENT" 2>/dev/null || true) match(es)"
 fi
 
 echo

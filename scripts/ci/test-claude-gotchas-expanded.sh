@@ -49,7 +49,7 @@ grep -q 'CHUMP_OBS_BUDGET_STRICT' "$DOC" \
 pass "CHUMP_OBS_BUDGET_STRICT documented"
 
 # ── Each section has at least one code block ─────────────────────────────────
-code_block_count=$(grep -c '^\`\`\`' "$DOC" || echo 0)
+code_block_count=$(grep -c '^\`\`\`' "$DOC" || true)
 [[ "$code_block_count" -ge 6 ]] \
     || fail "Expected >=6 code block fences (3 new sections × 2), found $code_block_count"
 pass "Sufficient code blocks present ($code_block_count fences)"

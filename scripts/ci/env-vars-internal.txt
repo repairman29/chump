@@ -1486,3 +1486,24 @@ CHUMP_WORKSPACE_SCOPE_PICK_OK
 # detected in: (standard input)
 CHUMP_CONDUCTOR_SHORT_WINDOW_MIN
 CHUMP_DOCS_DELTA_CHECK
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_AUTO_RERUN_OOS
+# detected in: (standard input)
+CHUMP_BOT_MERGE_SHADOW_PLAN
+# detected in: (standard input)
+CHUMP_GH_NO_TOKEN_CACHE
+# detected in: (standard input)
+CHUMP_GH_TOKEN_CACHE_TTL_S
+# detected in: (standard input)
+CHUMP_OPERATOR_RECALL_URL
+# detected in: (standard input)
+CHUMP_PREPUSH_TEST_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_RAW_YAML_LOCK
+# detected in: (standard input)
+CHUMP_SUBAGENT_LOCK_DIR
+# detected in: (standard input)
+CHUMP_WT_SCAN_TMP
