@@ -73,6 +73,100 @@ else
     fail "--dry-run did not produce expected output"
 fi
 
+# Test 7: RESILIENT-296 freshness gate present in source
+if grep -q "PR_TERMINAL_FRESHNESS_MIN" "$DAEMON" && grep -q "curator_skip_active_rebase" "$DAEMON"; then
+    ok "RESILIENT-296 freshness gate present (PR_TERMINAL_FRESHNESS_MIN + curator_skip_active_rebase)"
+else
+    fail "RESILIENT-296 freshness gate missing"
+fi
+
+# Test 8 (functional, RESILIENT-296): a PR that is armed + BLOCKED + a
+# required check RED past PR_TERMINAL_HOURS, but whose updatedAt is inside
+# the freshness window (a fix was just pushed, CI re-running), must be
+# DEFERRED, not closed. This reproduces the #3598 false-close class: without
+# the freshness gate, try_terminal_dispose would print "TERMINAL (dry-run):
+# ... WOULD close" for this input.
+FAKE_BIN="$(mktemp -d)"
+trap 'rm -rf "$FAKE_BIN"' EXIT
+
+cat > "$FAKE_BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+# Fake gh: for `pr view` return the JSON pointed to by GH_STUB_JSON_FILE.
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    cat "$GH_STUB_JSON_FILE"
+    exit 0
+fi
+exit 0
+EOF
+chmod +x "$FAKE_BIN/gh"
+
+now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+hours_ago_iso() {
+    local h="$1"
+    date -u -v-"${h}"H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+        || date -u -d "-${h} hours" +%Y-%m-%dT%H:%M:%SZ
+}
+minutes_ago_iso() {
+    local m="$1"
+    date -u -v-"${m}"M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+        || date -u -d "-${m} minutes" +%Y-%m-%dT%H:%M:%SZ
+}
+
+STUB_JSON="$FAKE_BIN/pr.json"
+cat > "$STUB_JSON" <<EOF
+{
+  "autoMergeRequest": {"enabledAt": "$(hours_ago_iso 8)"},
+  "mergeStateStatus": "BLOCKED",
+  "createdAt": "$(hours_ago_iso 8)",
+  "updatedAt": "$(minutes_ago_iso 2)",
+  "headRefName": "chump/resilient-296-claim",
+  "statusCheckRollup": [
+    {"name": "audit", "conclusion": "FAILURE"}
+  ]
+}
+EOF
+
+out=$(PATH="$FAKE_BIN:$PATH" GH_STUB_JSON_FILE="$STUB_JSON" \
+    PR_TERMINAL_HOURS=6 PR_TERMINAL_FRESHNESS_MIN=10 \
+    CHECK_PR=3598 bash "$DAEMON" 2>&1)
+
+if echo "$out" | grep -q "SKIP CLOSE (RESILIENT-296)"; then
+    ok "freshness gate defers close for recently-updated red-armed PR (#3598 class)"
+else
+    fail "freshness gate did not defer close for recently-updated PR: $out"
+fi
+if echo "$out" | grep -q "WOULD close"; then
+    fail "freshness gate did not prevent WOULD-close diagnostic for fresh PR"
+else
+    ok "no WOULD-close diagnostic emitted for fresh PR"
+fi
+
+# Test 9 (control): same PR but updatedAt is ALSO stale (past freshness
+# window) — this must still dispose, proving the gate doesn't just always skip.
+STUB_JSON_STALE="$FAKE_BIN/pr-stale.json"
+cat > "$STUB_JSON_STALE" <<EOF
+{
+  "autoMergeRequest": {"enabledAt": "$(hours_ago_iso 8)"},
+  "mergeStateStatus": "BLOCKED",
+  "createdAt": "$(hours_ago_iso 8)",
+  "updatedAt": "$(hours_ago_iso 7)",
+  "headRefName": "chump/resilient-296-claim",
+  "statusCheckRollup": [
+    {"name": "audit", "conclusion": "FAILURE"}
+  ]
+}
+EOF
+
+out_stale=$(PATH="$FAKE_BIN:$PATH" GH_STUB_JSON_FILE="$STUB_JSON_STALE" \
+    PR_TERMINAL_HOURS=6 PR_TERMINAL_FRESHNESS_MIN=10 \
+    CHECK_PR=3598 bash "$DAEMON" 2>&1)
+
+if echo "$out_stale" | grep -q "WOULD close"; then
+    ok "stale-updated red-armed PR still disposes (gate is not always-skip)"
+else
+    fail "stale-updated red-armed PR unexpectedly deferred: $out_stale"
+fi
+
 echo
 echo "=== Summary: $PASS passed, $FAIL failed ==="
 if (( FAIL > 0 )); then
