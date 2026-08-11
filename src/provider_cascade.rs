@@ -138,6 +138,62 @@ fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str) {
     }
 }
 
+/// Escape a string for embedding in a hand-built JSON line (matches the
+/// escaping already used by `emit_cascade_exhausted_event`'s `reason_esc`).
+fn json_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', " ")
+}
+
+/// CREDIBLE-266: emit a `provider_slot_resolved` ambient event once per agent
+/// turn — the queryable counterpart to the INFRA-185 phase-timings log line.
+/// Carries the request_id, the winning slot + model, and any slots that
+/// failed over before it (with classified reason, never the raw error body
+/// or credentials) so per-slot call counts and failover signatures become
+/// measurable rather than greppable. Best-effort: never breaks the caller.
+// scanner-anchor: "kind":"provider_slot_resolved"
+pub fn emit_provider_slot_ambient_event(request_id: &str, provider_slot: &str, model: &str) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    let failovers = get_last_failovers();
+    let failovers_json: Vec<String> = failovers
+        .iter()
+        .map(|f| {
+            format!(
+                "{{\"slot\":\"{}\",\"reason\":\"{}\"}}",
+                json_escape(&f.slot),
+                json_escape(&f.reason)
+            )
+        })
+        .collect();
+
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"provider_slot_resolved\",\
+         \"request_id\":\"{}\",\"slot\":\"{}\",\"model\":\"{}\",\"failovers\":[{}]}}",
+        json_escape(request_id),
+        json_escape(provider_slot),
+        json_escape(model),
+        failovers_json.join(",")
+    );
+
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
 /// Default OpenAI-compatible base for local Ollama when `OPENAI_API_BASE` is unset (matches OOTB wizard).
 pub const DEFAULT_OLLAMA_API_BASE: &str = "http://127.0.0.1:11434/v1";
 
@@ -1176,6 +1232,9 @@ impl Provider for ProviderCascade {
         max_tokens: Option<u32>,
         system_prompt: Option<String>,
     ) -> Result<CompletionResponse> {
+        // CREDIBLE-266: reset the failover trail for this call so a prior
+        // turn's failed slots don't leak into this turn's report.
+        clear_last_failovers();
         // INFRA-COST-CEILING: enforce hard ceiling and emit soft warn before
         // any provider call is made.
         match cost_tracker::check_ceiling() {
@@ -1322,6 +1381,7 @@ impl Provider for ProviderCascade {
                                     local_openai::record_circuit_success(&local_slot.base_url);
                                     record_call(local_slot);
                                     set_last_used_slot(local_slot.name.clone());
+                                    set_last_used_model(local_slot.provider.model().to_string());
                                     llm_backend_metrics::record_cascade_slot(&local_slot.name);
                                     provider_quality::record_slot_success(&local_slot.name);
                                     provider_quality::record_latency(&local_slot.name, latency_ms);
@@ -1508,6 +1568,14 @@ impl Provider for ProviderCascade {
                                 slot.name
                             );
                         }
+                        record_failover(
+                            &slot.name,
+                            if is_empty {
+                                "empty_response"
+                            } else {
+                                "tool-call-refused"
+                            },
+                        );
                         provider_quality::record_slot_failure(&slot.name);
                         if let Some(b) = self.bandit() {
                             // Empty/malformed response → reward 0 for this slot.
@@ -1520,6 +1588,7 @@ impl Provider for ProviderCascade {
                     local_openai::record_circuit_success(&slot.base_url);
                     record_call(slot);
                     set_last_used_slot(slot.name.clone());
+                    set_last_used_model(slot.provider.model().to_string());
                     llm_backend_metrics::record_cascade_slot(&slot.name);
                     provider_quality::record_slot_success(&slot.name);
                     provider_quality::record_latency(&slot.name, latency_ms);
@@ -1635,6 +1704,7 @@ impl Provider for ProviderCascade {
                             eprintln!("[cascade] {} failed (transient), trying next", slot.name);
                         }
 
+                        record_failover(&slot.name, classify_failover_reason(&e_str));
                         idx = i + 1;
                         continue;
                     }
@@ -1661,6 +1731,100 @@ pub fn set_last_used_slot(name: String) {
 
 pub fn get_last_used_slot() -> Option<String> {
     last_used_slot_cell().lock().ok().and_then(|g| g.clone())
+}
+
+// CREDIBLE-266: which model answered the last completed cascade call, and
+// which slots were tried-and-failed before the winner. A 15-slot failover
+// ladder that only logs "provider_ms" is unobservable — this is the
+// smallest state needed to make the INFRA-185 phase-timings line name the
+// slot/model that actually served the turn, plus the failover trail.
+static LAST_USED_MODEL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+fn last_used_model_cell() -> &'static Mutex<Option<String>> {
+    LAST_USED_MODEL.get_or_init(|| Mutex::new(None))
+}
+
+pub fn set_last_used_model(model: String) {
+    if let Ok(mut g) = last_used_model_cell().lock() {
+        *g = Some(model);
+    }
+}
+
+pub fn get_last_used_model() -> Option<String> {
+    last_used_model_cell().lock().ok().and_then(|g| g.clone())
+}
+
+/// One slot that was tried and failed over, and why. Never carries
+/// credentials — slot name + classified reason only.
+#[derive(Debug, Clone)]
+pub struct FailoverRecord {
+    pub slot: String,
+    pub reason: String,
+}
+
+static LAST_FAILOVERS: OnceLock<Mutex<Vec<FailoverRecord>>> = OnceLock::new();
+
+fn last_failovers_cell() -> &'static Mutex<Vec<FailoverRecord>> {
+    LAST_FAILOVERS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Reset the failover trail; call at the start of each cascade `complete()`
+/// so a prior turn's failovers don't leak into this turn's report.
+fn clear_last_failovers() {
+    if let Ok(mut g) = last_failovers_cell().lock() {
+        g.clear();
+    }
+}
+
+fn record_failover(slot: &str, reason: &str) {
+    if let Ok(mut g) = last_failovers_cell().lock() {
+        g.push(FailoverRecord {
+            slot: slot.to_string(),
+            reason: reason.to_string(),
+        });
+    }
+}
+
+/// Failover trail for the most recently completed cascade call. Empty when
+/// the winning slot answered on the first try.
+pub fn get_last_failovers() -> Vec<FailoverRecord> {
+    last_failovers_cell()
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_default()
+}
+
+/// Classify a cascade failure into the reason buckets operators care about
+/// (401/403 auth, 429 rate-limit, model-not-found, tool-call-refused) without
+/// ever echoing the raw provider error body (which can carry request
+/// metadata). Falls back to "error" for anything unrecognized.
+fn classify_failover_reason(e_str: &str) -> &'static str {
+    let lower = e_str.to_ascii_lowercase();
+    if e_str.contains("429") || lower.contains("rate limit") || lower.contains("too many requests")
+    {
+        "429"
+    } else if e_str.contains("401")
+        || e_str.contains("403")
+        || lower.contains("unauthorized")
+        || lower.contains("forbidden")
+    {
+        "401/403"
+    } else if (e_str.contains("404") && lower.contains("model"))
+        || lower.contains("model_not_found")
+    {
+        "model-not-found"
+    } else if lower.contains("tool_use_failed")
+        || lower.contains("tool call validation failed")
+        || lower.contains("failed to call a function")
+        || lower.contains("unsupportedtooluse")
+        || lower.contains("does not support tool")
+    {
+        "tool-call-refused"
+    } else if lower.contains("empty") {
+        "empty_response"
+    } else {
+        "error"
+    }
 }
 
 /// Record sanity-check failure for the given slot (call when sanity_check_reply fails after a completion).
@@ -3504,5 +3668,61 @@ mod tests {
         assert!(is_local_endpoint("http://[::1]:11434/v1"));
         assert!(!is_local_endpoint("https://api.openai.com/v1"));
         assert!(!is_local_endpoint("https://api.groq.com/openai/v1"));
+    }
+
+    /// CREDIBLE-266: failover reason classification must bucket into the
+    /// operator-facing categories the gap asked for, and never echo the raw
+    /// provider error body (which can carry request metadata) verbatim.
+    #[test]
+    fn classify_failover_reason_buckets_known_classes() {
+        assert_eq!(classify_failover_reason("429 Too Many Requests"), "429");
+        assert_eq!(
+            classify_failover_reason("401 Unauthorized: invalid api key"),
+            "401/403"
+        );
+        assert_eq!(
+            classify_failover_reason("403 Forbidden: models.permission"),
+            "401/403"
+        );
+        assert_eq!(
+            classify_failover_reason("404 model not found: gpt-9000"),
+            "model-not-found"
+        );
+        assert_eq!(
+            classify_failover_reason("tool_use_failed: could not parse function call"),
+            "tool-call-refused"
+        );
+        assert_eq!(classify_failover_reason("connection reset"), "error");
+    }
+
+    /// CREDIBLE-266: the failover trail must be cleared at the start of each
+    /// cascade call and accumulate entries in call order, so the ambient
+    /// event + phase-timings log never leak a prior turn's failures.
+    #[test]
+    fn failover_trail_records_and_clears() {
+        clear_last_failovers();
+        assert!(get_last_failovers().is_empty());
+        record_failover("slot-1", "429");
+        record_failover("slot-2", "401/403");
+        let trail = get_last_failovers();
+        assert_eq!(trail.len(), 2);
+        assert_eq!(trail[0].slot, "slot-1");
+        assert_eq!(trail[0].reason, "429");
+        assert_eq!(trail[1].slot, "slot-2");
+        clear_last_failovers();
+        assert!(get_last_failovers().is_empty());
+    }
+
+    /// CREDIBLE-266: last-used slot/model getters round-trip what was set —
+    /// this is what the orchestrator's phase-timings line reads.
+    #[test]
+    fn last_used_slot_and_model_round_trip() {
+        set_last_used_slot("gemini-2.5-flash".to_string());
+        set_last_used_model("gemini-2.5-flash-lite".to_string());
+        assert_eq!(get_last_used_slot(), Some("gemini-2.5-flash".to_string()));
+        assert_eq!(
+            get_last_used_model(),
+            Some("gemini-2.5-flash-lite".to_string())
+        );
     }
 }

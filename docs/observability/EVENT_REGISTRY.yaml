@@ -1826,6 +1826,13 @@ events:
     fields_required: [slot, tier, cascade_mode]
     consumers: [audit-log, fleet-brief]
 
+  - kind: provider_slot_resolved
+    effect_metric: self
+    emitter: src/provider_cascade.rs::emit_provider_slot_ambient_event, called from src/agent_loop/orchestrator.rs (CREDIBLE-266)
+    trigger: end of every agent turn (alongside the INFRA-185 phase-timings log line) — records the resolved slot + model that served the turn plus any slots that failed over before it (slot + classified reason, never the raw error body or credentials)
+    fields_required: [request_id, slot, model, failovers]
+    consumers: [audit-log, fleet-brief]
+
   - kind: cascade_report
     effect_metric: self
     emitter: scripts/overnight/99-cascade-consumption-report.sh
