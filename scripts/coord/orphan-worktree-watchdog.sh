@@ -111,19 +111,69 @@ _emit() {
 
 # ── Session/gap lookup helpers (pure python3, no jq dependency) ──────────────
 
+# RESILIENT-218: `chump claim` writes worktrees at a fixed, deterministic
+# path: <base>/chump-<gap_id.lower()> (see crates/chump-atomic-claim
+# ClaimArgs::worktree_path). That means the worktree basename encodes the
+# gap_id exactly — no need to guess from free-text "purpose" or "branch"
+# substrings, which is what the old fuzzy matching below did (and which
+# silently fails whenever a claim file's purpose/branch text doesn't happen
+# to embed the worktree path or a gap-id slug — see RESILIENT-218 evidence:
+# a real, valid, non-expired claim for EFFECTIVE-330 was reported
+# claim_gap_id:null on every scan because "gap:EFFECTIVE-330" purpose text
+# never contained the worktree path or the branch's derived slug).
+#
+# Prints the gap_id implied by a chump-<slug> worktree basename, or "" if
+# the basename doesn't follow that convention (e.g. a manually-created
+# worktree).
+_expected_gap_id_from_basename() {
+    local wt="$1"
+    local base
+    base="$(basename "$wt")"
+    case "$base" in
+        chump-*)
+            printf '%s' "${base#chump-}" | tr '[:lower:]' '[:upper:]'
+            ;;
+        *)
+            printf ''
+            ;;
+    esac
+}
+
 # Prints session_id from the best-matching claim file for a given worktree,
 # or empty string if none found.
 _get_session_id() {
     local wt="$1" branch="$2"
-    # Strategy 1: claim in main LOCK_DIR whose purpose contains branch name
-    python3 - "$LOCK_DIR" "$wt" "$branch" 2>/dev/null <<'PYEOF'
+    local expected_gap
+    expected_gap="$(_expected_gap_id_from_basename "$wt")"
+    python3 - "$LOCK_DIR" "$wt" "$branch" "$expected_gap" 2>/dev/null <<'PYEOF'
 import json, os, sys, glob
-lock_dir, wt, branch = sys.argv[1], sys.argv[2], sys.argv[3]
+lock_dir, wt, branch, expected_gap = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+
+def candidates():
+    yield from glob.glob(os.path.join(lock_dir, "claim-*.json"))
+    yield from glob.glob(os.path.join(wt, ".chump-locks", "claim-*.json"))
+
+# Strategy 1 (primary, RESILIENT-218): direct gap_id field match against the
+# gap_id implied by the worktree's own basename (chump-<gap-lower>). This is
+# a deterministic field lookup, not a substring guess.
+if expected_gap:
+    for f in candidates():
+        try:
+            d = json.load(open(f))
+            if d.get("gap_id", "").upper() == expected_gap:
+                sid = d.get("session_id", "")
+                if sid:
+                    print(sid)
+                    sys.exit(0)
+        except Exception:
+            pass
+
+# Strategy 2 (fallback): claim in main LOCK_DIR whose purpose contains
+# the worktree path or branch name.
 for f in glob.glob(os.path.join(lock_dir, "claim-*.json")):
     try:
         d = json.load(open(f))
         purpose = d.get("purpose", "")
-        # Match if wt path or branch appears in purpose
         if wt in purpose or (branch and branch in purpose):
             sid = d.get("session_id", "")
             if sid:
@@ -131,7 +181,7 @@ for f in glob.glob(os.path.join(lock_dir, "claim-*.json")):
                 sys.exit(0)
     except Exception:
         pass
-# Strategy 2: claim in worktree's own .chump-locks/
+# Strategy 3: claim in worktree's own .chump-locks/, any gap_id.
 for f in glob.glob(os.path.join(wt, ".chump-locks", "claim-*.json")):
     try:
         d = json.load(open(f))
@@ -148,23 +198,44 @@ PYEOF
 # Prints gap_id from best matching claim file, or "null".
 _get_gap_id() {
     local wt="$1" branch="$2"
-    python3 - "$LOCK_DIR" "$wt" "$branch" 2>/dev/null <<'PYEOF'
+    local expected_gap
+    expected_gap="$(_expected_gap_id_from_basename "$wt")"
+    python3 - "$LOCK_DIR" "$wt" "$branch" "$expected_gap" 2>/dev/null <<'PYEOF'
 import json, os, sys, glob, re
-lock_dir, wt, branch = sys.argv[1], sys.argv[2], sys.argv[3]
+lock_dir, wt, branch, expected_gap = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+
+def candidates():
+    yield from glob.glob(os.path.join(lock_dir, "claim-*.json"))
+    yield from glob.glob(os.path.join(wt, ".chump-locks", "claim-*.json"))
+
+# Strategy 1 (primary, RESILIENT-218): direct gap_id field match against the
+# gap_id implied by the worktree's own basename. Deterministic field lookup
+# — no fuzzy substring matching against purpose/branch text required.
+if expected_gap:
+    for f in candidates():
+        try:
+            d = json.load(open(f))
+            gid = d.get("gap_id", "")
+            if gid and gid.upper() == expected_gap:
+                print(gid)
+                sys.exit(0)
+        except Exception:
+            pass
+
+# Strategy 2 (fallback, old fuzzy heuristic): claim in main LOCK_DIR whose
+# purpose or branch-derived slug matches. Kept for worktrees that don't
+# follow the chump-<gap-lower> naming convention.
 for f in glob.glob(os.path.join(lock_dir, "claim-*.json")):
     try:
         d = json.load(open(f))
-        # gap_id field is canonical
         gid = d.get("gap_id", "")
         if gid:
-            # Confirm this claim file belongs to this worktree
             purpose = d.get("purpose", "")
             m = re.search(r'([A-Z]+-\d+)', gid)
             slug = m.group(1).lower().replace("-", "") if m else ""
             if (wt in purpose or (branch and slug and slug in branch.lower())):
                 print(gid)
                 sys.exit(0)
-        # Fallback: parse purpose for gap ID
         purpose = d.get("purpose", "")
         m = re.search(r'gap:([A-Z]+-\d+)', purpose)
         if m:
@@ -175,7 +246,7 @@ for f in glob.glob(os.path.join(lock_dir, "claim-*.json")):
                 sys.exit(0)
     except Exception:
         pass
-# Strategy 2: claim in worktree's own .chump-locks/
+# Strategy 3: claim in worktree's own .chump-locks/, any gap_id.
 for f in glob.glob(os.path.join(wt, ".chump-locks", "claim-*.json")):
     try:
         d = json.load(open(f))
