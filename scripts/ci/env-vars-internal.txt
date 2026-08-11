@@ -1573,3 +1573,10 @@ CHUMP_SLA_BREACH_MINUTES
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN
+CHUMP_DISCORD_AGENT_BUDGET_USD
+# detected in: (standard input)
+CHUMP_DISCORD_AGENT_MAX_CONCURRENT
+# detected in: (standard input)
+CHUMP_DISCORD_AGENT_MODEL
+# detected in: (standard input)
+CHUMP_DISCORD_AGENT_TIMEOUT_S
