@@ -1,0 +1,20 @@
+# INFRA-3601 — the board strategic layer: fires ONE Sonnet CEO-briefing agent
+# (the one thing, the one bottleneck, operator-only decisions, on-mission
+# drift check) and posts it to operator Discord, on boot + hourly, with zero
+# desktop Claude session open. Distinct from chump-board-cycle.service (the
+# ops SLA scorecard, which watches the factory). Paired with
+# chump-board-ceo-briefing.timer. Path defaults target the primary node
+# (helsinki, root). Non-root nodes: adjust the two paths + providers.env
+# location per LINUX_NODE_ONBOARDING.md.
+[Unit]
+Description=Chump board CEO-briefing beat — one thing, bottleneck, operator decisions, drift check (INFRA-3601)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Source providers.env for ANTHROPIC/CLAUDE + DISCORD_TOKEN credentials (export
+# format, so source it in a shell rather than systemd EnvironmentFile which
+# can't parse `export KEY=val`).
+Environment=HOME=/root
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/dispatch/board-ceo-briefing-beat.sh'

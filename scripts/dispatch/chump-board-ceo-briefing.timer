@@ -1,0 +1,16 @@
+# INFRA-3601 — fires the board CEO-briefing beat on boot and every ~60 min on
+# the primary node. Slower cadence than chump-board-cycle.timer (15 min,
+# ops SLA layer) on purpose: strategic drift doesn't need a 15-minute pulse,
+# but it must fire OOTB — on boot — so the briefing exists before a human
+# ever opens a desktop session. Enable: systemctl enable --now
+# chump-board-ceo-briefing.timer
+[Unit]
+Description=Run the Chump board CEO-briefing beat on boot + hourly (INFRA-3601)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=60min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
