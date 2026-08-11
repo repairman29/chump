@@ -557,6 +557,36 @@ Don't blindly flip the variables back. Follow this order:
      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .chump-locks/ambient.jsonl
    ```
 
+### Reproduction attempt (2026-08-11, INFRA-3544 slice)
+
+Ran `scripts/dev/reproduce-infra1655-checkout-flake.sh` against the live
+`repairman29/chump` runner registry:
+
+```
+REPRO_RESULT=runner_absent
+elapsed: 1s
+Live pool:
+  chumpd-eu-runner  Linux  online
+```
+
+No `jeffs-macbook-air-10-X` runner is registered any more — the pool now
+contains only `chumpd-eu-runner` (Linux). The M4 hardware referenced in
+step 1 above has been deregistered/decommissioned sometime between the
+2026-05-21 incident and now, so the original `actions/checkout@v6` 0-step
+CANCELLED/FAILURE pattern cannot be reproduced live against real hardware
+from a fleet session — there is no longer a matching runner for a job to
+dispatch to.
+
+This absence is itself a fast, deterministic, runner-specific signal: the
+registry lookup completes in ~1s (well under 30s) and the gap is unique to
+the `jeffs-macbook-air-10-X` name pattern — every other entry in the pool
+(`chumpd-eu-runner`) is healthy and unaffected. Practically, this means the
+"required steps to restore self-hosted routing" above no longer apply to
+that specific hardware: any future M4-lane restoration needs the runner
+**re-registered** first (`scripts/setup/install-self-hosted-runner.sh` on
+the target Mac), not merely diagnosed — registration-loss, not a live
+checkout flake, is the current blocker.
+
 ### Operator note
 
 Hardware economics matter — the dual RTX 6000 Blackwell roadmap is
