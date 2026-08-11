@@ -30,12 +30,25 @@ on:
 # branch spawned a fresh ~11min run while the old one kept a self-hosted runner
 # busy — a major contributor to the runner-saturation that stalls the merge queue.
 # DEADLOCK-SAFE (the INFRA-2452 class): only pull_request runs share a cancellable
-# group (keyed by PR number); push, merge_group, and schedule runs key on the
-# unique run_id so they are NEVER cancelled. This matters because the required
-# check "ACP protocol smoke test" runs in this workflow on merge_group — cancelling
-# a merge-queue run would fail the required check and wedge every merge.
+# group; push, merge_group, and schedule runs key on the unique run_id so they are
+# NEVER cancelled. This matters because the required check "ACP protocol smoke
+# test" runs in this workflow on merge_group — cancelling a merge-queue run would
+# fail the required check and wedge every merge.
+#
+# INFRA-3579 (2026-08-11, INFRA-1655 root-cause fix): the pull_request group was
+# keyed on github.event.pull_request.number, so two pushes to the same PR within
+# ~11min cancelled each other's in-flight acp-smoke-impl run. On the self-hosted
+# M4 lane (INFRA-1535 stage 3 routing) that showed up as a 0-step CANCELLED job at
+# the actions/checkout step — indistinguishable at a glance from a checkout flake,
+# which is exactly what INFRA-1655 spent multiple slices (INFRA-3546/3558/3576)
+# ruling disk/network/stale-runner-registration OUT for. Root cause per those
+# slices: concurrency-group cancellation (the same class INFRA-1852 already fixed
+# in ci.yml), not runner hardware. Fix: key the pull_request group on github.sha
+# instead of the PR number, same remedy as INFRA-1852 — each commit gets its own
+# group, so a fixup push no longer cancels the prior commit's in-flight self-hosted
+# run.
 concurrency:
-  group: integrations-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  group: integrations-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.sha || github.run_id }}
   cancel-in-progress: true
 
 env:

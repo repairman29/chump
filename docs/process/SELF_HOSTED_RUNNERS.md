@@ -995,6 +995,33 @@ No new information surfaced — this slice confirms the INFRA-3546/INFRA-3558
 findings are still current and nothing has regressed or changed in the
 runner pool or historical job metadata.
 
+### Root-cause fix landed (2026-08-11, INFRA-3579 fleet-2 slice)
+
+The INFRA-3546/3558/3576 slices above ruled out disk/network/stale-runner
+registration and converged on **concurrency-group cancellation** (the same
+class INFRA-1852 fixed in `ci.yml`) as the actual trigger for the 0-step
+CANCELLED `jeffs-macbook-air-10-X` jobs. `.github/workflows/integrations.yml`
+— the workflow that routes `acp-smoke-impl` onto the self-hosted M4 lane per
+INFRA-1535 stage 3 — still keyed its `pull_request` concurrency group on
+`github.event.pull_request.number` rather than `github.sha`. That meant two
+pushes to the same PR within the ~11min ACP smoke run window cancelled the
+prior push's in-flight self-hosted job at (or before) the
+`actions/checkout@v7` step — indistinguishable at a glance from a checkout
+flake.
+
+Fix: reworked the group key to `github.event_name == 'pull_request' &&
+github.sha || github.run_id`, mirroring the INFRA-1852 remedy already in
+`ci.yml`. Each commit now gets its own concurrency group, so a fixup push no
+longer cancels the previous commit's in-flight self-hosted run. `push`,
+`merge_group`, and `schedule` events are unaffected (still keyed on
+`github.run_id`, never cancelled) — the merge-queue-required "ACP protocol
+smoke test" check is not at risk.
+
+This does not by itself re-enable `CHUMP_SELF_HOSTED_ENABLED` — that AC (5 in
+the INFRA-1655 parent gap) is a separate staged re-enable, tracked
+independently. This slice closes the "land fix" AC (3) for the
+concurrency-cancellation root cause.
+
 ---
 
 ## Pi mesh provisioner (INFRA-1543)
