@@ -753,6 +753,34 @@ degraded by disk or network. Re-registering the hardware (rather than
 diagnosing disk/network on it) is the prerequisite for any future
 restoration attempt.
 
+### Checkout-step specificity verification (2026-08-11, INFRA-3550 slice)
+
+`scripts/dev/verify-infra1655-checkout-step-specificity.sh` re-checks the two
+halves of the gap's original acceptance criteria independently, using both
+the live runner registry (INFRA-3544's signal) and the historical job-step
+data INFRA-3546 already pulled (`26193207185`, `26192066937`):
+
+```
+signal 1 (runner-name specificity): jeffs-macbook-air-10-X absent from live pool;
+  every other registered runner is healthy — failure remains unique to that name pattern.
+signal 2: run 26193207185 job=e2e-pwa/audit/coverage — conclusion=cancelled step_count=0
+elapsed: 5s
+```
+
+**AC #1 (reproduce within 30s) — satisfied.** Signal 1 completes in ~5s and
+is deterministic and runner-specific, same as the INFRA-3544 result.
+
+**AC #2 (failure is specific to `actions/checkout@v6` step) — does not hold,
+per the historical evidence.** The cancelled self-hosted jobs at incident
+time recorded `step_count=0`: the concurrency-group cancellation (INFRA-1852,
+fixed 2026-05-23) killed the job before `actions/checkout@v6` — or any other
+step — began executing. The AC's premise (that checkout itself failed
+mid-step) is a reasonable inference from the incident's initial "checkout
+flake" label, but the retained GitHub job metadata contradicts it: there was
+no step to fail. This isn't a new root cause, just a correction of the AC's
+wording against ground truth — the substantive root-cause finding remains
+INFRA-3546's concurrency-cancellation-racing-queue-depth explanation above.
+
 ---
 
 ## Pi mesh provisioner (INFRA-1543)
