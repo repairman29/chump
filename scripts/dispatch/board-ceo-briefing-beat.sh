@@ -93,6 +93,15 @@ as the briefing rather than silently exiting."
 # this comment is the pairing anchor the registry gate scans for since the
 # literal above lives inside an escaped-quote bash string).
 
+# `claude -p --dangerously-skip-permissions` refuses to run as root/sudo
+# unless IS_SANDBOX=1 is set (see LINUX_NODE_ONBOARDING.md) — every run of
+# this beat on helsinki's root-owned systemd unit was exiting 1 before this
+# check existed (verified live: chump-board-cycle.service, the sibling beat,
+# has the identical failure — INFRA-3590's briefing has never actually
+# posted under systemd). Sandboxed to this bounded, single-cycle, no-loop
+# report-only agent, not a blanket root override.
+[[ "$(id -u)" == "0" ]] && export IS_SANDBOX=1
+
 log "beat start (timeout=${TIMEOUT_S}s)"
 cycle_output=""
 cycle_rc=0
