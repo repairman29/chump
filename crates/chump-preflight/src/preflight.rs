@@ -942,6 +942,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // INFRA-2391: `chump demo` subcommand smoke — asserts --help and an
         // end-to-end --dry-run both exit 0. Pure local, no network.
         "scripts/ci/test-chump-demo-smoke.sh",
+        // INFRA-3561 (INFRA-1655 slice): guards CHUMP_RUNNER_M4_MAX default
+        // (raised 2->4 by INFRA-3549) against silently regressing in either
+        // scripts/coord/chump-runner-autoscale.sh or
+        // scripts/setup/install-runner-autoscale.sh. Pure grep, no network, <1s.
+        "scripts/ci/test-runner-autoscale-max-default.sh",
     ];
     candidates
         .iter()
