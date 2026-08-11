@@ -157,6 +157,8 @@ mod tests {
             waived,
             waive_reason: None,
             rules_hit: vec![],
+            is_proof: false,
+            proof_detail: None,
         }
     }
 

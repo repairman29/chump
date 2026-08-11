@@ -32,6 +32,16 @@ pub struct BulletResult {
     pub waive_reason: Option<String>,
     /// Which rule numbers (1–4) matched.
     pub rules_hit: Vec<u8>,
+    /// CREDIBLE-281: true when this bullet is a proof/verification AC (its
+    /// text asserts a live outcome via a `PROVEN-BY <outcome>` / `PROOF:`
+    /// marker) rather than a descriptive AC. Proof bullets are never scored
+    /// by the diff-based keyword rules (a–d) — those only prove code
+    /// changed, not that the claimed live outcome actually happened — they
+    /// are scored by [`check_live_outcome`] instead.
+    pub is_proof: bool,
+    /// Human-readable detail of the live-outcome check for a proof bullet
+    /// (what was probed and what it found). `None` for non-proof bullets.
+    pub proof_detail: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -386,6 +396,162 @@ fn check_coverage(bullet: &str, diff: &str, commit_text: &str) -> Vec<u8> {
     hit
 }
 
+// ── proof-AC gate (CREDIBLE-281) ────────────────────────────────────────────
+//
+// INFRA-3598 (and INFRA-3593 before it) shipped `done` while their AC text
+// explicitly said `PROVEN by <live outcome>` — and the claimed outcome
+// (scorecard organ recovering to green) never happened. The heuristic rules
+// above (a–d) only check that the PR's *diff* mentions the bullet's file
+// paths / keywords; they cannot and do not check that a live system
+// actually reached the claimed state. Treating a proof bullet as coverable
+// by those rules is exactly how a false-done slips through: the diff can
+// keyword-match "scorecard organ recovering to green" while the organ is
+// still failed.
+//
+// The fix: classify each bullet as proof vs. descriptive. A proof bullet is
+// NEVER scored by rules a–d — it is only "covered" when
+// `check_live_outcome` can positively confirm the claimed outcome against
+// real, checkable state (a systemd unit's live ActiveState, an emitted
+// ambient event, or an HTTP endpoint). When the bullet names no
+// mechanically-checkable target, the gate fails closed (uncovered) rather
+// than rubber-stamping the claim — this is what rejects the INFRA-3598
+// class: "the scorecard organ recovers to green" names an outcome, not a
+// literal unit/event/endpoint the gate can probe, so it stays uncovered
+// until the bullet (or a companion trailer) names something checkable.
+
+/// True when `bullet` is a proof/verification AC — its text asserts a live
+/// outcome via a `PROVEN-BY`/`PROVEN BY`/`PROOF:`/`PROOF-BY` marker — as
+/// opposed to a descriptive AC that just states what the PR should contain.
+fn is_proof_bullet(bullet: &str) -> bool {
+    let lower = bullet.to_ascii_lowercase();
+    lower.contains("proven-by")
+        || lower.contains("proven by")
+        || lower.contains("proof-by")
+        || lower.contains("proof by")
+        || lower.contains("proof:")
+}
+
+fn systemctl_bin() -> String {
+    std::env::var("CHUMP_AC_GATE_SYSTEMCTL_BIN").unwrap_or_else(|_| "systemctl".to_string())
+}
+
+fn ambient_log_path() -> String {
+    std::env::var("CHUMP_AMBIENT_LOG").unwrap_or_else(|_| ".chump-locks/ambient.jsonl".to_string())
+}
+
+fn strip_token_punct(tok: &str) -> &str {
+    tok.trim_matches(|c: char| matches!(c, '\'' | '"' | '`' | '(' | ')' | ',' | ';' | ':' | '.'))
+}
+
+/// Find a literal `<name>.service` / `<name>.timer` token in the bullet —
+/// the concrete, checkable target for an "organ recovers to green"-shaped
+/// claim.
+fn find_systemd_unit_token(bullet: &str) -> Option<String> {
+    for raw in bullet.split_whitespace() {
+        let stripped = raw.trim_end_matches(|c: char| matches!(c, ',' | ';' | ')' | '"' | '`'));
+        if stripped.ends_with(".service") || stripped.ends_with(".timer") {
+            let cleaned = stripped
+                .trim_start_matches(|c: char| matches!(c, '\'' | '"' | '`' | '(' | ',' | ';'));
+            return Some(cleaned.to_string());
+        }
+    }
+    None
+}
+
+/// Find an explicit `kind=<event_name>` marker — the concrete, checkable
+/// target for an "emits a deploy audit event" claim.
+fn find_event_kind_token(bullet: &str) -> Option<String> {
+    let pos = bullet.find("kind=")?;
+    let rest = &bullet[pos + "kind=".len()..];
+    let tok: String = rest
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    if tok.is_empty() {
+        None
+    } else {
+        Some(tok)
+    }
+}
+
+/// Find a literal `http(s)://` URL — the concrete, checkable target for an
+/// "endpoint responds" claim.
+fn find_url_token(bullet: &str) -> Option<String> {
+    for raw in bullet.split_whitespace() {
+        let t = strip_token_punct(raw);
+        if t.starts_with("http://") || t.starts_with("https://") {
+            return Some(t.to_string());
+        }
+    }
+    None
+}
+
+/// Check whether a proof bullet's claimed live outcome is actually true
+/// right now. Returns `(verified, detail)`. Fails closed: a bullet whose
+/// text names no mechanically-checkable target (no literal
+/// `<unit>.service`/`.timer`, `kind=<event>`, or URL) is `(false, ..)` —
+/// the gate never takes a proof claim on faith.
+fn check_live_outcome(bullet: &str) -> (bool, String) {
+    if let Some(unit) = find_systemd_unit_token(bullet) {
+        return match Command::new(systemctl_bin())
+            .args(["is-active", &unit])
+            .output()
+        {
+            Ok(out) => {
+                let state = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                let ok = state == "active";
+                (ok, format!("systemctl is-active {unit} -> \"{state}\""))
+            }
+            Err(e) => (
+                false,
+                format!("systemctl unavailable ({e}); cannot confirm {unit}"),
+            ),
+        };
+    }
+    if let Some(kind) = find_event_kind_token(bullet) {
+        let path = ambient_log_path();
+        let needle = format!("\"kind\":\"{kind}\"");
+        let found = std::fs::read_to_string(&path)
+            .map(|s| s.contains(&needle))
+            .unwrap_or(false);
+        return (
+            found,
+            format!("ambient log {path} contains kind={kind} -> {found}"),
+        );
+    }
+    if let Some(url) = find_url_token(bullet) {
+        let curl_bin =
+            std::env::var("CHUMP_AC_GATE_CURL_BIN").unwrap_or_else(|_| "curl".to_string());
+        return match Command::new(curl_bin)
+            .args([
+                "-sf",
+                "-o",
+                "/dev/null",
+                "-w",
+                "%{http_code}",
+                "--max-time",
+                "5",
+                &url,
+            ])
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                let code = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                let ok = code.starts_with('2');
+                (ok, format!("curl {url} -> {code}"))
+            }
+            _ => (false, format!("endpoint {url} did not respond 2xx")),
+        };
+    }
+    (
+        false,
+        "proof-AC names no mechanically-checkable live target (no literal \
+         <unit>.service/.timer, kind=<event>, or URL) -- failing closed, \
+         diff keyword-match does not count as proof"
+            .to_string(),
+    )
+}
+
 // ── ambient emit wrapper ──────────────────────────────────────────────────────
 
 fn ambient(kind: &str, fields: Vec<(&str, String)>) {
@@ -592,6 +758,15 @@ pub fn run_with_ac(
         if let Some(verdicts) = llm_judge_ac(repo_opt, pr_number, gap_id, bullets) {
             for v in &verdicts {
                 if let Some(b) = result.bullets.get_mut(v.index) {
+                    // CREDIBLE-281: the LLM judge only reads the diff — it has
+                    // no more access to live system state than the heuristic
+                    // rules do, so it must not override a proof bullet's
+                    // `check_live_outcome` verdict (that would let a
+                    // plausible-sounding diff talk the gate into believing an
+                    // unproven live outcome).
+                    if b.is_proof {
+                        continue;
+                    }
                     b.covered = v.status == JudgeStatus::Met;
                     eprintln!(
                         "ac-judge [{}] {:?}: {}",
@@ -669,23 +844,42 @@ fn score_against_bullets(
                 waived: true,
                 waive_reason: Some(reason.clone()),
                 rules_hit: vec![],
+                is_proof: is_proof_bullet(text),
+                proof_detail: None,
             });
             continue;
         }
 
-        let rules_hit = check_coverage(text, &diff, &trailer_text);
-        let covered = !rules_hit.is_empty();
+        // CREDIBLE-281: a proof/verification AC ("PROVEN-BY <live outcome>")
+        // is NEVER scored by the diff-keyword rules (a–d) — a diff can only
+        // prove code changed, not that the claimed live outcome happened.
+        // Route it to the live-outcome check instead; that check fails
+        // closed when the bullet names no mechanically-checkable target.
+        let is_proof = is_proof_bullet(text);
+        let (rules_hit, covered, proof_detail) = if is_proof {
+            let (verified, detail) = check_live_outcome(text);
+            (Vec::new(), verified, Some(detail))
+        } else {
+            let rules_hit = check_coverage(text, &diff, &trailer_text);
+            let covered = !rules_hit.is_empty();
+            (rules_hit, covered, None)
+        };
 
         if !covered {
             any_miss = true;
             let prefix = &text[..text.len().min(40)];
             ambient(
-                "ac_coverage_miss",
+                if is_proof {
+                    "ac_coverage_proof_miss"
+                } else {
+                    "ac_coverage_miss"
+                },
                 vec![
                     ("pr_number", pr_number.to_string()),
                     ("gap_id", gap_id.clone()),
                     ("bullet_index", i.to_string()),
                     ("bullet_text_prefix", prefix.to_string()),
+                    ("detail", proof_detail.clone().unwrap_or_default()),
                 ],
             );
         }
@@ -697,6 +891,8 @@ fn score_against_bullets(
             waived: false,
             waive_reason: None,
             rules_hit,
+            is_proof,
+            proof_detail,
         });
     }
 
@@ -1356,6 +1552,12 @@ pub fn cited_paths(bullet: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// CREDIBLE-281 tests mutate `CHUMP_AMBIENT_LOG` (process-global env) —
+    /// serialize them so parallel test threads can't race each other's
+    /// set/remove.
+    static AMBIENT_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn effective388_extract_context_tokens_keeps_codey_drops_filler() {
@@ -1537,6 +1739,143 @@ mod tests {
         );
     }
 
+    // ── CREDIBLE-281: proof-AC gate ─────────────────────────────────────────
+
+    #[test]
+    fn credible281_is_proof_bullet_detects_markers() {
+        assert!(is_proof_bullet(
+            "a gap whose AC says PROVEN-BY <live outcome> cannot reach done"
+        ));
+        assert!(is_proof_bullet(
+            "PROVEN by the scorecard organ recovering to green"
+        ));
+        assert!(is_proof_bullet("proof: endpoint responds 200"));
+        assert!(!is_proof_bullet(
+            "src/pr_ac_coverage.rs must exist and implement run()"
+        ));
+    }
+
+    #[test]
+    fn credible281_infra3598_class_bullet_is_unverifiable_and_fails_closed() {
+        // The exact shape of INFRA-3598's real AC bullet: a proof claim that
+        // names an outcome ("the scorecard organ recovering to green") but no
+        // literal, mechanically-checkable target. Rules a-d could keyword-match
+        // "scorecard organ" against an unrelated diff and rubber-stamp it --
+        // that is precisely the false-done this gate exists to reject. The
+        // live-outcome check must fail closed instead of passing on vibes.
+        let bullet =
+            "PROVEN by the scorecard organ recovering to green from its already-merged fix once this lands";
+        assert!(is_proof_bullet(bullet));
+        let (verified, detail) = check_live_outcome(bullet);
+        assert!(
+            !verified,
+            "an unverifiable proof claim must fail closed, not pass: {detail}"
+        );
+    }
+
+    #[test]
+    fn credible281_proof_bullet_ignores_diff_keyword_match() {
+        // Even when the diff happens to contain every keyword from the proof
+        // bullet, a proof AC is not satisfied by check_coverage's rules --
+        // only check_live_outcome decides it, and here it fails closed.
+        let bullet = "PROVEN-BY the scorecard organ recovering to green";
+        let diff = "+++ b/src/whatever.rs\n+let msg = \"scorecard organ recovering to green\";\n";
+        let rules_hit = check_coverage(bullet, diff, "");
+        assert!(
+            !rules_hit.is_empty(),
+            "sanity: the diff DOES keyword-match via rule_b, proving the old \
+             behavior would have passed this"
+        );
+        let (verified, _) = check_live_outcome(bullet);
+        assert!(
+            !verified,
+            "proof bullet must not be satisfied merely because the diff echoes its words"
+        );
+    }
+
+    #[test]
+    fn credible281_proof_bullet_verified_via_named_ambient_event() {
+        let _guard = AMBIENT_ENV_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!(
+            "credible281-ambient-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log_path = dir.join("ambient.jsonl");
+        std::fs::write(
+            &log_path,
+            "{\"ts\":\"now\",\"kind\":\"deploy_audit_emitted\",\"gap_id\":\"INFRA-3598\"}\n",
+        )
+        .unwrap();
+        std::env::set_var("CHUMP_AMBIENT_LOG", &log_path);
+        let bullet = "PROVEN-BY an emitted kind=deploy_audit_emitted event the board can verify";
+        let (verified, detail) = check_live_outcome(bullet);
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            verified,
+            "named ambient event present should verify: {detail}"
+        );
+    }
+
+    #[test]
+    fn credible281_proof_bullet_unverified_when_named_event_absent() {
+        let _guard = AMBIENT_ENV_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!(
+            "credible281-ambient-absent-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log_path = dir.join("ambient.jsonl");
+        std::fs::write(&log_path, "{\"ts\":\"now\",\"kind\":\"unrelated_event\"}\n").unwrap();
+        std::env::set_var("CHUMP_AMBIENT_LOG", &log_path);
+        let bullet = "PROVEN-BY an emitted kind=deploy_audit_emitted event the board can verify";
+        let (verified, _) = check_live_outcome(bullet);
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!verified, "absent named event must not verify");
+    }
+
+    #[test]
+    fn credible281_find_systemd_unit_token_extracts_literal_unit() {
+        let bullet = "PROVEN-BY chump-sla-scorecard.service reaching active state";
+        assert_eq!(
+            find_systemd_unit_token(bullet),
+            Some("chump-sla-scorecard.service".to_string())
+        );
+        assert_eq!(
+            find_systemd_unit_token("PROVEN-BY the scorecard organ recovering to green"),
+            None
+        );
+    }
+
+    #[test]
+    fn credible281_llm_judge_cannot_override_proof_bullet_verdict() {
+        // score_against_bullets marks a proof bullet uncovered (fail-closed);
+        // simulate the LLM-judge override loop and confirm the `is_proof`
+        // guard keeps it from flipping the verdict to covered.
+        let mut b = BulletResult {
+            index: 0,
+            text: "PROVEN-BY the scorecard organ recovering to green".to_string(),
+            covered: false,
+            waived: false,
+            waive_reason: None,
+            rules_hit: vec![],
+            is_proof: true,
+            proof_detail: Some("unverifiable".to_string()),
+        };
+        let verdict_says_met = true;
+        if !b.is_proof {
+            b.covered = verdict_says_met;
+        }
+        assert!(
+            !b.covered,
+            "LLM judge must not override a proof bullet's live-outcome verdict"
+        );
+    }
+
     #[test]
     fn test_waiver_parsed() {
         let body = "Some PR body text.\nAC-Coverage-Waive: 0: legacy path\nOther stuff.";
@@ -1595,6 +1934,8 @@ mod tests {
                     waived: false,
                     waive_reason: None,
                     rules_hit: vec![],
+                    is_proof: false,
+                    proof_detail: None,
                 })
                 .collect(),
         };

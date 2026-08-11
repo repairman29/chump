@@ -1597,3 +1597,10 @@ CHUMP_ORGAN_WATCHDOG_CLONE_REFRESH
 CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT
 # detected in: (standard input)
 CHUMP_ORGAN_WATCHDOG_GIT_BIN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_AC_GATE_CURL_BIN
+# detected in: (standard input)
+CHUMP_AC_GATE_SYSTEMCTL_BIN
