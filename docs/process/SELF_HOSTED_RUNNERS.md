@@ -596,21 +596,62 @@ INFRA-1655 as a P1 unblocker, not a parking-lot item.
 
 ### System-information root-cause analysis (2026-08-11, INFRA-3546 slice)
 
-Ran `scripts/dev/analyze-infra1655-system-info.sh` to check the three
-candidate root causes named in step 1 above against live/available
-evidence:
+`scripts/dev/analyze-infra1655-system-info.sh <ci-run-id>` checks the three
+candidate root causes named in step 1 above — not just against the live
+runner registry, but against GitHub's still-retained **historical CI job
+metadata** from the 2026-05-20/21 incident window itself (job-level
+`steps[]`, `runner_id`/`runner_name`, and timing), which is stronger
+evidence than reasoning from the incident write-up's summary alone:
 
-| Candidate cause | Verdict | Evidence |
-|---|---|---|
-| Stale runner registration | **ruled out** | Live query of `gh api repos/repairman29/chump/actions/runners` (2026-08-11) shows no entry matching `jeffs-macbook-air-10*` — the registry has been reduced to a single unrelated runner (`chumpd-eu-runner`, Linux). The Mac runner isn't stale (registered-but-unresponsive); it's fully deregistered. |
-| Disk full | **ruled out** (signature-based) | This session has no host access to the M4 to read live `df`, so this is inferred from the failure signature, not a direct probe: the incident record describes 0-step jobs ending `CANCELLED`/`FAILURE` in <30s with **no visible failed step**. A disk-full condition fails *inside* a running step (e.g. checkout write error, "no space left on device") — it can't produce a 0-step immediate cancellation before any step starts. |
-| Network issues | **ruled out** (signature-based) | Same reasoning: a network blip on `git clone`/checkout surfaces as a **failed** checkout step with a visible git/network error. The recorded signature (0-step, no failed step) is inconsistent with that; it points to a runner-registration/dispatch-level issue instead. |
+**1. Stale runner registration — ruled out.** Live query of
+`gh api repos/repairman29/chump/actions/runners` (2026-08-11) shows no
+entry matching `jeffs-macbook-air-10*` — fully deregistered, not merely
+stale. And historically: every cancelled self-hosted job in the sampled
+incident runs (e.g. run `26193207185`: `e2e-pwa` → `jeffs-macbook-air-10-4`,
+`audit` → `jeffs-macbook-air-10`, `coverage` → `jeffs-macbook-air-10-3`) had
+a live `runner_id`/`runner_name` assigned at incident time — a
+stale/deregistered runner can't receive a job dispatch, so the dispatch
+itself proves registration was healthy *then*; it's the ~3-month gap since
+that produced today's absence.
 
-Net: none of the three candidates from the original diagnose step matches
-live/available evidence as the *current* blocker — the runner is simply
-gone from the registry, not degraded by disk or network. Re-registering
-the hardware (rather than diagnosing disk/network on it) is the
-prerequisite for any future restoration attempt.
+**2. Disk full — ruled out.** The cancelled self-hosted jobs executed
+**zero steps** before `CANCELLED` (`steps: []`) — no `actions/checkout@v6`
+step, or any step, ever started running, so there was nothing to hit a
+full disk. (One incident run, `26192066937`, shows `audit`/`e2e-pwa`
+executing 13-115 steps successfully before cancellation — direct evidence
+*against* a disk/checkout failure on those runs.)
+
+**3. Network issues — ruled out.** Same zero-step evidence: no checkout
+step ran, so there's no `git clone`/`fetch` for a network blip to
+interrupt. The cancellation was also synchronized across independently
+provisioned physical Macs at the same instant (all three jobs in run
+`26193207185` share `completed_at=2026-05-20T22:36:40Z`) — inconsistent
+with independent per-machine network failures, consistent with one
+external cancellation event hitting all three simultaneously.
+
+**Actual root cause: GitHub Actions concurrency-group cancellation racing
+against self-hosted queue depth**, not a runner-level fault. Run
+`26193207185`'s window (`22:17:29Z`-`22:36:52Z`) overlaps a newer push to
+the *same PR branch* (run `26193784646`, `22:31:39Z`). At incident time,
+`ci.yml`'s `concurrency:` group for `pull_request` events was keyed on PR
+number with `cancel-in-progress: true` (see the `INFRA-1852` comment block
+earlier in this file — fixed 2026-05-23, **3 days after** this incident, to
+key on `github.sha` instead). Every push to a PR cancelled the prior
+in-flight run's group; `ubuntu-latest` jobs usually finished before a
+follow-up push landed, but the self-hosted lane's 3-4 physical Mac minis
+serving 4+ job types across every open PR queued longer and were
+disproportionately caught still-pending (0 steps) — producing the
+"0-step CANCELLED/FAILURE in <30s" signature that looked like a runner
+fault but was the CI concurrency bug INFRA-1852 later fixed, compounded by
+self-hosted capacity contention.
+
+Net: none of the three original candidates (disk/registration/network)
+matches the evidence as the *incident-time* trigger — that was the
+concurrency bug, already fixed. Registration is, however, the *current*
+blocker for restoration: the runner is gone from the registry today, not
+degraded by disk or network. Re-registering the hardware (rather than
+diagnosing disk/network on it) is the prerequisite for any future
+restoration attempt.
 
 ---
 
