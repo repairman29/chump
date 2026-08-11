@@ -122,7 +122,7 @@ if [ ! -f "$AMBIENT_LOG" ]; then
     fail "Ambient log not created"
 fi
 
-alert_count=$(grep -c '"kind":"worker_circuit_open"' "$AMBIENT_LOG" 2>/dev/null || echo 0)
+alert_count=$(grep -c '"kind":"worker_circuit_open"' "$AMBIENT_LOG" 2>/dev/null || true)
 if [ "$alert_count" -ne 1 ]; then
     fail "Expected 1 worker_circuit_open alert, got $alert_count"
 fi

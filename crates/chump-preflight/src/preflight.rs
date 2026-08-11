@@ -1950,6 +1950,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "grep-c-echo0-guard-smoke",
+            &["bash", "scripts/ci/test-grep-c-echo0-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "cross-judge-guard",
             &["bash", "scripts/ci/test-cross-judge-guard.sh"],
             GateKind::Scripts,

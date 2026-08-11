@@ -159,7 +159,7 @@ emit_expired_intent() {
     emit_intent "INFRA-100" "session-abc-12345" '["src/foo.rs"]'
     emit_intent "INFRA-101" "session-def-67890" '["docs/"]'
 
-    count=$(grep -c '"kind":"intent_announced"' "$AMBIENT_LOG" 2>/dev/null || echo 0)
+    count=$(grep -c '"kind":"intent_announced"' "$AMBIENT_LOG" 2>/dev/null || true)
     if [ "$count" -eq 2 ]; then
         pass "Multiple INTENTs recorded correctly"
     else

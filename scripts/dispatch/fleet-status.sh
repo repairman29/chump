@@ -75,9 +75,9 @@ render_ambient() {
   if [[ -f "$AMBIENT" ]]; then
     local total edits commits alerts
     total=$(wc -l <"$AMBIENT" | tr -d ' ')
-    edits=$(grep -c '"event":"file_edit"' "$AMBIENT" 2>/dev/null || echo 0)
-    commits=$(grep -c '"event":"commit"' "$AMBIENT" 2>/dev/null || echo 0)
-    alerts=$(grep -c 'ALERT' "$AMBIENT" 2>/dev/null || echo 0)
+    edits=$(grep -c '"event":"file_edit"' "$AMBIENT" 2>/dev/null || true)
+    commits=$(grep -c '"event":"commit"' "$AMBIENT" 2>/dev/null || true)
+    alerts=$(grep -c 'ALERT' "$AMBIENT" 2>/dev/null || true)
     echo "stream: ${total} events  edits=${edits} commits=${commits} alerts=${alerts}"
     echo "----"
     tail -n 30 "$AMBIENT"

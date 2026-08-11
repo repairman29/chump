@@ -73,7 +73,7 @@ fire() {
 cutoff_iso="$(perl -e 'use POSIX qw(strftime); print strftime("%Y-%m-%dT%H:%M:%SZ", gmtime(time-600))' 2>/dev/null || date -u -v-10M +%Y-%m-%dT%H:%M:%SZ)"
 w001_count=$(tail -1000 "$AMBIENT" 2>/dev/null | awk -F '"' -v c="$cutoff_iso" '/pr_auto_rebase_failed/ { for(i=2;i<NF;i+=2) if ($i==c"ts") {} } /pr_auto_rebase_failed/ { if (match($0,/"ts":"([^"]+)"/,m) && m[1]>=c) print }' | wc -l | tr -d ' ')
 # fallback simpler count (perl regex above is fragile)
-w001_count=$(tail -1000 "$AMBIENT" 2>/dev/null | grep -c 'pr_auto_rebase_failed' 2>/dev/null || echo 0)
+w001_count=$(tail -1000 "$AMBIENT" 2>/dev/null | grep -c 'pr_auto_rebase_failed' 2>/dev/null || true)
 if [[ "$w001_count" -ge 3 ]]; then
     fire "W-001" "≥3 pr_auto_rebase_failed events recently" "\"count\":$w001_count"
 fi

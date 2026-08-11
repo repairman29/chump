@@ -58,7 +58,7 @@ else
     bad "stale pidfile may be mistaken for a live process"
 fi
 
-# 4. macOS BSD pgrep has no -c, and `pgrep -c ... || echo 0` turns the error
+# 4. macOS BSD pgrep has no -c, and `pgrep -c ... || true` turns the error
 #    into a FALSE ZERO — which would report the gateway down while it runs.
 if code "$LIVE" | grep -q "pgrep -c"; then
     bad "liveness uses pgrep -c (no such flag on BSD/macOS — yields a false zero)"

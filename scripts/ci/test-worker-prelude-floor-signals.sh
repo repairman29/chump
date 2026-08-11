@@ -72,7 +72,7 @@ else
 fi
 
 if grep -q "_emit_worker_stuck" "$WORKER" 2>/dev/null; then
-    _stuck_count=$(grep -c "_emit_worker_stuck" "$WORKER" 2>/dev/null || echo 0)
+    _stuck_count=$(grep -c "_emit_worker_stuck" "$WORKER" 2>/dev/null || true)
     ok "worker.sh: _emit_worker_stuck present ($_stuck_count call sites)"
 else
     fail "worker.sh: missing _emit_worker_stuck call sites"

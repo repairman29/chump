@@ -24,7 +24,7 @@ ag "$HOOK" "_PREPUSH_TEST_TIMEOUT_S=\"\\\$\\{CHUMP_PREPUSH_TEST_TIMEOUT_S:-" \
     "pre-push exposes CHUMP_PREPUSH_TEST_TIMEOUT_S env knob"
 
 # Count timeout wrappers — must be ≥ 2 (rerun-script + fallback)
-n_timeout=$(grep -cE 'timeout "\$\{_PREPUSH_TEST_TIMEOUT_S\}s"' "$HOOK" 2>/dev/null || echo 0)
+n_timeout=$(grep -cE 'timeout "\$\{_PREPUSH_TEST_TIMEOUT_S\}s"' "$HOOK" 2>/dev/null || true)
 if [[ "$n_timeout" -lt 2 ]]; then
     echo "FAIL: pre-push must wrap BOTH cargo-test paths in 'timeout \${_PREPUSH_TEST_TIMEOUT_S}s' (found $n_timeout/2 — regression of INFRA-1744 #2372)"
     failures=$((failures+1))

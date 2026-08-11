@@ -137,7 +137,7 @@ for i in 1 2 3 4; do
 done
 
 # Count heartbeats
-HB_COUNT="$(grep -c '"kind":"subagent_heartbeat"' "$AMBIENT" 2>/dev/null || echo 0)"
+HB_COUNT="$(grep -c '"kind":"subagent_heartbeat"' "$AMBIENT" 2>/dev/null || true)"
 if [[ "$HB_COUNT" -ge 3 ]]; then
     ok "B1: ≥3 subagent_heartbeat events in ambient.jsonl (got $HB_COUNT)"
 else
@@ -151,7 +151,7 @@ echo
 echo "-- C. Field-content validation --"
 
 # C1: all events have gap_id field
-HB_WITH_GAP="$(grep '"kind":"subagent_heartbeat"' "$AMBIENT" | grep -c '"gap_id"' || echo 0)"
+HB_WITH_GAP="$(grep '"kind":"subagent_heartbeat"' "$AMBIENT" | grep -c '"gap_id"' || true)"
 if [[ "$HB_WITH_GAP" -ge 3 ]]; then
     ok "C1: all heartbeats contain gap_id field"
 else
@@ -159,7 +159,7 @@ else
 fi
 
 # C2: all events have pid field
-HB_WITH_PID="$(grep '"kind":"subagent_heartbeat"' "$AMBIENT" | grep -c '"pid"' || echo 0)"
+HB_WITH_PID="$(grep '"kind":"subagent_heartbeat"' "$AMBIENT" | grep -c '"pid"' || true)"
 if [[ "$HB_WITH_PID" -ge 3 ]]; then
     ok "C2: all heartbeats contain pid field"
 else
@@ -167,7 +167,7 @@ else
 fi
 
 # C3: all events have last_action field
-HB_WITH_ACTION="$(grep '"kind":"subagent_heartbeat"' "$AMBIENT" | grep -c '"last_action"' || echo 0)"
+HB_WITH_ACTION="$(grep '"kind":"subagent_heartbeat"' "$AMBIENT" | grep -c '"last_action"' || true)"
 if [[ "$HB_WITH_ACTION" -ge 3 ]]; then
     ok "C3: all heartbeats contain last_action field"
 else
@@ -175,7 +175,7 @@ else
 fi
 
 # C4: all events have iter_count field
-HB_WITH_ITER="$(grep '"kind":"subagent_heartbeat"' "$AMBIENT" | grep -c '"iter_count"' || echo 0)"
+HB_WITH_ITER="$(grep '"kind":"subagent_heartbeat"' "$AMBIENT" | grep -c '"iter_count"' || true)"
 if [[ "$HB_WITH_ITER" -ge 3 ]]; then
     ok "C4: all heartbeats contain iter_count field"
 else

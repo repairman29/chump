@@ -55,9 +55,9 @@ grep -q "orchestrator-sessions" "$APP" \
   || fail "subject='orchestrator-sessions' missing from app.js"
 
 # ── 6. Three sparkline SVGs in component HTML ────────────────────────────────
-SPARK_COST=$(grep -c "orch-spark-cost" "$APP" 2>/dev/null || echo 0)
-SPARK_WALL=$(grep -c "orch-spark-wall" "$APP" 2>/dev/null || echo 0)
-SPARK_INT=$(grep -c "orch-spark-intent" "$APP" 2>/dev/null || echo 0)
+SPARK_COST=$(grep -c "orch-spark-cost" "$APP" 2>/dev/null || true)
+SPARK_WALL=$(grep -c "orch-spark-wall" "$APP" 2>/dev/null || true)
+SPARK_INT=$(grep -c "orch-spark-intent" "$APP" 2>/dev/null || true)
 [[ "$SPARK_COST" -ge 1 ]] \
   && ok "cost sparkline (orch-spark-cost) defined in component" \
   || fail "cost sparkline (orch-spark-cost) missing from component"

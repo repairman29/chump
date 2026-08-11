@@ -109,7 +109,7 @@ pass "lease-skip policy: PR exists + auto-merge + HEAD pushed all checked before
 
 # Verify the logic requires ALL THREE conditions (not just one)
 # by checking that the conditions are ANDed (each check exits with continue on failure)
-_pr_check_lines=$(grep -c 'gh pr list.*--head\|autoMergeRequest\|_local_head.*_remote_head\|local_head.*remote_head' "$REAPER" || echo 0)
+_pr_check_lines=$(grep -c 'gh pr list.*--head\|autoMergeRequest\|_local_head.*_remote_head\|local_head.*remote_head' "$REAPER" || true)
 [[ "$_pr_check_lines" -ge 3 ]] \
     || fail "lease-skip: expected >= 3 guard conditions, found ${_pr_check_lines}"
 pass "lease-skip policy: all 3 guard conditions present"

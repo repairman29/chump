@@ -124,7 +124,7 @@ _parser3_pid=$!
 wait "$_parser3_pid" 2>/dev/null || true
 rm -f "$_fifo3"
 
-_partial_count="$(grep -c '"kind":"token_usage_partial"' "$AMBIENT3" 2>/dev/null || echo 0)"
+_partial_count="$(grep -c '"kind":"token_usage_partial"' "$AMBIENT3" 2>/dev/null || true)"
 if [[ "$_partial_count" -ge 1 ]]; then
     pass "partial events captured during simulated mid-cycle timeout (count=$_partial_count)"
 else

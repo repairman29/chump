@@ -85,7 +85,7 @@ else
 fi
 
 # 8. At least 5 log_curator_decision calls (one per audit phase)
-_call_count=$(grep -c 'log_curator_decision' "$CURATOR" 2>/dev/null || echo 0)
+_call_count=$(grep -c 'log_curator_decision' "$CURATOR" 2>/dev/null || true)
 # Subtract 1 for the function definition itself
 _actual_calls=$(( _call_count - 1 ))
 if [[ "$_actual_calls" -ge 5 ]]; then

@@ -193,11 +193,11 @@ if command -v gh >/dev/null; then
     _par_prs=""
     if gh label list --limit 100 2>/dev/null | grep -q "pr:serializing"; then
         _ser_prs="$(gh pr list --state open --label "pr:serializing" --json number,title --jq '.[] | "#\(.number) \(.title[:60])"' 2>/dev/null || true)"
-        _ser_count="$(printf '%s\n' "$_ser_prs" | grep -c '#' 2>/dev/null || echo 0)"
+        _ser_count="$(printf '%s\n' "$_ser_prs" | grep -c '#' 2>/dev/null || true)"
     fi
     if gh label list --limit 100 2>/dev/null | grep -q "pr:parallel-safe"; then
         _par_prs="$(gh pr list --state open --label "pr:parallel-safe" --json number,title --jq '.[] | "#\(.number) \(.title[:60])"' 2>/dev/null || true)"
-        _par_count="$(printf '%s\n' "$_par_prs" | grep -c '#' 2>/dev/null || echo 0)"
+        _par_count="$(printf '%s\n' "$_par_prs" | grep -c '#' 2>/dev/null || true)"
     fi
     if [[ "$_ser_count" -gt 0 && "$_par_count" -gt 0 ]]; then
         _ser_list="$(printf '%s\n' "$_ser_prs" | tr '\n' '|' | sed 's/|$//')"

@@ -207,7 +207,7 @@ else
     fail "ambient emit missing kind=worktree_reaper_skipped_active"
 fi
 
-count=$(grep -c '"worktree_reaper_skipped_active"' "$AMBIENT" 2>/dev/null || echo 0)
+count=$(grep -c '"worktree_reaper_skipped_active"' "$AMBIENT" 2>/dev/null || true)
 if [[ "$count" -eq 2 ]]; then
     ok "two skip events emitted (active_lease + git_index_fresh)"
 else

@@ -178,12 +178,12 @@ JSON
 
 # First call — should rerun (PR 45 hasn't been seen)
 CHUMP_AUTO_RERUN_OOS=1 bash "$TARGET" 45 --execute >/dev/null 2>&1 || true
-FIRST_RERUN_COUNT="$(grep -c 'rerun_triggered' "$GH_STUB_RERUN_LOG" 2>/dev/null || echo 0)"
+FIRST_RERUN_COUNT="$(grep -c 'rerun_triggered' "$GH_STUB_RERUN_LOG" 2>/dev/null || true)"
 
 # Second call — should be blocked by budget
 rm -f "$GH_STUB_RERUN_LOG" 2>/dev/null || true
 out="$(CHUMP_AUTO_RERUN_OOS=1 bash "$TARGET" 45 --execute 2>&1)"
-SECOND_RERUN_COUNT="$(grep -c 'rerun_triggered' "$GH_STUB_RERUN_LOG" 2>/dev/null || echo 0)"
+SECOND_RERUN_COUNT="$(grep -c 'rerun_triggered' "$GH_STUB_RERUN_LOG" 2>/dev/null || true)"
 
 if [[ "$FIRST_RERUN_COUNT" -ge 1 && "$SECOND_RERUN_COUNT" -eq 0 ]] && echo "$out" | grep -q 'budget exhausted'; then
     ok "budget guard: second rerun within 24h suppressed"

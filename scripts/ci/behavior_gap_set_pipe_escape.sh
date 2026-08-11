@@ -185,7 +185,7 @@ RESERVE_OUT_C=$(CHUMP_REPO="$FAKE" "$CHUMP" gap reserve --force --domain TEST --
 GAP_ID_C=$(echo "$RESERVE_OUT_C" | grep -oE 'TEST-[0-9]+' | head -1)
 
 # Count deprecation events before
-DEP_BEFORE=$(grep -c '"event":"chump_gap_set_legacy_delim"' "$AMBIENT_FILE" 2>/dev/null || echo 0)
+DEP_BEFORE=$(grep -c '"event":"chump_gap_set_legacy_delim"' "$AMBIENT_FILE" 2>/dev/null || true)
 DEP_BEFORE=${DEP_BEFORE// /}
 
 CHUMP_REPO="$FAKE" "$CHUMP" gap set "$GAP_ID_C" \
@@ -207,7 +207,7 @@ else
     fail "single no-pipe value produced $N_BULLETS_C bullets, expected 1"
 fi
 
-DEP_AFTER=$(grep -c '"event":"chump_gap_set_legacy_delim"' "$AMBIENT_FILE" 2>/dev/null || echo 0)
+DEP_AFTER=$(grep -c '"event":"chump_gap_set_legacy_delim"' "$AMBIENT_FILE" 2>/dev/null || true)
 DEP_AFTER=${DEP_AFTER// /}
 if [[ "$DEP_BEFORE" == "$DEP_AFTER" ]]; then
     ok "no-pipe single flag does NOT emit deprecation event"

@@ -108,7 +108,7 @@ while IFS='|' read -r pr_num head_ref pr_title; do
     # A '+' line means a unique commit not in main; a '-' means an
     # equivalent patch (same diff) already applied.
     UNIQUE="$(git -C "$REPO_ROOT" cherry origin/main "FETCH_HEAD" 2>/dev/null \
-        | grep -c '^+' || echo 0)"
+        | grep -c '^+' || true)"
 
     if [[ "$UNIQUE" -gt 0 ]]; then
         echo "[close-superseded-prs]   SKIP PR #$pr_num — has $UNIQUE unique commit(s) not in main (false-positive guard)."

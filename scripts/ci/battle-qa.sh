@@ -165,12 +165,12 @@ if [[ "$QUERIES_FILE" == "$DEFAULT_QUERIES" ]]; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Generating $QUERIES_FILE (500 lines)..." | tee -a "$LOG"
     "$QUERIES_GEN" | head -500 > "$QUERIES_FILE"
   fi
-  TOTAL=$(grep -c . "$QUERIES_FILE" 2>/dev/null || echo 0)
+  TOTAL=$(grep -c . "$QUERIES_FILE" 2>/dev/null || true)
   [[ -z "$TOTAL" ]] || [[ "$TOTAL" -lt 1 ]] && TOTAL=0
   if [[ "$TOTAL" -lt 500 ]]; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Regenerating $QUERIES_FILE (had $TOTAL lines)." | tee -a "$LOG"
     "$QUERIES_GEN" | head -500 > "$QUERIES_FILE"
-    TOTAL=$(grep -c . "$QUERIES_FILE" 2>/dev/null || echo 0)
+    TOTAL=$(grep -c . "$QUERIES_FILE" 2>/dev/null || true)
     [[ -z "$TOTAL" ]] && TOTAL=0
   fi
 else
@@ -178,7 +178,7 @@ else
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ERROR: BATTLE_QA_QUERIES file not found: $QUERIES_FILE" | tee -a "$LOG"
     exit 1
   fi
-  TOTAL=$(grep -c . "$QUERIES_FILE" 2>/dev/null || echo 0)
+  TOTAL=$(grep -c . "$QUERIES_FILE" 2>/dev/null || true)
   [[ -z "$TOTAL" ]] || [[ "$TOTAL" -lt 1 ]] && TOTAL=0
   if [[ "$TOTAL" -lt 1 ]]; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ERROR: $QUERIES_FILE has no query lines." | tee -a "$LOG"

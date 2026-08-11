@@ -107,7 +107,7 @@ CHUMP_REPO_ROOT="$REPO_ROOT" \
 RUST_LOG=info \
     "$BIN" 2>&1 || true   # supervisor exits 0 even on detected failures
 
-# NOTE: `grep -c` prints its count AND exits 1 on no-match, so `|| echo 0`
+# NOTE: `grep -c` prints its count AND exits 1 on no-match, so `|| true`
 # appends a second line and "0\n0" turns `[[ -gt ]]` into a syntax error — which
 # bash reports and then SKIPS the assertion, so the test passes regardless.
 # Use `|| true`: grep has already printed the 0.
