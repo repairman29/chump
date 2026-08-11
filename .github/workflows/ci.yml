@@ -159,6 +159,7 @@ jobs:
               - 'experiments/**'
               - 'launchd/**'
               - 'migrations/**'
+              - 'org/**'
               - 'path/**'
               - 'projects/**'
               - 'recipes/**'
