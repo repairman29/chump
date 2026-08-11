@@ -594,6 +594,24 @@ predicated on local compute being load-bearing. Every day the M4 lanes
 are off is a day the runner-cost migration value is lost. Treat
 INFRA-1655 as a P1 unblocker, not a parking-lot item.
 
+### System-information root-cause analysis (2026-08-11, INFRA-3546 slice)
+
+Ran `scripts/dev/analyze-infra1655-system-info.sh` to check the three
+candidate root causes named in step 1 above against live/available
+evidence:
+
+| Candidate cause | Verdict | Evidence |
+|---|---|---|
+| Stale runner registration | **ruled out** | Live query of `gh api repos/repairman29/chump/actions/runners` (2026-08-11) shows no entry matching `jeffs-macbook-air-10*` — the registry has been reduced to a single unrelated runner (`chumpd-eu-runner`, Linux). The Mac runner isn't stale (registered-but-unresponsive); it's fully deregistered. |
+| Disk full | **ruled out** (signature-based) | This session has no host access to the M4 to read live `df`, so this is inferred from the failure signature, not a direct probe: the incident record describes 0-step jobs ending `CANCELLED`/`FAILURE` in <30s with **no visible failed step**. A disk-full condition fails *inside* a running step (e.g. checkout write error, "no space left on device") — it can't produce a 0-step immediate cancellation before any step starts. |
+| Network issues | **ruled out** (signature-based) | Same reasoning: a network blip on `git clone`/checkout surfaces as a **failed** checkout step with a visible git/network error. The recorded signature (0-step, no failed step) is inconsistent with that; it points to a runner-registration/dispatch-level issue instead. |
+
+Net: none of the three candidates from the original diagnose step matches
+live/available evidence as the *current* blocker — the runner is simply
+gone from the registry, not degraded by disk or network. Re-registering
+the hardware (rather than diagnosing disk/network on it) is the
+prerequisite for any future restoration attempt.
+
 ---
 
 ## Pi mesh provisioner (INFRA-1543)
