@@ -267,6 +267,23 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         query_relevant_reflections(&parsed.domain, 5)
     };
 
+    // INFRA-1765: merge in CI-failure lessons captured by `chump ci-lesson
+    // capture` — a separate query path because they deliberately bypass the
+    // self-reflection quality-score filter (see `load_ci_lessons` doc
+    // comment). Deduped by directive so a lesson that somehow matched both
+    // paths isn't shown twice; capped so CI lessons can't crowd out the
+    // ranked self-reflection lessons above.
+    let mut relevant_reflections = relevant_reflections;
+    let seen_directives: std::collections::HashSet<String> = relevant_reflections
+        .iter()
+        .map(|r| r.directive.clone())
+        .collect();
+    for ci_lesson in reflection_db::load_ci_lessons(&parsed.domain, 3) {
+        if !seen_directives.contains(&ci_lesson.directive) {
+            relevant_reflections.push(ci_lesson);
+        }
+    }
+
     // COG-043: emit a `lessons_shown` event so downstream telemetry
     // (lesson-grade subcommand, META-040 audit, EVAL-099 quality eval)
     // knows which directives were surfaced for this gap+session+mode.

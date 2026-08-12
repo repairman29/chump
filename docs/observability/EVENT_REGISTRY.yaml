@@ -110,6 +110,27 @@ events:
     trigger: `chump gap audit-done` finds a DONE gap whose closed PR left acceptance bullets uncovered + unwaived (umbrella-done != actually-done) — pr_ac_coverage re-run after the fact
     consumers: [gap-registry-health (future), observability]
     fields_required: [ts, kind, gap_id, closed_pr, uncovered_bullets, total_bullets]
+  - kind: ci_lesson_captured
+    effect_metric: self
+    emitter: src/ci_lesson.rs (INFRA-1765 cross-agent CI-failure lesson propagation)
+    trigger: "`chump ci-lesson capture` successfully classifies a CI failure and persists it as a Reflection in memory_db"
+    consumers: [briefing (reflection_db::load_ci_lessons), observability]
+    fields_required: [ts, kind, check, pr_ref, class, reflection_id, cost_usd]
+
+  - kind: ci_lesson_capture_failed
+    effect_metric: self
+    emitter: src/ci_lesson.rs (INFRA-1765 cross-agent CI-failure lesson propagation)
+    trigger: "`chump ci-lesson capture` fails to persist the reflection (memory_db write error)"
+    consumers: [observability]
+    fields_required: [ts, kind, check, pr_ref, reason, cost_usd]
+
+  - kind: ci_lesson_capture_timeout
+    effect_metric: self
+    emitter: scripts/coord/ci-lesson-propagation.sh (INFRA-1765; wraps `chump ci-lesson capture` in `timeout`)
+    trigger: the `chump ci-lesson capture` process itself wedges past CAPTURE_TIMEOUT_SECS and is killed by `timeout`
+    consumers: [observability]
+    fields_required: [ts, kind, check, pr_ref, timeout_secs, cost_usd]
+
   - kind: heartbeat
     effect_metric: self
     emitter: crates/chump-coord/src/rpc.rs
@@ -9038,6 +9059,51 @@ events:
     fields_required: [ts, kind, repo_path, failure_class, transient, elapsed_ms, error]
     # payload: {repo_path: str, failure_class: str, transient: bool,
     #           elapsed_ms: int, error: str}
+    status: stable
+
+  # ── INFRA-1784: chump ingest --confirm-mutations (orchestration, INFRA-1746 phase 5) ─
+
+  - kind: ingest_orchestrate_started
+    effect_metric: effective
+    emitter: src/ingest_orchestrate.rs (INFRA-1784)
+    # scanner-anchor: "kind":"ingest_orchestrate_started"
+    trigger: >
+      `chump ingest <repo-path> --confirm-mutations` begins orchestration
+      after phase 1a validation passes. Fields: target_repo.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target_repo]
+    status: stable
+
+  - kind: ingest_complete
+    effect_metric: effective
+    emitter: src/ingest_orchestrate.rs (INFRA-1784)
+    # scanner-anchor: "kind":"ingest_complete"
+    trigger: >
+      All four orchestrated phases (librarian, cartographer, evangelist,
+      systematizer) completed and the takeover certificate + proposed-gaps
+      file were written. `total_cost_usd_cents` is always 0 in v1 (every
+      phase is a static scan); `prs_attempted`/`prs_green_first_pass` are
+      always 0 in v1 — auto-PR opening is deferred (see module doc).
+      Fields: target_repo_path, phases_completed, prs_attempted,
+      prs_green_first_pass, gaps_proposed, total_cost_usd_cents, elapsed_min.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target_repo_path, phases_completed, prs_attempted, prs_green_first_pass, gaps_proposed, total_cost_usd_cents, elapsed_min]
+    status: stable
+
+  - kind: ingest_orchestrate_failed
+    effect_metric: effective
+    emitter: src/ingest_orchestrate.rs (INFRA-1784)
+    # scanner-anchor: "kind":"ingest_orchestrate_failed"
+    trigger: >
+      A phase aborted orchestration. `phase` names which sub-phase failed
+      (librarian, cartographer, evangelist, systematizer, certificate,
+      propose_gaps). `failure_class` is one of: path_not_found (bad/missing
+      target path, permanent), io_error (filesystem error mid-scan or
+      writing an artifact, transient=true, retryable), budget_exceeded
+      (cumulative cost passed --budget-usd, permanent). Fields: target_repo,
+      phase, failure_class, transient, message.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target_repo, phase, failure_class, transient, message]
     status: stable
 
   # ── INFRA-1778: chump ingest-preflight (gh auth + push-access safety rail) ─
