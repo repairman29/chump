@@ -2065,6 +2065,48 @@ events:
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, target_repo, failure_class, note]
 
+  - kind: evangelist_started
+    effect_metric: self
+    emitter: src/evangelist.rs (INFRA-1783, `chump evangelize`)
+    trigger: evangelize scan invoked against a target repo
+    consumers: [audit-log]
+    fields_required: [ts, kind, target_repo]
+
+  - kind: evangelist_completed
+    effect_metric: self
+    emitter: src/evangelist.rs (INFRA-1783, `chump evangelize`)
+    trigger: evangelize scan finished and HIDDEN_GEMS.md was written
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, target_repo, files_scanned, scripts_found, config_knobs_found, elapsed_ms, cost_usd_cents, wrote_hidden_gems_md]
+
+  - kind: evangelist_failed
+    effect_metric: self
+    emitter: src/evangelist.rs (INFRA-1783, `chump evangelize`)
+    trigger: evangelize scan aborted (bad/missing target path, or an IO error mid-scan or writing HIDDEN_GEMS.md)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, target_repo, failure_class, note]
+
+  - kind: systematizer_started
+    effect_metric: self
+    emitter: src/systematizer.rs (INFRA-1783, `chump systematize`)
+    trigger: systematize scan invoked against a target repo
+    consumers: [audit-log]
+    fields_required: [ts, kind, target_repo]
+
+  - kind: systematizer_completed
+    effect_metric: self
+    emitter: src/systematizer.rs (INFRA-1783, `chump systematize`)
+    trigger: systematize scan finished and CAPABILITIES_REGISTRY.json was written
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, target_repo, files_scanned, capabilities_found, elapsed_ms, cost_usd_cents, wrote_capabilities_registry_json]
+
+  - kind: systematizer_failed
+    effect_metric: self
+    emitter: src/systematizer.rs (INFRA-1783, `chump systematize`)
+    trigger: systematize scan aborted (bad/missing target path, or an IO error mid-scan or writing CAPABILITIES_REGISTRY.json)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, target_repo, failure_class, note]
+
   - kind: pillar_imbalance
     effect_metric: self
     emitter: scripts/dispatch/_pick_and_claim_gap.py (INFRA-720)

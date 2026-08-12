@@ -120,6 +120,7 @@ mod collision_prediction; // META-076: predictive collision detection (mock inpu
 mod completion;
 mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod done_auditor; // INFRA-3495: anti-over-claim watchdog — audit DONE gaps for uncovered AC
+mod evangelist; // INFRA-1783: chump evangelize <repo-path> — HIDDEN_GEMS.md generation (INFRA-1746 phase 3)
 mod front_door; // EFFECTIVE-330 (COTG-0.0): plain-language front-door mode router
 mod gen;
 mod genai_conv;
@@ -243,6 +244,7 @@ mod state_db;
 mod stream_events;
 mod streaming_provider;
 mod system_prompt;
+mod systematizer; // INFRA-1783: chump systematize <repo-path> — CAPABILITIES_REGISTRY.json generation (INFRA-1746 phase 4)
 mod task_contract;
 mod task_db;
 mod task_executor;
@@ -1871,6 +1873,24 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("cartograph") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(cartographer::run(&sub_args));
+    }
+
+    // `chump evangelize <target-repo-path> [--json]` (INFRA-1783, phase 3 of
+    // INFRA-1746) — static, read-only scan of a target repo that writes
+    // <target-repo-path>/docs/HIDDEN_GEMS.md. No LLM calls, no network
+    // calls; the only write is HIDDEN_GEMS.md itself.
+    if args.get(1).map(String::as_str) == Some("evangelize") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(evangelist::run(&sub_args));
+    }
+
+    // `chump systematize <target-repo-path> [--json]` (INFRA-1783, phase 4 of
+    // INFRA-1746) — static, read-only scan of a target repo that writes
+    // <target-repo-path>/docs/CAPABILITIES_REGISTRY.json. No LLM calls, no
+    // network calls; the only write is CAPABILITIES_REGISTRY.json itself.
+    if args.get(1).map(String::as_str) == Some("systematize") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(systematizer::run(&sub_args));
     }
 
     // `chump vote <corr_id> <+1|-1|0> --reason <text>` (META-159) —
