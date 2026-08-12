@@ -1,14 +1,15 @@
-//! `chump ingest <repo-path>` — INFRA-1780 (INFRA-1746 phase 1a).
+//! `chump ingest <repo-path>` — INFRA-1780 (INFRA-1746 phase 1a) +
+//! INFRA-1784 (INFRA-1746 phase 5, orchestration).
 //!
 //! Phase 1a scope, deliberately narrow: validate that the target is a
 //! directory containing `.git`, and emit observability events. **No
 //! filesystem mutation, git operation, or network call happens in this
-//! phase** — that holds regardless of `--confirm-mutations`, which is
-//! accepted here only so later phases can add it without a flag-parsing
-//! migration. Later phases (1b+) do the actual scanning/writing and make
-//! LLM/API calls, which is why the failure taxonomy already carries a
-//! `transient` field even though every failure class in this phase is
-//! permanent.
+//! phase, regardless of `--confirm-mutations`.** Once validation passes,
+//! `--confirm-mutations` hands off to `ingest_orchestrate::run` (INFRA-1784),
+//! which runs the Librarian/Cartographer/Evangelist/Systematizer phases in
+//! sequence and writes the takeover certificate + proposed gaps. Without
+//! `--confirm-mutations`, `chump ingest` stays fully read-only (phase 1a
+//! only) — that's the safety contract INFRA-1746 requires.
 
 use std::path::Path;
 use std::time::Instant;
@@ -18,7 +19,6 @@ const DEFAULT_BUDGET_USD: f64 = 10.0;
 struct Opts {
     repo_path: String,
     budget_usd_raw: String,
-    #[allow(dead_code)] // accepted for forward-compat; unused until later phases write.
     confirm_mutations: bool,
 }
 
@@ -92,12 +92,17 @@ fn print_usage() {
     println!();
     println!("Phase 1a (INFRA-1780): validates <repo-path> is a directory containing");
     println!("a .git subdirectory. Read-only — no filesystem mutation, git operation,");
-    println!("or network call is performed, regardless of --confirm-mutations. Later");
-    println!("phases of INFRA-1746 add the actual ingest work.");
+    println!("or network call is performed unless --confirm-mutations is passed.");
+    println!();
+    println!("With --confirm-mutations (INFRA-1784, phase 5): runs the Librarian,");
+    println!("Cartographer, Evangelist, and Systematizer phases in sequence, writes");
+    println!("<repo-path>/.chump-ingest/certificate.json (takeover certificate) and");
+    println!("<repo-path>/.chump-ingest/proposed-gaps.json (up to 5 candidate gaps).");
+    println!("Auto-PR opening is deferred past v1 — see INFRA-1784 module doc.");
     println!();
     println!("Options:");
     println!("  --budget-usd N       Cost ceiling for downstream phases (default: 10.0)");
-    println!("  --confirm-mutations  Accepted for forward-compat; no-op in phase 1a");
+    println!("  --confirm-mutations  Run the full orchestration instead of validate-only");
 }
 
 fn run_validated(opts: &Opts) -> i32 {
@@ -139,11 +144,52 @@ fn run_validated(opts: &Opts) -> i32 {
 
     let elapsed_ms = start.elapsed().as_millis();
     emit_ingest_validated(&opts.repo_path, elapsed_ms);
-    println!(
-        "chump ingest: {} is a valid git repository (phase 1a — read-only, no mutation performed; budget=${budget_usd:.2})",
-        opts.repo_path
-    );
-    0
+
+    if !opts.confirm_mutations {
+        println!(
+            "chump ingest: {} is a valid git repository (phase 1a — read-only, no mutation performed; budget=${budget_usd:.2})",
+            opts.repo_path
+        );
+        println!("chump ingest: re-run with --confirm-mutations to run the full orchestration (INFRA-1784).");
+        return 0;
+    }
+
+    run_orchestration(path, budget_usd)
+}
+
+/// `--confirm-mutations` path (INFRA-1784, INFRA-1746 phase 5): runs the
+/// Librarian/Cartographer/Evangelist/Systematizer phases in sequence,
+/// writes the takeover certificate + proposed gaps.
+fn run_orchestration(target_repo: &Path, budget_usd: f64) -> i32 {
+    let chump_repo_root = crate::repo_path::repo_root();
+    let cfg = crate::ingest_orchestrate::OrchestrateConfig {
+        target_repo: target_repo.to_path_buf(),
+        budget_usd,
+    };
+    crate::ingest_orchestrate::emit_started(&chump_repo_root, target_repo);
+    match crate::ingest_orchestrate::run(&cfg) {
+        Ok(report) => {
+            println!(
+                "chump ingest: orchestration complete for {} — phases: {}, gaps proposed: {}, cost: ${:.2}, certificate: {}",
+                target_repo.display(),
+                report.phases_completed.join(", "),
+                report.gaps_proposed.len(),
+                report.total_cost_usd_cents as f64 / 100.0,
+                report.certificate_path.display(),
+            );
+            crate::ingest_orchestrate::emit_completed(&chump_repo_root, &report);
+            0
+        }
+        Err(e) => {
+            eprintln!("chump ingest: orchestration failed: {e}");
+            crate::ingest_orchestrate::emit_failed(&chump_repo_root, target_repo, &e);
+            if e.class.transient() {
+                1
+            } else {
+                2
+            }
+        }
+    }
 }
 
 fn emit_ingest_initiated(repo_path: &str, budget_usd_raw: &str) {
