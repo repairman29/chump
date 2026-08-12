@@ -898,6 +898,8 @@ fn print_help() {
     println!("FLEET");
     println!("  fleet <sub>  (alias: f)  worker control — up/status/down/doctor …");
     println!("  dispatch <sub>  (alias: d)  route/scoreboard/simulate/cost-report …");
+    println!("  brain status [--json]       unified summary: memory + reflections + per-bot routing (INFRA-1773)");
+    println!("  brain query <memory|reflections|routing> [--limit N] [--bot NAME] [--json]");
     println!("  orchestrate        Opus-driven conversational loop (interactive)");
     println!();
     println!("ANALYTICS");
@@ -15214,6 +15216,229 @@ async fn main() -> Result<()> {
             );
         }
         return Ok(());
+    }
+
+    // `chump brain` (INFRA-1773) — unified read surface over the three
+    // stores an agent's "brain" is scattered across today: memory_db
+    // (sessions/chump_memory.db `chump_memory` table, semantic facts),
+    // reflection_db (same DB, `chump_reflections`/`chump_improvement_targets`
+    // tables, postmortem lessons), and routing_outcomes (`.chump/state.db`,
+    // per-backend dispatch scoreboard — the "per-bot" slice). `chump dispatch
+    // scoreboard` already exposes routing_outcomes standalone; `brain`'s job
+    // is the *unified* view so an operator doesn't have to remember three
+    // separate subcommands to answer "what does the fleet know and how well
+    // is each bot doing." Mutation (the gap title's "mutate" half) is
+    // intentionally out of scope for this first cut — every mutation path
+    // here already has a dedicated, reviewed entrypoint (`memory_brain` tool,
+    // `save_reflection`, the orchestrator monitor's routing_outcomes
+    // writer) and a generic `chump brain set` would just be an unreviewed
+    // side door onto the same tables. Incremental path to the "mega-brain"
+    // stretch goal in the gap title: add write verbs here once a concrete
+    // cross-store mutation need shows up, not speculatively.
+    if args.get(1).map(String::as_str) == Some("brain") {
+        let want_json = args.iter().any(|a| a == "--json");
+        match args.get(2).map(String::as_str) {
+            Some("status") | None => {
+                let mem_count = memory_db::count().unwrap_or(-1);
+                let reflection_counts = reflection_db::outcome_class_counts().unwrap_or_default();
+                let repo_root = repo_path::repo_root();
+                let per_backend: Vec<(String, u64, u64, u64)> =
+                    match gap_store::GapStore::open(&repo_root) {
+                        Ok(store) => {
+                            let mut agg: std::collections::BTreeMap<String, (u64, u64, u64)> =
+                                std::collections::BTreeMap::new();
+                            if let Ok(entries) = store.routing_scoreboard() {
+                                for e in entries {
+                                    let slot = agg.entry(e.backend.clone()).or_default();
+                                    slot.0 += e.successes;
+                                    slot.1 += e.failures;
+                                    slot.2 += e.total;
+                                }
+                            }
+                            agg.into_iter().map(|(k, (s, f, t))| (k, s, f, t)).collect()
+                        }
+                        Err(_) => Vec::new(),
+                    };
+
+                if want_json {
+                    let reflections_json: Vec<_> = reflection_counts
+                        .iter()
+                        .map(|(k, v)| serde_json::json!({"outcome_class": k, "count": v}))
+                        .collect();
+                    let backends_json: Vec<_> = per_backend
+                        .iter()
+                        .map(|(backend, s, f, t)| {
+                            serde_json::json!({
+                                "backend": backend, "successes": s, "failures": f, "total": t
+                            })
+                        })
+                        .collect();
+                    let out = serde_json::json!({
+                        "memory_count": mem_count,
+                        "reflections_by_outcome": reflections_json,
+                        "routing_by_backend": backends_json,
+                    });
+                    println!("{}", serde_json::to_string_pretty(&out)?);
+                } else {
+                    println!("chump brain status");
+                    println!();
+                    println!(
+                        "memory_db (chump_memory)      : {} row(s)",
+                        if mem_count < 0 {
+                            "unavailable".to_string()
+                        } else {
+                            mem_count.to_string()
+                        }
+                    );
+                    println!("reflection_db (chump_reflections):");
+                    if reflection_counts.is_empty() {
+                        println!("  (no reflections recorded yet)");
+                    }
+                    for (class, n) in &reflection_counts {
+                        println!("  {class:<12}: {n}");
+                    }
+                    println!("routing_outcomes (per bot/backend):");
+                    if per_backend.is_empty() {
+                        println!("  (no routing outcomes recorded yet)");
+                    }
+                    for (backend, s, f, t) in &per_backend {
+                        let rate = if *t > 0 {
+                            (*s as f64 / *t as f64) * 100.0
+                        } else {
+                            0.0
+                        };
+                        println!("  {backend:<14}: {s} ok / {f} fail / {t} total ({rate:.1}%)");
+                    }
+                }
+                return Ok(());
+            }
+            Some("query") => {
+                let store_name = match args.get(3) {
+                    Some(s) => s.as_str(),
+                    None => {
+                        eprintln!("Usage: chump brain query <memory|reflections|routing> [--limit N] [--bot NAME] [--json]");
+                        std::process::exit(2);
+                    }
+                };
+                let limit: usize = args
+                    .iter()
+                    .position(|a| a == "--limit")
+                    .and_then(|i| args.get(i + 1))
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(20);
+                let bot_filter = args
+                    .iter()
+                    .position(|a| a == "--bot")
+                    .and_then(|i| args.get(i + 1))
+                    .cloned();
+
+                match store_name {
+                    "memory" => {
+                        let mut rows = memory_db::load_all().unwrap_or_default();
+                        rows.truncate(limit);
+                        if want_json {
+                            println!("{}", serde_json::to_string_pretty(&rows)?);
+                        } else if rows.is_empty() {
+                            println!("(no memory rows)");
+                        } else {
+                            for r in &rows {
+                                println!(
+                                    "[{}] ({}) {} — {}",
+                                    r.id,
+                                    r.memory_type,
+                                    r.ts,
+                                    r.content.chars().take(100).collect::<String>()
+                                );
+                            }
+                        }
+                    }
+                    "reflections" => {
+                        let rows =
+                            reflection_db::recent_reflections_brief(limit).unwrap_or_default();
+                        if want_json {
+                            println!("{}", serde_json::to_string_pretty(&rows)?);
+                        } else if rows.is_empty() {
+                            println!("(no reflections)");
+                        } else {
+                            for r in &rows {
+                                println!(
+                                    "[{}] ({}) {} — {}",
+                                    r.id,
+                                    r.outcome_class,
+                                    r.created_at,
+                                    r.intended_goal.chars().take(100).collect::<String>()
+                                );
+                            }
+                        }
+                    }
+                    "routing" => {
+                        let repo_root = repo_path::repo_root();
+                        let store = match gap_store::GapStore::open(&repo_root) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                eprintln!("chump brain query routing: cannot open state.db: {e:#}");
+                                std::process::exit(1);
+                            }
+                        };
+                        let mut entries = store.routing_scoreboard().unwrap_or_default();
+                        if let Some(bot) = &bot_filter {
+                            entries.retain(|e| &e.backend == bot);
+                        }
+                        entries.truncate(limit);
+                        if want_json {
+                            let json: Vec<_> = entries
+                                .iter()
+                                .map(|e| {
+                                    serde_json::json!({
+                                        "task_class": e.task_class,
+                                        "backend": e.backend,
+                                        "model": e.model,
+                                        "provider_pfx": e.provider_pfx,
+                                        "successes": e.successes,
+                                        "failures": e.failures,
+                                        "total": e.total,
+                                        "success_rate": e.success_rate,
+                                        "avg_cost_usd": e.avg_cost_usd,
+                                        "route_score": e.route_score,
+                                        "last_seen": e.last_seen,
+                                    })
+                                })
+                                .collect();
+                            println!("{}", serde_json::to_string_pretty(&json)?);
+                        } else if entries.is_empty() {
+                            println!("(no routing outcomes)");
+                        } else {
+                            for e in &entries {
+                                println!(
+                                    "{:<10}{:<14}{:<40}{:>6} ok {:>6} fail  {:.1}%",
+                                    if e.task_class.is_empty() {
+                                        "-"
+                                    } else {
+                                        &e.task_class
+                                    },
+                                    e.backend,
+                                    if e.model.is_empty() { "-" } else { &e.model },
+                                    e.successes,
+                                    e.failures,
+                                    e.success_rate * 100.0,
+                                );
+                            }
+                        }
+                    }
+                    other => {
+                        eprintln!(
+                            "chump brain query: unknown store '{other}' (expected memory|reflections|routing)"
+                        );
+                        std::process::exit(2);
+                    }
+                }
+                return Ok(());
+            }
+            Some(other) => {
+                eprintln!("chump brain: unknown subcommand '{other}' (expected status|query)");
+                std::process::exit(2);
+            }
+        }
     }
 
     // `chump dispatch simulate <task_class> <count>` (COG-037) — sample

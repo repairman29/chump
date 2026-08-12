@@ -1500,6 +1500,59 @@ pub fn seed_ab_lessons_from_file(path: &std::path::Path) -> Result<usize> {
     seed_ab_lessons(&seed.domain, &seed.directives)
 }
 
+/// Count of `chump_reflections` rows grouped by `outcome_class`
+/// (pass/partial/failure/abandoned). Used by `chump brain status`
+/// (INFRA-1773) for a fleet-wide reflection-store summary.
+pub fn outcome_class_counts() -> Result<Vec<(String, i64)>> {
+    let conn = open_db()?;
+    let mut stmt = conn.prepare(
+        "SELECT outcome_class, COUNT(*) FROM chump_reflections GROUP BY outcome_class ORDER BY COUNT(*) DESC",
+    )?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// One row summary for `chump brain query reflections`. Kept separate from
+/// the full [`Reflection`] struct (which also carries improvements + a task
+/// link) because the CLI listing only needs enough to identify + skim rows.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ReflectionBrief {
+    pub id: i64,
+    pub outcome_class: String,
+    pub intended_goal: String,
+    pub created_at: String,
+}
+
+/// Most recent reflections (any outcome class), newest first, capped at
+/// `limit` (hard cap 200 to keep the CLI listing bounded).
+pub fn recent_reflections_brief(limit: usize) -> Result<Vec<ReflectionBrief>> {
+    let conn = open_db()?;
+    let limit = limit.min(200);
+    let mut stmt = conn.prepare(
+        "SELECT id, outcome_class, intended_goal, created_at
+         FROM chump_reflections
+         ORDER BY created_at DESC, id DESC
+         LIMIT ?1",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![limit as i64], |r| {
+        Ok(ReflectionBrief {
+            id: r.get(0)?,
+            outcome_class: r.get(1)?,
+            intended_goal: r.get(2)?,
+            created_at: r.get(3)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     //! Tests use a temp DB root so they never touch the user's real chump_memory.db.

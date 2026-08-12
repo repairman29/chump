@@ -9,7 +9,7 @@ use std::path::PathBuf;
 const DB_FILENAME: &str = "sessions/chump_memory.db";
 const JSON_FALLBACK_PATH: &str = "sessions/chump_memory.json";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct MemoryRow {
     pub id: i64,
     pub content: String,
@@ -149,6 +149,21 @@ pub fn load_all() -> Result<Vec<MemoryRow>> {
     let rows = stmt.query_map([], row_to_memory)?;
     let out: Result<Vec<_>, _> = rows.collect();
     Ok(out?)
+}
+
+/// Count of non-expired rows in `chump_memory`. Cheap `COUNT(*)` variant of
+/// [`load_all`] for CLI summaries (`chump brain status`, INFRA-1773) that
+/// don't need the full row set.
+pub fn count() -> Result<i64> {
+    let conn = open_db()?;
+    migrate_from_json_if_needed(&conn)?;
+    conn.query_row(
+        "SELECT COUNT(*) FROM chump_memory \
+         WHERE (expires_at IS NULL OR CAST(expires_at AS INTEGER) > CAST(strftime('%s','now') AS INTEGER))",
+        [],
+        |r| r.get(0),
+    )
+    .map_err(Into::into)
 }
 
 /// Append one memory entry with optional enrichment fields.
