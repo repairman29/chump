@@ -139,6 +139,9 @@ _dispatch_semaphore: "asyncio.Semaphore | None" = None
 # tell me" (advisor prefix) from the same DM thread.
 ADVISOR_SCRIPT = Path(REPO) / "scripts" / "dispatch" / "discord-advisor-agent.sh"
 ADVISOR_TRIGGERS = ("advisor", "advise")
+# CHAIRMAN DEFAULT (2026-08-12): plain DMs CONVERSE; only these explicit
+# action words hand off to the command agent that ACTS + files gaps.
+COMMAND_TRIGGERS = ("do", "task", "act", "command")
 MAX_CONCURRENT_ADVISOR_DISPATCHES = int(os.environ.get("CHUMP_DISCORD_ADVISOR_MAX_CONCURRENT", "1"))
 _advisor_semaphore: "asyncio.Semaphore | None" = None
 
@@ -304,7 +307,15 @@ async def gateway_loop() -> None:
                         # may act (file a gap), and replies itself via
                         # notify_operator. Backgrounded so the gateway loop
                         # (heartbeats, future messages) stays responsive.
-                        asyncio.create_task(dispatch_command_agent(content))
+                        _first = content.strip().lower().split()[0] if content.strip() else ""
+                        if _first in COMMAND_TRIGGERS:
+                            _parts = content.strip().split(None, 1)
+                            _task = _parts[1].strip() if len(_parts) > 1 else content
+                            emit("discord_operator_task", task=_task[:120])
+                            asyncio.create_task(dispatch_command_agent(_task))
+                        else:
+                            emit("discord_advisor_command", question=content[:120])
+                            asyncio.create_task(dispatch_advisor_agent(content))
                     continue
 
                 if t == "INTERACTION_CREATE":
