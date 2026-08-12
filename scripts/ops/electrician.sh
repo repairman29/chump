@@ -30,7 +30,7 @@ for uf in scripts/dispatch/chump-*.service; do
   systemctl is-active --quiet "$name" || { systemctl enable --now "$name" 2>/dev/null && started=$((started+1)); }
 done
 # heal anything failed (reset-failed so its timer/Restart can re-run)
-for u in $(systemctl list-units 'chump-*' --state=failed --no-legend 2>/dev/null | awk '{print $1}'); do
+for u in $(systemctl list-units 'chump-*' --state=failed --no-legend 2>/dev/null | awk '{print $1}' | grep -vE '@\.'); do
   systemctl reset-failed "$u" 2>/dev/null; systemctl start "$u" 2>/dev/null && healed=$((healed+1))
 done
 active=$(systemctl list-timers 'chump-*' --no-legend 2>/dev/null | grep -c chump)
