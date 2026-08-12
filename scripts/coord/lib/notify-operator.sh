@@ -232,3 +232,14 @@ for i, chunk in enumerate(out, 1):
     echo "[notify-operator] FAIL: ${failed} of $((sent + failed)) part(s) failed" >&2
     return 1
 }
+
+# Direct-execution entry point — INFRA-3602. Restrictive Bash allowlists
+# (e.g. `claude --permission-mode dontAsk`) deny `source X && fn args` as a
+# compound command regardless of how precisely the allowlist pattern matches
+# the literal string: a permission engine can't statically verify what a
+# dynamically-sourced function does, so it refuses the whole chain. Running
+# this file directly — `CHUMP_NOTIFY_KIND=x notify-operator.sh "<msg>"` — is
+# a single non-compound invocation of one known executable and is allowed.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    notify_operator "$@"
+fi
