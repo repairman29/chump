@@ -81,7 +81,11 @@ installers:
     why: INFRA-052 — hourly queue-health-monitor.sh writes .chump/health.jsonl + alerts.log + ambient ALERTs. Plist exists at launchd/com.chump.queue-health-monitor.plist but was never wired into the bootstrap manifest — fleet self-healing has no signal until this is loaded (INFRA-1546 narrow-split 1/3).
     priority: P1
     install: bash scripts/setup/install-queue-health-monitor-launchd.sh
-    check: launchctl list 2>/dev/null | grep -q com.chump.queue-health-monitor
+    # INFRA-1808: the plist's actual Label is dev.chump.queue-health-monitor
+    # (see install-queue-health-monitor-launchd.sh) — the prior check grepped
+    # for com.chump.queue-health-monitor, which never matches, so bootstrap
+    # --check reported MISSING even when the daemon was loaded and running.
+    check: launchctl list 2>/dev/null | grep -q dev.chump.queue-health-monitor
     depends_on: [chump-binary]
     adds: ~/Library/LaunchAgents/com.chump.queue-health-monitor.plist + hourly run
 
@@ -96,7 +100,13 @@ installers:
     why: INFRA-1317 — Phase 1 of GITHUB_LIAISON.md. One process refreshes .chump/github_cache.db every 60s instead of N workers each polling GitHub independently. Plist sets CHUMP_LIAISON_ENABLED=1; the script itself defaults OFF for safety in manual contexts. Cuts the secondary-rate-limit pressure that hit 44k self-throttle events / 23h on 2026-05-14.
     priority: P1
     install: bash scripts/setup/install-github-liaison.sh
-    check: bash scripts/setup/install-github-liaison.sh --check
+    # INFRA-1808: calling the installer's own `--check` mode ran
+    # resolve_main_worktree() under `set -euo pipefail` as a side effect —
+    # any hiccup there (e.g. worktree-path resolution) aborted the whole
+    # check before it reached the launchctl query, reporting false-negative
+    # MISSING even when dev.chump.github-liaison was loaded. Query launchctl
+    # directly instead, same as queue-health-monitor-launchd above.
+    check: launchctl list 2>/dev/null | grep -q dev.chump.github-liaison
     adds: ~/Library/LaunchAgents/dev.chump.github-liaison.plist + KeepAlive daemon
 
   - id: stale-branch-reaper-launchd
