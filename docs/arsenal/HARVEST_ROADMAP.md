@@ -24,14 +24,11 @@ If you do nothing else this week from the arsenal: **#1 (BEAST-MODE → INFRA-14
 
 ## The DRY catch — possible discovery failure on AST crawling
 
+**RESOLVED (INFRA-1812, 2026-05-23) — verdict (c) Genuinely different. No lineage header, no consolidation gap.** Full side-by-side matrix: [`CP-002-treesitter-lineage.md`](cross-pollination/CP-002-treesitter-lineage.md).
+
 The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
 
-**This is exactly the failure mode the Harvester exists to prevent.** Two possibilities:
-
-1. **Successful but un-acknowledged harvest** — INFRA-1719's implementation borrowed from echeo. Then we just need to retro-add a vendoring header to the relevant files so the lineage isn't lost.
-2. **Re-implementation** — INFRA-1719 was built from scratch while echeo's version sat on the shelf. Then we have two parallel tree-sitter crawlers in the fleet, and the public Chump one is younger and likely less battle-tested.
-
-**Recommended action:** file a 5-minute investigation gap. Read both `src/decompose.rs` (or wherever INFRA-1719 landed) and `echeo/src/shredder.rs`; if they overlap, retro-add a lineage comment OR file a consolidation gap. Either way, the Harvester wins by surfacing this before the third tree-sitter implementation lands.
+**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-NEW-HARVESTER-INDEX-PRIMITIVES** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
 
 ---
 
