@@ -942,6 +942,10 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // INFRA-2391: `chump demo` subcommand smoke — asserts --help and an
         // end-to-end --dry-run both exit 0. Pure local, no network.
         "scripts/ci/test-chump-demo-smoke.sh",
+        // INFRA-1809: chump CLI startup hang firewall — --version/--help
+        // must short-circuit before tokio runtime init. Pure local, no
+        // network; builds the binary if missing.
+        "scripts/ci/test-chump-startup-fast.sh",
         // INFRA-3561 (INFRA-1655 slice): guards CHUMP_RUNNER_M4_MAX default
         // (raised 2->4 by INFRA-3549) against silently regressing in either
         // scripts/coord/chump-runner-autoscale.sh or

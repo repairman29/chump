@@ -857,6 +857,12 @@ jobs:
         # and an end-to-end --dry-run both exit 0.
         run: bash scripts/ci/test-chump-demo-smoke.sh
 
+      - name: chump startup hang firewall (INFRA-1809)
+        # --version / --help must short-circuit before tokio runtime init;
+        # asserts warm-cache latency + concurrent-load p99 + watchdog budget
+        # doesn't false-positive on the short-circuit path.
+        run: bash scripts/ci/test-chump-startup-fast.sh
+
       - name: repos table migration + CLI + auto-import (MISSION-033)
         run: bash scripts/ci/test-chump-repos.sh
 
