@@ -504,6 +504,11 @@ cmd_tick() {
 SUBCOMMAND="${1:-tick}"
 shift || true
 
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+if [[ "$SUBCOMMAND" != "help" && "$SUBCOMMAND" != "-h" && "$SUBCOMMAND" != "--help" ]]; then
+    source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "observability" || true
+fi
+
 case "$SUBCOMMAND" in
     tick)                   cmd_tick ;;
     audit-event-registry)   cmd_audit_event_registry ;;
