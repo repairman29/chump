@@ -135,6 +135,7 @@ mod hooks;
 mod improve; // EFFECTIVE-177: chump improve <owner/repo> — autonomous-improve loop
 mod ingest; // INFRA-1780: chump ingest <repo-path> (phase 1a — validation + read-only safety)
 mod ingest_librarian; // INFRA-1781: Phase 1 Librarian audit + triage report (INFRA-1746 phase 1b)
+mod ingest_orchestrate; // INFRA-1784: orchestration + certificate + auto-gaps (INFRA-1746 phase 5)
 mod ingest_preflight; // INFRA-1778: chump ingest-preflight — gh auth + push-access safety rail
 mod inspect_cmd; // INFRA-1456: chump inspect <gap-id> — eject-and-inspect surface
 mod intent_parser;
