@@ -51,6 +51,7 @@ mod checkpoint_db;
 mod checkpoint_tool;
 mod chump_init;
 mod chump_log;
+mod ci_lesson;
 mod ci_summary;
 mod cli_tool;
 mod cluster_mesh;
@@ -1452,6 +1453,57 @@ async fn main() -> Result<()> {
             print!("{}", briefing::render_markdown(&b));
         }
         return Ok(());
+    }
+
+    // `chump ci-lesson capture` (INFRA-1765) — turns one CI failure into a
+    // structured lesson persisted to memory_db (chump_reflections /
+    // chump_improvement_targets), scoped by --domain so it's auto-surfaced
+    // in the next `chump --briefing <GAP-ID>` for that domain. Reads failure
+    // text from --failure-text or stdin. Intended to be invoked by
+    // scripts/coord/ci-lesson-propagation.sh, one call per failing check.
+    if args.get(1).map(String::as_str) == Some("ci-lesson")
+        && args.get(2).map(String::as_str) == Some("capture")
+    {
+        let get_flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+        };
+        let domain = get_flag("--domain").unwrap_or_default();
+        let check = get_flag("--check").unwrap_or_default();
+        let pr_ref = get_flag("--pr-ref").unwrap_or_default();
+        let failure_text = match get_flag("--failure-text") {
+            Some(t) => t,
+            None => {
+                use std::io::Read;
+                let mut buf = String::new();
+                let _ = std::io::stdin().read_to_string(&mut buf);
+                buf
+            }
+        };
+        if check.is_empty() || failure_text.trim().is_empty() {
+            eprintln!(
+                "Usage: chump ci-lesson capture --check <name> --pr-ref <ref> --domain <domain> \
+                 [--failure-text <text> | stdin]"
+            );
+            std::process::exit(2);
+        }
+        let repo_root = repo_path::repo_root();
+        match ci_lesson::capture_ci_lesson(&repo_root, &domain, &check, &pr_ref, &failure_text) {
+            Ok(res) => {
+                println!(
+                    "captured: class={} reflection_id={}",
+                    res.class.as_str(),
+                    res.reflection_id
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("ci-lesson capture failed: {e}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump llm-complete` (INFRA-3461) — the SANCTIONED shell gateway to the

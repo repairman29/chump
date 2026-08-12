@@ -37,7 +37,7 @@ thread_local! {
 }
 
 #[cfg(test)]
-fn set_test_db_root(path: Option<std::path::PathBuf>) {
+pub(crate) fn set_test_db_root(path: Option<std::path::PathBuf>) {
     TEST_DB_ROOT.with(|cell| *cell.borrow_mut() = path);
 }
 
@@ -610,6 +610,81 @@ pub fn load_spawn_lessons_with_threshold(
             "{sql_common}
             GROUP BY directive
             ORDER BY score DESC, latest_at DESC
+            LIMIT ?1"
+        );
+        let mut stmt = match conn.prepare(&q) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let iter = match stmt.query_map(rusqlite::params![max_n as i64], row_from_target) {
+            Ok(it) => it,
+            Err(_) => return Vec::new(),
+        };
+        iter.collect()
+    };
+
+    rows.unwrap_or_default()
+}
+
+/// Hypothesis-field marker `ci_lesson.rs` stamps on every reflection it
+/// writes, so `load_ci_lessons` can find them by construction rather than by
+/// guessing at error_pattern overlap with ordinary agent self-reflections.
+pub const CI_LESSON_HYPOTHESIS_MARKER: &str = "ci_lesson:";
+
+/// Load recent CI-failure lessons (INFRA-1765) for `domain`, capped at
+/// `max_n`.
+///
+/// Deliberately bypasses [`load_spawn_lessons`]'s quality-score filter:
+/// that filter treats `outcome_class = "failure"` as low-trust noise, which
+/// is the right call for an *agent's own self-reflection* on an abandoned
+/// trajectory (uncertain, possibly hallucinated advice) but wrong for a CI
+/// lesson, whose outcome_class is deliberately "failure" (the CI check did
+/// fail) while the directive itself comes from a fixed keyword taxonomy
+/// ([`crate::ci_lesson::classify_ci_failure`]) — deterministic, not a
+/// self-report, so there is no "uncertain trajectory" to discount.
+pub fn load_ci_lessons(domain: &str, max_n: usize) -> Vec<ImprovementTarget> {
+    let max_n = max_n.min(SPAWN_LESSONS_MAX_N);
+    if max_n == 0 {
+        return Vec::new();
+    }
+    let conn = match open_db() {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    let domain_norm = domain.trim().to_lowercase();
+    let use_domain_filter =
+        !domain_norm.is_empty() && domain_norm != "any" && domain_norm != "global";
+
+    let sql_common = format!(
+        "SELECT t.directive, t.priority, t.scope, NULL AS actioned_as
+         FROM chump_improvement_targets t
+         JOIN chump_reflections r ON r.id = t.reflection_id
+         WHERE r.hypothesis LIKE '{CI_LESSON_HYPOTHESIS_MARKER}%'"
+    );
+
+    let rows: Result<Vec<ImprovementTarget>, rusqlite::Error> = if use_domain_filter {
+        let q = format!(
+            "{sql_common}
+              AND (t.scope IS NULL OR t.scope = '' OR LOWER(t.scope) = ?1)
+            ORDER BY r.created_at DESC
+            LIMIT ?2"
+        );
+        let mut stmt = match conn.prepare(&q) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let iter = match stmt.query_map(
+            rusqlite::params![domain_norm, max_n as i64],
+            row_from_target,
+        ) {
+            Ok(it) => it,
+            Err(_) => return Vec::new(),
+        };
+        iter.collect()
+    } else {
+        let q = format!(
+            "{sql_common}
+            ORDER BY r.created_at DESC
             LIMIT ?1"
         );
         let mut stmt = match conn.prepare(&q) {
