@@ -53,6 +53,10 @@ AMBIENT="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 SESSION_ID="${CHUMP_SESSION_ID:-md-links-$$}"
 DOCS_ROOT="${CHUMP_MD_LINKS_DOCS:-$REPO_ROOT/docs}"
 
+# INFRA-1798: Glance phase — mandatory inbox drain + act, first step of tick.
+# shellcheck source=lib/inbox-glance-act.sh
+source "$(cd "$(dirname "$0")" && pwd)/lib/inbox-glance-act.sh" 2>/dev/null || true
+
 _now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -219,6 +223,13 @@ _do_scan() {
 # ── Subcommands ───────────────────────────────────────────────────────────────
 
 cmd_tick() {
+    # INFRA-1798 Glance phase: mandatory first step — drain inbox + act
+    # (ack HANDOFF/STUCK, vote on open proposals) before picking new work.
+    if declare -f chump_glance_and_act >/dev/null 2>&1; then
+        CHUMP_SESSION_ID="$SESSION_ID" LOCK_DIR="$LOCK_DIR" chump_glance_and_act || true
+        echo
+    fi
+
     # Fast scan: docs/process/*.md only
     local fast_path="$DOCS_ROOT/process"
     if [[ ! -d "$fast_path" ]]; then

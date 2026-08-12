@@ -78,3 +78,16 @@ CHUMP_SCCACHE_HIT_RATE_CHECK
 # pause; emits kind=binary_auto_deploy_skipped. Deletion path: when daemon gains
 # an explicit pause/resume CLI (MISSION-013 or later) we remove this env var.
 CHUMP_SKIP_AUTO_DEPLOY
+
+# CHUMP_GLANCE_SKIP_VOTE — used by scripts/coord/lib/inbox-glance-act.sh
+# (INFRA-1798, the Glance-phase inbox drain+act helper every curator loop
+# runs at tick start). Not an operator escape hatch: it is set by exactly one
+# caller (scripts/coord/deliberator-loop.sh) so the vote-tallier stays a
+# neutral counter and never casts its own vote on the proposals it tallies —
+# a structural correctness requirement, not a skip-the-gate shortcut.
+# Bypass-Justification: INFRA-1798 — deliberator neutrality is load-bearing
+# for consensus integrity (a tallier voting on its own tally would bias
+# quorum). Deletion path: if the deliberator role is ever split from voting
+# curators onto a separate inbox/session namespace such that it never sees
+# proposal corr_ids, this flag becomes unreachable and can be removed.
+CHUMP_GLANCE_SKIP_VOTE

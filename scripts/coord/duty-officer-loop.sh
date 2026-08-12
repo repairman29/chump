@@ -46,6 +46,10 @@ ESCALATION_REGISTRY="${CHUMP_DUTY_OFFICER_ESCALATION_REGISTRY:-$REPO_ROOT/script
 REALITY_CHECK_CMD="${CHUMP_DUTY_OFFICER_REALITY_CHECK_CMD:-}"
 NOTIFY_CMD="${CHUMP_DUTY_OFFICER_NOTIFY_CMD:-}"
 WINDOW_N="${CHUMP_DUTY_OFFICER_WINDOW_N:-200}"
+
+# INFRA-1798: Glance phase — mandatory inbox drain + act, first step of tick.
+# shellcheck source=lib/inbox-glance-act.sh
+source "$(cd "$(dirname "$0")" && pwd)/lib/inbox-glance-act.sh" 2>/dev/null || true
 EXECUTE="${CHUMP_DUTY_OFFICER_EXECUTE:-0}"
 
 _ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -186,6 +190,12 @@ cmd_route() {
 
 # Scan the last N ambient lines, route every kind that has a registry entry.
 cmd_tick() {
+    # INFRA-1798 Glance phase: mandatory first step — drain inbox + act
+    # (ack HANDOFF/STUCK, vote on open proposals) before picking new work.
+    if declare -f chump_glance_and_act >/dev/null 2>&1; then
+        CHUMP_SESSION_ID="${CHUMP_SESSION_ID:-duty-officer-$$}" LOCK_DIR="$(dirname "$AMBIENT")" chump_glance_and_act || true
+        echo
+    fi
     [[ -f "$AMBIENT" ]] || { echo "[duty-officer] no ambient stream at $AMBIENT — nothing to scan"; return 0; }
     local kinds
     kinds="$(tail -n "$WINDOW_N" "$AMBIENT" 2>/dev/null | grep -oE '"kind":"[a-zA-Z0-9_]+"' | sed -E 's/"kind":"([a-zA-Z0-9_]+)"/\1/' | sort -u)"

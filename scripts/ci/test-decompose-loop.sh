@@ -116,87 +116,140 @@ if [[ "$rc" != "0" ]]; then
 fi
 echo "  ok: slice --help exits 0"
 
-# ── Test 8 (META-160): tick with stubbed inbox + FEEDBACK emits actionable ──
-# This test exercises Phase 0: _drain_inbox + _peek_pending_feedback.
-# The test does NOT require chump CLI — it only uses the Phase 0 helpers.
+# ── Test 8 (INFRA-1798): tick's Glance phase drains inbox + votes ─────────
+# Supersedes the old META-160 read-only Phase 0. The Glance phase (shared
+# scripts/coord/lib/inbox-glance-act.sh) now drains via the canonical
+# chump-inbox.sh (unconditionally — draining is not feature-flag gated) and
+# casts a vote on any open FEEDBACK/proposal not yet voted (gated behind
+# CHUMP_FLEET_RECV_SIDE_V0, per META-159). A stub `chump` binary on PATH
+# keeps this deterministic without a real CLI/DB dependency.
 {
     TMP_DIR8="$(mktemp -d)"
-    TMP_AMB8="$TMP_DIR8/ambient.jsonl"
     TMP_LOCK8="$TMP_DIR8/locks"
+    TMP_BIN8="$TMP_DIR8/bin"
     SESSION8="test-decompose-p0"
-    mkdir -p "$TMP_LOCK8/inbox"
+    mkdir -p "$TMP_LOCK8/inbox" "$TMP_BIN8"
 
     # Stub inbox: 1 message in SESSION8's inbox file
-    printf '{"ts":"2026-05-30T00:00:00Z","kind":"decompose_request","gap_id":"META-TEST-1","rationale":"test"}\n' \
+    printf '{"ts":"2026-05-30T00:00:00Z","event":"INTENT","session":"peer-x","kind":"decompose_request","gap_id":"META-TEST-1","rationale":"test"}\n' \
         > "$TMP_LOCK8/inbox/${SESSION8}.jsonl"
 
-    # Stub ambient: 1 FEEDBACK/proposal event with corr_id "TEST-CORR-1"
-    # (no consensus_result → should surface as pending)
+    # Ambient MUST live at $LOCK_DIR/ambient.jsonl — chump-inbox.sh and the
+    # glance lib both hard-resolve to that path (they don't honour
+    # CHUMP_AMBIENT_LOG), so this test writes there directly rather than to
+    # a separate override file.
+    TMP_AMB8="$TMP_LOCK8/ambient.jsonl"
     printf '{"ts":"2026-05-30T00:00:01Z","event":"FEEDBACK","kind":"proposal","corr_id":"TEST-CORR-1","body":"needs vote"}\n' \
         > "$TMP_AMB8"
+
+    # Stub `chump` CLI: only the `vote` subcommand is exercised here; record
+    # the call and emit the same ambient line the real vote.rs would.
+    cat > "$TMP_BIN8/chump" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == "vote" ]]; then
+    corr="$2"; v="$3"; shift 3
+    reason=""
+    while [[ $# -gt 0 ]]; do
+        [[ "$1" == "--reason" ]] && { reason="$2"; shift; }
+        shift
+    done
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"ts":"%s","event":"FEEDBACK","kind":"vote","corr_id":"%s","vote":%s,"rationale":"%s","session":"%s"}\n' \
+        "$ts" "$corr" "$v" "$reason" "${CHUMP_SESSION_ID:-unknown}" >> "$CHUMP_STUB_AMBIENT"
+    exit 0
+fi
+exit 0
+STUB
+    chmod +x "$TMP_BIN8/chump"
 
     set +e
     tick_out="$(
         CHUMP_FLEET_RECV_SIDE_V0=1 \
-        CHUMP_AMBIENT_LOG="$TMP_AMB8" \
         CHUMP_LOCK_DIR="$TMP_LOCK8" \
         CHUMP_SESSION_ID="$SESSION8" \
+        CHUMP_STUB_AMBIENT="$TMP_AMB8" \
+        PATH="$TMP_BIN8:$PATH" \
         bash "$SCRIPT" tick 2>&1 || true
     )"
     set -e
 
-    # Assert "Pending FEEDBACK" header present in stdout
-    if ! printf '%s\n' "$tick_out" | grep -q "Pending FEEDBACK"; then
-        echo "FAIL Test 8: 'Pending FEEDBACK' header not found in tick output"
+    # Assert the Glance header ran.
+    if ! printf '%s\n' "$tick_out" | grep -q "## Glance: inbox drain + act"; then
+        echo "FAIL Test 8: Glance phase header not found in tick output"
         printf '%s\n' "$tick_out"
         exit 1
     fi
-    echo "  ok Test 8: tick with FEEDBACK proposal prints 'Pending FEEDBACK' header"
+    echo "  ok Test 8: Glance phase runs as first step of tick"
 
-    # Assert corr_id surfaced
-    if ! printf '%s\n' "$tick_out" | grep -q "TEST-CORR-1"; then
-        echo "FAIL Test 8: corr_id 'TEST-CORR-1' not found in tick output"
+    # Assert 1 inbox item was read.
+    if ! printf '%s\n' "$tick_out" | grep -q "items_read=1"; then
+        echo "FAIL Test 8: expected items_read=1 in tick output"
         printf '%s\n' "$tick_out"
         exit 1
     fi
-    echo "  ok Test 8: tick surfaces corr_id TEST-CORR-1"
+    echo "  ok Test 8: inbox message drained (items_read=1)"
 
-    # Assert inbox message was printed (drain)
-    if ! printf '%s\n' "$tick_out" | grep -q "decompose_request"; then
-        echo "FAIL Test 8: inbox message not printed in tick output"
-        printf '%s\n' "$tick_out"
-        exit 1
-    fi
-    echo "  ok Test 8: inbox drained and message printed"
-
-    # Assert cursor advanced
+    # Assert cursor advanced (proves chump-inbox.sh read — not a re-implemented
+    # peek — ran). chump-inbox.sh's cursor is a BYTE offset (tail -c +N), not
+    # a line count, so assert it matches the inbox file's byte size.
     cursor_file="$TMP_LOCK8/inbox/${SESSION8}.cursor"
     if [[ ! -f "$cursor_file" ]]; then
         echo "FAIL Test 8: cursor file not created at $cursor_file"
         exit 1
     fi
     cursor_val="$(cat "$cursor_file")"
-    if [[ "$cursor_val" != "1" ]]; then
-        echo "FAIL Test 8: cursor should be 1, got '$cursor_val'"
+    inbox_bytes="$(wc -c < "$TMP_LOCK8/inbox/${SESSION8}.jsonl" | tr -d ' ')"
+    if [[ "$cursor_val" != "$inbox_bytes" ]]; then
+        echo "FAIL Test 8: cursor should be $inbox_bytes (byte offset), got '$cursor_val'"
         exit 1
     fi
-    echo "  ok Test 8: inbox cursor advanced to 1"
+    echo "  ok Test 8: inbox cursor advanced to end-of-file byte offset"
 
-    # Verify feature-flag gate: without CHUMP_FLEET_RECV_SIDE_V0, Phase 0 skipped
+    # Assert kind=inbox_advance emitted (chump-inbox.sh's own emit, AC3).
+    if ! grep -q '"kind":"inbox_advance"' "$TMP_AMB8"; then
+        echo "FAIL Test 8: kind=inbox_advance not emitted to ambient"
+        cat "$TMP_AMB8"
+        exit 1
+    fi
+    echo "  ok Test 8: kind=inbox_advance emitted"
+
+    # Assert the open proposal got a vote cast (AC2).
+    if ! printf '%s\n' "$tick_out" | grep -q "vote 0 (abstain) on unvoted proposal corr_id=TEST-CORR-1"; then
+        echo "FAIL Test 8: expected a vote cast on TEST-CORR-1"
+        printf '%s\n' "$tick_out"
+        exit 1
+    fi
+    if ! grep -q '"kind":"vote".*"corr_id":"TEST-CORR-1"' "$TMP_AMB8"; then
+        echo "FAIL Test 8: stub chump vote line not found in ambient"
+        cat "$TMP_AMB8"
+        exit 1
+    fi
+    echo "  ok Test 8: chump vote emitted for open proposal TEST-CORR-1"
+
+    # Second tick run (fresh session, same corr_id) with CHUMP_FLEET_RECV_SIDE_V0
+    # unset: inbox drain still runs (unconditional) but no vote is cast.
+    printf '{"ts":"2026-05-30T00:00:02Z","event":"INTENT","session":"peer-x","kind":"decompose_request","gap_id":"META-TEST-2"}\n' \
+        > "$TMP_LOCK8/inbox/${SESSION8}-gated.jsonl"
     set +e
     tick_out_gated="$(
         CHUMP_FLEET_RECV_SIDE_V0=0 \
-        CHUMP_AMBIENT_LOG="$TMP_AMB8" \
         CHUMP_LOCK_DIR="$TMP_LOCK8" \
         CHUMP_SESSION_ID="${SESSION8}-gated" \
+        CHUMP_STUB_AMBIENT="$TMP_AMB8" \
+        PATH="$TMP_BIN8:$PATH" \
         bash "$SCRIPT" tick 2>&1 || true
     )"
     set -e
-    if printf '%s\n' "$tick_out_gated" | grep -q "Pending FEEDBACK"; then
-        echo "FAIL Test 8: Phase 0 ran even though CHUMP_FLEET_RECV_SIDE_V0=0"
+    if printf '%s\n' "$tick_out_gated" | grep -q "vote 0 (abstain)"; then
+        echo "FAIL Test 8: vote cast even though CHUMP_FLEET_RECV_SIDE_V0=0"
         exit 1
     fi
-    echo "  ok Test 8: feature flag gates Phase 0 correctly"
+    if ! printf '%s\n' "$tick_out_gated" | grep -q "items_read=1"; then
+        echo "FAIL Test 8: inbox drain should still run when CHUMP_FLEET_RECV_SIDE_V0=0"
+        printf '%s\n' "$tick_out_gated"
+        exit 1
+    fi
+    echo "  ok Test 8: voting is feature-flag gated; inbox drain is not"
 
     rm -rf "$TMP_DIR8"
 }

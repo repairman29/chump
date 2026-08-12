@@ -42,6 +42,10 @@ AMBIENT_LOG="${CHUMP_EC_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 STALE_DAYS="${CHUMP_EC_STALE_DAYS:-14}"
 MARCUS_STALL_DAYS="${CHUMP_EC_MARCUS_STALL_DAYS:-7}"
 
+# INFRA-1798: Glance phase — mandatory inbox drain + act, first step of tick.
+# shellcheck source=lib/inbox-glance-act.sh
+source "$SCRIPT_DIR/lib/inbox-glance-act.sh" 2>/dev/null || true
+
 GAPS_DIR="$REPO_ROOT/docs/gaps"
 
 SUBCOMMAND="${1:-tick}"
@@ -289,6 +293,12 @@ cmd_partnership_pipeline() {
 cmd_tick() {
     echo "[external-collab] tick — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "──────────────────────────────────────────"
+    # INFRA-1798 Glance phase: mandatory first step — drain inbox + act
+    # (ack HANDOFF/STUCK, vote on open proposals) before picking new work.
+    if declare -f chump_glance_and_act >/dev/null 2>&1; then
+        CHUMP_SESSION_ID="${CHUMP_SESSION_ID:-external-collab-$$}" LOCK_DIR="$(dirname "$AMBIENT_LOG")" chump_glance_and_act || true
+        echo "──────────────────────────────────────────"
+    fi
     cmd_surface_freshness
     echo "──────────────────────────────────────────"
     cmd_voice_audit

@@ -34,6 +34,10 @@ HIGH_VOLUME_PER_DAY="${CHUMP_OBS_HIGH_VOLUME_PER_DAY:-100}"
 BURNER_THRESHOLD="${CHUMP_OBS_BURNER_THRESHOLD:-500}"
 NOISE_TOP_N="${CHUMP_OBS_NOISE_TOP_N:-20}"
 
+# INFRA-1798: Glance phase — mandatory inbox drain + act, first step of tick.
+# shellcheck source=lib/inbox-glance-act.sh
+source "$(cd "$(dirname "$0")" && pwd)/lib/inbox-glance-act.sh" 2>/dev/null || true
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 _ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -488,6 +492,12 @@ for line in sys.stdin:
 
 cmd_tick() {
     echo "=== observability-loop tick: $(_ts) ==="
+    # INFRA-1798 Glance phase: mandatory first step — drain inbox + act
+    # (ack HANDOFF/STUCK, vote on open proposals) before picking new work.
+    if declare -f chump_glance_and_act >/dev/null 2>&1; then
+        CHUMP_SESSION_ID="${CHUMP_SESSION_ID:-observability-$$}" LOCK_DIR="$(dirname "$AMBIENT")" chump_glance_and_act || true
+        echo
+    fi
     cmd_audit_event_registry
     echo ""
     cmd_reaper_cadence_audit

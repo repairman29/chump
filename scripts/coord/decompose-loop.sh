@@ -59,6 +59,13 @@ LOCK_DIR="${CHUMP_LOCK_DIR:-$MAIN_REPO/.chump-locks}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 SESSION_ID="${CHUMP_SESSION_ID:-decompose-loop-$$}"
 
+# INFRA-1798: Glance phase — mandatory inbox drain + act, first step of tick.
+# Sourced relative to THIS script's own location (not MAIN_REPO) so a
+# worktree running code ahead of the main checkout still picks up its own
+# copy of the lib.
+# shellcheck source=lib/inbox-glance-act.sh
+source "$(cd "$(dirname "$0")" && pwd)/lib/inbox-glance-act.sh" 2>/dev/null || true
+
 cmd=${1:-help}
 [ $# -gt 0 ] && shift || true
 
@@ -90,80 +97,6 @@ emit_ambient() {
         printf '{"ts":"%s","session":"%s","kind":"%s"}\n' \
             "$ts" "$SESSION_ID" "$kind" >> "$AMBIENT_LOG"
     fi
-}
-
-# ── Phase 0 helpers (META-160 / CHUMP_FLEET_RECV_SIDE_V0) ─────────────────
-
-# Read inbox items for this session, advance cursor, print count to stdout.
-# Mirrors ci-audit-loop.sh _peek_inbox pattern but also advances cursor.
-# Returns: prints each inbox line; echoes count as last line prefixed "INBOX_COUNT="
-_drain_inbox() {
-    local inbox_file="$LOCK_DIR/inbox/${SESSION_ID}.jsonl"
-    local cursor_file="$LOCK_DIR/inbox/${SESSION_ID}.cursor"
-    if [[ ! -f "$inbox_file" ]]; then
-        echo "INBOX_COUNT=0"
-        return 0
-    fi
-    local offset=0
-    if [[ -f "$cursor_file" ]]; then
-        offset="$(cat "$cursor_file" 2>/dev/null || echo 0)"
-        # Ensure offset is a non-negative integer
-        [[ "$offset" =~ ^[0-9]+$ ]] || offset=0
-    fi
-    local total_lines
-    total_lines="$(wc -l < "$inbox_file" 2>/dev/null | tr -d ' ' || echo 0)"
-    local new_count=$(( total_lines - offset ))
-    if [[ "$new_count" -le 0 ]]; then
-        echo "INBOX_COUNT=0"
-        return 0
-    fi
-    tail -n +"$(( offset + 1 ))" "$inbox_file" 2>/dev/null || true
-    # Advance cursor
-    printf '%d\n' "$total_lines" > "$cursor_file"
-    echo "INBOX_COUNT=$new_count"
-}
-
-# Scan last 200 lines of ambient log for unresolved FEEDBACK/proposal events.
-# An event is "unresolved" if its corr_id does not appear in any
-# kind=consensus_result event in the same 200-line window.
-# Prints matching corr_ids (one per line); returns 0 if any found, 1 if none.
-_peek_pending_feedback() {
-    if [[ ! -f "$AMBIENT_LOG" ]]; then
-        return 1
-    fi
-    local window
-    window="$(tail -200 "$AMBIENT_LOG" 2>/dev/null || true)"
-    if [[ -z "$window" ]]; then
-        return 1
-    fi
-    # Extract corr_ids from FEEDBACK+proposal events
-    local feedback_ids
-    feedback_ids="$(printf '%s\n' "$window" \
-        | grep '"event":"FEEDBACK"' \
-        | grep '"kind":"proposal"' \
-        | grep -o '"corr_id":"[^"]*"' \
-        | sed 's/"corr_id":"//;s/"//' \
-        || true)"
-    if [[ -z "$feedback_ids" ]]; then
-        return 1
-    fi
-    # Extract corr_ids from consensus_result events in same window
-    local resolved_ids
-    resolved_ids="$(printf '%s\n' "$window" \
-        | grep '"kind":"consensus_result"' \
-        | grep -o '"corr_id":"[^"]*"' \
-        | sed 's/"corr_id":"//;s/"//' \
-        || true)"
-    # Print only unresolved feedback corr_ids
-    local found=0
-    while IFS= read -r cid; do
-        [[ -z "$cid" ]] && continue
-        if ! printf '%s\n' "$resolved_ids" | grep -qxF "$cid" 2>/dev/null; then  # pipefail-sweep-allowed
-            printf '%s\n' "$cid"
-            found=1
-        fi
-    done <<< "$feedback_ids"
-    [[ "$found" -eq 1 ]] && return 0 || return 1
 }
 
 # ── slice ──────────────────────────────────────────────────────────────────
@@ -366,39 +299,14 @@ cmd_tick() {
     echo "=== decompose-loop tick @ $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
     echo
 
-    # Phase 0 (META-160): inbox drain + pending feedback peek.
-    # Gated behind CHUMP_FLEET_RECV_SIDE_V0=1 — skipped when unset.
-    if [[ "${CHUMP_FLEET_RECV_SIDE_V0:-0}" == "1" ]]; then
-        echo "## Phase 0: inbox drain + pending FEEDBACK (CHUMP_FLEET_RECV_SIDE_V0)"
-
-        # Drain inbox
+    # INFRA-1798 Glance phase: mandatory first step — drain inbox via the
+    # canonical chump-inbox.sh AND act (ack HANDOFF/STUCK, vote on open
+    # proposals), before picking new work. Supersedes the old read-only
+    # Phase 0 (drain-and-display without voting).
+    if declare -f chump_glance_and_act >/dev/null 2>&1; then
         mkdir -p "$LOCK_DIR/inbox"
-        local inbox_out
-        inbox_out="$(_drain_inbox)"
-        local inbox_count=0
-        # Last line is "INBOX_COUNT=N"; preceding lines are inbox entries
-        local inbox_entries
-        inbox_entries="$(printf '%s\n' "$inbox_out" | grep -v '^INBOX_COUNT=' || true)"
-        local count_line
-        count_line="$(printf '%s\n' "$inbox_out" | grep '^INBOX_COUNT=' | tail -1 || true)"
-        inbox_count="${count_line#INBOX_COUNT=}"
-        inbox_count="${inbox_count:-0}"
-
-        if [[ "$inbox_count" -gt 0 ]]; then
-            echo "  [inbox] $inbox_count new message(s):"
-            printf '%s\n' "$inbox_entries"
-            actionable=1
-        else
-            echo "  [inbox] no new messages"
-        fi
-
-        # Peek pending feedback
-        local feedback_ids
-        feedback_ids="$(_peek_pending_feedback || true)"
-        if [[ -n "$feedback_ids" ]]; then
-            echo
-            echo "## Pending FEEDBACK requiring vote"
-            printf '%s\n' "$feedback_ids"
+        CHUMP_SESSION_ID="$SESSION_ID" LOCK_DIR="$LOCK_DIR" chump_glance_and_act || true
+        if [[ "$GLANCE_ITEMS_READ" -gt 0 || "$GLANCE_VOTES_CAST" -gt 0 ]]; then
             actionable=1
         fi
         echo
