@@ -1,0 +1,12 @@
+# ChumpOS electrician — the full-time deterministic WIRER. Reconciles the repo's
+# organ unit files (desired) against systemd (running) and powers whatever is dark.
+# This is the role that ends "we build and fail to wire." COTG ships with it.
+[Unit]
+Description=ChumpOS electrician — wire every built organ into RUNNING on this node
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/electrician.sh'
