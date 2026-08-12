@@ -1071,6 +1071,56 @@ This closes the last open gap from the INFRA-1655 investigation slices: both
 identified structural root causes (concurrency-group keying, autoscale
 ceiling) now have fixes on `main` **and** regression guards protecting them.
 
+### Investigation closed (2026-08-12, INFRA-1655 fleet-2 slice)
+
+**AC1-3 done, verified independently ~10 times (INFRA-3544/3550/3556/3562/3574
+reproduction; INFRA-3546/3558/3576 root-cause; INFRA-3547/3559/3577 queue
+contention) with zero change in verdict across all re-runs:**
+
+1. **Reproduce** — satisfied via a fast, deterministic proxy: the
+   `jeffs-macbook-air-10-X` name pattern is absent from the live runner
+   registry, confirmed repeatedly in ~1-5s.
+2. **Root cause** — the incident-time trigger was `ci.yml`'s (and
+   `integrations.yml`'s) `concurrency:` group keyed on PR number instead of
+   commit SHA, cancelling in-flight self-hosted jobs mid-queue
+   (`step_count=0`) whenever a follow-up push landed. Self-hosted capacity
+   contention (3-4 physical runners vs. 4+ job types) widened the blast
+   radius but was not the root cause. Disk/network/stale-registration were
+   each ruled out by direct evidence (zero steps ever ran; synchronized
+   cross-machine cancellation timing).
+3. **Fix landed** — INFRA-1852 (2026-05-23, sha-keyed concurrency group) +
+   INFRA-3579 (same fix applied to `integrations.yml`, with regression
+   guards `test-ci-concurrency-group-key.sh` for both files) +
+   INFRA-3549/3561 (autoscale ceiling raised 2→4 to match real fleet
+   capacity, with a regression guard).
+
+**AC4-6 cannot be completed from any Claude Code / fleet-worker session —
+they are blocked on a physical precondition, not a diagnosis task.** Per the
+INFRA-3546 finding: `jeffs-macbook-air-10-X` is not merely stale, it is
+**fully deregistered** from `repairman29/chump`'s runner pool (confirmed via
+live `gh api .../actions/runners` on every re-check since 2026-08-11 — the
+pool contains only `chumpd-eu-runner`, Linux). Flipping
+`CHUMP_SELF_HOSTED_ENABLED=true` or any `RUNNER_*` lane var today routes
+jobs to a runner pool with **no matching macOS hardware to dispatch to** —
+there is nothing to canary, and no session running in a Linux worktree (or
+any environment without physical access to the Mac minis) can register new
+hardware. The prerequisite action is running
+`scripts/setup/install-self-hosted-runner.sh` **on the physical machine**
+to re-register it, which is an operator/physical-access action.
+
+**Disposition:** INFRA-1655 is closed as "root cause found and fixed;
+restoration blocked on hardware re-registration." The remaining
+hardware-dependent restoration work (AC4-6 — re-enable master toggle,
+restore lanes one at a time, emit `runner_health_restored`) is already
+tracked by **INFRA-3403** ("restore remaining self-hosted runner lanes one
+at a time"), which is the correct single home for that follow-up once the
+M4 hardware is physically re-registered. **Future fleet cycles should not
+file or pick further INFRA-1655 reproduction/root-cause slices** — the
+question this gap asked has been answered and re-confirmed independently
+more than enough times; the ~24 open `INFRA-3544`-`INFRA-3579` sub-gaps
+that duplicate this investigation are being closed as superseded by this
+section for the same reason.
+
 ---
 
 ## Pi mesh provisioner (INFRA-1543)
