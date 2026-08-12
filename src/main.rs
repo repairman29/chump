@@ -1264,8 +1264,14 @@ mod llm_complete_tests {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+// INFRA-1809: synchronous fn main() handles --version / --help / no-args /
+// git-guard / wip-snapshot / --build-info / self-check-staleness BEFORE
+// building the tokio runtime, so trivial CLI calls cannot hang on runtime
+// init, memory_db connect, or any other subsystem init. Only once we fall
+// through to real work do we build the runtime ourselves and arm a startup
+// wallclock watchdog (CHUMP_STARTUP_TIMEOUT_MS, default 5000ms) that emits
+// kind=chump_startup_timeout + exits 4 on breach instead of hanging forever.
+fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     // EFFECTIVE-011: expand short aliases (g, c, s, f, d, h, cs) before routing.
     let args = expand_aliases(args);
@@ -1434,6 +1440,84 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // INFRA-1809: everything past this point does real work (tokio runtime,
+    // memory_db, LLM providers) — build the runtime ourselves so we can arm
+    // a wallclock watchdog around it. Budget is operator-overridable via
+    // CHUMP_STARTUP_TIMEOUT_MS; 0 disables the watchdog entirely.
+    let startup_timeout_ms: u64 = std::env::var("CHUMP_STARTUP_TIMEOUT_MS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5000);
+    let watchdog_cmd = args.get(1).cloned().unwrap_or_default();
+    let watchdog_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    if startup_timeout_ms > 0 {
+        let done = watchdog_done.clone();
+        std::thread::spawn(move || {
+            let start = std::time::Instant::now();
+            let budget = std::time::Duration::from_millis(startup_timeout_ms);
+            while start.elapsed() < budget {
+                if done.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            // Budget exceeded — dump diagnostic + emit ambient + exit(4).
+            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
+            let elapsed_ms = start.elapsed().as_millis();
+            let payload = format!(
+                r#"{{"ts":"{ts}","kind":"chump_startup_timeout","cmd":"{cmd}","elapsed_ms":{ms},"suspected_subsystem":"tokio_runtime_or_subsystem_init"}}"#,
+                ts = ts,
+                cmd = watchdog_cmd.replace('"', "\\\""),
+                ms = elapsed_ms,
+            );
+            let repo_root = std::process::Command::new("git")
+                .args(["rev-parse", "--show-toplevel"])
+                .output()
+                .ok()
+                .and_then(|o| {
+                    if o.status.success() {
+                        Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                    } else {
+                        None
+                    }
+                });
+            let ambient_path = match repo_root {
+                Some(p) => format!("{}/.chump-locks/ambient.jsonl", p),
+                None => "/tmp/chump-startup-timeout.jsonl".to_string(),
+            };
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&ambient_path)
+            {
+                use std::io::Write;
+                let _ = writeln!(f, "{payload}");
+            }
+            eprintln!(
+                "\u{2716}  chump: startup exceeded {}ms budget — likely subsystem init hang.",
+                startup_timeout_ms
+            );
+            eprintln!(
+                "   Audit: kind=chump_startup_timeout (see {})",
+                ambient_path
+            );
+            eprintln!(
+                "   Recovery: CHUMP_STARTUP_TIMEOUT_MS=0 to disable; pin subsystem via --debug."
+            );
+            std::process::exit(4);
+        });
+    }
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| anyhow::anyhow!("tokio runtime build failed: {}", e))?;
+    let result = rt.block_on(async_main(args));
+    watchdog_done.store(true, std::sync::atomic::Ordering::Relaxed);
+    result
+}
+
+async fn async_main(args: Vec<String>) -> Result<()> {
     if args.iter().any(|a| a == "--desktop") {
         desktop_launcher::launch_and_wait(&args);
     }
