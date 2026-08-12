@@ -110,6 +110,27 @@ events:
     trigger: `chump gap audit-done` finds a DONE gap whose closed PR left acceptance bullets uncovered + unwaived (umbrella-done != actually-done) — pr_ac_coverage re-run after the fact
     consumers: [gap-registry-health (future), observability]
     fields_required: [ts, kind, gap_id, closed_pr, uncovered_bullets, total_bullets]
+  - kind: ci_lesson_captured
+    effect_metric: self
+    emitter: src/ci_lesson.rs (INFRA-1765 cross-agent CI-failure lesson propagation)
+    trigger: "`chump ci-lesson capture` successfully classifies a CI failure and persists it as a Reflection in memory_db"
+    consumers: [briefing (reflection_db::load_ci_lessons), observability]
+    fields_required: [ts, kind, check, pr_ref, class, reflection_id, cost_usd]
+
+  - kind: ci_lesson_capture_failed
+    effect_metric: self
+    emitter: src/ci_lesson.rs (INFRA-1765 cross-agent CI-failure lesson propagation)
+    trigger: "`chump ci-lesson capture` fails to persist the reflection (memory_db write error)"
+    consumers: [observability]
+    fields_required: [ts, kind, check, pr_ref, reason, cost_usd]
+
+  - kind: ci_lesson_capture_timeout
+    effect_metric: self
+    emitter: scripts/coord/ci-lesson-propagation.sh (INFRA-1765; wraps `chump ci-lesson capture` in `timeout`)
+    trigger: the `chump ci-lesson capture` process itself wedges past CAPTURE_TIMEOUT_SECS and is killed by `timeout`
+    consumers: [observability]
+    fields_required: [ts, kind, check, pr_ref, timeout_secs, cost_usd]
+
   - kind: heartbeat
     effect_metric: self
     emitter: crates/chump-coord/src/rpc.rs
