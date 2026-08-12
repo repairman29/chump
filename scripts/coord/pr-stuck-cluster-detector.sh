@@ -16,6 +16,14 @@
 #   scripts/coord/pr-stuck-cluster-detector.sh --apply     # file gap
 #
 # Cron-friendly. Emits kind=pr_stuck_cluster ambient events.
+#
+# Cost tracking (INFRA-2877): every run event carries gap_reserve_calls (how
+# many times this invocation called `chump gap reserve` — 0 for no_op/dry_run,
+# 1 for a successful or failed apply). Sum it across a window to see mutation
+# cost without grepping logs:
+#   jq -s '[.[] | select(.kind=="pr_stuck_cluster_detector_run")] |
+#           {runs: length, gap_reserve_calls: (map(.gap_reserve_calls) | add)}' \
+#       .chump-locks/ambient.jsonl
 
 set -uo pipefail
 

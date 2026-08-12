@@ -2452,7 +2452,19 @@ events:
           gap_id_extract_failed | gap_reserve_failed | bad_args | error.
         - cost tracked via: gap_reserve_calls field (count of gap-reserve
           mutations this run performed); operator reads it off ambient.jsonl
-          without grepping logs.
+          without grepping logs. INFRA-2804 clarifies how the two rollups
+          use it: `chump waste-tally` has no per-kind cost entry for
+          `pr_stuck_cluster_detector_run` in
+          crates/chump-waste-tally/src/waste_tally.rs::default_tokens_per_kind
+          (falls through to the 0 default), so this event's *own* row costs
+          nothing in the ledger — its job is a free run-level audit trail,
+          not a billed signal. The billed signal is the sibling
+          `pr_stuck_cluster` kind (5,000 tokens/incident,
+          default_tokens_per_kind), which waste-tally sums into its report
+          and fleet-brief surfaces to the operator. Read gap_reserve_calls
+          directly off ambient.jsonl (`grep pr_stuck_cluster_detector_run`)
+          when auditing detector mutation cost specifically; it is not
+          folded into the waste-tally dollar total.
         - failure_class taxonomy: none (no_op/dry_run/cluster_filed/help,
           not a failure) | transient (gap_id_extract_failed/error, retry may
           succeed as-is) | permanent (gap_reserve_failed/bad_args, retry
