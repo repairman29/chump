@@ -159,6 +159,16 @@ install missing launchd plists + git hooks. Without this, the productization
 layer (META-063 redundancy gate, META-064 Rust-first gate, META-065 curator,
 INFRA-1257 hourly planner) is dormant code-on-disk, not active discipline.
 
+**Hourly auto-bootstrap (INFRA-1808).** The first manual `chump-fleet-bootstrap.sh`
+install run self-installs an `com.chump.bootstrap-auto-install` LaunchAgent
+that re-runs `chump-fleet-bootstrap.sh --install` every hour (installers are
+idempotent, so this is safe) and emits `kind=fleet_bootstrap_auto_install`
+per cycle. This closes the "shipped installer script, nobody ran it" gap
+that let pr-auto-rebase / claude-reaper / bot-merge-watchdog sit uninstalled
+for days after landing. **It does not remove the need for the manual run
+above on a fresh machine** — something has to bootstrap the bootstrapper
+before the hourly job exists to take over.
+
 `ambient.jsonl` is your peripheral vision — watch for `lease_overlap`, `silent_agent`,
 `edit_burst`, `queue_config_drift`, `pr_stuck`, `subagent_budget_exceeded`,
 `lessons_injection_active`. Full event-kind guide: [CLAUDE_GOTCHAS.md](./docs/process/CLAUDE_GOTCHAS.md).

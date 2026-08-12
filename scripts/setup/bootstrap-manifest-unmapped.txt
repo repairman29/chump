@@ -71,3 +71,4 @@ install-target-reaper-launchd.sh                           # 2026-05-24 seed: tr
 install-transient-retrigger-launchd.sh                     # 2026-05-24 seed: triage pending (INFRA-1899 sibling)
 install-webhook-receiver-launchd.sh                        # 2026-05-24 seed: triage pending (operator-secret-dependent)
 install-weekly-digest-launchd.sh                           # 2026-05-24 seed: triage pending (opt-in cadence)
+install-bootstrap-auto-launchd.sh                           # INFRA-1808: covered via REQUIRED_DAEMONS in chump-fleet-bootstrap.sh, not the manifest.yaml `install:` pattern this gate scans for

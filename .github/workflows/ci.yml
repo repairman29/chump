@@ -600,6 +600,19 @@ jobs:
       - name: Install manifest gate
         run: bash scripts/ci/test-install-script-manifest.sh
 
+      # INFRA-1808: every scripts/setup/install-*.sh must be mode 0755.
+      # install-bot-merge-watchdog.sh shipped 0644 and silently never ran
+      # via chump-fleet-bootstrap.sh for days (2026-05-23 curator finding).
+      - name: Install scripts executable-bit gate (INFRA-1808)
+        run: bash scripts/ci/test-install-scripts-executable.sh
+
+      # INFRA-1808: bootstrap-auto-install smoke — the hourly launchd job
+      # (install-bootstrap-auto-launchd.sh) that self-runs
+      # chump-fleet-bootstrap.sh --install must generate a valid plist and
+      # its runner must emit kind=fleet_bootstrap_auto_install per cycle.
+      - name: Bootstrap auto-install smoke (INFRA-1808)
+        run: bash scripts/ci/test-bootstrap-auto-install.sh
+
       # INFRA-2280: META-118 daemon install smoke test — validates plist shape
       # (StartInterval, Label, ProgramArguments, log paths) without calling
       # launchctl. Dry-run mode only; safe in CI / Linux environments.
