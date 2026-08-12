@@ -52,9 +52,16 @@ if [[ "$_GIT_COMMON" == ".git" ]]; then
 else
     MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"
 fi
-LOCK_DIR="$MAIN_REPO/.chump-locks"
+LOCK_DIR="${CHUMP_LOCK_DIR:-$MAIN_REPO/.chump-locks}"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 SESSION_ID="${CHUMP_SESSION_ID:-ci-audit-$$}"
+
+# INFRA-1798: Glance phase — mandatory inbox drain + act, first step of tick.
+# Sourced relative to THIS script's own location (not MAIN_REPO) so a
+# worktree running code ahead of the main checkout still picks up its own
+# copy of the lib.
+# shellcheck source=lib/inbox-glance-act.sh
+source "$(cd "$(dirname "$0")" && pwd)/lib/inbox-glance-act.sh" 2>/dev/null || true
 
 # Source cache helpers if available (INFRA-1081: cache-first reads).
 _CACHE_LIB="$MAIN_REPO/scripts/coord/lib/github_cache.sh"
@@ -117,7 +124,15 @@ _cmd_tick() {
     echo "=== curator-opus-ci-audit tick @ $(_now_iso) ==="
     echo
 
-    # Phase 1: Inbox check
+    # INFRA-1798 Glance phase: mandatory first step — drain inbox + act
+    # (ack HANDOFF/STUCK, vote on open proposals) before picking new work.
+    if declare -f chump_glance_and_act >/dev/null 2>&1; then
+        CHUMP_SESSION_ID="$SESSION_ID" LOCK_DIR="$LOCK_DIR" chump_glance_and_act || true
+        echo
+    fi
+
+    # Phase 1: Inbox check (legacy non-advancing peek — kept for the human-
+    # readable "recent items" display; the Glance phase above is what acts).
     echo "## Inbox (last 5 items for session ${SESSION_ID})"
     local inbox_items
     inbox_items="$(_peek_inbox)"

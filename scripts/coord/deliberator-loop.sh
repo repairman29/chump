@@ -73,6 +73,10 @@ AMBIENT="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 FEEDBACK_LOG="${CHUMP_FEEDBACK_LOG:-$LOCK_DIR/feedback.jsonl}"
 _consensus_src() { if [[ -f "$FEEDBACK_LOG" ]]; then printf '%s' "$FEEDBACK_LOG"; else printf '%s' "$AMBIENT"; fi; }
 SESSION_ID="${CHUMP_SESSION_ID:-deliberator-$$}"
+
+# INFRA-1798: Glance phase — mandatory inbox drain + act, first step of tick.
+# shellcheck source=lib/inbox-glance-act.sh
+source "$(cd "$(dirname "$0")" && pwd)/lib/inbox-glance-act.sh" 2>/dev/null || true
 PROPOSAL_WINDOW_HOURS="${CHUMP_PROPOSAL_WINDOW_HOURS:-24}"
 NO_QUORUM_GRACE_HOURS="${CHUMP_NO_QUORUM_GRACE_HOURS:-24}"
 
@@ -341,6 +345,14 @@ _cmd_tick() {
     fi
 
     local actionable=0
+
+    # INFRA-1798 Glance phase: mandatory first step — drain inbox + ack
+    # HANDOFF/STUCK. Votes are skipped (CHUMP_GLANCE_SKIP_VOTE=1) — the
+    # deliberator tallies votes and must stay neutral, never a voter itself.
+    if declare -f chump_glance_and_act >/dev/null 2>&1; then
+        CHUMP_SESSION_ID="$SESSION_ID" LOCK_DIR="$LOCK_DIR" CHUMP_GLANCE_SKIP_VOTE=1 chump_glance_and_act || true
+        echo
+    fi
 
     # Phase 1: Inbox check.
     echo "## Inbox (last 5 items for session ${SESSION_ID})"

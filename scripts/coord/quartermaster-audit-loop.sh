@@ -54,6 +54,10 @@ CHUMP_DIR="${CHUMP_DIR:-$MAIN_REPO/.chump}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 SESSION_ID="${CHUMP_SESSION_ID:-quartermaster-audit-$$}"
 CHECKPOINT_FILE="$CHUMP_DIR/quartermaster-checkpoint.json"
+
+# INFRA-1798: Glance phase — mandatory inbox drain + act, first step of tick.
+# shellcheck source=lib/inbox-glance-act.sh
+source "$(cd "$(dirname "$0")" && pwd)/lib/inbox-glance-act.sh" 2>/dev/null || true
 DEFERRED_FILE="$CHUMP_DIR/quartermaster-deferred.jsonl"
 
 # Max follow-up gaps per audit run (self-throttle, AC#6).
@@ -378,6 +382,13 @@ cmd_heartbeat() {
 # ── tick (full cron entry point) ──────────────────────────────────────────
 
 cmd_tick() {
+    # INFRA-1798 Glance phase: mandatory first step — drain inbox + act
+    # (ack HANDOFF/STUCK, vote on open proposals) before picking new work.
+    if declare -f chump_glance_and_act >/dev/null 2>&1; then
+        CHUMP_SESSION_ID="$SESSION_ID" LOCK_DIR="$LOCK_DIR" chump_glance_and_act || true
+        echo
+    fi
+
     local decision
     decision="$(cmd_trigger_check)"
     echo "quartermaster-audit trigger-check: $decision"

@@ -74,6 +74,10 @@ SESSION_ID="${CHUMP_SESSION_ID:-fresh-eyes-$$}"
 WINDOW_MIN="${CHUMP_FRESH_EYES_WINDOW_MIN:-30}"
 BRIEF_CMD="${CHUMP_FRESH_EYES_BRIEF_CMD:-$REPO_ROOT/scripts/dispatch/fleet-brief.sh}"
 SLO_CMD="${CHUMP_FRESH_EYES_SLO_CMD:-chump health --slo-check}"
+
+# INFRA-1798: Glance phase — mandatory inbox drain + act, first step of tick.
+# shellcheck source=lib/inbox-glance-act.sh
+source "$(cd "$(dirname "$0")" && pwd)/lib/inbox-glance-act.sh" 2>/dev/null || true
 ROADMAP="${CHUMP_FRESH_EYES_ROADMAP:-$REPO_ROOT/docs/ROADMAP.md}"
 REGISTRY="${CHUMP_FRESH_EYES_REGISTRY:-$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml}"
 LOOPS_DIR="${CHUMP_FRESH_EYES_LOOPS_DIR:-$REPO_ROOT/scripts/coord}"
@@ -267,6 +271,14 @@ _run_cycle() {
     # Runs all comparators, emits the rank-1 finding, spills rest to backlog.
     # $1 = "verbose" to also print every comparator result line.
     local verbose="${1:-}"
+
+    # INFRA-1798 Glance phase: mandatory first step — drain inbox + act
+    # (ack HANDOFF/STUCK, vote on open proposals) before picking new work.
+    if declare -f chump_glance_and_act >/dev/null 2>&1; then
+        CHUMP_SESSION_ID="$SESSION_ID" LOCK_DIR="$LOCK_DIR" chump_glance_and_act || true
+        echo
+    fi
+
     if [[ ! -f "$AMBIENT" ]]; then
         printf 'ERROR: ambient stream not found: %s\n' "$AMBIENT" >&2
         exit 3

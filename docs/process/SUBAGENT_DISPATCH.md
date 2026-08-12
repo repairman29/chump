@@ -86,6 +86,37 @@ classes. As INFRA-1787 (env-var coverage), INFRA-1788 (docs-delta), INFRA-1790
 follow-ups ship, this checklist gets gradually absorbed into `chump preflight`
 proper and shrinks.
 
+## The Glance phase — inbox drain + act (INFRA-1798, paste into every autopilot/work-your-lane prompt)
+
+Per A2A_MASTER_PLAN_2026-06-03 Tier-0 step 0.3, `chump-inbox.sh read` is the
+MANDATORY first step of every cycle — and the agent must ACT on what it
+finds, not just read it. Add this as the first working step (before claiming
+or picking a gap):
+
+```
+## Glance (mandatory first step, before picking new work)
+
+1. Run `scripts/coord/chump-inbox.sh read` (or, if you're a curator loop,
+   `source scripts/coord/lib/inbox-glance-act.sh; chump_glance_and_act`).
+2. ACT on every item — read-without-act does not satisfy this step:
+   - HANDOFF / STUCK addressed to you → ack the sender:
+     `scripts/coord/broadcast.sh --to <sender> DONE <gap-id>`
+   - Any open `FEEDBACK kind=proposal` you have not yet voted on → cast
+     `chump vote <corr_id> +1|-1|0 --reason "<why>"`. Abstain (0) with a
+     one-line reason if it's out of your lane — that still counts toward
+     quorum. Silence is not an option.
+```
+
+The shared helper `scripts/coord/lib/inbox-glance-act.sh` (sourced by every
+`scripts/coord/*-loop.sh` curator as the first step of `tick`) implements
+this mechanically: it drains via the canonical `chump-inbox.sh read`
+(which emits `kind=inbox_advance` itself), acks HANDOFF/STUCK, and abstain-
+votes on any proposal the session hasn't voted on yet (gated behind
+`CHUMP_FLEET_RECV_SIDE_V0=1`, skippable via `CHUMP_GLANCE_SKIP_VOTE=1` for
+roles like the deliberator that must stay neutral).
+
+---
+
 ## The no-clarifying-questions directive (paste into every subagent prompt)
 
 Add this as the **first section** of every subagent prompt, before the task

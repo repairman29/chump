@@ -85,6 +85,10 @@ AMBIENT="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 CONTRACTS_RS="$MAIN_REPO/crates/chump-handoff/src/contracts.rs"
 SESSION_ID="${CHUMP_SESSION_ID:-handoff-$$}"
 
+# INFRA-1798: Glance phase — mandatory inbox drain + act, first step of tick.
+# shellcheck source=lib/inbox-glance-act.sh
+source "$(cd "$(dirname "$0")" && pwd)/lib/inbox-glance-act.sh" 2>/dev/null || true
+
 _now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -454,6 +458,12 @@ case "$cmd" in
     tick)
         # INFRA-2262: read fleet wire before doing tick work.
         "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble handoff 2>/dev/null || true
+        # INFRA-1798 Glance phase: mandatory first step — drain inbox + act
+        # (ack HANDOFF/STUCK, vote on open proposals) before picking new work.
+        if declare -f chump_glance_and_act >/dev/null 2>&1; then
+            CHUMP_SESSION_ID="$SESSION_ID" LOCK_DIR="$LOCK_DIR" chump_glance_and_act || true
+            echo
+        fi
         _TICK_RC=0
         _cmd_scan_handoffs "$@" || _TICK_RC=$?  # INFRA-2238: fleet-autopilot.sh canonical entry point
         # CREDIBLE-084: emit tick_outcome for no-idle audit + observability.

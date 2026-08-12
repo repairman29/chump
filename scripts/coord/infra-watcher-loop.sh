@@ -21,6 +21,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 AMBIENT_LOG="${REPO_ROOT}/.chump-locks/ambient.jsonl"
 
+# INFRA-1798: Glance phase — mandatory inbox drain + act, first step of tick.
+# shellcheck source=lib/inbox-glance-act.sh
+source "${SCRIPT_DIR}/lib/inbox-glance-act.sh" 2>/dev/null || true
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 _ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
@@ -534,6 +538,12 @@ cmd_tick() {
     local ts
     ts="$(_ts)"
     printf '[infra-watcher] tick start ts=%s\n' "$ts"
+    # INFRA-1798 Glance phase: mandatory first step — drain inbox + act
+    # (ack HANDOFF/STUCK, vote on open proposals) before picking new work.
+    if declare -f chump_glance_and_act >/dev/null 2>&1; then
+        CHUMP_SESSION_ID="${CHUMP_SESSION_ID:-infra-watcher-$$}" LOCK_DIR="${REPO_ROOT}/.chump-locks" chump_glance_and_act || true
+        echo
+    fi
     cmd_audit_daemons
     cmd_audit_daemon_health
     cmd_check_runners
