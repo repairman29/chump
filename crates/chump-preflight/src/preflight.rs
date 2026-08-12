@@ -1778,6 +1778,26 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // INFRA-1808: every scripts/setup/install-*.sh must be mode 0755.
+        // install-bot-merge-watchdog.sh shipped 0644 and silently never ran
+        // via chump-fleet-bootstrap.sh for days. Pure stat check, <1s.
+        steps.push(step(
+            "install-scripts-executable",
+            &["bash", "scripts/ci/test-install-scripts-executable.sh"],
+            GateKind::Scripts,
+        ));
+
+        // INFRA-1808: bootstrap-auto-install smoke. install-bootstrap-auto-
+        // launchd.sh (the hourly self-install job for chump-fleet-bootstrap.sh)
+        // must generate a valid plist and its runner must emit
+        // kind=fleet_bootstrap_auto_install. Dry-run + stub bootstrap script;
+        // no real launchd touched.
+        steps.push(step(
+            "bootstrap-auto-install",
+            &["bash", "scripts/ci/test-bootstrap-auto-install.sh"],
+            GateKind::Scripts,
+        ));
+
         // RESILIENT-271: coord-assign-launchd gate. Verifies the
         // com.chump.coord-assign plist + installer that wires the built
         // `chump-coord assign` push-routing daemon (FLEET-034 / INFRA-2476)

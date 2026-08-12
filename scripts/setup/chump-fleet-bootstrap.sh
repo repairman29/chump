@@ -96,6 +96,10 @@ REQUIRED_DAEMONS=(
     # yet another built-but-never-run daemon.
     "com.chump.inventory-rebuild-cadence|scripts/setup/install-inventory-rebuild-cadence.sh"
     "com.chump.chumpd|scripts/setup/install-chumpd.sh"
+    # INFRA-1808: bootstrap-auto-install — self-installing hourly cron for
+    # this very script. Solves the bootstrap problem on first manual run so
+    # it never reverts to "shipped but not installed" again.
+    "com.chump.bootstrap-auto-install|scripts/setup/install-bootstrap-auto-launchd.sh"
 )
 UID_VAL="$(id -u)"
 
@@ -194,6 +198,12 @@ for pri in P0 P1 P2 P3; do
         fi
 
         # Install.
+        # INFRA-1808: chmod +x any install-*.sh the manifest is about to run —
+        # resilience against the exact perm-bit failure mode that hid
+        # install-bot-merge-watchdog.sh (shipped 0644, never ran) for days.
+        for script_ref in $install; do
+            [[ "$script_ref" == scripts/setup/install-*.sh ]] && chmod +x "$REPO_ROOT/$script_ref" 2>/dev/null || true
+        done
         echo "[bootstrap] installing $id ($pri_actual): $install"
         if eval "$install" >/dev/null 2>&1; then
             INSTALLED=$((INSTALLED + 1))
@@ -245,6 +255,8 @@ for entry in "${REQUIRED_DAEMONS[@]}"; do
         echo "  MISSING daemon:$label  (run: bash $installer)"
     else
         # install mode: run the installer idempotently.
+        # INFRA-1808: chmod +x before invoking (see manifest-loop comment above).
+        chmod +x "$REPO_ROOT/$installer" 2>/dev/null || true
         echo "[bootstrap] installing daemon $label: bash $installer"
         if bash "$REPO_ROOT/$installer" >/dev/null 2>&1; then
             INSTALLED=$((INSTALLED + 1))

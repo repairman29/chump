@@ -744,6 +744,19 @@ events:
     consumers: [paramedic, fleet-brief, audit-log, watchdog]
     fields_required: [ts, kind, missing_daemons, missing_count, host]
 
+  - kind: fleet_bootstrap_auto_install
+    effect_metric: self
+    emitter: scripts/setup/bootstrap-auto-install-runner.sh (INFRA-1808),
+      run hourly by the com.chump.bootstrap-auto-install LaunchAgent
+      (scripts/setup/install-bootstrap-auto-launchd.sh).
+    trigger: the hourly auto-bootstrap cycle ran chump-fleet-bootstrap.sh
+      --install then --check, so shipped installer scripts stop depending
+      on an operator remembering to run the bootstrapper by hand (root
+      cause: pr-auto-rebase/claude-reaper/bot-merge-watchdog installers
+      shipped days before anyone ran them on this host).
+    consumers: [fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, installed_count, manifest_missing_count, daemon_missing_count]
+
   - kind: picker_used_priority
     effect_metric: self
     emitter: scripts/dispatch/_pick_gap.py + _pick_and_claim_gap.py (INFRA-1258)

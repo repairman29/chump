@@ -268,6 +268,7 @@ Per-cell forensics, validated empirical results, and paper preprints are tracked
 | `./scripts/ci/verify-external-golden-path.sh` | Smoke test (build + required files) |
 | `./scripts/ci/chump-preflight.sh` | Full health check (inference + API + tools) |
 | `./scripts/coord/bot-merge.sh --gap <ID> --auto-merge` | Dispatcher: ship a gap through the merge queue |
+| `bash scripts/setup/chump-fleet-bootstrap.sh` | Installs every required launchd daemon/git hook on this host (idempotent). An hourly `com.chump.bootstrap-auto-install` LaunchAgent re-runs this automatically once you've run it manually the first time (INFRA-1808) — but a fresh machine still needs that one manual run to bootstrap the bootstrapper. |
 
 ---
 
