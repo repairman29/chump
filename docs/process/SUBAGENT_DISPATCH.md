@@ -113,6 +113,27 @@ subagent failure pattern after ship-stage wedges.
 
 ---
 
+## Worktree cleanup contract (INFRA-1931, 2026-08-12)
+
+Any dispatcher that creates a `/tmp/chump-<gap-id>` worktree on behalf of a
+sub-agent (`chump claim`, `/api/gap/work` in `web_server.rs`, or a hand-rolled
+`git worktree add /tmp/chump-<id>`) **owns removing it on every terminal exit
+path** — success, preflight/claim/execute/ship failure, and subprocess spawn
+error alike. Before INFRA-1931, `spawn_gap_workflow_inner` only called
+`cleanup_worktree()` on the ship-success branch; every other exit (preflight
+reject, claim failure, ship failure/error) left the worktree on disk forever,
+because nothing else in the fleet scans `/tmp/chump-*` for orphans tied to a
+*failed* dispatch (the stale-worktree reaper only ages out by mtime).
+
+**Contract for anyone adding a new exit path to a gap-dispatch state machine:**
+pair every `return Err(...)` / early-return branch that runs after the
+worktree is (or might be) created with both `cleanup_lease(gap_id, ...)` *and*
+`cleanup_worktree(gap_id)` — not just the lease. `cleanup_worktree` is a
+no-op if the path doesn't exist yet, so calling it defensively (e.g. before
+the worktree is actually created, as in the preflight-reject branch) is safe.
+
+---
+
 ## Floor-signal env vars — spawned subagents inherit them (INFRA-2008)
 
 `worker.sh` reads THE FLOOR's two signals every cycle, before claim, via

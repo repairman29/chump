@@ -8468,7 +8468,10 @@ fn cleanup_lease(gap_id: &str, repo_root: &std::path::Path) {
     }
 }
 
-/// Remove temporary worktree after workflow completes.
+/// Remove temporary /tmp/chump-<gap_id> worktree. INFRA-1931: called on every
+/// terminal exit path of spawn_gap_workflow_inner (success, preflight/claim/ship
+/// failure, and subprocess spawn error) — not just the success path — since
+/// `chump claim` may create the worktree before a later phase fails.
 fn cleanup_worktree(gap_id: &str) {
     let worktree_path = PathBuf::from(format!("/tmp/chump-{}", gap_id));
     if worktree_path.exists() {
@@ -8654,6 +8657,7 @@ async fn spawn_gap_workflow_inner(
                 None,
             );
             cleanup_lease(gap_id, &repo_root);
+            cleanup_worktree(gap_id);
             return Err(e.into());
         }
         emit_ambient_event(gap_id, "preflight", "passed");
@@ -8694,6 +8698,7 @@ async fn spawn_gap_workflow_inner(
                     Some(ms),
                 );
                 cleanup_lease(gap_id, &repo_root);
+                cleanup_worktree(gap_id);
                 return Err(format!("Claim failed: {}", status).into());
             }
             Err(e) => {
@@ -8707,6 +8712,7 @@ async fn spawn_gap_workflow_inner(
                     None,
                 );
                 cleanup_lease(gap_id, &repo_root);
+                cleanup_worktree(gap_id);
                 return Err(e.to_string().into());
             }
         }
@@ -8807,6 +8813,7 @@ async fn spawn_gap_workflow_inner(
                 Some(ms),
             );
             cleanup_lease(gap_id, &repo_root);
+            cleanup_worktree(gap_id);
             Err(format!("Ship failed: {}", status).into())
         }
         Err(e) => {
@@ -8820,6 +8827,7 @@ async fn spawn_gap_workflow_inner(
                 None,
             );
             cleanup_lease(gap_id, &repo_root);
+            cleanup_worktree(gap_id);
             Err(e.to_string().into())
         }
     }
