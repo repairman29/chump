@@ -8654,6 +8654,7 @@ async fn spawn_gap_workflow_inner(
                 None,
             );
             cleanup_lease(gap_id, &repo_root);
+            cleanup_worktree(gap_id);
             return Err(e.into());
         }
         emit_ambient_event(gap_id, "preflight", "passed");
@@ -8694,6 +8695,7 @@ async fn spawn_gap_workflow_inner(
                     Some(ms),
                 );
                 cleanup_lease(gap_id, &repo_root);
+                cleanup_worktree(gap_id);
                 return Err(format!("Claim failed: {}", status).into());
             }
             Err(e) => {
@@ -8707,6 +8709,7 @@ async fn spawn_gap_workflow_inner(
                     None,
                 );
                 cleanup_lease(gap_id, &repo_root);
+                cleanup_worktree(gap_id);
                 return Err(e.to_string().into());
             }
         }
@@ -8807,6 +8810,7 @@ async fn spawn_gap_workflow_inner(
                 Some(ms),
             );
             cleanup_lease(gap_id, &repo_root);
+            cleanup_worktree(gap_id);
             Err(format!("Ship failed: {}", status).into())
         }
         Err(e) => {
@@ -8820,6 +8824,7 @@ async fn spawn_gap_workflow_inner(
                 None,
             );
             cleanup_lease(gap_id, &repo_root);
+            cleanup_worktree(gap_id);
             Err(e.to_string().into())
         }
     }
