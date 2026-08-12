@@ -276,6 +276,11 @@ _cmd_help() {
 cmd="${1:-help}"
 [[ $# -gt 0 ]] && shift || true
 
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+if [[ "$cmd" != "help" && "$cmd" != "-h" && "$cmd" != "--help" ]]; then
+    source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "ci-audit" || true
+fi
+
 case "$cmd" in
     tick)
         # INFRA-2262: read fleet wire before doing tick work.

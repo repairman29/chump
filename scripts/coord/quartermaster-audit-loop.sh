@@ -66,6 +66,11 @@ AGE_THRESHOLD_S="${CHUMP_QUARTERMASTER_AGE_THRESHOLD_S:-1800}"
 cmd="${1:-help}"
 [[ $# -gt 0 ]] && shift || true
 
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+if [[ "$cmd" != "help" && "$cmd" != "-h" && "$cmd" != "--help" ]]; then
+    source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "quartermaster-audit" || true
+fi
+
 # ── helpers ────────────────────────────────────────────────────────────────
 
 ambient_emit() {

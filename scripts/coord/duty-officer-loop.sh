@@ -216,6 +216,10 @@ cmd_help() {
 
 main() {
     local sub="${1:-tick}"
+    # INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+    if [[ "$sub" != "help" && "$sub" != "-h" && "$sub" != "--help" ]]; then
+        source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "duty-officer" || true
+    fi
     case "$sub" in
         tick)      cmd_tick ;;
         route)     shift; cmd_route "${1:-}" ;;

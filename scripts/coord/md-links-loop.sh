@@ -248,6 +248,11 @@ cmd_help() {
 SUBCMD="${1:-help}"
 shift || true
 
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+if [[ "$SUBCMD" != "help" && "$SUBCMD" != "-h" && "$SUBCMD" != "--help" ]]; then
+    source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "md-links" || true
+fi
+
 case "$SUBCMD" in
     tick)
         # INFRA-2262: read fleet wire before doing tick work.
