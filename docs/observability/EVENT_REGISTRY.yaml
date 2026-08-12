@@ -9061,6 +9061,51 @@ events:
     #           elapsed_ms: int, error: str}
     status: stable
 
+  # ── INFRA-1784: chump ingest --confirm-mutations (orchestration, INFRA-1746 phase 5) ─
+
+  - kind: ingest_orchestrate_started
+    effect_metric: effective
+    emitter: src/ingest_orchestrate.rs (INFRA-1784)
+    # scanner-anchor: "kind":"ingest_orchestrate_started"
+    trigger: >
+      `chump ingest <repo-path> --confirm-mutations` begins orchestration
+      after phase 1a validation passes. Fields: target_repo.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target_repo]
+    status: stable
+
+  - kind: ingest_complete
+    effect_metric: effective
+    emitter: src/ingest_orchestrate.rs (INFRA-1784)
+    # scanner-anchor: "kind":"ingest_complete"
+    trigger: >
+      All four orchestrated phases (librarian, cartographer, evangelist,
+      systematizer) completed and the takeover certificate + proposed-gaps
+      file were written. `total_cost_usd_cents` is always 0 in v1 (every
+      phase is a static scan); `prs_attempted`/`prs_green_first_pass` are
+      always 0 in v1 — auto-PR opening is deferred (see module doc).
+      Fields: target_repo_path, phases_completed, prs_attempted,
+      prs_green_first_pass, gaps_proposed, total_cost_usd_cents, elapsed_min.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target_repo_path, phases_completed, prs_attempted, prs_green_first_pass, gaps_proposed, total_cost_usd_cents, elapsed_min]
+    status: stable
+
+  - kind: ingest_orchestrate_failed
+    effect_metric: effective
+    emitter: src/ingest_orchestrate.rs (INFRA-1784)
+    # scanner-anchor: "kind":"ingest_orchestrate_failed"
+    trigger: >
+      A phase aborted orchestration. `phase` names which sub-phase failed
+      (librarian, cartographer, evangelist, systematizer, certificate,
+      propose_gaps). `failure_class` is one of: path_not_found (bad/missing
+      target path, permanent), io_error (filesystem error mid-scan or
+      writing an artifact, transient=true, retryable), budget_exceeded
+      (cumulative cost passed --budget-usd, permanent). Fields: target_repo,
+      phase, failure_class, transient, message.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target_repo, phase, failure_class, transient, message]
+    status: stable
+
   # ── INFRA-1778: chump ingest-preflight (gh auth + push-access safety rail) ─
 
   - kind: ingest_preflight_started
