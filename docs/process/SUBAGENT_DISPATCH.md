@@ -113,6 +113,33 @@ subagent failure pattern after ship-stage wedges.
 
 ---
 
+## The Glance phase (INFRA-1798, A2A_MASTER_PLAN Tier-0 0.3 — paste into every subagent prompt)
+
+Add this immediately after the no-clarifying-questions block, before the task
+description. `chump-inbox.sh read` must be the FIRST shell command of the
+session — before claiming, before picking work:
+
+```
+## Glance phase (mandatory, run first)
+
+1. Run `scripts/coord/chump-inbox.sh read --json` NOW, before anything else.
+2. ACT on every drained item — read-without-act does not count:
+   - HANDOFF / STUCK addressed to you → ack the sender:
+     `scripts/coord/broadcast.sh --to <sender> DONE <gap> "glance-ack"`.
+   - Every open `FEEDBACK kind=proposal` you have not yet voted on → cast
+     `chump vote <corr_id> +1|-1|0 --reason '<why>'`. Abstain (`0`) with a
+     one-line reason if it's out of lane — that still counts toward quorum.
+3. `chump-inbox.sh read` itself advances your cursor and emits
+   `kind=inbox_advance` — no extra step needed for that part.
+```
+
+`scripts/coord/lib/inbox-glance.sh` (`chump_inbox_glance <role>`) is the
+reusable implementation every `scripts/coord/*-loop.sh` curator wires in as
+its literal first step; a dispatched Sonnet doesn't have a loop wrapper
+around it, so the prompt block above is how the same discipline reaches it.
+
+---
+
 ## Floor-signal env vars — spawned subagents inherit them (INFRA-2008)
 
 `worker.sh` reads THE FLOOR's two signals every cycle, before claim, via

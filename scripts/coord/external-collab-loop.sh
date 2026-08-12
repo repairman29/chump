@@ -46,6 +46,11 @@ GAPS_DIR="$REPO_ROOT/docs/gaps"
 
 SUBCOMMAND="${1:-tick}"
 
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+if [[ "$SUBCOMMAND" != "help" && "$SUBCOMMAND" != "-h" && "$SUBCOMMAND" != "--help" ]]; then
+    source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "external-collab" || true
+fi
+
 # ── ambient emit helper ───────────────────────────────────────────────────────
 emit_finding() {
     local category="$1"

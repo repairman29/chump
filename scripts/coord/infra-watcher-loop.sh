@@ -548,6 +548,11 @@ cmd_tick() {
 CMD="${1:-tick}"
 shift || true
 
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+if [[ "$CMD" != "help" && "$CMD" != "-h" && "$CMD" != "--help" ]]; then
+    source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "infra-watcher" || true
+fi
+
 case "$CMD" in
     tick)                    cmd_tick "$@" ;;
     audit-daemons)           cmd_audit_daemons "$@" ;;

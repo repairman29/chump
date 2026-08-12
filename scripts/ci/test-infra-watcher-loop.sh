@@ -137,13 +137,20 @@ fi
 EOF
     chmod +x "${stub_dir}/gh"
 
-    # Also stub git remote get-url for repo name derivation
+    # Also stub git remote get-url for repo name derivation. `command -p`
+    # (not plain `command`) is required for the fallback: this stub sits
+    # earlier on PATH than the real git, so a bare `command git` re-resolves
+    # via the SAME PATH and finds this same stub again — infinite self-
+    # recursion on any git subcommand other than "remote get-url" (bit us
+    # when INFRA-1798's inbox-glance step added a `git rev-parse` call to
+    # the check-runners path, which previously never shelled out to git at
+    # all). `command -p` searches the system default PATH instead.
     cat > "${stub_dir}/git" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$*" == *"remote get-url"* ]]; then
     printf 'https://github.com/repairman29/Chump.git\n'
 else
-    command git "$@"
+    command -p git "$@"
 fi
 EOF
     chmod +x "${stub_dir}/git"
