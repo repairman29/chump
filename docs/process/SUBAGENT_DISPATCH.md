@@ -350,6 +350,24 @@ scripts/coord/chump-edit-replay.sh INFRA-NNN /private/tmp/chump-INFRA-NNN
 Patches are stored in `.chump-plans/<GAP-ID>/` in the main repo. They are
 cleaned up automatically 7 days after the gap ships.
 
+## Worktree-cleanup contract — pair with lease cleanup on every exit path (INFRA-1931)
+
+Any dispatcher that creates a temporary worktree at `/tmp/chump-<gap-id>`
+(e.g. `spawn_gap_workflow_inner` in `src/web_server.rs`) **must** call both
+`cleanup_lease(gap_id, &repo_root)` and `cleanup_worktree(gap_id)` on
+**every terminal exit branch** — success and failure alike (preflight
+reject, claim failure/error, ship failure/error), not just the happy path.
+
+Before INFRA-1931, only the ship-success branch called `cleanup_worktree`;
+every failure/error return left `/tmp/chump-<gap-id>/` on disk, leaking a
+full worktree per failed dispatch. `cleanup_lease` alone frees the lease
+lock but not the worktree directory — the two calls are not substitutes
+for each other and both are required.
+
+When adding a new terminal `return`/`Err` arm to a dispatch workflow, grep
+for the existing `cleanup_lease` calls in the same function and add the
+matching `cleanup_worktree` call alongside each one.
+
 ## Timeout rescue path — find WIP on the branch (INFRA-525)
 
 `worker.sh` now installs a `SIGALRM` trap at `FLEET_TIMEOUT_S − 30 s`. If an
