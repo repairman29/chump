@@ -87,6 +87,13 @@ const ERROR_PATTERN_MIN_MATCHES: usize = 2;
 const DEFAULT_MAX_SPAWNS_PER_HOUR: u64 = 3;
 const DEFAULT_FLAPPING_DETECT_WINDOW_M: u64 = 30;
 const DEFAULT_FLAPPING_DETECT_THRESHOLD: u64 = 3;
+// RESILIENT-038: substrate (environmental) causes take out every curator at
+// once — spawning six Sonnets won't fix a full disk. Cache the verdict so a
+// tick with several failing curators doesn't hammer `gh api` / `df` / NATS /
+// the auth probe once per curator.
+const SUBSTRATE_CACHE_TTL_S: u64 = 300;
+const DISK_FULL_PCT_THRESHOLD: u64 = 95;
+const GH_RATE_LIMIT_LOW_WATERMARK: u64 = 50;
 
 // ── config ─────────────────────────────────────────────────────────────────
 
@@ -366,6 +373,15 @@ async fn run_tick(cfg: &Config) -> Result<()> {
                 CURATOR_ROLES.len() - checked
             );
         }
+        return Ok(());
+    }
+
+    // RESILIENT-038: triage substrate (environmental) causes BEFORE spawning
+    // anything. disk-full / GH-rate-limited / NATS-down / auth-expired take
+    // out every curator simultaneously — code changes to any one curator
+    // won't help, so this must run before per-curator remediation, not after.
+    if let Some(cause) = substrate_check(cfg) {
+        report_substrate_outage(cfg, &cause, &failures).await?;
         return Ok(());
     }
 
@@ -1197,6 +1213,309 @@ fn circuit_breaker_tripped(cfg: &Config, det: &DetectionResult) -> Result<bool> 
     Ok(count_1h >= cfg.max_spawns_per_hour || count_window >= cfg.flapping_threshold)
 }
 
+// ── RESILIENT-038: substrate-vs-code triage ───────────────────────────────
+//
+// The detection checks above answer "is curator X failing?" but not "why".
+// A full disk, an exhausted GH rate limit, an unreachable NATS broker, or an
+// expired OAuth token each fail every curator at the same moment — spawning
+// six Sonnets to "fix" six curators whose code was never the problem is pure
+// waste, and it buries the one gap that actually matters (the substrate
+// condition) under six that don't.
+
+/// One substrate-level cause the pre-flight can detect. `kind` is a short,
+/// stable identifier (used in the gap title + dedup fingerprint); `detail`
+/// is the human-readable evidence for the gap body / WARN broadcast.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+struct SubstrateCause {
+    kind: String,
+    detail: String,
+}
+
+/// On-disk cache entry (AC3: avoid hammering `df`/`gh api`/NATS/auth-status
+/// once per failing curator in the same tick, and across ticks within the
+/// TTL). The supervisor is single-shot per launchd invocation, so the cache
+/// must survive on disk, not just in-process.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct SubstrateCacheEntry {
+    checked_at_ms: i64,
+    cause: Option<SubstrateCause>,
+}
+
+fn substrate_cache_path(cfg: &Config) -> PathBuf {
+    cfg.sentinel_dir
+        .parent()
+        .unwrap_or(&cfg.sentinel_dir)
+        .join("substrate-check-cache.json")
+}
+
+/// AC1: query disk / GH rate limit / NATS / auth health BEFORE any spawn
+/// decision is made. Returns the first substrate cause found, or `None` if
+/// the environment looks healthy (in which case the failures are presumed
+/// to be curator-code issues, handled by the existing per-role path).
+fn substrate_check(cfg: &Config) -> Option<SubstrateCause> {
+    let cache_path = substrate_cache_path(cfg);
+    if let Ok(raw) = fs::read_to_string(&cache_path) {
+        if let Ok(entry) = serde_json::from_str::<SubstrateCacheEntry>(&raw) {
+            let now_ms = Utc::now().timestamp_millis();
+            let age_s = (now_ms.saturating_sub(entry.checked_at_ms)).max(0) / 1000;
+            if (age_s as u64) < SUBSTRATE_CACHE_TTL_S {
+                debug!(age_s, cached = ?entry.cause, "substrate_check: using cached verdict");
+                return entry.cause;
+            }
+        }
+    }
+
+    let cause = substrate_check_uncached(cfg);
+    let entry = SubstrateCacheEntry {
+        checked_at_ms: Utc::now().timestamp_millis(),
+        cause: cause.clone(),
+    };
+    if let Ok(json) = serde_json::to_string(&entry) {
+        if let Some(parent) = cache_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(&cache_path, json);
+    }
+    cause
+}
+
+/// Run the four probes in order, returning the first cause found. Each probe
+/// degrades to `None` on any tooling failure (missing binary, unparseable
+/// output) rather than treating "could not check" as "substrate is broken" —
+/// that would be the same fail-closed-on-a-guess mistake RESILIENT-246 fixed
+/// for heartbeats.
+fn substrate_check_uncached(cfg: &Config) -> Option<SubstrateCause> {
+    check_disk(cfg)
+        .or_else(|| check_gh_rate_limit(cfg))
+        .or_else(|| check_nats(cfg))
+        .or_else(|| check_auth(cfg))
+}
+
+/// `df` on the repo filesystem. `>= DISK_FULL_PCT_THRESHOLD`% used → disk_full.
+fn check_disk(cfg: &Config) -> Option<SubstrateCause> {
+    let out = std::process::Command::new("df")
+        .args(["-Pk", &cfg.repo_root.display().to_string()])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let pct = parse_df_capacity_pct(&text)?;
+    if pct >= DISK_FULL_PCT_THRESHOLD {
+        Some(SubstrateCause {
+            kind: "disk_full".to_string(),
+            detail: format!(
+                "df reports {pct}% used at {} (threshold {DISK_FULL_PCT_THRESHOLD}%)",
+                cfg.repo_root.display()
+            ),
+        })
+    } else {
+        None
+    }
+}
+
+/// Extract the Capacity% column from `df -P` output. Split out from
+/// `check_disk` so a mocked disk-full state can be tested without shelling
+/// out to a real `df` (RESILIENT-038 AC4).
+fn parse_df_capacity_pct(df_output: &str) -> Option<u64> {
+    // POSIX `df -P`: header line + one data line; last line is the one we want
+    // even if the mount path wrapped the filesystem name onto its own line.
+    let last_line = df_output.lines().last()?;
+    let fields: Vec<&str> = last_line.split_whitespace().collect();
+    let capacity_field = fields.get(4)?;
+    capacity_field.trim_end_matches('%').parse().ok()
+}
+
+/// `gh api rate_limit` — low remaining core budget means every curator's
+/// `gh` calls are about to start failing, not that any one curator is broken.
+fn check_gh_rate_limit(cfg: &Config) -> Option<SubstrateCause> {
+    let out = std::process::Command::new("gh")
+        .args(["api", "rate_limit"])
+        .current_dir(&cfg.repo_root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v: Value = serde_json::from_slice(&out.stdout).ok()?;
+    let remaining = v
+        .get("resources")?
+        .get("core")?
+        .get("remaining")?
+        .as_u64()?;
+    if remaining < GH_RATE_LIMIT_LOW_WATERMARK {
+        Some(SubstrateCause {
+            kind: "gh_rate_limited".to_string(),
+            detail: format!(
+                "gh api rate_limit: {remaining} core requests remaining (watermark {GH_RATE_LIMIT_LOW_WATERMARK})"
+            ),
+        })
+    } else {
+        None
+    }
+}
+
+/// `chump-coord ping`. Only checked when NATS is actually configured — the
+/// offline-fallback path (docs/process/SCHEDULING_LAYERS.md; the FLEET-034
+/// push tier) makes an unconfigured NATS an expected, non-substrate state.
+fn check_nats(cfg: &Config) -> Option<SubstrateCause> {
+    if std::env::var("CHUMP_NATS_URL")
+        .unwrap_or_default()
+        .is_empty()
+    {
+        return None;
+    }
+    let out = std::process::Command::new("chump-coord")
+        .arg("ping")
+        .current_dir(&cfg.repo_root)
+        .output()
+        .ok()?;
+    if out.status.success() {
+        None
+    } else {
+        Some(SubstrateCause {
+            kind: "nats_down".to_string(),
+            detail: format!(
+                "chump-coord ping failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+        })
+    }
+}
+
+/// `scripts/coord/auth-status.sh --quiet` (RESILIENT-086) — the canonical
+/// VALIDITY probe. A non-zero exit means no curator can transact regardless
+/// of what its own code does.
+fn check_auth(cfg: &Config) -> Option<SubstrateCause> {
+    let script = cfg.repo_root.join("scripts/coord/auth-status.sh");
+    if !script.exists() {
+        return None;
+    }
+    let out = std::process::Command::new("bash")
+        .args([script.to_string_lossy().as_ref(), "--quiet"])
+        .current_dir(&cfg.repo_root)
+        .output()
+        .ok()?;
+    if out.status.success() {
+        None
+    } else {
+        Some(SubstrateCause {
+            kind: "auth_unhealthy".to_string(),
+            detail: String::from_utf8_lossy(&out.stdout).trim().to_string(),
+        })
+    }
+}
+
+/// AC2: file ONE gap for the substrate cause (not one per failing curator),
+/// broadcast a WARN, and do NOT spawn any per-curator Sonnet sub-agents.
+async fn report_substrate_outage(
+    cfg: &Config,
+    cause: &SubstrateCause,
+    failures: &[DetectionResult],
+) -> Result<()> {
+    let roles: Vec<&str> = failures.iter().map(|d| d.role.as_str()).collect();
+    warn!(
+        kind = %cause.kind,
+        detail = %cause.detail,
+        roles = %roles.join(","),
+        "RESILIENT-038: substrate cause detected — filing ONE gap, zero Sonnet spawns"
+    );
+
+    emit_ambient(
+        &cfg.ambient_path,
+        &serde_json::json!({
+            "ts": Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            "kind": "curator_substrate_outage",
+            "substrate_kind": cause.kind,
+            "detail": cause.detail,
+            "roles": roles,
+            "remediation": "none attempted — environmental cause, not curator code",
+        }),
+    );
+
+    // Dedupe on the substrate kind so a still-full disk doesn't refile every
+    // tick — mirrors the fleet-wide-outage sentinel above.
+    let fp = format!("substrate:{}", cause.kind);
+    let sentinel_path = cfg
+        .sentinel_dir
+        .join(format!("{}.sentinel", fp.replace(':', "_")));
+    if sentinel_path.exists() {
+        if let Ok(meta) = fs::metadata(&sentinel_path) {
+            if let Ok(modified) = meta.modified() {
+                if let Ok(elapsed) = SystemTime::now().duration_since(modified) {
+                    if elapsed < cfg.sentinel_ttl {
+                        info!("substrate outage already paged within TTL — not re-filing");
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+
+    if cfg.dry_run {
+        info!("dry run — would file substrate outage gap + broadcast WARN");
+        emit_ambient(
+            &cfg.ambient_path,
+            &serde_json::json!({
+                "ts": Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                "kind": "curator_supervisor_dry_run",
+                "action": "would-file-substrate-gap",
+                "substrate_kind": cause.kind,
+                "roles": roles,
+            }),
+        );
+        write_sentinel(&sentinel_path, &fp)?;
+        return Ok(());
+    }
+
+    let title = format!("substrate: {} impacting curators", cause.kind);
+    let description = format!(
+        "Auto-filed by chump-curator-supervisor substrate_check() (RESILIENT-038) at {}.\n\
+         Substrate cause: {}\n\
+         Detail: {}\n\
+         Affected curators: {}\n\n\
+         This is an ENVIRONMENTAL cause, not a curator code defect — no per-curator \
+         gap or Sonnet sub-agent was spawned for this failure cluster.",
+        Utc::now().format("%Y-%m-%dT%H:%M:%SZ"),
+        cause.kind,
+        cause.detail,
+        roles.join(", "),
+    );
+    let ac = format!(
+        "Resolve the substrate condition ({}) so curators can run again. \
+         Verify via a fresh substrate_check() pass returning healthy and curator \
+         heartbeats resuming in ambient.jsonl.",
+        cause.kind
+    );
+
+    let gap_id = match file_gap(cfg, &title, "P0", &description, &ac) {
+        Ok(id) => id,
+        Err(e) => {
+            warn!(err = %e, "RESILIENT-038: could not file substrate outage gap");
+            return Ok(());
+        }
+    };
+    write_sentinel(&sentinel_path, &fp)?;
+
+    let broadcast_path = cfg.repo_root.join("scripts/coord/broadcast.sh");
+    if broadcast_path.exists() {
+        let msg = format!(
+            "RESILIENT-038: substrate cause impacting curators ({}): {}. Gap {} filed. \
+             No per-curator Sonnets spawned — fix the substrate condition, not curator code.",
+            cause.kind, cause.detail, gap_id,
+        );
+        let _ = tokio::process::Command::new("bash")
+            .arg(&broadcast_path)
+            .args(["WARN", &msg])
+            .current_dir(&cfg.repo_root)
+            .output()
+            .await;
+    }
+
+    Ok(())
+}
+
 fn file_curator_gap(
     cfg: &Config,
     det: &DetectionResult,
@@ -1214,11 +1533,23 @@ fn file_curator_gap(
         Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
     );
 
-    let ac = format!(
-        "Fix curator-{role} so it completes a full tick without error. \
+    let ac = "Fix curator-{role} so it completes a full tick without error. \
          Verify via heartbeat in ambient.jsonl and clean log output."
-    );
+        .replace("{role}", role);
 
+    file_gap(cfg, &title, priority, &description, &ac)
+}
+
+/// `chump gap reserve` + `chump gap set` for a single auto-filed gap. Shared
+/// by both the per-curator path (`file_curator_gap`) and the RESILIENT-038
+/// substrate-outage path so the two only file gaps through one code path.
+fn file_gap(
+    cfg: &Config,
+    title: &str,
+    priority: &str,
+    description: &str,
+    ac: &str,
+) -> Result<String> {
     // chump gap reserve
     let reserve_out = std::process::Command::new("chump")
         .args([
@@ -1227,7 +1558,7 @@ fn file_curator_gap(
             "--domain",
             "INFRA",
             "--title",
-            &title,
+            title,
             "--priority",
             priority,
             "--effort",
@@ -1259,14 +1590,14 @@ fn file_curator_gap(
             "set",
             &gap_id,
             "--description",
-            &description,
+            description,
             "--acceptance-criteria",
-            &ac,
+            ac,
         ])
         .current_dir(&cfg.repo_root)
         .output();
 
-    info!(role, gap_id = %gap_id, "gap filed");
+    info!(title, gap_id = %gap_id, "gap filed");
     Ok(gap_id)
 }
 
@@ -2067,5 +2398,204 @@ mod tests {
         std::env::remove_var("CHUMP_BIN");
         // Should return Ok(None) — degraded path, not a crash.
         assert!(matches!(result, Ok(None)));
+    }
+
+    // ── RESILIENT-038: substrate-vs-code triage ──────────────────────────────
+
+    #[test]
+    fn test_parse_df_capacity_pct_disk_full() {
+        let df_out = "Filesystem     1024-blocks     Used Available Capacity Mounted on\n\
+                       /dev/disk3s1     976490568 946490568  10000000      99% /\n";
+        assert_eq!(parse_df_capacity_pct(df_out), Some(99));
+    }
+
+    #[test]
+    fn test_parse_df_capacity_pct_healthy() {
+        let df_out = "Filesystem     1024-blocks     Used Available Capacity Mounted on\n\
+                       /dev/disk3s1     976490568 400000000 500000000      45% /\n";
+        assert_eq!(parse_df_capacity_pct(df_out), Some(45));
+    }
+
+    #[test]
+    fn test_parse_df_capacity_pct_malformed_returns_none() {
+        assert_eq!(parse_df_capacity_pct(""), None);
+        assert_eq!(parse_df_capacity_pct("not df output at all"), None);
+    }
+
+    #[test]
+    fn test_substrate_cache_round_trips_within_ttl() {
+        let dir = TempDir::new().unwrap();
+        let cfg = _test_cfg_at(dir.path());
+        let cache_path = substrate_cache_path(&cfg);
+        fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        let entry = SubstrateCacheEntry {
+            checked_at_ms: Utc::now().timestamp_millis(),
+            cause: Some(SubstrateCause {
+                kind: "disk_full".to_string(),
+                detail: "df reports 99% used".to_string(),
+            }),
+        };
+        fs::write(&cache_path, serde_json::to_string(&entry).unwrap()).unwrap();
+
+        // substrate_check() must return the cached cause WITHOUT re-probing —
+        // proven here because the cache was pre-seeded, not because probes
+        // were stubbed. If disk/gh/nats/auth all disagreed with the cache the
+        // fresh-probe path would still return the cache's verdict inside TTL.
+        let got = substrate_check(&cfg);
+        assert_eq!(
+            got,
+            Some(entry.cause.unwrap()),
+            "cached verdict must win inside TTL"
+        );
+    }
+
+    #[test]
+    fn test_substrate_cache_expired_entry_is_not_reused() {
+        let dir = TempDir::new().unwrap();
+        let cfg = _test_cfg_at(dir.path());
+        let cache_path = substrate_cache_path(&cfg);
+        fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        let stale_ms = Utc::now().timestamp_millis() - (SUBSTRATE_CACHE_TTL_S as i64 + 60) * 1000;
+        let entry = SubstrateCacheEntry {
+            checked_at_ms: stale_ms,
+            cause: Some(SubstrateCause {
+                kind: "disk_full".to_string(),
+                detail: "stale".to_string(),
+            }),
+        };
+        fs::write(&cache_path, serde_json::to_string(&entry).unwrap()).unwrap();
+
+        // Past TTL, substrate_check() must re-probe rather than trust the
+        // stale cache entry (detected by checking the cache file gets
+        // rewritten with a newer timestamp).
+        let _ = substrate_check(&cfg);
+        let raw = fs::read_to_string(&cache_path).unwrap();
+        let refreshed: SubstrateCacheEntry = serde_json::from_str(&raw).unwrap();
+        assert!(
+            refreshed.checked_at_ms > stale_ms,
+            "expired cache entry must be replaced with a fresh probe timestamp"
+        );
+    }
+
+    /// AC4 smoke test: mock a disk-full substrate cause, synthesize 3 failing
+    /// curators, and assert exactly ONE substrate gap-filing path fires (via
+    /// the dry-run gap/broadcast markers, since a real `chump gap reserve`
+    /// needs a live state.db) and zero Sonnet-spawn markers appear.
+    #[tokio::test]
+    async fn test_disk_full_substrate_cause_files_one_gap_and_spawns_zero_sonnets() {
+        let dir = TempDir::new().unwrap();
+        let mut cfg = _test_cfg_at(dir.path());
+        cfg.dry_run = true;
+        fs::create_dir_all(&cfg.sentinel_dir).unwrap();
+        fs::create_dir_all(cfg.ambient_path.parent().unwrap()).unwrap();
+
+        let cause = SubstrateCause {
+            kind: "disk_full".to_string(),
+            detail: "df reports 99% used at /repo (threshold 95%)".to_string(),
+        };
+        let failures: Vec<DetectionResult> = ["shepherd", "handoff", "ci-audit"]
+            .iter()
+            .map(|role| DetectionResult {
+                role: role.to_string(),
+                error_pattern_triggered: true,
+                error_pattern_sample: Some("fatal: disk full".to_string()),
+                heartbeat: HeartbeatState::Stalled {
+                    ago: Duration::from_secs(900),
+                },
+                crash_loop_triggered: false,
+                productivity_drop_triggered: false,
+            })
+            .collect();
+
+        report_substrate_outage(&cfg, &cause, &failures)
+            .await
+            .unwrap();
+
+        let ambient_raw = fs::read_to_string(&cfg.ambient_path).unwrap_or_default();
+        let events: Vec<Value> = ambient_raw
+            .lines()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect();
+
+        let substrate_events = events
+            .iter()
+            .filter(|e| e.get("kind").and_then(|k| k.as_str()) == Some("curator_substrate_outage"))
+            .count();
+        assert_eq!(
+            substrate_events, 1,
+            "exactly one substrate outage event, not one per curator"
+        );
+
+        let gap_would_file = events.iter().any(|e| {
+            e.get("kind").and_then(|k| k.as_str()) == Some("curator_supervisor_dry_run")
+                && e.get("action").and_then(|a| a.as_str()) == Some("would-file-substrate-gap")
+        });
+        assert!(
+            gap_would_file,
+            "expected a single would-file-substrate-gap marker"
+        );
+
+        let sonnet_spawn_markers = events
+            .iter()
+            .filter(|e| {
+                e.get("kind").and_then(|k| k.as_str()) == Some("curator_supervisor_dry_run")
+                    && e.get("action").and_then(|a| a.as_str()) == Some("would-spawn-sonnet")
+            })
+            .count();
+        assert_eq!(
+            sonnet_spawn_markers, 0,
+            "substrate-caused failures must not trigger any per-curator Sonnet spawn"
+        );
+
+        // Dedup sentinel written so a still-full disk doesn't refile every tick.
+        let sentinel_path = cfg.sentinel_dir.join("substrate_disk_full.sentinel");
+        assert!(
+            sentinel_path.exists(),
+            "substrate dedup sentinel must be written"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_substrate_outage_dedup_skips_refile_within_ttl() {
+        let dir = TempDir::new().unwrap();
+        let mut cfg = _test_cfg_at(dir.path());
+        cfg.dry_run = true;
+        cfg.sentinel_ttl = Duration::from_secs(3600);
+        fs::create_dir_all(&cfg.sentinel_dir).unwrap();
+        fs::create_dir_all(cfg.ambient_path.parent().unwrap()).unwrap();
+
+        let cause = SubstrateCause {
+            kind: "gh_rate_limited".to_string(),
+            detail: "gh api rate_limit: 3 core requests remaining".to_string(),
+        };
+        let failures = vec![DetectionResult {
+            role: "handoff".to_string(),
+            ..Default::default()
+        }];
+
+        report_substrate_outage(&cfg, &cause, &failures)
+            .await
+            .unwrap();
+        report_substrate_outage(&cfg, &cause, &failures)
+            .await
+            .unwrap();
+
+        let ambient_raw = fs::read_to_string(&cfg.ambient_path).unwrap();
+        let outage_events = ambient_raw
+            .lines()
+            .filter(|l| l.contains("\"kind\":\"curator_substrate_outage\""))
+            .count();
+        assert_eq!(
+            outage_events, 2,
+            "the observed-outage event still fires each tick — only the gap-filing dedupes"
+        );
+        let would_file_markers = ambient_raw
+            .lines()
+            .filter(|l| l.contains("would-file-substrate-gap"))
+            .count();
+        assert_eq!(
+            would_file_markers, 1,
+            "second call within sentinel TTL must not re-file the substrate gap"
+        );
     }
 }
