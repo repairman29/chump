@@ -115,7 +115,8 @@ use chump_gap_store as gap_store;
 extern crate chump_ship;
 mod audit;
 mod audit_log; // INFRA-1842: queryable per-action audit log (CP-010, vendored from BEAST-MODE AuditLogger)
-mod inference_provider; // INFRA-1844: multi-model provider chain (CP-012, vendored from ai-gm-service)
+mod inference_provider;
+mod log_triage; // INFRA-1891: `chump fleet log-triage` daily structured ambient×state.db triage pass // INFRA-1844: multi-model provider chain (CP-012, vendored from ai-gm-service)
 pub use chump_bench::bench; // DOC-072/EFFECTIVE-327: ChumpBench — run a track as a scoreable lap (EFFECTIVE-405: extracted to crates/chump-bench)
 mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod cartographer; // INFRA-1782: chump cartograph <repo-path> — ARCHITECTURE.md generation (INFRA-1746 phase 2)
@@ -8320,6 +8321,54 @@ async fn main() -> Result<()> {
                 }
                 std::process::exit(if mode.auth_usable { 0 } else { 1 });
             }
+            "log-triage" => {
+                // INFRA-1891: daily structured pass over ambient.jsonl x
+                // state.db — replaces the ad-hoc "maybe I should review the
+                // logs" habit with a bounded (<=5 finding) Markdown/JSON
+                // report the operator gates before filing gaps.
+                let want_json = args.iter().any(|a| a == "--json");
+                let window_h: u64 = flag("--window-h")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(24);
+                let rare_threshold: u64 = flag("--rare-threshold")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(40);
+
+                let cfg = log_triage::TriageConfig {
+                    repo_root: repo_root.clone(),
+                    window_h,
+                    rare_threshold,
+                };
+                match log_triage::run_triage(&cfg) {
+                    Ok(report) => {
+                        let scan_date = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                        match log_triage::write_report(&repo_root, &report, &scan_date) {
+                            Ok(path) => {
+                                log_triage::emit_ambient_events(&repo_root, &report);
+                                if want_json {
+                                    println!("{}", log_triage::render_json(&report));
+                                } else {
+                                    println!(
+                                        "chump fleet log-triage: wrote {} ({} findings, {} parse errors)",
+                                        path.display(),
+                                        report.findings.len(),
+                                        report.parse_errors
+                                    );
+                                }
+                                std::process::exit(0);
+                            }
+                            Err(e) => {
+                                eprintln!("chump fleet log-triage: failed to write report: {e}");
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump fleet log-triage: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             "doctor" => {
                 // INFRA-1595: fleet doctor — Wave 0b autonomy outer loop.
                 //
@@ -8875,6 +8924,9 @@ async fn main() -> Result<()> {
                 eprintln!("                 workflow end-to-end; exit 0 iff every step passes.");
                 eprintln!(
                     "  doctor      [--heal] [--json]  -- self-healing autonomy loop (INFRA-1595)"
+                );
+                eprintln!(
+                    "  log-triage  [--window-h N] [--rare-threshold N] [--json]  -- daily ambient x state.db triage report (INFRA-1891)"
                 );
                 eprintln!(
                     "  view        [--fixtures]  -- open Fleet Scrubber UI in browser (INFRA-2176)"
