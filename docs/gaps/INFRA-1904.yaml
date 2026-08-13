@@ -1,7 +1,7 @@
 - id: INFRA-1904
   domain: INFRA
   title: "CI blocker: audit failing on 10+ open PRs"
-  status: open
+  status: closed
   priority: P1
   effort: s
   description: |
@@ -26,4 +26,13 @@
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
   outcome_id: MISSION-010
+  notes: |
+    stale-ghost-gap: filed 2026-05-24 by stuck-pr-filer citing 10 open PRs
+    (#2482 #2466 #2464 #2460 #2455 #2449 #2448 #2438 #2436 #2428) failing an
+    'audit' CI check. Verified 2026-08-13: all 10 cited PRs are closed/merged,
+    and a scan of all currently open PRs' statusCheckRollup shows zero failing
+    checks with 'audit' in the name. Root cause self-resolved (or affected PRs
+    were rebased/closed) long before this session; no reproducible CI blocker
+    remains. Closed as not-a-bug rather than fabricating an implementation
+    against a no-longer-existing failure.
 
