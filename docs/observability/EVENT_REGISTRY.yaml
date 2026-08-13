@@ -9987,3 +9987,10 @@ events:
       refs from any executor or real doc — UNWIRED, candidate-delete.
     consumers: [operator]
     fields_required: [ts, kind, path, introducing_pr, introducing_gap, ref_count_by_class]
+
+  - kind: chump_scan_complete
+    effect_metric: self
+    emitter: src/scan.rs (INFRA-1882, `chump scan <repo-path>`)
+    trigger: chump scan finished walking a target repo's local heuristics and filing gaps into the target's own .chump/state.db
+    consumers: [fleet-brief, operator]
+    fields_required: [ts, kind, target_path, gaps_filed, total_findings]
