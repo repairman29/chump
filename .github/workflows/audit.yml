@@ -212,6 +212,12 @@ jobs:
         # the chump binary when it is missing.
         run: bash scripts/ci/test-outcome-gate.sh
 
+      - name: farmer stale-lease heartbeat — a present lease must never crash the tick (RESILIENT-313)
+        if: matrix.shard == 1
+        # Runs ON LINUX by design (test-farmer.sh SKIPs non-Darwin and never
+        # caught the `stat -f %m` crash). Pure shell, no chump binary needed.
+        run: bash scripts/ci/test-farmer-stale-lease-heartbeat.sh
+
       - name: opencode harness smoke — build_harness_cmd argv + live spawn (EFFECTIVE-323)
         if: matrix.shard == 1
         # Single-line run (INFRA-1867 parity parser reads only the first line).
