@@ -67,7 +67,6 @@ Documented for completeness; do **not** file follow-ups.
 
 | Gate | Why no local mirror |
 |---|---|
-| `gap-status-guard.yml` (status flip on merge) | Requires GitHub PR merge state from the API |
 | `branch-protection-drift.yml` | Reads live branch-protection rules from GitHub repo settings |
 | `pr-rescue.yml` | Polls open PRs across the repo; needs GitHub API |
 | `dependabot-auto-merge.yml` | Dependabot-only; runs against bot-authored PRs |

@@ -169,6 +169,11 @@ CI_YML_INFRA_JOBS = {
     "audit-required", "clippy-stub", "cargo-test-stub",
     "fast-checks-stub", "audit-stub",
     "tauri-cowork-e2e", "e2e",  # META-267: matrixed pwa/battle-sim/golden-path into single job
+    # INFRA-2299 Phase 1: gap-status-guard.yml folded into ci.yml (deleted
+    # sibling file). Both jobs read github.event.pull_request.* (PR context
+    # required) or are already mirrored via check-gaps-integrity.py — same
+    # exemption rationale as the old SIBLING_INFRA_JOBS entries.
+    "gap-status-check", "gaps-integrity",
     # CREDIBLE-269: `verified` is the same shape as the *-required rollups
     # above — an `if: always()` aggregator over needs.*.result, not an
     # independently-runnable local gate. Its decision logic is mirrored
@@ -232,8 +237,6 @@ SIBLING_INFRA_JOBS = {
     "no-anthropic-smoke",
     # coverage (lcov + codecov upload — cloud-only; ci-nightly.yml)
     "coverage",
-    # gap-status-check (reads github.event.pull_request.title — PR context required)
-    "gap-status-check",
     # audit-required (INFRA-2452): rollup aggregator — was in CI_YML_INFRA_JOBS when
     # it lived in ci.yml; moved to audit.yml by INFRA-2452 but retains its infra/rollup
     # character. Its steps are inherited audit-required bookkeeping, not local-preflight
