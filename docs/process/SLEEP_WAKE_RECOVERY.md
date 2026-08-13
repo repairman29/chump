@@ -42,3 +42,20 @@ storm limit that escalates instead of thrashing (`kind=fleet_pool_restored`).
 Handler-path testing without sleeping the machine:
 `bash scripts/ops/wake-recovery.sh` runs the full routine directly (same
 assertions), and `scripts/ci/test-wake-recovery.sh` covers it headlessly.
+
+## Worker file-access sandbox (RESILIENT-178)
+
+Every worker respawned by wake recovery or the pool keeper goes back through
+`chumpd`'s `spawn_worker` — the single chokepoint — so the file-access
+sandbox (`crates/chumpd/src/file_sandbox.rs`) applies uniformly across
+sleep/wake cycles, not just to the first cold start. Workers used to inherit
+the operator's full user file authority; a mid-gap broad find/grep that
+strayed into an iCloud-synced path on 2026-07-19 produced a macOS TCC prompt
+attributed to the operator. chumpd now wraps every spawned worker in a
+`sandbox-exec` profile scoped to the repo, claim worktrees, `/tmp`, and
+toolchain dirs, with Desktop/Documents/Mobile Documents (iCloud)/Downloads
+explicitly walled off. A blocked access is polled from the macOS unified log
+each tick and re-emitted as `kind=chumpd_worker_sandbox_denied` (path +
+process) — auditable in `ambient.jsonl`, not a silent host-fs surprise.
+Opt out (audited): `CHUMP_WORKER_FILE_SANDBOX=0` or
+`CHUMP_WORKER_UNSAFE_HOST_EXEC=1`. Test: `scripts/ci/test-chumpd-worker-sandbox.sh`.
