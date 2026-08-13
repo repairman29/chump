@@ -95,6 +95,12 @@ REQUIRED_DAEMONS=(
     # driving it; deliberately REQUIRED (not optional) so this doesn't become
     # yet another built-but-never-run daemon.
     "com.chump.inventory-rebuild-cadence|scripts/setup/install-inventory-rebuild-cadence.sh"
+    # RESILIENT-070: ghost-gap-reaper — closes status=open gaps whose closed_pr
+    # already points at a shipped PR. Was opt-in-only (RESILIENT-066 installer
+    # existed but nothing called it), so hosts silently accumulated ghost gaps
+    # until the L2-SLO-5 pause-deadlock threshold was hit and an operator had
+    # to close 21 of them by hand.
+    "com.chump.ghost-gap-reaper|scripts/setup/install-ghost-gap-reaper-launchd.sh"
     "com.chump.chumpd|scripts/setup/install-chumpd.sh"
     # INFRA-1808: bootstrap-auto-install — self-installing hourly cron for
     # this very script. Solves the bootstrap problem on first manual run so
