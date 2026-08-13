@@ -332,6 +332,42 @@ PY
             echo "[]"
         fi
 
+        # INFRA-1944: emit kind=a2a_msg_delivered for each consumed message
+        # that carries a corr_id, so the sender can confirm read receipt via
+        # a2a-delivery-tail.sh / broadcast.sh --await. Gated on NO_ADVANCE=0
+        # ("consumed" per the gap AC) so --no-advance peeks (e.g. the
+        # session-start pre-flight) don't spam duplicate delivery events.
+        if [[ "$NO_ADVANCE" -ne 1 && -n "$filtered" ]]; then
+            _read_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf '%s\n' "$filtered" | python3 -c "
+import json, sys
+session = sys.argv[1]
+ambient = sys.argv[2]
+read_at = sys.argv[3]
+raw = sys.stdin.read()
+events = []
+try:
+    data = json.loads(raw)
+    events = data if isinstance(data, list) else [data]
+except Exception:
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(json.loads(line))
+        except Exception:
+            pass
+with open(ambient, 'a') as f:
+    for evt in events:
+        corr_id = evt.get('corr_id')
+        if not corr_id:
+            continue
+        rec = {'ts': read_at, 'kind': 'a2a_msg_delivered', 'corr_id': corr_id, 'recipient': session, 'read_at': read_at}
+        f.write(json.dumps(rec) + '\n')
+" "$SESSION" "$AMBIENT" "$_read_at" 2>/dev/null || true
+        fi
+
         if [[ "$NO_ADVANCE" -ne 1 ]]; then
             # Advance the primary inbox cursor atomically.
             tmp="$CURSOR_FILE.tmp.$$"
