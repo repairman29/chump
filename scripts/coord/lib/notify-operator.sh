@@ -233,6 +233,71 @@ for i, chunk in enumerate(out, 1):
     return 1
 }
 
+# notify_operator_buttons — RESILIENT-265 "approve-from-phone". Send ONE operator
+# DM that carries an interactive button row (Discord message components), so a
+# decision the operator would otherwise make on GitHub is one phone tap instead.
+#
+#   notify_operator_buttons "<content>" "<components-json-array>"
+#     → 0 on delivery, 1 on failure, 0 no-op when unconfigured
+#
+# The caller builds the components array (Discord "action row" of type-2 buttons
+# with the custom_ids the gateway's INTERACTION_CREATE handler parses, e.g.
+# `mergepr:owner/repo/number`). This deliberately BYPASSES the escalation
+# suppress-registry: an approval prompt is operator-requested action, never
+# cry-wolf routine — it must always reach the phone. It also does NOT chunk:
+# an approval message is short and components must ride the single message that
+# owns the buttons. Reuses notify_operator's env/token resolution + curl shape.
+notify_operator_buttons() {
+    local content="${1:-}" components="${2:-[]}"
+    [[ -n "${content//[[:space:]]/}" ]] || return 0
+
+    local token uid
+    token="$(_notify_env DISCORD_TOKEN)"
+    uid="$(_notify_env CHUMP_READY_DM_USER_ID)"
+    if [[ -z "$token" || -z "$uid" ]]; then
+        echo "[notify-operator] SKIP (buttons): DISCORD_TOKEN or CHUMP_READY_DM_USER_ID unset" >&2
+        return 0
+    fi
+
+    local api="https://discord.com/api/v10"
+    local ch_json ch_id
+    ch_json="$(curl -sS --max-time 10 -X POST "${api}/users/@me/channels" \
+        -H "Authorization: Bot ${token}" \
+        -H "Content-Type: application/json" \
+        -d "{\"recipient_id\":\"${uid}\"}" 2>/dev/null)" || {
+        echo "[notify-operator] FAIL (buttons): could not open DM channel" >&2; return 1; }
+    ch_id="$(printf '%s' "$ch_json" | python3 -c \
+        'import sys,json;print(json.load(sys.stdin).get("id",""))' 2>/dev/null)"
+    if [[ -z "$ch_id" ]]; then
+        echo "[notify-operator] FAIL (buttons): open DM channel: $(printf '%s' "$ch_json" \
+            | python3 -c 'import sys,json;print(json.load(sys.stdin).get("message","?"))' 2>/dev/null)" >&2
+        return 1
+    fi
+
+    # Build the message payload (content + components) with python so the JSON is
+    # always valid regardless of what's in content/components.
+    local payload code
+    payload="$(CONTENT="$content" COMPONENTS="$components" python3 -c '
+import os,json
+print(json.dumps({
+    "content": os.environ["CONTENT"][:1990],
+    "components": json.loads(os.environ["COMPONENTS"] or "[]"),
+}))' 2>/dev/null)"
+    if [[ -z "$payload" ]]; then
+        echo "[notify-operator] FAIL (buttons): could not build payload (bad components JSON?)" >&2; return 1; fi
+
+    code="$(printf '%s' "$payload" | curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+        -X POST "${api}/channels/${ch_id}/messages" \
+        -H "Authorization: Bot ${token}" \
+        -H "Content-Type: application/json" \
+        --data @- 2>/dev/null)" || true
+    if [[ "$code" == "200" || "$code" == "201" ]]; then
+        echo "[notify-operator] delivered (buttons)" >&2; return 0
+    fi
+    echo "[notify-operator] FAIL (buttons): HTTP ${code:-000}" >&2
+    return 1
+}
+
 # Direct-execution entry point — INFRA-3602. Restrictive Bash allowlists
 # (e.g. `claude --permission-mode dontAsk`) deny `source X && fn args` as a
 # compound command regardless of how precisely the allowlist pattern matches

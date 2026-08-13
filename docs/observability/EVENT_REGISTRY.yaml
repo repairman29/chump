@@ -9994,3 +9994,88 @@ events:
     trigger: chump scan finished walking a target repo's local heuristics and filing gaps into the target's own .chump/state.db
     consumers: [fleet-brief, operator]
     fields_required: [ts, kind, target_path, gaps_filed, total_findings]
+
+  # RESILIENT-265 — Discord PR-approval flow (approve-from-phone). The surfacer
+  # organ detects OS-authored product-repo PRs needing approval and DMs them to
+  # the operator with ✅ Merge / ❌ Reject buttons; the gateway acts on the tap.
+  - kind: pr_approval_surfaced
+    effect_metric: self
+    emitter: scripts/dispatch/pr-approval-surface-beat.sh (RESILIENT-265)
+    trigger: an OS-authored, OPEN, non-draft, mergeable PR on an external
+      product repo was DM'd to the operator's Discord with merge/reject buttons.
+    consumers: [ambient, operator]
+    fields_required: [ts, kind, repo, number, mergeable]
+
+  - kind: pr_approval_beat
+    effect_metric: self
+    emitter: scripts/dispatch/pr-approval-surface-beat.sh (RESILIENT-265)
+    trigger: one surfacer beat completed — records how many PRs were scanned
+      and how many were newly surfaced this pass (proves the loop is running).
+    consumers: [ambient]
+    fields_required: [ts, kind, scanned, surfaced, node]
+
+  - kind: pr_approval_beat_error
+    effect_metric: self
+    emitter: scripts/dispatch/pr-approval-surface-beat.sh (RESILIENT-265)
+    trigger: the surfacer could not resolve the gh user, list PRs for a repo,
+      or deliver a DM — the PR is not marked surfaced so the next beat retries.
+    consumers: [ambient]
+
+  - kind: pr_approval_merged
+    effect_metric: self
+    emitter: scripts/ops/pr-approval-action.sh (RESILIENT-265)
+    trigger: the operator tapped ✅ Merge and the product-repo PR was merged
+      (honoring the repo's merge method) — the human-in-the-loop approval.
+    consumers: [ambient, operator]
+    fields_required: [ts, kind, repo, number, method]
+
+  - kind: pr_approval_rejected
+    effect_metric: self
+    emitter: scripts/ops/pr-approval-action.sh (RESILIENT-265)
+    trigger: the operator tapped ❌ Reject and the product-repo PR was closed.
+    consumers: [ambient, operator]
+    fields_required: [ts, kind, repo, number]
+
+  - kind: pr_approval_action_noop
+    effect_metric: self
+    emitter: scripts/ops/pr-approval-action.sh (RESILIENT-265)
+    trigger: a second tap hit a PR that was already merged/closed — idempotent
+      no-op, never a double-merge (the button is safe to double-tap).
+    consumers: [ambient]
+    fields_required: [ts, kind, repo, number, state]
+
+  - kind: pr_approval_action_error
+    effect_metric: self
+    emitter: scripts/ops/pr-approval-action.sh (RESILIENT-265)
+    trigger: the gh merge/close did not complete (required check red, branch
+      behind, transient gh error) — the PR is left OPEN so the operator can
+      re-tap once it's green.
+    consumers: [ambient]
+
+  - kind: pr_approval_action_refused
+    effect_metric: self
+    emitter: scripts/ops/pr-approval-action.sh (RESILIENT-265)
+    trigger: an approval action was invoked against the internal chump repo —
+      refused (chump auto-merges via CI; a phone tap must never squash it).
+    consumers: [ambient]
+
+  - kind: discord_pr_approval_tap
+    effect_metric: self
+    emitter: scripts/ops/discord-gateway.py (RESILIENT-265)
+    trigger: the operator tapped a mergepr:/rejectpr: button; the gateway is
+      about to run pr-approval-action.sh for that decision.
+    consumers: [ambient]
+
+  - kind: discord_pr_approval_done
+    effect_metric: self
+    emitter: scripts/ops/discord-gateway.py (RESILIENT-265)
+    trigger: the PR-approval action finished; the gateway edited the Discord
+      message to the result and stripped the buttons. Records the status line.
+    consumers: [ambient]
+
+  - kind: discord_pr_approval_failed
+    effect_metric: self
+    emitter: scripts/ops/discord-gateway.py (RESILIENT-265)
+    trigger: the gateway could not run the approval action (action script
+      missing / unparseable custom_id) — surfaced back into the message.
+    consumers: [ambient]
