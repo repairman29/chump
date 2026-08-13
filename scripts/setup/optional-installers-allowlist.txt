@@ -111,6 +111,7 @@ install-disk-critical-reactor-launchd.sh
 install-sccache-reaper-launchd.sh
 install-main-preflight-watchdog-daemon-launchd.sh
 install-daemon-exit-loop-watcher-launchd.sh
+install-ghost-gap-reaper-launchd.sh
 install-auto-deploy-launchd.sh
 install-checkout-sync-launchd.sh
 install-node-refresh-systemd.sh
