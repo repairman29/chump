@@ -58,6 +58,17 @@
 # chump-broadcast binary is on $PATH, exec the Rust port. Otherwise the
 # legacy bash body below runs unchanged. Phase 1 ships both paths; Phase
 # 2 (separate gap) flips the default; Phase 3 removes bash.
+#
+# INFRA-1944 (delivery-confirmation receipts, slice A of INFRA-1862):
+#   --await <seconds>  — after sending, block up to <seconds> waiting for
+#     the recipient's chump-inbox.sh read to consume the message (which
+#     emits kind=a2a_msg_delivered to ambient.jsonl). Returns 0 if
+#     delivered in time, 2 if not. Default 0 = fire-and-forget (legacy,
+#     unchanged behavior — returns 0 immediately after send).
+#   Every --to send also writes a side-record to
+#     .chump-locks/inbox/<sender>-sent-pending.jsonl with
+#     {ts, corr_id, to, expires_at} so a sender can audit outstanding
+#     unconfirmed sends without blocking (see a2a-delivery-tail.sh).
 
 # ── INFRA-1998: Rust pass-through (opt-in via CHUMP_MESSAGING_RUST=1) ─────────
 if [[ "${CHUMP_MESSAGING_RUST:-0}" == "1" ]]; then
@@ -249,6 +260,26 @@ emit_to_inbox() {
     done
 }
 
+# INFRA-1944: record an outstanding delivery receipt for a single-recipient
+# send. Best-effort — never fatal to the send path. Skips glob/fanout
+# recipients (a glob resolves to N recipients server-side in emit_to_inbox;
+# tracking per-recipient receipts for those is out of scope for slice A).
+record_sent_pending() {
+    local to="$1" corr_id="$2"
+    [[ -n "$to" ]] || return 0
+    [[ "$to" == *[*?[]* ]] && return 0
+    local timeout="${CHUMP_A2A_DELIVERY_TIMEOUT:-300}"
+    local expires_at
+    expires_at="$(date -u -d "+${timeout} seconds" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+        || date -u -v"+${timeout}S" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+        || echo "$TS")"
+    local inbox_dir="$LOCK_DIR/inbox"
+    mkdir -p "$inbox_dir" 2>/dev/null || true
+    local pending_file="$inbox_dir/${SESSION_ID}-sent-pending.jsonl"
+    printf '{"ts":"%s","corr_id":"%s","to":"%s","expires_at":"%s"}\n' \
+        "$TS" "$corr_id" "$to" "$expires_at" >> "$pending_file" 2>/dev/null || true
+}
+
 # ── INFRA-2015: urgency-tier routing ─────────────────────────────────────────
 # Called AFTER the primary emit_to_file + emit_to_inbox so the main event
 # always lands in ambient regardless of urgency side-effects.
@@ -355,8 +386,18 @@ CORR_FLAG=""
 REPLY_TO=""
 URGENCY="INFO"
 NO_FANOUT="${CHUMP_NO_FANOUT:-0}"
+AWAIT=0
 while :; do
     case "${1:-}" in
+        --await)
+            AWAIT="${2:-0}"
+            [[ "$AWAIT" =~ ^[0-9]+$ ]] || { echo "Usage: $0 --await <seconds>" >&2; exit 1; }
+            shift 2
+            ;;
+        --no-await)
+            AWAIT=0
+            shift
+            ;;
         --to)
             TO="${2:-}"
             [[ -z "$TO" ]] && { echo "Usage: $0 --to <recipient> EVENT [args...]" >&2; exit 1; }
@@ -442,6 +483,7 @@ case "$EVENT" in
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
+        record_sent_pending "$TO" "$CORR_ID"
         emit_to_nats INTENT "gap=$GAP" "files=$FILES" "model=$MODEL" "harness=$HARNESS"
         route_by_urgency "$URGENCY" "$JSON" "INTENT gap=$GAP files=$FILES"
         printf '[broadcast] INTENT  session=%s  gap=%s  urgency=%s\n' "$SESSION_ID" "$GAP" "$URGENCY"
@@ -458,6 +500,7 @@ case "$EVENT" in
         JSON="$(_maybe_add_parent_corr_id "$(build_json event HANDOFF session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" to "$EFFECTIVE_TO")")"
         emit_to_file "$JSON"
         emit_to_inbox "$EFFECTIVE_TO" "$JSON"
+        record_sent_pending "$EFFECTIVE_TO" "$CORR_ID"
         emit_to_nats HANDOFF "gap=$GAP" "to=$EFFECTIVE_TO"
         route_by_urgency "$URGENCY" "$JSON" "HANDOFF gap=$GAP to=$EFFECTIVE_TO"
         printf '[broadcast] HANDOFF gap=%s → %s  urgency=%s\n' "$GAP" "$EFFECTIVE_TO" "$URGENCY"
@@ -474,6 +517,7 @@ case "$EVENT" in
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
+        record_sent_pending "$TO" "$CORR_ID"
         emit_to_nats STUCK "gap=$GAP" "reason=$REASON"
         route_by_urgency "$URGENCY" "$JSON" "STUCK gap=$GAP reason=$REASON"
         printf '[broadcast] STUCK   gap=%s  reason=%s  urgency=%s\n' "$GAP" "$REASON" "$URGENCY"
@@ -490,6 +534,7 @@ case "$EVENT" in
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
+        record_sent_pending "$TO" "$CORR_ID"
         emit_to_nats DONE "gap=$GAP" "commit=$COMMIT" "model=$MODEL" "harness=$HARNESS"
         route_by_urgency "$URGENCY" "$JSON" "DONE gap=$GAP commit=$COMMIT"
         printf '[broadcast] DONE    gap=%s  commit=%s  urgency=%s\n' "$GAP" "$COMMIT" "$URGENCY"
@@ -506,6 +551,7 @@ case "$EVENT" in
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
+        record_sent_pending "$TO" "$CORR_ID"
         emit_to_nats WARN "reason=$MSG"
         route_by_urgency "$URGENCY" "$JSON" "$MSG"
         printf '[broadcast] WARN    %s  urgency=%s\n' "$MSG" "$URGENCY"
@@ -523,6 +569,7 @@ case "$EVENT" in
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
+        record_sent_pending "$TO" "$CORR_ID"
         emit_to_nats ALERT "kind=$KIND" "reason=$MSG"
         route_by_urgency "$URGENCY" "$JSON" "ALERT kind=$KIND $MSG"
         printf '[broadcast] ALERT   kind=%s  %s  urgency=%s\n' "$KIND" "$MSG" "$URGENCY"
@@ -575,6 +622,7 @@ case "$EVENT" in
         # When --to is unset and flag/env opts out, falls back to silent no-op (legacy).
         if [[ -n "$TO" ]]; then
             emit_to_inbox "$TO" "$JSON" "0"
+            record_sent_pending "$TO" "$CORR_ID"
         else
             emit_to_inbox "" "$JSON" "1"
         fi
@@ -590,3 +638,26 @@ case "$EVENT" in
         exit 1
         ;;
 esac
+
+# INFRA-1944: --await <seconds> — block waiting for the recipient's
+# chump-inbox.sh read to consume this message (kind=a2a_msg_delivered).
+# Default 0 = fire-and-forget, unchanged legacy behavior (exit 0 immediately).
+if [[ "$AWAIT" -gt 0 ]]; then
+    AWAIT_TARGET="${TO:-${EFFECTIVE_TO:-}}"
+    if [[ -z "$AWAIT_TARGET" ]]; then
+        printf '[broadcast] --await ignored: no --to recipient specified\n' >&2
+        exit 0
+    fi
+    TAIL_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/a2a-delivery-tail.sh"
+    if [[ -x "$TAIL_SCRIPT" ]]; then
+        if "$TAIL_SCRIPT" --corr-id "$CORR_ID" --timeout "$AWAIT"; then
+            printf '[broadcast] AWAIT delivered corr_id=%s\n' "$CORR_ID"
+            exit 0
+        else
+            printf '[broadcast] AWAIT timeout corr_id=%s (not delivered within %ss)\n' "$CORR_ID" "$AWAIT" >&2
+            exit 2
+        fi
+    else
+        printf '[broadcast] WARN: a2a-delivery-tail.sh not found; --await skipped\n' >&2
+    fi
+fi
