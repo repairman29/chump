@@ -9616,6 +9616,19 @@ events:
       escalated=true instead of thrashing (persistent-crash class)
     consumers: [fleet-brief, audit-log, operator-recall]
     fields_required: [ts, kind, agent, respawns_last_hour, escalated, note]
+  - kind: chumpd_worker_sandbox_denied
+    effect_metric: waste_prevented
+    emitter: crates/chumpd/src/file_sandbox.rs / crates/chumpd/src/main.rs
+      scan_worker_sandbox_denials (RESILIENT-178)
+    trigger: a worker (spawned under the sandbox-exec file-access profile)
+      attempted a read/write outside its allow-list — most commonly a TCC
+      surface (Desktop/Documents/Mobile Documents/Downloads). The kernel
+      denial is polled from the macOS unified log each tick and re-emitted
+      here so the stray access is auditable instead of surfacing as an
+      operator-facing TCC prompt (born from the 2026-07-19 iCloud prompt
+      incident).
+    consumers: [fleet-brief, audit-log, infra-watcher]
+    fields_required: [ts, kind, path, process, raw]
   - kind: verify_bypassed
     effect_metric: self
     emitter: src/verify/mod.rs emit_verify_bypassed (CREDIBLE-155)

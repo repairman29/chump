@@ -18,11 +18,13 @@
 //! v0 scope: supervise + restart + wedge-kill + mode obedience. The state-API
 //! socket (CLI reads via chumpd) is the next slice; see MISSION-051 AC.
 
+mod file_sandbox;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -159,6 +161,28 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
         cfg.home.display()
     );
 
+    // RESILIENT-178: workers run with the operator's full user file
+    // authority by default (macOS TCC prompt, 2026-07-19 — a stray
+    // find/grep reached an iCloud-synced path and the OS attributed the
+    // access-request dialog to the operator). chumpd is the chokepoint
+    // that spawns every worker, so it wraps the process in a sandbox-exec
+    // profile scoped to repo + worktrees + tmp + toolchains, with the
+    // known TCC-prompting surfaces explicitly denied. Structural fix, not
+    // advisory prompt discipline.
+    let worktree_base = std::env::var("CHUMP_WORKTREE_BASE").ok().map(PathBuf::from);
+    let sandboxed = file_sandbox::worker_sandbox_enabled();
+    let mut command = if sandboxed {
+        let profile =
+            file_sandbox::build_worker_profile(&cfg.repo, worktree_base.as_deref(), &cfg.home);
+        let mut c = Command::new("/usr/bin/sandbox-exec");
+        c.arg("-p").arg(profile).arg("/bin/bash").arg(&worker);
+        c
+    } else {
+        let mut c = Command::new("/bin/bash");
+        c.arg(&worker);
+        c
+    };
+
     // MISSION-051 / RESILIENT-184: backend selection. CHUMPD_FLEET_BACKEND
     // lets an operator run the fleet on an open model (chump-local) instead
     // of the Claude subscription.
@@ -176,8 +200,7 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
         ("sonnet", "xs,s,m")
     };
 
-    Command::new("/bin/bash")
-        .arg(&worker)
+    command
         .current_dir(&cfg.repo)
         .env("PATH", path_env)
         .env("HOME", &cfg.home)
@@ -234,6 +257,63 @@ struct Slot {
     child: Option<Child>,
     respawns: Vec<u64>,
     broken: bool,
+}
+
+/// RESILIENT-178 AC#2: a blocked worker file access must be auditable, not
+/// silent. sandbox-exec denials are logged by the kernel to the macOS
+/// unified log; this polls the last `window_secs` for denial lines and
+/// re-emits each as an ambient event carrying the attempted path, so the
+/// same fleet-brief / infra-watcher consumers that already read
+/// ambient.jsonl pick it up without a new subsystem. No-op on non-macOS
+/// or when the `log` CLI is unavailable (dev boxes, CI).
+fn scan_worker_sandbox_denials(cfg: &Config, window_secs: u64) {
+    if !cfg!(target_os = "macos") || !Path::new("/usr/bin/log").is_file() {
+        return;
+    }
+    let predicate = r#"eventMessage contains "deny(1) file-read" or eventMessage contains "deny(1) file-write""#;
+    let out = Command::new("/usr/bin/log")
+        .args([
+            "show",
+            "--style",
+            "ndjson",
+            "--last",
+            &format!("{}s", window_secs),
+            "--predicate",
+            predicate,
+        ])
+        .output();
+    let Ok(out) = out else { return };
+    if !out.status.success() {
+        return;
+    }
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let msg = v.get("eventMessage").and_then(|m| m.as_str()).unwrap_or("");
+        if msg.is_empty() {
+            continue;
+        }
+        let process = v
+            .get("processImagePath")
+            .and_then(|p| p.as_str())
+            .unwrap_or("unknown");
+        // The kernel denial message ends with the offending path
+        // ("...deny(1) file-read-data /Users/op/Desktop/x"); take the
+        // trailing whitespace-delimited token as a best-effort path.
+        let path = msg.rsplit(' ').next().unwrap_or("");
+        // scanner-anchor: "kind":"chumpd_worker_sandbox_denied"
+        emit(
+            cfg,
+            &format!(
+                r#"{{"ts":"{}","kind":"chumpd_worker_sandbox_denied","path":"{}","process":"{}","raw":"{}"}}"#,
+                iso_now(),
+                path.replace('"', "'"),
+                process.replace('"', "'"),
+                msg.replace('"', "'")
+            ),
+        );
+    }
 }
 
 fn write_status(_cfg: &Config, mode: &str, desired: usize, slots: &HashMap<usize, Slot>) {
@@ -478,10 +558,11 @@ async fn main() {
                     emit(
                         &cfg,
                         &format!(
-                            r#"{{"ts":"{}","kind":"chumpd_worker_spawned","agent":{},"pid":{}}}"#,
+                            r#"{{"ts":"{}","kind":"chumpd_worker_spawned","agent":{},"pid":{},"file_sandboxed":{}}}"#,
                             iso_now(),
                             id,
-                            child.id()
+                            child.id(),
+                            file_sandbox::worker_sandbox_enabled()
                         ),
                     );
                     slot.child = Some(child);
@@ -504,6 +585,7 @@ async fn main() {
         }
 
         write_status(&cfg, &mode, desired, &slots);
+        scan_worker_sandbox_denials(&cfg, TICK_SECS);
         std::thread::sleep(Duration::from_secs(TICK_SECS));
     }
 
