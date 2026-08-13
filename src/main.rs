@@ -11079,6 +11079,53 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            "close" => {
+                // RESILIENT-119: first-class triage-close. Unlike `chump gap
+                // ship`, this path never expects a PR — it flips status
+                // directly and does NOT run the clean/current-worktree
+                // (INFRA-2423) or proof-of-merge (INFRA-1392) guards, since
+                // those exist to protect real PR-ships, not this path.
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap close <GAP-ID> --reason <superseded|wontfix|obsolete|duplicate> [--session ID]\n\n\
+                         Triage-close a gap that will never ship a PR. Updates state.db (canonical).\n\
+                         Does NOT require a clean/current worktree or a merge commit naming the gap —\n\
+                         those guards are for `chump gap ship`, not triage-closes.\n\n\
+                         Options:\n  \
+                           --reason R    Required. One of: superseded, wontfix, obsolete, duplicate\n  \
+                           --session ID  Session ID to record on the close event (default derived)\n  \
+                           -h, --help    Show this help"
+                    );
+                    return Ok(());
+                }
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap close <GAP-ID> --reason <superseded|wontfix|obsolete|duplicate>");
+                    std::process::exit(2);
+                });
+                let reason = flag("--reason").unwrap_or_else(|| {
+                    eprintln!(
+                        "chump gap close: --reason is required (superseded|wontfix|obsolete|duplicate)"
+                    );
+                    std::process::exit(2);
+                });
+                let session_id = flag("--session")
+                    .or_else(|| crate::ambient_stream::env_session_id())
+                    .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
+                match store.close(&gap_id, &session_id, &reason) {
+                    Ok(()) => {
+                        println!("closed {} (reason={})", gap_id, reason);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap close: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             "set" | "update" | "modify" | "edit" | "change" => {
                 // INFRA-1036: 'set' and natural-language aliases for gap mutation.
                 // CREDIBLE-016: unknown-flag detection — if the positional GAP-ID slot

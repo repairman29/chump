@@ -3020,6 +3020,14 @@ events:
     consumers: [audit-log, fleet-brief]
     fields_required: [ts, kind, pr, gap, note]
 
+  - kind: gap_triage_closed
+    effect_metric: self
+    emitter: crates/chump-gap-store/src/lib.rs (RESILIENT-119, GapStore::close)
+    trigger: chump gap close <ID> --reason <superseded|wontfix|obsolete|duplicate> flips a gap's status without the PR-ship guards (INFRA-2423 clean/current worktree, INFRA-1392 proof-of-merge)
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, gap_id, reason, session_id]
+    notes: replaces the 2026-06-05 band-aid of git reset --hard origin/main + CHUMP_BINARY_STALENESS_CHECK=0 chump gap edit --status superseded
+
   - kind: orphan_pr_closed_at_ship
     effect_metric: self
     emitter: src/main.rs (INFRA-1144, chump gap ship)
