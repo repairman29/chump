@@ -24,6 +24,15 @@
 #                                           scorecard, which watches the
 #                                           factory) — this watches the
 #                                           mission.
+#   chump-organ-reconcile (RESILIENT-305) — converges live systemd organ state
+#                                           to the repo-declared manifest
+#                                           (scripts/ops/organ-manifest.txt):
+#                                           enables the organs that must run and
+#                                           neuters the auto-pagers that must
+#                                           stay OFF. Runs on a timer so drift
+#                                           between the repo and the node self-
+#                                           heals — including a pager this very
+#                                           installer just re-enabled.
 #
 # Before RESILIENT-300, these were live-hacked directly into /etc/systemd/system
 # and ~/.config/systemd/user — a node rebuild silently lost ATC. This script is
@@ -93,8 +102,10 @@ SYSTEM_UNITS=(
   chump-organ-watchdog.timer
   chump-board-ceo-briefing.service
   chump-board-ceo-briefing.timer
+  chump-organ-reconcile.service
+  chump-organ-reconcile.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
@@ -126,7 +137,7 @@ if [[ "$(id -u)" != "0" ]]; then
   exit 1
 fi
 
-echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog, board-ceo-briefing) =="
+echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog, board-ceo-briefing, organ-reconcile) =="
 CHANGED_UNITS=()
 for unit in "${SYSTEM_UNITS[@]}"; do
   src="$REPO_ROOT/scripts/dispatch/$unit"
@@ -157,6 +168,18 @@ for t in "${SYSTEM_TIMERS[@]}"; do
   fi
   echo "  enabled + started $t"
 done
+
+# RESILIENT-305: converge organ state to the repo manifest immediately, rather
+# than waiting for chump-organ-reconcile.timer's first tick. Critically, THIS
+# installer's own enable-loop just (re-)started the pager timers
+# (sla-scorecard, board-ceo-briefing); the reconcile re-neuters them from the
+# repo-declared manifest so a deploy can never resurrect the auto-pagers. Best
+# -effort: a failure here must not block the roster install above.
+ORGAN_RECONCILE="$REPO_ROOT/scripts/ops/organ-reconcile.sh"
+if [[ -x "$ORGAN_RECONCILE" ]]; then
+  echo "== reconciling organ manifest (enabled organs up, auto-pagers OFF) =="
+  bash "$ORGAN_RECONCILE" --apply || echo "WARN: organ-reconcile failed (non-fatal; roster units still installed)" >&2
+fi
 
 echo "== installing user unit (node-refresh) =="
 # node-refresh runs as the operator user (not root's systemd --user unless
