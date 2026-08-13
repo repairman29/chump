@@ -88,15 +88,24 @@ else
 fi
 
 # 4b. Open gap with no AC → vague_pickable > 0 → exit 1.
+# INFRA-2984: since EFFECTIVE-294, `gap reserve` auto-fills concrete default
+# AC unless --skip-obs-acs is passed — without it this fixture no longer
+# produces a vague gap and the test below silently stopped testing anything.
 "$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
-    --title "audit-prio-fixture-vague" --quiet 2>/dev/null
+    --title "audit-prio-fixture-vague" --skip-obs-acs --quiet 2>/dev/null
 if ! "$BIN" gap audit-priorities >/dev/null 2>&1; then
     ok "exit 1 on vague pickable gap"
 else
     fail "expected exit 1 on vague pickable gap"
 fi
 
-VAGUE_COUNT=$("$BIN" gap audit-priorities --json 2>/dev/null \
+# INFRA-2984: audit-priorities now exits 1 whenever vague_pickable > 0 (that
+# IS the fixture we just set up), and under `set -o pipefail` a non-zero exit
+# from $BIN made the pipeline itself fail, so `|| echo 0` fired *in addition
+# to* python3's real count — two lines glued into one non-numeric string that
+# broke the `[[ -ge ]]` comparison below. `|| true` on the $BIN call keeps
+# its stdout while not tripping pipefail.
+VAGUE_COUNT=$({ "$BIN" gap audit-priorities --json 2>/dev/null || true; } \
     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('vague_pickable',0))" 2>/dev/null || echo 0)
 if [[ "$VAGUE_COUNT" -ge 1 ]]; then
     ok "vague_pickable count >= 1 (got $VAGUE_COUNT)"
@@ -107,7 +116,7 @@ fi
 # 4c. race-* title pollution check.
 "$BIN" gap reserve --domain INFRA --priority P2 --effort xs \
     --title "race-fixture-test" --quiet 2>/dev/null
-RACE_COUNT=$("$BIN" gap audit-priorities --json 2>/dev/null \
+RACE_COUNT=$({ "$BIN" gap audit-priorities --json 2>/dev/null || true; } \
     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('race_test_pollution',0))" 2>/dev/null || echo 0)
 if [[ "$RACE_COUNT" -ge 1 ]]; then
     ok "race_test_pollution count >= 1 (got $RACE_COUNT)"

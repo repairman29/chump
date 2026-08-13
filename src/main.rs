@@ -591,9 +591,19 @@ fn is_test_domain(domain: &str) -> bool {
         || domain.ends_with("TEST")
 }
 
-/// INFRA-1259/1878: Returns true if a single AC entry is a placeholder stub.
-/// Only matches entries that ARE stubs, not entries that mention "TODO" in
-/// meaningful text (e.g. "AC: ensures no TODO in field X" must not match).
+/// INFRA-1259/1878/2984: Returns true if a single AC entry is a placeholder
+/// stub or a non-verifiable filler phrase. Only matches entries that ARE
+/// stubs, not entries that mention "TODO" in meaningful text (e.g. "AC:
+/// ensures no TODO in field X" must not match).
+///
+/// INFRA-2984: an exact-match allowlist of filler phrases like "verify it
+/// works" slipped past the TODO/TBD checks — non-empty, so `chump gap
+/// audit-priorities`/preflight let it through as pickable, but not a single
+/// concrete, testable claim, so the agent that claimed it had nothing to
+/// implement. The phrase list below is deliberately an exact-match
+/// allowlist (not a substring/keyword match) so real AC text that happens
+/// to contain "works" (e.g. "ensure the retry logic works under load") is
+/// never flagged.
 fn is_vague_ac_entry(s: &str) -> bool {
     let t = s.trim();
     let upper = t.to_uppercase();
@@ -607,6 +617,20 @@ fn is_vague_ac_entry(s: &str) -> bool {
         || upper.starts_with("TBD ")
         || upper.starts_with("<FILL")
         || upper.starts_with("FILL IN")
+        || matches!(
+            upper.as_str(),
+            "VERIFY IT WORKS"
+                | "IT WORKS"
+                | "WORKS"
+                | "MAKE IT WORK"
+                | "SHOULD WORK"
+                | "IT SHOULD WORK"
+                | "TEST IT"
+                | "DONE"
+                | "COMPLETE"
+                | "FIX IT"
+                | "IMPLEMENT IT"
+        )
 }
 
 /// INFRA-1259: Check if acceptance_criteria is vague (empty, all-TODO, or all-TBD).
@@ -11537,9 +11561,16 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
+                // INFRA-2984: was `.trim().is_empty()` only, so a non-empty
+                // but non-verifiable AC (e.g. `["verify it works"]`, as
+                // INFRA-2984 itself shipped with) passed this gate silently.
+                // Route through the same is_acceptance_criteria_vague() used
+                // by `gap list`/`gap preflight` so all three surfaces agree.
                 let vague_pickable: Vec<&gap_store::GapRow> = all_gaps
                     .iter()
-                    .filter(|g| g.status == "open" && g.acceptance_criteria.trim().is_empty())
+                    .filter(|g| {
+                        g.status == "open" && is_acceptance_criteria_vague(&g.acceptance_criteria)
+                    })
                     .collect();
 
                 let double_encoded: Vec<&gap_store::GapRow> = all_gaps
@@ -20011,5 +20042,35 @@ mod tests {
         assert!(super::is_vague_ac_entry("todo: stuff"));
         assert!(super::is_vague_ac_entry("N/A"));
         assert!(!super::is_vague_ac_entry("Implement X with Y"));
+    }
+
+    #[test]
+    fn infra_2984_filler_phrase_ac_is_vague() {
+        // The exact phrase INFRA-2984 itself shipped with — non-empty, so it
+        // slipped past the old `.trim().is_empty()` audit-priorities check.
+        assert!(super::is_vague_ac_entry("verify it works"));
+        assert!(super::is_vague_ac_entry("Verify It Works"));
+        assert!(super::is_vague_ac_entry("it works"));
+        assert!(super::is_vague_ac_entry("done"));
+        assert!(super::is_vague_ac_entry("make it work"));
+
+        // Real AC text that happens to contain "works" must not be flagged
+        // (mirrors the INFRA-1878 in-passing-mention precedent for TODO).
+        assert!(!super::is_vague_ac_entry(
+            "ensure the retry logic works under load"
+        ));
+        assert!(!super::is_vague_ac_entry(
+            "the /health endpoint works and returns 200"
+        ));
+    }
+
+    #[test]
+    fn infra_2984_acceptance_criteria_vague_catches_filler_phrase_array() {
+        assert!(super::is_acceptance_criteria_vague(
+            r#"["verify it works"]"#
+        ));
+        assert!(!super::is_acceptance_criteria_vague(
+            r#"["Add retry with backoff", "Add unit test for timeout path"]"#
+        ));
     }
 }
