@@ -873,6 +873,9 @@ jobs:
       - name: atomic claim no-shell-out + thin-wrapper assertions (INFRA-1025)
         run: bash scripts/ci/test-infra-1025-atomic-claim.sh
 
+      - name: claim survives unrelated import-similarity blocks (INFRA-3002 AC#2)
+        run: bash scripts/ci/test-claim-import-similarity-nonfatal.sh
+
       - name: shell completion subcommand source assertions (EFFECTIVE-010)
         run: bash scripts/ci/test-effective-010-completion.sh
 

@@ -2553,6 +2553,16 @@ fn verify_or_seed_gap(repo_root: &Path, gap_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// INFRA-3002 AC#2: `chump gap import` exits 1 whenever ANY row in the yaml
+/// batch is blocked by INFRA-1434 title-similarity — even when the block is
+/// a pre-existing dupe unrelated to the gap this claim is trying to seed.
+/// A nonzero exit whose stderr carries the INFRA-1434 marker is that
+/// (recoverable) class; anything else (parse errors, io errors, etc.) is a
+/// genuine import failure that must still fail the claim.
+fn import_failure_is_similarity_block_only(stderr: &str) -> bool {
+    stderr.contains("blocked by title-similarity (INFRA-1434")
+}
+
 fn run_chump_gap_import(repo_root: &Path) -> Result<()> {
     // Use the same binary that's running this code so we're consistent
     // with the build that may have local edits. argv[0] resolves to it.
@@ -2564,7 +2574,20 @@ fn run_chump_gap_import(repo_root: &Path) -> Result<()> {
         .context("spawning chump gap import")?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
-        bail!("chump gap import failed: {}", stderr);
+        // Don't fail the claim on the similarity-block class of exit; warn
+        // and let the caller's post-import state.db re-check
+        // (verify_or_seed_gap) decide whether the CLAIMED gap actually made
+        // it in. A genuine block of the claimed gap itself still surfaces
+        // there as "not found in state.db".
+        if import_failure_is_similarity_block_only(&stderr) {
+            eprintln!(
+                "chump claim: chump gap import reported similarity blocks (see \
+                 ambient.jsonl kind=gap_import_similarity_block); proceeding — \
+                 will verify the claimed gap landed:\n{stderr}"
+            );
+        } else {
+            bail!("chump gap import failed: {}", stderr);
+        }
     }
     Ok(())
 }
@@ -4678,6 +4701,23 @@ mod tests {
         // Day after leap day 2024 (leap-year math sanity)
         // 2024-03-01T00:00:00Z = 1709251200
         assert_eq!(unix_to_iso8601(1_709_251_200), "2024-03-01T00:00:00Z");
+    }
+
+    // INFRA-3002 AC#2/AC#6: claim must not fail on unrelated pre-existing
+    // similarity blocks, but must still surface genuine import failures.
+    #[test]
+    fn import_failure_similarity_block_is_recoverable() {
+        let stderr = "import complete: 1 inserted, 0 skipped, 1 blocked by \
+                       title-similarity (INFRA-1434; see ambient.jsonl \
+                       kind=gap_import_similarity_block).";
+        assert!(import_failure_is_similarity_block_only(stderr));
+    }
+
+    #[test]
+    fn import_failure_parse_error_is_still_fatal() {
+        let stderr = "chump gap import: invalid yaml at docs/gaps/INFRA-9999.yaml: \
+                       mapping values are not allowed in this context";
+        assert!(!import_failure_is_similarity_block_only(stderr));
     }
 
     #[test]
