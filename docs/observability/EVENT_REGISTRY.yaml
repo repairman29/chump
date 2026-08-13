@@ -6020,6 +6020,25 @@ events:
       cadence even when the loop is quiet.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, source, status]
+  - kind: log_triage_completed
+    effect_metric: self
+    emitter: src/log_triage.rs (INFRA-1891, `chump fleet log-triage`)
+    trigger: >
+      A `chump fleet log-triage` pass finished — read the window, computed
+      the event-kind histogram, cross-referenced rare kinds against
+      state.db, and wrote .chump/triage/YYYY-MM-DD.md.
+    consumers: [fleet-brief, PWA dashboard, operator morning ritual]
+    fields_required: [ts, kind, source, finding_count, parse_errors, candidate_gap_count]
+  - kind: log_triage_finding_high_signal
+    effect_metric: operator_action_within_24h_for_same_signature
+    emitter: src/log_triage.rs (INFRA-1891, `chump fleet log-triage`)
+    trigger: >
+      One candidate finding survived the <=5 operator-attention budget in a
+      `chump fleet log-triage` pass — a cross-referenced signal (stale
+      gap_failed detector, still-DIRTY pr_auto_rebase_failed, or a hot
+      conflict-file pattern) worth operator review.
+    consumers: [fleet-brief, PWA dashboard, other detectors]
+    fields_required: [ts, kind, source, signature, occurrences, dedup_status, suggested_title]
   - kind: self_doctor_healed
     effect_metric: self
     emitter: src/fleet_self_doctor.rs run_heal_cycle (INFRA-1595)
