@@ -620,6 +620,8 @@ fn is_vague_ac_entry(s: &str) -> bool {
         || matches!(
             upper.as_str(),
             "VERIFY IT WORKS"
+                | "VERIFY IT"
+                | "VERIFY"
                 | "IT WORKS"
                 | "WORKS"
                 | "MAKE IT WORK"
@@ -20071,6 +20073,23 @@ mod tests {
         ));
         assert!(!super::is_acceptance_criteria_vague(
             r#"["Add retry with backoff", "Add unit test for timeout path"]"#
+        ));
+    }
+
+    #[test]
+    fn infra_3259_verify_it_without_works_is_vague() {
+        // INFRA-3259 itself shipped with AC `["verify it"]` — the shorter
+        // "verify it" / bare "verify" filler slipped past the INFRA-2984
+        // allowlist because it only matched "verify it works".
+        assert!(super::is_vague_ac_entry("verify it"));
+        assert!(super::is_vague_ac_entry("Verify It"));
+        assert!(super::is_vague_ac_entry("VERIFY"));
+        assert!(super::is_acceptance_criteria_vague(r#"["verify it"]"#));
+
+        // Real AC text that happens to start with "verify" must not be
+        // flagged (mirrors the INFRA-2984 in-passing-mention precedent).
+        assert!(!super::is_vague_ac_entry(
+            "verify the /health endpoint returns 200 under load"
         ));
     }
 }
