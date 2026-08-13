@@ -4706,6 +4706,26 @@ events:
     consumers: [fleet-brief, reaper-heartbeat-watchdog]
     fields_required: [ts, kind, worktree, lease, ttl_s]
 
+  # ── RESILIENT-116: target-dir reaper cold-build-safety ──────────────────
+  - kind: target_reap_skipped
+    effect_metric: self
+    emitter: >
+      scripts/ops/cargo-target-reaper.sh (RESILIENT-116);
+      scripts/ops/active-target-reaper.sh (RESILIENT-116);
+      scripts/ops/stale-worktree-reaper.sh (RESILIENT-116)
+    trigger: >
+      A reaper was about to delete a worktree's target/ directory but
+      bypassed the delete because either (a) the worktree carries a
+      .chump-no-reap sentinel file (reason=no_reap_marker — the standard
+      escape hatch, see docs/process/CLAUDE_GOTCHAS.md and the RESILIENT-107
+      precedent), or (b) an active build was detected via a live process
+      with files open inside the worktree, a present .cargo-lock file, or a
+      target/ mtime fresher than the active-build window (reason=active_build).
+      Exists to make the "reaper raced a fresh worktree cargo build" failure
+      class (RESILIENT-116) observable instead of silent.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, worktree, reason]
+
   # ── RESILIENT-029: wip-stash before reap ────────────────────────────────
   - kind: worktree_work_stashed_before_reap
     effect_metric: self

@@ -317,12 +317,37 @@ for _wt_candidate in ${_TMP_GLOB}/; do
         continue
     fi
 
+    # RESILIENT-116: honor the .chump-no-reap escape hatch (same sentinel
+    # active-target-reaper.sh and stale-worktree-reaper.sh respect — see
+    # RESILIENT-107 precedent). Checked before any deletion decision.
+    if [[ -e "${_wt_candidate}/.chump-no-reap" ]]; then
+        printf '{"ts":"%s","kind":"target_reap_skipped","worktree":"%s","reason":"no_reap_marker"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_target_candidate" \
+            >> "$AMBIENT_LOG" 2>/dev/null || true
+        echo "  skip (.chump-no-reap present): ${_target_candidate}"
+        continue
+    fi
+
     # Transient failure: cargo lock present means a build may be in flight.
     if [[ -f "${_target_candidate}/.cargo-lock" ]]; then
         printf '{"ts":"%s","kind":"cargo_target_reaped","path":"%s","error":"cargo_lock_active","failure_class":"transient","worktree_gone":true,"dry_run":true}\n' \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_target_candidate" \
             >> "$AMBIENT_LOG" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"target_reap_skipped","worktree":"%s","reason":"active_build"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_target_candidate" \
+            >> "$AMBIENT_LOG" 2>/dev/null || true
         echo "  skip (cargo lock active — transient): ${_target_candidate}"
+        continue
+    fi
+
+    # RESILIENT-116: lsof guard — a live process with files open under
+    # target/ means a build is actively writing to it even when no
+    # .cargo-lock is present (e.g. between compiler invocations).
+    if command -v lsof >/dev/null 2>&1 && lsof -F n +D "$_target_candidate" 2>/dev/null | grep -q .; then
+        printf '{"ts":"%s","kind":"target_reap_skipped","worktree":"%s","reason":"active_build"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_target_candidate" \
+            >> "$AMBIENT_LOG" 2>/dev/null || true
+        echo "  skip (process has files open — active build): ${_target_candidate}"
         continue
     fi
 
@@ -412,6 +437,34 @@ for _lease_file in "${REPO_ROOT}/.chump-locks"/*.json; do
     [[ -n "$_lease_wt" ]] || continue
     _lease_target="${_lease_wt}/target"
     [[ -d "$_lease_target" ]] || continue
+
+    # RESILIENT-116: honor the .chump-no-reap escape hatch — a pushed +
+    # auto-merge-armed PR can still have a build actively running (e.g. a
+    # local re-test after push) racing this class-C reap.
+    if [[ -e "${_lease_wt}/.chump-no-reap" ]]; then
+        printf '{"ts":"%s","kind":"target_reap_skipped","worktree":"%s","reason":"no_reap_marker"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_lease_target" \
+            >> "$AMBIENT_LOG" 2>/dev/null || true
+        echo "  skip (.chump-no-reap present): ${_lease_target}"
+        continue
+    fi
+
+    # RESILIENT-116: active cargo lock or fresh mtime means a build may be
+    # mid-flight in this worktree; do not race it even if the PR is pushed.
+    if [[ -f "${_lease_target}/.cargo-lock" ]]; then
+        printf '{"ts":"%s","kind":"target_reap_skipped","worktree":"%s","reason":"active_build"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_lease_target" \
+            >> "$AMBIENT_LOG" 2>/dev/null || true
+        echo "  skip (cargo lock active — transient): ${_lease_target}"
+        continue
+    fi
+    if command -v lsof >/dev/null 2>&1 && lsof -F n +D "$_lease_target" 2>/dev/null | grep -q .; then
+        printf '{"ts":"%s","kind":"target_reap_skipped","worktree":"%s","reason":"active_build"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_lease_target" \
+            >> "$AMBIENT_LOG" 2>/dev/null || true
+        echo "  skip (process has files open — active build): ${_lease_target}"
+        continue
+    fi
 
     # Get branch name from worktree
     _branch=$(git -C "$_lease_wt" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
