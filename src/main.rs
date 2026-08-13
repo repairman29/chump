@@ -128,6 +128,7 @@ mod genai_conv;
 mod git_safety; // RESILIENT-256: destructive-git guard + object-store WIP snapshot
 mod git_tools;
 mod github_rate_limit;
+mod harvester_cli; // INFRA-1823: chump harvest <scan|check|brief|deep-scan|list-clusters> — fleet cartographer CLI
 mod health;
 mod health_server;
 mod hitl_escalation;
@@ -1937,6 +1938,15 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("evangelize") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(evangelist::run(&sub_args));
+    }
+
+    // `chump harvest <scan|check|brief|deep-scan|list-clusters>` (INFRA-1823)
+    // — Fleet Cartographer CLI. Productizes the Harvester (previously a
+    // Claude-Code-session-only shell script + agent) as a first-class chump
+    // engine capability, usable from any harness.
+    if args.get(1).map(String::as_str) == Some("harvest") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(harvester_cli::run(&sub_args));
     }
 
     // `chump systematize <target-repo-path> [--json]` (INFRA-1783, phase 4 of
@@ -12919,10 +12929,51 @@ async fn main() -> Result<()> {
                     suggestions
                 };
 
+                // ── INFRA-1823 AC4: harvest pre-flight ──────────────────────
+                //
+                // Before slices are printed/filed, check the arsenal catalog
+                // for prior art matching this gap so the implementing worker
+                // sees it instead of re-inventing a primitive that already
+                // exists elsewhere in the fleet. Best-effort: a missing
+                // catalog (no `chump harvest scan` run yet) is not fatal to
+                // decompose, it just means no citation is attached.
+                let harvest_overlap: Option<String> = {
+                    let mut hit = None;
+                    let mut candidates = vec![gap_id.clone()];
+                    candidates.extend(
+                        parent
+                            .title
+                            .split_whitespace()
+                            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+                            .filter(|w| w.len() >= 5)
+                            .take(4),
+                    );
+                    for topic in candidates {
+                        if topic.is_empty() {
+                            continue;
+                        }
+                        if let Some((found, text)) = harvester_cli::capture_check(&topic) {
+                            if found && !text.is_empty() {
+                                hit = Some(format!("[chump harvest check '{topic}']\n{text}"));
+                                break;
+                            }
+                        }
+                    }
+                    hit
+                };
+                if let Some(ref overlap) = harvest_overlap {
+                    eprintln!();
+                    eprintln!("=== harvest pre-flight: prior-art overlap found ===");
+                    eprintln!("{overlap}");
+                    eprintln!("=== end harvest pre-flight ===");
+                }
+
                 if json_out {
                     println!(
                         "{}",
-                        serde_json::to_string_pretty(&serde_json::json!(suggestions
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "harvest_overlap": harvest_overlap,
+                            "slices": suggestions
                             .iter()
                             .enumerate()
                             .map(|(i, s)| {
@@ -12935,7 +12986,8 @@ async fn main() -> Result<()> {
                                     "depends_on": s.depends_on,
                                 })
                             })
-                            .collect::<Vec<_>>()))
+                            .collect::<Vec<_>>(),
+                        }))
                         .unwrap_or_default()
                     );
                 } else if !apply {
@@ -13009,11 +13061,18 @@ async fn main() -> Result<()> {
                                 // suggestion, append; otherwise set directly.
                                 let skills_update: Option<String> = external_repo_tag.clone();
 
+                                // INFRA-1823 AC4: carry the harvest citation
+                                // onto every filed sub-gap's notes so the
+                                // implementing worker sees the prior art
+                                // without having to re-run the check.
+                                let notes_update: Option<String> = harvest_overlap.clone();
+
                                 let _ = store.set_fields(
                                     &new_id,
                                     gap_store::GapFieldUpdate {
                                         acceptance_criteria: Some(ac_json),
                                         skills_required: skills_update,
+                                        notes: notes_update,
                                         ..Default::default()
                                     },
                                 );

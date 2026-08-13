@@ -80,6 +80,9 @@ PROD_PATHS = [
     # from scripts/content-bots/. Same production-emit semantics as the
     # other scripts/ paths above.
     'scripts/content-bots/',
+    # INFRA-1823: scripts/arsenal/build.py emits kind=arsenal_rebuilt on
+    # every Harvester catalog rebuild (scheduled or via `chump harvest scan`).
+    'scripts/arsenal/',
 ]
 # Also skip per-file patterns that may live inside PROD_PATHS but are tests
 # or fixtures (e.g. `src/foo/tests/bar.rs`).

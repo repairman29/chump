@@ -55,6 +55,58 @@ PRIMITIVE_PATTERNS = {
 }
 
 
+# INFRA-1823 AC7: coverage push — extracted_primitives per repo.
+#
+# The heuristic `detect_primitives()` above is a keyword scan of the
+# name/description GitHub metadata; it can't see inside a repo. This table
+# is the machine-readable output of the Wave 1-3 deep-scan campaigns
+# documented in docs/arsenal/HARVEST_ROADMAP.md — each entry cites a
+# specific file/pattern that was verified at source level (per the
+# Verify-at-source discipline in HARVESTER.md), not a description guess.
+# Populated from the roadmap findings rather than re-scanning: the deep
+# reads already happened (74/76 = 97% coverage per Wave 3), this closes the
+# loop by making those findings queryable via `chump harvest check` instead
+# of living only in prose.
+EXTRACTED_PRIMITIVES: dict[str, list[str]] = {
+    "BEAST-MODE": ["HITL approval flow (Approve/Reject endpoints)", "requiresHumanApproval flag", "executionMode DRAFT|SOVEREIGN state machine", "enterprise AuditLogger pattern", "task hierarchy (Roadmap->Feature->Task)"],
+    "chump-proprietary": ["crates/coord::Executor", "crates/coord consensus", "crates/coord::mesh::MeshTransport"],
+    "echeo": ["Matchmaker::calculate_ship_velocity_score() (cosine sim + language/type boosts, 0-1.0)", "src/shredder.rs tree-sitter AST extraction (TS/Rust/Python/Go, authorship metadata)"],
+    "openclaw": ["SQLite + FTS memory schema", "LanceDB embeddings cache", "memory-tool agent registry integration"],
+    "neural-farm": ["OpenAI-compat /v1 proxy", "LiteLLM/InferrLM router"],
+    "upshift": ["upshift fix --dry-run --json (dependency-upgrade safety check)"],
+    "registry": ["ACP fork (agentclientprotocol/registry, JSON-RPC editor<->agent standard)"],
+    "pixel-edge-server": ["bicameral-mind architecture: Reflexive on-device + Neocortex cloud routing (docs/claude-gateway.md, claude-gateway/server.js:213-269)"],
+    "ai-gm-service": ["aiGMMultiModelEnsembleService.js (Together.ai -> Qwen 72B -> Mistral fallback chain)", "togetherAIService.js"],
+    "auth-platform-service": ["enterpriseSSOService.js (JWT+MFA+SSO)", "mfaService.js (DDoS + Redis rate-limit)"],
+    "postsub": ["server.js Stripe tiered billing (PLATFORM_FEES: basic 5%, pro 8%, enterprise 3%, creator revenue split)"],
+    "project-forge": ["initiative hierarchy schema (Next.js + Node + Postgres)", "AI-insights pipeline (GCloud deploy)"],
+    "bot-simulation-service": ["synthetic-load generator", "5 bot archetypes + fatigue simulation", "funnel analytics (Railway-native)"],
+    "mock-services": ["containerized mock Anthropic API server", "containerized mock OpenAI API server", "containerized mock Stripe API server", "containerized mock Supabase API server"],
+    "economy-system-service": ["MarketSimulationEngine (elasticity-based, sector-stratified pricing, beginner-mode variant)"],
+    "ims": ["Flask + SQLAlchemy Initiative Tracker", "Chart.js dashboard + role-based auth REST API"],
+    "coderoach": ["autonomous code-quality self-learning fixer patterns"],
+    "character-system-service": ["persistent-state character domain logic (data/ dir)"],
+    "combat-system-service": ["persistent-state combat domain logic (data/ dir)"],
+    "analytics-platform-service": ["aiInsightsEngine.js (weighted-model retention scoring, conversion thresholds, churn risk)"],
+    "audio-generation-service": ["voice synthesis with emotion profiles + quality presets (draft/standard/premium/cinematic)"],
+    "asset-management-service": ["dual AI generator (image + 3D), style matrix (10 art styles x 4 quality tiers)"],
+    "mythseeker2": ["agent persona system (Firebase Cloud Functions + Vertex AI -> OpenAI fallback)"],
+    "mission-engine-service": ["Supabase + Redis + LLM choreographer pattern"],
+    "zendesk-background-agent": ["Vercel + OpenAI embeddings semantic ticket matching"],
+    "dice": ["TTRPG expression parser + modifier resolution"],
+    "trove-web": ["Next.js SPA + Firebase + GCS bucket integration"],
+    "coloringbook": ["React + FastAPI image-processing proxy (compute-offload pattern)"],
+    "mixdown": ["Python + Flask + AI metadata enrichment audio pipeline"],
+    "echeovid": ["multi-channel content-repurposing pipeline"],
+    "sheckleshare": ["Grow Garden Calculator pricing engine"],
+    "internal-zendesk-tools": ["React 18 + TS + Vite + Tailwind assessment questionnaire (dashboard architecture reference)"],
+}
+
+
+def extracted_primitives_for(name: str) -> list[str]:
+    return EXTRACTED_PRIMITIVES.get(name, [])
+
+
 def assign_cluster(name: str) -> str:
     for label, pat in CLUSTERS:
         if re.search(pat, name, re.IGNORECASE):
@@ -241,6 +293,7 @@ def build():
             "topics": [t.get("name") for t in (r.get("repositoryTopics") or []) if t],
             "cluster": assign_cluster(r["name"]),
             "primitives": detect_primitives(r["name"], r.get("description") or ""),
+            "extracted_primitives": extracted_primitives_for(r["name"]),
             "local_clone": clone,
         })
 
@@ -291,6 +344,37 @@ def build():
     print(f"wrote {ARSENAL / 'GLOBAL_ARSENAL.md'}")
     print(f"fleet_size: {out['metadata']['fleet_size_github']} GH repos, {out['metadata']['fleet_size_local_clones']} cloned locally")
     print(f"clusters: {len(out['clusters'])}, duplications: {len(out['duplications'])}, alerts: {len(out['alerts'])}")
+
+    _emit_arsenal_rebuilt(out)
+
+
+def _emit_arsenal_rebuilt(out: dict) -> None:
+    """INFRA-1823 AC5/AC6: emit kind=arsenal_rebuilt so scheduled (launchd)
+    and on-demand (`chump harvest scan`) rebuilds are both visible in the
+    ambient stream, not just as a file diff nobody watches.
+
+    Best-effort: a write failure here must never fail the catalog rebuild
+    itself, so this mirrors the `_emit_ambient` best-effort pattern used by
+    scripts/coord/gap-doctor-reconcile.py and scripts/ops/github-webhook-receiver.py.
+    """
+    ambient_path = Path(
+        os.environ.get("CHUMP_AMBIENT_LOG", str(ROOT / ".chump-locks" / "ambient.jsonl"))
+    )
+    try:
+        ambient_path.parent.mkdir(parents=True, exist_ok=True)
+        event = {
+            "ts": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "kind": "arsenal_rebuilt",
+            "repos": out["metadata"]["fleet_size_github"],
+            "clusters": len(out["clusters"]),
+            "dups": len(out["duplications"]),
+            "alerts": len(out["alerts"]),
+            "source": "scripts/arsenal/build.py",
+        }
+        with ambient_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(event, separators=(",", ":")) + "\n")
+    except OSError as e:
+        print(f"arsenal_rebuilt: ambient emit failed (non-fatal): {e}")
 
 
 def render_md(out: dict) -> str:

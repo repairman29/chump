@@ -3,17 +3,17 @@
 #
 # This is the canonical Harvester surface. Any harness (Claude Code,
 # opencode-bigpickle, codex, manual) invokes it the same way. The .claude/
-# agent + skill wrappers delegate here; they are convenience, not capability.
-#
-# The full Rust integration (chump harvest subcommand, decompose-hook,
-# scheduled rebuild, ambient kind=arsenal_rebuilt event) is tracked as
-# INFRA-1823. This shell CLI is the v0 surface that exists today so the
-# Harvester is a real capability of Chump-the-engine, not a Claude-Code
-# session artifact.
+# agent + skill wrappers, AND `chump harvest` (src/harvester_cli.rs,
+# INFRA-1823), all delegate here; they are convenience/validation fronts,
+# not a second implementation of the catalog logic. Prefer `chump harvest`
+# for interactive use (it validates args and gives consistent exit codes);
+# this script is the shared engine underneath.
 #
 # Rust-First-Bypass: glue between gh + jq + python3 build.py, < 200 LOC,
 # read-mostly (only writes to docs/arsenal/* which is regenerable from
-# inputs). Will be ported to Rust as part of INFRA-1823.
+# inputs). INFRA-1823 wraps this in `chump harvest` rather than porting the
+# jq catalog logic to Rust — duplicating it would create two sources of
+# truth for what counts as an "overlap".
 #
 # Usage:
 #   scripts/arsenal/harvest.sh <subcommand> [args]

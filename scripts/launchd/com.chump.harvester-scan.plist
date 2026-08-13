@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chump.harvester-scan</string>
+
+  <!-- INFRA-1823: weekly Harvester catalog rebuild. Refreshes
+       docs/arsenal/raw/github_repos.json from `gh repo list` and rebuilds
+       docs/arsenal/GLOBAL_ARSENAL.{json,md} via build.py, which emits
+       kind=arsenal_rebuilt to ambient.jsonl with repo/cluster/dup/alert
+       counts. Prefer `chump harvest scan` for on-demand rebuilds; this
+       plist is the "nobody has to remember to run it" backstop. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>gh repo list --limit 200 --json name,description,primaryLanguage,visibility,pushedAt,isArchived,isFork,sshUrl,url,createdAt,updatedAt,diskUsage,repositoryTopics &gt; /Users/jeffadkins/Projects/Chump/docs/arsenal/raw/github_repos.json &amp;&amp; python3 /Users/jeffadkins/Projects/Chump/scripts/arsenal/build.py</string>
+  </array>
+
+  <!-- Sunday 08:00 local — ahead of the roadmap-update-agent's Sunday 09:00
+       run, so a freshly rebuilt arsenal is available when that agent reads
+       it for prior-art context. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>0</integer>
+    <key>Hour</key>
+    <integer>8</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-harvester-scan.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-harvester-scan.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+    <key>PATH</key>
+    <string>/Users/jeffadkins/.local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
