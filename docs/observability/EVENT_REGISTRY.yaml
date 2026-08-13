@@ -9896,4 +9896,26 @@ events:
     emitter: src/main.rs (chump fleet escalation --suppress-rule, INFRA-1890)
     trigger: operator ran `chump fleet escalation --suppress-rule <id>` to silence a noisy signature during a maintenance window
     consumers: [fleet-brief, audit-log]
+
+  # ── Local merge queue (INFRA-2252 / mythical INFRA-1321) ───────────────────
+  - kind: local_merge_queued
+    effect_metric: self
+    emitter: scripts/coord/local-merge-queue.sh
+    trigger: a gap ship request is enqueued into the local merge queue because CHUMP_GITHUB_MODE=offline (bot-merge.sh routes here instead of gh pr merge --auto)
+    consumers: [fleet-brief, network-sync-daemon (future)]
+    fields_required: [ts, kind, gap, branch]
+
+  - kind: local_merge_landed
+    effect_metric: self
+    emitter: scripts/coord/local-merge-queue.sh
+    trigger: a queued merge request was rebased, squash-merged into local main, and recorded in state.db via `chump gap set --status done`
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, gap, sha]
+
+  - kind: local_merge_blocked
+    effect_metric: self
+    emitter: scripts/coord/local-merge-queue.sh
+    trigger: a queued merge request failed local CI, rebase, or the merge-lock could not be acquired within the retry budget — request remains pending for the next processing pass
+    consumers: [fleet-brief, operator]
+    fields_required: [ts, kind, gap, reason]
     fields_required: [ts, kind, rule_id]
