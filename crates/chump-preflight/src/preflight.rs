@@ -2062,6 +2062,14 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "infra-3002-claim-import-similarity-nonfatal",
+            &[
+                "bash",
+                "scripts/ci/test-claim-import-similarity-nonfatal.sh",
+            ],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "infra-250-v1-retirement",
             &["bash", "scripts/ci/test-infra-250-v1-retirement.sh"],
             GateKind::Scripts,
