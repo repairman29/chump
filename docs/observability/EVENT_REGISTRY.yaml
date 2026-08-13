@@ -9924,3 +9924,15 @@ events:
     consumers: [fleet-brief, operator]
     fields_required: [ts, kind, gap, reason]
     fields_required: [ts, kind, rule_id]
+
+  - kind: installer_audit_finding
+    effect_metric: self
+    emitter: scripts/audit/audit-launchd-installers.sh (INFRA-2394)
+    trigger: >
+      scripts/audit/audit-launchd-installers.sh ranked all
+      scripts/setup/install-*-launchd.sh installers by inbound refs
+      (bootstrap-manifest.yaml + chump-fleet-bootstrap.sh, scripts/coord/,
+      workflows, sibling scripts, docs) and found this installer has zero
+      refs from any executor or real doc — UNWIRED, candidate-delete.
+    consumers: [operator]
+    fields_required: [ts, kind, path, introducing_pr, introducing_gap, ref_count_by_class]

@@ -138,3 +138,9 @@ install-fast-linker.sh
 # docs/process/LINUX_NODE_ONBOARDING.md when standing up/rebuilding the
 # primary shipping node.
 install-helsinki-atc.sh
+
+# reason: INFRA-2394 — weekly re-run of the installer-wiring audit
+# (scripts/audit/audit-launchd-installers.sh). Situational/opt-in: useful
+# on any machine that wants a standing WIRED/DOCUMENTED/UNWIRED report, but
+# not required for fresh-bootstrap correctness.
+install-installer-audit-launchd.sh
