@@ -148,6 +148,7 @@ mod intent_parser;
 mod interrupt_notify;
 mod intervention_watchdog; // COTG-2.1/INFRA-3489: log every human touch as an autonomy defect
 mod introspect_tool;
+mod scan; // INFRA-1882: chump scan <repo-path> — repo takeover opener (2026 demo #2)
 pub use chump_inventory::inventory; // META-271: fleet inventory + tech-debt review-only audit DB (EFFECTIVE-401: extracted to crates/chump-inventory)
 mod job_log;
 pub use chump_kpi_report::kpi_report; // EFFECTIVE-418: extracted to crates/chump-kpi-report (build-speed)
@@ -2054,6 +2055,15 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("ingest-preflight") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(ingest_preflight::run(&sub_args));
+    }
+
+    // `chump scan <repo-path> [--max-gaps N]` (INFRA-1882, 2026 demo #2) —
+    // local read-only heuristics against a sibling repo, files up to
+    // --max-gaps concrete gaps straight into the TARGET repo's own
+    // .chump/state.db. Pairs with `chump fleet-mode --takeover`.
+    if args.get(1).map(String::as_str) == Some("scan") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(scan::run(&sub_args));
     }
 
     // `chump cartograph <target-repo-path> [--json]` (INFRA-1782, phase 2 of

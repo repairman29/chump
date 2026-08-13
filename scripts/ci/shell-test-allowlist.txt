@@ -19,3 +19,9 @@
 # Example:
 #   # reason: multi-worker race condition on the same .chump-locks lease
 #   scripts/ci/test-multi-worker-lease-race.sh
+
+# reason: INFRA-1882 CLI end-to-end smoke (fixture git repo + spawned chump
+# binary + sqlite assertion on the TARGET repo's own .chump/state.db,
+# CHUMP_REPO-isolated ambient stream) — genuine multi-process/filesystem
+# integration, matches the ingest_librarian precedent.
+scripts/ci/test-chump-scan.sh
