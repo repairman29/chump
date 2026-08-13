@@ -56,3 +56,9 @@ enabled     chump-pr-lander.timer
 # instead of looping. Declared here so reconcile re-arms it if it drifts/fails
 # (it sat in `failed` all night on 2026-08-13 — a SIGPIPE bug, now fixed).
 enabled     chump-ci-flake-rerun.timer
+# chump-pr-approval.timer: the approve-from-phone SURFACER (RESILIENT-265).
+# Detects OS-authored PRs on external product repos (default repairman29/olive)
+# that need Jeff's approval and DMs each to his phone with ✅ Merge / ❌ Reject
+# buttons; the gateway acts on the tap. Declared here so reconcile re-arms it if
+# it drifts or fails. (Detection only — it NEVER merges without a real tap.)
+enabled     chump-pr-approval.timer

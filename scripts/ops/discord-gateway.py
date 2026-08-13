@@ -19,8 +19,12 @@ Command surface (DM the bot):
   status | brief   → fleet ship-rate + recent merges
   ping             → pong (liveness)
   help             → this list
-Button interactions (custom_id "approve:<id>" / "deny:<id>") are acknowledged and
-logged to ambient; wiring them to the approval resolver is the next slice.
+Button interactions:
+  * "mergepr:<owner>/<repo>/<n>" / "rejectpr:<owner>/<repo>/<n>" — RESILIENT-265
+    approve-from-phone: WIRED. The tap runs scripts/ops/pr-approval-action.sh
+    (idempotent gh merge/close) and edits the message with the result. Only the
+    operator (CHUMP_READY_DM_USER_ID) can act.
+  * legacy "approve:<id>" / "deny:<id>" — acknowledged only (no action bound).
 
 Run: DISCORD_TOKEN=... CHUMP_READY_DM_USER_ID=... python3 discord-gateway.py
 Needs: pip install websockets
@@ -429,6 +433,83 @@ async def _dispatch_deep_advisor(question: str) -> None:
         send_dm(f"(couldn't start the deep advisor agent: {e})")
 
 
+# RESILIENT-265 — the ACTION half of approve-from-phone. The detector organ
+# (scripts/dispatch/pr-approval-surface-beat.sh) DMs the operator a product-repo
+# PR with ✅ Merge / ❌ Reject buttons whose custom_ids are `mergepr:<owner>/<repo>/<n>`
+# and `rejectpr:<owner>/<repo>/<n>`. This handler is the ONE codepath a real tap
+# triggers: it shells out to scripts/ops/pr-approval-action.sh (the same script
+# the proof harness invokes directly), which does the idempotent gh work, then
+# edits the original Discord message to the result and strips the buttons so the
+# decision can't be re-tapped by accident.
+PR_APPROVAL_ACTION = Path(REPO) / "scripts" / "ops" / "pr-approval-action.sh"
+
+
+def _parse_pr_custom_id(custom_id: str):
+    """`mergepr:owner/repo/number` → ("merge", "owner/repo", "number"); None if
+    it doesn't parse."""
+    if ":" not in custom_id:
+        return None
+    prefix, rest = custom_id.split(":", 1)
+    action = {"mergepr": "merge", "rejectpr": "reject"}.get(prefix)
+    if not action:
+        return None
+    parts = rest.split("/")
+    if len(parts) < 3 or not parts[-1].isdigit():
+        return None
+    number = parts[-1]
+    repo = "/".join(parts[:-1])
+    return action, repo, number
+
+
+def _edit_original_interaction(app_id: str, tok: str, content: str) -> None:
+    """PATCH the message the button lives on (webhook @original) — set the
+    result text and REMOVE the buttons (components: []) so it can't be re-tapped."""
+    try:
+        subprocess.run(
+            ["curl", "-sS", "--max-time", "12", "-o", "/dev/null",
+             "-X", "PATCH", f"{API}/webhooks/{app_id}/{tok}/messages/@original",
+             "-H", "Content-Type: application/json",
+             "-d", json.dumps({"content": content[:1990], "components": []})],
+            capture_output=True, text=True, timeout=15,
+        )
+    except Exception:
+        pass
+
+
+async def handle_pr_approval_interaction(app_id: str, tok: str, custom_id: str) -> None:
+    """Operator tapped ✅ Merge / ❌ Reject on a product-repo PR. Run the real
+    action (idempotent — a second tap on an already-acted PR is a clean no-op)
+    and report the outcome back into the same message."""
+    parsed = _parse_pr_custom_id(custom_id)
+    if parsed is None:
+        _edit_original_interaction(app_id, tok, f"couldn't parse `{custom_id}` ⚠️")
+        return
+    action, repo, number = parsed
+    if not PR_APPROVAL_ACTION.exists():
+        emit("discord_pr_approval_failed", custom_id=custom_id, reason="action_script_missing")
+        _edit_original_interaction(app_id, tok,
+                                   "(PR-approval action script missing — can't act yet ⚠️)")
+        return
+    emit("discord_pr_approval_tap", action=action, repo=repo, number=number)
+    print(f"[discord-gateway] PR approval tap: {action} {repo}#{number}", flush=True)
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "bash", str(PR_APPROVAL_ACTION), action, repo, number,
+            cwd=REPO,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=90)
+        status = (out.decode().strip().splitlines() or ["(no output)"])[-1]
+    except asyncio.TimeoutError:
+        status = f"{repo}#{number}: action timed out ⚠️ (check GitHub)"
+    except Exception as e:
+        status = f"{repo}#{number}: action error — {e} ⚠️"
+    emit("discord_pr_approval_done", action=action, repo=repo, number=number, status=status[:200])
+    _edit_original_interaction(app_id, tok, status)
+
+
 async def gateway_loop() -> None:
     seq = None
     async with websockets.connect(GATEWAY, max_size=2**20) as ws:
@@ -524,11 +605,21 @@ async def gateway_loop() -> None:
                         continue
                     emit("discord_operator_interaction", custom_id=custom_id)
                     print(f"[discord-gateway] button: {custom_id}", flush=True)
-                    # Phase 1: acknowledge with an ephemeral confirmation. Wiring
-                    # custom_id -> approval_resolver / dispatch is the next slice.
+                    app_id = d.get("application_id")
+                    # RESILIENT-265 "approve-from-phone": a mergepr:/rejectpr:
+                    # tap ACTS. Defer-ack within Discord's 3s window (type 6 =
+                    # DEFERRED_UPDATE_MESSAGE — keeps the message + buttons up
+                    # while we work), then run the real gh action in the
+                    # background and edit the original message with the result.
+                    if custom_id.startswith(("mergepr:", "rejectpr:")):
+                        _curl_post(f"{API}/interactions/{inter_id}/{tok}/callback",
+                                   {"type": 6})  # deferred update, no visible change yet
+                        asyncio.create_task(handle_pr_approval_interaction(app_id, tok, custom_id))
+                        continue
+                    # Legacy approve:/deny: (and anything else): ack only.
                     _curl_post(f"{API}/interactions/{inter_id}/{tok}/callback",
                                {"type": 4, "data": {
-                                   "content": f"received `{custom_id}` ✅ (action wiring lands next slice)",
+                                   "content": f"received `{custom_id}` ✅ (no action bound)",
                                    "flags": 64}})
                     continue
         finally:
