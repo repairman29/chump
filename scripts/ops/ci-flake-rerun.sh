@@ -64,6 +64,63 @@ if [[ -n "${CI_FLAKE_PATTERNS_FILE:-}" && -f "$CI_FLAKE_PATTERNS_FILE" ]]; then
     done < "$CI_FLAKE_PATTERNS_FILE"
 fi
 
+# ── RESILIENT-306: KNOWN_FLAKES.yaml test-name matching ──────────────────────
+# The catalog at docs/process/KNOWN_FLAKES.yaml `flakes:` is the fleet's single
+# source of truth for cargo/nextest tests that flake (each entry carries a
+# tracking_gap). The in-lane wrapper already consults it; this organ now does
+# too, so a known test flake that slipped past the in-lane rerun (e.g. it also
+# flaked on the retry) still gets a bounded post-hoc `gh run rerun`.
+CATALOG_FILE="${CHUMP_KNOWN_FLAKES_FILE:-$REAPER_REPO_ROOT/docs/process/KNOWN_FLAKES.yaml}"
+
+# Catalogued flake test-names from the `flakes:` section only (not check_flakes
+# / playwright_flakes). Stops at the next top-level key.
+_catalog_flake_tests() {
+    [[ -f "$CATALOG_FILE" ]] || return 0
+    awk '
+        /^flakes:[[:space:]]*$/ { inlist=1; next }
+        /^[A-Za-z_][A-Za-z0-9_]*:/ { inlist=0 }
+        inlist && /^[[:space:]]*-[[:space:]]*test:[[:space:]]*/ {
+            sub(/^[[:space:]]*-[[:space:]]*test:[[:space:]]*/, "");
+            gsub(/"/, ""); sub(/[[:space:]]*#.*/, ""); sub(/[[:space:]]+$/, "");
+            if (length($0)) print
+        }
+    ' "$CATALOG_FILE" 2>/dev/null | sort -u
+}
+
+# Failed test-names parsed from a CI log — cargo verbose, cargo --quiet
+# failures-block, and nextest FAIL lines (mirrors cargo-test-with-rerun.sh).
+_failed_test_names() {
+    local log="$1" norm
+    # `gh run view --log-failed` prefixes every line with
+    # "<job><TAB><step><TAB><ISO-timestamp> " before the real log content, so
+    # the raw-format patterns below would never anchor. Strip that prefix first.
+    # A no-op on already-raw output (unit tests / in-lane use have no timestamp).
+    norm="$(sed -E 's/^([^\t]*\t)*[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z //' <<<"$log" 2>/dev/null)"
+    {
+        grep -E '^test [A-Za-z_][A-Za-z0-9_:]+ \.\.\. FAILED' <<<"$norm" 2>/dev/null \
+            | sed -E 's/^test ([A-Za-z_][A-Za-z0-9_:]+) \.\.\. FAILED.*/\1/'
+        awk '/^failures:[[:space:]]*$/{f=1;next} /^test result:/{f=0} f && /^[[:space:]]{4}[A-Za-z_][A-Za-z0-9_:]+[[:space:]]*$/{gsub(/[[:space:]]/,"");print}' <<<"$norm" 2>/dev/null
+        grep -E 'FAIL \[[^]]*\][[:space:]]+[^[:space:]]+[[:space:]]+[A-Za-z_]' <<<"$norm" 2>/dev/null \
+            | sed -E 's/.*FAIL \[[^]]*\][[:space:]]+[^[:space:]]+[[:space:]]+([A-Za-z_][A-Za-z0-9_:]+).*/\1/'
+    } | grep -E '^[A-Za-z_][A-Za-z0-9_:]+$' | sort -u
+}
+
+# Echoes a descriptor + returns 0 iff the log's failures are ALL catalogued
+# test flakes (and at least one failed test was parsed). Fail-closed.
+_known_flake_tests_match() {
+    local log="$1" failed catalog name
+    failed="$(_failed_test_names "$log")"
+    [[ -z "$failed" ]] && return 1
+    catalog="$(_catalog_flake_tests)"
+    [[ -z "$catalog" ]] && return 1
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        grep -qxF "$name" <<<"$catalog" || return 1
+    done <<<"$failed"
+    echo "known-flake-test: $(echo "$failed" | tr '\n' ',' | sed 's/,$//')"
+    return 0
+}
+
 green() { printf '\033[0;32m%s\033[0m\n' "$*"; }
 info()  { printf '  %s\n' "$*"; }
 warn()  { printf '\033[0;33m  WARN: %s\033[0m\n' "$*"; }
@@ -164,7 +221,13 @@ Bypass: \`CHUMP_FLAKE_BUDGET=0 scripts/ops/ci-flake-rerun.sh\` to keep retrying.
     fi
 
     # Pull the failed-log payload and grep for known flakes.
-    log=$(gh run view "$RUN_ID" --log-failed 2>/dev/null | head -c 200000)
+    # RESILIENT-306: the old `gh ... | head -c 200000` propagated head's
+    # pipe-close SIGPIPE (141) to gh, and `set -o pipefail` turned that into a
+    # whole-script exit 141 — which is exactly why this organ's systemd service
+    # sat in `failed` all night and never healed anything. Wrap the pipeline in
+    # `|| true` inside the substitution so a truncated read is a success, not a
+    # fatal SIGPIPE.
+    log=$( { gh run view "$RUN_ID" --log-failed 2>/dev/null | head -c 200000; } || true )
     matched=""
     for pat in "${FLAKE_PATTERNS[@]}"; do
         if grep -qF "$pat" <<<"$log"; then
@@ -173,8 +236,20 @@ Bypass: \`CHUMP_FLAKE_BUDGET=0 scripts/ops/ci-flake-rerun.sh\` to keep retrying.
         fi
     done
 
+    # RESILIENT-306: network patterns only catch infra flakes. The failure that
+    # jammed the fleet was a KNOWN test flake (credible218) — a nextest/cargo
+    # test that passes on rerun. Reuse docs/process/KNOWN_FLAKES.yaml (the same
+    # catalog the in-lane wrapper consults): if EVERY failed test parsed from
+    # the log is catalogued, treat it as a flake and rerun. Fail-closed — any
+    # uncatalogued failed test means "real failure, leave alone."
     if [[ -z "$matched" ]]; then
-        info "PR #$PR_NUM run $RUN_ID: no flake-pattern match — leaving alone  ($TITLE)"
+        if desc=$(_known_flake_tests_match "$log"); then
+            matched="$desc"
+        fi
+    fi
+
+    if [[ -z "$matched" ]]; then
+        info "PR #$PR_NUM run $RUN_ID: no flake match (patterns or catalog) — leaving alone  ($TITLE)"
         SKIPPED=$((SKIPPED+1))
         continue
     fi

@@ -50,3 +50,9 @@ paging_off  chump-board-ceo-briefing.service
 # enforces this manifest.
 enabled     chump-discord-gateway.service
 enabled     chump-pr-lander.timer
+# chump-ci-flake-rerun.timer: the CI-flake self-heal organ (RESILIENT-306).
+# Reruns known-flaky red required-checks on open fleet PRs so a flaky test
+# (e.g. credible218) cannot jam the merge queue; escalates real failures once
+# instead of looping. Declared here so reconcile re-arms it if it drifts/fails
+# (it sat in `failed` all night on 2026-08-13 — a SIGPIPE bug, now fixed).
+enabled     chump-ci-flake-rerun.timer
