@@ -26,9 +26,45 @@ static CACHE: LazyLock<RwLock<Option<RateLimitCache>>> = LazyLock::new(|| RwLock
 /// Poll interval for the background task.
 const POLL_INTERVAL: Duration = Duration::from_secs(60);
 
+/// RESILIENT-018: when running inside a GitHub Actions workflow that didn't
+/// set GH_TOKEN/GITHUB_TOKEN, `gh api rate_limit` fails every poll (this is
+/// exactly what made e2e-pwa flaky per INFRA-1846). Skip the subprocess call
+/// entirely in that case, emit `kind=ci_gh_token_missing_skip`, and degrade
+/// to null immediately instead of paying for a doomed `gh` invocation.
+fn emit_ci_gh_token_missing_skip() {
+    // scanner-anchor: "kind":"ci_gh_token_missing_skip"
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "ci_gh_token_missing_skip".to_string(),
+        source: Some("github_rate_limit".to_string()),
+        fields: vec![
+            (
+                "workflow_name".to_string(),
+                std::env::var("GITHUB_WORKFLOW").unwrap_or_else(|_| "unknown".to_string()),
+            ),
+            (
+                "job_name".to_string(),
+                std::env::var("GITHUB_JOB").unwrap_or_else(|_| "unknown".to_string()),
+            ),
+        ],
+        ..Default::default()
+    });
+}
+
 /// Fetch `gh api rate_limit` synchronously (blocking). Called from the
 /// background tokio task via `spawn_blocking`.
 fn fetch_rate_limit_blocking() -> serde_json::Value {
+    // RESILIENT-018: in CI without a token, skip the doomed `gh` call.
+    let in_ci = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+    let has_token = std::env::var("GH_TOKEN").is_ok_and(|v| !v.is_empty())
+        || std::env::var("GITHUB_TOKEN").is_ok_and(|v| !v.is_empty());
+    if in_ci && !has_token {
+        emit_ci_gh_token_missing_skip();
+        return serde_json::json!({
+            "github_rate_limit": serde_json::Value::Null,
+            "github_rate_limit_error": "skipped: GH_TOKEN/GITHUB_TOKEN not set in CI (RESILIENT-018)",
+        });
+    }
+
     // AC4 (INFRA-2484): bypass the chump_gh shim so this telemetry-only poll
     // does not itself trigger rate-recording or exhausted-emit cycles.
     // CHUMP_GH_NO_SHIM=1   — skip the PATH shim's recording path entirely.

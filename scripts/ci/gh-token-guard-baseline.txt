@@ -1,0 +1,74 @@
+# scripts/ci/gh-token-guard-baseline.txt — RESILIENT-018
+# Pre-existing scripts/ci/test-*.sh scripts that call 'gh api'/'gh pr ...'
+# without sourcing scripts/ci/lib/ci-guards.sh, captured at RESILIENT-018
+# ship time (2026-08-13). scripts/ci/test-gh-in-ci-guarded.sh treats these
+# as pre-existing debt rather than new violations.
+#
+# DO NOT ADD NEW ENTRIES without a good reason — new scripts/ci/test-*.sh
+# files should source ci-guards.sh from the start.
+# Migration tracked under RESILIENT-018 follow-up gaps; remove an entry
+# here once its script is migrated.
+#
+# Format: relative path from repo root (no leading slash)
+
+scripts/ci/test-auto-merge-armer.sh
+scripts/ci/test-auto-merge-arm-watcher.sh
+scripts/ci/test-auto-merge-rearm-daemon.sh
+scripts/ci/test-bot-autonomous.sh
+scripts/ci/test-bot-merge-dup-pr.sh
+scripts/ci/test-bot-merge-graphql-preflight.sh
+scripts/ci/test-bot-merge-hang-detection.sh
+scripts/ci/test-bot-merge-hot-file-warning.sh
+scripts/ci/test-bot-merge-mode-failopen.sh
+scripts/ci/test-bot-merge-recovery-pr-create.sh
+scripts/ci/test-bot-merge-stacked-rebase.sh
+scripts/ci/test-branch-delete-on-merge.sh
+scripts/ci/test-cache-n1-migration.sh
+scripts/ci/test-cargo-target-reaper-scope.sh
+scripts/ci/test-cascade-unblock.sh
+scripts/ci/test-chump-ship-execute.sh
+scripts/ci/test-dispatch-prompt-self-verify.sh
+scripts/ci/test-fanout-reference-flag.sh
+scripts/ci/test-fleet029-cache-overlap.sh
+scripts/ci/test-fleet-brief-recap.sh
+scripts/ci/test-gap-closure-consistency.sh
+scripts/ci/test-gh-run-list-rest.sh
+scripts/ci/test-gh-self-throttle.sh
+scripts/ci/test-gh-shim-auth-token-cache.sh
+scripts/ci/test-github-api-telemetry-shim.sh
+scripts/ci/test-graphql-exhausted-empty-coercion-guard.sh
+scripts/ci/test-infra-119-bot-merge-hang.sh
+scripts/ci/test-infra-559-checkpoint-integration.sh
+scripts/ci/test-install-gh-shim.sh
+scripts/ci/test-local-merge-queue.sh
+scripts/ci/test-merged-check-guard.sh
+scripts/ci/test-merge-group-coverage.sh
+scripts/ci/test-merge-queue-armed.sh
+scripts/ci/test-migration-pipeline-gates.sh
+scripts/ci/test-no-direct-auto-merge-arm-fixture.sh
+scripts/ci/test-no-direct-auto-merge-arm.sh
+scripts/ci/test-no-raw-gh-in-hot-paths.sh
+scripts/ci/test-orphan-closer-immunity.sh
+scripts/ci/test-orphan-pr-closer.sh
+scripts/ci/test-pr-auto-rebase-falsepositive.sh
+scripts/ci/test-pr-auto-rebase.sh
+scripts/ci/test-pr-create-gate.sh
+scripts/ci/test-pr-queue-processor.sh
+scripts/ci/test-pr-rescue-audit-handler.sh
+scripts/ci/test-pr-rescue-cache-migration.sh
+scripts/ci/test-pr-unstick-observability.sh
+scripts/ci/test-pwa-pr-actions.sh
+scripts/ci/test-pwa-visual-diff-workflow.sh
+scripts/ci/test-recovery-queue.sh
+scripts/ci/test-required-checks-non-empty.sh
+scripts/ci/test-roadmap-update-agent.sh
+scripts/ci/test-run-local-ci.sh
+scripts/ci/test-rust-first-bypass-gate.sh
+scripts/ci/test-rust-first-gate.sh
+scripts/ci/test-stale-branch-rebase.sh
+scripts/ci/test-stale-pr-rebase-bot.sh
+scripts/ci/test-status.sh
+scripts/ci/test-subagent-pre-exit-check.sh
+scripts/ci/test-subagent-shipping-epilogue.sh
+scripts/ci/test-system-integration.sh
+scripts/ci/test-wizard-daemon.sh

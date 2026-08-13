@@ -969,6 +969,15 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // transparently redirects Anthropic/OpenAI calls to the local
         // mocks. Same skip behavior as test-mock-services.sh above.
         "scripts/ci/test-mock-services-integration.sh",
+        // RESILIENT-018: gh-token-guard smoke test — asserts
+        // check_gh_token_or_skip in scripts/ci/lib/ci-guards.sh WARNs +
+        // emits ci_gh_token_missing_skip + exits 0 when GH_TOKEN/GITHUB_TOKEN
+        // are unset, and is a no-op when set. Pure bash, no network, ~1s.
+        "scripts/ci/test-gh-token-guard.sh",
+        // RESILIENT-018: gh-in-ci-guarded lint gate — fails if a NEW (non-
+        // baselined) scripts/ci/test-*.sh calls gh api/gh pr without sourcing
+        // ci-guards.sh. Pure grep over the repo tree, no network, ~1s.
+        "scripts/ci/test-gh-in-ci-guarded.sh",
     ];
     candidates
         .iter()

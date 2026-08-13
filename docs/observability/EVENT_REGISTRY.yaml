@@ -3852,6 +3852,19 @@ events:
     consumers: [chump-ambient-glance, fleet-brief, operator-recall]
     fields_required: [ts, kind, threshold_seen, resets_at, source]
 
+  # ── RESILIENT-018: gh-api-in-ci token guard ───────────────────────────────
+  - kind: ci_gh_token_missing_skip
+    effect_metric: self
+    emitter: scripts/ci/lib/ci-guards.sh check_gh_token_or_skip; src/github_rate_limit.rs
+      fetch_rate_limit_blocking (RESILIENT-018)
+    trigger: a script/test running inside CI calls `gh api`/`gh pr ...` (or the
+      github_rate_limit poller ticks) with neither GH_TOKEN nor GITHUB_TOKEN
+      set. Emitted once per skip, then the caller degrades gracefully
+      (WARN + exit 0 / null snapshot) instead of hard-failing — precedent:
+      INFRA-1846, e2e-pwa failed persistently on this exact class.
+    consumers: [ci-audit]
+    fields_required: [ts, kind, workflow_name, job_name, source]
+
   # ── INFRA-1034: bot-merge per-PID log discoverability ─────────────────────
   - kind: bot_merge_log_started
     effect_metric: self
