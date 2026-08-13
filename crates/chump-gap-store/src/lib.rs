@@ -3544,10 +3544,7 @@ impl GapStore {
     /// The caller is responsible for backing up the existing state.db before
     /// calling this (typically rename to state.db.bak).
     pub fn restore_from_state_sql(&mut self, sql_path: &Path) -> Result<usize> {
-        let text = std::fs::read_to_string(sql_path)
-            .with_context(|| format!("reading state.sql at {}", sql_path.display()))?;
-        let file: YamlGapsFile = serde_yaml::from_str(&text)
-            .with_context(|| format!("parsing YAML in {}", sql_path.display()))?;
+        let file = Self::load_state_sql(sql_path)?;
 
         // Clear existing data so the restore is a full replacement, not a merge.
         self.conn
@@ -3556,113 +3553,148 @@ impl GapStore {
 
         let mut inserted = 0usize;
         for g in &file.gaps {
-            let ac = match &g.acceptance_criteria {
-                Some(v) => normalize_string_list(v),
-                None => String::new(),
-            };
-            let deps = match &g.depends_on {
-                Some(v) => {
-                    let json: serde_json::Value =
-                        serde_json::from_str(&v.to_string()).unwrap_or(serde_json::Value::Null);
-                    normalize_string_list(&json)
-                }
-                None => String::new(),
-            };
-            let notes = g
-                .notes
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let source_doc = g
-                .source_doc
-                .as_ref()
-                .map(yaml_value_to_loose_string)
-                .unwrap_or_default();
-            let opened_date = g
-                .opened_date
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let closed_date = g
-                .closed_date
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let closed_pr = g.closed_pr.as_ref().and_then(yaml_value_to_i64);
-            let skills_required = g
-                .skills_required
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let preferred_backend = g
-                .preferred_backend
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let preferred_machine = g
-                .preferred_machine
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let estimated_minutes = g
-                .estimated_minutes
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let required_model = g
-                .required_model
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            // MISSION-008: nullable outcome FK.
-            let outcome_id: Option<String> = g
-                .outcome_id
-                .as_ref()
-                .map(yaml_value_to_string)
-                .filter(|s| !s.is_empty());
-            // CREDIBLE-107: nullable evidence blob.
-            let evidence: Option<String> = g
-                .evidence
-                .as_ref()
-                .map(yaml_value_to_string)
-                .filter(|s| !s.is_empty());
-            let created_at = unix_now();
-
-            self.conn.execute(
-                "INSERT OR REPLACE INTO gaps(id,domain,title,description,priority,effort,status,
-                    acceptance_criteria,depends_on,notes,source_doc,created_at,
-                    opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                    preferred_machine,estimated_minutes,required_model,outcome_id,evidence)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
-                params![
-                    g.id,
-                    g.domain,
-                    g.title,
-                    g.description,
-                    g.priority,
-                    g.effort,
-                    g.status,
-                    ac,
-                    deps,
-                    notes,
-                    source_doc,
-                    created_at,
-                    opened_date,
-                    closed_date,
-                    closed_pr,
-                    skills_required,
-                    preferred_backend,
-                    preferred_machine,
-                    estimated_minutes,
-                    required_model,
-                    outcome_id,
-                    evidence,
-                ],
-            )
-            .with_context(|| format!("inserting gap {} during restore", g.id))?;
+            self.insert_or_replace_gap_row(g)
+                .with_context(|| format!("inserting gap {} during restore", g.id))?;
             inserted += 1;
         }
         Ok(inserted)
+    }
+
+    /// INFRA-3002 — targeted single-gap sync from `.chump/state.sql` into
+    /// state.db, without touching any other row. Used by `chump claim` to
+    /// self-heal the "gap {id} not found in state.db" failure mode: a
+    /// worktree's local state.db is a snapshot taken at `chump claim`
+    /// worktree-creation time, so a gap reserved/imported on `origin/main`
+    /// afterward is invisible until someone manually runs
+    /// `chump gap restore --from-sql` (a full-table rebuild). This lets
+    /// `claim` repair just the one row it needs, in-place.
+    ///
+    /// Returns `Ok(true)` if `gap_id` was found in state.sql and
+    /// inserted/replaced, `Ok(false)` if state.sql has no such gap.
+    pub fn sync_gap_from_state_sql(&self, sql_path: &Path, gap_id: &str) -> Result<bool> {
+        let file = Self::load_state_sql(sql_path)?;
+        match file.gaps.iter().find(|g| g.id == gap_id) {
+            Some(g) => {
+                self.insert_or_replace_gap_row(g)
+                    .with_context(|| format!("inserting gap {gap_id} during single-gap sync"))?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    fn load_state_sql(sql_path: &Path) -> Result<YamlGapsFile> {
+        let text = std::fs::read_to_string(sql_path)
+            .with_context(|| format!("reading state.sql at {}", sql_path.display()))?;
+        serde_yaml::from_str(&text)
+            .with_context(|| format!("parsing YAML in {}", sql_path.display()))
+    }
+
+    fn insert_or_replace_gap_row(&self, g: &YamlGap) -> Result<()> {
+        let ac = match &g.acceptance_criteria {
+            Some(v) => normalize_string_list(v),
+            None => String::new(),
+        };
+        let deps = match &g.depends_on {
+            Some(v) => {
+                let json: serde_json::Value =
+                    serde_json::from_str(&v.to_string()).unwrap_or(serde_json::Value::Null);
+                normalize_string_list(&json)
+            }
+            None => String::new(),
+        };
+        let notes = g
+            .notes
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let source_doc = g
+            .source_doc
+            .as_ref()
+            .map(yaml_value_to_loose_string)
+            .unwrap_or_default();
+        let opened_date = g
+            .opened_date
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let closed_date = g
+            .closed_date
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let closed_pr = g.closed_pr.as_ref().and_then(yaml_value_to_i64);
+        let skills_required = g
+            .skills_required
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let preferred_backend = g
+            .preferred_backend
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let preferred_machine = g
+            .preferred_machine
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let estimated_minutes = g
+            .estimated_minutes
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let required_model = g
+            .required_model
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        // MISSION-008: nullable outcome FK.
+        let outcome_id: Option<String> = g
+            .outcome_id
+            .as_ref()
+            .map(yaml_value_to_string)
+            .filter(|s| !s.is_empty());
+        // CREDIBLE-107: nullable evidence blob.
+        let evidence: Option<String> = g
+            .evidence
+            .as_ref()
+            .map(yaml_value_to_string)
+            .filter(|s| !s.is_empty());
+        let created_at = unix_now();
+
+        self.conn.execute(
+            "INSERT OR REPLACE INTO gaps(id,domain,title,description,priority,effort,status,
+                acceptance_criteria,depends_on,notes,source_doc,created_at,
+                opened_date,closed_date,closed_pr,skills_required,preferred_backend,
+                preferred_machine,estimated_minutes,required_model,outcome_id,evidence)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
+            params![
+                g.id,
+                g.domain,
+                g.title,
+                g.description,
+                g.priority,
+                g.effort,
+                g.status,
+                ac,
+                deps,
+                notes,
+                source_doc,
+                created_at,
+                opened_date,
+                closed_date,
+                closed_pr,
+                skills_required,
+                preferred_backend,
+                preferred_machine,
+                estimated_minutes,
+                required_model,
+                outcome_id,
+                evidence,
+            ],
+        )?;
+        Ok(())
     }
 
     /// INFRA-460 — propagate `status: done` from per-file YAML mirrors to
@@ -8548,5 +8580,124 @@ mod quarantine_tests {
             )
             .unwrap();
         assert_eq!(store.get_artifact_type(&id).unwrap(), "code");
+    }
+
+    // ── INFRA-3002 AC #3: claim self-heals a gap missing from the local
+    //    worktree's state.db by syncing the single row from state.sql ────────
+
+    #[test]
+    fn sync_gap_from_state_sql_inserts_missing_row() {
+        let (store, dir) = test_store();
+        let sql_path = dir.path().join("state.sql");
+        std::fs::write(
+            &sql_path,
+            r#"gaps:
+  - id: INFRA-9001
+    domain: INFRA
+    title: a gap that only exists on origin/main
+    priority: P1
+    effort: s
+    status: open
+"#,
+        )
+        .unwrap();
+
+        // Not present in this worktree's freshly-opened state.db.
+        assert!(store.get("INFRA-9001").unwrap().is_none());
+
+        let found = store
+            .sync_gap_from_state_sql(&sql_path, "INFRA-9001")
+            .unwrap();
+        assert!(found, "gap present in state.sql should be found+synced");
+
+        let row = store.get("INFRA-9001").unwrap().expect("row now present");
+        assert_eq!(row.title, "a gap that only exists on origin/main");
+        assert_eq!(row.status, "open");
+    }
+
+    #[test]
+    fn sync_gap_from_state_sql_returns_false_when_absent() {
+        let (store, dir) = test_store();
+        let sql_path = dir.path().join("state.sql");
+        std::fs::write(
+            &sql_path,
+            r#"gaps:
+  - id: INFRA-9002
+    domain: INFRA
+    title: unrelated gap
+    priority: P1
+    effort: s
+    status: open
+"#,
+        )
+        .unwrap();
+
+        let found = store
+            .sync_gap_from_state_sql(&sql_path, "INFRA-NONEXISTENT")
+            .unwrap();
+        assert!(!found, "gap absent from state.sql must not be synthesized");
+        assert!(store.get("INFRA-NONEXISTENT").unwrap().is_none());
+    }
+
+    #[test]
+    fn sync_gap_from_state_sql_does_not_touch_other_rows() {
+        let (store, dir) = test_store();
+        let id_existing = store
+            .reserve("INFRA", "pre-existing gap", "P1", "s")
+            .unwrap();
+
+        let sql_path = dir.path().join("state.sql");
+        std::fs::write(
+            &sql_path,
+            format!(
+                r#"gaps:
+  - id: {id_existing}
+    domain: INFRA
+    title: CLOBBERED — should never be written
+    priority: P1
+    effort: s
+    status: open
+  - id: INFRA-9003
+    domain: INFRA
+    title: the only gap claim actually needs
+    priority: P1
+    effort: s
+    status: open
+"#
+            ),
+        )
+        .unwrap();
+
+        store
+            .sync_gap_from_state_sql(&sql_path, "INFRA-9003")
+            .unwrap();
+
+        // Targeted sync must leave the unrelated pre-existing row untouched,
+        // unlike restore_from_state_sql's full-table replace.
+        let untouched = store.get(&id_existing).unwrap().unwrap();
+        assert_eq!(untouched.title, "pre-existing gap");
+
+        let synced = store.get("INFRA-9003").unwrap().unwrap();
+        assert_eq!(synced.title, "the only gap claim actually needs");
+    }
+
+    #[test]
+    fn claim_fails_fast_when_gap_and_state_sql_both_lack_it() {
+        // Regression guard for the "genuine missing gap" case (AC #6): if the
+        // gap truly does not exist anywhere, sync_gap_from_state_sql must
+        // report false and claim() must still fail — the self-heal path must
+        // never silently fabricate a claimable row.
+        let (store, dir) = test_store();
+        let sql_path = dir.path().join("state.sql");
+        std::fs::write(&sql_path, "gaps: []\n").unwrap();
+
+        let found = store
+            .sync_gap_from_state_sql(&sql_path, "INFRA-GHOST")
+            .unwrap();
+        assert!(!found);
+        let err = store
+            .claim("INFRA-GHOST", "session-x", "wt-x", 3600)
+            .unwrap_err();
+        assert!(err.to_string().contains("not found in state.db"));
     }
 }
