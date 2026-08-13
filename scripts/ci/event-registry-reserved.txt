@@ -844,3 +844,5 @@ log_triage_test_bar     # reason: INFRA-1891 — synthetic test-fixture kind use
 log_triage_test_alpha   # reason: INFRA-1891 — synthetic test-fixture kind used in src/log_triage.rs #[cfg(test)] histogram_counts_by_kind; not a production emit
 log_triage_test_beta    # reason: INFRA-1891 — synthetic test-fixture kind used in src/log_triage.rs #[cfg(test)] histogram_counts_by_kind; not a production emit
 installer_audit_finding # reason: INFRA-2394 — emitted by scripts/audit/audit-launchd-installers.sh via scripts/dev/ambient-emit.sh; scripts/audit/ is not in the verify::EventRegistry rule's PROD_PATHS list so the scanner-anchor comment at the emit site isn't auto-detected
+a2a_role_resolved       # reason: INFRA-1945 — emitted by scripts/coord/broadcast.sh when --to role:<name> resolves against fleet-registry.jsonl to an alive session. Carries role, resolved_session.
+a2a_role_resolve_failed # reason: INFRA-1945 — emitted by scripts/coord/broadcast.sh when --to role:<name> has no alive (fresh <30min) fleet-registry.jsonl match and --strict was not set (dead-letter fallback pending INFRA-1946). Carries role.

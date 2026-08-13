@@ -13,6 +13,14 @@
 # Glob recipients (e.g. --to fleet-worker-*) expand at send-time against
 # live session lease files in .chump-locks/.
 #
+# INFRA-1945 (role-typed routing): --to role:<name> (e.g. --to role:shepherd)
+# resolves against .chump-locks/fleet-registry.jsonl to the most-recently-seen
+# session registered with that role within the last 30 minutes (override via
+# CHUMP_ROLE_FRESH_SECS), then delivers to that session's inbox — no need to
+# know the exact date-stamped session id. Emits kind=a2a_role_resolved on
+# success. On no alive match: --strict errors out; otherwise it dead-letters
+# (ambient-only, kind=a2a_role_resolve_failed) pending the INFRA-1946 queue.
+#
 # Usage:
 #   scripts/coord/broadcast.sh [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] INTENT  <gap-id> [file1,file2,...]
 #   scripts/coord/broadcast.sh [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] HANDOFF <gap-id> <to-session>
@@ -355,12 +363,19 @@ CORR_FLAG=""
 REPLY_TO=""
 URGENCY="INFO"
 NO_FANOUT="${CHUMP_NO_FANOUT:-0}"
+STRICT="0"
 while :; do
     case "${1:-}" in
         --to)
             TO="${2:-}"
             [[ -z "$TO" ]] && { echo "Usage: $0 --to <recipient> EVENT [args...]" >&2; exit 1; }
             shift 2
+            ;;
+        --strict)
+            # INFRA-1945: caller wants an explicit failure when --to role:<name>
+            # has no alive resolution, instead of a silent dead-letter fallback.
+            STRICT="1"
+            shift
             ;;
         --corr)
             CORR_FLAG="${2:-}"
@@ -390,6 +405,75 @@ while :; do
         *) break ;;
     esac
 done
+
+# INFRA-1945 (A2A world-class slice B): role-typed routing.
+# --to role:<name> resolves against .chump-locks/fleet-registry.jsonl
+# (operator-directed 17:31Z 2026-05-24) to the most-recently-seen session
+# registered with role==<name> whose ts is within the last 30 minutes,
+# then rewrites TO to that concrete session id for the rest of the script
+# (emit_to_inbox, urgent-tier routing, etc. never see the "role:" form).
+FLEET_REGISTRY="$LOCK_DIR/fleet-registry.jsonl"
+ROLE_FRESH_SECS="${CHUMP_ROLE_FRESH_SECS:-1800}"
+resolve_role_recipient() {
+    local role="$1" registry="$2" fresh_secs="$3"
+    python3 - "$role" "$registry" "$fresh_secs" <<'PYEOF'
+import json, sys, datetime
+
+role, path, fresh_secs = sys.argv[1], sys.argv[2], int(sys.argv[3])
+now = datetime.datetime.utcnow()
+best_session, best_ts = None, None
+try:
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if obj.get("role") != role:
+                continue
+            ts_str = obj.get("ts", "")
+            try:
+                ts = datetime.datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%SZ")
+            except ValueError:
+                continue
+            if (now - ts).total_seconds() > fresh_secs:
+                continue
+            if best_ts is None or ts > best_ts:
+                best_ts, best_session = ts, obj.get("session")
+except FileNotFoundError:
+    pass
+if best_session:
+    print(best_session)
+PYEOF
+}
+
+if [[ "$TO" == role:* ]]; then
+    ROLE_NAME="${TO#role:}"
+    RESOLVED_SESSION="$(resolve_role_recipient "$ROLE_NAME" "$FLEET_REGISTRY" "$ROLE_FRESH_SECS")"
+    if [[ -n "$RESOLVED_SESSION" ]]; then
+        printf '{"ts":"%s","kind":"a2a_role_resolved","role":"%s","resolved_session":"%s","session":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ROLE_NAME" "$RESOLVED_SESSION" "$SESSION_ID" \
+            >> "$AMBIENT" 2>/dev/null || true
+        TO="$RESOLVED_SESSION"
+    else
+        if [[ "$STRICT" == "1" ]]; then
+            echo "[broadcast] ERROR: --to role:$ROLE_NAME — no alive session (fresh within ${ROLE_FRESH_SECS}s) in $FLEET_REGISTRY" >&2
+            exit 1
+        fi
+        # No alive role match and not --strict: dead-letter fallback (INFRA-1946
+        # slice C owns a real dead-letter queue; until it ships this is
+        # ambient-only best-effort, matching the existing empty-glob-match
+        # behaviour for --to elsewhere in this script).
+        echo "[broadcast] WARN: --to role:$ROLE_NAME — no alive session found; dead-lettering (ambient-only)" >&2
+        printf '{"ts":"%s","kind":"a2a_role_resolve_failed","role":"%s","session":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ROLE_NAME" "$SESSION_ID" \
+            >> "$AMBIENT" 2>/dev/null || true
+        TO=""
+    fi
+fi
 
 EVENT="$1"
 shift

@@ -330,10 +330,13 @@ anti-list. Update by appending to changelog after each pull.
 
 **Wizard dispatching a gap:**
 ```bash
-bash scripts/coord/broadcast.sh --to curator-opus-shepherd-2026-05-23 WARN \
+bash scripts/coord/broadcast.sh --to role:shepherd WARN \
   "P1 ASSIGNMENT: INFRA-NNNN (one-line description, ~30min effort).
    Spec at docs/gaps/INFRA-NNNN.yaml. Pattern reference: <related shipped gap>."
 ```
+(INFRA-1945: `--to role:<name>` resolves to whichever `shepherd`-role session
+is alive right now via `.chump-locks/fleet-registry.jsonl` — no need to know
+today's date-stamped session id, e.g. `curator-opus-shepherd-2026-05-23`.)
 
 **Curator dispatching a sub-agent (within their session):**
 ```
