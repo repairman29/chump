@@ -7,7 +7,8 @@ layers, INFRA-1758/1759/1761/1802/1803 in-flight foundation slices)
 **Recommended route:** **(c) Ignore — continue independent path, with one
 narrow exception** (file a follow-up to add an ACP shim *as an inbound
 adapter*, not as the coord layer's wire shape)
-**Status:** proposed (2026-05-23, INFRA-1822)
+**Status:** shipped/closed (2026-08-13, INFRA-1822) — verdict (c) IGNORE stands, no code
+changes required; this brief is the acceptance-criteria deliverable.
 
 ---
 
