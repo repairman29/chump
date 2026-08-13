@@ -7598,7 +7598,9 @@ meta:
     #[test]
     fn dump_per_file_single_does_not_duplicate_evidence_field() {
         let (store, _dbdir) = test_store();
-        let id = store.reserve("INFRA", "evidence dup test", "P1", "s").unwrap();
+        let id = store
+            .reserve("INFRA", "evidence dup test", "P1", "s")
+            .unwrap();
         store
             .set_fields(
                 &id,
@@ -7629,7 +7631,10 @@ meta:
         store.dump_per_file_single(&id, out_dir.path()).unwrap();
         let after = std::fs::read_to_string(&path).unwrap();
 
-        let evidence_key_count = after.lines().filter(|l| l.starts_with("  evidence:")).count();
+        let evidence_key_count = after
+            .lines()
+            .filter(|l| l.starts_with("  evidence:"))
+            .count();
         assert_eq!(
             evidence_key_count, 1,
             "expected exactly one 'evidence:' key, got {evidence_key_count}\n--- got ---\n{after}"
