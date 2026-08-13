@@ -469,34 +469,108 @@ def _parse_pr_custom_id(custom_id: str):
     return action, repo, number
 
 
-def _edit_original_interaction(app_id: str, tok: str, content: str) -> None:
-    """PATCH the message the button lives on (webhook @original) — set the
-    result text and REMOVE the buttons (components: []) so it can't be re-tapped."""
+def _http_code_and_body(out) -> "tuple[int, str]":
+    """Split a curl `-w \n%{http_code}` result into (code, body)."""
+    body, _, code = (out.stdout or "").rpartition("\n")
     try:
-        subprocess.run(
-            ["curl", "-sS", "--max-time", "12", "-o", "/dev/null",
+        return int(code.strip() or 0), body
+    except ValueError:
+        return 0, out.stdout or ""
+
+
+def _edit_original_interaction(app_id: str, tok: str, content: str) -> int:
+    """PATCH the interaction's @original message (webhook path) — set result text
+    and REMOVE the buttons (components: []) so it can't be re-tapped. Returns the
+    HTTP code (0 on transport error) and LOGS the code+body on failure. The
+    RESILIENT-265 feedback bug lived here: this edit sent output to /dev/null and
+    swallowed every exception, so when it failed the operator saw a dead button
+    and nothing was logged. Make the result observable."""
+    try:
+        out = subprocess.run(
+            ["curl", "-sS", "--max-time", "12", "-w", "\n%{http_code}",
              "-X", "PATCH", f"{API}/webhooks/{app_id}/{tok}/messages/@original",
              "-H", "Content-Type: application/json",
              "-d", json.dumps({"content": content[:1990], "components": []})],
             capture_output=True, text=True, timeout=15,
         )
-    except Exception:
-        pass
+        code, body = _http_code_and_body(out)
+        if code // 100 != 2:
+            print(f"[discord-gateway] edit @original failed HTTP {code}: {body[:200]}", flush=True)
+        return code
+    except Exception as e:
+        print(f"[discord-gateway] edit @original error: {e}", flush=True)
+        return 0
 
 
-async def handle_pr_approval_interaction(app_id: str, tok: str, custom_id: str) -> None:
+def _edit_channel_message(channel_id: str, message_id: str, content: str) -> int:
+    """PATCH the button message directly via the BOT token (independent of the
+    interaction/webhook token). Removes the buttons + sets result text. Returns
+    the HTTP code (0 on transport/no-ids). This is the ROBUST PRIMARY feedback
+    path: a bot editing its own DM message does not depend on the interaction
+    token that was failing silently — so the button message reliably updates in
+    place."""
+    if not channel_id or not message_id or not TOKEN:
+        return 0
+    try:
+        out = subprocess.run(
+            ["curl", "-sS", "--max-time", "12", "-w", "\n%{http_code}",
+             "-X", "PATCH", f"{API}/channels/{channel_id}/messages/{message_id}",
+             "-H", f"Authorization: Bot {TOKEN}",
+             "-H", "Content-Type: application/json",
+             "-d", json.dumps({"content": content[:1990], "components": []})],
+            capture_output=True, text=True, timeout=15,
+        )
+        code, body = _http_code_and_body(out)
+        if code // 100 != 2:
+            print(f"[discord-gateway] edit channel-msg failed HTTP {code}: {body[:200]}", flush=True)
+        return code
+    except Exception as e:
+        print(f"[discord-gateway] edit channel-msg error: {e}", flush=True)
+        return 0
+
+
+def _report_pr_result(app_id: str, tok: str, channel_id: str,
+                      message_id: str, status: str) -> None:
+    """Guarantee the operator SEES the outcome of a tap — the RESILIENT-265
+    feedback fix. TWO things happen because they solve two different problems:
+
+      1) EDIT the button message in place — strip the buttons (so a
+         seemingly-dead button can't be re-tapped) and show the result inline.
+         Bot-token channel edit first (reliable, independent of the interaction
+         token), @original webhook edit as backup.
+
+      2) ALWAYS send a FRESH operator DM with the result. THIS is the
+         load-bearing fix. On the 2026-08-13 incident the in-place edit
+         SUCCEEDED server-side (the button message's edited_timestamp proved it)
+         yet the operator saw nothing and re-tapped a button that was already
+         gone — a Discord mobile client does not surface an EDIT of an existing
+         message, but a NEW message pushes a notification. So a fresh DM, not
+         (only) an edit, is what the operator actually sees. One DM per
+         deliberate tap is a confirmation, not a pager — it bypasses the
+         escalation suppress-registry by design (send_dm is a direct post)."""
+    edited = (_edit_channel_message(channel_id, message_id, status) // 100 == 2
+              or _edit_original_interaction(app_id, tok, status) // 100 == 2)
+    print(f"[discord-gateway] feedback: buttons {'removed' if edited else 'edit-FAILED'}; "
+          f"DM confirmation → {status[:80]}", flush=True)
+    # Fresh DM = the guaranteed-visible confirmation. Never silent.
+    send_dm(status)
+
+
+async def handle_pr_approval_interaction(app_id: str, tok: str, custom_id: str,
+                                        channel_id: str = "", message_id: str = "") -> None:
     """Operator tapped ✅ Merge / ❌ Reject on a product-repo PR. Run the real
     action (idempotent — a second tap on an already-acted PR is a clean no-op)
-    and report the outcome back into the same message."""
+    and report the outcome back so the operator ALWAYS sees it (channel edit →
+    @original edit → DM fallback, via _report_pr_result)."""
     parsed = _parse_pr_custom_id(custom_id)
     if parsed is None:
-        _edit_original_interaction(app_id, tok, f"couldn't parse `{custom_id}` ⚠️")
+        _report_pr_result(app_id, tok, channel_id, message_id, f"couldn't parse `{custom_id}` ⚠️")
         return
     action, repo, number = parsed
     if not PR_APPROVAL_ACTION.exists():
         emit("discord_pr_approval_failed", custom_id=custom_id, reason="action_script_missing")
-        _edit_original_interaction(app_id, tok,
-                                   "(PR-approval action script missing — can't act yet ⚠️)")
+        _report_pr_result(app_id, tok, channel_id, message_id,
+                          "(PR-approval action script missing — can't act yet ⚠️)")
         return
     emit("discord_pr_approval_tap", action=action, repo=repo, number=number)
     print(f"[discord-gateway] PR approval tap: {action} {repo}#{number}", flush=True)
@@ -515,7 +589,7 @@ async def handle_pr_approval_interaction(app_id: str, tok: str, custom_id: str) 
     except Exception as e:
         status = f"{repo}#{number}: action error — {e} ⚠️"
     emit("discord_pr_approval_done", action=action, repo=repo, number=number, status=status[:200])
-    _edit_original_interaction(app_id, tok, status)
+    _report_pr_result(app_id, tok, channel_id, message_id, status)
 
 
 async def gateway_loop() -> None:
@@ -614,6 +688,11 @@ async def gateway_loop() -> None:
                     emit("discord_operator_interaction", custom_id=custom_id)
                     print(f"[discord-gateway] button: {custom_id}", flush=True)
                     app_id = d.get("application_id")
+                    # Message the button lives on — used for the bot-token
+                    # channel edit (the reliable feedback path, RESILIENT-265).
+                    channel_id = str(d.get("channel_id")
+                                     or d.get("message", {}).get("channel_id") or "")
+                    message_id = str(d.get("message", {}).get("id") or "")
                     # RESILIENT-265 "approve-from-phone": a mergepr:/rejectpr:
                     # tap ACTS. Defer-ack within Discord's 3s window (type 6 =
                     # DEFERRED_UPDATE_MESSAGE — keeps the message + buttons up
@@ -622,7 +701,8 @@ async def gateway_loop() -> None:
                     if custom_id.startswith(("mergepr:", "rejectpr:")):
                         _curl_post(f"{API}/interactions/{inter_id}/{tok}/callback",
                                    {"type": 6})  # deferred update, no visible change yet
-                        asyncio.create_task(handle_pr_approval_interaction(app_id, tok, custom_id))
+                        asyncio.create_task(handle_pr_approval_interaction(
+                            app_id, tok, custom_id, channel_id, message_id))
                         continue
                     # Legacy approve:/deny: (and anything else): ack only.
                     _curl_post(f"{API}/interactions/{inter_id}/{tok}/callback",
