@@ -232,6 +232,7 @@ test-pillar-balance-guard.sh
 test-cargo-mutex-isolation.sh
 test-system-integration.sh
 test-gap-consolidate.sh
+test-audit-log.sh
 test-gap-audit-ac-open.sh
 test-gap-add-note.sh
 test-gap-list-since.sh
@@ -270,6 +271,7 @@ gap show AC rendering                   # reason: needs cargo build + CHUMP_BIN;
 chump gap set --add-note                # reason: needs cargo build + CHUMP_BIN; test-gap-add-note.sh above
 CLI output format consistency           # reason: needs CHUMP_BIN env var; test-cli-output-format.sh above
 gap consolidate                         # reason: needs cargo build + CHUMP_BIN; test-gap-consolidate.sh above
+audit log query/retention smoke test    # reason: needs cargo build + CHUMP_BIN; test-audit-log.sh above (INFRA-1842)
 PWA gap endpoint security               # reason: needs CHUMP_BIN env var; test-pwa-security.sh above
 chump gap list --since filter           # reason: needs cargo build + CHUMP_BIN; test-gap-list-since.sh above
 /api/gap-queue fat shape                # reason: needs cargo build + CHUMP_BIN; test-api-gap-queue-shape.sh above
