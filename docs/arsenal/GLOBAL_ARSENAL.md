@@ -1,18 +1,11 @@
 # Global Arsenal — Chump Fleet Codex
 
-_Generated 2026-05-25T03:39:10Z by scripts/arsenal/build.py v0_
+_Generated 2026-08-13T04:29:14Z by scripts/arsenal/build.py v0_
 
 **Operator:** repairman29 (Jeff Adkins)
 **GitHub repos:** 76  
-**Cloned locally:** 11  
-**Unmatched local roots:** 4
-
-## 🚨 Alerts
-
-- **[low] misplaced_clone** — Projects/ shouldn't itself be a git repo — likely an errant `git clone` at the wrong level. Move .git/ into the intended subdir or rm.
-  - `/Users/jeffadkins/Projects`
-- **[medium] stale_vendored_clone** — Maclawd contains a March 2026 clone of chump — Smart Harvest target: convert to git-submodule or Cargo dependency
-  - `/Users/jeffadkins/Projects/Maclawd/chump-repo`
+**Cloned locally:** 1  
+**Unmatched local roots:** 0
 
 ## Clusters
 
@@ -22,8 +15,8 @@ _Generated 2026-05-25T03:39:10Z by scripts/arsenal/build.py v0_
 | `content-apps` | 13 | 0 | TypeScript:6, JavaScript:3, HTML:2, Python:2 |
 | `tools-platform` | 9 | 0 | JavaScript:5, TypeScript:1, HTML:1, Python:1, ?:1 |
 | `echeo-resonant` | 8 | 0 | TypeScript:5, Rust:2, JavaScript:1 |
-| `chump-engine` | 5 | 3 | Rust:2, Shell:1, Ruby:1, ?:1 |
-| `misc` | 4 | 1 | ?:2, TypeScript:1, HTML:1 |
+| `chump-engine` | 5 | 0 | Rust:2, Shell:1, Ruby:1, ?:1 |
+| `misc` | 4 | 0 | ?:2, TypeScript:1, HTML:1 |
 | `jarvis-assistant` | 4 | 0 | JavaScript:2, Shell:1, ?:1 |
 | `political-strat` | 4 | 0 | Python:3, HTML:1 |
 | `marketing-sites` | 2 | 0 | TypeScript:1, HTML:1 |
@@ -116,8 +109,8 @@ _Generated 2026-05-25T03:39:10Z by scripts/arsenal/build.py v0_
 - **trove-web** [TypeScript] Web interface for Trove collection management platform - Next.js/TypeScript with Firebase integration and Google Cloud Storage
 
 ### tools-platform
-- **openclaw** [TypeScript] Your own personal AI assistant. Any OS. Any Platform. The lobster way. 🦞  📁 `/Users/jeffadkins/Projects/Maclawd` (dir renamed → `Maclawd`)
-- **pixel-edge-server** [HTML]  📁 `/Users/jeffadkins/Projects` (dir renamed → `Projects`)
+- **openclaw** [TypeScript] Your own personal AI assistant. Any OS. Any Platform. The lobster way. 🦞 
+- **pixel-edge-server** [HTML] 
 - **neural-farm** [Python] Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
 - **workbench** [JavaScript] 
 - **slides** [?] 
@@ -127,7 +120,7 @@ _Generated 2026-05-25T03:39:10Z by scripts/arsenal/build.py v0_
 - **coderoach** [JavaScript] ARCHIVED · 
 
 ### echeo-resonant
-- **echeo** [Rust] Echeo CLI - The Resonant Engine. Find where your code resonates with market needs. 📁 `/Users/jeffadkins/Projects/Echeo/echeo`
+- **echeo** [Rust] Echeo CLI - The Resonant Engine. Find where your code resonates with market needs.
 - **echeovid** [TypeScript] Video content creation platform with 7 personas, YouTube publishing, FFmpeg integration - React/TypeScript frontend with Firebase backend
 - **echeo-internal** [Rust] Echeo - The Resonant Engine. Find where your code resonates with market needs.
 - **echeo-archived** [JavaScript] 
@@ -137,11 +130,11 @@ _Generated 2026-05-25T03:39:10Z by scripts/arsenal/build.py v0_
 - **echeo-dev** [TypeScript] ARCHIVED · 
 
 ### chump-engine
-- **chump** [Shell] PUBLIC · Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust. 📁 `/Users/jeffadkins/Projects/Chump`
+- **chump** [Shell] PUBLIC · Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust. 📁 `/root/Projects/chump`
 - **homebrew-chump** [Ruby] PUBLIC · Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
-- **chump-proprietary** [Rust]  📁 `/Users/jeffadkins/Projects/chump-proprietary`
-- **chump-chassis** [Rust] Rust/Axum micro-SaaS boilerplate for Chump SaaS factory 📁 `/Users/jeffadkins/Projects/Chump/repos/repairman29_chump-chassis` (dir renamed → `repairman29_chump-chassis`) [nested-in-Chump]
-- **chump-brain** [?]  📁 `/Users/jeffadkins/Projects/Chump/chump-brain` [nested-in-Chump]
+- **chump-proprietary** [Rust] 
+- **chump-chassis** [Rust] Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+- **chump-brain** [?] 
 
 ### misc
 - **registry** [?] FORK · PUBLIC · Registry of agents implementing the Agent Client Protocol (ACP)
@@ -153,7 +146,7 @@ _Generated 2026-05-25T03:39:10Z by scripts/arsenal/build.py v0_
 - **jarvis-gateway** [Shell] 
 - **JARVIS** [JavaScript] AI-powered conversational productivity system with natural language workflow automation
 - **JARVIS-Premium** [?] 💎 JARVIS Premium Skills - Professional AI-powered productivity tools for teams and enterprises
-- **jarvis-rog-ed** [JavaScript] JARVIS ROG Ed. - AI assistant for ASUS ROG Ally (Windows 11) 📁 `/Users/jeffadkins/Projects/jarvis-rog-ed`
+- **jarvis-rog-ed** [JavaScript] JARVIS ROG Ed. - AI assistant for ASUS ROG Ally (Windows 11)
 
 ### political-strat
 - **project2029** [Python] Project 2029 aims to create a more equitable, democratic, and rights-centered America that prioritizes individual liberties, economic fairness, peaceful international relations, and human rights.
@@ -162,19 +155,15 @@ _Generated 2026-05-25T03:39:10Z by scripts/arsenal/build.py v0_
 - **ims** [HTML] 2029 Initiative Tracker - Strategic initiative management system with Flask/Python backend, dashboard, and RESTful API
 
 ### marketing-sites
-- **acg** [TypeScript] Adkins Consulting Group LLC — internal docs and acgllc.dev marketing site (Next.js in web/) 📁 `/Users/jeffadkins/Projects/ACG`
+- **acg** [TypeScript] Adkins Consulting Group LLC — internal docs and acgllc.dev marketing site (Next.js in web/)
 - **repairman29-website** [HTML] Website for repairman29
 
 ### beast-mode-qi
-- **BEAST-MODE** [JavaScript] Enterprise Quality Intelligence & Marketplace Platform - The world's most advanced AI-powered development ecosystem 📁 `/Users/jeffadkins/Projects/BEAST-MODE`
+- **BEAST-MODE** [JavaScript] Enterprise Quality Intelligence & Marketplace Platform - The world's most advanced AI-powered development ecosystem
 - **beast-mode-website** [HTML] BEAST MODE - Enterprise Quality Intelligence & Marketplace Platform Landing Page
 
 ### upshift-deps
-- **upshift** [TypeScript] AI-powered dependency upgrades. Stop reading changelogs—let AI tell you what breaks. 📁 `/Users/jeffadkins/Projects/upshift`
+- **upshift** [TypeScript] AI-powered dependency upgrades. Stop reading changelogs—let AI tell you what breaks.
 
 ## Unmatched Local Git Roots (no GitHub origin / third-party / accidental)
 
-- `/Users/jeffadkins/Projects/Chump/repos/axonerai` → https://github.com/Manojython/axonerai.git
-- `/Users/jeffadkins/Projects/Chump/repos/repairman29_beast-mode` → https://github.com/repairman29/beast-mode.git
-- `/Users/jeffadkins/Projects/Maclawd/chump-repo/chump-brain` → (no remote)
-- `/Users/jeffadkins/Projects/Maclawd/chump-repo` → https://github.com/repairman29/chump.git

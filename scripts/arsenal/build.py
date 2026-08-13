@@ -100,6 +100,40 @@ EXTRACTED_PRIMITIVES: dict[str, list[str]] = {
     "echeovid": ["multi-channel content-repurposing pipeline"],
     "sheckleshare": ["Grow Garden Calculator pricing engine"],
     "internal-zendesk-tools": ["React 18 + TS + Vite + Tailwind assessment questionnaire (dashboard architecture reference)"],
+    # INFRA-1823 AC7 coverage push, wave 4 (2026-08-13) — closes the 45-repo gap.
+    "acg": ["Next.js App Router marketing/blog site with server actions in web/app/contact/actions.ts and markdown-rendered blog via web/components/blog-markdown.tsx"],
+    "chump-chassis": [
+        "GitHub read-tool primitive (repo file/dir fetch + clone/pull, allowlist-scoped) in src/github_tools.rs (validate_repo_path, github_token, GITHUB_API_BASE)",
+        "SQLite pool bootstrap via sqlx::sqlite::SqlitePoolOptions in src/db.rs",
+    ],
+    "jarvis-gateway": [
+        "Multi-provider LLM gateway config (Groq/OpenAI-compatible routing across ~12 providers) in clawdbot.json (models.providers.groq block)",
+        "npx-based gateway launcher in start.sh / package.json start script (CLAWDBOT_GATEWAY_PORT env passthrough)",
+    ],
+    "pvc": ["Cursor sub-agent role definitions (dev/ops/verifier) with skeptical-verification prompt pattern in .cursor/agents/verifier.md"],
+    "JARVIS": ["Skill-marketplace skill.json schema (pricing/marketplace/dependencies fields) shared with JARVIS-Premium — see apps/jarvis-ui + .cursor/skills/keep-clis-sharp/SKILL.md"],
+    "slidemate": [
+        "Multi-platform CLI SDK for AI-generated slide content in packages/cli/src/commands/generate.ts (also bulk.ts, deploy.ts, export.ts)",
+        "Postgres schema/migrations for AI-content tracking in backend/db/migrations/003_ai_content_tracking.sql",
+    ],
+    "berry-avenue-codes": ["iOS WKWebView wrapper pattern (native shell around a web app) in iOS-Wrapper/ContentView.swift (WebView: UIViewRepresentable)"],
+    "project2029": ["Flask-Mail password-reset email service in app/services/email_service.py (EmailService.send_password_reset_email)"],
+    "JARVIS-Premium": ["Commercial skill packaging schema (pricing/trial/marketplace/env/dependencies) in skills/focus-pro/skill.json"],
+    "workbench": ["Google Calendar availability/event service scaffold in backend/src/services/CalendarService.ts (CalendarService.getAvailability, mock-then-real API pattern)"],
+    "echeo-internal": ["Fleet/portfolio repo-catalog generator artifacts (COMPLETE_CATALOG.json/.md) in docs/repo-catalog/ — a prior-generation analog of Harvester's GLOBAL_ARSENAL"],
+    "biomeweavers": ["Excalibur.js-based 2D actor/game-entity pattern in client/src/actors/EssenceSource.ts (Actor subclass, CollisionType.Passive, GameConfig-driven color/type)"],
+    "2029-versioned": [
+        "Shared SQLAlchemy TimestampMixin (created_at/updated_at auto-columns) in shared/models/mixins.py",
+        "Standalone news-crawler CLI in version1/app/services/crawler/cli.py (NewsCrawler + ContentProcessor pipeline)",
+    ],
+    "echeo-archived": ["Automated credential-rotation / secret-age auditor in butler/actions/securitySentry.js (checkCredentialRotation, SBOM generation)"],
+    "echeo-web": ["Trust/matching scoring model config (qualityThreshold/qualityWeight/capabilityWeight) in .echeo/models/matching-model.json + matching-model.json / trust-score-model.json pair"],
+    "daisy-chain": [
+        "EventEmitter-based workflow orchestrator with auto-scaling + multi-tenant clustering in src/services/daisyChainOrchestrator.js (DaisyChainOrchestrator)",
+        "Thin automation-engine facade wrapping the orchestrator in src/services/automation-engine.js",
+    ],
+    "oracle": ["Vector-embeddings semantic search service (with unified-embeddings + echeo fallback chain) in scripts/oracle-vector-embeddings.js"],
+    "project_forge": ["Express + Objection.js OKR/KeyResult REST controller with transaction support in backend/src/controllers/OKRController.ts"],
 }
 
 
