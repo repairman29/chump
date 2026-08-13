@@ -126,15 +126,33 @@ fi
 #   3. cargo nextest:         "    FAIL [   0.0s] <bin-id> module::name"
 # Union + sort -u. Over-capture fails CLOSED (an unrecognised name is treated
 # as "not catalogued" → no auto-rerun), so a loose match can never mask a bug.
+# RESILIENT-306 follow-up (fleet audit un-jam 2026-08-13): the first
+# RESILIENT-306 pass still missed credible218 on real CI because it parsed the
+# RAW, COLORIZED log. Two defects, both reproduced only by real nextest output
+# (the unit fixture used an idealized line, so it was green while prod was
+# blind):
+#   a) nextest on CI emits ANSI SGR color codes; the FAIL marker and the
+#      test-path tokens are each wrapped in \x1b[..m escapes, so the plain
+#      regexes never matched -> FAILED came back empty -> "not a flake shape".
+#   b) real nextest lines carry a "(N/M)" progress column between the [time]
+#      and the <bin>, e.g. "FAIL [ 1.0s] (3239/4132) chump-gap-store mod::name".
+#      The old fixed-column regex captured the (truncated) BIN name, not the
+#      test path.
+# Fix: strip SGR codes into $LOG_CLEAN first, then capture the LAST path-like
+# token on each nextest FAIL line (progress-column- and bin-name-agnostic).
+LOG_CLEAN="$LOG.clean"
+sed -E 's/\x1b\[[0-9;]*[mGKH]//g' "$LOG" > "$LOG_CLEAN" 2>/dev/null || cp "$LOG" "$LOG_CLEAN"
 FAILED=$(
     {
-        grep -E '^test [A-Za-z_][A-Za-z0-9_:]+ \.\.\. FAILED' "$LOG" 2>/dev/null \
+        grep -E '^test [A-Za-z_][A-Za-z0-9_:]+ \.\.\. FAILED' "$LOG_CLEAN" 2>/dev/null \
             | sed -E 's/^test ([A-Za-z_][A-Za-z0-9_:]+) \.\.\. FAILED.*/\1/'
         # cargo test "failures:" list — only names inside the failures:…test result: window.
-        awk '/^failures:[[:space:]]*$/{f=1;next} /^test result:/{f=0} f && /^[[:space:]]{4}[A-Za-z_][A-Za-z0-9_:]+[[:space:]]*$/{gsub(/[[:space:]]/,"");print}' "$LOG" 2>/dev/null
-        # cargo nextest "FAIL [   0.0s] <bin> <path>" — capture the last token (test path).
-        grep -E 'FAIL \[[^]]*\][[:space:]]+[^[:space:]]+[[:space:]]+[A-Za-z_]' "$LOG" 2>/dev/null \
-            | sed -E 's/.*FAIL \[[^]]*\][[:space:]]+[^[:space:]]+[[:space:]]+([A-Za-z_][A-Za-z0-9_:]+).*/\1/'
+        awk '/^failures:[[:space:]]*$/{f=1;next} /^test result:/{f=0} f && /^[[:space:]]{4}[A-Za-z_][A-Za-z0-9_:]+[[:space:]]*$/{gsub(/[[:space:]]/,"");print}' "$LOG_CLEAN" 2>/dev/null
+        # cargo nextest "FAIL [time] (N/M) <bin> <test::path>" — capture the LAST
+        # path-like token, so an extra progress column or a hyphenated bin name
+        # can never shift the capture off the test path.
+        grep -E '(^|[[:space:]])FAIL \[[^]]*\]' "$LOG_CLEAN" 2>/dev/null \
+            | sed -E 's/.*[[:space:]]([A-Za-z_][A-Za-z0-9_:]+)[[:space:]]*$/\1/'
     } | grep -E '^[A-Za-z_][A-Za-z0-9_:]+$' | sort -u
 )
 
