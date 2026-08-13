@@ -17,6 +17,7 @@
 #   CHUMP_AMBIENT_INJECT=0  disable (emits empty additionalContext)
 #   CHUMP_AMBIENT_LOG       override ambient.jsonl path
 #   CHUMP_AMBIENT_DEBUG=1   echo the rendered context to stderr
+#   CHUMP_REACT_COOLDOWN_M  --tick-preamble per-role react cooldown, minutes (default: 30, RESILIENT-036)
 
 set -euo pipefail
 
@@ -46,6 +47,15 @@ _AMBIENT_PROBE="${CHUMP_AMBIENT_LOG:-$_LOCK_DIR_PROBE/ambient.jsonl}"
 # Usage:  scripts/coord/ambient-context-inject.sh --tick-preamble <role>
 # Output: 0..5 lines, one per relevant event. Empty if nothing relevant.
 # Exit:   always 0 (failures degrade silently so the calling loop doesn't crash).
+#
+# RESILIENT-036: per-role react-cooldown (anti wire-storm / echo-chamber).
+# Curator A broadcasts FEEDBACK -> B reacts + broadcasts -> A reacts -> loop.
+# corr_id threading (EFFECTIVE-028) links the chain but nothing dedupes a
+# role reacting to the *same* root corr_id twice within a cooldown window.
+# Sentinel: .chump-locks/<role>-reacted/<root_corr_id>.sentinel — first
+# surfacing of a corr_id (or its root, chasing parent_corr_id links) creates
+# the sentinel; any re-surfacing within CHUMP_REACT_COOLDOWN_M minutes
+# (default 30) is suppressed from the digest.
 if [[ "${1:-}" == "--tick-preamble" ]]; then
     ROLE="${2:-}"
     if [[ -z "$ROLE" ]]; then
@@ -58,9 +68,42 @@ if [[ "${1:-}" == "--tick-preamble" ]]; then
     if [[ "$TOTAL" -gt "$LAST" ]]; then
         START=$((LAST + 1))
         sed -n "${START},\$p" "$_AMBIENT_PROBE" 2>/dev/null | \
-            ROLE="$ROLE" python3 -c "
-import json, os, sys
+            ROLE="$ROLE" \
+            REACT_SENTINEL_DIR="$_LOCK_DIR_PROBE/${ROLE}-reacted" \
+            REACT_COOLDOWN_M="${CHUMP_REACT_COOLDOWN_M:-30}" \
+            AMBIENT_FULL="$_AMBIENT_PROBE" \
+            python3 -c "
+import json, os, sys, time
 role = os.environ.get('ROLE', '')
+sentinel_dir = os.environ.get('REACT_SENTINEL_DIR', '')
+try:
+    cooldown_s = float(os.environ.get('REACT_COOLDOWN_M', '30')) * 60.0
+except ValueError:
+    cooldown_s = 30 * 60.0
+
+# Chase parent_corr_id links (best-effort) to find each corr_id's root, so a
+# reply-to-a-reply chain still dedupes against the original broadcast.
+parent_map = {}
+try:
+    with open(os.environ.get('AMBIENT_FULL', ''), 'r', errors='replace') as f:
+        for line in f:
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            cid = d.get('corr_id')
+            pcid = d.get('parent_corr_id')
+            if cid and pcid:
+                parent_map[cid] = pcid
+except Exception:
+    pass
+
+def root_corr_id(cid, depth=0):
+    while cid in parent_map and depth < 20:
+        cid = parent_map[cid]
+        depth += 1
+    return cid
+
 out = []
 for line in sys.stdin:
     try:
@@ -75,6 +118,23 @@ for line in sys.stdin:
     if to and to not in ('fleet-wide', 'operator-76c22455'):
         if f'curator-opus-{role}' not in to:
             continue
+    corr_id = d.get('corr_id') or ''
+    if corr_id and sentinel_dir:
+        root = root_corr_id(corr_id)
+        safe_root = ''.join(c if c.isalnum() or c in '-_.' else '_' for c in root)
+        sentinel = os.path.join(sentinel_dir, safe_root + '.sentinel')
+        try:
+            mtime = os.path.getmtime(sentinel)
+            if (time.time() - mtime) < cooldown_s:
+                continue  # already reacted to this corr_id chain within cooldown
+        except OSError:
+            pass  # no sentinel yet -- first react
+        try:
+            os.makedirs(sentinel_dir, exist_ok=True)
+            with open(sentinel, 'a'):
+                os.utime(sentinel, None)
+        except OSError:
+            pass
     sender = (d.get('session') or d.get('from') or '?')[:30]
     body = (d.get('reason') or d.get('gap') or d.get('corr_id') or '')[:120].replace(chr(10), ' ')
     ts = (d.get('ts') or '?')[11:19]
