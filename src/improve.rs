@@ -253,13 +253,24 @@ fn run_inner(args: &[String]) -> Result<i32> {
         // redundant-in-this-repo hit. HALF-DONE-HERE and NOT-FOUND proceed (a
         // half-built capability should be finished, not re-sourced; a novel one
         // is genuinely new work).
-        if let Some(reason) = sourcing_resolver_reason(cand) {
-            println!(
-                "[improve] SKIP (sourced elsewhere): {} — {reason}",
-                cand.title
-            );
-            emit_redundant_work_skipped(&opts.owner_repo, &cand.title, &reason);
-            continue;
+        // The fleet-internal sourcing resolver ("repo -> arsenal -> world")
+        // reasons about CHUMP's own checkout (CHUMP_REPO_ROOT) and 76-repo
+        // GLOBAL_ARSENAL.json, NOT the external target repo. On an
+        // operator-specified `--gap` it must never veto the chosen work: it
+        // false-matched a real Olive gap to a DIFFERENT fleet repo
+        // ("EXISTS-IN-ARSENAL repo=JARVIS") and skipped it, leaving "all
+        // candidates already shipped, nothing to do." An operator who names a
+        // gap ID has already made the build/skip call; cross-fleet prior-art
+        // sourcing does not override it. Repo-local dedup_check still runs.
+        if opts.gap_id.is_none() {
+            if let Some(reason) = sourcing_resolver_reason(cand) {
+                println!(
+                    "[improve] SKIP (sourced elsewhere): {} — {reason}",
+                    cand.title
+                );
+                emit_redundant_work_skipped(&opts.owner_repo, &cand.title, &reason);
+                continue;
+            }
         }
         match dedup_check(&opts.owner_repo, &clone_dir, cand, &gh_bin)? {
             DedupResult::Redundant { reason } => {

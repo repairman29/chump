@@ -294,13 +294,30 @@ fn owner_repo_from_path(path: &str) -> Result<String> {
 
 fn run_inner(args: &[String]) -> Result<()> {
     let opts = parse_args(args)?;
-    let repo_url_or_path = opts.repo_url_or_path.trim().to_string();
+    let mut repo_url_or_path = opts.repo_url_or_path.trim().to_string();
 
     // Determine if input is a URL or a local path
-    let is_url = repo_url_or_path.starts_with("https://")
+    let mut is_url = repo_url_or_path.starts_with("https://")
         || repo_url_or_path.starts_with("http://")
         || repo_url_or_path.starts_with("git@")
         || repo_url_or_path.starts_with("ssh://");
+
+    // EFFECTIVE-112 / private-repo onboard: a bare `owner/repo` GitHub slug
+    // (no scheme, exactly one slash, not an existing local path) was previously
+    // misclassified as a LOCAL PATH -- the slug became `local/<repo>`, onboard
+    // scanned a nonexistent relative dir and reported "no readable intent
+    // documents", and it never reached the auth-capable clone (so PRIVATE repos
+    // could not be onboarded at all). Rewrite it to a GitHub HTTPS URL so the
+    // shallow_clone auth path (env token -> gh keyring) reaches private repos
+    // and reuses/creates ~/.chump/external/<owner>/<repo>/clone.
+    if !is_url && looks_like_github_slug(&repo_url_or_path) {
+        eprintln!(
+            "chump onboard: interpreting {repo_url_or_path} as GitHub repo \
+             https://github.com/{repo_url_or_path}"
+        );
+        repo_url_or_path = format!("https://github.com/{repo_url_or_path}");
+        is_url = true;
+    }
 
     // Derive owner/repo slug
     let (owner_repo, clone_root) = if is_url {
@@ -1048,6 +1065,32 @@ fn external_repo_dir(owner_repo: &str) -> PathBuf {
         .join(owner_repo)
 }
 
+/// True when `s` is a bare `owner/repo` GitHub slug: exactly one `/`, both
+/// halves non-empty and composed only of GitHub-legal identifier characters
+/// (ASCII alnum, `.`, `_`, `-`), with no scheme/colon/space, and NOT an
+/// existing local path. A relative directory that actually exists on disk is
+/// treated as a local path (returns false); a non-existent `owner/repo` is
+/// treated as a remote GitHub slug so onboard can clone it.
+fn looks_like_github_slug(s: &str) -> bool {
+    if s.contains(':') || s.contains(' ') {
+        return false;
+    }
+    let parts: Vec<&str> = s.split('/').collect();
+    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+        return false;
+    }
+    let ok = |p: &str| {
+        p.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+    };
+    if !ok(parts[0]) || !ok(parts[1]) {
+        return false;
+    }
+    // An actual local dir/file of this shape wins; only a non-existent slug is
+    // treated as a remote repo.
+    !std::path::Path::new(s).exists()
+}
+
 /// Extract `owner/repo` from a GitHub/GitLab HTTPS or SSH URL.
 fn extract_owner_repo(url: &str) -> Result<String> {
     // Normalise: strip trailing `.git`
@@ -1793,6 +1836,35 @@ mod tests {
     #[test]
     fn test_extract_owner_repo_bad_url() {
         assert!(extract_owner_repo("https://github.com/ehippy").is_err());
+    }
+
+    #[test]
+    fn test_looks_like_github_slug() {
+        // Bare owner/repo slugs (nonexistent locally) are treated as GitHub repos —
+        // this is the defect fix: `repairman29/olive` must NOT be read as a local
+        // path (which produced `local/olive` + "no readable intent documents" and
+        // never reached the auth-capable clone, so private repos failed).
+        assert!(looks_like_github_slug("repairman29/olive"));
+        assert!(looks_like_github_slug("owner/repo"));
+        assert!(looks_like_github_slug("repairman29/BEAST-MODE"));
+        assert!(looks_like_github_slug("a.b_c/d.e_f-g"));
+        // Not slugs: schemes, multiple/zero slashes, empty halves, spaces.
+        assert!(!looks_like_github_slug("https://github.com/owner/repo"));
+        assert!(!looks_like_github_slug("git@github.com:owner/repo"));
+        assert!(!looks_like_github_slug("owner/repo/extra"));
+        assert!(!looks_like_github_slug("noslash"));
+        assert!(!looks_like_github_slug("owner/"));
+        assert!(!looks_like_github_slug("/repo"));
+        assert!(!looks_like_github_slug("owner repo/x"));
+        // An existing local dir of this two-part shape wins (treated as a path).
+        let base = std::env::temp_dir().join(format!("chump_slug_probe_{}", std::process::id()));
+        let sub = base.join("kid");
+        std::fs::create_dir_all(&sub).unwrap();
+        let existing = sub.to_string_lossy().to_string();
+        // Absolute path has >2 parts so it is never a slug; the point is the
+        // FS-existence guard: a path that exists is never mistaken for a remote.
+        assert!(!looks_like_github_slug(&existing));
+        std::fs::remove_dir_all(&base).ok();
     }
 
     #[test]
