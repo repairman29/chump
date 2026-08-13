@@ -2017,9 +2017,22 @@ events:
 
   - kind: cascade_rebase_triggered
     effect_metric: self
-    emitter: .github/workflows/post-merge-cascade-rebase.yml (INFRA-670)
+    emitter: .github/workflows/post-merge-cascade-rebase.yml (INFRA-670), scripts/coord/queue-driver.sh::cascade_rebase_if_hot (INFRA-1648 added duration_s/timeout_count)
     trigger: workspace-file landing → open-PR rebase sweep
     consumers: [audit-log]
+    fields_required: [ts, kind, triggered_by, pr_ok, pr_fail, auto_resolved, timeout_count, duration_s, dry_run]
+
+  - kind: cascade_rebase_pr_result
+    effect_metric: self
+    emitter: scripts/coord/queue-driver.sh::_cascade_emit_pr_result (INFRA-1648)
+    trigger: >
+      one row per PR processed during a cascade sweep — success (rebased or
+      auto-resolved), failed (permanent — semantic conflict, missing branch,
+      already merged/closed), or timeout (transient — hit the 30s per-PR
+      budget). `failure_class` (transient|permanent, empty on success) lets a
+      retry sweep skip permanent failures instead of hammering them again.
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, pr, result, phase, failure_class, duration_ms]
 
   - kind: cascade_rebase_skipped_duplicate
     effect_metric: self
