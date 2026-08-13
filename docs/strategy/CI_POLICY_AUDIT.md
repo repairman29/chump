@@ -90,7 +90,7 @@ Both surfaces — the legacy branch-protection rule and ruleset 15133729 ("Prote
 | `e2e-dogfood-nightly.yml` | no | 04:00 UTC daily + dispatch | full dogfood matrix (release build + LLM smoke) on main | INFRA-549 (moved from per-PR) |
 | `e2e-pwa-advisory.yml` | no | PR + nightly cron | observability for `test.skip(!INCLUDE_PWA_FLAKES)` quarantined describes | INFRA-1332 PWA flake visibility |
 | `ftue-clean-machine-2026.yml` | no | workflow_dispatch only | full 5-min FTUE demo on fresh runner (brew install -> orchestrate) | INFRA-600/799 onboarding regression |
-| `gap-status-guard.yml` | no | PR open/edit/sync/label | rejects PR if title gap-ID's YAML doesn't show `status: done` | INFRA-066/075/188 stale-status loop |
+| `ci.yml` (`gap-status-check` job, folded from `gap-status-guard.yml` INFRA-2299) | no | PR open/edit/sync/label | rejects PR if title gap-ID's YAML doesn't show `status: done` | INFRA-066/075/188 stale-status loop |
 | `no-anthropic-smoke.yml` | no | PR | gap list / reserve / show / ship run with zero API key set | CREDIBLE-046 chump-first contract |
 | `pr-rescue.yml` | no | 2h cron + dispatch | scan auto-merge-armed PRs, rebase + re-arm if stale (>4h) | RESILIENT-006 stale-PR (queue stranding) |
 | `pr-triage-bot.yml` | no | workflow_run + check_run | auto-fix lint-class fails, file gap on test-class fails | INFRA-624 manual triage replacement |
