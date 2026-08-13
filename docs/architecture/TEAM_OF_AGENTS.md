@@ -158,12 +158,13 @@ Status table (2026-05-24):
 
 | Role | Agent | Skill | Script | Status |
 |---|---|---|---|---|
-| target | ✅ shipped | ✅ shipped | ⏳ filed (INFRA-1917) | shipped |
+| target | ✅ shipped | ✅ shipped | ✅ shipped (INFRA-1917) | **shipped** |
 | handoff | ✅ shipped | ✅ shipped | ✅ shipped (INFRA-1922) | **shipped** |
-| shepherd | ⏳ filed | ⏳ filed | ⏳ filed | filed |
+| shepherd | ✅ shipped (INFRA-1917) | ✅ shipped (INFRA-1917) | ✅ shipped (INFRA-1917) | **shipped** |
 | ci-audit | ✅ shipped | ✅ shipped | ✅ shipped (INFRA-1923) | **shipped** |
-| decompose | ⏳ filed | ⏳ filed | ⏳ filed | filed |
+| decompose | ✅ shipped | ✅ shipped | ✅ shipped (INFRA-1924) | **shipped** |
 | md-links | ✅ shipped | ✅ shipped | ✅ shipped (INFRA-1925) | **shipped** |
+| orchestrator | ✅ shipped (INFRA-1917) | ✅ shipped (INFRA-1917) | ✅ shipped (INFRA-1917) | **shipped** |
 
 The 5 self-contributed acceptance-criteria per role live at
 [`docs/process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md`](../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md).
@@ -206,8 +207,8 @@ skill, loop, cron, or CLAUDE.md/AGENTS.md reference — i.e. shelfware risk).
 | observability | ◐ partial | ✅ | `observability-loop.sh` | telemetry tuning; not in CLAUDE.md/TEAM |
 | deliberator | ◐ partial | ✅ | `deliberator-loop.sh` | vote tally; not in CLAUDE.md/TEAM |
 | harvester | ◐ partial | ✅ | (uses `scripts/arsenal/harvest.sh`) | fleet cartographer; no `*-loop.sh` |
-| shepherd | ◐ partial | filed | `opus-shepherd-triage.sh` + siblings | PR rescue; **no `.claude/agents/shepherd.md`** |
-| orchestrator | ◐ partial | — | (wizard role, inline) | in AGENTS.md; no skill/loop |
+| shepherd | ✅ wired | ✅ | `shepherd-loop.sh` (INFRA-1917) | PR rescue; wraps `opus-shepherd-triage.sh` + `pr-shepherd-daemon.sh` |
+| orchestrator | ✅ wired | ✅ | `orchestrator-loop.sh` (INFRA-1917) | wizard role; wraps `pr-pulse.sh` + `chump-inbox.sh` + `role-card-emit.sh` |
 | quartermaster | ○ **doc-only** | — | — | **anti-shelfware role — itself shelfware** (META-205) |
 | curator-opus-historian | ○ **doc-only** | — | — | lessons-learned curator (added 05-29) |
 | curator-opus-roadmap-keeper | ○ **doc-only** | — | — | roadmap-priority curator (05-29) |
