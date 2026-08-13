@@ -72,3 +72,4 @@ install-transient-retrigger-launchd.sh                     # 2026-05-24 seed: tr
 install-webhook-receiver-launchd.sh                        # 2026-05-24 seed: triage pending (operator-secret-dependent)
 install-weekly-digest-launchd.sh                           # 2026-05-24 seed: triage pending (opt-in cadence)
 install-bootstrap-auto-launchd.sh                           # INFRA-1808: covered via REQUIRED_DAEMONS in chump-fleet-bootstrap.sh, not the manifest.yaml `install:` pattern this gate scans for
+install-installer-audit-launchd.sh                          # INFRA-2394: opt-in weekly installer-wiring audit, not a fresh-bootstrap requirement
