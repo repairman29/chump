@@ -2815,6 +2815,21 @@ const DB_OWNED_GAP_FIELDS: &[&str] = &[
     "estimated_minutes",
     "required_model",
     "outcome_id",
+    // INFRA-3605: evidence IS a DB-owned column (format_gap_yaml emits it
+    // above). Its absence here was the bug: merge_preserve_unknown_fields
+    // treated any pre-existing on-disk `evidence:` block as unknown/
+    // hand-curated and re-spliced it in *after* the freshly generated
+    // `evidence:` block, producing two `evidence:` keys in one gap mapping.
+    // serde_yaml correctly rejects that as a duplicate field, which made
+    // `chump gap dump --out docs/gaps.yaml` (the state.db -> gaps.yaml sync
+    // path, via dump_yaml_with_meta) fail outright and no-op instead of
+    // updating the mirror -- the root cause of the ~449-entry drift.
+    "evidence",
+    // artifact_type (EFFECTIVE-363) is also DB-owned. format_gap_yaml does
+    // not currently emit it, so this entry is a no-op today, but it
+    // documents ownership correctly and pre-empts the same duplicate-key
+    // class the day emission is added.
+    "artifact_type",
 ];
 
 /// INFRA-208: take freshly-generated per-file YAML (one block-list entry as
@@ -7566,6 +7581,78 @@ meta:
         assert!(
             after.contains("closed_commit: deadbeefcafebabe1234567890abcdef12345678"),
             "dump_per_file stripped closed_commit\n--- got ---\n{after}"
+        );
+    }
+
+    /// INFRA-3605 regression: `evidence` IS a DB-owned column
+    /// (`format_gap_yaml` emits it), but was missing from
+    /// `DB_OWNED_GAP_FIELDS`. That made `merge_preserve_unknown_fields`
+    /// treat any pre-existing on-disk `evidence:` block as unknown/
+    /// hand-curated and splice it back in after the freshly generated
+    /// `evidence:` block, producing two `evidence:` keys in one gap
+    /// mapping. Applies to both `dump_per_file`/`dump_per_file_single`
+    /// (this test) and `dump_yaml_with_meta` (the monolithic-dump-onto-
+    /// existing-file path used by `chump gap dump --out docs/gaps.yaml`,
+    /// which self-validates via serde_yaml and fails outright on the
+    /// duplicate -- the state.db -> gaps.yaml sync no-op this gap fixes).
+    #[test]
+    fn dump_per_file_single_does_not_duplicate_evidence_field() {
+        let (store, _dbdir) = test_store();
+        let id = store
+            .reserve("INFRA", "evidence dup test", "P1", "s")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    evidence: Some("fresh evidence from the DB".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let out_dir = TempDir::new().unwrap();
+        // Seed a per-file mirror that ALREADY has an evidence: block (the
+        // shape every gap with evidence set has on disk before a re-dump).
+        let seeded = format!(
+            "- id: {id}\n  \
+             domain: INFRA\n  \
+             title: evidence dup test\n  \
+             status: open\n  \
+             priority: P1\n  \
+             effort: s\n  \
+             evidence: |\n    \
+             stale evidence already on disk\n\n",
+            id = id
+        );
+        let path = out_dir.path().join(format!("{}.yaml", id));
+        std::fs::write(&path, &seeded).unwrap();
+
+        store.dump_per_file_single(&id, out_dir.path()).unwrap();
+        let after = std::fs::read_to_string(&path).unwrap();
+
+        let evidence_key_count = after
+            .lines()
+            .filter(|l| l.starts_with("  evidence:"))
+            .count();
+        assert_eq!(
+            evidence_key_count, 1,
+            "expected exactly one 'evidence:' key, got {evidence_key_count}\n--- got ---\n{after}"
+        );
+        assert!(
+            after.contains("fresh evidence from the DB"),
+            "DB evidence did not win\n--- got ---\n{after}"
+        );
+        assert!(
+            !after.contains("stale evidence already on disk"),
+            "stale on-disk evidence should have been replaced, not preserved\n--- got ---\n{after}"
+        );
+        // The whole file must still parse as valid YAML with no duplicate keys.
+        let parsed: Result<serde_yaml::Value, _> = serde_yaml::from_str(&after);
+        assert!(
+            parsed.is_ok(),
+            "output is not valid YAML: {:?}\n--- got ---\n{after}",
+            parsed.err()
         );
     }
 
