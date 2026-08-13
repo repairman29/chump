@@ -112,11 +112,31 @@ if [[ "$RC" -eq 0 ]]; then
     exit 0
 fi
 
-# Parse failed test names from cargo's "test foo::bar ... FAILED" lines.
-# Format: "test <module::path::name> ... FAILED" (whitespace separator).
-FAILED=$(grep -E '^test [A-Za-z_][A-Za-z0-9_:]+ \.\.\. FAILED' "$LOG" 2>/dev/null \
-    | sed -E 's/^test ([A-Za-z_][A-Za-z0-9_:]+) \.\.\. FAILED.*/\1/' \
-    | sort -u)
+# Parse failed test names from the run output. RESILIENT-306: CI switched to
+# `cargo nextest run` (INFRA-2094) and several guards run `cargo test --quiet`,
+# neither of which emits the classic verbose "test <path> ... FAILED" lines the
+# old single-pattern parser required — so INFRA-764's flake-autorerun had been
+# silently blind to every nextest/quiet flake (this is how credible218 jammed
+# the fleet). Extract failed names from ALL THREE observed shapes:
+#   1. cargo test (verbose):  "test module::name ... FAILED"
+#   2. cargo test summary block (emitted even under --quiet):
+#          failures:
+#              module::name
+#          test result: FAILED. ...
+#   3. cargo nextest:         "    FAIL [   0.0s] <bin-id> module::name"
+# Union + sort -u. Over-capture fails CLOSED (an unrecognised name is treated
+# as "not catalogued" → no auto-rerun), so a loose match can never mask a bug.
+FAILED=$(
+    {
+        grep -E '^test [A-Za-z_][A-Za-z0-9_:]+ \.\.\. FAILED' "$LOG" 2>/dev/null \
+            | sed -E 's/^test ([A-Za-z_][A-Za-z0-9_:]+) \.\.\. FAILED.*/\1/'
+        # cargo test "failures:" list — only names inside the failures:…test result: window.
+        awk '/^failures:[[:space:]]*$/{f=1;next} /^test result:/{f=0} f && /^[[:space:]]{4}[A-Za-z_][A-Za-z0-9_:]+[[:space:]]*$/{gsub(/[[:space:]]/,"");print}' "$LOG" 2>/dev/null
+        # cargo nextest "FAIL [   0.0s] <bin> <path>" — capture the last token (test path).
+        grep -E 'FAIL \[[^]]*\][[:space:]]+[^[:space:]]+[[:space:]]+[A-Za-z_]' "$LOG" 2>/dev/null \
+            | sed -E 's/.*FAIL \[[^]]*\][[:space:]]+[^[:space:]]+[[:space:]]+([A-Za-z_][A-Za-z0-9_:]+).*/\1/'
+    } | grep -E '^[A-Za-z_][A-Za-z0-9_:]+$' | sort -u
+)
 
 if [[ -z "$FAILED" ]]; then
     # Failure but no parseable test names (e.g. compile error, runner OOM).
