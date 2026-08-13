@@ -2239,6 +2239,40 @@ events:
       "curator-opus-decompose". Pairs with kind=decompose_audit and
       kind=decompose_sliced to verify the role is active when expected.
 
+  - kind: shepherd_heartbeat
+    effect_metric: self
+    emitter: scripts/coord/shepherd-loop.sh (INFRA-1917)
+    trigger: curator-opus-shepherd heartbeat subcommand fires each work-your-lane tick
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, session, role]
+    docs: |
+      Liveness signal for the shepherd (PR-rescue) curator role. role is
+      always "shepherd". Pairs with kind=opus_shepherd_triage and
+      kind=pr_classified/pr_action_taken to verify the role is active
+      when expected.
+
+  - kind: orchestrator_heartbeat
+    effect_metric: self
+    emitter: scripts/coord/orchestrator-loop.sh (INFRA-1917)
+    trigger: orchestrator-opus (wizard) heartbeat subcommand fires each pulse-and-dispatch tick
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, session, role]
+    docs: |
+      Liveness signal for the orchestrator (wizard) role. role is always
+      "orchestrator". Curator peers audit this to confirm the wizard is
+      alive before waiting on a directed dispatch reply.
+
+  - kind: target_heartbeat
+    effect_metric: self
+    emitter: scripts/coord/target-loop.sh (INFRA-1917)
+    trigger: curator-opus-target heartbeat subcommand fires each work-your-lane tick
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, session, role]
+    docs: |
+      Liveness signal for the target (demo-target) curator role. role is
+      always "target". Pairs with DONE broadcasts on ship to verify the
+      role is active in its three lane umbrellas.
+
   - kind: system_gap_tick
     effect_metric: self
     emitter: scripts/coord/system-gap-tick.sh (INFRA-841)
