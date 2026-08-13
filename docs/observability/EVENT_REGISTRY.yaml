@@ -9716,3 +9716,15 @@ events:
       contract; the LLM call itself is pinned to PrivacyTier::Safe.
     consumers: [ops-audit]
     fields_required: [ts, kind, data_tier]
+
+  - kind: arsenal_rebuilt
+    effect_metric: self
+    emitter: scripts/arsenal/build.py (INFRA-1823)
+    trigger: >
+      The Harvester's fleet catalog (docs/arsenal/GLOBAL_ARSENAL.json) was
+      rebuilt — either on demand via `chump harvest scan` or on the weekly
+      launchd schedule (scripts/launchd/com.chump.harvester-scan.plist).
+      Carries repo/cluster/duplication/alert counts so fleet-brief and
+      operator digests can see catalog drift without re-reading the JSON.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, repos, clusters, dups, alerts]

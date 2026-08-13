@@ -21,7 +21,43 @@ docs/arsenal/
     └── CP-NNN-<topic>.md       ← Smart-Harvest briefs, one per integration
 
 scripts/arsenal/build.py        ← regenerates the catalog
+scripts/arsenal/harvest.sh      ← harness-neutral shell CLI (scan/check/brief/deep-scan)
+src/harvester_cli.rs            ← `chump harvest` — the productized CLI (INFRA-1823)
 ```
+
+## CLI (INFRA-1823)
+
+`chump harvest` is the first-class Chump engine surface — usable from any
+harness (Claude Code, opencode, codex, manual), not just the Claude-Code
+`.claude/agents/harvester.md` agent or `harvester` skill. Both of those now
+delegate to this CLI (which itself wraps `scripts/arsenal/harvest.sh` +
+`scripts/arsenal/build.py` — the CLI's job is argument validation and exit
+codes, not duplicating the jq/gh catalog logic).
+
+```bash
+chump harvest scan                       # refresh the catalog from `gh repo list`
+                                          # exit 1 if any high-severity alert is present
+chump harvest check <GAP-ID|topic>       # arsenal overlap report — primitives_index,
+                                          # clusters, repo descriptions, roadmap +
+                                          # CP-brief mentions. Exit 0 on match, 1 on none.
+chump harvest brief <src-repo> <target>  # scaffold a Cross-Pollination Brief (CP-NNN)
+chump harvest deep-scan <cluster>        # list repos in a cluster with health metadata
+chump harvest list-clusters              # print all known cluster names + repo counts
+chump harvest --help                     # full usage + exit-code table
+```
+
+`chump gap decompose <GAP-ID>` calls `chump harvest check` internally as a
+pre-flight (AC4, INFRA-1823) — when the catalog has overlap for the gap's ID
+or title keywords, the citation is printed before the suggested slices and
+written into each filed sub-gap's `notes` field, so the implementing worker
+sees the prior art without re-running the check.
+
+**Scheduled rebuild:** `scripts/launchd/com.chump.harvester-scan.plist` runs
+the catalog rebuild weekly (Sunday 08:00 local, ahead of the Sunday 09:00
+roadmap-update-agent). Every rebuild — scheduled or via `chump harvest
+scan` — emits `kind=arsenal_rebuilt` to `ambient.jsonl` with repo/cluster/
+duplication/alert counts (registered in
+[`docs/observability/EVENT_REGISTRY.yaml`](../observability/EVENT_REGISTRY.yaml)).
 
 ## Rebuild cadence
 
@@ -55,6 +91,7 @@ python3 scripts/arsenal/build.py
 | `alerts` | high-priority findings (credential leaks, stale vendored clones, misplaced .git) |
 | `primitives_index` | label → list of repos that own that primitive (auth, payment, chat, …) |
 | `repos_by_name` | full per-repo record (visibility, language, last push, local_clone, primitives) |
+| `repos_by_name.*.extracted_primitives` | manually-verified, source-cited primitives found by a deep-scan (vs. `primitives`, which is a keyword heuristic on name/description) — populated from [`HARVEST_ROADMAP.md`](./HARVEST_ROADMAP.md)'s Wave 1-3 findings, INFRA-1823 AC7 |
 | `unmatched_local_roots` | git roots on disk that don't map to a known repairman29 repo |
 
 ## Phase 2 — Smart Harvest (3 routes)

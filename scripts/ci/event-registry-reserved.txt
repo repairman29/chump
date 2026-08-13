@@ -836,3 +836,6 @@ missing_attribution     # reason: INFRA-3583 — only referenced in crates/chump
 pr_merged               # reason: INFRA-3583 — only referenced in src/briefing.rs / src/fleet_resize.rs #[cfg(test)] fixtures; no production emitter found
 review_handoff_initiated    # reason: INFRA-3583 — only referenced in crates/chump-kpi-report/src/kpi_report.rs #[cfg(test)] fixture; no production emitter found
 waste_category_report   # reason: INFRA-3583 — only referenced in crates/chump-waste-tally/src/waste_tally.rs #[cfg(test)] fixture; no production emitter found
+embedded_github_token   # reason: INFRA-1823 — not an ambient event; `kind` field on an alert record inside scripts/arsenal/build.py::find_alerts(), written to docs/arsenal/GLOBAL_ARSENAL.json.alerts[], not to ambient.jsonl. Flagged only because adding scripts/arsenal/ to PROD_PATHS (for arsenal_rebuilt) put this unrelated "kind" literal in scan range.
+misplaced_clone         # reason: INFRA-1823 — same as embedded_github_token above; alert-record kind, not an ambient event kind.
+stale_vendored_clone    # reason: INFRA-1823 — same as embedded_github_token above; alert-record kind, not an ambient event kind.
