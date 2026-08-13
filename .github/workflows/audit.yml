@@ -275,6 +275,12 @@ jobs:
           cargo build --bin chump 2>&1 | tail -2
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-consolidate.sh
 
+      - name: audit log query/retention smoke test — CP-010 vendored AuditLogger (INFRA-1842)
+        if: matrix.shard == 1
+        run: |
+          cargo build --bin chump 2>&1 | tail -2
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-audit-log.sh
+
       - name: PWA gap endpoint security — rate limit, CSRF, headers, timeout (CREDIBLE-023)
         if: matrix.shard == 1
         run: |

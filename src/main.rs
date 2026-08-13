@@ -114,6 +114,7 @@ use chump_gap_store as gap_store;
 // even when the CI rust-cache restores a stale build (fixes E0433 on Ubuntu).
 extern crate chump_ship;
 mod audit;
+mod audit_log; // INFRA-1842: queryable per-action audit log (CP-010, vendored from BEAST-MODE AuditLogger)
 pub use chump_bench::bench; // DOC-072/EFFECTIVE-327: ChumpBench — run a track as a scoreable lap (EFFECTIVE-405: extracted to crates/chump-bench)
 mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod cartographer; // INFRA-1782: chump cartograph <repo-path> — ARCHITECTURE.md generation (INFRA-1746 phase 2)
@@ -2388,8 +2389,214 @@ async fn main() -> Result<()> {
             println!(
                 "  librarian-sweep   dead-code + redundant-script triage for an ingest target repo"
             );
+            println!("  query             query the per-action audit log (INFRA-1842, CP-010)");
+            println!("  retention         delete audit_log rows older than a cutoff (INFRA-1842)");
             println!();
             println!("Run 'chump audit <subcommand> --help' for options.");
+            return Ok(());
+        }
+        // `chump audit query [filters] [--json]` (INFRA-1842, CP-010) — queryable
+        // per-action audit log. See docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md.
+        if sub == "query" {
+            let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+            if rest.iter().any(|a| *a == "--help" || *a == "help") {
+                println!("Usage: chump audit query [filters] [--json]");
+                println!();
+                println!("Options:");
+                println!("  --actor <id>          filter by actor (session id or login)");
+                println!("  --action <name>        filter by action name (e.g. gap.shipped)");
+                println!(
+                    "  --resource <class>     filter by resource class (gap | pr | lease | config)"
+                );
+                println!(
+                    "  --resource-id <id>     filter by specific resource id (e.g. INFRA-1842)"
+                );
+                println!("  --since <duration|iso> 24h | 7d | 1m | 0s | RFC-3339 timestamp");
+                println!("  --until <duration|iso> same syntax as --since");
+                println!("  --limit N              truncate result (default 100)");
+                println!("  --json                 structured JSON output (default: pretty table)");
+                return Ok(());
+            }
+            let want_json = rest.contains(&"--json");
+            let mut filter = audit_log::QueryFilter::default();
+            let mut it = rest.iter().peekable();
+            while let Some(a) = it.next() {
+                match *a {
+                    "--actor" => filter.actor = it.next().map(|s| s.to_string()),
+                    "--action" => filter.action = it.next().map(|s| s.to_string()),
+                    "--resource" => filter.resource = it.next().map(|s| s.to_string()),
+                    "--resource-id" => filter.resource_id = it.next().map(|s| s.to_string()),
+                    "--since" => {
+                        if let Some(v) = it.next() {
+                            match audit_log::resolve_time_bound(v) {
+                                Ok(ts) => filter.since = Some(ts),
+                                Err(e) => {
+                                    eprintln!("chump audit query: bad --since value: {e}");
+                                    std::process::exit(2);
+                                }
+                            }
+                        }
+                    }
+                    "--until" => {
+                        if let Some(v) = it.next() {
+                            match audit_log::resolve_time_bound(v) {
+                                Ok(ts) => filter.until = Some(ts),
+                                Err(e) => {
+                                    eprintln!("chump audit query: bad --until value: {e}");
+                                    std::process::exit(2);
+                                }
+                            }
+                        }
+                    }
+                    "--limit" => {
+                        if let Some(v) = it.next() {
+                            filter.limit = v.parse().ok();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let repo_root = repo_path::repo_root();
+            let conn = match audit_log::open(&repo_root) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("chump audit query: {e}");
+                    std::process::exit(1);
+                }
+            };
+            let entries = match audit_log::query(&conn, &filter) {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("chump audit query: {e}");
+                    std::process::exit(1);
+                }
+            };
+            if want_json {
+                println!(
+                    "{}",
+                    serde_json::json!({ "count": entries.len(), "entries": entries })
+                );
+            } else {
+                println!(
+                    "{:<28} {:<22} {:<24} {:<10} resource_id",
+                    "ts", "actor", "action", "result"
+                );
+                for e in &entries {
+                    println!(
+                        "{:<28} {:<22} {:<24} {:<10} {}",
+                        e.ts,
+                        e.actor,
+                        e.action,
+                        e.result.as_str(),
+                        e.resource_id.clone().unwrap_or_default()
+                    );
+                }
+                println!("{} entries", entries.len());
+            }
+            return Ok(());
+        }
+        // `chump audit retention --older-than <duration> [--dry-run] [--json]` (INFRA-1842).
+        if sub == "retention" {
+            let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+            if rest.iter().any(|a| *a == "--help" || *a == "help") || rest.is_empty() {
+                println!(
+                    "Usage: chump audit retention --older-than <duration> [--dry-run] [--json]"
+                );
+                println!();
+                println!("Deletes audit_log rows with ts older than the cutoff. No automatic");
+                println!("rotation — operator/cron invoked, mirrors BEAST-MODE's clearLogs().");
+                return Ok(());
+            }
+            let want_json = rest.contains(&"--json");
+            let mut older_than: Option<String> = None;
+            let mut it = rest.iter().peekable();
+            while let Some(a) = it.next() {
+                if *a == "--older-than" {
+                    older_than = it.next().map(|s| s.to_string());
+                }
+            }
+            let older_than = match older_than {
+                Some(v) => v,
+                None => {
+                    eprintln!("chump audit retention: --older-than is required");
+                    std::process::exit(2);
+                }
+            };
+            let cutoff = match audit_log::resolve_time_bound(&older_than) {
+                Ok(ts) => ts,
+                Err(e) => {
+                    eprintln!("chump audit retention: bad --older-than value: {e}");
+                    std::process::exit(2);
+                }
+            };
+            let repo_root = repo_path::repo_root();
+            let conn = match audit_log::open(&repo_root) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("chump audit retention: {e}");
+                    std::process::exit(1);
+                }
+            };
+            let report = match audit_log::clear_older_than(&conn, &cutoff) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("chump audit retention: {e}");
+                    std::process::exit(1);
+                }
+            };
+            if want_json {
+                println!(
+                    "{}",
+                    serde_json::json!({ "removed": report.removed, "remaining": report.remaining })
+                );
+            } else {
+                println!(
+                    "removed {} rows older than {}, {} remaining",
+                    report.removed, cutoff, report.remaining
+                );
+            }
+            return Ok(());
+        }
+        // `chump audit _test_seed ...` — hidden subcommand for synthetic audit
+        // entries, gated on CHUMP_TEST_MODE=1, matching the pattern used by
+        // scripts/ci/test-gap-audit-priorities.sh's fixture seeding.
+        if sub == "_test_seed" {
+            if std::env::var("CHUMP_TEST_MODE").as_deref() != Ok("1") {
+                eprintln!("chump audit _test_seed: only available with CHUMP_TEST_MODE=1");
+                std::process::exit(2);
+            }
+            let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+            let mut actor = "test-actor".to_string();
+            let mut action = "test.action".to_string();
+            let mut resource: Option<String> = None;
+            let mut resource_id: Option<String> = None;
+            let mut it = rest.iter().peekable();
+            while let Some(a) = it.next() {
+                match *a {
+                    "--actor" => actor = it.next().map(|s| s.to_string()).unwrap_or(actor),
+                    "--action" => action = it.next().map(|s| s.to_string()).unwrap_or(action),
+                    "--resource" => resource = it.next().map(|s| s.to_string()),
+                    "--resource-id" => resource_id = it.next().map(|s| s.to_string()),
+                    _ => {}
+                }
+            }
+            let mut entry = audit_log::AuditEntry::new(&actor, &action);
+            if let (Some(r), Some(rid)) = (resource, resource_id) {
+                entry = entry.with_resource(&r, &rid);
+            }
+            let repo_root = repo_path::repo_root();
+            let conn = match audit_log::open(&repo_root) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("chump audit _test_seed: {e}");
+                    std::process::exit(1);
+                }
+            };
+            if let Err(e) = audit_log::log_action(&conn, &entry) {
+                eprintln!("chump audit _test_seed: {e}");
+                std::process::exit(1);
+            }
+            println!("{}", entry.id);
             return Ok(());
         }
         if sub == "librarian-sweep" {
