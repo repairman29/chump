@@ -9728,3 +9728,15 @@ events:
       operator digests can see catalog drift without re-reading the JSON.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, repos, clusters, dups, alerts]
+
+  - kind: inference_routed
+    effect_metric: self
+    emitter: src/inference_router.rs (INFRA-1843, CP-011 bicameral-mind vendoring)
+    trigger: >
+      `inference_router::route()` decided a Reflexive (on-device) vs.
+      Neocortex (cloud) tier for a call site, honoring
+      CHUMP_INFERENCE_TIER=reflexive|neocortex|auto (default reflexive).
+      One event per routing decision, including auto-mode escalations
+      on retry.
+    consumers: [observability]
+    fields_required: [ts, kind, call_site, attempt, tier]
