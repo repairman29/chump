@@ -1,0 +1,31 @@
+{
+  "_comment": "INFRA-1864: language-keyed regex patterns -> primitive label. Consumed by scripts/arsenal/build.py's per-file scanner. Each pattern is a Python re.search() regex applied line-by-line to source files under a repo's src/ tree. Add new primitives/languages here, not as inline logic in build.py.",
+  "rust": {
+    "ast": ["use\\s+tree_sitter", "tree_sitter::", "tree-sitter-"],
+    "auth": ["jsonwebtoken::", "jwt::(decode|encode|verify)", "oauth2::"],
+    "payment": ["stripe(_rust)?::", "async_stripe::"],
+    "vector_embedding": ["lancedb::", "qdrant_client", "pgvector"],
+    "llm_router": ["InferrLM", "LiteLLM", "model_router::", "bicameral"]
+  },
+  "typescript": {
+    "ast": ["import\\s+.*tree-sitter", "require\\(['\"]tree-sitter['\"]\\)"],
+    "auth": ["jwt\\.verify", "jsonwebtoken", "next-auth"],
+    "payment": ["stripe\\.api_key", "new Stripe\\(", "import Stripe from ['\"]stripe['\"]"],
+    "vector_embedding": ["lancedb", "@pinecone-database", "pgvector"],
+    "llm_router": ["LiteLLM", "openai.*fallback", "model_router"]
+  },
+  "javascript": {
+    "ast": ["require\\(['\"]tree-sitter['\"]\\)", "import\\s+.*tree-sitter"],
+    "auth": ["jwt\\.verify", "jsonwebtoken", "passport\\("],
+    "payment": ["stripe\\.api_key", "require\\(['\"]stripe['\"]\\)", "new Stripe\\("],
+    "vector_embedding": ["lancedb", "pinecone", "pgvector"],
+    "llm_router": ["LiteLLM", "togetherAI", "model_router"]
+  },
+  "python": {
+    "ast": ["import\\s+tree_sitter", "from\\s+tree_sitter\\s+import"],
+    "auth": ["jwt\\.verify", "import\\s+jwt", "PyJWT"],
+    "payment": ["stripe\\.api_key", "import\\s+stripe"],
+    "vector_embedding": ["import\\s+lancedb", "import\\s+faiss", "pgvector"],
+    "llm_router": ["litellm", "model_router"]
+  }
+}
