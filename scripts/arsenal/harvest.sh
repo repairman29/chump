@@ -99,6 +99,21 @@ case "$cmd" in
       [ -n "$matches" ] && { echo "$matches"; found=1; }
     fi
     echo
+    echo "=== extracted_primitives (per-file, line-refd) match for '$topic' ==="
+    if matches=$(jq -r --arg t "$topic" '
+      .repos_by_name | to_entries
+      | map(select(
+          (.value.extracted_primitives_by_file // [])
+          | any(.primitive == $t or (.file | ascii_downcase | contains($t | ascii_downcase)))
+        ))
+      | .[] | .key as $repo
+      | (.value.extracted_primitives_by_file // [])
+      | map(select(.primitive == $t or (.file | ascii_downcase | contains($t | ascii_downcase))))
+      | .[] | "  \($repo)/\(.file):\(.line) — \(.primitive) (\(.match))"
+    ' "$CATALOG"); then
+      [ -n "$matches" ] && { echo "$matches"; found=1; }
+    fi
+    echo
     echo "=== repo-description match for '$topic' ==="
     if matches=$(jq -r --arg t "$topic" '
       .repos_by_name | to_entries

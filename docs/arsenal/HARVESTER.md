@@ -91,8 +91,53 @@ python3 scripts/arsenal/build.py
 | `alerts` | high-priority findings (credential leaks, stale vendored clones, misplaced .git) |
 | `primitives_index` | label → list of repos that own that primitive (auth, payment, chat, …) |
 | `repos_by_name` | full per-repo record (visibility, language, last push, local_clone, primitives) |
-| `repos_by_name.*.extracted_primitives` | manually-verified, source-cited primitives found by a deep-scan (vs. `primitives`, which is a keyword heuristic on name/description) — populated from [`HARVEST_ROADMAP.md`](./HARVEST_ROADMAP.md)'s Wave 1-3 findings, INFRA-1823 AC7 |
+| `repos_by_name.*.extracted_primitives` | manually-verified, source-cited primitives found by a deep-scan (vs. `primitives`, which is a keyword heuristic on name/description) — populated from [`HARVEST_ROADMAP.md`](./HARVEST_ROADMAP.md)'s Wave 1-3 findings (INFRA-1823 AC7), **plus** automated per-file scan hits (INFRA-1864, see below), merged into the same list as formatted strings so the field stays `list[str]` |
+| `repos_by_name.*.extracted_primitives_by_file` | structured per-file hits from the automated scanner — `{file, line, primitive, match}` — one entry per (file, primitive, pattern) |
 | `unmatched_local_roots` | git roots on disk that don't map to a known repairman29 repo |
+
+### Per-file primitive indexing (INFRA-1864)
+
+CP-002 found a Discovery Failure footprint: `echeo/src/shredder.rs` had a
+tree-sitter AST-extraction primitive sitting in the arsenal the whole time,
+but nothing surfaced it to a gap that needed one — the catalog only indexed
+at the *repo* level (name/description keyword match), not the *file* level.
+
+`scripts/arsenal/build.py` now closes that gap: for every repo with a local
+clone, `scan_repo_primitives()` walks `<repo>/src` (falling back to the repo
+root if no `src/` dir exists), and regex-matches each source file's lines
+against **`scripts/arsenal/primitive_signatures.json`** — a language-keyed
+table of `{language: {primitive_label: [regex, ...]}}`. A hit is a file +
+line + matched snippet, e.g. `ast: src/shredder.rs:1 (use tree_sitter::Parser;)`.
+
+**The discipline this prevents the next CP-002-class miss:** when you add a
+new integration point that a future gap might duplicate (a new auth
+provider, payment SDK, embeddings store, LLM router — anything a *different*
+repo might independently reinvent), add its signature to
+`primitive_signatures.json` rather than relying on someone remembering to
+grep for it by hand. The scan reruns on every `harvest.sh scan` /
+`chump harvest scan`, so new signatures retroactively light up every repo
+with a local clone the next time the catalog rebuilds — no per-repo manual
+edit required, unlike `EXTRACTED_PRIMITIVES` in `build.py`.
+
+`harvest.sh check <topic>` / `chump harvest check <topic>` reads
+`extracted_primitives_by_file` (in addition to the existing `primitives_index`
++ cluster + description match) and surfaces per-file hits with line refs, so
+"does anything already do X" answers point at an exact file + line instead of
+just a repo name.
+
+Coordination note (INFRA-1823 productization): the Rust port of `chump
+harvest` (`src/harvester_cli.rs`) currently shells out to this script for
+`scan`/`check`. If/when that port inlines the catalog-build logic in Rust
+instead of shelling to `build.py`, the per-file scan step (walk `src/`,
+regex against `primitive_signatures.json`, one hit per file/primitive/pattern)
+should move with it — `primitive_signatures.json` is designed to be
+language-agnostic-format (plain JSON, not Python) specifically so a Rust
+scanner can read it without needing to import `build.py`.
+
+Performance budget: bounded to a single pass over each local clone's `src/`
+tree, first-match-per-pattern only (no exhaustive occurrence listing), with
+a 500 KB per-file skip — keeps a 76-repo fleet scan comfortably under the
+30s target when local clones are already on disk (see AC8 in the gap).
 
 ## Phase 2 — Smart Harvest (3 routes)
 

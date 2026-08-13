@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "generated_at": "2026-08-13T04:29:14Z",
+    "generated_at": "2026-08-13T05:12:34Z",
     "generator": "scripts/arsenal/build.py v0",
     "operator": "repairman29 (Jeff Adkins)",
-    "fleet_size_github": 76,
-    "fleet_size_local_clones": 1,
+    "fleet_size_github": 101,
+    "fleet_size_local_clones": 2,
     "fleet_size_unmatched_local_roots": 0
   },
   "clusters": {
@@ -23,22 +23,76 @@
         "Rust": 2,
         "?": 1
       },
-      "active_last_30d": 0
+      "active_last_30d": 1
+    },
+    "content-apps": {
+      "count": 13,
+      "repos": [
+        "olive",
+        "slidemate",
+        "pvc",
+        "biomeweavers",
+        "coloringbook",
+        "postsub",
+        "trove-web",
+        "trove-app",
+        "berry-avenue-codes",
+        "dice",
+        "mixdown",
+        "messaging-demo",
+        "sheckleshare"
+      ],
+      "languages": {
+        "TypeScript": 7,
+        "JavaScript": 3,
+        "Python": 2,
+        "HTML": 1
+      },
+      "active_last_30d": 5
     },
     "misc": {
-      "count": 4,
+      "count": 28,
       "repos": [
-        "registry",
+        "workspace-docs",
+        "almanac",
+        "games-workspace",
+        "machine-substrate",
+        "grave-dancer",
+        "jeffadkins-dev",
+        "holler",
+        "privateer",
+        "opportunity-library",
+        "posse",
+        "realm-of-shadows",
+        "upshift-cli",
+        "space-shooter",
+        "crystal-rush",
+        "inversion",
+        "roblox-game-manager",
+        "kosmos",
+        "fulcrum",
         "okr",
+        "project-2026-case",
+        "pixi-game",
+        "jeffadkins-me",
+        "bulwark",
+        "choose",
+        "derelict",
+        "registry",
         "project-forge",
         "project_forge"
       ],
       "languages": {
-        "?": 2,
-        "TypeScript": 1,
-        "HTML": 1
+        "JavaScript": 10,
+        "Rust": 1,
+        "Shell": 1,
+        "HTML": 6,
+        "?": 3,
+        "TypeScript": 5,
+        "Lua": 1,
+        "Python": 1
       },
-      "active_last_30d": 0
+      "active_last_30d": 22
     },
     "upshift-deps": {
       "count": 1,
@@ -46,7 +100,125 @@
         "upshift"
       ],
       "languages": {
-        "TypeScript": 1
+        "JavaScript": 1
+      },
+      "active_last_30d": 1
+    },
+    "jarvis-assistant": {
+      "count": 4,
+      "repos": [
+        "jarvis-rog-ed",
+        "jarvis-gateway",
+        "JARVIS",
+        "JARVIS-Premium"
+      ],
+      "languages": {
+        "JavaScript": 2,
+        "Shell": 1,
+        "?": 1
+      },
+      "active_last_30d": 1
+    },
+    "smugglers-rpg": {
+      "count": 25,
+      "repos": [
+        "ai-gm-service",
+        "mythseeker2",
+        "MythSeeker",
+        "smuggler-discord-bot",
+        "smuggler",
+        "analytics-platform-service",
+        "zendesk-background-agent",
+        "services-dashboard",
+        "service-frontends",
+        "mock-services",
+        "bot-simulation-service",
+        "commercial-platform",
+        "internal-zendesk-tools",
+        "auth-platform-service",
+        "combat-system-service",
+        "character-system-service",
+        "mission-engine-service",
+        "chat-platform-service",
+        "payment-platform-service",
+        "economy-system-service",
+        "marketplace-system-service",
+        "code-generation-service",
+        "asset-management-service",
+        "audio-generation-service",
+        "smugglers"
+      ],
+      "languages": {
+        "JavaScript": 21,
+        "TypeScript": 2,
+        "CSS": 2
+      },
+      "active_last_30d": 4
+    },
+    "echeo-resonant": {
+      "count": 8,
+      "repos": [
+        "echeo_old",
+        "echeo-web",
+        "echeovid",
+        "echeo",
+        "echeo-internal",
+        "echeo-archived",
+        "echeodev",
+        "echeo-dev"
+      ],
+      "languages": {
+        "TypeScript": 5,
+        "Rust": 2,
+        "JavaScript": 1
+      },
+      "active_last_30d": 2
+    },
+    "beast-mode-qi": {
+      "count": 2,
+      "repos": [
+        "BEAST-MODE",
+        "beast-mode-website"
+      ],
+      "languages": {
+        "JavaScript": 1,
+        "HTML": 1
+      },
+      "active_last_30d": 1
+    },
+    "political-strat": {
+      "count": 4,
+      "repos": [
+        "ims",
+        "project2029",
+        "2029-versioned",
+        "2029"
+      ],
+      "languages": {
+        "HTML": 1,
+        "Python": 3
+      },
+      "active_last_30d": 3
+    },
+    "tools-platform": {
+      "count": 9,
+      "repos": [
+        "pixel-edge-server",
+        "neural-farm",
+        "workbench",
+        "openclaw",
+        "slides",
+        "daisy-chain",
+        "code-roach",
+        "oracle",
+        "coderoach"
+      ],
+      "languages": {
+        "Kotlin": 1,
+        "Python": 1,
+        "JavaScript": 5,
+        "TypeScript": 1,
+        "?": 1
       },
       "active_last_30d": 0
     },
@@ -61,160 +233,18 @@
         "HTML": 1
       },
       "active_last_30d": 0
-    },
-    "echeo-resonant": {
-      "count": 8,
-      "repos": [
-        "echeo",
-        "echeovid",
-        "echeo-internal",
-        "echeo-archived",
-        "echeo_old",
-        "echeo-web",
-        "echeodev",
-        "echeo-dev"
-      ],
-      "languages": {
-        "Rust": 2,
-        "TypeScript": 5,
-        "JavaScript": 1
-      },
-      "active_last_30d": 0
-    },
-    "beast-mode-qi": {
-      "count": 2,
-      "repos": [
-        "BEAST-MODE",
-        "beast-mode-website"
-      ],
-      "languages": {
-        "JavaScript": 1,
-        "HTML": 1
-      },
-      "active_last_30d": 0
-    },
-    "tools-platform": {
-      "count": 9,
-      "repos": [
-        "openclaw",
-        "pixel-edge-server",
-        "neural-farm",
-        "workbench",
-        "slides",
-        "daisy-chain",
-        "code-roach",
-        "oracle",
-        "coderoach"
-      ],
-      "languages": {
-        "TypeScript": 1,
-        "HTML": 1,
-        "Python": 1,
-        "JavaScript": 5,
-        "?": 1
-      },
-      "active_last_30d": 0
-    },
-    "jarvis-assistant": {
-      "count": 4,
-      "repos": [
-        "jarvis-gateway",
-        "JARVIS",
-        "JARVIS-Premium",
-        "jarvis-rog-ed"
-      ],
-      "languages": {
-        "Shell": 1,
-        "JavaScript": 2,
-        "?": 1
-      },
-      "active_last_30d": 0
-    },
-    "content-apps": {
-      "count": 13,
-      "repos": [
-        "pvc",
-        "slidemate",
-        "olive",
-        "trove-app",
-        "postsub",
-        "berry-avenue-codes",
-        "dice",
-        "mixdown",
-        "coloringbook",
-        "biomeweavers",
-        "messaging-demo",
-        "sheckleshare",
-        "trove-web"
-      ],
-      "languages": {
-        "TypeScript": 6,
-        "HTML": 2,
-        "Python": 2,
-        "JavaScript": 3
-      },
-      "active_last_30d": 0
-    },
-    "smugglers-rpg": {
-      "count": 24,
-      "repos": [
-        "smuggler",
-        "mythseeker2",
-        "analytics-platform-service",
-        "zendesk-background-agent",
-        "services-dashboard",
-        "service-frontends",
-        "mock-services",
-        "bot-simulation-service",
-        "commercial-platform",
-        "internal-zendesk-tools",
-        "MythSeeker",
-        "auth-platform-service",
-        "combat-system-service",
-        "character-system-service",
-        "mission-engine-service",
-        "chat-platform-service",
-        "payment-platform-service",
-        "economy-system-service",
-        "marketplace-system-service",
-        "code-generation-service",
-        "asset-management-service",
-        "audio-generation-service",
-        "smugglers",
-        "ai-gm-service"
-      ],
-      "languages": {
-        "JavaScript": 20,
-        "TypeScript": 2,
-        "CSS": 2
-      },
-      "active_last_30d": 0
-    },
-    "political-strat": {
-      "count": 4,
-      "repos": [
-        "project2029",
-        "2029",
-        "2029-versioned",
-        "ims"
-      ],
-      "languages": {
-        "Python": 3,
-        "HTML": 1
-      },
-      "active_last_30d": 0
     }
   },
   "duplications": [
     {
       "pattern": "echeo-*",
       "variants": [
-        "echeo",
-        "echeovid",
-        "echeo-internal",
-        "echeo-archived",
         "echeo_old",
         "echeo-web",
+        "echeovid",
+        "echeo",
+        "echeo-internal",
+        "echeo-archived",
         "echeodev",
         "echeo-dev"
       ],
@@ -231,6 +261,7 @@
     {
       "pattern": "smuggler-*",
       "variants": [
+        "smuggler-discord-bot",
         "smuggler",
         "smugglers"
       ],
@@ -256,26 +287,40 @@
       "pattern": "2029-*",
       "variants": [
         "project2029",
-        "2029",
-        "2029-versioned"
+        "2029-versioned",
+        "2029"
       ],
       "recommendation": "three repos for one initiative \u2014 pick one canonical"
     },
     {
       "pattern": "jarvis-*",
       "variants": [
+        "jarvis-rog-ed",
         "jarvis-gateway",
         "JARVIS",
-        "JARVIS-Premium",
-        "jarvis-rog-ed"
+        "JARVIS-Premium"
       ],
       "recommendation": "platform variants (ROG Ally, Android, gateway, premium) \u2014 confirm intentional vs accidental fork"
     }
   ],
   "alerts": [],
   "primitives_index": {
-    "ci-cd": [
-      "homebrew-chump"
+    "list-mgmt": [
+      "olive",
+      "trove-web",
+      "trove-app",
+      "sheckleshare"
+    ],
+    "calendar": [
+      "machine-substrate",
+      "bulwark"
+    ],
+    "ai-generation": [
+      "ai-gm-service",
+      "neural-farm",
+      "jarvis-gateway",
+      "code-generation-service",
+      "audio-generation-service"
     ],
     "marketplace": [
       "BEAST-MODE",
@@ -283,43 +328,37 @@
       "economy-system-service",
       "marketplace-system-service"
     ],
-    "ai-generation": [
-      "neural-farm",
-      "code-generation-service",
-      "audio-generation-service",
-      "ai-gm-service"
-    ],
-    "list-mgmt": [
-      "olive",
-      "trove-app",
-      "sheckleshare",
-      "trove-web"
-    ],
     "rpg-mechanic": [
-      "smuggler",
       "mythseeker2",
+      "MythSeeker",
+      "smuggler-discord-bot",
+      "smuggler",
       "services-dashboard",
       "service-frontends",
       "mock-services",
       "bot-simulation-service",
       "commercial-platform",
-      "MythSeeker",
       "combat-system-service",
       "character-system-service",
       "mission-engine-service",
       "smugglers"
     ],
-    "video": [
-      "echeovid"
+    "chat": [
+      "smuggler-discord-bot",
+      "messaging-demo",
+      "chat-platform-service"
+    ],
+    "ci-cd": [
+      "homebrew-chump",
+      "jarvis-gateway"
     ],
     "payment": [
       "postsub",
       "commercial-platform",
       "payment-platform-service"
     ],
-    "chat": [
-      "messaging-demo",
-      "chat-platform-service"
+    "video": [
+      "echeovid"
     ],
     "auth": [
       "auth-platform-service"
@@ -333,9 +372,9 @@
       "description": "Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.",
       "archived": false,
       "fork": false,
-      "pushed_at": "2026-05-25T03:25:23Z",
+      "pushed_at": "2026-08-13T05:11:11Z",
       "url": "https://github.com/repairman29/chump",
-      "disk_kb": 20593,
+      "disk_kb": 41517,
       "topics": [
         "agent-client-protocol",
         "ai-agent",
@@ -348,7 +387,24 @@
       ],
       "cluster": "chump-engine",
       "primitives": [],
-      "extracted_primitives": [],
+      "extracted_primitives": [
+        "llm_router: src/inference_router.rs:8 (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)",
+        "llm_router: src/sourcing_resolver.rs:65 (/// resilience-library precedent from COTG-S.3: \"don't build, cockatiel/LiteLLM)"
+      ],
+      "extracted_primitives_by_file": [
+        {
+          "file": "src/inference_router.rs",
+          "line": 8,
+          "primitive": "llm_router",
+          "match": "//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the"
+        },
+        {
+          "file": "src/sourcing_resolver.rs",
+          "line": 65,
+          "primitive": "llm_router",
+          "match": "/// resilience-library precedent from COTG-S.3: \"don't build, cockatiel/LiteLLM"
+        }
+      ],
       "local_clone": {
         "path": "/root/Projects/chump",
         "dir_name_matches_repo": true,
@@ -356,12 +412,1066 @@
         "nested_in_chump": false
       }
     },
+    "olive": {
+      "name": "olive",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "Olive - multi-user shopping list at shopolive.xyz",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-12T21:59:18Z",
+      "url": "https://github.com/repairman29/olive",
+      "disk_kb": 28045,
+      "topics": [],
+      "cluster": "content-apps",
+      "primitives": [
+        "list-mgmt"
+      ],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "workspace-docs": {
+      "name": "workspace-docs",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-12T21:40:28Z",
+      "url": "https://github.com/repairman29/workspace-docs",
+      "disk_kb": 511,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "almanac": {
+      "name": "almanac",
+      "visibility": "PRIVATE",
+      "language": "Rust",
+      "description": "A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-10T16:39:07Z",
+      "url": "https://github.com/repairman29/almanac",
+      "disk_kb": 1444,
+      "topics": [
+        "agent-tools",
+        "code-intelligence",
+        "code-search",
+        "codebase-index",
+        "developer-tools",
+        "embeddings",
+        "mcp",
+        "mcp-server",
+        "rag",
+        "tree-sitter"
+      ],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "upshift": {
+      "name": "upshift",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "AI-powered dependency upgrades. Stop reading changelogs. Let AI tell you what breaks.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-10T11:36:09Z",
+      "url": "https://github.com/repairman29/upshift",
+      "disk_kb": 34008,
+      "topics": [
+        "ai",
+        "changelog",
+        "cli",
+        "dependency-updates",
+        "github-action",
+        "npm",
+        "pnpm",
+        "vscode-extension",
+        "yarn",
+        "dependency-management",
+        "developer-tools",
+        "golang",
+        "python",
+        "ruby",
+        "rust"
+      ],
+      "cluster": "upshift-deps",
+      "primitives": [],
+      "extracted_primitives": [
+        "upshift fix --dry-run --json (dependency-upgrade safety check)"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "games-workspace": {
+      "name": "games-workspace",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-10T05:22:10Z",
+      "url": "https://github.com/repairman29/games-workspace",
+      "disk_kb": 220,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "machine-substrate": {
+      "name": "machine-substrate",
+      "visibility": "PRIVATE",
+      "language": "Shell",
+      "description": "What makes this machine this machine: 117 launchd jobs, crontab, package inventory. Secrets redacted on write.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-09T19:52:26Z",
+      "url": "https://github.com/repairman29/machine-substrate",
+      "disk_kb": 38,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [
+        "calendar"
+      ],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "grave-dancer": {
+      "name": "grave-dancer",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-09T16:42:42Z",
+      "url": "https://github.com/repairman29/grave-dancer",
+      "disk_kb": 506,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "jeffadkins-dev": {
+      "name": "jeffadkins-dev",
+      "visibility": "PRIVATE",
+      "language": "HTML",
+      "description": "Source for jeffadkins.dev \u2014 Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-09T16:42:24Z",
+      "url": "https://github.com/repairman29/jeffadkins-dev",
+      "disk_kb": 16239,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "holler": {
+      "name": "holler",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-09T16:39:28Z",
+      "url": "https://github.com/repairman29/holler",
+      "disk_kb": 49,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "privateer": {
+      "name": "privateer",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-09T16:30:49Z",
+      "url": "https://github.com/repairman29/privateer",
+      "disk_kb": 33,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "opportunity-library": {
+      "name": "opportunity-library",
+      "visibility": "PRIVATE",
+      "language": null,
+      "description": "",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-08T16:24:24Z",
+      "url": "https://github.com/repairman29/opportunity-library",
+      "disk_kb": 1542,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "jarvis-rog-ed": {
+      "name": "jarvis-rog-ed",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "JARVIS ROG Ed. - AI assistant for ASUS ROG Ally (Windows 11)",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-07T19:13:45Z",
+      "url": "https://github.com/repairman29/jarvis-rog-ed",
+      "disk_kb": 1223,
+      "topics": [
+        "ai-assistant",
+        "edge-ai",
+        "llm",
+        "local-ai",
+        "rog-ally",
+        "windows"
+      ],
+      "cluster": "jarvis-assistant",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "ai-gm-service": {
+      "name": "ai-gm-service",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "AI Game Master service for dynamic narrative generation and player interaction",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-07T19:13:41Z",
+      "url": "https://github.com/repairman29/ai-gm-service",
+      "disk_kb": 116196,
+      "topics": [],
+      "cluster": "smugglers-rpg",
+      "primitives": [
+        "ai-generation"
+      ],
+      "extracted_primitives": [
+        "aiGMMultiModelEnsembleService.js (Together.ai -> Qwen 72B -> Mistral fallback chain)",
+        "togetherAIService.js"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "echeo_old": {
+      "name": "echeo_old",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "Legacy Echeo generation \u2014 contextual intelligence platform (superseded; kept for reference).",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-07T00:46:43Z",
+      "url": "https://github.com/repairman29/echeo_old",
+      "disk_kb": 28427,
+      "topics": [],
+      "cluster": "echeo-resonant",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "slidemate": {
+      "name": "slidemate",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "JSX/MDX to Google Slides conversion tool with AI content generation and multi-platform SDKs - TypeScript with Google APIs and Generative AI",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-07T00:20:59Z",
+      "url": "https://github.com/repairman29/slidemate",
+      "disk_kb": 34370,
+      "topics": [],
+      "cluster": "content-apps",
+      "primitives": [],
+      "extracted_primitives": [
+        "Multi-platform CLI SDK for AI-generated slide content in packages/cli/src/commands/generate.ts (also bulk.ts, deploy.ts, export.ts)",
+        "Postgres schema/migrations for AI-content tracking in backend/db/migrations/003_ai_content_tracking.sql"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "pvc": {
+      "name": "pvc",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "Peak Vinyl Club \u2014 members-only social club site and membership portal",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-06T21:42:22Z",
+      "url": "https://github.com/repairman29/pvc",
+      "disk_kb": 31088,
+      "topics": [],
+      "cluster": "content-apps",
+      "primitives": [],
+      "extracted_primitives": [
+        "Cursor sub-agent role definitions (dev/ops/verifier) with skeptical-verification prompt pattern in .cursor/agents/verifier.md"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "posse": {
+      "name": "posse",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "Scout: autonomous agents that play your software and tell you what's wrong. Deterministic bots + a fresh-context stranger agent, no required cloud dependency.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-05T04:54:19Z",
+      "url": "https://github.com/repairman29/posse",
+      "disk_kb": 207,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "realm-of-shadows": {
+      "name": "realm-of-shadows",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-04T03:36:12Z",
+      "url": "https://github.com/repairman29/realm-of-shadows",
+      "disk_kb": 171,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "upshift-cli": {
+      "name": "upshift-cli",
+      "visibility": "PUBLIC",
+      "language": "TypeScript",
+      "description": "AI-powered dependency upgrades. Explains what breaks, runs your tests, rolls back on failure. Apache-2.0.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-03T00:25:21Z",
+      "url": "https://github.com/repairman29/upshift-cli",
+      "disk_kb": 248,
+      "topics": [
+        "cli",
+        "dependency-management",
+        "developer-tools",
+        "npm"
+      ],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "space-shooter": {
+      "name": "space-shooter",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-03T00:11:27Z",
+      "url": "https://github.com/repairman29/space-shooter",
+      "disk_kb": 6582,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "crystal-rush": {
+      "name": "crystal-rush",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-03T00:11:25Z",
+      "url": "https://github.com/repairman29/crystal-rush",
+      "disk_kb": 610,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "BEAST-MODE": {
+      "name": "BEAST-MODE",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "Enterprise Quality Intelligence & Marketplace Platform - The world's most advanced AI-powered development ecosystem",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-02T18:02:05Z",
+      "url": "https://github.com/repairman29/BEAST-MODE",
+      "disk_kb": 93862,
+      "topics": [],
+      "cluster": "beast-mode-qi",
+      "primitives": [
+        "marketplace"
+      ],
+      "extracted_primitives": [
+        "HITL approval flow (Approve/Reject endpoints)",
+        "requiresHumanApproval flag",
+        "executionMode DRAFT|SOVEREIGN state machine",
+        "enterprise AuditLogger pattern",
+        "task hierarchy (Roadmap->Feature->Task)"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "inversion": {
+      "name": "inversion",
+      "visibility": "PRIVATE",
+      "language": "HTML",
+      "description": "The Inversion (working paper v1.2) + companion coding sheet/codebook. DOI: 10.5281/zenodo.20481646.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-01T19:24:25Z",
+      "url": "https://github.com/repairman29/inversion",
+      "disk_kb": 146125,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "roblox-game-manager": {
+      "name": "roblox-game-manager",
+      "visibility": "PRIVATE",
+      "language": "Lua",
+      "description": "iCloud backup snapshot: Roblox",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-01T19:05:21Z",
+      "url": "https://github.com/repairman29/roblox-game-manager",
+      "disk_kb": 93,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "kosmos": {
+      "name": "kosmos",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "iCloud backup snapshot: Kosmos",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-01T19:05:18Z",
+      "url": "https://github.com/repairman29/kosmos",
+      "disk_kb": 543,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "fulcrum": {
+      "name": "fulcrum",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "iCloud backup snapshot: Fulcrum",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-01T19:05:04Z",
+      "url": "https://github.com/repairman29/fulcrum",
+      "disk_kb": 39,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "mythseeker2": {
+      "name": "mythseeker2",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "AI-powered tabletop RPG platform with 3D graphics - React/TypeScript/Vite frontend, Three.js for 3D, Firebase backend, OpenAI integration",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-01T19:04:57Z",
+      "url": "https://github.com/repairman29/mythseeker2",
+      "disk_kb": 81681,
+      "topics": [],
+      "cluster": "smugglers-rpg",
+      "primitives": [
+        "rpg-mechanic"
+      ],
+      "extracted_primitives": [
+        "agent persona system (Firebase Cloud Functions + Vertex AI -> OpenAI fallback)"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "MythSeeker": {
+      "name": "MythSeeker",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "AI Dungeon Master RPG with React, TypeScript, and Vite",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-01T19:04:55Z",
+      "url": "https://github.com/repairman29/MythSeeker",
+      "disk_kb": 3556,
+      "topics": [],
+      "cluster": "smugglers-rpg",
+      "primitives": [
+        "rpg-mechanic"
+      ],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "ims": {
+      "name": "ims",
+      "visibility": "PRIVATE",
+      "language": "HTML",
+      "description": "2029 Initiative Tracker - Strategic initiative management system with Flask/Python backend, dashboard, and RESTful API",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-01T19:04:54Z",
+      "url": "https://github.com/repairman29/ims",
+      "disk_kb": 4375,
+      "topics": [],
+      "cluster": "political-strat",
+      "primitives": [],
+      "extracted_primitives": [
+        "Flask + SQLAlchemy Initiative Tracker",
+        "Chart.js dashboard + role-based auth REST API"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "okr": {
+      "name": "okr",
+      "visibility": "PRIVATE",
+      "language": null,
+      "description": "OKR tracking tool (early scaffold).",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-01T19:03:33Z",
+      "url": "https://github.com/repairman29/okr",
+      "disk_kb": 193,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "project2029": {
+      "name": "project2029",
+      "visibility": "PRIVATE",
+      "language": "Python",
+      "description": "Project 2029 aims to create a more equitable, democratic, and rights-centered America that prioritizes individual liberties, economic fairness, peaceful international relations, and human rights.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-01T19:03:31Z",
+      "url": "https://github.com/repairman29/project2029",
+      "disk_kb": 2619,
+      "topics": [],
+      "cluster": "political-strat",
+      "primitives": [],
+      "extracted_primitives": [
+        "Flask-Mail password-reset email service in app/services/email_service.py (EmailService.send_password_reset_email)"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "2029-versioned": {
+      "name": "2029-versioned",
+      "visibility": "PRIVATE",
+      "language": "Python",
+      "description": "Putting my versioning approach together and still figuring out how repo's work",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-08-01T19:03:23Z",
+      "url": "https://github.com/repairman29/2029-versioned",
+      "disk_kb": 586,
+      "topics": [],
+      "cluster": "political-strat",
+      "primitives": [],
+      "extracted_primitives": [
+        "Shared SQLAlchemy TimestampMixin (created_at/updated_at auto-columns) in shared/models/mixins.py",
+        "Standalone news-crawler CLI in version1/app/services/crawler/cli.py (NewsCrawler + ContentProcessor pipeline)"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "biomeweavers": {
+      "name": "biomeweavers",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "",
+      "archived": true,
+      "fork": false,
+      "pushed_at": "2026-08-01T19:02:09Z",
+      "url": "https://github.com/repairman29/biomeweavers",
+      "disk_kb": 85,
+      "topics": [],
+      "cluster": "content-apps",
+      "primitives": [],
+      "extracted_primitives": [
+        "Excalibur.js-based 2D actor/game-entity pattern in client/src/actors/EssenceSource.ts (Actor subclass, CollisionType.Passive, GameConfig-driven color/type)"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "echeo-web": {
+      "name": "echeo-web",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "Echeo Landing Page - The Resonant Engine",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-30T22:16:53Z",
+      "url": "https://github.com/repairman29/echeo-web",
+      "disk_kb": 60834,
+      "topics": [],
+      "cluster": "echeo-resonant",
+      "primitives": [],
+      "extracted_primitives": [
+        "Trust/matching scoring model config (qualityThreshold/qualityWeight/capabilityWeight) in .echeo/models/matching-model.json + matching-model.json / trust-score-model.json pair"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "coloringbook": {
+      "name": "coloringbook",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "Interactive coloring book application with neural processing for AI-powered coloring - React frontend with Python/FastAPI backend",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-30T00:13:25Z",
+      "url": "https://github.com/repairman29/coloringbook",
+      "disk_kb": 39472,
+      "topics": [],
+      "cluster": "content-apps",
+      "primitives": [],
+      "extracted_primitives": [
+        "React + FastAPI image-processing proxy (compute-offload pattern)"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "project-2026-case": {
+      "name": "project-2026-case",
+      "visibility": "PRIVATE",
+      "language": "Python",
+      "description": "Private case file \u2014 2026DR031402. Do not make public.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-26T17:43:02Z",
+      "url": "https://github.com/repairman29/project-2026-case",
+      "disk_kb": 135687,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "pixi-game": {
+      "name": "pixi-game",
+      "visibility": "PRIVATE",
+      "language": "HTML",
+      "description": "",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-24T16:31:00Z",
+      "url": "https://github.com/repairman29/pixi-game",
+      "disk_kb": 263,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "smuggler-discord-bot": {
+      "name": "smuggler-discord-bot",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "Discord bot for the Smugglers RPG \u2014 AI game-master turns and table drive.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-19T02:29:12Z",
+      "url": "https://github.com/repairman29/smuggler-discord-bot",
+      "disk_kb": 351,
+      "topics": [],
+      "cluster": "smugglers-rpg",
+      "primitives": [
+        "chat",
+        "rpg-mechanic"
+      ],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "jeffadkins-me": {
+      "name": "jeffadkins-me",
+      "visibility": "PRIVATE",
+      "language": "HTML",
+      "description": "Source for jeffadkins.me \u2014 personal site (alternate of jeffadkins.dev).",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-18T22:11:18Z",
+      "url": "https://github.com/repairman29/jeffadkins-me",
+      "disk_kb": 205,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "bulwark": {
+      "name": "bulwark",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "Zero-dependency resilience primitives for Node: circuit breaker, rate limiter, retry, fallback, scheduler, cache.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-13T01:34:26Z",
+      "url": "https://github.com/repairman29/bulwark",
+      "disk_kb": 16,
+      "topics": [
+        "circuit-breaker",
+        "fallback",
+        "fault-tolerance",
+        "nodejs",
+        "rate-limiter",
+        "resilience",
+        "retry",
+        "zero-dependency"
+      ],
+      "cluster": "misc",
+      "primitives": [
+        "calendar"
+      ],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "pixel-edge-server": {
+      "name": "pixel-edge-server",
+      "visibility": "PRIVATE",
+      "language": "Kotlin",
+      "description": "Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway \u2014 run a local agent on your phone.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-12T19:30:25Z",
+      "url": "https://github.com/repairman29/pixel-edge-server",
+      "disk_kb": 69777,
+      "topics": [
+        "agent",
+        "android",
+        "edge-ai",
+        "local-llm",
+        "self-hosted",
+        "termux"
+      ],
+      "cluster": "tools-platform",
+      "primitives": [],
+      "extracted_primitives": [
+        "bicameral-mind architecture: Reflexive on-device + Neocortex cloud routing (docs/claude-gateway.md, claude-gateway/server.js:213-269)"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "homebrew-chump": {
+      "name": "homebrew-chump",
+      "visibility": "PUBLIC",
+      "language": "Ruby",
+      "description": "Homebrew tap for chump \u2014 auto-generated formula via cargo-dist (INFRA-172)",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-12T18:49:31Z",
+      "url": "https://github.com/repairman29/homebrew-chump",
+      "disk_kb": 6,
+      "topics": [
+        "cli",
+        "homebrew",
+        "homebrew-tap",
+        "rust"
+      ],
+      "cluster": "chump-engine",
+      "primitives": [
+        "ci-cd"
+      ],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "neural-farm": {
+      "name": "neural-farm",
+      "visibility": "PRIVATE",
+      "language": "Python",
+      "description": "Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-12T18:00:12Z",
+      "url": "https://github.com/repairman29/neural-farm",
+      "disk_kb": 73,
+      "topics": [
+        "distributed-inference",
+        "edge-ai",
+        "litellm",
+        "local-llm",
+        "mlx",
+        "self-hosted"
+      ],
+      "cluster": "tools-platform",
+      "primitives": [
+        "ai-generation"
+      ],
+      "extracted_primitives": [
+        "OpenAI-compat /v1 proxy",
+        "LiteLLM/InferrLM router"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "jarvis-gateway": {
+      "name": "jarvis-gateway",
+      "visibility": "PRIVATE",
+      "language": "Shell",
+      "description": "Clawdbot-based multi-provider LLM gateway (Railway), routing across ~12 model providers. Currently dormant.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-12T03:03:27Z",
+      "url": "https://github.com/repairman29/jarvis-gateway",
+      "disk_kb": 13,
+      "topics": [],
+      "cluster": "jarvis-assistant",
+      "primitives": [
+        "ai-generation",
+        "ci-cd"
+      ],
+      "extracted_primitives": [
+        "Multi-provider LLM gateway config (Groq/OpenAI-compatible routing across ~12 providers) in clawdbot.json (models.providers.groq block)",
+        "npx-based gateway launcher in start.sh / package.json start script (CLAWDBOT_GATEWAY_PORT env passthrough)"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "postsub": {
+      "name": "postsub",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "Content publishing platform with rich text editing, media studio, newsletter creation - React/TypeScript frontend with Firebase backend and Stripe payments",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-12T02:55:46Z",
+      "url": "https://github.com/repairman29/postsub",
+      "disk_kb": 26715,
+      "topics": [],
+      "cluster": "content-apps",
+      "primitives": [
+        "payment"
+      ],
+      "extracted_primitives": [
+        "server.js Stripe tiered billing (PLATFORM_FEES: basic 5%, pro 8%, enterprise 3%, creator revenue split)"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "echeovid": {
+      "name": "echeovid",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "Video content creation platform with 7 personas, YouTube publishing, FFmpeg integration - React/TypeScript frontend with Firebase backend",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-12T02:52:47Z",
+      "url": "https://github.com/repairman29/echeovid",
+      "disk_kb": 21468,
+      "topics": [],
+      "cluster": "echeo-resonant",
+      "primitives": [
+        "video"
+      ],
+      "extracted_primitives": [
+        "multi-channel content-repurposing pipeline"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "workbench": {
+      "name": "workbench",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "TAM (Technical Account Manager) platform \u2014 Firebase app with role-based dashboards.",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-12T02:28:54Z",
+      "url": "https://github.com/repairman29/workbench",
+      "disk_kb": 2572,
+      "topics": [],
+      "cluster": "tools-platform",
+      "primitives": [],
+      "extracted_primitives": [
+        "Google Calendar availability/event service scaffold in backend/src/services/CalendarService.ts (CalendarService.getAvailability, mock-then-real API pattern)"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "acg": {
+      "name": "acg",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "Adkins Consulting Group LLC \u2014 internal docs and acgllc.dev marketing site (Next.js in web/)",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-12T00:56:44Z",
+      "url": "https://github.com/repairman29/acg",
+      "disk_kb": 262,
+      "topics": [],
+      "cluster": "marketing-sites",
+      "primitives": [],
+      "extracted_primitives": [
+        "Next.js App Router marketing/blog site with server actions in web/app/contact/actions.ts and markdown-rendered blog via web/components/blog-markdown.tsx"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "smuggler": {
+      "name": "smuggler",
+      "visibility": "PRIVATE",
+      "language": "JavaScript",
+      "description": "Core Smugglers RPG game - streamlined version without AI utilities",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-11T23:30:02Z",
+      "url": "https://github.com/repairman29/smuggler",
+      "disk_kb": 792879,
+      "topics": [],
+      "cluster": "smugglers-rpg",
+      "primitives": [
+        "rpg-mechanic"
+      ],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "choose": {
+      "name": "choose",
+      "visibility": "PRIVATE",
+      "language": "HTML",
+      "description": "chooseotherwise.org",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-11T22:46:01Z",
+      "url": "https://github.com/repairman29/choose",
+      "disk_kb": 34274,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "trove-web": {
+      "name": "trove-web",
+      "visibility": "PRIVATE",
+      "language": "TypeScript",
+      "description": "Web interface for Trove collection management platform - Next.js/TypeScript with Firebase integration and Google Cloud Storage",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-07-11T18:07:49Z",
+      "url": "https://github.com/repairman29/trove-web",
+      "disk_kb": 2951,
+      "topics": [],
+      "cluster": "content-apps",
+      "primitives": [
+        "list-mgmt"
+      ],
+      "extracted_primitives": [
+        "Next.js SPA + Firebase + GCS bucket integration"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "chump-proprietary": {
+      "name": "chump-proprietary",
+      "visibility": "PRIVATE",
+      "language": "Rust",
+      "description": "Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).",
+      "archived": false,
+      "fork": false,
+      "pushed_at": "2026-05-30T07:09:08Z",
+      "url": "https://github.com/repairman29/chump-proprietary",
+      "disk_kb": 10948,
+      "topics": [],
+      "cluster": "chump-engine",
+      "primitives": [],
+      "extracted_primitives": [
+        "crates/coord::Executor",
+        "crates/coord consensus",
+        "crates/coord::mesh::MeshTransport"
+      ],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
+    "derelict": {
+      "name": "derelict",
+      "visibility": "PUBLIC",
+      "language": "TypeScript",
+      "description": "co-op browser survival horror in space",
+      "archived": true,
+      "fork": true,
+      "pushed_at": "2026-05-29T02:11:58Z",
+      "url": "https://github.com/repairman29/derelict",
+      "disk_kb": 19790,
+      "topics": [],
+      "cluster": "misc",
+      "primitives": [],
+      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
+      "local_clone": null
+    },
     "registry": {
       "name": "registry",
       "visibility": "PUBLIC",
       "language": null,
       "description": "Registry of agents implementing the Agent Client Protocol (ACP)",
-      "archived": false,
+      "archived": true,
       "fork": true,
       "pushed_at": "2026-05-16T01:46:54Z",
       "url": "https://github.com/repairman29/registry",
@@ -372,90 +1482,7 @@
       "extracted_primitives": [
         "ACP fork (agentclientprotocol/registry, JSON-RPC editor<->agent standard)"
       ],
-      "local_clone": null
-    },
-    "homebrew-chump": {
-      "name": "homebrew-chump",
-      "visibility": "PUBLIC",
-      "language": "Ruby",
-      "description": "Homebrew tap for chump \u2014 auto-generated formula via cargo-dist (INFRA-172)",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-05-16T00:40:30Z",
-      "url": "https://github.com/repairman29/homebrew-chump",
-      "disk_kb": 2,
-      "topics": [],
-      "cluster": "chump-engine",
-      "primitives": [
-        "ci-cd"
-      ],
-      "extracted_primitives": [],
-      "local_clone": null
-    },
-    "chump-proprietary": {
-      "name": "chump-proprietary",
-      "visibility": "PRIVATE",
-      "language": "Rust",
-      "description": "",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-05-07T01:57:28Z",
-      "url": "https://github.com/repairman29/chump-proprietary",
-      "disk_kb": 10926,
-      "topics": [],
-      "cluster": "chump-engine",
-      "primitives": [],
-      "extracted_primitives": [
-        "crates/coord::Executor",
-        "crates/coord consensus",
-        "crates/coord::mesh::MeshTransport"
-      ],
-      "local_clone": null
-    },
-    "upshift": {
-      "name": "upshift",
-      "visibility": "PRIVATE",
-      "language": "TypeScript",
-      "description": "AI-powered dependency upgrades. Stop reading changelogs\u2014let AI tell you what breaks.",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-04-11T01:52:14Z",
-      "url": "https://github.com/repairman29/upshift",
-      "disk_kb": 33956,
-      "topics": [
-        "ai",
-        "changelog",
-        "cli",
-        "dependency-updates",
-        "github-action",
-        "npm",
-        "pnpm",
-        "vscode-extension",
-        "yarn"
-      ],
-      "cluster": "upshift-deps",
-      "primitives": [],
-      "extracted_primitives": [
-        "upshift fix --dry-run --json (dependency-upgrade safety check)"
-      ],
-      "local_clone": null
-    },
-    "acg": {
-      "name": "acg",
-      "visibility": "PRIVATE",
-      "language": "TypeScript",
-      "description": "Adkins Consulting Group LLC \u2014 internal docs and acgllc.dev marketing site (Next.js in web/)",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-04-10T18:54:38Z",
-      "url": "https://github.com/repairman29/acg",
-      "disk_kb": 249,
-      "topics": [],
-      "cluster": "marketing-sites",
-      "primitives": [],
-      "extracted_primitives": [
-        "Next.js App Router marketing/blog site with server actions in web/app/contact/actions.ts and markdown-rendered blog via web/components/blog-markdown.tsx"
-      ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "echeo": {
@@ -473,16 +1500,30 @@
       "primitives": [],
       "extracted_primitives": [
         "Matchmaker::calculate_ship_velocity_score() (cosine sim + language/type boosts, 0-1.0)",
-        "src/shredder.rs tree-sitter AST extraction (TS/Rust/Python/Go, authorship metadata)"
+        "src/shredder.rs tree-sitter AST extraction (TS/Rust/Python/Go, authorship metadata)",
+        "ast: src/shredder.rs:5 (use tree_sitter::Parser;)"
       ],
-      "local_clone": null
+      "extracted_primitives_by_file": [
+        {
+          "file": "src/shredder.rs",
+          "line": 5,
+          "primitive": "ast",
+          "match": "use tree_sitter::Parser;"
+        }
+      ],
+      "local_clone": {
+        "path": "/root/Projects/echeo",
+        "dir_name_matches_repo": true,
+        "actual_dir_name": "echeo",
+        "nested_in_chump": false
+      }
     },
     "chump-chassis": {
       "name": "chump-chassis",
       "visibility": "PRIVATE",
       "language": "Rust",
       "description": "Rust/Axum micro-SaaS boilerplate for Chump SaaS factory",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-03-18T22:34:44Z",
       "url": "https://github.com/repairman29/chump-chassis",
@@ -494,13 +1535,14 @@
         "GitHub read-tool primitive (repo file/dir fetch + clone/pull, allowlist-scoped) in src/github_tools.rs (validate_repo_path, github_token, GITHUB_API_BASE)",
         "SQLite pool bootstrap via sqlx::sqlite::SqlitePoolOptions in src/db.rs"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "chump-brain": {
       "name": "chump-brain",
       "visibility": "PRIVATE",
       "language": null,
-      "description": "",
+      "description": "Knowledge base for the Chump agent fleet \u2014 research notes, portfolio/project context, and self-knowledge docs.",
       "archived": false,
       "fork": false,
       "pushed_at": "2026-03-18T14:57:52Z",
@@ -510,30 +1552,7 @@
       "cluster": "chump-engine",
       "primitives": [],
       "extracted_primitives": [],
-      "local_clone": null
-    },
-    "BEAST-MODE": {
-      "name": "BEAST-MODE",
-      "visibility": "PRIVATE",
-      "language": "JavaScript",
-      "description": "Enterprise Quality Intelligence & Marketplace Platform - The world's most advanced AI-powered development ecosystem",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-03-17T19:13:16Z",
-      "url": "https://github.com/repairman29/BEAST-MODE",
-      "disk_kb": 95534,
-      "topics": [],
-      "cluster": "beast-mode-qi",
-      "primitives": [
-        "marketplace"
-      ],
-      "extracted_primitives": [
-        "HITL approval flow (Approve/Reject endpoints)",
-        "requiresHumanApproval flag",
-        "executionMode DRAFT|SOVEREIGN state machine",
-        "enterprise AuditLogger pattern",
-        "task hierarchy (Roadmap->Feature->Task)"
-      ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "openclaw": {
@@ -554,6 +1573,7 @@
         "LanceDB embeddings cache",
         "memory-tool agent registry integration"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "repairman29-website": {
@@ -561,7 +1581,7 @@
       "visibility": "PRIVATE",
       "language": "HTML",
       "description": "Website for repairman29",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-03-08T00:00:37Z",
       "url": "https://github.com/repairman29/repairman29-website",
@@ -570,61 +1590,7 @@
       "cluster": "marketing-sites",
       "primitives": [],
       "extracted_primitives": [],
-      "local_clone": null
-    },
-    "pixel-edge-server": {
-      "name": "pixel-edge-server",
-      "visibility": "PRIVATE",
-      "language": "HTML",
-      "description": "",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-03-06T01:15:23Z",
-      "url": "https://github.com/repairman29/pixel-edge-server",
-      "disk_kb": 69746,
-      "topics": [],
-      "cluster": "tools-platform",
-      "primitives": [],
-      "extracted_primitives": [
-        "bicameral-mind architecture: Reflexive on-device + Neocortex cloud routing (docs/claude-gateway.md, claude-gateway/server.js:213-269)"
-      ],
-      "local_clone": null
-    },
-    "jarvis-gateway": {
-      "name": "jarvis-gateway",
-      "visibility": "PRIVATE",
-      "language": "Shell",
-      "description": "",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-03-02T03:05:06Z",
-      "url": "https://github.com/repairman29/jarvis-gateway",
-      "disk_kb": 10,
-      "topics": [],
-      "cluster": "jarvis-assistant",
-      "primitives": [],
-      "extracted_primitives": [
-        "Multi-provider LLM gateway config (Groq/OpenAI-compatible routing across ~12 providers) in clawdbot.json (models.providers.groq block)",
-        "npx-based gateway launcher in start.sh / package.json start script (CLAWDBOT_GATEWAY_PORT env passthrough)"
-      ],
-      "local_clone": null
-    },
-    "pvc": {
-      "name": "pvc",
-      "visibility": "PRIVATE",
-      "language": "TypeScript",
-      "description": "Peak Vinyl Club \u2014 members-only social club site and membership portal",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-03-01T22:53:08Z",
-      "url": "https://github.com/repairman29/pvc",
-      "disk_kb": 31082,
-      "topics": [],
-      "cluster": "content-apps",
-      "primitives": [],
-      "extracted_primitives": [
-        "Cursor sub-agent role definitions (dev/ops/verifier) with skeptical-verification prompt pattern in .cursor/agents/verifier.md"
-      ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "JARVIS": {
@@ -654,102 +1620,7 @@
       "extracted_primitives": [
         "Skill-marketplace skill.json schema (pricing/marketplace/dependencies fields) shared with JARVIS-Premium \u2014 see apps/jarvis-ui + .cursor/skills/keep-clis-sharp/SKILL.md"
       ],
-      "local_clone": null
-    },
-    "slidemate": {
-      "name": "slidemate",
-      "visibility": "PRIVATE",
-      "language": "TypeScript",
-      "description": "JSX/MDX to Google Slides conversion tool with AI content generation and multi-platform SDKs - TypeScript with Google APIs and Generative AI",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-02-28T03:44:31Z",
-      "url": "https://github.com/repairman29/slidemate",
-      "disk_kb": 34327,
-      "topics": [],
-      "cluster": "content-apps",
-      "primitives": [],
-      "extracted_primitives": [
-        "Multi-platform CLI SDK for AI-generated slide content in packages/cli/src/commands/generate.ts (also bulk.ts, deploy.ts, export.ts)",
-        "Postgres schema/migrations for AI-content tracking in backend/db/migrations/003_ai_content_tracking.sql"
-      ],
-      "local_clone": null
-    },
-    "neural-farm": {
-      "name": "neural-farm",
-      "visibility": "PRIVATE",
-      "language": "Python",
-      "description": "Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-02-28T03:44:18Z",
-      "url": "https://github.com/repairman29/neural-farm",
-      "disk_kb": 57,
-      "topics": [],
-      "cluster": "tools-platform",
-      "primitives": [
-        "ai-generation"
-      ],
-      "extracted_primitives": [
-        "OpenAI-compat /v1 proxy",
-        "LiteLLM/InferrLM router"
-      ],
-      "local_clone": null
-    },
-    "olive": {
-      "name": "olive",
-      "visibility": "PRIVATE",
-      "language": "HTML",
-      "description": "Olive - multi-user shopping list at shopolive.xyz",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-02-28T03:44:16Z",
-      "url": "https://github.com/repairman29/olive",
-      "disk_kb": 26712,
-      "topics": [],
-      "cluster": "content-apps",
-      "primitives": [
-        "list-mgmt"
-      ],
-      "extracted_primitives": [],
-      "local_clone": null
-    },
-    "smuggler": {
-      "name": "smuggler",
-      "visibility": "PRIVATE",
-      "language": "JavaScript",
-      "description": "Core Smugglers RPG game - streamlined version without AI utilities",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-02-28T03:35:39Z",
-      "url": "https://github.com/repairman29/smuggler",
-      "disk_kb": 792475,
-      "topics": [],
-      "cluster": "smugglers-rpg",
-      "primitives": [
-        "rpg-mechanic"
-      ],
-      "extracted_primitives": [],
-      "local_clone": null
-    },
-    "echeovid": {
-      "name": "echeovid",
-      "visibility": "PRIVATE",
-      "language": "TypeScript",
-      "description": "Video content creation platform with 7 personas, YouTube publishing, FFmpeg integration - React/TypeScript frontend with Firebase backend",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-02-07T23:46:14Z",
-      "url": "https://github.com/repairman29/echeovid",
-      "disk_kb": 21468,
-      "topics": [],
-      "cluster": "echeo-resonant",
-      "primitives": [
-        "video"
-      ],
-      "extracted_primitives": [
-        "multi-channel content-repurposing pipeline"
-      ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "trove-app": {
@@ -757,7 +1628,7 @@
       "visibility": "PRIVATE",
       "language": "Python",
       "description": "Collection management platform for collectors - React/TypeScript/Vite frontend with Firebase backend, rules system, and collection tracking",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-02-07T13:43:15Z",
       "url": "https://github.com/repairman29/trove-app",
@@ -768,46 +1639,7 @@
         "list-mgmt"
       ],
       "extracted_primitives": [],
-      "local_clone": null
-    },
-    "postsub": {
-      "name": "postsub",
-      "visibility": "PRIVATE",
-      "language": "TypeScript",
-      "description": "Content publishing platform with rich text editing, media studio, newsletter creation - React/TypeScript frontend with Firebase backend and Stripe payments",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-02-07T13:43:14Z",
-      "url": "https://github.com/repairman29/postsub",
-      "disk_kb": 26535,
-      "topics": [],
-      "cluster": "content-apps",
-      "primitives": [
-        "payment"
-      ],
-      "extracted_primitives": [
-        "server.js Stripe tiered billing (PLATFORM_FEES: basic 5%, pro 8%, enterprise 3%, creator revenue split)"
-      ],
-      "local_clone": null
-    },
-    "mythseeker2": {
-      "name": "mythseeker2",
-      "visibility": "PRIVATE",
-      "language": "TypeScript",
-      "description": "AI-powered tabletop RPG platform with 3D graphics - React/TypeScript/Vite frontend, Three.js for 3D, Firebase backend, OpenAI integration",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-02-07T13:43:13Z",
-      "url": "https://github.com/repairman29/mythseeker2",
-      "disk_kb": 81681,
-      "topics": [],
-      "cluster": "smugglers-rpg",
-      "primitives": [
-        "rpg-mechanic"
-      ],
-      "extracted_primitives": [
-        "agent persona system (Firebase Cloud Functions + Vertex AI -> OpenAI fallback)"
-      ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "berry-avenue-codes": {
@@ -815,7 +1647,7 @@
       "visibility": "PRIVATE",
       "language": "JavaScript",
       "description": "A web app for Berry Avenue idle animation codes",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-02-07T13:39:28Z",
       "url": "https://github.com/repairman29/berry-avenue-codes",
@@ -826,24 +1658,7 @@
       "extracted_primitives": [
         "iOS WKWebView wrapper pattern (native shell around a web app) in iOS-Wrapper/ContentView.swift (WebView: UIViewRepresentable)"
       ],
-      "local_clone": null
-    },
-    "project2029": {
-      "name": "project2029",
-      "visibility": "PRIVATE",
-      "language": "Python",
-      "description": "Project 2029 aims to create a more equitable, democratic, and rights-centered America that prioritizes individual liberties, economic fairness, peaceful international relations, and human rights.",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-02-04T23:14:03Z",
-      "url": "https://github.com/repairman29/project2029",
-      "disk_kb": 1499,
-      "topics": [],
-      "cluster": "political-strat",
-      "primitives": [],
-      "extracted_primitives": [
-        "Flask-Mail password-reset email service in app/services/email_service.py (EmailService.send_password_reset_email)"
-      ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "JARVIS-Premium": {
@@ -851,7 +1666,7 @@
       "visibility": "PRIVATE",
       "language": null,
       "description": "\ud83d\udc8e JARVIS Premium Skills - Professional AI-powered productivity tools for teams and enterprises",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-02-04T23:04:49Z",
       "url": "https://github.com/repairman29/JARVIS-Premium",
@@ -862,6 +1677,7 @@
       "extracted_primitives": [
         "Commercial skill packaging schema (pricing/trial/marketplace/env/dependencies) in skills/focus-pro/skill.json"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "2029": {
@@ -869,7 +1685,7 @@
       "visibility": "PRIVATE",
       "language": "Python",
       "description": "My 2029 Project Folder",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T20:03:14Z",
       "url": "https://github.com/repairman29/2029",
@@ -878,24 +1694,7 @@
       "cluster": "political-strat",
       "primitives": [],
       "extracted_primitives": [],
-      "local_clone": null
-    },
-    "workbench": {
-      "name": "workbench",
-      "visibility": "PRIVATE",
-      "language": "JavaScript",
-      "description": "",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-01-31T20:01:38Z",
-      "url": "https://github.com/repairman29/workbench",
-      "disk_kb": 2560,
-      "topics": [],
-      "cluster": "tools-platform",
-      "primitives": [],
-      "extracted_primitives": [
-        "Google Calendar availability/event service scaffold in backend/src/services/CalendarService.ts (CalendarService.getAvailability, mock-then-real API pattern)"
-      ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "dice": {
@@ -903,7 +1702,7 @@
       "visibility": "PRIVATE",
       "language": "TypeScript",
       "description": "",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T20:00:47Z",
       "url": "https://github.com/repairman29/dice",
@@ -914,6 +1713,7 @@
       "extracted_primitives": [
         "TTRPG expression parser + modifier resolution"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "analytics-platform-service": {
@@ -932,13 +1732,14 @@
       "extracted_primitives": [
         "aiInsightsEngine.js (weighted-model retention scoring, conversion thresholds, churn risk)"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "zendesk-background-agent": {
       "name": "zendesk-background-agent",
       "visibility": "PRIVATE",
       "language": "JavaScript",
-      "description": "",
+      "description": "Background agent for Zendesk workflow automation.",
       "archived": false,
       "fork": false,
       "pushed_at": "2026-01-31T19:55:11Z",
@@ -950,6 +1751,7 @@
       "extracted_primitives": [
         "Vercel + OpenAI embeddings semantic ticket matching"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "mixdown": {
@@ -968,22 +1770,7 @@
       "extracted_primitives": [
         "Python + Flask + AI metadata enrichment audio pipeline"
       ],
-      "local_clone": null
-    },
-    "jarvis-rog-ed": {
-      "name": "jarvis-rog-ed",
-      "visibility": "PRIVATE",
-      "language": "JavaScript",
-      "description": "JARVIS ROG Ed. - AI assistant for ASUS ROG Ally (Windows 11)",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-01-31T19:20:50Z",
-      "url": "https://github.com/repairman29/jarvis-rog-ed",
-      "disk_kb": 1214,
-      "topics": [],
-      "cluster": "jarvis-assistant",
-      "primitives": [],
-      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "echeo-internal": {
@@ -1002,42 +1789,7 @@
       "extracted_primitives": [
         "Fleet/portfolio repo-catalog generator artifacts (COMPLETE_CATALOG.json/.md) in docs/repo-catalog/ \u2014 a prior-generation analog of Harvester's GLOBAL_ARSENAL"
       ],
-      "local_clone": null
-    },
-    "coloringbook": {
-      "name": "coloringbook",
-      "visibility": "PRIVATE",
-      "language": "JavaScript",
-      "description": "Interactive coloring book application with neural processing for AI-powered coloring - React frontend with Python/FastAPI backend",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-01-31T19:20:36Z",
-      "url": "https://github.com/repairman29/coloringbook",
-      "disk_kb": 39472,
-      "topics": [],
-      "cluster": "content-apps",
-      "primitives": [],
-      "extracted_primitives": [
-        "React + FastAPI image-processing proxy (compute-offload pattern)"
-      ],
-      "local_clone": null
-    },
-    "biomeweavers": {
-      "name": "biomeweavers",
-      "visibility": "PRIVATE",
-      "language": "TypeScript",
-      "description": "",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-01-31T19:20:30Z",
-      "url": "https://github.com/repairman29/biomeweavers",
-      "disk_kb": 85,
-      "topics": [],
-      "cluster": "content-apps",
-      "primitives": [],
-      "extracted_primitives": [
-        "Excalibur.js-based 2D actor/game-entity pattern in client/src/actors/EssenceSource.ts (Actor subclass, CollisionType.Passive, GameConfig-driven color/type)"
-      ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "messaging-demo": {
@@ -1045,7 +1797,7 @@
       "visibility": "PRIVATE",
       "language": "HTML",
       "description": "",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T19:20:27Z",
       "url": "https://github.com/repairman29/messaging-demo",
@@ -1056,6 +1808,7 @@
         "chat"
       ],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "slides": {
@@ -1063,7 +1816,7 @@
       "visibility": "PRIVATE",
       "language": null,
       "description": "",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T19:20:25Z",
       "url": "https://github.com/repairman29/slides",
@@ -1072,6 +1825,7 @@
       "cluster": "tools-platform",
       "primitives": [],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "services-dashboard": {
@@ -1090,6 +1844,7 @@
         "rpg-mechanic"
       ],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "service-frontends": {
@@ -1108,6 +1863,7 @@
         "rpg-mechanic"
       ],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "mock-services": {
@@ -1131,6 +1887,7 @@
         "containerized mock Stripe API server",
         "containerized mock Supabase API server"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "bot-simulation-service": {
@@ -1138,7 +1895,7 @@
       "visibility": "PRIVATE",
       "language": "JavaScript",
       "description": "Bot Simulation Service - AI-powered UI/UX testing and funnel analysis for Smuggler RPG enterprise platform",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T19:20:16Z",
       "url": "https://github.com/repairman29/bot-simulation-service",
@@ -1153,6 +1910,7 @@
         "5 bot archetypes + fatigue simulation",
         "funnel analytics (Railway-native)"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "beast-mode-website": {
@@ -1171,6 +1929,7 @@
         "marketplace"
       ],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "commercial-platform": {
@@ -1178,7 +1937,7 @@
       "visibility": "PRIVATE",
       "language": "JavaScript",
       "description": "Commercial Platform Service - Business logic and monetization features for Smuggler RPG enterprise platform",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T19:20:12Z",
       "url": "https://github.com/repairman29/commercial-platform",
@@ -1190,6 +1949,7 @@
         "rpg-mechanic"
       ],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "internal-zendesk-tools": {
@@ -1197,7 +1957,7 @@
       "visibility": "PRIVATE",
       "language": "JavaScript",
       "description": "",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T19:20:10Z",
       "url": "https://github.com/repairman29/internal-zendesk-tools",
@@ -1208,24 +1968,7 @@
       "extracted_primitives": [
         "React 18 + TS + Vite + Tailwind assessment questionnaire (dashboard architecture reference)"
       ],
-      "local_clone": null
-    },
-    "MythSeeker": {
-      "name": "MythSeeker",
-      "visibility": "PRIVATE",
-      "language": "TypeScript",
-      "description": "AI Dungeon Master RPG with React, TypeScript, and Vite",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-01-31T19:20:09Z",
-      "url": "https://github.com/repairman29/MythSeeker",
-      "disk_kb": 3556,
-      "topics": [],
-      "cluster": "smugglers-rpg",
-      "primitives": [
-        "rpg-mechanic"
-      ],
-      "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "auth-platform-service": {
@@ -1247,6 +1990,7 @@
         "enterpriseSSOService.js (JWT+MFA+SSO)",
         "mfaService.js (DDoS + Redis rate-limit)"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "combat-system-service": {
@@ -1267,6 +2011,7 @@
       "extracted_primitives": [
         "persistent-state combat domain logic (data/ dir)"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "character-system-service": {
@@ -1287,6 +2032,7 @@
       "extracted_primitives": [
         "persistent-state character domain logic (data/ dir)"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "mission-engine-service": {
@@ -1307,6 +2053,7 @@
       "extracted_primitives": [
         "Supabase + Redis + LLM choreographer pattern"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "chat-platform-service": {
@@ -1325,6 +2072,7 @@
         "chat"
       ],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "payment-platform-service": {
@@ -1343,6 +2091,7 @@
         "payment"
       ],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "economy-system-service": {
@@ -1350,7 +2099,7 @@
       "visibility": "PRIVATE",
       "language": "JavaScript",
       "description": "Advanced in-game economy and market simulation system with dynamic pricing and trade mechanics",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T19:19:53Z",
       "url": "https://github.com/repairman29/economy-system-service",
@@ -1363,6 +2112,7 @@
       "extracted_primitives": [
         "MarketSimulationEngine (elasticity-based, sector-stratified pricing, beginner-mode variant)"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "marketplace-system-service": {
@@ -1370,7 +2120,7 @@
       "visibility": "PRIVATE",
       "language": "JavaScript",
       "description": "In-game marketplace with trading and auctions",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T19:19:52Z",
       "url": "https://github.com/repairman29/marketplace-system-service",
@@ -1381,6 +2131,7 @@
         "marketplace"
       ],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "code-generation-service": {
@@ -1388,7 +2139,7 @@
       "visibility": "PRIVATE",
       "language": "JavaScript",
       "description": "AI-powered code generation and development tools",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T19:19:50Z",
       "url": "https://github.com/repairman29/code-generation-service",
@@ -1399,6 +2150,7 @@
         "ai-generation"
       ],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "asset-management-service": {
@@ -1406,7 +2158,7 @@
       "visibility": "PRIVATE",
       "language": "JavaScript",
       "description": "Digital asset management and content delivery",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T19:19:48Z",
       "url": "https://github.com/repairman29/asset-management-service",
@@ -1417,6 +2169,7 @@
       "extracted_primitives": [
         "dual AI generator (image + 3D), style matrix (10 art styles x 4 quality tiers)"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "audio-generation-service": {
@@ -1424,7 +2177,7 @@
       "visibility": "PRIVATE",
       "language": "JavaScript",
       "description": "AI-powered audio generation and sound management",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T19:19:46Z",
       "url": "https://github.com/repairman29/audio-generation-service",
@@ -1437,6 +2190,7 @@
       "extracted_primitives": [
         "voice synthesis with emotion profiles + quality presets (draft/standard/premium/cinematic)"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "sheckleshare": {
@@ -1444,7 +2198,7 @@
       "visibility": "PRIVATE",
       "language": "JavaScript",
       "description": "Enhanced Grow Garden Calculator - Comprehensive crop and pet management with real-time value calculations",
-      "archived": false,
+      "archived": true,
       "fork": false,
       "pushed_at": "2026-01-31T19:19:04Z",
       "url": "https://github.com/repairman29/sheckleshare",
@@ -1457,48 +2211,14 @@
       "extracted_primitives": [
         "Grow Garden Calculator pricing engine"
       ],
-      "local_clone": null
-    },
-    "okr": {
-      "name": "okr",
-      "visibility": "PRIVATE",
-      "language": null,
-      "description": "",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-01-31T19:19:01Z",
-      "url": "https://github.com/repairman29/okr",
-      "disk_kb": 1,
-      "topics": [],
-      "cluster": "misc",
-      "primitives": [],
-      "extracted_primitives": [],
-      "local_clone": null
-    },
-    "2029-versioned": {
-      "name": "2029-versioned",
-      "visibility": "PRIVATE",
-      "language": "Python",
-      "description": "Putting my versioning approach together and still figuring out how repo's work",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-01-31T19:19:00Z",
-      "url": "https://github.com/repairman29/2029-versioned",
-      "disk_kb": 576,
-      "topics": [],
-      "cluster": "political-strat",
-      "primitives": [],
-      "extracted_primitives": [
-        "Shared SQLAlchemy TimestampMixin (created_at/updated_at auto-columns) in shared/models/mixins.py",
-        "Standalone news-crawler CLI in version1/app/services/crawler/cli.py (NewsCrawler + ContentProcessor pipeline)"
-      ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "echeo-archived": {
       "name": "echeo-archived",
       "visibility": "PRIVATE",
       "language": "JavaScript",
-      "description": "",
+      "description": "Archived early-generation Echeo prototype (code-to-market resonance engine).",
       "archived": false,
       "fork": false,
       "pushed_at": "2026-01-31T19:13:58Z",
@@ -1510,61 +2230,7 @@
       "extracted_primitives": [
         "Automated credential-rotation / secret-age auditor in butler/actions/securitySentry.js (checkCredentialRotation, SBOM generation)"
       ],
-      "local_clone": null
-    },
-    "echeo_old": {
-      "name": "echeo_old",
-      "visibility": "PRIVATE",
-      "language": "TypeScript",
-      "description": "",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-01-31T19:12:36Z",
-      "url": "https://github.com/repairman29/echeo_old",
-      "disk_kb": 28420,
-      "topics": [],
-      "cluster": "echeo-resonant",
-      "primitives": [],
-      "extracted_primitives": [],
-      "local_clone": null
-    },
-    "trove-web": {
-      "name": "trove-web",
-      "visibility": "PRIVATE",
-      "language": "TypeScript",
-      "description": "Web interface for Trove collection management platform - Next.js/TypeScript with Firebase integration and Google Cloud Storage",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-01-31T19:12:30Z",
-      "url": "https://github.com/repairman29/trove-web",
-      "disk_kb": 2944,
-      "topics": [],
-      "cluster": "content-apps",
-      "primitives": [
-        "list-mgmt"
-      ],
-      "extracted_primitives": [
-        "Next.js SPA + Firebase + GCS bucket integration"
-      ],
-      "local_clone": null
-    },
-    "ims": {
-      "name": "ims",
-      "visibility": "PRIVATE",
-      "language": "HTML",
-      "description": "2029 Initiative Tracker - Strategic initiative management system with Flask/Python backend, dashboard, and RESTful API",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-01-31T19:12:17Z",
-      "url": "https://github.com/repairman29/ims",
-      "disk_kb": 106,
-      "topics": [],
-      "cluster": "political-strat",
-      "primitives": [],
-      "extracted_primitives": [
-        "Flask + SQLAlchemy Initiative Tracker",
-        "Chart.js dashboard + role-based auth REST API"
-      ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "smugglers": {
@@ -1583,24 +2249,7 @@
         "rpg-mechanic"
       ],
       "extracted_primitives": [],
-      "local_clone": null
-    },
-    "echeo-web": {
-      "name": "echeo-web",
-      "visibility": "PRIVATE",
-      "language": "TypeScript",
-      "description": "Echeo Landing Page - The Resonant Engine",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-01-29T14:09:35Z",
-      "url": "https://github.com/repairman29/echeo-web",
-      "disk_kb": 60966,
-      "topics": [],
-      "cluster": "echeo-resonant",
-      "primitives": [],
-      "extracted_primitives": [
-        "Trust/matching scoring model config (qualityThreshold/qualityWeight/capabilityWeight) in .echeo/models/matching-model.json + matching-model.json / trust-score-model.json pair"
-      ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "daisy-chain": {
@@ -1620,6 +2269,7 @@
         "EventEmitter-based workflow orchestrator with auto-scaling + multi-tenant clustering in src/services/daisyChainOrchestrator.js (DaisyChainOrchestrator)",
         "Thin automation-engine facade wrapping the orchestrator in src/services/automation-engine.js"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "code-roach": {
@@ -1636,6 +2286,7 @@
       "cluster": "tools-platform",
       "primitives": [],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "oracle": {
@@ -1654,27 +2305,7 @@
       "extracted_primitives": [
         "Vector-embeddings semantic search service (with unified-embeddings + echeo fallback chain) in scripts/oracle-vector-embeddings.js"
       ],
-      "local_clone": null
-    },
-    "ai-gm-service": {
-      "name": "ai-gm-service",
-      "visibility": "PRIVATE",
-      "language": "JavaScript",
-      "description": "AI Game Master service for dynamic narrative generation and player interaction",
-      "archived": false,
-      "fork": false,
-      "pushed_at": "2026-01-21T22:46:52Z",
-      "url": "https://github.com/repairman29/ai-gm-service",
-      "disk_kb": 116551,
-      "topics": [],
-      "cluster": "smugglers-rpg",
-      "primitives": [
-        "ai-generation"
-      ],
-      "extracted_primitives": [
-        "aiGMMultiModelEnsembleService.js (Together.ai -> Qwen 72B -> Mistral fallback chain)",
-        "togetherAIService.js"
-      ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "coderoach": {
@@ -1693,6 +2324,7 @@
       "extracted_primitives": [
         "autonomous code-quality self-learning fixer patterns"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "echeodev": {
@@ -1709,6 +2341,7 @@
       "cluster": "echeo-resonant",
       "primitives": [],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "project-forge": {
@@ -1728,6 +2361,7 @@
         "initiative hierarchy schema (Next.js + Node + Postgres)",
         "AI-insights pipeline (GCloud deploy)"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "echeo-dev": {
@@ -1744,6 +2378,7 @@
       "cluster": "echeo-resonant",
       "primitives": [],
       "extracted_primitives": [],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     },
     "project_forge": {
@@ -1762,6 +2397,7 @@
       "extracted_primitives": [
         "Express + Objection.js OKR/KeyResult REST controller with transaction support in backend/src/controllers/OKRController.ts"
       ],
+      "extracted_primitives_by_file": [],
       "local_clone": null
     }
   },

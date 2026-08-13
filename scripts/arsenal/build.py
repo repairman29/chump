@@ -141,6 +141,106 @@ def extracted_primitives_for(name: str) -> list[str]:
     return EXTRACTED_PRIMITIVES.get(name, [])
 
 
+# INFRA-1864: per-file primitive indexing (per CP-002 finding).
+#
+# The EXTRACTED_PRIMITIVES table above is manually-curated prose from deep-scan
+# campaigns — it can't be kept current as repos change. This scanner is the
+# automated complement: it walks each repo's src/ tree (when a local clone is
+# available) and regex-matches known primitive signatures from
+# primitive_signatures.json, producing per-file/line hits. Results are merged
+# into repos_by_name[X].extracted_primitives (as formatted strings, so the
+# field stays a list[str] — backward compatible with existing consumers) and
+# also kept structured in extracted_primitives_by_file for `harvest check` to
+# surface with line refs.
+SIGNATURES_PATH = ROOT / "scripts" / "arsenal" / "primitive_signatures.json"
+
+LANG_EXTENSIONS = {
+    "rust": [".rs"],
+    "typescript": [".ts", ".tsx"],
+    "javascript": [".js", ".jsx"],
+    "python": [".py"],
+}
+
+SCAN_EXCLUDE_DIRS = {"node_modules", "target", "vendor", "dist", "build", "__pycache__"}
+MAX_FILE_BYTES = 500_000  # skip generated/vendored blobs that would slow the walk
+
+
+def _load_signatures() -> dict:
+    if not SIGNATURES_PATH.exists():
+        return {}
+    return json.loads(SIGNATURES_PATH.read_text())
+
+
+def _compiled_signatures(signatures: dict) -> dict:
+    compiled = {}
+    for lang, prim_map in signatures.items():
+        if lang.startswith("_"):
+            continue
+        compiled[lang] = {
+            primitive: [re.compile(p) for p in patterns]
+            for primitive, patterns in prim_map.items()
+        }
+    return compiled
+
+
+def scan_repo_primitives(repo_path: Path, signatures: dict | None = None) -> list[dict]:
+    """Walk repo_path/src (falling back to repo_path) and return per-file primitive hits.
+
+    Each hit: {"file": "<repo-relative path>", "line": N, "primitive": label, "match": "<snippet>"}.
+    One hit per (file, primitive, pattern) — bounds output on files with many matches.
+    """
+    signatures = signatures if signatures is not None else _load_signatures()
+    if not signatures:
+        return []
+    compiled = _compiled_signatures(signatures)
+
+    ext_to_langs: dict[str, list[str]] = {}
+    for lang, exts in LANG_EXTENSIONS.items():
+        for ext in exts:
+            ext_to_langs.setdefault(ext, []).append(lang)
+
+    src_root = repo_path / "src"
+    if not src_root.is_dir():
+        src_root = repo_path
+
+    entries: list[dict] = []
+    seen: set[tuple[str, int, str]] = set()  # (file, line, primitive) — collapse multi-pattern dupes
+    for dirpath, dirnames, filenames in os.walk(src_root):
+        dirnames[:] = [d for d in dirnames if d not in SCAN_EXCLUDE_DIRS and not d.startswith(".")]
+        for fname in filenames:
+            langs = ext_to_langs.get(Path(fname).suffix)
+            if not langs:
+                continue
+            fpath = Path(dirpath) / fname
+            try:
+                if fpath.stat().st_size > MAX_FILE_BYTES:
+                    continue
+                lines = fpath.read_text(errors="ignore").splitlines()
+            except OSError:
+                continue
+            rel = str(fpath.relative_to(repo_path))
+            for lang in langs:
+                for primitive, patterns in compiled.get(lang, {}).items():
+                    for pat in patterns:
+                        for i, line in enumerate(lines, start=1):
+                            if pat.search(line):
+                                key = (rel, i, primitive)
+                                if key not in seen:
+                                    seen.add(key)
+                                    entries.append({
+                                        "file": rel,
+                                        "line": i,
+                                        "primitive": primitive,
+                                        "match": line.strip()[:120],
+                                    })
+                                break  # first hit per (file, primitive, pattern) is enough
+    return entries
+
+
+def _format_scanned_entry(e: dict) -> str:
+    return f"{e['primitive']}: {e['file']}:{e['line']} ({e['match']})"
+
+
 def assign_cluster(name: str) -> str:
     for label, pat in CLUSTERS:
         if re.search(pat, name, re.IGNORECASE):
@@ -311,9 +411,19 @@ def find_alerts(repos: list[dict], local_roots: list[dict]) -> list[dict]:
 
 def build():
     raw = json.loads(RAW.read_text())
+    signatures = _load_signatures()
     repos = []
     for r in raw:
         clone = local_clone_for(r["name"])
+        curated = extracted_primitives_for(r["name"])
+        scanned: list[dict] = []
+        if clone and signatures:
+            try:
+                scanned = scan_repo_primitives(Path(clone["path"]), signatures)
+            except OSError:
+                scanned = []
+        scanned_fmt = [_format_scanned_entry(e) for e in scanned]
+        merged = curated + [s for s in scanned_fmt if s not in curated]
         repos.append({
             "name": r["name"],
             "visibility": r["visibility"],
@@ -327,7 +437,8 @@ def build():
             "topics": [t.get("name") for t in (r.get("repositoryTopics") or []) if t],
             "cluster": assign_cluster(r["name"]),
             "primitives": detect_primitives(r["name"], r.get("description") or ""),
-            "extracted_primitives": extracted_primitives_for(r["name"]),
+            "extracted_primitives": merged,
+            "extracted_primitives_by_file": scanned,
             "local_clone": clone,
         })
 
