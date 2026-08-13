@@ -443,6 +443,25 @@ while :; do
         continue
     fi
 
+    # ── RESILIENT-069: farmer readiness gate ────────────────────────────────
+    # RED = farmer (RESILIENT-068) has positive evidence of trouble (stale
+    # heartbeat, exit-78 supervisor, paused-fleet sentinel, broken auth
+    # cache) — skip claiming new work this cycle, but let any in-flight
+    # ship-cycle continue. `chump farmer status` is a local-state-only read
+    # (<100ms) so this costs nothing on the common GREEN path.
+    if command -v chump >/dev/null 2>&1; then
+        if ! chump farmer status --quiet >/dev/null 2>&1; then
+            log "RESILIENT-069: farmer status RED — skipping claim this cycle; sleeping ${IDLE_SLEEP_S:-60}s"
+            _amb_farmer="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+            # scanner-anchor: "kind":"worker_paused_farmer_red"
+            printf '{"ts":"%s","kind":"worker_paused_farmer_red","agent_id":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" >> "$_amb_farmer" 2>/dev/null || true
+            sleep "${IDLE_SLEEP_S:-60}"
+            continue
+        fi
+    fi
+    # ── end RESILIENT-069 ────────────────────────────────────────────────────
+
     # ── INFRA-2008: pre-claim floor-signal reads ──────────────────────────
     # Read both THE FLOOR Phase 1+2 signals before spending any cycle budget,
     # via the shared lib so the exported CHUMP_FLOOR_TEMP / CHUMP_FLEET_HOLD

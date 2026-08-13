@@ -964,6 +964,16 @@ events:
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, session]
 
+  - kind: worker_paused_farmer_red
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (RESILIENT-069)
+    trigger: "`chump farmer status` returned RED at the top of a claim cycle
+      (stale heartbeat, exit-78 supervisor, paused-fleet sentinel, or broken
+      auth cache) — worker sleeps before retrying instead of claiming a new
+      gap; in-flight ship cycles are unaffected"
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, agent_id]
+
   - kind: pipeline_health_throttle
     effect_metric: self
     emitter: scripts/coord/ci-health-gate.sh (INFRA-1607)

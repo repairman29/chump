@@ -90,6 +90,7 @@ mod episode_tool;
 pub use chump_eval_harness::eval_harness;
 mod execute_gap;
 mod failure_catalog;
+mod farmer_status; // RESILIENT-069: farmer readiness gate (lights-on check)
 mod file_watch;
 mod fleet;
 mod fleet_capability;
@@ -1450,6 +1451,21 @@ async fn main() -> Result<()> {
         ));
     }
 
+    // RESILIENT-069: `chump farmer status [--json] [--quiet]` — the
+    // readiness gate for scripts/coord/farmer.sh (RESILIENT-068). Pure
+    // local-state read (<100ms, pause-immune): exits 0 (GREEN) when
+    // sentinel absent + zero exit-78 supervisors + oauth fresh + farmer
+    // heartbeat <120s, else 1 (RED). Wired into `chump claim` and the
+    // gap-reserve admission guard below.
+    if args.get(1).map(String::as_str) == Some("farmer") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        if sub_args.first().map(String::as_str) == Some("status") {
+            std::process::exit(farmer_status::run_cli(&sub_args[1..]));
+        }
+        eprintln!("Usage: chump farmer status [--json] [--quiet]");
+        std::process::exit(2);
+    }
+
     // EFFECTIVE-009: no-args → help; `chump help` → help. Must come before
     // any mode that falls through to the interactive agent loop.
     let wants_help = args.len() == 1
@@ -1904,7 +1920,32 @@ async fn main() -> Result<()> {
     // its own bypass env for testing / unusual setups.
     if args.get(1).map(String::as_str) == Some("claim") {
         let repo_root = repo_path::repo_root();
-        let claim_args = match atomic_claim::ClaimArgs::from_argv(&args[1..], repo_root.clone()) {
+
+        // RESILIENT-069: farmer readiness gate. RED = farmer has positive
+        // evidence of trouble (stale heartbeat, exit-78 supervisor, a
+        // paused-fleet sentinel, or a known-broken auth cache) — admit no
+        // NEW claims until it's lights-on again. Bypass: --skip-farmer-gate
+        // (stripped before handing args to ClaimArgs::from_argv, which
+        // rejects unrecognized flags).
+        let farmer_gate_bypass = args.iter().any(|a| a == "--skip-farmer-gate");
+        let claim_argv: Vec<String> = args[1..]
+            .iter()
+            .filter(|a| a.as_str() != "--skip-farmer-gate")
+            .cloned()
+            .collect();
+        if !farmer_gate_bypass {
+            let fs = farmer_status::compute(&repo_root);
+            if !fs.green {
+                eprintln!("chump claim: farmer status RED — no new claims admitted.");
+                for r in &fs.reasons {
+                    eprintln!("  - {r}");
+                }
+                eprintln!("Run `chump farmer status` for detail. Bypass: --skip-farmer-gate");
+                std::process::exit(1);
+            }
+        }
+
+        let claim_args = match atomic_claim::ClaimArgs::from_argv(&claim_argv, repo_root.clone()) {
             Ok(a) => a,
             Err(e) => {
                 eprintln!("chump claim: {e:#}");
@@ -10393,6 +10434,26 @@ async fn main() -> Result<()> {
                     }
                 }
                 // ── end MISSION-045 outcome gate ────────────────────────────────────────
+
+                // ── RESILIENT-069: farmer readiness gate (gap-reserve admission guard) ──
+                // RED = farmer has positive evidence of trouble — admit no NEW
+                // claims (reserve is how new work enters the pickable queue).
+                // The Farmer's own recovery routes around this: it acts via
+                // launchctl/rm directly, never through `chump gap reserve`.
+                // Bypass: --force (same flag already used for the ambient-
+                // glance overlap check above).
+                if !force {
+                    let fs = farmer_status::compute(&repo_path::repo_root());
+                    if !fs.green {
+                        eprintln!("chump gap reserve: farmer status RED — no new claims admitted.");
+                        for r in &fs.reasons {
+                            eprintln!("  - {r}");
+                        }
+                        eprintln!("Run `chump farmer status` for detail. Bypass: --force");
+                        std::process::exit(1);
+                    }
+                }
+                // ── end farmer readiness gate ────────────────────────────────────────────
 
                 // INFRA-216: use reserve_verified so sibling sessions on the
                 // same host (shared .chump-locks/) detect and resolve ID
