@@ -1258,6 +1258,21 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [role, heartbeat, why]
 
+  - kind: curator_substrate_outage
+    effect_metric: self
+    emitter: crates/chump-curator-supervisor/src/main.rs (RESILIENT-038)
+    trigger: >
+      substrate_check() detects an environmental cause (disk full, GH API rate
+      limited, NATS unreachable, or CHUMP_AUTH_MODE unhealthy) impacting the
+      failing curators for this tick. Files ONE "substrate: X impacting
+      curators" gap instead of one gap per curator, broadcasts a WARN, and
+      spawns zero per-curator Sonnet sub-agents — the failures are
+      environmental, not curator code defects. The substrate_check() verdict
+      itself is cached on disk for 5 minutes to avoid hammering df/gh
+      api/chump-coord/auth-status.sh once per failing curator.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [substrate_kind, detail, roles]
+
   - kind: stale_gap_lock_reaped
     effect_metric: self
     emitter: scripts/ops/stale-gap-lock-reaper.sh (INFRA-676)
