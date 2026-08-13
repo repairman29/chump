@@ -1,0 +1,14 @@
+# RESILIENT-265 — fires the PR-approval surfacer every ~5 min on the primary
+# node. The "baked into the OS" half: detection runs on a timer, not on an
+# agent's memory, so an OS-authored product PR reaches Jeff's phone on its own.
+# Enable: systemctl enable --now chump-pr-approval.timer
+[Unit]
+Description=Run the Chump PR-approval surfacer every 5 minutes (RESILIENT-265)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

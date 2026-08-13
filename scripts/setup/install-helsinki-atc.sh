@@ -104,8 +104,10 @@ SYSTEM_UNITS=(
   chump-board-ceo-briefing.timer
   chump-organ-reconcile.service
   chump-organ-reconcile.timer
+  chump-pr-approval.service
+  chump-pr-approval.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
@@ -137,7 +139,7 @@ if [[ "$(id -u)" != "0" ]]; then
   exit 1
 fi
 
-echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog, board-ceo-briefing, organ-reconcile) =="
+echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog, board-ceo-briefing, organ-reconcile, pr-approval) =="
 CHANGED_UNITS=()
 for unit in "${SYSTEM_UNITS[@]}"; do
   src="$REPO_ROOT/scripts/dispatch/$unit"
