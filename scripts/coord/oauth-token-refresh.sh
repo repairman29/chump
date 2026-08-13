@@ -21,8 +21,22 @@
 #   loop           — refresh-once every CHUMP_OAUTH_REFRESH_INTERVAL_S (default 300)
 #
 # Emits to ambient.jsonl:
-#   kind=oauth_token_refreshed       — successful extraction + atomic write
+#   kind=oauth_token_refreshed       — successful extraction + atomic write (token CHANGED)
 #   kind=oauth_token_refresh_failed  — keychain miss / JSON parse fail / write fail
+#   kind=oauth_token_invalid         — extracted token failed API validation; old file kept
+#   kind=oauth_refresh_unsupported_platform — non-macOS host (INFRA-1865, see AC5)
+#
+# INFRA-1865 additions on top of the original INFRA-2124 daemon:
+#   - hash-compare: skip the rewrite (and the ambient emit) when the extracted
+#     token is identical to what's already on disk, so a 5-min cron doesn't
+#     spam oauth_token_refreshed every cycle when nothing changed.
+#   - validate-before-write: the freshly extracted token is smoke-tested
+#     against the real Claude Code API path (`claude -p ... PONG`) before it
+#     replaces the existing file, so a corrupt/expired keychain blob never
+#     clobbers a still-good token.
+#   - platform gate: this daemon is macOS-only (keychain-backed). Linux hosts
+#     get a clear, loud error rather than a silent no-op — the operator
+#     decision on a Linux-native keystore/env-fallback is still open.
 #
 # Rust-First-Bypass: bash-glue over `security` (macOS-only keychain CLI), `python3 -c`
 # for JSON parsing, and atomic mv. Same shape as fleet-restart.sh path-2 keychain
@@ -59,12 +73,59 @@ _emit_ambient() {
     printf '{"ts":"%s","kind":"%s"%s}\n' "$(_ts)" "$kind" "$extra" >> "$AMBIENT_LOG"
 }
 
+# sha256 of a token string — used to skip no-op rewrites (AC3).
+_token_hash() {
+    printf '%s' "$1" | shasum -a 256 2>/dev/null | cut -d' ' -f1 \
+        || printf '%s' "$1" | sha256sum 2>/dev/null | cut -d' ' -f1
+}
+
+# Current token stored in TOKEN_FILE, or empty if missing/unparseable.
+_current_token() {
+    [[ -f "$TOKEN_FILE" ]] || return 0
+    python3 -c "
+import json,sys
+try:
+    print(json.load(open('$TOKEN_FILE')).get('token',''))
+except Exception:
+    pass
+" 2>/dev/null
+}
+
+# AC4: smoke-test the freshly-extracted token against the real Claude Code
+# API path before it's allowed to replace whatever is currently on disk.
+# Tests stub the `claude` binary on PATH rather than bypassing this function,
+# so the real validation code path is what's under test.
+_validate_token() {
+    local token="$1"
+    command -v claude >/dev/null 2>&1 || return 0   # can't validate without the CLI; don't block
+    (cd /tmp && CLAUDE_CODE_OAUTH_TOKEN="$token" ANTHROPIC_API_KEY= \
+        timeout "${CHUMP_OAUTH_VALIDATE_TIMEOUT_S:-60}" claude -p "Reply with exactly: PONG" \
+        --model haiku 2>/dev/null | grep -q PONG)
+}
+
 # scanner-anchor: "kind":"oauth_token_refreshed"
 # scanner-anchor: "kind":"oauth_token_refresh_failed"
 # scanner-anchor: "kind":"oauth_refresh_not_applicable"
+# scanner-anchor: "kind":"oauth_token_invalid"
+# scanner-anchor: "kind":"oauth_refresh_unsupported_platform"
 cmd_refresh_once() {
     local prev_age
     prev_age="$(_age_seconds "$TOKEN_FILE")"
+
+    # AC5: macOS-only (keychain-backed). Fail loudly + clearly on Linux
+    # rather than silently no-op'ing — the operator decision on a
+    # Linux-native keystore/env-fallback substrate is still open (INFRA-1865).
+    local _plat
+    _plat="${CHUMP_OAUTH_PLATFORM_OVERRIDE:-$(uname -s)}"
+    if [[ "$_plat" != "Darwin" ]]; then
+        _emit_ambient "oauth_refresh_unsupported_platform" \
+            ",\"platform\":\"${_plat}\",\"reason\":\"macos_keychain_only\""
+        echo "[oauth-refresh] SKIP: this daemon is macOS-only (keychain-backed)." >&2
+        echo "[oauth-refresh]      platform=${_plat} has no supported keystore path yet (INFRA-1865)." >&2
+        echo "[oauth-refresh]      set CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY directly, or write" >&2
+        echo "[oauth-refresh]      ${TOKEN_FILE} by hand until a Linux keystore path lands." >&2
+        return 1
+    fi
 
     # RESILIENT-115 (2026-06-05): if operator is on api-key auth, OAuth refresh
     # is irrelevant — skip cleanly with an informational event, NOT a
@@ -141,17 +202,38 @@ except Exception:
         return 1
     fi
 
-    # 3. Atomic write to TOKEN_FILE
+    # 3. Rotation-safe hash compare (AC3): skip the rewrite + ambient emit
+    # entirely when the extracted token is identical to what's already on
+    # disk. Avoids a kind=oauth_token_refreshed line every 5 min forever.
+    local _new_hash _cur_hash
+    _new_hash="$(_token_hash "$token")"
+    _cur_hash="$(_token_hash "$(_current_token)")"
+    if [[ -n "$_cur_hash" && "$_new_hash" == "$_cur_hash" ]]; then
+        echo "[oauth-refresh] SKIP: token unchanged (prev_age=${prev_age}s)"
+        return 0
+    fi
+
+    # 4. Validate before write (AC4): a corrupt/expired keychain blob must
+    # never clobber a still-good token file. On failure, leave the old file
+    # in place and emit a distinct warning event.
+    if ! _validate_token "$token"; then
+        _emit_ambient "oauth_token_invalid" \
+            ",\"reason\":\"validation_failed\",\"prev_age_seconds\":${prev_age}"
+        echo "[oauth-refresh] WARN: freshly-extracted token failed validation; keeping existing $TOKEN_FILE (prev_age=${prev_age}s)" >&2
+        return 1
+    fi
+
+    # 5. Atomic write to TOKEN_FILE
     mkdir -p "$(dirname "$TOKEN_FILE")"
     chmod 700 "$(dirname "$TOKEN_FILE")" 2>/dev/null || true
     local tmp="${TOKEN_FILE}.tmp.$$"
-    printf '{"token":"%s","written_at":"%s","source":"keychain"}\n' \
+    printf '{"token":"%s","written_at":"%s","source":"launchd-refresher"}\n' \
         "$token" "$(_ts)" > "$tmp"
     chmod 600 "$tmp"
     mv "$tmp" "$TOKEN_FILE"
 
     _emit_ambient "oauth_token_refreshed" \
-        ",\"source\":\"keychain\",\"prev_age_seconds\":${prev_age},\"new_age_seconds\":0,\"token_len\":${#token}"
+        ",\"source\":\"launchd-refresher\",\"prev_age_seconds\":${prev_age},\"new_age_seconds\":0,\"token_len\":${#token}"
     echo "[oauth-refresh] OK: wrote $TOKEN_FILE (prev_age=${prev_age}s, token_len=${#token})"
 }
 

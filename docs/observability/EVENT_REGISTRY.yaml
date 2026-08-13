@@ -1107,6 +1107,27 @@ events:
       "daemon ran and failed" (event fires every 5min). Loud signal that
       auth chain is broken; pairs with oauth_token_stale_despite_daemon.
 
+  - kind: oauth_token_invalid
+    effect_metric: self
+    emitter: scripts/coord/oauth-token-refresh.sh (INFRA-1865)
+    trigger: freshly keychain-extracted token failed a real claude -p PONG smoke test before it was allowed to overwrite ~/.chump/oauth-token.json
+    consumers: [audit-log, operator-recall]
+    fields_required: [ts, kind, reason, prev_age_seconds]
+    docs: |
+      Rotation-safety gate: never let a corrupt/expired keychain blob clobber
+      a still-good token file. The old file is left in place (with this
+      warning event) so downstream fallback paths still see a token.
+
+  - kind: oauth_refresh_unsupported_platform
+    effect_metric: self
+    emitter: scripts/coord/oauth-token-refresh.sh (INFRA-1865)
+    trigger: refresher invoked on a non-Darwin host — this daemon is macOS-keychain-only
+    consumers: [audit-log]
+    fields_required: [ts, kind, platform, reason]
+    docs: |
+      Linux operators have no supported keystore path yet (operator decision
+      open, see AC5 on INFRA-1865). Loud error instead of a silent no-op.
+
   - kind: oauth_token_stale_despite_daemon
     effect_metric: self
     emitter: scripts/coord/infra-watcher-loop.sh (INFRA-2124)
