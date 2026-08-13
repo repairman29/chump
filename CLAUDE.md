@@ -280,7 +280,13 @@ Both `ANTHROPIC_API_KEY` (API-key) and `CLAUDE_CODE_OAUTH_TOKEN` (subscription O
 | `api-key` | `CHUMP_AUTH_MODE=api-key` | Force API key; error if absent |
 | `oauth` | `CHUMP_AUTH_MODE=oauth` | Force subscription token; error if absent |
 
-Workers re-evaluate credentials before each `claude -p` spawn. OAUTH tokens are refreshed to `~/.chump/oauth-token.json` every 5 min; workers read from there. On a 401, the fleet falls back to the other mode (if available) and emits `kind=fleet_auth_fallback` to `ambient.jsonl`.
+Workers re-evaluate credentials before each `claude -p` spawn and read `~/.chump/oauth-token.json`. The "refreshed every 5 min" promise is **not implicit** — it only holds while the standalone refresher daemon is installed and alive:
+
+- **Substrate:** `scripts/coord/oauth-token-refresh.sh` (INFRA-2124, hardened INFRA-1865) — extracts the token from the macOS Keychain entry `Claude Code-credentials`, hash-compares against the current file (rewrites + emits `kind=oauth_token_refreshed` only when the token actually changed — no log spam), and validates the extracted token against a real `claude -p` call before it's allowed to overwrite a still-good file (failure → `kind=oauth_token_invalid`, old file kept).
+- **Cadence:** `launchd/com.chump.oauth-refresh.plist`, `StartInterval=300` (5 min). Install (idempotent): `bash scripts/setup/install-oauth-refresh-launchd.sh`. Verify it's actually loaded: `launchctl list | grep com.chump.oauth-refresh` — an installed-but-unloaded plist is exactly how the token went 16d stale (INFRA-1865).
+- **Platform:** macOS-only (Keychain-backed). Linux hosts get a loud `kind=oauth_refresh_unsupported_platform` error rather than a silent no-op — a Linux-native keystore/env-fallback path is still an open operator decision.
+- **Smoke test:** `bash scripts/ci/test-oauth-refresher.sh`.
+- **Staleness detector:** `scripts/coord/infra-watcher-loop.sh` emits `kind=oauth_token_stale_despite_daemon` when the file is stale despite the plist showing loaded — read that event before re-diagnosing this by hand.
 
 Validate: `chump fleet doctor` — exits non-zero if no valid auth path found.
 

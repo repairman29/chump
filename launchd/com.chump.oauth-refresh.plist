@@ -15,6 +15,12 @@
   StartInterval=300 (5 min, per CLAUDE.md INFRA-622 spec).
   RunAtLoad=true so the file is fresh the moment the operator logs in.
 
+  INFRA-1865 hardening: the refresh script now hash-compares before
+  rewriting (no rewrite/emit when the token is unchanged), validates the
+  extracted token against a real `claude -p` call before it's allowed to
+  overwrite a still-good file, and errors loudly on non-macOS hosts instead
+  of silently no-op'ing. See scripts/coord/oauth-token-refresh.sh header.
+
   INSTALLATION (operator-action — first-time setup only):
     bash scripts/setup/install-oauth-refresh-launchd.sh
     launchctl list | grep com.chump.oauth-refresh
