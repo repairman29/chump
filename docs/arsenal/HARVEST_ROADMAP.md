@@ -219,6 +219,20 @@ Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dor
 
 ---
 
+## Wave 4 — INFRA-1823 AC7 close-out (2026-08-13)
+
+Wave 3's prose findings above were never actually written back into `GLOBAL_ARSENAL.json`'s
+`extracted_primitives` field — PR #3698 built the `chump harvest` CLI plumbing but didn't
+regenerate the catalog. Re-running `scripts/arsenal/build.py` against the existing
+`EXTRACTED_PRIMITIVES` table only closed 16 of the 45 repos AC7 requires. Dispatched the
+harvester agent for the remaining 29 via `gh api` (no full clones), added their findings to
+`EXTRACTED_PRIMITIVES`, and rebuilt. Final coverage: **34/45 have citable `extracted_primitives`
+entries; 11 confirmed scanned-but-empty** (`chump` self-excluded; `chump-brain`, `2029`,
+`jarvis-rog-ed`, `slides`, `okr`, `echeo_old`, `code-roach`, `echeodev`, `echeo-dev`,
+`repairman29-website` are docs-only/duplicate/template scaffolds with nothing distinct to cite —
+consistent with the Wave-3 archive-candidate list above). All 45 were read; "scanned and found
+nothing" is a valid outcome, not a gap in coverage.
+
 ## Closing note — Discovery is the win
 
 The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
