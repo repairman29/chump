@@ -404,6 +404,7 @@ process_worktree() {
 
     if [[ -e "$wt_path/.chump-no-reap" ]]; then
         info "  .chump-no-reap sentinel present — skipping"
+        emit_reaper_event "target_reap_skipped" "$wt_path/target" "no_reap_marker"
         SKIPPED=$((SKIPPED+1)); return 0
     fi
 

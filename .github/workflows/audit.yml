@@ -806,6 +806,10 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           bash scripts/ci/test-waste-tally-domain.sh
 
+      - name: "audit-step isolation guard — one test script per step (RESILIENT-044)"
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-audit-step-isolation.sh
+
       # ── sccache stats (always, all shards) ──────────────────────────────────
       - name: sccache --show-stats
         if: always() && steps.r2detect.outputs.configured == 'true'
