@@ -369,6 +369,10 @@ async def dispatch_advisor_agent(question: str) -> None:
     if _advisor_semaphore is None:
         _advisor_semaphore = asyncio.Semaphore(MAX_CONCURRENT_ADVISOR_DISPATCHES)
     async with _advisor_semaphore:
+        # scanner-anchor: "kind":"discord_advisor_agent_dispatch_failed" (INFRA-3608).
+        # The emit sites below call the dynamic emit() helper, which the
+        # grep-based EVENT_REGISTRY audit cannot see; this literal keeps
+        # register-and-emit in sync, mirroring the command-agent anchor above.
         q = (question or "").strip()
         if not q:
             send_dm("(ask me something -- e.g. `what's blocking the fleet right now?`)")
