@@ -1640,6 +1640,29 @@ fi
 BASE_BRANCH="${BASE_BRANCH:-main}"
 REMOTE="${REMOTE:-origin}"
 
+# ── INFRA-2252: offline mode — route to the local merge queue ────────────────
+# When CHUMP_GITHUB_MODE=offline, none of the GitHub-facing machinery below
+# (API probe, gh pr create, gh pr merge --auto) can work — there is no
+# network. Enqueue + drain through scripts/coord/local-merge-queue.sh instead
+# (docs/design/OFFLINE_FIRST.md §2 / §4). The online path below this block
+# is unchanged for every other CHUMP_GITHUB_MODE value.
+if [[ "${CHUMP_GITHUB_MODE:-full}" == "offline" ]]; then
+    info "CHUMP_GITHUB_MODE=offline — routing ${GAP_IDS[*]:-$BRANCH} through local-merge-queue.sh"
+    _lmq="$(dirname "$0")/local-merge-queue.sh"
+    _lmq_gap="${GAP_IDS[0]:-$BRANCH}"
+    if ! bash "$_lmq" enqueue "$_lmq_gap" "$BRANCH" >/dev/null; then
+        red "local-merge-queue enqueue failed for $_lmq_gap"
+        exit 1
+    fi
+    if bash "$_lmq" process; then
+        green "$_lmq_gap merged locally via local-merge-queue.sh (offline mode)."
+        exit 0
+    else
+        red "local-merge-queue process reported a failure — see kind=local_merge_blocked in ambient.jsonl"
+        exit 1
+    fi
+fi
+
 # ── INFRA-119: start health monitoring now that REPO_ROOT is set ──────────────
 _bm_health_init "$REPO_ROOT/.chump-locks"
 # INFRA-2272: initialise per-step progress ledger (requires GAP_IDS + LOCK_DIR).
