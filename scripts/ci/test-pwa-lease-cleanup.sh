@@ -128,7 +128,7 @@ rm -f "$_lockdir/stale-session.json"
 
 # ── Test (d): spawn_gap_workflow calls cleanup_lease on every error path ──────
 echo "--- Test d: spawn_gap_workflow calls cleanup_lease on each error path ---"
-_cleanup_count=$(grep -c "cleanup_lease" "$WS" 2>/dev/null || echo "0")
+_cleanup_count=$(grep -c "cleanup_lease" "$WS" 2>/dev/null || true)
 # ≥4: fn definition + preflight-fail + claim-fail + execute-fail + ship-fail
 if [[ "${_cleanup_count:-0}" -ge 4 ]]; then
     ok "Test d: cleanup_lease referenced in ≥4 locations (definition + error paths)"

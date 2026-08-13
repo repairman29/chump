@@ -137,7 +137,10 @@ cmd_voice_audit() {
         for term in "${BANNED_TERMS[@]}"; do
             # grep -iP for case-insensitive perl regex (handles dot as wildcard for hyphens)
             local matches
-            matches=$(grep -ci "$term" "$full_path" 2>/dev/null || echo "0")
+            # RESILIENT-281: grep -c already prints "0" on zero matches;
+            # `|| echo "0"` appended a duplicate line, breaking the -gt
+            # comparison below. Use `|| true`.
+            matches=$(grep -ci "$term" "$full_path" 2>/dev/null || true)
             if [ "$matches" -gt "0" ]; then
                 doc_drift=1
                 any_drift=1
