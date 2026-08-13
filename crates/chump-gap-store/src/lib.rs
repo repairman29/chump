@@ -2176,6 +2176,65 @@ impl GapStore {
         Ok(())
     }
 
+    /// RESILIENT-119: first-class triage-close for gaps that will never ship
+    /// a PR (superseded / wontfix / obsolete / duplicate). Deliberately does
+    /// NOT run the `ship()` guards — INFRA-2423 (clean/current worktree) and
+    /// INFRA-1392 (proof-of-merge commit on main) exist to protect PR-ships
+    /// from being marked done prematurely. A triage-close is the opposite
+    /// case: there is no PR and never will be one, so those guards can only
+    /// ever fail spuriously here. Before this method existed, the only way
+    /// to flip such a gap's status was `git reset --hard origin/main +
+    /// CHUMP_BINARY_STALENESS_CHECK=0 chump gap edit --status superseded` —
+    /// a band-aid that discarded local state as a side effect just to dodge
+    /// guards that were never meant to apply.
+    pub fn close(&self, gap_id: &str, session_id: &str, reason: &str) -> Result<()> {
+        const VALID_REASONS: &[&str] = &["superseded", "wontfix", "obsolete", "duplicate"];
+        if !VALID_REASONS.contains(&reason) {
+            bail!(
+                "chump gap close: invalid --reason {:?}. Must be one of: {}",
+                reason,
+                VALID_REASONS.join(", ")
+            );
+        }
+        let now = unix_now();
+        let iso = unix_to_iso_date(now);
+        let changed = self.conn.execute(
+            "UPDATE gaps SET status=?1, closed_at=?2, closed_date=?3
+             WHERE id=?4 AND status NOT IN
+               ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied','obsolete','duplicate')",
+            params![reason, now, iso, gap_id],
+        )?;
+        if changed == 0 {
+            bail!(
+                "gap {} not found or already in a terminal status (done/superseded/wontfix/closed/obsolete/duplicate)",
+                gap_id
+            );
+        }
+        let _ = self.conn.execute(
+            "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
+            params![session_id, gap_id],
+        );
+        // Best-effort ambient audit event — never fail the caller on write errors.
+        {
+            use std::io::Write as _;
+            let ts = unix_to_iso_full(now);
+            // scanner-anchor: gap_triage_closed (RESILIENT-119)
+            let line = format!(
+                r#"{{"ts":"{ts}","kind":"gap_triage_closed","gap_id":"{gap_id}","reason":"{reason}","session_id":"{session_id}"}}"#,
+            ) + "\n";
+            let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+            let _ = std::fs::create_dir_all(amb.parent().unwrap_or(&self.repo_root));
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
+        Ok(())
+    }
+
     /// INFRA-2134: Record how/where a gap was shipped in the `shipped_in` JSON
     /// column. Accepts a pre-serialised JSON string (the caller constructs the
     /// appropriate shape). Idempotent: calling again overwrites the previous
@@ -6814,6 +6873,64 @@ meta:
         let row2 = store.get(&id2).unwrap().expect("row");
         assert_eq!(row2.status, "done");
         assert_eq!(row2.closed_pr, None);
+    }
+
+    // ── RESILIENT-119: triage-close ─────────────────────────────────────
+
+    #[test]
+    fn test_close_flips_status_for_each_valid_reason() {
+        // No `.git` in `test_store()`'s tempdir, so ship()'s auto-fetch /
+        // proof-of-merge machinery would be unreachable anyway — but close()
+        // must not even attempt it: no fetch, no worktree-clean check, no
+        // scan for a commit naming the gap.
+        let (store, _dir) = test_store();
+        for reason in ["superseded", "wontfix", "obsolete", "duplicate"] {
+            let id = store.reserve("INFRA", reason, "P1", "s").unwrap();
+            store.claim(&id, "s", "/wt", 3600).unwrap();
+            store.close(&id, "s", reason).unwrap();
+            let row = store.get(&id).unwrap().expect("row");
+            assert_eq!(row.status, reason);
+        }
+    }
+
+    #[test]
+    fn test_close_rejects_invalid_reason() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "bad reason", "P1", "s").unwrap();
+        store.claim(&id, "s", "/wt", 3600).unwrap();
+        let err = store.close(&id, "s", "bogus").unwrap_err();
+        assert!(
+            format!("{err:#}").contains("invalid --reason"),
+            "unexpected error: {err:#}"
+        );
+        // Status must be untouched by the rejected call.
+        let row = store.get(&id).unwrap().expect("row");
+        assert_eq!(row.status, "open");
+    }
+
+    #[test]
+    fn test_close_is_not_a_reroute_of_ship_and_releases_lease() {
+        let (store, dir) = test_store();
+        let id = store.reserve("INFRA", "lease release", "P1", "s").unwrap();
+        store.claim(&id, "s", "/wt", 3600).unwrap();
+        store.close(&id, "s", "wontfix").unwrap();
+        // Lease is released just like ship() does.
+        let leftover: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM leases WHERE gap_id=?1 AND session_id=?2",
+                params![id, "s"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(leftover, 0, "close() must release the caller's lease");
+        // Already-terminal gap cannot be re-closed.
+        let err = store.close(&id, "s", "superseded").unwrap_err();
+        assert!(
+            format!("{err:#}").contains("already in a terminal status"),
+            "unexpected error: {err:#}"
+        );
+        drop(dir);
     }
 
     #[test]
