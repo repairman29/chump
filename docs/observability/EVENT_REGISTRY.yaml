@@ -9767,3 +9767,59 @@ events:
       fatal.
     consumers: [ops-audit]
     fields_required: [ts, kind, name]
+
+  - kind: escalation_fired
+    effect_metric: self
+    emitter: scripts/coord/escalation-tier.sh (INFRA-1890)
+    trigger: >
+      A tracked ambient signature (gap_failed / pr_auto_rebase_failed /
+      dirty_pr_unresolvable) fired past its threshold_count within the
+      lookback window without resolution, cleared the dedup + META-063
+      redundancy gates, and a follow-up gap was filed via `chump gap reserve`.
+    consumers: [fleet-brief, opus-curator]
+    fields_required: [ts, kind, rule_id, gap_id_filed, dedup_checks_passed]
+
+  - kind: escalation_dedup_hit
+    effect_metric: self
+    emitter: scripts/coord/escalation-tier.sh (INFRA-1890)
+    trigger: >
+      A candidate escalation gap's title hash matched an already-filed
+      escalation (local seen-file) or an already-open gap (chump gap list
+      --grep) — filing skipped.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, rule_id]
+
+  - kind: escalation_meta063_blocked
+    effect_metric: self
+    emitter: scripts/coord/escalation-tier.sh (INFRA-1890)
+    trigger: >
+      A candidate escalation gap's title scored above the redundancy
+      threshold (default 0.7) against an existing open gap title — filing
+      skipped per the META-063 no-new-duplicates doctrine.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, rule_id, matched_gap_id, similarity]
+
+  - kind: escalation_uncategorized
+    effect_metric: self
+    emitter: scripts/coord/escalation-tier.sh (INFRA-1890)
+    trigger: >
+      An ambient event kind shaped like a repeated failure signature
+      (*_failed / *_stuck / *_unresolvable) fired >=10x in the lookback
+      window but matches no known EscalationRule — logged to
+      .chump/triage/uncategorized.jsonl for operator review, no gap filed.
+    consumers: [operator]
+    fields_required: [ts, kind, signature_kind]
+
+  - kind: escalation_rule_suppressed
+    effect_metric: self
+    emitter: scripts/coord/escalation-tier.sh (INFRA-1890)
+    trigger: an escalation rule was skipped this cycle because it is present in .chump/escalation-suppressions.json
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, rule_id]
+
+  - kind: escalation_rule_suppressed_by_operator
+    effect_metric: self
+    emitter: src/main.rs (chump fleet escalation --suppress-rule, INFRA-1890)
+    trigger: operator ran `chump fleet escalation --suppress-rule <id>` to silence a noisy signature during a maintenance window
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, rule_id]
