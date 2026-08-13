@@ -24,7 +24,7 @@ VIOLATIONS=""
 while IFS= read -r f; do
     [[ -z "$f" ]] && continue
     [[ -f "$REPO_ROOT/$f" ]] || continue
-    hits=$(grep -nE 'grep -c[A-Za-z]*[^|]*\|\|[[:space:]]*echo 0\b' "$REPO_ROOT/$f" 2>/dev/null || true)
+    hits=$(grep -nE 'grep -c[A-Za-z]*[^|]*\|\|[[:space:]]*echo[[:space:]]+"?'"'"'?0"?'"'"'?\b' "$REPO_ROOT/$f" 2>/dev/null || true)
     if [[ -n "$hits" ]]; then
         VIOLATIONS+="$f:"$'\n'"$hits"$'\n'
     fi

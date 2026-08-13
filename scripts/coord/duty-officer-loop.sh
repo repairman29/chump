@@ -72,7 +72,9 @@ cmd_heartbeat() {
 
 _registry_signal_count() {
     [[ -f "$REGISTRY" ]] || { echo 0; return; }
-    grep -cE '^\s*-\s*signal:' "$REGISTRY" 2>/dev/null || echo 0
+    # RESILIENT-281: grep -c already prints "0" on zero matches; `|| echo 0`
+    # appended a duplicate line, corrupting the JSON heartbeat below.
+    grep -cE '^\s*-\s*signal:' "$REGISTRY" 2>/dev/null || true
 }
 
 # Extract the registry block for a named signal (from its "- signal:" line up

@@ -436,7 +436,10 @@ fi
 
 # (c) CI_BROKEN — pr_stuck with ci-related reason
 _ci_raw=$(_scan_ambient "$_ci_window" '"kind":"pr_stuck"')
-_ci_hits=$(echo "$_ci_raw" | grep -ic '"reason".*ci\|ci.*fail\|check.*fail\|all.*check' 2>/dev/null || echo 0)
+# RESILIENT-281: grep -c already prints "0" (and exits 1) on zero matches;
+# `|| echo 0` appended a duplicate line ($'0\n0'), breaking the `(( ))`
+# comparisons below with a silent "syntax error in expression". Use `|| true`.
+_ci_hits=$(echo "$_ci_raw" | grep -ic '"reason".*ci\|ci.*fail\|check.*fail\|all.*check' 2>/dev/null || true)
 _ci_hits="${_ci_hits//[[:space:]]/}"
 # Fall back: count any pr_stuck if no reason field — conservative
 if (( _ci_hits == 0 )); then

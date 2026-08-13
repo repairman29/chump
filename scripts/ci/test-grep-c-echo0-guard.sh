@@ -78,6 +78,26 @@ else
     _fail "guard should pass fixed file (exited non-zero): $(cat /tmp/grep-c-echo0-guard-test2.out)"
 fi
 
+# Test 2b: quoted variant 'echo "0"' must also be rejected (RESILIENT-281 —
+# the original regex only matched the unquoted 'echo 0' form).
+cat > "$TMPDIR_FIXTURE/scripts/bad.sh" <<'BADQ'
+#!/usr/bin/env bash
+count=$(grep -c 'pattern' somefile 2>/dev/null || echo "0")
+if [[ "$count" -gt 0 ]]; then
+  echo "found"
+fi
+BADQ
+
+if (
+    cd "$TMPDIR_FIXTURE" || exit 1
+    git add scripts/bad.sh
+    bash "$GUARD" >/tmp/grep-c-echo0-guard-test2b.out 2>&1
+); then
+    _fail "guard should reject quoted 'echo \"0\"' variant (exited 0)"
+else
+    _ok "guard rejects quoted 'echo \"0\"' variant"
+fi
+
 # Test 3: bypass trailer allows the commit through.
 cat > "$TMPDIR_FIXTURE/scripts/bad.sh" <<'BAD'
 #!/usr/bin/env bash
