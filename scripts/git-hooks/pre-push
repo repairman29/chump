@@ -173,6 +173,33 @@ _silent_alarm_check_and_emit() {
 trap _silent_alarm_check_and_emit EXIT
 
 # -----------------------------------------------------------------------
+# Guard 0-verify-claim-branch (INFRA-1649, re-do of INFRA-1598)
+#
+# Fast-fail mirror of Guard 5 (below) using the `chump verify-claim-branch`
+# Rust primitive instead of re-parsing claim-*.json with jq. Runs FIRST,
+# ahead of every other guard, so a wrong-branch push (INFRA-1427 failure
+# class: linked-worktree gitdir back-reference resolves HEAD via a
+# different session's branch) is caught before any expensive check runs.
+# Guard 5 stays in place as the harness-neutral fallback for hosts without
+# the `chump` binary on PATH.
+#
+# Bypass: same trailer as Guard 5 — 'Off-Rails-Bypass: <reason>' on HEAD,
+# or CHUMP_OFF_RAILS_CHECK=0 git push.
+# -----------------------------------------------------------------------
+if command -v chump &>/dev/null && [[ "${CHUMP_OFF_RAILS_CHECK:-1}" != "0" ]]; then
+    if ! chump verify-claim-branch >/dev/null 2>&1; then
+        _pp_head_msg="$(git -C "$REPO_ROOT" log -1 --pretty=%B 2>/dev/null || true)"
+        if grep -qE '^Off-Rails-Bypass:' <<<"$_pp_head_msg"; then
+            : # bypass trailer present — Guard 5 below will audit-log it
+        else
+            chump verify-claim-branch >&2 || true
+            echo "[pre-push] Bypass: add 'Off-Rails-Bypass: <reason>' trailer to HEAD commit, or CHUMP_OFF_RAILS_CHECK=0 git push" >&2
+            exit 1
+        fi
+    fi
+fi
+
+# -----------------------------------------------------------------------
 # Guard 0a: chump preflight (INFRA-1671)
 #
 # The single-command local CI mirror (INFRA-1670). When the `chump` binary
