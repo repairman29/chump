@@ -90,7 +90,11 @@ case "$1" in
         for t in "${arr[@]}"; do
             [[ -z "$t" ]] && continue
             case "$fmt" in
-                nextest) echo "        FAIL [   0.005s] fakecrate $t" ;;
+                # Realistic nextest shape (fleet un-jam 2026-08-13): ANSI SGR
+                # color codes + a "(N/M)" progress column + a hyphenated bin
+                # name -- the exact combination that defeated the first
+                # RESILIENT-306 parser and let credible218 re-jam the fleet.
+                nextest) printf '\033[31;1m        FAIL\033[0m [   0.005s] (1/1) \033[35;1mfake-crate\033[0m \033[34;1m%s\033[0m\n' "$t" ;;
                 quiet)   : ;;  # names appear only in the failures: block below
                 *)       echo "test $t ... FAILED" ;;
             esac
