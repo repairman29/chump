@@ -81,15 +81,30 @@ case "$1" in
             names="${FAKE_FAIL_NAMES_RERUN:-}"
         fi
         IFS=',' read -ra arr <<< "$names"
+        # RESILIENT-306: FAKE_FORMAT selects the failure-output shape so the
+        # parser is exercised against all three CI realities:
+        #   verbose  — legacy `cargo test`  ("test NAME ... FAILED")
+        #   nextest  — `cargo nextest run`  ("    FAIL [ 0.0s] <bin> NAME")
+        #   quiet    — `cargo test --quiet` (names only in the failures: block)
+        fmt="${FAKE_FORMAT:-verbose}"
         for t in "${arr[@]}"; do
             [[ -z "$t" ]] && continue
-            echo "test $t ... FAILED"
+            case "$fmt" in
+                nextest) echo "        FAIL [   0.005s] fakecrate $t" ;;
+                quiet)   : ;;  # names appear only in the failures: block below
+                *)       echo "test $t ... FAILED" ;;
+            esac
         done
         echo "test passing_one ... ok"
         if [[ -z "$names" ]]; then
             echo "test result: ok. 1 passed; 0 failed"
             exit 0
         else
+            if [[ "$fmt" == "quiet" ]]; then
+                echo "failures:"
+                for t in "${arr[@]}"; do [[ -z "$t" ]] && continue; echo "    $t"; done
+                echo ""
+            fi
             echo "test result: FAILED. 1 passed; $(echo "$names" | tr , '\n' | grep -c .) failed"
             exit 101
         fi
@@ -106,6 +121,7 @@ run_wrapper() {
     TMP_STATE="$TMP/state-$$-${RANDOM}" \
     FAKE_FAIL_NAMES="${FAKE_FAIL_NAMES:-}" \
     FAKE_FAIL_NAMES_RERUN="${FAKE_FAIL_NAMES_RERUN:-}" \
+    FAKE_FORMAT="${FAKE_FORMAT:-verbose}" \
     bash "$FAKE/scripts/ci/cargo-test-with-rerun.sh" -- cargo test 2>&1
     RC=$?
     cd - >/dev/null || true
@@ -173,6 +189,50 @@ if [[ "$RC" -ne 0 ]] && ! grep -q "flake_autorerun_initiated" /tmp/bypass.out; t
     ok "bypass returns raw signal without rerun"
 else
     fail "bypass should not rerun (rc=$RC, log: $(cat /tmp/bypass.out))"
+fi
+
+# ── Test 6: nextest-format catalog hit → recovered (RESILIENT-306) ──────────
+# This is the regression the fleet-jam exposed: CI runs `cargo nextest run`,
+# whose failure lines the old parser could not read, so INFRA-764's autorerun
+# was silently blind to every nextest flake. Must parse + recover now.
+echo "--- Test 6: nextest-format catalog hit, rerun green → recovered ---"
+OUT=$(FAKE_FORMAT=nextest \
+      FAKE_FAIL_NAMES="known_module::tests::flaky_one" \
+      FAKE_FAIL_NAMES_RERUN="" \
+      run_wrapper)
+RC=$?
+if [[ "$RC" -eq 0 ]] \
+   && echo "$OUT" | grep -q "flake_autorerun_initiated" \
+   && echo "$OUT" | grep -q "flake_autorerun_recovered"; then
+    ok "nextest-format catalog flake auto-rerun recovered"
+else
+    fail "expected nextest recover (rc=$RC, out=$OUT)"
+fi
+
+# ── Test 7: nextest-format unknown failure → no rerun ───────────────────────
+echo "--- Test 7: nextest-format unknown failure → no rerun, exit non-zero ---"
+OUT=$(FAKE_FORMAT=nextest FAKE_FAIL_NAMES="some::real::bug" run_wrapper)
+RC=$?
+if [[ "$RC" -ne 0 ]] && echo "$OUT" | grep -q "not auto-rerunning"; then
+    ok "nextest-format unknown failure not auto-rerun"
+else
+    fail "expected non-zero + no-rerun message (rc=$RC, out=$OUT)"
+fi
+
+# ── Test 8: quiet-format catalog hit → recovered ────────────────────────────
+# The fast-checks proof-of-merge guard (RESILIENT-306) runs cargo test, which
+# lists failed names only in the "failures:" block. Must parse + recover.
+echo "--- Test 8: quiet/failures-block catalog hit, rerun green → recovered ---"
+OUT=$(FAKE_FORMAT=quiet \
+      FAKE_FAIL_NAMES="known_module::tests::flaky_one" \
+      FAKE_FAIL_NAMES_RERUN="" \
+      run_wrapper)
+RC=$?
+if [[ "$RC" -eq 0 ]] \
+   && echo "$OUT" | grep -q "flake_autorerun_recovered"; then
+    ok "failures-block catalog flake auto-rerun recovered"
+else
+    fail "expected quiet-format recover (rc=$RC, out=$OUT)"
 fi
 
 # ── Summary ─────────────────────────────────────────────────────────────────
