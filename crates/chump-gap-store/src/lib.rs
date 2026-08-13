@@ -5217,44 +5217,74 @@ mod proof_of_merge_tests {
     #[test]
     fn credible218_merge_older_than_200_commits_is_proven() {
         // CREDIBLE-218: a merge that landed MORE than 200 commits ago must still be
-        // provable. The old `-n 200` window silently missed it → ship() refused → the
+        // provable. The old `-n 200` window silently missed it, ship() refused, and the
         // gap became a permanent ghost. Here the gap-mentioning commit is the OLDEST,
         // buried under 205 newer commits.
+        //
+        // FLAKE FIX: this fixture flaked red ONLY on GitHub-hosted ubuntu runners
+        // (rock-solid on the fleet self-hosted Linux boxes). The old body wrote identity
+        // via a separate `git config` step and then swallowed EVERY git error (`let _ =`).
+        // On a shared CI runner an occasional commit failed (ambient git config such as
+        // commit.gpgsign / core.hooksPath, or a config-durability race on the very first
+        // root commit), so the gap-carrying commit went missing while later fillers
+        // landed. `main` then existed but the grep missed, verify_proof_of_merge returned
+        // false, and the assertion fired with NO error shown. Fix: make every git call
+        // hermetic (GIT_CONFIG_GLOBAL/SYSTEM=/dev/null, GIT_* dir vars cleared), pass
+        // identity + no-sign + no-gc inline on every commit so nothing can race a config
+        // file, and ASSERT each setup commit lands so any real failure is loud.
         let dir = tempdir().unwrap();
-        let init = std::process::Command::new("git")
-            .args(["init", "--initial-branch=main", "--quiet"])
-            .current_dir(dir.path())
-            .status();
-        if init.is_err() || !init.unwrap().success() {
+        // Hermetic git: no ambient global/system config and no leaked GIT_* env can
+        // perturb this fixture on a shared runner.
+        let git = |args: &[&str]| -> std::process::Output {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir.path())
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_SYSTEM", "/dev/null")
+                .env("GIT_TERMINAL_PROMPT", "0")
+                .env_remove("GIT_DIR")
+                .env_remove("GIT_WORK_TREE")
+                .env_remove("GIT_INDEX_FILE")
+                .output()
+                .expect("git should spawn")
+        };
+        if !git(&["init", "--initial-branch=main", "--quiet"])
+            .status
+            .success()
+        {
             return; // older git without --initial-branch
         }
-        for (k, v) in [("user.email", "t@t.local"), ("user.name", "t")] {
-            let _ = std::process::Command::new("git")
-                .args(["config", k, v])
-                .current_dir(dir.path())
-                .status();
-        }
-        // Oldest commit carries the gap ID.
-        let _ = std::process::Command::new("git")
-            .args([
+        // Identity + no-sign + no-gc passed inline on every commit so nothing depends on
+        // a separately-written config file (the source of the CI race).
+        let commit = |msg: &str| -> bool {
+            git(&[
+                "-c",
+                "user.email=t@t.local",
+                "-c",
+                "user.name=t",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "gc.auto=0",
                 "commit",
                 "--allow-empty",
                 "-m",
-                "EFFECTIVE-9999: the real merge, buried deep",
+                msg,
             ])
-            .current_dir(dir.path())
-            .status();
+            .status
+            .success()
+        };
+        // Oldest commit carries the gap ID. Assert it lands (was silently swallowed).
+        assert!(
+            commit("EFFECTIVE-9999: the real merge, buried deep"),
+            "root/gap commit must be created for the fixture to be meaningful"
+        );
         // 205 newer commits bury it past the old -n 200 window.
         for i in 0..205 {
-            let _ = std::process::Command::new("git")
-                .args([
-                    "commit",
-                    "--allow-empty",
-                    "-m",
-                    &format!("chore: filler {i}"),
-                ])
-                .current_dir(dir.path())
-                .status();
+            assert!(
+                commit(&format!("chore: filler {i}")),
+                "filler {i} must land"
+            );
         }
         assert!(
             verify_proof_of_merge(dir.path(), "EFFECTIVE-9999", None),
