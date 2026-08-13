@@ -958,6 +958,17 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // `verified` job step itself IS GitHub-context-dependent (needs.*.result)
         // and is allowlisted separately in preflight-ci-parity-exceptions.txt.
         "scripts/ci/test-aggregator-verified.sh",
+        // INFRA-1841 (CP-009): mock-services offline-CI fixture smoke test —
+        // builds+runs the 4 vendored Anthropic/OpenAI/Stripe/Supabase mocks
+        // under tests/fixtures/mock-services and asserts response shape.
+        // SKIPs cleanly (exit 0) when docker is unavailable/unreachable, so
+        // it never false-fails a host without Docker. ~4s warm, ~15s cold.
+        "scripts/ci/test-mock-services.sh",
+        // INFRA-1841 (CP-009): mock-services CHUMP_USE_MOCK_SERVICES=1
+        // opt-in wiring pattern — proves scripts/ci/lib/mock-services-env.sh
+        // transparently redirects Anthropic/OpenAI calls to the local
+        // mocks. Same skip behavior as test-mock-services.sh above.
+        "scripts/ci/test-mock-services-integration.sh",
     ];
     candidates
         .iter()

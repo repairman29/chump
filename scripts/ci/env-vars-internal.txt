@@ -1629,3 +1629,8 @@ CHUMP_MEMORY_DB_PATH
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_ORGAN_MANIFEST
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_USE_MOCK_SERVICES
