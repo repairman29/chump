@@ -7098,6 +7098,91 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-1890: detector escalation tier. Detection + filing logic
+            // lives in scripts/coord/escalation-tier.sh (same pattern as
+            // other ambient-scanning detectors, e.g. bounced-pr-detector.sh);
+            // this arm owns operator-facing suppression state, which is
+            // canonical fleet config and belongs in Rust per the Rust-first
+            // criteria (mutates .chump/escalation-suppressions.json).
+            "escalation" => {
+                let suppressions_path = repo_root.join(".chump/escalation-suppressions.json");
+                if let Some(rule_id) = flag("--suppress-rule") {
+                    let reason = flag("--reason").unwrap_or_else(|| "unspecified".to_string());
+                    let _ =
+                        std::fs::create_dir_all(suppressions_path.parent().unwrap_or(&repo_root));
+                    let mut doc: serde_json::Value = std::fs::read_to_string(&suppressions_path)
+                        .ok()
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                        .unwrap_or_else(|| serde_json::json!({}));
+                    let ts_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                    doc[&rule_id] = serde_json::json!({
+                        "suppressed_at": ts_iso,
+                        "reason": reason,
+                    });
+                    std::fs::write(
+                        &suppressions_path,
+                        serde_json::to_string_pretty(&doc).unwrap_or_default(),
+                    )
+                    .unwrap_or_else(|e| {
+                        eprintln!(
+                            "chump fleet escalation: failed to write {}: {e}",
+                            suppressions_path.display()
+                        );
+                        std::process::exit(1);
+                    });
+                    println!(
+                        "chump fleet escalation: rule '{rule_id}' suppressed (see {})",
+                        suppressions_path.display()
+                    );
+                    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .append(true)
+                        .create(true)
+                        .open(&ambient_path)
+                    {
+                        // scanner-anchor: "kind":"escalation_rule_suppressed_by_operator"
+                        let _ = writeln!(
+                            f,
+                            "{{\"ts\":\"{ts_iso}\",\"kind\":\"escalation_rule_suppressed_by_operator\",\
+                             \"rule_id\":\"{rule_id}\"}}"
+                        );
+                    }
+                    return Ok(());
+                }
+                if let Some(rule_id) = flag("--unsuppress-rule") {
+                    let mut doc: serde_json::Value = std::fs::read_to_string(&suppressions_path)
+                        .ok()
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                        .unwrap_or_else(|| serde_json::json!({}));
+                    if let Some(obj) = doc.as_object_mut() {
+                        obj.remove(&rule_id);
+                    }
+                    std::fs::write(
+                        &suppressions_path,
+                        serde_json::to_string_pretty(&doc).unwrap_or_default(),
+                    )
+                    .unwrap_or_else(|e| {
+                        eprintln!(
+                            "chump fleet escalation: failed to write {}: {e}",
+                            suppressions_path.display()
+                        );
+                        std::process::exit(1);
+                    });
+                    println!("chump fleet escalation: rule '{rule_id}' un-suppressed");
+                    return Ok(());
+                }
+                // Default: run one detection cycle now (same script the
+                // hourly launchd job / daemon cadence calls).
+                let escalation_sh = repo_root.join("scripts/coord/escalation-tier.sh");
+                let status = std::process::Command::new("bash")
+                    .arg(&escalation_sh)
+                    .status()
+                    .unwrap_or_else(|e| {
+                        eprintln!("chump fleet escalation: {e}");
+                        std::process::exit(1);
+                    });
+                std::process::exit(status.code().unwrap_or(1));
+            }
             // INFRA-827: prune stale linked worktrees (age > CHUMP_WT_MAX_AGE_H AND no open PR)
             "prune-worktrees" => {
                 let dry_run = !args.iter().any(|a| a == "--apply");

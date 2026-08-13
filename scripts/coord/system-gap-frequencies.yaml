@@ -50,6 +50,18 @@ tasks:
       taxonomy. Auto-rollback execution is OUT OF SCOPE; consumed by
       INFRA-889 follow-up.
 
+  escalation-tier:
+    interval_s: 3600          # 1h — hourly signature sweep
+    script: scripts/coord/escalation-tier.sh
+    class: detector
+    description: |
+      INFRA-1890. When the same ambient signature (gap_failed,
+      pr_auto_rebase_failed, dirty_pr_unresolvable, or a novel
+      *_failed/*_stuck/*_unresolvable kind) fires N times in 24h without
+      resolution, auto-files ONE follow-up gap (deduped via title hash +
+      META-063 redundancy gate). Turns silent detectors into actionable
+      gaps. Operator override: `chump fleet escalation --suppress-rule <id>`.
+
 # Skew rules: no two tasks in the same `class` should share an interval_s
 # value, AND short-cycle tasks (interval_s <= 600) must have distinct
 # intervals so launchd jitter does not collide them on the same minute.
