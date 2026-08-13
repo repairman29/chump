@@ -1,11 +1,11 @@
 {
   "metadata": {
-    "generated_at": "2026-05-25T03:39:10Z",
+    "generated_at": "2026-08-13T04:29:14Z",
     "generator": "scripts/arsenal/build.py v0",
     "operator": "repairman29 (Jeff Adkins)",
     "fleet_size_github": 76,
-    "fleet_size_local_clones": 11,
-    "fleet_size_unmatched_local_roots": 4
+    "fleet_size_local_clones": 1,
+    "fleet_size_unmatched_local_roots": 0
   },
   "clusters": {
     "chump-engine": {
@@ -23,7 +23,7 @@
         "Rust": 2,
         "?": 1
       },
-      "active_last_30d": 3
+      "active_last_30d": 0
     },
     "misc": {
       "count": 4,
@@ -38,7 +38,7 @@
         "TypeScript": 1,
         "HTML": 1
       },
-      "active_last_30d": 1
+      "active_last_30d": 0
     },
     "upshift-deps": {
       "count": 1,
@@ -272,21 +272,7 @@
       "recommendation": "platform variants (ROG Ally, Android, gateway, premium) \u2014 confirm intentional vs accidental fork"
     }
   ],
-  "alerts": [
-    {
-      "severity": "low",
-      "kind": "misplaced_clone",
-      "path": "/Users/jeffadkins/Projects",
-      "remote": "https://github.com/repairman29/pixel-edge-server.git",
-      "action": "Projects/ shouldn't itself be a git repo \u2014 likely an errant `git clone` at the wrong level. Move .git/ into the intended subdir or rm."
-    },
-    {
-      "severity": "medium",
-      "kind": "stale_vendored_clone",
-      "path": "/Users/jeffadkins/Projects/Maclawd/chump-repo",
-      "action": "Maclawd contains a March 2026 clone of chump \u2014 Smart Harvest target: convert to git-submodule or Cargo dependency"
-    }
-  ],
+  "alerts": [],
   "primitives_index": {
     "ci-cd": [
       "homebrew-chump"
@@ -362,10 +348,11 @@
       ],
       "cluster": "chump-engine",
       "primitives": [],
+      "extracted_primitives": [],
       "local_clone": {
-        "path": "/Users/jeffadkins/Projects/Chump",
+        "path": "/root/Projects/chump",
         "dir_name_matches_repo": true,
-        "actual_dir_name": "Chump",
+        "actual_dir_name": "chump",
         "nested_in_chump": false
       }
     },
@@ -382,6 +369,9 @@
       "topics": [],
       "cluster": "misc",
       "primitives": [],
+      "extracted_primitives": [
+        "ACP fork (agentclientprotocol/registry, JSON-RPC editor<->agent standard)"
+      ],
       "local_clone": null
     },
     "homebrew-chump": {
@@ -399,6 +389,7 @@
       "primitives": [
         "ci-cd"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "chump-proprietary": {
@@ -414,12 +405,12 @@
       "topics": [],
       "cluster": "chump-engine",
       "primitives": [],
-      "local_clone": {
-        "path": "/Users/jeffadkins/Projects/chump-proprietary",
-        "dir_name_matches_repo": true,
-        "actual_dir_name": "chump-proprietary",
-        "nested_in_chump": false
-      }
+      "extracted_primitives": [
+        "crates/coord::Executor",
+        "crates/coord consensus",
+        "crates/coord::mesh::MeshTransport"
+      ],
+      "local_clone": null
     },
     "upshift": {
       "name": "upshift",
@@ -444,12 +435,10 @@
       ],
       "cluster": "upshift-deps",
       "primitives": [],
-      "local_clone": {
-        "path": "/Users/jeffadkins/Projects/upshift",
-        "dir_name_matches_repo": true,
-        "actual_dir_name": "upshift",
-        "nested_in_chump": false
-      }
+      "extracted_primitives": [
+        "upshift fix --dry-run --json (dependency-upgrade safety check)"
+      ],
+      "local_clone": null
     },
     "acg": {
       "name": "acg",
@@ -464,12 +453,10 @@
       "topics": [],
       "cluster": "marketing-sites",
       "primitives": [],
-      "local_clone": {
-        "path": "/Users/jeffadkins/Projects/ACG",
-        "dir_name_matches_repo": true,
-        "actual_dir_name": "ACG",
-        "nested_in_chump": false
-      }
+      "extracted_primitives": [
+        "Next.js App Router marketing/blog site with server actions in web/app/contact/actions.ts and markdown-rendered blog via web/components/blog-markdown.tsx"
+      ],
+      "local_clone": null
     },
     "echeo": {
       "name": "echeo",
@@ -484,12 +471,11 @@
       "topics": [],
       "cluster": "echeo-resonant",
       "primitives": [],
-      "local_clone": {
-        "path": "/Users/jeffadkins/Projects/Echeo/echeo",
-        "dir_name_matches_repo": true,
-        "actual_dir_name": "echeo",
-        "nested_in_chump": false
-      }
+      "extracted_primitives": [
+        "Matchmaker::calculate_ship_velocity_score() (cosine sim + language/type boosts, 0-1.0)",
+        "src/shredder.rs tree-sitter AST extraction (TS/Rust/Python/Go, authorship metadata)"
+      ],
+      "local_clone": null
     },
     "chump-chassis": {
       "name": "chump-chassis",
@@ -504,12 +490,11 @@
       "topics": [],
       "cluster": "chump-engine",
       "primitives": [],
-      "local_clone": {
-        "path": "/Users/jeffadkins/Projects/Chump/repos/repairman29_chump-chassis",
-        "dir_name_matches_repo": false,
-        "actual_dir_name": "repairman29_chump-chassis",
-        "nested_in_chump": true
-      }
+      "extracted_primitives": [
+        "GitHub read-tool primitive (repo file/dir fetch + clone/pull, allowlist-scoped) in src/github_tools.rs (validate_repo_path, github_token, GITHUB_API_BASE)",
+        "SQLite pool bootstrap via sqlx::sqlite::SqlitePoolOptions in src/db.rs"
+      ],
+      "local_clone": null
     },
     "chump-brain": {
       "name": "chump-brain",
@@ -524,12 +509,8 @@
       "topics": [],
       "cluster": "chump-engine",
       "primitives": [],
-      "local_clone": {
-        "path": "/Users/jeffadkins/Projects/Chump/chump-brain",
-        "dir_name_matches_repo": true,
-        "actual_dir_name": "chump-brain",
-        "nested_in_chump": true
-      }
+      "extracted_primitives": [],
+      "local_clone": null
     },
     "BEAST-MODE": {
       "name": "BEAST-MODE",
@@ -546,12 +527,14 @@
       "primitives": [
         "marketplace"
       ],
-      "local_clone": {
-        "path": "/Users/jeffadkins/Projects/BEAST-MODE",
-        "dir_name_matches_repo": true,
-        "actual_dir_name": "BEAST-MODE",
-        "nested_in_chump": false
-      }
+      "extracted_primitives": [
+        "HITL approval flow (Approve/Reject endpoints)",
+        "requiresHumanApproval flag",
+        "executionMode DRAFT|SOVEREIGN state machine",
+        "enterprise AuditLogger pattern",
+        "task hierarchy (Roadmap->Feature->Task)"
+      ],
+      "local_clone": null
     },
     "openclaw": {
       "name": "openclaw",
@@ -566,12 +549,12 @@
       "topics": [],
       "cluster": "tools-platform",
       "primitives": [],
-      "local_clone": {
-        "path": "/Users/jeffadkins/Projects/Maclawd",
-        "dir_name_matches_repo": false,
-        "actual_dir_name": "Maclawd",
-        "nested_in_chump": false
-      }
+      "extracted_primitives": [
+        "SQLite + FTS memory schema",
+        "LanceDB embeddings cache",
+        "memory-tool agent registry integration"
+      ],
+      "local_clone": null
     },
     "repairman29-website": {
       "name": "repairman29-website",
@@ -586,6 +569,7 @@
       "topics": [],
       "cluster": "marketing-sites",
       "primitives": [],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "pixel-edge-server": {
@@ -601,12 +585,10 @@
       "topics": [],
       "cluster": "tools-platform",
       "primitives": [],
-      "local_clone": {
-        "path": "/Users/jeffadkins/Projects",
-        "dir_name_matches_repo": false,
-        "actual_dir_name": "Projects",
-        "nested_in_chump": false
-      }
+      "extracted_primitives": [
+        "bicameral-mind architecture: Reflexive on-device + Neocortex cloud routing (docs/claude-gateway.md, claude-gateway/server.js:213-269)"
+      ],
+      "local_clone": null
     },
     "jarvis-gateway": {
       "name": "jarvis-gateway",
@@ -621,6 +603,10 @@
       "topics": [],
       "cluster": "jarvis-assistant",
       "primitives": [],
+      "extracted_primitives": [
+        "Multi-provider LLM gateway config (Groq/OpenAI-compatible routing across ~12 providers) in clawdbot.json (models.providers.groq block)",
+        "npx-based gateway launcher in start.sh / package.json start script (CLAWDBOT_GATEWAY_PORT env passthrough)"
+      ],
       "local_clone": null
     },
     "pvc": {
@@ -636,6 +622,9 @@
       "topics": [],
       "cluster": "content-apps",
       "primitives": [],
+      "extracted_primitives": [
+        "Cursor sub-agent role definitions (dev/ops/verifier) with skeptical-verification prompt pattern in .cursor/agents/verifier.md"
+      ],
       "local_clone": null
     },
     "JARVIS": {
@@ -662,6 +651,9 @@
       ],
       "cluster": "jarvis-assistant",
       "primitives": [],
+      "extracted_primitives": [
+        "Skill-marketplace skill.json schema (pricing/marketplace/dependencies fields) shared with JARVIS-Premium \u2014 see apps/jarvis-ui + .cursor/skills/keep-clis-sharp/SKILL.md"
+      ],
       "local_clone": null
     },
     "slidemate": {
@@ -677,6 +669,10 @@
       "topics": [],
       "cluster": "content-apps",
       "primitives": [],
+      "extracted_primitives": [
+        "Multi-platform CLI SDK for AI-generated slide content in packages/cli/src/commands/generate.ts (also bulk.ts, deploy.ts, export.ts)",
+        "Postgres schema/migrations for AI-content tracking in backend/db/migrations/003_ai_content_tracking.sql"
+      ],
       "local_clone": null
     },
     "neural-farm": {
@@ -693,6 +689,10 @@
       "cluster": "tools-platform",
       "primitives": [
         "ai-generation"
+      ],
+      "extracted_primitives": [
+        "OpenAI-compat /v1 proxy",
+        "LiteLLM/InferrLM router"
       ],
       "local_clone": null
     },
@@ -711,6 +711,7 @@
       "primitives": [
         "list-mgmt"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "smuggler": {
@@ -728,6 +729,7 @@
       "primitives": [
         "rpg-mechanic"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "echeovid": {
@@ -744,6 +746,9 @@
       "cluster": "echeo-resonant",
       "primitives": [
         "video"
+      ],
+      "extracted_primitives": [
+        "multi-channel content-repurposing pipeline"
       ],
       "local_clone": null
     },
@@ -762,6 +767,7 @@
       "primitives": [
         "list-mgmt"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "postsub": {
@@ -778,6 +784,9 @@
       "cluster": "content-apps",
       "primitives": [
         "payment"
+      ],
+      "extracted_primitives": [
+        "server.js Stripe tiered billing (PLATFORM_FEES: basic 5%, pro 8%, enterprise 3%, creator revenue split)"
       ],
       "local_clone": null
     },
@@ -796,6 +805,9 @@
       "primitives": [
         "rpg-mechanic"
       ],
+      "extracted_primitives": [
+        "agent persona system (Firebase Cloud Functions + Vertex AI -> OpenAI fallback)"
+      ],
       "local_clone": null
     },
     "berry-avenue-codes": {
@@ -811,6 +823,9 @@
       "topics": [],
       "cluster": "content-apps",
       "primitives": [],
+      "extracted_primitives": [
+        "iOS WKWebView wrapper pattern (native shell around a web app) in iOS-Wrapper/ContentView.swift (WebView: UIViewRepresentable)"
+      ],
       "local_clone": null
     },
     "project2029": {
@@ -826,6 +841,9 @@
       "topics": [],
       "cluster": "political-strat",
       "primitives": [],
+      "extracted_primitives": [
+        "Flask-Mail password-reset email service in app/services/email_service.py (EmailService.send_password_reset_email)"
+      ],
       "local_clone": null
     },
     "JARVIS-Premium": {
@@ -841,6 +859,9 @@
       "topics": [],
       "cluster": "jarvis-assistant",
       "primitives": [],
+      "extracted_primitives": [
+        "Commercial skill packaging schema (pricing/trial/marketplace/env/dependencies) in skills/focus-pro/skill.json"
+      ],
       "local_clone": null
     },
     "2029": {
@@ -856,6 +877,7 @@
       "topics": [],
       "cluster": "political-strat",
       "primitives": [],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "workbench": {
@@ -871,6 +893,9 @@
       "topics": [],
       "cluster": "tools-platform",
       "primitives": [],
+      "extracted_primitives": [
+        "Google Calendar availability/event service scaffold in backend/src/services/CalendarService.ts (CalendarService.getAvailability, mock-then-real API pattern)"
+      ],
       "local_clone": null
     },
     "dice": {
@@ -886,6 +911,9 @@
       "topics": [],
       "cluster": "content-apps",
       "primitives": [],
+      "extracted_primitives": [
+        "TTRPG expression parser + modifier resolution"
+      ],
       "local_clone": null
     },
     "analytics-platform-service": {
@@ -901,6 +929,9 @@
       "topics": [],
       "cluster": "smugglers-rpg",
       "primitives": [],
+      "extracted_primitives": [
+        "aiInsightsEngine.js (weighted-model retention scoring, conversion thresholds, churn risk)"
+      ],
       "local_clone": null
     },
     "zendesk-background-agent": {
@@ -916,6 +947,9 @@
       "topics": [],
       "cluster": "smugglers-rpg",
       "primitives": [],
+      "extracted_primitives": [
+        "Vercel + OpenAI embeddings semantic ticket matching"
+      ],
       "local_clone": null
     },
     "mixdown": {
@@ -931,6 +965,9 @@
       "topics": [],
       "cluster": "content-apps",
       "primitives": [],
+      "extracted_primitives": [
+        "Python + Flask + AI metadata enrichment audio pipeline"
+      ],
       "local_clone": null
     },
     "jarvis-rog-ed": {
@@ -946,12 +983,8 @@
       "topics": [],
       "cluster": "jarvis-assistant",
       "primitives": [],
-      "local_clone": {
-        "path": "/Users/jeffadkins/Projects/jarvis-rog-ed",
-        "dir_name_matches_repo": true,
-        "actual_dir_name": "jarvis-rog-ed",
-        "nested_in_chump": false
-      }
+      "extracted_primitives": [],
+      "local_clone": null
     },
     "echeo-internal": {
       "name": "echeo-internal",
@@ -966,6 +999,9 @@
       "topics": [],
       "cluster": "echeo-resonant",
       "primitives": [],
+      "extracted_primitives": [
+        "Fleet/portfolio repo-catalog generator artifacts (COMPLETE_CATALOG.json/.md) in docs/repo-catalog/ \u2014 a prior-generation analog of Harvester's GLOBAL_ARSENAL"
+      ],
       "local_clone": null
     },
     "coloringbook": {
@@ -981,6 +1017,9 @@
       "topics": [],
       "cluster": "content-apps",
       "primitives": [],
+      "extracted_primitives": [
+        "React + FastAPI image-processing proxy (compute-offload pattern)"
+      ],
       "local_clone": null
     },
     "biomeweavers": {
@@ -996,6 +1035,9 @@
       "topics": [],
       "cluster": "content-apps",
       "primitives": [],
+      "extracted_primitives": [
+        "Excalibur.js-based 2D actor/game-entity pattern in client/src/actors/EssenceSource.ts (Actor subclass, CollisionType.Passive, GameConfig-driven color/type)"
+      ],
       "local_clone": null
     },
     "messaging-demo": {
@@ -1013,6 +1055,7 @@
       "primitives": [
         "chat"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "slides": {
@@ -1028,6 +1071,7 @@
       "topics": [],
       "cluster": "tools-platform",
       "primitives": [],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "services-dashboard": {
@@ -1045,6 +1089,7 @@
       "primitives": [
         "rpg-mechanic"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "service-frontends": {
@@ -1062,6 +1107,7 @@
       "primitives": [
         "rpg-mechanic"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "mock-services": {
@@ -1078,6 +1124,12 @@
       "cluster": "smugglers-rpg",
       "primitives": [
         "rpg-mechanic"
+      ],
+      "extracted_primitives": [
+        "containerized mock Anthropic API server",
+        "containerized mock OpenAI API server",
+        "containerized mock Stripe API server",
+        "containerized mock Supabase API server"
       ],
       "local_clone": null
     },
@@ -1096,6 +1148,11 @@
       "primitives": [
         "rpg-mechanic"
       ],
+      "extracted_primitives": [
+        "synthetic-load generator",
+        "5 bot archetypes + fatigue simulation",
+        "funnel analytics (Railway-native)"
+      ],
       "local_clone": null
     },
     "beast-mode-website": {
@@ -1113,6 +1170,7 @@
       "primitives": [
         "marketplace"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "commercial-platform": {
@@ -1131,6 +1189,7 @@
         "payment",
         "rpg-mechanic"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "internal-zendesk-tools": {
@@ -1146,6 +1205,9 @@
       "topics": [],
       "cluster": "smugglers-rpg",
       "primitives": [],
+      "extracted_primitives": [
+        "React 18 + TS + Vite + Tailwind assessment questionnaire (dashboard architecture reference)"
+      ],
       "local_clone": null
     },
     "MythSeeker": {
@@ -1163,6 +1225,7 @@
       "primitives": [
         "rpg-mechanic"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "auth-platform-service": {
@@ -1179,6 +1242,10 @@
       "cluster": "smugglers-rpg",
       "primitives": [
         "auth"
+      ],
+      "extracted_primitives": [
+        "enterpriseSSOService.js (JWT+MFA+SSO)",
+        "mfaService.js (DDoS + Redis rate-limit)"
       ],
       "local_clone": null
     },
@@ -1197,6 +1264,9 @@
       "primitives": [
         "rpg-mechanic"
       ],
+      "extracted_primitives": [
+        "persistent-state combat domain logic (data/ dir)"
+      ],
       "local_clone": null
     },
     "character-system-service": {
@@ -1213,6 +1283,9 @@
       "cluster": "smugglers-rpg",
       "primitives": [
         "rpg-mechanic"
+      ],
+      "extracted_primitives": [
+        "persistent-state character domain logic (data/ dir)"
       ],
       "local_clone": null
     },
@@ -1231,6 +1304,9 @@
       "primitives": [
         "rpg-mechanic"
       ],
+      "extracted_primitives": [
+        "Supabase + Redis + LLM choreographer pattern"
+      ],
       "local_clone": null
     },
     "chat-platform-service": {
@@ -1248,6 +1324,7 @@
       "primitives": [
         "chat"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "payment-platform-service": {
@@ -1265,6 +1342,7 @@
       "primitives": [
         "payment"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "economy-system-service": {
@@ -1281,6 +1359,9 @@
       "cluster": "smugglers-rpg",
       "primitives": [
         "marketplace"
+      ],
+      "extracted_primitives": [
+        "MarketSimulationEngine (elasticity-based, sector-stratified pricing, beginner-mode variant)"
       ],
       "local_clone": null
     },
@@ -1299,6 +1380,7 @@
       "primitives": [
         "marketplace"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "code-generation-service": {
@@ -1316,6 +1398,7 @@
       "primitives": [
         "ai-generation"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "asset-management-service": {
@@ -1331,6 +1414,9 @@
       "topics": [],
       "cluster": "smugglers-rpg",
       "primitives": [],
+      "extracted_primitives": [
+        "dual AI generator (image + 3D), style matrix (10 art styles x 4 quality tiers)"
+      ],
       "local_clone": null
     },
     "audio-generation-service": {
@@ -1347,6 +1433,9 @@
       "cluster": "smugglers-rpg",
       "primitives": [
         "ai-generation"
+      ],
+      "extracted_primitives": [
+        "voice synthesis with emotion profiles + quality presets (draft/standard/premium/cinematic)"
       ],
       "local_clone": null
     },
@@ -1365,6 +1454,9 @@
       "primitives": [
         "list-mgmt"
       ],
+      "extracted_primitives": [
+        "Grow Garden Calculator pricing engine"
+      ],
       "local_clone": null
     },
     "okr": {
@@ -1380,6 +1472,7 @@
       "topics": [],
       "cluster": "misc",
       "primitives": [],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "2029-versioned": {
@@ -1395,6 +1488,10 @@
       "topics": [],
       "cluster": "political-strat",
       "primitives": [],
+      "extracted_primitives": [
+        "Shared SQLAlchemy TimestampMixin (created_at/updated_at auto-columns) in shared/models/mixins.py",
+        "Standalone news-crawler CLI in version1/app/services/crawler/cli.py (NewsCrawler + ContentProcessor pipeline)"
+      ],
       "local_clone": null
     },
     "echeo-archived": {
@@ -1410,6 +1507,9 @@
       "topics": [],
       "cluster": "echeo-resonant",
       "primitives": [],
+      "extracted_primitives": [
+        "Automated credential-rotation / secret-age auditor in butler/actions/securitySentry.js (checkCredentialRotation, SBOM generation)"
+      ],
       "local_clone": null
     },
     "echeo_old": {
@@ -1425,6 +1525,7 @@
       "topics": [],
       "cluster": "echeo-resonant",
       "primitives": [],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "trove-web": {
@@ -1442,6 +1543,9 @@
       "primitives": [
         "list-mgmt"
       ],
+      "extracted_primitives": [
+        "Next.js SPA + Firebase + GCS bucket integration"
+      ],
       "local_clone": null
     },
     "ims": {
@@ -1457,6 +1561,10 @@
       "topics": [],
       "cluster": "political-strat",
       "primitives": [],
+      "extracted_primitives": [
+        "Flask + SQLAlchemy Initiative Tracker",
+        "Chart.js dashboard + role-based auth REST API"
+      ],
       "local_clone": null
     },
     "smugglers": {
@@ -1474,6 +1582,7 @@
       "primitives": [
         "rpg-mechanic"
       ],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "echeo-web": {
@@ -1489,6 +1598,9 @@
       "topics": [],
       "cluster": "echeo-resonant",
       "primitives": [],
+      "extracted_primitives": [
+        "Trust/matching scoring model config (qualityThreshold/qualityWeight/capabilityWeight) in .echeo/models/matching-model.json + matching-model.json / trust-score-model.json pair"
+      ],
       "local_clone": null
     },
     "daisy-chain": {
@@ -1504,6 +1616,10 @@
       "topics": [],
       "cluster": "tools-platform",
       "primitives": [],
+      "extracted_primitives": [
+        "EventEmitter-based workflow orchestrator with auto-scaling + multi-tenant clustering in src/services/daisyChainOrchestrator.js (DaisyChainOrchestrator)",
+        "Thin automation-engine facade wrapping the orchestrator in src/services/automation-engine.js"
+      ],
       "local_clone": null
     },
     "code-roach": {
@@ -1519,6 +1635,7 @@
       "topics": [],
       "cluster": "tools-platform",
       "primitives": [],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "oracle": {
@@ -1534,6 +1651,9 @@
       "topics": [],
       "cluster": "tools-platform",
       "primitives": [],
+      "extracted_primitives": [
+        "Vector-embeddings semantic search service (with unified-embeddings + echeo fallback chain) in scripts/oracle-vector-embeddings.js"
+      ],
       "local_clone": null
     },
     "ai-gm-service": {
@@ -1551,6 +1671,10 @@
       "primitives": [
         "ai-generation"
       ],
+      "extracted_primitives": [
+        "aiGMMultiModelEnsembleService.js (Together.ai -> Qwen 72B -> Mistral fallback chain)",
+        "togetherAIService.js"
+      ],
       "local_clone": null
     },
     "coderoach": {
@@ -1566,6 +1690,9 @@
       "topics": [],
       "cluster": "tools-platform",
       "primitives": [],
+      "extracted_primitives": [
+        "autonomous code-quality self-learning fixer patterns"
+      ],
       "local_clone": null
     },
     "echeodev": {
@@ -1581,6 +1708,7 @@
       "topics": [],
       "cluster": "echeo-resonant",
       "primitives": [],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "project-forge": {
@@ -1596,6 +1724,10 @@
       "topics": [],
       "cluster": "misc",
       "primitives": [],
+      "extracted_primitives": [
+        "initiative hierarchy schema (Next.js + Node + Postgres)",
+        "AI-insights pipeline (GCloud deploy)"
+      ],
       "local_clone": null
     },
     "echeo-dev": {
@@ -1611,6 +1743,7 @@
       "topics": [],
       "cluster": "echeo-resonant",
       "primitives": [],
+      "extracted_primitives": [],
       "local_clone": null
     },
     "project_forge": {
@@ -1626,33 +1759,11 @@
       "topics": [],
       "cluster": "misc",
       "primitives": [],
+      "extracted_primitives": [
+        "Express + Objection.js OKR/KeyResult REST controller with transaction support in backend/src/controllers/OKRController.ts"
+      ],
       "local_clone": null
     }
   },
-  "unmatched_local_roots": [
-    {
-      "path": "/Users/jeffadkins/Projects/Chump/repos/axonerai",
-      "remote": "https://github.com/Manojython/axonerai.git",
-      "has_embedded_token": false,
-      "is_primary_clone": false
-    },
-    {
-      "path": "/Users/jeffadkins/Projects/Chump/repos/repairman29_beast-mode",
-      "remote": "https://github.com/repairman29/beast-mode.git",
-      "has_embedded_token": false,
-      "is_primary_clone": false
-    },
-    {
-      "path": "/Users/jeffadkins/Projects/Maclawd/chump-repo/chump-brain",
-      "remote": "",
-      "has_embedded_token": false,
-      "is_primary_clone": false
-    },
-    {
-      "path": "/Users/jeffadkins/Projects/Maclawd/chump-repo",
-      "remote": "https://github.com/repairman29/chump.git",
-      "has_embedded_token": false,
-      "is_primary_clone": false
-    }
-  ]
+  "unmatched_local_roots": []
 }
