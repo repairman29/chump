@@ -1,0 +1,23 @@
+{
+  "_lineage": "Vendored from repairman29/mock-services at commit 8ce1577686a23b0b51391d6926cdf846e5a23c3f, original path package.json, brought in via CP-009 (INFRA-1841)",
+  "name": "chump-mock-services",
+  "version": "1.0.0",
+  "description": "Mock services for Chump offline CI (Anthropic/OpenAI/Stripe/Supabase)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo 'Mock services - no tests required'"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "keywords": [
+    "mock",
+    "ci-fixture",
+    "anthropic",
+    "openai",
+    "stripe",
+    "supabase"
+  ],
+  "license": "MIT"
+}

@@ -2,8 +2,8 @@
 
 **Target:** Chump CI needs offline-runnable mock servers for Anthropic, OpenAI, Stripe, Supabase so that LLM-touching and payment-touching gaps can be tested without burning real API credits or requiring network access.
 **Arsenal match:** `repairman29/mock-services` — 4 production-grade Express.js mock servers, each shipping its own `Dockerfile.<service>` + healthcheck (last push 2026-01-31, commit `8ce1577`).
-**Recommended route:** **(b) docker-compose pulled at CI start, Chump owns the compose file, mocks pulled from upstream as built images.**
-**Status:** proposed (2026-05-23, INFRA-1841)
+**Recommended route:** **(b) docker-compose, Chump owns the compose file** — implemented as bootstrap path **(ii)**: images build locally from the vendored `Dockerfile.<service>` under `tests/fixtures/mock-services/` rather than pulling from a registry (the upstream repo is private, no GHCR publish exists). Path (i) — fork public + push to GHCR — remains the long-term upgrade; see "Image publishing" below.
+**Status:** implemented (2026-08-13, INFRA-1841 AC #3-7). Smoke test `scripts/ci/test-mock-services.sh` is green locally: ~4s warm, ~15s cold — both well under the 30s AC #4 budget.
 
 ## The Target
 
@@ -217,6 +217,19 @@ For `tests/fixtures/mock-services/docker-compose.yml` and `scripts/ci/test-mock-
 - **License: MIT** on the upstream `package.json` but the README says "Proprietary" and the repo's GitHub license field is `Other`. The MIT in `package.json` is the controlling text under the SPDX convention, but resolve the inconsistency before publishing the fork (likely a copy-paste artifact in README).
 - **Re-harvest cadence:** review at the next major Chump release. If upstream goes >180 days without a commit, lock in (c) and own the source.
 
+## Implementation notes (INFRA-1841 AC #3-7, 2026-08-13)
+
+What actually landed, vs. what the original proposal above assumed:
+
+- **`tests/fixtures/mock-services/`** — the 4 `mock-*.js`, 4 `Dockerfile.<service>`, and `package.json` are vendored verbatim from commit `8ce1577686a23b0b51391d6926cdf846e5a23c3f` with the lineage comment header from the "Vendoring lineage" section above. `docker-compose.yml` is Chump-authored (not upstream) — it `build:`s each image locally from the vendored Dockerfile rather than pulling `ghcr.io/repairman29/mock-services-<service>:sha-8ce1577`, since no such registry image exists yet (path (i) below is still open).
+- **`package-lock.json` added, not in upstream.** The upstream repo ships `package.json` but no lockfile, and each `Dockerfile.<service>` runs `npm ci --only=production` — which hard-fails without one (`npm error EUSAGE ... npm ci can only install with an existing package-lock.json`). Generated via `npm install --package-lock-only` against the vendored `package.json`; this is a Chump-added file, not part of the upstream lineage, needed to make the vendored Dockerfiles actually build.
+- **`scripts/ci/lib/mock-services-env.sh`** — the env-var injection block from "Env-var injection pattern" above, landed verbatim.
+- **`scripts/ci/test-mock-services.sh`** — the AC #4 smoke test. Diverges from the spec draft above in one respect: it does **not** shell out to `docker-compose` / `docker compose` — neither is installed on the reference dev/CI host (`docker-compose: not found`, `docker: unknown command: compose`). It uses plain `docker build` + `docker run --network <net>` + `docker rm -f` per service instead, which needs only the `docker` CLI + a reachable daemon. SKIPs cleanly (exit 0) if `docker`, the daemon, or `jq` are unavailable — verified both cold (~15s, pulls `node:18-alpine`) and warm (~4s).
+- **`scripts/ci/test-mock-services-integration.sh`** — new, demonstrates AC #3 ("at minimum the Anthropic and OpenAI mocks should be invokable by existing scripts/ci/test-*.sh tests as transparent replacements"): sources `mock-services-env.sh` under `CHUMP_USE_MOCK_SERVICES=1` and makes real HTTP calls through the injected `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`, asserting the mock's shape comes back. This is the copy-paste template for INFRA-1842/1843/1844/1849's per-test adoption — none of the 11 tests listed in "The Target" above call a real API directly today (most gate-and-skip on missing credentials), so there was no existing test to retrofit in-place; this new test is the wiring surface those follow-ups adopt.
+- **`crates/chump-preflight/src/preflight.rs`** (AC #7) — both new test scripts added to `discover_test_scripts()`'s `--with-tests` whitelist, so `chump preflight --with-tests` shells out to Docker against the fixtures locally, exactly as this brief's "Chump CI integration design" section anticipated. Both scripts' docker-unavailable skip path means preflight stays green on hosts without Docker.
+
+**Image publishing (still open):** path (i) — fork `repairman29/mock-services` to `repairman29/chump-mock-services` public + GHCR push via Actions — was not done in this pass; local `docker build` from the vendored Dockerfiles is the interim (bootstrap path (ii), acceptable per the original decision table above). File a follow-up INFRA gap for (i) if/when CI hosts need to skip the local build step (e.g. to shave the ~15s cold build off every run).
+
 ## What this brief does *not* do
 
-It does not modify `scripts/ci/`, does not add the `tests/fixtures/mock-services/` directory, does not publish images, does not commit. It maps the harvest. Execution lives in INFRA-1841 AC #3–7 (wiring), INFRA-1842/1843/1844/1849 (per-test adoption), and follow-up INFRA gaps for HMAC-Stripe and JWT-Supabase if those become needed.
+It maps the harvest and documents the decision + wiring design. Per-test adoption of the `CHUMP_USE_MOCK_SERVICES=1` pattern inside the 11 tests listed in "The Target" is out of scope here — that is INFRA-1842/1843/1844/1849. GHCR image publishing (path (i)) is a follow-up. HMAC-Stripe and JWT-Supabase fidelity gaps are follow-up INFRA gaps if/when needed.

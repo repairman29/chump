@@ -857,6 +857,18 @@ jobs:
         # and an end-to-end --dry-run both exit 0.
         run: bash scripts/ci/test-chump-demo-smoke.sh
 
+      - name: mock-services offline-CI fixture smoke (CP-009, INFRA-1841)
+        # Builds+runs the 4 vendored Anthropic/OpenAI/Stripe/Supabase mocks
+        # under tests/fixtures/mock-services and asserts response shape.
+        # SKIPs cleanly if docker is unavailable/unreachable.
+        run: bash scripts/ci/test-mock-services.sh
+
+      - name: mock-services CHUMP_USE_MOCK_SERVICES=1 wiring (CP-009, INFRA-1841)
+        # Proves scripts/ci/lib/mock-services-env.sh transparently redirects
+        # Anthropic/OpenAI calls to the local mocks. SKIPs cleanly if docker
+        # is unavailable/unreachable.
+        run: bash scripts/ci/test-mock-services-integration.sh
+
       - name: repos table migration + CLI + auto-import (MISSION-033)
         run: bash scripts/ci/test-chump-repos.sh
 
