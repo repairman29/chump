@@ -251,16 +251,35 @@ FAST_ADVISOR_SYSTEM = (
 
 
 def _advisor_context() -> str:
-    """Cheap, near-instant fleet context to ground the fast reply. Kept to a
-    single local git read so it never adds meaningful latency."""
+    """Cheap, near-instant fleet context to ground the fast reply. LOCAL git
+    reads only (no network, no gh, no almanac) so it stays sub-second alongside
+    the Groq call -- proven ~0.3s end-to-end. Gives the fast seat enough real
+    ground truth to answer the common "what is the fleet doing?" DM without
+    punting every status question to the slow deep agent."""
     try:
         head = subprocess.run(
             ["git", "-C", REPO, "log", "origin/main", "--oneline", "-1"],
             capture_output=True, text=True, timeout=8,
-        ).stdout.strip()
-        return head or "(unknown)"
+        ).stdout.strip() or "(unknown)"
     except Exception:
-        return "(unknown)"
+        head = "(unknown)"
+    try:
+        merges = subprocess.run(
+            ["git", "-C", REPO, "log", "origin/main", "--since=2 hours ago",
+             "--pretty=%s"],
+            capture_output=True, text=True, timeout=8,
+        ).stdout.strip().splitlines()
+    except Exception:
+        merges = []
+    if merges:
+        recent = "; ".join(m for m in merges[:5])
+        return (f"latest origin/main commit: {head}. "
+                f"{len(merges)} commit(s) landed on main in the last 2h -- "
+                f"most recent: {recent}")
+    return (f"latest origin/main commit: {head}. "
+            f"No commits landed on main in the last 2h (fleet may be quiet, "
+            f"stalled, or working in unmerged PRs -- you do not have live PR "
+            f"state here, so say so rather than guessing).")
 
 
 async def _fast_complete_groq(user: str) -> "str | None":
@@ -332,7 +351,7 @@ async def fast_advisor_reply(question: str) -> "str | None":
     """Fast, read-only, no-tools conversational reply. Groq first, claude
     single-shot fallback, None if every provider fails."""
     user = (
-        f"[fleet context] latest origin/main commit: {_advisor_context()}\n\n"
+        f"[fleet context] {_advisor_context()}\n\n"
         f"Jeff asks: {question}"
     )
     reply = await _fast_complete_groq(user)
