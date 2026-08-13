@@ -224,41 +224,186 @@ async def dispatch_command_agent(text: str) -> None:
             send_dm(f"(couldn't start the command agent: {e})")
 
 
+# INFRA-3608 FAST ADVISOR. A plain operator DM is a CHAT, not a research job.
+# The old advisor spawned a full agentic `claude -p` session (almanac + tool
+# round-trips + compose + notify) that took 30-90s per message. This fast path
+# answers with a SINGLE lightweight LLM completion (Groq llama-3.3-70b, ~1s;
+# claude single-shot fallback) — read-only, no tools, no gaps — so the seat
+# replies in seconds. An explicit "deep <question>" (or "dig"/"research") still
+# routes to the heavy fleet-aware agent for research-grade answers.
+FAST_ADVISOR_MODEL_GROQ = os.environ.get(
+    "CHUMP_ADVISOR_FAST_MODEL", "llama-3.3-70b-versatile")
+FAST_ADVISOR_MAX_TOKENS = int(os.environ.get("CHUMP_ADVISOR_FAST_MAX_TOKENS", "320"))
+DEEP_ADVISOR_PREFIXES = ("deep ", "dig ", "research ")
+FAST_ADVISOR_SYSTEM = (
+    "You are the Advisor -- Chump/ChumpOS's read-only conversational companion "
+    "for Jeff, the operator. ChumpOS is an autonomous multi-agent software "
+    "factory running across a fleet of ~100 repos; helsinki is the primary "
+    "always-on node. Reply in a warm, terse, conversational voice: 1-3 short "
+    "sentences, plain text only (no markdown tables or headers -- it may be read "
+    "aloud). You are STRICTLY READ-ONLY: never say you filed a gap, merged a PR, "
+    "restarted a service, or changed any state -- you only advise. If a question "
+    "needs live fleet data you don't have in front of you, say so briefly and "
+    "suggest the operator send `deep <question>` for the full fleet-aware "
+    "advisor. Never invent PR numbers, gap IDs, file paths, or statuses you were "
+    "not given."
+)
+
+
+def _advisor_context() -> str:
+    """Cheap, near-instant fleet context to ground the fast reply. Kept to a
+    single local git read so it never adds meaningful latency."""
+    try:
+        head = subprocess.run(
+            ["git", "-C", REPO, "log", "origin/main", "--oneline", "-1"],
+            capture_output=True, text=True, timeout=8,
+        ).stdout.strip()
+        return head or "(unknown)"
+    except Exception:
+        return "(unknown)"
+
+
+async def _fast_complete_groq(user: str) -> "str | None":
+    """Single Groq chat completion (OpenAI-compatible). ~0.2-1s. Returns None
+    on any error so the caller can fall back."""
+    key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not key:
+        return None
+    body = json.dumps({
+        "model": FAST_ADVISOR_MODEL_GROQ,
+        "messages": [
+            {"role": "system", "content": FAST_ADVISOR_SYSTEM},
+            {"role": "user", "content": user},
+        ],
+        "max_tokens": FAST_ADVISOR_MAX_TOKENS,
+        "temperature": 0.4,
+    })
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "curl", "-sS", "--max-time", "12",
+            "https://api.groq.com/openai/v1/chat/completions",
+            "-H", f"Authorization: Bearer {key}",
+            "-H", "Content-Type: application/json",
+            "-d", body,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await proc.communicate()
+        j = json.loads(out.decode())
+        msg = (j.get("choices") or [{}])[0].get("message", {}).get("content")
+        if msg and msg.strip():
+            return msg.strip()
+    except Exception:
+        return None
+    return None
+
+
+async def _fast_complete_claude(user: str) -> "str | None":
+    """Fallback: one claude completion with NO tools (single-shot, not agentic)
+    via the CLI's OAuth token. Slower than Groq (~3-5s) but reliable."""
+    prompt = FAST_ADVISOR_SYSTEM + "\n\n" + user
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "-p", prompt, "--model", "sonnet",
+            "--disallowedTools", "Bash,Edit,Write,Read,Grep,Glob,NotebookEdit",
+            cwd=REPO,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=25)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            return None
+        txt = out.decode().strip()
+        if txt and "retired" not in txt.lower() and "issue with the selected model" not in txt.lower():
+            return txt
+    except Exception:
+        return None
+    return None
+
+
+async def fast_advisor_reply(question: str) -> "str | None":
+    """Fast, read-only, no-tools conversational reply. Groq first, claude
+    single-shot fallback, None if every provider fails."""
+    user = (
+        f"[fleet context] latest origin/main commit: {_advisor_context()}\n\n"
+        f"Jeff asks: {question}"
+    )
+    reply = await _fast_complete_groq(user)
+    if reply:
+        return reply
+    return await _fast_complete_claude(user)
+
+
 async def dispatch_advisor_agent(question: str) -> None:
-    """INFRA-3597 DISPATCH: hand an "advisor"-prefixed DM to a fresh, bounded,
-    READ-ONLY `claude -p` agent (scripts/dispatch/discord-advisor-agent.sh)
-    that knows the fleet (almanac + live state) and replies via
-    notify_operator itself — it never acts. Fire-and-forget from the
-    gateway's perspective, same shape as dispatch_command_agent above."""
+    """INFRA-3608: FAST conversational Advisor seat. A plain DM gets a single
+    lightweight LLM completion (Groq ~1s, claude fallback) -- read-only, no
+    tools, no gaps -- so the reply lands in seconds. `deep <question>` routes
+    to the heavy fleet-aware agent (_dispatch_deep_advisor) for research."""
     global _advisor_semaphore
     if _advisor_semaphore is None:
         _advisor_semaphore = asyncio.Semaphore(MAX_CONCURRENT_ADVISOR_DISPATCHES)
-    # scanner-anchor: "kind":"discord_advisor_agent_dispatch_failed"
     async with _advisor_semaphore:
-        if not question:
-            send_dm("(ask me something — e.g. `advisor what's blocking PR 2780`.)")
+        q = (question or "").strip()
+        if not q:
+            send_dm("(ask me something -- e.g. `what's blocking the fleet right now?`)")
             return
-        if not ADVISOR_SCRIPT.exists():
-            emit("discord_advisor_agent_dispatch_failed", reason="script_missing")
-            send_dm("(advisor dispatch script is missing — cannot answer that yet.)")
+        low = q.lower()
+        if low.startswith(DEEP_ADVISOR_PREFIXES):
+            deep_parts = q.split(None, 1)
+            await _dispatch_deep_advisor(deep_parts[1] if len(deep_parts) > 1 else "")
             return
+        print(f"[discord-gateway] advisor(fast): {q[:80]}", flush=True)
+        reply = None
         try:
-            _log = _open_dispatch_log("advisor-agent: %s" % question[:80])
-            _out = _log if _log is not None else asyncio.subprocess.DEVNULL
-            _err = asyncio.subprocess.STDOUT if _log is not None else asyncio.subprocess.DEVNULL
-            proc = await asyncio.create_subprocess_exec(
-                "bash", str(ADVISOR_SCRIPT), question,
-                cwd=REPO,
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=_out,
-                stderr=_err,
-            )
-            await proc.wait()
-            if _log is not None:
-                _log.close()
+            reply = await fast_advisor_reply(q)
         except Exception as e:
             emit("discord_advisor_agent_dispatch_failed", reason=str(e)[:160])
-            send_dm(f"(couldn't start the advisor agent: {e})")
+        if reply:
+            send_dm(reply)
+            print(f"[discord-gateway] advisor(fast) replied {len(reply)} chars", flush=True)
+        else:
+            send_dm("(couldn't reach a model just now -- try again in a moment, or "
+                    "send `deep <question>` for the full fleet-aware advisor.)")
+
+
+async def _dispatch_deep_advisor(question: str) -> None:
+    """The heavy, fleet-aware agentic advisor (scripts/dispatch/
+    discord-advisor-agent.sh): almanac + live gap/PR/ambient reads, replies via
+    notify_operator itself. Slow (30-90s) but research-grade; reached only via
+    an explicit `deep`/`dig`/`research` prefix. stdout/stderr captured to the
+    dispatch log (INFRA-3607) so a failure is visible, not silent."""
+    if not question:
+        send_dm("(ask a deep question -- e.g. `deep what's blocking PR 2780 and why`.)")
+        return
+    if not ADVISOR_SCRIPT.exists():
+        emit("discord_advisor_agent_dispatch_failed", reason="script_missing")
+        send_dm("(deep advisor dispatch script is missing -- cannot answer that yet.)")
+        return
+    send_dm("(digging into that -- the deep advisor takes a bit...)")
+    try:
+        _log = _open_dispatch_log("advisor-agent(deep): %s" % question[:80])
+        _out = _log if _log is not None else asyncio.subprocess.DEVNULL
+        _err = asyncio.subprocess.STDOUT if _log is not None else asyncio.subprocess.DEVNULL
+        proc = await asyncio.create_subprocess_exec(
+            "bash", str(ADVISOR_SCRIPT), question,
+            cwd=REPO,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=_out,
+            stderr=_err,
+        )
+        await proc.wait()
+        if _log is not None:
+            _log.close()
+    except Exception as e:
+        emit("discord_advisor_agent_dispatch_failed", reason=str(e)[:160])
+        send_dm(f"(couldn't start the deep advisor agent: {e})")
 
 
 async def gateway_loop() -> None:
