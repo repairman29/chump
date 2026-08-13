@@ -297,9 +297,9 @@ else
 fi
 
 # Run second time with same tuple — should emit blame_bot_dedupe_skip, NOT another regression_attributed
-AMBIENT_BEFORE="$(grep -c "regression_attributed" "$FAKE/.chump-locks/ambient.jsonl" 2>/dev/null || echo "0")"
+AMBIENT_BEFORE="$(grep -c "regression_attributed" "$FAKE/.chump-locks/ambient.jsonl" 2>/dev/null || true)"
 OUT2=$(CHUMP_BLAME_BOT_TEST_GREEN_SHA="$GREEN_SHA" run_bot --checks test,audit)
-AMBIENT_AFTER="$(grep -c "regression_attributed" "$FAKE/.chump-locks/ambient.jsonl" 2>/dev/null || echo "0")"
+AMBIENT_AFTER="$(grep -c "regression_attributed" "$FAKE/.chump-locks/ambient.jsonl" 2>/dev/null || true)"
 
 if grep -q "blame_bot_dedupe_skip" "$FAKE/.chump-locks/ambient.jsonl" 2>/dev/null; then
     ok "dedupe test: blame_bot_dedupe_skip fired on second identical run"

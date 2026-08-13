@@ -93,7 +93,7 @@ fi
 echo "--- Test 8: chump-view-agents polls every 10 seconds ---"
 if grep -q "10_000\|10000" "$APP_JS" 2>/dev/null; then
     # Verify it's inside the agents component context
-    _ctx=$(grep -A 2 "10_000\|10000" "$APP_JS" 2>/dev/null | grep -c "fleet-status\|timer\|setInterval" || echo "0")
+    _ctx=$(grep -A 2 "10_000\|10000" "$APP_JS" 2>/dev/null | grep -c "fleet-status\|timer\|setInterval" || true)
     if [[ "${_ctx:-0}" -gt 0 ]]; then
         ok "Test 8: 10s polling interval found in chump-view-agents (setInterval 10_000)"
     else
