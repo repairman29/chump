@@ -55,6 +55,13 @@ lints). Each round-trip costs 5-10 min of CI time. Every Sonnet brief should
 include this checklist for the subagent to run **before** `git push`:
 
 ```
+[ ] 0. Verify you're on the right branch: `chump verify-claim-branch ||
+    exit 1` (INFRA-1649, re-do of INFRA-1598). Catches the class where a
+    linked worktree's gitdir back-references the wrong session and
+    `git push origin HEAD` resolves onto a different session's branch
+    (INFRA-1427: PR opened on the parent worktree's branch, required
+    manual close + reopen). Run this BEFORE any other check below.
+
 [ ] New event kinds in EVENT_REGISTRY.yaml? → grep YOUR diff for new
     `kind:` entries. For each, verify the emit site contains a literal
     `"X"` or `"X".to_string()` pattern the audit grep can detect.

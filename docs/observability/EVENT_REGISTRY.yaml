@@ -10129,3 +10129,31 @@ events:
     trigger: the gateway could not run the approval action (action script
       missing / unparseable custom_id) — surfaced back into the message.
     consumers: [ambient]
+
+  # ── Claim-branch verification (INFRA-1649, re-do of INFRA-1598) ────────────
+  - kind: claim_branch_verified
+    effect_metric: self
+    emitter: src/verify_claim_branch.rs (`chump verify-claim-branch`)
+    trigger: current git branch matches the branch implied by this session's
+      active claim lease (chump/<gap-id>-claim).
+    consumers: [ambient]
+    fields_required: [gap_id, branch]
+
+  - kind: claim_branch_mismatch
+    effect_metric: self
+    emitter: src/verify_claim_branch.rs (`chump verify-claim-branch`)
+    trigger: current git branch does NOT match the branch implied by this
+      session's active claim lease — pushing here would land on the wrong
+      branch (INFRA-1427 failure class). Non-zero exit.
+    consumers: [ambient, scripts/git-hooks/pre-push Guard 5]
+    fields_required: [gap_id, current_branch, expected_branch]
+
+  - kind: worktree_gitdir_corrupt
+    effect_metric: self
+    emitter: src/verify_claim_branch.rs (`chump verify-claim-branch`)
+    trigger: "`git rev-parse --show-toplevel` resolves to a path other than
+      the current working directory — the linked-worktree gitdir
+      back-reference corruption class (INFRA-779, macOS /tmp symlink +
+      concurrent sibling claims)."
+    consumers: [ambient]
+    fields_required: [cwd, resolved_toplevel, branch]

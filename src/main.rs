@@ -279,6 +279,7 @@ pub mod user_profile;
 mod vector6_verify;
 mod vector7_swarm_verify;
 mod verify; // CREDIBLE-155: unified policy engine — chump verify subcommand
+mod verify_claim_branch; // INFRA-1649 (re-do of INFRA-1598): verify-claim-branch primitive
 mod version;
 mod vision_intake; // INFRA-3480: chump intake "<plain-language problem>" [--json] [--create]
 mod wasm_calc_tool;
@@ -1369,6 +1370,17 @@ async fn main() -> Result<()> {
     // so `reset --hard` stops being unrecoverable even when it is correct.
     if args.get(1).map(String::as_str) == Some("wip-snapshot") {
         std::process::exit(git_safety::run_snapshot_cli(&args));
+    }
+
+    // INFRA-1649 (re-do of INFRA-1598): `chump verify-claim-branch [--json]`
+    // asserts the current git branch matches the branch implied by this
+    // session's active claim lease. Dispatched here — ahead of store/config
+    // init — so it's cheap enough to call from a pre-push hook on every
+    // push (Guard 5 in scripts/git-hooks/pre-push already does the same
+    // check inline in bash; this is the reusable Rust primitive for
+    // non-hook callers).
+    if args.get(1).map(String::as_str) == Some("verify-claim-branch") {
+        std::process::exit(verify_claim_branch::run_cli(&args));
     }
 
     // INFRA-2054 (META-114 freshness cluster, binary-staleness layer):
