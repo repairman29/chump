@@ -105,7 +105,17 @@ if [[ -z "$SESSION_ID" ]]; then
     if [[ -f "$WT_SESSION_CACHE" ]]; then
         SESSION_ID="$(cat "$WT_SESSION_CACHE")"
     else
-        SESSION_ID="chump-$(basename "$REPO_ROOT")-$(date +%s)"
+        # INFRA-3002: mint a stable per-worktree session id and PERSIST it
+        # immediately, rather than minting a fresh timestamp-based id on
+        # every call. Without this, an interactive session with no
+        # CHUMP_SESSION_ID/CLAUDE_SESSION_ID set gets a distinct session id
+        # per ambient-emit.sh invocation, so chump-ambient-glance.sh's
+        # self-exclusion (matching on session id) never matches and the
+        # invoking session's own prior events are misread as sibling
+        # collisions under --check-overlap.
+        SESSION_ID="chump-$(basename "$REPO_ROOT")-$(date +%s)-$$"
+        mkdir -p "$LOCAL_LOCK_DIR"
+        printf '%s' "$SESSION_ID" > "$WT_SESSION_CACHE" 2>/dev/null || true
     fi
 fi
 

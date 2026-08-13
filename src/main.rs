@@ -10616,7 +10616,36 @@ async fn main() -> Result<()> {
                     None
                 };
 
-                match store.claim(&gap_id, &session_id, &worktree, ttl) {
+                let claim_result = match store.claim(&gap_id, &session_id, &worktree, ttl) {
+                    Ok(()) => Ok(()),
+                    // INFRA-3002: a worktree's local state.db is a snapshot
+                    // taken at worktree-creation time — a gap reserved/
+                    // imported on origin/main afterward is invisible here
+                    // ("gap {id} not found in state.db") until someone
+                    // manually runs `chump gap restore --from-sql`. Self-heal
+                    // by syncing just the claimed gap's row from
+                    // .chump/state.sql (the tracked YAML mirror) and retrying
+                    // once, instead of hard-failing the interactive-claim path.
+                    Err(e) if e.to_string().contains("not found in state.db") => {
+                        let sql_path = repo_path::repo_root().join(".chump").join("state.sql");
+                        match store.sync_gap_from_state_sql(&sql_path, &gap_id) {
+                            Ok(true) => {
+                                eprintln!(
+                                    "[claim] INFRA-3002: {gap_id} was missing from local state.db — synced from state.sql, retrying claim"
+                                );
+                                store.claim(&gap_id, &session_id, &worktree, ttl)
+                            }
+                            Ok(false) => Err(e),
+                            Err(sync_err) => {
+                                eprintln!("[claim] INFRA-3002: state.sql sync attempt failed: {sync_err:#}");
+                                Err(e)
+                            }
+                        }
+                    }
+                    Err(e) => Err(e),
+                };
+
+                match claim_result {
                     Ok(()) => {
                         println!("claimed {} for session {}", gap_id, session_id);
                         if why {
