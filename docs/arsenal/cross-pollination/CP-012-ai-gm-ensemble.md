@@ -3,7 +3,15 @@
 **Target:** Chump's Neocortex-tier LLM dispatcher (paired with CP-011 bicameral router + CP-001 neural-farm)
 **Arsenal match:** `repairman29/ai-gm-service` at `src/services/aiGMMultiModelEnsembleService.js` + `src/services/togetherAIService.js` + `src/services/npcAgentCostOptimized.js` + `src/aiGMAPI.js` (rate-limit retry helper)
 **Recommended route:** Vendoring (Rust port, cite source)
-**Status:** proposed (Harvester v0, 2026-05-23, INFRA-1844)
+**Status:** shipped (INFRA-1844, 2026-08-13) — `src/inference_provider.rs`
+`ProviderChain` implements the error-class table and ambient events below.
+`Provider::NeuralFarm` makes CP-001 neural-farm a selectable chain slot;
+`Provider::Anthropic`'s `api_key_env` is orthogonal to INFRA-622's
+API-key/OAUTH auth-mode fallback (that fallback resolves the credential
+*within* the Anthropic call, before ProviderChain ever sees a failure).
+CP-011's bicameral router (INFRA-1843) is still open — the `Tier` enum in
+`inference_provider.rs` is forward-compatible scaffolding for it (see
+`Tier::chain()`), not a full router integration; that lands with INFRA-1843.
 **Source SHA:** `ae59750d39cef0daa15a88131db9de914dfa0b4b` (ai-gm-service @ main, 2026-05-23)
 
 ## The Target

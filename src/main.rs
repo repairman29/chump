@@ -115,6 +115,7 @@ use chump_gap_store as gap_store;
 extern crate chump_ship;
 mod audit;
 mod audit_log; // INFRA-1842: queryable per-action audit log (CP-010, vendored from BEAST-MODE AuditLogger)
+mod inference_provider; // INFRA-1844: multi-model provider chain (CP-012, vendored from ai-gm-service)
 pub use chump_bench::bench; // DOC-072/EFFECTIVE-327: ChumpBench — run a track as a scoreable lap (EFFECTIVE-405: extracted to crates/chump-bench)
 mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod cartographer; // INFRA-1782: chump cartograph <repo-path> — ARCHITECTURE.md generation (INFRA-1746 phase 2)
@@ -1561,6 +1562,69 @@ async fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
+    }
+
+    // `chump provider-chain simulate --chain a,b --scenario NAME [--json]`
+    // (INFRA-1844, CP-012). Smoke-test entry point for
+    // scripts/ci/test-provider-chain.sh — drives the real ProviderChain
+    // executor against a scripted client so fallback/retry/ambient-emission
+    // behavior is exercised without depending on live providers.
+    if args.get(1).map(String::as_str) == Some("provider-chain") {
+        let sub = args.get(2).map(String::as_str).unwrap_or("--help");
+        if sub != "simulate" {
+            println!(
+                "Usage: chump provider-chain simulate --chain <a,b,...> --scenario <name> [--json]"
+            );
+            println!();
+            println!("Scenarios: happy | auth_fail | rate_limit_exhausted | transient_5xx |");
+            println!("           timeout | content_refusal | invalid_prompt | chain_exhausted");
+            return Ok(());
+        }
+        let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+        let mut chain_arg: Option<&str> = None;
+        let mut scenario_arg: Option<&str> = None;
+        let want_json = rest.contains(&"--json");
+        let mut it = rest.iter().peekable();
+        while let Some(a) = it.next() {
+            match *a {
+                "--chain" => chain_arg = it.next().copied(),
+                "--scenario" => scenario_arg = it.next().copied(),
+                _ => {}
+            }
+        }
+        let chain_names = chain_arg.unwrap_or("anthropic,openai");
+        let scenario = scenario_arg.unwrap_or("happy");
+        let repo_root = repo_path::repo_root();
+        std::env::set_var("CHUMP_PROVIDER_CHAIN", chain_names);
+        let chain = inference_provider::ProviderChain::from_env(&repo_root);
+        let client = inference_provider::testing::ScenarioClient::new(scenario);
+        let result = chain.execute(&client, "smoke test prompt", &repo_root);
+        if want_json {
+            let json = match &result {
+                Ok(c) => format!(
+                    r#"{{"ok":true,"provider":"{}","model":"{}"}}"#,
+                    c.provider, c.model
+                ),
+                Err(inference_provider::ChainError::InvalidPrompt(msg)) => {
+                    format!(r#"{{"ok":false,"error":"invalid_prompt","message":"{msg}"}}"#)
+                }
+                Err(inference_provider::ChainError::AllProvidersFailed { attempts }) => {
+                    format!(
+                        r#"{{"ok":false,"error":"all_providers_failed","attempts":{attempts}}}"#
+                    )
+                }
+            };
+            println!("{json}");
+        } else {
+            match &result {
+                Ok(c) => println!("OK provider={} model={}", c.provider, c.model),
+                Err(e) => println!("ERR {e:?}"),
+            }
+        }
+        return match result {
+            Ok(_) => Ok(()),
+            Err(_) => std::process::exit(1),
+        };
     }
 
     // `chump agent-run` (INFRA-3475) — the external-repo execution keystone. Runs

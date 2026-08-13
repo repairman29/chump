@@ -9728,3 +9728,31 @@ events:
       operator digests can see catalog drift without re-reading the JSON.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, repos, clusters, dups, alerts]
+
+  - kind: provider_fallback
+    effect_metric: self
+    emitter: src/inference_provider.rs (INFRA-1844, CP-012, vendored from ai-gm-service)
+    trigger: >
+      `ProviderChain::execute` exhausted retries on one provider (auth
+      failure, model-not-found, rate-limit exhaustion, persistent 5xx,
+      timeout, or content refusal) and advanced to the next provider in the
+      chain, or to end-of-chain (to_provider=null) on the last hop.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, from_provider, to_provider, reason, attempt_count]
+
+  - kind: provider_chain_exhausted
+    effect_metric: self
+    emitter: src/inference_provider.rs (INFRA-1844, CP-012)
+    trigger: every provider in the chain failed; `ChainError::AllProvidersFailed` returned to the caller.
+    consumers: [ops-audit, operator-recall]
+    fields_required: [ts, kind, providers_tried]
+
+  - kind: provider_chain_unknown
+    effect_metric: self
+    emitter: src/inference_provider.rs (INFRA-1844, CP-012)
+    trigger: >
+      `CHUMP_PROVIDER_CHAIN` (or a per-tier chain env var) named a provider
+      not recognized by `Provider::from_name` — dropped from the chain, not
+      fatal.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, name]
