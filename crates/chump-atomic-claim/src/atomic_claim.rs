@@ -411,6 +411,33 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
         }
     }
 
+    // Gate 2c: INFRA-1646 — refuse when this session already holds a live
+    // lease for a DIFFERENT gap (see check_no_active_lease_for_other_gap).
+    {
+        let early_session = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        let lock_dir_co = args.repo_root.join(".chump-locks");
+        match check_no_active_lease_for_other_gap(&lock_dir_co, &args.gap_id, &early_session) {
+            Ok(()) => {
+                gates.push(GateResult {
+                    gate: "active-lease".to_string(),
+                    status: "pass".to_string(),
+                    message: "session holds no live lease for a different gap".to_string(),
+                });
+            }
+            Err(e) => {
+                gates.push(GateResult {
+                    gate: "active-lease".to_string(),
+                    status: "fail".to_string(),
+                    message: e.to_string(),
+                });
+                has_fail = true;
+            }
+        }
+    }
+
     // Gate 3: Check hot-file collision (INFRA-1394)
     if let Some(paths) = &args.paths {
         match check_hot_file_collision(&args.repo_root, paths) {
@@ -753,6 +780,48 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                     e
                 );
             }
+        }
+    }
+
+    // INFRA-1646 (re-do of INFRA-1412): refuse the claim when this session
+    // already holds a live lease for a DIFFERENT gap — see
+    // check_no_active_lease_for_other_gap for why the silent-merge
+    // alternative is dangerous (RESILIENT-313).
+    //
+    // Must run at the same point as the INFRA-1970 gate above: before
+    // session_id is finalised and before the worktree is created.
+    //
+    // Bypass: CHUMP_CLAIM_ALLOW_ACTIVE_LEASE=1 (emits claim_active_lease_bypassed).
+    {
+        let early_session = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        let lock_dir_early = args.repo_root.join(".chump-locks");
+        let allow_active_lease = std::env::var("CHUMP_CLAIM_ALLOW_ACTIVE_LEASE")
+            .map(|v| !v.trim().is_empty() && v.trim() != "0")
+            .unwrap_or(false);
+        if let Err(e) =
+            check_no_active_lease_for_other_gap(&lock_dir_early, &args.gap_id, &early_session)
+        {
+            let ambient_path = lock_dir_early.join("ambient.jsonl");
+            emit_claim_active_lease_event(
+                &ambient_path,
+                &args.gap_id,
+                &early_session,
+                &e.to_string(),
+            );
+            if !allow_active_lease {
+                bail!(
+                    "INFRA-1646: {}\n  \
+                     Override: CHUMP_CLAIM_ALLOW_ACTIVE_LEASE=1 (emits audit event)",
+                    e
+                );
+            }
+            eprintln!(
+                "[claim] INFRA-1646: WARN — active-lease conflict bypassed via CHUMP_CLAIM_ALLOW_ACTIVE_LEASE=1: {}",
+                e
+            );
         }
     }
 
@@ -3026,6 +3095,113 @@ fn is_session_lease_alive(lock_dir: &Path, session_id: &str, now_secs: u64) -> b
         Ok(exp_secs) => exp_secs > now_secs,
         Err(_) => true, // can't parse → treat as alive (conservative)
     }
+}
+
+/// INFRA-1646 (re-do of INFRA-1412): refuse `chump claim` when the resolved
+/// session already holds a LIVE lease for a DIFFERENT gap.
+///
+/// Without this gate, `write_or_merge_lease` (INFRA-985) silently overwrites
+/// `gap_id` in place inside the existing `<session>.json` lease file — the
+/// old gap's claim is lost with no error, no rollback, and no trace, leaving
+/// a lease whose `session_id` now points at gap B while any bookkeeping that
+/// keyed off "session X is working gap A" (state.db, NATS, farmer.sh's
+/// `check_silent_workers`) goes stale. Board note (2026-08-13): this is the
+/// preventive fix for RESILIENT-313 — a stale/duplicate claim lease crashed
+/// `check_silent_workers` and hard-blocked the fleet for 6h.
+///
+/// Only fires when the existing lease names a DIFFERENT `gap_id` — reclaiming
+/// the SAME gap under the same session (e.g. `--resume`) still falls through
+/// to the merge path unchanged.
+///
+/// Bypass: `CHUMP_CLAIM_ALLOW_ACTIVE_LEASE=1` (emits `claim_active_lease_bypassed`).
+// scanner-anchor: "kind":"claim_active_lease_blocked"
+fn check_no_active_lease_for_other_gap(
+    lock_dir: &Path,
+    gap_id: &str,
+    session_id: &str,
+) -> Result<()> {
+    let lease_path = lock_dir.join(format!("{}.json", session_id));
+    let Ok(body) = std::fs::read_to_string(&lease_path) else {
+        return Ok(()); // no existing lease under this session — nothing to block
+    };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+        return Ok(()); // unreadable — conservative: not a blocker
+    };
+    let Some(existing_gap) = val.get("gap_id").and_then(|v| v.as_str()) else {
+        return Ok(());
+    };
+    if existing_gap == gap_id {
+        return Ok(()); // same gap — resume/merge path owns this case
+    }
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if !is_session_lease_alive(lock_dir, session_id, now) {
+        return Ok(()); // stale — not a live competitor
+    }
+
+    let taken_at = val
+        .get("taken_at")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    Err(anyhow!(
+        "session {} already holds an active lease for {} (taken at {}) — refusing to claim {}.\n  \
+         Claiming a second gap under the same session used to silently overwrite the lease's\n  \
+         gap_id in place, leaving a stale/duplicate lease (the RESILIENT-313 failure class).\n  \
+         Options:\n  \
+         1. Release the existing lease first: chump --release --force\n  \
+         2. Pass a distinct --session for this claim.\n  \
+         3. Override: CHUMP_CLAIM_ALLOW_ACTIVE_LEASE=1 (audit event emitted).",
+        session_id,
+        existing_gap,
+        taken_at,
+        gap_id,
+    ))
+}
+
+/// Emit a `claim_active_lease_blocked` (or `_bypassed`) ambient event so the
+/// operator's peripheral-vision stream captures every active-lease conflict.
+// scanner-anchor: "kind":"claim_active_lease_blocked"
+fn emit_claim_active_lease_event(
+    ambient_path: &Path,
+    gap_id: &str,
+    session_id: &str,
+    detail: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let bypassed = std::env::var("CHUMP_CLAIM_ALLOW_ACTIVE_LEASE")
+        .map(|v| !v.trim().is_empty() && v.trim() != "0")
+        .unwrap_or(false);
+    let kind = if bypassed {
+        "claim_active_lease_bypassed"
+    } else {
+        "claim_active_lease_blocked"
+    };
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"{kind}\",\
+         \"gap_id\":\"{}\",\"session_id\":\"{}\",\"detail\":\"{}\"}}\n",
+        json_escape(gap_id),
+        json_escape(session_id),
+        json_escape(detail),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
 }
 
 /// Collect session IDs that have emitted intent_retracted in ambient.jsonl.
@@ -5510,6 +5686,77 @@ mod tests {
             .unwrap()
             .as_secs();
         assert!(is_session_lease_alive(&tmp, "fresh", now));
+    }
+
+    // ── INFRA-1646: block claim when session already holds an active lease ──
+
+    #[test]
+    fn active_lease_gate_blocks_different_gap_same_session() {
+        let tmp = mk_intent_tmp("active-lease-block");
+        write_basic_lease(&tmp, "worker-1", "INFRA-OLD", None, 7_200).unwrap();
+        let result = check_no_active_lease_for_other_gap(&tmp, "INFRA-NEW", "worker-1");
+        assert!(
+            result.is_err(),
+            "second gap under same live session should block"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("INFRA-OLD"), "error should name the held gap");
+    }
+
+    #[test]
+    fn active_lease_gate_allows_same_gap_same_session() {
+        let tmp = mk_intent_tmp("active-lease-same-gap");
+        write_basic_lease(&tmp, "worker-1", "INFRA-A", None, 7_200).unwrap();
+        let result = check_no_active_lease_for_other_gap(&tmp, "INFRA-A", "worker-1");
+        assert!(
+            result.is_ok(),
+            "reclaiming the same gap_id should not block"
+        );
+    }
+
+    #[test]
+    fn active_lease_gate_allows_no_existing_lease() {
+        let tmp = mk_intent_tmp("active-lease-absent");
+        let result = check_no_active_lease_for_other_gap(&tmp, "INFRA-A", "fresh-session");
+        assert!(
+            result.is_ok(),
+            "no prior lease file for this session should not block"
+        );
+    }
+
+    #[test]
+    fn active_lease_gate_allows_expired_lease() {
+        let tmp = mk_intent_tmp("active-lease-expired");
+        // Write a live lease then overwrite expires_at to the past.
+        write_basic_lease(&tmp, "worker-1", "INFRA-OLD", None, 7_200).unwrap();
+        let body = std::fs::read_to_string(tmp.join("worker-1.json")).unwrap();
+        let mut val: serde_json::Value = serde_json::from_str(&body).unwrap();
+        val["expires_at"] = serde_json::Value::String("2000-01-01T00:00:00Z".to_string());
+        std::fs::write(
+            tmp.join("worker-1.json"),
+            serde_json::to_string_pretty(&val).unwrap(),
+        )
+        .unwrap();
+        let result = check_no_active_lease_for_other_gap(&tmp, "INFRA-NEW", "worker-1");
+        assert!(result.is_ok(), "expired lease should not block a new claim");
+    }
+
+    #[test]
+    fn emit_claim_active_lease_event_writes_valid_json() {
+        let tmp = mk_intent_tmp("active-lease-emit");
+        let ambient = tmp.join("ambient.jsonl");
+        emit_claim_active_lease_event(&ambient, "INFRA-NEW", "worker-1", "some detail");
+        let content = std::fs::read_to_string(&ambient).unwrap();
+        let mut saw_kind = false;
+        for line in content.lines() {
+            let v: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
+            if v["kind"] == "claim_active_lease_blocked" {
+                saw_kind = true;
+                assert_eq!(v["gap_id"], "INFRA-NEW");
+                assert_eq!(v["session_id"], "worker-1");
+            }
+        }
+        assert!(saw_kind, "expected claim_active_lease_blocked event");
     }
 }
 
