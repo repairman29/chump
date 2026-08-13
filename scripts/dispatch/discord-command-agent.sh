@@ -85,7 +85,7 @@ question/report request, just read and answer — do not file anything.
 exist in this session and no destructive Bash commands are permitted. Do not \
 attempt to push code, merge PRs, or mutate gap state beyond filing new gaps.
 4. Compose a terse, useful reply (a few lines max) and send it to the operator \
-via: 'source scripts/coord/lib/notify-operator.sh && CHUMP_NOTIFY_KIND=discord_command_reply notify_operator \"<reply>\"'. \
+via this EXACT single-command form (do NOT use 'source' + '&&' -- that compound is denied by --permission-mode dontAsk): 'CHUMP_NOTIFY_KIND=discord_command_reply scripts/coord/lib/notify-operator.sh \"<reply>\"'. \
 This is the ONLY way your answer reaches the operator — you MUST call it \
 before stopping, even if the command was unclear (reply saying so).
 5. Append exactly one line to .chump-locks/ambient.jsonl (via printf, JSON-\
@@ -100,13 +100,27 @@ saying so — a silent failure is worse than an honest one."
 # itself; this comment is the pairing anchor the registry gate scans for
 # since the literal above lives inside an escaped-quote bash string).
 
-ALLOWED_TOOLS='Bash(git log*) Bash(git status*) Bash(git diff*) Bash(git fetch*) Bash(gh pr list*) Bash(gh pr view*) Bash(gh issue list*) Bash(sqlite3*) Bash(chump gap list*) Bash(chump gap view*) Bash(chump gap reserve*) Bash(chump --briefing*) Bash(cat*) Bash(tail*) Bash(source scripts/coord/lib/notify-operator.sh*) Bash(scripts/coord/lib/notify-operator.sh*) Bash(printf*) Bash(echo*)'
+# Ops fix 2026-08-13: ARRAY, not a space-joined string. The old string was
+# passed unquoted as `--allowedTools $ALLOWED_TOOLS`, so word-splitting
+# exposed `--briefing*)` (from `Bash(chump --briefing*)`) to claude's arg
+# parser as a bogus option -> `error: unknown option '--briefing*)'` and
+# claude exited 1 before running. The advisor script already used an array;
+# this mirrors it. Also swaps the reply entry to the DIRECT notify-operator
+# form (see PROMPT + INFRA-3602).
+ALLOWED_TOOLS=(
+    'Bash(git log*)' 'Bash(git status*)' 'Bash(git diff*)' 'Bash(git fetch*)'
+    'Bash(gh pr list*)' 'Bash(gh pr view*)' 'Bash(gh issue list*)' 'Bash(sqlite3*)'
+    'Bash(chump gap list*)' 'Bash(chump gap view*)' 'Bash(chump gap reserve*)'
+    'Bash(chump --briefing*)' 'Bash(cat*)' 'Bash(tail*)'
+    'Bash(CHUMP_NOTIFY_KIND=discord_command_reply scripts/coord/lib/notify-operator.sh*)'
+    'Bash(scripts/coord/lib/notify-operator.sh*)' 'Bash(printf*)' 'Bash(echo*)'
+)
 
 cycle_output=""
 cycle_rc=0
 CLAUDE_ARGS=(-p "$PROMPT"
     --tools "Read,Grep,Glob,Bash"
-    --allowedTools $ALLOWED_TOOLS
+    --allowedTools "${ALLOWED_TOOLS[@]}"
     --disallowedTools "Edit,Write,NotebookEdit"
     --permission-mode dontAsk
     --max-budget-usd "$BUDGET_USD"

@@ -299,12 +299,19 @@ async def gateway_loop() -> None:
                     if reply:
                         send_dm(reply)
                     else:
-                        # Not a quick built-in — hand off to a fresh helsinki
-                        # Sonnet agent (INFRA-3596) that reads board state,
-                        # may act (file a gap), and replies itself via
-                        # notify_operator. Backgrounded so the gateway loop
-                        # (heartbeats, future messages) stays responsive.
-                        asyncio.create_task(dispatch_command_agent(content))
+                        # Not a quick built-in -> the read-only Advisor
+                        # (INFRA-3597), Jeff's conversational seat: it KNOWS
+                        # the fleet (almanac + live state) and TALKS back,
+                        # never mutating anything. Ops fix 2026-08-13: plain
+                        # DMs used to route to the ACTING command agent,
+                        # whose claude invocation was broken by an
+                        # --allowedTools word-split (Bash(chump --briefing*)
+                        # leaked --briefing*) as a bogus CLI option so claude
+                        # exited 1 and Jeff only ever got the agent-failed
+                        # fallback, never an answer). The advisor builds
+                        # --allowedTools as an array and replies via the
+                        # direct notify-operator form, so it delivers.
+                        asyncio.create_task(dispatch_advisor_agent(content))
                     continue
 
                 if t == "INTERACTION_CREATE":
