@@ -35,6 +35,13 @@
 #                             Fires when the INFRA-2304 reactor's escalated reap
 #                             could not recover sufficient headroom — operator
 #                             must intervene (manual reap, fleet pause, etc.)
+#   (g) PTY_EXHAUSTION      — invoked directly (via --condition PTY_EXHAUSTION)
+#                             by scripts/coord/infra-watcher-loop.sh check-ptys
+#                             (RESILIENT-092) when pty allocation crosses
+#                             CHUMP_INFRA_WATCHER_PTY_THRESHOLD (default 80%) of
+#                             kern.tty.ptmx_max (macOS) or /proc/sys/kernel/pty/max
+#                             (Linux) — pages BEFORE forkpty fails machine-wide,
+#                             not auto-detected by this script's scan loop.
 #
 # Usage:
 #   operator-recall.sh                  # auto-detect all conditions; exit 0

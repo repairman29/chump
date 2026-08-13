@@ -6866,11 +6866,16 @@ events:
     trigger: >
       One finding per substrate health violation detected during a tick cycle.
       category is one of: daemon_plist_missing_interval, runner_ghost_online,
-      disk_pressure, process_bloat. severity is critical or warning.
-      detail is a human-readable description of the finding with threshold
-      and observed values. Emitted at most once per category per tick to
-      avoid flooding. Consumers watch for critical findings to page the
-      operator via operator-recall.sh.
+      disk_pressure, process_bloat, pty_exhaustion. severity is critical or
+      warning. detail is a human-readable description of the finding with
+      threshold and observed values. Emitted at most once per category per
+      tick to avoid flooding. Consumers watch for critical findings to page
+      the operator via operator-recall.sh. category=pty_exhaustion (RESILIENT-092)
+      additionally invokes operator-recall.sh directly with
+      condition=PTY_EXHAUSTION at emit time — pty exhaustion pages the
+      operator immediately rather than waiting on a downstream consumer,
+      since forkpty failure is machine-wide and minutes away once pressure
+      is detected.
     consumers: [fleet-brief, ops-audit, operator-recall]
     fields_required: [ts, kind, category, severity, detail]
   # INFRA-1976: repo variable drift detection — post-incident stale variable audit.
