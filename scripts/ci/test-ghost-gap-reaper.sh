@@ -17,6 +17,9 @@
 # Phase 2 fixtures (INFRA-1909):
 #   gap_G: status=open, no merged PR found            → must stay open
 #   gap_H: status=open, merged PR #201 found via search → must be shipped (status=done)
+#   gap_I: status=open, closed_pr=202 already recorded (RESILIENT-070)
+#          → must be shipped WITHOUT any gh lookup (gh stub has no entry for gap_I;
+#            if the reaper fell through to gh search it would find nothing and fail)
 #
 # Stubs out chump + gh with minimal shims; never touches real state.db or GitHub.
 set -euo pipefail
@@ -82,12 +85,16 @@ JSON
     cat <<'JSON'
 [
   {"id":"gap_G","status":"open","closed_pr":"","title":"gap G"},
-  {"id":"gap_H","status":"open","closed_pr":"","title":"gap H"}
+  {"id":"gap_H","status":"open","closed_pr":"","title":"gap H"},
+  {"id":"gap_I","status":"open","closed_pr":"202","title":"gap I"}
 ]
 JSON
     ;;
   *"ship gap_H --closed-pr 201 --update-yaml"*)
     touch "$TMPDIR_TEST/shipped/gap_H"
+    ;;
+  *"ship gap_I --closed-pr 202 --update-yaml"*)
+    touch "$TMPDIR_TEST/shipped/gap_I"
     ;;
   *)
     ;;
@@ -225,7 +232,19 @@ else
     FAIL=1
 fi
 
-echo "$OUT" | grep -q "reaped 1 ghost-open gap(s)" \
-    || { echo "FAIL: summary line 'reaped 1 ghost-open gap(s)' not found in output"; FAIL=1; }
+echo "$OUT" | grep -q "reaped 2 ghost-open gap(s)" \
+    || { echo "FAIL: summary line 'reaped 2 ghost-open gap(s)' not found in output"; FAIL=1; }
+
+# RESILIENT-070: gap_I already had closed_pr recorded — must be shipped
+# directly, with no gh lookup (gh stub has no case for "gap_I" search).
+if [[ -f "$TMPDIR_TEST/shipped/gap_I" ]]; then
+    echo "PASS: gap_I (closed_pr already recorded) was shipped without a PR lookup"
+else
+    echo "FAIL: gap_I should have been shipped via its already-recorded closed_pr"
+    FAIL=1
+fi
+
+echo "$OUT" | grep -q "closed_pr=#202 already recorded, no PR lookup needed" \
+    || { echo "FAIL: output missing RESILIENT-070 no-lookup-needed message for gap_I"; FAIL=1; }
 
 exit $FAIL
