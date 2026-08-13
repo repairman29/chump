@@ -2413,9 +2413,11 @@ fn json_escape(s: &str) -> String {
     out
 }
 
-/// INFRA-1259/1878: Returns true if a single AC entry is a placeholder stub.
-/// Only matches entries that ARE stubs, not entries that mention "TODO" in
-/// meaningful text (e.g. "AC: ensures no TODO in field X" must not match).
+/// INFRA-1259/1878/2984/3259: Returns true if a single AC entry is a
+/// placeholder stub or a non-verifiable filler phrase. Only matches entries
+/// that ARE stubs, not entries that mention "TODO" in meaningful text (e.g.
+/// "AC: ensures no TODO in field X" must not match). Kept in sync with the
+/// canonical copy in src/main.rs.
 fn is_vague_ac_entry(s: &str) -> bool {
     let t = s.trim();
     let upper = t.to_uppercase();
@@ -2429,6 +2431,22 @@ fn is_vague_ac_entry(s: &str) -> bool {
         || upper.starts_with("TBD ")
         || upper.starts_with("<FILL")
         || upper.starts_with("FILL IN")
+        || matches!(
+            upper.as_str(),
+            "VERIFY IT WORKS"
+                | "VERIFY IT"
+                | "VERIFY"
+                | "IT WORKS"
+                | "WORKS"
+                | "MAKE IT WORK"
+                | "SHOULD WORK"
+                | "IT SHOULD WORK"
+                | "TEST IT"
+                | "DONE"
+                | "COMPLETE"
+                | "FIX IT"
+                | "IMPLEMENT IT"
+        )
 }
 
 /// INFRA-1259: Check if acceptance_criteria is vague (empty, all-TODO, or all-TBD).
