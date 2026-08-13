@@ -47,6 +47,24 @@ TOKEN = os.environ.get("DISCORD_TOKEN", "").strip()
 OPERATOR = os.environ.get("CHUMP_READY_DM_USER_ID", "").strip()
 REPO = os.environ.get("CHUMP_REPO", os.getcwd())
 AMBIENT = Path(REPO) / ".chump-locks" / "ambient.jsonl"
+# INFRA-3607 OBSERVABILITY: dispatched agents (command + advisor) used to send
+# stdout/stderr to DEVNULL, which hid a silent advisor crash ("HOME: unbound
+# variable") for a whole night. Capture both streams to a log so the next
+# failure is visible, not silent. Best-effort: falls back to DEVNULL if the
+# file cannot be opened.
+DISPATCH_LOG = Path(REPO) / ".chump-locks" / "discord-dispatch.log"
+
+
+def _open_dispatch_log(tag: str):
+    try:
+        DISPATCH_LOG.parent.mkdir(parents=True, exist_ok=True)
+        fh = open(DISPATCH_LOG, "ab")
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        fh.write(("\n===== %s %s =====\n" % (stamp, tag)).encode())
+        fh.flush()
+        return fh
+    except Exception:
+        return None
 # DIRECT_MESSAGES (1<<12). Interactions are delivered regardless of intents.
 # MESSAGE_CONTENT (1<<15) is privileged; enable it in the dev portal to read DM text.
 INTENTS = int(os.environ.get("CHUMP_DISCORD_GW_INTENTS", str(1 << 12)))
@@ -188,13 +206,19 @@ async def dispatch_command_agent(text: str) -> None:
             send_dm("(command agent dispatch script is missing — cannot act on that yet.)")
             return
         try:
+            _log = _open_dispatch_log("command-agent: %s" % text[:80])
+            _out = _log if _log is not None else asyncio.subprocess.DEVNULL
+            _err = asyncio.subprocess.STDOUT if _log is not None else asyncio.subprocess.DEVNULL
             proc = await asyncio.create_subprocess_exec(
                 "bash", str(DISPATCH_SCRIPT), text,
                 cwd=REPO,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=_out,
+                stderr=_err,
             )
             await proc.wait()
+            if _log is not None:
+                _log.close()
         except Exception as e:
             emit("discord_command_agent_dispatch_failed", reason=str(e)[:160])
             send_dm(f"(couldn't start the command agent: {e})")
@@ -219,13 +243,19 @@ async def dispatch_advisor_agent(question: str) -> None:
             send_dm("(advisor dispatch script is missing — cannot answer that yet.)")
             return
         try:
+            _log = _open_dispatch_log("advisor-agent: %s" % question[:80])
+            _out = _log if _log is not None else asyncio.subprocess.DEVNULL
+            _err = asyncio.subprocess.STDOUT if _log is not None else asyncio.subprocess.DEVNULL
             proc = await asyncio.create_subprocess_exec(
                 "bash", str(ADVISOR_SCRIPT), question,
                 cwd=REPO,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=_out,
+                stderr=_err,
             )
             await proc.wait()
+            if _log is not None:
+                _log.close()
         except Exception as e:
             emit("discord_advisor_agent_dispatch_failed", reason=str(e)[:160])
             send_dm(f"(couldn't start the advisor agent: {e})")

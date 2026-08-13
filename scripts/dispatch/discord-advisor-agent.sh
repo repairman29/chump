@@ -33,6 +33,18 @@
 #   CHUMP_DISCORD_ADVISOR_MODEL        model override (default sonnet)
 set -uo pipefail
 
+# INFRA-3607: the Discord gateway runs this from a systemd service whose env has
+# NO HOME (systemd does not set it, unlike an interactive shell / launchd). Under
+# `set -u`, the FIRST ${HOME} reference (ALMANAC_BIN below, plus the oauth-token
+# read) aborts the whole script with "HOME: unbound variable" BEFORE `claude` is
+# ever invoked -- a silent crash the gateway hid by discarding stderr, and the
+# reason a manual run (HOME set) delivered while the gateway run produced nothing.
+# Default HOME from the passwd entry so this works under systemd, cron, or a shell.
+if [[ -z "${HOME:-}" ]]; then
+    HOME="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"
+    export HOME
+fi
+
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 cd "$REPO_ROOT" || { echo "[discord-advisor-agent] cannot cd repo root" >&2; exit 1; }
