@@ -8,6 +8,7 @@
 #   check-runners  — self-hosted runner ghost-online detection
 #   check-disk     — /tmp + /private/tmp + .chump-locks disk pressure
 #   check-procs    — claude process count + load avg
+#   check-ptys     — pty allocation vs kern.tty.ptmx_max (RESILIENT-092)
 #
 # Emits kind=infra_watcher_finding with {category, severity, detail} to ambient.jsonl
 #
@@ -301,6 +302,77 @@ cmd_check_procs() {
     return 0
 }
 
+# ── check-ptys ────────────────────────────────────────────────────────────────
+# RESILIENT-092: a long Claude-Code /loop session leaked 505 master ptys ->
+# kern.tty.ptmx_max=511 EXHAUSTED -> forkpty 'Device not configured'
+# MACHINE-WIDE -> terminals unusable + fleet down ~2h. This check detects the
+# same class of pressure BEFORE forkpty actually fails, and pages the
+# operator (not just logs a finding) once usage crosses the threshold — the
+# existing claude-reaper pressure mode (INFRA-1851) reacts by reaping faster
+# but never escalates to the operator, so a leak outside the reaper's reach
+# (e.g. the Claude.app GUI process itself, which the reaper won't touch)
+# would silently run the machine to exhaustion again.
+#
+# Cross-platform: macOS reports the ceiling via `sysctl -n kern.tty.ptmx_max`
+# and allocation via counting /dev/ttys??? device files. Linux reports both
+# directly via /proc/sys/kernel/pty/{max,nr}. If neither probe resolves, the
+# check no-ops rather than guessing (same safe-by-default posture as the
+# reaper's pressure block).
+#
+# scanner-anchor: "kind":"infra_watcher_finding" category=pty_exhaustion
+cmd_check_ptys() {
+    _header "check-ptys"
+
+    local threshold="${CHUMP_INFRA_WATCHER_PTY_THRESHOLD:-80}"
+    local limit="" alloc=""
+
+    if [[ -n "${CHUMP_PTY_LIMIT_OVERRIDE:-}" ]]; then
+        limit="$CHUMP_PTY_LIMIT_OVERRIDE"
+    elif [[ -f /proc/sys/kernel/pty/max ]]; then
+        limit="$(cat /proc/sys/kernel/pty/max 2>/dev/null || true)"
+    elif command -v "${CHUMP_SYSCTL_BIN:-sysctl}" >/dev/null 2>&1; then
+        limit="$("${CHUMP_SYSCTL_BIN:-sysctl}" -n kern.tty.ptmx_max 2>/dev/null || true)"
+    fi
+
+    if [[ -n "${CHUMP_PTY_ALLOC_OVERRIDE:-}" ]]; then
+        alloc="$CHUMP_PTY_ALLOC_OVERRIDE"
+    elif [[ -f /proc/sys/kernel/pty/nr ]]; then
+        alloc="$(cat /proc/sys/kernel/pty/nr 2>/dev/null || true)"
+    else
+        alloc="$(ls /dev/ttys??? 2>/dev/null | wc -l | tr -d ' ')"
+    fi
+
+    if [[ -z "$limit" || -z "$alloc" || ! "$limit" =~ ^[0-9]+$ || ! "$alloc" =~ ^[0-9]+$ || "$limit" -eq 0 ]]; then
+        printf '[infra-watcher] check-ptys: unable to determine pty limit/allocation (limit=%s alloc=%s) — skipping\n' \
+            "${limit:-?}" "${alloc:-?}"
+        return 0
+    fi
+
+    local pct=$(( alloc * 100 / limit ))
+    printf '[infra-watcher] check-ptys: allocated=%s limit=%s pct=%d%% (threshold=%d%%)\n' \
+        "$alloc" "$limit" "$pct" "$threshold"
+
+    if [[ "$pct" -ge "$threshold" ]]; then
+        local severity="warning"
+        [[ "$pct" -ge 95 ]] && severity="critical"
+        _emit_finding "pty_exhaustion" "$severity" \
+            "allocated=${alloc} limit=${limit} pct=${pct}% (threshold=${threshold}%) — forkpty exhaustion imminent; restart the leaking Claude Code app or raise kern.tty.ptmx_max"
+
+        # Scream: page the operator directly via the halt-class recall
+        # channel BEFORE forkpty actually fails machine-wide, rather than
+        # relying on a downstream consumer to notice the critical finding.
+        local recall_script="${SCRIPT_DIR}/../dispatch/operator-recall.sh"
+        if [[ -f "$recall_script" ]]; then
+            bash "$recall_script" --condition PTY_EXHAUSTION \
+                --reason "pty allocation ${alloc}/${limit} (${pct}%) >= ${threshold}% threshold — forkpty failure imminent, restart leaking Claude Code app" \
+                >/dev/null 2>&1 || true
+        fi
+    else
+        printf '[infra-watcher] check-ptys: OK\n'
+    fi
+    return 0
+}
+
 # ── check-repo-vars ───────────────────────────────────────────────────────────
 # Compare live gh variable list against expected-repo-vars.yaml.
 # Emits kind=repo_var_stale_after_incident when a variable has deviated from its
@@ -539,6 +611,7 @@ cmd_tick() {
     cmd_check_runners
     cmd_check_disk
     cmd_check_procs
+    cmd_check_ptys
     cmd_check_repo_vars
     cmd_check_oauth_freshness
     printf '[infra-watcher] tick complete ts=%s\n' "$(_ts)"
@@ -560,10 +633,11 @@ case "$CMD" in
     check-runners)           cmd_check_runners "$@" ;;
     check-disk)              cmd_check_disk "$@" ;;
     check-procs)             cmd_check_procs "$@" ;;
+    check-ptys)              cmd_check_ptys "$@" ;;
     check-repo-vars)         cmd_check_repo_vars "$@" ;;
     check-oauth-freshness)   cmd_check_oauth_freshness "$@" ;;
     *)
-        printf 'Usage: %s {tick|audit-daemons|check-runners|check-disk|check-procs|check-repo-vars|check-oauth-freshness}\n' \
+        printf 'Usage: %s {tick|audit-daemons|check-runners|check-disk|check-procs|check-ptys|check-repo-vars|check-oauth-freshness}\n' \
             "$(basename "$0")" >&2
         exit 1
         ;;
