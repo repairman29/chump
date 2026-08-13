@@ -443,6 +443,14 @@ async def _dispatch_deep_advisor(question: str) -> None:
 # decision can't be re-tapped by accident.
 PR_APPROVAL_ACTION = Path(REPO) / "scripts" / "ops" / "pr-approval-action.sh"
 
+# EVENT_REGISTRY scanner-anchors (INFRA-754): the emit() calls below pass the
+# kind to a dynamic helper, invisible to the grep-based event-registry rule.
+# These literal anchors keep register-and-emit in sync (all registered in
+# docs/observability/EVENT_REGISTRY.yaml):
+#   scanner-anchor: "kind":"discord_pr_approval_tap"
+#   scanner-anchor: "kind":"discord_pr_approval_done"
+#   scanner-anchor: "kind":"discord_pr_approval_failed"
+
 
 def _parse_pr_custom_id(custom_id: str):
     """`mergepr:owner/repo/number` → ("merge", "owner/repo", "number"); None if

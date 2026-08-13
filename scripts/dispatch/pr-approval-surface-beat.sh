@@ -53,6 +53,13 @@ STATE_FILE="${CHUMP_PR_APPROVAL_STATE:-$REPO_ROOT/.chump-locks/pr-approval-surfa
 mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null || true
 touch "$STATE_FILE" 2>/dev/null || true
 
+# EVENT_REGISTRY scanner-anchors (INFRA-754): emit() builds "kind" from a
+# variable, invisible to the grep-based event-registry rule. These literal
+# anchors keep register-and-emit in sync (all registered in
+# docs/observability/EVENT_REGISTRY.yaml):
+#   scanner-anchor: "kind":"pr_approval_surfaced"
+#   scanner-anchor: "kind":"pr_approval_beat"
+#   scanner-anchor: "kind":"pr_approval_beat_error"
 emit() {  # kind, extra-json (no leading/trailing comma)
   local log_dir kind="$1" extra="${2:-}" line
   log_dir="$REPO_ROOT/.chump-locks"; mkdir -p "$log_dir" 2>/dev/null || true

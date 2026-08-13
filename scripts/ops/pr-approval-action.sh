@@ -46,6 +46,16 @@ emit_ambient() {  # kind, extra-json (no leading/trailing comma), best-effort
   return 0
 }
 
+# EVENT_REGISTRY scanner-anchors (INFRA-754): emit_ambient builds the "kind"
+# field from a variable, so the grep-based event-registry rule cannot see these
+# kinds at their call sites. These literal anchors keep register-and-emit in
+# sync (each is registered in docs/observability/EVENT_REGISTRY.yaml):
+#   scanner-anchor: "kind":"pr_approval_merged"
+#   scanner-anchor: "kind":"pr_approval_rejected"
+#   scanner-anchor: "kind":"pr_approval_action_noop"
+#   scanner-anchor: "kind":"pr_approval_action_error"
+#   scanner-anchor: "kind":"pr_approval_action_refused"
+
 usage() { echo "usage: pr-approval-action.sh <merge|reject> <owner/repo> <number> [--dry-run]" >&2; exit 1; }
 
 ACTION="${1:-}"; REPO="${2:-}"; NUMBER="${3:-}"; DRY="${4:-}"
