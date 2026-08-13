@@ -5642,6 +5642,45 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason]
 
+  - kind: organ_reconcile_applied
+    effect_metric: organ_unit_drift_auto_healed
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-305, run by
+      chump-organ-reconcile.timer and once by install-helsinki-atc.sh on deploy)
+    trigger: the reconcile changed live systemd state to match the repo-declared
+      organ manifest (scripts/ops/organ-manifest.txt) — neutered a drifted
+      auto-pager via its repo drop-in, removed a legacy zz-autopage-off.conf
+      snowflake, stopped a running pager, and/or (re)started an enabled organ;
+      the changed list names exactly what was reconciled.
+    consumers: [fleet-brief, ops-audit, curator]
+    fields_required: [ts, kind, changed]
+
+  - kind: organ_reconcile_noop
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-305)
+    trigger: the reconcile ran and live systemd state already matched the organ
+      manifest — the idempotent common path, still observable proof the
+      convergence check ran each timer tick.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind]
+
+  - kind: organ_reconcile_skipped
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-305)
+    trigger: the reconcile was invoked without root and could not write
+      /etc/systemd/system — surfaced (not silently no-op'd) so a non-privileged
+      context that cannot converge organ state is visible to the board.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason]
+
+  - kind: organ_reconcile_unit_failed
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-305)
+    trigger: an organ the manifest marks `enabled` could not be `enable --now`'d
+      (e.g. its unit file is not yet installed) — surfaced so a genuinely
+      missing/broken enabled organ pages the board instead of looping silently.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit]
+
   - kind: organ_self_healed
     effect_metric: organ_self_heal_rate
     emitter: scripts/ops/organ-watchdog.sh (INFRA-3595)

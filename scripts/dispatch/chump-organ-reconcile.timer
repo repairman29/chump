@@ -1,0 +1,15 @@
+# RESILIENT-305 — drives chump-organ-reconcile.service so the node's systemd
+# organ state converges to the repo-declared manifest on boot and every few
+# minutes. This is the "drift self-heals" beat: even if a deploy re-enables a
+# pager or an organ dies, the next tick re-asserts the manifest.
+[Unit]
+Description=Chump organ-reconcile beat — converge helsinki systemd state to the repo organ manifest (RESILIENT-305)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=3min
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
