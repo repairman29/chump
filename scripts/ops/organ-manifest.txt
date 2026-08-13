@@ -62,3 +62,9 @@ enabled     chump-ci-flake-rerun.timer
 # buttons; the gateway acts on the tap. Declared here so reconcile re-arms it if
 # it drifts or fails. (Detection only — it NEVER merges without a real tap.)
 enabled     chump-pr-approval.timer
+# chump-farmer.timer: the persistent farmer runner (RESILIENT-313). Fires the
+# farmer tick every 30s so the worker-gate heartbeat (RESILIENT-069) never crosses
+# its 120s stale threshold — the fix for the recurring silent fleet-stall. Retires
+# the fragile, hand-installed transient `chump-farmer-bridge` unit. Declared here
+# so organ-reconcile re-arms it if it drifts or fails.
+enabled     chump-farmer.timer
