@@ -105,4 +105,38 @@ echo "$out" | grep -q '"kind":"farmer_auth_ok".*"path":"api_key_fallback"' \
     || { echo "[test] FAIL (f) oauth-stale+api-key: expected farmer_auth_ok api_key_fallback, got: $out"; exit 1; }
 echo "[test] (f) oauth-mode + stale token + api-key floor → AUTH OK (INFRA-2031): OK"
 
+# ── (g) CREDIBLE-136: stale cached BROKEN verdict must NOT be replayed as
+# AUTH_DEAD — the farmer must see the validity probe RE-PROBE fresh (per the
+# CREDIBLE-146 cache hardening in auth-status.sh) rather than trusting a
+# cached transient-failure verdict. Repro: a 13:49Z transient claude -p
+# failure was cached as BROKEN and served to the farmer for the TTL window
+# while a fresh probe (and real claude -p) both succeeded.
+# The probe binary must resolve inside FAUX_REPO (farmer looks it up as
+# "$REPO_ROOT/scripts/coord/auth-status.sh", and REPO_ROOT == FAUX_REPO here
+# same as tests (e)/(f) above) so stage a copy of the real script there.
+mkdir -p "$FAUX_REPO/scripts/coord"
+cp "$REPO_ROOT/scripts/coord/auth-status.sh" "$FAUX_REPO/scripts/coord/auth-status.sh"
+chmod +x "$FAUX_REPO/scripts/coord/auth-status.sh"
+AUTH_CACHE="$WORK/auth-status-cache"
+now_ts="$(date +%s)"
+printf '%s\n1\nAUTH ✗ BROKEN — transient failure (stale)\n' "$now_ts" > "$AUTH_CACHE"
+rm -f "$FAUX_REPO/.chump-locks/ambient.jsonl"; touch "$FAUX_REPO/.chump-locks/ambient.jsonl"
+out=$(env -i PATH=/usr/bin:/bin HOME="$WORK/home" CHUMP_AUTH_MODE=oauth \
+    CHUMP_AUTH_STATUS_CACHE="$AUTH_CACHE" \
+    CHUMP_AUTH_STATUS_FAKE_MODE=oauth CHUMP_AUTH_STATUS_FAKE_OAUTH=valid \
+    CHUMP_AUTH_STATUS_FAKE_APIKEY=absent \
+    CHUMP_REPO_ROOT="$FAUX_REPO" \
+    bash -c "
+        cd '$FAUX_REPO' 2>/dev/null
+        source '$FARMER' 2>/dev/null
+        check_auth >/dev/null 2>&1
+        grep 'farmer_auth' '$FAUX_REPO/.chump-locks/ambient.jsonl' | tail -1
+    " 2>&1)
+echo "$out" | grep -q '"kind":"farmer_auth_ok".*"via":"validity_probe"' \
+    || { echo "[test] FAIL (g) stale-cached-BROKEN must re-probe -> AUTH OK, got: $out"; exit 1; }
+echo "$out" | grep -q '"kind":"farmer_auth_dead"' \
+    && { echo "[test] FAIL (g) must NOT fire farmer_auth_dead on a stale cached BROKEN when a fresh probe succeeds, got: $out"; exit 1; }
+echo "[test] (g) stale cached BROKEN + fresh probe succeeds → AUTH OK, no farmer_auth_dead (CREDIBLE-136): OK"
+rm -f "$AUTH_CACHE"
+
 echo "[test-farmer-check-auth] PASS"
