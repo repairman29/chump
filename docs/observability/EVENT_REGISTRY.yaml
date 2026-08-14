@@ -8620,6 +8620,194 @@ events:
     status: stable
     # payload: {corr_id: string, session: string, failure_class: "transient", detail: string, ts: string}
 
+  # ── INFRA-2162 (META-125/C3): consensus pipeline — the 9 kinds named in the
+  # META-125 umbrella's original C3 sub-gap. Wave 2 (C5 chump consensus ask,
+  # shipped INFRA-2156) and the pre-existing deliberator/vote primitives
+  # (META-157) shipped an equivalent success/failure/timeout story under
+  # different kind names before C3 itself landed. Each entry below documents
+  # which real, already-emitting kind covers that lifecycle step today so
+  # dashboards/consumers don't wait on a kind nothing ever emits — see
+  # AC1 (success/failure/timeout mapping) on this gap. Waves 2-3 daemons
+  # (C4 curator-subscriber, C8 aggregator, C10 roadmap-pivot) are not yet
+  # built, so their kinds stay status: planned with a scanner-anchor at the
+  # file that will own the real emission once those daemons ship.
+  - kind: consensus_ask_started
+    effect_metric: self
+    emitter: src/commands/consensus_ask.rs (INFRA-2156, planned distinct signal)
+    # scanner-anchor: "kind":"consensus_ask_started"
+    trigger: >
+      META-125/C3 named this the ASK-step success event. In the shipped
+      INFRA-2156 implementation, `consensus_ask_published` (above) IS the
+      success event for the ask step — there is no separate "started" moment
+      before publish succeeds. Kept registered (not removed) because a
+      future curator-subscriber daemon (C4) may need to distinguish
+      "question accepted for routing" from "durably published", at which
+      point this kind gets a real emit site here.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, corr_id, session, question]
+    expected_volume: "none today; superseded by consensus_ask_published"
+    status: planned
+    # payload: {corr_id: string, session: string, question: string, ts: string}
+
+  - kind: consensus_routed_to_curator
+    effect_metric: self
+    emitter: crates/chump-curator-subscriber (META-125/C4, not yet built)
+    # scanner-anchor: "kind":"consensus_routed_to_curator"
+    trigger: >
+      Would fire when a per-role NATS subscriber daemon (C4, wave 2 of
+      META-125, closed as part of the umbrella but the standalone Rust
+      binary was never split out — curators currently poll inboxes at
+      session-start per docs/process/OPUS_MESSAGE_PROTOCOL.md instead of
+      subscribing live) receives a consensus question and decides it falls
+      in its lane. Cost note (AC2): each routed question that triggers a
+      curator's `claude -p` reasoning call is the one place real LLM/API
+      cost enters this pipeline — when C4 ships, this event's payload must
+      carry a `reasoning_dispatched: bool` field so cost can be attributed
+      per curator role, distinct from `chump consensus ask`'s own posture
+      (no LLM cost — see consensus_ask_resolved above).
+    consumers: [ops-audit]
+    fields_required: [ts, kind, corr_id, role, confidence]
+    expected_volume: "none today; C4 daemon not built"
+    status: planned
+    # payload: {corr_id: string, role: string, confidence: "high"|"med"|"low", reasoning_dispatched: bool, ts: string}
+
+  - kind: consensus_vote_cast
+    effect_metric: self
+    emitter: src/commands/vote.rs (superseded by FEEDBACK kind=vote, META-157)
+    # scanner-anchor: "kind":"consensus_vote_cast"
+    trigger: >
+      META-125/C3 named this the VOTE-step event. The shipped primitive
+      (predates C3, META-157) uses the two-field convention
+      `"event":"FEEDBACK","kind":"vote"` instead — see `chump vote <corr_id>
+      +1|-1|0 --reason` in src/commands/vote.rs:79 and the reservation at
+      scripts/ci/event-registry-reserved.txt:529. Kept registered so a
+      future rename/consolidation onto the single-field `kind` convention
+      (INFRA-1159 migration) has a landing spot without inventing a new name.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, corr_id, session, vote]
+    expected_volume: "none today; superseded by FEEDBACK kind=vote"
+    status: planned
+    # payload: {corr_id: string, session: string, vote: -1|0|1, rationale: string, ts: string}
+
+  - kind: consensus_quorum_reached
+    effect_metric: self
+    emitter: scripts/coord/deliberator-loop.sh (planned; today jumps straight to consensus_result)
+    # scanner-anchor: "kind":"consensus_quorum_reached"
+    trigger: >
+      Would fire the moment enough votes/proposals accumulate to satisfy
+      quorum, BEFORE the tally computes a verdict — a distinct signal from
+      `consensus_result` (final verdict, always emitted today per
+      scripts/coord/deliberator-loop.sh:445) that operators could use to
+      measure "time to quorum" separately from "time to verdict". Not
+      currently split out; deliberator-loop.sh goes straight from
+      quorum-satisfied to tallied-and-emitted in one pass.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, corr_id, votes_for, votes_against, quorum_size]
+    expected_volume: "none today; not split out from consensus_result"
+    status: planned
+    # payload: {corr_id: string, votes_for: number, votes_against: number, quorum_size: number, ts: string}
+
+  - kind: consensus_timeout
+    effect_metric: self
+    emitter: scripts/coord/deliberator-loop.sh (superseded by consensus_result verdict=NO_QUORUM, and by consensus_ask_timeout for the --block CLI path)
+    # scanner-anchor: "kind":"consensus_timeout"
+    trigger: >
+      META-125/C3 named this the pipeline-level timeout event (AC1 + AC3:
+      failure-class taxonomy). Two real kinds already cover this: (a)
+      `consensus_ask_timeout` (failure_class=transient) for the
+      `chump consensus ask --block` CLI path — see above; (b) the
+      deliberator's own NO_QUORUM verdict inside `consensus_result`
+      (failure_class=permanent-until-more-votes: quorum was never reached
+      by the tally deadline; per CLAUDE.md "A2A consensus is always-on",
+      NO_QUORUM proposals escalate to the operator via operator-recall
+      after a 24h grace window if still unresolved). No standalone
+      `consensus_timeout` kind is emitted; kept registered as the C3
+      cross-reference point for future readers who go looking for it.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, corr_id, failure_class]
+    expected_volume: "none today; superseded by consensus_ask_timeout + consensus_result verdict=NO_QUORUM"
+    status: planned
+    # payload: {corr_id: string, failure_class: "transient"|"permanent", ts: string}
+
+  - kind: consensus_resolved
+    effect_metric: self
+    emitter: crates/chump-coord/src/consensus.rs (ConsensusCoordinator::finalize_vote, INFRA-1803/INFRA-2274)
+    # scanner-anchor: "kind":"consensus_resolved"
+    trigger: >
+      Promoted here from the scripts/ci/event-registry-reserved.txt-only
+      entry it had before this gap (INFRA-2162). `chump pe-suite status`
+      (src/pe_suite_status.rs, INFRA-2229) already reads this kind for its
+      "convergence rate" metric, and scripts/demo/chump-pe-suite-demo.sh
+      already emits a synthetic fixture line for it — but
+      `ConsensusCoordinator::finalize_vote` in this file does not yet write
+      to ambient.jsonl for real, so the live dashboard has zero real signal
+      today (only the demo fixture exercises it). This is the concrete gap
+      a follow-up should close: wire a real ambient emit into
+      `finalize_vote`, or point `chump pe-suite status` at the
+      already-live `consensus_result` (scripts/coord/deliberator-loop.sh)
+      instead of maintaining two parallel "decision is final" kinds.
+    consumers: [chump-pe-suite-status, ops-audit]
+    fields_required: [ts, kind, corr_id, decision, votes_for, votes_against]
+    expected_volume: "none today; consumer (pe-suite status) currently blind to real events, only demo fixtures exercise it"
+    status: planned
+    # payload: {corr_id: string, decision: string, votes_for: number, votes_against: number, ts: string}
+
+  - kind: consensus_decision_emitted
+    effect_metric: self
+    emitter: scripts/demo/chump-pe-suite-demo.sh (fixture only; no production emitter yet)
+    # scanner-anchor: "kind":"consensus_decision_emitted"
+    trigger: >
+      Read by `chump pe-suite status` (src/pe_suite_status.rs) for its
+      "P50 decision time" metric and asserted against by
+      scripts/ci/test-chump-pe-suite-demo.sh, but — same gap as
+      `consensus_resolved` above — no production code path emits it today,
+      only the synthetic 5-beat demo fixture
+      (scripts/demo/chump-pe-suite-demo.sh:255). AC2 cost note: this event
+      is the natural home for a `cost_usd` / `reasoning_calls` field once a
+      real emitter exists, since "decision emitted" is the terminal point
+      where the pipeline's total LLM spend for that consensus_id is known.
+    consumers: [chump-pe-suite-status, ops-audit]
+    fields_required: [ts, kind, id, decision, confidence]
+    expected_volume: "none today; fixture-only, see consensus_resolved note"
+    status: planned
+    # payload: {id: string, decision: string, confidence: number, cost_usd: number, ts: string}
+
+  - kind: roadmap_rerank_proposed
+    effect_metric: self
+    emitter: crates/chump-coord (META-125/C10 `chump consensus roadmap-pivot`, not yet built)
+    # scanner-anchor: "kind":"roadmap_rerank_proposed"
+    trigger: >
+      Would fire when a resolved consensus decision (PASSED, agree>=70%
+      per the META-125 umbrella's open question #4) proposes a gap-store
+      priority re-rank, before it is applied. Distinguishes "consensus
+      wants to pivot the roadmap" from `roadmap_rerank_applied` (below),
+      the "the pivot happened" event — same success/failure split pattern
+      as the rest of this pipeline (AC1).
+    consumers: [ops-audit]
+    fields_required: [ts, kind, corr_id, gap_ids, rationale]
+    expected_volume: "none today; C10 roadmap-pivot subcommand not built"
+    status: planned
+    # payload: {corr_id: string, gap_ids: [string], rationale: string, ts: string}
+
+  - kind: roadmap_rerank_applied
+    effect_metric: self
+    emitter: crates/chump-coord (META-125/C10 `chump consensus roadmap-pivot`, not yet built)
+    # scanner-anchor: "kind":"roadmap_rerank_applied"
+    trigger: >
+      Would fire once a proposed re-rank (`roadmap_rerank_proposed` above)
+      actually mutates the gap store (priority change / backlog + rationale
+      / new top-of-queue surfaced). failure_class taxonomy (AC3): a
+      roadmap-pivot that fails to apply (gap-store write conflict, stale
+      CAS) is a transient failure — retry the pivot; a pivot that is
+      operator-vetoed after the fact is a permanent no-op and should NOT
+      re-emit this kind.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, corr_id, gap_ids, applied]
+    expected_volume: "none today; C10 roadmap-pivot subcommand not built"
+    status: planned
+    # payload: {corr_id: string, gap_ids: [string], applied: bool, ts: string}
+    # smoke test: bash scripts/ci/test-consensus-pipeline-event-registry.sh
+
   # ── INFRA-2324: Trunk health sentinel ───────────────────────────────────────
   - kind: trunk_sentinel_tick
     effect_metric: self

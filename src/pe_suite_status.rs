@@ -294,6 +294,12 @@ pub fn scan_ambient(
     };
     let reader = BufReader::new(file);
 
+    // INFRA-2162 (META-125/C3): the consensus_resolved and
+    // consensus_decision_emitted kinds this fast-path filters for have no
+    // production emitter today (see their EVENT_REGISTRY.yaml entries) —
+    // only scripts/demo/chump-pe-suite-demo.sh's synthetic fixture and
+    // scripts/ci/test-chump-pe-suite-demo.sh exercise this code path.
+    // scanner-anchor: "kind":"consensus_decision_emitted"
     for line in reader.lines().flatten() {
         let line = line.trim().to_string();
         if line.is_empty() || !line.starts_with('{') {

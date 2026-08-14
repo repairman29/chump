@@ -521,7 +521,8 @@ cascade_auto_resolved             # reason: INFRA-2070 emitted by scripts/coord/
 cascade_resolve_skipped_semantic  # reason: INFRA-2070 emitted by scripts/coord/cascade-unblock-detector.sh when semantic-conflict detection skips an otherwise-rebasable PR. Scanner-anchor in cascade-unblock-detector.sh.
 
 # Consensus / deliberator (INFRA-2274, META-157)
-consensus_resolved                # reason: INFRA-2274 emitted by ConsensusCoordinator when quorum reached and decision final. Carries corr_id, decision, votes_for, votes_against. Scanner-anchor: crates/chump-coord/src/consensus.rs.
+# consensus_resolved promoted to a full EVENT_REGISTRY.yaml entry (INFRA-2162,
+# META-125/C3) — see docs/observability/EVENT_REGISTRY.yaml, no longer reserved-only.
 consensus_result                  # reason: META-157 emitted by scripts/coord/deliberator-loop.sh after tallying vote/proposal FEEDBACK events for a corr_id. Carries corr_id, winning_position, vote_count. Scanner-anchor: scripts/coord/deliberator-loop.sh:148.
 deliberator_heartbeat             # reason: META-157 emitted by scripts/coord/deliberator-loop.sh per-tick liveness probe. Scanner-anchor: scripts/coord/deliberator-loop.sh.
 

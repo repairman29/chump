@@ -217,6 +217,21 @@ _peek_inbox() {
 
 # ── Verdict logic (canonical from META-159 AC #3) ────────────────────────────
 # Inputs: yes no abstain total deadline_epoch now_epoch
+# INFRA-2162 (META-125/C3): this function is where quorum satisfaction
+# (yes/no/total crossing the thresholds below) and NO_QUORUM/timeout are
+# both decided, in one pass, immediately before the caller emits
+# kind=consensus_result. The umbrella originally named these two moments
+# as separate ambient kinds — consensus_quorum_reached (fires BEFORE the
+# verdict is tallied) and consensus_timeout (a standalone failure signal).
+# Neither is split out today; NO_QUORUM already rides inside
+# kind=consensus_result and escalates via operator-recall after the
+# NO_QUORUM_GRACE_HOURS window (see caller, ~line 451). Registered as
+# status: planned in docs/observability/EVENT_REGISTRY.yaml pending a
+# decision on whether splitting them out is worth the extra ambient line
+# per tally.
+# scanner-anchor: "kind":"consensus_quorum_reached"
+# scanner-anchor: "kind":"consensus_timeout"
+#
 # Outputs: prints verdict string to stdout
 _compute_verdict() {
     local yes="$1" no="$2" total="$3"
