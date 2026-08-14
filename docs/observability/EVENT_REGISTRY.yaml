@@ -1174,6 +1174,22 @@ events:
       infra_watcher_finding shape (re-emitted through the same category/severity/detail
       contract for dashboard compatibility).
 
+  - kind: auth_token_stale
+    effect_metric: self
+    emitter: scripts/coord/infra-watcher-loop.sh cmd_check_oauth_freshness (RESILIENT-056)
+    trigger: ~/.chump/oauth-token.json age > CHUMP_OAUTH_STALE_S (default 900s) OR expires_at within CHUMP_OAUTH_EXPIRY_WARN_S (default 600s) of now
+    consumers: [audit-log, operator-recall, infra-watcher]
+    fields_required: [ts, kind, token_file, age_seconds, stale_threshold_s, expiry_secs_left, daemon_loaded, reason]
+    docs: |
+      Unified staleness signal covering both mtime staleness and claimed-expiry
+      staleness (expires_at, captured from claudeAiOauth.expiresAt by
+      scripts/coord/oauth-token-refresh.sh). Fires within one 15-min tick of
+      either condition. operator-recall.sh widens its AUTH_DEAD trigger to fire
+      on repeated auth_token_stale (or oauth_token_refresh_failed) events, not
+      only fleet_auth_storm+worker_exit. Pairs with oauth_token_stale_despite_daemon
+      / oauth_token_stale_no_daemon, which are still emitted alongside it for
+      dashboard compatibility.
+
   - kind: credential_scrub_run
     effect_metric: self
     emitter: scripts/coord/scrub-credential-logs.sh (INFRA-871)

@@ -175,15 +175,20 @@ cmd_refresh_once() {
         fi
     fi
 
-    # 2. Parse JSON, pull claudeAiOauth.accessToken
-    local token
-    token="$(printf '%s' "$blob" | python3 -c '
+    # 2. Parse JSON, pull claudeAiOauth.accessToken + claudeAiOauth.expiresAt
+    # (RESILIENT-056: expires_at is captured alongside the token so downstream
+    # watchdogs can flag a token as stale from its own claimed expiry, not
+    # just from file mtime.)
+    local parsed token expires_at
+    parsed="$(printf '%s' "$blob" | python3 -c '
 import json, sys
 try:
     d = json.loads(sys.stdin.read())
-    t = d.get("claudeAiOauth", {}).get("accessToken", "")
+    oauth = d.get("claudeAiOauth", {})
+    t = oauth.get("accessToken", "")
+    exp = oauth.get("expiresAt", "")
     if t:
-        print(t)
+        print(f"{t}\t{exp}")
         sys.exit(0)
     sys.exit(2)
 except Exception:
@@ -194,6 +199,8 @@ except Exception:
         echo "[oauth-refresh] FAIL: keychain blob missing claudeAiOauth.accessToken" >&2
         return 1
     }
+    token="${parsed%%$'\t'*}"
+    expires_at="${parsed#*$'\t'}"
 
     if [[ -z "$token" ]]; then
         _emit_ambient "oauth_token_refresh_failed" \
@@ -227,8 +234,8 @@ except Exception:
     mkdir -p "$(dirname "$TOKEN_FILE")"
     chmod 700 "$(dirname "$TOKEN_FILE")" 2>/dev/null || true
     local tmp="${TOKEN_FILE}.tmp.$$"
-    printf '{"token":"%s","written_at":"%s","source":"launchd-refresher"}\n' \
-        "$token" "$(_ts)" > "$tmp"
+    printf '{"token":"%s","written_at":"%s","source":"launchd-refresher","expires_at":"%s"}\n' \
+        "$token" "$(_ts)" "$expires_at" > "$tmp"
     chmod 600 "$tmp"
     mv "$tmp" "$TOKEN_FILE"
 
