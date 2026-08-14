@@ -2569,6 +2569,20 @@ events:
       chump waste-tally, and failure-class taxonomy:
       docs/observability/PR_STUCK_CLUSTER_OBSERVABILITY.md (INFRA-1749)"
 
+  # INFRA-3352: sub-threshold escalation — a lone stuck PR that never
+  # reaches the 3-PR cluster threshold but has been stuck longer than
+  # CHUMP_PR_CHRONIC_STUCK_S (default 6h) previously had no recovery path.
+  - kind: pr_stuck_chronic
+    effect_metric: self
+    emitter: scripts/coord/pr-stuck-cluster-detector.sh (INFRA-3352)
+    trigger: 1-2 stuck PRs in window (below cluster threshold), one aged >= CHUMP_PR_CHRONIC_STUCK_S
+    consumers: [waste-tally, fleet-brief, watchdog]
+    fields_required: [ts, kind, pr, age_s, gap, origin_gap]
+    docs: "Chronic-PR escalation sibling of pr_stuck_cluster — files an
+      individual P1 gap per chronically-stuck PR instead of waiting for a
+      3-PR cluster that may never materialize. See
+      scripts/coord/pr-stuck-cluster-detector.sh header comment."
+
   # INFRA-2754: run-level observability for the detector itself — fires on
   # every invocation (no-op, cluster-filed, or error) so mutation cost
   # (gap_reserve_calls) is visible without grepping logs. INFRA-2906 added
