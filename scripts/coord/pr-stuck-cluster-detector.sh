@@ -11,6 +11,13 @@
 # Dedup: each cluster has a stamp file under .chump-locks/.cluster-sent/<cluster_id>.ts.
 # Refuse to re-file within CHUMP_PR_CLUSTER_RESEND_COOLDOWN_S (default 24h).
 #
+# INFRA-3352: sub-threshold stuck PRs (1-2 in the window — below the 3-PR
+# cluster threshold) used to be silently dropped forever, with no escalation
+# path if the same lone PR stayed stuck indefinitely. A chronically-stuck PR
+# (age >= CHUMP_PR_CHRONIC_STUCK_S, default 6h) below cluster threshold now
+# files its own P1 gap, deduped per-PR under
+# .chump-locks/.cluster-sent/chronic-<pr_num>.ts with the same resend cooldown.
+#
 # Usage:
 #   scripts/coord/pr-stuck-cluster-detector.sh             # dry-run
 #   scripts/coord/pr-stuck-cluster-detector.sh --apply     # file gap
@@ -41,6 +48,7 @@ source "${SCRIPT_DIR}/lib/ambient-write.sh"
 CLUSTER_THRESHOLD=3                   # 3+ PRs = cluster
 CLUSTER_WINDOW_S="${CHUMP_PR_CLUSTER_WINDOW_S:-7200}"           # 2h window
 RESEND_COOLDOWN_S="${CHUMP_PR_CLUSTER_RESEND_COOLDOWN_S:-86400}"  # 24h
+CHRONIC_STUCK_S="${CHUMP_PR_CHRONIC_STUCK_S:-21600}"            # 6h — sub-threshold escalation
 
 # INFRA-2754: run-level observability. Every invocation — regardless of
 # outcome — emits kind=pr_stuck_cluster_detector_run so the operator can see
@@ -60,7 +68,8 @@ _PSCD_GAP_RESERVE_CALLS=0
 
 _pscd_failure_class() {
     case "$1" in
-        no_op|dry_run|cluster_filed|help) echo "none" ;;
+        no_op|dry_run|cluster_filed|chronic_filed|chronic_dry_run) echo "none" ;;
+        help) echo "none" ;;
         gap_id_extract_failed|error) echo "transient" ;;
         gap_reserve_failed|bad_args) echo "permanent" ;;
         *) echo "transient" ;;
@@ -187,7 +196,67 @@ stuck_pr_count=$(wc -l < "$stuck_tmp")
 _PSCD_STUCK_PR_COUNT="$stuck_pr_count"
 if [ "$stuck_pr_count" -lt "$CLUSTER_THRESHOLD" ]; then
     echo "[pr-stuck-cluster-detector] $stuck_pr_count stuck PRs (threshold=$CLUSTER_THRESHOLD) — no cluster"
-    _PSCD_OUTCOME="no_op"
+
+    # INFRA-3352: below cluster threshold, but a lone PR stuck long enough
+    # (>= CHRONIC_STUCK_S) will never self-resolve into a 3-PR cluster and
+    # would otherwise be dropped forever. Escalate it individually.
+    chronic_outcome="no_op"
+    while IFS='|' read -r pr_num gap_id ts_iso age_s; do
+        [ -z "$pr_num" ] && continue
+        [ "$age_s" -lt "$CHRONIC_STUCK_S" ] && continue
+
+        chronic_stamp="$CLUSTER_SENT_DIR/chronic-$pr_num.ts"
+        if [ -f "$chronic_stamp" ]; then
+            chronic_stamp_ts="$(cat "$chronic_stamp" 2>/dev/null || echo 0)"
+            if [ "$chronic_stamp_ts" -gt 0 ] && [ $(( now_epoch - chronic_stamp_ts )) -lt "$RESEND_COOLDOWN_S" ]; then
+                echo "[pr-stuck-cluster-detector] PR #$pr_num chronic gap filed within cooldown; skip"
+                continue
+            fi
+        fi
+
+        chronic_title="RESILIENT: PR #$pr_num chronically stuck — $((age_s/3600))h with no cluster; escalate individually"
+        chronic_desc="$(cat << CHRONIC_EOF
+PR #$pr_num has been stuck for ~$((age_s/3600))h (since $ts_iso), but never
+reached the $CLUSTER_THRESHOLD-PR cluster threshold, so pr-stuck-cluster-detector's
+cluster path never escalated it. Originating gap: $gap_id.
+
+This is a chronic single-PR escalation (INFRA-3352): a PR that stays stuck
+alone indefinitely would otherwise never get a recovery gap filed for it.
+
+Suggested actions:
+1. gh pr checks $pr_num to identify the blocking condition
+2. scripts/coord/pr-rescue.sh for automated recovery (rebase/BLOCKED re-arm)
+3. If genuinely abandoned, close or re-dispatch the underlying gap ($gap_id)
+CHRONIC_EOF
+)"
+
+        if [ "$APPLY" -eq 1 ]; then
+            _PSCD_GAP_RESERVE_CALLS=$(( _PSCD_GAP_RESERVE_CALLS + 1 ))
+            chronic_result="$(chump gap reserve --domain INFRA --priority P1 --title "$chronic_title" --description "$chronic_desc" 2>&1)"
+            chronic_exit=$?
+            if [ $chronic_exit -eq 0 ]; then
+                chronic_gap_id="$(echo "$chronic_result" | grep -oE 'INFRA-[0-9]+' | head -1)"
+                if [ -n "$chronic_gap_id" ]; then
+                    echo "[pr-stuck-cluster-detector] filed $chronic_gap_id for chronic PR #$pr_num"
+                    _ambient_write "$LOCK_DIR/ambient.jsonl" \
+                        "$(printf '{"ts":"%s","kind":"pr_stuck_chronic","pr":%d,"age_s":%d,"gap":"%s","origin_gap":"%s"}' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr_num" "$age_s" "$chronic_gap_id" "$gap_id")"
+                    printf '%s' "$now_epoch" > "$chronic_stamp"
+                    chronic_outcome="chronic_filed"
+                else
+                    echo "[pr-stuck-cluster-detector] ERROR: chronic gap reserve succeeded but no ID extracted"
+                fi
+            else
+                echo "[pr-stuck-cluster-detector] ERROR: chronic gap reserve failed for PR #$pr_num" >&2
+                echo "$chronic_result" >&2
+            fi
+        else
+            echo "[pr-stuck-cluster-detector] WOULD file chronic gap: $chronic_title"
+            [ "$chronic_outcome" = "no_op" ] && chronic_outcome="chronic_dry_run"
+        fi
+    done < "$stuck_tmp"
+
+    _PSCD_OUTCOME="$chronic_outcome"
     exit 0
 fi
 
