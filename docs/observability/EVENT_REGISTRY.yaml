@@ -2590,7 +2590,16 @@ events:
       PR below cluster threshold) — already answered by the INFRA-3352
       escalation path above and its regression coverage in
       scripts/ci/test-pr-stuck-cluster-detection.sh
-      (test_chronic_single_pr_escalates / test_chronic_single_pr_too_young)."
+      (test_chronic_single_pr_escalates / test_chronic_single_pr_too_young).
+      INFRA-3419 (\"pr-stuck-cluster — 3 PRs blocked >2h as of 2026-07-24\")
+      is the sibling detector-filed placeholder for the at-threshold cluster
+      shape (3+ stuck PRs, not the sub-threshold chronic case above) —
+      already answered by the pr_stuck_cluster event earlier in this file
+      (INFRA-848/INFRA-950) and its full lifecycle documentation in
+      docs/observability/PR_STUCK_CLUSTER_OBSERVABILITY.md (INFRA-1749);
+      test_cluster_detected_run_event in
+      scripts/ci/test-pr-stuck-cluster-observability.sh exercises the
+      3-stuck-PR cluster-detected path directly."
 
   # INFRA-2754: run-level observability for the detector itself — fires on
   # every invocation (no-op, cluster-filed, or error) so mutation cost
