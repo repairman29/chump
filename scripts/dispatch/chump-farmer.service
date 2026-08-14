@@ -1,0 +1,22 @@
+# RESILIENT-313 — the persistent farmer runner. The farmer (scripts/coord/farmer.sh,
+# RESILIENT-068) is the un-killable control-plane tender that writes the heartbeat
+# the worker binary gates on (RESILIENT-069). It is a single-TICK script; nothing
+# on helsinki ever scheduled it. The fleet was kept alive only by a fragile,
+# hand-installed *transient* `chump-farmer-bridge` unit — this repo-declared
+# service+timer retires that hack. Paired with chump-farmer.timer (~every 30s,
+# well under the 120s heartbeat-freshness threshold). Runs the wrapper
+# (chump-farmer-run.sh) which sources providers.env, sweeps stale leases, and
+# refreshes the oauth mtime before each tick.
+# Path defaults target the primary node (helsinki, root).
+[Unit]
+Description=Chump farmer tick — keep the worker-gate heartbeat fresh so the fleet never darks out (RESILIENT-313)
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+# Wrapper sets env, sources providers.env, sweeps stale leases, refreshes oauth
+# mtime, then execs one farmer tick. Kept short so it always completes well
+# inside the 30s timer cadence.
+ExecStart=/bin/bash -lc 'exec /root/Projects/chump/scripts/dispatch/chump-farmer-run.sh'
+TimeoutStartSec=120

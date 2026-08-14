@@ -106,8 +106,13 @@ SYSTEM_UNITS=(
   chump-organ-reconcile.timer
   chump-pr-approval.service
   chump-pr-approval.timer
+  # RESILIENT-313: the persistent farmer runner — keeps the worker-gate heartbeat
+  # fresh every 30s so the fleet never silently darks out. Retires the transient
+  # chump-farmer-bridge hack.
+  chump-farmer.service
+  chump-farmer.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then

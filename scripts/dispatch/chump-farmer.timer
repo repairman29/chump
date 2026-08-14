@@ -1,0 +1,18 @@
+# RESILIENT-313 — fires the farmer tick every ~30s on the primary node. This is
+# the "baked into the OS" scheduler the farmer never had. 30s is deliberately well
+# under the worker binary's 120s heartbeat-freshness threshold
+# (src/farmer_status.rs HEARTBEAT_MAX_AGE_S) so even a skipped/slow tick can never
+# let the heartbeat cross stale. AccuracySec=1s is REQUIRED — systemd's default 1min
+# accuracy would smear a 30s cadence into ~1min and blow the 120s budget on a
+# reset-then-miss. Enable: systemctl enable --now chump-farmer.timer
+[Unit]
+Description=Run the Chump farmer tick every 30s (RESILIENT-313)
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=30s
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

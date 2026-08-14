@@ -89,9 +89,38 @@ emit() {
         log "WARN: ambient write failed for kind=$kind"
 }
 
+# ── Portable file mtime (epoch seconds), ALWAYS a clean integer ───────────────
+# RESILIENT-313: the old inline `stat -f %m F || stat -c %Y F` is a macOS-first
+# ordering that is TOXIC on GNU/Linux. On Linux `stat -f` means --file-system and
+# `%m` is parsed as a SECOND path arg → stat prints a multi-line filesystem block
+# to stdout AND exits non-zero, so the `||` fallback output gets CONCATENATED with
+# that garbage. The result (`  File: "...\n ID: ..."`) then flows into `$(( now -
+# mtime ))`, where under `set -u` the token `File` is an unbound variable and the
+# whole tick dies BEFORE write_heartbeat — the farmer's one job. Any present/stale
+# claim-*.json lease was enough to trip it. This helper is GNU-first, BSD-second,
+# and sanitizes to digits so a non-numeric result can never crash arithmetic.
+_mtime() {
+    local f="$1" m
+    m="$(stat -c %Y "$f" 2>/dev/null)" || m="$(stat -f %m "$f" 2>/dev/null)" || m=0
+    [[ "$m" =~ ^[0-9]+$ ]] || m=0
+    printf '%s' "$m"
+}
+
 # Write/update the heartbeat file (local only, no network).
+# RESILIENT-313: dual-write — the in-repo path (what the worker binary's
+# farmer-gate reads, src/farmer_status.rs) PLUS a durable out-of-repo copy under
+# $HOME/.chump that survives the fleet's `git reset --hard` / `git clean` of the
+# repo checkout. The 30s chump-farmer.timer rewrites both every tick, so even a
+# reset that deletes the in-repo copy leaves it stale for <30s — well under the
+# 120s freshness threshold.
 write_heartbeat() {
-    printf '%s\n' "$(_ts)" > "$HEARTBEAT_FILE"
+    local ts; ts="$(_ts)"
+    printf '%s\n' "$ts" > "$HEARTBEAT_FILE" 2>/dev/null || true
+    local durable="${HOME:-/root}/.chump/farmer-heartbeat"
+    if [[ "$durable" != "$HEARTBEAT_FILE" ]]; then
+        mkdir -p "${HOME:-/root}/.chump" 2>/dev/null || true
+        printf '%s\n' "$ts" > "$durable" 2>/dev/null || true
+    fi
 }
 
 # ── Dry-run wrapper ───────────────────────────────────────────────────────────
@@ -356,7 +385,7 @@ check_auth() {
         return
     }
     local mtime now age
-    mtime=$(stat -f %m "$token_file" 2>/dev/null || stat -c %Y "$token_file" 2>/dev/null || echo 0)
+    mtime=$(_mtime "$token_file")   # RESILIENT-313: portable, always-integer
     now="$(_now)"
     age=$(( now - mtime ))
     if [[ "$age" -gt "$OAUTH_MAX_AGE_S" ]]; then
@@ -374,7 +403,7 @@ check_silent_workers() {
     for lease_file in "$LOCK_DIR"/claim-*.json; do
         [[ -f "$lease_file" ]] || continue
         local mtime
-        mtime=$(stat -f %m "$lease_file" 2>/dev/null || stat -c %Y "$lease_file" 2>/dev/null || echo 0)
+        mtime=$(_mtime "$lease_file")   # RESILIENT-313: was the crash site (macOS stat -f on Linux)
         local age=$(( now - mtime ))
         [[ "$age" -lt "$SILENT_WORKER_S" ]] && continue
         # Stale lease — check if session has recent ambient activity
@@ -405,6 +434,14 @@ try:
 except Exception:
     print(99999)
 " 2>/dev/null || echo 99999)
+        # RESILIENT-313: sanitize to a single integer. `set -o pipefail` + a
+        # grep-miss on $AMBIENT makes the pipeline exit non-zero even though
+        # python already printed a value, so the `|| echo 99999` fallback
+        # APPENDS a second line ("99999\n99999"). A multi-line $recent then made
+        # `[[ -gt ]]` throw a "syntax error in expression" — silently disabling
+        # Mode-4 silent-worker detection. Keep only the last numeric line.
+        recent="$(printf '%s\n' "$recent" | grep -E '^[0-9]+$' | tail -1)"
+        [[ "$recent" =~ ^[0-9]+$ ]] || recent=99999
         if [[ "$recent" -gt "$SILENT_WORKER_S" ]]; then
             log "silent worker detected: session=$session_id lease_age=${age}s ambient_age=${recent}s"
             emit "farmer_silent_worker" "\"session\":\"$session_id\",\"lease_age_s\":$age,\"ambient_age_s\":$recent"
@@ -421,7 +458,7 @@ handle_sentinel() {
     [[ -f "$SENTINEL" ]] || return 0
     local now; now="$(_now)"
     local mtime
-    mtime=$(stat -f %m "$SENTINEL" 2>/dev/null || stat -c %Y "$SENTINEL" 2>/dev/null || echo 0)
+    mtime=$(_mtime "$SENTINEL")   # RESILIENT-313: portable, always-integer
     local age=$(( now - mtime ))
     log "sentinel present, age=${age}s"
 
@@ -508,6 +545,25 @@ check_dead_supervisors() {
     done
 }
 
+# ── Crash guard (RESILIENT-313) ───────────────────────────────────────────────
+# The farmer's ONE job is to keep the heartbeat fresh so the worker-gate stays
+# GREEN. A tick that dies mid-way (unbound var, bad arithmetic, a future edit)
+# used to leave NO heartbeat → the worker binary's farmer-gate reads it stale →
+# every worker on the host hard-blocks new claims → silent fleet-wide outage.
+# This EXIT trap guarantees the heartbeat is written even on an abnormal exit,
+# so a single bad tick can never dark-out the fleet again. It stays LOUD (logs a
+# WARN) so the crash is still visible rather than masked. Normal ticks set
+# _HEARTBEAT_WRITTEN=1 and the trap is a no-op for them.
+_HEARTBEAT_WRITTEN=0
+_farmer_exit_guard() {
+    local rc=$?
+    if [[ "$rc" -ne 0 && "${_HEARTBEAT_WRITTEN}" != "1" ]]; then
+        log "WARN: tick exiting abnormally (rc=$rc) before heartbeat — writing it anyway so the worker-gate does not dark-out the fleet (RESILIENT-313)"
+        write_heartbeat || true
+    fi
+}
+trap _farmer_exit_guard EXIT
+
 # ── Main tick ─────────────────────────────────────────────────────────────────
 log "farmer tick start (dry_run=$DRY_RUN)"
 
@@ -523,8 +579,10 @@ check_silent_workers
 # Mode 6: dead supervisors (always run, not only during revive)
 check_dead_supervisors
 
-# Heartbeat — written AFTER all checks so a crash mid-tick shows up as stale
+# Heartbeat — written AFTER all checks on the normal path. A crash BEFORE here is
+# now caught by the EXIT trap above (RESILIENT-313) so the fleet never darks out.
 write_heartbeat
+_HEARTBEAT_WRITTEN=1
 emit "farmer_heartbeat" "\"dry_run\":${DRY_RUN}"
 
 log "farmer tick done"

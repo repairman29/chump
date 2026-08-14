@@ -875,6 +875,10 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // without an outcome (when outcomes exist), the audited flag + empty-DB
         // skip work. Fast (~2s), pure local (chump binary + temp dirs, no network).
         "scripts/ci/test-outcome-gate.sh",
+        // RESILIENT-313: farmer stale-lease heartbeat regression — a present
+        // claim-*.json lease must never crash the tick before write_heartbeat.
+        // Pure shell, ~3s, Linux-safe, no network.
+        "scripts/ci/test-farmer-stale-lease-heartbeat.sh",
         // EFFECTIVE-323: opencode harness smoke — build_harness_cmd argv is
         // well-formed + set-u clean (catches the $_TO unbound + missing-`run`
         // class). Pure shell, ~1s; live spawn skips without opencode/auth.
