@@ -49,6 +49,11 @@ async fn emit_round_trips_to_subscriber() {
         .subscribe(subject_pattern)
         .await
         .expect("subscribe ok");
+    // Flush forces a round-trip to the server, guaranteeing the subscription
+    // is registered there before we publish — without this the publish can
+    // race the SUB frame and the event is dropped, causing an intermittent
+    // panic below (INFRA-2152).
+    subscriber.flush().await.ok();
 
     // Unique session ID so concurrent test runs don't see each other's events.
     let unique_session = format!("fleet-006-test-{}", uuid::Uuid::new_v4());
@@ -111,6 +116,7 @@ async fn custom_event_kinds_route_to_their_subjects() {
         .subscribe(format!("{}.adversary_alert", EVENTS_SUBJECT))
         .await
         .expect("subscribe ok");
+    subscriber.flush().await.ok();
 
     publisher
         .emit(CoordEvent {
