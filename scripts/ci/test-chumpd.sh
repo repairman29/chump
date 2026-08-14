@@ -67,6 +67,24 @@ else
     fail "could not read worker-1 pid"
 fi
 
+# 3b. RESILIENT-179 AC3: scale down 2 -> 1 removes the de-scaled slot from
+# chumpd-status.json's workers array (not just child=None on a lingering entry).
+echo 1 > "$FIX/repo/.chump/fleet-desired-size"
+sleep 20
+if python3 -c "
+import json; d=json.load(open('/tmp/chumpd-status.json'))
+assert d['desired']==1
+ids = [w['id'] for w in d['workers']]
+assert 2 not in ids, f'de-scaled slot 2 still present: {ids}'
+assert 1 in ids
+" 2>/dev/null; then
+    ok "scale-down 2->1: de-scaled slot removed from workers array"
+else
+    fail "scale-down 2->1: stale slot still present in status JSON"
+fi
+echo 2 > "$FIX/repo/.chump/fleet-desired-size"
+sleep 20
+
 # 4. mode=off stops children
 echo off > "$FIX/home/.chump/fleet-mode"
 sleep 20

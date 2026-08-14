@@ -511,17 +511,20 @@ async fn main() {
             }
         }
 
-        // Scale down: kill children beyond desired (highest ids first).
+        // Scale down: kill children beyond desired (highest ids first) and
+        // drop the slot entirely. RESILIENT-179 AC3: leaving a de-scaled
+        // slot in the map (even with child=None) kept surfacing a stale
+        // {pid: null, hb_age: ...} entry in chumpd-status.json forever —
+        // remove() so write_status's iteration below never sees it again.
         let mut ids: Vec<usize> = slots.keys().copied().collect();
         ids.sort_unstable();
         for id in ids.iter().rev() {
             if *id > desired {
-                if let Some(slot) = slots.get_mut(id) {
+                if let Some(mut slot) = slots.remove(id) {
                     if let Some(child) = slot.child.as_mut() {
                         let _ = child.kill();
                         let _ = child.wait();
                     }
-                    slot.child = None;
                 }
             }
         }

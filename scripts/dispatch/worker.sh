@@ -250,7 +250,38 @@ remove_heartbeat() {
     local heartbeat_file="/tmp/chump-fleet-worker-${AGENT_ID}.heartbeat"
     rm -f "$heartbeat_file" 2>/dev/null || true
 }
-trap remove_heartbeat EXIT
+
+# RESILIENT-179: heartbeat writer for the WHOLE worker lifetime, not just the
+# `claude -p` window. The old FLEET-042 writer was a background subshell
+# started alongside the claude call and killed the moment it exited — every
+# other phase (worktree setup, model resolution, ship via bot-merge polling
+# for chump-local, INFRA-771 re-engagement gh calls, cycle_end bookkeeping)
+# ran with a heartbeat frozen at whatever it was at pick time. A cluster of
+# those phases routinely runs 10-20 min, well past chumpd's 900s wedge
+# threshold, so chumpd wedge-killed HEALTHY workers mid-ship (16/night,
+# first chumpd night). Fix: one persistent writer for the process lifetime;
+# it can't see live updates to $GAP_ID across the fork, so callers publish
+# the current gap id to a small tracking file instead.
+_hb_gapid_file="/tmp/chump-fleet-worker-${AGENT_ID}.heartbeat.gapid"
+printf 'none' > "$_hb_gapid_file" 2>/dev/null || true
+publish_heartbeat_gap() {
+    printf '%s' "${1:-none}" > "$_hb_gapid_file" 2>/dev/null || true
+}
+_heartbeat_daemon_pid=0
+(
+    while kill -0 $$ 2>/dev/null; do
+        write_heartbeat "$(cat "$_hb_gapid_file" 2>/dev/null || echo none)"
+        sleep "$_heartbeat_interval"
+    done
+) &
+_heartbeat_daemon_pid=$!
+
+remove_heartbeat_and_daemon() {
+    [[ "${_heartbeat_daemon_pid:-0}" -ne 0 ]] && kill "$_heartbeat_daemon_pid" 2>/dev/null || true
+    rm -f "$_hb_gapid_file" 2>/dev/null || true
+    remove_heartbeat
+}
+trap remove_heartbeat_and_daemon EXIT
 
 # INFRA-620: re-read CLAUDE_CODE_OAUTH_TOKEN from ~/.chump/oauth-token.json
 # before each claude -p spawn. Prevents auth_storm when the inherited token
@@ -695,14 +726,11 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
 ' 2>/dev/null || echo "$IDLE_SLEEP_S")"
         fi
         log "no pickable gap (filters: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER); sleeping ${_sleep_s}s (starve=$_starve_count, backoff_mult=${_backoff_multiplier}x)"
-        # FLEET-042: heartbeat during idle with short sleeps to keep file fresh.
-        _sleep_remaining=$(printf '%.0f' "$_sleep_s")
-        while [ "$_sleep_remaining" -gt 0 ]; do
-            _this_sleep=$(( _sleep_remaining > 10 ? 10 : _sleep_remaining ))
-            sleep "$_this_sleep"
-            write_heartbeat "idle"
-            _sleep_remaining=$(( _sleep_remaining - _this_sleep ))
-        done
+        # RESILIENT-179: the persistent lifetime heartbeat daemon already
+        # keeps the file fresh; just publish "idle" so its content reflects
+        # what the worker is actually doing.
+        publish_heartbeat_gap "idle"
+        sleep "$_sleep_s"
         continue
     fi
 
@@ -736,8 +764,9 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
         fi
     fi
 
-    # FLEET-042: update heartbeat with picked gap.
-    write_heartbeat "$GAP_ID"
+    # RESILIENT-179: publish the picked gap to the lifetime heartbeat daemon
+    # (covers setup/model-resolution/ship phases too, not just claude -p).
+    publish_heartbeat_gap "$GAP_ID"
 
     # INFRA-471: per-pick model class from routing.yaml.
     # FLEET_MODEL is the worker's base model class (used for effort filtering);
@@ -1225,14 +1254,16 @@ Operator or sibling worker can rescue this branch via:
                 _checkpoint_pid=$!
             fi
 
-            # FLEET-042: heartbeat background process while claude is running.
+            # INFRA-1116 AC5: refresh INTENT announcement while claude is
+            # running so other sessions' overlap gates see us as live.
+            # RESILIENT-179: heartbeat freshness itself is now owned by the
+            # process-lifetime daemon (see publish_heartbeat_gap above) — this
+            # loop only emits intent_refreshed, it no longer double-writes
+            # the heartbeat file.
             _heartbeat_pid=0
             (
                 sleep 1  # Let claude process start
                 while kill -0 $$ 2>/dev/null; do
-                    write_heartbeat "$GAP_ID"
-                    # INFRA-1116 AC5: refresh INTENT announcement every heartbeat cycle
-                    # so other sessions' overlap gates see us as live.
                     if [[ -n "${GAP_ID:-}" && -n "${CHUMP_SESSION_ID:-}" ]]; then
                         _amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
                         _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
