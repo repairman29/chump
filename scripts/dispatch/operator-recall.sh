@@ -50,6 +50,18 @@
 #                             kern.tty.ptmx_max (macOS) or /proc/sys/kernel/pty/max
 #                             (Linux) — pages BEFORE forkpty fails machine-wide,
 #                             not auto-detected by this script's scan loop.
+#   (h) AUTONOMY_HALT       — RESILIENT-321: the kill switch (~/.chump/AUTONOMY_LEVEL)
+#                             is currently 0 AND the oldest fleet_stopped_kill_switch
+#                             event in the last CHUMP_AUTONOMY_HALT_WINDOW_SECS
+#                             (default 86400) is older than
+#                             CHUMP_AUTONOMY_HALT_MIN_SECS (default 1800) — i.e. the
+#                             fleet has been silently halted for 30+ minutes. Every
+#                             other halt condition above self-reports via a loud
+#                             ambient event the moment it fires; AUTONOMY_LEVEL=0 did
+#                             not — worker.sh/bot-merge.sh log+skip quietly every
+#                             cycle, so a refresh/provision (or any other automated
+#                             path) clobbering the kill switch to 0 went unnoticed
+#                             for 6h on 2026-08-14. This closes that silent-halt gap.
 #
 # Usage:
 #   operator-recall.sh                  # auto-detect all conditions; exit 0
@@ -93,6 +105,8 @@ _runner_queue_min_count="${CHUMP_RUNNER_QUEUE_MIN_COUNT:-3}"
 _runner_ghost_detect="${CHUMP_RUNNER_GHOST_ONLINE_DETECT:-1}"
 _disk_critical_window="${CHUMP_DISK_CRITICAL_WINDOW_SECS:-600}"
 _disk_critical_pct="${CHUMP_DISK_CRITICAL_PCT:-5}"
+_autonomy_halt_min_secs="${CHUMP_AUTONOMY_HALT_MIN_SECS:-1800}"
+_autonomy_halt_window="${CHUMP_AUTONOMY_HALT_WINDOW_SECS:-86400}"
 
 _check_only=0
 _forced_condition=""
@@ -538,6 +552,54 @@ if (( _disk_hits > 0 )); then
             _any_halt=1
         else
             _emit_recall "DISK_CRITICAL" "$_reason"
+        fi
+    fi
+fi
+
+# (h) AUTONOMY_HALT — RESILIENT-321: sustained silent kill-switch halt.
+# Live-read the current AUTONOMY_LEVEL (same fail-closed contract as every
+# other consumer); only proceed if it is 0 RIGHT NOW — a since-recovered halt
+# (operator ran `chump fleet start`) must not page.
+_al_file_live="${HOME:-/tmp}/.chump/AUTONOMY_LEVEL"
+_al_now=0
+if [[ -r "$_al_file_live" ]]; then
+    _al_raw_live="$(tr -d '[:space:]' < "$_al_file_live" 2>/dev/null || true)"
+    [[ "$_al_raw_live" =~ ^[0-9]+$ ]] && _al_now="$_al_raw_live"
+fi
+if [[ "$_al_now" -eq 0 ]]; then
+    _halt_events=$(_scan_ambient "$_autonomy_halt_window" '"kind":"fleet_stopped_kill_switch"')
+    if [[ -n "$_halt_events" ]]; then
+        _first_halt_ts=$(echo "$_halt_events" | python3 -c "
+import json, sys
+from datetime import datetime, timezone
+best = None
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+        ts = d.get('ts', '').rstrip('Z')
+        epoch = int(datetime.fromisoformat(ts).replace(tzinfo=timezone.utc).timestamp())
+    except Exception:
+        continue
+    if best is None or epoch < best:
+        best = epoch
+print(best if best is not None else 0)
+" 2>/dev/null || echo 0)
+        _first_halt_ts="${_first_halt_ts:-0}"
+        if [[ "$_first_halt_ts" =~ ^[0-9]+$ ]] && (( _first_halt_ts > 0 )); then
+            _halt_age=$(( $(_now_epoch) - _first_halt_ts ))
+            if (( _halt_age >= _autonomy_halt_min_secs )); then
+                _halt_mins=$(( _halt_age / 60 ))
+                _reason="AUTONOMY_LEVEL has been 0 (kill switch) for ~${_halt_mins}m (>= ${_autonomy_halt_min_secs}s threshold); fleet is silently halted with no work happening"
+                if (( _check_only )); then
+                    echo "[operator-recall] HALT condition=AUTONOMY_HALT: $_reason"
+                    _any_halt=1
+                else
+                    _emit_recall "AUTONOMY_HALT" "$_reason" ',"class":"AUTONOMY_HALT","halt_age_s":'"$_halt_age"',"remediation":"chump fleet start (or chump fleet level N) to resume; if this was NOT operator-initiated, find + fix the process that wrote AUTONOMY_LEVEL=0 before resuming"'
+                fi
+            fi
         fi
     fi
 fi

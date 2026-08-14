@@ -191,6 +191,31 @@ else
     fail "Test 8: fleet_stopped_kill_switch not found in ambient stream"
 fi
 
+# ── Test 9: refresh/provision scripts must never write AUTONOMY_LEVEL ────────
+# RESILIENT-321: a refresh/provision path clobbered ~/.chump/AUTONOMY_LEVEL to
+# 0 on 2026-08-14, silently halting the fleet 6h. These scripts run
+# unattended (systemd timer / node provisioning) and must never write to the
+# kill-switch file — only explicit operator commands (`chump fleet
+# start|stop|level|down`) may. Static guard: neither script may contain a
+# redirect into AUTONOMY_LEVEL.
+_refresh_provision_scripts=(
+    "$REPO_ROOT/scripts/ops/node-refresh-chump.sh"
+    "$REPO_ROOT/scripts/setup/install-node-refresh-systemd.sh"
+    "$REPO_ROOT/scripts/setup/provision-chumpd-host.sh"
+    "$REPO_ROOT/scripts/setup/install-helsinki-atc.sh"
+)
+_write_offenders=""
+for _script in "${_refresh_provision_scripts[@]}"; do
+    if [[ -f "$_script" ]] && grep -vE '^\s*#' "$_script" | grep -E '>[^>=].*AUTONOMY_LEVEL|AUTONOMY_LEVEL.*[^<]<' >/dev/null 2>&1; then
+        _write_offenders="${_write_offenders} $_script"
+    fi
+done
+if [[ -z "$_write_offenders" ]]; then
+    ok "Test 9: refresh/provision scripts contain no AUTONOMY_LEVEL write"
+else
+    fail "Test 9: found a write into AUTONOMY_LEVEL in:${_write_offenders} — refresh/provision must never clobber the operator's kill switch"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
