@@ -165,7 +165,7 @@ trigger_systemic_rerun() { # $1 = systemic count, $2 = systemic PR numbers
     local n="$1" prs="$2"
     echo "[back-pressure] SYSTEMIC-RED: $n PR(s) blocked by shared/flaky red (main-gate or same-check-across-PRs) — NOT halting on them; re-running the flaky checks [PRs: ${prs:-none}]"
     emit systemic_red "$n"
-    [[ "${CHUMP_BACKPRESSURE_NO_RERUN:-0}" == "1" ]] && return 0
+    [[ "${CHUMP_BACKPRESSURE_RERUN_DISABLED:-0}" == "1" ]] && return 0
     if [[ -n "${CHUMP_BACKPRESSURE_RERUN_CMD:-}" ]]; then
         eval "$CHUMP_BACKPRESSURE_RERUN_CMD" || true
     elif [[ -x "$SCRIPT_DIR/ci-flake-rerun.sh" ]]; then
