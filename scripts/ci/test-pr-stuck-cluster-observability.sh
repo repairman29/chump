@@ -156,6 +156,21 @@ test_registry_cross_references_infra_3414() {
     pass "Test 6: EVENT_REGISTRY.yaml cross-references INFRA-3414 as answered by INFRA-3352"
 }
 
+# Test 7 (INFRA-3427): same duplicate-placeholder shape as INFRA-3395 /
+# INFRA-3402 / INFRA-3414, two days later (2026-07-25), this time with 2
+# stuck PRs (still below the 3-PR cluster threshold). The registry entry
+# must cross-reference all four so none of the placeholders get
+# re-implemented from scratch.
+test_registry_cross_references_infra_3427() {
+    local registry="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
+    [ -f "$registry" ] || fail "Test 7: EVENT_REGISTRY.yaml not found"
+
+    grep -q "INFRA-3427" "$registry" || \
+        fail "Test 7: expected EVENT_REGISTRY.yaml to cross-reference INFRA-3427"
+
+    pass "Test 7: EVENT_REGISTRY.yaml cross-references INFRA-3427 as answered by INFRA-3352"
+}
+
 echo "[test-pr-stuck-cluster-observability] Starting tests..."
 
 test_no_op_run_event
@@ -164,6 +179,7 @@ test_bad_args_run_event
 test_registry_cross_references_infra_3395
 test_registry_cross_references_infra_3402
 test_registry_cross_references_infra_3414
+test_registry_cross_references_infra_3427
 
 echo "[test-pr-stuck-cluster-observability] All tests passed!"
 exit 0

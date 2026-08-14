@@ -2584,10 +2584,12 @@ events:
       scripts/coord/pr-stuck-cluster-detector.sh header comment.
       INFRA-3395 (\"pr-stuck-cluster — 1 PRs blocked >2h as of 2026-07-21\"),
       INFRA-3402 (\"pr-stuck-cluster — 1 PRs blocked >2h as of
-      2026-07-22\"), and INFRA-3414 (\"pr-stuck-cluster — 1 PRs blocked >2h
-      as of 2026-07-23\") are detector-filed placeholder gaps against the
-      exact incident shape this event now covers (a single chronically-stuck
-      PR below cluster threshold) — already answered by the INFRA-3352
+      2026-07-22\"), INFRA-3414 (\"pr-stuck-cluster — 1 PRs blocked >2h
+      as of 2026-07-23\"), and INFRA-3427 (\"pr-stuck-cluster — 2 PRs
+      blocked >2h as of 2026-07-25\") are detector-filed placeholder gaps
+      against the exact incident shape this event now covers (1-2
+      chronically-stuck PRs below cluster threshold) — already answered by
+      the INFRA-3352
       escalation path above and its regression coverage in
       scripts/ci/test-pr-stuck-cluster-detection.sh
       (test_chronic_single_pr_escalates / test_chronic_single_pr_too_young)."
