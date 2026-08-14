@@ -262,21 +262,29 @@ if [[ "$REPO_ROOT" == "$MAIN_WORKTREE" && -z "${CHUMP_ALLOW_MAIN_WORKTREE:-}" ]]
   echo "[chump-commit] Suppress this warning: CHUMP_ALLOW_MAIN_WORKTREE=1" >&2
 fi
 
-# ── Git index mutex (META-011) ─────────────────────────────────────────────────
+# ── Git index mutex (META-011, path fixed RESILIENT-117) ────────────────────
 # Serialize git reset/add/commit across concurrent agents sharing the same
 # worktree. Without this, two concurrent chump-commit.sh calls can interleave
 # their git-reset and git-add calls, causing one agent to unstage another
 # agent's in-flight changes (silently producing an empty or wrong commit).
 #
-# Uses a dedicated mutex file (.chump-index-mutex in the git dir) rather than
-# locking .git/index directly — git uses .git/index.lock for its own internal
-# locking and we must not interfere with that mechanism.
+# Uses a dedicated mutex file rather than locking .git/index directly — git
+# uses .git/index.lock for its own internal locking and we must not
+# interfere with that mechanism.
 #
-# Uses $(git rev-parse --git-dir) instead of $REPO_ROOT/.git because linked
-# worktrees have .git as a FILE (not a directory) — the actual git dir is
-# e.g. $MAIN_REPO/.git/worktrees/<name>/. BUG: previous code used
-# $REPO_ROOT/.git which failed on linked worktrees (CREDIBLE-017 session,
-# 2026-05-10). Fixed in INFRA-793.
+# RESILIENT-117: previously rooted at $(git rev-parse --git-dir)/.chump-index-mutex
+# (INFRA-793). That path lives inside the linked worktree's own git-dir
+# ($MAIN_REPO/.git/worktrees/<name>/), which is vulnerable to /tmp ->
+# /private/tmp symlink aliasing (INFRA-779 family): a long-lived build
+# process (e.g. an sccache daemon spawned by the pre-commit hook's `cargo
+# fmt`/`cargo clippy`, which inherits FD 200 across fork since bash's
+# `exec 200>>file` isn't close-on-exec) can end up holding that inherited FD
+# open indefinitely, so `lsof` shows FD 200 on worktree X's mutex held by a
+# process whose own --out-dir belongs to worktree Y. scripts/lib/index-mutex-path.sh
+# now derives the mutex filename from the worktree's own canonicalized
+# (symlink-resolved) directory name and roots it under the shared main-repo
+# .chump-locks/ directory instead — see that file for the full root-cause
+# writeup.
 #
 # flock(1) is available on Linux (util-linux); BSD/macOS ships without it.
 # Fallback: print a warning and proceed unprotected. Still safe when only one
@@ -287,8 +295,17 @@ fi
 # script, so it remains held for the entire reset → add → commit sequence and
 # is released when git exits.
 #
-# Bypass: CHUMP_INDEX_LOCK=0
-_INDEX_MUTEX="$(git rev-parse --git-dir)/.chump-index-mutex"
+# Bypass: CHUMP_INDEX_LOCK=0 — advisory only, expressly conditional on
+# RESILIENT-117 remaining open (see CLAUDE.md § Ship pipeline). Once
+# RESILIENT-117 ships, treat this bypass as deprecated rather than a
+# permanent escape hatch.
+# shellcheck source=../lib/index-mutex-path.sh
+# shellcheck disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/index-mutex-path.sh"
+if ! _INDEX_MUTEX="$(chump_index_mutex_path)"; then
+    echo "[chump-commit] WARNING: could not resolve index-mutex path — falling back to git-dir." >&2
+    _INDEX_MUTEX="$(git rev-parse --git-dir)/.chump-index-mutex"
+fi
 
 if [[ "${CHUMP_INDEX_LOCK:-1}" != "0" ]] && command -v "$FLOCK_BIN" >/dev/null 2>&1; then
     exec 200>>"$_INDEX_MUTEX"
