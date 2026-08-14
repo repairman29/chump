@@ -1810,3 +1810,32 @@ CHUMP_SHARED_TARGET
 CHUMP_SHARED_TARGET_CAP_GB
 # detected in: (standard input)
 CHUMP_SHARED_TARGET_GB_OVERRIDE
+CHUMP_AMBIENT_FILE
+# detected in: (standard input)
+CHUMP_AUTON_FILE
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_GENUINE
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_HALT_AT
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_MAINFACTS
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_NO_RERUN
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_PILE
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_PRFACTS
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_RERUN_CMD
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_RUNNING
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_SHARED_MIN
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_STUCK_ESCAPE_SECS
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_SYSTEMIC
+# detected in: (standard input)
+CHUMP_FLAKE_BUDGET
+# detected in: (standard input)
+CHUMP_HALT_SINCE_FILE
