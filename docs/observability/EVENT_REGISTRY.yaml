@@ -6975,6 +6975,32 @@ events:
       operators before another 4d quiet-failure window opens.
     consumers: [fleet-brief, ops-audit, slo-watchdog]
     fields_required: [ts, kind, path_age_s, state_age_s, stale_threshold_s]
+  # INFRA-2123: event-driven Oracle refresh. In addition to the 4h cadence
+  # (META-088), scripts/ops/oracle-event-trigger.sh tails ambient.jsonl and
+  # forces a refresh once CHUMP_ORACLE_GAP_THRESHOLD gap_reserved events
+  # have landed since the last completed run — so a burst of newly-filed
+  # gaps gets re-ranked within minutes instead of waiting out the cadence.
+  - kind: oracle_event_trigger_fired
+    effect_metric: self
+    emitter: scripts/ops/oracle-event-trigger.sh (INFRA-2123)
+    trigger: >
+      gap_reserved count since the last completed oracle refresh
+      (oracle_refresh_drift or oracle_refresh_noop) reached
+      CHUMP_ORACLE_GAP_THRESHOLD (default 5), and no refresh has run within
+      the CHUMP_ORACLE_COALESCE_S dedup window (default 1h) — so
+      oracle-refresh.sh --force was invoked.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_count, threshold]
+  - kind: oracle_event_trigger_coalesced
+    effect_metric: self
+    emitter: scripts/ops/oracle-event-trigger.sh (INFRA-2123)
+    trigger: >
+      gap_reserved threshold was met but a refresh (of any outcome) already
+      ran within the CHUMP_ORACLE_COALESCE_S dedup window — event-driven
+      trigger was suppressed to avoid double-bursting on top of the 4h
+      cadence.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_count, threshold, last_run_age_s, coalesce_s]
   # META-098: daily self-productization wave. Once per day a launchd cron
   # sends 6 A2A broadcast.sh DMs (one per curator role) asking the curator
   # to contemplate what changed in their lane and add delta-AC to their
