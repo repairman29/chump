@@ -62,6 +62,18 @@
 #                             cycle, so a refresh/provision (or any other automated
 #                             path) clobbering the kill switch to 0 went unnoticed
 #                             for 6h on 2026-08-14. This closes that silent-halt gap.
+#   (i) WORKER_HALT         — RESILIENT-324: invoked directly (via --condition
+#                             WORKER_HALT) by scripts/ops/organ-watchdog.sh when
+#                             every configured chump-worker@<id>.service (the
+#                             gap-starter fleet workers) has sat inactive for >=
+#                             CHUMP_WORKER_HALT_MIN_SECS (default 1800), tracked
+#                             independent of AUTONOMY_LEVEL — a provision/refresh
+#                             path can SIGTERM-stop + disable the worker UNITS
+#                             directly without ever touching the kill switch, which
+#                             is exactly how the fleet sat with zero active workers
+#                             for 2.5h with no alarm on 2026-08-14 (AUTONOMY_HALT
+#                             above never fired because AUTONOMY_LEVEL stayed
+#                             non-zero the whole time).
 #
 # Usage:
 #   operator-recall.sh                  # auto-detect all conditions; exit 0
