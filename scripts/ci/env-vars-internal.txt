@@ -1771,3 +1771,14 @@ CHUMP_ORGAN_WATCHDOG_RECALL_SCRIPT
 CHUMP_WORKER_HALT_IDS
 # detected in: (standard input)
 CHUMP_WORKER_HALT_MIN_SECS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ORACLE_COALESCE_S
+# detected in: (standard input)
+CHUMP_ORACLE_DISABLED
+# detected in: (standard input)
+CHUMP_ORACLE_GAP_THRESHOLD
+# detected in: (standard input)
+CHUMP_TICK_DISABLE_ORACLE_TRIGGER
