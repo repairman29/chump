@@ -212,4 +212,118 @@ CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB4" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="
 [[ -s "$GIT_CALL_LOG2" ]] && fail "clone refresh must default OFF (no git calls); calls: $(cat "$GIT_CALL_LOG2")"
 pass "clone refresh defaults off — a dev/test checkout is never hard-reset unintentionally"
 
+# ── 9-12. RESILIENT-324: worker-liveness alarm ──────────────────────────────
+# 2026-08-14 incident: chump-worker@1/@2.service sat SIGTERM-stopped +
+# disabled for 2.5h with no alarm. These prove the watchdog now (a) notices 0
+# active gap-starter workers, (b) does NOT page immediately — only after a
+# sustained threshold, (c) DOES page via operator-recall.sh once that
+# threshold is crossed, (d) clears state + stays silent once a worker is
+# active again, and (e) is a no-op on a host with no chump-worker@ template.
+
+# Base stub: no failed services, no enabled-but-inactive timers, worker
+# template present, both configured worker ids report inactive.
+mk_worker_stub() {  # $1=stub path $2=call-log path $3=is-active exit code for chump-worker@*
+    local stub="$1" log="$2" active_rc="$3"
+    cat > "$stub" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$log"
+if [[ "\$1" == "list-units" ]]; then
+    exit 0
+fi
+if [[ "\$1" == "list-unit-files" && "\$*" == *"chump-worker@.service"* ]]; then
+    echo "chump-worker@.service"
+    exit 0
+fi
+if [[ "\$1" == "list-unit-files" ]]; then
+    exit 0
+fi
+if [[ "\$1" == "is-active" && "\$*" == *"chump-worker@"* ]]; then
+    exit $active_rc
+fi
+exit 0
+EOF
+    chmod +x "$stub"
+}
+
+RECALL_CALL_LOG="$TMP/recall-calls.log"
+RECALL_STUB="$TMP/recall-stub.sh"
+cat > "$RECALL_STUB" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$RECALL_CALL_LOG"
+exit 0
+EOF
+chmod +x "$RECALL_STUB"
+
+# ── 9. First cycle with 0 active workers: emits worker_liveness_zero, does
+#      NOT page yet (age ~0s < CHUMP_WORKER_HALT_MIN_SECS) ─────────────────
+STUB9="$TMP/systemctl-worker9"
+CALL_LOG9="$TMP/calls9.log"
+mk_worker_stub "$STUB9" "$CALL_LOG9" 1   # is-active exits 1 == inactive
+AMB9="$TMP/ambient9.jsonl"
+: > "$AMB9"
+: > "$RECALL_CALL_LOG"
+rm -f "$TMP/worker-halt-since.ts"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB9" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECALL_SCRIPT="$RECALL_STUB" CHUMP_WORKER_HALT_MIN_SECS=1800 \
+    CHUMP_AMBIENT_LOG="$AMB9" "$WATCHDOG" >/dev/null 2>&1
+grep -q '"kind":"worker_liveness_zero"' "$AMB9" \
+    || fail "expected worker_liveness_zero emitted when 0 workers active; ambient: $(cat "$AMB9")"
+[[ -s "$RECALL_CALL_LOG" ]] && fail "must NOT page on the first below-threshold cycle; calls: $(cat "$RECALL_CALL_LOG")"
+[[ -f "$TMP/worker-halt-since.ts" ]] || fail "expected worker-halt-since.ts state file to be created"
+pass "0 active workers: notices + emits worker_liveness_zero, does not page before the sustained threshold"
+
+# ── 10. Sustained halt (state file pre-seeded old) → pages WORKER_HALT ─────
+STUB10="$TMP/systemctl-worker10"
+CALL_LOG10="$TMP/calls10.log"
+mk_worker_stub "$STUB10" "$CALL_LOG10" 1
+AMB10="$TMP/ambient10.jsonl"
+: > "$AMB10"
+: > "$RECALL_CALL_LOG"
+old_ts=$(( $(date +%s) - 3600 ))
+echo "$old_ts" > "$TMP/worker-halt-since.ts"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB10" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECALL_SCRIPT="$RECALL_STUB" CHUMP_WORKER_HALT_MIN_SECS=1800 \
+    CHUMP_AMBIENT_LOG="$AMB10" "$WATCHDOG" >/dev/null 2>&1
+grep -q -- "--condition WORKER_HALT" "$RECALL_CALL_LOG" \
+    || fail "expected operator-recall.sh --condition WORKER_HALT after sustained halt; calls: $(cat "$RECALL_CALL_LOG" 2>/dev/null)"
+pass "sustained 0-worker halt (>= threshold) pages the operator via WORKER_HALT"
+
+# ── 11. A worker is active → no alarm, stale state file is cleared ─────────
+STUB11="$TMP/systemctl-worker11"
+CALL_LOG11="$TMP/calls11.log"
+mk_worker_stub "$STUB11" "$CALL_LOG11" 0   # is-active exits 0 == active
+AMB11="$TMP/ambient11.jsonl"
+: > "$AMB11"
+: > "$RECALL_CALL_LOG"
+echo "$old_ts" > "$TMP/worker-halt-since.ts"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB11" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECALL_SCRIPT="$RECALL_STUB" CHUMP_WORKER_HALT_MIN_SECS=1800 \
+    CHUMP_AMBIENT_LOG="$AMB11" "$WATCHDOG" >/dev/null 2>&1
+grep -q '"kind":"worker_liveness_zero"' "$AMB11" \
+    && fail "must not emit worker_liveness_zero when a worker is active; ambient: $(cat "$AMB11")"
+[[ -s "$RECALL_CALL_LOG" ]] && fail "must not page when a worker is active; calls: $(cat "$RECALL_CALL_LOG")"
+[[ -f "$TMP/worker-halt-since.ts" ]] && fail "expected stale worker-halt-since.ts to be cleared once a worker is active again"
+pass "active worker: silent, and clears any stale halt-tracking state"
+
+# ── 12. No chump-worker@.service template on this host → fully skipped ─────
+STUB12="$TMP/systemctl-noworker12"
+CALL_LOG12="$TMP/calls12.log"
+cat > "$STUB12" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$CALL_LOG12"
+exit 0
+EOF
+chmod +x "$STUB12"
+AMB12="$TMP/ambient12.jsonl"
+: > "$AMB12"
+: > "$RECALL_CALL_LOG"
+rm -f "$TMP/worker-halt-since.ts"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB12" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECALL_SCRIPT="$RECALL_STUB" CHUMP_WORKER_HALT_MIN_SECS=1800 \
+    CHUMP_AMBIENT_LOG="$AMB12" "$WATCHDOG" >/dev/null 2>&1
+grep -q '"kind":"worker_liveness_zero"' "$AMB12" \
+    && fail "must not check worker liveness on a host with no chump-worker@ template; ambient: $(cat "$AMB12")"
+[[ -f "$TMP/worker-halt-since.ts" ]] && fail "must not create halt-tracking state on a host with no chump-worker@ template"
+pass "no chump-worker@.service template on this host: worker-liveness check is a full no-op"
+
 echo "ALL PASS"

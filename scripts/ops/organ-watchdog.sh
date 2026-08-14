@@ -202,6 +202,59 @@ if [[ -n "$ALL_TIMERS" ]]; then
     done <<< "$ALL_TIMERS"
 fi
 
+# ── 3. Gap-starter worker liveness (RESILIENT-324) ──────────────────────────
+# 2026-08-14 incident: chump-worker@1/@2.service sat SIGTERM-stopped +
+# UnitFileState=disabled for 2.5h — no alarm fired because nothing checks
+# worker liveness independent of the AUTONOMY_LEVEL kill switch (RESILIENT-321
+# only pages when the kill switch itself is 0; a provision/refresh path can
+# disable the worker UNITS directly without ever touching AUTONOMY_LEVEL, and
+# that went completely unobserved). Only runs when the chump-worker@.service
+# template is actually installed on this host — a dev/laptop node with no
+# worker template must not get a permanent false alarm.
+WORKER_HALT_STATE="$(dirname "$AMBIENT_LOG")/worker-halt-since.ts"
+if "$SYSTEMCTL_BIN" list-unit-files --no-legend 'chump-worker@.service' 2>/dev/null | grep -q .; then
+    WORKER_IDS="${CHUMP_WORKER_HALT_IDS:-1 2}"
+    WORKER_HALT_MIN_SECS="${CHUMP_WORKER_HALT_MIN_SECS:-1800}"
+    RECALL_SCRIPT="${CHUMP_ORGAN_WATCHDOG_RECALL_SCRIPT:-$REPO_ROOT/scripts/dispatch/operator-recall.sh}"
+
+    any_worker_active=0
+    for _wid in $WORKER_IDS; do
+        if "$SYSTEMCTL_BIN" is-active --quiet "chump-worker@${_wid}.service" 2>/dev/null; then
+            any_worker_active=1
+            break
+        fi
+    done
+
+    if [[ "$any_worker_active" == "1" ]]; then
+        rm -f "$WORKER_HALT_STATE" 2>/dev/null || true
+    else
+        _now_epoch="$(date +%s)"
+        if [[ -f "$WORKER_HALT_STATE" ]]; then
+            _since_epoch="$(cat "$WORKER_HALT_STATE" 2>/dev/null || echo "$_now_epoch")"
+            [[ "$_since_epoch" =~ ^[0-9]+$ ]] || _since_epoch="$_now_epoch"
+        else
+            _since_epoch="$_now_epoch"
+            [[ "$DRY_RUN" == "1" ]] || echo "$_now_epoch" > "$WORKER_HALT_STATE" 2>/dev/null || true
+        fi
+        _halt_age=$(( _now_epoch - _since_epoch ))
+        echo "[organ-watchdog] WORKER_HALT: 0 active chump-worker@{${WORKER_IDS// /,}}.service for ~${_halt_age}s"
+        # scanner-anchor: "kind":"worker_liveness_zero"  (RESILIENT-324; fires
+        # every cycle no gap-starter worker unit is active — the board's
+        # verifiable proof of how long production has been silently down)
+        emit worker_liveness_zero "\"worker_ids\":\"${WORKER_IDS}\",\"halt_age_s\":${_halt_age}"
+        if (( _halt_age >= WORKER_HALT_MIN_SECS )); then
+            if [[ "$DRY_RUN" == "1" ]]; then
+                echo "[organ-watchdog]   (dry-run) would page operator: WORKER_HALT"
+            elif [[ -x "$RECALL_SCRIPT" ]]; then
+                _halt_mins=$(( _halt_age / 60 ))
+                CHUMP_AMBIENT_LOG="$AMBIENT_LOG" "$RECALL_SCRIPT" --condition WORKER_HALT \
+                    --reason "0 active chump-worker@{${WORKER_IDS// /,}}.service for ~${_halt_mins}m (>= $((WORKER_HALT_MIN_SECS / 60))m threshold); gap-starter workers are down, no new gaps are being claimed" \
+                    >/dev/null 2>&1 || echo "[organ-watchdog]   WARN: operator-recall.sh WORKER_HALT call failed" >&2
+            fi
+        fi
+    fi
+fi
+
 # Heartbeat — always emit so a dead watchdog is itself observable (paired
 # with scripts/ops/reaper-heartbeat-watchdog.sh's cadence-grading pattern).
 # scanner-anchor: "kind":"organ_watchdog_tick"  (INFRA-3595; emitted every
