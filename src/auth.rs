@@ -20,7 +20,8 @@ use std::path::{Path, PathBuf};
 /// Which auth mode the operator wants.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AuthMode {
-    /// Prefer API key when present and non-empty; fall back to OAUTH.
+    /// Prefer OAUTH when present and non-empty (cost-primary); fall back to
+    /// ANTHROPIC_API_KEY as the non-expiring floor.
     Auto,
     /// Always use ANTHROPIC_API_KEY; error if absent.
     ApiKey,
