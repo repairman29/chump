@@ -464,6 +464,14 @@ fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     // INFRA-302 blocker (3): cwd is the FRESH WORKTREE, NOT opts.repo_root —
     // see Workspace::new for the resolution.
     cmd.current_dir(ws.working_dir());
+    // RESILIENT-057: validate-before-use — if the credential this spawn
+    // would otherwise inherit is cached as recently dead (a prior spawn
+    // already hit an auth rejection), switch to the fallback floor BEFORE
+    // spawning instead of letting this worker rediscover it live.
+    let active_auth = crate::auth::resolve_for_spawn(None);
+    for (k, v) in active_auth.env_pairs() {
+        cmd.env(k, v);
+    }
     let child = cmd
         .spawn()
         .context("spawn `claude -p` (is the claude CLI on PATH?)")?;

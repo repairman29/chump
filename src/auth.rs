@@ -4,7 +4,9 @@
 //!
 //! # Precedence
 //! Controlled by `CHUMP_AUTH_MODE=auto|api-key|oauth` (default `auto`).
-//! In `auto` mode: prefer a non-empty ANTHROPIC_API_KEY, else use OAUTH.
+//! In `auto` mode: prefer a non-empty CLAUDE_CODE_OAUTH_TOKEN (subscription
+//! OAUTH is cost-primary), falling back to ANTHROPIC_API_KEY as the
+//! non-expiring floor when OAUTH is absent (RESILIENT-057).
 //!
 //! # Sources checked (in priority order)
 //! 1. Environment variables (ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN)
@@ -129,6 +131,209 @@ impl ActiveAuth {
     pub fn is_none(&self) -> bool {
         self.mode == ActiveMode::None
     }
+
+    /// Fail-open wrapper around [`on_auth_failure`](Self::on_auth_failure):
+    /// only actually falls back when `err` classifies as
+    /// [`AuthFailureKind::Unauthorized`]. Network/timeout/rate-limit errors
+    /// classify as `Transient` and return `None` (no fallback, no event) —
+    /// RESILIENT-057 AC4: fail-open, don't burn a working credential's
+    /// standing over a blip on the other one.
+    pub fn on_auth_failure_classified(
+        &self,
+        err: &str,
+        ambient_path: Option<&Path>,
+    ) -> Option<ActiveAuth> {
+        match AuthFailureKind::classify(err) {
+            AuthFailureKind::Unauthorized => self.on_auth_failure(ambient_path),
+            AuthFailureKind::Transient => None,
+        }
+    }
+}
+
+/// Classification of an auth-call failure, used to decide whether a
+/// fallback to the other credential is warranted (RESILIENT-057).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthFailureKind {
+    /// A real auth rejection (401/403, "invalid api key", expired token).
+    /// Warrants falling back to the other credential.
+    Unauthorized,
+    /// Network, timeout, rate-limit, or transient server error. Must NOT
+    /// trigger a fallback — the current credential may still be good.
+    Transient,
+}
+
+impl AuthFailureKind {
+    /// Classify a raw error/status string from a failed spawn or API call.
+    /// Ambiguous/unrecognized errors classify as `Transient` (fail-open):
+    /// AC4 requires the burden of proof for "this credential is dead" to
+    /// be on unambiguous auth-rejection signals.
+    pub fn classify(err: &str) -> Self {
+        let lower = err.to_ascii_lowercase();
+        let is_transient = lower.contains("timeout")
+            || lower.contains("timed out")
+            || lower.contains("rate limit")
+            || lower.contains("rate_limit")
+            || lower.contains("429")
+            || lower.contains("connection reset")
+            || lower.contains("connection refused")
+            || lower.contains("network")
+            || lower.contains("temporarily unavailable")
+            || lower.contains("502")
+            || lower.contains("503")
+            || lower.contains("504")
+            || lower.contains("overloaded");
+        if is_transient {
+            return AuthFailureKind::Transient;
+        }
+        let is_unauthorized = lower.contains("401")
+            || lower.contains("403")
+            || lower.contains("unauthorized")
+            || lower.contains("invalid api key")
+            || lower.contains("invalid x-api-key")
+            || lower.contains("invalid bearer")
+            || lower.contains("authentication_error")
+            || lower.contains("expired token")
+            || lower.contains("oauth token expired")
+            || lower.contains("permission_error");
+        if is_unauthorized {
+            AuthFailureKind::Unauthorized
+        } else {
+            AuthFailureKind::Transient
+        }
+    }
+}
+
+// ── Validate-before-use (RESILIENT-057) ─────────────────────────────────────
+//
+// A tiny cached "is this credential known-dead?" store, keyed by
+// (mode, credential fingerprint) so a rotated/refreshed credential is
+// treated as unvalidated again. Written by `record_validation_result` after
+// a real spawn observes success/failure; read by `resolve_for_spawn` so the
+// NEXT spawn can switch credentials proactively instead of paying the
+// latency (and, at fleet scale, the AUTH_DEAD storm) of every worker
+// re-discovering the same dead credential independently.
+
+/// How long a cached validation result stays authoritative before a spawn
+/// re-earns trust in the credential from scratch (cache miss => optimistic).
+const VALIDATION_CACHE_TTL_SECS: u64 = 300;
+
+fn validation_cache_path() -> PathBuf {
+    if let Ok(p) = std::env::var("CHUMP_AUTH_VALIDATION_CACHE") {
+        return PathBuf::from(p);
+    }
+    chump_config_path()
+        .parent()
+        .map(|d| d.join("auth-validation-cache.tsv"))
+        .unwrap_or_else(|| PathBuf::from("/tmp/chump-auth-validation-cache.tsv"))
+}
+
+/// Cheap non-cryptographic fingerprint of a credential value — used only to
+/// detect "this is the same credential we last validated", never to
+/// reconstruct or store the secret itself.
+fn fingerprint(value: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
+fn mode_key(mode: &ActiveMode) -> &'static str {
+    match mode {
+        ActiveMode::ApiKey => "api-key",
+        ActiveMode::OAuth => "oauth",
+        ActiveMode::None => "none",
+    }
+}
+
+/// Record whether `mode` (with the credential fingerprinted as `cred`)
+/// worked (`alive=true`) or was rejected (`alive=false`) on a real spawn
+/// attempt. Appends a row; `cached_validation` reads the most recent row
+/// for the (mode, fingerprint) pair.
+pub fn record_validation_result(mode: &ActiveMode, cred_value: &str, alive: bool) {
+    record_validation_result_at(mode, cred_value, alive, &validation_cache_path());
+}
+
+fn record_validation_result_at(mode: &ActiveMode, cred_value: &str, alive: bool, path: &Path) {
+    if *mode == ActiveMode::None {
+        return;
+    }
+    let ts = now_secs();
+    let row = format!(
+        "{}\t{}\t{}\t{}\n",
+        mode_key(mode),
+        fingerprint(cred_value),
+        alive,
+        ts
+    );
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(row.as_bytes())
+        });
+}
+
+/// Look up the most recent (fresh, within TTL) validation result for
+/// `mode`+`cred_value`. Returns `None` on cache miss, stale entry, or a
+/// fingerprint mismatch (credential rotated since the last recorded
+/// result) — callers treat `None` as "unknown, proceed optimistically".
+fn cached_validation(mode: &ActiveMode, cred_value: &str) -> Option<bool> {
+    cached_validation_at(mode, cred_value, &validation_cache_path())
+}
+
+fn cached_validation_at(mode: &ActiveMode, cred_value: &str, path: &Path) -> Option<bool> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let want_mode = mode_key(mode);
+    let want_fp = fingerprint(cred_value);
+    let now = now_secs();
+    // Last matching row wins (most recent observation for this credential).
+    let mut result = None;
+    for line in content.lines() {
+        let mut parts = line.splitn(4, '\t');
+        let (m, fp, alive, ts) = (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
+        if m != want_mode || fp != want_fp {
+            continue;
+        }
+        let ts: u64 = ts.parse().ok()?;
+        if now.saturating_sub(ts) > VALIDATION_CACHE_TTL_SECS {
+            continue;
+        }
+        result = alive.parse::<bool>().ok();
+    }
+    result
+}
+
+fn now_secs() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Resolve auth for an about-to-happen spawn, applying the validate-before-
+/// use cached check: if the mode that `resolve()` would pick is cached as
+/// recently dead, proactively switch to the fallback credential (emitting
+/// `fleet_auth_fallback`) BEFORE the spawn happens, rather than waiting for
+/// it to fail live. Cache miss (unknown / stale / no prior observation)
+/// behaves exactly like `detect_and_resolve()` — optimistic, fail-open.
+pub fn resolve_for_spawn(ambient_path: Option<&Path>) -> ActiveAuth {
+    let auth = detect_and_resolve();
+    let cred_value = match auth.mode {
+        ActiveMode::ApiKey => auth.creds.api_key.as_str(),
+        ActiveMode::OAuth => auth.creds.oauth_token.as_str(),
+        ActiveMode::None => return auth,
+    };
+    match cached_validation(&auth.mode, cred_value) {
+        Some(false) => auth.on_auth_failure(ambient_path).unwrap_or(auth),
+        _ => auth,
+    }
 }
 
 // ── Detection ──────────────────────────────────────────────────────────────
@@ -191,11 +396,13 @@ pub fn resolve(creds: AuthCredentials) -> ActiveAuth {
             }
         }
         AuthMode::Auto => {
-            // Prefer API key; fall back to OAUTH.
-            if creds.has_api_key() {
-                ActiveMode::ApiKey
-            } else if creds.has_oauth() {
+            // RESILIENT-057: OAUTH is cost-primary — prefer it when present.
+            // ANTHROPIC_API_KEY is the non-expiring fallback floor, used
+            // only when OAUTH is absent.
+            if creds.has_oauth() {
                 ActiveMode::OAuth
+            } else if creds.has_api_key() {
+                ActiveMode::ApiKey
             } else {
                 ActiveMode::None
             }
@@ -779,10 +986,10 @@ mod tests {
         );
     }
 
-    // ── Quadrant 3: both present — API key preferred in auto mode ──────────
+    // ── Quadrant 3: both present — OAUTH preferred in auto mode (RESILIENT-057) ──
 
     #[test]
-    fn both_present_auto_prefers_api_key() {
+    fn both_present_auto_prefers_oauth() {
         with_env(
             &[
                 ("ANTHROPIC_API_KEY", "sk-ant-key"),
@@ -791,7 +998,7 @@ mod tests {
             &["CHUMP_AUTH_MODE", "CHUMP_OAUTH_TOKEN_FILE", "CHUMP_HOME"],
             || {
                 let auth = detect_and_resolve();
-                assert_eq!(auth.mode, ActiveMode::ApiKey);
+                assert_eq!(auth.mode, ActiveMode::OAuth);
                 assert!(auth.creds.has_api_key());
                 assert!(auth.creds.has_oauth());
             },
@@ -867,6 +1074,62 @@ mod tests {
         let fallback = auth.on_auth_failure(None);
         assert!(fallback.is_some());
         assert_eq!(fallback.unwrap().mode, ActiveMode::ApiKey);
+    }
+
+    // ── RESILIENT-057: fail-open failure classification (AC4) ──────────────
+
+    #[test]
+    fn classify_401_as_unauthorized() {
+        assert_eq!(
+            AuthFailureKind::classify("HTTP 401 Unauthorized: invalid api key"),
+            AuthFailureKind::Unauthorized
+        );
+    }
+
+    #[test]
+    fn classify_network_timeout_as_transient() {
+        assert_eq!(
+            AuthFailureKind::classify("request timed out after 30s"),
+            AuthFailureKind::Transient
+        );
+        assert_eq!(
+            AuthFailureKind::classify("429 rate limit exceeded, retry later"),
+            AuthFailureKind::Transient
+        );
+        assert_eq!(
+            AuthFailureKind::classify("503 Service Temporarily Unavailable"),
+            AuthFailureKind::Transient
+        );
+    }
+
+    #[test]
+    fn on_auth_failure_classified_does_not_fall_back_on_transient_error() {
+        let creds = AuthCredentials {
+            api_key: "sk-ant-key".into(),
+            oauth_token: "sk-ant-oat01-tok".into(),
+        };
+        let auth = ActiveAuth {
+            mode: ActiveMode::OAuth,
+            creds,
+        };
+        // A network timeout must NOT burn OAUTH's standing / fall back to
+        // the API key floor (AC4: fail-open).
+        let result = auth.on_auth_failure_classified("connection timed out", None);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn on_auth_failure_classified_falls_back_on_real_unauthorized() {
+        let creds = AuthCredentials {
+            api_key: "sk-ant-key".into(),
+            oauth_token: "sk-ant-oat01-tok".into(),
+        };
+        let auth = ActiveAuth {
+            mode: ActiveMode::OAuth,
+            creds,
+        };
+        let result = auth.on_auth_failure_classified("401 unauthorized: token expired", None);
+        assert_eq!(result.map(|a| a.mode), Some(ActiveMode::ApiKey));
     }
 
     #[test]
@@ -982,6 +1245,101 @@ mod tests {
                 // No critical warnings (might have "both present" note, but not error warnings)
                 let has_error = report.warnings.iter().any(|w| w.contains("will fail"));
                 assert!(!has_error);
+            },
+        );
+    }
+
+    // ── RESILIENT-057: validate-before-use cache + spawn-site fallback ─────
+
+    #[test]
+    fn validation_cache_round_trips_and_respects_fingerprint() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("auth-validation-cache.tsv");
+
+        assert_eq!(
+            cached_validation_at(&ActiveMode::OAuth, "tok-a", &cache),
+            None
+        );
+
+        record_validation_result_at(&ActiveMode::OAuth, "tok-a", false, &cache);
+        assert_eq!(
+            cached_validation_at(&ActiveMode::OAuth, "tok-a", &cache),
+            Some(false)
+        );
+
+        // Different credential value (e.g. after refresh) => cache miss,
+        // not a stale "dead" verdict carried over.
+        assert_eq!(
+            cached_validation_at(&ActiveMode::OAuth, "tok-b", &cache),
+            None
+        );
+
+        record_validation_result_at(&ActiveMode::OAuth, "tok-a", true, &cache);
+        assert_eq!(
+            cached_validation_at(&ActiveMode::OAuth, "tok-a", &cache),
+            Some(true)
+        );
+    }
+
+    /// AC5 regression test: OAUTH cached as recently dead + API key present
+    /// => resolve_for_spawn proactively picks ApiKey mode and emits
+    /// `fleet_auth_fallback` BEFORE the spawn, instead of letting every
+    /// worker independently discover the dead OAUTH token live.
+    #[test]
+    fn dead_oauth_with_api_key_falls_back_to_api_key_and_emits_event() {
+        with_env(
+            &[
+                ("ANTHROPIC_API_KEY", "sk-ant-key"),
+                ("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-dead"),
+            ],
+            &["CHUMP_AUTH_MODE", "CHUMP_OAUTH_TOKEN_FILE"],
+            || {
+                let dir = tempfile::tempdir().unwrap();
+                let cache = dir.path().join("auth-validation-cache.tsv");
+                let ambient = dir.path().join("ambient.jsonl");
+
+                std::env::set_var("CHUMP_AUTH_VALIDATION_CACHE", &cache);
+                record_validation_result_at(&ActiveMode::OAuth, "sk-ant-oat01-dead", false, &cache);
+
+                // Sanity: without the cached-dead signal, auto mode would
+                // pick OAuth (RESILIENT-057 AC1).
+                assert_eq!(detect_and_resolve().mode, ActiveMode::OAuth);
+
+                let auth = resolve_for_spawn(Some(&ambient));
+                assert_eq!(auth.mode, ActiveMode::ApiKey);
+
+                let log = std::fs::read_to_string(&ambient).unwrap_or_default();
+                assert!(
+                    log.contains("\"kind\":\"fleet_auth_fallback\""),
+                    "expected fleet_auth_fallback event, got: {log}"
+                );
+                assert!(log.contains("\"fallback_mode\":\"apikey\""));
+
+                std::env::remove_var("CHUMP_AUTH_VALIDATION_CACHE");
+            },
+        );
+    }
+
+    #[test]
+    fn resolve_for_spawn_optimistic_on_cache_miss() {
+        with_env(
+            &[("ANTHROPIC_API_KEY", "sk-ant-key")],
+            &[
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "CHUMP_AUTH_MODE",
+                "CHUMP_OAUTH_TOKEN_FILE",
+            ],
+            || {
+                let dir = tempfile::tempdir().unwrap();
+                let cache = dir.path().join("auth-validation-cache.tsv");
+                std::env::set_var("CHUMP_AUTH_VALIDATION_CACHE", &cache);
+
+                // No prior observation recorded => proceed with the normal
+                // resolve() result, unchanged.
+                let auth = resolve_for_spawn(None);
+                assert_eq!(auth.mode, ActiveMode::ApiKey);
+
+                std::env::remove_var("CHUMP_AUTH_VALIDATION_CACHE");
             },
         );
     }
