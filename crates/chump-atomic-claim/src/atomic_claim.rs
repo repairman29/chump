@@ -4294,6 +4294,10 @@ pub fn fuzzy_match_active_leases(
     let Ok(entries) = std::fs::read_dir(&locks) else {
         return Vec::new();
     };
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let mut out: Vec<FuzzyMatch> = Vec::new();
     for ent in entries.flatten() {
         let p = ent.path();
@@ -4306,6 +4310,18 @@ pub fn fuzzy_match_active_leases(
         let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
             continue;
         };
+        // INFRA-CREDIBLE-161: a lease past its expires_at is not a live
+        // competitor — a migrated/laptop-era host can accumulate dozens of
+        // stale rows that never get vacuumed, and counting them as
+        // duplicates refuses every claim on that host (2026-07-22 chumpd-eu
+        // incident: 22 expired leases blocked all fleet claims).
+        if let Some(exp_str) = json.get("expires_at").and_then(|v| v.as_str()) {
+            if let Ok(exp_secs) = parse_iso8601(exp_str) {
+                if exp_secs <= now {
+                    continue; // expired — not a live competitor
+                }
+            }
+        }
         let lease_gap = json
             .get("gap_id")
             .and_then(|v| v.as_str())
@@ -4737,6 +4753,36 @@ mod fuzzy_match_tests {
         assert!(
             self_hits.is_empty(),
             "self-match should be excluded; got {self_hits:?}"
+        );
+    }
+
+    #[test]
+    fn fuzzy_match_active_leases_ignores_expired_lease() {
+        // CREDIBLE-161: a lease past its expires_at must not count as a
+        // duplicate. Without the expires_at check, a migrated host with a
+        // pile of never-vacuumed expired leases refuses every claim.
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        // Strongly-overlapping sibling lease, but expired (year 2000).
+        let lease = serde_json::json!({
+            "gap_id": "INFRA-9301",
+            "session": "laptop-era-session",
+            "paths": "src/foo.rs,scripts/ci/test-foo.sh",
+            "expires_at": "2000-01-01T00:00:00Z",
+        });
+        std::fs::write(locks.join("laptop-era-session.json"), lease.to_string()).unwrap();
+
+        let hits = fuzzy_match_active_leases(
+            dir.path(),
+            "INFRA-9302",
+            "INFRA-9302 fix test-foo.sh shape bug",
+            0.15,
+        );
+        assert!(
+            hits.is_empty(),
+            "expired lease must not be counted as a fuzzy-match duplicate; got {hits:?}"
         );
     }
 
