@@ -115,11 +115,26 @@ test_bad_args_run_event() {
     pass "Test 3: bad-args path emits run event with failure_class=permanent"
 }
 
+# Test 4 (INFRA-3395): the pr_stuck_chronic registry entry cross-references
+# INFRA-3395 as an already-answered duplicate of the INFRA-3352 escalation
+# path, so the detector-filed placeholder gap for the 2026-07-21 "1 PR
+# blocked >2h" incident doesn't get re-implemented from scratch.
+test_registry_cross_references_infra_3395() {
+    local registry="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
+    [ -f "$registry" ] || fail "Test 4: EVENT_REGISTRY.yaml not found"
+
+    grep -q "INFRA-3395" "$registry" || \
+        fail "Test 4: expected EVENT_REGISTRY.yaml to cross-reference INFRA-3395"
+
+    pass "Test 4: EVENT_REGISTRY.yaml cross-references INFRA-3395 as answered by INFRA-3352"
+}
+
 echo "[test-pr-stuck-cluster-observability] Starting tests..."
 
 test_no_op_run_event
 test_cluster_detected_run_event
 test_bad_args_run_event
+test_registry_cross_references_infra_3395
 
 echo "[test-pr-stuck-cluster-observability] All tests passed!"
 exit 0
