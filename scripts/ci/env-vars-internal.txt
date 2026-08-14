@@ -1787,3 +1787,36 @@ CHUMP_TICK_DISABLE_ORACLE_TRIGGER
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_CONSENSUS_ASK_POLL_SECS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_AMBIENT_FILE
+# detected in: (standard input)
+CHUMP_AUTON_FILE
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_GENUINE
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_HALT_AT
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_MAINFACTS
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_NO_RERUN
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_PILE
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_PRFACTS
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_RERUN_CMD
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_RUNNING
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_SHARED_MIN
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_STUCK_ESCAPE_SECS
+# detected in: (standard input)
+CHUMP_BACKPRESSURE_SYSTEMIC
+# detected in: (standard input)
+CHUMP_FLAKE_BUDGET
+# detected in: (standard input)
+CHUMP_HALT_SINCE_FILE

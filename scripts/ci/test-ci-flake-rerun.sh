@@ -310,5 +310,116 @@ else
     exit 1
 fi
 
+# ── Test 10: CANCELLED required check → full rerun, even with EMPTY log ───────
+# RESILIENT-308: the cancelled audit-shard class. A CANCELLED conclusion is an
+# inherent concurrency/timeout flake — it must rerun WITHOUT needing any log
+# text, and via a WHOLE-run rerun (`gh run rerun`, no `--failed`, which skips
+# cancelled jobs). The stub returns an EMPTY --log-failed to prove log-independence.
+echo "Test 10: CANCELLED check → would rerun mode=full with empty log"
+cat > "$TMP/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+    "pr list "*)
+        cat <<'JSON'
+[{"number":101,"title":"AUDIT: cancelled shard","headRefName":"chump/audit-101","statusCheckRollup":[{"name":"audit-shard (2)","conclusion":"CANCELLED","targetUrl":"https://github.com/owner/repo/actions/runs/9999010/job/111"}]}]
+JSON
+        ;;
+    "run view 9999010 --log-failed") echo "" ;;   # cancelled jobs have no failed-log
+    *) echo "" ;;
+esac
+EOF
+chmod +x "$TMP/bin/gh"
+out=$("$SCRIPT" --dry-run 2>&1 || true)
+if [[ "$out" == *"would rerun"*"PR #101"*"9999010"*"mode=full"* ]]; then
+    echo "  PASS"
+else
+    echo "  FAIL: cancelled check should rerun mode=full with empty log, got:"
+    echo "$out" | sed 's/^/    /'
+    exit 1
+fi
+
+# ── Test 11: live (non-dry) CANCELLED rerun calls `gh run rerun` WITHOUT --failed
+# The whole point: `--failed` silently skips a cancelled job, so a cancelled shard
+# would never re-execute. Assert the organ invokes the full-run form.
+echo "Test 11: CANCELLED check live rerun uses full-run form (no --failed)"
+export RR11="$TMP/rr11.log"; : > "$RR11"
+cat > "$TMP/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$1 $2" in
+    "pr list")
+        cat <<'JSON'
+[{"number":102,"title":"AUDIT: cancelled shard live","headRefName":"chump/audit-102","statusCheckRollup":[{"name":"audit-shard (4)","conclusion":"CANCELLED","targetUrl":"https://github.com/owner/repo/actions/runs/9999011/job/222"}]}]
+JSON
+        ;;
+    "run view") echo "" ;;
+    "run rerun") shift 2; echo "RERUN_ARGS:[$*]" >> "$RR11" ;;
+    *) echo "" ;;
+esac
+EOF
+chmod +x "$TMP/bin/gh"
+out=$("$SCRIPT" 2>&1 || true)
+rr_line=$(cat "$RR11" 2>/dev/null || true)
+if [[ "$rr_line" == "RERUN_ARGS:[9999011]" ]]; then
+    echo "  PASS (full-run rerun: $rr_line)"
+else
+    echo "  FAIL: cancelled rerun must be 'gh run rerun 9999011' (no --failed), got: '$rr_line'"
+    echo "$out" | sed 's/^/    /'
+    exit 1
+fi
+
+# ── Test 12: audit-aggregate 'result=cancelled' log signature (FAILURE concl) ─
+# The `audit` required check ends FAILURE (not CANCELLED) when its cause is a
+# cancelled shard; its log carries "result=cancelled". Match it via pattern →
+# rerun (mode=failed is fine here — the aggregate job itself is failed).
+echo "Test 12: audit aggregate 'result=cancelled' log signature → would rerun"
+cat > "$TMP/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+    "pr list "*)
+        cat <<'JSON'
+[{"number":103,"title":"INFRA-x: audit aggregate red","headRefName":"chump/infra-x","statusCheckRollup":[{"name":"audit","conclusion":"FAILURE","targetUrl":"https://github.com/owner/repo/actions/runs/9999012/job/333"}]}]
+JSON
+        ;;
+    "run view 9999012 --log-failed")
+        echo "::error::audit FAIL — at least one audit-shard failed (result=cancelled)" ;;
+    *) echo "" ;;
+esac
+EOF
+chmod +x "$TMP/bin/gh"
+out=$("$SCRIPT" --dry-run 2>&1 || true)
+if [[ "$out" == *"would rerun"*"PR #103"*"9999012"* ]]; then
+    echo "  PASS"
+else
+    echo "  FAIL: audit-aggregate cancelled-shard signature should rerun, got:"
+    echo "$out" | sed 's/^/    /'
+    exit 1
+fi
+
+# ── Test 13: a genuine FAILURE with a real assertion log is STILL left alone ──
+# Guard against over-eager rerun: a non-cancelled real failure with no flake
+# fingerprint must not be reran (regression guard for the new cancelled path).
+echo "Test 13: real FAILURE (non-cancelled, no fingerprint) → left alone"
+cat > "$TMP/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+    "pr list "*)
+        cat <<'JSON'
+[{"number":104,"title":"INFRA-y: real bug","headRefName":"chump/infra-y","statusCheckRollup":[{"name":"fast-checks","conclusion":"FAILURE","targetUrl":"https://github.com/owner/repo/actions/runs/9999013/job/444"}]}]
+JSON
+        ;;
+    "run view 9999013 --log-failed") echo "error[E0308]: mismatched types" ;;
+    *) echo "" ;;
+esac
+EOF
+chmod +x "$TMP/bin/gh"
+out=$("$SCRIPT" --dry-run 2>&1 || true)
+if [[ "$out" != *"would rerun"* ]] && [[ "$out" == *"leaving alone"* ]]; then
+    echo "  PASS"
+else
+    echo "  FAIL: real non-cancelled failure must be left alone, got:"
+    echo "$out" | sed 's/^/    /'
+    exit 1
+fi
+
 echo ""
 echo "All ci-flake-rerun tests passed."

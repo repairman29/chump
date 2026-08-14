@@ -101,6 +101,82 @@ chmod 0644 "$AUTON"
 [[ "$rc" -eq 0 ]] && ok "controller exited 0 despite locked autonomy file" || bad "controller crashed (rc=$rc)"
 echo "$out" | grep -qi "could not write autonomy" && ok "logged the write failure gracefully" || bad "no graceful-write-failure log"
 
+# ── RESILIENT-308: systemic-red awareness ─────────────────────────────────────
+# The classifier is exercised through CHUMP_BACKPRESSURE_PRFACTS (+ _MAINFACTS),
+# which feed real PR facts to classify_pile() instead of the live gh probe. These
+# prove the breaker halts on a GENUINE jam but NOT on flaky/shared (systemic) red.
+run_ctrl_facts() { # prfacts_json mainfacts_json running  (AUTON/HALTSINCE preset by caller)
+    local pf="$TMP/prfacts.json" mf="$TMP/mainfacts.json"
+    printf '%s' "$1" > "$pf"; printf '%s' "$2" > "$mf"
+    CHUMP_BACKPRESSURE_PRFACTS="$pf" \
+    CHUMP_BACKPRESSURE_MAINFACTS="$mf" \
+    CHUMP_BACKPRESSURE_RUNNING="$3" \
+    CHUMP_BACKPRESSURE_NO_RERUN=1 \
+    CHUMP_BACKPRESSURE_HALT_AT="${HALT_AT_OVERRIDE:-6}" \
+    CHUMP_AUTON_FILE="$AUTON" \
+    CHUMP_HALT_SINCE_FILE="$HALTSINCE" \
+    CHUMP_AMBIENT_FILE="$AMBIENT" \
+    bash "$CTRL" 2>&1
+}
+
+# ── Scenario G: 6 PRs all BLOCKED failing the SAME check (shared/flaky) → NO HALT
+echo "== G: 6 PRs all BLOCKED failing the SAME 'audit' check → systemic-red, must NOT halt =="
+echo 5 > "$AUTON"; rm -f "$HALTSINCE"; : > "$AMBIENT"
+PF='[{"number":1,"mergeStateStatus":"BLOCKED","checks":[{"name":"audit","conclusion":"CANCELLED"}]},
+    {"number":2,"mergeStateStatus":"BLOCKED","checks":[{"name":"audit","conclusion":"CANCELLED"}]},
+    {"number":3,"mergeStateStatus":"BLOCKED","checks":[{"name":"audit","conclusion":"CANCELLED"}]},
+    {"number":4,"mergeStateStatus":"BLOCKED","checks":[{"name":"audit","conclusion":"CANCELLED"}]},
+    {"number":5,"mergeStateStatus":"BLOCKED","checks":[{"name":"audit","conclusion":"CANCELLED"}]},
+    {"number":6,"mergeStateStatus":"BLOCKED","checks":[{"name":"audit","conclusion":"CANCELLED"}]}]'
+out="$(run_ctrl_facts "$PF" '[]' 1)"
+echo "$out" | grep -q "HALTING production" && bad "halted on a systemic-red cascade (should not)" || ok "did NOT halt on shared/flaky red"
+echo "$out" | grep -q "genuine-jam=0 systemic-red=6" && ok "classified 0 genuine / 6 systemic" || bad "misclassified: $out"
+echo "$out" | grep -q "SYSTEMIC-RED" && ok "loud systemic-red signal emitted" || bad "no systemic-red signal"
+grep -q "systemic_red" "$AMBIENT" && ok "systemic_red ambient event written" || bad "no systemic_red in ambient"
+[[ "$(cat "$AUTON")" == "5" ]] && ok "autonomy stayed 5 (fleet not halted)" || bad "autonomy changed (halted victims)"
+
+# ── Scenario H: same check ALSO failing on origin/main HEAD → systemic → NO HALT
+echo "== H: 6 PRs failing 'test', 'test' also RED on main → systemic (main-gate), must NOT halt =="
+echo 5 > "$AUTON"; rm -f "$HALTSINCE"; : > "$AMBIENT"
+PF='[{"number":11,"mergeStateStatus":"BLOCKED","checks":[{"name":"test","conclusion":"FAILURE"}]},
+    {"number":12,"mergeStateStatus":"BLOCKED","checks":[{"name":"test","conclusion":"FAILURE"}]},
+    {"number":13,"mergeStateStatus":"BLOCKED","checks":[{"name":"test","conclusion":"FAILURE"}]},
+    {"number":14,"mergeStateStatus":"BLOCKED","checks":[{"name":"test","conclusion":"FAILURE"}]},
+    {"number":15,"mergeStateStatus":"BLOCKED","checks":[{"name":"test","conclusion":"FAILURE"}]},
+    {"number":16,"mergeStateStatus":"BLOCKED","checks":[{"name":"test","conclusion":"FAILURE"}]}]'
+out="$(run_ctrl_facts "$PF" '[{"name":"test","conclusion":"FAILURE"}]' 1)"
+echo "$out" | grep -q "HALTING production" && bad "halted while main's own gate is red (should not)" || ok "did NOT halt when the failure is main-gate-wide"
+echo "$out" | grep -q "systemic-red=6" && ok "all 6 spared as main-gate victims" || bad "misclassified: $out"
+
+# ── Scenario I: 6 real merge CONFLICTS (DIRTY) → genuine jam, STILL HALTS ──────
+echo "== I: 6 PRs DIRTY (real merge conflicts) → genuine jam, must HALT =="
+echo 5 > "$AUTON"; rm -f "$HALTSINCE"; : > "$AMBIENT"
+PF='[{"number":21,"mergeStateStatus":"DIRTY","checks":[]},
+    {"number":22,"mergeStateStatus":"DIRTY","checks":[]},
+    {"number":23,"mergeStateStatus":"DIRTY","checks":[]},
+    {"number":24,"mergeStateStatus":"CONFLICTING","checks":[]},
+    {"number":25,"mergeStateStatus":"CONFLICTING","checks":[]},
+    {"number":26,"mergeStateStatus":"CONFLICTING","checks":[]}]'
+out="$(run_ctrl_facts "$PF" '[]' 1)"
+echo "$out" | grep -q "HALTING production" && ok "STILL halts on a genuine conflict jam" || bad "failed to halt on real conflicts: $out"
+echo "$out" | grep -q "genuine-jam=6 systemic-red=0" && ok "classified 6 genuine / 0 systemic" || bad "misclassified: $out"
+[[ "$(cat "$AUTON")" == "0" ]] && ok "autonomy driven to 0 (halted)" || bad "did not halt real jam"
+
+# ── Scenario J: mixed — 2 real PR-specific failures + 3 flaky victims ─────────
+# Proves the two behaviors coexist in one pass: the real per-PR failures HALT
+# (at HALT_AT=2) while the shared/flaky victims are spared as systemic-red.
+echo "== J: HALT_AT=2, 2 unique real failures + 3 shared-flaky → HALT on the 2, spare the 3 =="
+echo 5 > "$AUTON"; rm -f "$HALTSINCE"; : > "$AMBIENT"
+PF='[{"number":31,"mergeStateStatus":"BLOCKED","checks":[{"name":"unique-a","conclusion":"FAILURE"}]},
+    {"number":32,"mergeStateStatus":"BLOCKED","checks":[{"name":"unique-b","conclusion":"FAILURE"}]},
+    {"number":33,"mergeStateStatus":"BLOCKED","checks":[{"name":"shared-flaky","conclusion":"CANCELLED"}]},
+    {"number":34,"mergeStateStatus":"BLOCKED","checks":[{"name":"shared-flaky","conclusion":"CANCELLED"}]},
+    {"number":35,"mergeStateStatus":"BLOCKED","checks":[{"name":"shared-flaky","conclusion":"CANCELLED"}]}]'
+out="$(HALT_AT_OVERRIDE=2 run_ctrl_facts "$PF" '[]' 1)"
+echo "$out" | grep -q "genuine-jam=2 systemic-red=3" && ok "classified 2 genuine (unique) / 3 systemic (shared)" || bad "misclassified: $out"
+echo "$out" | grep -q "HALTING production" && ok "halts on the 2 real per-PR failures" || bad "did not halt on real failures: $out"
+echo "$out" | grep -q "SYSTEMIC-RED: 3" && ok "the 3 shared-flaky spared + signalled simultaneously" || bad "flaky victims not spared"
+
 echo ""
 echo "=== back-pressure hysteresis: $pass passed, $fail failed ==="
 [[ "$fail" -eq 0 ]]
