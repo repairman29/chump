@@ -3937,6 +3937,25 @@ events:
     consumers: [waste-tally, fleet-brief]
     fields_required: [ts, kind, branch, behind, threshold, phase]
 
+  # ── RESILIENT-325: pre-push auto-rebase (conflict-rot elimination) ─────────
+  - kind: pre_push_rebase_applied
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (RESILIENT-325)
+    trigger: branch was 1..threshold commits behind origin/main immediately
+      before push; bot-merge rebased onto fresh origin/main in-place (instead
+      of pushing stale) so the conflict window shrinks to ~0.
+    consumers: [waste-tally, fleet-brief]
+    fields_required: [ts, kind, branch, behind, phase]
+
+  - kind: pre_push_rebase_conflict
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (RESILIENT-325)
+    trigger: the RESILIENT-325 pre-push auto-rebase hit a real merge conflict
+      (not just staleness) — rebase aborted, push refused, human resolution
+      required.
+    consumers: [waste-tally, fleet-brief]
+    fields_required: [ts, kind, branch, behind, phase]
+
   # ── INFRA-1042: doc-only fast-path attribution ─────────────────────────────
   - kind: bot_merge_doc_only_fastpath
     effect_metric: self
