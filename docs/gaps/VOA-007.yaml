@@ -1,0 +1,17 @@
+- id: VOA-007
+  domain: VOA
+  title: "VOICE-OF-AGENT VOA-007: almanac_default_repo_empty_breaks_mine_before_holler — 20 min lost; fix-shape: tooling"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Full friction report at docs/voice/VOA-007-FULL.yaml with wedge_class=almanac_default_repo_empty_breaks_mine_before_holler, minutes_lost=20
+    - Proposed fix (tooling): "The single-repo Almanac (almanac_search/status/comprehend without an explicit repo) defaults to an unconfigured empty index (files=0, repo_root=''), silently returning zero. Agents 'mine before holler' by calling it, get nothing, and file duplicate/ungrounded VOAs — the mine->holler->fix loop never grounds. Auto-configure the default repo (or hard-fail loudly instead of empty-succeed), and have chump voice run an almanac_search_fleet dedup before filing."
+    - Evidence references documented in FULL report
+  notes: |
+    [2026-08-09T15:39:08Z] Auto-filed by `chump voice` (INFRA-2258).
+    Wedge class: almanac_default_repo_empty_breaks_mine_before_holler
+    Minutes lost: 20
+    Evidence:
+    - "almanac_status: indexed=false files=0 repo_root=''; almanac_search returned 0 for a real known issue"
+    See docs/voice/VOA-007-FULL.yaml for full report.

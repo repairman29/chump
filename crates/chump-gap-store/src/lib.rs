@@ -3145,6 +3145,82 @@ struct YamlGapsFile {
     gaps: Vec<YamlGap>,
 }
 
+/// VOA-006: load the gap registry, parsing each `docs/gaps/*.yaml` on its own.
+///
+/// The three call sites here (import, closed_pr backfill, status backfill) each
+/// used to concatenate every per-file YAML into one buffer and parse it once, so
+/// a single malformed entry aborted the whole read. INFRA-3429.yaml shipped with
+/// 39 duplicate `evidence:` keys (#3309) and that alone killed every
+/// `chump gap import` — the docs/gaps -> state.db sync was dead and freshly filed
+/// gaps never became pickable.
+///
+/// A bad file is now named on stderr and stepped over. Returns `None` only when
+/// there is no registry at all (neither `docs/gaps/` nor `docs/gaps.yaml`), which
+/// callers treat as a clean no-op rather than an error.
+fn load_gap_registry(repo_root: &Path) -> Result<Option<YamlGapsFile>> {
+    let read_monolithic = || -> Result<Option<YamlGapsFile>> {
+        let yaml_path = repo_root.join("docs").join("gaps.yaml");
+        match std::fs::read_to_string(&yaml_path) {
+            Ok(t) => Ok(Some(serde_yaml::from_str(&t).with_context(|| {
+                format!("parsing gap registry {}", yaml_path.display())
+            })?)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::Error::from(e))
+                .with_context(|| format!("reading {}", yaml_path.display())),
+        }
+    };
+
+    let per_file_dir = repo_root.join("docs").join("gaps");
+    if !per_file_dir.is_dir() {
+        return read_monolithic();
+    }
+
+    let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
+        .with_context(|| format!("reading {}", per_file_dir.display()))?
+        .flatten()
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s == "yaml")
+                .unwrap_or(false)
+        })
+        .collect();
+    dir_entries.sort_by_key(|e| e.file_name());
+
+    if dir_entries.is_empty() {
+        return read_monolithic();
+    }
+
+    let mut gaps: Vec<YamlGap> = Vec::new();
+    let mut malformed = 0usize;
+    for entry in &dir_entries {
+        let content = std::fs::read_to_string(entry.path())
+            .with_context(|| format!("reading {}", entry.path().display()))?;
+        if content.trim().is_empty() {
+            continue;
+        }
+        // Each file holds a bare YAML list; wrap it so it parses as YamlGapsFile.
+        let wrapped = format!("gaps:\n{content}");
+        match serde_yaml::from_str::<YamlGapsFile>(&wrapped) {
+            Ok(f) => gaps.extend(f.gaps),
+            Err(e) => {
+                eprintln!(
+                    "chump gap import: SKIPPING malformed {}: {e}",
+                    entry.path().display()
+                );
+                malformed += 1;
+            }
+        }
+    }
+    if malformed > 0 {
+        eprintln!(
+            "chump gap import: {malformed} malformed file(s) skipped — fix them or they stay unimported"
+        );
+    }
+    Ok(Some(YamlGapsFile { gaps }))
+}
+
 impl GapStore {
     /// Import from the gap registry into the DB. Idempotent — existing rows are skipped.
     ///
@@ -3171,53 +3247,11 @@ impl GapStore {
     /// is now called automatically by `import_from_yaml` so re-running
     /// `chump gap import` heals the tree.
     pub fn backfill_closed_pr_from_yaml(&self, repo_root: &Path) -> Result<usize> {
-        // Re-use the same YAML aggregation logic as import_from_yaml.
-        let per_file_dir = repo_root.join("docs").join("gaps");
-        let text = if per_file_dir.is_dir() {
-            let mut parts = Vec::new();
-            let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
-                .with_context(|| format!("reading {}", per_file_dir.display()))?
-                .flatten()
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .map(|s| s == "yaml")
-                        .unwrap_or(false)
-                })
-                .collect();
-            dir_entries.sort_by_key(|e| e.file_name());
-            for entry in &dir_entries {
-                let content = std::fs::read_to_string(entry.path())
-                    .with_context(|| format!("reading {}", entry.path().display()))?;
-                parts.push(content);
-            }
-            if parts.is_empty() {
-                let yaml_path = repo_root.join("docs").join("gaps.yaml");
-                match std::fs::read_to_string(&yaml_path) {
-                    Ok(t) => t,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-                    Err(e) => {
-                        return Err(anyhow::Error::from(e))
-                            .with_context(|| format!("reading {}", yaml_path.display()));
-                    }
-                }
-            } else {
-                format!("gaps:\n{}", parts.join(""))
-            }
-        } else {
-            let yaml_path = repo_root.join("docs").join("gaps.yaml");
-            match std::fs::read_to_string(&yaml_path) {
-                Ok(t) => t,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-                Err(e) => {
-                    return Err(anyhow::Error::from(e))
-                        .with_context(|| format!("reading {}", yaml_path.display()));
-                }
-            }
+        // VOA-006: shared resilient loader — one bad file no longer sinks the read.
+        let file = match load_gap_registry(repo_root)? {
+            Some(f) => f,
+            None => return Ok(0),
         };
-        let file: YamlGapsFile = serde_yaml::from_str(&text)
-            .with_context(|| "parsing gap registry for closed_pr backfill")?;
 
         let mut backfilled = 0usize;
         for g in &file.gaps {
@@ -3408,56 +3442,15 @@ impl GapStore {
     }
 
     pub fn import_from_yaml(&self, repo_root: &Path) -> Result<(usize, usize, usize)> {
-        // INFRA-188: prefer per-file directory if it exists and is non-empty.
-        let per_file_dir = repo_root.join("docs").join("gaps");
-        let text = if per_file_dir.is_dir() {
-            // Aggregate all per-file YAML into one monolithic string.
-            let mut parts = Vec::new();
-            let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
-                .with_context(|| format!("reading {}", per_file_dir.display()))?
-                .flatten()
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .map(|s| s == "yaml")
-                        .unwrap_or(false)
-                })
-                .collect();
-            dir_entries.sort_by_key(|e| e.file_name());
-            for entry in &dir_entries {
-                let content = std::fs::read_to_string(entry.path())
-                    .with_context(|| format!("reading {}", entry.path().display()))?;
-                parts.push(content);
-            }
-            if parts.is_empty() {
-                // Empty directory — fall through to monolithic check
-                let yaml_path = repo_root.join("docs").join("gaps.yaml");
-                match std::fs::read_to_string(&yaml_path) {
-                    Ok(t) => t,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0, 0)),
-                    Err(e) => {
-                        return Err(anyhow::Error::from(e))
-                            .with_context(|| format!("reading {}", yaml_path.display()));
-                    }
-                }
-            } else {
-                // Wrap entries as a monolithic `gaps:` list for uniform parsing.
-                format!("gaps:\n{}", parts.join(""))
-            }
-        } else {
-            let yaml_path = repo_root.join("docs").join("gaps.yaml");
-            match std::fs::read_to_string(&yaml_path) {
-                Ok(t) => t,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0, 0)),
-                Err(e) => {
-                    return Err(anyhow::Error::from(e))
-                        .with_context(|| format!("reading {}", yaml_path.display()));
-                }
-            }
+        // VOA-006: parse per-file rather than concatenate-then-parse-once. A single
+        // malformed entry (e.g. INFRA-3429's 39 duplicate `evidence:` keys, shipped in
+        // #3309) used to abort the WHOLE docs/gaps -> state.db sync, so no gap could be
+        // imported and freshly-filed gaps never became pickable. Now a bad file is
+        // skipped and named on stderr; every well-formed file still imports.
+        let file = match load_gap_registry(repo_root)? {
+            Some(f) => f,
+            None => return Ok((0, 0, 0)),
         };
-        let file: YamlGapsFile = serde_yaml::from_str(&text)
-            .with_context(|| "parsing gap registry (per-file or monolithic)")?;
 
         let mut inserted = 0usize;
         let mut skipped = 0usize;
@@ -3782,55 +3775,13 @@ impl GapStore {
     /// the YAML provides them and the DB row is missing them, since the
     /// closer writes all three together.
     pub fn backfill_status_done_from_yaml(&self, repo_root: &Path) -> Result<usize> {
-        // Re-use the same YAML aggregation logic as import_from_yaml /
-        // backfill_closed_pr_from_yaml. Identical loader keeps drift
-        // between the three call sites impossible.
-        let per_file_dir = repo_root.join("docs").join("gaps");
-        let text = if per_file_dir.is_dir() {
-            let mut parts = Vec::new();
-            let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
-                .with_context(|| format!("reading {}", per_file_dir.display()))?
-                .flatten()
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .map(|s| s == "yaml")
-                        .unwrap_or(false)
-                })
-                .collect();
-            dir_entries.sort_by_key(|e| e.file_name());
-            for entry in &dir_entries {
-                let content = std::fs::read_to_string(entry.path())
-                    .with_context(|| format!("reading {}", entry.path().display()))?;
-                parts.push(content);
-            }
-            if parts.is_empty() {
-                let yaml_path = repo_root.join("docs").join("gaps.yaml");
-                match std::fs::read_to_string(&yaml_path) {
-                    Ok(t) => t,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-                    Err(e) => {
-                        return Err(anyhow::Error::from(e))
-                            .with_context(|| format!("reading {}", yaml_path.display()));
-                    }
-                }
-            } else {
-                format!("gaps:\n{}", parts.join(""))
-            }
-        } else {
-            let yaml_path = repo_root.join("docs").join("gaps.yaml");
-            match std::fs::read_to_string(&yaml_path) {
-                Ok(t) => t,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-                Err(e) => {
-                    return Err(anyhow::Error::from(e))
-                        .with_context(|| format!("reading {}", yaml_path.display()));
-                }
-            }
+        // Shared loader with import_from_yaml / backfill_closed_pr_from_yaml, so
+        // drift between the three call sites really is impossible (VOA-006 — they
+        // were previously three copy-pasted blocks that all had to be fixed).
+        let file = match load_gap_registry(repo_root)? {
+            Some(f) => f,
+            None => return Ok(0),
         };
-        let file: YamlGapsFile = serde_yaml::from_str(&text)
-            .with_context(|| "parsing gap registry for status backfill")?;
 
         let mut backfilled = 0usize;
         for g in &file.gaps {
@@ -6957,6 +6908,61 @@ meta:
         assert!(ins >= 1, "expected at least one inserted row, got {}", ins);
         let reimported = store2.get(&id).unwrap().expect("row reimported");
         assert_eq!(reimported.closed_pr, Some(598));
+    }
+
+    /// VOA-006: one corrupt per-file entry must not abort the whole import.
+    ///
+    /// Precedent: INFRA-3429.yaml shipped with 39 duplicate `evidence:` keys
+    /// (#3309). Because the importer concatenated every `docs/gaps/*.yaml` into a
+    /// single buffer and parsed it once, that lone bad file made `chump gap import`
+    /// fail outright — the entire YAML -> state.db sync was dead, and newly filed
+    /// gaps never became pickable. Fails before the fix (the whole call errors).
+    #[test]
+    fn test_import_skips_malformed_file_and_imports_the_rest() {
+        let (_store, dir) = test_store();
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        std::fs::create_dir_all(&gaps_dir).unwrap();
+
+        // Well-formed neighbours, sorted either side of the corrupt file.
+        for id in ["INFRA-0001", "INFRA-9999"] {
+            std::fs::write(
+                gaps_dir.join(format!("{id}.yaml")),
+                format!(
+                    "- id: {id}\n  domain: INFRA\n  title: healthy entry\n  \
+                     status: open\n  priority: P1\n  effort: s\n"
+                ),
+            )
+            .unwrap();
+        }
+        // The corrupt one: duplicate `evidence` key, exactly INFRA-3429's shape.
+        std::fs::write(
+            gaps_dir.join("INFRA-5000.yaml"),
+            "- id: INFRA-5000\n  domain: INFRA\n  title: corrupt entry\n  status: open\n  \
+             priority: P1\n  effort: s\n  evidence: |\n    first\n  evidence: |\n    second\n",
+        )
+        .unwrap();
+
+        let store = GapStore::open(dir.path()).unwrap();
+        let (inserted, _skipped, _backfilled) = store
+            .import_from_yaml(dir.path())
+            .expect("import must succeed despite one malformed file");
+
+        assert!(
+            inserted >= 2,
+            "healthy files must still import; inserted={inserted}"
+        );
+        assert!(
+            store.get("INFRA-0001").unwrap().is_some(),
+            "file sorting before the corrupt one must import"
+        );
+        assert!(
+            store.get("INFRA-9999").unwrap().is_some(),
+            "file sorting after the corrupt one must import"
+        );
+        assert!(
+            store.get("INFRA-5000").unwrap().is_none(),
+            "the malformed file itself must be skipped, not partially imported"
+        );
     }
 
     /// INFRA-233: `import_from_yaml` must backfill `closed_pr` for rows that
