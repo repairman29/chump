@@ -385,3 +385,56 @@ fn claim_no_args_exits_2() {
         "expected exit 2 for `claim` with no gap ID"
     );
 }
+
+// ── 7. CREDIBLE-110: unknown subcommand must error, never hallucinate ───────
+
+/// A single unknown token (`chump bogus`) must exit non-zero with a usage
+/// error, not silently route to the model.
+#[test]
+fn unknown_subcommand_single_token_exits_nonzero_no_prose() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_isolated_repo(dir.path());
+    let out = run(dir.path(), &["bogus"]);
+    assert_ne!(
+        out.status.code(),
+        Some(0),
+        "unknown subcommand must not exit 0"
+    );
+    let err = stderr(&out);
+    assert!(
+        err.contains("unknown subcommand"),
+        "stderr should report an unknown-subcommand error, got: {err}"
+    );
+    assert!(
+        !stdout(&out).to_lowercase().contains("agriculture"),
+        "must not hallucinate LLM prose for an unknown subcommand"
+    );
+}
+
+/// CREDIBLE-110 regression: a *multi-word* unknown invocation (e.g. `chump
+/// cron list`, mirroring the reported `chump farmer status` hallucination
+/// before `farmer status` was wired up) must also error — previously only
+/// the exact two-argv-element case (`args.len() == 2`) was caught, so any
+/// unknown subcommand with trailing args silently dropped those args and
+/// routed the first word alone to the model.
+#[test]
+fn unknown_subcommand_with_trailing_args_exits_nonzero_no_prose() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_isolated_repo(dir.path());
+    let out = run(dir.path(), &["cron", "list"]);
+    assert_ne!(
+        out.status.code(),
+        Some(0),
+        "unknown subcommand with trailing args must not exit 0"
+    );
+    let err = stderr(&out);
+    assert!(
+        err.contains("unknown subcommand"),
+        "stderr should report an unknown-subcommand error, got: {err}"
+    );
+    assert!(
+        stdout(&out).trim().is_empty(),
+        "must not print a hallucinated reply to stdout, got: {}",
+        stdout(&out)
+    );
+}
