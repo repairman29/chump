@@ -8,7 +8,15 @@
 # Conditions:
 #   (a) AUTH_DEAD           — ≥ CHUMP_AUTH_STORM_RECALL_THRESHOLD fleet_auth_storm
 #                             events with action=worker_exit in the last
-#                             CHUMP_AUTH_STORM_WINDOW_SECS (default 5, 3600)
+#                             CHUMP_AUTH_STORM_WINDOW_SECS (default 5, 3600),
+#                             OR ≥ CHUMP_OAUTH_FAILURE_RECALL_THRESHOLD (default 3)
+#                             oauth_token_refresh_failed events, OR
+#                             ≥ CHUMP_AUTH_STALE_RECALL_THRESHOLD (default 2)
+#                             auth_token_stale events (RESILIENT-056: emitted by
+#                             infra-watcher-loop.sh check-oauth-freshness), all
+#                             within the same CHUMP_AUTH_STORM_WINDOW_SECS window —
+#                             widened past the single fleet_auth_storm+worker_exit
+#                             signal so a wedged refresher pages too
 #   (b) COST_CAP            — cost_cap_exceeded event in ambient.jsonl within 2 h,
 #                             OR `chump cost-watch --hard-cap` exits non-zero
 #   (c) CI_BROKEN           — ≥ CHUMP_CI_BROKEN_THRESHOLD pr_stuck events with
@@ -53,6 +61,8 @@
 #   CHUMP_OPERATOR_RECALL_COOLDOWN_SECS    suppress duplicate recalls (default 3600)
 #   CHUMP_AUTH_STORM_RECALL_THRESHOLD      default 5
 #   CHUMP_AUTH_STORM_WINDOW_SECS           default 3600
+#   CHUMP_OAUTH_FAILURE_RECALL_THRESHOLD   default 3 (oauth_token_refresh_failed count)
+#   CHUMP_AUTH_STALE_RECALL_THRESHOLD      default 2 (auth_token_stale count)
 #   CHUMP_CI_BROKEN_THRESHOLD              default 3
 #   CHUMP_CI_BROKEN_WINDOW_SECS            default 7200
 #   CHUMP_QUEUE_STARVE_SECS                default 86400
@@ -73,6 +83,8 @@ _recall_url="${CHUMP_OPERATOR_RECALL_URL:-}"
 _cooldown="${CHUMP_OPERATOR_RECALL_COOLDOWN_SECS:-3600}"
 _auth_threshold="${CHUMP_AUTH_STORM_RECALL_THRESHOLD:-5}"
 _auth_window="${CHUMP_AUTH_STORM_WINDOW_SECS:-3600}"
+_oauth_fail_threshold="${CHUMP_OAUTH_FAILURE_RECALL_THRESHOLD:-3}"
+_auth_stale_threshold="${CHUMP_AUTH_STALE_RECALL_THRESHOLD:-2}"
 _ci_threshold="${CHUMP_CI_BROKEN_THRESHOLD:-3}"
 _ci_window="${CHUMP_CI_BROKEN_WINDOW_SECS:-7200}"
 _queue_starve="${CHUMP_QUEUE_STARVE_SECS:-86400}"
@@ -396,12 +408,30 @@ with open(path, "r", errors="replace") as f:
 PYEOF
 }
 
-# (a) AUTH_DEAD — fleet_auth_storm with action=worker_exit
+# (a) AUTH_DEAD — fleet_auth_storm with action=worker_exit, OR repeated
+# oauth_token_refresh_failed / auth_token_stale (RESILIENT-056: widened past
+# the original narrow signal so a wedged OAuth refresher pages the operator
+# too, not only a worker-exit storm).
 _auth_exits=$(_scan_ambient "$_auth_window" '"kind":"fleet_auth_storm"' \
     | grep -c '"action":"worker_exit"' 2>/dev/null || true)
 _auth_exits="${_auth_exits//[[:space:]]/}"
+
+_oauth_fail_hits=$(_scan_ambient "$_auth_window" '"kind":"oauth_token_refresh_failed"' | wc -l 2>/dev/null || echo 0)
+_oauth_fail_hits="${_oauth_fail_hits//[[:space:]]/}"
+
+_auth_stale_hits=$(_scan_ambient "$_auth_window" '"kind":"auth_token_stale"' | wc -l 2>/dev/null || echo 0)
+_auth_stale_hits="${_auth_stale_hits//[[:space:]]/}"
+
+_reason=""
 if (( _auth_exits >= _auth_threshold )); then
     _reason="fleet_auth_storm with action=worker_exit seen ${_auth_exits}x in last ${_auth_window}s (threshold=${_auth_threshold}); auth credentials appear fully dead"
+elif (( _oauth_fail_hits >= _oauth_fail_threshold )); then
+    _reason="oauth_token_refresh_failed seen ${_oauth_fail_hits}x in last ${_auth_window}s (threshold=${_oauth_fail_threshold}); OAuth refresher repeatedly failing"
+elif (( _auth_stale_hits >= _auth_stale_threshold )); then
+    _reason="auth_token_stale seen ${_auth_stale_hits}x in last ${_auth_window}s (threshold=${_auth_stale_threshold}); token stale/expired and not recovering"
+fi
+
+if [[ -n "$_reason" ]]; then
     if (( _check_only )); then
         echo "[operator-recall] HALT condition=AUTH_DEAD: $_reason"
         _any_halt=1

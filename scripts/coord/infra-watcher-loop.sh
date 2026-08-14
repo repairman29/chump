@@ -558,11 +558,21 @@ print(json.dumps(s))
 # kind=oauth_token_stale_despite_daemon — refresher daemon is wedged. If the
 # file is stale and the plist is NOT loaded, that's just "operator hasn't
 # installed it yet" — emit a warning but a different (less alarming) kind.
+#
+# RESILIENT-056: also parse expires_at (claudeAiOauth.expiresAt, captured by
+# oauth-token-refresh.sh) so a token gets flagged from its own claimed expiry
+# even when mtime alone still looks fresh — a refresh can write a token that
+# was already near-expired (short-lived reissue, clock skew, etc). Either
+# signal (mtime > stale_s OR expiry within CHUMP_OAUTH_EXPIRY_WARN_S) emits a
+# single unified kind=auth_token_stale event within one 15-min tick, which
+# widens the operator-recall AUTH_DEAD trigger (scripts/dispatch/operator-recall.sh).
 # scanner-anchor: "kind":"oauth_token_stale_despite_daemon"
+# scanner-anchor: "kind":"auth_token_stale"
 cmd_check_oauth_freshness() {
     _header "check-oauth-freshness"
     local token_file="${CHUMP_OAUTH_TOKEN_FILE:-${HOME}/.chump/oauth-token.json}"
     local stale_s="${CHUMP_OAUTH_STALE_S:-900}"
+    local expiry_warn_s="${CHUMP_OAUTH_EXPIRY_WARN_S:-600}"
     local plist_label="com.chump.oauth-refresh"
 
     if [[ ! -f "$token_file" ]]; then
@@ -578,10 +588,48 @@ cmd_check_oauth_freshness() {
         mtime="$(stat -c %Y "$token_file")"
     fi
     age=$((now - mtime))
-    printf '[infra-watcher] check-oauth-freshness: %s age=%ds (threshold=%ds)\n' \
-        "$token_file" "$age" "$stale_s"
 
-    if (( age <= stale_s )); then
+    # expires_at may be an ISO-8601 string or an epoch (seconds or ms) —
+    # accept either shape since the source Keychain blob's format isn't
+    # contractually fixed. Absence (empty string) is not an error: older
+    # token files predate RESILIENT-056 and simply skip the expiry check.
+    local expires_epoch
+    expires_epoch="$(python3 -c "
+import json, sys
+from datetime import datetime, timezone
+try:
+    d = json.load(open('${token_file}'))
+    exp = d.get('expires_at', '')
+    if not exp:
+        sys.exit(0)
+    try:
+        v = float(exp)
+        if v > 1e12:
+            v = v / 1000.0
+        print(int(v))
+        sys.exit(0)
+    except ValueError:
+        pass
+    s = str(exp).rstrip('Z')
+    dt = datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+    print(int(dt.timestamp()))
+except Exception:
+    pass
+" 2>/dev/null)"
+
+    local expiry_secs_left="" expiry_stale=0
+    if [[ -n "$expires_epoch" ]]; then
+        expiry_secs_left=$((expires_epoch - now))
+        (( expiry_secs_left <= expiry_warn_s )) && expiry_stale=1
+    fi
+
+    local mtime_stale=0
+    (( age > stale_s )) && mtime_stale=1
+
+    printf '[infra-watcher] check-oauth-freshness: %s age=%ds (threshold=%ds) expires_in=%ss (threshold=%ds)\n' \
+        "$token_file" "$age" "$stale_s" "${expiry_secs_left:-n/a}" "$expiry_warn_s"
+
+    if (( mtime_stale == 0 && expiry_stale == 0 )); then
         return 0
     fi
 
@@ -591,12 +639,28 @@ cmd_check_oauth_freshness() {
         daemon_loaded=1
     fi
 
+    local reason="expiry"
+    if (( mtime_stale == 1 && expiry_stale == 1 )); then
+        reason="mtime_and_expiry"
+    elif (( mtime_stale == 1 )); then
+        reason="mtime"
+    fi
+
+    local ts
+    ts="$(_ts)"
+    printf '{"ts":"%s","kind":"auth_token_stale","token_file":"%s","age_seconds":%d,"stale_threshold_s":%d,"expiry_secs_left":%s,"daemon_loaded":%s,"reason":"%s"}\n' \
+        "$ts" "$token_file" "$age" "$stale_s" "${expiry_secs_left:-null}" \
+        "$([[ "$daemon_loaded" -eq 1 ]] && echo true || echo false)" "$reason" \
+        >> "$AMBIENT_LOG"
+    printf '[infra-watcher] ALERT check-oauth-freshness: auth_token_stale reason=%s age=%ds expiry_secs_left=%s daemon_loaded=%s\n' \
+        "$reason" "$age" "${expiry_secs_left:-n/a}" "$daemon_loaded" >&2
+
     if (( daemon_loaded == 1 )); then
         _emit_finding "oauth_token_stale_despite_daemon" "critical" \
-            "token_file=${token_file} age=${age}s daemon=${plist_label}/loaded — refresher is wedged, manual investigation required"
+            "token_file=${token_file} age=${age}s daemon=${plist_label}/loaded reason=${reason} — refresher is wedged, manual investigation required"
     else
         _emit_finding "oauth_token_stale_no_daemon" "warning" \
-            "token_file=${token_file} age=${age}s daemon=${plist_label}/not-loaded — install via scripts/setup/install-oauth-refresh-launchd.sh"
+            "token_file=${token_file} age=${age}s daemon=${plist_label}/not-loaded reason=${reason} — install via scripts/setup/install-oauth-refresh-launchd.sh"
     fi
 }
 
