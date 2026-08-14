@@ -5901,6 +5901,20 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, healed, dry_run]
 
+  - kind: worker_liveness_zero
+    effect_metric: worker_halt_duration
+    emitter: scripts/ops/organ-watchdog.sh (RESILIENT-324)
+    trigger: every watchdog cycle where none of the configured
+      chump-worker@<id>.service gap-starter workers is active (host must have
+      the chump-worker@.service template installed). Sustained past
+      CHUMP_WORKER_HALT_MIN_SECS (default 1800s) escalates to
+      operator-recall.sh --condition WORKER_HALT — closes the 2026-08-14
+      blind spot where workers sat SIGTERM-stopped + disabled for 2.5h with
+      no alarm because AUTONOMY_HALT (RESILIENT-321) only watches the kill
+      switch, not the worker units themselves.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, worker_ids, halt_age_s]
+
   - kind: organ_clone_refreshed
     effect_metric: self
     emitter: scripts/ops/organ-watchdog.sh (INFRA-3598,
