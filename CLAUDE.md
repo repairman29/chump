@@ -226,6 +226,20 @@ gh pr merge <N> --auto --squash
 chump gap ship <ID> --update-yaml
 ```
 
+### chump-commit index mutex escape hatch (RESILIENT-117, conditional)
+
+`scripts/coord/chump-commit.sh` serializes `git reset`/`add`/`commit` across
+concurrent agents in the same worktree via an flock'd mutex file (path
+resolved by `scripts/lib/index-mutex-path.sh`, repo-rooted per worktree —
+see that file for the cross-worktree FD-leak root cause it fixes).
+`CHUMP_INDEX_LOCK=0` disables this serialization entirely. That bypass is
+**advisory only and expressly conditional on RESILIENT-117 being open** —
+it exists as an escape hatch while the mutex-path fix is validated in the
+field, not as a permanent license to skip serialization. Once RESILIENT-117
+has been closed for a while with no regressions, treat `CHUMP_INDEX_LOCK=0`
+as deprecated; if you're reaching for it after that, the mutex itself likely
+needs a real fix rather than another bypass.
+
 ## Scheduling discipline — session-bound vs fleet-durable
 
 For the full scheduling rule, decision table, anti-patterns, and migration guide from CronCreate to launchd, see **[`docs/process/SCHEDULING_LAYERS.md`](./docs/process/SCHEDULING_LAYERS.md)** (DOC-058).
