@@ -2097,3 +2097,13 @@ bypasses that mask CI state.
 **Related staleness layers** — same doc covers state.db ↔ YAML drift (`chump gap sync`, INFRA-2053), chump binary drift (`chump --rebuild-if-stale`, INFRA-2054), launchd plist drift (`chump cron health`, INFRA-2046).
 
 **Session-bound vs fleet-durable scheduling** — if a CronCreate or ScheduleWakeup is dying at session close when it should persist, you have a layer mismatch. See [`docs/process/SCHEDULING_LAYERS.md`](./SCHEDULING_LAYERS.md) for the decision rule, anti-pattern catalog, and migration guide (DOC-058).
+
+## Rust test flakes (INFRA-2152, 2026-08-14)
+
+**Symptom**: `cargo test` panics intermittently on a NATS-backed integration test (e.g. `chump-coord::ambient_distribution::emit_round_trips_to_subscriber`) with "did not observe published event within 5s" or similar, but passes on rerun.
+
+**Real cause**: `nats.subscribe()` returns as soon as the SUB frame is *sent*, not once the server has registered it. A `publish()` issued immediately after can race the SUB frame server-side and the event is silently dropped — no error, just a timeout on the subscriber side.
+
+**Fix**: call `.flush().await` on the subscribing client right after `subscribe()`, before doing anything that depends on the subscription being live. `flush()` forces a round-trip to the server, so by the time it returns the subscription is guaranteed registered. See `crates/chump-coord/tests/ambient_distribution.rs`.
+
+**Related — stale test referencing removed functionality**: `chump-gap-store::tests::test_reserve_skips_yaml_drift` was reported failing in the same gap but no longer exists in the tree — it was removed in #2727 (INFRA-2177, "drop docs/gaps YAML rollup from gap reserve — use state.db only") along with the functionality it tested. Before debugging a named test failure, `grep` for the test function first — if it's gone, the report is stale and the fix is a no-op.
