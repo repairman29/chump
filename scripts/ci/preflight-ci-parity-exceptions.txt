@@ -374,3 +374,13 @@ inbox-watcher pattern — every checked-in agent arms event-driven wake (INFRA-1
 Enable fleet autonomy for claim-exercising guards (CREDIBLE-166)   # reason: CI-only env setup — sets AUTONOMY_LEVEL so the ./target-cached claim guards un-skip in fast-checks; not a test gate, no preflight equivalent (local autonomy is the dev's own)
 Wire mold as the linker (EFFECTIVE-396)   # reason: CI-only env setup — appends RUSTFLAGS=-Clink-arg=-fuse-ld=mold to $GITHUB_ENV so the apt-installed mold from INFRA-2242 is actually used; not a test gate, nothing to assert, and no preflight equivalent (a dev's local linker choice is their own). Same shape as the CREDIBLE-166 autonomy-env entry above.
 test-notify-operator.sh   # reason: RESILIENT-263 operator-escalation integration test (Discord DM send path); runs in the audit shard with CI credential context. It self-tests the unconfigured no-op, so a preflight mirror is a follow-up — allowlisted to unblock the pipeline (the gate landed unmirrored via #3544's admin-merge).
+
+# ── RESILIENT-324: fleet self-draining organs (daemon-side, not preflight-shaped) ─
+# Both are Tier-D: they test standalone ops-daemon shell organs (a systemd-timer
+# reaper and a systemd-timer circuit-breaker), driven entirely with stubbed
+# gh/chump/systemctl + JSON/env fixtures. There is no code path a `chump preflight`
+# worktree run exercises — the behavior lives in scripts/ops/*.sh invoked by
+# systemd on the primary node, same shape as the reaper/watchdog gates above
+# (test-stale-worktree-reaper-tmp.sh, test-notify-operator.sh).
+test-rot-reaper.sh   # reason: RESILIENT-324 — Tier-D daemon-side reaper gate; exercises scripts/ops/rot-reaper.sh selection logic with stubbed gh/chump + a PR-JSON fixture; no preflight-shaped code path
+test-back-pressure-hysteresis.sh   # reason: RESILIENT-324 — Tier-D daemon-side circuit-breaker gate; exercises scripts/ops/back-pressure-controller.sh halt/resume via CHUMP_BACKPRESSURE_* hooks with stubbed systemctl/gh; no preflight-shaped code path
