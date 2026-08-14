@@ -216,3 +216,10 @@ installers:
     install: bash scripts/setup/install-coord-assign-launchd.sh
     check: bash scripts/setup/install-coord-assign-launchd.sh --check
     adds: ~/Library/LaunchAgents/com.chump.coord-assign.plist + KeepAlive daemon publishing WorkEnvelopes
+
+  - id: a2a-dead-letter-reaper-launchd
+    why: "INFRA-1946 (INFRA-1862 slice C) — 30-min reaper that dead-letters messages sitting unread in a dormant recipient's inbox for CHUMP_A2A_DEAD_LETTER_MIN+ minutes into .chump-locks/inbox/dead-letter.jsonl and pages the operator via operator-recall.sh --condition A2A_DEAD_LETTER_FLOOD when too many pile up in one run. Without this, messages to a dormant inbox sit forever unread with no reaper, no pager, no closure (today's session: 4 curator inboxes accumulated 5K-19K bytes of unread dispatches)."
+    priority: P1
+    install: bash scripts/setup/install-a2a-dead-letter-reaper-launchd.sh
+    check: bash scripts/setup/install-a2a-dead-letter-reaper-launchd.sh --check
+    adds: ~/Library/LaunchAgents/com.chump.a2a-dead-letter-reaper.plist + 30-min run

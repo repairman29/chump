@@ -8295,6 +8295,26 @@ events:
     fields_required: [ts, kind, inbox_file, message_count]
     expected_volume: "0-N; non-zero is advisory, not actionable unless persistent"
     # payload: {inbox_file: string, message_count: int, ts: string}
+
+  # INFRA-1946: A2A dead-letter reaper (INFRA-1862 slice C)
+  - kind: a2a_msg_dead_lettered
+    effect_metric: resilient
+    emitter: scripts/coord/a2a-dead-letter-reaper.sh
+    trigger: >
+      Emitted once per message the 30-min a2a-dead-letter-reaper.sh finds
+      unread (recipient's inbox cursor byte-offset is behind the message)
+      and older than CHUMP_A2A_DEAD_LETTER_MIN minutes (default 30) in a
+      .chump-locks/inbox/<session>.jsonl file. The message is also appended
+      to .chump-locks/inbox/dead-letter.jsonl so it is never silently lost —
+      delivered, dead-lettered, or (past CHUMP_A2A_DEAD_LETTER_PAGE_THRESHOLD
+      dead-lettered messages in one run) flood-paged via operator-recall.sh
+      --condition A2A_DEAD_LETTER_FLOOD. Carries to, sender, age_min,
+      msg_summary.
+    consumers: [ops-audit, fleet-doctor]
+    fields_required: [ts, kind, to, sender, age_min, msg_summary]
+    expected_volume: "0-N per 30-min reaper cycle; non-zero signals dormant-inbox backlog"
+    # payload: {to: string, sender: string, age_min: number, msg_summary: string, ts: string}
+
   - kind: trunk_cascade_broken
     effect_metric: resilient
     emitter: scripts/ops/break-trunk-cascade.sh (INFRA-2087)

@@ -3,6 +3,7 @@
 # intentional: situational daemons, dev-convenience tools, or opt-in runners.
 # Operator audits this list; to promote, add to REQUIRED_DAEMONS in
 # chump-fleet-bootstrap.sh. To remove, move to deprecated-installers-allowlist.txt.
+install-a2a-dead-letter-reaper-launchd.sh
 install-active-target-reaper-launchd.sh
 install-allowlist-audit-launchd.sh
 install-ambient-hooks.sh
