@@ -2123,6 +2123,19 @@ async fn main() -> Result<()> {
         std::process::exit(commands::vote::run(&sub_args));
     }
 
+    // `chump consensus ask <question> --reason <text> [--id <id>] [--block]
+    // [--timeout <secs>]` (INFRA-2156, META-125/C5) — publish a fleet
+    // decision question onto the existing FEEDBACK kind=proposal channel
+    // and return a consensus_id; --block polls ambient.jsonl for the
+    // deliberator's consensus_result up to --timeout seconds.
+    // Gated behind CHUMP_FLEET_RECV_SIDE_V0=1, same as `chump vote`.
+    if args.get(1).map(String::as_str) == Some("consensus")
+        && args.get(2).map(String::as_str) == Some("ask")
+    {
+        let sub_args: Vec<String> = args.iter().skip(3).cloned().collect();
+        std::process::exit(commands::consensus_ask::run(&sub_args));
+    }
+
     // `chump voice --wedge-class <id> --minutes-lost <int> ...` (INFRA-2258) —
     // file a Voice-of-Agent (VOA) report: writes docs/gaps/VOA-NNNN.yaml +
     // docs/voice/VOA-NNNN-FULL.yaml and emits kind=voice_of_agent_filed.
