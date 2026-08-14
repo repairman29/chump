@@ -68,3 +68,11 @@ enabled     chump-pr-approval.timer
 # the fragile, hand-installed transient `chump-farmer-bridge` unit. Declared here
 # so organ-reconcile re-arms it if it drifts or fails.
 enabled     chump-farmer.timer
+# chump-rot-reaper.timer: the CONFLICTING-PR drain (RESILIENT-324). Closes open
+# PRs that are genuinely CONFLICTING and older than the age gate — the ones the
+# armed-rebaser CANNOT rebase — and re-queues their gaps to be redone on fresh
+# main. Without it the back-pressure breaker's stuck-pile drains only to 4–5 and
+# the fleet stays halted in the hysteresis dead-zone with no auto-recovery (the
+# 2026-08-14 hours-long deadlock). Declared here so organ-reconcile re-arms it if
+# it drifts or fails.
+enabled     chump-rot-reaper.timer

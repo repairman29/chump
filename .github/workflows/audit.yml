@@ -656,6 +656,16 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-stale-worktree-reaper-tmp.sh
 
+      # RESILIENT-324. shard-3: pure shell, gh/chump/systemctl stubbed, no
+      # chump binary or live GitHub needed.
+      - name: rot-reaper drains CONFLICTING+old PRs, spares fresh/mergeable/filing (RESILIENT-324)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-rot-reaper.sh
+
+      - name: back-pressure breaker can't deadlock — dead-zone escape resumes, 6+ jam still halts (RESILIENT-324)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-back-pressure-hysteresis.sh
+
       - name: bot-merge watchdog — kills done-gap procs, spares open-gap, exempt bypass (INFRA-1006)
         if: matrix.shard == 3
         run: bash scripts/ci/test-bot-merge-watchdog.sh

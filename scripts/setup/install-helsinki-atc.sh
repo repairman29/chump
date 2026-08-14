@@ -7,6 +7,11 @@
 #
 #   chump-pr-lander      (RESILIENT-288) — arms green-but-unarmed PRs so they merge
 #   chump-armed-rebaser  (INFRA-3473)    — rebases armed PRs that drift BEHIND/DIRTY
+#   chump-rot-reaper     (RESILIENT-324) — closes CONFLICTING+old PRs (which the
+#                                           rebaser CANNOT rebase) + re-queues
+#                                           their gaps, so the back-pressure
+#                                           breaker can never deadlock in the
+#                                           4–5 hysteresis dead-zone
 #   chump-node-refresh   (RESILIENT-200) — keeps the installed chump binary current
 #   chump-board-cycle    (INFRA-3590)    — Sonnet board-cycle agent: SLA score +
 #                                           stall classify + Discord report, zero
@@ -111,8 +116,14 @@ SYSTEM_UNITS=(
   # chump-farmer-bridge hack.
   chump-farmer.service
   chump-farmer.timer
+  # RESILIENT-324: the rot-reaper — drains CONFLICTING+old PRs the armed-rebaser
+  # can't rebase, so the back-pressure breaker never deadlocks in the 4–5
+  # hysteresis dead-zone. Shipped as part of the ATC roster so `run the install`
+  # boots a fresh node WITH auto-draining (RUN-INSTALL mission).
+  chump-rot-reaper.service
+  chump-rot-reaper.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
