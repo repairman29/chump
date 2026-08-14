@@ -980,6 +980,14 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // transparently redirects Anthropic/OpenAI calls to the local
         // mocks. Same skip behavior as test-mock-services.sh above.
         "scripts/ci/test-mock-services-integration.sh",
+        // INFRA-2088: chump_test_sandbox_setup/_cleanup primitive smoke test.
+        // Pure shell + local chump binary, no network. Skips cleanly if the
+        // debug binary isn't built yet.
+        "scripts/ci/test-chump-test-sandbox.sh",
+        // INFRA-2088: sandbox-discipline lint — no NEW scripts/ci/*.sh test
+        // hand-rolls a sandbox instead of using the canonical primitive.
+        // Pure git diff + grep, no network, no cargo.
+        "scripts/ci/test-sandbox-discipline.sh",
     ];
     candidates
         .iter()

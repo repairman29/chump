@@ -1,0 +1,15 @@
+[package]
+name = "chump-test-helpers"
+version = "0.1.0"
+edition = "2021"
+description = "chump-test-helpers — canonical Rust test-sandbox primitive (INFRA-2088), the crates.io-equivalent of scripts/coord/lib/test-sandbox.sh. Single source of truth for which env vars must be set to fully isolate a Rust unit test from the real .chump/state.db."
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-test-helpers"
+license = "AGPL-3.0-only"
+
+[lib]
+name = "chump_test_helpers"
+path = "src/lib.rs"
+
+[dependencies]
+tempfile = "3"

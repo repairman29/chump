@@ -2029,6 +2029,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-test-helpers"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "chump-tool-macro"
 version = "0.2.0"
 dependencies = [

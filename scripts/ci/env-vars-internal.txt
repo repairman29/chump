@@ -1839,3 +1839,8 @@ CHUMP_BACKPRESSURE_SYSTEMIC
 CHUMP_FLAKE_BUDGET
 # detected in: (standard input)
 CHUMP_HALT_SINCE_FILE
+CHUMP_GAP_RESERVE_NO_OUTCOME
+# detected in: (standard input)
+CHUMP_SANDBOX_DISCIPLINE_BASE
+# detected in: (standard input)
+CHUMP_TEST_SANDBOX_BIN
