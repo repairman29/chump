@@ -4402,6 +4402,34 @@ pub fn emit_claim_duplicate_bypassed(repo_root: &Path, gap_id: &str, matches: &[
     }
 }
 
+/// CREDIBLE-161: emit kind=claim_fuzzy_refused to ambient.jsonl when the
+/// fuzzy gate refuses a claim outright (no bypass). The refusal previously
+/// only surfaced as text inside a caller's captured stdout/stderr, which
+/// hid it from the ambient stream for hours until a caller re-emitted it.
+pub fn emit_claim_fuzzy_refused(repo_root: &Path, gap_id: &str, matches: &[FuzzyMatch]) {
+    let amb = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let match_count = matches.len();
+    let top_score = matches
+        .iter()
+        .map(|m| m.score)
+        .fold(0.0f64, |a, b| a.max(b));
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_fuzzy_refused\",\"gap\":\"{gap_id}\",\"match_count\":{match_count},\"top_score\":{top_score:.3}}}\n"
+    );
+    if let Some(parent) = amb.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&amb)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
 /// Look up the title of `gap_id` from the YAML file under docs/gaps.
 /// Best-effort: returns "" if the file isn't readable or doesn't parse.
 /// Falls through to gap_id when empty so the jaccard still produces some
@@ -4461,6 +4489,10 @@ pub fn run_fuzzy_gate(
         eprintln!("  [bypass] --force-duplicate set; proceeding anyway");
         return Ok(hits);
     }
+    // CREDIBLE-161: emit to ambient.jsonl so the refusal is visible in the
+    // ambient stream regardless of whether the caller re-emits captured
+    // stdout/stderr.
+    emit_claim_fuzzy_refused(repo_root, gap_id, &hits);
     Err(render_fuzzy_warnings(&hits))
 }
 
@@ -4820,6 +4852,46 @@ mod fuzzy_match_tests {
         assert!(
             amb.contains("claim_duplicate_bypassed"),
             "expected bypass event; got: {amb}"
+        );
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_FUZZY_THRESHOLD");
+        }
+    }
+
+    /// CREDIBLE-161: a plain (non-bypassed) fuzzy-gate refusal must land in
+    /// ambient.jsonl as kind=claim_fuzzy_refused. Previously the refusal
+    /// message only existed inside the caller's captured stdout/stderr,
+    /// invisible to the ambient stream for hours.
+    #[test]
+    fn run_fuzzy_gate_refusal_emits_event() {
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        let lease = serde_json::json!({
+            "gap_id": "INFRA-9500",
+            "session": "claim-infra-9500-1",
+            "paths": "src/atomic_claim.rs,scripts/ci/test-claim-fuzzy-match.sh",
+        });
+        std::fs::write(locks.join("claim-infra-9500-1.json"), lease.to_string()).unwrap();
+
+        let gaps = dir.path().join("docs").join("gaps");
+        std::fs::create_dir_all(&gaps).unwrap();
+        std::fs::write(
+            gaps.join("INFRA-9501.yaml"),
+            "title: \"chump claim fuzzy match against atomic_claim.rs paths\"\n",
+        )
+        .unwrap();
+
+        unsafe {
+            std::env::set_var("CHUMP_CLAIM_FUZZY_THRESHOLD", "0.05");
+        }
+        let r = run_fuzzy_gate(dir.path(), "INFRA-9501", /* force_duplicate */ false);
+        assert!(r.is_err(), "expected refusal without bypass: {r:?}");
+        let amb = std::fs::read_to_string(locks.join("ambient.jsonl")).unwrap_or_default();
+        assert!(
+            amb.contains("claim_fuzzy_refused"),
+            "expected refusal event; got: {amb}"
         );
         unsafe {
             std::env::remove_var("CHUMP_CLAIM_FUZZY_THRESHOLD");
