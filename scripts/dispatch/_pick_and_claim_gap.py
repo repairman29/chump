@@ -14,13 +14,31 @@ of yet-another-INFRA-fix.
 MISSION-028 FIX: this file now mirrors the ranking logic from _pick_gap.py
 (the CANONICAL ranking source). When changing ranking behaviour, change
 _pick_gap.py first and mirror here. Key invariants:
-  - Sort tuple: (-affinity_score, effective_prio, mission_rank, effort_rank, age, id)
-  - mission_rank=0 for MISSION-linked gaps, 1 otherwise; causes MISSION gaps to win
-    within the same priority band (e.g. P0-MISSION beats P0-self-maintenance).
-  - substrate P0 still beats mission P1 because effective_prio is compared first.
+  - Sort tuple: (prio_rank, mission_rank, wedge_rank, effort_rank, age, id)
+  - prio_rank is the PRIMARY key (P0=0 < P1=1 < P2=2 < P3=3). A P0 ALWAYS
+    beats any lower-priority gap — no heuristic may promote a lower-priority
+    gap above a higher-priority one.
+  - mission_rank=0 for MISSION-linked gaps, 1 otherwise; a within-priority-band
+    tiebreak so a P0-MISSION gap beats a P0-self-maintenance gap, but a
+    substrate P0 (prio_rank=0) still beats a mission P1 (prio_rank=1) because
+    prio_rank is compared first.
+  - wedge_rank = -(affinity_score + rebalance_boost): the affinity + FLEET-046/
+    INFRA-720 pillar/domain rebalance heuristics act ONLY as a within-band
+    tiebreaker (more affinity / more rebalance boost sorts earlier WITHIN the
+    same priority tier). They never cross priority tiers.
   - P0+domain=MISSION gaps bypass the sonnet xs-effort gate (mirroring
     _pick_gap.py MISSION-026 fix) so xs-effort P0 MISSION gaps are never
     permanently blocked by worker tier.
+
+INFRA-3616 FIX (the keystone): the old sort tuple led with `-affinity_score`
+and folded the rebalance boost INTO priority via
+`effective_prio = max(prio_rank - rebalance_boost, 0)`. That let a rebalance-
+boosted P1 (or an affinity-matched P1) floor to effective_prio=0 and TIE — then
+beat — a real P0, so operator-marked P0s and the active mission sat unworked
+while the fleet ground low-priority gaps (e.g. P1 MISSION-055 was picked over
+P0 INFRA-3616). Priority is now the pure PRIMARY key; the wedge heuristics are
+demoted to a within-band tiebreaker, matching the CANONICAL _pick_gap.py order
+(prio_rank, mission_rank, planner/wedge, effort, age, id).
 
 Reads the open-gap JSON, applies fleet filters, attempts to claim each
 candidate in priority order. Returns the first gap that was successfully
@@ -731,23 +749,34 @@ def main() -> int:
             if gap_pillar and gap_pillar in under_represented_pillars:
                 rebalance_boost += 2
 
-        effective_prio = max(PRIO_RANK.get(p, 9) - rebalance_boost, 0)
+        # INFRA-3616: priority is the PURE PRIMARY sort key. The rebalance boost
+        # is NOT folded into priority (the old `effective_prio = max(prio -
+        # boost, 0)` let a boosted P1 tie/beat a P0). Instead it feeds wedge_rank
+        # below as a within-band tiebreaker only.
+        prio_rank = PRIO_RANK.get(p, 9)
 
         # MISSION-028: mission_rank = 0 for gaps linked to the active mission,
-        # 1 for everything else. Inserted AFTER effective_prio so a P0-MISSION
-        # gap beats a P0-self-maintenance gap within the same priority band, but
-        # a substrate P0 (effective_prio=0) still beats a mission P1
-        # (effective_prio=1) because effective_prio is compared first.
-        # Canonical sort order matches _pick_gap.py:
-        #   (-affinity_score, effective_prio, mission_rank, effort_rank, age, id)
+        # 1 for everything else. Placed AFTER prio_rank so a P0-MISSION gap beats
+        # a P0-self-maintenance gap within the same priority band, but a
+        # substrate P0 (prio_rank=0) still beats a mission P1 (prio_rank=1)
+        # because prio_rank is compared first.
         mission_rank = 0 if _is_mission_linked(g, active_mission) else 1
 
-        # Primary sort: affinity (desc), effective priority, mission rank, effort, created_at.
+        # INFRA-3616: wedge_rank folds the affinity + FLEET-046/INFRA-720
+        # rebalance heuristics into a single within-band tiebreaker. Lower sorts
+        # earlier, so a higher affinity/rebalance score (more desirable) yields a
+        # more-negative wedge_rank and wins WITHIN its priority tier — never
+        # across tiers. This preserves the wedge/topology "ship order" heuristic
+        # (SHIP_ORDER_VISION) as a tiebreaker while priority stays authoritative.
+        wedge_rank = -(affinity_score + rebalance_boost)
+
+        # Canonical sort order matches _pick_gap.py:
+        #   (prio_rank, mission_rank, wedge_rank, effort_rank, age, id)
         candidates.append(
             (
-                -affinity_score,
-                effective_prio,
+                prio_rank,
                 mission_rank,
+                wedge_rank,
                 EFFORT_RANK.get(e, 9),
                 g.get("created_at") or 0,
                 gid,
@@ -773,7 +802,7 @@ def main() -> int:
         # Try candidates in rotated order.
         for i in range(len(candidates)):
             idx = (offset + i) % len(candidates)
-            gap_id = candidates[idx][5]  # Index [5]: (-affinity, eff_prio, mission_rank, effort, age, gid)
+            gap_id = candidates[idx][5]  # Index [5]: (prio_rank, mission_rank, wedge_rank, effort, age, gid)
             if dry_run:
                 print(gap_id)
                 return 0
