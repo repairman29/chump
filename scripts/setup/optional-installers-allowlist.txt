@@ -15,6 +15,7 @@ install-autonomous-mode-launchd.sh
 install-binary-refresh-launchd.sh
 install-branch-protection-drift-launchd.sh
 install-cargo-target-reaper-launchd.sh
+install-chump-consensus-launchd.sh
 install-chump-fleet-daemon.sh
 install-chump-planner-launchd.sh
 install-ci-flake-rerun-launchd.sh
