@@ -32,6 +32,7 @@ These SLOs guard throughput and mission alignment.
 | L2-SLO-3 | P0 budget ≤ 5 (never > 5 for more than 1 h) | count of `priority:P0 status:open` in `chump gap list` | Run `chump gap audit-priorities`; demote inflation |
 | L2-SLO-4 | Pillar balance ≥ 2 pickable in every pillar | `chump health --json` → `pillars_under_two` field | File 1–2 gaps for the starved pillar immediately |
 | L2-SLO-5 | Ghost-gap count < 2 | `chump health --json` → `ghost_gaps` field | Run `chump gap ship <ID>` for each ghost or close manually |
+| L2-SLO-6 | Bisect-quarantine rate < 5% | `(count of bisect_quarantine ambient events in last 7d) / (count of integration_cycle_started events in last 7d) × 100`, 7d rolling window, via `chump health --slo-check` | High quarantine rate means batched-mode is producing too many failed cycles — either thresholds are too aggressive (cycles too big) or upstream gap quality dropped; investigate integration-cycle sizing (`docs/strategy/INTEGRATION_CYCLE_2026-05-29.md`) or the gaps feeding recent cycles |
 
 ---
 
