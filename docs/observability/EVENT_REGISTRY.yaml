@@ -8555,6 +8555,71 @@ events:
     status: stable
     # payload: {pr: number, corr_id: string, reason: string, operator_session_id: string, mode: string, gap_id: string, ts: string}
 
+  # ── INFRA-2156 (META-125/C5): chump consensus ask ───────────────────────────
+  - kind: consensus_ask_published
+    effect_metric: self
+    emitter: src/commands/consensus_ask.rs (INFRA-2156)
+    # scanner-anchor: "kind":"consensus_ask_published"
+    trigger: >
+      Emitted by `chump consensus ask <question> --reason <text>` once the
+      question has been published onto the FEEDBACK kind=proposal channel
+      (META-157) and handed a consensus_id. This is the success event for
+      the non-blocking path — the proposal is durably queued for the
+      deliberator's normal tally/quorum/escalation flow.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, corr_id, session, question, reason]
+    expected_volume: "low; one per `chump consensus ask` invocation"
+    status: stable
+    # payload: {corr_id: string (consensus_id), session: string, question: string, reason: string, ts: string}
+
+  - kind: consensus_ask_resolved
+    effect_metric: self
+    emitter: src/commands/consensus_ask.rs (INFRA-2156)
+    # scanner-anchor: "kind":"consensus_ask_resolved"
+    trigger: >
+      Emitted by `chump consensus ask ... --block` when a consensus_result
+      for this consensus_id is observed in ambient.jsonl before --timeout
+      elapses. Carries the verdict plus poll_count/elapsed_secs so the
+      operator can see how much local polling the blocked call spent (no
+      LLM/API cost is incurred by this command).
+    consumers: [ops-audit]
+    fields_required: [ts, kind, corr_id, session, verdict, poll_count, elapsed_secs]
+    expected_volume: "low; one per resolved --block invocation"
+    status: stable
+    # payload: {corr_id: string, session: string, verdict: string, poll_count: number, elapsed_secs: number, ts: string}
+
+  - kind: consensus_ask_timeout
+    effect_metric: self
+    emitter: src/commands/consensus_ask.rs (INFRA-2156)
+    # scanner-anchor: "kind":"consensus_ask_timeout"
+    trigger: >
+      Emitted by `chump consensus ask ... --block` when no consensus_result
+      lands within --timeout seconds. failure_class=transient: the
+      underlying proposal is still live in the FEEDBACK/deliberator
+      pipeline, so a later --block re-attempt or `chump consensus-tally
+      --corr-id <id>` can still resolve it without any code change.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, corr_id, session, failure_class, poll_count, elapsed_secs]
+    expected_volume: "low; spikes signal deliberator quorum starvation, see docs/process/OPUS_MESSAGE_PROTOCOL.md"
+    status: stable
+    # payload: {corr_id: string, session: string, failure_class: "transient", poll_count: number, elapsed_secs: number, ts: string}
+
+  - kind: consensus_ask_failed
+    effect_metric: self
+    emitter: src/commands/consensus_ask.rs (INFRA-2156)
+    # scanner-anchor: "kind":"consensus_ask_failed"
+    trigger: >
+      Emitted by `chump consensus ask` when the publish step itself fails
+      (broadcast.sh missing/non-zero exit). failure_class=transient
+      (tooling hiccup, retry may succeed); caller-error failures (empty
+      question, missing --reason) are rejected before this event would
+      fire and never reach ambient.jsonl.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, corr_id, session, failure_class, detail]
+    expected_volume: "very low; any occurrence signals broadcast.sh breakage"
+    status: stable
+    # payload: {corr_id: string, session: string, failure_class: "transient", detail: string, ts: string}
+
   # ── INFRA-2324: Trunk health sentinel ───────────────────────────────────────
   - kind: trunk_sentinel_tick
     effect_metric: self
