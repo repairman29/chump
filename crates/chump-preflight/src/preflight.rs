@@ -943,6 +943,13 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // (outcome/failure_class/gap_reserve_calls) — pure bash, ~1s, no
         // network, 3 synthetic-ambient fixture tests.
         "scripts/ci/test-pr-stuck-cluster-observability.sh",
+        // INFRA-3352: pr-stuck-cluster-detector CORE detection logic (below-
+        // threshold no-op, cluster-detected filing, window/cooldown dedup) —
+        // existed since INFRA-1133 but was never wired into preflight or CI,
+        // so a regression in the detector's actual cluster math would ship
+        // silently. Pure bash + synthetic ambient.jsonl fixtures, ~1s, no
+        // network.
+        "scripts/ci/test-pr-stuck-cluster-detection.sh",
         // INFRA-2391: `chump demo` subcommand smoke — asserts --help and an
         // end-to-end --dry-run both exit 0. Pure local, no network.
         "scripts/ci/test-chump-demo-smoke.sh",
@@ -2929,6 +2936,23 @@ struct BaselineDiff {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // INFRA-3352: test-pr-stuck-cluster-detection.sh existed since INFRA-1133
+    // but was never in the discover_test_scripts allowlist, so a regression
+    // in the detector's core cluster math (threshold/window/cooldown) could
+    // ship without preflight or CI ever running it. Guard the wiring.
+    #[test]
+    fn infra3352_pr_stuck_cluster_detection_test_is_wired() {
+        let repo_root = find_repo_root().expect("repo root");
+        let scripts = discover_test_scripts(&repo_root);
+        assert!(
+            scripts
+                .iter()
+                .any(|p| p.ends_with("scripts/ci/test-pr-stuck-cluster-detection.sh")),
+            "test-pr-stuck-cluster-detection.sh must be wired into preflight's \
+             always-run allowlist so detector regressions surface locally"
+        );
+    }
 
     // RESILIENT-196: disk-floor guard (pure comparison — no env/process races).
     #[test]
