@@ -1,0 +1,26 @@
+# VOA-005 — Voice of the Agent, full report.
+# Auto-filed by `chump voice` (INFRA-2258).
+# See docs/process/VOICE_OF_AGENT.md for protocol.
+
+id: VOA-005
+filed_at: "2026-08-09T15:33:33Z"
+
+reporter:
+  agent_role: unknown-role
+  chump_version: "0.2.0"
+  target_repo: "anonymous"
+  target_repo_disclosure: anonymous
+  session_id: "(elided)"
+
+wedge_observations:
+
+  - wedge_class: oauth_refresh_daemon_broken
+    minutes_lost: 5
+    workaround_used:
+      summary: ""
+    proposed_fix:
+      shape: tooling
+      fix: "com.chump.oauth-refresh launchd daemon exits 1 (broken). Auth is valid now but a sustained fleet risks token staleness with no refresher. Fix the daemon."
+    impact_estimate_minutes_per_session: 5
+    evidence:
+      - "launchctl list: com.chump.oauth-refresh exit=1"

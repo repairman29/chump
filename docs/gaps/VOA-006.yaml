@@ -1,0 +1,17 @@
+- id: VOA-006
+  domain: VOA
+  title: "VOICE-OF-AGENT VOA-006: gap_import_broken_by_corrupt_entry — 15 min lost; fix-shape: tooling"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Full friction report at docs/voice/VOA-006-FULL.yaml with wedge_class=gap_import_broken_by_corrupt_entry, minutes_lost=15
+    - Proposed fix (tooling): "chump gap import fails hard on 'duplicate field evidence at line 44856' — one corrupt registry entry silently breaks the entire YAML->state.db sync, so voice/VOA gaps never become pickable and the self-fix loop is dead. Make import resilient (skip+log the bad entry, don't abort) AND fix entry 2750."
+    - Evidence references documented in FULL report
+  notes: |
+    [2026-08-09T15:35:43Z] Auto-filed by `chump voice` (INFRA-2258).
+    Wedge class: gap_import_broken_by_corrupt_entry
+    Minutes lost: 15
+    Evidence:
+    - "chump gap import: gaps[2750]: duplicate field evidence line 44856"
+    See docs/voice/VOA-006-FULL.yaml for full report.
