@@ -142,6 +142,7 @@ ci_yml_row_add_merged  # reason: emitted from scripts/git/merge-driver-ci-yml-ad
 circuit_breaker_opened       # reason: RESILIENT-011 emitted via Rust match-arm literal in src/circuit_breaker.rs:emit_state_change_event; grep scanner pattern `kind = "..."` misses match-arm form `=> "circuit_breaker_opened"`
 circuit_breaker_state_change # reason: RESILIENT-011 same emit site; catch-all match-arm `_ => "circuit_breaker_state_change"` not grep-scannable
 claim_duplicate_bypassed   # reason: INFRA-1442 #2358 emitted from src/atomic_claim.rs emit_claim_duplicate_bypassed; allowlist while EVENT_REGISTRY entry catches up
+claim_fuzzy_refused   # reason: CREDIBLE-161 emitted from crates/chump-atomic-claim/src/atomic_claim.rs emit_claim_fuzzy_refused; makes fuzzy-gate refusal visible in ambient.jsonl instead of only in caller-captured stdout/stderr
 claim_duplicate_gap_blocked   # reason: INFRA-1970 emitted from src/atomic_claim.rs emit_claim_duplicate_gap_event when same gap_id claimed by two sessions; scanner-anchor present in source
 claim_duplicate_gap_bypassed  # reason: INFRA-1970 bypass variant (CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1); same emit site as claim_duplicate_gap_blocked
 claim_active_lease_bypassed  # reason: INFRA-1646 bypass variant (CHUMP_CLAIM_ALLOW_ACTIVE_LEASE=1); same emit site as claim_active_lease_blocked (scanner-anchor present)
