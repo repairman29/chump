@@ -2583,10 +2583,11 @@ events:
       3-PR cluster that may never materialize. See
       scripts/coord/pr-stuck-cluster-detector.sh header comment.
       INFRA-3395 (\"pr-stuck-cluster — 1 PRs blocked >2h as of 2026-07-21\")
-      is a detector-filed placeholder gap against the exact incident shape
-      this event now covers (a single chronically-stuck PR below cluster
-      threshold) — already answered by the INFRA-3352 escalation path
-      above and its regression coverage in
+      and INFRA-3402 (\"pr-stuck-cluster — 1 PRs blocked >2h as of
+      2026-07-22\") are detector-filed placeholder gaps against the exact
+      incident shape this event now covers (a single chronically-stuck PR
+      below cluster threshold) — already answered by the INFRA-3352
+      escalation path above and its regression coverage in
       scripts/ci/test-pr-stuck-cluster-detection.sh
       (test_chronic_single_pr_escalates / test_chronic_single_pr_too_young)."
 
