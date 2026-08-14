@@ -139,4 +139,39 @@ echo "$out" | grep -q '"kind":"farmer_auth_dead"' \
 echo "[test] (g) stale cached BROKEN + fresh probe succeeds → AUTH OK, no farmer_auth_dead (CREDIBLE-136): OK"
 rm -f "$AUTH_CACHE"
 
+# ── (h) CREDIBLE-136: validity probe BROKEN once, OK on re-probe → NOT paged ──
+# A single transient probe failure (network blip, one-off claude -p timeout)
+# must not be replayed as an outage — the farmer must re-probe fresh before
+# emitting farmer_auth_dead/operator_recall AUTH_DEAD (CREDIBLE-090: signal
+# != outcome). Mock auth-status.sh: flag-based (not call-count-based, since
+# check_auth may run more than once per test invocation — once automatically
+# as part of farmer.sh's own tick when sourced, once explicitly below) —
+# the plain call (no --probe, the initial check) always fails; the re-probe
+# call (--probe, CREDIBLE-136's fresh recheck) always succeeds.
+mkdir -p "$FAUX_REPO/scripts/coord"
+cat > "$FAUX_REPO/scripts/coord/auth-status.sh" <<'EOF'
+#!/usr/bin/env bash
+for a in "$@"; do case "$a" in --probe) echo "AUTH OK"; exit 0 ;; esac; done
+echo "AUTH transient BROKEN"; exit 1
+EOF
+chmod +x "$FAUX_REPO/scripts/coord/auth-status.sh"
+out=$(_run_check_auth "CHUMP_AUTH_MODE=oauth")
+echo "$out" | grep -q '"kind":"farmer_auth_ok".*"via":"validity_probe_reprobe_ok"' \
+    || { echo "[test] FAIL (g) transient-then-ok: expected farmer_auth_ok via reprobe, got: $out"; exit 1; }
+echo "[test] (h) validity probe BROKEN once, OK on re-probe → NOT paged (transient, CREDIBLE-136): OK"
+
+# ── (i) CREDIBLE-136: validity probe BROKEN twice in a row → STILL pages ─────
+# Two consecutive fresh failures is a genuine outage, not a transient blip.
+cat > "$FAUX_REPO/scripts/coord/auth-status.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "AUTH BROKEN"
+exit 1
+EOF
+chmod +x "$FAUX_REPO/scripts/coord/auth-status.sh"
+out=$(_run_check_auth "CHUMP_AUTH_MODE=oauth")
+echo "$out" | grep -q '"kind":"farmer_auth_dead".*"reprobed":true' \
+    || { echo "[test] FAIL (h) genuine-outage: expected farmer_auth_dead reprobed:true, got: $out"; exit 1; }
+echo "[test] (i) validity probe BROKEN on two consecutive probes → still pages (genuine outage): OK"
+rm -rf "$FAUX_REPO/scripts/coord"
+
 echo "[test-farmer-check-auth] PASS"

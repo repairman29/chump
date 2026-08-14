@@ -334,8 +334,18 @@ check_auth() {
         if "$probe" --quiet >/dev/null 2>&1; then
             emit "farmer_auth_ok" "\"path\":\"oauth\",\"mode\":\"${auth_mode}\",\"via\":\"validity_probe\""
         else
-            operator_page "AUTH_DEAD" "auth-status.sh validity probe reports BROKEN (oauth path, mode=${auth_mode})"
-            emit "farmer_auth_dead" "\"reason\":\"validity_probe_broken\",\"mode\":\"${auth_mode}\",\"via\":\"validity_probe\""
+            # CREDIBLE-136: signal != outcome (CREDIBLE-090) — a single BROKEN
+            # verdict can be a transient probe failure (network blip, one-off
+            # claude -p timeout), not a genuine outage. Force ONE fresh re-probe
+            # (--probe bypasses auth-status.sh's own cache) before paging
+            # halt-class AUTH_DEAD; if the re-probe comes back OK, the first
+            # failure was transient and must not be replayed as an outage.
+            if "$probe" --probe --quiet >/dev/null 2>&1; then
+                emit "farmer_auth_ok" "\"path\":\"oauth\",\"mode\":\"${auth_mode}\",\"via\":\"validity_probe_reprobe_ok\",\"note\":\"first probe was BROKEN, re-probe OK — transient\""
+            else
+                operator_page "AUTH_DEAD" "auth-status.sh validity probe reports BROKEN (oauth path, mode=${auth_mode}) on TWO consecutive probes"
+                emit "farmer_auth_dead" "\"reason\":\"validity_probe_broken\",\"mode\":\"${auth_mode}\",\"via\":\"validity_probe\",\"reprobed\":true"
+            fi
         fi
         return
     fi
