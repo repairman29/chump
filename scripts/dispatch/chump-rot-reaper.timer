@@ -1,0 +1,14 @@
+# RESILIENT-324 — pairs with chump-rot-reaper.service. Fires every 30 min.
+# Slower than the armed-rebaser (20m) and pr-lander (10m) on purpose: reaping is
+# destructive (closes PRs + re-queues gaps), so it runs less often and only acts
+# on PRs already past the age gate. Enable: systemctl enable --now chump-rot-reaper.timer
+[Unit]
+Description=Run the Chump rot-reaper every 30 minutes (RESILIENT-324)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
