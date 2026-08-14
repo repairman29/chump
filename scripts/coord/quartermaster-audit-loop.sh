@@ -18,8 +18,12 @@
 #   {"last_audit_sha":"<sha>","last_audit_ts":<epoch>}
 #   First run: seeds from HEAD~5 on origin/main.
 #
-# Self-throttle: max 5 follow-up gaps per audit run; overflow to
-#   .chump/quartermaster-deferred.jsonl (one JSON line per finding).
+# ZERO-WASTE-014: shelfware findings are ambient-only (kind=shelfware_detected) —
+#   no gap is filed. This was the "Wire X into role Y" auto-filer, one of the
+#   three noise sources that drove ~180 gaps/day of unbounded backlog growth.
+#   Self-throttle: max 5 shelfware_detected emits per audit run; overflow to
+#   .chump/quartermaster-deferred.jsonl (one JSON line per finding) and drained
+#   as ambient events on a later tick via `drain-deferred`.
 #
 # Usage:
 #   scripts/coord/quartermaster-audit-loop.sh tick           # full tick (trigger-check + run if FIRE)
@@ -36,7 +40,7 @@
 #   3 — git unavailable / not in a repo
 #
 # Rust-First-Bypass: bash daemon + plist + docs only; no state.db / canonical-store mutation
-#   (writes are ambient.jsonl appends and chump gap reserve calls — canonical mutators)
+#   (writes are ambient.jsonl appends only — no gap reserve, per ZERO-WASTE-014)
 # Rust-First-Bypass-Accept: loc,state,hot
 
 set -euo pipefail
@@ -264,26 +268,15 @@ cmd_run() {
                     "$sha" "${gap_id:-unknown}" "$artifact" "$role_candidate")"
 
                 if [[ "$gaps_filed" -lt "$MAX_GAPS_PER_RUN" ]]; then
-                    # Emit shelfware_detected ambient event.
+                    # ZERO-WASTE-014: ambient-only — no gap filed. The
+                    # shelfware_detected event IS the record; shepherd/ci-audit
+                    # and any curator that wants to act on it consumes ambient
+                    # rather than the gap picker.
                     ambient_emit "shelfware_detected" \
                         "\"gap_id\":\"${gap_id:-unknown}\",\"artifact\":\"$artifact\",\"role_candidate\":\"$role_candidate\",\"sha\":\"${sha:0:12}\""
 
-                    # File a follow-up gap via chump.
-                    local gap_title="EFFECTIVE: Wire ${artifact} into role ${role_candidate}"
-                    local gap_ac="1. Edit the role-doc for ${role_candidate} to reference ${artifact} (shipped in ${gap_id:-commit ${sha:0:12}}) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l '${artifact}' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
-                    local new_gap_id=""
-                    if command -v chump >/dev/null 2>&1; then
-                        new_gap_id="$(CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \
-                            chump gap reserve \
-                            --domain EFFECTIVE \
-                            --title "$gap_title" \
-                            --acceptance-criteria "$gap_ac" \
-                            --effort xs \
-                            --priority P2 \
-                            2>/dev/null | grep -oE '(INFRA|META|CREDIBLE|RESILIENT|EFFECTIVE|FLEET|DOC|MEM|VOA|SCALE)-[0-9]+' | head -1 || echo "")"
-                    fi
                     gaps_filed=$(( gaps_filed + 1 ))
-                    echo "  filed gap ${new_gap_id:-?} for shelfware: $artifact (${gap_id:-unknown})"
+                    echo "  emitted shelfware_detected: $artifact → role $role_candidate (${gap_id:-unknown})"
                 else
                     # Overflow to deferred queue.
                     printf '%s\n' "$finding_json" >> "$DEFERRED_FILE"
@@ -336,21 +329,12 @@ cmd_drain_deferred() {
 
         [[ -z "$artifact" ]] && continue
 
+        # ZERO-WASTE-014: ambient-only — no gap filed for drained findings either.
         ambient_emit "shelfware_detected" \
             "\"gap_id\":\"$gap_id\",\"artifact\":\"$artifact\",\"role_candidate\":\"$role_candidate\",\"source\":\"deferred\""
 
-        if command -v chump >/dev/null 2>&1; then
-            CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \
-                chump gap reserve \
-                --domain EFFECTIVE \
-                --title "EFFECTIVE: Wire ${artifact} into role ${role_candidate}" \
-                --acceptance-criteria "1. Edit ${role_candidate} role-doc to reference ${artifact} (shipped in ${gap_id}). 2. Verify: grep -l '${artifact}' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit." \
-                --effort xs \
-                --priority P2 \
-                >/dev/null 2>&1 || true
-        fi
         count=$(( count + 1 ))
-        echo "  filed deferred finding: $artifact ($gap_id)"
+        echo "  emitted deferred shelfware_detected: $artifact ($gap_id)"
     done < "$DEFERRED_FILE"
 
     mv "$remaining_file" "$DEFERRED_FILE"

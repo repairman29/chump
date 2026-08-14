@@ -748,7 +748,7 @@ else
   exit 1
 fi
 
-# ── (k) BLOCKED_REAL_FAIL fresh fingerprint → file_followup_gap ──────────────
+# ── (k) BLOCKED_REAL_FAIL fresh fingerprint → emit_ci_failure (ZERO-WASTE-014: ambient-only, no gap) ──
 META186_AMBIENT_K="$META186_WORK_DIR/ambient-k.jsonl"
 META186_FILED_K="$META186_WORK_DIR/filed-k.jsonl"
 : > "$META186_AMBIENT_K"
@@ -823,17 +823,16 @@ while IFS= read -r line; do
   fail_job=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("fail_job",""))')
   fail_sig=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("fail_sig",""))')
   if [ "\$c" = "BLOCKED_REAL_FAIL" ]; then
-    _should_skip_trunk_red && { _emit_pr_action_taken "\$pr_num" "file_followup_gap_skipped" "trunk_red" "\$gap_id"; continue; }
+    _should_skip_trunk_red && { _emit_pr_action_taken "\$pr_num" "ci_failure_emit_skipped" "trunk_red" "\$gap_id"; continue; }
     if [ "\$gap_file_count" -ge "\$MAX_GAPS" ]; then
-      _emit_pr_action_taken "\$pr_num" "file_followup_gap_skipped" "throttle" "\$gap_id"; continue
+      _emit_pr_action_taken "\$pr_num" "ci_failure_emit_skipped" "throttle" "\$gap_id"; continue
     fi
     local_fp=\$(_fingerprint_failure "\$fail_job" "\$fail_sig")
     if _pr_already_filed_recently "\$local_fp"; then
-      _emit_pr_action_taken "\$pr_num" "file_followup_gap_skipped" "dedup" "\$gap_id"; continue
+      _emit_pr_action_taken "\$pr_num" "ci_failure_emit_skipped" "dedup" "\$gap_id"; continue
     fi
-    new_gap_id="DRY-RUN-\${local_fp}"
-    _record_filed_gap "\$pr_num" "\$local_fp" "\$new_gap_id" "\$fail_job"
-    _emit_pr_action_taken_with_new_gap "\$pr_num" "file_followup_gap" "" "\$gap_id" "\$new_gap_id"
+    _record_filed_gap "\$pr_num" "\$local_fp" "" "\$fail_job"
+    _emit_pr_action_taken "\$pr_num" "emit_ci_failure" "" "\$gap_id"
     gap_file_count=\$((gap_file_count + 1))
   fi
 done <<< "\$classified"
@@ -847,16 +846,14 @@ import json, sys
 with open('$META186_AMBIENT_K') as f:
     for line in f:
         ev = json.loads(line.strip())
-        if ev.get('action') == 'file_followup_gap' and ev.get('pr_number') == 602:
-            ngid = ev.get('new_gap_id','')
-            if ngid:
-                print('YES'); sys.exit(0)
+        if ev.get('action') == 'emit_ci_failure' and ev.get('pr_number') == 602:
+            print('YES'); sys.exit(0)
 print('NO')
 " 2>/dev/null || echo "NO")
 if [[ "$gap_filed_ok" == "YES" ]]; then
-  echo "[test] (k) META-186 BLOCKED_REAL_FAIL fresh → file_followup_gap: OK"
+  echo "[test] (k) ZERO-WASTE-014 BLOCKED_REAL_FAIL fresh → emit_ci_failure: OK"
 else
-  echo "[test] FAIL (k): BLOCKED_REAL_FAIL did not emit file_followup_gap with non-empty new_gap_id"
+  echo "[test] FAIL (k): BLOCKED_REAL_FAIL did not emit emit_ci_failure"
   exit 1
 fi
 
@@ -869,14 +866,14 @@ n = 0
 with open('$META186_AMBIENT_K') as f:
     for line in f:
         ev = json.loads(line.strip())
-        if ev.get('action') == 'file_followup_gap_skipped' and ev.get('reason') == 'dedup' and ev.get('pr_number') == 602:
+        if ev.get('action') == 'ci_failure_emit_skipped' and ev.get('reason') == 'dedup' and ev.get('pr_number') == 602:
             n += 1
 print(n)
 " 2>/dev/null || echo 0)
 if [[ "$dedup_count" -ge 1 ]]; then
-  echo "[test] (l) META-186 dedup: OK (second call → file_followup_gap_skipped reason=dedup)"
+  echo "[test] (l) ZERO-WASTE-014 dedup: OK (second call → ci_failure_emit_skipped reason=dedup)"
 else
-  echo "[test] FAIL (l): expected file_followup_gap_skipped reason=dedup on second call, got ${dedup_count}"
+  echo "[test] FAIL (l): expected ci_failure_emit_skipped reason=dedup on second call, got ${dedup_count}"
   exit 1
 fi
 

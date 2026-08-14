@@ -7,11 +7,11 @@
 #           emits pr_action_taken per PR; safety guards: trunk-red, claim-respect, throttle, debounce.
 # META-185: BLOCKED sub-state classification — extends BLOCKED into:
 #           BLOCKED_GREEN     (all checks pass, no auto-merge armed — auto-rearm target)
-#           BLOCKED_REAL_FAIL (at least one check FAILURE — file-gap target)
+#           BLOCKED_REAL_FAIL (at least one check FAILURE — ambient-emit target)
 #           BLOCKED           (catch-all: checks still running or inconclusive)
 # META-186: action paths for BLOCKED_GREEN + BLOCKED_REAL_FAIL:
 #           BLOCKED_GREEN     → gh pr merge --auto --squash (arm auto-merge)
-#           BLOCKED_REAL_FAIL → chump gap reserve (file follow-up gap with fingerprint dedup)
+#           BLOCKED_REAL_FAIL → ambient kind=ci_failure, fingerprint-deduped (ZERO-WASTE-014: no gap filed)
 #
 # Skeleton for the relentless PR-shepherd daemon. This tick walks all open PRs,
 # classifies each, and (META-184+) acts on BEHIND PRs via rebase.
@@ -21,7 +21,7 @@
 #   CHUMP_PR_SHEPHERD_DRY_RUN                — non-empty = log actions without executing (default unset)
 #   CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK   — max rebases per tick (default 3)
 #   CHUMP_PR_SHEPHERD_MAX_ARMS_PER_TICK      — max arm_auto_merge actions per tick (default 5)
-#   CHUMP_PR_SHEPHERD_MAX_GAPS_PER_TICK      — max file_followup_gap actions per tick (default 2)
+#   CHUMP_PR_SHEPHERD_MAX_GAPS_PER_TICK      — max emit_ci_failure actions per tick (default 2)
 #
 # Usage:
 #   bash scripts/coord/pr-shepherd-daemon.sh tick           # one tick
@@ -110,6 +110,20 @@ _emit_pr_action_taken_with_new_gap() {
   if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
   printf '{"ts":"%s","kind":"pr_action_taken","pr_number":%d,"action":"%s","reason":"%s","gap_id":"%s","new_gap_id":"%s","dry_run":%s}\n' \
     "$ts" "$pr_num" "$action" "$reason" "$gap_id" "$new_gap_id" "$dry" >> "$AMBIENT"
+}
+
+# _emit_ci_failure — ZERO-WASTE-014: ambient-only record of a BLOCKED_REAL_FAIL
+# PR. Replaces the old file_followup_gap action — no gap is filed.
+# Args: $1=pr_number $2=fail_job $3=fail_sig $4=gap_id $5=fingerprint
+# scanner-anchor: kind=ci_failure (ZERO-WASTE-014)
+_emit_ci_failure() {
+  local pr_num="$1" fail_job="$2" fail_sig="$3" gap_id="$4" fingerprint="$5"
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","event":"alert","kind":"ci_failure","pr":%d,"fail_job":"%s","fail_sig":"%s","gap_id":"%s","fingerprint":"%s","dry_run":%s}\n' \
+    "$ts" "$pr_num" "$fail_job" "$fail_sig" "$gap_id" "$fingerprint" "$dry" >> "$AMBIENT"
+  _emit_pr_action_taken "$pr_num" "emit_ci_failure" "" "$gap_id"
 }
 
 # _should_skip_trunk_red — returns 0 (true/skip) if a trunk_red event was emitted in last 30m
@@ -962,68 +976,37 @@ for p in prs:
           fi
         fi
 
-      # META-186: BLOCKED_REAL_FAIL → file follow-up gap with fingerprint dedup
+      # ZERO-WASTE-014: BLOCKED_REAL_FAIL → ambient-only kind=ci_failure event,
+      # fingerprint-deduped, no gap filed. shepherd/ci-audit consume the
+      # ambient signal directly instead of picking up an auto-filed gap.
       elif [ "$c" = "BLOCKED_REAL_FAIL" ]; then
         # Guard: trunk-red safe-mode
         if [ "$trunk_red_active" -eq 1 ]; then
-          _emit_pr_action_taken "$pr_num" "file_followup_gap_skipped" "trunk_red" "$gap_id"
+          _emit_pr_action_taken "$pr_num" "ci_failure_emit_skipped" "trunk_red" "$gap_id"
           continue
         fi
         # Guard: throttle
         if [ "$gap_file_count" -ge "$MAX_GAPS" ]; then
-          echo "[pr-shepherd-daemon] throttle: file-gap PR #${pr_num} skipped (${gap_file_count}/${MAX_GAPS} gaps used this tick)" >&2
-          _emit_pr_action_taken "$pr_num" "file_followup_gap_skipped" "throttle" "$gap_id"
+          echo "[pr-shepherd-daemon] throttle: ci_failure emit PR #${pr_num} skipped (${gap_file_count}/${MAX_GAPS} emits used this tick)" >&2
+          _emit_pr_action_taken "$pr_num" "ci_failure_emit_skipped" "throttle" "$gap_id"
           continue
         fi
         # Compute fingerprint and check dedup
         local fingerprint
         fingerprint=$(_fingerprint_failure "$fail_job" "$fail_sig")
         if _pr_already_filed_recently "$fingerprint"; then
-          echo "[pr-shepherd-daemon] dedup: PR #${pr_num} fingerprint ${fingerprint} already filed recently — skipping" >&2
-          _emit_pr_action_taken "$pr_num" "file_followup_gap_skipped" "dedup" "$gap_id"
+          echo "[pr-shepherd-daemon] dedup: PR #${pr_num} fingerprint ${fingerprint} already emitted recently — skipping" >&2
+          _emit_pr_action_taken "$pr_num" "ci_failure_emit_skipped" "dedup" "$gap_id"
           continue
         fi
-        # Build gap title (capped at 120 chars)
-        local short_job gap_title
-        short_job="${fail_job:0:40}"
-        if [ -n "$fail_sig" ] && [ "$fail_sig" != "$fail_job" ]; then
-          gap_title="PR #${pr_num} failing on ${short_job}: ${fail_sig:0:60}"
-        else
-          gap_title="PR #${pr_num} failing on ${short_job}"
-        fi
-        gap_title="${gap_title:0:120}"
         if [ -n "$DRY_RUN" ]; then
-          echo "[pr-shepherd-daemon] DRY_RUN: would file gap for PR #${pr_num} (${gap_id}): ${gap_title}" >&2
-          local new_gap_id="DRY-RUN-${fingerprint}"
-          _record_filed_gap "$pr_num" "$fingerprint" "$new_gap_id" "$fail_job"
-          _emit_pr_action_taken_with_new_gap "$pr_num" "file_followup_gap" "" "$gap_id" "$new_gap_id"
-          gap_file_count=$((gap_file_count + 1))
+          echo "[pr-shepherd-daemon] DRY_RUN: would emit ci_failure for PR #${pr_num} (${gap_id}): job=${fail_job}" >&2
         else
-          echo "[pr-shepherd-daemon] filing gap for PR #${pr_num}: ${gap_title}" >&2
-          local gap_out new_gap_id=""
-          gap_out=$(chump gap reserve --domain INFRA \
-            --title "$gap_title" \
-            --priority P2 \
-            --effort xs \
-            --force 2>&1) || true
-          new_gap_id=$(printf '%s' "$gap_out" | python3 -c "
-import sys, re
-out = sys.stdin.read()
-m = re.search(r'(INFRA|META|CREDIBLE|RESILIENT|EFFECTIVE|FLEET|DOC|MEM|VOA|SCALE)-\d+', out)
-print(m.group(0) if m else '')
-" 2>/dev/null || echo "")
-          if [ -n "$new_gap_id" ]; then
-            echo "[pr-shepherd-daemon] gap filed: ${new_gap_id} for PR #${pr_num}" >&2
-            _record_filed_gap "$pr_num" "$fingerprint" "$new_gap_id" "$fail_job"
-            _emit_pr_action_taken_with_new_gap "$pr_num" "file_followup_gap" "" "$gap_id" "$new_gap_id"
-            gap_file_count=$((gap_file_count + 1))
-          else
-            echo "[pr-shepherd-daemon] WARN: gap reserve output: ${gap_out}" >&2
-            _record_filed_gap "$pr_num" "$fingerprint" "UNKNOWN" "$fail_job"
-            _emit_pr_action_taken "$pr_num" "file_followup_gap" "no_id_parsed" "$gap_id"
-            gap_file_count=$((gap_file_count + 1))
-          fi
+          echo "[pr-shepherd-daemon] emitting ci_failure for PR #${pr_num}: job=${fail_job}" >&2
         fi
+        _record_filed_gap "$pr_num" "$fingerprint" "" "$fail_job"
+        _emit_ci_failure "$pr_num" "$fail_job" "$fail_sig" "$gap_id" "$fingerprint"
+        gap_file_count=$((gap_file_count + 1))
       fi
     done <<< "$classified"
   fi

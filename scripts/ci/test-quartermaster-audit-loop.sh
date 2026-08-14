@@ -6,11 +6,12 @@
 #   (b) trigger at 30min + 1 ship (age-based)
 #   (c) no-fire at 0 ships
 #   (d) both ambient kinds emit (shelfware_detected + shelfware_audit_run)
-#   (e) self-throttle caps at 5 follow-up gaps per run
+#   (e) self-throttle caps at 5 shelfware_detected ambient emits per run
 #   (f) gap_id regex matches all 10 prefixes (INFRA|META|CREDIBLE|RESILIENT|EFFECTIVE|FLEET|DOC|MEM|VOA|SCALE)
 #
 # Uses a synthetic git history (temp repo) and a synthetic role-doc tree.
-# Must complete in < 30 seconds. Does NOT call chump gap reserve (mocked).
+# Must complete in < 30 seconds. ZERO-WASTE-014: this loop no longer calls
+# chump gap reserve at all — shelfware findings are ambient-only.
 
 set -euo pipefail
 
@@ -192,7 +193,7 @@ fi
 echo "  ok (d): ambient kinds check passed"
 
 # ── (e) Self-throttle caps at 5 ───────────────────────────────────────────
-echo "--- test (e): self-throttle caps at 5 gaps per run"
+echo "--- test (e): self-throttle caps at 5 shelfware_detected emits per run"
 
 for i in 6 7 8 9 10 11 12; do
     printf 'extra %s\n' "$i" > "$FAKE_REPO/scripts/coord/extra-daemon-${i}.sh"
@@ -200,31 +201,13 @@ for i in 6 7 8 9 10 11 12; do
     git -C "$FAKE_REPO" commit --quiet -m "feat(FLEET-200${i}): add extra-daemon-${i}.sh"
 done
 
-GAP_COUNT_FILE="$WORK_DIR/gap-count"
-printf '0' > "$GAP_COUNT_FILE"
-
-MOCK_BIN2="$WORK_DIR/mock-bin2"
-mkdir -p "$MOCK_BIN2"
-cat > "$MOCK_BIN2/chump" <<MOCKEOF2
-#!/usr/bin/env bash
-if [[ "\${1:-}" == "gap" && "\${2:-}" == "reserve" ]]; then
-    count=\$(cat "$GAP_COUNT_FILE" 2>/dev/null || echo 0)
-    count=\$((count + 1))
-    printf '%s' "\$count" > "$GAP_COUNT_FILE"
-    echo "EFFECTIVE-\$((9000 + count))"
-    exit 0
-fi
-exit 0
-MOCKEOF2
-chmod +x "$MOCK_BIN2/chump"
-
 VERY_OLD_TS="$(($(date +%s) - 300))"
 write_cp "$BASELINE_SHA" "$VERY_OLD_TS"
 rm -f "$TMP_DEFERRED"
+: > "$TMP_AMBIENT"
 
 (
     cd "$FAKE_REPO"
-    PATH="$MOCK_BIN2:$PATH" \
     CHUMP_AMBIENT_LOG="$TMP_AMBIENT" \
     CHUMP_SESSION_ID="test-quartermaster" \
     CHUMP_DIR="$TMP_CHUMP_DIR" \
@@ -233,12 +216,12 @@ rm -f "$TMP_DEFERRED"
         bash "$REPO_ROOT/$SCRIPT" run 2>&1
 ) || true
 
-FILED_COUNT="$(cat "$GAP_COUNT_FILE" 2>/dev/null || echo 0)"
+FILED_COUNT="$(grep -c '"kind":"shelfware_detected"' "$TMP_AMBIENT" 2>/dev/null || echo 0)"
 
 if [[ "$FILED_COUNT" -le 5 ]]; then
-    echo "  ok (e): self-throttle capped at $FILED_COUNT gap(s) filed (<= 5)"
+    echo "  ok (e): self-throttle capped at $FILED_COUNT shelfware_detected emit(s) (<= 5)"
 else
-    echo "FAIL (e): self-throttle violated — $FILED_COUNT gaps filed (expected <= 5)"
+    echo "FAIL (e): self-throttle violated — $FILED_COUNT shelfware_detected emits (expected <= 5)"
     exit 1
 fi
 

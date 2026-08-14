@@ -5,7 +5,8 @@
 #   1. Five PRs failing on the same CI check → ONE cleanup gap (not 5)
 #   2. Two PRs failing on the same check → individual gaps (below threshold)
 #   3. Five PRs split across two checks (3+2) → 1 group gap + 2 individual gaps
-#   4. Dedup: matching "CI blocker:" gap already open → not refiled
+#   4. Dedup: matching kind=shared_ci_blocker ambient emit already recent →
+#      not re-emitted (ZERO-WASTE-014: ambient-only, no gap filed)
 
 set -euo pipefail
 
@@ -92,7 +93,7 @@ chmod +x "$TMP/bin/gh"
 out=$(run_in_repo "$FILER" --dry-run 2>&1)
 
 per_pr_gaps=$(echo "$out" | grep -c 'would file: PR #' || true)
-shared_gaps=$(echo "$out" | grep -c 'would file shared-blocker gap:' || true)
+shared_gaps=$(echo "$out" | grep -c 'would emit shared_ci_blocker:' || true)
 
 if [[ "$shared_gaps" -eq 1 && "$per_pr_gaps" -eq 0 ]]; then
     echo "  PASS: 1 shared-blocker gap, 0 per-PR gaps"
@@ -139,7 +140,7 @@ chmod +x "$TMP/bin/gh"
 
 out=$(run_in_repo "$FILER" --dry-run 2>&1)
 per_pr_gaps=$(echo "$out" | grep -c 'would file: PR #' || true)
-shared_gaps=$(echo "$out" | grep -c 'would file shared-blocker gap:' || true)
+shared_gaps=$(echo "$out" | grep -c 'would emit shared_ci_blocker:' || true)
 
 if [[ "$per_pr_gaps" -eq 2 && "$shared_gaps" -eq 0 ]]; then
     echo "  PASS: 2 individual CI-RED gaps, 0 shared-blocker gaps"
@@ -180,7 +181,7 @@ chmod +x "$TMP/bin/gh"
 
 out=$(run_in_repo "$FILER" --dry-run 2>&1)
 per_pr_gaps=$(echo "$out" | grep -c 'would file: PR #' || true)
-shared_gaps=$(echo "$out" | grep -c 'would file shared-blocker gap:' || true)
+shared_gaps=$(echo "$out" | grep -c 'would emit shared_ci_blocker:' || true)
 
 if [[ "$shared_gaps" -eq 1 && "$per_pr_gaps" -eq 2 ]]; then
     echo "  PASS: 1 shared-blocker gap + 2 individual gaps"
@@ -189,22 +190,20 @@ else
     echo "$out" | sed 's/^/    /' | head -20; exit 1
 fi
 
-# ── Test 4: dedup — matching "CI blocker:" gap already open → not refiled ─────
+# ── Test 4: dedup — matching shared_ci_blocker ambient emit already recent → not re-emitted ─
 echo ""
-echo "Test 4: 'CI blocker: test-shared-fail.sh ...' gap already open → not refiled"
+echo "Test 4: recent 'CI blocker: test-shared-fail.sh ...' ambient emit → not re-emitted"
 
-cat > "$TMP/bin/chump" <<EOF
+cat > "$TMP/bin/chump" <<'EOF'
 #!/usr/bin/env bash
-case "\$*" in
-    "gap list --status open --json")
-        printf '[{"id":"INFRA-8888","title":"CI blocker: test-shared-fail.sh failing on 5+ open PRs","status":"open"}]\n'
-        ;;
-    gap\ reserve\ *) echo "SHOULD_NOT_REACH_9999" ;;
-    gap\ set\ *) ;;
-    *) echo "[]" ;;
-esac
+exit 0
 EOF
 chmod +x "$TMP/bin/chump"
+
+DEDUP_AMBIENT_4="$TMP/dedup-ambient-4.jsonl"
+NOW_TS_4=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+printf '{"ts":"%s","kind":"shared_ci_blocker","check_name":"test-shared-fail.sh","affected_prs":5}\n' \
+    "$NOW_TS_4" > "$DEDUP_AMBIENT_4"
 
 cat > "$TMP/bin/gh" <<EOF
 #!/usr/bin/env bash
@@ -227,13 +226,13 @@ esac
 EOF
 chmod +x "$TMP/bin/gh"
 
-out=$(run_in_repo "$FILER" --dry-run 2>&1)
-shared_gaps=$(echo "$out" | grep -c 'would file shared-blocker gap:' || true)
+out=$(run_in_repo env CHUMP_AMBIENT_LOG="$DEDUP_AMBIENT_4" "$FILER" --dry-run 2>&1)
+shared_gaps=$(echo "$out" | grep -c 'would emit shared_ci_blocker:' || true)
 
 if [[ "$shared_gaps" -eq 0 ]]; then
-    echo "  PASS: no duplicate shared-blocker gap filed (already exists)"
+    echo "  PASS: no duplicate shared-blocker emit (already emitted recently)"
 else
-    echo "  FAIL: shared-blocker gap refiled despite existing one"
+    echo "  FAIL: shared-blocker re-emitted despite recent existing emit"
     echo "$out" | sed 's/^/    /' | head -10; exit 1
 fi
 

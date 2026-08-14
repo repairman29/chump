@@ -1,28 +1,31 @@
 #!/usr/bin/env bash
-# stuck-pr-filer.sh — INFRA-307: convert stuck-PR detection into a queued gap
-# instead of pinging the human to relay messages between agents.
+# stuck-pr-filer.sh — INFRA-307: detect stuck PRs, ZERO-WASTE-014: emit
+# ambient signal instead of filing a gap.
 #
 # Why this exists. The original framing was "agent A needs to message agent B
 # that B's PR is stuck." That's the wrong abstraction: by the time anyone
-# notices, agent B has often exited (one-shot dispatch). The cleanup work
-# belongs to whichever fleet agent picks it up next, not to the agent that
-# happened to open the PR. So instead of building inboxes, we make stuck PRs
-# show up as ordinary INFRA gaps that `run-fleet.sh` claims under the existing
-# auto-pickup filters (P1, effort xs/s, INFRA domain).
+# notices, agent B has often exited (one-shot dispatch). ZERO-WASTE-014
+# (2026-08-14): the follow-on "make it an INFRA gap" framing turned out to be
+# its own wrong abstraction — auto-filed stuck-PR gaps had no off-ramp and
+# were ~35% of the ~180/day gap-accumulation problem. Stuck PRs are now
+# reported as ambient `kind=pr_stuck` / `kind=shared_ci_blocker` events;
+# shepherd/ci-audit consume the ambient stream directly instead of picking up
+# an auto-filed gap.
 #
 # What it does. Walks open PRs, scores each against four stuck conditions:
 #   - DIRTY    : mergeStateStatus=DIRTY for > DIRTY_THRESHOLD_HOURS
 #   - CI_RED   : any required check failing for > CI_FAIL_THRESHOLD_MINS
 #   - BEHIND   : > BEHIND_COMMITS_THRESHOLD commits behind base
 #   - ORPHAN   : auto-merge disarmed AND no live lease for the PR's gap
-# When a PR matches any condition, files an INFRA gap titled
-# "PR #<N> stuck — <reason>" with the PR URL, the original gap IDs, and a
-# suggested action. Filers de-dup by checking open INFRA gap titles for
-# "PR #<N> stuck" first, so re-running the script is idempotent.
+# When a PR matches any condition, emits an ambient `kind=pr_stuck` event with
+# the PR URL, the original gap IDs, a suggested action, and a `stuck_class`
+# tag. De-dups by scanning ambient.jsonl for a recent `pr_stuck` event for the
+# same PR number (window: STUCK_PR_DEDUP_HOURS, default 6h) so re-running the
+# script hourly doesn't spam the stream.
 #
 # Skips. Filing PRs (`chore(gaps): file/reserve …`), drafts, dependabot
-# (those go through stale-pr-reaper.sh's natural close path), and PRs that
-# already have a stuck-pr filing gap open.
+# (those go through stale-pr-reaper.sh's natural close path), and PRs with a
+# recent pr_stuck emit already on the ambient stream.
 #
 # Usage:
 #   scripts/ops/stuck-pr-filer.sh                # live run
@@ -198,119 +201,54 @@ git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
     red "Could not fetch $REMOTE/$BASE — aborting."; exit 1
 }
 
-# Existing stuck-pr filings keyed by PR number. Title convention:
-# "PR #<N> stuck — <reason>". We match on " #<N> " to avoid false hits on,
-# say, INFRA-#N-shaped substrings.
-EXISTING_FILINGS=""
-if command -v chump >/dev/null 2>&1; then
-    EXISTING_FILINGS=$(chump gap list --status open --json 2>/dev/null \
-        | python3 -c "
-import json, sys, re
-try:
-    rows = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-for r in rows:
-    title = r.get('title') or ''
-    m = re.search(r'PR #(\d+) stuck', title)
-    if m:
-        print(m.group(1))
-" 2>/dev/null || true)
-fi
+# ZERO-WASTE-014: dedup is ambient-log-based, not gap-based — no gaps are
+# filed by this script anymore, so there's nothing to auto-close either.
+# `already_emitted PR_NUM` returns 0 (true/skip) if a pr_stuck event for that
+# PR landed on ambient.jsonl within STUCK_PR_DEDUP_HOURS (default 6 — the
+# filer runs hourly; this keeps a still-stuck PR from re-emitting every tick
+# while still refreshing the signal well inside a day).
+STUCK_PR_DEDUP_HOURS="${STUCK_PR_DEDUP_HOURS:-6}"
+STUCK_PR_AMBIENT="${CHUMP_AMBIENT_LOG:-${REAPER_LOCK_DIR:-.chump-locks}/ambient.jsonl}"
 
-# INFRA-386: auto-close filed gaps whose underlying PR has resolved.
-# Runs once per filer cycle, before the dedup-driven filing loop. Walks
-# every open INFRA gap titled "PR #N stuck — ..." and checks PR N's
-# state — if MERGED or CLOSED, flips the gap to closed via
-# `chump gap set --status closed`.
-#
-# RESILIENT-098 (2026-06-05): switched from `chump gap ship` to
-# `chump gap set --status closed`. The `ship` path enforces the
-# INFRA-2423 auto-fetch gate (refuses when local main is behind origin
-# AND working tree is dirty), which is the right discipline for HUMAN
-# ship operations but wrong for an autonomous daemon that just wants to
-# flip status. Pre-fix, 23 zombies accumulated over 5 days because every
-# auto-close attempt hit the gate, logged a WARN, and left the gap open.
-#
-# Pre-fix history: INFRA-356/357/358 stayed open hours after their
-# referenced PRs were closed via batch-unstick, with the hourly filer
-# hitting EXISTING_FILINGS dedup but never resolving.
-# Bypass: INFRA_386_AUTOCLOSE=0 for testing.
-auto_close_resolved_filings() {
-    [[ "${INFRA_386_AUTOCLOSE:-1}" == "0" ]] && return 0
-    command -v chump >/dev/null 2>&1 || return 0
-
-    local mapping
-    mapping=$(chump gap list --status open --json 2>/dev/null \
-        | python3 -c "
-import json, sys, re
-try:
-    rows = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-for r in rows:
-    title = r.get('title') or ''
-    m = re.search(r'PR #(\d+) stuck', title)
-    if m:
-        gid = r.get('id') or ''
-        if gid: print(f\"{gid}|{m.group(1)}\")
-" 2>/dev/null || true)
-
-    [[ -z "$mapping" ]] && return 0
-
-    local closed=0
-    while IFS='|' read -r gap_id pr_num; do
-        [[ -z "$gap_id" || -z "$pr_num" ]] && continue
-        local state
-        state=$(gh pr view "$pr_num" --json state -q .state 2>/dev/null || echo "")
-        case "$state" in
-            MERGED|CLOSED)
-                if [[ $DRY_RUN -eq 1 ]]; then
-                    dry "would auto-close $gap_id (PR #$pr_num is $state)"
-                else
-                    # RESILIENT-098: use `gap set --status closed` (state.db direct)
-                    # instead of `gap ship` to bypass the INFRA-2423 auto-fetch gate.
-                    if chump gap set "$gap_id" --status closed --closed-pr "$pr_num" \
-                          --add-note "auto-closed by stuck-pr-filer: PR #$pr_num resolved ($state)" \
-                          >/dev/null 2>&1; then
-                        info "auto-closed $gap_id — referenced PR #$pr_num resolved ($state)"
-                        closed=$((closed + 1))
-                    else
-                        warn "chump gap set $gap_id --status closed failed (PR #$pr_num $state)"
-                    fi
-                fi
-                ;;
-        esac
-    done <<< "$mapping"
-
-    [[ $closed -gt 0 ]] && green "  auto-closed $closed resolved filing(s)"
-    return 0
-}
-
-# Run before the filing loop so EXISTING_FILINGS reflects the freshly-closed gaps.
-auto_close_resolved_filings
-# Refresh EXISTING_FILINGS after auto-close so dedup is current.
-if command -v chump >/dev/null 2>&1; then
-    EXISTING_FILINGS=$(chump gap list --status open --json 2>/dev/null \
-        | python3 -c "
-import json, sys, re
-try:
-    rows = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-for r in rows:
-    title = r.get('title') or ''
-    m = re.search(r'PR #(\d+) stuck', title)
-    if m:
-        print(m.group(1))
-" 2>/dev/null || true)
-fi
-
-already_filed() {
+already_emitted() {
     local pr="$1"
-    [[ -n "$EXISTING_FILINGS" ]] || return 1
-    grep -qx "$pr" <<<"$EXISTING_FILINGS"
+    [[ -f "$STUCK_PR_AMBIENT" ]] || return 1
+    python3 - "$pr" "$STUCK_PR_AMBIENT" "$STUCK_PR_DEDUP_HOURS" << 'PYEOF'
+import json, sys
+from datetime import datetime, timezone, timedelta
+pr, path, hrs = sys.argv[1], sys.argv[2], float(sys.argv[3])
+cutoff = datetime.now(timezone.utc) - timedelta(hours=hrs)
+try:
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except Exception:
+                continue
+            if ev.get('kind') != 'pr_stuck':
+                continue
+            if str(ev.get('pr', '')) != pr:
+                continue
+            ts_str = ev.get('ts', '')
+            if not ts_str:
+                continue
+            try:
+                ev_ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+            except Exception:
+                continue
+            if ev_ts >= cutoff:
+                sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+PYEOF
 }
+
+# Back-compat alias — INDIVIDUAL/dedup call sites below predate the rename.
+already_filed() { already_emitted "$@"; }
 
 # is_filing_pr_title TITLE — PRs whose only intent is to land a new gap YAML.
 # Mirrors stale-pr-reaper.sh's exemption (INFRA-219).
@@ -352,9 +290,10 @@ has_live_lease() {
 }
 
 # file_stuck_gap PR_NUM REASON SUMMARY DETAILS [STUCK_CLASS]
-# INFRA-376: STUCK_CLASS is one of REBASE, CI-RED, BEHIND, ORPHAN.
-# Tag goes into the gap title in [brackets] (so the fleet picker can
-# route by class) and the description carries a routing hint.
+# ZERO-WASTE-014: ambient-only — no gap filed. INFRA-376's STUCK_CLASS tag
+# (REBASE, CI-RED, BEHIND, ORPHAN) rides along in the ambient payload so
+# shepherd/ci-audit can still route by class off the ambient stream.
+# Function name kept for call-site compat.
 file_stuck_gap() {
     local pr_num="$1"
     local reason="$2"
@@ -371,46 +310,11 @@ file_stuck_gap() {
         return
     fi
 
-    if ! command -v chump >/dev/null 2>&1; then
-        warn "chump binary not on PATH — cannot reserve gap; skipping PR #${pr_num}"
-        return
-    fi
-
-    local reserved
-    reserved=$(chump gap reserve --domain INFRA --title "$title" \
-        --priority P1 --effort xs 2>&1 | tail -1)
-    if [[ ! "$reserved" =~ ^INFRA-[0-9]+$ ]]; then
-        warn "chump gap reserve failed for PR #${pr_num}: $reserved"
-        return
-    fi
-    info "  filed $reserved: $title"
-
-    # Description: PR URL + reason + suggested action. Kept short — the next
-    # agent reads the PR for details.
-    local desc
-    desc="${pr_url}
-
-Detected by stuck-pr-filer ($(date -u +%Y-%m-%dT%H:%M:%SZ)).
-
-Trigger: ${reason}
-${summary}
-
-Suggested action:
-  1. Check the PR — confirm whether the underlying gap landed elsewhere.
-  2. If yes: gh pr close ${pr_num} --comment 'superseded'.
-  3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
-
-${details}"
-
-    chump gap set "$reserved" --description "$desc" 2>/dev/null || \
-        warn "  could not set description on $reserved (gap reserved but bare)"
-
     # INFRA-1247: verify the PR is still open before emitting pr_stuck.
     # Cross-check via cache_lookup_pr (INFRA-1081) to avoid emitting for PRs
     # that closed between our initial scan and the emit. If the cache lookup
     # fails (miss or binary unavailable), default to emitting (safe-side).
-    local lock_dir="${REAPER_LOCK_DIR:-.chump-locks}"
-    local ambient="$lock_dir/ambient.jsonl"
+    local ambient="$STUCK_PR_AMBIENT"
     local _pr_state="open"
     if declare -f cache_lookup_pr &>/dev/null; then
         _pr_state=$(cache_lookup_pr "$pr_num" 2>/dev/null \
@@ -426,9 +330,27 @@ ${details}"
         info "  PR #$pr_num is $_pr_state — suppressed pr_stuck emit (INFRA-1247)"
         return
     fi
-    printf '{"event":"alert","kind":"pr_stuck","ts":"%s","pr":%s,"reason":"%s","filed_gap":"%s"}\n' \
-        "$ts" "$pr_num" "$reason" "$reserved" >> "$ambient" 2>/dev/null || true
 
+    mkdir -p "$(dirname "$ambient")" 2>/dev/null || true
+    python3 - "$ts" "$pr_num" "$reason" "$stuck_class" "$summary" "$pr_url" "$details" "$ambient" << 'PYEOF'
+import json, sys
+ts, pr_num, reason, stuck_class, summary, pr_url, details, path = sys.argv[1:9]
+ev = {
+    "event": "alert",
+    "kind": "pr_stuck",
+    "ts": ts,
+    "pr": int(pr_num),
+    "reason": reason,
+    "stuck_class": stuck_class,
+    "summary": summary,
+    "pr_url": pr_url,
+    "details": details,
+}
+with open(path, "a") as f:
+    f.write(json.dumps(ev) + "\n")
+PYEOF
+
+    info "  emitted pr_stuck: $title"
     FILED=$((FILED + 1))
 }
 
@@ -441,22 +363,45 @@ detect_shared_ci_blockers() {
 
     green "=== shared-CI-blocker pass ==="
 
-    # Collect existing "CI blocker:" gap titles for dedup.
-    local existing_blocker_titles=""
-    if command -v chump >/dev/null 2>&1; then
-        existing_blocker_titles=$(chump gap list --status open --json 2>/dev/null \
-            | python3 -c "
+    # ZERO-WASTE-014: dedup shared-blocker emits via ambient.jsonl instead of
+    # an open "CI blocker:" gap — scan for a recent kind=shared_ci_blocker
+    # event with the same check_name.
+    already_emitted_blocker() {
+        local check_name="$1"
+        [[ -f "$STUCK_PR_AMBIENT" ]] || return 1
+        python3 - "$check_name" "$STUCK_PR_AMBIENT" "$STUCK_PR_DEDUP_HOURS" << 'PYEOF'
 import json, sys
+from datetime import datetime, timezone, timedelta
+check_name, path, hrs = sys.argv[1], sys.argv[2], float(sys.argv[3])
+cutoff = datetime.now(timezone.utc) - timedelta(hours=hrs)
 try:
-    rows = json.load(sys.stdin)
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except Exception:
+                continue
+            if ev.get('kind') != 'shared_ci_blocker':
+                continue
+            if ev.get('check_name', '') != check_name:
+                continue
+            ts_str = ev.get('ts', '')
+            if not ts_str:
+                continue
+            try:
+                ev_ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+            except Exception:
+                continue
+            if ev_ts >= cutoff:
+                sys.exit(0)
 except Exception:
-    sys.exit(0)
-for r in rows:
-    t = (r.get('title') or '')
-    if 'CI blocker:' in t:
-        print(t)
-" 2>/dev/null || true)
-    fi
+    pass
+sys.exit(1)
+PYEOF
+    }
 
     # Group by check_name; emit GROUP or INDIVIDUAL directives.
     local group_data
@@ -502,8 +447,8 @@ PYEOF
                 IFS=$'\t' read -r _check_name _count _pr_nums _max_hrs <<<"$_rest"
                 local _title="CI blocker: ${_check_name} failing on ${_count}+ open PRs"
 
-                if grep -qF "CI blocker: ${_check_name}" <<<"${existing_blocker_titles}" 2>/dev/null; then
-                    info "  shared-blocker for '${_check_name}' already filed — skipping"
+                if already_emitted_blocker "$_check_name"; then
+                    info "  shared-blocker for '${_check_name}' already emitted — skipping"
                     continue
                 fi
 
@@ -532,51 +477,35 @@ $(git diff "${_last_commit}^" "$_last_commit" -- "$_script_path" 2>/dev/null | h
                 fi
 
                 if [[ $DRY_RUN -eq 1 ]]; then
-                    dry "would file shared-blocker gap: $_title"
+                    dry "would emit shared_ci_blocker: $_title"
                     dry "  affected PRs ($_count): $_pr_nums"
                     FILED=$((FILED + 1))
                     continue
                 fi
 
-                command -v chump >/dev/null 2>&1 || {
-                    warn "chump not on PATH — skipping shared-blocker gap for '$_check_name'"; continue
-                }
-
-                local _reserved
-                _reserved=$(chump gap reserve --domain INFRA --title "$_title" \
-                    --priority P1 --effort s 2>&1 | tail -1)
-                if [[ ! "$_reserved" =~ ^INFRA-[0-9]+$ ]]; then
-                    warn "chump gap reserve failed for shared-blocker '$_check_name': $_reserved"
-                    continue
-                fi
-                info "  filed $_reserved: $_title"
-
                 local _ts
                 _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-                local _desc
-                _desc="Shared CI-blocker detected by stuck-pr-filer (${_ts}).
 
-Failing CI step:  ${_check_name}
-Script path:      ${_script_path:-unknown}
-Affected PRs:     ${_count} (#${_pr_nums//,/ #})
-Oldest failure:   ${_max_hrs}h
+                info "  emitted shared_ci_blocker: $_title"
 
-Recent changes to script on origin/main:
-${_script_context}
-
-Suggested action:
-  1. Check whether origin/main already fixed this test (git log above).
-  2. If yes: bulk-rebase affected PRs so they pick up the fix.
-  3. If no: fix the script and ship a patch PR first.
-  4. Once root cause resolved, re-arm affected PRs via bot-merge.sh."
-
-                chump gap set "$_reserved" --description "$_desc" 2>/dev/null || \
-                    warn "  could not set description on $_reserved"
-
-                local _lock_dir="${REAPER_LOCK_DIR:-.chump-locks}"
-                printf '{"event":"alert","kind":"shared_ci_blocker","ts":"%s","check_name":"%s","affected_prs":%s,"filed_gap":"%s"}\n' \
-                    "$_ts" "$_check_name" "$_count" "$_reserved" \
-                    >> "$_lock_dir/ambient.jsonl" 2>/dev/null || true
+                mkdir -p "$(dirname "$STUCK_PR_AMBIENT")" 2>/dev/null || true
+                python3 - "$_ts" "$_check_name" "$_count" "$_pr_nums" "$_max_hrs" "$_script_path" "$_script_context" "$STUCK_PR_AMBIENT" << 'PYEOF'
+import json, sys
+ts, check_name, count, pr_nums, max_hrs, script_path, script_context, path = sys.argv[1:9]
+ev = {
+    "event": "alert",
+    "kind": "shared_ci_blocker",
+    "ts": ts,
+    "check_name": check_name,
+    "affected_prs": int(count),
+    "pr_nums": pr_nums,
+    "oldest_failure_hrs": int(max_hrs) if max_hrs.isdigit() else 0,
+    "script_path": script_path or "unknown",
+    "script_context": script_context,
+}
+with open(path, "a") as f:
+    f.write(json.dumps(ev) + "\n")
+PYEOF
 
                 FILED=$((FILED + 1))
                 ;;
@@ -611,10 +540,10 @@ Suggested action:
 Branch: ${_pr_branch}
 Failing check: ${_check_name}
 Stuck class: CI-RED — ci-flake-rerun or human investigation required"
+                # INFRA-855: file_stuck_gap writes straight to STUCK_PR_AMBIENT,
+                # so later already_filed() calls in this same run see the just-
+                # emitted PR immediately (ambient scan, no in-memory var needed).
                 file_stuck_gap "$_pr_num" "$_reason" "$_summary" "$_details" "CI-RED"
-                # INFRA-855: update EXISTING_FILINGS so later already_filed() calls
-                # in this same run also see the just-filed PR (cross-check dedup).
-                EXISTING_FILINGS="$(printf '%s\n%s' "$EXISTING_FILINGS" "$_pr_num")"
                 ;;
         esac
     done <<<"$group_data"

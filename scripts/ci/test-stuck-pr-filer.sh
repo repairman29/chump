@@ -8,8 +8,8 @@
 #   3. A DIRTY-for-too-long PR is detected in --dry-run output.
 #   4. A filing PR (`chore(gaps): file …`) is skipped even when DIRTY.
 #   5. A draft PR is skipped even when DIRTY.
-#   6. A PR whose number already appears in the EXISTING_FILINGS list is
-#      skipped (dedup).
+#   6. A PR with a recent kind=pr_stuck ambient emit is skipped (dedup,
+#      ZERO-WASTE-014: ambient-based, no gap is filed by this script).
 #
 # Network-free: stubs `gh` and `chump` via PATH; the heartbeat / ambient
 # emit is allowed to write under a fresh REAPER_LOCK_DIR temp.
@@ -162,19 +162,17 @@ else
     exit 1
 fi
 
-# ── Test 6: dedup against existing INFRA stuck-pr filings ────────────────────
-echo "Test 6: existing 'PR #N stuck' gap dedups"
+# ── Test 6 (ZERO-WASTE-014): dedup against a recent pr_stuck ambient emit ────
+echo "Test 6: recent pr_stuck ambient emit for the same PR dedups"
 cat > "$TMP/bin/chump" <<'EOF'
 #!/usr/bin/env bash
-case "$*" in
-    "gap list --status open --json")
-        echo '[{"id":"INFRA-308","title":"PR #472 stuck — DIRTY for 8h","status":"open"}]'
-        ;;
-    "gap reserve "*) echo "INFRA-9999" ;;
-    *) exit 0 ;;
-esac
+exit 0
 EOF
 chmod +x "$TMP/bin/chump"
+
+DEDUP_AMBIENT="$TMP/dedup_ambient.jsonl"
+NOW_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+printf '{"ts":"%s","kind":"pr_stuck","pr":472,"reason":"DIRTY for 8h"}\n' "$NOW_TS" > "$DEDUP_AMBIENT"
 
 cat > "$TMP/bin/gh" <<EOF
 #!/usr/bin/env bash
@@ -189,72 +187,12 @@ esac
 EOF
 chmod +x "$TMP/bin/gh"
 
-out=$(REMOTE=origin "$SCRIPT" --dry-run 2>&1 || true)
-if [[ "$out" == *"already has a stuck-pr filing gap, skipping"* && "$out" != *"would file"* ]]; then
+out=$(REMOTE=origin CHUMP_AMBIENT_LOG="$DEDUP_AMBIENT" "$SCRIPT" --dry-run 2>&1 || true)
+if [[ "$out" == *"already has a stuck-pr filing"* && "$out" != *"would file"* ]]; then
     echo "  PASS"
 else
-    echo "  FAIL: existing filing should dedup, got:"
+    echo "  FAIL: existing pr_stuck emit should dedup, got:"
     echo "$out" | sed 's/^/    /'
-    exit 1
-fi
-
-# ── Test 7: INFRA-386 — auto-close filed gap when underlying PR resolves ─────
-# RESILIENT-098 (2026-06-05): auto-close now uses `gap set --status closed`
-# instead of `gap ship` to bypass the INFRA-2423 auto-fetch gate that blocks
-# daemon-context calls when local main is behind origin AND tree is dirty.
-echo "Test 7: filed gap auto-closes when its PR is MERGED (RESILIENT-098)"
-SHIP_LOG="$TMP/ship.log"
-rm -f "$SHIP_LOG"
-cat > "$TMP/bin/chump" <<EOF
-#!/usr/bin/env bash
-case "\$1 \$2" in
-    "gap list")
-        echo '[{"id":"INFRA-9777","title":"PR #777 stuck — DIRTY for 6h","status":"open"}]'
-        ;;
-    "gap set")
-        # Match: gap set INFRA-9777 --status closed --closed-pr 777 --add-note "..."
-        if [[ "\$3" == "INFRA-9777" ]] && [[ "\$*" == *"--status closed"* ]] \
-           && [[ "\$*" == *"--closed-pr 777"* ]]; then
-            echo "INFRA-9777 set --status closed --closed-pr 777" >> "$SHIP_LOG"
-        fi
-        ;;
-    "gap reserve") echo "INFRA-9999" ;;
-    *) exit 0 ;;
-esac
-EOF
-chmod +x "$TMP/bin/chump"
-
-cat > "$TMP/bin/gh" <<'EOF'
-#!/usr/bin/env bash
-case "$*" in
-    "pr view 777 --json state -q .state") echo "MERGED" ;;
-    "pr list "*) echo "[]" ;;
-    "pr checks "*) echo "[]" ;;
-esac
-EOF
-chmod +x "$TMP/bin/gh"
-
-out=$(REMOTE=origin "$SCRIPT" 2>&1 || true)
-if [[ -f "$SHIP_LOG" ]] && grep -q "INFRA-9777 set --status closed --closed-pr 777" "$SHIP_LOG" \
-   && [[ "$out" == *"auto-closed INFRA-9777"* ]]; then
-    echo "  PASS"
-else
-    echo "  FAIL: expected gap set --status closed + auto-closed message"
-    echo "  ship log: $(cat "$SHIP_LOG" 2>/dev/null || echo "(empty)")"
-    echo "  output:"
-    echo "$out" | sed 's/^/    /'
-    exit 1
-fi
-
-# ── Test 8: INFRA_386_AUTOCLOSE=0 bypass leaves the gap alone ────────────────
-echo "Test 8: INFRA_386_AUTOCLOSE=0 bypass"
-rm -f "$SHIP_LOG"
-out=$(INFRA_386_AUTOCLOSE=0 REMOTE=origin "$SCRIPT" 2>&1 || true)
-if { [[ ! -f "$SHIP_LOG" ]] || [[ ! -s "$SHIP_LOG" ]]; } && [[ "$out" != *"auto-closed"* ]]; then
-    echo "  PASS"
-else
-    echo "  FAIL: bypass should suppress gap ship + auto-closed message"
-    echo "  ship log: $(cat "$SHIP_LOG" 2>/dev/null || echo "(empty)")"
     exit 1
 fi
 
@@ -389,31 +327,18 @@ else
     exit 1
 fi
 
-# ── Test N+1: INFRA-855 — INDIVIDUAL path files one gap per PR, not per check ──
-echo "Test: INFRA-855 — INDIVIDUAL dedup: two checks on same PR → one gap"
+# ── Test N+1: INFRA-855 — INDIVIDUAL path emits one pr_stuck per PR, not per check ──
+echo "Test: INFRA-855 — INDIVIDUAL dedup: two checks on same PR → one pr_stuck emit"
 
-# Stub: chump records each 'gap reserve' call so we can count invocations.
-RESERVE_LOG="$TMP/reserve_855.log"
-rm -f "$RESERVE_LOG"
-_gap_seq=8550
-cat > "$TMP/bin/chump" <<EOF
+cat > "$TMP/bin/chump" <<'EOF'
 #!/usr/bin/env bash
-case "\$*" in
-    "gap list --status open --json")
-        echo '[]'
-        ;;
-    "gap reserve "*)
-        _gap_seq=\$(( _gap_seq + 1 ))
-        echo "INFRA-\$_gap_seq" | tee -a "$RESERVE_LOG"
-        ;;
-    "gap set "* | "gap set"*) exit 0 ;;
-    *) exit 0 ;;
-esac
+exit 0
 EOF
 chmod +x "$TMP/bin/chump"
 
 # Two INDIVIDUAL entries for the same PR #111, different check names.
-# The filer should file exactly one gap (for the first check) and skip the second.
+# The filer should emit exactly one pr_stuck event (for the first check) and
+# skip the second.
 cat > "$TMP/bin/gh" <<EOF
 #!/usr/bin/env bash
 OLD_TS_855="${OLD_TS}"
@@ -436,16 +361,31 @@ esac
 EOF
 chmod +x "$TMP/bin/gh"
 
+rm -f "$TMP/ambient_855.jsonl"
 out=$(REMOTE=origin CI_FAIL_THRESHOLD_MINS=0 SHARED_BLOCKER_THRESHOLD=999 \
     CHUMP_AMBIENT_LOG="$TMP/ambient_855.jsonl" \
     "$SCRIPT" 2>&1 || true)
 
-reserve_count=$(wc -l < "$RESERVE_LOG" 2>/dev/null || echo 0)
-reserve_count="${reserve_count// /}"
-if [[ "$reserve_count" -eq 1 ]]; then
-    echo "  PASS: INDIVIDUAL dedup: 2 failing checks → exactly 1 gap filed (got $reserve_count)"
+emit_count=$(python3 -c "
+import json
+n = 0
+with open('$TMP/ambient_855.jsonl') as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except Exception:
+            continue
+        if ev.get('kind') == 'pr_stuck' and ev.get('pr') == 111:
+            n += 1
+print(n)
+" 2>/dev/null || echo 0)
+if [[ "$emit_count" -eq 1 ]]; then
+    echo "  PASS: INDIVIDUAL dedup: 2 failing checks → exactly 1 pr_stuck emit (got $emit_count)"
 else
-    echo "  FAIL: INDIVIDUAL dedup: expected 1 gap filed, got $reserve_count"
+    echo "  FAIL: INDIVIDUAL dedup: expected 1 pr_stuck emit, got $emit_count"
     echo "$out" | sed 's/^/    /'
     exit 1
 fi
@@ -460,20 +400,11 @@ else
     exit 1
 fi
 
-# ── Test N+3: INFRA-855 — EXISTING_FILINGS updated after filing ─────────────────
-echo "Test: INFRA-855 — EXISTING_FILINGS updated so second run deduplicates"
-# Stub chump so first call to 'gap list' returns empty, but gap reserve records filing.
-RESERVE_LOG2="$TMP/reserve_855b.log"
-rm -f "$RESERVE_LOG2"
-cat > "$TMP/bin/chump" <<EOF
+# ── Test N+3: INFRA-855 — ambient dedup is live within a single run ─────────
+echo "Test: INFRA-855 — ambient-based dedup so second check on the same PR is skipped mid-run"
+cat > "$TMP/bin/chump" <<'EOF'
 #!/usr/bin/env bash
-case "\$*" in
-    "gap list --status open --json") echo '[]' ;;
-    "gap reserve "*)
-        echo "INFRA-8560" | tee -a "$RESERVE_LOG2"
-        ;;
-    *) exit 0 ;;
-esac
+exit 0
 EOF
 chmod +x "$TMP/bin/chump"
 
@@ -497,13 +428,31 @@ esac
 EOF
 chmod +x "$TMP/bin/gh"
 
+AMBIENT_855B="$TMP/ambient_855b.jsonl"
+rm -f "$AMBIENT_855B"
 out2=$(REMOTE=origin CI_FAIL_THRESHOLD_MINS=0 SHARED_BLOCKER_THRESHOLD=999 \
+    CHUMP_AMBIENT_LOG="$AMBIENT_855B" \
     "$SCRIPT" 2>&1 || true)
-cnt2=$(wc -l < "$RESERVE_LOG2" 2>/dev/null || echo 0); cnt2="${cnt2// /}"
+cnt2=$(python3 -c "
+import json
+n = 0
+with open('$AMBIENT_855B') as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except Exception:
+            continue
+        if ev.get('kind') == 'pr_stuck' and ev.get('pr') == 222:
+            n += 1
+print(n)
+" 2>/dev/null || echo 0)
 if [[ "$cnt2" -eq 1 ]]; then
-    echo "  PASS: two failing checks for same PR → 1 gap filed (EXISTING_FILINGS updated mid-run)"
+    echo "  PASS: two failing checks for same PR → 1 pr_stuck emit (ambient dedup live mid-run)"
 else
-    echo "  FAIL: expected 1 gap, got $cnt2"
+    echo "  FAIL: expected 1 pr_stuck emit, got $cnt2"
     echo "$out2" | sed 's/^/    /'
     exit 1
 fi
