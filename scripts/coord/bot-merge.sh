@@ -3079,28 +3079,52 @@ if [[ "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
 fi
 # FD 200 stays open; "$FLOCK_BIN" released automatically when the script process exits.
 
-# ── INFRA-995: pre-push staleness gate ───────────────────────────────────────
+# ── INFRA-995: pre-push staleness gate + RESILIENT-325 auto-rebase ─────────
 # Belt-and-suspenders for the CLAUDE.md rule "rebase if your branch is more than
 # 15 commits behind main". The earlier rebase block (§1) already rebases above
 # 0 behind, but main may have moved during cargo clippy/test (often a 5-15 min
-# window). Re-fetch and refuse to push if we are now > STALE_REBASE_THRESHOLD
-# commits behind — pushing would burn a CI cycle on a stale base and then sit
-# in BEHIND state waiting on queue-driver.
+# window) — that drift is exactly the conflict-rot window RESILIENT-325 closes:
+# rather than pushing stale and letting the PR land CONFLICTING on GitHub
+# (needing a manual/armed-rebaser rescue later), re-fetch and rebase onto fresh
+# origin/main immediately before push so the conflict window shrinks to ~0.
+# Only bail out (no auto-rebase attempt) when we're pathologically stale —
+# > STALE_REBASE_THRESHOLD commits behind means main moved enough that an
+# unattended rebase here is risky and likely wants human eyes.
 STALE_REBASE_THRESHOLD="${CHUMP_BOT_MERGE_STALE_THRESHOLD:-15}"
 if [[ $DRY_RUN -eq 0 ]]; then
     run_timed_hb "git fetch (pre-push freshness)" 60 \
         git fetch "$REMOTE" "$BASE_BRANCH" --quiet 2>/dev/null || true
     BEHIND_NOW=$(git rev-list --count "HEAD..${REMOTE}/${BASE_BRANCH}" 2>/dev/null || echo 0)
+    _amb_path="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
     if [[ "$BEHIND_NOW" -gt "$STALE_REBASE_THRESHOLD" ]]; then
         red "INFRA-995: branch is $BEHIND_NOW commits behind $REMOTE/$BASE_BRANCH (threshold ${STALE_REBASE_THRESHOLD})."
-        red "  main moved while we built/tested. Pushing now would queue a stale base for CI."
+        red "  main moved while we built/tested — too stale to auto-rebase safely."
         red "  Recover: git fetch && git rebase $REMOTE/$BASE_BRANCH && rerun bot-merge."
-        _amb_path="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
         mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
         printf '{"ts":"%s","kind":"stale_branch_blocked","branch":"%s","behind":%d,"threshold":%d,"phase":"pre-push"}\n' \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$BEHIND_NOW" "$STALE_REBASE_THRESHOLD" \
             >> "$_amb_path" 2>/dev/null || true
         _bm_fail "stale-branch" 3 "branch $BEHIND_NOW commits behind > threshold ${STALE_REBASE_THRESHOLD}"
+    elif [[ "$BEHIND_NOW" -gt 0 ]]; then
+        info "RESILIENT-325: $BEHIND_NOW commit(s) behind $REMOTE/$BASE_BRANCH — rebasing onto fresh base immediately before push"
+        _pp_rebase_args=("${REMOTE}/${BASE_BRANCH}")
+        if [[ "$NO_MERGE_DRIVER" == "1" ]]; then
+            _pp_rebase_args+=(-c merge.ci-yml-add-row.driver= -c merge.pre-commit-add-guard.driver= -c merge.chump-state-sql-regen.driver=)
+        fi
+        if ! run_timed_hb "git rebase (pre-push, RESILIENT-325)" 60 git rebase "${_pp_rebase_args[@]}"; then
+            git rebase --abort >/dev/null 2>&1 || true
+            red "RESILIENT-325: pre-push rebase onto $REMOTE/$BASE_BRANCH hit a conflict — resolve manually and rerun bot-merge."
+            mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"pre_push_rebase_conflict","branch":"%s","behind":%d,"phase":"pre-push"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$BEHIND_NOW" \
+                >> "$_amb_path" 2>/dev/null || true
+            _bm_fail "pre-push-rebase" 3 "conflict rebasing onto fresh $REMOTE/$BASE_BRANCH immediately before push"
+        fi
+        mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"pre_push_rebase_applied","branch":"%s","behind":%d,"phase":"pre-push"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$BEHIND_NOW" \
+            >> "$_amb_path" 2>/dev/null || true
+        info "RESILIENT-325: pre-push rebase clean — branch now up to date with $REMOTE/$BASE_BRANCH"
     fi
 fi
 
