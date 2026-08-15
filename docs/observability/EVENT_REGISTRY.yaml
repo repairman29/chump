@@ -5630,6 +5630,32 @@ events:
     consumers: [fleet-brief, disk-health-monitor, ops-audit]
     fields_required: [ts, kind, target, reclaimed_gb_approx, free_gb_after]
 
+  # ── RESILIENT-326: disk-critical-reactor halt/auto-resume governance (2026-08-15) ─
+  # Prior to this fix, quiesce_and_reclaim() set AUTONOMY_LEVEL=0 to halt the
+  # fleet but never restored it — a genuine multi-hour silent halt (the same
+  # failure class the back-pressure breaker hit in RESILIENT-324). These two
+  # kinds are the loud page + the auto-recovery proof: every halt this organ
+  # causes is now paired with a page (autonomy_halt) and a guaranteed restore
+  # on both the success and abort exit paths (autonomy_resume).
+  - kind: disk_reactor_autonomy_halt
+    effect_metric: fleet_autonomy_level
+    emitter: scripts/coord/disk-critical-reactor.sh (RESILIENT-326)
+    trigger: >
+      quiesce_and_reclaim() set AUTONOMY_LEVEL=0 to halt the fleet before
+      pruning the over-cap shared cargo target. Paired 1:1 with an
+      operator-recall.sh DISK_CRITICAL page in the same code path.
+    consumers: [fleet-brief, disk-health-monitor, ops-audit]
+    fields_required: [ts, kind, prior_level]
+  - kind: disk_reactor_autonomy_resume
+    effect_metric: fleet_autonomy_level
+    emitter: scripts/coord/disk-critical-reactor.sh (RESILIENT-326)
+    trigger: >
+      quiesce_and_reclaim() restored AUTONOMY_LEVEL to its pre-halt value on
+      EITHER exit path (reclaimed or aborted) — the halt this organ causes is
+      always scoped to the quiesce window, never permanent.
+    consumers: [fleet-brief, disk-health-monitor, ops-audit]
+    fields_required: [ts, kind, restored_level, reason]
+
   # ── ZERO-WASTE-053: steady-state cargo-target GC (2026-08-09) ────────────
   # cargo-sweep-gc.sh holds the shared target under a hard cap via LRU eviction,
   # so cargo's unbounded growth becomes a bounded plateau (days-and-days autonomy).
