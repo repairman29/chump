@@ -57,6 +57,13 @@ FLAKE_PATTERNS=(
     'Process completed with exit code 137'
     'Network is unreachable'
     'temporarily unavailable'
+    # RESILIENT-308: the audit aggregate ('audit' required check) exits 1 with
+    # this signature when a matrix shard's RESULT was cancelled (concurrency /
+    # timeout artifact), not because a gate actually failed. A shard that FAILS a
+    # real gate reports result=failure, never result=cancelled — so matching the
+    # cancelled-shard string is flake-safe.
+    'result=cancelled'
+    'at least one audit-shard failed'
 )
 if [[ -n "${CI_FLAKE_PATTERNS_FILE:-}" && -f "$CI_FLAKE_PATTERNS_FILE" ]]; then
     while IFS= read -r line; do
@@ -142,25 +149,31 @@ RERAN=0; SKIPPED=0
 # Walk PRs → for each, find run-IDs of failing required checks → fetch
 # the failed log → grep for any flake pattern → if any match, rerun once.
 PRS=$(echo "$PRS_JSON" | python3 -c "
-import json,sys
+import json,sys,re
 for p in json.load(sys.stdin):
     rollup = p.get('statusCheckRollup') or []
-    failed = [c for c in rollup if (c.get('conclusion') or '').upper() in ('FAILURE','ERROR','CANCELLED','TIMED_OUT')]
+    failed = [c for c in rollup if (c.get('conclusion') or '').upper() in ('FAILURE','ERROR','CANCELLED','TIMED_OUT','STARTUP_FAILURE')]
     if not failed:
         continue
-    # Get unique run IDs from URLs like /actions/runs/<RUN_ID>/job/<JOB_ID>
-    runs = set()
+    # Map each run-id to whether ANY of its failed checks were CANCELLED/TIMED_OUT.
+    # RESILIENT-308: a cancelled/timed-out required check is an inherent
+    # concurrency/timeout flake (never a real code failure — that reports FAILURE),
+    # and — critically — a CANCELLED job is NOT rerun by 'gh run rerun --failed',
+    # so it needs a WHOLE-run rerun. Carry the flag so the shell picks the mode.
+    run_cancel = {}   # run_id -> bool
     for c in failed:
         url = c.get('targetUrl') or c.get('detailsUrl') or ''
-        import re
         m = re.search(r'/actions/runs/(\d+)/', url)
-        if m:
-            runs.add(m.group(1))
-    for r in runs:
-        print(f\"{p['number']}\t{r}\t{p['title'][:60]}\")
+        if not m:
+            continue
+        rid = m.group(1)
+        is_cancel = (c.get('conclusion') or '').upper() in ('CANCELLED','TIMED_OUT')
+        run_cancel[rid] = run_cancel.get(rid, False) or is_cancel
+    for rid, cancelled in run_cancel.items():
+        print(f\"{p['number']}\t{rid}\t{1 if cancelled else 0}\t{p['title'][:60]}\")
 ")
 
-while IFS=$'\t' read -r PR_NUM RUN_ID TITLE; do
+while IFS=$'\t' read -r PR_NUM RUN_ID CANCELLED TITLE; do
     [[ -z "$PR_NUM" || -z "$RUN_ID" ]] && continue
 
     # Cooldown: have we already attempted rerun on this run-id?
@@ -220,6 +233,21 @@ Bypass: \`CHUMP_FLAKE_BUDGET=0 scripts/ops/ci-flake-rerun.sh\` to keep retrying.
         continue
     fi
 
+    matched=""
+    # rerun_mode: "failed" reruns only failed jobs (default, cheap); "full" reruns
+    # the WHOLE run — mandatory for CANCELLED jobs, which `--failed` silently skips.
+    rerun_mode="failed"
+
+    # ── RESILIENT-308: cancelled/timed-out required check = inherent flake ───────
+    # The cancelled audit-shard class. A required check that ended CANCELLED or
+    # TIMED_OUT is a concurrency/timeout artifact, not a real failure (real gate
+    # failures report FAILURE). Rerun it without needing a log-text match — and
+    # rerun the whole run, because a cancelled job is not in the `--failed` set.
+    if [[ "$CANCELLED" == "1" ]]; then
+        matched="cancelled/timed-out required check (concurrency/timeout flake)"
+        rerun_mode="full"
+    fi
+
     # Pull the failed-log payload and grep for known flakes.
     # RESILIENT-306: the old `gh ... | head -c 200000` propagated head's
     # pipe-close SIGPIPE (141) to gh, and `set -o pipefail` turned that into a
@@ -227,24 +255,25 @@ Bypass: \`CHUMP_FLAKE_BUDGET=0 scripts/ops/ci-flake-rerun.sh\` to keep retrying.
     # sat in `failed` all night and never healed anything. Wrap the pipeline in
     # `|| true` inside the substitution so a truncated read is a success, not a
     # fatal SIGPIPE.
-    log=$( { gh run view "$RUN_ID" --log-failed 2>/dev/null | head -c 200000; } || true )
-    matched=""
-    for pat in "${FLAKE_PATTERNS[@]}"; do
-        if grep -qF "$pat" <<<"$log"; then
-            matched="$pat"
-            break
-        fi
-    done
-
-    # RESILIENT-306: network patterns only catch infra flakes. The failure that
-    # jammed the fleet was a KNOWN test flake (credible218) — a nextest/cargo
-    # test that passes on rerun. Reuse docs/process/KNOWN_FLAKES.yaml (the same
-    # catalog the in-lane wrapper consults): if EVERY failed test parsed from
-    # the log is catalogued, treat it as a flake and rerun. Fail-closed — any
-    # uncatalogued failed test means "real failure, leave alone."
     if [[ -z "$matched" ]]; then
-        if desc=$(_known_flake_tests_match "$log"); then
-            matched="$desc"
+        log=$( { gh run view "$RUN_ID" --log-failed 2>/dev/null | head -c 200000; } || true )
+        for pat in "${FLAKE_PATTERNS[@]}"; do
+            if grep -qF "$pat" <<<"$log"; then
+                matched="$pat"
+                break
+            fi
+        done
+
+        # RESILIENT-306: network patterns only catch infra flakes. The failure that
+        # jammed the fleet was a KNOWN test flake (credible218) — a nextest/cargo
+        # test that passes on rerun. Reuse docs/process/KNOWN_FLAKES.yaml (the same
+        # catalog the in-lane wrapper consults): if EVERY failed test parsed from
+        # the log is catalogued, treat it as a flake and rerun. Fail-closed — any
+        # uncatalogued failed test means "real failure, leave alone."
+        if [[ -z "$matched" ]]; then
+            if desc=$(_known_flake_tests_match "$log"); then
+                matched="$desc"
+            fi
         fi
     fi
 
@@ -255,12 +284,13 @@ Bypass: \`CHUMP_FLAKE_BUDGET=0 scripts/ops/ci-flake-rerun.sh\` to keep retrying.
     fi
 
     if [[ $DRY_RUN -eq 1 ]]; then
-        dry "would rerun PR #$PR_NUM run $RUN_ID (matched: '$matched')  ($TITLE)"
+        dry "would rerun PR #$PR_NUM run $RUN_ID mode=$rerun_mode (matched: '$matched')  ($TITLE)"
         RERAN=$((RERAN+1))
         continue
     fi
 
-    if gh run rerun "$RUN_ID" --failed >/dev/null 2>&1; then
+    if { [[ "$rerun_mode" == "full" ]] && gh run rerun "$RUN_ID" >/dev/null 2>&1; } \
+       || { [[ "$rerun_mode" != "full" ]] && gh run rerun "$RUN_ID" --failed >/dev/null 2>&1; }; then
         date +%s > "$cd_file"
         # INFRA-304: increment the per-PR flake-class rerun counter so
         # the budget check above eventually trips on persistent flakes.
