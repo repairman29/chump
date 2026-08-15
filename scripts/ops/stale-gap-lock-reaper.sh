@@ -229,6 +229,71 @@ except Exception:
         fi
     fi
 
+    # INFRA-2447: active bot-merge process protection. bot-merge.sh maintains
+    # its own liveness file (.chump-locks/bot-merge-<pid>.health, rewritten
+    # every ~30s) that is SEPARATE from the claim lease's heartbeat_at —
+    # bot-merge never calls refresh-claim-heartbeat.sh. A long bot-merge
+    # stall (e.g. a stuck `gh` call) can leave heartbeat_at stale past the
+    # reap TTL while the process is still alive and doing real work.
+    # INFRA-2438 lost its lease this way mid-ship (10-min stall). Before
+    # falling through to PID/TTL reap, check for a live, gap-matching health
+    # file.
+    if [[ -n "$gap_id" ]]; then
+        _bm_active=false
+        for _health in "$LOCK_DIR"/bot-merge-*.health; do
+            [[ -e "$_health" ]] || continue
+            _bm_gap_ids="$(python3 -c "
+import json
+try:
+    print(json.load(open('$_health')).get('gap_ids',''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+            case " $_bm_gap_ids " in
+                *" $gap_id "*) ;;
+                *) continue ;;
+            esac
+            _bm_pid="$(python3 -c "
+import json
+try:
+    print(json.load(open('$_health')).get('pid',''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+            [[ -n "$_bm_pid" ]] && ps -p "$_bm_pid" >/dev/null 2>&1 || continue
+            _bm_hb="$(python3 -c "
+import json
+try:
+    print(json.load(open('$_health')).get('last_heartbeat_at',''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+            [[ -z "$_bm_hb" ]] && continue
+            _bm_hb_epoch="$(python3 -c "
+import datetime
+try:
+    dt = datetime.datetime.fromisoformat('$_bm_hb'.replace('Z', '+00:00'))
+    print(int(dt.timestamp()))
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)"
+            [[ "$_bm_hb_epoch" -le 0 ]] && continue
+            _bm_hb_age=$((NOW_EPOCH_CLAIM - _bm_hb_epoch))
+            _bm_ttl="${CHUMP_BOT_MERGE_HEALTH_TTL_S:-120}"
+            if [[ "$_bm_hb_age" -lt "$_bm_ttl" ]]; then
+                _bm_active=true
+                break
+            fi
+        done
+        if [[ "$_bm_active" == "true" ]]; then
+            echo "  SKIP claim reap (active bot-merge process on gap=$gap_id): $(basename "$claim_file")"
+            printf '{"ts":"%s","kind":"stale_gap_lock_protected","event":"stale_gap_lock_protected","lock":"%s","session":"%s","gap":"%s","reason":"active_bot_merge"}\n' \
+                "$NOW_ISO" "$(basename "$claim_file")" "$session_id" "$gap_id" \
+                >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+            continue
+        fi
+    fi
+
     # INFRA-1252: ghost-lease HANDOFF. If the dead session's gap branch has
     # commits beyond origin/main, broadcast STUCK (fleet) once + delay reap
     # by CHUMP_HANDOFF_ACK_WINDOW_S so a fresh worker can claim before we
