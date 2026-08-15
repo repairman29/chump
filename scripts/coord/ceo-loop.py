@@ -53,6 +53,84 @@ SHADOW_DIR = pathlib.Path(
 MODEL = os.environ.get("CHUMP_CEO_MODEL", "sonnet")
 MODE = os.environ.get("CHUMP_CEO_MODE", "shadow")
 ALLOW_PAGE = os.environ.get("CHUMP_CEO_ALLOW_PAGE", "0") == "1"
+def load_chump_env():
+    """Fill os.environ blanks from ~/.chump/env. Only fills keys NOT present
+    in the environment — an explicitly-empty env var stays empty (CI hermetic)."""
+    try:
+        for line in (pathlib.Path.home() / ".chump/env").read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, v = line.split("=", 1)
+                if k.strip() and v.strip() and k.strip() not in os.environ:
+                    os.environ[k.strip()] = v.strip()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+load_chump_env()
+
+DISCORD_API = "https://discord.com/api/v10"
+DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "").strip()
+CTO_USER_ID = os.environ.get("CHUMP_READY_DM_USER_ID", "").strip()
+
+
+def _discord_req(method, path, body=None):
+    import urllib.request
+    req = urllib.request.Request(
+        DISCORD_API + path, method=method,
+        headers={"Authorization": f"Bot {DISCORD_TOKEN}",
+                 "Content-Type": "application/json",
+                 "User-Agent": "chump-ceo-loop/1.4"},
+        data=json.dumps(body).encode() if body is not None else None)
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode() or "{}")
+
+
+def dm_channel_id():
+    cache = SHADOW_DIR / "discord-dm-channel"
+    if cache.exists():
+        return cache.read_text().strip()
+    cid = str(_discord_req("POST", "/users/@me/channels",
+                           {"recipient_id": CTO_USER_ID})["id"])
+    cache.write_text(cid)
+    return cid
+
+
+def discord_send(text):
+    """DM the CTO. Never raises; returns a status string for the record."""
+    if not (DISCORD_TOKEN and CTO_USER_ID):
+        return "disabled"
+    try:
+        _discord_req("POST", f"/channels/{dm_channel_id()}/messages",
+                     {"content": text[:1900]})
+        return "sent"
+    except Exception as e:  # noqa: BLE001
+        return f"send-failed:{type(e).__name__}"
+
+
+def discord_inbound(limit=10):
+    """CTO-authored DMs since the cursor. First run primes the cursor without
+    ingesting history. Never raises."""
+    if not (DISCORD_TOKEN and CTO_USER_ID):
+        return []
+    cur = SHADOW_DIR / "discord-cursor"
+    try:
+        cid = dm_channel_id()
+        if not cur.exists():
+            msgs = _discord_req("GET", f"/channels/{cid}/messages?limit=1")
+            cur.write_text(str(msgs[0]["id"]) if msgs else "0")
+            return []
+        after = cur.read_text().strip()
+        q = f"/channels/{cid}/messages?limit={limit}" + (f"&after={after}" if after and after != "0" else "")
+        msgs = sorted(_discord_req("GET", q), key=lambda m: int(m["id"]))
+    except Exception:  # noqa: BLE001
+        return []
+    out = [f"[{m.get('timestamp','?')[:16]}] {m.get('content','')[:500]}"
+           for m in msgs if str((m.get("author") or {}).get("id")) == CTO_USER_ID]
+    if msgs:
+        cur.write_text(str(msgs[-1]["id"]))
+    return out
+
+
 ALMANAC_BIN = os.environ.get(
     "CHUMP_CEO_ALMANAC_BIN",
     str(pathlib.Path.home() / "Projects/almanac/target/release/almanac"),
@@ -208,6 +286,10 @@ def assemble_state():
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
         futs = {name: ex.submit(sh, cmd) for name, cmd in sections.items()}
         parts = [f"## {name}\n{futs[name].result()}" for name in sections]
+    cto = discord_inbound()
+    parts.append("## Messages from the CTO (Discord DMs since last tick — he reads "
+                 "your tick-report DM; answer him there via your synthesis/board_update)\n"
+                 + ("\n".join(cto) if cto else "(none)"))
     parts.append("## Factory Knowledge (org model registry, curator roster — injected by driver)\n"
                  + factory_knowledge())
     parts.append(
@@ -403,10 +485,15 @@ def main():
     ap.add_argument("--fixture", help="use a state-fixture file instead of live state")
     ap.add_argument("--state-only", action="store_true", help="print assembled state, no model call")
     ap.add_argument("--validate-only", help="validate a decision-JSON file, no model call (CI path)")
+    ap.add_argument("--dm", help="send a one-off DM to the CTO and print the status")
     ap.add_argument("--plan-only", help="print the deterministic live-execution plan for a decision-JSON file (CI path)")
     args = ap.parse_args()
 
     SHADOW_DIR.mkdir(parents=True, exist_ok=True)
+
+    if args.dm:
+        print(discord_send(args.dm))
+        return 0
 
     if args.validate_only:
         obj = extract_json(pathlib.Path(args.validate_only).read_text())
@@ -448,6 +535,16 @@ def main():
         if MODE == "live" and obj is not None:
             record["execution"] = execute_plan(obj, build_plan(obj, checks))
         code = 0 if checks.get("valid") else 2
+    d = record.get("decision") if isinstance(record.get("decision"), dict) else {}
+    sv = (d.get("executive_cognition") or {}).get("strategic_vector", {}) if d else {}
+    ex = record.get("execution") or []
+    acts = "; ".join(f"{e['target']}/{e['action']}" + (f" exit={e.get('exit')}" if e.get("ran") else f" ({e.get('reason','skip')})")
+                     for e in ex[:5])
+    report = (f"CEO tick {record['ts']} [{record.get('mode')}] valid={record.get('valid')}\n"
+              f"Vector: {sv.get('outcome','?')} — {str(sv.get('why_now',''))[:150]}\n"
+              f"Actions: {acts or '(none)'}\n"
+              f"(Reply here — I read your DMs every tick.)")
+    record["discord_dm"] = discord_send(report)
     with open(SHADOW_DIR / "decisions.jsonl", "a") as f:
         f.write(json.dumps(record) + "\n")
     summary = {k: record.get(k) for k in ("ts", "mode", "valid", "error") if k in record}
