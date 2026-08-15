@@ -2057,6 +2057,18 @@ events:
     consumers: [audit-log]
     fields_required: [ts, kind, sha, triggered_by]
 
+  - kind: cascade_rebase_skipped_redundant
+    effect_metric: self
+    emitter: scripts/coord/queue-driver.sh::cascade_rebase_if_hot (INFRA-2232)
+    trigger: >
+      a hot-file commit landed but a full cascade sweep already ran within
+      CHUMP_CASCADE_REBASE_DEBOUNCE_S (default 180s) — skip-redundant-rerun
+      gate coalesces a batch of hot-file commits landing seconds apart into
+      one sweep instead of resetting every open PR's check-runs to pending
+      once per commit.
+    consumers: [audit-log]
+    fields_required: [ts, kind, triggered_by, seconds_since_last, debounce_s]
+
   - kind: dirty_pr_auto_resolved
     effect_metric: self
     emitter: scripts/coord/queue-driver.sh (INFRA-1137)

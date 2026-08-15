@@ -77,12 +77,44 @@ or a follow-up `resolve_dirty_pr` invocation (INFRA-1137, the DIRTY
 auto-resolver that uses `.gitattributes` merge drivers — different
 machinery) takes over.
 
+## Skip-redundant-rerun gate (INFRA-2232)
+
+The per-SHA lock (INFRA-1310, below) only dedupes *concurrent workers*
+racing on the *same* commit — it does nothing when a **batch** of hot-file
+commits lands seconds apart (e.g. an admin-merge queue draining several
+keystone PRs back to back). Each commit has a distinct SHA, so pre-INFRA-2232
+each one independently fired a full `gh pr update-branch` sweep across every
+open PR — resetting all of their check-runs back to pending (`ok=1`) and
+triggering a full CI re-run, once per commit in the batch. A 5-commit batch
+against a fleet with 30 open PRs meant up to 150 redundant CI runs for what
+should have been one sweep against the final SHA.
+
+`cascade_rebase_if_hot` now writes `.chump-locks/cascade-rebase-last-run.ts`
+(a Unix timestamp) after every completed sweep. Before starting a new sweep
+it checks that file: if the last sweep completed less than
+`CHUMP_CASCADE_REBASE_DEBOUNCE_S` seconds ago (default **180s**), the new
+sweep is skipped and `cascade_rebase_skipped_redundant` is emitted instead.
+The PRs aren't orphaned — the next natural queue-driver tick (or the next
+hot-file commit that lands *outside* the debounce window) picks up anything
+still BEHIND once the batch settles.
+
+Bypass: `CHUMP_CASCADE_REBASE_NO_DEBOUNCE=1` disables the gate (always fire a
+fresh sweep per hot-file commit — pre-INFRA-2232 behavior). Useful for
+forensic debugging of a specific commit's cascade.
+
+Smoke test: `bash scripts/ci/test-cascade-rebase-skip-redundant.sh` — asserts
+the gate is wired into `queue-driver.sh` and exercises the coalescing logic
+(first commit fires, in-window commit is skipped, bypass flag re-fires,
+post-window commit fires again).
+
 ## Event-kind summary
 
 | Event kind | Emitted when | Consumer |
 |---|---|---|
 | `cascade_rebase_triggered` | Sweep starts. Reports `pr_ok`, `pr_fail`, `auto_resolved`. | audit-log |
+| `cascade_rebase_pr_result` | One row per PR processed in a sweep — `result` (success/failed/timeout) + `failure_class` (transient/permanent). | audit-log, fleet-brief |
 | `cascade_rebase_skipped_duplicate` | Worker lost the per-SHA debounce race. | audit-log |
+| `cascade_rebase_skipped_redundant` (INFRA-2232) | A sweep already ran within the debounce window; this hot-file commit's sweep was coalesced into it. | audit-log |
 | `cascade_auto_resolved` (INFRA-2255) | Local rebase + allowlist auto-resolve succeeded on a PR. | audit-log, fleet-brief |
 | `cascade_resolve_skipped_semantic` (INFRA-2255) | At least one conflict was outside the allowlist; cascade refused to touch the PR. | audit-log, operator-recall |
 
