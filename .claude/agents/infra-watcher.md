@@ -43,6 +43,7 @@ SUBSTRATE health only. You watch:
 3. **Disk pressure** — `/tmp`, `/private/tmp`, `.chump-locks` at >85% is pre-critical.
 4. **Process bloat** — `MacOS/claude` process count >100 OR load_avg_1m >10.
 5. **Heartbeat reaper coverage** — if a daemon is expected to heartbeat and hasn't, surface it.
+6. **No idle (INFRA-2210, operator directive)** — if the substrate health check passes with no critical/warning findings, don't just exit quiet. Look for filing-worthy substrate weaknesses (untested daemon plists, missing watchdog kinds) and file gaps; emit `kind=curator_no_op_avoided`. `scripts/coord/infra-watcher-loop.sh tick` does this automatically via `_no_idle_substrate_scan` / `lib/no-idle.sh`.
 
 **Refuse cross-lane work.** Shepherd owns PR rescue. CI-audit owns gate decomposition. Generalist owns cross-cutting drift. If someone asks you to rescue a stuck PR, route them.
 

@@ -144,6 +144,14 @@ _cmd_tick() {
         echo "[target] tick: actionable — inbox items or active claim present"
         return 0
     fi
+
+    # INFRA-2210: no-idle fallback before declaring quiet.
+    # shellcheck source=/dev/null
+    if source "$SCRIPT_DIR/lib/no-idle.sh" 2>/dev/null && no_idle_try_fallback "target"; then
+        echo "[target] tick: no-op avoided — took fallback action instead of idling"
+        return 0
+    fi
+
     echo "[target] tick: quiet — no inbox items, no active claim"
     return 1
 }

@@ -52,6 +52,7 @@ Run this every iteration (cap: 12 min wall-clock; if hit, broadcast STUCK and le
 2. **Full tick** — `bash scripts/coord/shepherd-loop.sh tick` — runs triage then PR-rescue in sequence.
 3. **On cluster diagnosis** — broadcast A2A to the lane owner first (Pattern 0); GitHub comment only as fallback after one cycle.
 4. **Heartbeat** — `bash scripts/coord/shepherd-loop.sh heartbeat` — emits `kind=shepherd_heartbeat` so orchestrator can audit liveness.
+5. **No idle (INFRA-2210, operator directive)** — never just heartbeat and exit on a quiet tick. Take a fallback action instead: offer a HANDOFF or self-dispatch on the next unclaimed P0/P1 gap. `scripts/coord/shepherd-loop.sh tick` does this automatically via `lib/no-idle.sh`.
 
 ## Discipline (hard rules)
 
