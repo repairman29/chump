@@ -5314,22 +5314,37 @@ mod proof_of_merge_tests {
         // Identity + no-sign + no-gc passed inline on every commit so nothing depends on
         // a separately-written config file (the source of the CI race).
         let commit = |msg: &str| -> bool {
-            git(&[
-                "-c",
-                "user.email=t@t.local",
-                "-c",
-                "user.name=t",
-                "-c",
-                "commit.gpgsign=false",
-                "-c",
-                "gc.auto=0",
-                "commit",
-                "--allow-empty",
-                "-m",
-                msg,
-            ])
-            .status
-            .success()
+            // RESILIENT-340: a loaded CI runner can transiently fail one of the 200+
+            // sequential `git commit` spawns (index.lock race / fork pressure). That used
+            // to red the whole fixture — and, when it landed on a main run, main itself.
+            // Retry a bounded number of times with a short backoff so a blip is absorbed;
+            // the guard under test (verify_proof_of_merge) is unchanged, and a genuinely
+            // broken git still fails loudly after the retries are exhausted.
+            for attempt in 0..5 {
+                let ok = git(&[
+                    "-c",
+                    "user.email=t@t.local",
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "gc.auto=0",
+                    "commit",
+                    "--allow-empty",
+                    "-m",
+                    msg,
+                ])
+                .status
+                .success();
+                if ok {
+                    return true;
+                }
+                // Clear a stale index lock a killed/racing git may have left, then wait.
+                let _ = std::fs::remove_file(dir.path().join(".git/index.lock"));
+                std::thread::sleep(std::time::Duration::from_millis(50 * (attempt + 1)));
+            }
+            false
         };
         // Oldest commit carries the gap ID. Assert it lands (was silently swallowed).
         assert!(
