@@ -47,3 +47,11 @@ py 'import sys,json; p=json.load(sys.stdin); assert [e for e in p if e["action"]
    "board_update not routed to board log"
 
 echo "OK: test-ceo-driver — prompt pin + validator + live-plan checks pass"
+
+# 5 — almanac translation (v1.2, EFFECTIVE-437)
+plan=$(python3 "$DRIVER" --plan-only "$FIX/live_overcap.json")
+py 'import sys,json; p=json.load(sys.stdin); a=[e for e in p if e["cmd"].startswith("almanac_search_fleet(query")]; assert a and a[0]["run"] and a[0]["group"]=="almanac"' \
+   "well-formed almanac call not planned for execution"
+py 'import sys,json; p=json.load(sys.stdin); assert any(e["reason"]=="almanac-parse" for e in p)' \
+   "malformed almanac call not refused with almanac-parse"
+echo "OK: test-ceo-driver — almanac translation checks pass"

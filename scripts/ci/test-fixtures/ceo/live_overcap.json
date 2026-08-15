@@ -71,6 +71,22 @@
         "detail": "radio line"
       },
       "verify": "x"
+    },
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"intake pipeline\")"
+      },
+      "verify": "x"
+    },
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(broken"
+      },
+      "verify": "x"
     }
   ]
 }
