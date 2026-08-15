@@ -210,7 +210,7 @@ main() {
     # shellcheck disable=SC2086
     env ${env_prefix} git -C "${REPO_ROOT}" push --force-with-lease origin "HEAD:${head_ref}"
 
-    gh pr merge "$pr_num" --auto --squash 2>/dev/null || true
+    CHUMP_GH_CALL_CRITICALITY=background chump_gh pr merge "$pr_num" --auto --squash 2>/dev/null || true
 
     elapsed_s=$(( $(date +%s) - start_ts ))
     local bypasses_json
