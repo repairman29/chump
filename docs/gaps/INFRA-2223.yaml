@@ -1,10 +1,17 @@
 - id: INFRA-2223
   domain: INFRA
   title: "EFFECTIVE P1: META-127/C3e curator-opus-architecture-coach role — when new gaps arrive, asks 'does this fit our architecture or fork it?' (complements harvester's prior-art lane)"
-  status: open
+  status: closed
   priority: P1
   effort: s
   acceptance_criteria:
     - voice-lint (scripts/ci/test-voice-lint.sh) passes on the new doc with zero violations
   outcome_id: MISSION-010
+  notes: |
+    Closed as duplicate/already-shipped: .claude/agents/curator-opus-architecture-coach.md
+    was shipped by INFRA-2221 (PR #2786, commit fe7467c8), which already covers the
+    C3e architecture-coach role this gap asked for. AC referenced
+    scripts/ci/test-voice-lint.sh, which does not exist in this repo (only
+    scripts/ci/test-release-note-voice-lint.sh exists, unrelated to agent docs) — the
+    AC itself was stale. No new work needed.
 

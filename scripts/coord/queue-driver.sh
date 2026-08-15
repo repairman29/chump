@@ -99,6 +99,40 @@ cascade_rebase_if_hot() {
     done
     [[ -z "$triggered_by" ]] && return 0
 
+    # ── INFRA-2232: skip-redundant-rerun gate ─────────────────────────────────
+    # The per-SHA lock below (INFRA-1310) only dedupes *concurrent* workers
+    # racing on the SAME commit. It does nothing for a *batch* of hot-file
+    # commits landing seconds apart (e.g. an admin-merge queue draining 5
+    # keystone PRs back to back) — each commit has a distinct SHA, so each one
+    # independently fires a full `gh pr update-branch` sweep across every open
+    # PR. Real incident (2026-08-15): a 5-commit hot-file batch fired 5 full
+    # cascades within 90s, each resetting all ~30 open PRs' check-runs back to
+    # pending (ok=1) — 150 redundant CI re-runs when 1 sweep (against the
+    # final SHA) would have sufficed. This gate coalesces: if a cascade sweep
+    # already ran within CHUMP_CASCADE_REBASE_DEBOUNCE_S (default 180s), skip
+    # this one — the next natural queue-driver tick picks up any PR still
+    # BEHIND once the batch settles.
+    #
+    # Bypass: CHUMP_CASCADE_REBASE_FORCE_RESWEEP=1 disables the gate (always
+    # fire a fresh sweep per hot-file commit — pre-INFRA-2232 behavior).
+    local _debounce_s="${CHUMP_CASCADE_REBASE_DEBOUNCE_S:-180}"
+    local _last_run_file="$REPO_ROOT/.chump-locks/cascade-rebase-last-run.ts"
+    if [[ "${CHUMP_CASCADE_REBASE_FORCE_RESWEEP:-0}" != "1" && -f "$_last_run_file" ]]; then
+        local _last_run_s _now_s _elapsed_s
+        _last_run_s="$(cat "$_last_run_file" 2>/dev/null || echo 0)"
+        _now_s="$(date +%s)"
+        _elapsed_s=$(( _now_s - _last_run_s ))
+        if [[ "$_last_run_s" =~ ^[0-9]+$ ]] && (( _elapsed_s < _debounce_s )); then
+            local _ambient_db="$REPO_ROOT/.chump-locks/ambient.jsonl"
+            local _now_ts; _now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            _ambient_write "$_ambient_db" \
+                "$(printf '{"ts":"%s","kind":"cascade_rebase_skipped_redundant","triggered_by":"%s","seconds_since_last":%d,"debounce_s":%d}' \
+                    "$_now_ts" "$triggered_by" "$_elapsed_s" "$_debounce_s")"
+            echo "queue-driver: cascade debounced — sweep ran ${_elapsed_s}s ago (< ${_debounce_s}s window), skipping redundant CI re-run cascade"
+            return 0
+        fi
+    fi
+
     # ── INFRA-1310: per-commit-SHA debounce lock ──────────────────────────────
     # With N concurrent workers all running queue-driver.sh, each one would
     # independently detect the hot-file commit and fire cascade_rebase_if_hot,
@@ -202,6 +236,12 @@ cascade_rebase_if_hot() {
         fi
     done
     local run_duration_s=$(( $(date +%s) - run_started_s ))
+
+    # INFRA-2232: record sweep completion time so a hot-file batch landing
+    # within the debounce window is coalesced instead of re-firing the sweep.
+    if [[ "$DRY_RUN" -ne 1 ]]; then
+        date +%s > "$REPO_ROOT/.chump-locks/cascade-rebase-last-run.ts" 2>/dev/null || true
+    fi
 
     local ambient="$REPO_ROOT/.chump-locks/ambient.jsonl"
     local now
