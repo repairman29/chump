@@ -8613,6 +8613,74 @@ events:
     expected_volume: "rare; signals genuine merge conflict needing operator attention"
     status: stable
 
+  - kind: keep_mergeable_rebased
+    effect_metric: resilient
+    emitter: scripts/coord/keep-mergeable-organ.sh (RESILIENT-342)
+    trigger: >
+      Emitted when a DIRTY/BEHIND open PR (armed OR unarmed — unlike
+      armed-pr-rebaser.sh / stale-pr-rebase-bot.sh, this organ does not gate
+      on autoMergeRequest) is rebased onto current green main and pushed
+      clean, either via gh pr update-branch (method=gh_update_branch) or a
+      local worktree rebase with force-with-lease push
+      (method=local_rebase_fallback).
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, pr, branch, method]
+    expected_volume: "0-N per 10-min cadence (one per rebased PR)"
+    status: stable
+
+  - kind: keep_mergeable_checks_rerun
+    effect_metric: resilient
+    emitter: scripts/coord/keep-mergeable-organ.sh (RESILIENT-342)
+    trigger: >
+      Emitted when an open PR carries one or more FAILURE-conclusion checks
+      (potentially stale against current main) and `gh run rerun <id>
+      --failed` is invoked for at least one of them. Closes the gap where a
+      PR sits red on an old-base failure forever, needing a human to click
+      re-run.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, branch, run_ids]
+    expected_volume: "0-N per 10-min cadence"
+    status: stable
+
+  - kind: keep_mergeable_rebase_failed
+    effect_metric: resilient
+    emitter: scripts/coord/keep-mergeable-organ.sh (RESILIENT-342)
+    trigger: >
+      Emitted when neither rebase nor check-rerun resolved an open PR's
+      DIRTY/BEHIND state or failed checks this cycle. Strike counter is
+      incremented in .chump-locks/keep-mergeable-strikes/<PR>.json. Not yet
+      actionable — operator acts only after keep_mergeable_unresolvable
+      (strike limit).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, branch, mss, strikes, strike_limit]
+    expected_volume: "0-N per 10-min cadence; bursts during merge conflicts"
+    status: stable
+
+  - kind: keep_mergeable_unresolvable
+    effect_metric: resilient
+    emitter: scripts/coord/keep-mergeable-organ.sh (RESILIENT-342)
+    trigger: >
+      Emitted when a PR's strike counter reaches
+      CHUMP_KEEP_MERGEABLE_STRIKE_LIMIT (default 3). A WARN broadcast is also
+      sent via broadcast.sh. The PR is NEVER auto-closed — operator must
+      decide. Strike state at .chump-locks/keep-mergeable-strikes/<PR>.json.
+    consumers: [fleet-brief, ops-audit, operator-digest]
+    fields_required: [ts, kind, pr, branch, strikes, note]
+    expected_volume: "rare; signals a PR the organ cannot auto-resolve"
+    status: stable
+
+  - kind: keep_mergeable_tick
+    effect_metric: self
+    emitter: scripts/coord/keep-mergeable-organ.sh (RESILIENT-342)
+    trigger: >
+      Emitted once per cycle with a summary of open-PR counts and outcomes
+      (rebased / checks_rerun / failed / escalated). Proves the organ is
+      alive and actually scanning every open PR, not just armed ones.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, open_prs, rebased, checks_rerun, failed, escalated]
+    expected_volume: "1 per 10-min cadence"
+    status: stable
+
   - kind: stale_pr_rebase_bot_holding_for_trunk_red
     effect_metric: resilient
     emitter: scripts/coord/stale-pr-rebase-bot.sh (INFRA-2295)

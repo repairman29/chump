@@ -1907,3 +1907,18 @@ CHUMP_SUBPROC_SMOKE_AMBIENT
 CHUMP_SUBPROC_SMOKE_MODEL
 # detected in: (standard input)
 CHUMP_SUBPROC_SMOKE_TIMEOUT_S
+CHUMP_KEEP_MERGEABLE_AMBIENT_FILE
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_BROADCAST_SCRIPT
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_GH_FIXTURE
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_HYSTERESIS_MINS
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_INTERVAL
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_NOW_OVERRIDE
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_STRIKE_LIMIT
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_STRIKES_DIR
