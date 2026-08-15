@@ -1855,3 +1855,12 @@ DISCORD_TOKEN
 CHUMP_CASCADE_REBASE_DEBOUNCE_S
 # detected in: (standard input)
 CHUMP_CASCADE_REBASE_FORCE_RESWEEP
+CHUMP_NODE_BIN
+# detected in: (standard input)
+CHUMP_NODE_REFRESH_CI_WORKFLOW
+# detected in: (standard input)
+CHUMP_NODE_REFRESH_GREEN_LOOKBACK
+# detected in: (standard input)
+CHUMP_NODE_REFRESH_LOGDIR
+# detected in: (standard input)
+CHUMP_NODE_REFRESH_TEST_GREEN_SHA
