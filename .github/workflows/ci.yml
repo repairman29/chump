@@ -1385,12 +1385,26 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-  # ── Shard 3: cargo test ───────────────────────────────────────────────────
-  # `cargo test --workspace`. Runs in parallel with clippy and fast-checks.
-  # Target wall-clock: 5-8 min.
-  cargo-test:
+  # ── Shard 3: cargo test (4-way nextest partition matrix) ──────────────────
+  # INFRA-2243: split from one serial `cargo-test` job into 4 parallel
+  # `cargo-test-shard` matrix runners (cargo-nextest --partition count:i/4)
+  # plus a thin `cargo-test` aggregate below. Mirrors the audit-shard/audit
+  # split in audit.yml (INFRA-2565) — done for the same reason: branch
+  # protection, the `test`/`verified` rollups, and external tooling
+  # (pr-triage-bot.yml, chump-runner-migration-pipeline.sh, cache lookups)
+  # all key off a check-run literally named `cargo-test`. Matrixing that job
+  # directly would rename its check-runs to `cargo-test (1)` etc. and break
+  # every one of those consumers, so the real work moves to a separately
+  # named `cargo-test-shard` matrix and `cargo-test` becomes a pure rollup.
+  # Target wall-clock: ~60-75% reduction vs serial (limited by longest shard).
+  cargo-test-shard:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    name: cargo-test-shard (${{ matrix.shard }})
     # INFRA-2117 (CI-REVIEW Lever 1A, 2026-05-29): default to GH-hosted ubuntu.
     # Self-hosted Mac caused ~50% of CI-rot tax (DOC-063 post-mortem).
     # Feature-flag fallback: CHUMP_SELF_HOSTED_CARGO_TEST=true reverts this lane.
@@ -1524,9 +1538,12 @@ jobs:
         # The wrapper's flake-autorerun still works on the wrapped command's exit code; nextest's
         # different failure-line format means per-test flake matching falls through to unknown-flake
         # path (which is the safe default — re-runs the full suite once if any tests fail).
-        # Bypass: CARGO_NEXTEST_DISABLE=1 reverts to plain `cargo test`. See INFRA-2094 / INFRA-764.
+        # Bypass: CARGO_NEXTEST_DISABLE=1 reverts to plain `cargo test` — NOTE: the bypass path
+        # cannot partition, so each of the 4 shards would redundantly run the FULL suite. That's
+        # a correctness-preserving (if wasteful) degrade for a manual escape hatch, not the default.
         # INFRA-2093: per-step RUSTC_WRAPPER pairs sccache binary with its install (above).
         # CREDIBLE-013: capture output for downstream triage step via tee → tmp file.
+        # INFRA-2243: --partition count:i/4 splits the suite across the 4 matrix shards.
         id: cargo-test
         env:
           RUSTC_WRAPPER: ${{ steps.r2detect.outputs.configured == 'true' && 'sccache' || '' }}
@@ -1536,7 +1553,7 @@ jobs:
           if [ "${CARGO_NEXTEST_DISABLE:-0}" = "1" ]; then
             bash scripts/ci/cargo-test-with-rerun.sh -- cargo test --workspace 2>&1 | tee "$_TRIAGE_OUT"; exit "${PIPESTATUS[0]}"
           else
-            bash scripts/ci/cargo-test-with-rerun.sh -- cargo nextest run --workspace 2>&1 | tee "$_TRIAGE_OUT"; exit "${PIPESTATUS[0]}"
+            bash scripts/ci/cargo-test-with-rerun.sh -- cargo nextest run --workspace --partition count:${{ matrix.shard }}/4 2>&1 | tee "$_TRIAGE_OUT"; exit "${PIPESTATUS[0]}"
           fi
 
       # CREDIBLE-013: CI failure triage — classify failures as flake / real /
@@ -1586,6 +1603,35 @@ jobs:
       - name: sccache hit-rate gate (CREDIBLE-085)
         if: always() && steps.r2detect.outputs.configured == 'true'
         run: bash scripts/ci/check-sccache-hit-rate.sh
+
+  # ── cargo-test: aggregate rollup ───────────────────────────────────────────
+  # CRITICAL: this job name is `cargo-test` — branch protection's `test` rollup,
+  # `verified`, `cargo-test-required`, and external tooling (pr-triage-bot.yml
+  # check_run.name match, chump-runner-migration-pipeline.sh, cache_lookup_checks
+  # callers) all key off a check-run literally named `cargo-test`. DO NOT RENAME.
+  #
+  # INFRA-2243: replaces the old single serial `cargo-test` job body (moved to
+  # `cargo-test-shard` above). This is a thin aggregate that needs all 4 shard
+  # results and fails iff any shard failed — "skipped" also passes so doc-only /
+  # scripts-only PRs (where cargo-test-shard's own `if:` skips the whole matrix)
+  # still get a green `cargo-test` check, same as the pre-sharding behavior.
+  cargo-test:
+    name: cargo-test
+    needs: [cargo-test-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check cargo-test-shard results
+        run: |
+          result="${{ needs.cargo-test-shard.result }}"
+          echo "cargo-test-shard result=$result"
+          if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
+            echo "cargo-test: all shards passed (or appropriately skipped)"
+          else
+            echo "::error::cargo-test FAIL — at least one cargo-test-shard failed (result=$result)"
+            exit 1
+          fi
 
   # ── E2E shards (INFRA-549) ────────────────────────────────────────────────
   # The old monolithic test-e2e (>1h26m, serialized behind unit-test rollup)
