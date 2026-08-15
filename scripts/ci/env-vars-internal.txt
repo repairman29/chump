@@ -1878,3 +1878,22 @@ CHUMP_PR_AUTO_REBASE_MAX_CONCURRENT
 CHUMP_PR_AUTO_REBASE_NO_LOCK
 # detected in: (standard input)
 CHUMP_PR_AUTO_REBASE_NO_THROTTLE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_AMBIENT_FILE
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_BROADCAST_SCRIPT
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_GH_FIXTURE
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_HYSTERESIS_MINS
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_INTERVAL
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_NOW_OVERRIDE
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_STRIKE_LIMIT
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_STRIKES_DIR
