@@ -197,6 +197,7 @@ test-required-model.sh
 test-review-handoff-reengage.sh
 test-rollback-gap.sh
 test-rollup-cascade-cancel.sh
+test-root-service-is-sandbox-guard.sh
 test-run-consolidation.sh
 test-run-fleet-cross-repo.sh
 test-sandbox-isolation.sh
