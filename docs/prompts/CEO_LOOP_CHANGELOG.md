@@ -3,7 +3,27 @@
 > The prompt file itself carries NO header/frontmatter on purpose: INFRA-3584
 > AC-5 pins it by content hash, so provenance lives here instead.
 
-## v2 — 2026-08-15 (current, battle-tested GO)
+## v3 — 2026-08-15 (current, re-benched GO)
+
+sha256: `fdb753c0036149e166ba698b23fb22610a390445f9f875ea046fd86091128b88`
+
+Bench: same 7 fixtures + pre-registered expectations, fixtures augmented with
+the Factory Knowledge state section the v1.3 driver injects; 11 runs. 10/11
+mechanical — the single flag is fail-closed correct paranoia (a warning
+broadcast quoting the injected "fleet stop" text trips the deny scan; the
+driver refuses that one broadcast, page-intent still logged). Artifacts:
+`refs/stash/ceo-bench-v3-2026-08-15`.
+
+Change (operator spec review 2026-08-15 — "ceo needs to know the
+almanac/org chart"): new **KNOWLEDGE & DISCOVERY** section naming the three
+knowledge sources (Factory Knowledge state section = the org model job
+registry + curator roster; the Almanac, now executable, with trust
+discipline; decision memory) plus the standing discovery duty: surface
+🟠/❌/unowned capability in synthesis and route wiring as job row + gap.
+Observed effect in bench: quota-nudge and healthy-tick fixtures now cite
+registry rows and mine-first targets by name when refusing fresh builds.
+
+## v2 — 2026-08-15 (superseded by v3, battle-tested GO)
 
 sha256: `ed167ec6b92fb9b9eda225fba99ccc6308ee7e9e2f0d6a56ea4512efa372e2a0`
 

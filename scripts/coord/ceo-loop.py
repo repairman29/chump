@@ -165,6 +165,25 @@ def recent_decisions(n=5):
     return "\n".join(out) if out else "(no prior decisions on record)"
 
 
+def factory_knowledge():
+    """The org chart: job-registry table from the canonical org model doc,
+    curator roster, fleet map. The prompt's KNOWLEDGE section (v3) points here."""
+    lines = []
+    doc = REPO / "docs/strategy/FACTORY_ORG_MODEL_2026-08-08.md"
+    try:
+        text = doc.read_text()
+        m = text.split("## The registry", 1)[1].split("\n## ", 1)[0]
+        lines = [ln for ln in m.split("\n") if ln.startswith("|")][:16]
+    except Exception:  # noqa: BLE001 — knowledge degrades, tick survives
+        lines = ["(org model registry unavailable — judge capabilities via almanac only)"]
+    roster = ("Curator roster: harvester(prior art), scout(external first-read), "
+              "fresh-eyes(reality audit), roadmap-keeper, velocity-tracker, ci-audit, "
+              "shepherd(PR rescue), decompose, md-links, observability, infra-watcher, "
+              "quartermaster.")
+    fleet = "Fleet map: ~95 repos indexed; almanac_search_fleet spans all, file:line receipts."
+    return "\n".join(lines + [roster, fleet])
+
+
 def assemble_state():
     sections = {
         "Ships (git log origin/main --since=3h)":
@@ -189,6 +208,8 @@ def assemble_state():
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
         futs = {name: ex.submit(sh, cmd) for name, cmd in sections.items()}
         parts = [f"## {name}\n{futs[name].result()}" for name in sections]
+    parts.append("## Factory Knowledge (org model registry, curator roster — injected by driver)\n"
+                 + factory_knowledge())
     parts.append(
         "## Your recent decisions (your own log — follow up on these; do NOT "
         "re-route an action already shown as ran; a skipped(...) action was "
