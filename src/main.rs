@@ -2195,6 +2195,19 @@ async fn main() -> Result<()> {
         std::process::exit(commands::consensus_tally::run(&sub_args));
     }
 
+    // `chump consensus resolve <corr_id> [--since <dur>]` /
+    // `chump consensus status [<corr_id> | --all] [--since <dur>]`
+    // (INFRA-2158, META-125/C7) — resolve productizes the deliberator's
+    // tally + kind=consensus_result emission as a directly-callable CLI;
+    // status makes the resulting decision state queryable (durable
+    // consensus_result if reached, else a live tally). Always runs
+    // regardless of feature flag (read-only aggregation; resolve's only
+    // write is the ambient.jsonl append on a reached decision).
+    if args.get(1).map(String::as_str) == Some("consensus") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::consensus::run(&sub_args));
+    }
+
     // `chump sibling-status [--json] [--watch]` (META-154) — per-active-lease
     // progress matrix. Beats "lease exists" by classifying each holder as
     // progressing / in-flight / heartbeat-only / stalled / silent / expired.
