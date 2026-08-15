@@ -96,18 +96,41 @@ jobs:
 
       - name: Install Linux packages for chump-desktop (workspace member)
         if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips apt
+        # RESILIENT-330: bound apt so a hung Ubuntu mirror can't consume the whole
+        # 25-min job budget. Root cause (run 31863996317, audit-shard 2): apt-get
+        # stalled ~24 min with no output (last line 04:16:54, then dead until
+        # "The operation was canceled" at 04:41:24), hitting timeout-minutes:25 →
+        # shard CANCELLED → `audit` (branch-protection required) FAIL → every PR
+        # blocked → back-pressure breaker jammed → fleet halted. There was NO
+        # per-step timeout or retry, so one transient mirror stall took the shard
+        # down. Fix: a step-level cap well under the job budget + a per-attempt
+        # `timeout` (kills a stuck connection) + retry against a fresh connection,
+        # plus apt's own Acquire retries/timeouts. Common transient stall now
+        # recovers in ~1 attempt instead of hanging to the wall.
+        timeout-minutes: 18
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            webkit2gtk-4.1 \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            build-essential \
-            pkg-config \
-            libssl-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            util-linux
+          set -uo pipefail
+          pkgs="webkit2gtk-4.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev build-essential pkg-config libssl-dev libgtk-3-dev librsvg2-dev util-linux"
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          rc=1
+          for attempt in 1 2 3; do
+            echo "apt attempt $attempt of 3"
+            if timeout -k 15 90 sudo apt-get $apt_opts update \
+               && timeout -k 15 180 sudo apt-get $apt_opts install -y $pkgs; then
+              rc=0
+              echo "apt install OK (attempt $attempt)"
+              break
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out (exit 124 = a hung mirror was killed by timeout); cleaning locks and retrying"
+            sudo pkill -9 -f 'apt-get|dpkg' 2>/dev/null || true
+            sudo rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend 2>/dev/null || true
+            sudo dpkg --configure -a 2>/dev/null || true
+            sleep $((attempt * 15))
+          done
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::apt-get failed after 3 bounded attempts (RESILIENT-330) — transient mirror/infra failure, not a code failure; re-run the job"
+            exit 1
+          fi
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

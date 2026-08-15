@@ -62,7 +62,7 @@ ALLOWLIST=(
   ls cat head tail grep sed awk cut tr sort uniq wc find xargs mkdir rmdir
   mv cp rm touch chmod chown ln readlink dirname basename realpath
   date env which command type pwd df du tee diff cmp
-  sleep kill killall seq stat file md5sum sha256sum md5 shasum
+  sleep kill killall seq stat file md5sum sha256sum md5 shasum timeout
   # CI primitives present on every runner image
   sudo apt-get apt brew curl wget tar gzip gunzip unzip
   # Allowlist for guard scripts written in pure bash — the canary doesn't
