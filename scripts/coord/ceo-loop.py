@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
-"""ceo-loop.py — ChumpOS CEO strategy-layer driver, v0 shadow shim (INFRA-3584).
+"""ceo-loop.py — ChumpOS CEO strategy-layer driver, v1.1 (INFRA-3584 / EFFECTIVE-436).
 
-SHADOW / DRY-RUN ONLY: this version NEVER executes the commands the CEO
-routes. Each tick it (1) assembles live fleet state, (2) asks the model for
-one decision object per docs/prompts/CEO_LOOP_PROMPT.md, (3) validates the
-output against the contract + command policy, and (4) appends the full record
-to the shadow decision log — the input to the AC-3 shadow-vs-ATC diff report.
+Modes (CHUMP_CEO_MODE, default "shadow"):
+  shadow — assemble state, ask the model, validate, LOG the decision. Never executes.
+  live   — same, then execute routing entries that pass EVERY gate below.
 
-Prompt is delivered to `claude -p` via STDIN, never argv — a prompt beginning
-with `-` is parsed as CLI flags on the argv path (RESILIENT-314).
+Live-execution gates, all enforced in code (the prompt merely suggests):
+  * overall decision must validate (schema, enums, page-gating)
+  * cmd must match the COMMAND PALETTE allow-prefixes; hard-deny always wins
+  * no shell metacharacters — commands run via shlex + exec, never a shell
+  * per-tick caps: dispatch<=2, file_gap<=1, registry mutation<=3,
+    non-operator broadcast<=2; read-only queries and consensus votes uncapped
+  * OPERATOR/page NEVER auto-executes unless CHUMP_CEO_ALLOW_PAGE=1 —
+    intent is logged instead (the quiet gate stays human-armed)
+  * board_update appends to <shadow_dir>/board.log (FLEET-RADIO pickup)
 
-Rust port is planned per the INFRA-3584 description; this shim exists so the
-3-day shadow clock starts before the port lands.
+Tick-to-tick memory: state includes the last 5 decision records with their
+execution results, so the model can follow up instead of re-routing the same
+action every tick (shadow-observed flaw: same dispatch re-routed 6 ticks).
+
+Prompt is delivered to `claude -p` via STDIN, never argv (RESILIENT-314).
+The prompt file is hash-pinned (INFRA-3584 AC-5) — v1.1 changes are
+driver-only; the prompt is byte-identical to the benched v2.
 
 Env (registered in scripts/ci/env-vars-internal.txt):
   CHUMP_CEO_MODEL       model for the tick (default: sonnet)
   CHUMP_CEO_PROMPT      prompt path override (default: docs/prompts/CEO_LOOP_PROMPT.md)
   CHUMP_CEO_SHADOW_DIR  decision-log dir (default: ~/.chump/ceo-shadow)
+  CHUMP_CEO_MODE        shadow | live (default: shadow)
+  CHUMP_CEO_ALLOW_PAGE  1 to let live mode execute OPERATOR/page (default: 0)
 
 Exit codes: 0 valid decision logged · 2 invalid decision logged · 3 model call failed.
 """
@@ -26,6 +38,7 @@ import json
 import os
 import pathlib
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -38,12 +51,12 @@ SHADOW_DIR = pathlib.Path(
     os.environ.get("CHUMP_CEO_SHADOW_DIR", pathlib.Path.home() / ".chump/ceo-shadow")
 )
 MODEL = os.environ.get("CHUMP_CEO_MODEL", "sonnet")
+MODE = os.environ.get("CHUMP_CEO_MODE", "shadow")
+ALLOW_PAGE = os.environ.get("CHUMP_CEO_ALLOW_PAGE", "0") == "1"
 
 TARGETS = {"ALMANAC", "GAP_REGISTRY", "DISPATCH", "CONSENSUS", "CONSULTANT", "OPERATOR"}
 ACTIONS = {"query", "file_gap", "rate_gap", "decompose", "dispatch", "unstick",
            "propose", "vote", "request_inference", "board_update", "page"}
-# Mirrors the CEO prompt's COMMAND PALETTE. A cmd matching no prefix is
-# refused (logged, never run — moot in v0, load-bearing once execution lands).
 ALLOW_PREFIXES = [
     "chump gap reserve", "chump gap set", "chump gap rate", "chump gap decompose",
     "chump gap show", "chump gap list", "chump gap preflight",
@@ -64,11 +77,27 @@ HARD_DENY = [
     (r"--status\s+done", "status-done"), (r"\bcurl\b", "curl"), (r"\bwget\b", "wget"),
     (r"\btee\s", "tee"),
 ]
+METACHAR = re.compile(r"[;`|&<>]|\$\(")
 GAP_RE = re.compile(r"\b[A-Z]{2,}-\d{2,}\b")
+
+# (cap_group, per-tick limit). Groups not listed are uncapped.
+CAPS = {"dispatch": 2, "file_gap": 1, "mutate": 3, "broadcast": 2}
+
+
+def cap_group(action, cmd):
+    if action == "dispatch" or cmd.startswith("chump dispatch"):
+        return "dispatch"
+    if action == "file_gap" or cmd.startswith("chump gap reserve"):
+        return "file_gap"
+    if cmd.startswith(("chump gap set", "chump gap rate", "chump gap decompose")):
+        return "mutate"
+    if cmd.startswith(("scripts/coord/broadcast.sh", "bash scripts/coord/broadcast.sh")):
+        return "broadcast"
+    return "query"
 
 
 def sh(cmd, timeout=20, cwd=None):
-    """Run a read-only command; never raise — state assembly degrades gracefully."""
+    """Run a read-only state-assembly command; never raise."""
     try:
         p = subprocess.run(cmd, shell=True, capture_output=True, text=True,
                            timeout=timeout, cwd=str(cwd or REPO))
@@ -76,6 +105,42 @@ def sh(cmd, timeout=20, cwd=None):
         return out if out else f"(empty, exit={p.returncode})"
     except Exception as e:  # noqa: BLE001 — any failure becomes visible state
         return f"(unavailable: {type(e).__name__})"
+
+
+def recent_decisions(n=5):
+    """Compact summaries of the last n decision records, with execution results."""
+    path = SHADOW_DIR / "decisions.jsonl"
+    if not path.exists():
+        return "(no prior decisions on record)"
+    lines = path.read_text().strip().split("\n")[-n:]
+    out = []
+    for line in lines:
+        try:
+            r = json.loads(line)
+        except Exception:  # noqa: BLE001
+            continue
+        d = r.get("decision")
+        if not isinstance(d, dict):
+            out.append(f"- {r.get('ts','?')} [{r.get('mode','?')}] (invalid or model error)")
+            continue
+        sv = (d.get("executive_cognition") or {}).get("strategic_vector") or {}
+        routed = []
+        exec_by_idx = {e.get("i"): e for e in (r.get("execution") or [])}
+        for i, x in enumerate(d.get("system_routing", [])):
+            if not isinstance(x, dict):
+                continue
+            cmd = str((x.get("payload") or {}).get("cmd", ""))[:70]
+            ex = exec_by_idx.get(i)
+            if ex is None:
+                status = "not-executed(shadow)"
+            elif ex.get("ran"):
+                status = f"ran(exit={ex.get('exit')})"
+            else:
+                status = f"skipped({ex.get('reason','?')})"
+            routed.append(f"{x.get('target')}/{x.get('action')} `{cmd}` -> {status}")
+        out.append(f"- {r.get('ts','?')} [{r.get('mode','?')}] vector={sv.get('outcome','?')}; "
+                   + ("; ".join(routed) if routed else "(no routing)"))
+    return "\n".join(out) if out else "(no prior decisions on record)"
 
 
 def assemble_state():
@@ -102,8 +167,15 @@ def assemble_state():
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
         futs = {name: ex.submit(sh, cmd) for name, cmd in sections.items()}
         parts = [f"## {name}\n{futs[name].result()}" for name in sections]
+    parts.append(
+        "## Your recent decisions (your own log — follow up on these; do NOT "
+        "re-route an action already shown as ran; a skipped(...) action was "
+        "refused by the driver, rethink it rather than repeating it)\n"
+        + recent_decisions()
+    )
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    return f"# LOOP STATE — {ts} (assembled by ceo-loop v0 shadow)\n\n" + "\n\n".join(parts)
+    return (f"# LOOP STATE — {ts} (assembled by ceo-loop v1.1, mode={MODE})\n\n"
+            + "\n\n".join(parts))
 
 
 def call_model(full_prompt):
@@ -115,7 +187,6 @@ def call_model(full_prompt):
         except Exception:  # noqa: BLE001 — fall through to claude's own auth
             pass
     try:
-        # cwd = shadow dir: keeps repo SessionStart hooks out of the tick.
         p = subprocess.run(["claude", "-p", "--model", MODEL], input=full_prompt,
                            capture_output=True, text=True, timeout=420,
                            cwd=str(SHADOW_DIR), env=env)
@@ -127,11 +198,10 @@ def call_model(full_prompt):
 
 
 def extract_json(text):
-    for candidate in (text,):
-        try:
-            return json.loads(candidate)
-        except Exception:  # noqa: BLE001
-            pass
+    try:
+        return json.loads(text)
+    except Exception:  # noqa: BLE001
+        pass
     m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
     if m:
         try:
@@ -203,11 +273,85 @@ def validate(obj, state_text):
     return checks
 
 
+def build_plan(obj, checks, allow_page=None):
+    """Deterministic execution plan for a validated decision. Pure — no side effects."""
+    if allow_page is None:
+        allow_page = ALLOW_PAGE
+    plan = []
+    counts = {k: 0 for k in CAPS}
+    routing = obj.get("system_routing", []) if isinstance(obj, dict) else []
+    for i, r in enumerate(routing):
+        if not isinstance(r, dict):
+            continue
+        entry = {"i": i, "target": r.get("target"), "action": r.get("action")}
+        cmd = str((r.get("payload") or {}).get("cmd", "")).strip()
+        entry["cmd"] = cmd[:200]
+        action = r.get("action")
+        if not checks.get("valid"):
+            entry.update(run=False, reason="decision-invalid")
+        elif action == "page":
+            if allow_page:
+                entry.update(run=True, reason="page-allowed-by-env", group="page")
+            else:
+                entry.update(run=False, reason="page-gated (CHUMP_CEO_ALLOW_PAGE=0)")
+        elif action == "board_update":
+            entry.update(run=True, reason="board-log", group="board")
+        elif not cmd:
+            entry.update(run=False, reason="no-cmd")
+        elif cmd.startswith("almanac"):
+            entry.update(run=False, reason="almanac-unexecutable-v1")
+        elif any(re.search(p, cmd) for p, _ in HARD_DENY):
+            entry.update(run=False, reason="hard-deny")
+        elif METACHAR.search(cmd):
+            entry.update(run=False, reason="shell-metachar")
+        elif not any(re.sub(r"^bash\s+", "", cmd).startswith(p) for p in ALLOW_PREFIXES):
+            entry.update(run=False, reason="not-in-palette")
+        else:
+            g = cap_group(action, re.sub(r"^bash\s+", "", cmd))
+            if g in CAPS:
+                if counts[g] >= CAPS[g]:
+                    entry.update(run=False, reason=f"cap-exhausted({g}<={CAPS[g]})")
+                else:
+                    counts[g] += 1
+                    entry.update(run=True, reason="ok", group=g)
+            else:
+                entry.update(run=True, reason="ok", group=g)
+        plan.append(entry)
+    return plan
+
+
+def execute_plan(obj, plan):
+    """Run the entries build_plan approved. Returns plan with results attached."""
+    routing = obj.get("system_routing", [])
+    for entry in plan:
+        if not entry.get("run"):
+            entry["ran"] = False
+            continue
+        r = routing[entry["i"]]
+        if entry["action"] == "board_update":
+            detail = str((r.get("payload") or {}).get("detail", ""))[:2000]
+            with open(SHADOW_DIR / "board.log", "a") as f:
+                f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {detail}\n")
+            entry.update(ran=True, exit=0)
+            continue
+        cmd = str((r.get("payload") or {}).get("cmd", "")).strip()
+        argv = shlex.split(re.sub(r"^bash\s+", "bash ", cmd))
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=120,
+                               cwd=str(REPO))
+            entry.update(ran=True, exit=p.returncode,
+                         out=(p.stdout or p.stderr or "")[-400:])
+        except Exception as e:  # noqa: BLE001 — record, never crash the tick
+            entry.update(ran=False, reason=f"exec-error:{type(e).__name__}")
+    return plan
+
+
 def main():
-    ap = argparse.ArgumentParser(description="CEO loop v0 — one shadow tick")
+    ap = argparse.ArgumentParser(description="CEO loop v1.1 — one tick")
     ap.add_argument("--fixture", help="use a state-fixture file instead of live state")
     ap.add_argument("--state-only", action="store_true", help="print assembled state, no model call")
     ap.add_argument("--validate-only", help="validate a decision-JSON file, no model call (CI path)")
+    ap.add_argument("--plan-only", help="print the deterministic live-execution plan for a decision-JSON file (CI path)")
     args = ap.parse_args()
 
     SHADOW_DIR.mkdir(parents=True, exist_ok=True)
@@ -217,6 +361,13 @@ def main():
         checks = validate(obj, "")
         print(json.dumps(checks, indent=2))
         return 0 if checks.get("valid") else 2
+
+    if args.plan_only:
+        obj = extract_json(pathlib.Path(args.plan_only).read_text())
+        checks = validate(obj, "")
+        plan = build_plan(obj, checks)
+        print(json.dumps(plan, indent=2))
+        return 0
 
     state = pathlib.Path(args.fixture).read_text() if args.fixture else assemble_state()
     if args.state_only:
@@ -229,7 +380,7 @@ def main():
     out, err = call_model(full)
     record = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "mode": "shadow-dry-run",
+        "mode": MODE,
         "model": MODEL,
         "fixture": args.fixture or None,
         "prompt_sha256_file": str(PROMPT_PATH),
@@ -242,14 +393,18 @@ def main():
         checks = validate(obj, state)
         record.update({"decision": obj if obj else out[:2000], "checks": checks,
                        "valid": bool(checks.get("valid"))})
+        if MODE == "live" and obj is not None:
+            record["execution"] = execute_plan(obj, build_plan(obj, checks))
         code = 0 if checks.get("valid") else 2
     with open(SHADOW_DIR / "decisions.jsonl", "a") as f:
         f.write(json.dumps(record) + "\n")
-    summary = {k: record.get(k) for k in ("ts", "valid", "error") if k in record}
+    summary = {k: record.get(k) for k in ("ts", "mode", "valid", "error") if k in record}
     if "checks" in record:
         summary["pages"] = record["checks"].get("page_count")
         summary["denies"] = record["checks"].get("M5_denies")
-        summary["unlisted"] = record["checks"].get("M6_unlisted")
+    if "execution" in record:
+        summary["executed"] = sum(1 for e in record["execution"] if e.get("ran"))
+        summary["skipped"] = sum(1 for e in record["execution"] if not e.get("ran"))
     print(json.dumps(summary))
     return code
 

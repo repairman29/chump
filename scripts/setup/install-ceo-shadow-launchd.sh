@@ -22,6 +22,11 @@ cat > "$PLIST" <<EOF
     <string>$REPO/scripts/coord/ceo-loop.py</string>
   </array>
   <key>WorkingDirectory</key><string>$REPO</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$HOME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>CHUMP_CEO_MODE</key><string>${CHUMP_CEO_MODE:-shadow}</string>
+  </dict>
   <key>StartInterval</key><integer>3600</integer>
   <key>StandardOutPath</key><string>$LOGDIR/tick.log</string>
   <key>StandardErrorPath</key><string>$LOGDIR/tick.err</string>
