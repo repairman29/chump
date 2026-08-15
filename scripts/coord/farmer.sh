@@ -67,6 +67,14 @@ SENTINEL="$CHUMP_DIR/fleet-paused"
 KICK_STATE="$CHUMP_DIR/farmer-kick-state.json"
 HEARTBEAT_FILE="$CHUMP_DIR/farmer-heartbeat"
 
+# RESILIENT-331: per-tick outcome counters (I-did-X, not just I-ran). Reset at
+# the top of each tick, folded into the closing farmer_heartbeat's `counts` so
+# chairman-pulse.sh can tell a tick that healed something from one that just
+# turned over.
+TICK_KICKED_N=0
+TICK_SILENT_N=0
+TICK_ESCALATED_N=0
+
 # ── Core helpers (zero chump dependencies) ────────────────────────────────────
 _ts()  { date -u +%Y-%m-%dT%H:%M:%SZ; }
 _now() { date +%s; }
@@ -186,6 +194,7 @@ kick_daemon() {
     log "kicking $label"
     run_cmd launchctl kickstart -k "gui/$(id -u)/$label"
     emit "farmer_daemon_kicked" "\"label\":\"$label\""
+    TICK_KICKED_N=$(( TICK_KICKED_N + 1 ))
 }
 
 # ── Kick-escalation tracker ───────────────────────────────────────────────────
@@ -445,6 +454,7 @@ except Exception:
         if [[ "$recent" -gt "$SILENT_WORKER_S" ]]; then
             log "silent worker detected: session=$session_id lease_age=${age}s ambient_age=${recent}s"
             emit "farmer_silent_worker" "\"session\":\"$session_id\",\"lease_age_s\":$age,\"ambient_age_s\":$recent"
+            TICK_SILENT_N=$(( TICK_SILENT_N + 1 ))
             # Kick the stale-lease-reaper (Mode 4 response — don't rm the lease ourselves)
             if label_is_loaded "com.chump.reap-stale-leases"; then
                 run_cmd launchctl kickstart -k "gui/$(id -u)/com.chump.reap-stale-leases"
@@ -516,6 +526,7 @@ revive_control_plane() {
                 mark_escalated "$label"
                 operator_page "DAEMON_CRASH_LOOP" "label=$label exit_code=$exit_code kicks>=$KICK_ESCALATE_N in ${KICK_WINDOW_S}s"
                 emit "farmer_escalated" "\"label\":\"$label\",\"exit_code\":$exit_code"
+                TICK_ESCALATED_N=$(( TICK_ESCALATED_N + 1 ))
             else
                 kick_daemon "$label"
             fi
@@ -539,6 +550,7 @@ check_dead_supervisors() {
             mark_escalated "$label"
             operator_page "DAEMON_CRASH_LOOP" "label=$label exit_code=$exit_code"
             emit "farmer_escalated" "\"label\":\"$label\",\"exit_code\":$exit_code"
+                TICK_ESCALATED_N=$(( TICK_ESCALATED_N + 1 ))
         else
             kick_daemon "$label"
         fi
@@ -583,6 +595,6 @@ check_dead_supervisors
 # now caught by the EXIT trap above (RESILIENT-313) so the fleet never darks out.
 write_heartbeat
 _HEARTBEAT_WRITTEN=1
-emit "farmer_heartbeat" "\"dry_run\":${DRY_RUN}"
+emit "farmer_heartbeat" "\"dry_run\":${DRY_RUN},\"counts\":{\"kicked\":${TICK_KICKED_N},\"silent_detected\":${TICK_SILENT_N},\"escalated\":${TICK_ESCALATED_N}}"
 
 log "farmer tick done"
