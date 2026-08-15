@@ -55,3 +55,8 @@ py 'import sys,json; p=json.load(sys.stdin); a=[e for e in p if e["cmd"].startsw
 py 'import sys,json; p=json.load(sys.stdin); assert any(e["reason"]=="almanac-parse" for e in p)' \
    "malformed almanac call not refused with almanac-parse"
 echo "OK: test-ceo-driver — almanac translation checks pass"
+
+# 6 — discord bridge (v1.4, EFFECTIVE-439): hermetic — creds absent/empty => disabled
+st=$(cd "$(dirname "$0")/../.." && DISCORD_TOKEN= CHUMP_READY_DM_USER_ID= CHUMP_CEO_SHADOW_DIR=$(mktemp -d) python3 scripts/coord/ceo-loop.py --dm "ci-test" 2>/dev/null)
+[ "$st" = "disabled" ] || fail "discord not cleanly disabled without creds (got: $st)"
+echo "OK: test-ceo-driver — discord hermetic check passes"
