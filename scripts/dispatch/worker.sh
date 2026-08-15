@@ -580,6 +580,23 @@ for f in glob.glob(os.path.join(base, '*.json')):
 PY
     )"
 
+    # RESILIENT-332 (anti-spin, Layer B): compute the set of gaps that already
+    # have an open PR / in-progress branch on origin, so the picker never
+    # re-offers a completed-but-unmerged gap (the RESILIENT-327/#3795 case that
+    # spun worker 2 on 2026-08-15). Branch convention: chump/<gapid>-fleet-*.
+    # This is complementary to lease-exclusion (ACTIVE_GAPS): the lease covers
+    # a gap while a worker is mid-flight (pre-push); the branch covers it after
+    # the PR is pushed but before it merges (when the lease has expired). One
+    # cheap `git ls-remote` per cycle; best-effort (empty on failure/offline so
+    # Layers A+C still hold). The github_cache webhook DB is not authoritative
+    # here (observed sparse/stale — #3795 absent), so origin refs are used.
+    in_progress_gaps="$(
+        git -C "$REPO_ROOT" ls-remote --heads origin 'refs/heads/chump/*' 2>/dev/null \
+        | grep -oE 'refs/heads/chump/.+-fleet-[0-9]' 2>/dev/null \
+        | sed -E 's#refs/heads/chump/(.+)-fleet-[0-9]$#\1#' \
+        | tr '[:lower:]' '[:upper:]' | sort -u | tr '\n' ' '
+    )"
+
     # INFRA-415: atomic gap picker+claimer. This picker filters candidates
     # AND claims the gap atomically before returning, preventing concurrent
     # workers from picking the same gap. Uses the same session-ID resolution
@@ -592,6 +609,7 @@ PY
             FLEET_MODEL="$FLEET_MODEL" \
             EXCLUDE_RE="$EXCLUDE_PREFIXES_REGEX" \
             ACTIVE_GAPS="$active_gaps" \
+            IN_PROGRESS_GAPS="$in_progress_gaps" \
             GAP_JSON_FILE="$gap_json_file" \
             WORKER_INDEX="$AGENT_ID" \
             WORKER_ID="$AGENT_ID" \
@@ -869,10 +887,34 @@ print('1' if (p == 'P0' and dom == 'MISSION' and e in ('m', 'l', 'xl')) else '0'
     # INFRA-379: use direct `chump gap preflight` instead of gap-preflight.sh
     # which has a rare hanging issue (likely race condition in file I/O).
     if ! timeout 3 chump gap preflight "$GAP_ID" >/dev/null 2>&1; then
-        log "skipping $GAP_ID: failed pre-pick preflight (claimed/done/missing); next cycle"
+        log "skipping $GAP_ID: failed pre-pick preflight (claimed/done/missing); cooling down + next cycle"
         # INFRA-544: picker wrote .gap-<ID>.lock; release it on pivot so siblings can pick.
         rm -f "${CHUMP_REPO:-$REPO_ROOT}/.chump-locks/.gap-${GAP_ID}.lock" 2>/dev/null || true
+        # ── RESILIENT-332 (anti-spin, Layer A): kill the spin at the root ─────
+        # Before this fix the worker released the lock and re-picked the SAME
+        # top gap next cycle — a preflight-failing gap was re-offered forever
+        # (observed 2026-08-15: worker 2 spun 108 picks/15min on two stale-open
+        # gaps, doing zero work). Cool this gap down for THIS worker so the
+        # picker ADVANCES down the sorted list to the next gap that actually
+        # passes preflight. cooled_down_gaps() reads these files; the per-worker
+        # ${AGENT_ID}-${GAP_ID}.json form scopes the cooldown to this worker,
+        # and if FLEET_COOLDOWN_THRESHOLD distinct workers all fail on the same
+        # gap it escalates to a cluster-wide skip automatically. A worker must
+        # NEVER pick the same preflight-failing gap twice in a row.
+        _cd_dir="$REPO_ROOT/.chump-locks/cooldown"
+        mkdir -p "$_cd_dir" 2>/dev/null || true
+        _cd_until=$(( $(date +%s) + ${CHUMP_PREFLIGHT_FAIL_COOLDOWN_S:-900} ))
+        printf '{"gap_id":"%s","until":%d,"agent":"%s","ts":"%s","reason":"preflight_fail"}\n' \
+            "$GAP_ID" "$_cd_until" "$AGENT_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > "$_cd_dir/${AGENT_ID}-${GAP_ID}.json" 2>/dev/null || true
         _emit_worker_stuck "preflight_fail: gap=$GAP_ID claimed/done/missing"
+        # Rate-limit the retry so a large backlog of stale-open gaps can't
+        # hot-loop the picker in the window before cooldowns accumulate — this
+        # bounds the pick rate (no more 58 picks / 90s). With the cooldown
+        # above the picker converges to an empty pick (→ full idle-backoff)
+        # within a few cycles; this floor guarantees the interim is not a
+        # busy-spin. CHUMP_PREFLIGHT_FAIL_SLEEP_S=0 disables (tests).
+        sleep "${CHUMP_PREFLIGHT_FAIL_SLEEP_S:-2}"
         continue
     fi
 

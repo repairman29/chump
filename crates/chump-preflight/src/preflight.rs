@@ -1873,6 +1873,19 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // RESILIENT-332: worker-picker anti-SPIN gate. Mirrors the audit.yml
+        // test-worker-no-spin.sh step — proves the worker picker
+        // (_pick_and_claim_gap.py) ADVANCES past a preflight-failing or
+        // open-PR gap and never re-offers it (the 2026-08-15 spin where a
+        // worker re-picked two stale-open gaps 108x/15min doing zero work).
+        // Same characteristics as the picker gates above: pure-Python picker +
+        // cooldown files, <2s, no network, no chump binary.
+        steps.push(step(
+            "worker-no-spin",
+            &["bash", "scripts/ci/test-worker-no-spin.sh"],
+            GateKind::Scripts,
+        ));
+
         // RESILIENT-135: worker timeout-scaler gate. Mirrors the audit.yml
         // test-worker-timeout-scale.sh step — proves the effort-based per-cycle
         // timeout derives from an IMMUTABLE base and cannot compound toward ~0s

@@ -5972,6 +5972,40 @@ events:
     consumers: [fleet-brief, ops-audit, operator-recall]
     fields_required: [ts, kind, worker_ids, halt_age_s]
 
+  - kind: worker_spin_healed
+    effect_metric: self
+    emitter: scripts/ops/organ-watchdog.sh (RESILIENT-332)
+    trigger: a gap-starter worker emitted worker_stuck reason=preflight_fail
+      >= CHUMP_WORKER_SPIN_THRESHOLD (default 20) times within
+      CHUMP_WORKER_SPIN_WINDOW_S (default 600s) — i.e. it was SPINNING on a
+      preflight-failing gap doing zero work while looking healthy to the
+      heartbeat-based silent-worker watchdog. The watchdog restarts the
+      worker unit and clears the offending stale claim (drops the .gap lock +
+      cools the gap) so the picker advances past it. Closes the 2026-08-15
+      blind spot where the OS emitted worker_stuck 108x and nothing consumed
+      it. Per-worker heal-cooldown prevents a restart storm.
+    consumers: [fleet-brief, ops-audit, curator]
+    fields_required: [ts, kind, agent_id, unit, count, gap_id, action]
+
+  - kind: worker_spin_detected
+    effect_metric: self
+    emitter: scripts/ops/organ-watchdog.sh (RESILIENT-332)
+    trigger: --dry-run of the spin detector found a spinning worker (as
+      worker_spin_healed above) but reports it without restarting or mutating
+      any state — the observe-only counterpart used by tests and audits.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, agent_id, count, gap_id, dry_run]
+
+  - kind: worker_spin_heal_failed
+    effect_metric: self
+    emitter: scripts/ops/organ-watchdog.sh (RESILIENT-332)
+    trigger: the watchdog detected a spinning worker but the `systemctl
+      restart chump-worker@<id>.service` call itself errored — surfaced so a
+      genuinely unrestartable worker is visible rather than silently
+      re-detected every cycle.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, agent_id, unit, gap_id]
+
   - kind: organ_clone_refreshed
     effect_metric: self
     emitter: scripts/ops/organ-watchdog.sh (INFRA-3598,
