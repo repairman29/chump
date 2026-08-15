@@ -31,3 +31,19 @@ for bad in bad_deny bad_ungated_page bad_schema; do
 done
 
 echo "OK: test-ceo-driver — prompt pin + 4 validator contract checks pass"
+
+# 4 — live-execution plan (v1.1, EFFECTIVE-436): deterministic, no execution.
+plan=$(python3 "$DRIVER" --plan-only "$FIX/live_overcap.json")
+py() { echo "$plan" | python3 -c "$1" || fail "$2"; }
+py 'import sys,json; p=json.load(sys.stdin); assert sum(1 for e in p if e["run"] and e.get("group")=="dispatch")==2' \
+   "dispatch cap!=2 in plan"
+py 'import sys,json; p=json.load(sys.stdin); assert any(e["reason"].startswith("cap-exhausted") for e in p)' \
+   "over-cap dispatch not refused"
+py 'import sys,json; p=json.load(sys.stdin); assert [e for e in p if e["action"]=="page"][0]["run"]==False' \
+   "page executed despite CHUMP_CEO_ALLOW_PAGE default 0"
+py 'import sys,json; p=json.load(sys.stdin); assert any(e["reason"]=="shell-metachar" for e in p)' \
+   "metachar cmd not refused"
+py 'import sys,json; p=json.load(sys.stdin); assert [e for e in p if e["action"]=="board_update"][0]["run"]==True' \
+   "board_update not routed to board log"
+
+echo "OK: test-ceo-driver — prompt pin + validator + live-plan checks pass"
