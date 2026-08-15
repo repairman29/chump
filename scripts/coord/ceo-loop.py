@@ -53,6 +53,26 @@ SHADOW_DIR = pathlib.Path(
 MODEL = os.environ.get("CHUMP_CEO_MODEL", "sonnet")
 MODE = os.environ.get("CHUMP_CEO_MODE", "shadow")
 ALLOW_PAGE = os.environ.get("CHUMP_CEO_ALLOW_PAGE", "0") == "1"
+ALMANAC_BIN = os.environ.get(
+    "CHUMP_CEO_ALMANAC_BIN",
+    str(pathlib.Path.home() / "Projects/almanac/target/release/almanac"),
+)
+ALMANAC_CALL = re.compile(
+    r'^(almanac_search_fleet|almanac_search)\(\s*(?:repo="([^"]+)"\s*,\s*)?query="([^"]+)"\s*\)$'
+)
+
+
+def almanac_argv(cmd):
+    """Translate the model's almanac pseudo-call into CLI argv, or None."""
+    m = ALMANAC_CALL.match(cmd.strip())
+    if not m:
+        return None
+    fn, repo, query = m.groups()
+    if fn == "almanac_search_fleet":
+        return [ALMANAC_BIN, "search-fleet", query]
+    if repo:
+        return [ALMANAC_BIN, "search", repo, query]
+    return None
 
 TARGETS = {"ALMANAC", "GAP_REGISTRY", "DISPATCH", "CONSENSUS", "CONSULTANT", "OPERATOR"}
 ACTIONS = {"query", "file_gap", "rate_gap", "decompose", "dispatch", "unstick",
@@ -81,10 +101,12 @@ METACHAR = re.compile(r"[;`|&<>]|\$\(")
 GAP_RE = re.compile(r"\b[A-Z]{2,}-\d{2,}\b")
 
 # (cap_group, per-tick limit). Groups not listed are uncapped.
-CAPS = {"dispatch": 2, "file_gap": 1, "mutate": 3, "broadcast": 2}
+CAPS = {"dispatch": 2, "file_gap": 1, "mutate": 3, "broadcast": 2, "almanac": 3}
 
 
 def cap_group(action, cmd):
+    if cmd.startswith("almanac"):
+        return "almanac"
     if action == "dispatch" or cmd.startswith("chump dispatch"):
         return "dispatch"
     if action == "file_gap" or cmd.startswith("chump gap reserve"):
@@ -299,7 +321,13 @@ def build_plan(obj, checks, allow_page=None):
         elif not cmd:
             entry.update(run=False, reason="no-cmd")
         elif cmd.startswith("almanac"):
-            entry.update(run=False, reason="almanac-unexecutable-v1")
+            if almanac_argv(cmd) is None:
+                entry.update(run=False, reason="almanac-parse")
+            elif counts["almanac"] >= CAPS["almanac"]:
+                entry.update(run=False, reason=f"cap-exhausted(almanac<={CAPS['almanac']})")
+            else:
+                counts["almanac"] += 1
+                entry.update(run=True, reason="ok", group="almanac")
         elif any(re.search(p, cmd) for p, _ in HARD_DENY):
             entry.update(run=False, reason="hard-deny")
         elif METACHAR.search(cmd):
@@ -335,7 +363,10 @@ def execute_plan(obj, plan):
             entry.update(ran=True, exit=0)
             continue
         cmd = str((r.get("payload") or {}).get("cmd", "")).strip()
-        argv = shlex.split(re.sub(r"^bash\s+", "bash ", cmd))
+        if entry.get("group") == "almanac":
+            argv = almanac_argv(cmd)
+        else:
+            argv = shlex.split(re.sub(r"^bash\s+", "bash ", cmd))
         try:
             p = subprocess.run(argv, capture_output=True, text=True, timeout=120,
                                cwd=str(REPO))
