@@ -5278,17 +5278,17 @@ mod proof_of_merge_tests {
         // gap became a permanent ghost. Here the gap-mentioning commit is the OLDEST,
         // buried under 205 newer commits.
         //
-        // FLAKE FIX: this fixture flaked red ONLY on GitHub-hosted ubuntu runners
-        // (rock-solid on the fleet self-hosted Linux boxes). The old body wrote identity
-        // via a separate `git config` step and then swallowed EVERY git error (`let _ =`).
-        // On a shared CI runner an occasional commit failed (ambient git config such as
-        // commit.gpgsign / core.hooksPath, or a config-durability race on the very first
-        // root commit), so the gap-carrying commit went missing while later fillers
-        // landed. `main` then existed but the grep missed, verify_proof_of_merge returned
-        // false, and the assertion fired with NO error shown. Fix: make every git call
-        // hermetic (GIT_CONFIG_GLOBAL/SYSTEM=/dev/null, GIT_* dir vars cleared), pass
-        // identity + no-sign + no-gc inline on every commit so nothing can race a config
-        // file, and ASSERT each setup commit lands so any real failure is loud.
+        // FLAKE FIX (CREDIBLE-282): this fixture flaked red on GitHub-hosted ubuntu
+        // runners even after making every `git commit` call hermetic. Root cause: it
+        // spawned 206 separate `git commit` subprocesses in a tight loop. Under CI
+        // resource contention (fork/exec pressure, disk I/O contention from sibling
+        // shards), an occasional `git commit` invocation in that chain silently failed
+        // ("filler N must land"), even with clean env + inline identity.
+        //
+        // CREDIBLE-289 FIX: replace the 206-subprocess commit loop with a SINGLE
+        // `git fast-import` call. fast-import takes the entire commit graph as one
+        // stdin stream and builds it in-process — no per-commit fork/exec, so there is
+        // nothing left for CI resource contention to race.
         let dir = tempdir().unwrap();
         // Hermetic git: no ambient global/system config and no leaked GIT_* env can
         // perturb this fixture on a shared runner.
@@ -5311,38 +5311,59 @@ mod proof_of_merge_tests {
         {
             return; // older git without --initial-branch
         }
-        // Identity + no-sign + no-gc passed inline on every commit so nothing depends on
-        // a separately-written config file (the source of the CI race).
-        let commit = |msg: &str| -> bool {
-            git(&[
-                "-c",
-                "user.email=t@t.local",
-                "-c",
-                "user.name=t",
-                "-c",
-                "commit.gpgsign=false",
-                "-c",
-                "gc.auto=0",
-                "commit",
-                "--allow-empty",
-                "-m",
-                msg,
-            ])
-            .status
-            .success()
+        // Build the whole 206-commit chain as one fast-import stream. Root commit
+        // (mark :1) carries the gap ID; it has no `from` line so it starts a fresh
+        // root. Every later commit omits `from` too — fast-import defaults to the
+        // branch's current tip, so they chain automatically.
+        let mut stream = String::new();
+        let write_commit = |mark: usize, msg: &str, stream: &mut String| {
+            stream.push_str("commit refs/heads/main\n");
+            stream.push_str(&format!("mark :{mark}\n"));
+            stream.push_str("author t <t@t.local> 0 +0000\n");
+            stream.push_str("committer t <t@t.local> 0 +0000\n");
+            stream.push_str(&format!("data {}\n", msg.len()));
+            stream.push_str(msg);
+            stream.push_str("\n\n");
         };
-        // Oldest commit carries the gap ID. Assert it lands (was silently swallowed).
-        assert!(
-            commit("EFFECTIVE-9999: the real merge, buried deep"),
-            "root/gap commit must be created for the fixture to be meaningful"
+        write_commit(
+            1,
+            "EFFECTIVE-9999: the real merge, buried deep",
+            &mut stream,
         );
         // 205 newer commits bury it past the old -n 200 window.
         for i in 0..205 {
-            assert!(
-                commit(&format!("chore: filler {i}")),
-                "filler {i} must land"
-            );
+            write_commit(2 + i, &format!("chore: filler {i}"), &mut stream);
         }
+
+        use std::io::Write;
+        let mut child = std::process::Command::new("git")
+            .args(["fast-import", "--quiet"])
+            .current_dir(dir.path())
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("git fast-import should spawn");
+        child
+            .stdin
+            .take()
+            .expect("fast-import stdin")
+            .write_all(stream.as_bytes())
+            .expect("fast-import stream should write");
+        let out = child
+            .wait_with_output()
+            .expect("git fast-import should complete");
+        assert!(
+            out.status.success(),
+            "git fast-import must build the 206-commit fixture: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         assert!(
             verify_proof_of_merge(dir.path(), "EFFECTIVE-9999", None),
             "a merge >200 commits back must still be proven (CREDIBLE-218)"
