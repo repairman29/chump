@@ -1841,3 +1841,8 @@ CHUMP_FLAKE_BUDGET
 CHUMP_HALT_SINCE_FILE
 CHUMP_CEO_MODE
 CHUMP_CEO_ALLOW_PAGE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_RUNNER_POOL_SIZE
