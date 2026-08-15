@@ -5,7 +5,7 @@
 # and has been reviewed by the operator.
 #
 # OPERATOR ZERO-BYPASS THESIS (INFRA-2406):
-#   There is NO CHUMP_CROSS_PR_CONTRACT_BYPASS env var.
+#   There is NO bypass env var for this gate.
 #   If a legitimate cross-PR contract conflict needs to ship, add it here
 #   (with a documented reason) and get it reviewed in a PR.
 #   This file IS the bypass mechanism — source-controlled, audited, reviewable.
