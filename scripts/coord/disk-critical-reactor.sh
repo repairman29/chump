@@ -29,6 +29,10 @@ REPO_ROOT="${CHUMP_REPO:-${CHUMP_HOME:-/Users/jeffadkins/Projects/Chump}}"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 REAPER="$REPO_ROOT/scripts/coord/disk-pressure-reaper.sh"
 RECALL="$REPO_ROOT/scripts/dispatch/operator-recall.sh"
+# RESILIENT-326: overridable so CI can point this at a scratch file instead of
+# the real ~/.chump/AUTONOMY_LEVEL (mirrors CHUMP_AUTON_FILE in
+# back-pressure-controller.sh).
+AUTON_FILE="${CHUMP_AUTON_FILE:-$HOME/.chump/AUTONOMY_LEVEL}"
 DEBOUNCE="${CHUMP_DISK_REACTOR_DEBOUNCE_SECS:-60}"
 PAGE_THRESHOLD="${CHUMP_DISK_REACTOR_PAGE_THRESHOLD_PCT:-5}"
 STATE_DIR="$REPO_ROOT/.chump-locks"
@@ -108,6 +112,8 @@ restore_quiesce_daemons() {
 #   "kind":"disk_reactor_quiesce_started"
 #   "kind":"disk_reactor_quiesce_aborted"
 #   "kind":"disk_reactor_quiesce_reclaimed"
+#   "kind":"disk_reactor_autonomy_halt"
+#   "kind":"disk_reactor_autonomy_resume"
 #
 # RESILIENT-273: the terminal reclaim. Only fires when the shared target is over
 # the hard cap. DRY-RUN unless CHUMP_DISK_REACTOR_QUIESCE_EXECUTE=1. Returns 0 if
@@ -126,7 +132,22 @@ quiesce_and_reclaim() {
 
   emit "\"kind\":\"disk_reactor_quiesce_started\",\"target\":\"$SHARED_TARGET\",\"target_gb\":$cur_gb,\"cap_gb\":$SHARED_TARGET_CAP_GB"
   # 1. Stop the fleet go-switch + tear down the tmux fleet.
-  echo 0 > "$HOME/.chump/AUTONOMY_LEVEL" 2>/dev/null || true
+  # RESILIENT-326: this organ HALTS the fleet (AUTONOMY_LEVEL=0) but, before this
+  # fix, never restored it — a disk-critical quiesce left the fleet permanently
+  # halted even after the quiesce finished (or aborted) and disk pressure was
+  # gone. Save the pre-halt level so both the reclaimed and aborted exit paths
+  # below can restore it, and page the operator immediately on halt (loud page
+  # per governance: no organ may halt without one) rather than only as a
+  # last-resort after a failed recovery.
+  local prior_level; prior_level="$(cat "$AUTON_FILE" 2>/dev/null || echo 5)"
+  [[ "$prior_level" =~ ^[0-9]+$ ]] || prior_level=5
+  echo 0 > "$AUTON_FILE" 2>/dev/null || true
+  emit "\"kind\":\"disk_reactor_autonomy_halt\",\"prior_level\":$prior_level"
+  if [[ -x "$RECALL" ]]; then
+    "$RECALL" --condition DISK_CRITICAL \
+      --reason "disk-critical-reactor halted the fleet (AUTONOMY_LEVEL 0, was $prior_level) to quiesce+reclaim a ${cur_gb}GB shared cargo target over the ${SHARED_TARGET_CAP_GB}GB cap; auto-resumes when quiesce completes or aborts" \
+      >/dev/null 2>&1 || true
+  fi
   tmux kill-session -t chump-fleet 2>/dev/null || true
   # 2. Bootout the deploy daemons that ignore AUTONOMY_LEVEL and respawn builds.
   local uid; uid="$(id -u)"
@@ -147,6 +168,12 @@ quiesce_and_reclaim() {
   if (( remaining > 0 )); then
     emit "\"kind\":\"disk_reactor_quiesce_aborted\",\"reason\":\"not_quiescent\",\"remaining_builds\":$remaining,\"waited_s\":$waited"
     restore_quiesce_daemons
+    # RESILIENT-326: auto-recovery even on abort — a stuck build must not leave
+    # the fleet halted forever. Restore the pre-halt autonomy level so the next
+    # tick can pick up where it left off; the disk-critical condition itself is
+    # re-evaluated (and re-paged if still bad) by react()'s caller below.
+    echo "$prior_level" > "$AUTON_FILE" 2>/dev/null || true
+    emit "\"kind\":\"disk_reactor_autonomy_resume\",\"restored_level\":$prior_level,\"reason\":\"aborted\""
     return 1
   fi
   # 6. Prune, then restore the daemons.
@@ -154,6 +181,9 @@ quiesce_and_reclaim() {
   local after_gb; after_gb="$(free_gb)"; after_gb="${after_gb:-0}"
   emit "\"kind\":\"disk_reactor_quiesce_reclaimed\",\"target\":\"$SHARED_TARGET\",\"reclaimed_gb_approx\":$cur_gb,\"free_gb_after\":$after_gb"
   restore_quiesce_daemons
+  # RESILIENT-326: auto-resume — the halt was scoped to the quiesce window only.
+  echo "$prior_level" > "$AUTON_FILE" 2>/dev/null || true
+  emit "\"kind\":\"disk_reactor_autonomy_resume\",\"restored_level\":$prior_level,\"reason\":\"reclaimed\""
   return 0
 }
 
