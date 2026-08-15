@@ -1810,3 +1810,16 @@ CHUMP_SHARED_TARGET
 CHUMP_SHARED_TARGET_CAP_GB
 # detected in: (standard input)
 CHUMP_SHARED_TARGET_GB_OVERRIDE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_NODE_BIN
+# detected in: (standard input)
+CHUMP_NODE_REFRESH_CI_WORKFLOW
+# detected in: (standard input)
+CHUMP_NODE_REFRESH_GREEN_LOOKBACK
+# detected in: (standard input)
+CHUMP_NODE_REFRESH_LOGDIR
+# detected in: (standard input)
+CHUMP_NODE_REFRESH_TEST_GREEN_SHA

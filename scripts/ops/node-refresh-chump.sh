@@ -18,8 +18,9 @@
 # A paused node (AUTONOMY_LEVEL=0) stays paused across refreshes — the binary
 # gets current, the fleet stays off until the operator flips the switch.
 #
-# Idempotent: if the installed binary's build SHA already matches origin/main
-# HEAD, skips the rebuild entirely (fast no-op, no cargo invocation).
+# Idempotent: if the installed binary's build SHA already matches the
+# green-main pointer, skips the rebuild entirely (fast no-op, no cargo
+# invocation).
 #
 # Emits (appended to $NODE_AMBIENT if it exists, else logfile only):
 #   node_binary_refreshed         — successful rebuild + install
@@ -28,11 +29,23 @@
 #
 # Bypass: CHUMP_SKIP_NODE_REFRESH=1 short-circuits to exit 0.
 #
+# GREEN-MAIN PIN (RESILIENT-327): this script does NOT advance the live node
+# to raw origin/main HEAD. It advances to the last commit that passed the
+# full CI gate (the "green-main pointer"), found the same way
+# scripts/coord/blame-bot.sh finds its baseline: most-recent SUCCESS run of
+# the required workflow on branch main. A bad HEAD (red main) never reaches
+# the live node — the node just stays pinned at the last-known-green sha
+# until CI goes green again. Workers that branch off this node's mirror
+# checkout therefore branch off the pinned green base, not a shifting HEAD.
+#
 # Env overrides:
 #   CHUMP_NODE_REPO   repo mirror to build from   (default: first of
 #                     ~/chump-host, ~/Projects/Chump, ~/chump that exists)
 #   CHUMP_NODE_BIN    install destination         (default: ~/.local/bin/chump)
 #   NODE_AMBIENT      ambient stream to append to (default: <repo>/.chump-locks/ambient.jsonl)
+#   CHUMP_NODE_REFRESH_CI_WORKFLOW      required-gate workflow file (default: ci.yml)
+#   CHUMP_NODE_REFRESH_GREEN_LOOKBACK   runs to scan for the green sha (default: 30)
+#   CHUMP_NODE_REFRESH_TEST_GREEN_SHA   test injection: skip gh lookup, use this sha
 
 set -uo pipefail
 
@@ -61,6 +74,28 @@ emit() {
 }
 log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG"; }
 
+# --- RESILIENT-327: last-GREEN main pointer, not raw HEAD --------------------
+# Returns the full sha of the most-recent SUCCESS run of the required-gate
+# workflow on branch main. Falls back to raw origin/main HEAD (old behavior,
+# logged loudly) when gh is unavailable or no green run can be found — a node
+# with no way to know what's green must still be able to refresh, but the
+# fallback is explicit rather than silent so it's auditable in the log/ambient.
+CI_WORKFLOW="${CHUMP_NODE_REFRESH_CI_WORKFLOW:-ci.yml}"
+GREEN_LOOKBACK="${CHUMP_NODE_REFRESH_GREEN_LOOKBACK:-30}"
+_find_green_main_sha() {
+    if [[ -n "${CHUMP_NODE_REFRESH_TEST_GREEN_SHA:-}" ]]; then
+        echo "$CHUMP_NODE_REFRESH_TEST_GREEN_SHA"
+        return
+    fi
+    if ! command -v gh >/dev/null 2>&1; then
+        echo ""
+        return
+    fi
+    gh api "repos/{owner}/{repo}/actions/workflows/${CI_WORKFLOW}/runs?branch=main&status=success&per_page=${GREEN_LOOKBACK}" \
+        --jq '[.workflow_runs[] | select(.conclusion=="success")][0].head_sha' 2>/dev/null \
+        | grep -vE '^(null|)$' || echo ""
+}
+
 if [[ "${CHUMP_SKIP_NODE_REFRESH:-0}" == "1" ]]; then
     log "BYPASS: CHUMP_SKIP_NODE_REFRESH=1"; exit 0
 fi
@@ -72,13 +107,28 @@ if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT/.git" ]]; then
 fi
 cd "$REPO_ROOT" || { log "FATAL: cannot cd $REPO_ROOT"; emit node_binary_refresh_failed "\"reason\":\"cwd_failed\""; exit 1; }
 
-# --- fetch + fast-forward the mirror to origin/main --------------------------
-# These nodes are pure BUILD MIRRORS (no operator WIP), so a hard reset to
-# origin/main is the correct "make current" operation. If a node ever grows a
-# real working tree, guard this behind a clean-tree check.
+# --- fetch + advance the mirror to the last-GREEN main, not raw HEAD --------
+# These nodes are pure BUILD MIRRORS (no operator WIP), so a hard reset to the
+# green pointer is the correct "make current" operation. If a node ever grows
+# a real working tree, guard this behind a clean-tree check.
 git fetch origin main --quiet 2>>"$LOG" || log "WARN: git fetch failed (offline?); building local main"
-MAIN_SHA="$(git rev-parse --short=12 origin/main 2>/dev/null || git rev-parse --short=12 HEAD)"
-log "origin/main = $MAIN_SHA  (repo: $REPO_ROOT)"
+
+RAW_HEAD_SHA="$(git rev-parse --short=12 origin/main 2>/dev/null || git rev-parse --short=12 HEAD)"
+GREEN_SHA="$(_find_green_main_sha)"
+if [[ -n "$GREEN_SHA" ]]; then
+    RESET_TARGET="$GREEN_SHA"
+    MAIN_SHA="$(git rev-parse --short=12 "$GREEN_SHA" 2>/dev/null || echo "${GREEN_SHA:0:12}")"
+    log "green-main = $MAIN_SHA  (raw origin/main HEAD = $RAW_HEAD_SHA, repo: $REPO_ROOT)"
+    if [[ "$RAW_HEAD_SHA" != "$MAIN_SHA"* ]]; then
+        log "PIN: raw HEAD ($RAW_HEAD_SHA) is ahead of green-main ($MAIN_SHA) — staying pinned at green"
+        emit node_refresh_green_pin_behind_head "\"green_sha\":\"$MAIN_SHA\",\"raw_head_sha\":\"$RAW_HEAD_SHA\""
+    fi
+else
+    RESET_TARGET="origin/main"
+    MAIN_SHA="$RAW_HEAD_SHA"
+    log "WARN: no green-main sha found (gh unavailable or no successful $CI_WORKFLOW run); falling back to raw origin/main HEAD = $MAIN_SHA"
+    emit node_refresh_green_lookup_failed "\"fallback_sha\":\"$MAIN_SHA\""
+fi
 
 INSTALLED_SHA="none"
 if [[ -x "$TARGET_BIN" ]]; then
@@ -94,9 +144,9 @@ if [[ "$INSTALLED_SHA" == "$MAIN_SHA"* || "$MAIN_SHA" == "$INSTALLED_SHA"* ]] \
     exit 0
 fi
 
-git reset --hard "origin/main" >>"$LOG" 2>&1 || {
-    log "FATAL: git reset --hard origin/main failed"
-    emit node_binary_refresh_failed "\"reason\":\"reset_failed\""
+git reset --hard "$RESET_TARGET" >>"$LOG" 2>&1 || {
+    log "FATAL: git reset --hard $RESET_TARGET failed"
+    emit node_binary_refresh_failed "\"reason\":\"reset_failed\",\"target\":\"$RESET_TARGET\""
     exit 1
 }
 
@@ -153,7 +203,7 @@ chmod +x "$TARGET_BIN.new"
 mv -f "$TARGET_BIN.new" "$TARGET_BIN"
 
 NEW_SHA="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || echo unknown)"
-log "OK: $TARGET_BIN now at sha $NEW_SHA (origin/main = $MAIN_SHA)"
+log "OK: $TARGET_BIN now at sha $NEW_SHA (green-main = $MAIN_SHA)"
 emit node_binary_refreshed "\"prev_sha\":\"$INSTALLED_SHA\",\"new_sha\":\"$NEW_SHA\",\"main_sha\":\"$MAIN_SHA\""
 
 # Prune old logs (keep last 24)
