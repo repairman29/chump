@@ -20,8 +20,6 @@
 #
 # Idempotent: re-running unloads + reloads cleanly.
 #
-# Kill switch (no plist edit needed):
-#   CHUMP_META118_SKIP=1 set in env prevents both scripts from running at tick time.
 #   To completely stop a daemon: launchctl unload ~/Library/LaunchAgents/<label>.plist
 
 set -euo pipefail

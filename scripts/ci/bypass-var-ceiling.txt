@@ -4,7 +4,7 @@
 # you must delete one. Raising it requires operator sign-off + a reason below.
 # Baseline 2026-06-03 (was 113 when INFRA-2525 was filed — the climb to here is
 # exactly what this ceiling now reverses). Ratchet DOWN as gates are culled.
-234
+232
 
 # 233 → 234 (2026-06-04): CREDIBLE-085 introduced CHUMP_SCCACHE_HIT_RATE_CHECK
 # as a cold-cache escape valve for the new sccache hit-rate gate. Cold-cache
@@ -52,3 +52,23 @@
 # Net documented debt 238 -> 234 (down 4) even while admitting 2 real vars.
 # RESILIENT-298 tracks the deeper residual: the count is still string-mention based,
 # so a var named in a comment ANYWHERE outside these two meta-files inflates it.
+
+# 234 -> 232 (2026-08-15, INFRA-3625 P0): a ratchet-DOWN via dead-bypass CULL, not a
+# bump. Main sat AT the ceiling (234=234, zero headroom), jamming every PR that added
+# even one var (audit-shard(4) 235>234). Audited all CHUMP_*_(BYPASS|SKIP|IGNORE|CHECK|NO_)
+# vars; removed SIX with ZERO functional reads anywhere in scripts/src/crates (verified via
+# env::var/${...}/getenv grep):
+#   - CHUMP_GAP_SHIP_STALE_CHECK      (env-vars-internal.txt only; read by nothing)
+#   - CHUMP_WORKTREE_BUILD_CACHE_SKIP (superseded — code was renamed to ..._DISABLED per
+#                                       INFRA-2453; the _SKIP registry line was a stale leftover)
+#   - CHUMP_OPENCODE_SKIP_SIZE_GUARD  (declared for #3646/RESILIENT-203, which merged the guard
+#                                       WITHOUT ever wiring a skip — registry-only no-op)
+#   - CHUMP_CROSS_PR_CONTRACT_BYPASS  (phantom: the only mentions were comments literally stating
+#                                       "There is NO ... env var" — the act of documenting its
+#                                       ABSENCE counted it as present)
+#   - CHUMP_META118_SKIP              (documented kill-switch never implemented — 0 reads)
+#   - CHUMP_FLEET_BOOTSTRAP_CHECK     (documented =0 bypass never implemented — 0 reads)
+# True live count 234 -> 228. New ceiling 232 = 228 + headroom for TWO in-flight LEGIT feature
+# toggles landing on the backlog (CHUMP_PR_AUTO_REBASE_NO_THROTTLE #3806, CHUMP_ROT_REAPER_
+# REQUIRED_CHECKS #3809) with 2 slack remaining so the gate stops being a zero-headroom tripwire
+# (INFRA-3625 AC#4). Recurring cull tracked by INFRA-3625.

@@ -18,7 +18,7 @@
 #   4. Checks cross-pr-allowlist.txt for pre-approved conflicts before failing.
 #
 # OPERATOR ZERO-BYPASS THESIS (INFRA-2406):
-#   There is NO CHUMP_CROSS_PR_CONTRACT_BYPASS env var.
+#   There is NO bypass env var for this gate.
 #   Legitimate conflicts must be resolved by:
 #     (a) Fixing one of the two PRs to align keys, OR
 #     (b) Adding an entry to scripts/ci/cross-pr-allowlist.txt (source-controlled,
