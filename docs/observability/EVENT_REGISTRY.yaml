@@ -9525,9 +9525,12 @@ events:
       of this event for >120s indicates the farmer itself is stalled — the
       external watchdog (RESILIENT-071) uses heartbeat staleness to page the
       operator.
-    consumers: [ops-audit, fleet-brief, farmer-watchdog]
+    consumers: [ops-audit, fleet-brief, farmer-watchdog, chairman-pulse]
     fields_required: [ts, kind]
-    # payload: {dry_run: bool}
+    # payload: {dry_run: bool, counts: {kicked: int, silent_detected: int, escalated: int}}
+    # RESILIENT-331: `counts` makes the heartbeat an I-did-X outcome line, not
+    # just an I-ran liveness ping — chairman-pulse.sh sums it into the farmer's
+    # power-output row and flags zero-power runs as zombie-alive.
     status: stable
 
   - kind: farmer_pause_lifted
@@ -10686,3 +10689,27 @@ events:
       for each uncovered plist found (dedup window 24h per plist).
     consumers: [ambient]
     fields_required: [plist]
+
+  # ── RESILIENT-331: board power-output readout (EFFECTIVENESS, not LIVENESS) ─
+
+  - kind: chairman_pulse_tick
+    effect_metric: self
+    emitter: scripts/chairman/chairman-pulse.sh (RESILIENT-331)
+    trigger: every chairman-pulse run — sums each organ's structured per-cycle
+      outcome events (reaper_run, pr_lander_beat, organ_watchdog_tick,
+      farmer_heartbeat) over the window into a power-output view, and measures
+      core-loop throughput (gap_claimed -> gap_shipped, paired on gap_id)
+      directly instead of proxying it with ships/hour.
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, window_hours, organs_seen, zombie_count, claimed, shipped_and_matched]
+
+  - kind: organ_zombie_alive
+    effect_metric: self
+    emitter: scripts/chairman/chairman-pulse.sh (RESILIENT-331)
+    trigger: an organ emitted >= CHUMP_CHAIRMAN_PULSE_ZOMBIE_MIN_CYCLES
+      structured outcome events within the window but their combined power
+      output (merged/closed/healed/armed/etc., excluding skip-counters) summed
+      to zero — it ran every cycle and accomplished nothing. The zombie-alive
+      alarm liveness checks (heartbeats, systemd "Finished") cannot raise.
+    consumers: [ambient, fleet-brief, operator pre-flight tail]
+    fields_required: [ts, kind, organ, cycles, power, window_hours]

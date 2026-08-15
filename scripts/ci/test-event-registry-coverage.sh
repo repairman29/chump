@@ -83,6 +83,9 @@ PROD_PATHS = [
     # INFRA-1823: scripts/arsenal/build.py emits kind=arsenal_rebuilt on
     # every Harvester catalog rebuild (scheduled or via `chump harvest scan`).
     'scripts/arsenal/',
+    # RESILIENT-331: scripts/chairman/chairman_pulse.py emits
+    # chairman_pulse_tick / organ_zombie_alive to ambient.jsonl.
+    'scripts/chairman/',
 ]
 # Also skip per-file patterns that may live inside PROD_PATHS but are tests
 # or fixtures (e.g. `src/foo/tests/bar.rs`).
