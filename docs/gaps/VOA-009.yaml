@@ -1,0 +1,17 @@
+- id: VOA-009
+  domain: VOA
+  title: "VOICE-OF-AGENT VOA-009: broken-daemon-exit — 10 min lost; fix-shape: gate"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Full friction report at docs/voice/VOA-009-FULL.yaml with wedge_class=broken-daemon-exit, minutes_lost=10
+    - Proposed fix (gate): "fleet-doctor detected broken-daemon-exit: broken-daemon-exit: com.chump.integrator-daemon(exit=127) com.chump.oauth-refresh(exit=1) com.chump.smee-tunnel(exit=1) com.chump.inventory-rebuild-cadence(exit=127)"
+    - Evidence references documented in FULL report
+  notes: |
+    [2026-08-15T19:31:01Z] Auto-filed by `chump voice` (INFRA-2258).
+    Wedge class: broken-daemon-exit
+    Minutes lost: 10
+    Evidence:
+    - "fleet-doctor-strict.sh"
+    See docs/voice/VOA-009-FULL.yaml for full report.

@@ -1,0 +1,26 @@
+# VOA-009 — Voice of the Agent, full report.
+# Auto-filed by `chump voice` (INFRA-2258).
+# See docs/process/VOICE_OF_AGENT.md for protocol.
+
+id: VOA-009
+filed_at: "2026-08-15T19:31:01Z"
+
+reporter:
+  agent_role: unknown-role
+  chump_version: "0.2.0"
+  target_repo: "anonymous"
+  target_repo_disclosure: anonymous
+  session_id: "(elided)"
+
+wedge_observations:
+
+  - wedge_class: broken-daemon-exit
+    minutes_lost: 10
+    workaround_used:
+      summary: ""
+    proposed_fix:
+      shape: gate
+      fix: "fleet-doctor detected broken-daemon-exit: broken-daemon-exit: com.chump.integrator-daemon(exit=127) com.chump.oauth-refresh(exit=1) com.chump.smee-tunnel(exit=1) com.chump.inventory-rebuild-cadence(exit=127)"
+    impact_estimate_minutes_per_session: 10
+    evidence:
+      - "fleet-doctor-strict.sh"

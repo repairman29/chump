@@ -592,6 +592,41 @@ except Exception:
 # corr_id — i.e. the fleet was asked to decide and didn't. Cross-platform (reads
 # the logs, no launchctl dependency). A fresh proposal still inside its grace
 # window does NOT fail (no crying wolf on in-flight votes).
+
+check_almanac_freshness() {
+    # INFRA-3586 slice (a): the nervous-system latch — almanac (fleet memory)
+    # must be provably alive: registry readable, refresh loop recent, and a
+    # known symbol answerable. Operator doctrine 2026-08-15: "it can't be
+    # stale — it needs to be alive itself."
+    local bin="${CHUMP_ALMANAC_BIN:-$HOME/Projects/almanac/target/release/almanac}"
+    local ahome="${ALMANAC_HOME:-$HOME/.almanac}"
+    if [[ ! -x "$bin" ]]; then
+        register_check "almanac-freshness" "skip" "almanac CLI absent at $bin — node carries no local index" ""
+        return
+    fi
+    if ! python3 -c "import json;json.load(open('$ahome/registry.json'))" 2>/dev/null; then
+        register_check "almanac-freshness" "fail" "registry.json unreadable/corrupt at $ahome — fleet memory blind" ""
+        return
+    fi
+    local max_h="${CHUMP_ALMANAC_STALE_HOURS:-3}" age=999
+    if [[ -f "$ahome/refresh.log" ]]; then
+        local mtime
+        mtime="$(stat -f %m "$ahome/refresh.log" 2>/dev/null || stat -c %Y "$ahome/refresh.log" 2>/dev/null || echo 0)"
+        age=$(( ( $(date +%s) - mtime ) / 3600 ))
+    fi
+    if (( age >= max_h )); then
+        register_check "almanac-freshness" "fail" "refresh loop stale: refresh.log ${age}h old (threshold ${max_h}h) — fleet memory rotting" ""
+        return
+    fi
+    local hits
+    hits="$("$bin" search-fleet "gap_store" 2>/dev/null | head -1 | grep -oE '[0-9]+ hits' | grep -oE '^[0-9]+' || true)"
+    if [[ -z "$hits" || "$hits" -eq 0 ]]; then
+        register_check "almanac-freshness" "fail" "smoke query 'gap_store' returned 0 hits — index empty or degraded" ""
+        return
+    fi
+    register_check "almanac-freshness" "pass" "registry ok, refresh ${age}h fresh, smoke query ${hits} hits" ""
+}
+
 check_a2a_consensus() {
     if ! command -v python3 &>/dev/null; then
         register_check "a2a-consensus" "skip" "python3 unavailable — skipping A2A outcome scan" ""
@@ -859,6 +894,7 @@ check_p0_budget
 check_pillar_coverage
 check_silent_fleet_death
 check_a2a_consensus
+check_almanac_freshness
 check_required_status_checks
 check_ops_defect_selfdiag
 
