@@ -11,7 +11,7 @@ cd "$(dirname "$0")/../.."
 
 DRIVER=scripts/coord/ceo-loop.py
 FIX=scripts/ci/test-fixtures/ceo
-PINNED_SHA=ed167ec6b92fb9b9eda225fba99ccc6308ee7e9e2f0d6a56ea4512efa372e2a0
+PINNED_SHA=fdb753c0036149e166ba698b23fb22610a390445f9f875ea046fd86091128b88
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
