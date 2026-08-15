@@ -958,6 +958,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // scripts/coord/chump-runner-autoscale.sh or
         // scripts/setup/install-runner-autoscale.sh. Pure grep, no network, <1s.
         "scripts/ci/test-runner-autoscale-max-default.sh",
+        // INFRA-2356: META-269 sub-7 cross-daemon contract test — verifies
+        // scripts/coord/daemon-expectations.yaml entries actually match kinds
+        // emitted by each daemon's script. Pure bash + python3 yaml parse +
+        // grep, no network, <1s.
+        "scripts/ci/test-daemon-contract.sh",
         // INFRA-3579 (INFRA-1655 slice): guards the INFRA-1852 concurrency-
         // group fix (ci.yml `group:` keyed on github.sha, not PR number)
         // against silently regressing. Pure grep, no network, <1s.

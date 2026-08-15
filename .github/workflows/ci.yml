@@ -618,6 +618,14 @@ jobs:
       - name: META-118 daemon install smoke (INFRA-2280)
         run: bash scripts/ci/test-meta-118-daemon-install.sh
 
+      # INFRA-2356: META-269 sub-7 cross-daemon contract test — verifies each
+      # daemon in scripts/coord/daemon-expectations.yaml actually emits at
+      # least one of the ambient kinds it's declared to emit, catching the
+      # class of drift where a daemon-silence-monitor.sh expectation entry
+      # goes stale after a rename/refactor and can never pass its own check.
+      - name: Daemon contract test (INFRA-2356)
+        run: bash scripts/ci/test-daemon-contract.sh
+
       # INFRA-2419: plist-no-tmp-paths gate — verifies no plist template bakes
       # an ephemeral temp path (/tmp/, /private/tmp/, /var/folders/, $TMPDIR)
       # into ProgramArguments or WorkingDirectory. Root cause of the 145-crash

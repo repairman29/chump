@@ -46,29 +46,39 @@ daemons:
 
   - daemon: dev.chump.queue-driver
     description: BEHIND PR scan + DIRTY PR rebase per INFRA-1081/INFRA-1137
+    # INFRA-2356: corrected to match scripts/coord/queue-driver.sh's actual
+    # emit_ambient calls (the prior tick/behind_refreshed/dirty_rebased/
+    # no_action kinds were never emitted — contract drift caught by
+    # scripts/ci/test-daemon-contract.sh).
     expected_kinds:
-      - queue_driver_tick
-      - queue_driver_behind_refreshed
-      - queue_driver_dirty_rebased
-      - queue_driver_no_action
+      - cascade_rebase_triggered
+      - cascade_rebase_pr_result
+      - dirty_pr_auto_resolved
+      - queue_driver_iter_attempted
     min_per_hour: 1
     eligibility: "true"
 
   - daemon: dev.chump.stale-pr-reaper
     description: closes/cancels PRs stuck >24h per INFRA-NNN
+    # INFRA-2356: corrected to match scripts/ops/stale-pr-reaper.sh's actual
+    # respawn_emit/printf calls — the prior reaped/no_candidate/reaper_tick
+    # kinds predate a rename to the respawn-cycle event names.
     expected_kinds:
-      - stale_pr_reaped
-      - stale_pr_no_candidate
-      - stale_pr_reaper_tick
+      - curator_skip_active_rebase
+      - reaper_holding_for_trunk_red
+      - pr_stuck_cycle_1_rebase_attempted
+      - pr_auto_closed_for_respawn
     min_per_hour: 1
     eligibility: "true"
 
   - daemon: dev.chump.disk-health-monitor
-    description: emits disk_critical / disk_warning per INFRA-2304
+    description: emits disk_critical / disk_low per INFRA-2304
+    # INFRA-2356: corrected to match scripts/ops/disk-health-monitor.sh's
+    # actual emit_ambient calls (disk_health_tick/disk_warning/disk_ok were
+    # never emitted; the script is alert-only — disk_low/disk_critical).
     expected_kinds:
-      - disk_health_tick
       - disk_critical
-      - disk_warning
-      - disk_ok
+      - disk_low
+      - disk_critical_auto_remediated
     min_per_hour: 1
     eligibility: "true"
