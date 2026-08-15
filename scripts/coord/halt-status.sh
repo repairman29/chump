@@ -16,8 +16,8 @@
 # Env overrides (all test hooks, so this is runnable off-host and in CI):
 #   CHUMP_AUTON_FILE            default ~/.chump/AUTONOMY_LEVEL
 #   CHUMP_FLEET_PAUSE_FILE      default <repo>/.chump/fleet-paused
-#   CHUMP_HALT_STATUS_SKIP_SYSTEMD  1 = skip the systemd worker-unit probe
-#     (set automatically off-Linux / when systemctl is unavailable)
+#   CHUMP_HALT_STATUS_SYSTEMD_PROBE 1 = run the systemd worker-unit probe (default),
+#     0 = skip it. Auto-skipped off-Linux / when systemctl is unavailable.
 #
 # Exit codes:
 #   0  no organ is currently halting the fleet
@@ -45,7 +45,7 @@ if [[ -f "$PAUSE_FILE" ]]; then
 fi
 
 # ── 3. back-pressure breaker: disabled worker units (systemd, best-effort) ──
-if [[ "${CHUMP_HALT_STATUS_SKIP_SYSTEMD:-0}" != "1" ]] && command -v systemctl >/dev/null 2>&1; then
+if [[ "${CHUMP_HALT_STATUS_SYSTEMD_PROBE:-1}" == "1" ]] && command -v systemctl >/dev/null 2>&1; then
     running="$(systemctl list-units 2>/dev/null | grep -c 'chump-worker@[0-9].*running' || echo 0)"
     if [[ "$running" == "0" ]]; then
         active+=("no chump-worker@N.service units running (systemd)")

@@ -78,12 +78,3 @@ CHUMP_SCCACHE_HIT_RATE_CHECK
 # pause; emits kind=binary_auto_deploy_skipped. Deletion path: when daemon gains
 # an explicit pause/resume CLI (MISSION-013 or later) we remove this env var.
 CHUMP_SKIP_AUTO_DEPLOY
-
-# CHUMP_HALT_STATUS_SKIP_SYSTEMD — test/portability hook for the RESILIENT-326
-# halt-status.sh board instrument. Skips the systemd worker-unit probe so the
-# instrument is testable off-Linux and in CI sandboxes without a live systemd.
-# Bypass-Justification: RESILIENT-326 — not a safety-gate bypass, a platform
-# portability hook for a read-only reporting script (halt-status.sh mutates no
-# state). Deletion path: n/a — this is the permanent test-hook shape for a
-# systemd-dependent read-only probe, same pattern as other *_SKIP_SYSTEMD hooks.
-CHUMP_HALT_STATUS_SKIP_SYSTEMD
