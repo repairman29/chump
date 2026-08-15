@@ -1441,6 +1441,438 @@ pub fn build_impact_section(repo_root: &Path) -> ImpactRatingSection {
     }
 }
 
+// ── Integration Cycle Dashboard (INFRA-2143) ────────────────────────────────
+//
+// Cross-references: INFRA-2132 (integration_cycle_* ambient events read here),
+// INFRA-2137 (bisect_quarantined status + `bisect_quarantine` event), INFRA-2142
+// (SLO thresholds shown alongside each metric), DOC-063 (the CI-bottleneck
+// review this dashboard measures success against).
+//
+// Data sources:
+//   - ambient.jsonl: integration_cycle_started/completed/shipped/failed/
+//     dry_run_completed, integration_preflight_started/failed, bisect_quarantine,
+//     graphql_exhausted, ci_flake_rerun (all within the requested window).
+//   - GitHub Actions API (best-effort, `gh` CLI): CI-runs-per-shipped-gap. When
+//     `gh` is unavailable/unauthenticated (e.g. in tests, or an offline
+//     checkout) the section renders "—" for that one metric rather than
+//     failing the whole report — every other metric is ambient-only and does
+//     not depend on network access.
+
+/// One resolved integration cycle: its `cycle_id`, start time, and (if it
+/// reached a terminal state within the window) end time.
+#[derive(Debug, Clone, Default)]
+struct CycleSpan {
+    started_at: Option<u64>,
+    ended_at: Option<u64>,
+    shipped_gap_count: Option<u64>,
+    shipped: bool,
+    preflight_failed: bool,
+}
+
+/// `chump kpi report --integration` dashboard section.
+#[derive(Debug, Clone, Default)]
+pub struct IntegrationCycleSection {
+    pub window_days: f64,
+    pub cycles_started: u64,
+    pub cycles_shipped: u64,
+    pub gaps_shipped: u64,
+    pub p50_wall_minutes: Option<f64>,
+    pub p95_wall_minutes: Option<f64>,
+    pub ci_runs_per_shipped_gap: Option<f64>,
+    pub runner_peak_util_pct: Option<f64>,
+    pub wall_time_saved_hours: f64,
+    pub quarantined_count: u64,
+    pub bisect_quarantine_rate_pct: f64,
+    pub cycles_zero_fail: u64,
+    pub rerun_cycles: u64,
+    pub graphql_exhaustion_per_day: f64,
+    pub operator_flake_rerun_per_day: f64,
+}
+
+impl IntegrationCycleSection {
+    pub fn mean_gaps_per_cycle(&self) -> f64 {
+        if self.cycles_shipped == 0 {
+            0.0
+        } else {
+            self.gaps_shipped as f64 / self.cycles_shipped as f64
+        }
+    }
+
+    pub fn cycles_zero_fail_pct(&self) -> f64 {
+        if self.cycles_started == 0 {
+            0.0
+        } else {
+            self.cycles_zero_fail as f64 / self.cycles_started as f64 * 100.0
+        }
+    }
+
+    pub fn render_text(&self) -> String {
+        let fmt_min = |v: Option<f64>| {
+            v.map(|m| format!("{m:.1} min"))
+                .unwrap_or_else(|| "—".to_string())
+        };
+        let fmt_pct = |v: Option<f64>| {
+            v.map(|p| format!("{p:.0}%"))
+                .unwrap_or_else(|| "—".to_string())
+        };
+        let fmt_ratio = |v: Option<f64>| {
+            v.map(|r| format!("{r:.2}"))
+                .unwrap_or_else(|| "—".to_string())
+        };
+        let mut out = String::new();
+        out.push_str(&format!(
+            "═══ Integration Cycle Dashboard (last {}d) ═══\n\n",
+            self.window_days
+        ));
+        out.push_str("SHIP VELOCITY\n");
+        out.push_str(&format!(
+            "  Cycles shipped:        {}\n",
+            self.cycles_shipped
+        ));
+        out.push_str(&format!("  Gaps shipped:          {}\n", self.gaps_shipped));
+        out.push_str(&format!(
+            "  Mean gaps per cycle:   {:.2}\n",
+            self.mean_gaps_per_cycle()
+        ));
+        out.push_str(&format!(
+            "  P50 cycle wall time:   {}\n",
+            fmt_min(self.p50_wall_minutes)
+        ));
+        out.push_str(&format!(
+            "  P95 cycle wall time:   {}\n\n",
+            fmt_min(self.p95_wall_minutes)
+        ));
+        out.push_str("EFFICIENCY VS PER-PR BASELINE\n");
+        out.push_str(&format!(
+            "  CI runs / shipped gap: {}  (target: < 0.15)\n",
+            fmt_ratio(self.ci_runs_per_shipped_gap)
+        ));
+        out.push_str(&format!(
+            "  Runner peak util:      {}   (target: < 50%)\n",
+            fmt_pct(self.runner_peak_util_pct)
+        ));
+        out.push_str(&format!(
+            "  Wall time saved est:   {:.1} hours (vs hypothetical per-PR baseline)\n\n",
+            self.wall_time_saved_hours
+        ));
+        out.push_str("QUALITY\n");
+        out.push_str(&format!(
+            "  Bisect-quarantine rate: {:.1}%  (target: < 5%)\n",
+            self.bisect_quarantine_rate_pct
+        ));
+        out.push_str(&format!(
+            "  Cycles with 0 fails:    {}/{} ({:.0}%)\n",
+            self.cycles_zero_fail,
+            self.cycles_started,
+            self.cycles_zero_fail_pct()
+        ));
+        out.push_str(&format!(
+            "  Rerun cycles:           {}\n\n",
+            self.rerun_cycles
+        ));
+        out.push_str("EXTERNAL COSTS\n");
+        out.push_str(&format!(
+            "  GraphQL exhaustion / day:  {:.1}  (target: < 0.5)\n",
+            self.graphql_exhaustion_per_day
+        ));
+        out.push_str(&format!(
+            "  Operator flake-rerun interventions / day: {:.1} (target: < 1)\n",
+            self.operator_flake_rerun_per_day
+        ));
+        out
+    }
+
+    pub fn render_json(&self) -> String {
+        let opt_f64 = |v: Option<f64>| {
+            v.map(|n| n.to_string())
+                .unwrap_or_else(|| "null".to_string())
+        };
+        format!(
+            r#"{{"window_days":{},"cycles_started":{},"cycles_shipped":{},"gaps_shipped":{},"mean_gaps_per_cycle":{:.2},"p50_wall_minutes":{},"p95_wall_minutes":{},"ci_runs_per_shipped_gap":{},"runner_peak_util_pct":{},"wall_time_saved_hours":{:.2},"quarantined_count":{},"bisect_quarantine_rate_pct":{:.1},"cycles_zero_fail":{},"cycles_zero_fail_pct":{:.1},"rerun_cycles":{},"graphql_exhaustion_per_day":{:.2},"operator_flake_rerun_per_day":{:.2}}}"#,
+            self.window_days,
+            self.cycles_started,
+            self.cycles_shipped,
+            self.gaps_shipped,
+            self.mean_gaps_per_cycle(),
+            opt_f64(self.p50_wall_minutes),
+            opt_f64(self.p95_wall_minutes),
+            opt_f64(self.ci_runs_per_shipped_gap),
+            opt_f64(self.runner_peak_util_pct),
+            self.wall_time_saved_hours,
+            self.quarantined_count,
+            self.bisect_quarantine_rate_pct,
+            self.cycles_zero_fail,
+            self.cycles_zero_fail_pct(),
+            self.rerun_cycles,
+            self.graphql_exhaustion_per_day,
+            self.operator_flake_rerun_per_day,
+        )
+    }
+}
+
+fn percentile_f64(sorted: &[f64], pct: usize) -> Option<f64> {
+    if sorted.is_empty() {
+        return None;
+    }
+    let rank = (pct * sorted.len()).div_ceil(100);
+    let idx = rank.saturating_sub(1).min(sorted.len() - 1);
+    Some(sorted[idx])
+}
+
+/// Build the integration-cycle dashboard by scanning `ambient.jsonl` for the
+/// last `window_hours` hours. `window_hours` of 168 == 7d (the default),
+/// 720 == 30d.
+pub fn build_integration_cycle_section(
+    repo_root: &Path,
+    window_hours: u64,
+) -> IntegrationCycleSection {
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+    let cutoff = current_unix().saturating_sub(window_hours * 3600);
+
+    let mut cycles: BTreeMap<String, CycleSpan> = BTreeMap::new();
+    let mut quarantined_count: u64 = 0;
+    let mut graphql_exhausted_count: u64 = 0;
+    let mut ci_flake_rerun_count: u64 = 0;
+
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        let ts_unix = extract_field(line, "ts").and_then(|t| parse_iso8601_to_unix(&t));
+        let in_window = ts_unix.map(|t| t >= cutoff).unwrap_or(false);
+        if !in_window {
+            continue;
+        }
+
+        match kind.as_str() {
+            "integration_cycle_started" => {
+                if let Some(cid) = extract_field(line, "cycle_id") {
+                    cycles.entry(cid).or_default().started_at = ts_unix;
+                }
+            }
+            "integration_cycle_shipped" => {
+                if let Some(cid) = extract_field(line, "cycle_id") {
+                    let span = cycles.entry(cid).or_default();
+                    span.ended_at = ts_unix;
+                    span.shipped = true;
+                    span.shipped_gap_count = extract_int_field(line, "gap_count");
+                }
+            }
+            "integration_cycle_failed" | "integration_cycle_dry_run_completed" => {
+                if let Some(cid) = extract_field(line, "cycle_id") {
+                    let span = cycles.entry(cid).or_default();
+                    if span.ended_at.is_none() {
+                        span.ended_at = ts_unix;
+                    }
+                }
+            }
+            "integration_preflight_failed" => {
+                if let Some(cid) = extract_field(line, "cycle_id") {
+                    cycles.entry(cid).or_default().preflight_failed = true;
+                }
+            }
+            "bisect_quarantine" => {
+                quarantined_count += 1;
+            }
+            "graphql_exhausted" => {
+                graphql_exhausted_count += 1;
+            }
+            "ci_flake_rerun" => {
+                ci_flake_rerun_count += 1;
+            }
+            _ => {}
+        }
+    }
+
+    let cycles_started = cycles.values().filter(|c| c.started_at.is_some()).count() as u64;
+    let shipped_spans: Vec<&CycleSpan> = cycles.values().filter(|c| c.shipped).collect();
+    let cycles_shipped = shipped_spans.len() as u64;
+    let gaps_shipped: u64 = shipped_spans
+        .iter()
+        .filter_map(|c| c.shipped_gap_count)
+        .sum();
+    let rerun_cycles = cycles.values().filter(|c| c.preflight_failed).count() as u64;
+    let cycles_zero_fail = cycles
+        .values()
+        .filter(|c| c.started_at.is_some() && !c.preflight_failed)
+        .count() as u64;
+
+    let mut wall_minutes: Vec<f64> = cycles
+        .values()
+        .filter_map(|c| match (c.started_at, c.ended_at) {
+            (Some(s), Some(e)) if e >= s => Some((e - s) as f64 / 60.0),
+            _ => None,
+        })
+        .collect();
+    wall_minutes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p50_wall_minutes = percentile_f64(&wall_minutes, 50);
+    let p95_wall_minutes = percentile_f64(&wall_minutes, 95);
+
+    let total_candidates = gaps_shipped + quarantined_count;
+    let bisect_quarantine_rate_pct = if total_candidates == 0 {
+        0.0
+    } else {
+        quarantined_count as f64 / total_candidates as f64 * 100.0
+    };
+
+    // Wall-time-saved heuristic: gaps that rode along in a shared cycle instead
+    // of paying for a dedicated per-PR CI cycle each. Baseline = one cycle's
+    // worth of wall time per gap; actual = one cycle's worth per cycle shipped.
+    let avg_wall_minutes = if wall_minutes.is_empty() {
+        0.0
+    } else {
+        wall_minutes.iter().sum::<f64>() / wall_minutes.len() as f64
+    };
+    let wall_time_saved_hours = if cycles_shipped == 0 || gaps_shipped <= cycles_shipped {
+        0.0
+    } else {
+        (gaps_shipped - cycles_shipped) as f64 * avg_wall_minutes / 60.0
+    };
+
+    let window_days = window_hours as f64 / 24.0;
+    let graphql_exhaustion_per_day = graphql_exhausted_count as f64 / window_days.max(1.0 / 24.0);
+    let operator_flake_rerun_per_day = ci_flake_rerun_count as f64 / window_days.max(1.0 / 24.0);
+
+    let (ci_runs_per_shipped_gap, runner_peak_util_pct) =
+        fetch_gh_actions_metrics(repo_root, window_hours, gaps_shipped);
+
+    IntegrationCycleSection {
+        window_days,
+        cycles_started,
+        cycles_shipped,
+        gaps_shipped,
+        p50_wall_minutes,
+        p95_wall_minutes,
+        ci_runs_per_shipped_gap,
+        runner_peak_util_pct,
+        wall_time_saved_hours,
+        quarantined_count,
+        bisect_quarantine_rate_pct,
+        cycles_zero_fail,
+        rerun_cycles,
+        graphql_exhaustion_per_day,
+        operator_flake_rerun_per_day,
+    }
+}
+
+/// Best-effort GitHub Actions run count via the `gh` CLI. Returns
+/// `(ci_runs_per_shipped_gap, runner_peak_util_pct)`, both `None` when `gh`
+/// is missing/unauthenticated, the repo has no `origin` remote, or the API
+/// call otherwise fails — callers render `None` as "—" rather than treating
+/// it as an error. Runner peak util is a point-in-time snapshot of
+/// in-progress runs (true peak-over-window tracking is a follow-up: it needs
+/// a sampling daemon, not a single report-time API call).
+fn fetch_gh_actions_metrics(
+    repo_root: &Path,
+    window_hours: u64,
+    gaps_shipped: u64,
+) -> (Option<f64>, Option<f64>) {
+    if gaps_shipped == 0 {
+        return (None, None);
+    }
+    let Some((owner, repo)) = resolve_repo_slug(repo_root) else {
+        return (None, None);
+    };
+    let since = current_unix().saturating_sub(window_hours * 3600);
+    let since_iso = unix_to_iso8601(since);
+
+    let runs_out = std::process::Command::new("gh")
+        .args([
+            "api",
+            &format!("repos/{owner}/{repo}/actions/runs?per_page=100&created=>={since_iso}"),
+            "-q",
+            ".total_count",
+        ])
+        .output();
+    let ci_runs_per_shipped_gap = match runs_out {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .map(|n| n as f64 / gaps_shipped as f64),
+        _ => None,
+    };
+
+    let inflight_out = std::process::Command::new("gh")
+        .args([
+            "api",
+            &format!("repos/{owner}/{repo}/actions/runs?status=in_progress&per_page=100"),
+            "-q",
+            ".total_count",
+        ])
+        .output();
+    // CHUMP_RUNNER_POOL_SIZE: number of self-hosted runners in the pool, used
+    // to turn an in-flight-run count into a utilization percentage.
+    let pool_size: f64 = std::env::var("CHUMP_RUNNER_POOL_SIZE")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(4.0)
+        .max(1.0);
+    let runner_peak_util_pct = match inflight_out {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .map(|n| (n as f64 / pool_size * 100.0).min(100.0)),
+        _ => None,
+    };
+
+    (ci_runs_per_shipped_gap, runner_peak_util_pct)
+}
+
+/// Resolve `OWNER/REPO` from `git remote get-url origin`. Falls back to
+/// `CHUMP_INVENTORY_REPO` (form: "owner/repo") for tests — same env var
+/// `chump-inventory::resolve_repo_slug` uses, so a single override works
+/// fleet-wide.
+fn resolve_repo_slug(root: &Path) -> Option<(String, String)> {
+    if let Ok(slug) = std::env::var("CHUMP_INVENTORY_REPO") {
+        let parts: Vec<&str> = slug.split('/').collect();
+        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Some((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    let out = std::process::Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let stripped = url
+        .trim_end_matches(".git")
+        .trim_end_matches('/')
+        .to_string();
+    let idx = stripped.find("github.com")?;
+    let after = &stripped[idx + "github.com".len()..];
+    let tail = after.trim_start_matches(':').trim_start_matches('/');
+    let parts: Vec<&str> = tail.split('/').collect();
+    if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+        Some((parts[0].to_string(), parts[1].to_string()))
+    } else {
+        None
+    }
+}
+
+fn unix_to_iso8601(ts: u64) -> String {
+    let days = ts / 86_400;
+    let rem = ts % 86_400;
+    let hour = rem / 3600;
+    let min = (rem % 3600) / 60;
+    let sec = rem % 60;
+    let jdn = days as i64 + 2_440_588;
+    let a = jdn + 32_044;
+    let b = (4 * a + 3) / 146_097;
+    let c = a - (146_097 * b) / 4;
+    let d = (4 * c + 3) / 1461;
+    let e = c - (1461 * d) / 4;
+    let m = (5 * e + 2) / 153;
+    let day = e - (153 * m + 2) / 5 + 1;
+    let month = m + 3 - 12 * (m / 10);
+    let year = 100 * b + d - 4800 + m / 10;
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{min:02}:{sec:02}Z")
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -2055,5 +2487,232 @@ mod tests {
         use chump_waste_tally::waste_tally::WASTE_KINDS;
         assert!(WASTE_KINDS.contains(&"review_handoff_failed"));
         assert!(WASTE_KINDS.contains(&"review_handoff_timeout"));
+    }
+
+    // ── INFRA-2143: Integration Cycle Dashboard tests ───────────────────────
+
+    /// ISO-8601 timestamp `hours_ago` hours before now (test-only helper;
+    /// exercises the same `unix_to_iso8601` the production gh-metrics path uses).
+    fn ts_hours_ago(hours_ago: u64) -> String {
+        unix_to_iso8601(current_unix().saturating_sub(hours_ago * 3600))
+    }
+
+    #[test]
+    fn integration_cycle_empty_dataset() {
+        let tmp = tempdir();
+        let section = build_integration_cycle_section(&tmp, 168);
+        assert_eq!(section.cycles_started, 0);
+        assert_eq!(section.cycles_shipped, 0);
+        assert_eq!(section.gaps_shipped, 0);
+        assert_eq!(section.mean_gaps_per_cycle(), 0.0);
+        assert!(section.p50_wall_minutes.is_none());
+        assert!(section.p95_wall_minutes.is_none());
+        assert_eq!(section.bisect_quarantine_rate_pct, 0.0);
+        assert_eq!(section.wall_time_saved_hours, 0.0);
+        assert_eq!(section.graphql_exhaustion_per_day, 0.0);
+        assert_eq!(section.operator_flake_rerun_per_day, 0.0);
+    }
+
+    #[test]
+    fn integration_cycle_one_cycle_zero_quarantine() {
+        let tmp = tempdir();
+        let t_start = ts_hours_ago(2);
+        let t_end = ts_hours_ago(1);
+        write_ambient(
+            &tmp,
+            &[
+                &format!(
+                    r#"{{"ts":"{t_start}","kind":"integration_cycle_started","cycle_id":"c1"}}"#
+                ),
+                &format!(
+                    r#"{{"ts":"{t_end}","kind":"integration_cycle_shipped","cycle_id":"c1","gap_count":3}}"#
+                ),
+            ],
+        );
+        let section = build_integration_cycle_section(&tmp, 168);
+        assert_eq!(section.cycles_started, 1);
+        assert_eq!(section.cycles_shipped, 1);
+        assert_eq!(section.gaps_shipped, 3);
+        assert_eq!(section.cycles_zero_fail, 1);
+        assert_eq!(section.rerun_cycles, 0);
+        assert_eq!(section.quarantined_count, 0);
+        assert_eq!(section.bisect_quarantine_rate_pct, 0.0);
+        assert!(section.p50_wall_minutes.is_some());
+        // 1 hour = 60 minutes wall time.
+        assert!((section.p50_wall_minutes.unwrap() - 60.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn integration_cycle_multi_cycle_mixed_quality() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                // Cycle 1: clean ship, 2 gaps.
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_started","cycle_id":"c1"}}"#,
+                    ts_hours_ago(10)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_shipped","cycle_id":"c1","gap_count":2}}"#,
+                    ts_hours_ago(9)
+                ),
+                // Cycle 2: preflight failure, one gap quarantined, then ships 1 gap.
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_started","cycle_id":"c2"}}"#,
+                    ts_hours_ago(8)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_preflight_failed","cycle_id":"c2"}}"#,
+                    ts_hours_ago(7)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"bisect_quarantine","cycle_id":"c2","gap_id":"INFRA-9"}}"#,
+                    ts_hours_ago(7)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_shipped","cycle_id":"c2","gap_count":1}}"#,
+                    ts_hours_ago(6)
+                ),
+                // Cycle 3: aborted entirely (failed, nothing shipped).
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_started","cycle_id":"c3"}}"#,
+                    ts_hours_ago(5)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_failed","cycle_id":"c3"}}"#,
+                    ts_hours_ago(4)
+                ),
+                // External costs.
+                &format!(
+                    r#"{{"ts":"{}","kind":"graphql_exhausted"}}"#,
+                    ts_hours_ago(3)
+                ),
+                &format!(r#"{{"ts":"{}","kind":"ci_flake_rerun"}}"#, ts_hours_ago(3)),
+            ],
+        );
+        let section = build_integration_cycle_section(&tmp, 168);
+        assert_eq!(section.cycles_started, 3);
+        assert_eq!(section.cycles_shipped, 2);
+        assert_eq!(section.gaps_shipped, 3);
+        assert_eq!(section.quarantined_count, 1);
+        assert_eq!(section.rerun_cycles, 1);
+        assert_eq!(section.cycles_zero_fail, 2);
+        // quarantine rate = 1 / (3 shipped + 1 quarantined) = 25%.
+        assert!((section.bisect_quarantine_rate_pct - 25.0).abs() < 0.01);
+        assert!(section.graphql_exhaustion_per_day > 0.0);
+        assert!(section.operator_flake_rerun_per_day > 0.0);
+        // gaps_shipped(3) > cycles_shipped(2) → some wall time saved.
+        assert!(section.wall_time_saved_hours > 0.0);
+    }
+
+    #[test]
+    fn integration_cycle_events_outside_window_excluded() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_started","cycle_id":"old"}}"#,
+                    ts_hours_ago(1000)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_shipped","cycle_id":"old","gap_count":9}}"#,
+                    ts_hours_ago(999)
+                ),
+            ],
+        );
+        // 168h (7d) window — a 1000h-old event must not count.
+        let section = build_integration_cycle_section(&tmp, 168);
+        assert_eq!(section.cycles_started, 0);
+        assert_eq!(section.gaps_shipped, 0);
+    }
+
+    #[test]
+    fn integration_cycle_window_override_30d() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_started","cycle_id":"c1"}}"#,
+                    ts_hours_ago(400)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_shipped","cycle_id":"c1","gap_count":1}}"#,
+                    ts_hours_ago(399)
+                ),
+            ],
+        );
+        // 400h ago is outside 7d (168h) but inside 30d (720h).
+        let narrow = build_integration_cycle_section(&tmp, 168);
+        let wide = build_integration_cycle_section(&tmp, 720);
+        assert_eq!(narrow.cycles_started, 0);
+        assert_eq!(wide.cycles_started, 1);
+        assert_eq!(wide.gaps_shipped, 1);
+    }
+
+    #[test]
+    fn integration_cycle_render_text_contains_sections() {
+        let tmp = tempdir();
+        let section = build_integration_cycle_section(&tmp, 168);
+        let text = section.render_text();
+        assert!(text.contains("Integration Cycle Dashboard"));
+        assert!(text.contains("SHIP VELOCITY"));
+        assert!(text.contains("EFFICIENCY VS PER-PR BASELINE"));
+        assert!(text.contains("QUALITY"));
+        assert!(text.contains("EXTERNAL COSTS"));
+    }
+
+    #[test]
+    fn integration_cycle_render_json_shape() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_started","cycle_id":"c1"}}"#,
+                    ts_hours_ago(2)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_shipped","cycle_id":"c1","gap_count":2}}"#,
+                    ts_hours_ago(1)
+                ),
+            ],
+        );
+        let section = build_integration_cycle_section(&tmp, 168);
+        let json = section.render_json();
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(parsed["cycles_shipped"], 1);
+        assert_eq!(parsed["gaps_shipped"], 2);
+        assert!(parsed.get("bisect_quarantine_rate_pct").is_some());
+        assert!(parsed.get("p50_wall_minutes").is_some());
+    }
+
+    #[test]
+    fn integration_cycle_gh_metrics_none_when_no_remote() {
+        // No git remote configured in the temp dir → best-effort gh lookup
+        // degrades to None rather than erroring the whole report.
+        let tmp = tempdir();
+        let (ci_runs, runner_util) = fetch_gh_actions_metrics(&tmp, 168, 5);
+        assert!(ci_runs.is_none());
+        assert!(runner_util.is_none());
+    }
+
+    #[test]
+    fn integration_cycle_gh_metrics_none_when_zero_gaps_shipped() {
+        let tmp = tempdir();
+        let (ci_runs, runner_util) = fetch_gh_actions_metrics(&tmp, 168, 0);
+        assert!(ci_runs.is_none());
+        assert!(runner_util.is_none());
+    }
+
+    #[test]
+    fn resolve_repo_slug_env_override() {
+        std::env::set_var("CHUMP_INVENTORY_REPO", "repairman29/chump");
+        let tmp = tempdir();
+        let slug = resolve_repo_slug(&tmp);
+        std::env::remove_var("CHUMP_INVENTORY_REPO");
+        assert_eq!(slug, Some(("repairman29".to_string(), "chump".to_string())));
     }
 }

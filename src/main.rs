@@ -997,6 +997,10 @@ fn print_help() {
     println!("  kpi report --agents  per-agent throughput (ships/fails/P50)");
     println!("  kpi report --agents --date YYYY-MM-DD  specific date");
     println!("  kpi report --claims  claim-lint bust-rate per model (CREDIBLE-208)");
+    println!(
+        "  kpi report --integration  integration-cycle dashboard: ship velocity, CI efficiency, quality, external costs (INFRA-2143)"
+    );
+    println!("  kpi report --integration --window 24h|7d|30d  window override (default 7d)");
     println!("  claim-lint --range <base>..<head>  ground ship-time claims against the diff (CREDIBLE-208)");
     println!("  cost-watch  (alias: cs)  real-time inference spend + per-slot breakdown");
     println!("  cost record-pr     attach cost metadata to a merged PR");
@@ -15789,8 +15793,35 @@ async fn main() -> Result<()> {
         let want_impact = args.iter().any(|a| a == "--impact");
         let want_agents = args.iter().any(|a| a == "--agents");
         let want_claims = args.iter().any(|a| a == "--claims");
+        let want_integration = args.iter().any(|a| a == "--integration");
 
         let repo_root = repo_path::repo_root();
+
+        // INFRA-2143: --integration shows the integration-cycle dashboard
+        // (ship velocity / CI efficiency / quality / external costs).
+        // --window accepts "24h", "7d", "30d" (bare digits treated as days);
+        // default window is 7d.
+        if want_integration {
+            let window_hours = flag("--window")
+                .map(|w| {
+                    let w = w.trim();
+                    if let Some(h) = w.strip_suffix('h') {
+                        h.parse::<u64>().unwrap_or(168)
+                    } else if let Some(d) = w.strip_suffix('d') {
+                        d.parse::<u64>().unwrap_or(7).saturating_mul(24)
+                    } else {
+                        w.parse::<u64>().unwrap_or(7).saturating_mul(24)
+                    }
+                })
+                .unwrap_or(168);
+            let section = kpi_report::build_integration_cycle_section(&repo_root, window_hours);
+            if want_json {
+                println!("{}", section.render_json());
+            } else {
+                print!("{}", section.render_text());
+            }
+            return Ok(());
+        }
 
         // CREDIBLE-208: --claims shows claim-lint bust-rate per model.
         if want_claims {
