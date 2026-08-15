@@ -16,7 +16,6 @@
 #   bash scripts/setup/chump-fleet-bootstrap.sh --skip ID,…    # install all except these IDs
 #   bash scripts/setup/chump-fleet-bootstrap.sh --priority P0  # only P0 entries
 #
-# Bypass: CHUMP_FLEET_BOOTSTRAP_CHECK=0 disables the check side-effect (still installs).
 #
 # Source: META-066 (2026-05-15 keystone — productizes the productization layer).
 

@@ -107,7 +107,6 @@ CHUMP_EXTRACT_FACT_CHARS
 CHUMP_VERSION
 
 # ── Tier 2: debug / bypass flags (advanced, not for new operators) ─────────
-CHUMP_GAP_SHIP_STALE_CHECK
 CHUMP_GAP_SHIP_SKIP_STALE_CHECK
 CHUMP_GAP_SHIP_STALE_THRESHOLD
 # Lease TTL (seconds) for a claimed gap; read by dispatch::claim (INFRA-987) and the
@@ -882,7 +881,6 @@ CHUMP_SCRATCHPAD_INJECT
 # ── INFRA-2183: worktree build-cache provisioning skip (src/worktree_build_cache.rs) ──
 # Set to 1 to skip sccache config + per-worktree CARGO_TARGET_DIR setup during
 # `chump claim`. Used in CI and contexts where build-cache provisioning is unwanted.
-CHUMP_WORKTREE_BUILD_CACHE_SKIP
 # AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
@@ -1535,7 +1533,6 @@ CHUMP_DOR_DISABLE
 CHUMP_DOR_SKIP
 CHUMP_OPENCODE_MAX_FILES
 # detected in: (standard input)
-CHUMP_OPENCODE_SKIP_SIZE_GUARD
 
 # AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
 # Replace the AUTO marker with a real description on the next commit.
