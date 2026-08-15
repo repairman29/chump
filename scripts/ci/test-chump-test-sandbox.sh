@@ -92,7 +92,7 @@ before_real=$(query_real_db)
 (
     cd "$SANDBOX"
     CHUMP_HOME="$SANDBOX" CHUMP_REPO="$SANDBOX" CHUMP_REPO_ROOT="$SANDBOX" \
-    CHUMP_GAP_RESERVE_NO_OUTCOME=1 CHUMP_ALLOW_MAIN_WORKTREE=1 \
+    CHUMP_ALLOW_MAIN_WORKTREE=1 \
     FLEET_029_AMBIENT_GLANCE_SKIP=1 \
     "$CHUMP_BIN" gap reserve --domain SBX --title "sandbox-test-title reserve smoke" \
         >/dev/null 2>&1

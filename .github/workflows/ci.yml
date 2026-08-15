@@ -1204,9 +1204,7 @@ jobs:
           bash scripts/ci/test-gap-reserve-padding.sh
 
       - name: chump test-sandbox primitive smoke test (INFRA-2088)
-        run: |
-          export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$(pwd)/target}"
-          bash scripts/ci/test-chump-test-sandbox.sh
+        run: CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$(pwd)/target}" bash scripts/ci/test-chump-test-sandbox.sh
 
       - name: sandbox-discipline lint — no new hand-rolled test sandboxes (INFRA-2088)
         run: bash scripts/ci/test-sandbox-discipline.sh
