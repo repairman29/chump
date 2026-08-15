@@ -588,6 +588,17 @@ def main() -> int:
     worker_model = os.environ.get("FLEET_MODEL", "haiku").lower()
     exclude_re = re.compile(os.environ.get("EXCLUDE_RE", "^$"))
     active = set(os.environ.get("ACTIVE_GAPS", "").split())
+    # RESILIENT-332 (anti-spin, Layer B): gaps that already have an open PR /
+    # in-progress branch on origin must NEVER be offered — a completed-but-
+    # unmerged gap (e.g. RESILIENT-327 / PR #3795) stayed pickable and got
+    # re-picked into a spin (108 worker_stuck/15min, 2026-08-15). worker.sh
+    # computes this set from `git ls-remote` (branch convention
+    # chump/<gapid>-fleet-*) and passes it here, mirroring the ACTIVE_GAPS
+    # lease-exclusion pattern. This is complementary to lease-exclusion:
+    # leases cover pre-push in-flight work, branches cover post-push
+    # awaiting-merge work. Empty/unset = no exclusion (graceful; Layers A+C
+    # still prevent the spin on nodes where the set can't be computed).
+    in_progress = set(os.environ.get("IN_PROGRESS_GAPS", "").split())
     cooled = cooled_down_gaps(
         os.environ.get("COOLDOWN_DIR", ""),
         worker_id=os.environ.get("WORKER_ID", os.environ.get("AGENT_ID", "")),
@@ -631,6 +642,10 @@ def main() -> int:
     for g in gaps:
         gid = g.get("id", "")
         if not gid or gid in active:
+            continue
+        # RESILIENT-332 (anti-spin, Layer B): skip gaps with an open PR /
+        # in-progress branch on origin (see IN_PROGRESS_GAPS above).
+        if gid in in_progress:
             continue
         if gid in cooled:
             continue

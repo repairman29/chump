@@ -255,6 +255,148 @@ if "$SYSTEMCTL_BIN" list-unit-files --no-legend 'chump-worker@.service' 2>/dev/n
     fi
 fi
 
+# ── 4. Spinning-worker detection & heal (RESILIENT-332) ─────────────────────
+# 2026-08-15 incident: worker 2 emitted worker_stuck reason=preflight_fail 108x
+# in 15min — it kept re-picking two stale-open gaps that failed pre-pick
+# preflight, doing zero work, while looking perfectly healthy to the
+# heartbeat-based fleet-worker-watchdog (a spinning worker updates its
+# heartbeat every cycle — the silent-worker detector is blind to it). The OS
+# emitted the worker_stuck signal 108x and NOTHING consumed it. This section
+# is the safety net: it detects a worker spinning on preflight_fail from the
+# ambient stream and auto-heals it — restart the worker unit + clear the
+# offending stale claim so the picker advances past it. Layers A+B in
+# worker.sh/_pick_and_claim_gap.py make the spin structurally impossible at
+# the root; this is defence-in-depth for a worker running older code or an
+# edge case the picker can't see.
+#
+# Only runs when the chump-worker@.service template is installed (same guard
+# as section 3 — a dev/laptop node has no worker units to restart).
+# Tunables: CHUMP_WORKER_SPIN_THRESHOLD (default 20 worker_stuck in the
+# window), CHUMP_WORKER_SPIN_WINDOW_S (default 600), CHUMP_WORKER_SPIN_IDS
+# (default "1 2"), CHUMP_WORKER_SPIN_HEAL_COOLDOWN_S (min gap between heals of
+# the same worker, default = window) so a heal isn't re-fired every tick while
+# stale events age out of the window.
+LOCKS_DIR="$(dirname "$AMBIENT_LOG")"
+if "$SYSTEMCTL_BIN" list-unit-files --no-legend 'chump-worker@.service' 2>/dev/null | grep -q .; then
+    SPIN_THRESHOLD="${CHUMP_WORKER_SPIN_THRESHOLD:-20}"
+    SPIN_WINDOW_S="${CHUMP_WORKER_SPIN_WINDOW_S:-600}"
+    SPIN_IDS="${CHUMP_WORKER_SPIN_IDS:-1 2}"
+    SPIN_HEAL_COOLDOWN_S="${CHUMP_WORKER_SPIN_HEAL_COOLDOWN_S:-$SPIN_WINDOW_S}"
+
+    # Count worker_stuck (reason=preflight_fail) per agent within the window,
+    # and report the single most-repeated offending gap per spinning agent.
+    # Emits one line per spinning agent: "<agent_id> <count> <gap_id>".
+    SPIN_REPORT="$(
+        CHUMP_SPIN_WINDOW_S="$SPIN_WINDOW_S" \
+        CHUMP_SPIN_THRESHOLD="$SPIN_THRESHOLD" \
+        AMBIENT_LOG="$AMBIENT_LOG" \
+        python3 - <<'PY' 2>/dev/null || true
+import collections, json, os, time
+from datetime import datetime
+
+path = os.environ["AMBIENT_LOG"]
+window = int(os.environ.get("CHUMP_SPIN_WINDOW_S", "600"))
+threshold = int(os.environ.get("CHUMP_SPIN_THRESHOLD", "20"))
+now = time.time()
+counts = collections.Counter()
+gaps = collections.defaultdict(collections.Counter)
+try:
+    with open(path) as f:
+        lines = f.readlines()[-4000:]
+except OSError:
+    lines = []
+for line in lines:
+    try:
+        e = json.loads(line)
+    except Exception:
+        continue
+    if e.get("kind") != "worker_stuck":
+        continue
+    reason = (e.get("reason") or "")
+    if not reason.startswith("preflight_fail"):
+        continue
+    ts = e.get("ts", "")
+    try:
+        t = datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        continue
+    if now - t > window:
+        continue
+    agent = str(e.get("agent_id") or "")
+    if not agent:
+        continue
+    counts[agent] += 1
+    gid = e.get("gap_id") or ""
+    if gid:
+        gaps[agent][gid] += 1
+for agent, n in counts.items():
+    if n >= threshold:
+        top_gap = gaps[agent].most_common(1)[0][0] if gaps[agent] else ""
+        print(f"{agent} {n} {top_gap}")
+PY
+    )"
+
+    if [[ -n "$SPIN_REPORT" ]]; then
+        while IFS=' ' read -r _agent _count _gap; do
+            [[ -z "$_agent" ]] && continue
+            # Only act on configured worker IDs (avoid restarting a unit that
+            # doesn't exist on this host).
+            case " $SPIN_IDS " in *" $_agent "*) : ;; *) continue ;; esac
+
+            _unit="chump-worker@${_agent}.service"
+            _heal_state="$LOCKS_DIR/worker-spin-healed-${_agent}.ts"
+            _now_epoch="$(date +%s)"
+            if [[ -f "$_heal_state" ]]; then
+                _last="$(cat "$_heal_state" 2>/dev/null || echo 0)"
+                [[ "$_last" =~ ^[0-9]+$ ]] || _last=0
+                if (( _now_epoch - _last < SPIN_HEAL_COOLDOWN_S )); then
+                    _ago=$(( _now_epoch - _last ))
+                    echo "[organ-watchdog] worker $_agent spinning (${_count}x preflight_fail) but healed ${_ago}s ago (< ${SPIN_HEAL_COOLDOWN_S}s) — skipping re-heal"
+                    continue
+                fi
+            fi
+
+            echo "[organ-watchdog] SPIN: worker $_agent emitted ${_count}x worker_stuck/preflight_fail within ${SPIN_WINDOW_S}s (offending gap: ${_gap:-unknown})"
+            if [[ "$DRY_RUN" == "1" ]]; then
+                echo "[organ-watchdog]   (dry-run) would clear offending claim for ${_gap:-none} + restart $_unit"
+                # scanner-anchor: "kind":"worker_spin_detected"
+                emit worker_spin_detected "\"agent_id\":\"$_agent\",\"count\":$_count,\"gap_id\":\"${_gap}\",\"dry_run\":1"
+                continue
+            fi
+
+            # Clear the offending stale claim so the restarted worker (and its
+            # siblings) don't immediately re-pick the same failing gap: drop
+            # the gap lock and write a short cluster-wide cooldown that the
+            # picker's cooled_down_gaps() honors.
+            if [[ -n "$_gap" ]]; then
+                rm -f "$LOCKS_DIR/.gap-${_gap}.lock" 2>/dev/null || true
+                mkdir -p "$LOCKS_DIR/cooldown" 2>/dev/null || true
+                _cd_until=$(( _now_epoch + SPIN_WINDOW_S ))
+                printf '{"gap_id":"%s","until":%d,"agent":"watchdog","ts":"%s","reason":"worker_spin_heal"}\n' \
+                    "$_gap" "$_cd_until" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                    > "$LOCKS_DIR/cooldown/${_gap}.json" 2>/dev/null || true
+            fi
+
+            if ! "$SYSTEMCTL_BIN" restart "$_unit" 2>&1; then
+                echo "[organ-watchdog]   ERROR: restart $_unit failed" >&2
+                # scanner-anchor: "kind":"worker_spin_heal_failed"  (RESILIENT-332;
+                # fires when the restart of a spinning worker unit itself errors)
+                emit worker_spin_heal_failed "\"agent_id\":\"$_agent\",\"unit\":\"$_unit\",\"gap_id\":\"${_gap}\""
+                scan_fail=1
+                continue
+            fi
+            echo "$_now_epoch" > "$_heal_state" 2>/dev/null || true
+            echo "[organ-watchdog]   healed spinning worker $_agent (restart $_unit + cleared claim ${_gap:-none})"
+            # scanner-anchor: "kind":"worker_spin_healed"  (RESILIENT-332; fires
+            # when the watchdog restarts a worker that was spinning on
+            # preflight_fail and clears the offending stale claim — the OS
+            # acting on its own worker_stuck signal, no human step)
+            emit worker_spin_healed "\"agent_id\":\"$_agent\",\"unit\":\"$_unit\",\"count\":$_count,\"gap_id\":\"${_gap}\",\"action\":\"restart+clear-claim\""
+            healed=$((healed + 1))
+        done <<< "$SPIN_REPORT"
+    fi
+fi
+
 # Heartbeat — always emit so a dead watchdog is itself observable (paired
 # with scripts/ops/reaper-heartbeat-watchdog.sh's cadence-grading pattern).
 # scanner-anchor: "kind":"organ_watchdog_tick"  (INFRA-3595; emitted every

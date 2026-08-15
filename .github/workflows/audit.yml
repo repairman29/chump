@@ -623,6 +623,10 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-mission-picker-worker.sh
 
+      - name: worker picker anti-SPIN — advances past preflight-failing / open-PR gaps, never re-offers (RESILIENT-332)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-worker-no-spin.sh
+
       - name: worker timeout scaler — no death-spiral, derives from immutable base (RESILIENT-135)
         if: matrix.shard == 3
         run: bash scripts/ci/test-worker-timeout-scale.sh

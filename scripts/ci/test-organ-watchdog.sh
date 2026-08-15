@@ -326,4 +326,122 @@ grep -q '"kind":"worker_liveness_zero"' "$AMB12" \
 [[ -f "$TMP/worker-halt-since.ts" ]] && fail "must not create halt-tracking state on a host with no chump-worker@ template"
 pass "no chump-worker@.service template on this host: worker-liveness check is a full no-op"
 
+# ── 13-17. RESILIENT-332: spinning-worker detection & heal ──────────────────
+# 2026-08-15 incident: worker 2 emitted worker_stuck reason=preflight_fail 108x
+# in 15min, re-picking two stale-open gaps and doing zero work while looking
+# healthy to the heartbeat-based silent-worker watchdog. The OS emitted the
+# signal 108x and nothing consumed it. These prove the watchdog now ACTS on
+# its own worker_stuck stream: (13) restarts a spinning worker + clears the
+# offending claim, (14) stays quiet below threshold, (15) --dry-run detects but
+# does not mutate, (16) respects the per-worker heal-cooldown, (17) no-ops with
+# no worker template.
+
+# Seed N worker_stuck preflight_fail events for a given agent+gap, all "now".
+seed_spin_events() {  # $1=ambient-file $2=agent $3=gap $4=count
+    local amb="$1" agent="$2" gap="$3" n="$4" i ts
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    for ((i=0; i<n; i++)); do
+        printf '{"ts":"%s","kind":"worker_stuck","agent_id":"%s","session":"s","gap_id":"%s","reason":"preflight_fail: gap=%s claimed/done/missing"}\n' \
+            "$ts" "$agent" "$gap" "$gap" >> "$amb"
+    done
+}
+
+# Worker stub that also records restart calls and reports workers ACTIVE (so
+# section 3's liveness path stays quiet and doesn't muddy the assertions).
+STUB13="$TMP/systemctl-spin13"
+CALL_LOG13="$TMP/calls13.log"
+mk_worker_stub "$STUB13" "$CALL_LOG13" 0   # is-active exits 0 == active
+AMB13="$TMP/ambient13.jsonl"
+: > "$AMB13"
+seed_spin_events "$AMB13" 2 INFRA-2088 25   # 25 >= default threshold 20
+rm -f "$TMP/worker-spin-healed-2.ts" "$TMP/cooldown/INFRA-2088.json" "$TMP/.gap-INFRA-2088.lock"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB13" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_WORKER_HALT_MIN_SECS=999999 \
+    CHUMP_AMBIENT_LOG="$AMB13" "$WATCHDOG" >/dev/null 2>&1
+grep -q "restart chump-worker@2.service" "$CALL_LOG13" \
+    || fail "expected the watchdog to restart the spinning worker@2; calls: $(cat "$CALL_LOG13")"
+grep -q '"kind":"worker_spin_healed"' "$AMB13" \
+    || fail "expected worker_spin_healed emitted; ambient tail: $(tail -3 "$AMB13")"
+grep -q '"agent_id":"2"' "$AMB13" \
+    || fail "expected the healed event to name agent 2"
+[[ -f "$TMP/cooldown/INFRA-2088.json" ]] \
+    || fail "expected the offending gap INFRA-2088 to be cooled down so it isn't re-picked post-restart"
+[[ -f "$TMP/worker-spin-healed-2.ts" ]] \
+    || fail "expected the per-worker heal-cooldown state file to be written"
+pass "13: spinning worker (25x preflight_fail) → watchdog restarts worker@2 + clears the offending claim (acts on its own signal)"
+
+# ── 14. Below threshold → no restart, no heal event ─────────────────────────
+STUB14="$TMP/systemctl-spin14"
+CALL_LOG14="$TMP/calls14.log"
+mk_worker_stub "$STUB14" "$CALL_LOG14" 0
+AMB14="$TMP/ambient14.jsonl"
+: > "$AMB14"
+seed_spin_events "$AMB14" 2 INFRA-2088 5    # 5 < threshold 20
+rm -f "$TMP/worker-spin-healed-2.ts"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB14" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_WORKER_HALT_MIN_SECS=999999 \
+    CHUMP_AMBIENT_LOG="$AMB14" "$WATCHDOG" >/dev/null 2>&1
+grep -q "restart chump-worker@2.service" "$CALL_LOG14" \
+    && fail "must NOT restart a worker below the spin threshold; calls: $(cat "$CALL_LOG14")"
+grep -q '"kind":"worker_spin_healed"' "$AMB14" \
+    && fail "must NOT emit worker_spin_healed below threshold; ambient: $(cat "$AMB14")"
+pass "14: below the spin threshold (5x) → watchdog stays quiet (no false restarts)"
+
+# ── 15. --dry-run detects but does not restart / mutate ─────────────────────
+STUB15="$TMP/systemctl-spin15"
+CALL_LOG15="$TMP/calls15.log"
+mk_worker_stub "$STUB15" "$CALL_LOG15" 0
+AMB15="$TMP/ambient15.jsonl"
+: > "$AMB15"
+seed_spin_events "$AMB15" 2 INFRA-2088 25
+rm -f "$TMP/worker-spin-healed-2.ts" "$TMP/cooldown/INFRA-2088.json"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB15" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_WORKER_HALT_MIN_SECS=999999 \
+    CHUMP_AMBIENT_LOG="$AMB15" "$WATCHDOG" --dry-run >/dev/null 2>&1
+grep -q "restart chump-worker@2.service" "$CALL_LOG15" \
+    && fail "--dry-run must NOT restart the worker; calls: $(cat "$CALL_LOG15")"
+[[ -f "$TMP/cooldown/INFRA-2088.json" ]] \
+    && fail "--dry-run must NOT write a cooldown; state mutated"
+grep -q '"kind":"worker_spin_detected"' "$AMB15" \
+    || fail "--dry-run should still DETECT + emit worker_spin_detected; ambient tail: $(tail -3 "$AMB15")"
+pass "15: --dry-run detects the spin (worker_spin_detected) without restarting or mutating state"
+
+# ── 16. Per-worker heal-cooldown suppresses a re-heal within the window ─────
+STUB16="$TMP/systemctl-spin16"
+CALL_LOG16="$TMP/calls16.log"
+mk_worker_stub "$STUB16" "$CALL_LOG16" 0
+AMB16="$TMP/ambient16.jsonl"
+: > "$AMB16"
+seed_spin_events "$AMB16" 2 INFRA-2088 25
+# Pre-seed a recent heal so the watchdog should skip re-healing.
+date +%s > "$TMP/worker-spin-healed-2.ts"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB16" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_WORKER_HALT_MIN_SECS=999999 CHUMP_WORKER_SPIN_HEAL_COOLDOWN_S=600 \
+    CHUMP_AMBIENT_LOG="$AMB16" "$WATCHDOG" >/dev/null 2>&1
+grep -q "restart chump-worker@2.service" "$CALL_LOG16" \
+    && fail "must NOT re-heal a worker healed within the cooldown window; calls: $(cat "$CALL_LOG16")"
+pass "16: heal-cooldown honored — no restart storm while stale worker_stuck events age out of the window"
+
+# ── 17. No chump-worker@ template → spin heal fully skipped ──────────────────
+STUB17="$TMP/systemctl-spin17"
+CALL_LOG17="$TMP/calls17.log"
+cat > "$STUB17" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$CALL_LOG17"
+exit 0
+EOF
+chmod +x "$STUB17"
+AMB17="$TMP/ambient17.jsonl"
+: > "$AMB17"
+seed_spin_events "$AMB17" 2 INFRA-2088 25
+rm -f "$TMP/worker-spin-healed-2.ts"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB17" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_WORKER_HALT_MIN_SECS=999999 \
+    CHUMP_AMBIENT_LOG="$AMB17" "$WATCHDOG" >/dev/null 2>&1
+grep -q '"kind":"worker_spin_healed"' "$AMB17" \
+    && fail "must not heal spin on a host with no chump-worker@ template; ambient: $(cat "$AMB17")"
+[[ -f "$TMP/worker-spin-healed-2.ts" ]] \
+    && fail "must not write spin-heal state on a host with no chump-worker@ template"
+pass "17: no chump-worker@ template on this host: spin-heal is a full no-op"
+
 echo "ALL PASS"
