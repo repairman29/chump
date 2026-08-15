@@ -370,6 +370,20 @@ fi
 # ── Subprocess path (legacy, opt-in via CHUMP_FIX_TRUNK_DISPATCH_MODE=subprocess) ──
 log "dispatch_mode=subprocess; spawning $MODEL headless"
 
+# ── INFRA-2354: subprocess-auth smoke pre-check ──────────────────────────────
+# Verify the claude -p subprocess auth path actually works BEFORE spawning the
+# real dispatch. Without this, a dead credential burns the trunk-red dispatch
+# slot on a Sonnet that 401s in seconds instead of failing loud up front.
+_smoke_script="$SCRIPT_DIR/../coord/subprocess-auth-smoke.sh"
+if [[ -x "$_smoke_script" ]]; then
+  if ! "$_smoke_script" --quiet; then
+    log "subprocess-auth-smoke FAILED; aborting subprocess dispatch of $candidate_id (auth path is dead)"
+    emit_ambient "fix_trunk_dispatched" "\"gap_id\":\"$candidate_id\",\"model\":\"$MODEL\",\"error\":\"subprocess_auth_dead\",\"dispatched\":false"
+    exit 0
+  fi
+  log "subprocess-auth-smoke passed; proceeding with dispatch"
+fi
+
 # ── INFRA-2340: OAUTH defensive read ─────────────────────────────────────────
 # launchd plists historically didn't pass CLAUDE_CODE_OAUTH_TOKEN through to
 # the dispatched claude -p subshell, causing 401 auth errors that killed the
