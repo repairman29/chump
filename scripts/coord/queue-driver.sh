@@ -113,11 +113,11 @@ cascade_rebase_if_hot() {
     # this one — the next natural queue-driver tick picks up any PR still
     # BEHIND once the batch settles.
     #
-    # Bypass: CHUMP_CASCADE_REBASE_NO_DEBOUNCE=1 disables the gate (always
+    # Bypass: CHUMP_CASCADE_REBASE_FORCE_RESWEEP=1 disables the gate (always
     # fire a fresh sweep per hot-file commit — pre-INFRA-2232 behavior).
     local _debounce_s="${CHUMP_CASCADE_REBASE_DEBOUNCE_S:-180}"
     local _last_run_file="$REPO_ROOT/.chump-locks/cascade-rebase-last-run.ts"
-    if [[ "${CHUMP_CASCADE_REBASE_NO_DEBOUNCE:-0}" != "1" && -f "$_last_run_file" ]]; then
+    if [[ "${CHUMP_CASCADE_REBASE_FORCE_RESWEEP:-0}" != "1" && -f "$_last_run_file" ]]; then
         local _last_run_s _now_s _elapsed_s
         _last_run_s="$(cat "$_last_run_file" 2>/dev/null || echo 0)"
         _now_s="$(date +%s)"

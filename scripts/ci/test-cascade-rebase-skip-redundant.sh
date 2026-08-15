@@ -13,7 +13,7 @@
 #   1. First hot-file commit fires a full sweep, writes the last-run marker.
 #   2. A second (different-SHA) commit landing immediately after is skipped
 #      as redundant — cascade_rebase_skipped_redundant emitted, no sweep.
-#   3. CHUMP_CASCADE_REBASE_NO_DEBOUNCE=1 bypasses the gate — sweep fires
+#   3. CHUMP_CASCADE_REBASE_FORCE_RESWEEP=1 bypasses the gate — sweep fires
 #      even inside the window.
 #   4. Once the debounce window has elapsed, a new commit fires a fresh
 #      sweep again.
@@ -55,7 +55,7 @@ cascade_rebase_if_hot() {
 
     local _debounce_s="${CHUMP_CASCADE_REBASE_DEBOUNCE_S:-180}"
     local _last_run_file="$REPO_ROOT/.chump-locks/cascade-rebase-last-run.ts"
-    if [[ "${CHUMP_CASCADE_REBASE_NO_DEBOUNCE:-0}" != "1" && -f "$_last_run_file" ]]; then
+    if [[ "${CHUMP_CASCADE_REBASE_FORCE_RESWEEP:-0}" != "1" && -f "$_last_run_file" ]]; then
         local _last_run_s _now_s _elapsed_s
         _last_run_s="$(cat "$_last_run_file" 2>/dev/null || echo 0)"
         _now_s="$(date +%s)"
@@ -97,9 +97,9 @@ skipped=$(grep -c '"kind":"cascade_rebase_skipped_redundant"' "$AMBIENT" 2>/dev/
     || fail "Test 2: expected triggered=1 skipped=1, got triggered=$triggered skipped=$skipped"
 
 # ── Test 3: bypass flag forces a fresh sweep even inside the window ──────
-CHUMP_CASCADE_REBASE_NO_DEBOUNCE=1 cascade_rebase_if_hot
+CHUMP_CASCADE_REBASE_FORCE_RESWEEP=1 cascade_rebase_if_hot
 triggered=$(grep -c '"kind":"cascade_rebase_triggered"' "$AMBIENT" 2>/dev/null || true)
-[[ "$triggered" -eq 2 ]] && ok "Test 3: CHUMP_CASCADE_REBASE_NO_DEBOUNCE=1 bypasses the gate" \
+[[ "$triggered" -eq 2 ]] && ok "Test 3: CHUMP_CASCADE_REBASE_FORCE_RESWEEP=1 bypasses the gate" \
     || fail "Test 3: expected 2 total cascade_rebase_triggered after bypass, got $triggered"
 
 # ── Test 4: once the window has elapsed, a new commit fires again ────────

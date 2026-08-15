@@ -98,7 +98,7 @@ The PRs aren't orphaned — the next natural queue-driver tick (or the next
 hot-file commit that lands *outside* the debounce window) picks up anything
 still BEHIND once the batch settles.
 
-Bypass: `CHUMP_CASCADE_REBASE_NO_DEBOUNCE=1` disables the gate (always fire a
+Bypass: `CHUMP_CASCADE_REBASE_FORCE_RESWEEP=1` disables the gate (always fire a
 fresh sweep per hot-file commit — pre-INFRA-2232 behavior). Useful for
 forensic debugging of a specific commit's cascade.
 
