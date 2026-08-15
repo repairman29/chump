@@ -681,7 +681,15 @@ jobs:
   fast-checks:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    timeout-minutes: 15  # fmt + JS self-tests + ~30s bash guards; target wall-clock < 5 min, cap at 15m
+    # RESILIENT-304: measured 2026-08-14 across real merged PRs — #3757 10m41s,
+    # #3752 11m36s, #3759 11m53s, #3764 12m31s, #3753 12m35s. The old 15m cap
+    # left 2-4 min of headroom, so PR #3765 (touches crates/, invalidating
+    # sccache for the downstream 18k-line binary) was cancelled TWICE at 15m15s
+    # — mid-step, in a step that passes 5/5 standalone. The "< 5 min" target
+    # below is aspirational and has not held for some time; 25m is set against
+    # the observed 10-13m baseline, not the target. Trimming the job back toward
+    # its target is the real fix and stays open on RESILIENT-304.
+    timeout-minutes: 25  # measured baseline 10-13 min (see above); aspirational target < 5 min
     # INFRA-2117 (CI-REVIEW Lever 1A, 2026-05-29): default to GH-hosted ubuntu.
     # Self-hosted Mac caused ~50% of CI-rot tax (rustup conflicts, tauri-2.11.2
     # corruption, wasmtime_wasi .d orphans, runner_binary_refresh_failed — see
