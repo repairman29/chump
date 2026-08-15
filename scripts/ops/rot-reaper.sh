@@ -120,7 +120,7 @@ info()  { printf '  %s\n' "$*"; }
 warn()  { printf '\033[0;33m  WARN: %s\033[0m\n' "$*"; }
 dry()   { printf '  [dry-run] %s\n' "$*"; }
 
-green "=== rot-reaper (conflicting-PR drain; min-age=${MIN_AGE_HOURS}h, max=${MAX_CLOSE}) ==="
+green "=== rot-reaper / no-abandon janitor (conflict≥${MIN_AGE_HOURS}h, required-red≥${REALFAIL_AGE_HOURS}h, arm≥${ARM_AGE_MIN}m, max=${MAX_CLOSE}) ==="
 [[ $DRY_RUN -eq 1 ]] && info "Dry-run mode — no PRs will be closed and no gaps re-queued."
 
 ME="$(gh api user --jq .login 2>/dev/null || echo repairman29)"
