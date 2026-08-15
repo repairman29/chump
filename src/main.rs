@@ -839,6 +839,38 @@ fn load_dotenv() {
 /// Shown when `chump` is run with no args, or when `chump help` / `chump --help` is used.
 // EFFECTIVE-011: expand short command aliases before routing.
 // "s" is a compound alias: "chump s <ID>" → "chump gap ship <ID>".
+/// INFRA-2028: prime `GH_TOKEN` for this process (and every `gh` subprocess
+/// it spawns) when the caller hasn't already supplied one. Fixes the class
+/// where `chump`'s spawned `gh` calls silently 401 (falls back to anonymous
+/// request) because the subprocess context can't read the macOS keychain
+/// entry an interactive shell's `gh` uses, even though `gh auth status`
+/// reports a valid keyring-backed login. `gh auth token` performs its own
+/// keychain read in the *caller's* shell context before chump ever spawns a
+/// child, so it is unaffected by the child-subprocess keychain block —
+/// resolving it once here and exporting the result lets every later
+/// `Command::new("gh")` inherit a working token via plain env-var auth
+/// instead of a keychain lookup.
+fn ensure_gh_token_env() {
+    if std::env::var_os("GH_TOKEN").is_some() || std::env::var_os("GITHUB_TOKEN").is_some() {
+        return;
+    }
+    let Ok(out) = std::process::Command::new("gh")
+        .args(["auth", "token"])
+        .output()
+    else {
+        return;
+    };
+    if !out.status.success() {
+        return;
+    }
+    let token = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if token.is_empty() {
+        return;
+    }
+    // Safety: called once at startup before any threads/async tasks spawn.
+    unsafe { std::env::set_var("GH_TOKEN", token) };
+}
+
 fn expand_aliases(mut args: Vec<String>) -> Vec<String> {
     if args.len() < 2 {
         return args;
@@ -1383,6 +1415,17 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("verify-claim-branch") {
         std::process::exit(verify_claim_branch::run_cli(&args));
     }
+
+    // INFRA-2028: every `gh` subprocess chump spawns inherits this process's
+    // env, but a subprocess spawned by chump doesn't get the macOS keychain
+    // entitlement an interactive shell's `gh` has — so `gh` silently falls
+    // back to an anonymous (401) request instead of the keychain-backed
+    // token. If GH_TOKEN/GITHUB_TOKEN aren't already set, resolve the token
+    // once via `gh auth token` (same call the operator's shell already makes
+    // successfully) and export it so every later `Command::new("gh")` in
+    // this process inherits it for free. No-op if gh isn't installed or the
+    // caller already supplied an explicit token.
+    ensure_gh_token_env();
 
     // INFRA-2054 (META-114 freshness cluster, binary-staleness layer):
     // `chump --build-info [--json]` prints the build-time metadata baked
