@@ -61,6 +61,13 @@
 //! Gated behind `CHUMP_FLEET_RECV_SIDE_V0=1` (same flag as `chump vote`),
 //! matching META-159's precedent: prints "feature flag off, consensus ask
 //! not published" and exits 0 when unset.
+//!
+//! ## INFRA-2162 (META-125/C3) note
+//! `consensus_ask_published` above is the real event for the umbrella's
+//! originally-named `consensus_ask_started` kind — no separate "started"
+//! moment exists in this implementation. See
+//! docs/observability/EVENT_REGISTRY.yaml's `consensus_ask_started` entry.
+// scanner-anchor: "kind":"consensus_ask_started"
 
 use std::io::Write as _;
 use std::path::PathBuf;
