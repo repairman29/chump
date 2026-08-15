@@ -22,6 +22,13 @@
 //!   AC5 — test-chump-vote.sh asserts ambient line has event=FEEDBACK,
 //!          kind=vote, vote=<N>, corr_id=<corr_id>, rationale=<reason>
 //!   AC7 — feature-flag gated; prints message when unset
+//!
+//! ## INFRA-2162 (META-125/C3) note
+//! The umbrella originally named this lifecycle step `consensus_vote_cast`;
+//! the shipped kind is `kind=vote` (this file, line ~79) instead. See
+//! docs/observability/EVENT_REGISTRY.yaml's `consensus_vote_cast` entry and
+//! scripts/ci/event-registry-reserved.txt's `vote` reservation.
+// scanner-anchor: "kind":"consensus_vote_cast"
 
 use std::path::PathBuf;
 use std::process::Command;
