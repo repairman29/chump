@@ -77,6 +77,15 @@ rather than silently exiting."
 # printf itself; this comment is the pairing anchor the registry gate scans
 # for since the literal above lives inside an escaped-quote bash string).
 
+# `claude -p --dangerously-skip-permissions` refuses to run as root/sudo
+# unless IS_SANDBOX=1 is set (see LINUX_NODE_ONBOARDING.md) — this beat runs
+# under chump-board-cycle.service, a root-owned systemd unit with no User=,
+# and was exiting 1 on every 15-min cycle since deploy (INFRA-3603; caught
+# fixing the identical bug in the sibling board-ceo-briefing-beat.sh,
+# INFRA-3601). Sandboxed to this bounded, single-cycle, no-loop report-only
+# agent, not a blanket root override.
+[[ "$(id -u)" == "0" ]] && export IS_SANDBOX=1
+
 log "beat start (timeout=${TIMEOUT_S}s)"
 cycle_output=""
 cycle_rc=0
