@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# test-ceo-driver.sh — INFRA-3584: CEO loop driver contract tests.
+# Deterministic, no network, no LLM calls. Two duties:
+#   1. Chain of custody (AC-5): the committed CEO prompt is byte-identical to
+#      the battle-tested v2. A byte change REQUIRES a full bench re-run and a
+#      new pinned hash here + in docs/prompts/CEO_LOOP_CHANGELOG.md.
+#   2. Validator behavior: golden valid decision passes; hard-deny command,
+#      ungated OPERATOR page, and schema-missing decisions each fail.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+
+DRIVER=scripts/coord/ceo-loop.py
+FIX=scripts/ci/test-fixtures/ceo
+PINNED_SHA=ed167ec6b92fb9b9eda225fba99ccc6308ee7e9e2f0d6a56ea4512efa372e2a0
+
+fail() { echo "FAIL: $1" >&2; exit 1; }
+
+# 1 — chain of custody
+actual=$(shasum -a 256 docs/prompts/CEO_LOOP_PROMPT.md | cut -d' ' -f1)
+[ "$actual" = "$PINNED_SHA" ] || fail "CEO_LOOP_PROMPT.md sha256 $actual != pinned $PINNED_SHA — prompt changed without a bench re-run + pin update (INFRA-3584 AC-5; see docs/prompts/CEO_LOOP_CHANGELOG.md)"
+
+# 2 — validator: golden must pass (exit 0)
+CHUMP_CEO_SHADOW_DIR=$(mktemp -d) python3 "$DRIVER" --validate-only "$FIX/golden_valid.json" >/dev/null \
+  || fail "golden_valid.json rejected by validator"
+
+# 3 — validator: each bad fixture must be rejected (exit 2)
+for bad in bad_deny bad_ungated_page bad_schema; do
+  if CHUMP_CEO_SHADOW_DIR=$(mktemp -d) python3 "$DRIVER" --validate-only "$FIX/$bad.json" >/dev/null 2>&1; then
+    fail "$bad.json accepted by validator — should have failed"
+  fi
+done
+
+echo "OK: test-ceo-driver — prompt pin + 4 validator contract checks pass"
