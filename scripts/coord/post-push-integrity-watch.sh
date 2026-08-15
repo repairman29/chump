@@ -130,12 +130,12 @@ CLOSED_PRS_JSON="$(gh pr list \
     --repo "$REPO_SLUG" \
     --state closed \
     --limit 20 \
-    --json number,headRefName,state,stateReason,closedAt,title 2>/dev/null)" || \
+    --json number,headRefName,state,stateReason,closedAt,title,labels,mergedAt 2>/dev/null)" || \
 CLOSED_PRS_JSON="$(gh pr list \
     --repo "$REPO_SLUG" \
     --state closed \
     --limit 20 \
-    --json number,headRefName,state,closedAt,title 2>/dev/null)" || {
+    --json number,headRefName,state,closedAt,title,labels,mergedAt 2>/dev/null)" || {
     log "WARN: gh pr list failed (API issue); skipping this cycle"
     emit post_push_integrity_watch_err '"reason":"gh_pr_list_failed"'
     exit 0
@@ -162,18 +162,32 @@ while IFS= read -r pr_json; do
     state_reason="$(printf '%s' "$pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('stateReason',''))")"
     closed_at="$(printf '%s' "$pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('closedAt',''))")"
     title="$(printf '%s' "$pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['title'])")"
+    merged_at="$(printf '%s' "$pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('mergedAt') or '')")"
+    labels_csv="$(printf '%s' "$pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(','.join(l.get('name','') for l in (d.get('labels') or [])))")"
 
     # Only care about chump/* branches.
     if [[ "$branch" != ${BRANCH_RE}* ]]; then
         continue
     fi
 
-    # Only care about not-planned closes (not explicit close by operator).
-    # GitHub sets stateReason=NOT_PLANNED for auto-closes from stale pushes.
-    # Note: sometimes stateReason is null/"" — we catch those too since
-    # any unexpected close of a chump/* PR warrants investigation.
-    if [[ "$state_reason" == "MERGED" ]]; then
-        # Merged PR — normal; skip.
+    # A MERGED PR is not an incident — never try to reopen it (a reopen call on a
+    # merged PR just fails noisily). stateReason alone is unreliable here (gh
+    # often reports "" for merges), so key on mergedAt, the authoritative field.
+    if [[ "$state_reason" == "MERGED" || -n "$merged_at" ]]; then
+        continue
+    fi
+
+    # TERMINAL-CLOSE LABEL guard (RESILIENT-311). The no-abandon janitor
+    # (rot-reaper) deliberately closes CONFLICTING / required-check-failing PRs
+    # and stamps them with the terminal label, having ALREADY re-queued their
+    # gap so the fleet redoes the work clean. That is NOT a lost-work incident —
+    # reopening the dead, unmergeable branch just resurrects rot. Before this
+    # guard, the reaper closed #3792 every 30 min and THIS watcher reopened it
+    # ~60s later: an infinite reap↔revive fight that rotted the PR open for 13h.
+    # Skip any PR bearing the terminal label; the requeued gap is the recovery.
+    TERMINAL_LABEL="${CHUMP_ROT_REAPER_LABEL:-rot-reaped}"
+    if [[ ",$labels_csv," == *",$TERMINAL_LABEL,"* ]]; then
+        log "SKIP reopen PR #$pr_num — labeled '$TERMINAL_LABEL' (intentional terminal close by the no-abandon janitor; gap already re-queued, a fresh PR will come)."
         continue
     fi
 

@@ -1233,6 +1233,20 @@ events:
     consumers: [reaper-watchdog]
     fields_required: [reaper_name, status]
 
+  - kind: pr_reaped
+    effect_metric: self
+    emitter: scripts/ops/rot-reaper.sh (RESILIENT-311)
+    trigger: the no-abandon janitor terminally closes an open PR (CONFLICTING past the age gate, or MERGEABLE with a required check red past the deadline) and stamps it with the rot-reaped label so revivers won't fight the close
+    consumers: [board-cycle, fleet-brief]
+    fields_required: [ts, kind, pr, label]
+
+  - kind: pr_no_abandon_backlog
+    effect_metric: self
+    emitter: scripts/ops/rot-reaper.sh (RESILIENT-311)
+    trigger: emitted every rot-reaper beat with the count of open PRs older than the no-abandon deadline still in a non-terminal state with no active driver (target 0 — the guarantee's health gauge)
+    consumers: [board-cycle, fleet-brief]
+    fields_required: [ts, kind, count, deadline_h, prs]
+
   - kind: reaper_silent
     effect_metric: self
     emitter: scripts/ops/reaper-heartbeat-watchdog.sh (INFRA-120)
