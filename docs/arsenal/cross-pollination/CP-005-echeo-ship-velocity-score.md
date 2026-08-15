@@ -3,7 +3,7 @@
 **Target:** Chump skill-aware routing (INFRA-1764) needs a deterministic numeric scorer
 **Arsenal match:** `repairman29/echeo` at `src/matchmaker.rs::calculate_ship_velocity_score` (commit `afbe64d6`)
 **Recommended route:** Vendoring (port formula to Rust, cite source, substitute embeddings for v0)
-**Status:** proposed (2026-05-23, INFRA-1816)
+**Status:** shipped (2026-08-15, INFRA-1816) — `src/gap_scoring.rs` implements `calculate_gap_value_score` per the spec below.
 
 ## The Target
 
