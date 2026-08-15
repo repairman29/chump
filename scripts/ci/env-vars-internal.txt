@@ -1873,3 +1873,14 @@ CHUMP_CHAIRMAN_PULSE_WINDOW_H
 CHUMP_CHAIRMAN_PULSE_ZOMBIE_MIN_CYCLES
 # detected in: (standard input)
 CHUMP_DIR
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FIX_TRUNK_SKIP_AUTH_SMOKE
+# detected in: (standard input)
+CHUMP_SUBPROC_SMOKE_AMBIENT
+# detected in: (standard input)
+CHUMP_SUBPROC_SMOKE_MODEL
+# detected in: (standard input)
+CHUMP_SUBPROC_SMOKE_TIMEOUT_S
