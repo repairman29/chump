@@ -1428,6 +1428,27 @@ events:
     trigger: pr-watch.sh / distill-pr-skills.sh missed heartbeat
     consumers: [fleet-brief, operator-recall]
 
+  - kind: queue_stagnant
+    effect_metric: self
+    emitter: scripts/coord/queue-stagnation-monitor.sh (INFRA-2353, META-269 sub-4)
+    trigger: pickable-gap queue (status='open' in state.db) exceeds
+      CHUMP_QUEUE_STAGNATION_MIN_PICKABLE (default 10) AND zero kind=gap_claimed
+      events landed in ambient.jsonl within CHUMP_QUEUE_STAGNATION_WINDOW_SECS
+      (default 86400 = 24h) — distinct from operator-recall.sh's QUEUE_STARVE
+      condition (d), which only fires when pickable_count is 0; this catches
+      "plenty of work, nobody claiming it" (dead workers, wedged auth, stuck
+      picker)
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, pickable_count, claimed_count, window_secs, reason]
+
+  - kind: queue_stagnation_monitor_tick
+    effect_metric: self
+    emitter: scripts/coord/queue-stagnation-monitor.sh (INFRA-2353, META-269 sub-4)
+    trigger: every queue-stagnation-monitor.sh run, healthy or not — liveness
+      heartbeat for the monitor itself
+    consumers: [daemon-silence-monitor]
+    fields_required: [ts, kind, pickable_count, claimed_count]
+
   - kind: watchdog_silent
     effect_metric: self
     emitter: scripts/ops/meta-watchdog.sh
