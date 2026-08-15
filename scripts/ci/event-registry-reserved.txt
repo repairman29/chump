@@ -208,6 +208,7 @@ pr_auto_rearmed  # reason: INFRA-1907 emitted by scripts/coord/pr-auto-rearm.sh 
 pr_auto_rebase_fallback # reason: INFRA-1958 emitted by scripts/coord/pr-auto-rebase.sh when gh pr update-branch returned false-positive but local git rebase succeeded; printf-direct JSON not grep-scannable as kind=X literal
 pr_auto_rebase_recovered # reason: INFRA-1811 emitted by scripts/coord/pr-auto-rebase.sh when the local-rebase fallback succeeds; carries prior_state + drivers (merge-driver names that resolved the conflict); printf-direct JSON not grep-scannable as kind=X literal
 pr_auto_rebase_unresolvable # reason: INFRA-1811 emitted by scripts/coord/pr-auto-rebase.sh when the local-rebase fallback still conflicts (or times out) after merge-driver resolution; carries conflict_files array for a future smart-rescuer agent; printf-direct JSON not grep-scannable as kind=X literal
+pr_auto_rebase_throttle # reason: INFRA-2225 emitted by scripts/coord/pr-auto-rebase.sh when in-flight PR count > 15 and avg time-since-last-merge > 15 min; queue-aware throttle prioritizes BEHIND PRs over DIRTY/BLOCKED for that pass; printf-direct JSON not grep-scannable as kind=X literal
 pr_auto_rescue_invoked # reason: registered for INFRA-1600 pr-rescue MVP; emit pending
 pr_bounced_relanded        # reason: emitter scripts/coord/ uses _emit function (confirmed in grep); adding to reserved while INFRA-1287 grep fixes land
 pr_bounced_unfinished      # reason: emitter scripts/coord/bounced-pr-detector.sh; _emit pattern may not cover all code paths
