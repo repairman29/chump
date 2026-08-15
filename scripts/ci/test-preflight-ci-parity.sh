@@ -165,7 +165,7 @@ info(f"Cargo (fmt/clippy/check) gates: {'MIRRORED' if cargo_mirrored else 'NOT m
 # Infrastructure/rollup jobs in ci.yml that are not real CI gates for parity
 CI_YML_INFRA_JOBS = {
     "changes", "test", "test-e2e", "coverage", "integration-test",
-    "clippy-required", "cargo-test-required", "fast-checks-required",
+    "clippy-required", "cargo-test-required", "fast-checks-required", "cargo-test",
     "audit-required", "clippy-stub", "cargo-test-stub",
     "fast-checks-stub", "audit-stub",
     "tauri-cowork-e2e", "e2e",  # META-267: matrixed pwa/battle-sim/golden-path into single job
