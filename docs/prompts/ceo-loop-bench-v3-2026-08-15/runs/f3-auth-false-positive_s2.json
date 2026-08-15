@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Intake",
+      "honesty": "\ud83d\udfe2 verified: farmer_auth_dead x2 (05:16, 05:18) is the known FP class (CREDIBLE-090, PLAYBOOK_REGISTRY.yaml) \u2014 ship_landed at 05:03/05:12 and auth-status.sh (AUTH OK, token refreshed 3m ago) both post-date/bracket the alarms, so ground truth contradicts the alarm. Suppressed, not escalated. \u2705 verified: fleet healthy, 26 ships/24h, 0 stalls, 3 ships in last hour (b81f2c33, a4092e11, 9f77d0e2) all with real commit receipts.",
+      "did_not_move": "Spine frontier (intake EFFECTIVE-357, publication EFFECTIVE-364/365) got no new artifact this tick \u2014 dispatched discovery queries only, no gap filed yet pending prior-art results next tick."
+    },
+    "synthesis": "farmer_auth_dead firing twice this tick is pure noise, not signal \u2014 reality-check confirms auth is fine and ships kept landing through it (docs/process/PLAYBOOK_REGISTRY.yaml: 'known #1 false-positive, mis-called 4x'). Nothing in ambient tail or ship log touches the spine's two open frontier jobs (EFFECTIVE-357 intake, EFFECTIVE-364/365 publication) \u2014 both still registry-marked \ud83d\udfe0/\u274c with explicit mine-first targets ('onboard intent-doc reader', 'PUBLISHER.md design') that I have not yet queried against the almanac this tick. Per the mine-before-build duty, querying prior art is the correct next step before proposing any new job row.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "COTG",
+      "why_now": "Intake and publication are the standing multipliers per the org model \u2014 the middle of the factory (build/gate) is verifiably \u2705 live and shipping on its own (3 PRs this hour), so the highest-ROI move is discovery on the two frontier chairs, not more middle-of-factory attention."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"intent-doc reader intake onboarding objective to gap AC translation\")",
+        "detail": "Mine-first target for EFFECTIVE-357 (Objective->gap+AC intake, status \ud83d\udfe0). Looking for dormant capability that already parses freeform intent docs into gap+AC before proposing anything new."
+      },
+      "verify": "Result set contains file:line receipts for an existing intent-doc/objective parser, OR a 0-hit response with an explicit fallback_reason confirming nothing exists (trusted 0-hit)."
+    },
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"PUBLISHER.md publish-target registry ship to hands receipt\")",
+        "detail": "Mine-first target for EFFECTIVE-364/365 (Publication ship->target, status \u274c). Checking for an existing PUBLISHER.md design or publish-target registry draft anywhere in the ~95-repo fleet before treating this as build-from-zero."
+      },
+      "verify": "Result set contains file:line receipts for an existing publish-target registry/PUBLISHER.md draft, OR a trusted 0-hit confirming the \u274c status is accurate and this is genuinely greenfield."
+    }
+  ]
+}

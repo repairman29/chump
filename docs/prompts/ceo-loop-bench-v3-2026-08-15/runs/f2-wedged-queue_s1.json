@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Gate",
+      "honesty": "\ud83d\udfe0 5 PRs (#3788-3792) show \u2705 green CI + ARMED auto-merge per cache_query_open_prs (fetched_at 04:08), but 0 have merged in 1h55m-2h41m. Branch protection unchanged (cache 04:08) \u2014 rules out a config regression as cause.",
+      "did_not_move": "No ships this tick (last merge 3h12m ago). Fleet brief shows 0 ships in the last 1h against 5 green/armed PRs climbing in blocked-age \u2014 that's a real stall, not idle quiet."
+    },
+    "synthesis": "queue_driver_heartbeat last fired 03:30 (40min stale, cadence is 5min = 8 missed cycles) and shepherd_heartbeat last fired 02:55 (75min stale, cadence 30min = missed cycles too) \u2014 both stopped in the same rough window. That's consistent with one shared daemon-host failure, not 5 independent PR problems, and explains why armed+green PRs aren't merging: nothing is left to drive the merge queue or rescue stuck PRs. Reality-checked against fleet_brief (0 ships/1h) so this isn't a stale-detector false positive \u2014 corroborated by absence of actual throughput. No crash receipt yet on WHY the daemons died; that's this tick's open question, not yet answered.",
+    "protocol_proposals": [
+      {
+        "change": "New job row: queue-driver/shepherd heartbeat watchdog with auto-restart (or OPERATOR page if restart fails) when either daemon misses >2x its cadence. Today nothing appears to notice or self-heal a dead queue driver \u2014 it silently stopped 40min ago and 5 green PRs are the visible cost.",
+        "route": "GAP_REGISTRY",
+        "prior_art_checked": "Not yet \u2014 querying almanac_search_fleet this tick for existing heartbeat-watchdog/daemon-restart capability before this gap is finalized; if it finds a \ud83d\udfe0 dormant implementation, mine it instead of building fresh."
+      }
+    ],
+    "strategic_vector": {
+      "outcome": "CHUMPOS",
+      "why_now": "The merge queue is the last-mile of the Gate stage \u2014 right now it's the actual bottleneck holding 5 already-green, already-completed changes out of main, so reviving it recovers real throughput today, and the watchdog gap prevents this from recurring silently."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "OPERATOR",
+      "action": "unstick",
+      "payload": {
+        "cmd": "bash scripts/coord/broadcast.sh --to atc WARN \"queue_driver_heartbeat stale 40min (last 03:30, cadence 5min) and shepherd_heartbeat stale 75min (last 02:55, cadence 30min). 5 armed, green-CI PRs blocked 1h55m-2h41m: #3788 #3789 #3790 #3791 #3792. Please revive queue-driver + shepherd daemons and retry merge.\"",
+        "detail": "Both daemons stopped heartbeating in roughly the same window with no ambient crash receipt \u2014 routing to ATC (the traffic-cop session) to revive rather than guessing at a fix."
+      },
+      "verify": "Next tick's LOOP STATE shows queue_driver_heartbeat <10min old and at least one of #3788-3792 merged to main."
+    },
+    {
+      "target": "OPERATOR",
+      "action": "query",
+      "payload": {
+        "cmd": "bash scripts/coord/auth-status.sh",
+        "detail": "Diagnostic: armed-but-not-merging on 5/5 open PRs is also consistent with an expired/invalid bot-merge token rather than (or in addition to) a dead daemon. Checking before assuming daemon-death is the sole cause."
+      },
+      "verify": "auth-status reports token/scopes valid. If invalid, that's a T2-class credential rotation and should be paged, not silently retried."
+    },
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"queue driver heartbeat watchdog auto-restart daemon health monitor\")",
+        "detail": "Checking for dormant prior art before filing a new watchdog gap \u2014 a \ud83d\udfe0 hit means mine it, not build fresh."
+      },
+      "verify": "Returns either file:line receipts for an existing watchdog/restart mechanism, or a 0-hit with a trustworthy note/fallback_reason."
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "file_gap",
+      "payload": {
+        "cmd": "chump gap reserve --domain INFRA --title \"INFRA: queue-driver/shepherd heartbeat watchdog with auto-restart\"",
+        "detail": "priority=P1, outcome=CHUMPOS. AC: (1) an external watchdog observes queue_driver_heartbeat and shepherd_heartbeat events in ambient.jsonl and fires an alert when either misses >2x its declared cadence; (2) on miss, the watchdog attempts an automatic daemon restart before paging OPERATOR; (3) verified via a chaos test that kills queue_driver and confirms restart within 10min with no manual intervention. File only if the almanac query above comes back empty/thin \u2014 if it surfaces existing dormant capability, redirect this gap to wiring that instead."
+      },
+      "verify": "Gap exists in `chump gap list --status open` with priority P1, outcome CHUMPOS, and 3 AC bullets attached via `chump gap show`."
+    }
+  ]
+}

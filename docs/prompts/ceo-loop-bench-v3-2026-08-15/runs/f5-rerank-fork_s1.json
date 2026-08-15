@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Intake",
+      "honesty": "RESILIENT-328 shipped \u2705 (d2210b41, #3805, verified via git log) but is Process-stage reliability work, not spine frontier. EFFECTIVE-357 (Objective->gap+AC intake) remains \u274c missing-chair. EFFECTIVE-364/365 (Publication ship->target) remains \u274c missing-chair. Neither moved this tick.",
+      "did_not_move": "Frontier (intake + publication) stayed unstaffed this tick. Declined roadmap-keeper's fleet-scale ask outright rather than let it slide \u2014 INFRA-518 scale-gate fails on silent_agent events=1 (gate requires 0) even though waste-rate/ship-rate are barely passing."
+    },
+    "synthesis": "roadmap-keeper DM (inbox 07:02) reports RESILIENT class shipping at 2.1x EFFECTIVE rate this week and asks to (a) re-rank open RESILIENT P2s down a tier and (b) scale fleet 2->4. (a) is a priority/class re-rank and (b) is a fleet-scale change \u2014 both are CONSENSUS territory per doctrine, never unilateral, no matter how routine-sounding. (b) additionally fails the INFRA-518 scale-gate outright: silent_agent events (2h)=1 against a required 0 (LOOP STATE scale-gate table) \u2014 that alone is grounds to decline without a vote. Ship rate 8/10=80% is sitting exactly on the floor, not comfortably clear. Registry shows both frontier job rows (EFFECTIVE-357 intake, EFFECTIVE-364/365 publication) still \u274c with named mine-first targets ('intent-doc reader', 'PUBLISHER.md design') that haven't been checked against the Almanac yet this loop \u2014 no receipt yet on whether that's dormant prior art or a true build gap.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "EFFECTIVE-357 (intake frontier)",
+      "why_now": "roadmap-keeper's own numbers show capacity skewing toward RESILIENT while the spine's actual bottleneck (intake/publication) sits at 0 chairs \u2014 the fix is routing effort to the frontier, not re-ranking or scaling the part that's already overperforming."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "CONSENSUS",
+      "action": "propose",
+      "payload": {
+        "cmd": "bash scripts/coord/broadcast.sh --to curator-opus-roadmap-keeper FEEDBACK \"Declining to execute unilaterally on both asks. (a) Priority re-rank of RESILIENT P2s is consensus territory \u2014 file it as a formal proposal via chump consensus ask or FEEDBACK kind=proposal so curators can vote; I won't run chump gap set --priority off a DM. (b) Fleet scale 2->4 fails the INFRA-518 scale-gate as-is: silent_agent events (2h)=1, gate requires 0 \u2014 declining until that clears a full clean 2h window; ship-rate (80%) is also sitting exactly on the floor, not clear of it. Re-raise scale once silent_agent=0.\"",
+        "detail": "Declines unilateral rerank+scale, redirects rerank to formal CONSENSUS vote, cites the failing scale-gate row (silent_agent=1) as the reason for the scale decline."
+      },
+      "verify": "roadmap-keeper either files a formal chump consensus ask proposal for the rerank (appears in next inbox as a votable proposal) or drops the ask; no chump gap set --priority executes off this DM.",
+      "escalation_trigger": "N/A"
+    },
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"intent-doc reader\")",
+        "detail": "Mine-before-build check for EFFECTIVE-357 (Objective->gap+AC intake, status \u274c). Registry names 'onboard intent-doc reader' as the mine-first target \u2014 need file:line receipts before treating this as a fresh build."
+      },
+      "verify": "Query returns file:line hits for an existing intent-doc-reader component (route as a wiring gap), or a 0-hit result whose note/fallback_reason confirms nothing dormant exists (route as a build gap) \u2014 either way EFFECTIVE-357 gets a receipt-backed next step next tick.",
+      "escalation_trigger": "N/A"
+    },
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"PUBLISHER.md publish-target registry\")",
+        "detail": "Mine-before-build check for EFFECTIVE-364/365 (Publication ship->target, status \u274c). Registry names 'PUBLISHER.md design' as the mine-first target."
+      },
+      "verify": "Query returns file:line hits pointing at an existing PUBLISHER.md design or publish-target registry draft (route as wiring), or a checked 0-hit (route as a fresh design gap) \u2014 gives a receipt-backed basis for the next publication-frontier gap.",
+      "escalation_trigger": "N/A"
+    }
+  ]
+}

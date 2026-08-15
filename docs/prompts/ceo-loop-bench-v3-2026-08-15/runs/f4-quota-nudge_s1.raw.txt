@@ -1,0 +1,56 @@
+```json
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "COTG",
+      "spine_stage": "Intake",
+      "honesty": "EFFECTIVE-413 shipped (c11d9a02, 22 min ago): onboard now reads ideas/TODO.md as intent input — 🟡 built, unverified in production use. Frontier gaps EFFECTIVE-357/364/365 remain open; 413 looks like a slice of 357's scope, not a close.",
+      "did_not_move": "Publication+feedback half of the spine (EFFECTIVE-364/365) untouched this loop — still ❌ with no PUBLISHER.md design started. ZERO-WASTE pickable-gap imbalance (1 vs 44/51/31) flagged by fleet-brief but NOT acted on — anti-bloat doctrine says imbalance is a signal, not a work order; no gap manufactured to fill quota."
+    },
+    "synthesis": "PR c11d9a02 (EFFECTIVE-413) shipped an onboard intent-doc reader — direct progress on the L1 intake job row (EFFECTIVE-357, registry status 🟠 mine-first: onboard intent-doc reader). Need to confirm via gap show whether this closes 357 or is a partial slice, since it wasn't in this loop's ship-to-close mapping. Publication stage (EFFECTIVE-364/365, registry ❌, mine-first: PUBLISHER.md design) has had zero ship activity in the last 24h fleet brief (25 ships, none tagged 364/365) — this is the weaker frontier half right now and warrants an almanac check for dormant publish-target prior art before any build proposal. No open consensus proposals in inbox this tick, nothing to vote on.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "COTG",
+      "why_now": "Intake just moved (413 shipped) while publication stayed flat all day — rebalancing attention toward the publication frontier (mining prior art before anyone proposes building PUBLISHER.md fresh) is the highest-ROI check this tick."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "GAP_REGISTRY",
+      "action": "query",
+      "payload": {
+        "cmd": "chump gap show EFFECTIVE-357",
+        "detail": "Confirm whether EFFECTIVE-413 (onboard reads ideas/TODO.md) closes any AC bullet on 357's L1 intake scope, or whether remaining AC still need dispatch."
+      },
+      "verify": "Gap show output lists 413/PR c11d9a02 against a specific AC bullet, with remaining open bullets (if any) identified for next dispatch."
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "rate_gap",
+      "payload": {
+        "cmd": "chump gap rate EFFECTIVE-413 4",
+        "detail": "Shipped, live intake capability (onboard/ideas-TODO.md reader) — solid intake-stage progress, rating held to 4 pending real-world usage evidence rather than 5."
+      },
+      "verify": "chump gap show EFFECTIVE-413 reflects rating=4."
+    },
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"publish target registry publication receipt PUBLISHER.md ship to target\")",
+        "detail": "Mine for dormant publication-stage capability before any build proposal for EFFECTIVE-364/365 — registry marks this ❌ with mine-first=PUBLISHER.md design, must verify that's actually unmined."
+      },
+      "verify": "Results either surface file:line receipts of existing publish-target/receipt machinery (route to a wiring gap instead of a build gap) or return a trusted 0-hit with fallback_reason, confirming genuine gap."
+    },
+    {
+      "target": "OPERATOR",
+      "action": "board_update",
+      "payload": {
+        "detail": "Tick 231: EFFECTIVE-413 shipped (onboard intent-doc reader, intake stage). Frontier still open: 357 (intake, partial), 364/365 (publication, no movement in 24h). Declined to manufacture ZERO-WASTE gaps to fix pickable-count imbalance — that's a signal not a work order per doctrine."
+      },
+      "verify": "Message appears on FLEET-RADIO digest for this tick."
+    }
+  ]
+}
+```

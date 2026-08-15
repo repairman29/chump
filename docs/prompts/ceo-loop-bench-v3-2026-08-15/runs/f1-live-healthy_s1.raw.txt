@@ -1,0 +1,48 @@
+```json
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Intake",
+      "honesty": "No new ✅ claims this loop. Registry status unchanged: EFFECTIVE-357/364/365 still 🟠/❌ at the frontier, receipt = LOOP STATE Frontier gaps + Job registry.",
+      "did_not_move": "Publication (EFFECTIVE-364/365) and intake (EFFECTIVE-357) both sat idle this tick — no dispatch fired, investigation only. Roadmap drift's untraced_p0 list (CREDIBLE-243..247) also went unaddressed pending gap show results."
+    },
+    "synthesis": "Roadmap drift (INFRA-1146) reports 5 untraced P0 gaps — CREDIBLE-243,244,245,246,247 — with no outcome trace, and P0 budget is a hard cap of 5 (per this system prompt's doctrine). That means the entire P0 budget may currently be occupied by gaps that violate MISSION-045's outcome-trace requirement, which would starve real P0 work toward COTG/CHUMPOS. No receipt yet on why these are untraced — filing a read query to inspect before acting. Separately, EFFECTIVE-357 (intake, the COTG frontier) is still marked 🟠 with 'onboard intent-doc reader' as mine-first guidance in the job registry — no almanac receipt has been pulled yet this loop confirming whether that capability already exists elsewhere in the fleet, so no build/dispatch proposal is warranted until that check runs. Ships and fleet health are nominal (24/24h, 0 stalls, 0 rescues, ambient tail clean) — no reality-check discrepancy to report.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "COTG",
+      "why_now": "5 untraced P0s sitting at the hard P0=5 budget cap risk silently blocking legitimate P0 work toward the intake/publication frontier until their outcome traces are verified or corrected."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"intent doc reader onboarding intake requirements\")",
+        "detail": "Mine-first check for EFFECTIVE-357 (job registry marks it 🟠, mine-first='onboard intent-doc reader') before any build proposal is considered for the COTG intake frontier."
+      },
+      "verify": "Result set returns file:line receipts for an existing intent-doc-reader/onboarding capability (reuse candidate) or a documented 0-hit with fallback_reason (confirms genuinely missing)."
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "query",
+      "payload": {
+        "cmd": "chump gap show CREDIBLE-243",
+        "detail": "Sample the untraced-P0 batch flagged by INFRA-1146 roadmap drift to determine whether it's missing --outcome, misclassified priority, or already traced but drift-detector stale."
+      },
+      "verify": "Output shows the gap's current priority, outcome field, and AC — confirms whether this is a real MISSION-045 violation or a detector false positive."
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "query",
+      "payload": {
+        "cmd": "chump gap show CREDIBLE-247",
+        "detail": "Bookend sample of the same untraced-P0 batch (CREDIBLE-243..247) to check whether the drift is uniform (one root cause, e.g. a batch-filed umbrella) or gap-specific."
+      },
+      "verify": "Output shows outcome/priority/AC for CREDIBLE-247 — comparing against CREDIBLE-243's result tells whether a single --outcome fix on chump gap set clears the whole batch or each needs individual triage."
+    }
+  ]
+}
+```

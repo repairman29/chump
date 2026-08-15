@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "COTG",
+      "spine_stage": "Intake",
+      "honesty": "\ud83d\udfe2 verified ship: EFFECTIVE-413 (PR #3801, c11d9a02, 22 min ago) \u2014 onboard now reads ideas/TODO.md as an intent input, a first slice of the \u274c/\ud83d\udfe0 intake job row (EFFECTIVE-357, mine-first 'onboard intent-doc reader'). Not yet claiming EFFECTIVE-357 as closed \u2014 this is one input format, not the full business-conversation\u2192requirements path.",
+      "did_not_move": "Publication frontier (EFFECTIVE-364/365) untouched this loop \u2014 still \u274c/\u274c with no job row. ZERO-WASTE pickable-gap imbalance (1 vs 44/51/31) flagged by fleet brief left unaddressed on purpose: no concrete zero-waste finding exists yet to file against, and manufacturing a gap to fill the quota is the anti-bloat anti-pattern the doctrine warns against."
+    },
+    "synthesis": "EFFECTIVE-413 shipped (git log c11d9a02, PR #3801) and lands directly on the intake frontier's mine-first target ('onboard intent-doc reader', FACTORY_ORG_MODEL_2026-08-08.md job registry row for Objective->gap+AC intake). This is real progress on EFFECTIVE-357, not adjacent noise. Need to verify scope via Almanac before updating the gap so the AC trace stays honest about what's actually covered (a TODO.md reader) vs. what's still open (free-text/conversational intake). Fleet health nominal: 25 ships/24h, 0 stalls, 0 manual rescues, ambient tail clean.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "COTG",
+      "why_now": "The intake half of the spine's frontier just got its first real increment (EFFECTIVE-413) \u2014 verifying and recording it against EFFECTIVE-357 keeps the outcome trace honest and sets up the next AC slice, which is higher-ROI than filing a speculative gap to satisfy a pillar-balance metric."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"EFFECTIVE-413 onboard ideas/TODO.md intent reader\")",
+        "detail": "Confirm exactly what EFFECTIVE-413 implemented (file:line) and check for any other dormant/duplicate intake-reader prior art before extending EFFECTIVE-357's AC."
+      },
+      "verify": "Returns file:line receipts for the onboard TODO.md reader, confirming scope (single-file intent input) and ruling out duplicate in-flight work on intake readers."
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "query",
+      "payload": {
+        "cmd": "chump gap show EFFECTIVE-357",
+        "detail": "Check current AC and priority on the L1 intake gap now that a first intent-doc input path has shipped, so the next AC increment (e.g. free-text/conversational intake) can be scoped correctly."
+      },
+      "verify": "Output lists current AC bullets, priority, and outcome trace for EFFECTIVE-357 \u2014 confirms whether ideas/TODO.md coverage needs a new bullet or is already implied."
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "rate_gap",
+      "payload": {
+        "cmd": "chump gap set EFFECTIVE-357 --outcome COTG --add-note 'EFFECTIVE-413 shipped (PR #3801, c11d9a02, 2026-08-15): onboard now reads ideas/TODO.md as an intent input. Covers one intake format only \u2014 free-text/conversational business-input path still open, gap stays open.'",
+        "detail": "Record the receipt-backed increment on the frontier gap so the outcome trace stays current and the next fleet pick sees what's already covered vs. still missing."
+      },
+      "verify": "chump gap show EFFECTIVE-357 reflects the new note and outcome=COTG on next query; gap remains status=open since only a partial AC slice is covered."
+    }
+  ]
+}

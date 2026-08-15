@@ -1,0 +1,39 @@
+```json
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Intake",
+      "honesty": "farmer_auth_dead fired twice (fleet-worker-1 05:16, fleet-worker-2 05:18) — PLAYBOOK_REGISTRY.yaml flags this as the known #1 false-positive (CREDIBLE-090, mis-called 4x). Ship-check confirms: 3 ships landed in the last hour (b81f2c33, a4092e11, 9f77d0e2) and auth-status.sh at 05:19 reports AUTH OK, token refreshed 3m ago. SUPPRESSING per doctrine, not escalating. No other verified status claims this loop.",
+      "did_not_move": "No gap filed, no dispatch, no proposal — this tick is discovery-only against the two frontier rows (EFFECTIVE-357 intake, EFFECTIVE-364/365 publication), which remain ❌ in the registry."
+    },
+    "synthesis": "Fleet floor is healthy: 26 ships/24h, 3 in the last hour, 0 stalls (fleet-brief.sh). The alarm this tick is a suppressed known false-positive, not a real signal — logging it so it doesn't get re-escalated by a future tick that skips the ship-check step. No new capability discovered yet this loop; queued almanac queries against the two mine-first pointers already named in the registry (onboard intent-doc reader for EFFECTIVE-357, PUBLISHER.md design for EFFECTIVE-364/365) before filing any gap, per mine-before-build.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "CHUMPOS",
+      "why_now": "Floor (Process/Gate) is verifiably ✅ and unblocked this tick, so the highest-ROI move is digging at the spine's two ❌ ends — intake and publication — rather than adding more floor capacity nobody is bottlenecked on."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"intent-doc reader onboarding objective to gap AC intake\")",
+        "detail": "Checking prior art for EFFECTIVE-357 (Objective->gap+AC intake, currently ❌/🟠) before proposing a job row — registry says mine 'onboard intent-doc reader' first."
+      },
+      "verify": "Returns file:line receipts for an existing intent-doc-to-gap reader (or a fallback_reason confirming a true 0-hit), which determines whether EFFECTIVE-357 gets filed as 'wire existing' vs 'build new'."
+    },
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"PUBLISHER.md publish target registry ship to target\")",
+        "detail": "Checking prior art for EFFECTIVE-364/365 (Publication ship->target, currently ❌/❌) before proposing a job row — registry says mine 'PUBLISHER.md design' first."
+      },
+      "verify": "Returns file:line receipts for an existing PUBLISHER.md design or publish-target registry draft (or a fallback_reason confirming a true 0-hit), which determines the shape of the gap to file next tick."
+    }
+  ]
+}
+```

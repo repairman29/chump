@@ -1,0 +1,39 @@
+```json
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Process",
+      "honesty": "🟠 Broken doc link identified (fresh-eyes, docs/FACTORY_VISION.md:41) — not yet fixed, gap being filed this tick. 🟠 md-links curator lane (curator-opus-md-links) confirmed stale via ambient heartbeat gap (6h vs 4h cadence) — not yet revived.",
+      "did_not_move": "Intake (EFFECTIVE-357) and publication (EFFECTIVE-364/365) frontier untouched this tick — spent on factory self-integrity hygiene instead. No P0/P1 gap advanced."
+    },
+    "synthesis": "fresh-eyes curator receipt: docs/FACTORY_VISION.md:41 links to ./strategy/PUBLISHERR.md (typo, extra R) which 404s; actual file is PUBLISHER.md at workspace root — this is the canonical vision doc every agent reads, so a dead link there is load-bearing, not cosmetic. Second receipt: ambient tail shows md_links_heartbeat last seen 6h ago against a 4h cadence, meaning the lane that would normally have caught this typo is itself dormant — the detector for broken links is broken. Fleet brief shows 24/24 ships nominal this window (e3319c55 CREDIBLE-250 40min ago), no stalls, so this is not a reliability fire — it's a cheap correctness fix plus a dormant-daemon revive, both filed rather than hand-fixed per never-write-code mandate.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "CHUMPOS",
+      "why_now": "A dead link in the canonical vision doc plus a dormant link-checker is a two-for-one cheap fix that restores the factory's own self-referential integrity before it compounds into more unnoticed rot."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "GAP_REGISTRY",
+      "action": "file_gap",
+      "payload": {
+        "cmd": "chump gap reserve --domain DOCS --title \"CHUMPOS: Fix broken PUBLISHERR.md link in FACTORY_VISION.md\"",
+        "detail": "docs/FACTORY_VISION.md:41 links to ./strategy/PUBLISHERR.md which does not exist (typo — extra R); the real file is PUBLISHER.md at the workspace root. AC: line 41 resolves to an existing path (PUBLISHER.md, correct relative location) with no other links in the file broken. Priority P3, doc-only fix, no outcome trace required."
+      },
+      "verify": "chump gap show <returned-GAP-ID> shows status reserved; next tick sets AC + dispatches to fleet, and the merged PR resolves the 404."
+    },
+    {
+      "target": "DISPATCH",
+      "action": "unstick",
+      "payload": {
+        "cmd": "bash scripts/coord/broadcast.sh --to atc FEEDBACK \"curator-opus-md-links heartbeat stale: last seen 6h ago, cadence is 4h — please revive the lane\"",
+        "detail": "The md-links curator lane exists but has missed its cadence by 2h+, which is how the FACTORY_VISION.md typo went uncaught. ATC owns reviving stuck daemons — routing the revive there rather than paging, since this is routine flow maintenance, not a T1-4 event."
+      },
+      "verify": "ambient.jsonl emits a fresh md_links_heartbeat event within the next 4h cadence window, confirming the lane is back online."
+    }
+  ]
+}
+```
