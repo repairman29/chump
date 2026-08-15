@@ -36,13 +36,35 @@ grep "integration_cycle" .chump-locks/ambient.jsonl | tail -20
 
 ## Install (dry-run, safe default)
 
+**macOS (launchd):**
+
 ```bash
 scripts/setup/install-integrator-daemon.sh
 ```
 
-This installs the plist with `CHUMP_INTEGRATOR_LIVE=0`. The daemon fires
-every 15 minutes, selects candidates, builds and preflights an integration
-branch, then logs what it would have shipped. No git push, no PR.
+**Linux primary node — helsinki (systemd):**
+
+```bash
+sudo bash scripts/setup/install-integrator-daemon-systemd.sh
+```
+
+Either installs with `CHUMP_INTEGRATOR_LIVE=0`. The daemon fires every 15
+minutes, selects candidates, builds and preflights an integration branch, then
+logs what it would have shipped. No git push, no PR.
+
+On Linux the organ is also part of the RUN-INSTALL roster: a fresh node that runs
+`sudo bash scripts/setup/install-helsinki-atc.sh` boots WITH the merge train
+(units in `scripts/dispatch/chump-integrator.{service,timer}`, kept enabled by
+`scripts/ops/organ-manifest.txt` + `chump-organ-reconcile`).
+
+Linux state check:
+
+```bash
+systemctl status chump-integrator.timer        # active?
+bash scripts/setup/install-integrator-daemon-systemd.sh --status   # mode (dry-run/live)
+tail -100 ~/.chump/logs/integrator-daemon.err  # recent cycle output (or: journalctl -u chump-integrator)
+systemctl start chump-integrator.service        # run one cycle now
+```
 
 ---
 
@@ -61,15 +83,26 @@ merge. Before flipping:
    tail -20 ~/.chump/logs/integrator-daemon.err | grep DRY-RUN
    ```
 3. Flip:
+
+   macOS (launchd):
    ```bash
    scripts/setup/install-integrator-daemon.sh --uninstall
    scripts/setup/install-integrator-daemon.sh --live
    ```
 
+   Linux (systemd, helsinki) — one command, installs a `CHUMP_INTEGRATOR_LIVE=1`
+   drop-in over the tracked dry-run unit:
+   ```bash
+   sudo bash scripts/setup/install-integrator-daemon-systemd.sh --live
+   ```
+
 To flip back to dry-run at any time:
 ```bash
+# macOS
 scripts/setup/install-integrator-daemon.sh --uninstall
 scripts/setup/install-integrator-daemon.sh
+# Linux (removes the LIVE drop-in)
+sudo bash scripts/setup/install-integrator-daemon-systemd.sh --dry-run
 ```
 
 ---

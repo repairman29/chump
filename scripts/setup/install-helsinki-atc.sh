@@ -122,8 +122,19 @@ SYSTEM_UNITS=(
   # boots a fresh node WITH auto-draining (RUN-INSTALL mission).
   chump-rot-reaper.service
   chump-rot-reaper.timer
+  # RESILIENT-318 / INFRA-2130: the Batched Merge Train (chump-integrator) — a
+  # Mac-launchd-only organ ported to systemd. Batches up to 5 ready_to_ship gaps
+  # through a preflight gate into ONE integration branch so CI runs once per
+  # batch instead of once per gap (~7 -> ~35 PRs/hr). Installed DRY-RUN
+  # (CHUMP_INTEGRATOR_LIVE=0 in the unit) — LIVE is an operator flip gated on
+  # trunk-GREEN (docs/process/SCALING.md). Shipped in the ATC roster so a fresh
+  # Linux node boots WITH the merge train (RUN-INSTALL mission). Requires the
+  # chump-integrator binary at ~/.cargo/bin (node-refresh builds+installs it, or
+  # install-integrator-daemon-systemd.sh does); the timer no-ops safely until then.
+  chump-integrator.service
+  chump-integrator.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
@@ -170,6 +181,32 @@ for unit in "${SYSTEM_UNITS[@]}"; do
   cp -f "$src" "$dest"
   echo "  installed $unit"
 done
+
+# RESILIENT-318 / INFRA-2130: the Batched Merge Train needs its own binary, which
+# node-refresh-chump.sh does NOT build (it only refreshes `chump`). Ensure it
+# exists so a fresh node boots with a WORKING merge train, not a timer that
+# fails on a missing binary. Best-effort + non-fatal: a build failure must never
+# block the rest of the ATC roster (the timer safely no-ops until the binary
+# lands). Idempotent: only builds when the binary is absent.
+INTEGRATOR_BIN_DEST="${CARGO_BIN_DIR:-/root/.cargo/bin}/chump-integrator"
+if [[ ! -x "$INTEGRATOR_BIN_DEST" ]]; then
+  _staged=""
+  for cand in "$REPO_ROOT/target/release/chump-integrator" "$REPO_ROOT/target/debug/chump-integrator"; do
+    [[ -x "$cand" ]] && { _staged="$cand"; break; }
+  done
+  if [[ -z "$_staged" ]] && command -v cargo >/dev/null 2>&1; then
+    echo "== building chump-integrator binary (Batched Merge Train) =="
+    if (cd "$REPO_ROOT" && cargo build --release -p chump-integrator --bin chump-integrator) 2>&1; then
+      _staged="$REPO_ROOT/target/release/chump-integrator"
+    else
+      echo "WARN: chump-integrator build failed (non-fatal; timer no-ops until binary lands)" >&2
+    fi
+  fi
+  if [[ -n "$_staged" && -x "$_staged" ]]; then
+    install -m 0755 "$_staged" "$INTEGRATOR_BIN_DEST" \
+      && echo "  installed chump-integrator -> $INTEGRATOR_BIN_DEST"
+  fi
+fi
 
 if ! systemctl daemon-reload 2>&1; then
   echo "ERROR: systemctl daemon-reload failed (no systemd bus reachable?)" >&2

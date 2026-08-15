@@ -76,3 +76,13 @@ enabled     chump-farmer.timer
 # 2026-08-14 hours-long deadlock). Declared here so organ-reconcile re-arms it if
 # it drifts or fails.
 enabled     chump-rot-reaper.timer
+# chump-integrator.timer: the Batched Merge Train (RESILIENT-318 / INFRA-2130).
+# Batches up to 5 ready_to_ship gaps through a preflight gate into ONE
+# integration branch so CI runs once per batch instead of once per gap
+# (~7 -> ~35 PRs/hr). A Mac-launchd-only organ ported to systemd. Runs DRY-RUN
+# (CHUMP_INTEGRATOR_LIVE=0 in the unit): it selects + preflights + logs what it
+# WOULD ship, no push/PR — SAFE to keep enabled while the fleet is paused.
+# Flipping LIVE is a separate operator decision gated on trunk-GREEN
+# (docs/process/SCALING.md). Declared here so organ-reconcile re-arms it if it
+# drifts or fails.
+enabled     chump-integrator.timer

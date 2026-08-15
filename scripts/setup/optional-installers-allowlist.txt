@@ -145,3 +145,11 @@ install-helsinki-atc.sh
 # on any machine that wants a standing WIRED/DOCUMENTED/UNWIRED report, but
 # not required for fresh-bootstrap correctness.
 install-installer-audit-launchd.sh
+
+# reason: RESILIENT-315 / RESILIENT-318 — Linux/systemd installer for the
+# Batched Merge Train (chump-integrator). Node-specific bring-up, not a
+# fresh-bootstrap requirement: the primary node gets it via the ATC roster
+# (install-helsinki-atc.sh SYSTEM_UNITS + organ-manifest.txt), and a laptop
+# dev checkout has no business enabling it. Run manually per
+# docs/process/SCALING.md / LINUX_NODE_ONBOARDING.md to install it standalone.
+install-integrator-daemon-systemd.sh
