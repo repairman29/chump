@@ -6356,6 +6356,36 @@ events:
       app.js, main.rs. The list is tunable in scripts/coord/lib/hot-files.yaml.
       Pairs with INFRA-1389 merge drivers (same region → no conflict) but the
       proactive block here saves the rebase cycle entirely for non-merge-driver paths.
+  # ── INFRA-1763: lease-time predictive diff-collision detection ────────────
+  - kind: collision_predicted
+    effect_metric: self
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs emit_collision_predicted_event (INFRA-1763)
+    trigger: >
+      chump claim ran a real `git diff` against a sibling lease's live worktree
+      and found the sibling's actual uncommitted changed-file set intersects
+      this claim's paths. Schema: docs/design/COLLISION_PREDICTION_SCHEMA.md
+      (collision-prediction-v1). Non-blocking — informational only.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, schema_version, agents, predicted_collision_ts,
+      confidence, evidence, recommended_action, session]
+  - kind: claim_diff_collision_checked
+    effect_metric: self
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs emit_claim_diff_collision_checked_event (INFRA-1763)
+    trigger: >
+      Fires once per `chump claim` invocation regardless of outcome — cost
+      tracking for the INFRA-1763 diff-collision scan (duration + sibling
+      count + match count). Duration is also printed to operator stderr.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, gap_id, session_id, duration_ms, siblings_checked, matches_found]
+  - kind: claim_diff_collision_check_failed
+    effect_metric: self
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs emit_claim_diff_collision_check_failed_event (INFRA-1763)
+    trigger: >
+      A sibling's real diff could not be computed (unprovisioned worktree,
+      git timeout, git IO error = failure_class transient; bad merge-base or
+      ref = failure_class permanent). Never blocks the claim.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_id, sibling_gap, sibling_session, failure_class, reason]
   # ── INFRA-1437: disk_critical auto-action ─────────────────────────────────
   - kind: disk_critical_auto_remediated
     effect_metric: self

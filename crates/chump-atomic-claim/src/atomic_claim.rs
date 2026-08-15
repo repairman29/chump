@@ -1119,6 +1119,55 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     }
 
+    // 5.65. INFRA-1763: lease-time predictive collision detection.
+    //
+    // Unlike the 5.6 hot-file check (which matches AC *text* against
+    // declared lease paths[]), this walks every sibling lease's *actual*
+    // worktree and runs a real `git diff` against it — catching in-flight
+    // uncommitted edits that the sibling never declared in paths[] at all.
+    // Best-effort + non-blocking: always emits claim_diff_collision_checked
+    // (cost tracking) and, for any real intersection, collision_predicted
+    // per docs/design/COLLISION_PREDICTION_SCHEMA.md.
+    {
+        let own_paths: Vec<String> = claim_paths
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let diff_result = check_diff_collision(
+            &lock_dir,
+            &args.worktree_base,
+            &args.gap_id,
+            &session_id,
+            &own_paths,
+        );
+
+        for failure in &diff_result.failures {
+            emit_claim_diff_collision_check_failed_event(&ambient_log, &args.gap_id, failure);
+        }
+
+        for m in &diff_result.matches {
+            emit_collision_predicted_event(&ambient_log, &session_id, &args.gap_id, m);
+            eprintln!(
+                "[claim] INFRA-1763: predicted collision with sibling session {} (gap {}) — shared paths: {}",
+                m.sibling_session,
+                m.sibling_gap,
+                m.shared_paths.join(", ")
+            );
+        }
+
+        emit_claim_diff_collision_checked_event(
+            &ambient_log,
+            &args.gap_id,
+            &session_id,
+            &diff_result,
+        );
+        eprintln!(
+            "[claim] INFRA-1763: diff-collision check done in {}ms ({} siblings checked, {} matches)",
+            diff_result.duration_ms, diff_result.siblings_checked, diff_result.matches.len()
+        );
+    }
+
     // 5.7. INFRA-1692: pre-flight team-nugget search.
     //
     // Marcus M-D arc: when an operator runs `chump claim GAP-ID`, surface
@@ -3706,6 +3755,334 @@ fn emit_claim_hot_file_overlap_event(
         .open(ambient_log)
     {
         let _ = f.write_all(line.as_bytes());
+    }
+}
+
+// ── INFRA-1763: predictive diff-collision detection ─────────────────────────
+//
+// Real git-diff intersection across active leases at claim time. Distinct
+// from the 5.6 hot-file check above: that one matches AC *text* against
+// declared lease paths[]; this one runs an actual `git diff` inside each
+// sibling's worktree and intersects the *real* changed-file set against
+// this claim's paths. Schema: docs/design/COLLISION_PREDICTION_SCHEMA.md.
+
+/// Why a per-sibling diff computation failed. Feeds
+/// `kind=claim_diff_collision_check_failed`'s `failure_class` field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiffCollisionFailureClass {
+    /// Retryable: worktree not yet provisioned, git timed out, or a
+    /// process/IO error spawning git.
+    Transient,
+    /// Not retryable without operator intervention: bad merge-base or ref.
+    Permanent,
+}
+
+impl DiffCollisionFailureClass {
+    fn as_str(self) -> &'static str {
+        match self {
+            DiffCollisionFailureClass::Transient => "transient",
+            DiffCollisionFailureClass::Permanent => "permanent",
+        }
+    }
+}
+
+/// One sibling whose real diff could not be computed.
+struct DiffCollisionFailure {
+    sibling_gap: String,
+    sibling_session: String,
+    failure_class: DiffCollisionFailureClass,
+    reason: String,
+}
+
+/// One sibling whose real diff intersects this claim's paths.
+struct DiffCollisionMatch {
+    sibling_gap: String,
+    sibling_session: String,
+    shared_paths: Vec<String>,
+}
+
+/// Aggregate result of one diff-collision check run.
+struct DiffCollisionCheckResult {
+    duration_ms: u128,
+    siblings_checked: usize,
+    matches: Vec<DiffCollisionMatch>,
+    failures: Vec<DiffCollisionFailure>,
+}
+
+/// Compute the real changed-file set (staged + unstaged + untracked) inside
+/// a sibling's worktree. Returns the failure class + human reason on error.
+fn compute_git_diff_paths(
+    worktree: &Path,
+) -> std::result::Result<Vec<String>, (DiffCollisionFailureClass, String)> {
+    if !worktree.exists() {
+        return Err((
+            DiffCollisionFailureClass::Transient,
+            format!("sibling worktree not provisioned: {}", worktree.display()),
+        ));
+    }
+
+    let worktree_str = worktree.to_string_lossy().into_owned();
+
+    // 5s timeout via coreutils `timeout` — a hung git process must never
+    // stall the claim path. Exit 124 is timeout's own "expired" signal.
+    let run = |args: &[&str]| -> std::result::Result<String, (DiffCollisionFailureClass, String)> {
+        let mut full_args: Vec<&str> = vec!["5", "git", "-C", worktree_str.as_str()];
+        full_args.extend_from_slice(args);
+        let out = Command::new("timeout")
+            .args(&full_args)
+            .output()
+            .map_err(|e| {
+                (
+                    DiffCollisionFailureClass::Transient,
+                    format!("git IO error spawning `git {}`: {}", args.join(" "), e),
+                )
+            })?;
+
+        if out.status.code() == Some(124) {
+            return Err((
+                DiffCollisionFailureClass::Transient,
+                format!("git {} timed out after 5s", args.join(" ")),
+            ));
+        }
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+            let lower = stderr.to_lowercase();
+            let class = if lower.contains("bad revision")
+                || lower.contains("unknown revision")
+                || lower.contains("ambiguous argument")
+                || lower.contains("not a valid object name")
+            {
+                DiffCollisionFailureClass::Permanent
+            } else {
+                DiffCollisionFailureClass::Transient
+            };
+            return Err((
+                class,
+                format!("git {} failed: {}", args.join(" "), stderr.trim()),
+            ));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+
+    let mut paths: Vec<String> = Vec::new();
+
+    // Tracked changes vs HEAD (covers both staged and unstaged edits).
+    let diff_out = run(&["diff", "HEAD", "--name-only"])?;
+    paths.extend(
+        diff_out
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty()),
+    );
+
+    // New, not-yet-tracked files.
+    let untracked_out = run(&["ls-files", "--others", "--exclude-standard"])?;
+    paths.extend(
+        untracked_out
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty()),
+    );
+
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
+/// INFRA-1763: scan every sibling lease's *real* worktree diff and
+/// intersect it against `own_paths`. Best-effort — never blocks the claim.
+fn check_diff_collision(
+    lock_dir: &Path,
+    worktree_base: &Path,
+    gap_id: &str,
+    own_session: &str,
+    own_paths: &[String],
+) -> DiffCollisionCheckResult {
+    let start = SystemTime::now();
+    let mut matches = Vec::new();
+    let mut failures = Vec::new();
+    let mut siblings_checked = 0usize;
+
+    let entries = std::fs::read_dir(lock_dir).ok();
+    if let Some(entries) = entries {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("json") {
+                continue;
+            }
+            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            if stem == "ambient" {
+                continue;
+            }
+            let Ok(body) = std::fs::read_to_string(&p) else {
+                continue;
+            };
+            let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+                continue;
+            };
+
+            let sid = val
+                .get("session_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if sid.is_empty() || sid == own_session {
+                continue;
+            }
+
+            let sibling_gap = val
+                .get("gap_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if sibling_gap.is_empty() || sibling_gap == gap_id {
+                continue;
+            }
+
+            let sibling_worktree =
+                worktree_base.join(format!("chump-{}", sibling_gap.to_lowercase()));
+
+            siblings_checked += 1;
+            match compute_git_diff_paths(&sibling_worktree) {
+                Ok(sibling_diff_paths) => {
+                    if own_paths.is_empty() {
+                        continue;
+                    }
+                    let shared: Vec<String> = own_paths
+                        .iter()
+                        .filter(|op| sibling_diff_paths.iter().any(|sp| sp == *op))
+                        .cloned()
+                        .collect();
+                    if !shared.is_empty() {
+                        matches.push(DiffCollisionMatch {
+                            sibling_gap,
+                            sibling_session: sid,
+                            shared_paths: shared,
+                        });
+                    }
+                }
+                Err((failure_class, reason)) => {
+                    failures.push(DiffCollisionFailure {
+                        sibling_gap,
+                        sibling_session: sid,
+                        failure_class,
+                        reason,
+                    });
+                }
+            }
+        }
+    }
+
+    let duration_ms = SystemTime::now()
+        .duration_since(start)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+
+    DiffCollisionCheckResult {
+        duration_ms,
+        siblings_checked,
+        matches,
+        failures,
+    }
+}
+
+/// INFRA-1763: emit `kind=collision_predicted` per
+/// docs/design/COLLISION_PREDICTION_SCHEMA.md. Best-effort.
+fn emit_collision_predicted_event(
+    ambient_log: &Path,
+    own_session: &str,
+    own_gap: &str,
+    m: &DiffCollisionMatch,
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ts = iso8601_from_unix(now);
+    let corr_id = format!("coll-{}-{}-{}", own_gap, m.sibling_gap, now);
+    let event = serde_json::json!({
+        "ts": ts,
+        "kind": "collision_predicted",
+        "schema_version": "collision-prediction-v1",
+        "agents": [
+            {"session": m.sibling_session, "current_gap": m.sibling_gap, "manifest_skills": []},
+            {"session": own_session, "current_gap": own_gap, "manifest_skills": []},
+        ],
+        "predicted_collision_ts": ts,
+        "confidence": 0.95,
+        "evidence": {
+            "source": "lease_overlap",
+            "details": "sibling's real uncommitted git diff intersects this claim's paths",
+            "shared_paths": m.shared_paths,
+            "lookahead_window_s": 0,
+        },
+        "recommended_action": "stand_down_B",
+        "session": own_session,
+        "corr_id": corr_id,
+    });
+    append_ambient_line(ambient_log, &event);
+}
+
+/// INFRA-1763: emit `kind=claim_diff_collision_checked` (cost tracking) —
+/// fired once per claim regardless of whether any collision was found.
+fn emit_claim_diff_collision_checked_event(
+    ambient_log: &Path,
+    gap_id: &str,
+    session_id: &str,
+    result: &DiffCollisionCheckResult,
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let event = serde_json::json!({
+        "ts": iso8601_from_unix(now),
+        "kind": "claim_diff_collision_checked",
+        "gap_id": gap_id,
+        "session_id": session_id,
+        "duration_ms": result.duration_ms,
+        "siblings_checked": result.siblings_checked,
+        "matches_found": result.matches.len(),
+    });
+    append_ambient_line(ambient_log, &event);
+}
+
+/// INFRA-1763: emit `kind=claim_diff_collision_check_failed` for one sibling
+/// whose diff could not be computed.
+fn emit_claim_diff_collision_check_failed_event(
+    ambient_log: &Path,
+    gap_id: &str,
+    failure: &DiffCollisionFailure,
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let event = serde_json::json!({
+        "ts": iso8601_from_unix(now),
+        "kind": "claim_diff_collision_check_failed",
+        "gap_id": gap_id,
+        "sibling_gap": failure.sibling_gap,
+        "sibling_session": failure.sibling_session,
+        "failure_class": failure.failure_class.as_str(),
+        "reason": failure.reason,
+    });
+    append_ambient_line(ambient_log, &event);
+}
+
+/// Shared best-effort JSONL append helper for the INFRA-1763 event trio.
+fn append_ambient_line(ambient_log: &Path, event: &serde_json::Value) {
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        let _ = f.write_all(event.to_string().as_bytes());
+        let _ = f.write_all(b"\n");
     }
 }
 
