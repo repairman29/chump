@@ -108,8 +108,9 @@ mod fleet_tool;
 mod fleet_velocity;
 mod floor_temp; // INFRA-1992: THE FLOOR Phase 1 — floor-temperature signal
 mod ftue_tool;
-// INFRA-693: gap_store moved to its own crate (crates/chump-gap-store/).
-// The rename keeps every `gap_store::*` call site compiling unchanged.
+mod rebase_queue; // INFRA-2225: fleet rebase-queue — auto-rebase daemon backlog surface
+                  // INFRA-693: gap_store moved to its own crate (crates/chump-gap-store/).
+                  // The rename keeps every `gap_store::*` call site compiling unchanged.
 use chump_gap_store as gap_store;
 // INFRA-1229: explicit linkage declaration so Cargo always links chump-ship
 // even when the CI rust-cache restores a stale build (fixes E0433 on Ubuntu).
@@ -8467,6 +8468,27 @@ async fn main() -> Result<()> {
                 } else {
                     0
                 };
+                std::process::exit(code);
+            }
+            // INFRA-2225: operator surface for the pr-auto-rebase daemon —
+            // current BEHIND+armed PR count (from the local GitHub cache,
+            // no live `gh` call) plus how long the backlog has been aging.
+            "rebase-queue" => {
+                let want_json = args.iter().any(|a| a == "--json");
+                let repo_root = repo_path::repo_root();
+                let status = rebase_queue::build(&repo_root);
+                if want_json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&status).unwrap_or_else(|_| "{}".to_string())
+                    );
+                } else {
+                    print!("{}", rebase_queue::render_text(&status));
+                }
+                // Exit 1 when the BEHIND backlog is aging past 15 min — the
+                // same saturation signature as the 2026-05-29 overnight
+                // incident this gap was filed from.
+                let code = if status.backlog_age_secs > 900 { 1 } else { 0 };
                 std::process::exit(code);
             }
             "mode" => {

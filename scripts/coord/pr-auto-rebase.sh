@@ -147,23 +147,61 @@ if [[ -z "$TARGETS" ]]; then
     exit 0
 fi
 
-REBASED=0
-SKIPPED=0
-FAILED=0
-DEFERRED=0
-while IFS=$'\t' read -r PR STATE; do
-    [[ -z "$PR" ]] && continue
-    count="$(cooldown_count "$PR")"
-    if (( count >= MAX_PER_HOUR )); then
-        echo "[pr-auto-rebase] SKIP #$PR — cooldown ($count rebases in last hour, max=$MAX_PER_HOUR)"
-        emit pr_auto_rebase_skipped "$PR" "\"reason\":\"cooldown\",\"count_last_hour\":$count"
-        SKIPPED=$((SKIPPED+1))
-        continue
+# INFRA-2225: queue-aware throttle. Under saturation (many PRs in flight,
+# merges landing slowly) a serial daemon can't keep pace — 2026-05-29
+# overnight saw 8 BEHIND PRs pile up with 25+ in flight. When in-flight
+# count exceeds 15 AND the average gap between the last few merges exceeds
+# 15 min, prioritize already-armed BEHIND PRs (cheap, mechanical unblocks)
+# ahead of DIRTY/BLOCKED ones so the daemon clears the easy backlog first.
+avg_merge_gap_min() {
+    local merges ts=() i total=0 count=0 t1 t2 s1 s2 diff
+    merges="$(gh pr list --state merged --limit 6 --json mergedAt -q '.[].mergedAt' 2>/dev/null | sort -r)"
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && ts+=("$line")
+    done <<< "$merges"
+    if (( ${#ts[@]} < 2 )); then
+        echo 0
+        return
     fi
-    if (( DRY_RUN )); then
-        echo "[pr-auto-rebase] DRY-RUN would rebase #$PR (state=$STATE, prior rebases this hour=$count)"
-        continue
-    fi
+    for (( i=0; i<${#ts[@]}-1; i++ )); do
+        t1="${ts[$i]}"; t2="${ts[$((i+1))]}"
+        s1="$(date -u -d "$t1" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$t1" +%s 2>/dev/null)"
+        s2="$(date -u -d "$t2" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$t2" +%s 2>/dev/null)"
+        [[ -z "$s1" || -z "$s2" ]] && continue
+        diff=$(( (s1 - s2) / 60 ))
+        (( diff < 0 )) && continue
+        total=$((total+diff))
+        count=$((count+1))
+    done
+    if (( count == 0 )); then echo 0; else echo $(( total / count )); fi
+}
+
+INFLIGHT_COUNT="$(printf '%s' "$PRS_JSON" | jq 'length' 2>/dev/null || echo 0)"
+AVG_MERGE_GAP_MIN="$(avg_merge_gap_min)"
+THROTTLE_MODE=0
+if [[ "${CHUMP_PR_AUTO_REBASE_NO_THROTTLE:-0}" != "1" ]] && (( INFLIGHT_COUNT > 15 )) && (( AVG_MERGE_GAP_MIN > 15 )); then
+    THROTTLE_MODE=1
+    echo "[pr-auto-rebase] THROTTLE: inflight=$INFLIGHT_COUNT avg_merge_gap_min=$AVG_MERGE_GAP_MIN — prioritizing BEHIND PRs"
+    emit pr_auto_rebase_throttle 0 "\"inflight\":$INFLIGHT_COUNT,\"avg_merge_gap_min\":$AVG_MERGE_GAP_MIN"
+    TARGETS="$(printf '%s\n' "$TARGETS" | awk -F'\t' '{print ($2=="BEHIND"?0:1)"\t"$0}' | sort -k1,1n | cut -f2- )"
+fi
+
+# INFRA-2225: bounded concurrency. The daemon used to rebase one PR at a
+# time; under saturation (25+ PRs in flight) serial `gh pr update-branch`
+# calls can't keep pace with the arrival rate. Batch up to MAX_CONCURRENT
+# in parallel via background jobs, capped with `wait -n`.
+MAX_CONCURRENT="${CHUMP_PR_AUTO_REBASE_MAX_CONCURRENT:-5}"
+RESULTS_DIR="$(mktemp -d -t chump-rebase-results-XXXXXX)"
+trap 'rm -rf "$RESULTS_DIR"' EXIT
+
+# Runs the full per-PR rebase flow (cooldown already checked by caller) and
+# writes a one-word verdict (rebased|skipped|failed|deferred) to
+# "$RESULTS_DIR/$PR" so the parent can tally after all jobs complete. Safe to
+# background: all state it touches (COOLDOWN_FILE, AMBIENT, per-branch
+# lockfiles) is either append-only or keyed per-PR/per-branch.
+process_pr() {
+    local PR="$1" STATE="$2"
+    local RESULT_FILE="$RESULTS_DIR/$PR"
 
     # INFRA-1974 (H5 critique fix): per-branch advisory lock. Prevents this
     # daemon from racing an operator-initiated `git rebase origin/main` on
@@ -176,12 +214,15 @@ while IFS=$'\t' read -r PR STATE; do
     #
     # Bypass: CHUMP_PR_AUTO_REBASE_NO_LOCK=1 reverts to pre-1974 behavior
     # (always rebase regardless of operator activity).
+    local BRANCH BRANCH_SAFE LOCKFILE REBASE_OUTPUT_FILE WT
+    local CHANGED_FILES=() REBASE_TIMED_OUT REBASE_EXIT_STATUS CONFLICT_FILES_JSON DRIVERS ts _prv
+
     BRANCH="$(gh pr view "$PR" --json headRefName -q .headRefName 2>/dev/null)"
     if [[ -z "$BRANCH" ]]; then
         echo "[pr-auto-rebase] WARN #$PR — could not resolve branch name; skipping"
         emit pr_auto_rebase_skipped "$PR" "\"reason\":\"branch_resolve_failed\""
-        SKIPPED=$((SKIPPED+1))
-        continue
+        echo "skipped" > "$RESULT_FILE"
+        return
     fi
     # Sanitize branch name for use in filename (e.g. chump/foo-bar → chump_foo-bar)
     BRANCH_SAFE="${BRANCH//\//_}"
@@ -190,7 +231,6 @@ while IFS=$'\t' read -r PR STATE; do
         # Acquire lock in subshell so it auto-releases at scope exit. If we
         # can't get it in 1s, defer this PR — operator is rebasing.
         REBASE_OUTPUT_FILE="$(mktemp)"
-        REBASE_EXIT=0
         (
             exec 9>"$LOCKFILE"
             if ! flock -n -w 1 9; then
@@ -203,9 +243,9 @@ while IFS=$'\t' read -r PR STATE; do
             true
         )
         if [[ $? -eq 2 ]]; then
-            DEFERRED=$((DEFERRED+1))
             rm -f "$REBASE_OUTPUT_FILE"
-            continue
+            echo "deferred" > "$RESULT_FILE"
+            return
         fi
         rm -f "$REBASE_OUTPUT_FILE"
         # Re-acquire the lock for the actual rebase action below. Subshell
@@ -215,9 +255,9 @@ while IFS=$'\t' read -r PR STATE; do
         flock -n 9 || {
             echo "[pr-auto-rebase] DEFER #$PR — lock taken between probe and acquire (rare race)"
             emit pr_auto_rebase_deferred_for_operator "$PR" "\"reason\":\"lock_race\",\"branch\":\"$BRANCH\""
-            DEFERRED=$((DEFERRED+1))
             exec 9>&-
-            continue
+            echo "deferred" > "$RESULT_FILE"
+            return
         }
     fi
 
@@ -227,23 +267,29 @@ while IFS=$'\t' read -r PR STATE; do
         emit pr_auto_rebased "$PR" "\"prior_state\":\"$STATE\",\"trigger\":\"chump-pr-auto-rebase\""
         ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         printf '{"ts":"%s","pr":%s,"state":"%s"}\n' "$ts" "$PR" "$STATE" >> "$COOLDOWN_FILE"
-        REBASED=$((REBASED+1))
+        echo "rebased" > "$RESULT_FILE"
     else
         # INFRA-1958: gh pr update-branch returns false-positive conflicts.
         # Try local rebase fallback before escalating to pr_auto_rebase_failed.
         if [[ "${CHUMP_PR_AUTO_REBASE_NO_FALLBACK:-0}" == "1" ]]; then
             echo "[pr-auto-rebase] FAIL #$PR — gh pr update-branch returned non-zero (fallback disabled by env)"
             emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"disabled\""
-            FAILED=$((FAILED+1))
-            continue
+            echo "failed" > "$RESULT_FILE"
+            if [[ "${CHUMP_PR_AUTO_REBASE_NO_LOCK:-0}" != "1" ]] && command -v flock >/dev/null 2>&1; then
+                exec 9>&- 2>/dev/null || true
+            fi
+            return
         fi
         echo "[pr-auto-rebase] gh API reports conflict — trying local rebase fallback (INFRA-1958)..."
         BRANCH="$(gh pr view "$PR" --json headRefName -q .headRefName 2>/dev/null)"
         if [[ -z "$BRANCH" ]]; then
             echo "[pr-auto-rebase] FAIL #$PR — could not resolve branch name"
             emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"branch_resolve_failed\""
-            FAILED=$((FAILED+1))
-            continue
+            echo "failed" > "$RESULT_FILE"
+            if [[ "${CHUMP_PR_AUTO_REBASE_NO_LOCK:-0}" != "1" ]] && command -v flock >/dev/null 2>&1; then
+                exec 9>&- 2>/dev/null || true
+            fi
+            return
         fi
         WT="$(mktemp -d -t chump-rebase-fb-XXXXXX)"
         # Fetch the branch fresh; ignore failures (older git may not support --quiet).
@@ -275,11 +321,11 @@ while IFS=$'\t' read -r PR STATE; do
                     emit pr_auto_rebase_recovered "$PR" "\"prior_state\":\"$STATE\",\"drivers\":\"$DRIVERS\""
                     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
                     printf '{"ts":"%s","pr":%s,"state":"%s"}\n' "$ts" "$PR" "$STATE" >> "$COOLDOWN_FILE"
-                    REBASED=$((REBASED+1))
+                    echo "rebased" > "$RESULT_FILE"
                 else
                     echo "[pr-auto-rebase] FAIL #$PR — local rebase OK but push failed (lock contention?)"
                     emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"push_failed\""
-                    FAILED=$((FAILED+1))
+                    echo "failed" > "$RESULT_FILE"
                 fi
             else
                 REBASE_EXIT_STATUS=$?
@@ -300,13 +346,13 @@ while IFS=$'\t' read -r PR STATE; do
                     emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"local_rebase_also_failed\""
                     emit pr_auto_rebase_unresolvable "$PR" "\"prior_state\":\"$STATE\",\"reason\":\"conflict\",\"conflict_files\":$CONFLICT_FILES_JSON"
                 fi
-                FAILED=$((FAILED+1))
+                echo "failed" > "$RESULT_FILE"
             fi
             git -C "$REPO_ROOT" worktree remove "$WT" --force >/dev/null 2>&1 || true
         else
             echo "[pr-auto-rebase] FAIL #$PR — could not create worktree for fallback"
             emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"worktree_failed\""
-            FAILED=$((FAILED+1))
+            echo "failed" > "$RESULT_FILE"
         fi
         rm -rf "$WT" 2>/dev/null || true
     fi
@@ -317,7 +363,49 @@ while IFS=$'\t' read -r PR STATE; do
     if [[ "${CHUMP_PR_AUTO_REBASE_NO_LOCK:-0}" != "1" ]] && command -v flock >/dev/null 2>&1; then
         exec 9>&- 2>/dev/null || true
     fi
-done <<< "$TARGETS"
+}
 
-echo "[pr-auto-rebase] done — rebased=$REBASED skipped=$SKIPPED failed=$FAILED deferred=$DEFERRED"
+# INFRA-2225: dispatch loop. Cooldown check stays on the main thread (cheap,
+# avoids racing writes to COOLDOWN_FILE for the same PR); the actual rebase
+# work backgrounds into process_pr, capped at MAX_CONCURRENT in-flight jobs
+# via `wait -n`.
+REBASED=0
+SKIPPED=0
+FAILED=0
+DEFERRED=0
+JOBS_IN_FLIGHT=0
+while IFS=$'\t' read -r PR STATE; do
+    [[ -z "$PR" ]] && continue
+    count="$(cooldown_count "$PR")"
+    if (( count >= MAX_PER_HOUR )); then
+        echo "[pr-auto-rebase] SKIP #$PR — cooldown ($count rebases in last hour, max=$MAX_PER_HOUR)"
+        emit pr_auto_rebase_skipped "$PR" "\"reason\":\"cooldown\",\"count_last_hour\":$count"
+        SKIPPED=$((SKIPPED+1))
+        continue
+    fi
+    if (( DRY_RUN )); then
+        echo "[pr-auto-rebase] DRY-RUN would rebase #$PR (state=$STATE, prior rebases this hour=$count)"
+        continue
+    fi
+
+    process_pr "$PR" "$STATE" &
+    JOBS_IN_FLIGHT=$((JOBS_IN_FLIGHT+1))
+    if (( JOBS_IN_FLIGHT >= MAX_CONCURRENT )); then
+        wait -n 2>/dev/null || wait
+        JOBS_IN_FLIGHT=$((JOBS_IN_FLIGHT-1))
+    fi
+done <<< "$TARGETS"
+wait
+
+for f in "$RESULTS_DIR"/*; do
+    [[ -f "$f" ]] || continue
+    case "$(cat "$f" 2>/dev/null)" in
+        rebased) REBASED=$((REBASED+1)) ;;
+        skipped) SKIPPED=$((SKIPPED+1)) ;;
+        failed) FAILED=$((FAILED+1)) ;;
+        deferred) DEFERRED=$((DEFERRED+1)) ;;
+    esac
+done
+
+echo "[pr-auto-rebase] done — rebased=$REBASED skipped=$SKIPPED failed=$FAILED deferred=$DEFERRED concurrency=$MAX_CONCURRENT throttle=$THROTTLE_MODE"
 exit 0
