@@ -126,7 +126,7 @@ The recovery is **operator-visible** via broadcast — never silent. Broadcast a
 
 - Don't act outside lane scope without override + audit. The operator chose role-scoped fleet (META-074) explicitly to stop file-lease collisions.
 - Don't pre-slice an umbrella into sub-gaps with TODO ACs and walk away — concrete ACs unblock subagent dispatch; TODOs block claims and waste subagent context discovering what you should have specified.
-- Don't burn ticks on idle work to look busy. When the lane is exhausted, stand by and say so plainly per the "idle honesty" feedback in MEMORY.md.
+- Don't idle when the lane is exhausted (INFRA-2210, operator directive "no idle curators" supersedes the older "idle honesty" MEMORY.md note). Always take an action instead: HANDOFF an offer to help in another lane, or self-dispatch on the next unclaimed P0/P1 gap with no `skills_required`. `scripts/coord/target-loop.sh` does this automatically via `lib/no-idle.sh` — don't manually skip it.
 - Don't duplicate `scripts/coord/target-loop.sh` logic here. This agent body is the discipline; the script is the executable surface.
 
 ## Self-audit checklist

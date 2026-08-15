@@ -10593,3 +10593,36 @@ events:
       concurrent sibling claims)."
     consumers: [ambient]
     fields_required: [cwd, resolved_toplevel, branch]
+
+  - kind: curator_no_op_avoided
+    effect_metric: self
+    emitter: scripts/coord/lib/no-idle.sh (sourced by ci-audit-loop.sh,
+      handoff-loop.sh, infra-watcher-loop.sh, decompose-loop.sh,
+      md-links-loop.sh, external-collab-loop.sh, target-loop.sh,
+      shepherd-loop.sh)
+    trigger: "a curator-loop.sh tick would have printed 'quiet — no
+      actionable items' and exited idle, but instead took a fallback
+      action (stuck-PR convoy rescue offer, self-dispatch candidate
+      surfaced, or a filed substrate-weakness gap) per the operator
+      directive 'no idle curators' (INFRA-2210)."
+    consumers: [scripts/ops/curator-no-idle-watchdog.sh]
+    fields_required: [role, action]
+
+  - kind: curator_lazy
+    effect_metric: self
+    emitter: scripts/ops/curator-no-idle-watchdog.sh (INFRA-2210)
+    trigger: ratio of curator_no_op_avoided events to curator heartbeat/tick
+      events over the last hour drops below 0.5 — more than half the
+      fleet's curator cycles idled instead of taking a fallback action.
+    consumers: [ambient, operator pre-flight tail]
+    fields_required: [ratio, heartbeats, avoided, window_secs, reason]
+
+  - kind: infra_watcher_filed_gap
+    effect_metric: self
+    emitter: scripts/coord/infra-watcher-loop.sh (_no_idle_substrate_scan, INFRA-2210)
+    trigger: substrate health check passed with no critical/warning findings
+      this tick, so infra-watcher scanned for launchd plists with no
+      matching scripts/ci/test-*-watchdog.sh coverage and filed a P2 gap
+      for each uncovered plist found (dedup window 24h per plist).
+    consumers: [ambient]
+    fields_required: [plist]

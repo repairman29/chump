@@ -82,6 +82,14 @@ _cmd_tick() {
     if (( triage_rc == 0 || rescue_rc == 0 )); then
         return 0
     fi
+
+    # INFRA-2210: no-idle fallback before declaring quiet.
+    # shellcheck source=/dev/null
+    if source "$SCRIPT_DIR/lib/no-idle.sh" 2>/dev/null && no_idle_try_fallback "shepherd"; then
+        echo "[shepherd] tick: no-op avoided — took fallback action instead of idling"
+        return 0
+    fi
+
     return 1
 }
 

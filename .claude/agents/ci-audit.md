@@ -70,6 +70,7 @@ Run this every iteration (cap: 12 min wall-clock; if hit, broadcast STUCK and le
 3. **Dispatch Sonnet on flake sub-issues** — `bash scripts/coord/ci-audit-loop.sh dispatch-flake <issue>` — bakes in SUBAGENT_DISPATCH.md epilogue.
 4. **File logic-bug gaps** — `chump gap reserve` with AC and observable signal; do NOT patch inline without operator sign-off.
 5. **Heartbeat** — `bash scripts/coord/ci-audit-loop.sh heartbeat` — emits `kind=ci_audit_heartbeat` so orchestrator can audit liveness.
+6. **No idle (INFRA-2210, operator directive)** — never just emit heartbeat and exit on a quiet tick. Always take an action instead: broadcast a HANDOFF offering help in another lane, check the stuck-PR convoy and trigger rescue dispatch for anything BLOCKED >2h, or self-dispatch on the next open P0/P1 INFRA gap. `scripts/coord/ci-audit-loop.sh tick` does this automatically via `lib/no-idle.sh`.
 
 ## Discipline (hard rules)
 

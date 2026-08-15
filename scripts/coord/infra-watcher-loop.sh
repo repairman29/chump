@@ -26,6 +26,10 @@ AMBIENT_LOG="${REPO_ROOT}/.chump-locks/ambient.jsonl"
 
 _ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
+# INFRA-2210: no-idle finding counter — cmd_tick reads this after all
+# subchecks run to decide whether the cycle was genuinely quiet.
+_NON_OK_FINDING_COUNT=0
+
 _emit_finding() {
     local category="$1"
     local severity="$2"  # critical | warning | ok
@@ -40,9 +44,53 @@ _emit_finding() {
         >> "$AMBIENT_LOG"
     if [[ "$severity" == "critical" ]]; then
         printf '[infra-watcher] CRITICAL %s: %s\n' "$category" "$detail" >&2
+        _NON_OK_FINDING_COUNT=$((_NON_OK_FINDING_COUNT + 1))
+    elif [[ "$severity" == "warning" ]]; then
+        printf '[infra-watcher] %s %s: %s\n' "$severity" "$category" "$detail"
+        _NON_OK_FINDING_COUNT=$((_NON_OK_FINDING_COUNT + 1))
     else
         printf '[infra-watcher] %s %s: %s\n' "$severity" "$category" "$detail"
     fi
+}
+
+# INFRA-2210: no-idle substrate scan. Runs only when the tick's subchecks
+# found nothing critical/warning (substrate health check passes). Looks for
+# filing-worthy weaknesses — launchd plists with no matching
+# scripts/ci/test-*-watchdog.sh coverage — and files a P2 gap per weakness
+# found (P2 is permissionless per CLAUDE.md intake firewall; no --outcome
+# required). Dedupes against gaps already filed for the same plist by
+# grepping ambient.jsonl for a prior infra_watcher_filed_gap on that plist
+# in the last 24h, so a quiet substrate doesn't refile every tick.
+_no_idle_substrate_scan() {
+    local plist_dir="${REPO_ROOT}/scripts/launchd"
+    [[ -d "$plist_dir" ]] || return 1
+    local acted=0
+    local plist base name cutoff_epoch now_epoch
+    now_epoch="$(date -u +%s)"
+    cutoff_epoch=$((now_epoch - 86400))
+    for plist in "$plist_dir"/*.plist; do
+        [[ -f "$plist" ]] || continue
+        base="$(basename "$plist" .plist)"
+        name="${base#com.chump.}"
+        if grep -rlq "$name" "${REPO_ROOT}/scripts/ci/"test-*watchdog*.sh 2>/dev/null; then
+            continue
+        fi
+        if grep -q "\"kind\":\"infra_watcher_filed_gap\".*\"plist\":\"${base}\"" "$AMBIENT_LOG" 2>/dev/null; then
+            local last_ts last_epoch
+            last_ts="$(grep "\"kind\":\"infra_watcher_filed_gap\".*\"plist\":\"${base}\"" "$AMBIENT_LOG" 2>/dev/null | tail -1 | sed -n 's/.*"ts":"\([^"]*\)".*/\1/p')"
+            last_epoch="$(date -u -d "$last_ts" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$last_ts" +%s 2>/dev/null || echo 0)"
+            (( last_epoch > cutoff_epoch )) && continue
+        fi
+        printf '[infra-watcher] no-idle: %s has no watchdog test coverage — filing gap\n' "$base"
+        chump gap reserve --domain INFRA --priority P2 \
+            --title "RESILIENT: watchdog test coverage for launchd plist ${base}" \
+            >/dev/null 2>&1 || true
+        printf '{"ts":"%s","kind":"infra_watcher_filed_gap","plist":"%s"}\n' \
+            "$(_ts)" "$base" >> "$AMBIENT_LOG" 2>/dev/null || true
+        acted=1
+    done
+    (( acted == 1 )) && return 0
+    return 1
 }
 
 _header() { printf '\n=== infra-watcher: %s ===\n' "$1"; }
@@ -678,6 +726,21 @@ cmd_tick() {
     cmd_check_ptys
     cmd_check_repo_vars
     cmd_check_oauth_freshness
+
+    # INFRA-2210: no-idle — substrate health check passed (no critical/
+    # warning findings this cycle) means we go looking for filing-worthy
+    # weaknesses instead of just exiting quiet.
+    if (( _NON_OK_FINDING_COUNT == 0 )); then
+        # shellcheck source=/dev/null
+        if source "$(dirname "$0")/lib/no-idle.sh" 2>/dev/null && _no_idle_substrate_scan; then
+            printf '{"ts":"%s","kind":"curator_no_op_avoided","session":"%s","role":"infra-watcher","action":"substrate_scan"}\n' \
+                "$(_ts)" "${CHUMP_SESSION_ID:-infra-watcher-$$}" >> "$AMBIENT_LOG" 2>/dev/null || true
+            printf '[infra-watcher] no-op avoided — filed substrate weakness gap(s) instead of idling\n'
+        else
+            printf '[infra-watcher] substrate healthy, no filing-worthy weaknesses found\n'
+        fi
+    fi
+
     printf '[infra-watcher] tick complete ts=%s\n' "$(_ts)"
 }
 

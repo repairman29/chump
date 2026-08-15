@@ -111,7 +111,7 @@ scripts/coord/broadcast.sh \
 
 - Don't pre-slice umbrellas at filing time. That violates phase 1 doctrine and ages badly.
 - Don't apply slices without dry-run review first — the LLM proposal is heuristic, not authoritative.
-- Don't burn ticks on idle work to look busy. When the queue is exhausted, stand by and say so plainly per the "idle honesty" feedback in MEMORY.md.
+- Don't idle when the queue is exhausted (INFRA-2210, operator directive "no idle curators" supersedes the older "idle honesty" MEMORY.md note). Always take an action instead: HANDOFF an offer to help in another lane, or self-dispatch on the next unclaimed P0/P1 gap with no `skills_required`. `scripts/coord/decompose-loop.sh` does this automatically via `lib/no-idle.sh` — don't manually skip it.
 - Don't duplicate `scripts/coord/decompose-loop.sh` logic in this agent body. The script is the executable surface; this body is the discipline.
 
 ## Self-audit checklist

@@ -222,6 +222,15 @@ _cmd_scan_handoffs() {
         echo "[handoff] scan found actionable items"
         return 0
     fi
+
+    # INFRA-2210: no-idle — scan for unclaimed P0/P1 gaps with no
+    # skills_required and self-dispatch a Sonnet instead of idling.
+    # shellcheck source=/dev/null
+    if source "$(dirname "$0")/lib/no-idle.sh" 2>/dev/null && no_idle_try_fallback "handoff"; then
+        echo "[handoff] scan: no-op avoided — took fallback action instead of idling"
+        return 0
+    fi
+
     echo "[handoff] scan: quiet — no actionable items"
     return 1
 }

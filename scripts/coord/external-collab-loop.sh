@@ -51,6 +51,10 @@ if [[ "$SUBCOMMAND" != "help" && "$SUBCOMMAND" != "-h" && "$SUBCOMMAND" != "--he
     source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "external-collab" || true
 fi
 
+# INFRA-2210: no-idle finding counter — cmd_tick reads this to decide
+# whether the cycle was genuinely quiet.
+_EC_FINDING_COUNT=0
+
 # ── ambient emit helper ───────────────────────────────────────────────────────
 emit_finding() {
     local category="$1"
@@ -64,6 +68,7 @@ emit_finding() {
         >> "$AMBIENT_LOG"
     printf '[external-collab] FINDING category=%s surface=%s detail="%s"\n' \
         "$category" "$surface" "$detail"
+    _EC_FINDING_COUNT=$((_EC_FINDING_COUNT + 1))
 }
 
 # ── surface-freshness ─────────────────────────────────────────────────────────
@@ -300,6 +305,18 @@ cmd_tick() {
     echo "──────────────────────────────────────────"
     cmd_partnership_pipeline
     echo "──────────────────────────────────────────"
+
+    # INFRA-2210: no-idle — no findings this cycle means take a fallback
+    # action instead of a silent quiet exit.
+    if (( _EC_FINDING_COUNT == 0 )); then
+        # shellcheck source=/dev/null
+        if source "$(dirname "$0")/lib/no-idle.sh" 2>/dev/null && no_idle_try_fallback "external-collab"; then
+            echo "[external-collab] no-op avoided — took fallback action instead of idling"
+        else
+            echo "[external-collab] genuinely quiet — no findings, no fallback action available"
+        fi
+    fi
+
     echo "[external-collab] tick complete"
 }
 

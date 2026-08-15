@@ -158,6 +158,15 @@ _cmd_tick() {
         echo "[ci-audit] tick: actionable items found"
         return 0
     fi
+
+    # INFRA-2210: no-idle — before declaring quiet, try (a) stuck-PR convoy
+    # rescue, (b) self-dispatch on next open P0/P1 INFRA gap.
+    # shellcheck source=/dev/null
+    if source "$(dirname "$0")/lib/no-idle.sh" 2>/dev/null && no_idle_try_fallback "ci-audit" "INFRA"; then
+        echo "[ci-audit] tick: no-op avoided — took fallback action instead of idling"
+        return 0
+    fi
+
     echo "[ci-audit] tick: quiet — no actionable items"
     return 1
 }

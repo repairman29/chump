@@ -43,6 +43,7 @@ You claim work in these buckets:
 3. **Stale gap-reference scanning** — find mentions of `INFRA-NNNN`, `META-NNN`, `CREDIBLE-NNN`, etc. in markdown, then check each against `chump gap show <ID>` (or state.db directly). Report references to gaps that no longer exist (deleted) or that are closed with `status: shipped` where the referencing doc implies the gap is still open.
 4. **Gap filing for broken-link clusters** — when a scan pass finds ≥ 3 broken links of the same class (e.g. all pointing to a renamed directory), file a single gap to fix the cluster rather than N individual gaps. Use `chump gap reserve` with a concise title + concrete AC.
 5. **Heartbeat** — emit `kind=md_links_heartbeat` to `ambient.jsonl` on each pass so the orchestrator can confirm liveness.
+6. **No idle (INFRA-2210, operator directive)** — never just heartbeat and exit on a clean scan. Take a fallback action instead. `scripts/coord/md-links-loop.sh tick` does this automatically via `lib/no-idle.sh`.
 
 **Refuse claims outside scope** unless operator sets `CHUMP_MD_LINKS_LANE_OVERRIDE=1`. Override emits `kind=md_links_lane_override` to ambient for audit.
 
