@@ -49,6 +49,14 @@
 
 set -uo pipefail
 
+# --- sanctioned gh wrapper (INFRA-1274) --------------------------------------
+# Route every GitHub call through chump_gh (scripts/coord/lib/github.sh) so it
+# inherits the fleet's throttle + secondary-rate-limit backoff + criticality
+# tagging, instead of a raw `gh` that the raw-gh-lint hot-path gate forbids.
+_NODE_REFRESH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../coord/lib/github.sh
+source "$_NODE_REFRESH_DIR/../coord/lib/github.sh" 2>/dev/null || true
+
 # --- resolve the mirror checkout to build from -------------------------------
 REPO_ROOT="${CHUMP_NODE_REPO:-}"
 if [[ -z "$REPO_ROOT" ]]; then
@@ -91,7 +99,13 @@ _find_green_main_sha() {
         echo ""
         return
     fi
-    gh api "repos/{owner}/{repo}/actions/workflows/${CI_WORKFLOW}/runs?branch=main&status=success&per_page=${GREEN_LOOKBACK}" \
+    # INFRA-1274: raw `gh` is banned in hot-path scripts — route through the
+    # sanctioned chump_gh wrapper. Fall back to raw gh only if the lib failed to
+    # source (chump_gh undefined), so a node with a partial checkout still works.
+    local _gh_cmd="gh"
+    command -v chump_gh >/dev/null 2>&1 && _gh_cmd="chump_gh"
+    CHUMP_GH_CALL_CRITICALITY=background "$_gh_cmd" api \
+        "repos/{owner}/{repo}/actions/workflows/${CI_WORKFLOW}/runs?branch=main&status=success&per_page=${GREEN_LOOKBACK}" \
         --jq '[.workflow_runs[] | select(.conclusion=="success")][0].head_sha' 2>/dev/null \
         | grep -vE '^(null|)$' || echo ""
 }
