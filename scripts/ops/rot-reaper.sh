@@ -1,5 +1,31 @@
 #!/usr/bin/env bash
-# rot-reaper.sh — drain genuinely-CONFLICTING PRs so the fleet self-heals.
+# rot-reaper.sh — the NO-ABANDON JANITOR: drive EVERY open fleet PR toward a
+# terminal state so nothing can rot (RESILIENT-311 / RESILIENT-324).
+#
+# THE GUARANTEE (RESILIENT-311, operator law "one way or the other, this queue
+# stays managed"): on every beat, each open fleet-authored PR is pushed toward a
+# terminal state (MERGED, or CLOSED+requeued) within a bounded time. No PR sits
+# abandoned. The classes this organ drives:
+#   • CONFLICTING beyond CONFLICT age      → close + requeue + label rot-reaped
+#   • MERGEABLE but a REQUIRED check has
+#     FAILED beyond REALFAIL age           → close + requeue + label rot-reaped
+#   • MERGEABLE + green + UNARMED beyond
+#     ARM age (minutes)                    → arm auto-merge (backstop the lander)
+#   • BEHIND                               → left for chump-armed-rebaser
+#   • fresh anything                       → left (owner/CI still working)
+# Plus a NO-ABANDON METRIC each beat (kind=pr_no_abandon_backlog): the count of
+# open PRs older than the deadline still in a non-terminal state. Target 0.
+#
+# WHY the label (RESILIENT-311, 2026-08-15 reap/revive deadlock): the rot-reaper
+# was closing CONFLICTING PR #3792 every 30 min AND requeuing its gap to `open`
+# — but post-push-integrity-watch.sh (a reviver that reopens closed-not-merged
+# fleet PRs) saw "closed PR + open gap" as "work lost, reopen it" and reopened
+# the dead, unmergeable branch within ~60s. The reaper's close never STUCK: an
+# infinite reap↔revive fight, and the PR rotted OPEN forever. The reaper's
+# filters were never the problem — its close was being undone. Fix: every reaper
+# close now stamps a `rot-reaped` label; revivers skip any PR bearing it (an
+# intentional terminal close is not a lost-work incident — a fresh PR comes from
+# the requeued gap). The label makes the close terminal.
 #
 # WHY (operator, 2026-08-14 deadlock): the back-pressure controller
 # (scripts/ops/back-pressure-controller.sh) HALTS production when the "stuck
@@ -40,13 +66,30 @@
 #   ./scripts/ops/rot-reaper.sh --dry-run    # print what would happen, no changes
 #
 # Environment:
-#   CHUMP_ROT_REAPER_MIN_AGE_HOURS  min PR age (hours) before it can be reaped
-#                                   (default 4). Excludes fresh conflicts.
+#   CHUMP_ROT_REAPER_MIN_AGE_HOURS  min PR age (hours) before a CONFLICTING PR
+#                                   can be reaped (default 4). Excludes fresh
+#                                   conflicts.
+#   CHUMP_ROT_REAPER_REALFAIL_AGE_HOURS  min PR age (hours) before a MERGEABLE
+#                                   PR that is failing a REQUIRED check can be
+#                                   reaped (default 8). Longer than the conflict
+#                                   gate: a red check may be a transient flake a
+#                                   rerun clears, so give the fix/rerun organs
+#                                   more room before declaring the work lost.
+#   CHUMP_ROT_REAPER_ARM_AGE_MIN    min PR age (minutes) before a green-but-
+#                                   UNARMED PR is armed as a backstop to the
+#                                   pr-lander (default 15).
 #   CHUMP_ROT_REAPER_MAX            safety cap: max PRs to close per run
 #                                   (default 10). Prevents a runaway mass-close.
+#   CHUMP_ROT_REAPER_LABEL          terminal-close label (default rot-reaped).
+#                                   Revivers skip any PR bearing it.
+#   CHUMP_ROT_REAPER_REQUIRED_CHECKS  comma-separated override of the required-
+#                                   check set (default: fetched from branch
+#                                   protection, fallback to the known 4).
 #   CHUMP_ROT_REAPER_PR_JSON        TEST HOOK: path to a JSON file used INSTEAD
 #                                   of `gh pr list`. Lets CI exercise the
-#                                   selection logic without a live GitHub.
+#                                   selection logic without a live GitHub. Each
+#                                   row may carry autoMergeRequest, isDraft, and
+#                                   statusCheckRollup to exercise the new classes.
 #   REMOTE / BASE                   git remote / base branch (default origin/main)
 set -uo pipefail
 
@@ -61,9 +104,15 @@ DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
 MIN_AGE_HOURS="${CHUMP_ROT_REAPER_MIN_AGE_HOURS:-4}"
+REALFAIL_AGE_HOURS="${CHUMP_ROT_REAPER_REALFAIL_AGE_HOURS:-8}"
+ARM_AGE_MIN="${CHUMP_ROT_REAPER_ARM_AGE_MIN:-15}"
 MAX_CLOSE="${CHUMP_ROT_REAPER_MAX:-10}"
+LABEL="${CHUMP_ROT_REAPER_LABEL:-rot-reaped}"
 REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
+# NO-ABANDON DEADLINE: past this age (hours) an open PR must be terminal; any
+# still non-terminal is counted in the pr_no_abandon_backlog metric (target 0).
+NO_ABANDON_DEADLINE_HOURS="${CHUMP_ROT_REAPER_DEADLINE_HOURS:-$REALFAIL_AGE_HOURS}"
 
 red()   { printf '\033[0;31m%s\033[0m\n' "$*"; }
 green() { printf '\033[0;32m%s\033[0m\n' "$*"; }
@@ -71,27 +120,51 @@ info()  { printf '  %s\n' "$*"; }
 warn()  { printf '\033[0;33m  WARN: %s\033[0m\n' "$*"; }
 dry()   { printf '  [dry-run] %s\n' "$*"; }
 
-green "=== rot-reaper (conflicting-PR drain; min-age=${MIN_AGE_HOURS}h, max=${MAX_CLOSE}) ==="
+green "=== rot-reaper / no-abandon janitor (conflict≥${MIN_AGE_HOURS}h, required-red≥${REALFAIL_AGE_HOURS}h, arm≥${ARM_AGE_MIN}m, max=${MAX_CLOSE}) ==="
 [[ $DRY_RUN -eq 1 ]] && info "Dry-run mode — no PRs will be closed and no gaps re-queued."
 
 ME="$(gh api user --jq .login 2>/dev/null || echo repairman29)"
 
+# ── required-check set ────────────────────────────────────────────────────────
+# The branch-protection required checks: a PR that is MERGEABLE (no conflict)
+# but has one of THESE failing is stuck on a real content gate, not a flake or a
+# pending approval. Fetched live so the set stays correct as protection evolves;
+# fall back to the known-4 (2026-08-15) if the API is unavailable.
+REQUIRED_CHECKS_DEFAULT="cargo-test-required,audit-required,clippy-required,ACP protocol smoke test (Zed / JetBrains compatible)"
+if [[ -n "${CHUMP_ROT_REAPER_REQUIRED_CHECKS:-}" ]]; then
+    REQUIRED_CHECKS="$CHUMP_ROT_REAPER_REQUIRED_CHECKS"
+elif [[ -n "${CHUMP_ROT_REAPER_PR_JSON:-}" ]]; then
+    # Test mode: don't hit the network; use the default set unless overridden.
+    REQUIRED_CHECKS="$REQUIRED_CHECKS_DEFAULT"
+else
+    REQUIRED_CHECKS="$(gh api "repos/$ME/${BASE_REPO:-chump}/branches/${BASE}/protection/required_status_checks" \
+        --jq '.contexts | join(",")' 2>/dev/null || true)"
+    [[ -z "$REQUIRED_CHECKS" ]] && REQUIRED_CHECKS="$REQUIRED_CHECKS_DEFAULT"
+fi
+info "Required checks: ${REQUIRED_CHECKS}"
+
 # ── source of candidate PRs ───────────────────────────────────────────────────
 # TEST HOOK: CHUMP_ROT_REAPER_PR_JSON supplies a fixture so CI can exercise the
-# selection logic (age gate + CONFLICTING filter) without a live GitHub.
+# selection logic (age gates + class detection) without a live GitHub.
 PR_JSON=""
 if [[ -n "${CHUMP_ROT_REAPER_PR_JSON:-}" ]]; then
     PR_JSON="$(cat "$CHUMP_ROT_REAPER_PR_JSON" 2>/dev/null || echo '[]')"
     info "Using fixture PR list from \$CHUMP_ROT_REAPER_PR_JSON."
 else
     PR_JSON="$(gh pr list --author "$ME" --state open --limit 100 \
-        --json number,title,mergeStateStatus,mergeable,createdAt,headRefName \
+        --json number,title,mergeStateStatus,mergeable,createdAt,headRefName,isDraft,autoMergeRequest,statusCheckRollup \
         2>/dev/null || echo '[]')"
 fi
 
-# Rows as TSV: number \t mergeable \t createdAt \t title
-ROWS="$(printf '%s' "$PR_JSON" | python3 -c '
-import json, sys
+# Rows as TSV: number \t mergeable \t createdAt \t title \t mergeState \t
+#              isDraft \t hasAutoMerge \t requiredFail
+# requiredFail = "1" iff a branch-protection-REQUIRED check has concluded
+# FAILURE/ERROR/TIMED_OUT (not pending, not skipped) — the "real content gate is
+# red" signal that separates a stuck PR from one merely waiting on CI/approval.
+ROWS="$(printf '%s' "$PR_JSON" | REQ_CHECKS="$REQUIRED_CHECKS" python3 -c '
+import json, os, sys
+required = {c.strip() for c in os.environ.get("REQ_CHECKS","").split(",") if c.strip()}
+FAIL = {"FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED"}
 try:
     rows = json.load(sys.stdin)
 except Exception:
@@ -101,7 +174,18 @@ for r in rows:
     mrg   = r.get("mergeable", "")
     made  = r.get("createdAt", "")
     title = (r.get("title") or "").replace("\t", " ").replace("\n", " ")
-    print(f"{num}\t{mrg}\t{made}\t{title}")
+    mstate = r.get("mergeStateStatus", "") or ""
+    draft = "1" if r.get("isDraft") else "0"
+    has_am = "1" if r.get("autoMergeRequest") else "0"
+    req_fail = "0"
+    for c in (r.get("statusCheckRollup") or []):
+        name = c.get("name") or c.get("context") or ""
+        # CheckRun uses conclusion; StatusContext uses state.
+        concl = (c.get("conclusion") or c.get("state") or "").upper()
+        if name in required and concl in FAIL:
+            req_fail = "1"
+            break
+    print(f"{num}\t{mrg}\t{made}\t{title}\t{mstate}\t{draft}\t{has_am}\t{req_fail}")
 ' 2>/dev/null || true)"
 
 # age_hours ISO8601 — whole hours since createdAt (python, bash-free of `date -d`).
@@ -127,98 +211,198 @@ is_filing_pr_title() {
 CLOSED=0
 REQUEUED=0
 SKIPPED=0
+ARMED=0
+BACKLOG=0          # open PRs past the no-abandon deadline still non-terminal
+BACKLOG_PRS=""
+
+AMBIENT_LOG="${NODE_AMBIENT:-$(cd "$(dirname "$0")/../.." && pwd)/.chump-locks/ambient.jsonl}"
+mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null || true
+
+# ── NO-ABANDON METRIC ─────────────────────────────────────────────────────────
+# The count of open PRs past the deadline still in a non-terminal state. The
+# guarantee's health gauge — target 0. A persistent non-zero here means a rot
+# class is escaping every driver and must be handled.
+emit_backlog_metric() {  # <count> <pr_list>
+    local n="$1" prs="$2"
+    printf '{"ts":"%s","kind":"pr_no_abandon_backlog","source":"rot-reaper","count":%s,"deadline_h":%s,"prs":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$n" "$NO_ABANDON_DEADLINE_HOURS" "$(printf '%s' "$prs" | tr -s ' ')" \
+        >> "$AMBIENT_LOG" 2>/dev/null || true
+    if [[ "$n" -gt 0 ]]; then
+        red "NO-ABANDON BACKLOG: ${n} open PR(s) past ${NO_ABANDON_DEADLINE_HOURS}h still non-terminal: ${prs}"
+    else
+        green "NO-ABANDON BACKLOG: 0 — every open PR is terminal or on-track."
+    fi
+}
 
 if [[ -z "$ROWS" ]]; then
     info "No open PRs found — nothing to reap."
-    reaper_finish ok '{"closed":0,"requeued":0,"skipped":0}'
+    emit_backlog_metric 0 ""
+    reaper_finish ok '{"closed":0,"requeued":0,"skipped":0,"armed":0,"backlog":0}'
     exit 0
 fi
 
-while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE; do
+# ── requeue every cited gap of a PR we are reaping ────────────────────────────
+# Sets status:open (unless already open/done) + an audit note. Increments the
+# global REQUEUED. A `done` gap (work landed elsewhere) is left done.
+requeue_gaps() {  # <pr_num> <age_h> <reason_short> <title>
+    local pr="$1" age="$2" reason="$3" title="$4" gid cur status note
+    local ids; ids="$(printf '%s\n' "$title" | grep -oE '\b[A-Z]+-[0-9]+\b' | sort -u || true)"
+    for gid in $ids; do
+        [[ -z "$gid" ]] && continue
+        if ! command -v chump >/dev/null 2>&1; then
+            info "  (chump CLI unavailable — skipping re-queue of $gid)"; continue
+        fi
+        cur="$(chump gap show "$gid" 2>/dev/null || true)"
+        [[ -z "$cur" ]] && { info "  $gid not found in gap store — nothing to re-queue."; continue; }
+        status="$(awk '/^[[:space:]]*status:/{sub(/^[[:space:]]*status:[[:space:]]*/,""); print; exit}' <<<"$cur")"
+        if [[ "$status" == "done" ]]; then
+            info "  $gid already done — stale duplicate PR; closing without re-queue."; continue
+        fi
+        note="rot-reaper: PR #${pr} auto-closed (${reason}, ${age}h) $(date -u +%Y-%m-%d); re-attempt on fresh main."
+        if [[ $DRY_RUN -eq 1 ]]; then dry "would re-queue $gid (status=$status) + note"; continue; fi
+        [[ "$status" != "open" ]] && { chump gap set "$gid" --status open >/dev/null 2>&1 \
+            || warn "chump gap set $gid --status open failed"; }
+        chump gap set "$gid" --add-note "$note" >/dev/null 2>&1 \
+            || warn "chump gap set $gid --add-note failed"
+        info "  re-queued $gid (was $status)"
+        REQUEUED=$((REQUEUED + 1))
+    done
+}
+
+# ── label + close a PR terminally ─────────────────────────────────────────────
+# The label is what makes the close STICK: revivers (post-push-integrity-watch)
+# skip any PR bearing it, so the reap↔revive fight that rotted #3792 can't recur.
+LABEL_ENSURED=0
+ensure_label() {
+    [[ "$LABEL_ENSURED" == 1 ]] && return 0
+    LABEL_ENSURED=1
+    if gh label list --limit 300 2>/dev/null | grep -qE "^${LABEL}([[:space:]]|$)"; then return 0; fi
+    gh label create "$LABEL" --color B60205 \
+        --description "Closed terminally by the no-abandon janitor (RESILIENT-311); do not reopen — a fresh PR comes from the requeued gap." \
+        >/dev/null 2>&1 || true
+}
+label_and_close() {  # <pr_num> <close_msg>
+    local pr="$1" msg="$2"
+    ensure_label
+    # Label BEFORE close so a reviver polling in the close window already sees it.
+    # (Guarded with `if` so this line does not begin with a bare `gh pr edit`,
+    # which the INFRA-1274 raw-gh hot-path lint forbids at line start.)
+    if ! gh pr edit "$pr" --add-label "$LABEL" >/dev/null 2>&1; then
+        warn "could not add label '$LABEL' to PR #$pr (continuing to close)"
+    fi
+    if gh pr close "$pr" --comment "$msg" 2>/dev/null; then
+        green "  closed PR #$pr (labeled $LABEL)"
+        CLOSED=$((CLOSED + 1))
+        # Loud, board-visible signal that a line was terminated (not a silent rot).
+        printf '{"ts":"%s","kind":"pr_reaped","source":"rot-reaper","pr":%s,"label":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "$LABEL" >> "$AMBIENT_LOG" 2>/dev/null || true
+        return 0
+    fi
+    warn "gh pr close $pr failed."
+    return 1
+}
+
+while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQFAIL; do
     [[ -z "$PR_NUM" ]] && continue
 
-    # (2) Only genuinely CONFLICTING PRs. BLOCKED/MERGEABLE ones need CI or
-    # approval, not reaping — leave them for the pr-lander / ci-flake organs.
-    if [[ "$MERGEABLE" != "CONFLICTING" ]]; then
-        continue
-    fi
-
-    # (1) Never self-close a gap-filing PR.
+    # Never self-close a gap-filing PR (belt: also excluded from every class).
     if is_filing_pr_title "$TITLE"; then
         info "PR #$PR_NUM — filing PR, skipping."
         continue
     fi
 
-    # (3) Age gate — never reap a fresh conflict (owner may be mid-rebase).
     AGE="$(age_hours "$CREATED")"
     if [[ "$AGE" -lt 0 ]]; then
         warn "PR #$PR_NUM — could not parse createdAt ($CREATED); skipping (fail-safe)."
-        SKIPPED=$((SKIPPED + 1))
-        continue
-    fi
-    if [[ "$AGE" -lt "$MIN_AGE_HOURS" ]]; then
-        info "PR #$PR_NUM — CONFLICTING but only ${AGE}h old (< ${MIN_AGE_HOURS}h); leaving for the owner/rebaser."
-        SKIPPED=$((SKIPPED + 1))
-        continue
+        SKIPPED=$((SKIPPED + 1)); continue
     fi
 
-    if [[ "$CLOSED" -ge "$MAX_CLOSE" ]]; then
-        warn "Reached MAX_CLOSE=$MAX_CLOSE this run; deferring the rest to the next tick."
-        break
-    fi
-
-    red "PR #$PR_NUM — CONFLICTING, ${AGE}h old → REAP"
-    info "  title: $TITLE"
-
-    # Cited gap IDs from the title (and, when live, the branch commits).
-    GAP_IDS="$(printf '%s\n' "$TITLE" | grep -oE '\b[A-Z]+-[0-9]+\b' | sort -u || true)"
-
-    # (4) Re-queue each cited gap unless it is already open or already done.
-    for GID in $GAP_IDS; do
-        [[ -z "$GID" ]] && continue
-        if ! command -v chump >/dev/null 2>&1; then
-            info "  (chump CLI unavailable — skipping re-queue of $GID)"
-            continue
+    # ── CLASS 1: CONFLICTING beyond CONFLICT age → close + requeue ────────────
+    if [[ "$MERGEABLE" == "CONFLICTING" ]]; then
+        if [[ "$AGE" -lt "$MIN_AGE_HOURS" ]]; then
+            info "PR #$PR_NUM — CONFLICTING but only ${AGE}h old (< ${MIN_AGE_HOURS}h); leaving for the owner/rebaser."
+            SKIPPED=$((SKIPPED + 1)); continue
         fi
-        CUR="$(chump gap show "$GID" 2>/dev/null || true)"
-        [[ -z "$CUR" ]] && { info "  $GID not found in gap store — nothing to re-queue."; continue; }
-        STATUS="$(awk '/^[[:space:]]*status:/{sub(/^[[:space:]]*status:[[:space:]]*/,""); print; exit}' <<<"$CUR")"
-        if [[ "$STATUS" == "done" ]]; then
-            # Stale DUPLICATE PR: the work already landed elsewhere. Do NOT
-            # reopen — the recycled-ID guard rejects it and it would be wrong.
-            info "  $GID already done — stale duplicate PR; closing without re-queue."
-            continue
+        if [[ "$CLOSED" -ge "$MAX_CLOSE" ]]; then
+            warn "Reached MAX_CLOSE=$MAX_CLOSE this run; deferring the rest."
+            BACKLOG=$((BACKLOG + 1)); BACKLOG_PRS+="${PR_NUM} "; continue
         fi
-        NOTE="rot-reaper: PR #${PR_NUM} auto-closed (CONFLICTING, ${AGE}h) $(date -u +%Y-%m-%d); re-attempt on fresh main."
-        if [[ $DRY_RUN -eq 1 ]]; then
-            dry "would re-queue $GID (status=$STATUS) + note"
-            continue
-        fi
-        if [[ "$STATUS" != "open" ]]; then
-            chump gap set "$GID" --status open >/dev/null 2>&1 \
-                || warn "chump gap set $GID --status open failed"
-        fi
-        chump gap set "$GID" --add-note "$NOTE" >/dev/null 2>&1 \
-            || warn "chump gap set $GID --add-note failed"
-        info "  re-queued $GID (was $STATUS)"
-        REQUEUED=$((REQUEUED + 1))
-    done
-
-    CLOSE_MSG="Auto-closing (rot-reaper): this PR is **CONFLICTING** with \`${BASE}\` and is ${AGE}h old. The armed-rebaser only rebases *behind* PRs — it cannot resolve a real merge conflict — so this branch would sit unmerged indefinitely and keep the production back-pressure breaker halted. The cited gap(s) have been re-queued to be re-done cleanly on fresh \`${BASE}\`. Nothing is lost: a conflicting branch must be redone anyway. (RESILIENT-324)"
-
-    if [[ $DRY_RUN -eq 1 ]]; then
-        dry "gh pr close $PR_NUM --comment \"…\""
-        CLOSED=$((CLOSED + 1))
+        red "PR #$PR_NUM — CONFLICTING, ${AGE}h old → REAP"
+        info "  title: $TITLE"
+        requeue_gaps "$PR_NUM" "$AGE" "CONFLICTING" "$TITLE"
+        MSG="Auto-closing (rot-reaper / RESILIENT-311 no-abandon janitor): this PR is **CONFLICTING** with \`${BASE}\` and is ${AGE}h old. The armed-rebaser only rebases *behind* PRs — it cannot resolve a real merge conflict — so this branch would sit unmerged indefinitely and keep the back-pressure breaker halted. The cited gap(s) have been re-queued to be re-done cleanly on fresh \`${BASE}\`. Nothing is lost: a conflicting branch must be redone anyway. Labeled \`${LABEL}\` so revivers won't fight this deliberate close. (RESILIENT-324/RESILIENT-311)"
+        if [[ $DRY_RUN -eq 1 ]]; then dry "would label+close PR #$PR_NUM (CONFLICTING)"; CLOSED=$((CLOSED + 1)); continue; fi
+        label_and_close "$PR_NUM" "$MSG"
         continue
     fi
 
-    if gh pr close "$PR_NUM" --comment "$CLOSE_MSG" 2>/dev/null; then
-        green "  closed PR #$PR_NUM"
-        CLOSED=$((CLOSED + 1))
-    else
-        warn "gh pr close $PR_NUM failed."
+    # ── CLASS 2: MERGEABLE but a REQUIRED check FAILED beyond REALFAIL age ────
+    # A real content gate is red (raw-gh lint, bypass ceiling, a failing test) —
+    # no organ fixes it, so it would sit BLOCKED forever. Past the deadline,
+    # close + requeue so the fleet redoes it clean rather than let it rot.
+    if [[ "$REQFAIL" == "1" ]]; then
+        if [[ "$AGE" -lt "$REALFAIL_AGE_HOURS" ]]; then
+            info "PR #$PR_NUM — failing a required check but only ${AGE}h old (< ${REALFAIL_AGE_HOURS}h); leaving for a fix/rerun."
+            SKIPPED=$((SKIPPED + 1)); continue
+        fi
+        if [[ "$CLOSED" -ge "$MAX_CLOSE" ]]; then
+            warn "Reached MAX_CLOSE=$MAX_CLOSE this run; deferring the rest."
+            BACKLOG=$((BACKLOG + 1)); BACKLOG_PRS+="${PR_NUM} "; continue
+        fi
+        red "PR #$PR_NUM — MERGEABLE but REQUIRED check RED, ${AGE}h old → REAP"
+        info "  title: $TITLE"
+        requeue_gaps "$PR_NUM" "$AGE" "required-check-red" "$TITLE"
+        MSG="Auto-closing (rot-reaper / RESILIENT-311 no-abandon janitor): this PR is mergeable but a **branch-protection-required check has been RED for ${AGE}h** (≥ ${REALFAIL_AGE_HOURS}h) and no fix/rerun organ cleared it — it would sit BLOCKED forever. Required set: \`${REQUIRED_CHECKS}\`. The cited gap(s) have been re-queued to be re-done cleanly on fresh \`${BASE}\`. If that check is actually a flake that is now green on main, reopen and re-run. Labeled \`${LABEL}\`. (RESILIENT-311)"
+        if [[ $DRY_RUN -eq 1 ]]; then dry "would label+close PR #$PR_NUM (required-check-red)"; CLOSED=$((CLOSED + 1)); continue; fi
+        label_and_close "$PR_NUM" "$MSG"
+        continue
+    fi
+
+    # ── CLASS 3: MERGEABLE + green + UNARMED beyond ARM age → arm ─────────────
+    # Backstop the pr-lander: a green PR that never got its auto-merge armed
+    # (the #3792-was-green-but-unmerged class) is driven forward, not left.
+    if [[ "$MERGEABLE" == "MERGEABLE" && "$HASAM" == "0" && "$ISDRAFT" == "0" && "$MSTATE" != "DIRTY" ]]; then
+        AGE_MIN=$(( AGE * 60 ))
+        # AGE is whole hours; approximate minutes are fine for a ≥15m backstop
+        # gate (a PR younger than 1h reads AGE=0 → 0min → still below 15m unless
+        # we also honor sub-hour freshness, so only arm once it's ≥1h old).
+        if [[ "$AGE_MIN" -ge "$ARM_AGE_MIN" ]]; then
+            if [[ $DRY_RUN -eq 1 ]]; then
+                dry "would ARM green-unarmed PR #$PR_NUM (${AGE}h old)"
+                ARMED=$((ARMED + 1))
+            else
+                if [[ -x "$(dirname "$0")/../coord/auto-merge-armer.sh" ]] \
+                   && bash "$(dirname "$0")/../coord/auto-merge-armer.sh" --pr "$PR_NUM" >/dev/null 2>&1; then
+                    green "PR #$PR_NUM — green + unarmed ${AGE}h → ARMED (lander backstop)"
+                    ARMED=$((ARMED + 1))
+                else
+                    warn "PR #$PR_NUM — arm backstop failed (likely needs review); counting as backlog."
+                    [[ "$AGE" -ge "$NO_ABANDON_DEADLINE_HOURS" ]] && { BACKLOG=$((BACKLOG + 1)); BACKLOG_PRS+="${PR_NUM} "; }
+                fi
+            fi
+            continue
+        fi
+    fi
+
+    # ── Everything else: is a driver actively moving it toward terminal? ─────
+    # An armed + mergeable PR is on-track (auto-merge lands it once green); a
+    # BEHIND PR is owned by chump-armed-rebaser. Those are NOT abandoned. Only a
+    # PR past the deadline with NO driver — unarmed-and-couldn't-arm, or a state
+    # no organ handles — counts toward the backlog metric, so an escaping rot
+    # class can't hide behind "someone else will get it."
+    if [[ "$AGE" -ge "$NO_ABANDON_DEADLINE_HOURS" ]]; then
+        local_on_driver=0
+        [[ "$HASAM" == "1" && "$MERGEABLE" == "MERGEABLE" ]] && local_on_driver=1  # auto-merge
+        [[ "$MSTATE" == "BEHIND" ]] && local_on_driver=1                            # rebaser
+        if [[ "$local_on_driver" == "0" ]]; then
+            info "PR #$PR_NUM — ${AGE}h old, non-terminal + NO driver (merge=$MERGEABLE state=$MSTATE armed=$HASAM); counting as no-abandon backlog."
+            BACKLOG=$((BACKLOG + 1)); BACKLOG_PRS+="${PR_NUM} "
+        fi
     fi
 done <<< "$ROWS"
 
-green "=== rot-reaper done: closed=$CLOSED requeued=$REQUEUED skipped=$SKIPPED ==="
-reaper_finish ok "{\"closed\":$CLOSED,\"requeued\":$REQUEUED,\"skipped\":$SKIPPED}"
+# ── NO-ABANDON METRIC ─────────────────────────────────────────────────────────
+emit_backlog_metric "$BACKLOG" "$BACKLOG_PRS"
+
+green "=== rot-reaper done: closed=$CLOSED requeued=$REQUEUED armed=$ARMED skipped=$SKIPPED backlog=$BACKLOG ==="
+reaper_finish ok "{\"closed\":$CLOSED,\"requeued\":$REQUEUED,\"armed\":$ARMED,\"skipped\":$SKIPPED,\"backlog\":$BACKLOG}"
