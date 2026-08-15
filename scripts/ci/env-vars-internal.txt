@@ -1878,3 +1878,18 @@ CHUMP_PR_AUTO_REBASE_MAX_CONCURRENT
 CHUMP_PR_AUTO_REBASE_NO_LOCK
 # detected in: (standard input)
 CHUMP_PR_AUTO_REBASE_NO_THROTTLE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_QUEUE_STAGNATION_AMBIENT_PATH
+# detected in: (standard input)
+CHUMP_QUEUE_STAGNATION_DISABLE
+# detected in: (standard input)
+CHUMP_QUEUE_STAGNATION_MIN_PICKABLE
+# detected in: (standard input)
+CHUMP_QUEUE_STAGNATION_SKIP_RECALL
+# detected in: (standard input)
+CHUMP_QUEUE_STAGNATION_STATE_DB
+# detected in: (standard input)
+CHUMP_QUEUE_STAGNATION_WINDOW_SECS
