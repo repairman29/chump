@@ -1792,3 +1792,6 @@ CHUMP_CONSENSUS_ASK_POLL_SECS
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_LEASE_CHECK
+CHUMP_CEO_MODEL
+CHUMP_CEO_PROMPT
+CHUMP_CEO_SHADOW_DIR

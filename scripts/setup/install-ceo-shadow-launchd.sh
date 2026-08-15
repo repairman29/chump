@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# install-ceo-shadow-launchd.sh — INFRA-3584: hourly CEO shadow tick (dry-run).
+# Idempotent. The shadow log feeds the AC-3 shadow-vs-ATC diff report; the
+# driver never executes routed commands in v0, so this daemon is read-and-log.
+set -euo pipefail
+
+REPO="${CHUMP_REPO_ROOT:-$HOME/Projects/Chump}"
+LABEL=com.chump.ceo-shadow
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+LOGDIR="$HOME/.chump/ceo-shadow"
+mkdir -p "$LOGDIR" "$HOME/Library/LaunchAgents"
+
+cat > "$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>$REPO/scripts/coord/ceo-loop.py</string>
+  </array>
+  <key>WorkingDirectory</key><string>$REPO</string>
+  <key>StartInterval</key><integer>3600</integer>
+  <key>StandardOutPath</key><string>$LOGDIR/tick.log</string>
+  <key>StandardErrorPath</key><string>$LOGDIR/tick.err</string>
+</dict>
+</plist>
+EOF
+
+launchctl unload "$PLIST" 2>/dev/null || true
+launchctl load "$PLIST"
+launchctl list | grep -q "$LABEL" && echo "OK: $LABEL loaded (hourly shadow tick -> $LOGDIR/decisions.jsonl)" || {
+  echo "ERROR: $LABEL failed to load" >&2; exit 1; }
