@@ -78,6 +78,12 @@ if [[ $waste_rate -gt $SPIKE_THRESHOLD ]]; then
     printf '%s\n' "$(_ts)" > "$PAUSE_FILE"
     _emit "waste_spike_detected" \
         '"rate":'"$waste_rate"',"threshold":'"$SPIKE_THRESHOLD"',"window":"'"$WINDOW"'","total_events":'"$total_events"',"total_incidents":'"$total_incidents"
+    # RESILIENT-326: halt-organ governance — every organ that pauses the fleet
+    # must page the operator, not just log to ambient. Best-effort; never fatal.
+    ( source "$REPO_ROOT/scripts/coord/lib/notify-operator.sh" 2>/dev/null && \
+      CHUMP_NOTIFY_KIND=waste_spike_pause notify_operator \
+      "🛑 **Fleet PAUSED** — waste rate ${waste_rate}% > threshold ${SPIKE_THRESHOLD}% (window $WINDOW). Auto-resumes after 2 consecutive checks below ${RECOVERY_THRESHOLD}%." \
+    ) 2>/dev/null || true
     # Reset consecutive-recovery counter on any spike.
     echo 0 > "$CONSEC_FILE" 2>/dev/null || true
     exit 0

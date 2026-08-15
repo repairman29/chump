@@ -152,6 +152,12 @@ if [[ -n "$breach_reason" ]]; then
         > "$PAUSE_FILE"
     _emit "pipeline_health_throttle" \
         '"state":"paused","reason":"'"$breach_reason"'","blocked_pct":'"$blocked_null"',"slo_rc":'"$slo_rc"
+    # RESILIENT-326: halt-organ governance — every organ that pauses the fleet
+    # must page the operator, not just log to ambient. Best-effort; never fatal.
+    ( source "$REPO_ROOT/scripts/coord/lib/notify-operator.sh" 2>/dev/null && \
+      CHUMP_NOTIFY_KIND=ci_health_gate_pause notify_operator \
+      "🛑 **Fleet PAUSED** — ci-health-gate breach reason=$breach_reason blocked_pct=${blocked_null}. Auto-resumes after 2 consecutive clean runs." \
+    ) 2>/dev/null || true
     # Reset consecutive-recovery counter on any breach.
     echo 0 > "$CONSEC_FILE" 2>/dev/null || true
     exit 0
