@@ -10734,3 +10734,10 @@ events:
       alarm liveness checks (heartbeats, systemd "Finished") cannot raise.
     consumers: [ambient, fleet-brief, operator pre-flight tail]
     fields_required: [ts, kind, organ, cycles, power, window_hours]
+  - kind: stale_pr_rescued
+    effect_metric: self
+    emitter: scripts/coord/rescue-stale-pr.sh (INFRA-2285)
+    trigger: rescue-stale-pr.sh completed a rebase + bypass-trailer +
+      push + auto-merge-arm cycle for a stale DIRTY PR.
+    consumers: [ambient]
+    fields_required: [pr_number, gap_id, bypasses_used, elapsed_s]
