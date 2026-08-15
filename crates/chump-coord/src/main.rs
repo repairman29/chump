@@ -366,6 +366,123 @@ async fn main() -> Result<()> {
             }
         }
 
+        // ── react ─────────────────────────────────────────────────────────────
+        // RESILIENT-334: subscribe to the bus and ACT on WORK_POSTED events as
+        // the primary coordination path (atomic claim triggered by the event,
+        // not by polling `work-board list` on a timer).
+        //
+        // Usage:
+        //   chump-coord react [--task-class <class>] [--once] [--timeout-secs N]
+        //
+        //   --task-class <class>  only claim subtasks whose requirement.task_class
+        //                         matches exactly (default: claim any open subtask)
+        //   --once                exit after the first successful claim (or timeout)
+        //   --timeout-secs N      give up waiting for an event after N seconds
+        //                         (default: run forever)
+        "react" => {
+            use chump_coord::nats_primary::{subscribe_events_with_session, EventFilter};
+            use chump_coord::worker::{react_to_event, ReactOutcome};
+
+            let mut task_class: Option<String> = None;
+            let mut once = false;
+            let mut timeout_secs: Option<u64> = None;
+            let mut i = 2;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--task-class" => {
+                        i += 1;
+                        task_class = args.get(i).cloned();
+                    }
+                    "--once" => once = true,
+                    "--timeout-secs" => {
+                        i += 1;
+                        timeout_secs = args.get(i).and_then(|s| s.parse().ok());
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+
+            let sess = session_id();
+            let client = match CoordClient::connect_or_skip().await {
+                Some(c) => c,
+                None => {
+                    eprintln!("[chump-coord react] NATS unavailable — cannot react to bus events");
+                    std::process::exit(1);
+                }
+            };
+
+            // WORK_POSTED only ever reaches JetStream, never ambient.jsonl
+            // (work_board has no file-fallback mirror — see work_board.rs
+            // module docs), so the file-only default (CHUMP_A2A_LAYER=0)
+            // would silently never see it. Force the NATS-primary path
+            // unless the caller already opted in explicitly.
+            if env::var("CHUMP_A2A_LAYER").is_err() {
+                env::set_var("CHUMP_A2A_LAYER", "1");
+            }
+
+            // NATS subject filtering for `EventFilter::Kind` assumes the
+            // one-segment `chump.events.<kind>` convention; work-board events
+            // publish on the multi-segment `chump.events.work_board.posted`
+            // subject, so subscribe to everything and post-filter by kind
+            // (react_to_event already ignores anything that isn't WORK_POSTED).
+            let mut stream = subscribe_events_with_session(EventFilter::All, Some(sess.clone()))
+                .await
+                .map_err(|e| anyhow::anyhow!("subscribe failed: {e}"))?;
+
+            println!(
+                "[chump-coord react] session={sess} listening for WORK_POSTED (task_class={})",
+                task_class.as_deref().unwrap_or("any")
+            );
+
+            loop {
+                let next = match timeout_secs {
+                    Some(secs) => {
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(secs),
+                            stream.next(),
+                        )
+                        .await
+                        {
+                            Ok(v) => v,
+                            Err(_) => {
+                                eprintln!("[chump-coord react] timed out after {secs}s, exiting");
+                                break;
+                            }
+                        }
+                    }
+                    None => stream.next().await,
+                };
+
+                let Some(event) = next else {
+                    eprintln!("[chump-coord react] event stream closed, exiting");
+                    break;
+                };
+
+                let task_class_ref = task_class.as_deref();
+                let outcome = react_to_event(&client, &event, &sess, |subtask| {
+                    task_class_ref.is_none_or(|tc| subtask.requirement.task_class == tc)
+                })
+                .await?;
+
+                match outcome {
+                    ReactOutcome::Ignored | ReactOutcome::Skipped => {}
+                    ReactOutcome::LostRace => {
+                        println!("[chump-coord react] lost claim race, still listening");
+                    }
+                    ReactOutcome::Claimed(subtask) => {
+                        println!(
+                            "[chump-coord react] CLAIMED {} (parent_gap={}) via bus event",
+                            subtask.subtask_id, subtask.parent_gap
+                        );
+                        if once {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         // ── work-board ────────────────────────────────────────────────────────
         // Usage:
         //   chump-coord work-board post <parent-gap> <task-class> "<title>" [--decomposable] [--description "..."] [--est-secs N]
