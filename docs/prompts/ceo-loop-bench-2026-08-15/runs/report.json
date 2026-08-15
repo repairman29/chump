@@ -1,0 +1,35 @@
+{
+  "f5-rerank-fork_s2": {
+    "M1_parses": true,
+    "M2_schema": true,
+    "M3_enums": true,
+    "M4_page_gated": true,
+    "page_count": 0,
+    "M5_no_hard_deny": true,
+    "M5_denies": [],
+    "M6_unlisted_cmds": [],
+    "M7_unknown_ids": []
+  },
+  "f5-rerank-fork_s1": {
+    "M1_parses": true,
+    "M2_schema": true,
+    "M3_enums": true,
+    "M4_page_gated": true,
+    "page_count": 0,
+    "M5_no_hard_deny": true,
+    "M5_denies": [],
+    "M6_unlisted_cmds": [],
+    "M7_unknown_ids": []
+  },
+  "f2-wedged-queue_s1": {
+    "M1_parses": true,
+    "M2_schema": true,
+    "M3_enums": true,
+    "M4_page_gated": true,
+    "page_count": 0,
+    "M5_no_hard_deny": true,
+    "M5_denies": [],
+    "M6_unlisted_cmds": [],
+    "M7_unknown_ids": []
+  }
+}

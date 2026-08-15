@@ -1,0 +1,51 @@
+```json
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "COTG",
+      "spine_stage": "Intake",
+      "honesty": "EFFECTIVE-413 merged 22m ago (PR #3801, commit c11d9a02) — onboard now reads ideas/TODO.md as intent input. 🟡 built (unproven): landed but not yet verified as wired into the live intake path users actually hit. Frontier gaps EFFECTIVE-357 (L1 intake), EFFECTIVE-364/365 (publication) remain ❌ open with no receipt of fleet claim this tick.",
+      "did_not_move": "Publication/Feedback half of the spine (EFFECTIVE-364, EFFECTIVE-365) — untouched. ZERO-WASTE pillar's 1-pickable-gap imbalance also not acted on: per anti-bloat doctrine that's a signal, not a work order, and no genuine ZERO-WASTE gap surfaced this tick to justify filing one."
+    },
+    "synthesis": "Fleet healthy: 25 ships/24h (~1.0/hr), 0 stalls, 0 manual rescues — no reliability fire to fight. Only ship this hour (EFFECTIVE-413, commit c11d9a02) is a genuine intake-stage move: onboard consuming ideas/TODO.md as intent input is a slice of the EFFECTIVE-357 'business conversation → requirements' problem, not the whole gap. EFFECTIVE-357/364/365 — the actual spine frontier per doctrine — show no claim/dispatch activity in the last hour of ambient/git signal. Inbox empty: no open proposals to vote, nothing starving quorum.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "COTG",
+      "why_now": "Intake and publication are the standing multipliers until an idea can enter untranslated and a shipped tool can reach hands unassisted; EFFECTIVE-413 just proved incremental intake progress ships, so the highest-ROI move is confirming that win is truly wired and pushing the still-unclaimed EFFECTIVE-357 frontier gap into the fleet rather than letting a healthy ship rate mask a stalled frontier."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"onboard ideas/TODO.md intent input EFFECTIVE-413\")",
+        "detail": "Confirm the EFFECTIVE-413 onboard change is actually invoked on the live intake path (not just merged and dormant) — get file:line receipt for the call site that consumes ideas/TODO.md."
+      },
+      "verify": "Returns a file:line hit showing the onboard flow calling the new ideas/TODO.md reader in a code path reachable from a real intake entrypoint, not just the isolated PR diff.",
+      "escalation_trigger": null
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "query",
+      "payload": {
+        "cmd": "chump gap show EFFECTIVE-357 EFFECTIVE-364 EFFECTIVE-365",
+        "detail": "Check claim status, current P0 count against the hard budget of 5, and whether EFFECTIVE-357 already has fleet activity that ambient/git log didn't surface."
+      },
+      "verify": "Returns claim state (unclaimed/claimed/in-progress) for all three frontier gaps and current P0 total so dispatch decisions respect the P0=5 hard cap.",
+      "escalation_trigger": null
+    },
+    {
+      "target": "DISPATCH",
+      "action": "dispatch",
+      "payload": {
+        "cmd": "chump dispatch EFFECTIVE-357 --backend headless",
+        "detail": "L1 intake — business conversation → requirements. This is the literal 'anyone with an idea, no matter what state it's in' entrypoint for COTG; it has been open across the frontier list with no claim activity while the rest of the floor ships at ~1/hr."
+      },
+      "verify": "chump gap show EFFECTIVE-357 transitions to claimed/in-progress with an assigned worker, and a PR opens against it within the next few loop ticks.",
+      "escalation_trigger": null
+    }
+  ]
+}
+```

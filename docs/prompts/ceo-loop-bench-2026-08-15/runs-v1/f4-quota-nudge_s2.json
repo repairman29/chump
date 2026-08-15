@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "COTG",
+      "spine_stage": "Intake",
+      "honesty": "\ud83d\udfe1 EFFECTIVE-413 shipped (PR #3801, c11d9a02, 22 min ago) \u2014 onboard now reads ideas/TODO.md as an intent input; built, unproven against a real non-technical user yet. EFFECTIVE-357 (L1 intake: business conversation \u2192 requirements) remains \u274c open, no fleet activity visible this tick. EFFECTIVE-364/365 (publication co-pilot) remain \u274c open, untouched.",
+      "did_not_move": "Publication/feedback frontier (EFFECTIVE-364, EFFECTIVE-365) \u2014 zero movement, no dispatch history surfaced this tick. ZERO-WASTE pillar imbalance (1 pickable vs 44/51/31 elsewhere) flagged by roadmap-drift but not acted on: no genuine waste-reduction gap identified, declining to manufacture one per anti-bloat doctrine."
+    },
+    "synthesis": "PR #3801 (c11d9a02) shipped EFFECTIVE-413: onboard now ingests ideas/TODO.md as an intent source \u2014 a real instance of 'meet the idea where it is' since a TODO file is exactly the kind of pre-formed-but-messy artifact FACTORY_VISION.md calls out (receipt: c11d9a02). This is adjacent to but distinct from EFFECTIVE-357 (freeform business-conversation intake), which has sat open with no claim/PR this tick (receipt: frontier gaps list, unchanged). Fleet mechanics are healthy \u2014 25 ships/24h, 0 stalls, 0 manual rescues (receipt: fleet brief). Inbox has no open proposals to vote on (receipt: Inbox section empty).",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "COTG",
+      "why_now": "EFFECTIVE-413 just proved the intake half of COTG can absorb a messier input format (a TODO file); EFFECTIVE-357 is the harder, higher-value sibling (live conversation \u2192 requirements) and has sat open across ticks \u2014 pushing it now compounds on today's ship instead of letting frontier momentum stall."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "chump gap show EFFECTIVE-357",
+        "detail": "Check current claim/PR status on EFFECTIVE-357 and confirm its scope doesn't already overlap with the ideas/TODO.md intake path shipped in #3801, before dispatching."
+      },
+      "verify": "Gap status returns 'open'/unclaimed and description is distinct from EFFECTIVE-413's shipped scope (no duplicate work)."
+    },
+    {
+      "target": "DISPATCH",
+      "action": "dispatch",
+      "payload": {
+        "cmd": "chump dispatch EFFECTIVE-357 --backend headless",
+        "detail": "L1 intake: business conversation \u2192 requirements. Highest-value open frontier gap for COTG's intake half; no fleet activity on it this tick despite adjacent EFFECTIVE-413 just shipping."
+      },
+      "verify": "A new PR opens against EFFECTIVE-357 within the fleet's normal claim-to-PR window (baseline ~1 ship/hr)."
+    },
+    {
+      "target": "CONSULTANT",
+      "action": "request_inference",
+      "payload": {
+        "cmd": "harvester: prior-art sweep on EFFECTIVE-364 (publication stage after ship) and EFFECTIVE-365 (publisher co-pilot)",
+        "detail": "Both have been open frontier gaps for multiple ticks with zero movement. Before either gets dispatched, confirm via Almanac/harvester whether dormant capability already exists (registry \ud83d\udfe0 thin) rather than building fresh \u2014 per adaptive-evolution doctrine, mine before build."
+      },
+      "verify": "Harvester returns a report citing file:line receipts on existing publication/feedback capability (or confirms none exists), which then justifies either a mine-first gap or a build-first dispatch."
+    }
+  ]
+}

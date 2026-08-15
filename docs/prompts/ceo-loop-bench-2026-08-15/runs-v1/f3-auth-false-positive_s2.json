@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "CHUMPOS",
+      "spine_stage": "Gate",
+      "honesty": "\u2705 3 ships landed this hour with receipts: CREDIBLE-249 judge-verdict provenance (PR #3794, b81f2c33), INFRA-2161 cache reconcile (PR #3793, a4092e11), RESILIENT-327 farmer revive backoff jitter (PR #3796, 9f77d0e2) \u2014 all Process/Gate-stage reliability work, not spine-frontier (intake/publication) work.",
+      "did_not_move": "Neither intake (EFFECTIVE-357) nor publication/feedback (EFFECTIVE-364/365) advanced this loop \u2014 every landed PR this hour touched engine internals (judge provenance, cache, farmer backoff), none touched the 'anyone with an idea in' or 'tool in their hands' ends of the spine."
+    },
+    "synthesis": "farmer_auth_dead fired twice (fleet-worker-1 @05:16, fleet-worker-2 @05:18, exit=78). Per docs/process/PLAYBOOK_REGISTRY.yaml this is the known #1 false-positive class (CREDIBLE-090, mis-called 4x already) \u2014 action is SUPPRESS with ship-check first, never escalate on this alone. Ship-check: git log shows PR #3794 landed at 05:12, only 4-6 min before the alarms fired, and scripts/coord/auth-status.sh (run 05:19) reports AUTH OK, oauth token valid, refreshed 3m ago. Two independent confirmations against the false-positive pattern \u2014 suppressing, no page. Receipt: docs/process/PLAYBOOK_REGISTRY.yaml farmer_auth_dead entry + ambient tail 05:16/05:18 + auth-status.sh output @05:19.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "CHUMPOS",
+      "why_now": "This hour's ship velocity (3 landed, 0 stalls) confirms the engine floor is healthy, but every PR was mid-factory reliability work \u2014 the standing gap is that nobody's checking whether intake/publication frontier gaps even exist in the registry right now, so the next highest-ROI move is a query to surface open frontier work before another loop ships more mid-factory polish."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet query=\"EFFECTIVE-357 intake status\"",
+        "detail": "Surface current state/receipts for the intake half of the spine frontier (idea-in, zero-touch)."
+      },
+      "verify": "Returns file:line receipts showing current intake capability status (or confirms 0-hit with checked fallback_reason)."
+    },
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet query=\"EFFECTIVE-364 EFFECTIVE-365 publication feedback status\"",
+        "detail": "Surface current state/receipts for the publication+feedback half of the spine frontier (tool-in-hands, zero-touch)."
+      },
+      "verify": "Returns file:line receipts showing current publication/feedback capability status (or confirms 0-hit with checked fallback_reason)."
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "query",
+      "payload": {
+        "cmd": "chump gap list --pillar intake,publication --status open --priority P0,P1",
+        "detail": "Check whether frontier-tagged gaps already exist and are unclaimed before filing anything new."
+      },
+      "verify": "Returns list of open intake/publication gaps with claim status, or confirms empty \u2014 either result determines whether next loop files a new gap or dispatches an existing one."
+    }
+  ]
+}

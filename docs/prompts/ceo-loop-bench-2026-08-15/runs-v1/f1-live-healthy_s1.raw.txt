@@ -1,0 +1,51 @@
+```json
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Intake",
+      "honesty": "🟡 built (unproven): RESILIENT-304/324/325, INFRA-2156/2152, VOA-006 shipped in last 3h (receipts: ee436d20, 294699bf, d9bf80cc, c32306b5, 14d18d26, 64835501) — all CI/sync robustness, none outcome-facing. ❌ still open: EFFECTIVE-357/364/365, the only two frontier gaps that move COTG/CHUMPOS.",
+      "did_not_move": "Spine frontier (intake + publication) unchanged — no ship this tick touched EFFECTIVE-357, -364, or -365. Also flagging a governance gap: 5 P0s (CREDIBLE-243..247) sit untraced against MISSION-045's per-P0 --outcome requirement, against a hard P0 budget of 5 — worth confirming these aren't silently consuming the whole P0 slot budget with no outcome linkage."
+    },
+    "synthesis": "Fleet is healthy and productive on the infra/resilience track (24 ships/24h, 0 stalls, 0 manual rescues — receipt: fleet brief tick 147) but that track is CREDIBLE/RESILIENT-heavy (29+9 of last 24h) while the two standing-multiplier frontier gaps (EFFECTIVE-357 intake, EFFECTIVE-364/365 publication) show no ship activity in the 3h log. Roadmap drift report (INFRA-1146) surfaces 5 untraced P0s at CREDIBLE-243..247 — receipt: 'untraced_p0=CREDIBLE-243,CREDIBLE-244,CREDIBLE-245,CREDIBLE-246,CREDIBLE-247' in this tick's state. That's a doctrine-compliance question (MISSION-045), not a new fact to act on blind — need to see their AC/outcome fields before judging whether they're mistagged or genuinely missing traces.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "COTG",
+      "why_now": "Infra hardening is running on its own momentum (1.0 ships/hr, zero stalls) and needs no CEO push this tick; the frontier (EFFECTIVE-357 intake) is the one place capacity is idle relative to demand, per doctrine's 'capacity without a customer' framing — that's where a check-and-dispatch actually changes the spine."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "GAP_REGISTRY",
+      "action": "query",
+      "payload": {
+        "cmd": "chump gap list --ids CREDIBLE-243,CREDIBLE-244,CREDIBLE-245,CREDIBLE-246,CREDIBLE-247 --fields outcome,acceptance_criteria,status",
+        "detail": "Diagnose why roadmap-drift flags these 5 P0s as untraced — confirm whether outcome field is genuinely empty (MISSION-045 violation, needs a fix-gap) or a report artifact (e.g. outcome set but not in the field the drift script reads)."
+      },
+      "verify": "Each of the 5 gaps returns either a populated outcome/--outcome trace, or a confirmed empty field — turns 'untraced_p0' from a signal into a ground-truth finding, not just a re-run of the same report",
+      "escalation_trigger": ""
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "query",
+      "payload": {
+        "cmd": "chump gap show EFFECTIVE-357",
+        "detail": "Check claim/lease state on the intake frontier gap (L1 intake — business conversation → requirements, COTG) before dispatching, since it's shown open with no ship in the last 3h despite being the standing spine-frontier priority."
+      },
+      "verify": "Returns current status: unclaimed (dispatch next), claimed-and-in-flight (no action needed, note ETA), or blocked (surface the blocker)",
+      "escalation_trigger": ""
+    },
+    {
+      "target": "DISPATCH",
+      "action": "dispatch",
+      "payload": {
+        "cmd": "chump dispatch EFFECTIVE-357 --backend headless",
+        "detail": "Only fire if the prior query shows EFFECTIVE-357 unclaimed. This is the intake half of the COTG frontier ('anyone with an idea... zero-touch') and has had no visible ship activity while 43 other pickable EFFECTIVE gaps and the resilience track absorbed fleet capacity."
+      },
+      "verify": "A PR opens referencing EFFECTIVE-357 and a fleet worker holds its lease (chump gap show EFFECTIVE-357 shows status=in_progress, not just exit 0 on the dispatch command)",
+      "escalation_trigger": ""
+    }
+  ]
+}
+```

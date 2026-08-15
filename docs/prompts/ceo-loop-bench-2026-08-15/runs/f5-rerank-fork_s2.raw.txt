@@ -1,0 +1,54 @@
+```json
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Process",
+      "honesty": "🟡 Only ship in the last hour (d2210b41, RESILIENT-328) is a Process-stage resilience fix, not a frontier (Intake/Publication) move. No EFFECTIVE-357/364/365 progress observed this tick — receipt: git log origin/main --since=1h shows exactly one commit, RESILIENT class.",
+      "did_not_move": "EFFECTIVE frontier (intake/publication) did not move this tick. I also did not green-light the roadmap-keeper's scale/re-rank ask — declined per doctrine, routed to formal consensus instead."
+    },
+    "synthesis": "Roadmap-keeper's DM (inbox 07:02) asks me to unilaterally (a) re-rank all open RESILIENT P2 gaps down one tier and (b) scale fleet 2->4 workers. Both are explicit consensus territory per my mandate (priority/class re-rankings and fleet scale changes) — I cannot approve or execute either, no matter how routine-sounding or time-pressured the ask. Separately, the INFRA-518 scale-gate for 3->4 workers is currently FAILING on its own terms: silent_agent events (2h) = 1, gate requires 0 (receipt: LOOP STATE scale-gate metrics block). Ship rate is exactly at the 80% line and waste rate at 14% is barely under the 15% ceiling — even setting consensus aside, this is not a safe moment to scale. RESILIENT-out-shipping-EFFECTIVE (2.1x) is a real, receipted imbalance (roadmap-keeper analysis + this hour's ship log showing zero EFFECTIVE commits), but the anti-bloat doctrine says imbalance metrics are signals, not work orders — the fix is to route more capacity/attention to EFFECTIVE-357/364/365 directly and/or let consensus decide on re-ranking, not for me to decree a tier shift.",
+    "protocol_proposals": [
+      {
+        "change": "Formal decision needed: (a) re-rank open RESILIENT P2 gaps down one tier, (b) scale fleet 2->4 workers — both proposed by curator-opus-roadmap-keeper this cycle.",
+        "route": "CONSENSUS — priority re-ranking and fleet scale changes are explicitly non-unilateral territory; scale additionally requires the INFRA-518 gate to pass, which it currently does not (silent_agent=1, gate=0).",
+        "prior_art_checked": "INFRA-518 scale-gate table (CLAUDE.md) checked directly against this tick's LOOP STATE metrics block — not an almanac query, since these are live operational metrics, not code history."
+      }
+    ],
+    "strategic_vector": {
+      "outcome": "CHUMPOS",
+      "why_now": "Declining a bad scale/re-rank decision under time pressure protects the factory's own gates from being decreed around, which matters more this tick than any single gap shipping — a wedged or silently-failing 4-worker fleet costs more than one cycle of slower EFFECTIVE throughput."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "CONSENSUS",
+      "action": "propose",
+      "payload": {
+        "cmd": "chump consensus ask \"Re-rank all open RESILIENT P2 gaps down one tier, and scale fleet 2->4 workers to boost EFFECTIVE throughput?\" --block",
+        "detail": "Raised by curator-opus-roadmap-keeper (inbox 07:02). CEO declines to execute unilaterally: both are consensus-territory (priority/class re-rank, fleet scale change) per standing doctrine. Additionally the INFRA-518 scale-gate for 3->4 is currently FAILING (silent_agent events 2h = 1, required 0); ship rate 80% and waste rate 14% are both sitting exactly at their gate lines with no margin. Recommend curators vote with that gate status in view."
+      },
+      "verify": "A corr_id for this question appears in the inbox with open votes, or a consensus_result event resolves it — either way the decision is ratified, not decreed."
+    },
+    {
+      "target": "CONSULTANT",
+      "action": "board_update",
+      "payload": {
+        "cmd": "bash scripts/coord/broadcast.sh --to curator-opus-roadmap-keeper FEEDBACK \"Declining to execute the re-rank/scale ask unilaterally — both are consensus territory. Also the 3->4 scale-gate is currently failing (silent_agent=1, needs 0), so scaling wouldn't clear the gate even with a green-light. Filed as a formal consensus question this tick — vote there. If EFFECTIVE throughput is the real goal, prefer dispatching directly against EFFECTIVE-357/364/365 gaps over a blanket RESILIENT de-prioritization.\"",
+        "detail": "Direct reply to the DM so roadmap-keeper isn't left hanging mid-cycle and knows where the decision now lives."
+      },
+      "verify": "chump-inbox.sh read on next tick shows roadmap-keeper acknowledged or voted on the consensus question."
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "query",
+      "payload": {
+        "cmd": "chump gap list --status open",
+        "detail": "Surveying open gaps to find current EFFECTIVE-357/364/365 (intake/publication frontier) status so next tick can dispatch against the frontier directly instead of relying on a RESILIENT re-rank to free capacity."
+      },
+      "verify": "Output enumerates open gaps; at least one EFFECTIVE-tagged P0/P1 gap identified with a claim/dispatch state, informing next tick's dispatch action."
+    }
+  ]
+}
+```

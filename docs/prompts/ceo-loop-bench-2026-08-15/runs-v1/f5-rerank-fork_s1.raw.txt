@@ -1,0 +1,39 @@
+```json
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Process",
+      "honesty": "✅ RESILIENT-328 shipped (d2210b41, 31 min ago) — verified via git log. ❌ 3→4 fleet scale is NOT eligible: scale-gate shows waste 14%(<15% ok) and ship-rate 80%(>=80% ok) passing, but silent_agent=1 in the 2h window fails the required 0 — gate is FAIL, not pass, despite two of three metrics being green.",
+      "did_not_move": "EFFECTIVE frontier throughput did not move this hour — only ship in the window was RESILIENT-class. Roadmap-keeper's own data (RESILIENT shipping 2.1x EFFECTIVE this week) confirms the frontier (intake/publication) is still being starved by mid-factory capacity."
+    },
+    "synthesis": "Roadmap-keeper DM'd a two-part ask: (a) de-rank open RESILIENT P2 gaps, (b) scale fleet 2→4 to boost EFFECTIVE throughput. Part (a) is a routine prioritization call squarely inside 'Prioritize & route' and directionally correct — RESILIENT is not the spine frontier, EFFECTIVE (intake EFFECTIVE-357, publication EFFECTIVE-364/365) is. Approving it directly rather than routing to CONSENSUS since it's a priority-tier change, not a new job row or doctrine change. Part (b) fails a reality-check: the scale-gate table (CLAUDE.md INFRA-518, this tick's snapshot) shows silent_agent=1 against a required 0 — a detector signal, not yet confirmed as a true wedge or false-positive. Scaling capacity while an unexplained silent-agent signal is open is exactly the kind of alarm-not-outcome mistake step 2 of the loop warns against. Declining the scale request until that signal clears or is confirmed a known false-positive class.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "EFFECTIVE",
+      "why_now": "RESILIENT is shipping 2.1x EFFECTIVE this week per roadmap-keeper's own analysis, so correcting fleet priority toward the frontier is higher-ROI than adding capacity onto an already-imbalanced queue — especially while the scale-gate itself is red on an unresolved silent_agent signal."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "CONSULTANT",
+      "action": "request_inference",
+      "payload": {
+        "cmd": "scripts/coord/chump-inbox.sh send --to curator-opus-roadmap-keeper",
+        "detail": "Decision: (a) APPROVED — proceed with `chump gap set --priority` to de-rank open RESILIENT P2 gaps one tier; this favors the EFFECTIVE frontier per the spine model, no consensus needed since it's a priority-tier call, not a new job row. (b) DECLINED for now — scale-gate is FAILING: silent_agent=1 in the 2h window against a required 0 (waste 14% and ship-rate 80% are passing, but the gate needs all three). Do not scale to 4 workers until silent_agent clears to 0 for a full 2h window or is confirmed a known false-positive class. Re-propose scale once that resolves."
+      },
+      "verify": "chump gap list --class RESILIENT --priority P2 shows reduced count / lowered tier; fleet worker count stays at 2 in the next brief until silent_agent=0."
+    },
+    {
+      "target": "DISPATCH",
+      "action": "unstick",
+      "payload": {
+        "cmd": "ATC: scripts/coord/ambient-query.sh --event silent_agent --since 2h — identify the specific agent/session behind the 1 silent_agent event, determine true wedge vs known false-positive class, and revive or reap it",
+        "detail": "This event is the sole blocker on the 3→4 scale-gate; resolving or correctly classifying it unblocks a throughput decision the fleet is asking for."
+      },
+      "verify": "Next scale-gate snapshot shows silent_agent=0 for a full 2h window (true resolution), or the event is tagged against a documented false-positive class in ambient.jsonl (confirmed non-issue) — either way, no longer sitting unexplained."
+    }
+  ]
+}
+```

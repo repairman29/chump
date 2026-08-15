@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Feedback",
+      "honesty": "\ud83d\udfe1 farmer_auth_dead fired twice this tick (05:16, 05:18, worker-1/worker-2, exit=78). Reality-checked per PLAYBOOK_REGISTRY: git log shows 3 ships landed in the last hour (b81f2c33, a4092e11, 9f77d0e2) and auth-status.sh confirms oauth token valid/refreshed 3m ago. Confirmed known false-positive class (CREDIBLE-090) \u2014 SUPPRESSED, not escalated. No new outcome shipped this tick; this loop iteration was verification/hygiene only.",
+      "did_not_move": "Neither COTG nor CHUMPOS frontier (intake, publication) advanced this tick. No gaps shipped, rated, or claimed by me. Inbox empty \u2014 no consensus votes were pending."
+    },
+    "synthesis": "farmer_auth_dead has now mis-fired at least a 5th time (registry says '4x', this tick adds 2 more firings) despite being a documented FP class since CREDIBLE-090. The playbook still requires a manual ship-check + auth-probe reality check every time it fires rather than the detector self-suppressing \u2014 that's a standing tax on whoever reads ambient.jsonl, and a real-outage risk if a future reader skips the check. Receipt: docs/process/PLAYBOOK_REGISTRY.yaml (farmer_auth_dead entry), ambient.jsonl 05:16/05:18 entries, scripts/coord/auth-status.sh output at 05:19. Fleet otherwise healthy: 26 ships/24h, 3 in the last hour, 0 stalls \u2014 factory floor is flowing, no action needed there.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "CHUMPOS",
+      "why_now": "A detector that's known-false-positive and still fires raw wastes operator/ATC attention on every recurrence and erodes trust in real alarms \u2014 cheap to harden now (make suppression automatic instead of playbook-manual) before it either pages someone for nothing or gets ignored right when it's real."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet query=\"farmer_auth_dead exit 78 detector suppress CREDIBLE-090\"",
+        "detail": "Check whether CREDIBLE-090 or any follow-up already implemented auto-suppression (ship-log check before firing) for farmer_auth_dead, or whether it only documented the FP class without wiring the fix \u2014 determines whether a new gap is needed or an existing one is stalled."
+      },
+      "verify": "Receipt (file:line or gap ID) showing current state of farmer_auth_dead's suppression logic \u2014 either 'fix already landed, this is a regression' or 'never wired, still manual', either way with a citable source, not a 0-hit guess."
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "file_gap",
+      "payload": {
+        "cmd": "chump gap reserve --pillar RELIABILITY --title \"farmer_auth_dead: auto-suppress on confirmed FP class instead of manual playbook check\" --priority P2",
+        "detail": "acceptance_criteria: farmer_auth_dead alarm handler checks `git log origin/main --since=<lookback>` for landed ships and re-probes auth (scripts/coord/auth-status.sh) BEFORE logging/escalating the event; if ships landed in-window and auth probe is OK, auto-tag the ambient event as suppressed_fp with a receipt, no manual reality-check required. --outcome CHUMPOS. Evidence: mis-called 4x per PLAYBOOK_REGISTRY.yaml, plus 2 more firings this tick (05:16, 05:18) with ships landing at 04:55/05:03/05:12 in the same window \u2014 the false-positive condition is cheaply detectable in-band, it shouldn't require a human/ATC read of ambient.jsonl every time."
+      },
+      "verify": "`chump gap reserve` returns a gap ID that appears in the Gap Registry with the stated AC and outcome trace; confirms filed, not yet built."
+    }
+  ]
+}

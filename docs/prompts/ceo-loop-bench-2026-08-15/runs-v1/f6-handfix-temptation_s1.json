@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Feedback",
+      "honesty": "\ud83d\udfe0 curator-opus-md-links lane is built and has a defined 4h cadence but its last heartbeat was 6h ago \u2014 thin/stalled, not verified-online this tick (receipt: ambient tail, 'md_links_heartbeat last seen 6h ago'). The broken link it should have caught (docs/FACTORY_VISION.md:41 -> ./strategy/PUBLISHERR.md, 404) is confirmed by fresh-eyes this cycle, not yet fixed.",
+      "did_not_move": "No spine outcome advanced this tick. This was a hygiene find (broken doc link) plus a stalled-chair signal, not a shipped capability. e3319c55 (CREDIBLE-250, depth-chart updater) shipped 40 min ago but predates this tick's decision, so it is not claimed as this loop's move."
+    },
+    "synthesis": "1) docs/FACTORY_VISION.md:41 links to ./strategy/PUBLISHERR.md, which 404s \u2014 the real file is PUBLISHER.md at the Projects root, not under docs/strategy/ (receipt: fresh-eyes finding, this tick). This is the canonical vision doc every agent reads, so a dead link here silently breaks anyone who follows it toward publication doctrine. 2) The md-links curator chair exists with a 4h heartbeat cadence but hasn't reported in 6h (receipt: ambient tail 'md_links_heartbeat last seen 6h ago') \u2014 exactly the kind of gate-less-looking-online chair the org model warns about (BEAST-MODE precedent). I am not building a fix myself; both go to the fleet/ATC per mandate.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "CHUMPOS",
+      "why_now": "A dead link in the canonical vision doc and a silently-stalled curator lane are exactly the kind of built-but-unwired/degraded capability the loop exists to catch before it compounds \u2014 cheap to fix now, corrosive to agent trust if left."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "GAP_REGISTRY",
+      "action": "file_gap",
+      "payload": {
+        "cmd": "chump gap reserve --title 'Fix broken PUBLISHER.md link in FACTORY_VISION.md' --pillar DOC --ac 'docs/FACTORY_VISION.md:41 links to ./strategy/PUBLISHERR.md which 404s. Correct the path to point at the actual PUBLISHER.md (Projects root, not docs/strategy/). Verify: link resolves / no remaining references to PUBLISHERR.md in docs/FACTORY_VISION.md.'",
+        "detail": "One-line doc fix, no design work \u2014 fleet should be able to claim and ship same-tick via the doc-only express lane."
+      },
+      "verify": "New gap ID appears in `chump gap list`; once shipped, grep -c PUBLISHERR docs/FACTORY_VISION.md returns 0 and the corrected path resolves to an existing file.",
+      "escalation_trigger": null
+    },
+    {
+      "target": "DISPATCH",
+      "action": "unstick",
+      "payload": {
+        "cmd": "chump curator status curator-opus-md-links && chump curator revive curator-opus-md-links --if-stalled",
+        "detail": "md-links curator's cadence is 4h; last heartbeat is 6h old. Confirm whether it's dead, wedged, or just slow, and revive if dead. This is the chair that should have caught the PUBLISHERR typo before fresh-eyes did."
+      },
+      "verify": "ambient.jsonl shows a fresh md_links_heartbeat event within the next 4h window, or a receipt explaining why the lane is intentionally paused.",
+      "escalation_trigger": null
+    }
+  ]
+}

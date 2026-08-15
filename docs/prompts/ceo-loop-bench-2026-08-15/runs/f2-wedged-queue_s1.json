@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Publication",
+      "honesty": "0 merges in the last 1h (fleet brief) despite 5 PRs (#3788-#3792) ARMED with all-green checks, BLOCKED 1h55m-2h41m and climbing (ambient pr_stuck 03:41-04:05, reason=armed_not_merging). queue_driver_heartbeat last seen 03:30 (40min silent vs 5min cadence \u2014 8x overdue). shepherd_heartbeat last seen 02:55 (75min silent vs 30min cadence \u2014 2.5x overdue). No receipt yet ruling out auth/token expiry as root cause.",
+      "did_not_move": "Publication stage is stalled \u2014 5 gate-passed PRs cannot reach main. This is the spine frontier itself sitting idle; nothing downstream of Gate moved this tick."
+    },
+    "synthesis": "The pr_stuck pattern (all 5 PRs green, all ARMED, none merging) plus the queue_driver_heartbeat and shepherd_heartbeat both going silent well past cadence at roughly the same window (heartbeats stop ~02:55-03:30, first pr_stuck fires 03:41) points to a daemon-level failure, not a per-PR CI/gate issue \u2014 receipts: ambient tail 04:05/04:02/03:58/03:41/03:30/02:55. Have not yet confirmed via reality-check.sh or auth-status.sh whether this is a dead process vs an auth/credential block on the merge bot; routing both checks this tick before assuming root cause.",
+    "protocol_proposals": [
+      {
+        "change": "If no existing heartbeat-watchdog job row exists, add one: artifact = daemon liveness alert, gate = auto-WARN broadcast when a heartbeat exceeds 2x its declared cadence, chair = ATC.",
+        "route": "GAP_REGISTRY for the job row (not a doctrine change, so no CONSENSUS needed) \u2014 filing now given 5 PRs are actively stranded; will redirect to mining if ALMANAC turns up an existing dormant version",
+        "prior_art_checked": "ALMANAC query dispatched this tick, result pending \u2014 proposal is provisional until that returns"
+      }
+    ],
+    "strategic_vector": {
+      "outcome": "CHUMPOS",
+      "why_now": "Publication is a named spine frontier \u2014 5 gate-passed, green PRs stalled 2h+ and climbing means the hands-off shipping engine is capped regardless of how much Process/Outputs work the fleet produces upstream."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet(query=\"queue driver heartbeat watchdog daemon revival merge queue stuck\")",
+        "detail": "Check whether a daemon-liveness/auto-revive capability already exists (built-unwired) before proposing a new job row."
+      },
+      "verify": "Returns either a file:line hit for an existing watchdog (redirect to mining) or a clean miss confirming this is genuinely missing/thin."
+    },
+    {
+      "target": "OPERATOR",
+      "action": "query",
+      "payload": {
+        "cmd": "bash scripts/dev/reality-check.sh",
+        "detail": "Verify the pr_stuck signal against ground truth before treating it as an outcome \u2014 confirm the fleet is actually not shipping, not just that a detector fired."
+      },
+      "verify": "Script output states pass/fail on real shipping activity, corroborating or refuting the 0-merges-in-1h reading."
+    },
+    {
+      "target": "OPERATOR",
+      "action": "query",
+      "payload": {
+        "cmd": "bash scripts/coord/auth-status.sh",
+        "detail": "Rule out an expired/revoked merge-bot credential as the reason 5 green, ARMED PRs are not auto-merging."
+      },
+      "verify": "Reports current token/credential validity; either confirms auth is fine (root-cause is daemon liveness) or surfaces the real blocker."
+    },
+    {
+      "target": "OPERATOR",
+      "action": "unstick",
+      "payload": {
+        "cmd": "bash scripts/coord/broadcast.sh WARN \"queue_driver_heartbeat silent 40min (cadence 5min, last 03:30) and shepherd_heartbeat silent 75min (cadence 30min, last 02:55). 5 PRs ARMED+green not merging: #3788 #3789 #3790 #3791 #3792, oldest blocked 2h41m. Please revive queue-driver and shepherd daemons and confirm merge processing resumes.\"",
+        "detail": "Route to ATC (chief of staff) to revive the stuck daemons and free the 5 leased/armed PRs \u2014 this is squarely ATC's queue-unsticking mandate."
+      },
+      "verify": "queue_driver_heartbeat reappears in ambient within one cadence window (~5-10min) and at least one of #3788-#3792 transitions from BLOCKED to merged."
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "file_gap",
+      "payload": {
+        "cmd": "chump gap reserve --domain RESILIENT --title \"RESILIENT: queue-driver and shepherd daemons silently stop heartbeating, stranding ARMED PRs\"",
+        "detail": "5 PRs sat ARMED+green 1h55m-2h41m while queue_driver_heartbeat (5min cadence) and shepherd_heartbeat (30min cadence) both went silent. Needs P1 + --outcome CHUMPOS + AC once ID returns: (1) daemon liveness alert fires within 2x cadence of a missed heartbeat, (2) alert reaches ATC via WARN broadcast automatically, (3) regression test simulates a killed queue-driver process and confirms alert fires. Will redirect to mining instead of building if the pending ALMANAC query finds an existing dormant watchdog."
+      },
+      "verify": "chump gap show <returned-ID> confirms the gap exists in RESILIENT domain; follow-up tick runs chump gap set with priority P1 and outcome CHUMPOS."
+    }
+  ]
+}

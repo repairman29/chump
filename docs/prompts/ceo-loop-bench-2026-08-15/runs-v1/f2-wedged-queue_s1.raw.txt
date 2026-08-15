@@ -1,0 +1,64 @@
+```json
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "factory_report": {
+      "outcome_moved": "NONE",
+      "spine_stage": "Gate",
+      "honesty": "5 PRs (#3788-#3792) are ✅ CI-green and ARMED per cache_query_open_prs, yet 0 merges landed since 7f0c16cf (~3h12m). queue_driver_heartbeat last fired 03:30Z (cadence 5min, now 40min stale) and shepherd_heartbeat last fired 02:55Z (cadence 30min, now 75min stale) — both merge-execution daemons read 🟠 wedged, not the PRs themselves. Branch protection independently confirmed unchanged (fetched_at 04:08Z), ruling out a policy-side cause.",
+      "did_not_move": "Zero ships this tick; merge queue has been fully halted for 2h41m and is climbing (4 pr_stuck alarms fired 03:41-04:05, all reason=armed_not_merging). No gaps rated, no board update sent while the stall was silent."
+    },
+    "synthesis": "Reality-checked the pr_stuck alarm class per loop step 2 before acting: it is NOT a false positive. All 5 blocked PRs show green statusCheckRollup and unchanged branch protection, so the alarm's stated cause (bad PR/policy) is wrong — but the underlying signal (nothing is merging) is real. Two independent heartbeats going stale at the same time (queue_driver_heartbeat: 8 missed cycles since 03:30Z; shepherd_heartbeat: 2.5 missed cycles since 02:55Z) is the actual root cause: the merge-execution daemon(s) are wedged or crashed, not the work items. This is an infra/ops gap (dead-daemon detection has no auto-heal), not a code gap — no fleet build work required, just daemon revival + a watchdog so this doesn't silently sit 40min+ next time.",
+    "protocol_proposals": [
+      {
+        "change": "New job row: queue-driver/shepherd heartbeat watchdog — artifact: restart script + alert on N missed cycles; gate: heartbeat freshness check; chair: ops/ATC.",
+        "route": "GAP_REGISTRY",
+        "prior_art_checked": "Not yet confirmed absent — ALMANAC query filed this loop (system_routing[0]) to check for an existing restart/watchdog runbook before this is built."
+      }
+    ],
+    "strategic_vector": {
+      "outcome": "CHUMPOS",
+      "why_now": "5 fully-gated, ready-to-ship PRs are blocked only by a wedged merge daemon, not by any code or policy issue — reviving it is the single highest-leverage action available this tick, unblocking Publication throughput with zero new build work."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "ALMANAC",
+      "action": "query",
+      "payload": {
+        "cmd": "almanac_search_fleet query=\"queue driver daemon restart heartbeat watchdog OR shepherd daemon revive runbook\"",
+        "detail": "Checking for an existing restart/watchdog procedure for queue_driver and shepherd before filing a build gap — mine before build."
+      },
+      "verify": "Returns file:line receipts for an existing restart runbook, or an explicit 0-hit confirming none exists (per almanac trust discipline, check note/fallback_reason before trusting the 0-hit)."
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "file_gap",
+      "payload": {
+        "cmd": "chump gap reserve --pillar CHUMPOS --title \"queue-driver + shepherd daemons wedged — 5 PRs ARMED not merging 2h41m+\" --priority P0 --outcome CHUMPOS",
+        "detail": "AC: (1) Restart queue_driver and shepherd daemons; (2) confirm queue_driver_heartbeat resumes on 5min cadence and shepherd_heartbeat on 30min cadence; (3) confirm PRs #3788, #3789, #3790, #3791, #3792 merge to origin/main; (4) add heartbeat-miss alerting/auto-restart (2 missed cycles = page ATC) so a repeat isn't silent for 40+ min again."
+      },
+      "verify": "chump gap status shows the new gap OPEN with the AC above; PRs #3788-#3792 subsequently show merged in git log origin/main."
+    },
+    {
+      "target": "DISPATCH",
+      "action": "dispatch",
+      "payload": {
+        "cmd": "chump dispatch <GAP_ID_FROM_PRIOR_STEP> --backend headless --priority P0",
+        "detail": "Time-sensitive infra unblock — dispatch immediately rather than let it sit in the registry."
+      },
+      "verify": "chump gap status transitions from OPEN to CLAIMED within this dispatch cycle."
+    },
+    {
+      "target": "OPERATOR",
+      "action": "board_update",
+      "payload": {
+        "cmd": "board_update surface=FLEET-RADIO",
+        "detail": "Merge queue stalled since ~03:30Z: 5 CI-green PRs (#3788-#3792) blocked 2h41m+ by wedged queue_driver/shepherd daemons, not by the PRs themselves. Gap filed (P0, CHUMPOS) and dispatched to fleet for daemon revival + watchdog. No action needed from you."
+      },
+      "verify": "Line appears in next FLEET-RADIO digest compile.",
+      "escalation_trigger": "None — routine daemon flakiness with a known unstick path, not T1-T4 (no irreversible third-party action, no credential rotation, not Jeff's explicit domain, not halt-class fleet-unsafe). Rides FLEET-RADIO only."
+    }
+  ]
+}
+```
