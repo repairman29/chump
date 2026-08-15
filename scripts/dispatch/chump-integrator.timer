@@ -1,0 +1,16 @@
+# RESILIENT-318 / INFRA-2130 SCALE-A — pairs with chump-integrator.service.
+# Fires the Batched Merge Train every 15 minutes, matching the retired launchd
+# StartInterval=900. RunAtLoad was false on launchd (operator started the first
+# cycle explicitly); here OnBootSec=10min gives the node time to settle before
+# the first cycle, and the timer drives the cadence thereafter.
+# Enable: systemctl enable --now chump-integrator.timer
+[Unit]
+Description=Run the Chump Batched Merge Train every 15 minutes (DRY-RUN) (RESILIENT-318 / INFRA-2130)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
