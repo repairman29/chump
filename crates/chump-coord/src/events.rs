@@ -25,7 +25,30 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
-use crate::{DEFAULT_NATS_URL, EVENTS_STREAM, EVENTS_SUBJECT};
+use crate::{parse_nats_creds, DEFAULT_NATS_URL, EVENTS_STREAM, EVENTS_SUBJECT};
+
+/// Connect to NATS with credentials parsed out of the URL, mirroring
+/// `CoordClient::connect` (RESILIENT-190). `async_nats::connect(url)` alone
+/// opens the socket but never sends auth — it silently ignores the
+/// `user:pass@host` userinfo — so an authenticated broker (e.g. the fleet's
+/// deployed helsinki nats-server) rejects every connection attempt from this
+/// subscribe path with "authorization violation" while `CoordClient::connect`
+/// (used by every publish path) works fine. Before this fix, that meant
+/// `subscribe_events` degraded to file-fallback immediately on any
+/// credentialed broker — this subscribe path never actually attached to
+/// JetStream against the fleet's real NATS deployment.
+async fn connect_with_creds(
+    url: &str,
+) -> std::result::Result<async_nats::Client, async_nats::ConnectError> {
+    let mut opts = async_nats::ConnectOptions::new();
+    if let Some((user, pass)) = parse_nats_creds(url) {
+        opts = match pass {
+            Some(p) => opts.user_and_password(user, p),
+            None => opts.token(user),
+        };
+    }
+    opts.connect(url).await
+}
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -70,7 +93,7 @@ impl EventFilter {
 ///
 /// Note: `payload` defaults to `null` when absent (ambient.jsonl events and
 /// `lib.rs` CoordEvent do not always emit a `payload` field).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CoordEvent {
     /// ISO-8601 timestamp.
     pub ts: String,
@@ -82,6 +105,80 @@ pub struct CoordEvent {
     /// Payload as free-form JSON. Defaults to null when absent.
     #[serde(default)]
     pub payload: serde_json::Value,
+}
+
+// RESILIENT-334: the publish side (`lib::CoordEvent`, used by `CoordClient::emit`,
+// `work_board`, `help_request`) and this subscribe-side wire type historically used
+// *different* JSON shapes — `{"event":"WORK_POSTED", "session":..., "gap":...,
+// "reason":...}` vs `{"kind":..., "session_id":..., "payload":...}`. `kind` was a
+// required field with no alias, so every `lib::CoordEvent`-shaped message (which
+// carries "event", not "kind") silently failed to deserialize and was dropped
+// (see the `Err(_) => { ack; continue }` arm in `run_nats_consumer`). That made
+// `subscribe_events` a telemetry-only sink for ambient-shaped events — anything a
+// worker actually needed to *act on* (WORK_POSTED, HELP_REQUESTED, gap claims)
+// never arrived. This manual impl bridges both shapes so a subscriber can react
+// to real coordination events, not just its own ambient mirror.
+impl<'de> Deserialize<'de> for CoordEvent {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let mut obj = serde_json::Map::deserialize(deserializer)?;
+
+        let ts = obj
+            .remove("ts")
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+
+        // Prefer an explicit "kind"; fall back to the publish-side "event" field
+        // (lib::CoordEvent's INTENT|DONE|STUCK|WORK_POSTED|... discriminant).
+        let kind = obj
+            .remove("kind")
+            .and_then(|v| v.as_str().map(str::to_string))
+            .or_else(|| {
+                obj.get("event")
+                    .and_then(|v| v.as_str().map(str::to_string))
+            })
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let session_id = obj
+            .remove("session_id")
+            .and_then(|v| v.as_str().map(str::to_string))
+            .or_else(|| {
+                obj.get("session")
+                    .and_then(|v| v.as_str().map(str::to_string))
+            });
+
+        // Explicit "payload" wins. Otherwise, if the message carries
+        // lib::CoordEvent-shaped fields (gap/files/reason/commit/to/event),
+        // surface them as the payload so a subscriber can act without a
+        // second round-trip — that's the whole point of subscribing.
+        let payload = match obj.remove("payload") {
+            Some(p) => p,
+            None => {
+                let mut leftover = serde_json::Map::new();
+                for key in ["event", "gap", "files", "reason", "commit", "to"] {
+                    if let Some(v) = obj.get(key) {
+                        if !v.is_null() {
+                            leftover.insert(key.to_string(), v.clone());
+                        }
+                    }
+                }
+                if leftover.is_empty() {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::Value::Object(leftover)
+                }
+            }
+        };
+
+        Ok(CoordEvent {
+            ts,
+            kind,
+            session_id,
+            payload,
+        })
+    }
 }
 
 /// Error type for the pub/sub layer.
@@ -237,7 +334,7 @@ async fn run_subscriber(filter: EventFilter, session_id: String, tx: mpsc::Sende
     // Attempt NATS connect with fallback timeout
     let connect_result = timeout(
         Duration::from_millis(timeout_ms.min(FALLBACK_TIMEOUT_SECS * 1000)),
-        async_nats::connect(&nats_url),
+        connect_with_creds(&nats_url),
     )
     .await;
 
@@ -317,7 +414,7 @@ async fn run_degraded(
 
         let connect_result = timeout(
             Duration::from_millis(timeout_ms),
-            async_nats::connect(&nats_url),
+            connect_with_creds(&nats_url),
         )
         .await;
 

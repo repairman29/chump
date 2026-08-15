@@ -178,7 +178,7 @@ pub struct CoordClient {
 /// Returns `Some((user, Some(pass)))` for user/password auth,
 /// `Some((token, None))` for the token-only `nats://token@host` form,
 /// or `None` when the URL carries no userinfo.
-fn parse_nats_creds(url: &str) -> Option<(String, Option<String>)> {
+pub(crate) fn parse_nats_creds(url: &str) -> Option<(String, Option<String>)> {
     let after = url
         .strip_prefix("nats://")
         .or_else(|| url.strip_prefix("tls://"))
