@@ -857,3 +857,9 @@ log_triage_test_beta    # reason: INFRA-1891 — synthetic test-fixture kind use
 installer_audit_finding # reason: INFRA-2394 — emitted by scripts/audit/audit-launchd-installers.sh via scripts/dev/ambient-emit.sh; scripts/audit/ is not in the verify::EventRegistry rule's PROD_PATHS list so the scanner-anchor comment at the emit site isn't auto-detected
 chairman_pulse_tick     # reason: RESILIENT-331 — emitted by scripts/chairman/chairman_pulse.py (scanner-anchor comment present). PROD_PATHS updated in src/verify/rules/event_registry.rs to include scripts/chairman/, but the pre-commit hook runs the installed `chump` binary, not this worktree's rebuild, so the scanner-anchor isn't auto-detected until the next binary install; reserved here to unblock in the interim.
 organ_zombie_alive      # reason: RESILIENT-331 — same as chairman_pulse_tick above; emitted by scripts/chairman/chairman_pulse.py.
+pattern_fix_matched     # reason: INFRA-2355 (META-269 sub-6) — emitted by scripts/coord/pattern-fix-dispatcher.sh (scanner-anchor comment present). Installed chump binary lags this worktree so the scanner-anchor isn't auto-detected until next binary install; reserved here to unblock in the interim.
+pattern_fix_applied     # reason: INFRA-2355 (META-269 sub-6) — same as pattern_fix_matched above; emitted by scripts/coord/pattern-fix-dispatcher.sh.
+pattern_fix_pr_opened   # reason: INFRA-2355 (META-269 sub-6) — same as pattern_fix_matched above; emitted by scripts/coord/pattern-fix-dispatcher.sh.
+pattern_fix_dry_run     # reason: INFRA-2355 (META-269 sub-6) — same as pattern_fix_matched above; emitted by scripts/coord/pattern-fix-dispatcher.sh.
+pattern_fix_no_match    # reason: INFRA-2355 (META-269 sub-6) — same as pattern_fix_matched above; emitted by scripts/coord/pattern-fix-dispatcher.sh.
+pattern_fix_failed      # reason: INFRA-2355 (META-269 sub-6) — same as pattern_fix_matched above; emitted by scripts/coord/pattern-fix-dispatcher.sh.

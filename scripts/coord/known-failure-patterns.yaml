@@ -1,0 +1,31 @@
+# INFRA-2355 (META-269 sub-6): known-failure-pattern -> fix-script registry.
+#
+# Each entry maps a CI-failure regex to a fix-script that can repair it
+# without a Sonnet hop. scripts/coord/pattern-fix-dispatcher.sh reads this
+# file top-to-bottom and runs the fix-script for the FIRST pattern whose
+# match_regex matches the supplied CI-failure log.
+#
+# Format:
+#   - name: <slug, used in branch names + ambient events>
+#     description: one-liner of the failure this pattern recognizes
+#     match_regex: extended regex (grep -E / bash [[ =~ ]] syntax), tested
+#       against the log ONE LINE AT A TIME. May contain a single capture
+#       group `(...)` — if present, group 1 is passed as $1 to fix_script.
+#     fix_script: path (repo-relative) to the fix executable. Must be
+#       idempotent and safe to run with a stale/absent worktree checkout —
+#       the dispatcher runs it in the repo root with cwd unchanged.
+#
+# Adding a new pattern: append below; the dispatcher reads this file fresh
+# on every invocation, no restart needed.
+
+version: 1
+patterns:
+  - name: add_both_conflict_marker
+    description: "Additive merge left raw '<<<<<<< HEAD' conflict markers in an append-only allowlisted file (INFRA-2255 auto-resolve scope)"
+    match_regex: "CONFLICT \\(add/add\\): Merge conflict in (.+)"
+    fix_script: scripts/coord/auto-resolve-add-both.sh
+
+  - name: cargo_fmt_drift
+    description: "cargo fmt --check failed — formatting drift between commits"
+    match_regex: "^Diff in .* at line [0-9]+:"
+    fix_script: scripts/coord/fixes/cargo-fmt-fix.sh
