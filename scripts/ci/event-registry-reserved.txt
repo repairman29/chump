@@ -863,3 +863,8 @@ pattern_fix_pr_opened   # reason: INFRA-2355 (META-269 sub-6) — same as patter
 pattern_fix_dry_run     # reason: INFRA-2355 (META-269 sub-6) — same as pattern_fix_matched above; emitted by scripts/coord/pattern-fix-dispatcher.sh.
 pattern_fix_no_match    # reason: INFRA-2355 (META-269 sub-6) — same as pattern_fix_matched above; emitted by scripts/coord/pattern-fix-dispatcher.sh.
 pattern_fix_failed      # reason: INFRA-2355 (META-269 sub-6) — same as pattern_fix_matched above; emitted by scripts/coord/pattern-fix-dispatcher.sh.
+
+# ── INFRA-2036: toolchain-ratchet wedge class (W-014) detector ───────────────
+toolchain_ratchet_scan_started    # reason: INFRA-2036 emitted by scripts/coord/toolchain-ratchet-detector.sh at scan start; printf-direct JSON not grep-scannable as kind=X literal
+toolchain_ratchet_scan_completed  # reason: INFRA-2036 emitted by scripts/coord/toolchain-ratchet-detector.sh on scan end; carries result=clean|detected, elapsed_ms, gh_calls, failure_class (permanent, when detected); printf-direct JSON not grep-scannable as kind=X literal
+toolchain_ratchet_scan_timeout    # reason: INFRA-2036 emitted by scripts/coord/toolchain-ratchet-detector.sh when the git-log scan exceeds CHUMP_W014_TIMEOUT_S; failure_class=transient; printf-direct JSON not grep-scannable as kind=X literal
