@@ -34621,10 +34621,10 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "events: pr_queue_cascade_gate_expired (ts,red_minutes,max_hold_minutes,dry_run) emitted when the cascade gate releases after CASCADE_MAX_HOLD_MINUTES; existing pr_queue_skipped_trunk_red / pr_queue_auto_action(admin_merge_skipped, reason=trunk_red) cover the hold/skip path"
+    - "cost: reuses existing pr_queue_auto_action + pr_queue_skipped_trunk_red rollup — operator reconstructs held-PR count and duration by grepping ambient.jsonl for these kinds; no new cost-tracking sink needed"
+    - "failure-class taxonomy: transient trunk-red (RED but red_minutes < CASCADE_MAX_HOLD_MINUTES, gate holds and self-heals) vs permanent trunk-red (red_minutes >= CASCADE_MAX_HOLD_MINUTES, gate releases — trunk-sentinel has already escalated to the operator via trunk_red_operator_recall by the 60-minute mark)"
+    - "smoke test: bash scripts/ci/test-pr-queue-processor.sh — scenario 7 asserts trunk_red beyond the 120min cap releases the cascade gate (admin_merge fires, pr_queue_cascade_gate_expired emitted); scenario 4 asserts trunk_red within the cap still holds"
   outcome_id: MISSION-010
 
 - id: INFRA-235
