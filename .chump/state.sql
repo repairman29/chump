@@ -32841,6 +32841,7 @@ gaps:
     - "8. Test: scripts/ci/test-buildbuddy-fallback.sh — assert sccache config has both BuildBuddy URL AND R2 fallback URL"
   notes: |
     [2026-08-16T21:16:05Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T21:46:16Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2250
@@ -33542,6 +33543,8 @@ gaps:
     - "Existing self-hosted-runner override paths preserved: the container is added only when runs-on is ubuntu-latest, not the self-hosted variant"
     - "Smoke test scripts/ci/test-rust-builder-image.sh: pulls the image, runs cargo fmt + cargo clippy --workspace -- -D warnings + cargo test --bin chump --quiet, asserts exit 0"
     - Cross-reference Lever 1 in docs/strategy/CI_REVIEW_2026-05-29.md
+  notes: |
+    [2026-08-16T21:46:12Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -34788,7 +34791,7 @@ gaps:
 - id: INFRA-2359
   domain: INFRA
   title: chump-disk-inventory-daemon — refile against current META-128 substrate
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -34796,6 +34799,7 @@ gaps:
     - No cost tracking is applicable/emitted — the daemon only spawns local df/du and an optional NATS publish, no metered API calls (documented in the crate module doc)
     - "poll-cycle failures are classified via chump_disk_inventory::classify_poll_failure into transient_io (df/du spawn or I/O error, expected to self-heal next poll) vs config_or_parse (unexpected output shape / no watch path resolved, needs a fix)"
     - scripts/ci/test-disk-inventory-daemon.sh smoke-tests both the healthy poll path (snapshot + disk_inventory_updated) and the failure path (no snapshot + disk_inventory_poll_failed with failure_class=transient_io)
+  closed_pr: 3857
   outcome_id: MISSION-010
 
 - id: INFRA-2360
@@ -34815,7 +34819,7 @@ gaps:
 - id: INFRA-2361
   domain: INFRA
   title: flake detection + auto-quarantine — refile against INFRA-2346 BLOCKED_FLAKE branch
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -34823,12 +34827,13 @@ gaps:
     - "cost tracked: flake_auto_quarantine_tick reports checks_evaluated/quarantined_count/gaps_filed_count per run; scripts/coord/flake-auto-quarantine.sh --report replays the ambient audit trail (ticks + quarantines + failures) for the operator"
     - "failure-class taxonomy: transient = check capped on < CHUMP_FLAKE_QUARANTINE_PR_THRESHOLD distinct PRs within the window (not actioned, may self-heal); permanent = capped on >= threshold distinct PRs (auto-quarantined into KNOWN_FLAKES.yaml check_flakes: + tracking gap filed)"
     - "smoke test: bash scripts/ci/test-flake-auto-quarantine.sh — 12 cases (dry-run non-mutation, threshold quarantine, below-threshold left alone, dedupe vs existing catalog entry + state file, event shapes, --report) all green"
+  closed_pr: 3859
   outcome_id: MISSION-010
 
 - id: INFRA-2362
   domain: INFRA
   title: queue-tender productization — refile post INFRA-2346 auto-processor
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -34836,6 +34841,7 @@ gaps:
     - "Cost tracked: pr-shepherd-daemon.sh mutation gh calls (admin-merge, flake-rerun, arm-auto-merge) now routed through chump_gh (scripts/coord/lib/github.sh) emitting kind=github_api_call; reported via scripts/dev/api-cost-leaderboard.sh. See doc §2."
     - "Failure-class taxonomy documented in doc §3: transient (trunk_red, capped, no_run_id — auto-retried) vs permanent (gh_exit_N — surfaced + BLOCKED_REAL_FAIL follow-up gap) vs escalation-timeout (pr_queue_cascade_gate_expired per INFRA-2349)"
     - "Smoke test: bash scripts/ci/test-pr-queue-processor.sh — 7 scenarios; scenario 1 now asserts kind=github_api_call is recorded for the admin-merge action (regression guard for the cost-tracking fix)"
+  closed_pr: 3860
   outcome_id: MISSION-010
 
 - id: INFRA-2363
@@ -34856,27 +34862,30 @@ gaps:
 - id: INFRA-2364
   domain: INFRA
   title: chump fleet doctor — wire default mode to fleet-doctor-strict.sh (placeholder shipped at INFRA-1595 but strict script INFRA-1427 already exists)
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - chump fleet doctor (no --heal, no strict script missing) invokes scripts/coord/fleet-doctor-strict.sh and its exit code (0/1) determines the CLI exit code
+    - ambient event kind=fleet_doctor_strict_tick is emitted with fields exit_code, duration_ms, failure_class (transient|permanent|none), status (healthy|unhealthy|timeout|spawn_error)
+    - a run that exceeds CHUMP_FLEET_DOCTOR_STRICT_TIMEOUT_S (default 30) is killed and reported as failure_class=transient status=timeout rather than hanging
+    - docs/observability/EVENT_REGISTRY.yaml has a fleet_doctor_strict_tick entry so the drift gate (INFRA-1237) is satisfied
+    - "smoke test: CHUMP_REPO_ROOT=<repo> chump fleet doctor; tail .chump-locks/ambient.jsonl | grep fleet_doctor_strict_tick shows the emitted event"
+  closed_pr: 3862
   outcome_id: MISSION-010
 
 - id: INFRA-2365
   domain: INFRA
   title: 21 dead daemons cluster — exit=78 (config errors) + exit=1 (script errors); refresh-runner-binary broken explains the perpetually-stale chump binary
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - All install-*-launchd.sh scripts under scripts/setup/ resolve the plist REPO_ROOT/WorkingDirectory via scripts/lib/resolve-main-worktree.sh (resolve_main_worktree) instead of $(dirname $0)/../.. — no baked-in linked/temp worktree paths
+    - scripts/ci/test-launchd-installer-paths.sh (existing INFRA-451 regression test) passes with 0 failures
+    - install-refresh-runner-binary-launchd.sh and install-fleet-autopilot-launchd.sh no longer bake the invoking worktree path, fixing the root cause of refresh-runner-binary leaving the installed chump binary perpetually stale
+    - "Smoke test: bash scripts/ci/test-launchd-installer-paths.sh exits 0"
+  closed_pr: 3861
   outcome_id: MISSION-010
 
 - id: INFRA-2366
@@ -34963,7 +34972,7 @@ gaps:
 - id: INFRA-2372
   domain: INFRA
   title: "Gemini cascade slot — handle malformed/missing function_declarations gracefully (current: 400 on every bare chump call)"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -34971,6 +34980,8 @@ gaps:
     - "src/provider_cascade.rs: opt-in CHUMP_CASCADE_PRECHECK=1 environment flag runs a 1s-budget health check per cloud slot at startup (default OFF for performance); warnings emitted to stderr; malformed slots are NOT permanently removed but are skipped on first call until next process boot."
     - "scripts/ci/test-cascade-graceful-skip.sh: unit test that simulates the function_declarations 400 string via should_cascade_on_error_string() and asserts it returns true; runs in <5s."
     - "bare `chump <text>` invocation: no longer hard-aborts on a single malformed slot — falls through to next slot or returns a useful error rather than 400-from-Gemini."
+  closed_date: '2026-08-16'
+  closed_pr: 2933
   outcome_id: MISSION-010
 
 - id: INFRA-2373
@@ -69381,6 +69392,23 @@ gaps:
     OUTPUT: bare = "--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons" exit 1 (2s). With IS_SANDBOX=1 = "OK" exit 0. src/dispatch.rs:522-528 spawn_headless runs claude -p <prompt> --dangerously-skip-permissions in a worktree; helsinki (chumpd-eu) runs as ROOT so claude refuses the flag. Workers ship fine because they use the chump cascade (--execute-gap), not claude -p. Net: chump dispatch --backend headless is 100pct broken on every root node -> the manual-override lever is dead, and it blocked bootstrapping RESILIENT-360 (picker fix).
     THEORY: claude CLI refuses --dangerously-skip-permissions under root unless IS_SANDBOX=1 signals an intentional sandboxed root env. The dispatched headless agent already runs skip-permissions by design, so declaring IS_SANDBOX is correct.
     ALT: in spawn_headless set cmd.env(IS_SANDBOX,1) (verified unblocks). Gate on root if worried about non-root side effects (libc::geteuid()==0), else set always for the autonomous headless spawn.
+
+- id: RESILIENT-363
+  domain: RESILIENT
+  title: helsinki disk-pressure janitor — root disk hit 100pct (0 free) halting ALL builds; 1330 stale /tmp/chump-* worktrees accumulated (chump-reaper.timer active but not reaping) + 31G cargo cache + orphaned 18G build target. Need a worktree-reaper that actually runs + a disk-pressure watchdog on helsinki
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"helsinki disk-pressure janitor — root disk hit 100pct (0 free) halting ALL builds; 1330 stale /tmp/chump-* worktrees accumulated (chump-reaper.timer active but not reaping) + 31G cargo cache + orphaned 18G build target. Need a worktree-reaper that actually runs + a disk-pressure watchdog on helsinki\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: df -h /; du -sh /tmp/chump-*; ls -d /tmp/chump-* | wc -l; du -sh /root/.cargo /root/Chump/target.
+    OUTPUT: / was 150G 100pct used, 0 avail — bot-merge + every build failed with No space left on device (os error 28). 1330 stale worktrees in /tmp/chump-* (chump-reaper.timer shows active/waiting but clearly not sweeping them). /root/.cargo=31G, an orphaned /root/Chump/target=18G. Manually reaped to 27G free to unblock, but nothing prevents recurrence.
+    THEORY: this is the helsinki-housekeeping-not-ported gap (RESILIENT-318) at emergency severity — the Mac-launchd disk janitors (worktree reap, cargo-cache trim, target GC, journal vacuum, disk-pressure watchdog) never ported to helsinki, so disk creeps to 100pct and silently halts the whole fleet build path.
+    ALT: port/verify chump-reaper actually removes /tmp/chump-* worktrees whose gaps are terminal (not just prune metadata); add a disk-pressure watchdog (systemd timer) that at >85pct trims cargo caches + reaps stale worktrees + vacuums journal + alarms; measure it holds disk <90pct. Ties to node-fabric + merged!=running (RESILIENT-351).
 
 - id: SMOKE-001
   domain: SMOKE
