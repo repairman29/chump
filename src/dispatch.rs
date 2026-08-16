@@ -21,6 +21,19 @@
 //!   backend, COG-025). Same surface, different binary; used when
 //!   `CHUMP_DISPATCH_BACKEND=chump-local` for cost-routing.
 //!
+//! ## INFRA-1964 — closing the mission-reality gap on local-LLM
+//!
+//! - [`WorkBackend::Local`] — spawn `chump gen --local <prompt> --work-dir
+//!   <ws>`, which drives the *already-shipped* offline-LLM agent loop
+//!   (`src/gen.rs` + `src/agent_loop.rs`, INFRA-593/PRODUCT-050) headlessly
+//!   against an OpenAI-compatible local endpoint (Ollama by default; point
+//!   `OPENAI_API_BASE` at an MLX server or mistral.rs for those runtimes).
+//!   Before this, `chump dispatch` / `run-fleet.sh` only ever reached
+//!   [`WorkBackend::Headless`] (`claude -p`), so every fleet worker required
+//!   an Anthropic credential regardless of what `CHUMP_WORK_BACKEND` implied
+//!   was configurable — the local/offline agent loop existed but had no path
+//!   from dispatch into it. Select via `CHUMP_WORK_BACKEND=local`.
+//!
 //! ## Future phases (NOT this PR)
 //!
 //! - Phase 3: port [`ship`] to native Rust git/gh calls (replace the
@@ -66,11 +79,21 @@ pub enum WorkBackend {
     /// EFFECTIVE-017: spawn `aider --message <prompt>` (Aider).
     /// Operator selects via `CHUMP_WORK_BACKEND=aider`.
     Aider { model: String, prompt: String },
+
+    /// INFRA-1964: spawn `chump gen --local <prompt> --work-dir <ws>`.
+    /// Drives the *existing* offline-LLM agent loop (`src/gen.rs`,
+    /// `src/agent_loop.rs`) against an OpenAI-compatible local endpoint
+    /// (Ollama/MLX-server/mistral.rs — whatever `OPENAI_API_BASE` points
+    /// at) headlessly, so fleet workers can actually run without a
+    /// `claude -p` / Anthropic credential. Operator selects via
+    /// `CHUMP_WORK_BACKEND=local`.
+    Local { prompt: String },
 }
 
 /// EFFECTIVE-017: select a `WorkBackend` from `CHUMP_WORK_BACKEND` env var.
 /// Mapping: claude/unset → Headless; opencode → Opencode; aider → Aider;
-/// chump-local/exec-gap → ExecGap; anything else → warn + fallback Headless.
+/// chump-local/exec-gap → ExecGap; local/ollama/mlx → Local; anything else →
+/// warn + fallback Headless.
 ///
 /// Per the chump-first doctrine, this is the single seam where operators
 /// pick the worker binary without editing source.
@@ -79,11 +102,15 @@ pub fn backend_from_env(model: String, prompt: String) -> WorkBackend {
         Ok("opencode") => WorkBackend::Opencode { model, prompt },
         Ok("aider") => WorkBackend::Aider { model, prompt },
         Ok("chump-local") | Ok("exec-gap") => WorkBackend::ExecGap,
+        // INFRA-1964: distinct from ExecGap's "chump-local" alias above —
+        // this routes to the offline-LLM `chump gen --local` path, not
+        // `chump --execute-gap` (which itself defaults to Headless/claude).
+        Ok("local") | Ok("ollama") | Ok("mlx") => WorkBackend::Local { prompt },
         Ok("claude") | Ok("") | Err(_) => WorkBackend::Headless { model, prompt },
         Ok(other) => {
             eprintln!(
                 "[chump] WARNING: unknown CHUMP_WORK_BACKEND={other:?} — falling back to claude. \
-                 Supported: claude, opencode, aider, chump-local"
+                 Supported: claude, opencode, aider, chump-local, local"
             );
             WorkBackend::Headless { model, prompt }
         }
@@ -232,7 +259,8 @@ impl<'a> Workspace<'a> {
             WorkBackend::Headless { .. }
             | WorkBackend::ExecGap
             | WorkBackend::Opencode { .. }
-            | WorkBackend::Aider { .. } => {
+            | WorkBackend::Aider { .. }
+            | WorkBackend::Local { .. } => {
                 // Fresh linked worktree off origin/main. INFRA-302 blocker
                 // (3): without this, the dispatched child runs in the main
                 // checkout on the operator's stale branch. The worktree is
@@ -331,6 +359,7 @@ fn do_work(ws: &Workspace) -> Result<()> {
         WorkBackend::ExecGap => spawn_exec_gap(ws),
         WorkBackend::Opencode { model, prompt } => spawn_opencode(ws, model, prompt),
         WorkBackend::Aider { model, prompt } => spawn_aider(ws, model, prompt),
+        WorkBackend::Local { prompt } => spawn_local(ws, prompt),
     }
 }
 
@@ -434,6 +463,44 @@ fn spawn_aider(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     if !status.success() {
         bail!(
             "aider exited {} for gap {}",
+            status.code().unwrap_or(-1),
+            opts.gap_id
+        );
+    }
+    Ok(())
+}
+
+/// INFRA-1964 — `WorkBackend::Local`. Spawns
+/// `chump gen --local <prompt> --work-dir <ws> --quiet`, which drives the
+/// existing offline-LLM agent loop (`src/gen.rs`) against whatever
+/// OpenAI-compatible endpoint `OPENAI_API_BASE` points at (Ollama, an
+/// MLX-server, mistral.rs, …) instead of the Anthropic-only `claude -p`
+/// path. This is the fleet-worker seam the mission-reality critique (C1)
+/// found missing: `WorkBackend::Headless` was the *only* backend actually
+/// reachable from `chump dispatch` / `run-fleet.sh`, so every fleet worker
+/// silently required an Anthropic credential no matter what
+/// `CHUMP_WORK_BACKEND` claimed to support.
+fn spawn_local(ws: &Workspace, prompt: &str) -> Result<()> {
+    let opts = ws.opts();
+    if prompt.trim().is_empty() {
+        bail!("WorkBackend::Local: prompt is empty (gap={})", opts.gap_id);
+    }
+    let chump_bin = resolve_chump_binary(&opts.repo_root);
+    let mut cmd = Command::new(chump_bin);
+    cmd.args(["gen", prompt, "--local", "--work-dir"])
+        .arg(ws.working_dir())
+        // INFRA-302 blocker (3): cwd is the fresh worktree, same convention
+        // as the other backends, even though `gen` also takes --work-dir
+        // explicitly (gen resolves relative paths off cwd otherwise).
+        .current_dir(ws.working_dir());
+    let child = cmd
+        .spawn()
+        .context("spawn `chump gen --local` (is chump on PATH / built?)")?;
+    let status = wait_with_hang_detection(child, "chump gen --local", opts.gap_id)
+        .context("waiting for chump gen --local to complete")?;
+    if !status.success() {
+        bail!(
+            "chump gen --local exited {} for gap {}",
             status.code().unwrap_or(-1),
             opts.gap_id
         );
@@ -1691,5 +1758,31 @@ mod tests {
             msg.contains("chump-local"),
             "expected fallback guidance in error, got: {msg}"
         );
+    }
+
+    /// INFRA-1964: `CHUMP_WORK_BACKEND=local` (and its `ollama`/`mlx`
+    /// aliases) must route to [`WorkBackend::Local`], not fall through to
+    /// the Anthropic-only Headless default — that fallthrough is exactly
+    /// the mission-reality gap this gap closes.
+    #[test]
+    #[serial_test::serial(work_backend_env)]
+    fn backend_from_env_selects_local_and_aliases() {
+        for value in ["local", "ollama", "mlx"] {
+            std::env::set_var("CHUMP_WORK_BACKEND", value);
+            let backend = backend_from_env("".to_string(), "do the thing".to_string());
+            std::env::remove_var("CHUMP_WORK_BACKEND");
+            assert!(
+                matches!(backend, WorkBackend::Local { .. }),
+                "CHUMP_WORK_BACKEND={value:?} should select WorkBackend::Local, got {backend:?}"
+            );
+        }
+    }
+
+    #[test]
+    #[serial_test::serial(work_backend_env)]
+    fn backend_from_env_defaults_to_headless_when_unset() {
+        std::env::remove_var("CHUMP_WORK_BACKEND");
+        let backend = backend_from_env("".to_string(), "do the thing".to_string());
+        assert!(matches!(backend, WorkBackend::Headless { .. }));
     }
 }
