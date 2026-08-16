@@ -8,6 +8,7 @@
 #   4. trunk_red ambient event present → ALL admin_merges skipped with reason=trunk_red
 #   5. known-flake PR → flake_rerun action fires
 #   6. flake-rerun cap exceeded → flake_rerun_skipped reason=capped
+#   7. trunk_red beyond CASCADE_MAX_HOLD_MINUTES → gate expires, admin_merge resumes (INFRA-2349)
 #
 # Runs under bash 3.2 (macOS default). No external services — we stub gh
 # via PATH and feed synthetic ambient.jsonl.
@@ -80,12 +81,28 @@ GHEOF
 chmod +x "$WORK_DIR/bin/gh"
 
 # Per-scenario isolation helper
+# $6 = red_age_minutes (INFRA-2349): when trunk_red=1, how many minutes ago
+# trunk-sentinel's state file says trunk went red. Empty/unset = no state
+# file written (cascade gate treats red_minutes as 0, i.e. "just went red").
 run_scenario() {
   local name="$1" fixture="$2" trunk_red="${3:-0}" merge_exit="${5:-0}"
   local flake_count_init="${4:-}"
+  local red_age_minutes="${6:-}"
   [[ -z "$flake_count_init" ]] && flake_count_init='{}'
   local SC_DIR="$WORK_DIR/$name"
   mkdir -p "$SC_DIR/.chump-locks" "$SC_DIR/.chump" "$SC_DIR/docs/process"
+
+  # INFRA-2349: optionally seed trunk-sentinel's state file so the cascade
+  # gate's max-hold check has a red_since_epoch to compute red_minutes from.
+  if [[ "$trunk_red" = "1" && -n "$red_age_minutes" ]]; then
+    python3 - "$SC_DIR/.chump/trunk-sentinel-state.json" "$red_age_minutes" << 'PYEOF'
+import json, sys, time
+path, minutes = sys.argv[1], int(sys.argv[2])
+red_since = int(time.time() - minutes * 60)
+with open(path, 'w') as f:
+    json.dump({"state": "TRUNK_RED", "red_since_epoch": red_since}, f)
+PYEOF
+  fi
 
   # Synthetic KNOWN_FLAKES.yaml with one check_flakes entry.
   cat > "$SC_DIR/docs/process/KNOWN_FLAKES.yaml" << 'KNOWNEOF'
@@ -150,6 +167,7 @@ CHEOF
     CHUMP_KNOWN_FLAKES_FILE="$SC_DIR/docs/process/KNOWN_FLAKES.yaml" \
     CHUMP_FLAKE_RERUN_FILE="$SC_DIR/.chump-locks/flake-rerun-count.json" \
     CHUMP_WEDGED_SIGNAL_FILE="$SC_DIR/.chump-locks/pr-wedged-signaled.json" \
+    CHUMP_TRUNK_SENTINEL_STATE_FILE="$SC_DIR/.chump/trunk-sentinel-state.json" \
     CHUMP_PR_SHEPHERD_MAX_ADMIN_MERGES_PER_TICK=3 \
     CHUMP_PR_SHEPHERD_MAX_FLAKE_RERUNS_PER_PR=2 \
     TRUST_AUTHORS="fleet-bot,dependabot[bot],claude-bot,repairman29" \
@@ -410,4 +428,51 @@ if ! grep -q '"action":"flake_rerun_skipped".*"reason":"capped"' "$ambient6"; th
 fi
 echo "[test] scenario 6 (flake-rerun cap exceeded → blocked): OK"
 
-echo "[test] PASS — all 6 pr-queue-processor scenarios green"
+# ── Scenario 7: trunk_red beyond max-hold → cascade gate expires (INFRA-2349) ──
+# Same fixture shape as scenario 4, but trunk has been red for 200 minutes
+# (> default 120m cap) per trunk-sentinel's state file. The gate must release:
+# admin_merge should fire instead of being skipped, and
+# pr_queue_cascade_gate_expired must be emitted.
+FIX7="$WORK_DIR/fix7.json"
+cat > "$FIX7" << 'PREOF'
+[
+  {
+    "number": 1009,
+    "title": "INFRA-1239 fix",
+    "mergeStateStatus": "CLEAN",
+    "autoMergeRequest": null,
+    "createdAt": "2026-05-31T10:00:00Z",
+    "updatedAt": "2026-05-31T10:30:00Z",
+    "headRefOid": "stu901",
+    "headRefName": "feature-1239",
+    "baseRefName": "main",
+    "author": {"login": "fleet-bot"},
+    "statusCheckRollup": []
+  }
+]
+PREOF
+
+result7=$(run_scenario s7 "$FIX7" 1 "" 0 200)
+ambient7=$(echo "$result7" | grep AMBIENT | cut -d: -f2)
+log7=$(echo "$result7" | grep GH_LOG | cut -d: -f2)
+admin_merges_s7=$(count_events "$ambient7" "pr_queue_auto_action" "admin_merge")
+gate_expired_s7=$(count_events "$ambient7" "pr_queue_cascade_gate_expired")
+
+if [ "$admin_merges_s7" -lt 1 ]; then
+  echo "[test] FAIL scenario 7: cascade gate did not release after max-hold — admin_merge did not fire"
+  cat "$ambient7"
+  exit 1
+fi
+if [ "$gate_expired_s7" -lt 1 ]; then
+  echo "[test] FAIL scenario 7: pr_queue_cascade_gate_expired not emitted"
+  cat "$ambient7"
+  exit 1
+fi
+if ! grep -q 'pr merge 1009 --squash --admin' "$log7"; then
+  echo "[test] FAIL scenario 7: gh pr merge --admin not invoked after gate expiry"
+  cat "$log7"
+  exit 1
+fi
+echo "[test] scenario 7 (trunk_red > max-hold → cascade gate expires, queue resumes): OK"
+
+echo "[test] PASS — all 7 pr-queue-processor scenarios green"

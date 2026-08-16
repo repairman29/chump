@@ -1673,6 +1673,28 @@ events:
     fields_required: [ts, kind, skipped_count, dry_run]
     volume_estimate: "~0-1/tick during trunk-red incidents; 0 otherwise"
 
+  - kind: pr_queue_cascade_gate_expired
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh (INFRA-2349)
+    purpose: >
+      Signal that the trunk-red cascade gate released a hold because trunk
+      has been continuously RED for >= CHUMP_CASCADE_MAX_HOLD_MINUTES
+      (default 120) per trunk-sentinel's own red_since_epoch. Distinguishes
+      transient trunk-red (gate holds, self-heals within the cap — no event)
+      from permanent trunk-red (gate expires here; trunk-sentinel has
+      already paged the operator via trunk_red_operator_recall by the
+      60-minute mark, so a second indefinite hold on top of that just
+      starves the PR queue without adding safety). Fixes INFRA-2349: 17 PRs
+      sat blocked for 24h because the gate had no time bound.
+    trigger: |
+      emitted once per tick when trunk state is TRUNK_RED, red_minutes
+      (from .chump/trunk-sentinel-state.json red_since_epoch) is >=
+      CASCADE_MAX_HOLD_MINUTES, and the gate would otherwise have held —
+      CLEAN_GREEN admin-merges and rebases proceed instead of skipping.
+    consumers: [fleet-brief, operator-recall, waste-tally]
+    fields_required: [ts, kind, red_minutes, max_hold_minutes, dry_run]
+    volume_estimate: "~0-1/tick during prolonged (>2h) trunk-red incidents; 0 otherwise"
+
   - kind: pr_shepherd_safe_mode_entered
     effect_metric: self
     emitter: scripts/coord/pr-shepherd-daemon.sh (META-187)
