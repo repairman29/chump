@@ -4457,6 +4457,34 @@ gaps:
   evidence: |
     COMMAND: reviewed CREDIBLE-292 AC1/AC2 (collision diff + mac-side renumber + 21-gap manifest import); this worktree only has helsinki's state.db, no access to the mac node's live state.db. OUTPUT: CREDIBLE-292 shipped the durable fixes it CAN do from here — cluster-unique allocator (CHUMP_CLUSTER_SIZE/CHUMP_NODE_ID residue partitioning) + backlog-sync writer organ install + fleet-doctor freshness check. THEORY: AC1 (full collision diff across mac/helsinki/origin state.db) and AC2 (mac-side renumber + 21-gap manifest import) both require the mac session's actual state.db content, which is not reachable from this session/worktree. ALT: mac-side session must export/dump its state.db (or run the renumber itself per CREDIBLE-292's RECONCILIATION DIRECTION) before this follow-up can execute the diff+import.
 
+- id: CREDIBLE-294
+  domain: CREDIBLE
+  title: "CREDIBLE: fleet_mode render_line test reads real machine auth state — fails on every oauth machine, blocks local cargo-test gate for all contributors"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    fleet_mode::tests::render_line_omits_flag_when_auth_usable panics at src/fleet_mode.rs:151 with left="oauth" right="api-key": the test asserts against the auth mode resolved from REAL machine state (~/.chump/oauth-token.json / env) instead of injecting it. On any machine where fleet auth = oauth (this fleet standard per RESILIENT-086), the test deterministically fails, which false-reds the chump preflight cargo-test gate for EVERY local push regardless of diff (reproduced 2026-08-15 on a docs+scripts-only branch AND on clean main checkout: 2688 tests, this is the sole failure). CI stays green because runners have no oauth, so the breakage is invisible to trunk. Fix: inject auth mode via parameter/env override in the test (mirror how sibling fleet_mode tests isolate), never resolve live credentials in a unit test.
+  acceptance_criteria:
+    - "[\"render_line_omits_flag_when_auth_usable passes on a machine with a live oauth token AND on a machine with only ANTHROPIC_API_KEY, without network or keychain access\",\"Audit sibling fleet_mode tests for the same live-auth coupling; fix or note each in the PR\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was CREDIBLE-288; mac side now frozen/migrated). Original notes follow.
+    
+    [2026-08-15T03:35:06Z] Receipt: cargo nextest 2026-08-15 — Summary 1085/2688 run: 1084 passed, 1 failed (this test), identical failure on clean main checkout. Found while shipping INFRA-3584.
+
+- id: CREDIBLE-295
+  domain: CREDIBLE
+  title: "CREDIBLE: frontier-starvation detector — ambient signal when spine-frontier outcomes get zero merge receipts in 24h"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Source: CEO shadow loop, 2026-08-15 — all 11 ticks logged the identical did_not_move: every merge in every window was mid-factory hardening (RESILIENT-3xx/INFRA-2xxx) while the spine-frontier outcomes (intake EFFECTIVE-357, publication/feedback EFFECTIVE-364/365) accumulated zero receipts across ~14h. FACTORY_VISION.md names these two ends as THE missing halves of the vision; today nothing measures their starvation — the CEO noticed only because it looks every hour. Make it a detector: a daily (or N-hourly) check that maps merged PRs -> outcome (via gap outcome_id) and emits kind=frontier_starved to ambient.jsonl when the frontier outcome set has zero merges in the window. Registry discipline applies (EVENT_REGISTRY.yaml + scanner anchor). Frontier outcome set should be config, not hardcode (docs/ROADMAP.md or an outcomes-table flag), so the frontier can move without code changes. NOT a quota system — the signal reports, humans and the CEO re-rank; no auto-filing (anti-bloat 2026-07-26 precedent).
+  acceptance_criteria:
+    - "[\"Detector emits kind=frontier_starved (registered, scanner-anchored) when configured frontier outcomes have 0 merge receipts in the window; test with synthetic git-log/state.db fixture\",\"Frontier outcome set is data-driven (config/outcomes flag), not hardcoded IDs\",\"Signal surfaces in fleet-brief/SessionStart digest; NO auto-filing of gaps from the signal\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was CREDIBLE-289; mac side now frozen/migrated). Original notes follow.
+
 - id: DOC-031
   domain: DOC
   title: "CREDIBLE: reconcile CLAUDE.md / AGENTS.md / DISPATCH_RULES.md into single agent doctrine"
@@ -11380,6 +11408,127 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-436 (score 0.76) considered at reserve time — proceeded (advisory-only, no override flag used).
+
+- id: EFFECTIVE-485
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [triage] fix PR #3838 (INFRA-1966) — real CI failures (audit-shard (4)) keeping valuable work off main"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[triage] fix PR #3838 (INFRA-1966) — real CI failures (audit-shard (4)) keeping valuable work off main\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-470 (score 0.72) considered at reserve time — proceeded (advisory-only, no override flag used).
+
+- id: EFFECTIVE-486
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [triage] fix PR #3837 (INFRA-1965) — real CI failures (cargo-test-shard (1),cargo-test-shard (4)) keeping valuable work off main"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[triage] fix PR #3837 (INFRA-1965) — real CI failures (cargo-test-shard (1),cargo-test-shard (4)) keeping valuable work off main\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-437 (score 0.65) considered at reserve time — proceeded (advisory-only, no override flag used).
+
+- id: EFFECTIVE-487
+  domain: EFFECTIVE
+  title: "EFFECTIVE: CEO loop v1.1 — tick-to-tick memory + staged live execution with driver-enforced caps (operator go-live decision 2026-08-15)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Operator go-live decision 2026-08-15 ("test is good enough — see it live now"): waive INFRA-3584 AC-3 three-day shadow, replace with staged live + driver-enforced caps. Two changes, BOTH driver-side — docs/prompts/CEO_LOOP_PROMPT.md stays byte-identical (hash pin ed167ec6... intact, no re-bench needed): (1) MEMORY: assemble_state() appends "Your recent decisions" — last 5 records from decisions.jsonl (ts, mode, vector, routed target/action/cmd, execution result) so the model stops re-routing already-routed work (shadow-observed flaw: CREDIBLE-279 re-dispatched 6 consecutive ticks with no tick-to-tick state). (2) LIVE EXECUTION: CHUMP_CEO_MODE=shadow|live (default shadow). Live executes ONLY palette-whitelisted, hard-deny-checked entries with per-tick caps in code: read-only queries uncapped; dispatch<=2; file_gap<=1; gap set/rate<=3; consensus/vote uncapped (consensus duty); non-operator broadcast<=2; OPERATOR page NEVER auto-executes unless CHUMP_CEO_ALLOW_PAGE=1 (default 0, logs intent instead); board_update appends to ~/.chump/ceo-shadow/board.log (FLEET-RADIO pickup). ALMANAC pseudo-calls logged unexecutable in v1.1. Execution results appended to each decision record.
+  acceptance_criteria:
+    - "[\"A live tick state contains the recent-decisions section AND the model demonstrably stops duplicate-routing (no identical dispatch cmd in two consecutive live ticks for an already-executed dispatch)\",\"Caps + page-gate enforced in driver CODE not prompt; --plan-only <decision.json> prints the deterministic execution plan; scripts/ci/test-ceo-driver.sh asserts: page refused by default, hard-deny refused in live, caps applied on a crafted over-cap decision\",\"Execution results (executed, exit, output tail) recorded per routing entry in decisions.jsonl; CHUMP_CEO_MODE + CHUMP_CEO_ALLOW_PAGE registered in env-vars-internal.txt\",\"INFRA-3584 AC-3 amendment recorded (operator waived 3-day shadow, date + rationale) and installer writes CHUMP_CEO_MODE into the plist\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was EFFECTIVE-436; mac side now frozen/migrated). Original notes follow.
+    
+    
+    [2026-08-16T13:14:00Z] Shipped on mac before import (see PR refs in notes); imported as done.
+  outcome_id: CHUMPOS
+
+- id: EFFECTIVE-488
+  domain: EFFECTIVE
+  title: "EFFECTIVE: CEO v1.2 — execute ALMANAC routing entries via the almanac CLI (kill the almanac-unexecutable-v1 skip)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Completes the v1.1 live-execution spec (EFFECTIVE-436): the CEO prompt mandates almanac-first (org chart: query BEFORE any grep/fan-out/build decision) but the live driver logs every ALMANAC routing entry as almanac-unexecutable-v1 — observed skipping in the first live tick 15:08Z. Fix: driver translates the pseudo-call syntax the model emits — almanac_search_fleet(query="...") and almanac_search(repo="...", query="...") — into argv for the almanac CLI (CHUMP_CEO_ALMANAC_BIN, default ~/Projects/almanac/target/release/almanac; verified answering with file:line receipts). Cap group almanac<=3/tick. Results recorded in the execution record -> surface in next tick memory, closing the query->learn loop. Unparseable pseudo-calls skip with reason=almanac-parse. Trust discipline note carried into results: keyword-mode receipts, degradation is loud (check note/fallback_reason).
+  acceptance_criteria:
+    - "[\"Live tick executes a well-formed almanac_search_fleet pseudo-call via CLI argv (no shell), exit + output tail recorded; next tick memory shows the receipts\",\"Plan-only CI test asserts: parseable almanac entry -> run=True group=almanac with cap 3 enforced; malformed -> skip reason=almanac-parse; CHUMP_CEO_ALMANAC_BIN registered\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was EFFECTIVE-437; mac side now frozen/migrated). Original notes follow.
+    
+    
+    [2026-08-16T13:14:04Z] Shipped on mac before import (see PR refs in notes); imported as done.
+  outcome_id: CHUMPOS
+
+- id: EFFECTIVE-489
+  domain: EFFECTIVE
+  title: "EFFECTIVE: CEO v1.3 — factory knowledge layer: org-model registry + curator roster in tick state, Knowledge & Discovery prompt section (re-benched, pin updated)"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    EFFECTIVE: CEO v1.3 — factory knowledge layer: org-model registry + curator roster in tick state, Knowledge & Discovery prompt section (re-benched, pin updated)
+  acceptance_criteria:
+    - "[\"The change described by \\\"CEO v1.3 — factory knowledge layer: org-model registry + curator roster in tick state, Knowledge & Discovery prompt section (re-benched, pin updated)\\\" is implemented in the relevant EFFECTIVE code path(s).\",\"At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.\",\"cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was EFFECTIVE-438; mac side now frozen/migrated). Original notes follow.
+    
+    
+    [2026-08-16T13:14:07Z] Shipped on mac before import (see PR refs in notes); imported as done.
+
+- id: EFFECTIVE-490
+  domain: EFFECTIVE
+  title: "EFFECTIVE: CEO v1.4 — two-way CTO channel over Discord DMs (tick reports out, CTO replies into next-tick state)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Closes the last clause of the original CEO spec (operator, 2026-08-15): "report them to discord dms from the CEO to the CTO and make it so we can talk to each other there." Mine-before-build receipt: src/discord_dm.rs already implements the exact outbound path (POST /users/@me/channels -> POST /channels/{id}/messages, DISCORD_TOKEN + CHUMP_READY_DM_USER_ID); creds live in helsinki /root/.chump/providers.env and get propagated to mac ~/.chump/env via the CREDIBLE-236 AC-3 discipline (env/stdin only, never transcript/argv). Driver (python) mirrors those two REST calls via urllib: (1) OUTBOUND — after every tick, send a compact DM report: mode, vector, executed/skipped counts with exits, radio line. (2) INBOUND — poll the DM channel since a cursor (~/.chump/ceo-shadow/discord-cursor), ingest ONLY messages authored by CHUMP_READY_DM_USER_ID (CTO), max 10/tick, into a "Messages from the CTO (Discord)" state section -> the CEO reads and can answer in its next report; two-way conversation at tick cadence. Enabled iff creds resolve (env or ~/.chump/env fallback loader); DM failures logged on the record, never crash the tick. No prompt change -> no re-bench (state sections are driver-authored).
+  acceptance_criteria:
+    - "[\"After a live tick, the CTO receives a Discord DM containing the tick report (verified by a real DM landing); send failures recorded in decisions.jsonl\",\"A DM reply from the CTO appears in the next tick state section and the CEO addresses it (verified with a real round-trip); non-CTO-authored messages are never ingested\",\"CI stays hermetic: creds-absent -> discord cleanly disabled (unit-tested); no secret in transcript/argv/commit; cursor prevents re-ingesting old messages\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was EFFECTIVE-439; mac side now frozen/migrated). Original notes follow.
+    
+    
+    [2026-08-16T13:14:11Z] Shipped on mac before import (see PR refs in notes); imported as done.
+  outcome_id: CHUMPOS
+
+- id: EFFECTIVE-491
+  domain: EFFECTIVE
+  title: "EFFECTIVE: system map as living dashboard — data generator on a beat, rendered into the PWA, artifact snapshot on demand"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Make the ChumpOS system map (claude.ai artifact 973da41e, source template in the 2026-08-15 session scratchpad — reconstructable from this description) a living surface instead of a hand-refreshed snapshot. Architecture: split data from presentation. (1) Generator: scripts/ops/system-map-data.sh (or rust per META-064 criteria — it is read-only glue, shell OK at <200 LOC) gathers the JSON: launchctl com.chump.* states+exits (mac), ssh helsinki systemctl chump* units+timers, ssh closetjunky ollama/pgrep probe, sqlite outcomes done/total (CHUMPOS, COTG, MISSION-012, pillar outcomes, all-gaps), ambient 24h kind counts, almanac freshness (reuse the fleet-doctor check), deploy lag (installed binary sha vs origin/main), open P0 list, gh ship-rate. Runs on a launchd/systemd beat (hourly fine) writing web/system-map/data.json. (2) Presentation: the map HTML (5 figures: organism, nodes, repo-vs-os funnel+organ tables, current-vs-final spine+bars, gap-life, ceo-tick; honesty legend colors; dark/light tokens) becomes a template under web/system-map/ that reads data.json client-side — served by the same surface as web/cockpit+hud, always current, no claude.ai dependency. (3) Artifact snapshot: document the one-liner for a Claude session to re-render+republish to the SAME artifact URL on operator ask. Fidelity note: node probes must degrade gracefully (node unreachable -> drawn as unknown, never stale-green) — the map lies about nothing, per the honesty legend.
+  acceptance_criteria:
+    - "[\"data.json regenerates on a beat with all listed fields; a dead source degrades to explicit unknown, never stale values (tested by disabling one probe)\",\"web/system-map/ renders the five figures from data.json in both themes; reachable wherever cockpit/hud are served\",\"Generator daemon registered per INFRA-1810 manifest rules; almanac-freshness reused not duplicated (META-063)\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was EFFECTIVE-440; mac side now frozen/migrated). Original notes follow.
+  outcome_id: CHUMPOS
+
+- id: EFFECTIVE-492
+  domain: EFFECTIVE
+  title: "EFFECTIVE: world-class Discord experience for the CEO on helsinki — realtime chat via resident gateway + hourly tick reports, memory continuity, board-grade voice"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Operator bar 2026-08-15: talking to the CEO from helsinki must be AS GOOD OR BETTER than the current Mac experience — "world class discord experience." Executes with META-333 (merge-to-helsinki). Mine-before-build: helsinki already runs chump-discord-gateway.service (RESILIENT-266, resident, receives messages + runs agent + replies with per-channel memory + rate limits) — the realtime half EXISTS. The build is the marriage: (a) REALTIME — DMs to the bot reach the CEO brain (pinned prompt + palette + caps + memory), not a generic agent; replies in seconds, not at tick cadence; same driver-enforced guardrails apply to conversational turns (palette/deny/caps — a chat message is not a bypass channel). (b) CADENCE — hourly tick reports continue in the same DM thread (one conversation, two rhythms). (c) MEMORY — decisions.jsonl + discord cursor + board.log migrate and stay unified across realtime+tick turns; the CEO remembers the conversation the way this session does. (d) VOICE — reports read board-grade: lead with the delta, receipts inline, no wall-of-JSON; consider Discord formatting (embeds/threads) where it aids scanning, never decoration for its own sake. (e) LATENCY + LIVENESS — gateway + CEO organ in the RESILIENT-305 manifest, organ-watchdog protected; a dead CEO is VISIBLE in Discord (the thread says it went quiet) not silent.
+  acceptance_criteria:
+    - "[\"From Discord: a DM gets a CEO-brained reply (guardrails enforced, logged in decisions.jsonl) in under 30s; the hourly tick report lands in the same thread\",\"Memory continuity proven: post-migration, the CEO references a pre-migration decision correctly in conversation\",\"Kill the CEO organ on helsinki: organ-watchdog revives it AND the DM thread carries an honest went-quiet/recovered notice\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was EFFECTIVE-441; mac side now frozen/migrated). Original notes follow.
+  outcome_id: CHUMPOS
 
 - id: EVAL-085
   title: test eval 085
@@ -29083,11 +29232,12 @@ gaps:
 - id: INFRA-2036
   domain: INFRA
   title: "RESILIENT P1: toolchain-ratchet wedge class — main goes clean at merge but blocks subsequent PRs after rust 1.95.0 / strict-fmt / strict-clippy refresh (same class as THE FLOOR strict-mode flip)"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "1. Detector emits kind=toolchain_ratchet_scan_started at scan start; kind=toolchain_ratchet_scan_completed with result=clean or result=detected on success; kind=toolchain_ratchet_scan_timeout on wall-clock budget exceeded. A real W-014 signature also emits kind=wedge_detected wedge_class=W-014 for wedge-state-machine.sh to consume.\n2. Every terminal event carries elapsed_ms and gh_calls so operator cost is visible via grep toolchain_ratchet on ambient.jsonl.\n3. Events carry a failure_class field: transient (git/gh missing/errored/timeout - retry next tick) vs permanent (confirmed ratchet signature - needs a bulk fmt/clippy fix PR not a retry).\n4. Smoke test: bash scripts/ci/test-toolchain-ratchet-detector.sh - covers clean/below-threshold/detected/check-only/missing-git/timeout cases against emitted ambient events."
+  closed_pr: 3839
   outcome_id: MISSION-010
 
 - id: INFRA-2037
@@ -53260,6 +53410,103 @@ gaps:
   notes: |
     DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match INFRA-3626 (score 1.00) considered at reserve time — proceeded (advisory-only, no override flag used).
 
+- id: INFRA-3629
+  domain: INFRA
+  title: "EFFECTIVE: CEO loop v1 — strategy-layer driver with dry-run, command-palette enforcement, and staged live enablement (prompt battle-tested 2026-08-15)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Build the ChumpOS CEO loop: a standing strategy-layer that reads fleet state each tick, emits one JSON decision object (schema_version 1: factory_report / synthesis / protocol_proposals / strategic_vector / system_routing), and acts ONLY through a driver-enforced command palette. Prompt v2 + mock driver + 7 adversarial fixtures + 13 graded runs live at ~/.chump/ceo-bench-2026-08-15/ (prompt: ceo-prompt.md; driver: driver.py; pre-registered expectations: expectations.md; v1 runs in runs-v1/, v2 in runs/). Bench verdict GO: 13/13 mechanical (JSON contract, enum, page-gating, zero hard-deny violations, zero hallucinated gap IDs), judgment 9/10 on v1 with the one failure (unilateral priority re-rank approved from a curator DM) fixed by prompt v2 consensus-territory clause and confirmed x2; injection fixture: full non-compliance both samples. Rough shape (decompose at claim): (a) driver loop — assembles tick state (ambient tail, git log, fleet brief, inbox, outcomes), calls model, validates JSON, executes palette-whitelisted cmds; --dry-run flag from day one; per-target action matrix (bench finding: model pairs legal-but-odd target/action combos); Rust-first criteria apply (hot path, mutates state via commands) — assess vs a v0 shell/python shim with a port gap. (b) prompt as versioned artifact in docs/prompts/. (c) contract tests: port bench mechanical checks + 7 fixtures to scripts/ci/test-ceo-driver.sh (preflight parity per INFRA-1867). (d) shadow mode: multi-day dry-run on live telemetry, decision log diffed vs ATC/orchestrator actions before any live enablement. (e) staged live: read-only+vote+rate+board_update first; file_gap/dispatch behind caps enforced in driver code (gaps/day, P0 budget); OPERATOR page permanently registry-gated. Open policy decision for operator/consensus: injection-attempt response = T4 page (current behavior, defensible) vs gap-file only.
+  acceptance_criteria:
+    - "[\"Driver ships with --dry-run, palette whitelist + hard-deny enforcement, and per-target action matrix; contract tests + the 7 bench fixtures run in CI (mirrored per preflight parity rules)\",\"CEO prompt v2 committed as a versioned artifact (docs/prompts/) with a changelog; bench receipts referenced from the doc\",\"Shadow-mode report (>=3 days dry-run on live telemetry, decisions diffed vs ATC/orchestrator) produced and reviewed BEFORE any non-dry-run enablement\",\"Staged enablement flags documented + enforced in driver code, not prompt: phase 1 read-only/vote/rate/board_update, phase 2 file_gap+dispatch with caps, page registry-gated in all phases\",\"Chain of custody: the committed prompt artifact is byte-identical to the battle-tested v2 — sha256(ceo-prompt.md) = ed167ec6b92fb9b9eda225fba99ccc6308ee7e9e2f0d6a56ea4512efa372e2a0, fetchable from refs/stash/ceo-bench-2026-08-15 (commit bb9a10b"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was INFRA-3584; mac side now frozen/migrated). Original notes follow.
+    
+    [2026-08-15T02:46:09Z] Operator green-light 2026-08-15: "If you can battle harden it we will build it" — bench passed, hardened prompt v2 confirmed. Umbrella: decompose at claim time, do NOT pre-slice.
+    [2026-08-15T03:15:33Z] FLEET-FETCHABLE SPEC (any node): git fetch origin refs/stash/ceo-bench-2026-08-15 && git show FETCH_HEAD -- to browse, or git checkout FETCH_HEAD -- docs/prompts/ceo-loop-bench-2026-08-15/ to extract. Commit bb9a10bf0c01987f8cb21774df00090b4dd19e19. Contains: ceo-prompt.md (tested v2, sha256 ed167ec6...), driver.py (mock driver = validation-rule spec), fixtures/ (7 adversarial), expectations.md (pre-registered), runs/ + runs-v1/ (all 13 graded outputs incl. the v1 F5 doctrine failure the v2 clause fixes). The ~/.chump/ceo-bench-2026-08-15 path in the description is the same content, local-only — prefer the ref.
+    [2026-08-15T04:18:08Z] Slice 1 SHIPPED: PR #3789 merged 2026-08-15 (prompt pin + v0 shadow driver + contract tests + installer). Gap stays OPEN: AC-3 shadow-mode report pending (window started 2026-08-15, earliest report ~2026-08-18); Rust port + staged enablement outstanding. Do NOT close on PR #3789 alone. Sibling fix in flight: INFRA-3585 (daemon PATH).
+    [2026-08-15T14:24:29Z] AC-3 AMENDED by operator decision 2026-08-15 ("test is good enough here to see it live now", said while the jam-0 landing was in flight): the 3-day shadow-vs-ATC diff report is WAIVED as a live-enablement precondition. Replacement safety: staged live execution with driver-enforced caps (EFFECTIVE-436 — dispatch<=2/tick, file_gap<=1, mutate<=3, broadcast<=2, page hard-gated behind CHUMP_CEO_ALLOW_PAGE=0 default, shlex no-shell execution, palette+hard-deny unchanged). Shadow evidence at waiver time: 11/11 valid ticks, 1 correctly-gated T2 page (led to CREDIBLE-236 rotation, done), zero denied cmds, zero manufactured gaps. Tick-memory flaw found in shadow (re-dispatch x6) fixed in same slice. The diff-vs-ATC retrospective remains WORTH DOING from accumulated live logs — moved to nice-to-have, not gate.
+    [2026-08-15T19:48:17Z] Parked policy question RESOLVED by operator 2026-08-15 via RESILIENT-334: injection attempt = T4 page + gap-file + autonomous containment, all in parallel. Page-and-act, never page-and-wait.
+    [2026-08-16T13:14:21Z] Shipped on mac before import (see PR refs in notes); imported as done.
+  outcome_id: CHUMPOS
+
+- id: INFRA-3630
+  domain: INFRA
+  title: "RESILIENT: ceo-loop daemon can't find claude under launchd PATH — resolve binary by candidate paths in driver + set PATH in installer plist"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Found 2026-08-15 on first com.chump.ceo-shadow daemon tick: launchd default PATH (/usr/bin:/bin) cannot resolve the claude CLI (lives at ~/.local/bin/claude), so scripts/coord/ceo-loop.py line ~119 subprocess.run(["claude", ...]) raises FileNotFoundError and the tick dies before logging a decision. Two-layer durable fix: (1) driver — resolve the claude binary like src/dispatch.rs resolves chump for exec-gap: CHUMP_CEO_CLAUDE_BIN env override, then shutil.which, then candidates [~/.local/bin/claude, /opt/homebrew/bin/claude, ~/.claude/local/claude]; register CHUMP_CEO_CLAUDE_BIN in scripts/ci/env-vars-internal.txt. (2) installer — scripts/setup/install-ceo-shadow-launchd.sh writes EnvironmentVariables.PATH including ~/.local/bin and /opt/homebrew/bin into the plist. TEMPORARY LOCAL STATE to supersede: the live plist on this machine was hand-patched with that PATH on 2026-08-15 (unblocks the AC-3 shadow window); re-running the fixed installer must converge it — do not assume the committed installer matches the loaded plist until this ships.
+  acceptance_criteria:
+    - "[\"A fresh `bash scripts/setup/install-ceo-shadow-launchd.sh` on a machine whose launchd PATH lacks claude produces a daemon whose tick writes a decision record (verify: kickstart, then decisions.jsonl gains a row)\",\"ceo-loop.py resolves claude via env override -> which -> candidate paths; unit-testable resolver function; CHUMP_CEO_CLAUDE_BIN registered\",\"scripts/ci/test-ceo-driver.sh gains a resolver check (env override wins; missing binary yields the documented exit 3, not a traceback)\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was INFRA-3585; mac side now frozen/migrated). Original notes follow.
+    
+    [2026-08-15T04:18:01Z] Slice of INFRA-3584 (same outcome). Receipt: ~/.chump/ceo-shadow/tick.err traceback FileNotFoundError, first kickstart 2026-08-15T04:15 local.
+  outcome_id: CHUMPOS
+
+- id: INFRA-3631
+  domain: INFRA
+  title: "EFFECTIVE: almanac as first-class ChumpOS organ — the nervous-system latch (health-checked, event-fresh, patient-resident, CJ-embedded)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Operator framing 2026-08-15: "we need chumpOS on the almanac like a piglet on its moms tit. we cant let go and it cant be stale — it needs to be alive itself. its the central nervous system." Decision boundary: almanac STAYS a separate repo/product (serves the whole ~100-repo portfolio + standalone giveaway potential); what becomes ChumpOS-native is the DEPENDENCY CONTRACT. Current state: adoption is real (254 calls/7d, 2% zero-hit) but no Chump surface monitors almanac aliveness (fleet-doctor: 7 invariants, freshness not one); refresh crons are Mac-resident (life-support hostage — lid closes, fleet memory freezes); refresh is hourly-clock not event-driven (fleet ships ~24/day; consumers can read answers stale by an hour of merges); semantic/embedding layer has an idle verified backend (closetjunky ollama nomic-embed-text, VRAM loaded, no consumer — see RESILIENT-331 notes). Rough shape (decompose at claim): (a) almanac-freshness check in chump health + fleet-doctor (staleness threshold -> RED), refresh daemon declared in the organ manifest organ-reconcile enforces; (b) migrate/replicate index + refresh to helsinki (patient-resident, organ-watchdog coverage), Mac becomes a read client; (c) event-driven re-index: ship_landed/post-merge trigger re-indexes the shipped repo (kill the staleness window between merges and CEO/harvester/decompose reads); (d) wire almanac embedding backend to closetjunky ollama (consumes the idle capability; coordinates with RESILIENT-331 reconnection); (e) declare almanac in HARNESS_CONTRACT/AGENT_API as a required substrate with its health surface. Known almanac-side gaps that stay in ITS repo: fusion ranking (INFRA-3529), SQL unindexed (INFRA-3530). The absorb-into-chumpos question is explicitly NOT decided here — operator/consensus territory; this gap only builds the latch.
+  acceptance_criteria:
+    - "[\"chump health (and fleet-doctor) report almanac index freshness with a staleness threshold that goes RED; refresh daemon present in the enforced organ manifest\",\"Index + refresh run on helsinki (or replicated) such that a closed Mac lid does not stale the fleet memory; receipt: Mac offline test window with fresh queries from helsinki\",\"A merged PR triggers re-index of its repo within minutes (event-driven, receipt via query for post-merge symbol); hourly cron remains as backstop only\",\"CJ ollama serves almanac embeddings with a named consumer path and a health check; or the attempt is documented as rejected with reasons\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was INFRA-3586; mac side now frozen/migrated). Original notes follow.
+    
+    [2026-08-15T19:21:05Z] SHIP ORDERING (revolt-proofing, 2026-08-15): slices land strictly (a) health-check FIRST so all later work is watched -> (d) CJ embeddings (additive) -> (c) event-driven re-index (additive) -> (b) helsinki migration LAST, replicate-then-cutover, Mac stays read-client, hourly cron backstop retained. Slice (e) contract declaration BLOCKED on consensus verdict consensus-adoptalmanacasafirstclas-20260815T192052 (proposal live, curators voting). Capacity: stays P2 behind jam-0 + the three P0s; do not bump without operator word.
+  outcome_id: CHUMPOS
+
+- id: INFRA-3632
+  domain: INFRA
+  title: "ZERO-WASTE: CJ as warm-cache CI runner — revive CHUMP_SELF_HOSTED_* for cargo-heavy checks on the cabinet box"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Operator question 2026-08-15: "CJ is replaced and not used for anything — can it do CI?" Verdict: YES, as the WARM-CACHE runner, not a fast one. CJ = i5-4670K 4c/3.4GHz Haswell, 7.1GB RAM, 45GB free, x86_64 Ubuntu + systemd (probed 2026-08-15). Raw compute loses to modern cloud runners; the win is cache persistence: fast-checks burns 10-13 min mostly recompiling deps cold every run (RESILIENT-304 baseline) — a persistent warm incremental target + local sccache should yield est. 3-6 min. The standing self-hosted decision (2026-07-27: 100% cloud, Mac runners stopped, never-helsinki) NEVER ruled on CJ; the CHUMP_SELF_HOSTED_* flag infra is stopped-not-deleted = turnkey revival. PRECONDITIONS, in order: (1) CJ hygiene lands first — RESILIENT-333 (node-refresh failed = stale binary) + RESILIENT-331 (broker pointer); a flaky runner is worse than a slow one. (2) Disk discipline day-one: cargo-GC caps (ZERO-WASTE-053/054 machinery) sized for 45GB free — the shared-target-150GB incident must be impossible here. (3) RAM coexistence: nomic-embed (274MB, almanac backend as of tonight) stays resident; the pinned llama3.2:3b summarize model (~2-3GB) relocates to the Pixel only after the RESILIENT-336 gauntlet passes — do not strip CJ of embeddings before then. (4) Scope: cargo-heavy checks only (fast-checks class), flag-gated per-job via the existing routing; required-check aggregator pattern respected; runner on the private repo executes fleet-authored PRs (acceptable posture on a dedicated box, unlike phone/laptop). BILLING CHECK (operator, may promote this gap): if private-repo Actions minutes are metered, ~24 PRs/day x ~30 job-min = ~21k min/month — potential savings that dwarf the Hetzner invoice; read the GitHub billing page and record the number here.
+  acceptance_criteria:
+    - "[\"actions-runner on CJ (systemd service, organ-manifest registered) picks up a flag-gated cargo-heavy job; three consecutive green runs with timings recorded vs cloud baseline\",\"Warm-cache speedup measured and reported (target: fast-checks class under 6 min warm); disk GC cap enforced with headroom alert; embeddings service unaffected (probe before/after)\",\"Rollback documented: one flag flip returns 100% cloud; runner outage cannot block merges (job falls back or is non-required until proven)\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was INFRA-3587; mac side now frozen/migrated). Original notes follow.
+    
+    [2026-08-15T20:18:44Z] PRIOR-ART LEDGER (almanac sweep 2026-08-15) — this gap is ASSEMBLY: (1) chump:scripts/setup/install-self-hosted-runner.sh AND install-self-hosted-runner-pi.sh — the Pi variant has the systemd-service install path (install_systemd_service fn ~L184) that maps 1:1 onto CJ Ubuntu; cmd_check/cmd_install/cmd_uninstall lifecycle already written. (2) chump:docs/process/SELF_HOSTED_RUNNER_DO.md — full runbook incl. arch-label reasoning ("Why ubuntu-24-04-x64 not arm64" ~L271). (3) chump:scripts/setup/refresh-runner-binary.sh — runner binary refresh cadence exists. (4) Disk discipline is config not code: scripts/ops/cargo-sweep-gc.sh + scripts/coord/disk-pressure-reaper.sh (with CI test) + crates/chump-atomic-claim worktree_build_cache.rs provision_worktree_build_cache. (5) ROADMAP TRACE: docs/ROADMAP.md ~L132 "Fleet fabric — managing the machines ChumpOS runs on (2026-08-09)" — this gap implements that section; cite it in the PR.
+  outcome_id: SOVEREIGN
+
+- id: INFRA-3633
+  domain: INFRA
+  title: "ZERO-WASTE: explore leaving Supabase for sovereign infra — audit what it actually serves, split internal-vs-public, go/no-go with receipts"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Operator exploration 2026-08-15 ("I might like to get off of supabase and use pixel infra") — SOVEREIGN arc, but the highest-blast-radius candidate, so evidence-before-build applies in full (six NO-GOs precedent). PHYSICS CONSTRAINT stated up front: the Pixel sits behind CGNAT/residential — public product users cannot reach it without a relay (cloudflare-tunnel-class); the tailnet reaches Jeff devices only. Therefore the audit must SPLIT the estate: (A) INTERNAL-FACING data (fleet telemetry, dogfood apps, anything only Jeff/agents read) — genuine sovereign candidates: plain Postgres runs fine in proot/Termux, no docker needed; (B) PUBLIC-FACING product backends (olive = THE product bet, upshift, arcade games — auth/GoTrue users, RLS policies, storage buckets, edge functions, realtime) — NOT phone-servable without a public-edge answer; migrating these is months of work to save an unverified monthly fee, and destabilizing olive to chase sovereignty inverts the track priorities. AUDIT SLICES: (1) inventory the shared mega-DB from LIVE state not migrations (schema has drifted — supabase-fleet doctrine; use Supabase MCP, not almanac, SQL is unindexed): which projects, tables, auth users, buckets, functions, and ACTUAL traffic per surface; (2) billing receipt: what does Supabase actually cost today (free tier? Pro?) — the savings number decides how much effort this deserves, same discipline as the INFRA-3587 Actions-minutes check; (3) classify every consumer A-internal vs B-public; (4) for A: pilot design — Postgres in proot on Pixel, backup story, what breaks; (5) for B: name the public-edge options honestly (stay Supabase / tunnel experiment for low-traffic surfaces / public VPS = rented again) — a NO-GO on B is a fine verdict and gets written with reasons. Output: go/no-go doc per class; no migration work before the verdicts.
+  acceptance_criteria:
+    - "[\"Live-state inventory of the mega-DB (projects, tables, auth users, buckets, functions, traffic) from Supabase MCP with receipts; billing cost recorded\",\"Every consumer classified internal vs public; class-A pilot design exists; class-B verdict written (stay/tunnel/defer) with reasons — olive stability explicitly weighted above sovereignty\",\"No migration executed under this gap — it produces verdicts and follow-up gaps only\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was INFRA-3589; mac side now frozen/migrated). Original notes follow.
+  outcome_id: SOVEREIGN
+
+- id: INFRA-3634
+  domain: INFRA
+  title: "ZERO-WASTE: explore forge sovereignty — Forgejo on owned metal; audit the full GitHub dependency subtree (Actions, smee, gh CLI, merge queue) before any verdict"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    The trunk rent of the SOVEREIGN arc (operator strategy session 2026-08-15: "how do we retire the rent we pay and own the stack"). GitHub is not one dependency but a SUBTREE: Actions minutes (INFRA-3587 treats the symptom), smee.io webhook relay, github_cache.db + webhook receiver, chump_gh rate-limit/criticality/exhaustion machinery, gh CLI in every coord script, branch protection + merge queue + auto-merge semantics that bot-merge is built around. CLAUDE.md doctrine already names the direction: "long-term direction is fully local execution, no GH dependencies." AUDIT-FIRST, same discipline as INFRA-3589: (1) inventory every GH touchpoint (grep gh/api usage across scripts+crates; the cache-first doctrine docs are the map); (2) Forgejo pilot on owned metal (CJ or helsinki or pixel — NOT the broker box for CI per standing rule) with a MIRROR of one low-stakes repo: exercise clone/push/PR/CI-webhook/merge-queue-equivalent; (3) name what breaks honestly — branch protection semantics, required-check aggregators, gh CLI surface (Forgejo has API parity gaps), the public-visibility question (repos going public for giveaways NEED a public forge — GitHub may stay as the PUBLISH mirror while work moves sovereign: split work-forge vs show-forge); (4) verdict doc: full-migration / hybrid (sovereign work-forge + GitHub publish-mirror) / stay, with the dependency-subtree savings quantified (what machinery gets DELETED per scenario). No migration under this gap. Note: retiring the forge also retires smee + most rate-limit machinery — count that deleted complexity as savings alongside dollars.
+  acceptance_criteria:
+    - "[\"GH-touchpoint inventory with counts per script/crate (receipts); Forgejo pilot exercised the full PR->merge loop on a mirrored low-stakes repo with timings\",\"Verdict doc with the three scenarios costed (dollars + deleted-machinery + what breaks); work-forge/show-forge split explicitly considered for the giveaway pipeline\",\"No production repo migrated under this gap\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was INFRA-3626; mac side now frozen/migrated). Original notes follow.
+  outcome_id: SOVEREIGN
+
 - id: INFRA-372
   domain: INFRA
   title: "EFFECTIVE: anthropic prompt caching for chump-local backend — add cache_control on CLAUDE.md+lessons+briefing prefix"
@@ -59481,6 +59728,22 @@ gaps:
     - no verdict is re-opened or re-argued; this is bookkeeping
   depends_on: [META-329]
 
+- id: META-333
+  domain: META
+  title: "META: reconcile the two board-reporting organs — Mac CEO loop (INFRA-3584 line) vs helsinki board-cycle/board-ceo-briefing (INFRA-3590/3601)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Two board-reporting organs evolved in parallel on different nodes within the same week: (a) Mac CEO loop — launchd com.chump.ceo-shadow hourly, battle-tested pinned prompt (INFRA-3584/EFFECTIVE-436/437/438/439), staged live execution with caps, two-way CTO Discord DMs, decisions.jsonl; (b) helsinki board organs — chump-board-cycle.service (INFRA-3590, Sonnet board agent: SLA score + stall classify + Discord report) and chump-board-ceo-briefing.service (INFRA-3601, one-thing/bottleneck/operator-decisions beat), fleet-built via systemd. Both report to the operator over Discord; overlap in role, divergent in machinery (bench-pinned prompt + capped execution vs service beats). Reconciliation decision needed, likely via consensus proposal: merge into one organ (which substrate? helsinki is the patient — the CEO probably belongs there long-term, per the life-support doctrine), federate (CEO strategic + board-cycle operational SLA), or retire one. Evidence for the decision: compare a week of both outputs (decisions.jsonl + board DM history) for redundancy vs complementarity. Whatever wins must keep: prompt chain-of-custody (bench re-run + pin), driver-enforced caps, and the two-way CTO channel.
+  acceptance_criteria:
+    - "[\"A consensus proposal (chump consensus ask) with the redundancy comparison attached reaches a verdict on merge/federate/retire; decision recorded in both gap lines\",\"Post-decision: exactly one owner per report type (strategic tick vs operational SLA beat), no duplicate Discord reporting to the operator; losing organ retired via manifest, not left loaded-dead\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was META-333; mac side now frozen/migrated). Original notes follow.
+    
+    [2026-08-15T19:47:21Z] OPERATOR DECISION 2026-08-15: verdict = MERGE, destination = helsinki (the patient). The CEO migrates off life support; helsinki board-cycle/board-ceo-briefing get absorbed or retired by the merged organ, not left running in parallel. RAISED BAR (operator words: "world class discord experience and the CEOs memory et al as good as this experience"): migration ships ONLY at parity-or-better on (a) tick memory + decisions.jsonl continuity (history migrates, not resets), (b) factory-knowledge injection, (c) prompt chain-of-custody (bench + pin survives the move; helsinki runs the same pinned prompt), (d) two-way CTO Discord channel. UX bar tracked in the sibling gap EFFECTIVE-441. Consensus formality superseded by ring-0 decision; note the systemd organ manifest (RESILIENT-305) is the landing surface — the CEO becomes a manifest-declared, organ-watchdog-protected unit.
+  outcome_id: CHUMPOS
+
 - id: MISSION-001
   domain: MISSION
   title: "MISSION: agent visibility & cross-silo coordination — umbrella for INFRA-1139/1141/1144/1145/1146/1147 + silo-breakers"
@@ -60740,6 +61003,23 @@ gaps:
   outcome_id: RUN-INSTALL
   evidence: |
     COMMAND: chump help + MISSION-gap survey + almanac install-substrate search (chairman 2026-08-14, Jeff directive make the mission RUN THE INSTALL). OUTPUT: no single active mission drives the picker (23 scattered MISSION-* gaps, mission = pillar-grades only); the one-shot OOTB install is NOT walkable (dev FTUE brew/init only per cotg-ftue-reality); helsinki proved a fresh install falls apart (6h farmer stall, disk 100%, grooming dormant). THEORY: the product IS an installable ChumpOS; nothing external ships until a stranger can install+run it great. Make RUN THE INSTALL the singular mission with a dev/build/test/qa/ship lifecycle; gate external on it. ALT: ship external now -> rejected by Jeff: car with no engine/tires.
+
+- id: MISSION-080
+  domain: MISSION
+  title: "MISSION: retire stale MISSION-010 pointers — ACTIVE_MISSION + mission-scoreboard still anchor the BEAST binary while FACTORY_VISION.md (DOC-089) is canon"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    MISSION: retire stale MISSION-010 pointers — ACTIVE_MISSION + mission-scoreboard still anchor the BEAST binary while FACTORY_VISION.md (DOC-089) is canon
+  acceptance_criteria:
+    - "[\"Operator confirms direction first (T3 — mission ranking is operator domain): is MISSION-010/BEAST retired as the active mission anchor in favor of FACTORY_VISION.md (DOC-089, canonical 2026-08-08, COTG + CHUMPOS outcomes)? Operator said \\\"mission... it old\\\" 2026-08-14 in re a CEO-prompt review; this gap reconciles the pointer surfaces, it does not decide the mission.\",\"If confirmed: ~/.chump/ACTIVE_MISSION updated (or the pointer mechanism generalized to name an outcome id like COTG), docs/MISSION.md gains a banner pointing to docs/FACTORY_VISION.md as the current anchor, and CLAUDE.md \\\"Mission\\\" section pointer updated in the same PR.\",\"scripts/dev/mission-scoreboard.sh either reframed to measure the factory spine (intake->publication->feedback coverage per FACTORY_ORG_MODEL_2026-08-08.md) or clearly labeled as the historical MISSION-010 binary so session-start rituals stop implying"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was MISSION-079; mac side now frozen/migrated). Original notes follow.
+    
+    Found 2026-08-14 while grounding a ChumpOS CEO system prompt: the improved prompt anchored to docs/MISSION.md / MISSION-010 because ~/.chump/ACTIVE_MISSION and CLAUDE.md still point there; operator corrected that the mission framing is old. FACTORY_VISION.md (DOC-089) + FACTORY_ORG_MODEL_2026-08-08.md are doc_tag=canonical and carry the current framing (COTG = the point, CHUMPOS = the engine, frontier = intake EFFECTIVE-357 + publication EFFECTIVE-364/365). MISSION-010 outcome stays open (2655 traced gaps) — this gap is only about the *pointer surfaces* lying to session-start agents.
+    [2026-08-15T19:47:15Z] OPERATOR DECISION 2026-08-15: "retire it." MISSION-010/BEAST pointers are formally retired as the active mission anchor. Proceed with the reconciliation described in AC: ACTIVE_MISSION pointer (verify picker MISSION-011 compatibility before changing its format — it ranks by mission-linked gaps), docs/MISSION.md banner -> FACTORY_VISION.md, CLAUDE.md mission section, scoreboard relabeled historical-or-reframed. AC-1 (operator confirmation) is now satisfied.
+  outcome_id: CHUMPOS
 
 - id: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA-001
   domain: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA
@@ -68547,6 +68827,8 @@ gaps:
     [2026-08-16T08:43:48Z] rot-reaper: PR #3826 auto-closed (required-check-red, 8h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T09:13:49Z] rot-reaper: PR #3826 auto-closed (required-check-red, 9h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T12:14:06Z] rot-reaper: PR #3826 auto-closed (required-check-red, 12h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T12:44:16Z] rot-reaper: PR #3826 auto-closed (required-check-red, 12h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T13:14:17Z] rot-reaper: PR #3826 auto-closed (required-check-red, 13h) 2026-08-16; re-attempt on fresh main.
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: gh api branches/main/protection required_status_checks (strict, merge_queue) + per-PR mergeStateStatus + files-changed overlap across green-but-DIRTY PRs.
@@ -68564,6 +68846,87 @@ gaps:
     - "The change described by \"union merge-driver for append-only CI registries/allowlists — kill the green-then-reconflict spiral\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+
+- id: RESILIENT-345
+  domain: RESILIENT
+  title: "RESILIENT: closetjunky chumpd.env points at stale NATS broker 100.120.232.0 (not helsinki) — the 'two-node NATS-coordinated fleet' is not actually connected"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Found 2026-08-15 during the CREDIBLE-236 NATS rotation. Ground truth vs doctrine: docs + memory describe a two-node NATS-coordinated fleet (helsinki broker 100.101.188.30 chumpd-eu + closetjunky worker over tailscale). Reality: (a) closetjunky ~/.chump/chumpd.env CHUMP_NATS_URL points at nats://chump:<other-cred>@100.120.232.0:4222 — an IP that is NOT helsinki and does not appear in helsinki tailscale status (dead or former node); its embedded credential matches neither the old nor new helsinki password. (b) closetjunky providers.env and mac ~/.chump/env both point at their OWN localhost nats-servers (mac: com.chump.nats-server, credential-less). (c) helsinki bus post-rotation shows ZERO standing connections and zero auth violations — nothing cross-node rides it persistently. Net: cross-node A2A/NATS coordination is silently degraded to file-ambient + pull loops; chumpd on closetjunky may be erroring or silently no-opping its bus publishes. Fix shape: point closetjunky chumpd.env at helsinki (100.101.188.30) with the current credential (distribute per CREDIBLE-236 AC-3 discipline: never in transcript/argv/commit), verify publish+receive round-trip cross-node, then reconcile docs/process/ADD_A_FLEET_NODE.md + two-node topology docs with reality. Also decide: should mac/closetjunky local buses leaf-connect to helsinki (leafnodes listener already configured on 7422) instead of per-consumer URLs?
+  acceptance_criteria:
+    - "[\"closetjunky publishes to and receives from the helsinki bus (round-trip proven with a real event, receipts in gap notes)\",\"No config file fleet-wide still references 100.120.232.0 (grep sweep receipt), or the node behind that IP is identified and documented\",\"Topology docs (ADD_A_FLEET_NODE.md / two-node fleet references) match verified reality; leaf-vs-direct decision recorded\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was RESILIENT-331; mac side now frozen/migrated). Original notes follow.
+    
+    [2026-08-15T19:15:28Z] Node recon 2026-08-15 (nodes-map audit): closetjunky OLLAMA IS LIVE — nomic-embed-text + llama3.2:3b served, GTX 970 with 3.0/4.0GB VRAM loaded now — the embeddings capability is real and running. But the node is semi-detached beyond the broker pointer this gap owns: chump-node-refresh.service (RESILIENT-200) is FAILED so its chump binary is stale, and no fleet worker process is running. Reconnection AC should cover all three: broker pointer, node-refresh revival, worker resumption. Also unverified: whether anything consumes CJ ollama embeddings today (~/.almanac machine config points inference at helsinki) — name the consumer or the idle capability in the fix.
+  outcome_id: RESILIENT-000
+
+- id: RESILIENT-346
+  domain: RESILIENT
+  title: "RESILIENT: organ-health audit findings — integrator-daemon + inventory-rebuild-cadence exit 127 (dead paths), oauth-refresh exit 1, smee-tunnel exit-1 history"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Found 2026-08-15 during the repo-vs-OS visual audit (launchctl list, this Mac). Four organs with bad exit history: (1) com.chump.integrator-daemon last exit 127 — command not found; integrator migrated launchd->systemd on helsinki (RESILIENT-315 #3788), so the local plist is probably residue that should be retired via deprecated-installers-allowlist, not fixed. (2) com.chump.inventory-rebuild-cadence last exit 127 — command not found, broken path; silent failure every fire since. (3) com.chump.oauth-refresh last exit 1 — the auth-substrate keychain mirror erroring; given the RESILIENT-086/CREDIBLE-147 history of silent auth death, an erroring refresher deserves diagnosis before it matters (note: fleet auth currently healthy per auth-status). (4) com.chump.smee-tunnel running but last exit 1 — webhook feed fragile; a crash gap would blind the github cache. Fix shape per organ: diagnose the failing command line in each plist (log paths in ~/.chump/logs or plist StandardErrorPath), then fix-or-retire with the INFRA-1810 manifest updated in the same PR. Context: full organ table + capability funnel (139 defined -> 40 loaded -> 8 resident -> 57 speaking) in the system-map artifact + ambient noise leaders queue_health_check_failed x47, autonomy_defect x31, ship_autofetch_blocked_dirty x20 recorded there.
+  acceptance_criteria:
+    - "[\"Each of the four organs either fires clean (exit 0 on a forced kickstart, receipt in notes) or its plist is retired with the installer moved to deprecated-installers-allowlist in the same PR\",\"oauth-refresh specifically: root-caused with the failing command output quoted, and its failure now emits a registered ambient kind instead of failing silently (registry discipline applies)\",\"launchctl list "
+    - " grep com.chump shows zero non-zero last-exit codes on this Mac after the sweep\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was RESILIENT-333; mac side now frozen/migrated). Original notes follow.
+  outcome_id: RESILIENT-000
+
+- id: RESILIENT-347
+  domain: RESILIENT
+  title: "RESILIENT: fleet defense framework — detect attacks, page the operator, and autonomously contain without waiting for him"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Operator decision 2026-08-15: "If we are being attacked I want to know — and I want the fleet to have protocols and mechanisms to fight it off and protect itself... I cannot be a bottleneck here." Design principle: PAGE AND ACT IN PARALLEL — alerting the operator never blocks containment; containment never hides the alert. Scope is DEFENSIVE ONLY: isolate, rotate, block, halt, preserve evidence. Never retaliatory or offensive action against external systems — that stays out of scope permanently. Rough shape (decompose at claim): (a) DETECT — prompt-injection detectors on every untrusted ingestion surface (ambient event text, webhook payloads, inbound Discord messages, external-repo scans; precedent: the live injection attempt class the CEO bench f7 fixture encodes), plus anomaly signals: unexpected credential access patterns, auth-failure bursts, broadcast floods, non-CTO-authored DM ingestion attempts. Registered ambient kinds per event-registry discipline. (b) ALERT — security-class events route through the quiet gate as their own lane (T2 credential / T4 fleet-unsafe), always delivered to the CTO Discord thread; alert is informational, never a decision request — no bottleneck. (c) CONTAIN autonomously via playbook-registry entries (DUTY_OFFICER T1/T2 pattern, reality-check first): quarantine a session/agent (kill lease + revoke claim), automate credential rotation (codify the CREDIBLE-236 runbook: NATS pattern generalizes to any bus/API secret — server-side generation, env/stdin propagation, auth-proof both directions), block a source (drop webhook source, ignore ambient author, ban DM author id), halt a worker class, snapshot evidence (transcript + ambient window) before any cleanup. (d) DOCTRINE — docs/process/SECURITY_PROTOCOLS.md: the threat taxonomy, per-class playbook mapping, and the parallel page+act rule; PLAYBOOK_REGISTRY.yaml rows for each signal with false-positive class declared. (e) resolves the INFRA-3584 parked question: injection attempt = T4 page + gap-file + containment, all three, in parallel.
+  acceptance_criteria:
+    - "[\"A simulated injection in each untrusted surface (ambient, webhook, DM) produces: registered ambient security event + CTO Discord alert + the mapped containment action, with no operator input required (tested via fixtures)\",\"Credential-rotation automation: one command rotates a named secret using the CREDIBLE-236 pattern with auth-proof receipts; no secret in transcript/argv/commit\",\"SECURITY_PROTOCOLS.md + playbook-registry rows exist with false-positive classes declared; offensive/retaliatory measures explicitly out of scope in the doc\",\"Evidence preservation: containment snapshots the relevant transcript/ambient window BEFORE any cleanup, path recorded in the security event\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was RESILIENT-334; mac side now frozen/migrated). Original notes follow.
+    
+    [2026-08-15T20:06:24Z] ALERT-PATH SHORTCUT (2026-08-15): the TODO.md item "ChumpOS notify channel is DARK" (operator-recall POSTs to unset CHUMP_OPERATOR_RECALL_URL — pages went nowhere during the 08-09 disk incident) intersects slice (b). The fleet NOW has a proven Discord send path: src/discord_dm.rs + DISCORD_TOKEN/CHUMP_READY_DM_USER_ID (live since EFFECTIVE-439 — CEO tick reports deliver daily). Slice (b) should wire operator-recall/quiet-gate T-pages through that path as default, webhook as optional secondary — closing a month-old dark channel with zero new credentials.
+    [2026-08-15T20:27:44Z] ROTATION BACKLOG NAMED (2026-08-15, from opportunity-library/STACK.md secrets column): ~12 keys flagged leaked-UNROTATED — Anthropic API, OpenAI, Firebase service-account, Supabase service-role, Gemini/Vertex, Groq, HuggingFace, OpenRouter, Replicate, Cerebras, ElevenLabs, SendGrid. Slice (c) rotation automation should burn this list down as its acceptance demo: one command per provider class, CREDIBLE-236 discipline, STACK.md secrets column flipped to clean as each lands. This is rent paid in exposure, not dollars — retiring it is SOVEREIGN-adjacent and pure defense.
+  outcome_id: RESILIENT-000
+
+- id: RESILIENT-348
+  domain: RESILIENT
+  title: "RESILIENT: CJ as off-site witness — monitor helsinki from the cabinet + design and rehearse Plan B (patient rebuild runbook)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Operator direction 2026-08-15: "could CJ monitor Hetzner and have a plan B for us? not sure what that would be yet." CJ (closetjunky, the cabinet) is the only node that is neither the patient (helsinki) nor life support (mac) — the natural off-site witness. TWO SLICES, design before build: (1) WITNESS — a CJ-resident sentinel (systemd timer) probes helsinki on a beat: tailnet ping, ssh reachability, nats :4222 auth-probe (CONNECT with a canary cred? no — probe TCP+INFO banner only, no creds on CJ), systemd chump-* health via ssh, last-merge age via GitHub API (independent path). CRITICAL CONSTRAINT: the alert path must NOT depend on helsinki OR the mac — CJ needs its own alert credential (its own Discord webhook URL, provisioned per CREDIBLE-236 secret discipline). Alert = quiet-gate-style: informational page to CTO thread when helsinki unreachable N consecutive probes or trunk silent >X hours. (2) PLAN B — design doc FIRST (operator reviews before any build): docs/process/PATIENT_REBUILD.md. Known foundations to build on: state.sql is IN GIT (registry state is already distributed — the merge driver chump-state-sql-regen regenerates state.db); provision-chumpd-host.sh + ADD_A_FLEET_NODE.md (RESILIENT-191) can rebuild a node; chump restore --from-sql exists (RESILIENT-193 caveat: currently needs reachable LLM). NOT covered today and must be designed: secrets escrow (helsinki /etc/nats/nats.conf, /root/.chump/providers.env — encrypted backup, where, rotated how), jetstream/ambient data loss tolerance (probably acceptable-lose, say so explicitly), DNS/tailnet re-pointing, rebuild-target decision (new Hetzner vs promote CJ — CJ is a GTX-970 cabinet box, likely witness-only, say so honestly), and a REHEARSAL: plan B is not real until a rebuild has been executed once against a scratch target with a stopwatch (GIVEAWAY_SOP verify-then-trust doctrine applied to DR).
+  acceptance_criteria:
+    - "[\"CJ sentinel probes helsinki on a beat and delivers an alert through a path that touches neither helsinki nor the mac (tested by blocking helsinki tailnet from CJ and observing the alert)\",\"PATIENT_REBUILD.md exists: secrets escrow design, rebuild-target decision, explicit acceptable-loss list, step-by-step runbook; operator has reviewed before build slices proceed\",\"One rehearsed rebuild against a scratch target with elapsed time recorded; runbook corrected from what the rehearsal taught\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was RESILIENT-335; mac side now frozen/migrated). Original notes follow.
+    
+    [2026-08-15T19:57:13Z] WITNESS TIER-2 CANDIDATE (operator investigation 2026-08-15): Pixel 8 Pro. Specs vs helsinki: 12GB RAM (vs 7.6!), Tensor G3 9-core ARM, UFS storage — but Android (Doze process-killing, no systemd, no root) makes it a survivor not a server. Unique property NO other node has: independent power (battery) + independent network (LTE) — survives the house outage that takes CJ AND the home ISP down together. Design: Termux + Tailscale + probe script + own alert webhook; termux-job-scheduler/wakelock for cadence; witness-only, never a worker. Bonus capability if ever needed: nomic-embed-text (137M) runs trivially via llama.cpp in Termux — emergency embed node. Plan-B doc should define the witness LADDER: CJ (rich probes, same-house risk) -> Pixel (thin probes, survives everything short of a dead battery).
+    [2026-08-15T19:58:13Z] MINE-BEFORE-BUILD CORRECTION (almanac, 2026-08-15 — operator nudge "if you use almanac you will find stuf"): the Pixel witness is ASSEMBLY, not greenfield. Prior art in the fleet: (1) jarvis repo — docs/HARDWARE_ALWAYS_ON.md "Option D: Pixel 8 Pro as the Linux box (Termux)", scripts/start-jarvis-pixel-proot.sh (proot Linux userland running litellm ON THE PHONE already), docs/TERMUX_REMOTE_ACCESS.md (SSH into Termux from the Mac), infra/neural-farm/start-pixel-farm-tunnel.sh (tunnel pattern), docs/TERMUX_INSTALL_OFFICIAL.md. (2) pixel-edge repo — jarvis-android/TERMUX_BRIDGE.md. (3) opportunity-library/audits/pixel-edge-server.md — the generalized "run any Node.js agent headless on Android" recipe: pkg toolchain, native-dep stubbing (clipboard shim technique), npm --legacy-peer-deps, and ~/.termux/boot/ AUTOSTART (survives reboot — answers the Android-lifecycle objection). Witness slice should VENDOR these, not rebuild. STRATEGIC ALIGNMENT: shipping the Pixel witness is a working prototype of the PocketAgent venture (opportunity-library VENTURES.md, priority 1.4, "turn any old Android phone into a 24/7 self-hosted AI agent") — COTG-adjacent productization for free.
+  outcome_id: SOVEREIGN
+
+- id: RESILIENT-349
+  domain: RESILIENT
+  title: "RESILIENT: vet pixel-as-patient — Pixel 8 Pro joins as third node, then a measured 14-day soak decides whether it can earn helsinki's role"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Operator direction 2026-08-15: vet "migrate from helsinki to the pixel" — motivation is real savings (~EUR 160-180/yr Hetzner) PLUS the mission-literal win: the whole fleet on owned hardware, offline-first north star, live PocketAgent prototype (VENTURES.md priority 1.4). Frame is EARN, not migrate: helsinki stays the patient until the Pixel beats defined thresholds on a stopwatch. STAGE 0 (gate, operator answers before any build): dedicated device or daily driver? Daily-driver = NO-GO for patient role permanently (production secrets on a traveling device; witness-only per RESILIENT-335) — vet continues only for a dedicated unit. STAGE 1 (join, zero risk): Pixel becomes third node — proot Debian per jarvis prior art (start-jarvis-pixel-proot.sh, TERMUX_REMOTE_ACCESS.md, ~/.termux/boot autostart, clipboard-stub recipe in opportunity-library/audits/pixel-edge-server.md), tailnet join, aarch64-linux chump binary via CI artifact (NOT on-device build), run: 1 fleet worker + nomic-embed-text + the RESILIENT-335 witness probes. helsinki untouched. STAGE 2 (soak, 14 days, ChumpBench discipline — receipts not vibes): uptime %, ships completed as worker, thermal throttle events under sustained load, forced-reboot recovery count (Termux:Boot must self-restore full stack), battery health delta (charge-limited), self-heal port working (termux-services/runit equivalent of organ-watchdog+reconcile — the systemd-shaped layer is the hardest port and a GO precondition), secrets handling reviewed. STAGE 3 (verdict): GO to patient-migration planning ONLY if soak thresholds met (define exact numbers in Stage 1 PR: e.g. uptime >= 99%, reboot self-recovery 100%, zero silent organ deaths); otherwise Pixel stays permanent third node (worker+embed+witness) and helsinki keeps the invoice — savings forgone is a finding, not a failure. Broker + gateway migrate LAST in any GO scenario, mirroring INFRA-3586 ordering.
+  acceptance_criteria:
+    - "[\"Stage 0 answered and recorded (dedicated vs daily driver) before Stage 1 begins\",\"Stage 1: Pixel on tailnet running worker + embeddings + witness from vendored prior art; helsinki config untouched; aarch64 chump binary produced by CI not on-device\",\"Stage 2: 14-day soak report with the defined metrics, including at least one forced-reboot recovery and one sustained-load thermal measurement; self-heal-equivalent demonstrably revives a killed organ\",\"Stage 3: written GO/NO-GO with numbers vs thresholds; if GO, migration plan doc with broker-last ordering; if NO-GO, Pixel third-node role made permanent in the organ manifest + nodes map updated\"]"
+  notes: |
+    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was RESILIENT-336; mac side now frozen/migrated). Original notes follow.
+    
+    [2026-08-16T04:10:00Z] TERMUX:BOOT DEFERRED (operator decision). adb install of termux-boot v0.8.1 FAILS: INSTALL_FAILED_SHARED_USER_INCOMPATIBLE — Termux (0.119.0-beta.3, May 2025) and Termux:Boot share sharedUserId com.termux but the newest Termux:Boot APK (v0.8.1, Jun 2024) is signed with a rotated key. No newer Termux:Boot release exists (repo has Jan-2026 commits, unreleased). Fix = reinstall Termux stable v0.118.3 + Termux:Boot v0.8.1 from same signing era (verify certs first), then re-deploy binary/models/witness/env. Device is dedicated+plugged so witness+wake-lock survive normal ops; Termux:Boot only needed for the Stage-2 forced-reboot drill.
+  outcome_id: SOVEREIGN
 
 - id: SMOKE-001
   domain: SMOKE
