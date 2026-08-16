@@ -1,18 +1,23 @@
-# chump-ci Docker image (INFRA-2241)
+# chump-ci Docker image (INFRA-2241, wired into ci.yml by INFRA-2287)
 
 Prebuilt CI toolchain image hosted at
-`ghcr.io/repairman29/chump-ci:latest`. CI jobs that opt in via
-`container: ghcr.io/repairman29/chump-ci:latest` skip the
-`dtolnay/rust-toolchain` install step and inherit a warm
-`/usr/local/cargo` dep layer cached by `cargo-chef`.
+`ghcr.io/repairman29/chump-ci:latest`. `fast-checks` and `clippy` in
+`.github/workflows/ci.yml` opt in via
+`container: ghcr.io/repairman29/chump-ci:latest`, which skips the
+`dtolnay/rust-toolchain` install step (and the apt/mold install steps) and
+inherits a warm `/usr/local/cargo` dep layer cached by `cargo-chef`.
+This is Lever 1's "last mile" from `docs/strategy/CI_REVIEW_2026-05-29.md`
+— the container image existed since INFRA-2241 but nothing in ci.yml
+referenced it until INFRA-2287.
 
-Saves ~30 s/job * 5 jobs * 20+ PRs/day = ~30 min wall-clock daily.
+Saves ~30 s/job * 2 wired jobs * 20+ PRs/day = ~20 min wall-clock daily
+(cold toolchain-setup ~5 min → <30s per job).
 
 ## What's pinned (and why)
 
 | Tool | Version source | Why |
 |---|---|---|
-| Rust | `rust:1.82-bookworm` base image | Matches `rust-toolchain.toml`; bumps per INFRA-2242 |
+| Rust | `rust:X.Y-bookworm` base image | Matches `rust-toolchain.toml`'s `channel`; keep both in sync manually — INFRA-2287 caught them drifted (image at 1.82, toolchain.toml at 1.96.0) and re-synced |
 | `cargo-chef` | `cargo install --locked` (latest) | Recipe-based dep caching (10x rebuild speedup on cache hit) |
 | `cargo-binstall` | `cargo install --locked` (latest) | Fast tool install path (avoids rebuild) |
 | `sccache` | `cargo binstall -y` (latest) | Used as `RUSTC_WRAPPER`; per-call cache |
@@ -111,9 +116,25 @@ under an org with stricter permissions.
 
 ## Follow-up work
 
-- **INFRA-2241B** — wire `container: ghcr.io/repairman29/chump-ci:latest`
-  into the `cargo-test`, `clippy`, `audit`, and `fast-checks` jobs in
-  `.github/workflows/ci.yml`. Deferred from this PR because INFRA-2242
-  holds a lease on `ci.yml`. File after INFRA-2242 ships.
+- **INFRA-2241B / INFRA-2287 (done)** — wired
+  `container: ghcr.io/repairman29/chump-ci:latest` into `fast-checks` and
+  `clippy` in `.github/workflows/ci.yml`, guarded by the same
+  `vars.CHUMP_SELF_HOSTED_*` expression each job already used for
+  `runs-on:` (self-hosted-macOS path is unaffected — `container:` resolves
+  to `null` there). `cargo-test`'s actual work happens in `cargo-test-shard`
+  on `ubuntu-24.04-arm` — the chump-ci image is amd64-only today, so that
+  lane is **not** wired; a multi-arch build is a separate follow-up if the
+  ARM shard's toolchain-setup tax becomes worth chasing. `audit` similarly
+  stayed out of scope for this pass.
+- **Rust version drift caught during INFRA-2287**: the image's base was
+  still pinned to `rust:1.82-bookworm` while `rust-toolchain.toml` had moved
+  to `1.96.0` — bumped both `FROM` lines to match. Also added `gh` and
+  `python3` (several `scripts/ci/*.sh` shell out to one or both).
+- **Cranelift**: the gap that produced this image (INFRA-2287) asked for a
+  cranelift-preinstalled image, but no workspace profile currently sets
+  `codegen-backend = "cranelift"`, and the cranelift codegen backend isn't
+  distributed for the stable channel this image tracks — nothing to bake in
+  yet. Revisit if/when a nightly-companion profile lands.
 - **Measurement** — tag 5 PRs post-rollout, compare median wall-clock of
-  `cargo-test` before/after. Target: -30 %. (AC #4 of INFRA-2241.)
+  `fast-checks`/`clippy` before/after. Target: -30 %+ on toolchain-setup
+  steps specifically (cold ~5 min → <30s per AC #4 of INFRA-2287).

@@ -85,6 +85,14 @@ jobs:
           cache-to: type=registry,ref=${{ env.IMAGE }}:cache,mode=max
           provenance: false
 
+      - name: Smoke test pushed image (INFRA-2287)
+        # Validates the exact tag just pushed (not :latest, in case the
+        # registry hasn't propagated it yet) actually builds+lints+tests
+        # chump before ci.yml's fast-checks/clippy jobs start relying on it.
+        env:
+          CHUMP_CI_IMAGE: ${{ env.IMAGE }}:${{ steps.tags.outputs.sha_tag }}
+        run: bash scripts/ci/test-rust-builder-image.sh
+
       - name: Summarize
         run: |
           {

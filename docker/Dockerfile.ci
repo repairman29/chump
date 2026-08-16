@@ -1,7 +1,8 @@
-# Dockerfile.ci — INFRA-2241 / META-262
+# Dockerfile.ci — INFRA-2241 / META-262 / INFRA-2287 (Lever 1 last mile)
 #
-# Prebuilt CI image for chump: Rust 1.82 + sccache + cargo-nextest + cargo-deny
-# + clippy + jq + webkit2gtk (chump-desktop workspace member) preinstalled.
+# Prebuilt CI image for chump: Rust (pinned to rust-toolchain.toml) + sccache
+# + mold + cargo-nextest + cargo-deny + clippy + jq + gh + python3 +
+# webkit2gtk (chump-desktop workspace member) preinstalled.
 # Pushed weekly to ghcr.io/repairman29/chump-ci.
 #
 # Multi-stage with cargo-chef (AC #8) for 10x dep-layer cache hit on rebuild.
@@ -13,11 +14,23 @@
 #   - webkit2gtk-4.1 + libgtk-3-dev etc. are pre-baked so `cargo clippy
 #     --workspace --all-targets` (which includes chump-desktop) works without
 #     an extra apt-get step at CI job start.
-#   - Bump Rust version by editing the `FROM rust:X.Y-bookworm` lines below;
-#     the weekly build-ci-image.yml cron will push a new :latest the following
-#     Sunday. Rollback: pin a specific :{sha} tag in ci.yml.
+#   - mold is pre-baked; ci.yml still owns setting RUSTFLAGS to opt into it
+#     (EFFECTIVE-396) since that's a workspace-level linker choice, not an
+#     image concern.
+#   - The rustc `codegen-backend = "cranelift"` dev-profile opt-in (INFRA-2242)
+#     is NOT baked in here: cranelift-codegen-backend is only distributed for
+#     nightly rustc, and this image tracks the stable pin in
+#     rust-toolchain.toml. No workspace profile currently sets
+#     codegen-backend, so there is nothing for the image to provide yet — if
+#     that changes, this image needs a nightly companion stage.
+#   - Bump Rust version by editing the `FROM rust:X.Y-bookworm` lines below
+#     to match `rust-toolchain.toml`'s `channel`; the weekly build-ci-image.yml
+#     cron will push a new :latest the following Sunday. Rollback: pin a
+#     specific :{sha} tag in ci.yml.
 #
-# Usage (in ci.yml — pilot: clippy, deferred: cargo-test + audit per META-262):
+# Usage (in ci.yml — wired: fast-checks, clippy per INFRA-2287; cargo-test's
+# real work runs in cargo-test-shard on ARM runners, which this amd64 image
+# does not cover yet — see docs/process/CI_DOCKER_IMAGE.md):
 #   jobs:
 #     clippy:
 #       container: ghcr.io/repairman29/chump-ci:latest
@@ -25,7 +38,7 @@
 # See: docs/process/CI_DOCKER_IMAGE.md for full operator surface.
 
 # ── Stage 1: chef — install cargo-chef + binstall + tools ────────────────────
-FROM rust:1.82-bookworm AS chef
+FROM rust:1.96.0-bookworm AS chef
 RUN cargo install --locked cargo-chef cargo-binstall
 RUN cargo binstall -y --no-confirm sccache cargo-nextest cargo-deny \
     || cargo install --locked sccache cargo-nextest cargo-deny
@@ -42,7 +55,7 @@ COPY --from=planner /chump/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # ── Stage 4: final — lean operational image (toolchain + tools only) ─────────
-FROM rust:1.82-bookworm
+FROM rust:1.96.0-bookworm
 # Copy preinstalled tools from chef stage (kept lean: no source, no recipe).
 COPY --from=chef /usr/local/cargo/bin/sccache /usr/local/bin/sccache
 COPY --from=chef /usr/local/cargo/bin/cargo-nextest /usr/local/bin/cargo-nextest
@@ -51,13 +64,21 @@ COPY --from=chef /usr/local/cargo/bin/cargo-deny /usr/local/bin/cargo-deny
 # Runtime utilities expected by CI scripts + chump-desktop (Tauri) workspace
 # member build dependencies. Pre-baking webkit2gtk here eliminates the
 # apt-get step in the clippy / cargo-test CI jobs (saves ~60-90s per run).
+# python3 + gh: several scripts/ci/*.sh shell out to one or both (INFRA-2287
+# AC #1); baking them in avoids a per-job apt-get/curl-install tax.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git curl jq sqlite3 ca-certificates \
+        git curl jq sqlite3 ca-certificates gnupg \
         build-essential pkg-config libssl-dev \
         webkit2gtk-4.1 libwebkit2gtk-4.1-dev \
         libayatana-appindicator3-dev \
         libgtk-3-dev librsvg2-dev util-linux \
-        mold \
+        mold python3 \
+    && mkdir -p -m 755 /etc/apt/keyrings \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
 # Ensure clippy + rustfmt components are present (rustup ships them but make sure).
@@ -71,8 +92,9 @@ ENV CARGO_HOME=/usr/local/cargo \
 # Sanity check on build (fails the image build if any tool is missing).
 RUN rustc --version && cargo --version && clippy-driver --version \
     && cargo nextest --version && cargo deny --version \
-    && sccache --version && jq --version && git --version
+    && sccache --version && jq --version && git --version \
+    && gh --version && python3 --version
 
 LABEL org.opencontainers.image.source="https://github.com/repairman29/chump"
-LABEL org.opencontainers.image.description="Chump CI toolchain image (Rust 1.82 + sccache + nextest + deny + clippy + jq)"
+LABEL org.opencontainers.image.description="Chump CI toolchain image (Rust + sccache + mold + nextest + deny + clippy + jq + gh + python3)"
 LABEL org.opencontainers.image.licenses="MIT"

@@ -697,6 +697,12 @@ jobs:
     # Feature-flag fallback: per-lane CHUMP_SELF_HOSTED_FAST_CHECKS=true reverts
     # this single lane to self-hosted if needed for diagnosis.
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_FAST_CHECKS == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    # INFRA-2287 (Lever 1 last mile): the chump-ci image only targets
+    # ubuntu-latest (amd64) — added only in the non-self-hosted branch, same
+    # guard as runs-on above, so the self-hosted-macOS override path is
+    # untouched; matches the `matrix.container && matrix.container.image ||
+    # null` pattern already used in release.yml — `null` means "no container".
+    container: ${{ vars.CHUMP_SELF_HOSTED_FAST_CHECKS == 'true' && null || 'ghcr.io/repairman29/chump-ci:latest' }}
     # INFRA-1959: force chump to use per-checkout state.db, never $HOME/.chump.
     # Prevents r2d2 sqlite-lock contention when multiple self-hosted runs are
     # active concurrently (each has its own _work checkout, but a stale system
@@ -710,21 +716,31 @@ jobs:
       # the claim format-ordering bug (#3325), and the fleet-GO setup step above
       # (claim-exercising guards need AUTONOMY_LEVEL>=1). Now matches clippy/cargo-test.
       CARGO_TARGET_DIR: ${{ vars.CHUMP_SELF_HOSTED_FAST_CHECKS == 'true' && format('/tmp/cargo-target-{0}-{1}', github.run_id, github.run_attempt) || format('{0}/target', github.workspace) }}
+      # INFRA-2287: gates the steps below that duplicate work the chump-ci
+      # image already bakes in (toolchain install, mold, apt packages). Kept
+      # as an env flag (not just re-checking the runs-on expression) so the
+      # gate reads the same everywhere it's used.
+      CHUMP_CI_CONTAINER: ${{ vars.CHUMP_SELF_HOSTED_FAST_CHECKS == 'true' && 'false' || 'true' }}
     steps:
       - uses: actions/checkout@v7
 
       # INFRA-1556: when this job lands on a self-hosted macOS runner, verify
       # the runner's plist PATH resolves every CLI the workflow needs. Skips
-      # cleanly on ubuntu-latest. Catches "exit 127 / command not found" before
-      # the actual failing step.
+      # cleanly on ubuntu-latest and inside the chump-ci container (both
+      # already have every CLI on PATH). Catches "exit 127 / command not
+      # found" before the actual failing step.
       - name: Self-hosted runner deps preflight (INFRA-1556)
+        if: env.CHUMP_CI_CONTAINER != 'true'
         run: bash scripts/ci/test-self-hosted-runner-deps.sh
 
       # INFRA-CI-DISKSPACE: ubuntu-latest ships with ~14 GB free. Strip ~20 GB
       # of pre-installed SDKs we don't use so the disk can breathe. Costs ~15s.
       # Self-hosted macOS skips this — no GH-shipped SDKs to remove (INFRA-1534).
+      # Skipped inside the chump-ci container too: `container:` jobs execute
+      # steps in the container's filesystem, not the runner VM host, so the
+      # host SDK paths this cleans up don't exist there.
       - name: Free disk space
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && env.CHUMP_CI_CONTAINER != 'true'
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
@@ -733,7 +749,10 @@ jobs:
           df -h /
 
       - name: Install Linux packages for chump-desktop (workspace member)
-        if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips apt
+        # INFRA-1534: macOS self-hosted skips apt. chump-ci pre-bakes the same
+        # webkit2gtk/gtk package set (docker/Dockerfile.ci), so the container
+        # path skips this apt-get too (INFRA-2287).
+        if: runner.os == 'Linux' && env.CHUMP_CI_CONTAINER != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -747,14 +766,18 @@ jobs:
             util-linux
 
       - name: Install Rust toolchain
+        # chump-ci already has the pinned toolchain (rust-toolchain.toml) plus
+        # rustfmt baked in — skip the redundant install (INFRA-2287).
+        if: env.CHUMP_CI_CONTAINER != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt  # INFRA-2242: cranelift dev backend
 
       # INFRA-2242: mold linker drops link phase 10-15% on Linux.
       # macOS self-hosted runners skip (ld64 is already fast on Apple Silicon).
+      # chump-ci already has mold installed — skip the apt-get (INFRA-2287).
       - name: Install mold linker (Linux only)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && env.CHUMP_CI_CONTAINER != 'true'
         run: sudo apt-get install -y mold
 
       - name: Wire mold as the linker (EFFECTIVE-396)
@@ -762,6 +785,7 @@ jobs:
         # linking with the default ld and the documented 10-15% link-phase win
         # was never realized. Set it here (Linux only; macOS ld64 stays default).
         # Appends to any pre-existing RUSTFLAGS rather than clobbering it.
+        # Runs regardless of container — chump-ci has mold on PATH too.
         if: runner.os == 'Linux'
         run: echo "RUSTFLAGS=-Clink-arg=-fuse-ld=mold ${RUSTFLAGS:-}" >> "$GITHUB_ENV"
 
@@ -1315,16 +1339,27 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    # INFRA-2287 (Lever 1 last mile): same guard as runs-on above — the
+    # chump-ci image is amd64-only and only makes sense on the non-self-hosted
+    # branch; matches the `matrix.container && matrix.container.image ||
+    # null` pattern already used in release.yml — `null` means "no container".
+    container: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && null || 'ghcr.io/repairman29/chump-ci:latest' }}
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     # INFRA-2118: /tmp isolation only on self-hosted; GH-hosted uses
     # <workspace>/target so Swatinem caches build artifacts (see fast-checks).
     env:
       CARGO_TARGET_DIR: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && format('/tmp/cargo-target-{0}-{1}', github.run_id, github.run_attempt) || format('{0}/target', github.workspace) }}
+      # INFRA-2287: gates the steps below that duplicate what the chump-ci
+      # image already bakes in (toolchain install, mold, apt packages).
+      CHUMP_CI_CONTAINER: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && 'false' || 'true' }}
     steps:
       - uses: actions/checkout@v7
 
+      # Skipped inside the chump-ci container: `container:` jobs execute
+      # steps in the container's filesystem, not the runner VM host, so the
+      # host SDK paths this cleans up don't exist there (INFRA-2287).
       - name: Free disk space
-        if: runner.os == 'Linux'  # INFRA-1535: macOS self-hosted has no /opt/hostedtoolcache
+        if: runner.os == 'Linux' && env.CHUMP_CI_CONTAINER != 'true'  # INFRA-1535: macOS self-hosted has no /opt/hostedtoolcache
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
@@ -1333,7 +1368,9 @@ jobs:
           df -h /
 
       - name: Install Linux packages for chump-desktop (workspace member)
-        if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips apt
+        # INFRA-1534: macOS self-hosted skips apt. chump-ci pre-bakes the same
+        # package set (docker/Dockerfile.ci) — container path skips it too (INFRA-2287).
+        if: runner.os == 'Linux' && env.CHUMP_CI_CONTAINER != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -1347,13 +1384,16 @@ jobs:
             util-linux
 
       - name: Install Rust toolchain
+        # chump-ci already has the pinned toolchain + clippy baked in (INFRA-2287).
+        if: env.CHUMP_CI_CONTAINER != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
 
       # INFRA-2242: mold linker drops link phase 10-15% on Linux.
+      # chump-ci already has mold installed — skip the apt-get (INFRA-2287).
       - name: Install mold linker (Linux only)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && env.CHUMP_CI_CONTAINER != 'true'
         run: sudo apt-get install -y mold
 
       - name: Wire mold as the linker (EFFECTIVE-396)
