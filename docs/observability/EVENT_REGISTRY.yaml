@@ -3084,9 +3084,28 @@ events:
 
   - kind: disk_critical
     effect_metric: self
-    emitter: scripts/ops/disk-health-monitor.sh + disk-watchdog.sh
+    emitter: scripts/ops/disk-health-monitor.sh + disk-watchdog.sh + crates/chump-disk-inventory/src/main.rs (INFRA-2359)
     trigger: disk free < 5% (CHUMP_DISK_CRITICAL_PCT); fleet pauses
     consumers: [operator-recall, fleet-brief]
+
+  - kind: disk_inventory_updated
+    effect_metric: self
+    emitter: crates/chump-disk-inventory/src/main.rs (META-128/C2, INFRA-2193, INFRA-2359)
+    trigger: chump-disk-inventory-daemon completes a poll cycle (df + du snapshot
+      written to ~/.chump/disk-inventory.json) — every CHUMP_DISK_POLL_S seconds
+      (default 30)
+    consumers: [fleet-brief, disk-aware-fleet (future, META-128)]
+    fields_required: [ts, kind, node_id, free_gb, headroom_gb]
+
+  - kind: disk_inventory_poll_failed
+    effect_metric: self
+    emitter: crates/chump-disk-inventory/src/main.rs (INFRA-2359)
+    trigger: a chump-disk-inventory-daemon poll cycle errored before a snapshot
+      could be written (df spawn/parse failure); failure_class distinguishes
+      transient_io (expected to self-heal next cycle) from config_or_parse
+      (needs a code/config fix)
+    consumers: [observability]
+    fields_required: [ts, kind, node_id, stage, failure_class, error]
 
   - kind: disk_critical_auto_remediated
     effect_metric: self

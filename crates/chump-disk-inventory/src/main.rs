@@ -10,6 +10,23 @@
 //! post-ship trigger) by giving both a structural, always-on view of what's
 //! actually consuming disk — including the cargo-runner cache leak class
 //! from INFRA-2188.
+//!
+//! ## Observability contract (INFRA-2359)
+//!
+//! - **Events**: `disk_inventory_updated` on every successful poll cycle,
+//!   `disk_critical` when free space crosses `CHUMP_DISK_THRESHOLD_GB`, and
+//!   `disk_inventory_poll_failed` when a poll cycle errors (carries
+//!   `failure_class`, see [`chump_disk_inventory::classify_poll_failure`]).
+//!   All three are registered in `docs/observability/EVENT_REGISTRY.yaml`.
+//! - **Cost**: none tracked. This daemon only spawns local `df`/`du`
+//!   processes and (optionally) publishes to a self-hosted NATS broker —
+//!   there is no metered/external API call, so unlike LLM-driven daemons
+//!   (e.g. `ci_lesson_captured`'s `cost_usd`) there is nothing to report.
+//! - **Failure taxonomy**: `transient_io` (df/du spawn or I/O failure — the
+//!   next poll cycle, `CHUMP_DISK_POLL_S` later, is expected to self-heal)
+//!   vs `config_or_parse` (unexpected output shape / no watch path resolved
+//!   — needs a code/config fix, won't self-heal on retry).
+//! - **Smoke test**: `scripts/ci/test-disk-inventory-daemon.sh`.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -187,7 +204,25 @@ async fn poll_once(chump_dir: &Path, threshold_gb: f64) -> Result<DiskSnapshot> 
     let node_id = resolve_node_id(chump_dir);
     let ts = chrono::Utc::now().to_rfc3339();
 
-    let (total_kb, used_kb, free_kb) = df_worst_case()?;
+    let (total_kb, used_kb, free_kb) = match df_worst_case() {
+        Ok(v) => v,
+        Err(e) => {
+            // scanner-anchor: "kind":"disk_inventory_poll_failed" (registered in docs/observability/EVENT_REGISTRY.yaml, INFRA-2359)
+            emit_ambient(
+                "disk_inventory_poll_failed",
+                vec![
+                    ("node_id".to_string(), node_id.clone()),
+                    ("stage".to_string(), "df".to_string()),
+                    (
+                        "failure_class".to_string(),
+                        chump_disk_inventory::classify_poll_failure(&e).to_string(),
+                    ),
+                    ("error".to_string(), e.to_string()),
+                ],
+            );
+            return Err(e);
+        }
+    };
     let consumers = gather_consumers();
 
     let snapshot = build_snapshot(
@@ -202,6 +237,7 @@ async fn poll_once(chump_dir: &Path, threshold_gb: f64) -> Result<DiskSnapshot> 
 
     write_snapshot(&snapshot)?;
 
+    // scanner-anchor: "kind":"disk_inventory_updated" (registered in docs/observability/EVENT_REGISTRY.yaml, INFRA-2359)
     emit_ambient(
         "disk_inventory_updated",
         vec![
