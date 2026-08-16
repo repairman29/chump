@@ -11607,12 +11607,38 @@ gaps:
     - "The change described by \"Sovereign data plane — go/no-go on replacing Supabase (product persistence) with an owned-hardware store on CJ/Pixel, and unify it with the fleet gap-registry coordination (RESILIENT-356)\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    GO (operator, Jeff 2026-08-16): self-hosted Supabase-OSS on CJ, SINGLE-PRIMARY (no 3rd node available now — someday; accept CJ-as-SPOF + Pixel cold-backup + documented restore). Live CJ probe 2026-08-16: 7.1GB RAM ~5GB free, GPU 3.0/4.0GB (75pct full, nomic-embed + llama3.2:3b) — contention CONFIRMED, so headroom work (storage + inference offload) precedes the full stack. Phase 1 = beast-mode on bare Postgres (light, fits today) + one PG SEQUENCE = the RESILIENT-356 ID authority. Full olive stack gated on headroom.
   outcome_id: SOVEREIGN
   evidence: |
     COMMAND: almanac_search_fleet supabase footprint + self-host alternatives; read chump-gap-store reserve() + docs/gaps/README.
     OUTPUT: TWO distinct data layers. Layer 1 = fleet coordination (state.db SQLite + NATS-KV) — already off Supabase; its only defect is per-node ID minting (RESILIENT-356). Layer 2 = product persistence (olive, upshift, smuggler, beast-mode, games) on the shared Supabase mega-DB (Postgres+auth+RLS+edge+realtime). beast-mode already talks raw Postgres (apply-migrations-pg.js) = most portable; olive/smuggler use the Supabase client heavily.
     THEORY: sovereignty (SOVEREIGN outcome = fleet on owned metal) requires Layer 2 off rented Supabase. Owned-hardware candidates: PocketBase (single Go binary, SQLite+auth+realtime+rules, runs ARM — best offline-first fit, PocketAgent already circling), self-hosted Postgres+PostgREST (feature-parity, heavier), rqlite/dqlite (Raft SQLite — ALSO solves Layer 1). Unification: a SQLite-family sovereign store can host BOTH product data AND the coordinated gap registry (ID authority = one table). Constraint: primary DB on CJ (always-on owned machine), NOT the resource-constrained Pixel (same phone-cant-be-primary rule as PIXEL_NODE.md); Pixel = anchor/witness.
     ALT / NEXT: run a prior-art dig (prior-art skill) comparing PocketBase vs self-hosted-PG vs rqlite vs ElectricSQL against real needs (per-app migration cost, auth/RLS parity, realtime, ARM/CJ hosting, backup/DR), THEN a per-app coupling assessment (olive/upshift/smuggler/beast-mode/games), THEN a go/no-go. Do NOT pick the tech from keyword hits — verify against actual usage + external prior art. depends_on: RESILIENT-356 (Layer-1 coordination) as the shared-substrate proof-of-concept.
+
+- id: EFFECTIVE-498
+  domain: EFFECTIVE
+  title: "SOVEREIGN Phase 1: stand up self-hosted Postgres on CJ + migrate beast-mode (raw-PG, repoint DATABASE_URL) + add the gap-ID SEQUENCE authority (closes RESILIENT-356) — the proof-of-concept"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"stand up self-hosted Postgres on CJ + migrate beast-mode (raw-PG, repoint DATABASE_URL) + add the gap-ID SEQUENCE authority (closes RESILIENT-356) — the proof-of-concept\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: SOVEREIGN
+
+- id: EFFECTIVE-499
+  domain: EFFECTIVE
+  title: "Offload CJ small-inference (nomic-embed + llama3.2:3b) to the Pixel to free CJs GPU+RAM for the data plane — Tensor G3/12GB >= 4GB GTX 970 for tiny models; prove thermal/battery/throughput in the RESILIENT-349 soak (fallback: keep embed on CJ, medium->serverless)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"3b) to the Pixel to free CJs GPU+RAM for the data plane — Tensor G3/12GB >= 4GB GTX 970 for tiny models; prove thermal/battery/throughput in the RESILIENT-349 soak (fallback: keep embed on CJ, medium->serverless)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: SOVEREIGN
 
 - id: EVAL-085
   title: test eval 085
@@ -27643,6 +27669,7 @@ gaps:
     [2026-08-16T17:45:20Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T18:15:23Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T18:45:23Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T19:15:24Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 7h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-1966
@@ -27657,6 +27684,7 @@ gaps:
     [2026-08-16T17:45:16Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T18:15:20Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T18:45:20Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T19:15:21Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-1967
@@ -34150,10 +34178,7 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "1. scripts/git-hooks/pre-push-actionlint-guard.sh exists, is wired into scripts/git-hooks/pre-push, and runs actionlint against changed .github/workflows/*.yml files on push\n2. Guard emits kind=actionlint_guard_passed/blocked/skipped to ambient.jsonl with duration_ms (cost tracking); registered in EVENT_REGISTRY.yaml\n3. Failure-class taxonomy: actionlint findings block the push (permanent); missing actionlint binary or unresolvable base ref skip non-blocking (transient)\n4. Smoke test scripts/ci/test-pre-push-actionlint-guard.sh passes and exercises pass/block/skip/bypass paths"
   outcome_id: MISSION-010
 
 - id: INFRA-2323
@@ -68828,9 +68853,10 @@ gaps:
   priority: P0
   effort: m
   acceptance_criteria:
-    - "The change described by \"Per-organ EFFECTIVENESS telemetry + board power-output readout (organs log I-ran, not I-did-X)\" is implemented in the relevant RESILIENT code path(s)."
-    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - "each fleet organ emits a structured effectiveness record per run (what it DID: merged/closed/healed/rescued/reran/spun counts)"
+    - the board sums per-organ output into a power-output readout
+    - "alarms on ran-but-did-nothing (zombie: ran N times, output 0)"
+    - liveness (ran) is distinguished from effectiveness (accomplished)
   outcome_id: RESILIENT-000
   evidence: |
     COMMAND: journalctl -u chump-<organ>.service --since -90min | grep for action-taken; systemctl list-units chump-* + list-timers. OUTPUT: all 17 organ-timers active, 0 failed units, workers+gateway up (LIVENESS green) — but EVERY organ logs only Finished <description>, never a structured outcome. pr-lander ran 9x, rot-reaper 3x, farmer 176x, organ-watchdog 18x: impossible to tell from telemetry whether ANY merged a PR, closed a rot, healed an organ, or rescued a worker. Meanwhile observable outcomes prove ineffectiveness: #3792 rotted DIRTY 13h while the reaper ran; a worker span 58x/90s while active; green PRs sat unmerged while the lander ran. THEORY: ChumpOS measures liveness (is it turning) not effectiveness (is it making power). This is the root of feels-like-nothing and of the chairman-as-SPOF: without effectiveness telemetry the OS cannot see its own failures, so it cannot self-heal, so a human notices by hand. A dashboard of green lights with no lap times. ALT: every organ emits a structured per-cycle outcome. AC: (1) every self-heal/pipeline organ (lander, reaper, rebaser, ci-flake-rerun, watchdog, conductor, farmer, back-pressure, picker/worker) emits a structured outcome line each cycle (e.g. armed=N merged=N / closed=N requeued=N / healed=N / claimed=<gap>|spun=N) to a queryable place (ambient.jsonl or a metrics store); (2) chairman-pulse / a board readout SUMS them into a power-output view + flags any organ that ran but accomplished nothing over M cycles (zombie-alive alarm); (3) the core-loop throughput (gaps pick->work->merge) is measured directly, not proxied by ships/hour; (4) proven by surfacing a real zombie-alive organ from the telemetry.
@@ -68988,7 +69014,7 @@ gaps:
   domain: RESILIENT
   title: Serialize merges (merge queue) — CI is slower than merge rate so green PRs re-conflict on shared registries and never land; wire merge_group + enable native queue
   status: open
-  priority: P0
+  priority: P1
   effort: m
   acceptance_criteria:
     - "The change described by \"Serialize merges (merge queue) — CI is slower than merge rate so green PRs re-conflict on shared registries and never land; wire merge_group + enable native queue\" is implemented in the relevant RESILIENT code path(s)."
@@ -69010,6 +69036,7 @@ gaps:
     [2026-08-16T14:14:19Z] rot-reaper: PR #3826 auto-closed (required-check-red, 14h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T15:44:41Z] rot-reaper: PR #3826 auto-closed (required-check-red, 15h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T17:45:25Z] rot-reaper: PR #3826 auto-closed (required-check-red, 17h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T19:15:29Z] rot-reaper: PR #3826 auto-closed (required-check-red, 19h) 2026-08-16; re-attempt on fresh main.
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: gh api branches/main/protection required_status_checks (strict, merge_queue) + per-PR mergeStateStatus + files-changed overlap across green-but-DIRTY PRs.
@@ -69210,9 +69237,9 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "The change described by \"Gap-ID minting is per-node-local (state.db counter, gitignored) → concurrent multi-node reserves COLLIDE — a correctness prerequisite for sovereign/multi-node\" is implemented in the relevant RESILIENT code path(s)."
-    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - reserve() mints globally-unique IDs via a SINGLE authority (NATS-KV atomic counter now — buildable today, no CJ-Postgres needed; migratable to a PG SEQUENCE later)
+    - "two concurrent reserves on different nodes NEVER collide (test: 2 simultaneous reserves across sessions)"
+    - the per-node-local MAX+1 path is gated behind the authority
   outcome_id: SOVEREIGN
   evidence: |
     COMMAND: almanac_search gap-id allocation -> crates/chump-gap-store/src/lib.rs:1310-1460 reserve(); read reserve() + docs/gaps/README.md.
@@ -69224,18 +69251,53 @@ gaps:
   domain: RESILIENT
   title: Mac-free Claude auth — the OAuth token refreshes ONLY on the Mac (Keychain); owned nodes have no refresher, so the fleet loses Claude access when the Mac is off (the keystone Mac-free blocker)
   status: open
-  priority: P1
+  priority: P0
   effort: m
   acceptance_criteria:
-    - "The change described by \"Mac-free Claude auth — the OAuth token refreshes ONLY on the Mac (Keychain); owned nodes have no refresher, so the fleet loses Claude access when the Mac is off (the keystone Mac-free blocker)\" is implemented in the relevant RESILIENT code path(s)."
-    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - a Linux-native daemon acquires+refreshes CLAUDE_CODE_OAUTH_TOKEN on owned nodes with NO macOS Keychain
+    - VALIDATES the new token via a real claude -p call before overwriting a still-good file
+    - emits oauth_token_refreshed/invalid + a staleness watchdog alarms past threshold
+    - installs as a systemd/runit unit (CJ/Pixel)
+  notes: |
+    OPERATOR DECISION (Jeff 2026-08-16): OPTION B — keep the flat CLAUDE_CODE_OAUTH_TOKEN subscription (steady/predictable cost), do NOT switch owned nodes to metered ANTHROPIC_API_KEY. Build a LINUX-NATIVE headless OAuth acquire+refresh for owned nodes (CJ/Pixel) that replaces the macOS-Keychain-only path. Requirements: (1) headless token acquisition + periodic refresh without a Mac Keychain — Linux keystore (e.g. libsecret/gnome-keyring or an encrypted-file fallback); (2) mirror oauth-token-refresh.shs safety discipline — hash-compare, VALIDATE the new token against a real claude -p call before overwriting a still-good file, emit kind=oauth_token_refreshed / oauth_token_invalid; (3) a staleness watchdog on owned nodes (the Mac plist going unloaded caused a 16d-stale outage, INFRA-1865 — the owned equivalent must alarm). This is the top of the SOVEREIGN spine — nothing runs owned-only until owned nodes self-refresh Claude auth.
   outcome_id: SOVEREIGN
   evidence: |
     COMMAND: grep CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY in /root/.chump/providers.env; systemctl list-units | grep oauth on helsinki; read CLAUDE.md Auth-modes + oauth-token-refresh.sh.
     OUTPUT: helsinki authenticates to Claude via CLAUDE_CODE_OAUTH_TOKEN (subscription OAuth), and has ZERO oauth-refresh units. CLAUDE.md confirms scripts/coord/oauth-token-refresh.sh is macOS-Keychain-only (extracts from the Keychain entry Claude Code-credentials) and Linux hosts get a loud kind=oauth_refresh_unsupported_platform no-op; a Linux-native keystore/env-fallback path is an explicitly OPEN operator decision. The token went 16d stale once when the Mac plist was unloaded (INFRA-1865). FLEET_LOAD_MAP.md lists oauth-refresh/token-tether among the Mac load-bearing pieces to move.
     THEORY: SOVEREIGN (fleet on owned metal, Mac not load-bearing) is BLOCKED here: no owned always-on node can keep the Claude subscription token fresh. Mac off -> token staleness -> fleet-wide loss of Claude (frontier authoring/judgment). This is the keystone Mac-free dependency.
     ALT: (a) switch owned nodes (Pixel/CJ) to ANTHROPIC_API_KEY (API-key path, no Keychain, Mac-free — but metered API cost, not the flat subscription); (b) build a Linux-native OAuth refresh/keystore (headless token acquisition + refresh on CJ/Pixel) — the open decision CLAUDE.md names; (c) hybrid: API-key default on owned nodes, subscription only for interactive Mac sessions. Decide (a) vs (b) — it sets the sovereign cost model. Pairs with FLEET_LOAD_MAP.md (needs a Pixel-destination refresh) + the Discord-as-sole-interface completeness check.
+
+- id: RESILIENT-358
+  domain: RESILIENT
+  title: "OPERATOR HARDWARE: CJ needs real durable storage before hosting the sovereign Postgres — USB sticks disqualifying (slow random IO + wear-out). Buy 2x SATA/NVMe SSD mirrored (raid1) as DB volume + separate backup media; USB to boot/scratch only"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"CJ needs real durable storage before hosting the sovereign Postgres — USB sticks disqualifying (slow random IO + wear-out). Buy 2x SATA/NVMe SSD mirrored (raid1) as DB volume + separate backup media; USB to boot/scratch only\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    DOWNSHIFTED from blocker to end-state investment (live CJ probe 2026-08-16): CJ has a REAL 119GB internal SATA drive (sda, / on LVM), 65G used / 45G FREE. The 4 USB sticks (sdb-sde ~68GB at /mnt/cjdata*) are ~1pct used = clutter, removable. So Phase-1 beast-mode Postgres + the ID authority FIT on the existing internal drive TODAY — NOT blocked on any purchase; just clean the USB sticks off and keep the DB on the internal drive (never USB). Buy 2x SSD mirror LATER for the full end-state: (a) capacity once olive+upshift+almanac-data-gravity(111 repo DBs)+WAL/backups grow past ~119GB, (b) drive-level redundancy since CJ is a SPOF node. TODO when convenient: confirm sda is SSD vs spinning HDD (if HDD, a cheap SATA SSD helps Postgres random IO).
+  outcome_id: SOVEREIGN
+
+- id: RESILIENT-359
+  domain: RESILIENT
+  title: Fleet node-deployment executor — the fleet can WRITE sovereign infra but cannot DEPLOY/ACTIVATE it on owned nodes (CJ/Pixel); it only ships PRs to GitHub. Build a node-agent that applies declared desired-state + verifies is-active, so sovereign ops are fleet-driven not hand-bootstrapped
+  status: open
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - a node-agent applies a declared desired-state manifest (install/docker/systemd units) on an owned node idempotently
+    - reports is-active per unit back to the fleet (closes RESILIENT-351)
+    - EXTENDS node-fabric (node-describe/fit_score) not greenfield
+    - proven by deploying ONE real unit to CJ or Pixel driven from the fleet
+  outcome_id: SOVEREIGN
+  evidence: |
+    COMMAND: almanac_search deploy/activate on remote owned node -> chump-ship/manual_ship.rs, PIXEL_NODE.md, OFFLINE_FIRST.md, FLEET_OPERATIONS.md.
+    OUTPUT: the fleets output boundary is a GitHub PR (chump-ship/manual_ship.rs). NO fleet-owned executor deploys/activates on a remote owned node — the Pixel is deployed by MAC-SIDE scripts (deploy-pixel-node.sh runs FROM the Mac); OFFLINE_FIRST.md describes a network-sync-daemon vision but it is design-only; there is no built CJ/Pixel activation path the fleet controls.
+    THEORY: the sovereign migration needs the fleet to DEPLOY+ACTIVATE+VERIFY on owned nodes (Postgres on CJ, inference offload to Pixel, organ installs), not just write code. Without an executor every sovereign deploy is a HAND bootstrap (crew-chief/Jeff) — the same merged!=running disease (RESILIENT-351) at the infra layer, and it caps the sovereign plan at hand-speed. This is the capability that makes it fleet-driven.
+    ALT: each owned node runs a small node-agent that pulls a declared desired-state manifest (install/docker/systemd units + expected is-active) from the fleet over NATS/A2A or a git-backed manifest, applies it idempotently, and reports back active/failed status (closing RESILIENT-351). MINE FIRST: node-fabric-productization (node-describe + fleet_capability::fit_score already shipped), OFFLINE_FIRST.md network-sync-daemon design, RESILIENT-351 liveness gate. Do NOT greenfield — extend those.
 
 - id: SMOKE-001
   domain: SMOKE
