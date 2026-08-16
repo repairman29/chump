@@ -86,3 +86,15 @@ enabled     chump-rot-reaper.timer
 # (docs/process/SCALING.md). Declared here so organ-reconcile re-arms it if it
 # drifts or fails.
 enabled     chump-integrator.timer
+
+# chump-backlog-sync-writer.timer: the registry single-writer (CREDIBLE-292,
+# design RESILIENT-194). Publishes .chump/state.sql to origin/main every
+# 15 min so every node's `--reader` and the cluster-unique reserve() check
+# (fetch-origin-before-git-history-check) see current truth. Designed but
+# never installed on any node until CREDIBLE-292 — a dead writer here is
+# exactly how the 2026-08-15 registry split-brain (duplicate IDs across
+# helsinki/mac) went undetected for 21 days. Freshness is independently
+# checked by fleet-doctor-strict.sh's backlog-sync-freshness check (RED if
+# origin/main .chump/state.sql goes >24h stale). Declared here so
+# organ-reconcile re-arms it if it drifts or fails.
+enabled     chump-backlog-sync-writer.timer
