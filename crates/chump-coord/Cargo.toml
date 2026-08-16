@@ -24,6 +24,11 @@ path = "src/bin/chump-worker.rs"
 name = "chump-fleet"
 path = "src/bin/chump-fleet.rs"
 
+# INFRA-2154 / META-125 C4: persistent NATS subscriber per curator role.
+[[bin]]
+name = "chump-curator-subscriber"
+path = "src/bin/chump-curator-subscriber.rs"
+
 [lib]
 path = "src/lib.rs"
 

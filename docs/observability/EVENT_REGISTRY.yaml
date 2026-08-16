@@ -10888,3 +10888,58 @@ events:
       the wall-clock subagent budget (killed_at_budget).
     consumers: [ambient]
     fields_required: [gap, outcome, detail, prompt, budget_secs]
+
+  # ── Curator subscriber daemon (INFRA-2154 / META-125 C4) ────────────────────
+  - kind: curator_subscriber_started
+    effect_metric: self
+    emitter: crates/chump-coord/src/bin/chump-curator-subscriber.rs
+    trigger: chump-curator-subscriber process starts and begins listening
+      for kind=curator_dispatch_<role> events for the role passed via --role
+    consumers: [ambient, curator-supervisor (future)]
+    fields_required: [ts, kind, role, mode]
+
+  - kind: curator_subscriber_dispatch_received
+    effect_metric: self
+    emitter: crates/chump-coord/src/bin/chump-curator-subscriber.rs
+    trigger: a curator_dispatch_<role> event addressed to this subscriber's
+      role was pulled off the event stream
+    consumers: [ambient]
+    fields_required: [ts, kind, role, corr_id]
+
+  - kind: curator_subscriber_dispatch_succeeded
+    effect_metric: self
+    emitter: crates/chump-coord/src/bin/chump-curator-subscriber.rs
+    trigger: the --exec handler for a matching dispatch event exited 0
+      within --event-timeout-s (or dry-run mode acknowledged the event
+      when no --exec handler is configured)
+    consumers: [ambient, api-cost-leaderboard (future)]
+    fields_required: [ts, kind, role, corr_id, elapsed_ms]
+
+  - kind: curator_subscriber_dispatch_failed
+    effect_metric: self
+    emitter: crates/chump-coord/src/bin/chump-curator-subscriber.rs
+    trigger: the --exec handler for a matching dispatch event exited
+      non-zero (transient, retried up to --max-retries) or the payload
+      was malformed / the handler binary could not be spawned
+      (permanent, not retried) — failure_class distinguishes the two
+    consumers: [ambient, curator-supervisor (future)]
+    fields_required: [ts, kind, role, corr_id, failure_class, reason]
+
+  - kind: curator_subscriber_dispatch_timeout
+    effect_metric: self
+    emitter: crates/chump-coord/src/bin/chump-curator-subscriber.rs
+    trigger: the --exec handler for a matching dispatch event exceeded
+      --event-timeout-s (default 900s) and was killed
+    consumers: [ambient, curator-supervisor (future)]
+    fields_required: [ts, kind, role, corr_id, timeout_s]
+
+  - kind: curator_subscriber_heartbeat
+    effect_metric: self
+    emitter: crates/chump-coord/src/bin/chump-curator-subscriber.rs
+    trigger: periodic (--heartbeat-interval-s, default 300s) liveness +
+      cumulative-cost signal — cost_proxy_ms_total is the summed handler
+      wall-clock time, the operator-facing cost proxy for an opaque
+      subprocess handler with no per-token billing
+    consumers: [ambient, fleet-brief, api-cost-leaderboard (future)]
+    fields_required: [ts, kind, role, processed_total, succeeded_total,
+      failed_total, timeout_total, cost_proxy_ms_total]
