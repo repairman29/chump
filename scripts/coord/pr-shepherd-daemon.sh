@@ -378,6 +378,23 @@ _emit_pr_queue_auto_action() {
     "$ts" "$pr_num" "$action" "$reason" "$author" "$merge_state" "$dry" >> "$AMBIENT"
 }
 
+# _emit_flake_rerun_capped — INFRA-2361: emitted whenever a PR hits the
+# per-PR flake-rerun cap on checks that are ALL known-flake-classified. This
+# is the detection signal consumed by scripts/coord/flake-auto-quarantine.sh
+# to spot checks that keep flaking across many *distinct* PRs (a candidate
+# for auto-quarantine into KNOWN_FLAKES.yaml `check_flakes:`) rather than
+# just noisily filing one gap per capped PR.
+# Args: $1=pr_num $2=check_names_csv $3=author
+# scanner-anchor: kind=flake_rerun_capped (INFRA-2361)
+_emit_flake_rerun_capped() {
+  local pr_num="$1" check_names="$2" author="$3"
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","kind":"flake_rerun_capped","pr":%d,"check_names":"%s","author":"%s","dry_run":%s}\n' \
+    "$ts" "$pr_num" "$check_names" "$author" "$dry" >> "$AMBIENT"
+}
+
 # _emit_pr_queue_skipped_trunk_red — single-event sentinel emitted once per
 # tick when the trunk-red gate fires during the CLEAN_GREEN scan. Keeps a
 # clean signal for operators to grep without N copies of pr_queue_auto_action.
@@ -926,6 +943,7 @@ for p in prs:
         cur_count=$(_flake_rerun_count "$pr_num" read)
         if [ "$cur_count" -ge "$MAX_FLAKE_RERUNS_PER_PR" ]; then
           _emit_pr_queue_auto_action "$pr_num" "flake_rerun_skipped" "capped" "$author" "$c"
+          _emit_flake_rerun_capped "$pr_num" "$fail_check_names" "$author"
           # Fall through to gap-filing path below (don't continue).
         else
           if [ -n "$DRY_RUN" ]; then
