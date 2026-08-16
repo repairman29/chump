@@ -22,6 +22,11 @@
 #   CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK   — max rebases per tick (default 3)
 #   CHUMP_PR_SHEPHERD_MAX_ARMS_PER_TICK      — max arm_auto_merge actions per tick (default 5)
 #   CHUMP_PR_SHEPHERD_MAX_GAPS_PER_TICK      — max file_followup_gap actions per tick (default 2)
+#   CHUMP_CASCADE_MAX_HOLD_MINUTES           — INFRA-2349: max minutes the trunk-red cascade
+#                                               gate holds admin-merges/rebases before releasing
+#                                               (default 120; trunk-sentinel pages the operator
+#                                               by 60m so this is belt-and-suspenders, not the
+#                                               primary safety net)
 #
 # Usage:
 #   bash scripts/coord/pr-shepherd-daemon.sh tick           # one tick
@@ -57,6 +62,18 @@ FILED_GAPS_FILE="$REPO_ROOT/.chump/pr-shepherd-filed-gaps.jsonl"
 FLAKE_RERUN_FILE="${CHUMP_FLAKE_RERUN_FILE:-$REPO_ROOT/.chump-locks/flake-rerun-count.json}"
 WEDGED_SIGNAL_FILE="${CHUMP_WEDGED_SIGNAL_FILE:-$REPO_ROOT/.chump-locks/pr-wedged-signaled.json}"
 SAFE_MODE_STATE_FILE="${CHUMP_SAFE_MODE_STATE_FILE:-$REPO_ROOT/.chump-locks/pr-shepherd-safe-mode.json}"
+# INFRA-2349: trunk-sentinel's own state file (red_since_epoch) — authoritative
+# source for how long trunk has actually been red, so the cascade gate can be
+# time-bounded instead of holding forever off a single stale RED transition.
+TRUNK_SENTINEL_STATE_FILE="${CHUMP_TRUNK_SENTINEL_STATE_FILE:-$REPO_ROOT/.chump/trunk-sentinel-state.json}"
+# INFRA-2349: cascade gate max-hold ceiling. Beyond this many minutes of
+# continuous TRUNK_RED, the gate stops blocking CLEAN_GREEN admin-merges and
+# rebases — trunk-sentinel itself has already paged the operator via
+# trunk_red_operator_recall by 60 min (see trunk-sentinel-daemon.sh), so a
+# second, silent, unbounded hold on top of that just starves the queue
+# without adding safety. Distinguishes transient (self-healing, <cap) from
+# permanent (needs operator, >=cap) trunk-red per the INFRA-2349 taxonomy.
+CASCADE_MAX_HOLD_MINUTES="${CHUMP_CASCADE_MAX_HOLD_MINUTES:-120}"
 
 # Cache-first reads (INFRA-1081): source cache lib so cmd_tick can use
 # cache_query_open_prs instead of burning raw GraphQL quota.
@@ -175,6 +192,46 @@ else:
     print('UNKNOWN')
 " 2>/dev/null || echo "UNKNOWN")
   echo "$state"
+}
+
+# _trunk_red_minutes — minutes since trunk went red, per trunk-sentinel's own
+# state file (red_since_epoch, sticky on first RED tick — see
+# trunk-sentinel-daemon.sh). Returns 0 if the state file is absent/unreadable
+# or red_since_epoch is unset — callers must not treat 0 as "just went red"
+# without also checking trunk state is actually RED.
+# scanner-anchor: kind=pr_queue_cascade_gate_expired (INFRA-2349)
+_trunk_red_minutes() {
+  [[ -f "$TRUNK_SENTINEL_STATE_FILE" ]] || { echo 0; return 0; }
+  python3 - "$TRUNK_SENTINEL_STATE_FILE" << 'PYEOF' 2>/dev/null || echo 0
+import json, sys, time
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        data = json.load(f)
+    red_since = int(data.get('red_since_epoch', 0) or 0)
+    if red_since <= 0:
+        print(0)
+    else:
+        print(max(0, int((time.time() - red_since) / 60)))
+except Exception:
+    print(0)
+PYEOF
+}
+
+# _emit_pr_queue_cascade_gate_expired — emitted when the cascade gate would
+# have held (trunk RED) but red_minutes >= CASCADE_MAX_HOLD_MINUTES, so the
+# gate releases and CLEAN_GREEN/rebase actions proceed. Distinguishes
+# "transient trunk-red" (gate holds, self-heals within the cap) from
+# "permanent trunk-red" (gate expires, operator is already paged by
+# trunk-sentinel's own 60-min escalation — see trunk_red_operator_recall).
+# scanner-anchor: kind=pr_queue_cascade_gate_expired (INFRA-2349)
+_emit_pr_queue_cascade_gate_expired() {
+  local red_minutes="$1"
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","kind":"pr_queue_cascade_gate_expired","red_minutes":%d,"max_hold_minutes":%d,"dry_run":%s}\n' \
+    "$ts" "$red_minutes" "$CASCADE_MAX_HOLD_MINUTES" "$dry" >> "$AMBIENT"
 }
 
 # _pr_has_active_claim — returns 0 (true/skip) if gap_id matches any active claim lease
@@ -729,11 +786,26 @@ for p in prs:
   # rebased onto a broken main inherits the failure → wastes runners. Wait
   # for trunk-sentinel to emit TRUNK_GREEN before resuming rebases.
   # Classification + ARMED handling continue unchanged; only rebase action holds.
+  #
+  # INFRA-2349: time-bounded. An unbounded hold self-perpetuates — while the
+  # gate blocks admin-merges/rebases, fewer commits land on main, so
+  # trunk-sentinel gets fewer fresh CI runs to observe a recovery, so the
+  # gate never sees TRUNK_GREEN and never releases (17 PRs sat 24h on this
+  # exact deadlock). Once trunk has been continuously RED for
+  # CASCADE_MAX_HOLD_MINUTES, release the gate — trunk-sentinel has already
+  # escalated to the operator by the 60-min mark, so nothing is lost.
   local trunk_state cascade_held=0
   trunk_state=$(_get_trunk_state)
   if [ "$trunk_state" = "RED" ]; then
-    cascade_held=1
-    echo "[pr-shepherd-daemon] cascade held — trunk red" >&2
+    local red_minutes
+    red_minutes=$(_trunk_red_minutes)
+    if [ "$red_minutes" -ge "$CASCADE_MAX_HOLD_MINUTES" ]; then
+      echo "[pr-shepherd-daemon] cascade gate expired — trunk red ${red_minutes}m >= cap ${CASCADE_MAX_HOLD_MINUTES}m, releasing" >&2
+      _emit_pr_queue_cascade_gate_expired "$red_minutes"
+    else
+      cascade_held=1
+      echo "[pr-shepherd-daemon] cascade held — trunk red (${red_minutes}m, cap ${CASCADE_MAX_HOLD_MINUTES}m)" >&2
+    fi
   fi
 
   local rebase_count=0
