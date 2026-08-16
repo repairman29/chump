@@ -30239,11 +30239,12 @@ gaps:
 - id: INFRA-2089
   domain: INFRA
   title: "EFFECTIVE P1: chump swe <prompt> — productize per-gap bounded SWE-agent wrapper around claim->worktree->subagent-kill->auto-merge pipeline (Bet 1, MARKET_POSITIONING_2026-05-27 #2679)"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "Implement chump swe <prompt> as a new chump CLI subcommand wrapping the existing per-gap claim->worktree->subagent-dispatch pipeline as a one-shot SWE-agent product surface. CLI: chump swe '<prompt>' [--budget-secs N] [--budget-tokens N] [--budget-dollars N] [--paths CSV] [--dry-run-diff]. On invocation: reserve+claim a synthetic INFRA-NEW gap with the prompt as title, dispatch a Sonnet sub-agent into a /tmp worktree under the declared budget, ARM auto-merge on success, emit kind=swe_invocation_complete (success/failed/killed_at_budget) ambient event."
+  closed_pr: 3841
   outcome_id: MISSION-010
 
 - id: INFRA-2090
@@ -31177,10 +31178,10 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - Binary emits curator_subscriber_started/dispatch_received/dispatch_succeeded/dispatch_failed/dispatch_timeout/heartbeat ambient events, registered in docs/observability/EVENT_REGISTRY.yaml
+    - Heartbeat event carries cost_proxy_ms_total (cumulative handler wall-clock) as the operator-facing cost signal
+    - Failures are classified failure_class=transient (handler non-zero exit or timeout, retried up to --max-retries) vs permanent (malformed payload or missing --exec binary, not retried)
+    - scripts/ci/test-chump-curator-subscriber.sh smoke-tests dry-run success, --exec success, --exec transient failure, permanent failure, and non-matching-role cases against the file-fallback path
   outcome_id: MISSION-010
 
 - id: INFRA-2155
@@ -31254,10 +31255,10 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Events: chump-consensus-aggregator-daemon emits kind=consensus_resolved on success/timeout ({ts,kind,corr_id,decision,votes_for,votes_against,weighted_for,weighted_against,quorum,resolved_reason}); nothing emitted while a corr_id is still pending (below quorum, deadline not reached)"
+    - "Cost: read-only ambient.jsonl scan + 1 SQLite write per newly-resolved corr_id, no LLM/network calls; per-pass summary line [consensus-aggregator] pass: resolved=N pending=M malformed=K is the cost/throughput signal"
+    - "Failure-class taxonomy: permanent (exit 2) = bad CLI args or state.db open/migrate failure; transient (logged, pass continues) = malformed ambient.jsonl line (skipped + counted) or missing ambient.jsonl (treated as zero votes)"
+    - "Smoke test: scripts/ci/test-chump-consensus-aggregator-daemon.sh seeds quorum-reaching votes, runs --once, asserts consensus_resolved event + consensus_decisions state.db row + idempotency on re-run"
   outcome_id: MISSION-010
 
 - id: INFRA-2160
