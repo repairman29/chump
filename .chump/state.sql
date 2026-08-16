@@ -27594,6 +27594,8 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Failure: src/main.rs is 14,450 LOC with 231 `mod` declarations (verified via wc -l + grep -c '^mod '). Every code change triggers full-binary recompile. INFRA-825 staleness gate then blocks destructive ops until rebuild."
+  notes: |
+    [2026-08-16T16:14:56Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-1966
@@ -31174,7 +31176,7 @@ gaps:
 - id: INFRA-2154
   domain: INFRA
   title: "EFFECTIVE P1: META-125/C4 chump-curator-subscriber daemon — Rust binary persistent NATS subscriber per curator role"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -31182,6 +31184,7 @@ gaps:
     - Heartbeat event carries cost_proxy_ms_total (cumulative handler wall-clock) as the operator-facing cost signal
     - Failures are classified failure_class=transient (handler non-zero exit or timeout, retried up to --max-retries) vs permanent (malformed payload or missing --exec binary, not retried)
     - scripts/ci/test-chump-curator-subscriber.sh smoke-tests dry-run success, --exec success, --exec transient failure, permanent failure, and non-matching-role cases against the file-fallback path
+  closed_pr: 3846
   outcome_id: MISSION-010
 
 - id: INFRA-2155
@@ -31251,7 +31254,7 @@ gaps:
 - id: INFRA-2159
   domain: INFRA
   title: "EFFECTIVE P1: META-125/C8 chump-consensus-aggregator-daemon — Rust binary computes confidence-weighted decision at quorum or timeout"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -31259,6 +31262,7 @@ gaps:
     - "Cost: read-only ambient.jsonl scan + 1 SQLite write per newly-resolved corr_id, no LLM/network calls; per-pass summary line [consensus-aggregator] pass: resolved=N pending=M malformed=K is the cost/throughput signal"
     - "Failure-class taxonomy: permanent (exit 2) = bad CLI args or state.db open/migrate failure; transient (logged, pass continues) = malformed ambient.jsonl line (skipped + counted) or missing ambient.jsonl (treated as zero votes)"
     - "Smoke test: scripts/ci/test-chump-consensus-aggregator-daemon.sh seeds quorum-reaching votes, runs --once, asserts consensus_resolved event + consensus_decisions state.db row + idempotency on re-run"
+  closed_pr: 3845
   outcome_id: MISSION-010
 
 - id: INFRA-2160
