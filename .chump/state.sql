@@ -68878,6 +68878,7 @@ gaps:
     [2026-08-16T12:44:16Z] rot-reaper: PR #3826 auto-closed (required-check-red, 12h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T13:14:17Z] rot-reaper: PR #3826 auto-closed (required-check-red, 13h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T14:14:19Z] rot-reaper: PR #3826 auto-closed (required-check-red, 14h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T15:44:41Z] rot-reaper: PR #3826 auto-closed (required-check-red, 15h) 2026-08-16; re-attempt on fresh main.
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: gh api branches/main/protection required_status_checks (strict, merge_queue) + per-PR mergeStateStatus + files-changed overlap across green-but-DIRTY PRs.
