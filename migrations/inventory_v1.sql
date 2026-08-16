@@ -5,7 +5,9 @@
 --     no removal, no auto-action in this PR's scope.
 --   * Operator promotes a finding_class from tier 0 → 2 only after
 --     calibration via `chump inventory review` + `chump inventory promote`.
---   * Tier-2 auto-file machinery is deferred to INFRA-2374.
+--   * Tier-2 auto-file machinery shipped in INFRA-2369 (crates/chump-inventory
+--     maybe_auto_file_gap): only fires for finding_class rows promoted to
+--     current_tier=2 below.
 --   * Tier-3 (auto-remove) is intentionally NOT defined — the orchestrator
 --     (META-270) ships removal PRs through the normal review path.
 --
@@ -66,7 +68,8 @@ CREATE INDEX IF NOT EXISTS idx_artifact_intro_gap ON artifact_index(introducing_
 -- value any detector writes in this PR's scope. operator_classification
 -- and operator_reviewed_at are populated by `chump inventory review`.
 -- auto_fix_filed_gap_id is NULL on every row written by this PR — it
--- becomes populated only after INFRA-2374 wires tier-2 auto-file machinery.
+-- becomes populated once a finding lands in a class promoted to tier=2
+-- (INFRA-2369 auto-file machinery).
 CREATE TABLE IF NOT EXISTS tech_debt_findings (
     finding_id INTEGER PRIMARY KEY AUTOINCREMENT,
     finding_class TEXT NOT NULL,               -- one of the 9 detector class names
@@ -82,7 +85,8 @@ CREATE TABLE IF NOT EXISTS tech_debt_findings (
     operator_classification TEXT,              -- NULL | REAL_POSITIVE | FALSE_POSITIVE | NEEDS_INVESTIGATION
     operator_reviewed_at INTEGER,
     operator_note TEXT,
-    -- Reserved for INFRA-2374 (tier-2 auto-file). Always NULL in this PR.
+    -- Set by INFRA-2369 tier-2 auto-file machinery when this finding's
+    -- class is promoted (current_tier=2). NULL for tier 0/1 findings.
     auto_fix_filed_gap_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_finding_class ON tech_debt_findings(finding_class);

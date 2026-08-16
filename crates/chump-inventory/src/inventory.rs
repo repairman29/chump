@@ -1,11 +1,12 @@
-//! META-271 / INFRA-2367 / INFRA-2368 / INFRA-2370 — Fleet Inventory + Tech-Debt Audit DB.
+//! META-271 / INFRA-2367 / INFRA-2368 / INFRA-2369 / INFRA-2370 — Fleet Inventory + Tech-Debt Audit DB.
 //!
 //! **REVIEW-ONLY tier 0 default.** Every detector lands findings at tier=0
-//! (surface-only). No gap-filing, no removal, no auto-action in this PR's
-//! scope. The operator promotes a finding_class from tier 0 → 2 via
+//! (surface-only). No gap-filing, no removal, no auto-action for tier-0
+//! classes. The operator promotes a finding_class from tier 0 → 2 via
 //! `chump inventory promote <class>` only after calibration via
-//! `chump inventory review`. Tier-2 auto-file machinery is deferred to
-//! INFRA-2374.
+//! `chump inventory review`. Once promoted, tier-2 auto-file machinery
+//! (INFRA-2369) files a gap via `chump gap reserve` for every *subsequent*
+//! finding in that class — see [`maybe_auto_file_gap`].
 //!
 //! Storage: `.chump/inventory.db` (separate from canonical state.db so
 //! schema churn doesn't risk the canonical fleet DB).
@@ -22,7 +23,7 @@
 //!   9. event-kind-zero-emit      — EVENT_REGISTRY kind has zero ambient occurrences in 30d
 //!
 //! Every detector emits `kind=tech_debt_finding` to ambient.jsonl AND inserts
-//! into `tech_debt_findings`. NEVER files a gap.
+//! into `tech_debt_findings`. Only tier=2 classes ever file a gap.
 //!
 //! Acceptance criteria (META-271):
 //!   AC1 — schema applied via migrations/inventory_v1.sql
@@ -234,7 +235,111 @@ pub fn insert_finding(conn: &Connection, f: &Finding) -> Result<i64> {
         f.gap_id.as_deref(),
         &f.detail,
     );
+
+    maybe_auto_file_gap(conn, id, &f.finding_class, &f.detail);
+
     Ok(id)
+}
+
+// ─── tier-2 auto-file machinery (INFRA-2369) ─────────────────────────────────
+
+/// Max auto-filed gaps per finding_class per rolling 24h window.
+pub const AUTO_FILE_RATE_LIMIT_PER_DAY: i64 = 5;
+
+/// Look up a finding_class's current_tier. Defaults to 0 (surface-only) if
+/// the class has no row yet (should not happen post-migration seed, but a
+/// missing row must never be treated as tier=2).
+fn get_current_tier(conn: &Connection, finding_class: &str) -> i64 {
+    conn.query_row(
+        "SELECT current_tier FROM finding_class_tiers WHERE finding_class = ?1",
+        params![finding_class],
+        |r| r.get(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .unwrap_or(0)
+}
+
+/// Count findings of this class already auto-filed in the last 24h.
+fn auto_files_in_window(conn: &Connection, finding_class: &str, since: i64) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM tech_debt_findings
+         WHERE finding_class = ?1 AND auto_fix_filed_gap_id IS NOT NULL AND detected_at >= ?2",
+        params![finding_class, since],
+        |r| r.get(0),
+    )
+    .unwrap_or(0)
+}
+
+/// Extract `"id":"<value>"` from a `chump gap reserve --json` stdout line
+/// (`{"id":"INFRA-1234","yaml_path":"..."}`) without pulling in a JSON dep
+/// just for this one field.
+fn extract_reserved_gap_id(stdout: &str) -> Option<String> {
+    let key = "\"id\":\"";
+    let start = stdout.find(key)? + key.len();
+    let rest = &stdout[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+/// Tier-2 auto-file machinery (INFRA-2369, follow-up to META-271). Only
+/// activates when:
+///   - `finding_class` has `current_tier=2` in `finding_class_tiers`
+///     (operator-promoted, per-class — see [`promote_class`])
+///   - `CHUMP_INVENTORY_AUTO_FILE` is not set to "0" (bypass)
+///   - fewer than [`AUTO_FILE_RATE_LIMIT_PER_DAY`] gaps have already been
+///     auto-filed for this class in the trailing 24h
+///
+/// Files a gap via `chump gap reserve` and writes the resulting gap ID back
+/// into `tech_debt_findings.auto_fix_filed_gap_id`. Never blocks or fails
+/// the caller — filing errors are swallowed (warn-only), matching
+/// `insert_finding`'s existing "observability must not block detector flow"
+/// contract for its ambient emit.
+fn maybe_auto_file_gap(conn: &Connection, finding_id: i64, finding_class: &str, detail: &str) {
+    if std::env::var("CHUMP_INVENTORY_AUTO_FILE").as_deref() == Ok("0") {
+        return;
+    }
+    if get_current_tier(conn, finding_class) != 2 {
+        return;
+    }
+    let since = now_secs() - 86_400;
+    if auto_files_in_window(conn, finding_class, since) >= AUTO_FILE_RATE_LIMIT_PER_DAY {
+        return;
+    }
+
+    let mut title = format!("{}: {}", finding_class, detail);
+    title.truncate(200);
+
+    let chump_bin = std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
+    let out = Command::new(&chump_bin)
+        .args([
+            "gap",
+            "reserve",
+            "--domain",
+            "INFRA",
+            "--title",
+            &title,
+            "--priority",
+            "P2",
+            "--effort",
+            "s",
+            "--json",
+        ])
+        .current_dir(repo_root())
+        .output();
+
+    let gap_id = match out {
+        Ok(o) if o.status.success() => extract_reserved_gap_id(&String::from_utf8_lossy(&o.stdout)),
+        _ => None,
+    };
+
+    if let Some(gap_id) = gap_id {
+        let _ = conn.execute(
+            "UPDATE tech_debt_findings SET auto_fix_filed_gap_id = ?1 WHERE finding_id = ?2",
+            params![gap_id, finding_id],
+        );
+    }
 }
 
 // ─── collectors ──────────────────────────────────────────────────────────────
@@ -2442,7 +2547,10 @@ mod tests {
         }
         promote_class(&conn, "orphan-artifact", "operator").unwrap();
 
-        // INFRA-2374 NOT shipped — auto_fix_filed_gap_id MUST be NULL.
+        // `promote_class` itself never files gaps or touches
+        // auto_fix_filed_gap_id — only a *subsequent* insert_finding() call
+        // (via maybe_auto_file_gap) can do that. All 10 findings above were
+        // inserted before promotion, so none should carry a gap ID.
         let count_with_gap: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM tech_debt_findings
@@ -2453,8 +2561,151 @@ mod tests {
             .unwrap();
         assert_eq!(
             count_with_gap, 0,
-            "tier-2 machinery deferred to INFRA-2374; no finding should have auto_fix_filed_gap_id set"
+            "promote_class must not itself file gaps or set auto_fix_filed_gap_id"
         );
+    }
+
+    /// Writes a fake `chump` executable to `dir` that mimics
+    /// `gap reserve --json`'s stdout contract so tests never shell out to
+    /// the real binary (which needs a live state.db, farmer status, etc.).
+    fn write_fake_chump_bin(dir: &Path, gap_id: &str) -> PathBuf {
+        let script_path = dir.join("fake-chump");
+        let body = format!(
+            "#!/bin/sh\necho '{{\"id\":\"{}\",\"yaml_path\":\"\"}}'\nexit 0\n",
+            gap_id
+        );
+        std::fs::write(&script_path, body).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&script_path, perms).unwrap();
+        }
+        script_path
+    }
+
+    #[test]
+    #[serial]
+    fn auto_file_fires_for_tier_2_class_and_skips_tier_0() {
+        let (tmp, conn) = setup_test_db();
+        let fake_bin = write_fake_chump_bin(tmp.path(), "INFRA-9999");
+        std::env::set_var("CHUMP_BIN", &fake_bin);
+        std::env::remove_var("CHUMP_INVENTORY_AUTO_FILE");
+
+        // Promote orphan-artifact to tier=2 via calibration + promote.
+        for i in 0..10 {
+            let f = Finding {
+                finding_class: "orphan-artifact".to_string(),
+                severity: "low".to_string(),
+                artifact_path: Some(format!("scripts/cal{}.sh", i)),
+                pr_number: None,
+                gap_id: None,
+                detail: format!("calibration #{}", i),
+                evidence_json: None,
+            };
+            let id = insert_finding(&conn, &f).unwrap();
+            review_finding(&conn, id, "REAL_POSITIVE", None).unwrap();
+        }
+        promote_class(&conn, "orphan-artifact", "operator").unwrap();
+
+        // tier=2 class: auto-file must fire.
+        let tier2_finding = Finding {
+            finding_class: "orphan-artifact".to_string(),
+            severity: "low".to_string(),
+            artifact_path: Some("scripts/post-promote.sh".to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: "post-promote orphan".to_string(),
+            evidence_json: None,
+        };
+        let tier2_id = insert_finding(&conn, &tier2_finding).unwrap();
+        let auto_fix: Option<String> = conn
+            .query_row(
+                "SELECT auto_fix_filed_gap_id FROM tech_debt_findings WHERE finding_id = ?1",
+                params![tier2_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            auto_fix,
+            Some("INFRA-9999".to_string()),
+            "tier=2 finding_class must auto-file and record the gap id"
+        );
+
+        // tier=0 class (dormant-script never promoted): auto-file must be skipped.
+        let tier0_finding = Finding {
+            finding_class: "dormant-script".to_string(),
+            severity: "low".to_string(),
+            artifact_path: Some("scripts/never-called.sh".to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: "dormant script".to_string(),
+            evidence_json: None,
+        };
+        let tier0_id = insert_finding(&conn, &tier0_finding).unwrap();
+        let auto_fix_tier0: Option<String> = conn
+            .query_row(
+                "SELECT auto_fix_filed_gap_id FROM tech_debt_findings WHERE finding_id = ?1",
+                params![tier0_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            auto_fix_tier0, None,
+            "tier=0 finding_class must NOT auto-file"
+        );
+
+        std::env::remove_var("CHUMP_BIN");
+    }
+
+    #[test]
+    #[serial]
+    fn auto_file_bypass_env_disables_even_tier_2() {
+        let (tmp, conn) = setup_test_db();
+        let fake_bin = write_fake_chump_bin(tmp.path(), "INFRA-8888");
+        std::env::set_var("CHUMP_BIN", &fake_bin);
+        std::env::set_var("CHUMP_INVENTORY_AUTO_FILE", "0");
+
+        for i in 0..10 {
+            let f = Finding {
+                finding_class: "orphan-artifact".to_string(),
+                severity: "low".to_string(),
+                artifact_path: Some(format!("scripts/cal{}.sh", i)),
+                pr_number: None,
+                gap_id: None,
+                detail: format!("calibration #{}", i),
+                evidence_json: None,
+            };
+            let id = insert_finding(&conn, &f).unwrap();
+            review_finding(&conn, id, "REAL_POSITIVE", None).unwrap();
+        }
+        promote_class(&conn, "orphan-artifact", "operator").unwrap();
+
+        let f = Finding {
+            finding_class: "orphan-artifact".to_string(),
+            severity: "low".to_string(),
+            artifact_path: Some("scripts/bypassed.sh".to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: "bypassed orphan".to_string(),
+            evidence_json: None,
+        };
+        let id = insert_finding(&conn, &f).unwrap();
+        let auto_fix: Option<String> = conn
+            .query_row(
+                "SELECT auto_fix_filed_gap_id FROM tech_debt_findings WHERE finding_id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            auto_fix, None,
+            "CHUMP_INVENTORY_AUTO_FILE=0 must bypass auto-file even at tier=2"
+        );
+
+        std::env::remove_var("CHUMP_BIN");
+        std::env::remove_var("CHUMP_INVENTORY_AUTO_FILE");
     }
 
     #[test]
