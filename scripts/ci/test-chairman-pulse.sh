@@ -72,6 +72,43 @@ echo "$out" | grep -qE 'claimed=1 shipped_and_matched=1' && ok "core-loop throug
 grep -q '"kind":"chairman_pulse_tick"' "$AMBIENT" && ok "chairman_pulse_tick emitted" || bad "chairman_pulse_tick not emitted"
 grep -q '"kind":"organ_zombie_alive".*"organ":"rot"' "$AMBIENT" && ok "organ_zombie_alive emitted for rot" || bad "organ_zombie_alive not emitted for rot"
 
+# --- Organ-coverage extension: rebaser / ci-flake-rerun / conductor / picker-worker ---
+# Before this extension, chairman_pulse.py's organ_for()/power_for() only knew
+# about 4 of the 9 organs named in the RESILIENT-331 AC (lander, reaper,
+# watchdog, farmer). pr-auto-rebase.sh, ci-flake-rerun.sh, the Rust conductor,
+# and worker.sh already emit structured per-cycle outcome kinds on main — they
+# were just invisible to the pulse. This proves they're now counted, and
+# specifically that a rebaser stuck skipping every cycle (real fleet pattern:
+# armed but nothing ever behind/mergeable) is caught as zombie-alive.
+AMBIENT3="$TMP/ambient-organs.jsonl"
+{
+    # pr-auto-rebase: 3 cycles, all skipped (cooldown/not-armed) -> ZOMBIE-ALIVE
+    for m in 45 30 15; do
+        printf '{"ts":"%s","kind":"pr_auto_rebase_skipped","pr":101,"reason":"cooldown"}\n' "$(now_iso "$m")"
+    done
+    # ci-flake-rerun: 2 cycles, real reruns triggered -> real power
+    printf '{"ts":"%s","kind":"ci_flake_rerun","pr":202,"run":"999","pattern":"flaky-test"}\n' "$(now_iso 40)"
+    printf '{"ts":"%s","kind":"ci_flake_rerun","pr":203,"run":"998","pattern":"flaky-test"}\n' "$(now_iso 20)"
+    # conductor: 1 tick, healthy (no wedge) -> zero power, only 1 cycle so no zombie flag
+    printf '{"ts":"%s","kind":"conductor_tick","state":"healthy","merges_3h":"2"}\n' "$(now_iso 10)"
+    # picker-worker: one claim (power) and one starved spin (no power)
+    printf '{"ts":"%s","kind":"gap_claimed","gap_id":"RESILIENT-1","session_id":"s2"}\n' "$(now_iso 50)"
+    printf '{"ts":"%s","kind":"fleet_starved","agent_id":"w1","consecutive_empty":3}\n' "$(now_iso 5)"
+} > "$AMBIENT3"
+
+out3="$(CHUMP_AMBIENT_LOG="$AMBIENT3" bash "$PULSE" --window-hours 24 --zombie-min-cycles 3 2>&1)"
+rc3=$?
+echo "$out3"
+echo "--- exit=$rc3 ---"
+
+echo "$out3" | grep -qE '^pr-auto-rebase +3 +0' && ok "pr-auto-rebase row: cycles=3 power=0" || bad "pr-auto-rebase row missing/wrong"
+echo "$out3" | grep -q 'pr-auto-rebase.*ZOMBIE-ALIVE' && ok "pr-auto-rebase flagged ZOMBIE-ALIVE (skipped every cycle)" || bad "pr-auto-rebase NOT flagged zombie-alive"
+echo "$out3" | grep -qE '^ci-flake-rerun +2 +2' && ok "ci-flake-rerun row: cycles=2 power=2" || bad "ci-flake-rerun row missing/wrong"
+echo "$out3" | grep -q 'ci-flake-rerun.*ZOMBIE' && bad "ci-flake-rerun wrongly flagged zombie" || ok "ci-flake-rerun correctly NOT flagged zombie"
+echo "$out3" | grep -qE '^fleet-self-rescue-conductor +1 +0' && ok "conductor row present: cycles=1 power=0" || bad "conductor row missing/wrong"
+echo "$out3" | grep -qE '^picker-worker +2 +1' && ok "picker-worker row: cycles=2 power=1 (1 claim + 1 starved spin)" || bad "picker-worker row missing/wrong"
+[[ "$rc3" -eq 2 ]] && ok "exit code 2 (pr-auto-rebase zombie present)" || bad "expected exit 2, got $rc3"
+
 # --- Negative control: an all-healthy window must NOT flag anything and must exit 0 ---
 AMBIENT2="$TMP/ambient-healthy.jsonl"
 {

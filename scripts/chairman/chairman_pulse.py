@@ -42,6 +42,31 @@ def numeric_power(obj, exclude_substr="skip"):
     return total
 
 
+# kind -> organ name, for organs whose per-cycle events are a flat set of
+# named kinds rather than a single kind with a counts/armed/healed field.
+_REBASER_KINDS = {
+    "pr_auto_rebased",
+    "pr_auto_rebase_skipped",
+    "pr_auto_rebase_failed",
+    "pr_auto_rebase_fallback",
+    "pr_auto_rebase_recovered",
+    "pr_auto_rebase_unresolvable",
+}
+_REBASER_POWER_KINDS = {"pr_auto_rebased", "pr_auto_rebase_recovered", "pr_auto_rebase_fallback"}
+
+_CI_FLAKE_RERUN_KINDS = {"ci_flake_rerun", "flake_budget_exceeded"}
+_CI_FLAKE_RERUN_POWER_KINDS = {"ci_flake_rerun"}
+
+_CONDUCTOR_KINDS = {
+    "conductor_tick",
+    "conductor_proposed",
+    "conductor_dryrun",
+    "conductor_standdown",
+    "conductor_acted",
+}
+_CONDUCTOR_POWER_KINDS = {"conductor_acted"}
+
+
 # organ extraction: kind -> (organ_name_fn(event), power_fn(event))
 def organ_for(ev):
     kind = ev.get("kind", "")
@@ -53,6 +78,14 @@ def organ_for(ev):
         return "organ-watchdog"
     if kind == "farmer_heartbeat":
         return "farmer"
+    if kind in _REBASER_KINDS:
+        return "pr-auto-rebase"
+    if kind in _CI_FLAKE_RERUN_KINDS:
+        return "ci-flake-rerun"
+    if kind in _CONDUCTOR_KINDS:
+        return "fleet-self-rescue-conductor"
+    if kind in ("gap_claimed", "fleet_starved"):
+        return "picker-worker"
     return None
 
 
@@ -67,6 +100,16 @@ def power_for(ev):
     if kind == "farmer_heartbeat":
         counts = ev.get("counts", {})
         return numeric_power(counts) if counts else 0
+    if kind in _REBASER_KINDS:
+        return 1 if kind in _REBASER_POWER_KINDS else 0
+    if kind in _CI_FLAKE_RERUN_KINDS:
+        return 1 if kind in _CI_FLAKE_RERUN_POWER_KINDS else 0
+    if kind in _CONDUCTOR_KINDS:
+        return 1 if kind in _CONDUCTOR_POWER_KINDS else 0
+    if kind == "gap_claimed":
+        return 1
+    if kind == "fleet_starved":
+        return 0
     return 0
 
 
