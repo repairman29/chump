@@ -228,6 +228,51 @@ where
     }
 }
 
+/// Failure-class taxonomy for a `poll_once` error (INFRA-2359).
+///
+/// - `"transient_io"` — the underlying cause is a `std::io::Error` (e.g. `df`/`du`
+///   temporarily unavailable, resource exhaustion). The next poll cycle
+///   (`CHUMP_DISK_POLL_S` later) is expected to self-heal without operator
+///   action.
+/// - `"config_or_parse"` — everything else (unexpected `df`/`du` output shape,
+///   no watch path resolved). Retrying on the same cadence will not fix this;
+///   it needs a code/config change, so repeated occurrences should page an
+///   operator rather than be treated as noise.
+pub fn classify_poll_failure(err: &anyhow::Error) -> &'static str {
+    if err
+        .chain()
+        .any(|c| c.downcast_ref::<std::io::Error>().is_some())
+    {
+        "transient_io"
+    } else {
+        "config_or_parse"
+    }
+}
+
+#[cfg(test)]
+mod failure_classification_tests {
+    use super::*;
+
+    #[test]
+    fn io_error_classified_transient() {
+        let err = anyhow::Error::new(std::io::Error::other("spawn failed"));
+        assert_eq!(classify_poll_failure(&err), "transient_io");
+    }
+
+    #[test]
+    fn wrapped_io_error_classified_transient() {
+        let err = anyhow::Error::new(std::io::Error::other("spawn failed"))
+            .context("could not parse df output for /tmp");
+        assert_eq!(classify_poll_failure(&err), "transient_io");
+    }
+
+    #[test]
+    fn non_io_error_classified_config_or_parse() {
+        let err = anyhow::anyhow!("no df watch paths resolved");
+        assert_eq!(classify_poll_failure(&err), "config_or_parse");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
