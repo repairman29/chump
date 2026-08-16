@@ -11584,6 +11584,19 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   skills_required: "external_repo:repairman29/almanac"
 
+- id: EFFECTIVE-496
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [triage] fix PR #3851 (INFRA-2287) — real CI failures (clippy,clippy-required,fast-checks,fast-checks-required,test,verified) keeping valuable work off main"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[triage] fix PR #3851 (INFRA-2287) — real CI failures (clippy,clippy-required,fast-checks,fast-checks-required,test,verified) keeping valuable work off main\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-463 (score 0.76) considered at reserve time — proceeded (advisory-only, no override flag used).
+
 - id: EVAL-085
   title: test eval 085
   status: done
@@ -53587,6 +53600,8 @@ gaps:
     - "The change described by \"Almanac MCP index served to Claude is 50 commits behind (indexes stale Mac ~/Projects/Chump checkout, not origin/main) — film-study reads stale; refresh must pull-then-index or point at helsinkis fresh index\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    ROOT CAUSE (found + one-time-fixed 2026-08-16): the Mac checkout almanac indexes (/Users/jeffadkins/Projects/Chump) was PARKED on branch codex/onboarding, 56 commits behind main, 93 files dirty — a codex agent session left it there. almanac_refresh re-indexes whatever HEAD points at but NEVER switches-to-main or pulls, so a checkout parked on a feature branch stays stale indefinitely. ROOT: a SHARED working checkout is used BOTH as an agent worktree (agents move its branch) AND as almanacs index source. One-time fix applied: stashed WIP (recoverable stash@{0}), git switch main, pull → 0 behind, re-indexed at baabfafb. DURABLE FIX: almanac must index a DEDICATED main-tracking checkout that no agent ever parks on (or the refresh must git switch main + pull --ff-only before indexing, guarded so it never clobbers an active agent worktree). Same lesson as the shared-checkout-resets note.
   skills_required: "external_repo:repairman29/almanac"
 
 - id: INFRA-3636
@@ -69145,6 +69160,8 @@ gaps:
     - Ship-source resolved and documented (where gap-work runs); if it must move to pixel, toolchain path decided
     - "Cutover runbook written: exact ordered steps (organs off/on sequencing, writer handoff, gateway) + rollback via re-provision; reviewed by operator BEFORE any live cutover"
     - One rehearsed cutover on a scratch/temporary basis with elapsed time recorded; runbook corrected from what it taught
+  notes: |
+    [2026-08-16T18:00:30Z] CORRECTION 2026-08-16 (operator): ship-source is NOT an unknown/blocker — I over-alarmed. Shipping is DISTRIBUTED across 2 claude agents (mac tmux fleet) + helsinki + pixel (shipped some earlier). Operator not concerned. Reframe: no single node being load-bearing is a CUTOVER ASSET, not a risk — helsinki can go offline and the mac agents + pixel keep shipping. Downgrade checklist item 1 from blocking-unknown to known-distributed. Real remaining coordination is just: discord-gateway port, backlog-writer single-owner handoff, organs-off-before-on sequencing, and a rehearsal.
   outcome_id: SOVEREIGN
 
 - id: SMOKE-001
