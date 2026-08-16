@@ -11653,6 +11653,19 @@ gaps:
   notes: |
     DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-463 (score 0.80) considered at reserve time — proceeded (advisory-only, no override flag used).
 
+- id: EFFECTIVE-501
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [triage] fix PR #3858 (INFRA-2360) — real CI failures (audit,audit-required,audit-shard (4),fast-checks,fast-checks-required,test,verified) keeping valuable work off main"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[triage] fix PR #3858 (INFRA-2360) — real CI failures (audit,audit-required,audit-shard (4),fast-checks,fast-checks-required,test,verified) keeping valuable work off main\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-463 (score 0.73) considered at reserve time — proceeded (advisory-only, no override flag used).
+
 - id: EVAL-085
   title: test eval 085
   status: done
@@ -32826,6 +32839,8 @@ gaps:
     - "6. RBE preview: enable BuildBuddy RBE for ONE crate (chump-tool-macro, smallest) to validate remote-execution latency vs local. Document in doc."
     - "7. Doc: docs/process/BUILDBUDDY.md — operator setup (5min), fallback behavior, cost monitoring (free tier limits ~5000 builds/mo)"
     - "8. Test: scripts/ci/test-buildbuddy-fallback.sh — assert sccache config has both BuildBuddy URL AND R2 fallback URL"
+  notes: |
+    [2026-08-16T21:16:05Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2250
@@ -34817,10 +34832,10 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Events on success/failure/timeout documented in docs/process/QUEUE_TENDER_OBSERVABILITY.md §1: pr_queue_auto_action (admin_merge/flake_rerun success, admin_merge_failed/flake_rerun_failed, admin_merge_skipped/flake_rerun_skipped), pr_queue_cascade_gate_expired (timeout), pr_queue_skipped_trunk_red (rollup), pr_shepherd_safe_mode_entered/cleared"
+    - "Cost tracked: pr-shepherd-daemon.sh mutation gh calls (admin-merge, flake-rerun, arm-auto-merge) now routed through chump_gh (scripts/coord/lib/github.sh) emitting kind=github_api_call; reported via scripts/dev/api-cost-leaderboard.sh. See doc §2."
+    - "Failure-class taxonomy documented in doc §3: transient (trunk_red, capped, no_run_id — auto-retried) vs permanent (gh_exit_N — surfaced + BLOCKED_REAL_FAIL follow-up gap) vs escalation-timeout (pr_queue_cascade_gate_expired per INFRA-2349)"
+    - "Smoke test: bash scripts/ci/test-pr-queue-processor.sh — 7 scenarios; scenario 1 now asserts kind=github_api_call is recorded for the admin-merge action (regression guard for the cost-tracking fix)"
   outcome_id: MISSION-010
 
 - id: INFRA-2363
@@ -69327,9 +69342,10 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "The change described by \"Worker pick path skips a pickable P0 — RESILIENT-357 (P0, preflight OK, effort m) sat unpicked while workers claimed P1 INFRA gaps (same effort m). The documented _pick_gap.py sorts P0-first; the Rust worker loop (loop_body.rs) that actually picks diverges — queue-driving by priority is degraded\" is implemented in the relevant RESILIENT code path(s)."
-    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - the Rust worker pick path (crates/chump-coord/src/worker/loop_body.rs) selects the highest-PRIORITY pickable gap — a pickable P0 is claimed before any P1 of equal/lesser priority
+    - a regression test asserts P0-first selection in the RUST path (not only _pick_gap.py)
+    - a stale .chump-locks/gap-priority.json planner override never buries a P0 (picker_priority_stale handled/ignored for P0)
+    - "verified live: a fresh pickable P0 is claimed within 1-2 worker cycles"
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: chump gap preflight RESILIENT-357 (OK, unclaimed); compared priority+effort of picked gaps (INFRA-2359/2360/2294) vs 357; read scripts/dispatch/_pick_gap.py ordering; almanac -> crates/chump-coord/src/worker/loop_body.rs.
@@ -69348,6 +69364,23 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   outcome_id: CHUMPOS
+
+- id: RESILIENT-362
+  domain: RESILIENT
+  title: Dispatch headless backend fails under root — set IS_SANDBOX=1 in spawn_headless so claude -p --dangerously-skip-permissions runs on root nodes (helsinki); today every chump dispatch aborts claude -p exit 1
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "The change described by \"Dispatch headless backend fails under root — set IS_SANDBOX=1 in spawn_headless so claude -p --dangerously-skip-permissions runs on root nodes (helsinki); today every chump dispatch aborts claude -p exit 1\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: reproduced spawn_headless invocation on helsinki — claude -p reply-OK --dangerously-skip-permissions vs same + IS_SANDBOX=1.
+    OUTPUT: bare = "--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons" exit 1 (2s). With IS_SANDBOX=1 = "OK" exit 0. src/dispatch.rs:522-528 spawn_headless runs claude -p <prompt> --dangerously-skip-permissions in a worktree; helsinki (chumpd-eu) runs as ROOT so claude refuses the flag. Workers ship fine because they use the chump cascade (--execute-gap), not claude -p. Net: chump dispatch --backend headless is 100pct broken on every root node -> the manual-override lever is dead, and it blocked bootstrapping RESILIENT-360 (picker fix).
+    THEORY: claude CLI refuses --dangerously-skip-permissions under root unless IS_SANDBOX=1 signals an intentional sandboxed root env. The dispatched headless agent already runs skip-permissions by design, so declaring IS_SANDBOX is correct.
+    ALT: in spawn_headless set cmd.env(IS_SANDBOX,1) (verified unblocks). Gate on root if worried about non-root side effects (libc::geteuid()==0), else set always for the autonomous headless spawn.
 
 - id: SMOKE-001
   domain: SMOKE
@@ -69804,6 +69837,23 @@ gaps:
     - "no cargo-sweep installed; helsinki has the GC (ZERO-WASTE-053)"
     - "closetjunky does not; both nodes ran an idle ollama holding 2.2-2.8G"
     See docs/voice/VOA-008-FULL.yaml for full report.
+
+- id: VOA-009
+  domain: VOA
+  title: "VOICE-OF-AGENT VOA-009: broken-daemon-exit — 10 min lost; fix-shape: gate"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Full friction report at docs/voice/VOA-009-FULL.yaml with wedge_class=broken-daemon-exit, minutes_lost=10
+    - Evidence references documented in FULL report
+  notes: |
+    [2026-08-15T19:31:01Z] Auto-filed by `chump voice` (INFRA-2258).
+    Wedge class: broken-daemon-exit
+    Minutes lost: 10
+    Evidence:
+    - "fleet-doctor-strict.sh"
+    See docs/voice/VOA-009-FULL.yaml for full report.
 
 - id: ZERO-001
   domain: ZERO
