@@ -29642,7 +29642,7 @@ gaps:
 - id: INFRA-2057
   domain: INFRA
   title: "EFFECTIVE P1: chump cron subcommand — declarative cron expr to launchd plist (macOS) / systemd timer (Linux) generator; idempotent install + uninstall; never depends on Claude Code or any specific agent session being alive"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -29656,6 +29656,7 @@ gaps:
     - "Backward-compat: ALL existing scripts/setup/install-NAME-launchd.sh scripts continue to work; chump cron is a NEW surface, not a replacement. Migration of existing 20+ launchd installers to chump-cron management is a SEPARATE follow-up sub-gap"
     - "Capability lives in NEW Rust crate crates/chump-cron/ per META-064 Rust-first criteria (mutates canonical state under ~/Library/LaunchAgents or /Library/LaunchDaemons; durable beyond 3mo; will exceed 200 LOC at first commit). NOT bash. Wizard-confirmed 2026-05-27 13:27Z. chump cron CLI is the harness-neutral surface per OPERATOR_PLAYBOOK Section 5"
     - "Documentation: chump cron --help shows full CLI; docs/process/SCHEDULING_LAYERS.md (DOC-058 sibling) references chump cron as the durable layer; CLAUDE.md adds a Scheduling discipline section linking to it"
+  closed_pr: 3840
   outcome_id: MISSION-010
 
 - id: INFRA-2058
