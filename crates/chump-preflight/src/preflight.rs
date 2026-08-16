@@ -102,6 +102,10 @@ const CONTENT_GUARD_MIRRORS: &[(&str, &str)] = &[
         "scripts/git-hooks/pre-commit-event-registry.sh",
     ),
     (
+        "bash-portability",
+        "scripts/git-hooks/pre-commit-bash-portability.sh",
+    ),
+    (
         "gap-divergence",
         "scripts/git-hooks/pre-commit-gap-divergence.sh",
     ),
@@ -980,6 +984,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // transparently redirects Anthropic/OpenAI calls to the local
         // mocks. Same skip behavior as test-mock-services.sh above.
         "scripts/ci/test-mock-services-integration.sh",
+        // INFRA-2351 (META-269 sub-2): bash-portability-lint smoke test —
+        // proves the GNU-sed/GNU-date/POSIX-sh-bashism checks in
+        // scripts/ci/bash-portability-lint.sh actually fire on synthetic
+        // fixtures. Pure bash, no network, ~1s.
+        "scripts/ci/test-bash-portability-lint.sh",
     ];
     candidates
         .iter()
