@@ -25,6 +25,11 @@
 # from any worktree via `git rev-parse --show-toplevel`.
 set -uo pipefail
 
+
+# RESILIENT-342: route gh calls through throttled/cached wrapper (raw-gh lint INFRA-1274)
+_KM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/github.sh
+source "${_KM_DIR}/lib/github.sh"
 REPO="${CHUMP_PR_REPO:-repairman29/chump}"
 ROOT="${CHUMP_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 AMB="$ROOT/.chump-locks/ambient.jsonl"
@@ -60,7 +65,7 @@ escalate() {
     printf '{"ts":"%s","kind":"keep_mergeable_needs_escalation","pr":%s,"reason":"%s"}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$num" "$reason" | tee -a "$AMB" >/dev/null 2>&1 || true
     if [[ "$DRY_RUN" != "1" ]]; then
-        gh pr comment "$num" --repo "$REPO" \
+        chump_gh pr comment "$num" --repo "$REPO" \
             --body "🔧 keep-mergeable organ: could not auto-resolve ($reason). Needs a human or conflict-resolver pass." \
             >/dev/null 2>&1 || true
     fi
