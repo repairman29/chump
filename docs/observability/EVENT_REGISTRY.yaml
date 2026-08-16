@@ -9106,6 +9106,38 @@ events:
     fields_required: [ts, kind, reason, prior_pid, prior_gap_id]
     expected_volume: "low; one per skipped tick while incident is open"
     status: stable
+
+  # ── INFRA-2354 (META-269 sub-5): subprocess-auth smoke ──────────────────────
+
+  - kind: subprocess_auth_ok
+    effect_metric: self
+    emitter: scripts/coord/subprocess-auth-smoke.sh (INFRA-2354)
+    # scanner-anchor: "kind":"subprocess_auth_ok"
+    trigger: >
+      Emitted when a hello-world `claude -p` subprocess call (matching the
+      shape fix-trunk-dispatcher.sh's subprocess mode really spawns) exits 0
+      and returns the expected PONG within the timeout. Wired as a pre-check
+      in fix-trunk-dispatcher.sh's subprocess dispatch path so a dead
+      credential is caught before the real Sonnet is spawned and 401s.
+    consumers: [fix-trunk-dispatcher, ops-audit, fleet-brief]
+    fields_required: [ts, kind, claude_p_exit_code, model]
+    expected_volume: "very low; only when subprocess mode dispatch is attempted"
+    status: stable
+
+  - kind: subprocess_auth_dead
+    effect_metric: self
+    emitter: scripts/coord/subprocess-auth-smoke.sh (INFRA-2354)
+    # scanner-anchor: "kind":"subprocess_auth_dead"
+    trigger: >
+      Emitted when the hello-world `claude -p` subprocess call times out,
+      exits non-zero, doesn't return PONG, or `claude` is missing from PATH.
+      fix-trunk-dispatcher.sh reads this verdict and aborts the subprocess
+      dispatch rather than burning the trunk-red dispatch slot on a doomed
+      subprocess.
+    consumers: [fix-trunk-dispatcher, ops-audit, fleet-brief]
+    fields_required: [ts, kind, claude_p_exit_code]
+    expected_volume: "very low; only on broken/absent subprocess credentials"
+    status: stable
   # ── INFRA-2069: wedge-fixer template library (META-118 sub-gap 3) ──────────
   - kind: wedge_fixer_template_rendered
     effect_metric: resilient

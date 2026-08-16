@@ -1900,3 +1900,10 @@ CHUMP_NATS_WORK_BOARD_BUCKET
 # detected in: (standard input)
 CHUMP_SESSION_INVENTORY_DIGEST
 CHUMP_EVENT_REGISTRY_CHECK
+CHUMP_FIX_TRUNK_SKIP_AUTH_SMOKE
+# detected in: (standard input)
+CHUMP_SUBPROC_SMOKE_AMBIENT
+# detected in: (standard input)
+CHUMP_SUBPROC_SMOKE_MODEL
+# detected in: (standard input)
+CHUMP_SUBPROC_SMOKE_TIMEOUT_S
