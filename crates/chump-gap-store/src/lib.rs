@@ -9,6 +9,7 @@
 //!   `GapStore::import_from_yaml(&repo_root)` is idempotent — safe to re-run.
 //!   Existing DB rows are NOT overwritten; only new gaps are inserted.
 
+pub mod backend;
 pub mod maintenance;
 pub mod sync;
 

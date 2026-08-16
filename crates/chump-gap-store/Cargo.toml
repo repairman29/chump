@@ -18,6 +18,9 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1.0.118", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
+# INFRA-2092: optional Postgres backend slice — only compiled under the
+# `postgres-backend` feature. SQLite (rusqlite, above) stays the default.
+postgres = { version = "0.19", optional = true }
 # INFRA-2000: needed by the maintenance::architect module's LlmClient trait
 # (async fn complete) plus the chump-gap-architect bin's tokio runtime.
 tokio = { version = "1", features = ["rt", "macros", "process"] }
@@ -28,6 +31,10 @@ thiserror = "2"
 # seed the store directly from their own integration tests. Never enabled
 # in production builds.
 test-helpers = []
+# INFRA-2092: opt-in Postgres storage backend (crate::backend::postgres).
+# SQLite (crate::backend::sqlite) remains the default; this feature only
+# compiles the Postgres implementation of the GapBackend trait.
+postgres-backend = ["dep:postgres"]
 
 [dev-dependencies]
 serial_test = "4"
