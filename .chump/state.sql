@@ -29087,10 +29087,7 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "1. Detector emits kind=toolchain_ratchet_scan_started at scan start; kind=toolchain_ratchet_scan_completed with result=clean or result=detected on success; kind=toolchain_ratchet_scan_timeout on wall-clock budget exceeded. A real W-014 signature also emits kind=wedge_detected wedge_class=W-014 for wedge-state-machine.sh to consume.\n2. Every terminal event carries elapsed_ms and gh_calls so operator cost is visible via grep toolchain_ratchet on ambient.jsonl.\n3. Events carry a failure_class field: transient (git/gh missing/errored/timeout - retry next tick) vs permanent (confirmed ratchet signature - needs a bulk fmt/clippy fix PR not a retry).\n4. Smoke test: bash scripts/ci/test-toolchain-ratchet-detector.sh - covers clean/below-threshold/detected/check-only/missing-git/timeout cases against emitted ambient events."
   outcome_id: MISSION-010
 
 - id: INFRA-2037
