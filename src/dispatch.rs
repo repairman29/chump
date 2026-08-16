@@ -523,6 +523,11 @@ fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     cmd.arg("-p")
         .arg(prompt)
         .arg("--dangerously-skip-permissions");
+    // RESILIENT-362: the claude CLI refuses `--dangerously-skip-permissions`
+    // under root ("cannot be used with root/sudo privileges") unless IS_SANDBOX=1
+    // marks an intentional sandboxed root env. Fleet root nodes (helsinki runs as
+    // root) need this or EVERY headless dispatch aborts with claude -p exit 1.
+    cmd.env("IS_SANDBOX", "1");
     if !model.is_empty() {
         cmd.args(["--model", model]);
     }
