@@ -34617,7 +34617,7 @@ gaps:
 - id: INFRA-2349
   domain: INFRA
   title: "auto-processor policy fix: trunk-red gate too defensive — 17 PRs sat for 24h while gate held"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -34625,6 +34625,7 @@ gaps:
     - "cost: reuses existing pr_queue_auto_action + pr_queue_skipped_trunk_red rollup — operator reconstructs held-PR count and duration by grepping ambient.jsonl for these kinds; no new cost-tracking sink needed"
     - "failure-class taxonomy: transient trunk-red (RED but red_minutes < CASCADE_MAX_HOLD_MINUTES, gate holds and self-heals) vs permanent trunk-red (red_minutes >= CASCADE_MAX_HOLD_MINUTES, gate releases — trunk-sentinel has already escalated to the operator via trunk_red_operator_recall by the 60-minute mark)"
     - "smoke test: bash scripts/ci/test-pr-queue-processor.sh — scenario 7 asserts trunk_red beyond the 120min cap releases the cascade gate (admin_merge fires, pr_queue_cascade_gate_expired emitted); scenario 4 asserts trunk_red within the cap still holds"
+  closed_pr: 3855
   outcome_id: MISSION-010
 
 - id: INFRA-235
@@ -34656,13 +34657,15 @@ gaps:
 - id: INFRA-2351
   domain: INFRA
   title: "META-269 sub-2: cross-platform portability lint — bash subprocess smokes"
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
     META-269 sub-2: cross-platform lint for bash subprocess calls. Catches non-portable patterns before CI.
   acceptance_criteria:
     - "- New script scripts/ci/test-bash-portability-lint.sh\n- Lints shell scripts for non-portable patterns (GNU-only sed flags, bashism in sh, non-portable date)\n- Wired into chump preflight on scripts/**.sh changes\n- Smoke test verifies lint catches at least 2 known anti-patterns"
+  closed_date: '2026-08-16'
+  closed_pr: 3856
   skills_required: bash,fleet
   outcome_id: MISSION-010
 
@@ -34761,10 +34764,10 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Success/failure/timeout events: a2a_rpc_finished (success), a2a_rpc_timeout, a2a_rpc_send_failed, a2a_rpc_handler_crash — exactly one fires per RPC call, registered in EVENT_REGISTRY.yaml, emitted from both crates/chump-coord/src/rpc.rs and scripts/coord/rpc/_rpc_lib.sh"
+    - "Cost tracked: a2a_rpc_finished carries latency_ms (RPC calls are NATS-native with no LLM spend, so call volume + latency is the cost signal fleet-brief rolls up per method)"
+    - "Failure-class taxonomy: RpcError::failure_class() returns transient (NoNats/Timeout/Transport, retry may succeed) or permanent (HandlerCrash/Deserialize, retry will reproduce) — every failure ambient event carries a failure_class field"
+    - "Smoke test: scripts/ci/test-a2a-rpc-observability.sh verifies event registration, latency_ms presence, failure_class wiring in both Rust and bash paths, and runs cargo test -p chump-coord --lib rpc::"
   outcome_id: MISSION-010
 
 - id: INFRA-2359
@@ -34774,10 +34777,10 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - Daemon emits kind=disk_inventory_updated on every successful poll and kind=disk_inventory_poll_failed on any poll-cycle error (both registered in docs/observability/EVENT_REGISTRY.yaml, scanner-anchored in crates/chump-disk-inventory/src/main.rs)
+    - No cost tracking is applicable/emitted — the daemon only spawns local df/du and an optional NATS publish, no metered API calls (documented in the crate module doc)
+    - "poll-cycle failures are classified via chump_disk_inventory::classify_poll_failure into transient_io (df/du spawn or I/O error, expected to self-heal next poll) vs config_or_parse (unexpected output shape / no watch path resolved, needs a fix)"
+    - scripts/ci/test-disk-inventory-daemon.sh smoke-tests both the healthy poll path (snapshot + disk_inventory_updated) and the failure path (no snapshot + disk_inventory_poll_failed with failure_class=transient_io)
   outcome_id: MISSION-010
 
 - id: INFRA-2360
@@ -34787,10 +34790,11 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - chump claim runs `chump disk plan chump_claim_worktree --count 1` before `git worktree add`; REFUSE blocks the claim (override CHUMP_CLAIM_ALLOW_DISK_REFUSE=1), WAIT warns and proceeds, OK proceeds silently
+    - kind=claim_disk_plan_checked emitted on every check (decision=ok|wait|refuse); kind=claim_disk_plan_check_failed emitted when the check itself cannot run (timeout/IO error/bad exit code); kind=claim_disk_plan_bypassed emitted for CHUMP_CLAIM_SKIP_DISK_PLAN / CHUMP_CLAIM_ALLOW_DISK_REFUSE
+    - duration_ms of the disk-plan subprocess call (the cost of the check) is included on every emitted event and echoed to operator stderr
+    - failure_class field distinguishes transient (binary missing/IO error/5s timeout — retryable) from permanent (unrecognized exit code — contract break, needs operator fix)
+    - "smoke test: `chump claim <GAP-ID> --disk-plan-check-only` runs only the check + emits the same events without touching leases/worktrees/state.db; scripts/ci/test-claim-disk-plan-precheck.sh exercises OK/failed/bypass paths"
   outcome_id: MISSION-010
 
 - id: INFRA-2361
@@ -34800,10 +34804,10 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "events: pr-shepherd-daemon.sh emits kind=flake_rerun_capped (success detection signal, pr+check_names+author) whenever a PR exhausts MAX_FLAKE_RERUNS_PER_PR on known-flake checks; flake-auto-quarantine.sh emits kind=flake_auto_quarantined on quarantine, kind=flake_auto_quarantine_failed on gap-reserve/catalog-write failure, kind=flake_auto_quarantine_tick once per run (timeout/cost) — all 4 kinds registered in EVENT_REGISTRY.yaml"
+    - "cost tracked: flake_auto_quarantine_tick reports checks_evaluated/quarantined_count/gaps_filed_count per run; scripts/coord/flake-auto-quarantine.sh --report replays the ambient audit trail (ticks + quarantines + failures) for the operator"
+    - "failure-class taxonomy: transient = check capped on < CHUMP_FLAKE_QUARANTINE_PR_THRESHOLD distinct PRs within the window (not actioned, may self-heal); permanent = capped on >= threshold distinct PRs (auto-quarantined into KNOWN_FLAKES.yaml check_flakes: + tracking gap filed)"
+    - "smoke test: bash scripts/ci/test-flake-auto-quarantine.sh — 12 cases (dry-run non-mutation, threshold quarantine, below-threshold left alone, dedupe vs existing catalog entry + state file, event shapes, --report) all green"
   outcome_id: MISSION-010
 
 - id: INFRA-2362
@@ -69315,6 +69319,35 @@ gaps:
     OUTPUT: the fleets output boundary is a GitHub PR (chump-ship/manual_ship.rs). NO fleet-owned executor deploys/activates on a remote owned node — the Pixel is deployed by MAC-SIDE scripts (deploy-pixel-node.sh runs FROM the Mac); OFFLINE_FIRST.md describes a network-sync-daemon vision but it is design-only; there is no built CJ/Pixel activation path the fleet controls.
     THEORY: the sovereign migration needs the fleet to DEPLOY+ACTIVATE+VERIFY on owned nodes (Postgres on CJ, inference offload to Pixel, organ installs), not just write code. Without an executor every sovereign deploy is a HAND bootstrap (crew-chief/Jeff) — the same merged!=running disease (RESILIENT-351) at the infra layer, and it caps the sovereign plan at hand-speed. This is the capability that makes it fleet-driven.
     ALT: each owned node runs a small node-agent that pulls a declared desired-state manifest (install/docker/systemd units + expected is-active) from the fleet over NATS/A2A or a git-backed manifest, applies it idempotently, and reports back active/failed status (closing RESILIENT-351). MINE FIRST: node-fabric-productization (node-describe + fleet_capability::fit_score already shipped), OFFLINE_FIRST.md network-sync-daemon design, RESILIENT-351 liveness gate. Do NOT greenfield — extend those.
+
+- id: RESILIENT-360
+  domain: RESILIENT
+  title: Worker pick path skips a pickable P0 — RESILIENT-357 (P0, preflight OK, effort m) sat unpicked while workers claimed P1 INFRA gaps (same effort m). The documented _pick_gap.py sorts P0-first; the Rust worker loop (loop_body.rs) that actually picks diverges — queue-driving by priority is degraded
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"Worker pick path skips a pickable P0 — RESILIENT-357 (P0, preflight OK, effort m) sat unpicked while workers claimed P1 INFRA gaps (same effort m). The documented _pick_gap.py sorts P0-first; the Rust worker loop (loop_body.rs) that actually picks diverges — queue-driving by priority is degraded\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: chump gap preflight RESILIENT-357 (OK, unclaimed); compared priority+effort of picked gaps (INFRA-2359/2360/2294) vs 357; read scripts/dispatch/_pick_gap.py ordering; almanac -> crates/chump-coord/src/worker/loop_body.rs.
+    OUTPUT: 357 is P0, pickable, effort=m. Workers picked INFRA-2359/2360/2294 = all P1, all effort=m, over ~50min. _pick_gap.py sorts (prio_rank,mission,planner,effort,age): PRIO_RANK P0=0<P1=1 so a P0 MUST sort first — yet the live workers (via loop_body.rs) picked P1. So the workers actual selection path diverges from the documented P0-first picker (candidate: loop_body.rs selection, OR the .chump-locks/gap-priority.json planner override going stale = kind=picker_priority_stale, OR an exclusion filter).
+    THEORY: queue-driving by priority — the whole set-P0-and-the-fleet-builds-it model — is DEGRADED because the live pick path does not reliably surface P0 first. This silently caps every priority decision.
+    ALT: diff loop_body.rs selection against _pick_gap.py; assert P0-first in the RUST path with a test; check gap-priority.json freshness + the picker_priority_stale emit. Extends EFFECTIVE-275 (test-picker-p0-mission-effort-bypass).
+
+- id: RESILIENT-361
+  domain: RESILIENT
+  title: Orphaned-lease reaper — leases persist on DONE/closed gaps (found 176/227 stale, 162 on done); chump-reaper=worktree, chump-rot-reaper=PR, NEITHER reaps stale leases -> picker churns offering claimed-but-done gaps (worker_stuck preflight_fail)
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"Orphaned-lease reaper — leases persist on DONE/closed gaps (found 176/227 stale, 162 on done); chump-reaper=worktree, chump-rot-reaper=PR, NEITHER reaps stale leases -> picker churns offering claimed-but-done gaps (worker_stuck preflight_fail)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
 
 - id: SMOKE-001
   domain: SMOKE
