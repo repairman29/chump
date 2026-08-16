@@ -11559,6 +11559,19 @@ gaps:
   notes: |
     DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-485 (score 0.76) considered at reserve time — proceeded (advisory-only, no override flag used).
 
+- id: EFFECTIVE-494
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [triage] fix PR #3843 (INFRA-2091) — real CI failures (plan) keeping valuable work off main"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[triage] fix PR #3843 (INFRA-2091) — real CI failures (plan) keeping valuable work off main\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-466 (score 0.75) considered at reserve time — proceeded (advisory-only, no override flag used).
+
 - id: EVAL-085
   title: test eval 085
   status: done
@@ -30248,11 +30261,12 @@ gaps:
 - id: INFRA-2091
   domain: INFRA
   title: "EFFECTIVE P1: publish chump-agent-events-v1 schema spec — public cross-framework observability schema (depends on INFRA-1973 ambient index; Bet 3 follow-on, moat play)"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - Publish docs/specs/CHUMP_AGENT_EVENTS_V1.md — a public cross-framework observability schema for multi-agent coordination events. First-mover moat play per MARKET_POSITIONING_2026-05-27.md Bet 3 (the OpenTelemetry-for-multi-agent gap).
+  closed_pr: 3843
   outcome_id: MISSION-010
 
 - id: INFRA-2092
@@ -68996,6 +69010,23 @@ gaps:
     OUTPUT: keep-mergeable organ LOGIC merged (#3820) but NO keep-mergeable systemd unit was active on helsinki (install was a separate un-landed PR #3832) → the organ that fixes DIRTY PRs was not running, so DIRTY stayed 3/7. The batched merge train sat CHUMP_INTEGRATOR_LIVE=0 for the full day while reading as deployed. RESILIENT-222 already shows the integrator health-check treats a not-running daemon as healthy — same class, integrator-only.
     THEORY: the fleet equates MERGED with OPERATING. Nothing verifies, after a PR that adds/edits a systemd unit or scripts/setup/install-*.sh merges, that the unit is actually installed + `systemctl is-active` on its target node. So merged-but-dead organs accumulate — install-layer zombies, UPSTREAM of RESILIENT-331 effectiveness-zombies (331 measures what a RUNNING organ does; it cannot catch one that never started).
     ALT: RESILIENT-331 (effectiveness telemetry) and RESILIENT-222 (integrator-only) are both insufficient. Need a GENERAL gate: for any PR touching a *.service/*.timer or install-*.sh, post-merge verify the unit is active on the target node (or the installer ran) — else alarm + auto-install. Ties the merge to the deploy.
+
+- id: RESILIENT-352
+  domain: RESILIENT
+  title: Track the keep-mergeable systemd installer for helsinki — organ shipped Mac-launchd-only + is currently HAND-installed (not reproducible, dies on node rebuild)
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"Track the keep-mergeable systemd installer for helsinki — organ shipped Mac-launchd-only + is currently HAND-installed (not reproducible, dies on node rebuild)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: ls scripts/setup/install-keep-mergeable-organ-launchd.sh; systemctl is-active chump-keep-mergeable.timer.
+    OUTPUT: The keep-mergeable organ (RESILIENT-342, merged #3820/#3832) ships ONLY scripts/setup/install-keep-mergeable-organ-launchd.sh — pure macOS (launchctl/plist/LaunchAgents, 0 systemd refs). helsinki is the PRIMARY node (Linux/systemd), so the organ was NOT running there after merge (merged != running). I hand-created /etc/systemd/system/chump-keep-mergeable.{service,timer} + enabled it (now active, 15min cadence, verified one live cycle: open=6, moved 2 DIRTY->BLOCKED). But that hand-install is UNTRACKED — not in the repo, so it dies on any node rebuild/node-refresh and is not reproducible on a new node.
+    THEORY: same class as the chump-integrator port ([[helsinki-port-list]], [[batched-merge-train]]) and validates RESILIENT-351 (merged != running). The install path must be OS-aware and tracked.
+    ALT: add a systemd branch to the organ installer (or a scripts/setup/install-keep-mergeable-organ-systemd.sh mirroring chump-integrator install-*.sh), wire it into RUN-INSTALL/node bootstrap, and replace my hand-stood unit with the tracked one. Mirror the integrator unit exactly (Type=oneshot, source providers.env, cd repo, OnUnitActiveSec=15min).
 
 - id: SMOKE-001
   domain: SMOKE
