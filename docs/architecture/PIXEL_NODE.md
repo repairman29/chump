@@ -57,11 +57,11 @@ starts the supervisor. Idempotent.
 3. **Witness creds** — `~/.witness-env` needs `DISCORD_TOKEN` +
    `CHUMP_READY_DM_USER_ID` (chmod 600). The probe reads them at runtime; they
    are never committed.
-4. **Fresh gap registry** — the worker picks from
-   `~/chump-repo/.chump/state.db`, rebuilt from the committed `.chump/state.sql`
-   via `chump gap restore --from-sql`. The committed `state.sql` lags the live
-   registry (reaped gaps can linger as `open`), so re-run `git pull` +
-   `chump gap restore --from-sql` before a long run.
+4. **Fresh gap registry** — the worker keeps `~/chump-repo/.chump/state.db` in
+   sync with origin/main automatically: every 30 min it does `git fetch origin
+   main --depth 1` + `reset --hard origin/main` + `chump gap sync --pull`
+   (reconciles state.db from the per-file `docs/gaps/*.yaml` mirror, which is
+   fresher than the committed `state.sql` — see INFRA-3628).
 5. **Termux:Boot (F-Droid)** — the boot hook is staged; the app fires it on boot.
    Note: `adb install` of Termux:Boot v0.8.1 fails (`INSTALL_FAILED_SHARED_USER_INCOMPATIBLE`)
    — its signing key predates the installed Termux 0.119.0-beta.3. Fix = reinstall
@@ -93,3 +93,15 @@ two changes that made it work again (2026-08-16, RESILIENT-336):
 - target-scoped `openssl = { features = ["vendored"] }` in `Cargo.toml` compiles
   OpenSSL from source for `axonerai`'s `native-tls` chain (durable fix =
   [INFRA-3627](gaps/INFRA-3627.yaml): patch axonerai to rustls-tls).
+
+## Binary deploy — warm then hot-swap
+
+`scripts/setup/deploy-pixel-node.sh` does the validated cutover so a new binary
+is never swapped in blind:
+
+1. `build-android.sh` cross-compiles.
+2. `scp` to `~/chump/chump.new` (the running binary is untouched).
+3. **Warm:** `chump.new` must answer a cascade smoke prompt (`WARM_OK`).
+   Abort on failure — the old binary keeps running.
+4. **Hot:** `mv chump.new chump` + bounce the worker; the supervisor respawns
+   it on the new binary next cycle.
