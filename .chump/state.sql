@@ -27624,6 +27624,7 @@ gaps:
     [2026-08-16T16:45:06Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T17:15:16Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T17:45:20Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T18:15:23Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-1966
@@ -27636,6 +27637,7 @@ gaps:
     - "Failure: 33,730 LOC of bash in scripts/coord/ + scripts/dispatch/ does the orchestration-critical work (bot-merge, queue-driver, pr-rescue, pr-auto-rearm, pr-auto-rebase, worker.sh). Bash + concurrent subshells + git lock contention = unprovable race conditions."
   notes: |
     [2026-08-16T17:45:16Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T18:15:20Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-1967
