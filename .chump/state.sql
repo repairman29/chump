@@ -68861,6 +68861,7 @@ gaps:
     [2026-08-16T12:14:06Z] rot-reaper: PR #3826 auto-closed (required-check-red, 12h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T12:44:16Z] rot-reaper: PR #3826 auto-closed (required-check-red, 12h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T13:14:17Z] rot-reaper: PR #3826 auto-closed (required-check-red, 13h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T14:14:19Z] rot-reaper: PR #3826 auto-closed (required-check-red, 14h) 2026-08-16; re-attempt on fresh main.
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: gh api branches/main/protection required_status_checks (strict, merge_queue) + per-PR mergeStateStatus + files-changed overlap across green-but-DIRTY PRs.
@@ -68959,7 +68960,42 @@ gaps:
     
     [2026-08-16T04:10:00Z] TERMUX:BOOT DEFERRED (operator decision). adb install of termux-boot v0.8.1 FAILS: INSTALL_FAILED_SHARED_USER_INCOMPATIBLE — Termux (0.119.0-beta.3, May 2025) and Termux:Boot share sharedUserId com.termux but the newest Termux:Boot APK (v0.8.1, Jun 2024) is signed with a rotated key. No newer Termux:Boot release exists (repo has Jan-2026 commits, unreleased). Fix = reinstall Termux stable v0.118.3 + Termux:Boot v0.8.1 from same signing era (verify certs first), then re-deploy binary/models/witness/env. Device is dedicated+plugged so witness+wake-lock survive normal ops; Termux:Boot only needed for the Stage-2 forced-reboot drill.
     [2026-08-16T13:56:56Z] PIXEL CURRENT-STATE INVENTORY 2026-08-16 (verified live over ssh; the running-vs-left truth). RUNNING NOW: sshd :8022, ONE supervisor-owned express-lane worker (WORKER_SKILLS=docs/shell/scripts/md, backend=chump-local, FLEET_PRIORITY_FILTER=P1,P2), pixel-node-supervisor (is_alive guard + wake-lock crash-restart — guard is CORRECT, earlier duplicate-worker pileup was operator-session manual test orphans, cleaned), witness loop (5-min helsinki probes, own creds/power/network), node v24.18. WIRED-NOT-PROVEN: codestral slot 14 priority 1 (only alive code model; on first fair test; cascade double-defect = CREDIBLE-296). INSTALLED-BUT-IDLE (the LEFT work): (1) llama.cpp built + 3 Qwen GGUF on disk but NOT wired as a cascade entry — this is the sovereign never-429 local floor, unused; wiring it is the highest-value remaining slice (a phone worker that never rate-limits). (2) aarch64 chump binary runs (2026-08-15 build) + chump-brain db (12 entries) but the native-chump-node path is not driving work — bigpickle worker uses chump-local cascade instead. MISSING (2 physical touches): Termux:Boot app uninstalled = NO reboot survival (hooks staged+correct but nothing fires them; crash self-heals, reboot goes dark); wireless-ADB off = hands un-armed. HW: 9 cores, 11.8GB RAM, 80GB free, AC. NOT DONE: patient-candidacy still needs the 72h gauntlet + local-model floor + reboot survival.
+    [2026-08-16T14:16:16Z] REBOOT SURVIVAL + HANDS ARMED 2026-08-16 (via ADB): (1) Termux:Boot installed — official F-Droid build v0.8.1 vc1000, cert-verified to MATCH installed Termux (sha256 228fb2cf...; GitHub-signed build was correctly REJECTED by SHARED_USER_INCOMPATIBLE first, proving the key check works). Installed via push+pm-install (streamed adb install hung on Play-Protect; verifier toggled off then restored). Receiver holds BOOT_COMPLETED, hooks exec-bit set. CAVEAT: secure lockscreen present -> FBE keeps Termux storage locked until ONE unlock after reboot, THEN hooks fire and self-restore. True zero-touch-through-reboot needs lockscreen=None (operator security call). (2) Wireless ADB armed (192.168.86.37:35315, jarvis-era pairing survived); phantom-process bypass confirmed already-persistent (settings_enable_monitor_phantom_procs=false, max_phantom=MAX). ADB port resets per reboot. NET: crash-survival + reboot-survival(gated) + hands all live. REMAINING top item: wire llama.cpp+Qwen local floor as never-429 cascade tail.
   outcome_id: SOVEREIGN
+
+- id: RESILIENT-350
+  domain: RESILIENT
+  title: "Broken-PR healer: fleet DETECTS a broken PR (PRIORITIZE FIX) + rebase-loops it, but no organ applies the code fix to a deterministic lint/test failure — and the rebaser CLOBBERS manual fixes"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"fleet DETECTS a broken PR (PRIORITIZE FIX) + rebase-loops it, but no organ applies the code fix to a deterministic lint/test failure — and the rebaser CLOBBERS manual fixes\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: tracked #3832 across iterations (gh pr view headRefOid/mergedAt); inspected worker worktree + journalctl.
+    OUTPUT: OS logged "#3832 BROKEN (2h) — real CI failures: audit,audit-required,audit-shard (4). gap=RESILIENT-342 → PRIORITIZE FIX" AND "flake-budget exceeded (3>=3) — refusing auto-rerun". Root failure = raw-gh lint INFRA-1274 flagging keep-mergeable.sh:63 raw `gh pr comment`. The fleet rebase-looped (be0136e6 clobbered → 91f3010f, raw call restored) WITHOUT ever fixing the flagged line. My manual chump_gh fix was clobbered by the rebaser twice until I fixed it in the worktree SOURCE (22bc33e3).
+    THEORY: the fleet has DETECTION (broken-PR flagger) + REBASE (armed-rebaser/bot-merge) but NO organ that APPLIES a code fix to a deterministic check failure in its own PR. Rebasing a PR that fails a STATIC lint just re-fails; worse, the rebaser rebuilds from a stale source and clobbers commits it did not author. A signal (PRIORITIZE FIX) with no healing consumer.
+    ALT: auto-rerun (flake-budget) assumes flakiness — but a lint FAILURE is deterministic, so rerun is the wrong tool. Fix = (a) route a broken-PR-with-deterministic-failure to a fix-applying consumer (implement_gap / scoped fix-agent on the failing check), (b) the rebaser must PRESERVE (rebase onto, not overwrite) commits it did not author.
+
+- id: RESILIENT-351
+  domain: RESILIENT
+  title: "Organ-liveness gate: verify a merged organ is actually INSTALLED+ACTIVE on its target node (merged != running) — the recurring disease"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"verify a merged organ is actually INSTALLED+ACTIVE on its target node (merged != running) — the recurring disease\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: this session — systemctl list-units | grep keep-mergeable (after #3820 merged); systemctl show chump-integrator CHUMP_INTEGRATOR_LIVE.
+    OUTPUT: keep-mergeable organ LOGIC merged (#3820) but NO keep-mergeable systemd unit was active on helsinki (install was a separate un-landed PR #3832) → the organ that fixes DIRTY PRs was not running, so DIRTY stayed 3/7. The batched merge train sat CHUMP_INTEGRATOR_LIVE=0 for the full day while reading as deployed. RESILIENT-222 already shows the integrator health-check treats a not-running daemon as healthy — same class, integrator-only.
+    THEORY: the fleet equates MERGED with OPERATING. Nothing verifies, after a PR that adds/edits a systemd unit or scripts/setup/install-*.sh merges, that the unit is actually installed + `systemctl is-active` on its target node. So merged-but-dead organs accumulate — install-layer zombies, UPSTREAM of RESILIENT-331 effectiveness-zombies (331 measures what a RUNNING organ does; it cannot catch one that never started).
+    ALT: RESILIENT-331 (effectiveness telemetry) and RESILIENT-222 (integrator-only) are both insufficient. Need a GENERAL gate: for any PR touching a *.service/*.timer or install-*.sh, post-merge verify the unit is active on the target node (or the installer ran) — else alarm + auto-install. Ties the merge to the deploy.
 
 - id: SMOKE-001
   domain: SMOKE
