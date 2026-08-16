@@ -8804,6 +8804,90 @@ async fn main() -> Result<()> {
                     Some(report)
                 };
 
+                // INFRA-2364: default mode now shells out to the strict
+                // health aggregator (INFRA-1427,
+                // scripts/coord/fleet-doctor-strict.sh) instead of only
+                // running the required-check gate. Falls back cleanly
+                // (no-op) when the script isn't present — e.g. isolated
+                // test fixtures that aren't a full chump checkout.
+                let repo_root_for_strict = repo_path::repo_root();
+                let strict_script =
+                    repo_root_for_strict.join("scripts/coord/fleet-doctor-strict.sh");
+                let strict_timeout_s: u64 = std::env::var("CHUMP_FLEET_DOCTOR_STRICT_TIMEOUT_S")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(30);
+
+                // (exit_code, duration_ms, failure_class, status)
+                let mut strict_outcome: Option<(i32, u128, &'static str, &'static str)> = None;
+
+                if strict_script.is_file() {
+                    let start = std::time::Instant::now();
+                    let mut cmd = std::process::Command::new("bash");
+                    cmd.arg(&strict_script);
+                    if want_json {
+                        cmd.arg("--json");
+                    }
+                    match cmd.spawn() {
+                        Ok(mut child) => {
+                            let deadline = start + std::time::Duration::from_secs(strict_timeout_s);
+                            let mut timed_out = false;
+                            let wait_status = loop {
+                                match child.try_wait() {
+                                    Ok(Some(status)) => break Some(status),
+                                    Ok(None) => {
+                                        if std::time::Instant::now() >= deadline {
+                                            let _ = child.kill();
+                                            let _ = child.wait();
+                                            timed_out = true;
+                                            break None;
+                                        }
+                                        std::thread::sleep(std::time::Duration::from_millis(200));
+                                    }
+                                    Err(_) => break None,
+                                }
+                            };
+                            let duration_ms = start.elapsed().as_millis();
+                            strict_outcome = Some(if timed_out {
+                                (124, duration_ms, "transient", "timeout")
+                            } else if let Some(status) = wait_status {
+                                let code = status.code().unwrap_or(-1);
+                                if code == 0 {
+                                    (code, duration_ms, "none", "healthy")
+                                } else {
+                                    (code, duration_ms, "permanent", "unhealthy")
+                                }
+                            } else {
+                                (-1, duration_ms, "transient", "spawn_error")
+                            });
+                        }
+                        Err(_) => {
+                            strict_outcome = Some((-1, 0, "transient", "spawn_error"));
+                        }
+                    }
+
+                    // Cost note (AC #2): this is a deterministic shell
+                    // aggregator over local state + `gh`/`git` calls, not an
+                    // LLM call — there is no token cost to track. duration_ms
+                    // below is the operational cost signal operators care
+                    // about (a doctor run that creeps past its historical
+                    // p50 is the actionable proxy).
+                    if let Some((code, duration_ms, failure_class, status)) = strict_outcome {
+                        // scanner-anchor: "kind":"fleet_doctor_strict_tick"
+                        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                            kind: "fleet_doctor_strict_tick".to_string(),
+                            source: Some("fleet_self_doctor".to_string()),
+                            fields: vec![
+                                ("exit_code".to_string(), code.to_string()),
+                                ("duration_ms".to_string(), duration_ms.to_string()),
+                                ("failure_class".to_string(), failure_class.to_string()),
+                                ("status".to_string(), status.to_string()),
+                            ],
+                            ..Default::default()
+                        });
+                    }
+                }
+
                 if want_json {
                     println!(
                         "{}",
@@ -8813,7 +8897,13 @@ async fn main() -> Result<()> {
                                 "any_unhealthy": r.any_unhealthy,
                                 "checks": r.checks,
                             })),
-                            "note": "--heal not requested; diagnose-only stub until INFRA-1427 strict lands"
+                            "strict": strict_outcome.map(|(code, duration_ms, failure_class, status)| serde_json::json!({
+                                "exit_code": code,
+                                "duration_ms": duration_ms,
+                                "failure_class": failure_class,
+                                "status": status,
+                            })),
+                            "note": "diagnose-only; --heal auto-fixes what INFRA-1427 strict + required-check gates surface"
                         })
                     );
                 } else {
@@ -8825,9 +8915,22 @@ async fn main() -> Result<()> {
                             println!("  required-check health: {} checks OK", r.checks.len());
                         }
                     }
+                    if let Some((code, duration_ms, failure_class, status)) = strict_outcome {
+                        println!(
+                            "  strict health ({}): exit={} duration_ms={} failure_class={}",
+                            status, code, duration_ms, failure_class
+                        );
+                    } else if !strict_script.is_file() {
+                        println!(
+                            "  strict health: skipped (script not found at {})",
+                            strict_script.display()
+                        );
+                    }
                 }
 
-                let exit_code = if health_report.as_ref().is_some_and(|r| r.any_unhealthy) {
+                let exit_code = if health_report.as_ref().is_some_and(|r| r.any_unhealthy)
+                    || strict_outcome.is_some_and(|(code, ..)| code != 0)
+                {
                     1
                 } else {
                     0
