@@ -353,6 +353,7 @@ Fixed in RESILIENT-020.
 | W-011 | <5 min | 🟡 manual (long-term: chump fleet bootstrap --check) |
 | W-012 | <5 min per test | 🟡 patch tests lazily as they surface |
 | W-013 | <5 min per test | 🟡 patch tests lazily as they surface |
+| W-014 | <30 min | 🟡 detector shipped (INFRA-2036); bulk-fix remains manual |
 
 ---
 
@@ -388,6 +389,51 @@ Patched lazily as they surface in CI.
 
 **First seen**: 2026-05-25 — surfaced on MISSION-007 canary (#2573) audit gate.
 Fixed in RESILIENT-023.
+
+---
+
+## Class W-014 — Toolchain-ratchet (rust version / strict-fmt / strict-clippy refresh)
+
+**Signature**:
+- A PR bumps `rust-toolchain.toml`, `.cargo/config.toml`, or `clippy.toml` (or
+  otherwise tightens fmt/clippy strictness) and merges CLEAN — `cargo fmt`/`cargo
+  clippy` pass against the diff that PR itself touched.
+- The new rustc/clippy version enables lints that didn't exist (or weren't
+  triggered) under the old toolchain, across pre-existing code the merging PR
+  never touched.
+- Every OTHER open PR now fails fmt/clippy on code it didn't write or change —
+  main is "clean at merge" but the queue behind it wedges on unrelated lint
+  noise. Same failure *shape* as THE FLOOR's silent-failure-tax strict-mode
+  flip (INFRA-1996), scoped to the toolchain/lint-config surface instead.
+
+**Time-to-recovery target**: <30 min (bulk fix PR) to clear the queue; the
+ratchet itself is a one-way door — new lints don't un-fire without a code fix.
+
+**Detection**: `scripts/coord/toolchain-ratchet-detector.sh` — scans recent
+git history for a commit touching a toolchain-defining file, then checks
+whether ≥2 open PRs are failing `*clippy*`/`*fmt*` checks. Fires
+`kind=wedge_detected wedge_class=W-014`. Wired into the 5-min wedge-watch
+sweep; wedge-state-machine.sh routes W-014 to an advisory WARN broadcast
+(no auto-mutation of main — a `cargo clippy --fix` run is state-mutating and
+risky to fire unattended).
+
+**Recovery playbook**:
+1. Confirm the ratchet: `git show <commit> -- rust-toolchain.toml .cargo/config.toml clippy.toml`
+2. Run `cargo clippy --workspace --fix --allow-dirty` + `cargo fmt --all` on a
+   fresh branch off main
+3. Ship as a standalone bulk-fix PR (no functional changes, lint-only) — do
+   NOT bundle with unrelated work
+4. Once merged, open PRs auto-clear on next rebase (no lingering ratchet)
+
+**Hardening shipped**: INFRA-2036 ships the detector
+(`scripts/coord/toolchain-ratchet-detector.sh`) + W-014 routing in
+wedge-state-machine.sh. Real auto-remediation (unattended bulk fmt/clippy fix
+PR) is a follow-up — today's fix is advisory-only by design given the blast
+radius of an automated `--fix` run on main.
+
+**First seen**: 2026-08-16 — filed as INFRA-2036 from the general "same class
+as THE FLOOR strict-mode flip" pattern; no live incident yet at detector
+ship-time.
 
 ## When you find a new class
 

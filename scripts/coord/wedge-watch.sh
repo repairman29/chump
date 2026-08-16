@@ -13,6 +13,8 @@
 #   W-006: ≥1 PR closed-unmerged in last 30 min with ahead=0 vs main (stomp)
 #   W-007: required_status_checks contexts not present in PR check rollup
 #   W-008: PR mergeStateStatus=CLEAN with autoMergeRequest + age > 1h
+#   W-014: toolchain-defining file changed + ≥2 open PRs now failing fmt/clippy
+#          (delegated to scripts/coord/toolchain-ratchet-detector.sh, INFRA-2036)
 #   W-AGG: ≥3 PRs BLOCKED + failing same test in last 30 min (aggregate)
 #
 # Usage:
@@ -132,6 +134,27 @@ print(count)
 " 2>/dev/null || echo 0)
 if [[ "$clean_old" -ge 1 ]]; then
     fire "W-008" "$clean_old PRs CLEAN+armed for >1h (auto-merge not firing)" "\"count\":$clean_old"
+fi
+
+# ── W-014: toolchain-ratchet (delegated, INFRA-2036) ──────────────────────────
+# Own observability contract (scan_started/completed/timeout, cost, failure
+# taxonomy) lives in the detector script; wedge-watch only needs its
+# wedge_detected side-effect, which the detector already emits to $AMBIENT.
+W014_DETECTOR="$REPO_ROOT/scripts/coord/toolchain-ratchet-detector.sh"
+if [[ -x "$W014_DETECTOR" ]] && [[ "$CHECK_ONLY" -eq 0 ]]; then
+    # Real run (not --check-only): the detector emits its own wedge_detected
+    # (+ scan_started/completed/timeout observability events) directly to
+    # $AMBIENT, so wedge-watch just needs the exit code for its own report.
+    W014_OUT="$(CHUMP_REPO_ROOT="$REPO_ROOT" CHUMP_AMBIENT_LOG="$AMBIENT" \
+        bash "$W014_DETECTOR" 2>&1)"
+    if echo "$W014_OUT" | grep -q "DETECTED"; then
+        FIRED+=("W-014: toolchain-ratchet signature (see ambient wedge_detected for detail)")
+    fi
+elif [[ -x "$W014_DETECTOR" ]]; then
+    # --check-only: run the detector's own --check-only (no emits either side)
+    CHUMP_REPO_ROOT="$REPO_ROOT" CHUMP_AMBIENT_LOG="$AMBIENT" \
+        bash "$W014_DETECTOR" --check-only >/dev/null 2>&1
+    [[ $? -eq 1 ]] && FIRED+=("W-014: toolchain-ratchet signature")
 fi
 
 # ── W-AGG: ≥3 PRs all failing same CI line ────────────────────────────────────
