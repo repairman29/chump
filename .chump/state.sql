@@ -27610,6 +27610,7 @@ gaps:
     [2026-08-16T16:14:56Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T16:45:06Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T17:15:16Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T17:45:20Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-1966
@@ -27620,6 +27621,8 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Failure: 33,730 LOC of bash in scripts/coord/ + scripts/dispatch/ does the orchestration-critical work (bot-merge, queue-driver, pr-rescue, pr-auto-rearm, pr-auto-rebase, worker.sh). Bash + concurrent subshells + git lock contention = unprovable race conditions."
+  notes: |
+    [2026-08-16T17:45:16Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-1967
@@ -34103,10 +34106,7 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "1. All actions/checkout refs across .github/workflows/**/*.yml use the repo-dominant version (@v7) — no @v6 stragglers.\n2. All actions/upload-artifact refs use @v4 (dominant version) — no @v7 stragglers.\n3. All actions/download-artifact refs use @v4 (paired with upload-artifact@v4) — no @v8 stragglers.\n4. python3 yaml.safe_load() parses every .github/workflows/**/*.yml file without error."
   outcome_id: MISSION-010
 
 - id: INFRA-2322
@@ -68962,6 +68962,7 @@ gaps:
     [2026-08-16T13:14:17Z] rot-reaper: PR #3826 auto-closed (required-check-red, 13h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T14:14:19Z] rot-reaper: PR #3826 auto-closed (required-check-red, 14h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T15:44:41Z] rot-reaper: PR #3826 auto-closed (required-check-red, 15h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T17:45:25Z] rot-reaper: PR #3826 auto-closed (required-check-red, 17h) 2026-08-16; re-attempt on fresh main.
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: gh api branches/main/protection required_status_checks (strict, merge_queue) + per-PR mergeStateStatus + files-changed overlap across green-but-DIRTY PRs.
@@ -69131,6 +69132,20 @@ gaps:
     - Pixel worker only claims gaps satisfiable in its sandbox (no cargo/grep/find) — verified by a run where every claimed gap ships or is dropped out-of-capability before a model call
     - A gap tool-requirement signal exists so picker matches worker sandbox to gap needs; TODO-AC gaps filtered from claim
   outcome_id: CHUMPOS
+
+- id: RESILIENT-354
+  domain: RESILIENT
+  title: "RESILIENT: Helsinki->Pixel CUTOVER plan — coordinated patient migration to retire the Hetzner box (design-before-build, do NOT improvise live)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Operator 2026-08-16: taking Helsinki OFFLINE (retiring the Hetzner box, the SOVEREIGN endgame) needs real coordination — flipping the pixel to ACTIVE is a STANDBY, not a cutover. This gap is the design-before-build cutover plan; NOT to be improvised live. FINDINGS this session that reshape it: NATS is a NON-blocker (helsinki broker has 0 client connections, nobody points CHUMP_NATS_URL at it — coordination rides git+file-ambient). Helsinki chump-worker@1/2 are inactive/failed with 0 active work procs, yet ships land ~2.4/hr — so the shipping WORK does not run on helsinki right now and its source is UNKNOWN (likely the mac tmux fleet, or intermittent). Coordination organs (conductor/farmer/pr-lander/keep-mergeable/armed-rebaser/rot-reaper) already ported to pixel ~/organs (RESILIENT-349, STANDBY). CUTOVER CHECKLIST: (1) RESOLVE ship-source — find where gap-work actually runs before removing helsinki; if helsinki, pixel needs the cargo toolchain first (the furnace). (2) Port chump-discord-gateway (the one persistent helsinki-only service, serenity-free) to pixel/termux. (3) backlog-sync single-writer handoff helsinki->pixel (split-brain risk — exactly one writer, ever). (4) SEQUENCING runbook: helsinki organs OFF before pixel ACTIVE, never two patients (dual-conductor = double PR-arming/rebasing). (5) DNS/identity: nobody hardcodes helsinkis IP for NATS, but audit for any 100.101.188.30 refs. (6) REHEARSE with a stopwatch (RESILIENT-335 doctrine — DR is not real until executed once) + written ROLLBACK (re-provision helsinki from provision-chumpd-host.sh + state.sql-in-git). READY vs BLOCKING: ready = coordination brain ported, NATS non-issue, state git-distributed; blocking = ship-source unknown, gateway, writer-handoff, sequencing runbook, rehearsal.
+  acceptance_criteria:
+    - Ship-source resolved and documented (where gap-work runs); if it must move to pixel, toolchain path decided
+    - "Cutover runbook written: exact ordered steps (organs off/on sequencing, writer handoff, gateway) + rollback via re-provision; reviewed by operator BEFORE any live cutover"
+    - One rehearsed cutover on a scratch/temporary basis with elapsed time recorded; runbook corrected from what it taught
+  outcome_id: SOVEREIGN
 
 - id: SMOKE-001
   domain: SMOKE
