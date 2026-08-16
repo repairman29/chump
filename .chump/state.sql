@@ -27596,6 +27596,7 @@ gaps:
     - "Failure: src/main.rs is 14,450 LOC with 231 `mod` declarations (verified via wc -l + grep -c '^mod '). Every code change triggers full-binary recompile. INFRA-825 staleness gate then blocks destructive ops until rebuild."
   notes: |
     [2026-08-16T16:14:56Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T16:45:06Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-1966
@@ -31814,11 +31815,13 @@ gaps:
 - id: INFRA-2193
   domain: INFRA
   title: "EFFECTIVE P1: META-128/C2 chump-disk-inventory-daemon — Rust binary polling df + per-path du + NATS publish"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "- New crate crates/chump-disk-inventory/ with bin target chump-disk-inventory-daemon.\n- Polls every 30s (CHUMP_DISK_POLL_S configurable): df for /tmp + ~/.chump + main checkout disk; du for known consumer paths (/tmp/chump-*, ~/.cache/chump-runner, ~/.chump/nats, /tmp/chump-coord-linux-build*, ~/.cargo/registry).\n- Writes atomic-rename snapshot to ~/.chump/disk-inventory.json with schema: {ts, node_id, total_gb, free_gb, used_gb, threshold_gb (default 5), top_consumers: [{path, size_gb, mtime}], headroom_gb: free_gb - threshold_gb}.\n- Publishes to NATS subject chump.disk.inventory.<node-id> on each poll (when CHUMP_NATS_URL set; file-fallback otherwise).\n- node_id from ~/.chump/node-id.txt OR hostname fallback.\n- Emits ambient kind=disk_inventory_updated on each poll AND kind=disk_critical when free_gb < threshold_gb.\n- 6+ unit tests: snapshot schema, top-consumer selection, node_id resolution, headroom computation, NATS-down fallback, threshold breach detection.\n- cargo fmt + clippy + check GREEN (warm cache during impl per today's hung-clippy lesson).\n- Cross-references META-128 (umbrella), INFRA-2125 (cargo-target-reaper sibling), INFRA-2181 (reaper post-ship trigger this complements), INFRA-2188 (cargo-runner cache leak that this catches structurally)."
+  closed_date: '2026-08-16'
+  closed_pr: 3848
   outcome_id: MISSION-010
 
 - id: INFRA-2194
