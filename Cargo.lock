@@ -1635,6 +1635,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-disk-inventory"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-nats",
+ "chrono",
+ "chump-ambient-cli",
+ "glob",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "chump-eval-harness"
 version = "0.1.0"
 dependencies = [
