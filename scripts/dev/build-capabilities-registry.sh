@@ -198,7 +198,7 @@ def parse_chump_help() -> tuple[list[dict], str]:
         proc = subprocess.run(
             ["chump", "--help"],
             capture_output=True, text=True, timeout=5,
-            env={**os.environ, "CHUMP_NO_BANNER": "1"},
+            env=os.environ,
         )
         if proc.returncode == 0:
             parsed = _parse_help_block(proc.stdout)

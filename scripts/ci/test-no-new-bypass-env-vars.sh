@@ -67,12 +67,23 @@ if [[ "${1:-}" != "--self-test" ]]; then
   #   3. Drop command-VALUED vars (…_CMD). CHUMP_DUTY_OFFICER_REALITY_CHECK_CMD
   #      names a command to RUN — not a check-disabling toggle; the greedy _CHECK
   #      branch matched it as a false positive.
+  #   4. (INFRA-3625) A leading-underscore lookbehind. The unanchored match let
+  #      internal sourcing guards like `_CHUMP_DISK_CHECK_LOADED` (a one-time
+  #      re-source guard in scripts/lib/disk-check.sh, not an operator-facing
+  #      toggle at all) get counted as `CHUMP_DISK_CHECK_LOADED` via substring
+  #      match. `(?<![A-Za-z0-9_])` requires the match start at a real word
+  #      boundary, so guard vars named `_CHUMP_*` no longer phantom-count.
+  #   5. (INFRA-3625) --exclude the bypass-var-cull-audit self-test. Like this
+  #      linter's own self-test, it embeds synthetic test-double names
+  #      (CHUMP_DEAD_SKIP, CHUMP_LIVE_BYPASS) to exercise the audit organ's
+  #      headroom/candidate logic against a fixture tree — never real toggles.
   # This is a ratchet-DOWN of the honest baseline, not a bypass: the true count of
   # real bypass USE-SITES falls, and the ceiling file falls with it.
-  _now="$(grep -rhoE 'CHUMP_[A-Z0-9_]*(BYPASS|SKIP|IGNORE|_CHECK|NO_)[A-Z0-9_]*' \
+  _now="$(grep -rhoP '(?<![A-Za-z0-9_])CHUMP_[A-Z0-9_]*(BYPASS|SKIP|IGNORE|_CHECK|NO_)[A-Z0-9_]*' \
             "$REPO_ROOT/scripts" "$REPO_ROOT/src" "$REPO_ROOT/crates" 2>/dev/null \
             --exclude='test-no-new-bypass-env-vars.sh' \
             --exclude='bypass-var-ceiling.txt' \
+            --exclude='test-bypass-var-cull-audit.sh' \
             | grep -vE '_CMD$' | sort -u | wc -l | tr -d ' ')"
   if [ "${_now:-0}" -gt "$_ceiling" ]; then
     {
@@ -265,9 +276,12 @@ extract_bypass_varnames() {
       #   - this lint script itself (self-test case strings)
       #   - the allowlist file (grandfathered var documentation)
       #   - env-vars-internal.txt (var documentation registry, not code)
+      #   - the bypass-var-cull-audit self-test (INFRA-3625; synthetic
+      #     test-double names, same class as this lint scripts own self-test)
       suppress = ($0 ~ /scripts\/ci\/test-no-new-bypass-env-vars\.sh/ ||
                   $0 ~ /scripts\/ci\/bypass-env-var-allowlist\.txt/ ||
-                  $0 ~ /scripts\/ci\/env-vars-internal\.txt/)
+                  $0 ~ /scripts\/ci\/env-vars-internal\.txt/ ||
+                  $0 ~ /scripts\/ci\/test-bypass-var-cull-audit\.sh/)
     }
     !suppress { print }
   ' "$tmpfile" > "$filtered_file"

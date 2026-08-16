@@ -152,8 +152,6 @@ echo "--- Assertion 1: Claim creates lease JSON ---"
     # CHUMP_REPO must point to the real repo so gap reserve can write state.db + YAML.
     RESERVE_OUT=$(
         CHUMP_REPO="$REPO_ROOT" \
-        CHUMP_SKIP_SIMILARITY_CHECK=1 \
-        CHUMP_SKIP_PILLAR_BALANCE_CHECK=1 \
         "$CHUMP" gap reserve \
             --domain INFRA \
             --title "CREDIBLE: integration-test-pipeline-$(date +%s)-$$" \

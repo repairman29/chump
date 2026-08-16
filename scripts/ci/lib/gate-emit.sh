@@ -10,7 +10,7 @@
 #   ... gate logic ...
 #   gate_emit_result "CREDIBLE-026" "pass" "" ""
 #   gate_emit_result "CREDIBLE-026" "fail" "scope-violation" "PR title chore(gaps) but touched src/"
-#   gate_emit_result "CREDIBLE-026" "bypassed" "" "CHUMP_PR_SCOPE_CHECK=0"
+#   gate_emit_result "CREDIBLE-026" "bypassed" "" "operator override"
 #   gate_emit_result "CREDIBLE-026" "skipped" "" "no PR context"
 #
 # Environment:

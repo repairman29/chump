@@ -33,6 +33,13 @@ const EXEMPT_PATHS: &[&str] = &[
     "scripts/ci/bypass-env-var-allowlist.txt",
     "scripts/ci/env-vars-internal.txt",
     "src/verify/rules/no_new_bypass_env_vars.rs",
+    // INFRA-3625: synthetic bypass/skip-class test-double var names exercise
+    // the bypass-var-cull-audit organ's headroom/candidate logic against a
+    // fixture tree — never real toggles, same class as the self-test file
+    // above. (Names deliberately not spelled out here — see the top-of-file
+    // note: this rule's own source must never contain a contiguous
+    // bypass-class token.)
+    "scripts/ci/test-bypass-var-cull-audit.sh",
 ];
 
 fn suffix_bypass() -> &'static str {
@@ -254,6 +261,20 @@ mod tests {
         let v = var("REGISTRY", suffix_bypass());
         let ev = eval(vec![diff(
             "scripts/ci/env-vars-internal.txt",
+            std::slice::from_ref(&v),
+        )]);
+        assert!(matches!(ev, Evaluation::Pass(_)));
+    }
+
+    #[test]
+    fn bypass_var_cull_audit_self_test_is_exempt() {
+        // INFRA-3625: scripts/ci/test-bypass-var-cull-audit.sh embeds
+        // synthetic bypass/skip-class test-double var names to exercise the
+        // cull-audit organ's fixture logic — same exemption class as
+        // env-vars-internal.txt above, not a real var introduction.
+        let v = var("TEST", suffix_skip());
+        let ev = eval(vec![diff(
+            "scripts/ci/test-bypass-var-cull-audit.sh",
             std::slice::from_ref(&v),
         )]);
         assert!(matches!(ev, Evaluation::Pass(_)));

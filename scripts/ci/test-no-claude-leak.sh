@@ -165,7 +165,6 @@ if [[ "${VIOLATIONS}" -gt 0 ]]; then
     done
     echo ""
     echo "Per-line opt-out: append \`# chump-harness-ok: claude-mention\` to the line."
-    echo "Per-PR opt-out (rare): CHUMP_NO_CLAUDE_LEAK_BYPASS=1 with justification in commit body."
 fi
 
 if [[ "${VIOLATIONS}" -gt 0 && "$STRICT" == "1" ]]; then

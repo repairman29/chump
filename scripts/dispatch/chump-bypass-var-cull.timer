@@ -1,0 +1,14 @@
+# INFRA-3625 — pairs with chump-bypass-var-cull.service. Fires daily: this is
+# a slow-moving debt metric (bypass vars are added on the order of one per
+# few days, not per hour), so a tight cadence would just be noise. Enable:
+# systemctl enable --now chump-bypass-var-cull.timer
+[Unit]
+Description=Run the Chump bypass-var-cull-audit daily (INFRA-3625)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1d
+Persistent=true
+
+[Install]
+WantedBy=timers.target

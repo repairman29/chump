@@ -133,8 +133,14 @@ SYSTEM_UNITS=(
   # install-integrator-daemon-systemd.sh does); the timer no-ops safely until then.
   chump-integrator.service
   chump-integrator.timer
+  # INFRA-3625: the bypass-var-cull-audit organ — recomputes headroom on
+  # scripts/ci/bypass-var-ceiling.txt daily and WARNs when it thins out, so
+  # the ceiling never again sits pinned at zero headroom (the condition that
+  # jammed PRs #3775/#3785/#3792 in one day). Read-only; never mutates state.
+  chump-bypass-var-cull.service
+  chump-bypass-var-cull.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-bypass-var-cull.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then

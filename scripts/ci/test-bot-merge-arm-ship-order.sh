@@ -134,8 +134,7 @@ export CHUMP_AMBIENT_LOG="$AMBIENT"
 FAKE_REPO="$TMP/fake-repo"
 mkdir -p "$FAKE_REPO/.chump-locks" "$FAKE_REPO/.chump"
 # INFRA-1261: seed minimal state.db so gap-preflight won't treat TEST-001 as
-# unregistered when CHUMP_GAP_PREFLIGHT_SKIP is not set. Primary guard is the
-# CHUMP_GAP_PREFLIGHT_SKIP=1 env below; this DB seed is defense-in-depth.
+# unregistered (CHUMP_STATE_DB below points gap-preflight at this fixture DB).
 sqlite3 "$FAKE_REPO/.chump/state.db" "
 CREATE TABLE IF NOT EXISTS gaps (
     id TEXT PRIMARY KEY, domain TEXT, title TEXT, status TEXT,
@@ -159,7 +158,6 @@ CHUMP_TEST_GATE=0 CHUMP_BYPASS_BOT_MERGE=1 CHUMP_GAP_CHECK=0 \
 CHUMP_PRE_MERGE_CHECKPOINT=0 \
 CHUMP_SPEC_ON_SPEC_CHECK=0 CHUMP_SPECULATIVE_SWEEP=0 \
 CHUMP_CODEREVIEW=0 CHUMP_AUTO_CLOSE_GAP=1 \
-CHUMP_GAP_PREFLIGHT_SKIP=1 \
 MAIN_REPO="$FAKE_REPO" \
 bash "$BOT_MERGE" \
     --gap TEST-001 \

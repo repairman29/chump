@@ -47,7 +47,7 @@ mkdir -p "$TMPDIR_TEST/nohooks"
 (
   cd "$FAKE_REPO"
   CHUMP_TEST_GATE=0 CHUMP_GAP_CHECK=0 CHUMP_AUTOMERGE_OVERRIDE=1 \
-  CHUMP_FMT_CHECK=0 CHUMP_BUILD_CHECK=0 CHUMP_LEASE_CHECK=0 \
+  CHUMP_FMT_CHECK=0 CHUMP_LEASE_CHECK=0 \
   HOME="$TMPDIR_TEST" \
     bash "$HOOK" origin "https://github.com/test/repo.git" <<< "" 2>/dev/null || true
 )
@@ -81,7 +81,7 @@ git -C "${FAKE_REPO}2" commit -m "normal commit" --quiet 2>/dev/null || true
 (
   cd "${FAKE_REPO}2"
   CHUMP_GAP_CHECK=0 CHUMP_AUTOMERGE_OVERRIDE=1 \
-  CHUMP_FMT_CHECK=0 CHUMP_BUILD_CHECK=0 CHUMP_LEASE_CHECK=0 \
+  CHUMP_FMT_CHECK=0 CHUMP_LEASE_CHECK=0 \
   HOME="$TMPDIR_TEST" \
     bash "$HOOK" origin "https://github.com/test/repo.git" <<< "" 2>/dev/null || true
 )

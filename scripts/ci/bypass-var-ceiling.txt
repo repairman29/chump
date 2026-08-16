@@ -4,7 +4,7 @@
 # you must delete one. Raising it requires operator sign-off + a reason below.
 # Baseline 2026-06-03 (was 113 when INFRA-2525 was filed — the climb to here is
 # exactly what this ceiling now reverses). Ratchet DOWN as gates are culled.
-232
+225
 
 # 233 → 234 (2026-06-04): CREDIBLE-085 introduced CHUMP_SCCACHE_HIT_RATE_CHECK
 # as a cold-cache escape valve for the new sccache hit-rate gate. Cold-cache
@@ -72,3 +72,52 @@
 # toggles landing on the backlog (CHUMP_PR_AUTO_REBASE_NO_THROTTLE #3806, CHUMP_ROT_REAPER_
 # REQUIRED_CHECKS #3809) with 2 slack remaining so the gate stops being a zero-headroom tripwire
 # (INFRA-3625 AC#4). Recurring cull tracked by INFRA-3625.
+#
+# 232 -> 225 (2026-08-16, INFRA-3625, second slice): the backlog toggles from the
+# entry above landed and re-consumed the headroom — main sat pinned at 232=232 with
+# ZERO headroom again, exactly the "recurring" failure mode this gap exists to fix.
+# This slice does three things:
+#   (a) Fixed a scanner false-positive: the unanchored regex counted
+#       `_CHUMP_DISK_CHECK_LOADED` (an internal re-source guard in
+#       scripts/lib/disk-check.sh, not an operator toggle) as `CHUMP_DISK_CHECK_
+#       LOADED` via substring match. test-no-new-bypass-env-vars.sh now requires a
+#       real word boundary via a negative lookbehind.
+#   (b) Audited every remaining CHUMP_*_(BYPASS|SKIP|IGNORE|CHECK|NO_) var and
+#       removed ELEVEN more with ZERO functional read-sites anywhere in
+#       scripts/src/crates (each confirmed by hand — no env::var()/${...} read,
+#       no grep-based opt-out scan, nothing): CHUMP_BUILD_CHECK (cargo-culted
+#       alongside real CHUMP_FMT_CHECK/CHUMP_LEASE_CHECK, itself never read),
+#       CHUMP_FIX_TRUNK_SKIP_AUTH_SMOKE (registry-only), CHUMP_GAP_PREFLIGHT_SKIP
+#       (test comment claimed it was the "primary guard" — the state.db fixture
+#       seed was actually doing all the work), CHUMP_NO_BANNER (set on a Python
+#       subprocess env, chump never reads it), CHUMP_NO_CLAUDE_LEAK_BYPASS
+#       (advertised in a help string, gate never checks it — gate is warn-only
+#       and only reads the opposite-direction _STRICT var), CHUMP_PATH_CASE_CHECK
+#       (set defensively in a test alongside real vars, itself never read),
+#       CHUMP_PREFLIGHT_PR_CHECK (documented in two docs + a smoke test, never
+#       wired into gap-preflight), CHUMP_PR_SCOPE_CHECK (a doc-comment usage
+#       example in gate-emit.sh that was never implemented), CHUMP_QUEUE_
+#       STAGNATION_SKIP_RECALL (registry-only), CHUMP_SKIP_PILLAR_BALANCE_CHECK
+#       and CHUMP_SKIP_SIMILARITY_CHECK (both set before `chump gap reserve` in a
+#       test, but the real bypass for that gate is CHUMP_GAP_RESERVE_NO_SIMILARITY
+#       — these two were never read by the binary at all).
+#       NOT removed despite looking similar: CHUMP_SKIP_SPIKE_ISOLATION_CHECK (a
+#       real grep-based opt-out marker read by test-spike-isolation.sh),
+#       CHUMP_NO_TOAST (read via localStorage in web/v2/inbox-notifications.js),
+#       CHUMP_SELF_HOSTED_FAST_CHECKS (read via the `vars.` context in
+#       .github/workflows/ci.yml) — all three are live, just not env::var()-style.
+#   (c) scripts/ops/bypass-var-cull-audit.sh (+ chump-bypass-var-cull.service/
+#       .timer, daily cadence, registered in install-helsinki-atc.sh's ATC
+#       roster) — a reaper-pattern organ that recomputes headroom on schedule and
+#       WARNs (exit 1, reaper_run status=warn) when headroom drops below
+#       CHUMP_DEBT_VAR_HEADROOM_MIN (default 3), surfacing single-file/no-read-
+#       site candidates for the next manual cull. Read-only: never edits this
+#       file or deletes anything itself — ratcheting down still requires a
+#       human/gap, same as every entry above. This is the RECURRING half AC #3
+#       asked for; a one-off cull (like the 234->232 entry above) only buys time
+#       until the count climbs back to the ceiling, which is exactly what
+#       happened in the ~24h between that cull and this one.
+# True live count 232 -> 220 (11 dead vars culled + 1 scanner false-positive
+# fixed). New ceiling 225 = 220 + 5 headroom, comfortably above the cull-audit
+# organ's default WARN threshold (headroom < 3) so the recurring check has room
+# to catch the next drift before it re-pins the gate at zero.

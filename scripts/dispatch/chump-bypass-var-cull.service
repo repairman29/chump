@@ -1,0 +1,23 @@
+# INFRA-3625 — the bypass-var-cull-audit organ. Runs
+# scripts/ops/bypass-var-cull-audit.sh: recomputes the live CHUMP_*_(BYPASS|
+# SKIP|IGNORE|CHECK|NO_) var count against scripts/ci/bypass-var-ceiling.txt,
+# reports headroom, and surfaces single-file/no-read-site candidates for the
+# next manual cull. WARNs (exit 1, reaper_run status=warn) when headroom
+# drops below CHUMP_DEBT_VAR_HEADROOM_MIN (default 3) — this is the recurring
+# half of the fix (see bypass-var-ceiling.txt changelog); a one-off cull only
+# buys time until the count climbs back to the ceiling.
+#
+# Read-only: never edits the ceiling file or deletes a var itself — ratchet-
+# down still requires a human/gap, same as every prior ceiling bump.
+#
+# Mirrors chump-rot-reaper.service (paths / primary node = helsinki, root).
+[Unit]
+Description=Chump bypass-var-cull-audit — recurring headroom check for the bypass-var debt ceiling (INFRA-3625)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; cd /root/Projects/chump; exec bash scripts/ops/bypass-var-cull-audit.sh'

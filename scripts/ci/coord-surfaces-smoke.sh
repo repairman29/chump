@@ -48,7 +48,6 @@ export CHUMP_SESSION_ID="coord-surfaces-smoke-$$"
 # Smoke test creates an ephemeral gap — skip guards that check for real remote
 # branches (INFRA-573) or open PRs (INFRA-273) to avoid collisions with live work.
 export CHUMP_ALLOW_REUSE_BRANCH=1
-export CHUMP_PREFLIGHT_PR_CHECK=0
 
 if [[ ! -x "$BIN_DIR/chump" ]]; then
   echo "coord-surfaces-smoke: building chump ($BIN_DIR/chump) …" >&2

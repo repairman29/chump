@@ -1888,7 +1888,6 @@ CHUMP_QUEUE_STAGNATION_DISABLE
 # detected in: (standard input)
 CHUMP_QUEUE_STAGNATION_MIN_PICKABLE
 # detected in: (standard input)
-CHUMP_QUEUE_STAGNATION_SKIP_RECALL
 # detected in: (standard input)
 CHUMP_QUEUE_STAGNATION_STATE_DB
 # detected in: (standard input)
@@ -1900,7 +1899,6 @@ CHUMP_NATS_WORK_BOARD_BUCKET
 # detected in: (standard input)
 CHUMP_SESSION_INVENTORY_DIGEST
 CHUMP_EVENT_REGISTRY_CHECK
-CHUMP_FIX_TRUNK_SKIP_AUTH_SMOKE
 # detected in: (standard input)
 CHUMP_SUBPROC_SMOKE_AMBIENT
 # detected in: (standard input)
@@ -1931,3 +1929,40 @@ CHUMP_PATTERN_FIX_DRY_RUN
 # detected in: (standard input)
 CHUMP_PATTERN_FIX_PATTERNS_FILE
 CHUMP_INVENTORY_AUTO_FILE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ALLOW_REUSE_BRANCH
+# detected in: (standard input)
+CHUMP_AUTO_CLOSE_GAP
+# detected in: (standard input)
+CHUMP_BUILD_CHECK
+# detected in: (standard input)
+CHUMP_CODEREVIEW
+# detected in: (standard input)
+CHUMP_DEAD_SKIP
+# detected in: (standard input)
+CHUMP_DEBT_VAR_CULL_ROOT_OVERRIDE
+# detected in: (standard input)
+CHUMP_DEBT_VAR_HEADROOM_MIN
+# detected in: (standard input)
+CHUMP_DISK_CHECK_LOADED
+# detected in: (standard input)
+CHUMP_GAP_PREFLIGHT_SKIP
+# detected in: (standard input)
+CHUMP_LIVE_BYPASS
+# detected in: (standard input)
+CHUMP_NO_BANNER
+# detected in: (standard input)
+CHUMP_NO_CLAUDE_LEAK_BYPASS
+# detected in: (standard input)
+CHUMP_PATH_CASE_CHECK
+# detected in: (standard input)
+CHUMP_PREFLIGHT_PR_CHECK
+# detected in: (standard input)
+CHUMP_PR_SCOPE_CHECK
+# detected in: (standard input)
+CHUMP_SKIP_PILLAR_BALANCE_CHECK
+# detected in: (standard input)
+CHUMP_SKIP_SIMILARITY_CHECK
