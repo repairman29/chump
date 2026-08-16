@@ -69166,6 +69166,19 @@ gaps:
     [2026-08-16T18:00:30Z] CORRECTION 2026-08-16 (operator): ship-source is NOT an unknown/blocker — I over-alarmed. Shipping is DISTRIBUTED across 2 claude agents (mac tmux fleet) + helsinki + pixel (shipped some earlier). Operator not concerned. Reframe: no single node being load-bearing is a CUTOVER ASSET, not a risk — helsinki can go offline and the mac agents + pixel keep shipping. Downgrade checklist item 1 from blocking-unknown to known-distributed. Real remaining coordination is just: discord-gateway port, backlog-writer single-owner handoff, organs-off-before-on sequencing, and a rehearsal.
   outcome_id: SOVEREIGN
 
+- id: RESILIENT-355
+  domain: RESILIENT
+  title: "RESILIENT: integrate pixel Helsinki-port artifacts into repo + refresh PIXEL_NODE.md (close the reproducibility gap; artifacts stashed at refs/stash/pixel-migration-2026-08-16)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    The Helsinki->Pixel migration built this session (RESILIENT-349) lives only on the device (~/organs, ~/witness) + was in ephemeral scratchpad — NOT reproducible from the repo, violating SOVEREIGN reproducibility + plan-B-rehearsable-from-git doctrine. PRESERVED 2026-08-16 at refs/stash/pixel-migration-2026-08-16 (commit a737b2de, scripts/nodes/pixel/): organ-runner.sh, organ-manifest.txt, witness-probe.py, patched pixel-node-supervisor.sh (start_organs), boot hook, README. This gap INTEGRATES them into the tracked repo properly: (1) land scripts/nodes/pixel/ (or fold into scripts/setup/ matching existing pixel-*.sh convention) so a fresh pixel is reproducible; (2) the committed scripts/setup/pixel-node-supervisor.sh is now STALE vs the live patched one (drift) — reconcile; (3) refresh docs/architecture/PIXEL_NODE.md with the standby-patient organ architecture, the promote-to-ACTIVE steps, the loop-vs-oneshot organ split, and the CHUMP_REPO path-port gotcha; (4) add a deploy-pixel-organs step to the existing deploy-pixel-node.sh so the organ layer installs with the node. Cross-ref RESILIENT-349 (milestone), RESILIENT-354 (cutover), RESILIENT-348 (witness).
+  acceptance_criteria:
+    - scripts/nodes/pixel artifacts committed to main (from refs/stash/pixel-migration-2026-08-16); a fresh pixel node is reproducible from the repo
+    - docs/architecture/PIXEL_NODE.md refreshed with the standby-patient organ architecture + promote steps; committed pixel-node-supervisor.sh drift reconciled with the live version
+  outcome_id: SOVEREIGN
+
 - id: SMOKE-001
   domain: SMOKE
   title: coord-surfaces-smoke fixture (auto-clean)
