@@ -1800,6 +1800,16 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // INFRA-2338: install-trunk-sentinel.sh smoke. Verifies the installer
+        // writes BOTH the trunk-sentinel plist AND the fix-trunk-dispatcher
+        // plist, with REPO_ROOT correctly substituted. Mocks launchctl/plutil
+        // via a stub bin dir; no real launchd touched.
+        steps.push(step(
+            "install-trunk-sentinel",
+            &["bash", "scripts/ci/test-install-trunk-sentinel.sh"],
+            GateKind::Scripts,
+        ));
+
         // INFRA-1808: every scripts/setup/install-*.sh must be mode 0755.
         // install-bot-merge-watchdog.sh shipped 0644 and silently never ran
         // via chump-fleet-bootstrap.sh for days. Pure stat check, <1s.
