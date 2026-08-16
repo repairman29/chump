@@ -1496,6 +1496,19 @@ if [[ -n "$_CI_REG_GUARD" ]] && [[ -x "$_CI_REG_GUARD" ]] && [[ "${CHUMP_CI_REGR
     fi
 fi
 
+# ── INFRA-2322: actionlint pre-push gate ──────────────────────────────────────
+# When a push touches .github/workflows/*.yml, run actionlint locally (if
+# installed) to catch the matrix-in-if and version-typo classes before CI
+# round-trip. Skips gracefully (non-blocking) when the binary is absent.
+_ACTIONLINT_GUARD="${_CI_REG_ROOT:+$_CI_REG_ROOT/scripts/git-hooks/pre-push-actionlint-guard.sh}"
+if [[ -n "$_ACTIONLINT_GUARD" ]] && [[ -x "$_ACTIONLINT_GUARD" ]] && [[ "${CHUMP_ACTIONLINT_GUARD:-1}" != "0" ]]; then
+    if ! bash "$_ACTIONLINT_GUARD" >&2; then
+        echo "[pre-push] actionlint guard failed — push blocked." >&2
+        echo "[pre-push] Bypass (rare): CHUMP_ACTIONLINT_GUARD=0 git push" >&2
+        exit 1
+    fi
+fi
+
 # -----------------------------------------------------------------------
 # Guard 5: Branch-name claim contract (RESILIENT-026, 2026-05-27)
 #
