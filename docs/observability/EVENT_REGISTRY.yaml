@@ -8936,25 +8936,26 @@ events:
 
   - kind: consensus_resolved
     effect_metric: self
-    emitter: crates/chump-coord/src/consensus.rs (ConsensusCoordinator::finalize_vote, INFRA-1803/INFRA-2274)
+    emitter: src/bin/consensus_aggregator_daemon.rs (chump-consensus-aggregator-daemon, INFRA-2159/META-125 C8)
     # scanner-anchor: "kind":"consensus_resolved"
     trigger: >
-      Promoted here from the scripts/ci/event-registry-reserved.txt-only
-      entry it had before this gap (INFRA-2162). `chump pe-suite status`
-      (src/pe_suite_status.rs, INFRA-2229) already reads this kind for its
-      "convergence rate" metric, and scripts/demo/chump-pe-suite-demo.sh
-      already emits a synthetic fixture line for it — but
-      `ConsensusCoordinator::finalize_vote` in this file does not yet write
-      to ambient.jsonl for real, so the live dashboard has zero real signal
-      today (only the demo fixture exercises it). This is the concrete gap
-      a follow-up should close: wire a real ambient emit into
-      `finalize_vote`, or point `chump pe-suite status` at the
-      already-live `consensus_result` (scripts/coord/deliberator-loop.sh)
-      instead of maintaining two parallel "decision is final" kinds.
+      INFRA-2159 (META-125/C8) wired the first real production emitter:
+      `chump-consensus-aggregator-daemon` polls ambient.jsonl for
+      `kind=vote` events per corr_id and, at quorum-or-timeout, emits this
+      event with a confidence-weighted decision plus raw votes_for/
+      votes_against counts, and writes the same record to
+      `.chump/state.db` (table consensus_decisions) for queryable
+      history. `chump pe-suite status` (src/pe_suite_status.rs,
+      INFRA-2229) reads this kind for its "convergence rate" metric — it
+      now has real signal to read in addition to the
+      scripts/demo/chump-pe-suite-demo.sh synthetic fixture line.
+      `crates/chump-coord/src/consensus.rs`'s
+      `ConsensusCoordinator::finalize_vote` remains an in-memory-only
+      primitive (unrelated call path); it still does not emit this kind.
     consumers: [chump-pe-suite-status, ops-audit]
     fields_required: [ts, kind, corr_id, decision, votes_for, votes_against]
-    expected_volume: "none today; consumer (pe-suite status) currently blind to real events, only demo fixtures exercise it"
-    status: planned
+    expected_volume: "one per resolved corr_id (quorum reached or vote deadline passed); low — gated by how many chump vote proposals are in flight"
+    status: live
     # payload: {corr_id: string, decision: string, votes_for: number, votes_against: number, ts: string}
 
   - kind: consensus_decision_emitted
