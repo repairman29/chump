@@ -11597,6 +11597,23 @@ gaps:
   notes: |
     DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-463 (score 0.76) considered at reserve time — proceeded (advisory-only, no override flag used).
 
+- id: EFFECTIVE-497
+  domain: EFFECTIVE
+  title: Sovereign data plane — go/no-go on replacing Supabase (product persistence) with an owned-hardware store on CJ/Pixel, and unify it with the fleet gap-registry coordination (RESILIENT-356)
+  status: open
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - "The change described by \"Sovereign data plane — go/no-go on replacing Supabase (product persistence) with an owned-hardware store on CJ/Pixel, and unify it with the fleet gap-registry coordination (RESILIENT-356)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: SOVEREIGN
+  evidence: |
+    COMMAND: almanac_search_fleet supabase footprint + self-host alternatives; read chump-gap-store reserve() + docs/gaps/README.
+    OUTPUT: TWO distinct data layers. Layer 1 = fleet coordination (state.db SQLite + NATS-KV) — already off Supabase; its only defect is per-node ID minting (RESILIENT-356). Layer 2 = product persistence (olive, upshift, smuggler, beast-mode, games) on the shared Supabase mega-DB (Postgres+auth+RLS+edge+realtime). beast-mode already talks raw Postgres (apply-migrations-pg.js) = most portable; olive/smuggler use the Supabase client heavily.
+    THEORY: sovereignty (SOVEREIGN outcome = fleet on owned metal) requires Layer 2 off rented Supabase. Owned-hardware candidates: PocketBase (single Go binary, SQLite+auth+realtime+rules, runs ARM — best offline-first fit, PocketAgent already circling), self-hosted Postgres+PostgREST (feature-parity, heavier), rqlite/dqlite (Raft SQLite — ALSO solves Layer 1). Unification: a SQLite-family sovereign store can host BOTH product data AND the coordinated gap registry (ID authority = one table). Constraint: primary DB on CJ (always-on owned machine), NOT the resource-constrained Pixel (same phone-cant-be-primary rule as PIXEL_NODE.md); Pixel = anchor/witness.
+    ALT / NEXT: run a prior-art dig (prior-art skill) comparing PocketBase vs self-hosted-PG vs rqlite vs ElectricSQL against real needs (per-app migration cost, auth/RLS parity, realtime, ARM/CJ hosting, backup/DR), THEN a per-app coupling assessment (olive/upshift/smuggler/beast-mode/games), THEN a go/no-go. Do NOT pick the tech from keyword hits — verify against actual usage + external prior art. depends_on: RESILIENT-356 (Layer-1 coordination) as the shared-substrate proof-of-concept.
+
 - id: EVAL-085
   title: test eval 085
   status: done
@@ -53657,6 +53674,17 @@ gaps:
     [2026-08-16T17:27:17Z] [2026-08-16] Filed from INFRA-2294 design doc. DO NOT CLAIM until docs/design/COCKPIT_SCRUBBER_UNIFIED.md has operator sign-off (AC5 of INFRA-2294).
   outcome_id: MISSION-010
 
+- id: INFRA-3639
+  domain: INFRA
+  title: Complete the docs/gaps YAML retirement — 3496 git-TRACKED *.yaml persist despite ZERO-WASTE-020 (2026-07-19) + sync.rs still writes them = stale third source of gap truth + repo bloat
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"Complete the docs/gaps YAML retirement — 3496 git-TRACKED *.yaml persist despite ZERO-WASTE-020 (2026-07-19) + sync.rs still writes them = stale third source of gap truth + repo bloat\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+
 - id: INFRA-372
   domain: INFRA
   title: "EFFECTIVE: anthropic prompt caching for chump-local backend — add cache_control on CLAUDE.md+lessons+briefing prefix"
@@ -69076,13 +69104,7 @@ gaps:
   acceptance_criteria:
     - "[\"Stage 0 answered and recorded (dedicated vs daily driver) before Stage 1 begins\",\"Stage 1: Pixel on tailnet running worker + embeddings + witness from vendored prior art; helsinki config untouched; aarch64 chump binary produced by CI not on-device\",\"Stage 2: 14-day soak report with the defined metrics, including at least one forced-reboot recovery and one sustained-load thermal measurement; self-heal-equivalent demonstrably revives a killed organ\",\"Stage 3: written GO/NO-GO with numbers vs thresholds; if GO, migration plan doc with broker-last ordering; if NO-GO, Pixel third-node role made permanent in the organ manifest + nodes map updated\"]"
   notes: |
-    IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was RESILIENT-336; mac side now frozen/migrated). Original notes follow.
-    
-    [2026-08-16T04:10:00Z] TERMUX:BOOT DEFERRED (operator decision). adb install of termux-boot v0.8.1 FAILS: INSTALL_FAILED_SHARED_USER_INCOMPATIBLE — Termux (0.119.0-beta.3, May 2025) and Termux:Boot share sharedUserId com.termux but the newest Termux:Boot APK (v0.8.1, Jun 2024) is signed with a rotated key. No newer Termux:Boot release exists (repo has Jan-2026 commits, unreleased). Fix = reinstall Termux stable v0.118.3 + Termux:Boot v0.8.1 from same signing era (verify certs first), then re-deploy binary/models/witness/env. Device is dedicated+plugged so witness+wake-lock survive normal ops; Termux:Boot only needed for the Stage-2 forced-reboot drill.
-    [2026-08-16T13:56:56Z] PIXEL CURRENT-STATE INVENTORY 2026-08-16 (verified live over ssh; the running-vs-left truth). RUNNING NOW: sshd :8022, ONE supervisor-owned express-lane worker (WORKER_SKILLS=docs/shell/scripts/md, backend=chump-local, FLEET_PRIORITY_FILTER=P1,P2), pixel-node-supervisor (is_alive guard + wake-lock crash-restart — guard is CORRECT, earlier duplicate-worker pileup was operator-session manual test orphans, cleaned), witness loop (5-min helsinki probes, own creds/power/network), node v24.18. WIRED-NOT-PROVEN: codestral slot 14 priority 1 (only alive code model; on first fair test; cascade double-defect = CREDIBLE-296). INSTALLED-BUT-IDLE (the LEFT work): (1) llama.cpp built + 3 Qwen GGUF on disk but NOT wired as a cascade entry — this is the sovereign never-429 local floor, unused; wiring it is the highest-value remaining slice (a phone worker that never rate-limits). (2) aarch64 chump binary runs (2026-08-15 build) + chump-brain db (12 entries) but the native-chump-node path is not driving work — bigpickle worker uses chump-local cascade instead. MISSING (2 physical touches): Termux:Boot app uninstalled = NO reboot survival (hooks staged+correct but nothing fires them; crash self-heals, reboot goes dark); wireless-ADB off = hands un-armed. HW: 9 cores, 11.8GB RAM, 80GB free, AC. NOT DONE: patient-candidacy still needs the 72h gauntlet + local-model floor + reboot survival.
-    [2026-08-16T14:16:16Z] REBOOT SURVIVAL + HANDS ARMED 2026-08-16 (via ADB): (1) Termux:Boot installed — official F-Droid build v0.8.1 vc1000, cert-verified to MATCH installed Termux (sha256 228fb2cf...; GitHub-signed build was correctly REJECTED by SHARED_USER_INCOMPATIBLE first, proving the key check works). Installed via push+pm-install (streamed adb install hung on Play-Protect; verifier toggled off then restored). Receiver holds BOOT_COMPLETED, hooks exec-bit set. CAVEAT: secure lockscreen present -> FBE keeps Termux storage locked until ONE unlock after reboot, THEN hooks fire and self-restore. True zero-touch-through-reboot needs lockscreen=None (operator security call). (2) Wireless ADB armed (192.168.86.37:35315, jarvis-era pairing survived); phantom-process bypass confirmed already-persistent (settings_enable_monitor_phantom_procs=false, max_phantom=MAX). ADB port resets per reboot. NET: crash-survival + reboot-survival(gated) + hands all live. REMAINING top item: wire llama.cpp+Qwen local floor as never-429 cascade tail.
-    [2026-08-16T14:38:54Z] CASCADE WIRED + LOCAL FLOOR ASSESSED 2026-08-16: (1) codestral now primary — slot14 pri1, verified selecting AFTER restart (running worker had 8h-stale env; the restart was the fix, not the config edit); codestral gives real coherent output. (2) 429-storm/no-ship was NOT the model — see RESILIENT-353: worker picks gaps needing cargo/grep/find (sandbox-blocked). (3) LOCAL FLOOR: llama.cpp + Qwen 3B/4B on disk but llama-server FAILS to load reliably (RSS stays KB, never resident, empty log; llama-cli load >2min). With operator note it cannot write code, local floor is NOT viable as-is. Deferred: needs tiny coder model (Qwen2.5-Coder-0.5B/1.5B) + llama.cpp debug; low priority vs gap-matching.
-    [2026-08-16T17:15:26Z] HELSINKI ORGANS NOW RUN ON THE PIXEL 2026-08-16 (the goal, first real milestone). Built pixel-native port of Helsinki systemd organ set: ~/organs/runner.sh (Termux cadence scheduler) + ~/organs/manifest (Helsinki organ commands, pixel-pathed) + Termux:Boot hook + supervised by pixel-node-supervisor (pid-tracked, crash-restart). PROVEN: conductor (ATC brain, chump self-rescue-loop) rc=0 and farmer rc=0 executing on the pixel on cadence. Key ports: CHUMP_REPO env (scripts hardcode via CHUMP_REPO:-/root/Projects/chump); loop-organs vs oneshot-organs split (conductor is a persistent loop, handled separately from the cadence oneshots); supervisor persistence (nohup-over-ssh dies, supervisor respawns). SAFETY: backlog-sync-writer EXCLUDED (single-writer, 2 nodes=split-brain); mutating organs (pr-lander/keep-mergeable/rebaser/rot-reaper) gated behind ~/organs/ACTIVE = STANDBY (no double-action vs Helsinki); AUTONOMY_LEVEL=0 (conductor stands down). PROMOTE to active patient = touch ~/organs/ACTIVE + set AUTONOMY_LEVEL=1. REMAINING for full patient: (1) worker organ needs cargo toolchain (the furnace); (2) own NATS broker; (3) conductor-as-persistent-process refinement.
+    REF CORRECTION (crew-chief 2026-08-16): occurrences of witness per RESILIENT-335 in this gap should read RESILIENT-348. The witness work was renumbered 335->348 in the split-brain resolution; RESILIENT-335 is now A2A L2b (RPC reply-correlation). Root cause of the collision tracked in the new ID-uniqueness gap below.
   outcome_id: SOVEREIGN
 
 - id: RESILIENT-350
@@ -69180,6 +69202,40 @@ gaps:
     - scripts/nodes/pixel artifacts committed to main (from refs/stash/pixel-migration-2026-08-16); a fresh pixel node is reproducible from the repo
     - docs/architecture/PIXEL_NODE.md refreshed with the standby-patient organ architecture + promote steps; committed pixel-node-supervisor.sh drift reconciled with the live version
   outcome_id: SOVEREIGN
+
+- id: RESILIENT-356
+  domain: RESILIENT
+  title: Gap-ID minting is per-node-local (state.db counter, gitignored) → concurrent multi-node reserves COLLIDE — a correctness prerequisite for sovereign/multi-node
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"Gap-ID minting is per-node-local (state.db counter, gitignored) → concurrent multi-node reserves COLLIDE — a correctness prerequisite for sovereign/multi-node\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: SOVEREIGN
+  evidence: |
+    COMMAND: almanac_search gap-id allocation -> crates/chump-gap-store/src/lib.rs:1310-1460 reserve(); read reserve() + docs/gaps/README.md.
+    OUTPUT: reserve() mints the next ID from a per-domain counter in .chump/state.db, which docs/gaps/README confirms is machine-local + gitignored (canonical but NOT git-tracked; only the state.sql dump is). CREDIBLE-052 collision-skip dedupes only WITHIN one state.db. So two nodes that reserve before syncing mint the SAME id — proven live: RESILIENT-335 was double-minted (A2A L2b vs the pixel witness), forcing the witness to renumber 335->348 and leaving a dangling ref in RESILIENT-349. state.sql has a regen merge-driver but the two-gaps-one-id still needs a manual renumber.
+    THEORY: ID minting is per-node-local, NOT globally coordinated. As the fleet goes sovereign/multi-node (Pixel + Mac + helsinki all reserving), concurrent reserves collide -> silent overwrite/renumber + dangling cross-refs. This is a correctness prerequisite for SOVEREIGN (the outcome is literally multi-owned-node).
+    ALT: (a) route reserve through a single authority — the primary state.db over NATS/A2A RPC (ties to RESILIENT-334 subscribe-loop) so ID minting is serialized fleet-wide; (b) per-node ID-space partition (node prefix or reserved numeric range); (c) reserve->sync->verify-unique->auto-renumber with a stable alias. (a) is cleanest once the A2A subscribe path lands.
+
+- id: RESILIENT-357
+  domain: RESILIENT
+  title: Mac-free Claude auth — the OAuth token refreshes ONLY on the Mac (Keychain); owned nodes have no refresher, so the fleet loses Claude access when the Mac is off (the keystone Mac-free blocker)
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"Mac-free Claude auth — the OAuth token refreshes ONLY on the Mac (Keychain); owned nodes have no refresher, so the fleet loses Claude access when the Mac is off (the keystone Mac-free blocker)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: SOVEREIGN
+  evidence: |
+    COMMAND: grep CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY in /root/.chump/providers.env; systemctl list-units | grep oauth on helsinki; read CLAUDE.md Auth-modes + oauth-token-refresh.sh.
+    OUTPUT: helsinki authenticates to Claude via CLAUDE_CODE_OAUTH_TOKEN (subscription OAuth), and has ZERO oauth-refresh units. CLAUDE.md confirms scripts/coord/oauth-token-refresh.sh is macOS-Keychain-only (extracts from the Keychain entry Claude Code-credentials) and Linux hosts get a loud kind=oauth_refresh_unsupported_platform no-op; a Linux-native keystore/env-fallback path is an explicitly OPEN operator decision. The token went 16d stale once when the Mac plist was unloaded (INFRA-1865). FLEET_LOAD_MAP.md lists oauth-refresh/token-tether among the Mac load-bearing pieces to move.
+    THEORY: SOVEREIGN (fleet on owned metal, Mac not load-bearing) is BLOCKED here: no owned always-on node can keep the Claude subscription token fresh. Mac off -> token staleness -> fleet-wide loss of Claude (frontier authoring/judgment). This is the keystone Mac-free dependency.
+    ALT: (a) switch owned nodes (Pixel/CJ) to ANTHROPIC_API_KEY (API-key path, no Keychain, Mac-free — but metered API cost, not the flat subscription); (b) build a Linux-native OAuth refresh/keystore (headless token acquisition + refresh on CJ/Pixel) — the open decision CLAUDE.md names; (c) hybrid: API-key default on owned nodes, subscription only for interactive Mac sessions. Decide (a) vs (b) — it sets the sovereign cost model. Pairs with FLEET_LOAD_MAP.md (needs a Pixel-destination refresh) + the Discord-as-sole-interface completeness check.
 
 - id: SMOKE-001
   domain: SMOKE
