@@ -11640,6 +11640,19 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   outcome_id: SOVEREIGN
 
+- id: EFFECTIVE-500
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [triage] fix PR #3850 (INFRA-2249) — real CI failures (fast-checks,fast-checks-required,test,verified) keeping valuable work off main"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[triage] fix PR #3850 (INFRA-2249) — real CI failures (fast-checks,fast-checks-required,test,verified) keeping valuable work off main\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-463 (score 0.80) considered at reserve time — proceeded (advisory-only, no override flag used).
+
 - id: EVAL-085
   title: test eval 085
   status: done
@@ -27670,6 +27683,7 @@ gaps:
     [2026-08-16T18:15:23Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T18:45:23Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T19:15:24Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 7h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T19:45:24Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 7h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-1966
@@ -27685,6 +27699,7 @@ gaps:
     [2026-08-16T18:15:20Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T18:45:20Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T19:15:21Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T19:45:21Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 7h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-1967
@@ -34174,11 +34189,12 @@ gaps:
 - id: INFRA-2322
   domain: INFRA
   title: pre-push actionlint gate — prevent matrix-in-if and version-typo class from reaching main
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "1. scripts/git-hooks/pre-push-actionlint-guard.sh exists, is wired into scripts/git-hooks/pre-push, and runs actionlint against changed .github/workflows/*.yml files on push\n2. Guard emits kind=actionlint_guard_passed/blocked/skipped to ambient.jsonl with duration_ms (cost tracking); registered in EVENT_REGISTRY.yaml\n3. Failure-class taxonomy: actionlint findings block the push (permanent); missing actionlint binary or unresolvable base ref skip non-blocking (transient)\n4. Smoke test scripts/ci/test-pre-push-actionlint-guard.sh passes and exercises pass/block/skip/bypass paths"
+  closed_pr: 3852
   outcome_id: MISSION-010
 
 - id: INFRA-2323
@@ -34408,14 +34424,15 @@ gaps:
 - id: INFRA-2338
   domain: INFRA
   title: extend install-trunk-sentinel.sh to also install fix-trunk-dispatcher plist with REPO_ROOT substitution
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - install-trunk-sentinel.sh writes both com.chump.trunk-sentinel.plist and com.chump.fix-trunk-dispatcher.plist
+    - both plists have REPO_ROOT/WorkingDirectory/ProgramArguments substituted with the resolved main-worktree path, no literal REPO_ROOT placeholder left
+    - smoke test (scripts/ci/test-install-trunk-sentinel.sh) mocks launchctl/plutil and verifies the above, wired into CI and chump preflight
+  closed_date: '2026-08-16'
+  closed_pr: 3853
   outcome_id: MISSION-010
 
 - id: INFRA-2339
@@ -34482,10 +34499,10 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - inbox-check-urgent.sh emits kind=inbox_urgent_surfaced on success (with duration_ms) and kind=inbox_urgent_check_failed on failure/timeout, tagged reason + class
+    - "cost: this hook has no LLM/API cost (local bash+python3, no model call); duration_ms on inbox_urgent_surfaced is the perf/cost proxy against the documented <50ms budget"
+    - "failure-class taxonomy: class=transient (python3 missing, parse/render timeout - cursor NOT advanced, retried next PreToolUse tick) vs class=permanent (cursor write failed - message was shown but will keep re-surfacing until the write path is fixed)"
+    - "smoke test: bash scripts/ci/test-inbox-urgent-hook-failures.sh (python3-missing, malformed JSON, forced timeout, cursor-write-denied, duration_ms-present)"
   outcome_id: MISSION-010
 
 - id: INFRA-2343

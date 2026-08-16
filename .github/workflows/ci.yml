@@ -625,6 +625,13 @@ jobs:
       - name: META-118 daemon install smoke (INFRA-2280)
         run: bash scripts/ci/test-meta-118-daemon-install.sh
 
+      # INFRA-2338: install-trunk-sentinel.sh smoke — verifies the installer
+      # writes BOTH the trunk-sentinel plist AND the fix-trunk-dispatcher
+      # plist, with REPO_ROOT correctly substituted (no leftover literal
+      # placeholder). Mocks launchctl/plutil; safe in Linux CI.
+      - name: Install-trunk-sentinel smoke (INFRA-2338)
+        run: bash scripts/ci/test-install-trunk-sentinel.sh
+
       # INFRA-2419: plist-no-tmp-paths gate — verifies no plist template bakes
       # an ephemeral temp path (/tmp/, /private/tmp/, /var/folders/, $TMPDIR)
       # into ProgramArguments or WorkingDirectory. Root cause of the 145-crash
