@@ -10841,3 +10841,41 @@ events:
       push + auto-merge-arm cycle for a stale DIRTY PR.
     consumers: [ambient]
     fields_required: [pr_number, gap_id, bypasses_used, elapsed_s]
+
+  - kind: keep_mergeable_rebased
+    effect_metric: pr_rescue_action_within_4h
+    emitter: scripts/coord/keep-mergeable.sh (RESILIENT-342)
+    trigger: an open PR (armed or not) was DIRTY/BEHIND, rebased cleanly
+      onto current origin/main in a throwaway worktree, and force-pushed
+      with --force-with-lease.
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, pr, branch]
+
+  - kind: keep_mergeable_needs_escalation
+    effect_metric: pr_rescue_action_within_4h
+    emitter: scripts/coord/keep-mergeable.sh (RESILIENT-342)
+    trigger: keep-mergeable.sh could not auto-resolve a PR (real rebase
+      conflict, branch fetch failure, or push-after-clean-rebase failure)
+      — it never force-pushes a broken state, so it flags the PR (ambient
+      + capped-frequency PR comment) for a human / conflict-resolver
+      instead of leaving it to rot.
+    consumers: [audit-log, fleet]
+    fields_required: [ts, kind, pr, reason]
+
+  - kind: keep_mergeable_checks_rerun
+    effect_metric: pr_rescue_action_within_4h
+    emitter: scripts/coord/keep-mergeable.sh (RESILIENT-342)
+    trigger: a CLEAN open PR had a FAILED required check on its current
+      head sha; keep-mergeable.sh reran the failed check suite (one
+      attempt per cooldown window) instead of leaving it stale-failed.
+    consumers: [ambient]
+    fields_required: [ts, kind, pr, sha]
+
+  - kind: keep_mergeable_tick
+    effect_metric: self
+    emitter: scripts/coord/keep-mergeable.sh (RESILIENT-342)
+    trigger: end of a keep-mergeable.sh pass over the open-PR set —
+      summary counters so the organ's liveness/output is auditable
+      without grepping per-PR events.
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, rebased, escalated, rechecked]
