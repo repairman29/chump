@@ -27625,6 +27625,7 @@ gaps:
     [2026-08-16T17:15:16Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T17:45:20Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T18:15:23Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T18:45:23Z] rot-reaper: PR #3837 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-1966
@@ -27638,6 +27639,7 @@ gaps:
   notes: |
     [2026-08-16T17:45:16Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T18:15:20Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T18:45:20Z] rot-reaper: PR #3838 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-1967
