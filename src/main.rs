@@ -2096,6 +2096,22 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("claim") {
         let repo_root = repo_path::repo_root();
 
+        // INFRA-2360: `chump claim <GAP-ID> --disk-plan-check-only` — smoke-test
+        // entry point for the pre-claim disk-plan check's observability
+        // (events + cost + failure taxonomy), without touching leases,
+        // worktrees, or state.db. Checked before the farmer gate since it
+        // doesn't perform a real claim.
+        if args.iter().any(|a| a == "--disk-plan-check-only") {
+            let gap_id = args
+                .get(2)
+                .filter(|a| !a.starts_with("--"))
+                .cloned()
+                .unwrap_or_else(|| "smoke-test".to_string());
+            std::process::exit(atomic_claim::run_disk_plan_precheck_only(
+                &repo_root, &gap_id,
+            ));
+        }
+
         // RESILIENT-069: farmer readiness gate. RED = farmer has positive
         // evidence of trouble (stale heartbeat, exit-78 supervisor, a
         // paused-fleet sentinel, or a known-broken auth cache) — admit no

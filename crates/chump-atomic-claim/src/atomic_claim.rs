@@ -1229,6 +1229,12 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     }
 
+    // 5.5. INFRA-2360: pre-claim disk-plan check. Consults `chump disk plan
+    // chump_claim_worktree` (INFRA-2196/META-128) before the worktree is
+    // created — refuses (or warns) rather than letting a claim land on a
+    // host that's already at its disk floor.
+    disk_plan_precheck_gate(&args.repo_root, &args.gap_id, &session_id, &ambient_log)?;
+
     // 6. git worktree add -b <branch> <path> <remote>/<base>
     run_git(
         &args.repo_root,
@@ -4083,6 +4089,435 @@ fn append_ambient_line(ambient_log: &Path, event: &serde_json::Value) {
     {
         let _ = f.write_all(event.to_string().as_bytes());
         let _ = f.write_all(b"\n");
+    }
+}
+
+// ── INFRA-2360: pre-claim disk-plan check ────────────────────────────────
+//
+// Consults `chump disk plan chump_claim_worktree --count 1` (INFRA-2196,
+// META-128/C5 cost model) before `git worktree add` so a claim never lands
+// on a host that's already at its disk floor. Mirrors the
+// `chump fleet up` / `fleet auto-scale` gate (INFRA-2198, src/disk_plan_gate.rs)
+// but that module lives in the bin crate, which chump-atomic-claim cannot
+// depend on without a cycle — so the subprocess call is reimplemented here,
+// scoped to a single worktree and wired for claim-time observability.
+//
+// Bypass: CHUMP_CLAIM_SKIP_DISK_PLAN=1 skips the check entirely (emits
+// `kind=claim_disk_plan_bypassed` for audit). CHUMP_CLAIM_ALLOW_DISK_REFUSE=1
+// downgrades a REFUSE from a hard block to a warning (also audited).
+// Test hook: CHUMP_CLAIM_DISK_PLAN_BIN overrides the binary invoked.
+
+const DISK_PLAN_ACTION_CLASS: &str = "chump_claim_worktree";
+const DISK_PLAN_TIMEOUT_SECS: &str = "5";
+
+/// Why the disk-plan check itself could not produce a decision (distinct
+/// from the decision — OK/WAIT/REFUSE — that a *successful* check returns).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiskPlanFailureClass {
+    /// Retryable: IO error spawning the subprocess, or it timed out.
+    Transient,
+    /// Not retryable without operator action: exited with an unrecognized
+    /// code (contract break between `chump claim` and `chump disk plan`).
+    Permanent,
+}
+
+impl DiskPlanFailureClass {
+    fn as_str(self) -> &'static str {
+        match self {
+            DiskPlanFailureClass::Transient => "transient",
+            DiskPlanFailureClass::Permanent => "permanent",
+        }
+    }
+}
+
+/// Outcome of one disk-plan precheck run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DiskPlanPrecheckOutcome {
+    Ok,
+    Wait,
+    Refuse,
+    /// The check itself failed to run (binary missing, IO error, timeout,
+    /// unrecognized exit code). Fail-open: the caller proceeds with the
+    /// claim, but the failure is still logged with a classification so a
+    /// systemic outage (e.g. `chump disk` broken fleet-wide) is visible.
+    Failed(DiskPlanFailureClass, String),
+}
+
+fn disk_plan_binary(repo_root: &Path) -> PathBuf {
+    if let Ok(p) = std::env::var("CHUMP_CLAIM_DISK_PLAN_BIN") {
+        return PathBuf::from(p);
+    }
+    let release = repo_root.join("target/release/chump");
+    if release.exists() {
+        return release;
+    }
+    let debug = repo_root.join("target/debug/chump");
+    if debug.exists() {
+        return debug;
+    }
+    PathBuf::from("chump")
+}
+
+/// Run `chump disk plan chump_claim_worktree --count 1` under a 5s timeout
+/// and classify the result. Returns the outcome plus the wall-clock cost of
+/// the check itself (the "cost tracked" observability requirement — this is
+/// the time cost of gating a claim, reported to the operator via the
+/// `duration_ms` field on the emitted ambient event and echoed to stderr).
+fn run_disk_plan_precheck(repo_root: &Path) -> (DiskPlanPrecheckOutcome, u128) {
+    let bin = disk_plan_binary(repo_root);
+    let start = std::time::Instant::now();
+    let output = Command::new("timeout")
+        .args([
+            DISK_PLAN_TIMEOUT_SECS,
+            bin.to_string_lossy().as_ref(),
+            "disk",
+            "plan",
+            DISK_PLAN_ACTION_CLASS,
+            "--count",
+            "1",
+        ])
+        .output();
+    let duration_ms = start.elapsed().as_millis();
+
+    let outcome = match output {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => DiskPlanPrecheckOutcome::Failed(
+            DiskPlanFailureClass::Transient,
+            format!("chump binary not found at {}", bin.display()),
+        ),
+        Err(e) => DiskPlanPrecheckOutcome::Failed(
+            DiskPlanFailureClass::Transient,
+            format!("IO error spawning disk plan check: {e}"),
+        ),
+        Ok(out) => match out.status.code() {
+            Some(0) => DiskPlanPrecheckOutcome::Ok,
+            Some(2) => DiskPlanPrecheckOutcome::Wait,
+            Some(1) => DiskPlanPrecheckOutcome::Refuse,
+            Some(124) => DiskPlanPrecheckOutcome::Failed(
+                DiskPlanFailureClass::Transient,
+                format!("disk plan check timed out after {DISK_PLAN_TIMEOUT_SECS}s"),
+            ),
+            // 126/127: `timeout`'s own exit codes for "found but not
+            // executable" / "command not found" (coreutils convention) —
+            // same class as a NotFound spawn error, just surfaced one
+            // process hop later since `timeout` is what we spawn directly.
+            Some(126) | Some(127) => DiskPlanPrecheckOutcome::Failed(
+                DiskPlanFailureClass::Transient,
+                format!(
+                    "chump binary not found or not executable: {}",
+                    bin.display()
+                ),
+            ),
+            other => {
+                let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                DiskPlanPrecheckOutcome::Failed(
+                    DiskPlanFailureClass::Permanent,
+                    format!("disk plan check exited with unexpected code {other:?}: {stderr}"),
+                )
+            }
+        },
+    };
+    (outcome, duration_ms)
+}
+
+/// Gate called from `run_claim` immediately before `git worktree add`.
+/// Blocks only on an un-bypassed REFUSE; every other path fails open so a
+/// broken or absent disk-plan check never wedges the claim path.
+fn disk_plan_precheck_gate(
+    repo_root: &Path,
+    gap_id: &str,
+    session_id: &str,
+    ambient_log: &Path,
+) -> Result<()> {
+    if std::env::var("CHUMP_CLAIM_SKIP_DISK_PLAN").as_deref() == Ok("1") {
+        emit_claim_disk_plan_bypassed_event(
+            ambient_log,
+            gap_id,
+            session_id,
+            "CHUMP_CLAIM_SKIP_DISK_PLAN=1",
+        );
+        eprintln!("[claim] INFRA-2360: disk-plan check skipped (CHUMP_CLAIM_SKIP_DISK_PLAN=1)");
+        return Ok(());
+    }
+
+    let (outcome, duration_ms) = run_disk_plan_precheck(repo_root);
+    match outcome {
+        DiskPlanPrecheckOutcome::Ok => {
+            emit_claim_disk_plan_checked_event(ambient_log, gap_id, session_id, "ok", duration_ms);
+            Ok(())
+        }
+        DiskPlanPrecheckOutcome::Wait => {
+            emit_claim_disk_plan_checked_event(
+                ambient_log,
+                gap_id,
+                session_id,
+                "wait",
+                duration_ms,
+            );
+            eprintln!(
+                "[claim] INFRA-2360: disk headroom low (WAIT, {duration_ms}ms) — proceeding; disk may need attention soon."
+            );
+            Ok(())
+        }
+        DiskPlanPrecheckOutcome::Refuse => {
+            emit_claim_disk_plan_checked_event(
+                ambient_log,
+                gap_id,
+                session_id,
+                "refuse",
+                duration_ms,
+            );
+            if std::env::var("CHUMP_CLAIM_ALLOW_DISK_REFUSE").as_deref() == Ok("1") {
+                emit_claim_disk_plan_bypassed_event(
+                    ambient_log,
+                    gap_id,
+                    session_id,
+                    "CHUMP_CLAIM_ALLOW_DISK_REFUSE=1",
+                );
+                eprintln!(
+                    "[claim] INFRA-2360: disk plan REFUSE overridden via CHUMP_CLAIM_ALLOW_DISK_REFUSE=1 ({duration_ms}ms)"
+                );
+                Ok(())
+            } else {
+                Err(anyhow!(
+                    "disk headroom insufficient for a new worktree (chump disk plan {} REFUSE, {}ms). \
+                     Free up disk (scripts/coord/target-dir-reaper.sh) or override with \
+                     CHUMP_CLAIM_ALLOW_DISK_REFUSE=1 (audited).",
+                    DISK_PLAN_ACTION_CLASS,
+                    duration_ms
+                ))
+            }
+        }
+        DiskPlanPrecheckOutcome::Failed(class, reason) => {
+            // Fail-open: a broken/absent disk-plan check must never block a
+            // claim outright, but it must be visible for audit.
+            emit_claim_disk_plan_check_failed_event(
+                ambient_log,
+                gap_id,
+                session_id,
+                class,
+                &reason,
+                duration_ms,
+            );
+            eprintln!(
+                "[claim] INFRA-2360: disk-plan check failed ({}, {duration_ms}ms) — proceeding: {reason}",
+                class.as_str()
+            );
+            Ok(())
+        }
+    }
+}
+
+/// `chump claim <GAP-ID> --disk-plan-check-only` — smoke-test entry point.
+/// Runs only the pre-claim disk-plan check and emits the same ambient
+/// events a real claim would, without touching leases/worktrees/state.db.
+/// Exit codes: 0=OK, 2=WAIT, 1=REFUSE, 3=check itself failed.
+pub fn run_disk_plan_precheck_only(repo_root: &Path, gap_id: &str) -> i32 {
+    let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+    let session_id = format!("disk-plan-check-only-{}", std::process::id());
+    let (outcome, duration_ms) = run_disk_plan_precheck(repo_root);
+    match &outcome {
+        DiskPlanPrecheckOutcome::Ok => {
+            emit_claim_disk_plan_checked_event(
+                &ambient_log,
+                gap_id,
+                &session_id,
+                "ok",
+                duration_ms,
+            );
+            println!("chump claim disk-plan check: OK ({duration_ms}ms)");
+            0
+        }
+        DiskPlanPrecheckOutcome::Wait => {
+            emit_claim_disk_plan_checked_event(
+                &ambient_log,
+                gap_id,
+                &session_id,
+                "wait",
+                duration_ms,
+            );
+            println!("chump claim disk-plan check: WAIT ({duration_ms}ms)");
+            2
+        }
+        DiskPlanPrecheckOutcome::Refuse => {
+            emit_claim_disk_plan_checked_event(
+                &ambient_log,
+                gap_id,
+                &session_id,
+                "refuse",
+                duration_ms,
+            );
+            println!("chump claim disk-plan check: REFUSE ({duration_ms}ms)");
+            1
+        }
+        DiskPlanPrecheckOutcome::Failed(class, reason) => {
+            emit_claim_disk_plan_check_failed_event(
+                &ambient_log,
+                gap_id,
+                &session_id,
+                *class,
+                reason,
+                duration_ms,
+            );
+            println!(
+                "chump claim disk-plan check: FAILED ({}, {duration_ms}ms) — {reason}",
+                class.as_str()
+            );
+            3
+        }
+    }
+}
+
+/// INFRA-2360: emit `kind=claim_disk_plan_checked` — fires once per `chump
+/// claim` invocation regardless of decision. Cost tracking (duration_ms) for
+/// the disk-plan gate, mirroring the INFRA-1763 `claim_diff_collision_checked`
+/// pattern.
+fn emit_claim_disk_plan_checked_event(
+    ambient_log: &Path,
+    gap_id: &str,
+    session_id: &str,
+    decision: &str,
+    duration_ms: u128,
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let event = serde_json::json!({
+        "ts": iso8601_from_unix(now),
+        "kind": "claim_disk_plan_checked",
+        "gap_id": gap_id,
+        "session_id": session_id,
+        "action_class": DISK_PLAN_ACTION_CLASS,
+        "decision": decision,
+        "duration_ms": duration_ms,
+    });
+    append_ambient_line(ambient_log, &event);
+}
+
+/// INFRA-2360: emit `kind=claim_disk_plan_check_failed` when the check
+/// itself could not produce a decision. `failure_class` distinguishes
+/// transient (binary missing, IO error, timeout — retry next claim) from
+/// permanent (unrecognized exit code — contract break, needs operator fix).
+fn emit_claim_disk_plan_check_failed_event(
+    ambient_log: &Path,
+    gap_id: &str,
+    session_id: &str,
+    class: DiskPlanFailureClass,
+    reason: &str,
+    duration_ms: u128,
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let event = serde_json::json!({
+        "ts": iso8601_from_unix(now),
+        "kind": "claim_disk_plan_check_failed",
+        "gap_id": gap_id,
+        "session_id": session_id,
+        "action_class": DISK_PLAN_ACTION_CLASS,
+        "failure_class": class.as_str(),
+        "reason": reason,
+        "duration_ms": duration_ms,
+    });
+    append_ambient_line(ambient_log, &event);
+}
+
+/// INFRA-2360: emit `kind=claim_disk_plan_bypassed` for audit whenever the
+/// check is skipped (CHUMP_CLAIM_SKIP_DISK_PLAN=1) or a REFUSE is overridden
+/// (CHUMP_CLAIM_ALLOW_DISK_REFUSE=1).
+fn emit_claim_disk_plan_bypassed_event(
+    ambient_log: &Path,
+    gap_id: &str,
+    session_id: &str,
+    bypass: &str,
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let event = serde_json::json!({
+        "ts": iso8601_from_unix(now),
+        "kind": "claim_disk_plan_bypassed",
+        "gap_id": gap_id,
+        "session_id": session_id,
+        "bypass": bypass,
+    });
+    append_ambient_line(ambient_log, &event);
+}
+
+#[cfg(test)]
+mod disk_plan_precheck_tests {
+    use super::*;
+
+    #[test]
+    fn test_disk_plan_binary_env_override() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_CLAIM_DISK_PLAN_BIN", "/tmp/fake-chump-for-test");
+        let p = disk_plan_binary(dir.path());
+        std::env::remove_var("CHUMP_CLAIM_DISK_PLAN_BIN");
+        assert_eq!(p, PathBuf::from("/tmp/fake-chump-for-test"));
+    }
+
+    #[test]
+    fn test_disk_plan_binary_falls_back_to_bare_name() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::remove_var("CHUMP_CLAIM_DISK_PLAN_BIN");
+        let p = disk_plan_binary(dir.path());
+        assert_eq!(p, PathBuf::from("chump"));
+    }
+
+    #[test]
+    fn test_failure_class_as_str() {
+        assert_eq!(DiskPlanFailureClass::Transient.as_str(), "transient");
+        assert_eq!(DiskPlanFailureClass::Permanent.as_str(), "permanent");
+    }
+
+    #[test]
+    fn test_precheck_binary_missing_is_transient_and_fails_open() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var(
+            "CHUMP_CLAIM_DISK_PLAN_BIN",
+            "/nonexistent/chump-disk-plan-test-xyzzy",
+        );
+        let (outcome, _duration_ms) = run_disk_plan_precheck(dir.path());
+        std::env::remove_var("CHUMP_CLAIM_DISK_PLAN_BIN");
+        match outcome {
+            DiskPlanPrecheckOutcome::Failed(DiskPlanFailureClass::Transient, _) => {}
+            other => panic!("expected Failed(Transient, _), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_precheck_gate_fails_open_when_binary_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let ambient_log = dir.path().join(".chump-locks/ambient.jsonl");
+        std::env::set_var(
+            "CHUMP_CLAIM_DISK_PLAN_BIN",
+            "/nonexistent/chump-disk-plan-test-xyzzy",
+        );
+        let result = disk_plan_precheck_gate(dir.path(), "INFRA-TEST", "sess-1", &ambient_log);
+        std::env::remove_var("CHUMP_CLAIM_DISK_PLAN_BIN");
+        assert!(
+            result.is_ok(),
+            "check-failed must fail open, not block claim"
+        );
+        let contents = std::fs::read_to_string(&ambient_log).unwrap();
+        assert!(contents.contains("claim_disk_plan_check_failed"));
+        assert!(contents.contains("\"failure_class\":\"transient\""));
+    }
+
+    #[test]
+    fn test_precheck_gate_skip_env_emits_bypass_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let ambient_log = dir.path().join(".chump-locks/ambient.jsonl");
+        std::env::set_var("CHUMP_CLAIM_SKIP_DISK_PLAN", "1");
+        let result = disk_plan_precheck_gate(dir.path(), "INFRA-TEST", "sess-1", &ambient_log);
+        std::env::remove_var("CHUMP_CLAIM_SKIP_DISK_PLAN");
+        assert!(result.is_ok());
+        let contents = std::fs::read_to_string(&ambient_log).unwrap();
+        assert!(contents.contains("claim_disk_plan_bypassed"));
+        assert!(contents.contains("CHUMP_CLAIM_SKIP_DISK_PLAN=1"));
     }
 }
 
