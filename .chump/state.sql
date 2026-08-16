@@ -27386,11 +27386,13 @@ gaps:
 - id: INFRA-1964
   domain: INFRA
   title: "CRITICAL: mission-reality gap on local-LLM — fleet workers default to claude -p; no MLX path wired (critique C1)"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "Failure: Chump positions as local-LLM agent but fleet workers default to WorkBackend::Headless at src/dispatch.rs:355-470 which calls `claude -p --dangerously-skip-permissions`. No mlx crate exists in workspace (Cargo.toml). The Ollama path at src/main.rs is interactive-only."
+  closed_date: '2026-08-16'
+  closed_pr: 3836
   outcome_id: MISSION-010
 
 - id: INFRA-1965
@@ -68547,6 +68549,7 @@ gaps:
     [2026-08-16T08:13:48Z] rot-reaper: PR #3826 auto-closed (required-check-red, 8h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T08:43:48Z] rot-reaper: PR #3826 auto-closed (required-check-red, 8h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T09:13:49Z] rot-reaper: PR #3826 auto-closed (required-check-red, 9h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T12:14:06Z] rot-reaper: PR #3826 auto-closed (required-check-red, 12h) 2026-08-16; re-attempt on fresh main.
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: gh api branches/main/protection required_status_checks (strict, merge_queue) + per-PR mergeStateStatus + files-changed overlap across green-but-DIRTY PRs.
