@@ -69430,6 +69430,23 @@ gaps:
     THEORY: this is the helsinki-housekeeping-not-ported gap (RESILIENT-318) at emergency severity — the Mac-launchd disk janitors (worktree reap, cargo-cache trim, target GC, journal vacuum, disk-pressure watchdog) never ported to helsinki, so disk creeps to 100pct and silently halts the whole fleet build path.
     ALT: port/verify chump-reaper actually removes /tmp/chump-* worktrees whose gaps are terminal (not just prune metadata); add a disk-pressure watchdog (systemd timer) that at >85pct trims cargo caches + reaps stale worktrees + vacuums journal + alarms; measure it holds disk <90pct. Ties to node-fabric + merged!=running (RESILIENT-351).
 
+- id: RESILIENT-364
+  domain: RESILIENT
+  title: Termux-proof ChumpOS — make the OS a first-class Android/Termux citizen so the Pixel can be the sovereign host; today every Pixel hiccup was a host-assumption bug, not a hardware limit
+  status: open
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - "The change described by \"Termux-proof ChumpOS — make the OS a first-class Android/Termux citizen so the Pixel can be the sovereign host; today every Pixel hiccup was a host-assumption bug, not a hardware limit\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: SOVEREIGN
+  evidence: |
+    COMMAND: bringing the Pixel up as build host 2026-08-16 — each failure was ChumpOS assuming Mac/datacenter-Linux.
+    OUTPUT (the quirk catalog, all observed live today): (1) ETXTBSY Text file busy on cargo build-script exec — Android FS write-then-exec race under parallel builds; needs a retry/serialize wrapper or a build-target on a race-free path. (2) /usr/bin/time absent (no GNU time in Termux) — shell timing only. (3) NO systemd — the 18 systemd timers + 5 services do not exist; Termux uses runit/termux-services (the pixel-node-supervisor pattern). (4) NO rustup — pkg install rust gives 1.97.1 vs the repo pin 1.96.0; toolchain pinning must degrade gracefully. (5) Android phantom-process killer (Android 14) kills bg procs under memory pressure — needs the device_config bypass. (6) Paths are /data/data/com.termux/files/... not /root or /Users — hardcoded host paths break. (7) macOS-only assumptions misfire on the phone (Keychain OAuth refresh 357; the syspolicyd inode-wedge heal). (8) Missing coreutils/dev tools — pixel-worker logs Tools: 0/34 installed (rg/fd/jq/nextest/... absent). (9) Thermal/battery: a phone throttles under sustained load — the OS should be thermal-aware and back off builds when hot.
+    THEORY: ChumpOS is Mac/datacenter-Linux-shaped; the Pixel exposes every baked-in host assumption. Sovereign-on-Pixel REQUIRES the OS become host-agnostic (detect Mac vs datacenter-Linux vs Android/Termux and adapt), not just happen-to-work with hand-holding.
+    ALT: build a host-detection layer + a Termux profile: (a) exec-race-safe build wrapper, (b) runit/termux-services process supervisor replacing systemd units, (c) toolchain + coreutils bootstrap for Termux, (d) phantom-process bypass in setup, (e) path-abstraction (no hardcoded /root|/Users), (f) Termux-native OAuth refresh (357), (g) thermal-aware backoff. Seed a docs/process/TERMUX_COMPAT.md checklist that this gap and future Pixel work append to.
+
 - id: SMOKE-001
   domain: SMOKE
   title: coord-surfaces-smoke fixture (auto-clean)
