@@ -6446,6 +6446,19 @@ events:
       cadence even when the loop is quiet.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, source, status]
+  # ── INFRA-2364: wire `chump fleet doctor` default mode to strict script ──
+  - kind: fleet_doctor_strict_tick
+    effect_metric: exit_code
+    emitter: src/main.rs "fleet doctor" (INFRA-2364)
+    trigger: >
+      `chump fleet doctor` (no --heal) invoked
+      scripts/coord/fleet-doctor-strict.sh and it returned — success,
+      check-failure, or a CHUMP_FLEET_DOCTOR_STRICT_TIMEOUT_S timeout.
+      failure_class distinguishes transient (timeout/spawn error) from
+      permanent (a real strict check failed) so consumers can decide
+      whether to retry or escalate.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, source, exit_code, duration_ms, failure_class, status]
   - kind: log_triage_completed
     effect_metric: self
     emitter: src/log_triage.rs (INFRA-1891, `chump fleet log-triage`)
