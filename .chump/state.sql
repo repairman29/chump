@@ -53589,6 +53589,55 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   skills_required: "external_repo:repairman29/almanac"
 
+- id: INFRA-3636
+  domain: INFRA
+  title: "EFFECTIVE: fleet-sidebar role-grouping — 4-tier hierarchy (curators/sub-agents/claim-* sessions/operator)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Extend fleet-sidebar.js to render the 4-tier role hierarchy from INFRA-2294's design doc (docs/design/COCKPIT_SCRUBBER_UNIFIED.md): curators, sub-agents nested under their spawning curator (via agent_segments.parent_session, see INFRA-3638), claim-* short-lived worker sessions, and the 1 operator session. Replaces the current flat session_id list. Prerequisite for Option C (one artifact, two presentations) since both cockpit and scrubber views share this component.
+  acceptance_criteria:
+    - fleet-sidebar.js groups sessions into 4 tiers instead of a flat list, reading role/parent_session from the enriched agent_segments schema (INFRA-3638)
+    - sub-agent sessions nest visually under their spawning curator session
+    - component is shared between ?view=cockpit and the future ?view=scrubber route (no duplication)
+  notes: |
+    [2026-08-16T17:27:04Z] [2026-08-16] Filed from INFRA-2294 design doc. DO NOT CLAIM until docs/design/COCKPIT_SCRUBBER_UNIFIED.md has operator sign-off (AC5 of INFRA-2294) — sign-off gates code landing, not the design doc itself.
+  outcome_id: MISSION-010
+
+- id: INFRA-3637
+  domain: INFRA
+  title: "EFFECTIVE: cockpit HUD metric strip — TRUNK/SHIP-RATE/WORKERS/ATTENTION/COST/TICKS/YOU tiles"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Replace the daily-brief prose zone in the PWA cockpit (web/v2/cockpit.js) with a 7-tile HUD metric strip per INFRA-2294's design doc: TRUNK, SHIP-RATE, WORKERS, ATTENTION, COST, TICKS, YOU. Each tile is a live-updating stat sourced from existing /api/fleet-status + /api/ambient/stream data (no new backend needed for the first 6; YOU may need session-scoped filtering).
+  acceptance_criteria:
+    - "7 HUD tiles render in cockpit.js: TRUNK (green/red build state), SHIP-RATE (PRs merged/opened last N), WORKERS (active session count), ATTENTION (attention-queue depth), COST (token/dollar burn), TICKS (loop cadence), YOU (operator's own session status)"
+    - tiles replace the existing daily-brief prose zone, not added alongside it
+    - each tile has a documented data source (existing endpoint or new query) in code comments
+  notes: |
+    [2026-08-16T17:27:11Z] [2026-08-16] Filed from INFRA-2294 design doc. DO NOT CLAIM until docs/design/COCKPIT_SCRUBBER_UNIFIED.md has operator sign-off (AC5 of INFRA-2294).
+  outcome_id: MISSION-010
+
+- id: INFRA-3638
+  domain: INFRA
+  title: "EFFECTIVE: agent_segments enrichment — role, parent_session, gap_id backfill columns"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Enrich crates/chump-fleet-server/src/db.rs agent_segments table per INFRA-2294's design doc: add role TEXT (derived from session_id naming convention at segmenter write-time), parent_session TEXT (populated for Agent-tool sub-agents spawned by a curator session), and backfill the existing-but-unpopulated gap_id column (0/235 rows today) by joining events.gap_id on session_id + time-window overlap. Prerequisite for sub-gap (a) role-grouping.
+  acceptance_criteria:
+    - agent_segments gains role TEXT and parent_session TEXT columns via migration, both nullable for backward compat with existing rows
+    - segmenter background task populates role for all newly-written segments
+    - gap_id backfill script/migration populates existing rows from events.gap_id where a session_id + time-window match exists; document leftover unmatched-row rate
+    - scripts/ci/test-fleet-scrubber.sh (or a new sibling test) asserts role/parent_session/gap_id are populated for a synthetic fixture
+  notes: |
+    [2026-08-16T17:27:17Z] [2026-08-16] Filed from INFRA-2294 design doc. DO NOT CLAIM until docs/design/COCKPIT_SCRUBBER_UNIFIED.md has operator sign-off (AC5 of INFRA-2294).
+  outcome_id: MISSION-010
+
 - id: INFRA-372
   domain: INFRA
   title: "EFFECTIVE: anthropic prompt caching for chump-local backend — add cache_control on CLAUDE.md+lessons+briefing prefix"
@@ -69019,7 +69068,7 @@ gaps:
 - id: RESILIENT-350
   domain: RESILIENT
   title: "Broken-PR healer: fleet DETECTS a broken PR (PRIORITIZE FIX) + rebase-loops it, but no organ applies the code fix to a deterministic lint/test failure — and the rebaser CLOBBERS manual fixes"
-  status: open
+  status: done
   priority: P0
   effort: m
   acceptance_criteria:
@@ -69028,6 +69077,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     PRIOR ART (almanac film-study 2026-08-16 — EXTEND, do not greenfield): src/improve.rs (fix-applying engine, remediate_incomplete); scripts/coord/pr-failure-auto-rescue.sh (already auto-rescues failed PRs for cargo-fmt/binary-not-found/audit classes — ADD the deterministic-lint-failure class here); docs/process/FAILURE_MODES.yaml (failure->auto-fix taxonomy — register the raw-gh-lint/INFRA-1274 class); scripts/ops/stuck-pr-filer.sh + trunk-sentinel-daemon.sh (stuck-PR detection). The healer = wire pr-failure-auto-rescue -> improve.rs for deterministic-check failures + make the rebaser rebase-onto (not clobber) non-authored commits.
+  closed_pr: 3849
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: tracked #3832 across iterations (gh pr view headRefOid/mergedAt); inspected worker worktree + journalctl.
