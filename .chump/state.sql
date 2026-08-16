@@ -68989,7 +68989,7 @@ gaps:
   domain: RESILIENT
   title: "Broken-PR healer: fleet DETECTS a broken PR (PRIORITIZE FIX) + rebase-loops it, but no organ applies the code fix to a deterministic lint/test failure — and the rebaser CLOBBERS manual fixes"
   status: open
-  priority: P1
+  priority: P0
   effort: m
   acceptance_criteria:
     - "The change described by \"fleet DETECTS a broken PR (PRIORITIZE FIX) + rebase-loops it, but no organ applies the code fix to a deterministic lint/test failure — and the rebaser CLOBBERS manual fixes\" is implemented in the relevant RESILIENT code path(s)."
