@@ -77,7 +77,11 @@ name = "quantum-tool-choice"
 path = "experiments/quantum_tool_choice.rs"
 
 [features]
-default = []
+default = ["web-push"]
+# Server-side Web Push (VAPID) for PWA subscribers. Default-on so Mac/web builds keep
+# push; Android cross-builds drop it (--no-default-features) because `web-push` → `ece`
+# → `openssl-sys` has no target OpenSSL on aarch64-linux-android (RESILIENT-336).
+web-push = ["dep:web-push"]
 # In-process embeddings via fastembed (no Python embed server). Model downloaded on first use.
 inprocess-embed = ["dep:fastembed", "dep:once_cell"]
 # In-process chat via mistral.rs (mistralrs). On Apple Silicon, also enable `mistralrs-metal` for GPU.
@@ -200,7 +204,7 @@ serde_yaml = "0.9"
 mistralrs = { version = "0.8.1", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 futures-util = "0.3"
-web-push = { version = "0.11", default-features = false, features = ["hyper-client"] }
+web-push = { version = "0.11", default-features = false, features = ["hyper-client"], optional = true }
 mimalloc = { version = "0.1", default-features = false }
 wasmtime = "47"
 wasmtime-wasi = "47"
@@ -256,6 +260,15 @@ chump-gap-store = { path = "crates/chump-gap-store", version = "0.2.0", features
 
 ## Note: this repo previously used a local reqwest patch to force rustls.
 ## We now rely on `reqwest` with `rustls-tls` enabled in [dependencies].
+
+# RESILIENT-336 (2026-08-16): Android (aarch64-linux-android) cross-builds pull
+# native-tls -> openssl -> openssl-sys via `axonerai` (which declares reqwest with
+# default features). There is no target OpenSSL on Android, so force openssl's
+# `vendored` feature for Android targets only (compiles OpenSSL from source with the
+# NDK clang). Mac builds are unaffected. The durable fix is patching axonerai to
+# rustls-tls (INFRA-3627); this unblocks the cross-build until that lands.
+[target.'cfg(target_os = "android")'.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
 
 # Many modules expose public items for tests, trait surfaces, and future wiring; suppress
 # dead_code noise so clippy stays actionable on real issues (unused imports/vars, style).

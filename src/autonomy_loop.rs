@@ -906,6 +906,7 @@ pub async fn autonomy_once(assignee: &str) -> Result<AutonomyOutcome> {
                 Some(o.detail.as_str()),
                 None,
             );
+            #[cfg(feature = "web-push")]
             if crate::web_push_send::autonomy_push_enabled()
                 && matches!(o.status.as_str(), "done" | "blocked")
             {
@@ -939,6 +940,7 @@ pub async fn autonomy_once(assignee: &str) -> Result<AutonomyOutcome> {
             let msg = e.to_string();
             let _ =
                 crate::job_log::insert_job("autonomy_once", "error", None, None, None, Some(&msg));
+            #[cfg(feature = "web-push")]
             if crate::web_push_send::autonomy_push_enabled() {
                 tokio::spawn(async move {
                     let body_short = if msg.chars().count() > 200 {
