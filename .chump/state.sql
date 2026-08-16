@@ -32857,6 +32857,7 @@ gaps:
     [2026-08-16T21:16:05Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T21:46:16Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T22:16:16Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T22:46:16Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2250
@@ -33561,6 +33562,7 @@ gaps:
   notes: |
     [2026-08-16T21:46:12Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T22:16:13Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T22:46:12Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
