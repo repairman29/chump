@@ -1931,3 +1931,12 @@ CHUMP_PATTERN_FIX_DRY_RUN
 # detected in: (standard input)
 CHUMP_PATTERN_FIX_PATTERNS_FILE
 CHUMP_INVENTORY_AUTO_FILE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_BUDGET_DIR
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_DRY_RUN
+# detected in: (standard input)
+CHUMP_KEEP_MERGEABLE_ESCALATE_COOLDOWN_S
