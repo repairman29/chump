@@ -34,6 +34,12 @@ source "$(dirname "$0")/lib/github.sh"
 # shellcheck source=lib/ambient-write.sh
 # shellcheck disable=SC1091
 source "$(dirname "$0")/lib/ambient-write.sh"
+# INFRA-1966: shared per-branch lock — same lockfile convention as
+# pr-auto-rebase.sh (INFRA-1974) and armed-pr-rebaser.sh, so concurrent
+# orchestrators rebasing/pushing the same branch defer instead of racing.
+# shellcheck source=lib/branch-mutex.sh
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/branch-mutex.sh"
 export CHUMP_GH_SCRIPT="queue-driver.sh"
 
 DRY_RUN=0
@@ -350,10 +356,18 @@ except Exception:
     local _amb="$REPO_ROOT/.chump-locks/ambient.jsonl"
     local _now; _now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+    if ! acquire_branch_lock "$branch" "$REPO_ROOT"; then
+        _ambient_write "$_amb" \
+            "$(printf '{"ts":"%s","kind":"cascade_resolve_deferred","pr":%s,"branch":"%s","reason":"lock_held"}' \
+                "$_now" "$pr" "$branch")"
+        return 1
+    fi
+
     local tmpdir
     tmpdir=$(mktemp -d)
     if ! git -C "$REPO_ROOT" worktree add --quiet "$tmpdir" "origin/$branch" 2>&1; then
         rm -rf "$tmpdir"
+        release_branch_lock
         return 1
     fi
 
@@ -368,6 +382,7 @@ except Exception:
         _push_rc=$?
         popd >/dev/null
         git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        release_branch_lock
         return $_push_rc
     fi
 
@@ -381,6 +396,7 @@ except Exception:
         git rebase --abort 2>/dev/null || true
         popd >/dev/null
         git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        release_branch_lock
         return 1
     fi
 
@@ -410,6 +426,7 @@ except Exception:
         git rebase --abort 2>/dev/null || true
         popd >/dev/null
         git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        release_branch_lock
         return 1
     fi
 
@@ -419,6 +436,7 @@ except Exception:
         git rebase --abort 2>/dev/null || true
         popd >/dev/null
         git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        release_branch_lock
         return 1
     fi
 
@@ -433,6 +451,7 @@ except Exception:
         git rebase --abort 2>/dev/null || true
         popd >/dev/null
         git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        release_branch_lock
         return 1
     fi
 
@@ -442,6 +461,7 @@ except Exception:
     _push_rc=$?
     popd >/dev/null
     git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+    release_branch_lock
 
     if [[ $_push_rc -eq 0 ]]; then
         # scanner-anchor: "kind":"cascade_auto_resolved"
@@ -472,6 +492,14 @@ resolve_dirty_pr() {
     return 1
   fi
 
+  if ! acquire_branch_lock "$branch" "$REPO_ROOT"; then
+    echo "queue-driver: #$pr — branch $branch lock held by another orchestrator — deferring"
+    _ambient_write "${LOCK_DIR:-$REPO_ROOT/.chump-locks}/ambient.jsonl" \
+      "$(printf '{"ts":"%s","kind":"dirty_pr_resolve_deferred","pr":%s,"branch":"%s","reason":"lock_held"}' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "$branch")"
+    return 1
+  fi
+
   local tmpdir
   tmpdir=$(mktemp -d)
   trap 'rm -rf "$tmpdir"' RETURN
@@ -479,6 +507,7 @@ resolve_dirty_pr() {
   # Shallow checkout — we only need to rebase one branch on top of main.
   if ! git -C "$REPO_ROOT" worktree add --quiet "$tmpdir" "origin/$branch" 2>&1; then
     echo "queue-driver: ✗ #$pr — worktree add failed (branch=$branch)"
+    release_branch_lock
     return 1
   fi
 
@@ -502,12 +531,14 @@ resolve_dirty_pr() {
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "$(echo "$_push_out" | tail -1 | sed 's/"/\\"/g')")"
         popd >/dev/null
         git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        release_branch_lock
         return 1
       fi
       echo "queue-driver: ✓ #$pr clean rebase pushed"
     fi
     popd >/dev/null
     git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+    release_branch_lock
     return 0
   fi
 
@@ -556,6 +587,7 @@ resolve_dirty_pr() {
     git rebase --abort 2>/dev/null || true
     popd >/dev/null
     git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+    release_branch_lock
     return 1
   fi
 
@@ -575,6 +607,7 @@ resolve_dirty_pr() {
     git rebase --abort 2>/dev/null || true
     popd >/dev/null
     git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+    release_branch_lock
     return 1
   fi
 
@@ -594,6 +627,7 @@ resolve_dirty_pr() {
       git rebase --abort 2>/dev/null || true
       popd >/dev/null
       git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+      release_branch_lock
       return 1
     fi
     echo "queue-driver: ✓ #$pr DIRTY auto-resolved via merge drivers ($conflict_files)"
@@ -604,6 +638,7 @@ resolve_dirty_pr() {
 
   popd >/dev/null
   git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+  release_branch_lock
   return 0
 }
 

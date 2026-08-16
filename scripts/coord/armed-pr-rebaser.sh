@@ -18,6 +18,13 @@ REPO="${CHUMP_PR_REPO:-repairman29/chump}"
 ROOT="${CHUMP_REPO_ROOT:-$HOME/Projects/Chump}"
 AMB="$ROOT/.chump-locks/ambient.jsonl"
 cd "$ROOT" 2>/dev/null || exit 1
+
+# INFRA-1966: shared per-branch lock — same lockfile convention as
+# pr-auto-rebase.sh (INFRA-1974) and queue-driver.sh, so concurrent
+# orchestrators rebasing/pushing the same branch defer instead of racing.
+# shellcheck source=lib/branch-mutex.sh
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/branch-mutex.sh"
 command -v gh >/dev/null 2>&1 || exit 0
 git fetch origin main --quiet 2>/dev/null || true
 
@@ -31,10 +38,16 @@ for p in json.load(sys.stdin):
 
 while read -r num br; do
     [ -z "$num" ] && continue
-    git fetch origin "$br" --quiet 2>/dev/null || continue
+    if ! acquire_branch_lock "$br" "$ROOT"; then
+        echo "[armed-pr-rebaser] #$num: branch $br lock held by another orchestrator — deferring"
+        printf '{"ts":"%s","kind":"armed_pr_rebase_deferred","pr":%s,"branch":"%s","reason":"lock_held"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$num" "$br" >> "$AMB" 2>/dev/null || true
+        continue
+    fi
+    git fetch origin "$br" --quiet 2>/dev/null || { release_branch_lock; continue; }
     wt="/tmp/armed-rebaser-$num"
     git worktree remove "$wt" --force 2>/dev/null || true
-    git worktree add "$wt" "$br" >/dev/null 2>&1 || continue
+    git worktree add "$wt" "$br" >/dev/null 2>&1 || { release_branch_lock; continue; }
     (
         cd "$wt" || exit 0
         if git rebase origin/main >/dev/null 2>&1 \
@@ -50,4 +63,5 @@ while read -r num br; do
         fi
     )
     git worktree remove "$wt" --force 2>/dev/null || true
+    release_branch_lock
 done <<< "$prs"

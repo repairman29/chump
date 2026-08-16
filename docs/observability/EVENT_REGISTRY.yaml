@@ -2125,6 +2125,31 @@ events:
     consumers: [operator-recall, fleet-brief]
     fields_required: [ts, kind, pr, phase, error]
 
+  - kind: dirty_pr_resolve_deferred
+    effect_metric: self
+    emitter: scripts/coord/queue-driver.sh (INFRA-1966)
+    trigger: per-branch mutex (scripts/coord/lib/branch-mutex.sh) held by another
+      orchestrator (pr-auto-rebase.sh / armed-pr-rebaser.sh) — deferred instead of
+      racing the same branch's worktree/rebase/push
+    consumers: [audit-log]
+    fields_required: [ts, kind, pr, branch, reason]
+
+  - kind: cascade_resolve_deferred
+    effect_metric: self
+    emitter: scripts/coord/queue-driver.sh (INFRA-1966)
+    trigger: per-branch mutex (scripts/coord/lib/branch-mutex.sh) held by another
+      orchestrator — cascade auto-resolve deferred instead of racing the same branch
+    consumers: [audit-log]
+    fields_required: [ts, kind, pr, branch, reason]
+
+  - kind: armed_pr_rebase_deferred
+    effect_metric: self
+    emitter: scripts/coord/armed-pr-rebaser.sh (INFRA-1966)
+    trigger: per-branch mutex (scripts/coord/lib/branch-mutex.sh) held by another
+      orchestrator — armed-PR rebase deferred instead of racing the same branch
+    consumers: [audit-log]
+    fields_required: [ts, kind, pr, branch, reason]
+
   - kind: rebase_hunk_dropped
     effect_metric: self
     emitter: scripts/coord/wedge-recover.sh (INFRA-1526)
