@@ -1948,3 +1948,10 @@ CHUMP_W014_MIN_FAILING_PRS
 # detected in: (standard input)
 CHUMP_W014_TIMEOUT_S
 CHUMP_CRON_BACKEND
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SUBAGENT_DOLLAR_BUDGET
+# detected in: (standard input)
+CHUMP_SUBAGENT_TOKEN_BUDGET
