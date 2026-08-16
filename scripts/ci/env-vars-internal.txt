@@ -1947,3 +1947,8 @@ CHUMP_W014_LOOKBACK
 CHUMP_W014_MIN_FAILING_PRS
 # detected in: (standard input)
 CHUMP_W014_TIMEOUT_S
+CHUMP_AGENT_MAX_ITER
+# detected in: (standard input)
+CHUMP_TOOLS_ASK
+# detected in: (standard input)
+CHUMP_WEB_PORT
