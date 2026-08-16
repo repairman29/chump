@@ -571,6 +571,13 @@ jobs:
         continue-on-error: true
         run: bash scripts/ci/test-merge-group-coverage.sh
 
+      - name: Merge-queue enable script safety gates (RESILIENT-343)
+        # Verifies scripts/coord/enable-merge-queue.sh never mutates branch
+        # protection without an explicit --confirm, and never calls gh when
+        # the merge_group readiness gate fails. Regression gate for the
+        # operator-sign-off contract on the merge-queue flip.
+        run: bash scripts/ci/test-enable-merge-queue-safety.sh
+
       # INFRA-1541: pre-merge AC coverage gate.
       # ADVISORY-ONLY by default — `CHUMP_AC_GATE_BLOCKING=false` makes the
       # script always exit 0 after emitting `kind=ac_coverage_miss` events

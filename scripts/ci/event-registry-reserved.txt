@@ -194,6 +194,10 @@ mcp_tool  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-c
 merge_preview_dirty     # reason: planned kind (no emitter yet); allowlist until emitter ships to unblock audit cluster
 merge_preview_skipped  # reason: emitted from scripts/coord/ (shell); not in PROD_PATHS
 merge_queue_health      # reason: CREDIBLE-068 #2359 emitted from scripts/coord/monitor-merge-queue.sh via printf to ambient.jsonl; grep scanner does not see the shell printf pattern as a `kind=...` literal
+merge_queue_enable_blocked   # reason: RESILIENT-343 emitted from scripts/coord/enable-merge-queue.sh via printf helper (emit_ambient); same shell-printf-not-scannable issue as merge_queue_health
+merge_queue_enable_dry_run   # reason: RESILIENT-343 emitted from scripts/coord/enable-merge-queue.sh via printf helper (emit_ambient); same shell-printf-not-scannable issue as merge_queue_health
+merge_queue_enable_failed    # reason: RESILIENT-343 emitted from scripts/coord/enable-merge-queue.sh via printf helper (emit_ambient); same shell-printf-not-scannable issue as merge_queue_health
+merge_queue_enabled          # reason: RESILIENT-343 emitted from scripts/coord/enable-merge-queue.sh via printf helper (emit_ambient); same shell-printf-not-scannable issue as merge_queue_health
 obs_coverage_test_fixture  # reason: synthetic test-fixture kind; emitter is scripts/ci/ (excluded from prod grep); status=test-fixture in registry
 operator_pr_action     # reason: emitted but not registered; allowlist while EVENT_REGISTRY entry is drafted
 opus_message_sent  # reason: INFRA-1800 — emitted by scripts/coord/broadcast.sh after addressed-async DM delivery (META-061 opus-message v0 retarget)

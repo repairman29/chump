@@ -6670,6 +6670,45 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, note]
 
+  # ── RESILIENT-343: merge queue enablement gate ───────────────────────────────
+
+  - kind: merge_queue_enable_dry_run
+    effect_metric: self
+    emitter: scripts/coord/enable-merge-queue.sh (RESILIENT-343)
+    trigger: >
+      enable-merge-queue.sh run without --confirm and the merge_group
+      readiness gate passed. Reports what would change; no mutation made.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, detail]
+
+  - kind: merge_queue_enable_blocked
+    effect_metric: self
+    emitter: scripts/coord/enable-merge-queue.sh (RESILIENT-343)
+    trigger: >
+      enable-merge-queue.sh aborted before any GitHub call because the
+      merge_group trigger coverage gate (test-merge-group-coverage.sh)
+      failed — enabling the queue now would wedge it forever.
+    consumers: [ops-audit, fleet_health]
+    fields_required: [ts, kind, detail]
+
+  - kind: merge_queue_enabled
+    effect_metric: self
+    emitter: scripts/coord/enable-merge-queue.sh (RESILIENT-343)
+    trigger: >
+      Operator ran enable-merge-queue.sh --confirm and the ruleset PUT
+      mutation to require merge queue on main was sent successfully.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, detail]
+
+  - kind: merge_queue_enable_failed
+    effect_metric: self
+    emitter: scripts/coord/enable-merge-queue.sh (RESILIENT-343)
+    trigger: >
+      Operator ran enable-merge-queue.sh --confirm but no repository
+      ruleset was found (plan/config requires the web-UI path instead).
+    consumers: [ops-audit]
+    fields_required: [ts, kind, detail]
+
   # ── INFRA-1340: per-tool auto-approve policies + escalation ─────────────────
 
   - kind: tool_auto_approved

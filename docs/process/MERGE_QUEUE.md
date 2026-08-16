@@ -65,6 +65,23 @@ workflow was added without the merge_group trigger).
 
 ## Enable merge queue (one-time setup)
 
+### Option 0: `enable-merge-queue.sh` (RESILIENT-343, preferred)
+
+Wraps the readiness gate + the flip in one gated command. Defaults to
+dry-run (readiness check + report only); requires an explicit `--confirm`
+to mutate branch protection — never invoke `--confirm` without operator
+sign-off.
+
+```bash
+bash scripts/coord/enable-merge-queue.sh              # dry-run: readiness check + report
+bash scripts/coord/enable-merge-queue.sh --confirm     # operator sign-off required: flips branch protection
+```
+
+If the coverage gate is red, the script aborts before making any GitHub
+call — it will never enable a queue that would wedge forever on a
+required check with no `merge_group` trigger. If the repo's plan has no
+ruleset support, it falls back to reporting the Option A web-UI steps.
+
 ### Option A: Web UI (works for all GitHub plans)
 
 1. Go to **https://github.com/repairman29/chump/settings/branches**
