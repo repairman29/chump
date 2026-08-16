@@ -1975,3 +1975,10 @@ CHUMP_DISK_THRESHOLD_GB
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_ACTIONLINT_GUARD
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CASCADE_MAX_HOLD_MINUTES
+# detected in: (standard input)
+CHUMP_TRUNK_SENTINEL_STATE_FILE
