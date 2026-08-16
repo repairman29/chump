@@ -94,3 +94,23 @@ web/v2/app.js merge=js-append
 # Real fix: INFRA-1687 / INFRA-1748 (decompose main.rs into
 # inventory-style self-registration; kills the hot-file class entirely).
 # Until that lands, plain 3-way merge is the lesser evil.
+
+# RESILIENT-344: extend built-in merge=union to the remaining append-only CI
+# registries/allowlists. Same append-only pattern as env-vars-internal.txt /
+# EVENT_REGISTRY.yaml above: many PRs concurrently append one line each. Without
+# a union driver those textual conflicts SURVIVE a rebase and re-DIRTY green PRs
+# on every subsequent merge — the green-then-reconflict spiral (2026-08-15 fleet
+# incident: PRs went green, re-conflicted on event-registry-reserved.txt, rebased,
+# re-ran 15-20min CI, and another merge re-conflicted them → never landed).
+# All are flat line-lists (one reserved-id / allowlisted-name per line); git core
+# `union` concatenates unique lines from both sides — no custom driver, no install
+# step (unlike the INFRA-310 custom drivers that need install-merge-drivers.sh).
+scripts/ci/event-registry-reserved.txt merge=union
+scripts/ci/ambient-emit-allowlist.txt merge=union
+scripts/ci/bypass-env-var-allowlist.txt merge=union
+scripts/ci/coord-shell-allowlist.txt merge=union
+scripts/ci/cross-pr-allowlist.txt merge=union
+scripts/ci/legacy-bypass-trailer-allowlist.txt merge=union
+scripts/ci/raw-gh-allowlist.txt merge=union
+scripts/ci/research-integrity-phantom-allowlist.txt merge=union
+scripts/ci/shell-test-allowlist.txt merge=union
