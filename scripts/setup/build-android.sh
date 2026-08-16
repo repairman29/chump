@@ -37,6 +37,10 @@ else
 fi
 export CC_aarch64_linux_android="$TOOLCHAIN/aarch64-linux-android28-clang"
 export AR_aarch64_linux_android="$TOOLCHAIN/llvm-ar"
+# RESILIENT-336: openssl-vendored (target-scoped) cross-build needs llvm-ranlib —
+# openssl-src guesses a nonexistent `aarch64-linux-android-ranlib` otherwise and
+# dies with `make install_dev Error 127`.
+export RANLIB_aarch64_linux_android="$TOOLCHAIN/llvm-ranlib"
 # Cargo invokes the linker for the final binary; rustc defaults to "cc" otherwise
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOLCHAIN/aarch64-linux-android28-clang"
 
@@ -54,18 +58,30 @@ echo "CC:     $CC_aarch64_linux_android"
 echo "Target: aarch64-linux-android"
 echo ""
 
-# Ensure target is installed
-if ! rustup target list --installed | grep -q aarch64-linux-android; then
-  echo "Installing Rust target aarch64-linux-android..."
-  rustup target add aarch64-linux-android
+# Ensure target std is installed. rustup is not always on PATH (this machine
+# symlinks cargo/rustc directly into the toolchain), so fall back to checking the
+# rustlib dir directly before trying `rustup target add`.
+_rustlib_target="$(rustc --print sysroot 2>/dev/null)/lib/rustlib/aarch64-linux-android"
+if [[ ! -d "$_rustlib_target" ]]; then
+  if command -v rustup >/dev/null 2>&1; then
+    echo "Installing Rust target aarch64-linux-android..."
+    rustup target add aarch64-linux-android
+  else
+    echo "Error: aarch64-linux-android rust-std not installed and rustup not on PATH."
+    echo "Install manually: download rust-std-<ver>-aarch64-linux-android.tar.xz from"
+    echo "static.rust-lang.org/dist and extract its rustlib dir into:"
+    echo "  $(rustc --print sysroot 2>/dev/null)/lib/rustlib/"
+    exit 1
+  fi
 fi
 
-echo "Building (release, no inprocess-embed)..."
+echo "Building (release, --no-default-features: drop web-push so the Android"
+echo "  cross-build does not pull web-push -> ece -> openssl-sys)..."
 # Use a dedicated target dir for Android builds so concurrent Mac builds
 # (e.g. deploy-mac.sh or self-reboot.sh) never hit the cargo lock contention.
 # The intermediate caches are NOT shared (no sysroot overlap) so this is safe.
 ANDROID_TARGET_DIR="${ANDROID_TARGET_DIR:-$PWD/target-android}"
-CARGO_TARGET_DIR="$ANDROID_TARGET_DIR" cargo build --release --target aarch64-linux-android
+CARGO_TARGET_DIR="$ANDROID_TARGET_DIR" cargo build --release --target aarch64-linux-android --no-default-features
 
 # Binary name comes from Cargo.toml [[bin]] (chump); keep rust-agent symlink for scripts.
 BINARY="$ANDROID_TARGET_DIR/aarch64-linux-android/release/chump"
