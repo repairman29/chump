@@ -1,0 +1,28 @@
+# curator-lanes.txt — INFRA-2185
+#
+# Initial lane-glob mapping for the post-merge "ring the bell" pipeline.
+# Format: one role per line, `role: glob1,glob2,...` (comma-separated,
+# no spaces around commas). Blank lines and lines starting with # ignored.
+#
+# Globs are matched against paths relative to repo root using shell
+# glob semantics (fnmatch-style, `**` matches across path separators).
+# A merge fans out to every role whose pattern set has >=1 match against
+# the merge's files_changed[] list — see scripts/coord/post-merge-bell.sh.
+#
+# Consumed by:
+#   - scripts/coord/main-merge-listener.sh (computes lane_tags[] for the
+#     pr_merged_to_main event payload)
+#   - scripts/coord/post-merge-bell.sh (fan-out filter)
+#   - `chump curator status` (lists known roles)
+#
+# Edit this file to add/adjust a curator's lane — no code change needed.
+
+handoff: crates/chump-handoff/**,src/dispatch*.rs
+ci-audit: .github/workflows/**,scripts/ci/**
+decompose: src/main.rs,src/gap_decompose*.rs
+external-collab: docs/PITCH.md,docs/DEMO_5MIN.md,docs/HIDDEN_GEMS.md,docs/strategy/ROADMAP_MARCUS.md
+harvester: docs/arsenal/**,cross-pollination/**
+infra-watcher: scripts/setup/install-*-launchd.sh,launchd/**
+md-links: docs/**/*.md
+observability: scripts/ci/event-registry-reserved.txt,docs/observability/EVENT_REGISTRY.yaml
+target: docs/gaps/INFRA-2108-*.yaml,.claude/agents/target.md

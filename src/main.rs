@@ -68,6 +68,7 @@ mod cost_ledger;
 mod cost_tracker;
 mod cost_watch;
 mod counterfactual;
+mod curator_bell;
 mod dashboard;
 mod sourcing_resolver; // INFRA-3508 (COTG-S.1): repo -> arsenal -> world prior-art resolver
 pub use chump_db_pool::db_pool;
@@ -1894,6 +1895,117 @@ async fn main() -> Result<()> {
         // Stderr so stdout stays clean for chained commands (e.g. backtick capture).
         eprintln!("[ambient] wrote {} ({})", parsed.kind, path.display());
         return Ok(());
+    }
+
+    // `chump curator status [--role ROLE] [--json]` /
+    // `chump curator refresh <role> [--pr-url U] [--commit-sha S] [--gap-ids CSV]`
+    // (INFRA-2185 — META-125 ring-the-bell operator surface). Mutates
+    // canonical state (.chump-locks/curator-memory/<role>.json), so it's a
+    // Rust CLI per the Rust-first criteria; scripts/coord/main-merge-listener.sh
+    // and scripts/coord/post-merge-bell.sh are the shell glue that calls in.
+    if args.get(1).map(String::as_str) == Some("curator") {
+        let repo_root = repo_path::repo_root();
+        match args.get(2).map(String::as_str) {
+            Some("status") => {
+                if args.iter().any(|a| a == "--help" || a == "-h") {
+                    println!("Usage: chump curator status [--role ROLE] [--json]");
+                    println!();
+                    println!("Show each curator role's last post-merge refresh timestamp,");
+                    println!("whether it is >24h stale on its lane, and open staleness findings.");
+                    return Ok(());
+                }
+                let role_filter = args
+                    .iter()
+                    .position(|a| a == "--role")
+                    .and_then(|i| args.get(i + 1))
+                    .map(String::as_str);
+                let rows = curator_bell::status_rows(&repo_root, role_filter);
+                if args.iter().any(|a| a == "--json") {
+                    let json: Vec<serde_json::Value> = rows
+                        .iter()
+                        .map(|r| {
+                            serde_json::json!({
+                                "role": r.role,
+                                "last_refresh": r.last_refresh,
+                                "stale": r.stale,
+                                "open_findings": r.open_findings,
+                            })
+                        })
+                        .collect();
+                    println!("{}", serde_json::to_string_pretty(&json).unwrap());
+                } else {
+                    print!("{}", curator_bell::render_status_text(&rows));
+                }
+                return Ok(());
+            }
+            Some("refresh") => {
+                if args.iter().any(|a| a == "--help" || a == "-h") {
+                    println!("Usage: chump curator refresh <role> [--pr-url URL] [--commit-sha SHA] [--gap-ids CSV]");
+                    println!();
+                    println!(
+                        "Manual or fan-out-triggered ring-the-bell for one curator: records the"
+                    );
+                    println!(
+                        "merge in its memory file and re-evaluates staleness against current main."
+                    );
+                    return Ok(());
+                }
+                let role = match args.get(3) {
+                    Some(r) if !r.starts_with("--") => r.clone(),
+                    _ => {
+                        eprintln!("chump curator refresh: missing <role>");
+                        eprintln!("Usage: chump curator refresh <role> [--pr-url URL] [--commit-sha SHA] [--gap-ids CSV]");
+                        std::process::exit(2);
+                    }
+                };
+                let pr_url = args
+                    .iter()
+                    .position(|a| a == "--pr-url")
+                    .and_then(|i| args.get(i + 1))
+                    .cloned()
+                    .unwrap_or_default();
+                let commit_sha = args
+                    .iter()
+                    .position(|a| a == "--commit-sha")
+                    .and_then(|i| args.get(i + 1))
+                    .cloned()
+                    .unwrap_or_default();
+                let gap_ids: Vec<String> = args
+                    .iter()
+                    .position(|a| a == "--gap-ids")
+                    .and_then(|i| args.get(i + 1))
+                    .map(|s| {
+                        s.split(',')
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_string)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mem = curator_bell::refresh(
+                    &repo_root,
+                    &curator_bell::RefreshArgs {
+                        role: role.clone(),
+                        pr_url,
+                        commit_sha,
+                        gap_ids,
+                    },
+                );
+                println!(
+                    "chump curator refresh: {} refreshed at {} ({} seen_merges, {} findings)",
+                    mem.role,
+                    mem.last_refresh.as_deref().unwrap_or("?"),
+                    mem.seen_merges.len(),
+                    mem.staleness_findings.len(),
+                );
+                return Ok(());
+            }
+            _ => {
+                eprintln!("chump curator: unknown subcommand");
+                eprintln!("Try: chump curator <status|refresh> [args…]");
+                std::process::exit(2);
+            }
+        }
     }
 
     // `chump ship plan` (INFRA-1229 slice 1) — pure planner that decides

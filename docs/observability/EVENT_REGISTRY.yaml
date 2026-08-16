@@ -10944,3 +10944,39 @@ events:
     consumers: [ambient, fleet-brief, api-cost-leaderboard (future)]
     fields_required: [ts, kind, role, processed_total, succeeded_total,
       failed_total, timeout_total, cost_proxy_ms_total]
+  - kind: pr_merged_to_main
+    effect_metric: self
+    emitter: scripts/coord/main-merge-listener.sh (INFRA-2185, META-125 ring-the-bell)
+    trigger: a tick of main-merge-listener.sh finds one or more new commits
+      on origin/main since its last bookmark — one event per commit, oldest
+      first, carrying files_changed[] and lane_tags[] (precomputed against
+      scripts/coord/curator-lanes.txt) so downstream fan-out never re-walks
+      the tree.
+    consumers: [post-merge-bell.sh, curator memory refresh]
+    fields_required: [ts, kind, commit_sha, pr_url, gap_ids_closed, files_changed, lane_tags]
+
+  - kind: curator_lane_match
+    effect_metric: self
+    emitter: scripts/coord/post-merge-bell.sh (INFRA-2185, debug surface for the fan-out filter)
+    trigger: a pr_merged_to_main event's lane_tags[] includes a curator role
+      — fired once per (event, matched role) pair, before the refresh call.
+    consumers: [ambient (debug/audit trail)]
+    fields_required: [ts, kind, role, pr_url, commit_sha]
+
+  - kind: curator_refreshed
+    effect_metric: curator_refresh_within_60s
+    emitter: src/curator_bell.rs (`chump curator refresh`, INFRA-2185)
+    trigger: a curator's post-merge refresh action completes — its memory
+      file at .chump-locks/curator-memory/<role>.json has been updated with
+      the new merge.
+    consumers: [chump curator status, ambient]
+    fields_required: [ts, kind, role, pr_url, commit_sha, gaps_checked]
+
+  - kind: curator_staleness_finding
+    effect_metric: self
+    emitter: src/curator_bell.rs (`chump curator refresh`, INFRA-2185)
+    trigger: a refreshing curator finds that a gap it had already flagged as
+      a staleness concern was just closed by the incoming merge — i.e. the
+      merge resolves something the curator was tracking as stale.
+    consumers: [chump curator status, ambient]
+    fields_required: [ts, kind, role, gap_id, reason]
