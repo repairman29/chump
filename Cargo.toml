@@ -74,6 +74,10 @@ name = "bandit-replay"
 path = "src/bin/bandit-replay.rs"
 
 [[bin]]
+name = "chump-consensus-aggregator-daemon"
+path = "src/bin/consensus_aggregator_daemon.rs"
+
+[[bin]]
 name = "quantum-tool-choice"
 path = "experiments/quantum_tool_choice.rs"
 
