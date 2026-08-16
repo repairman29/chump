@@ -1,0 +1,19 @@
+[package]
+name = "chump-cron"
+version = "0.1.0"
+edition = "2021"
+description = "chump cron — declarative cron-expr to launchd plist (macOS) / systemd timer (Linux) generator. Idempotent install/uninstall/status, never depends on any agent session being alive (INFRA-2057)."
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-cron"
+license = "AGPL-3.0-only"
+
+[lib]
+name = "chump_cron"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0"
+chump-ambient-cli = { path = "../ambient-cli", version = "0.1.0" }
+
+[dev-dependencies]
+tempfile = "3"
