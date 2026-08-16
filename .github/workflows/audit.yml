@@ -65,6 +65,9 @@ env:
   AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
   SCCACHE_ERROR_LOG: /tmp/sccache.log
   SCCACHE_LOG: info
+  # INFRA-2249: BuildBuddy free-tier remote cache, preferred over R2 when
+  # BUILDBUDDY_API_KEY is set (see docs/process/BUILDBUDDY.md).
+  SCCACHE_BUILDBUDDY_URL: grpcs://remote.buildbuddy.io
 
 jobs:
   # ── audit-shard ──────────────────────────────────────────────────────────────
@@ -168,18 +171,25 @@ jobs:
       # Mirrors the ci.yml cargo-test job pattern (lines 1245-1303).
       # RUSTC_WRAPPER is set via GITHUB_ENV after the health probe (not at workflow level)
       # to avoid binary-not-on-PATH failure on steps before sccache is installed.
-      - name: Detect R2 secret presence
+      # INFRA-2249: BuildBuddy preferred, R2 fallback (mirrors ci.yml).
+      - name: Detect remote-cache backend (BuildBuddy preferred, R2 fallback)
         id: r2detect
         env:
           R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+          BUILDBUDDY_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: |
           # RESILIENT-041: length floor >= 16 routes garbage creds through graceful
           # no-cache fallback instead of crashing the toolchain (mirrors ci.yml).
-          if [ "${#R2_KEY}" -ge 16 ]; then
+          if [ "${#BUILDBUDDY_KEY}" -ge 16 ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "backend=buildbuddy" >> "$GITHUB_OUTPUT"
+          elif [ "${#R2_KEY}" -ge 16 ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "backend=r2" >> "$GITHUB_OUTPUT"
           else
-            echo "configured=false (R2_KEY length=${#R2_KEY}, expected >= 16)" >&2
+            echo "configured=false (BUILDBUDDY_KEY length=${#BUILDBUDDY_KEY}, R2_KEY length=${#R2_KEY}, expected >= 16)" >&2
             echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "backend=none" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install sccache
@@ -187,8 +197,10 @@ jobs:
         uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: sccache health probe
-        # INFRA-2288: degrade to no-cache if R2 unreachable; do NOT fail the job.
+        # INFRA-2288: degrade to no-cache if remote cache unreachable; do NOT fail the job.
         if: steps.r2detect.outputs.configured == 'true'
+        env:
+          SCCACHE_BUILDBUDDY_API_KEY: ${{ steps.r2detect.outputs.backend == 'buildbuddy' && secrets.BUILDBUDDY_API_KEY || '' }}
         run: |
           if ! sccache --start-server 2>/dev/null; then
             echo "::warning::sccache --start-server failed; falling back to no-cache (INFRA-2288)"
@@ -198,6 +210,9 @@ jobs:
               echo "RUSTC_WRAPPER=sccache"
               echo "CARGO_INCREMENTAL=0"
               echo "SCCACHE_GHA_ENABLED=true"
+              # INFRA-2249: persist the BuildBuddy auth key for downstream cargo
+              # steps in this job (server was already started with it above).
+              echo "SCCACHE_BUILDBUDDY_API_KEY=${SCCACHE_BUILDBUDDY_API_KEY}"
             } >> "$GITHUB_ENV"
           fi
 

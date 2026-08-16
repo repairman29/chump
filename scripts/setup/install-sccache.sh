@@ -50,6 +50,13 @@ cat > .cargo/config.toml <<'EOF'
 # .gitignore'd because per-machine: a CI runner without sccache would
 # break here.
 #
+# INFRA-2249: rustc-wrapper points at a passthrough shim instead of
+# "sccache" directly — it execs sccache when present, else execs the
+# wrapped compiler unwrapped. Softens the INFRA-2104/2105 Docker/cross-build
+# gotcha below (missing-binary case degrades gracefully instead of failing),
+# though the documented cross-build.sh path remains the recommended fix for
+# that specific scenario.
+#
 # Linux / Docker cross-build gotcha (INFRA-2104 / INFRA-2105):
 #   This rustc-wrapper breaks `cargo build` inside containers that don't
 #   have sccache on PATH. To cross-build chump-coord for Linux without
@@ -58,7 +65,7 @@ cat > .cargo/config.toml <<'EOF'
 #   It sets CARGO_BUILD_RUSTC_WRAPPER="" automatically and uses an
 #   isolated target dir so failed runs don't poison state.
 [build]
-rustc-wrapper = "sccache"
+rustc-wrapper = "scripts/ci/sccache-or-rustc.sh"
 
 # INFRA-2242: mold linker — Linux-only (macOS doesn't have mold by default;
 # ld64 is already fast on Apple Silicon). Targets gated explicitly so this
@@ -90,7 +97,24 @@ codegen-backend = true
 SCCACHE_CACHE_SIZE = "20G"
 # Local disk cache (default ~/.cache/sccache). Override with
 # SCCACHE_DIR=/path if you want to put it on faster storage.
+
+# INFRA-2249: opt-in remote cache. Local dev defaults to the disk cache
+# above (no network dependency); set BUILDBUDDY_API_KEY in your shell env
+# before running this script to also point sccache at BuildBuddy — same
+# free-tier remote cache CI uses (see docs/process/BUILDBUDDY.md). Local
+# disk cache stays the default because it's zero-setup and zero-latency;
+# BuildBuddy mainly pays off for cross-machine/cross-worktree sharing.
 EOF
+if [ -n "${BUILDBUDDY_API_KEY:-}" ]; then
+    echo "[install-sccache] BUILDBUDDY_API_KEY set — wiring BuildBuddy remote cache"
+    cat >> .cargo/config.toml <<EOF
+SCCACHE_BUILDBUDDY_URL = "grpcs://remote.buildbuddy.io"
+SCCACHE_BUILDBUDDY_API_KEY = "${BUILDBUDDY_API_KEY}"
+EOF
+else
+    echo "[install-sccache] BUILDBUDDY_API_KEY not set — using local disk cache only"
+    echo "[install-sccache] (re-run with BUILDBUDDY_API_KEY=... to opt into the remote cache)"
+fi
 
 echo "[install-sccache] verifying with cargo check …"
 sccache --zero-stats >/dev/null 2>&1 || true

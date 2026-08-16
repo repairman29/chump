@@ -82,6 +82,13 @@ env:
   AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
   SCCACHE_ERROR_LOG: /tmp/sccache.log
   SCCACHE_LOG: info
+  # INFRA-2249: BuildBuddy free-tier remote cache — preferred backend when
+  # BUILDBUDDY_API_KEY secret is present; R2 (above) stays wired as the
+  # warm fallback (see docs/process/BUILDBUDDY.md). Detection + backend
+  # selection happens per-job (mirrors the R2-only detect pattern at
+  # NOTE above) so a missing/invalid BuildBuddy key degrades to R2 rather
+  # than failing the build.
+  SCCACHE_BUILDBUDDY_URL: grpcs://remote.buildbuddy.io
 
 jobs:
   # ── Path filter ────────────────────────────────────────────────────────────
@@ -1484,12 +1491,15 @@ jobs:
         with:
           tool: nextest
 
-      # INFRA-2093: detect R2 secret presence via env-routed indirection
-      # (GH Actions disallows secrets.X directly in if: on PR-trigger workflows).
-      - name: Detect R2 secret presence
+      # INFRA-2093/INFRA-2249: detect BuildBuddy / R2 secret presence via
+      # env-routed indirection (GH Actions disallows secrets.X directly in
+      # if: on PR-trigger workflows). BuildBuddy wins when its key is
+      # present (RBE-bonus compile cache); R2 stays the warm fallback.
+      - name: Detect remote-cache backend (BuildBuddy preferred, R2 fallback)
         id: r2detect
         env:
           R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+          BUILDBUDDY_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
           # ZERO-WASTE-027 (2026-07-24): sccache is OFF by default in CI. Measured
           # Rust hit rate = 0.00% (777 misses / 0 hits; the "8%" was C/C++ only) —
           # per-run CARGO_TARGET_DIR paths (INFRA-2118) poison the keys so they
@@ -1509,11 +1519,17 @@ jobs:
           if [ "$SCCACHE_ENABLED" != "true" ]; then
             echo "configured=false (sccache disabled in CI — ZERO-WASTE-027; set vars.CHUMP_CI_SCCACHE=true to re-enable)" >&2
             echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "backend=none" >> "$GITHUB_OUTPUT"
+          elif [ "${#BUILDBUDDY_KEY}" -ge 16 ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "backend=buildbuddy" >> "$GITHUB_OUTPUT"
           elif [ "${#R2_KEY}" -ge 16 ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "backend=r2" >> "$GITHUB_OUTPUT"
           else
-            echo "configured=false (R2_KEY length=${#R2_KEY}, expected >= 16)" >&2
+            echo "configured=false (BUILDBUDDY_KEY length=${#BUILDBUDDY_KEY}, R2_KEY length=${#R2_KEY}, expected >= 16)" >&2
             echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "backend=none" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install sccache
@@ -1547,6 +1563,10 @@ jobs:
         id: cargo-test
         env:
           RUSTC_WRAPPER: ${{ steps.r2detect.outputs.configured == 'true' && 'sccache' || '' }}
+          # INFRA-2249: only set the BuildBuddy auth header when it's the
+          # selected backend — leaving it empty on the R2 path keeps sccache
+          # from attempting a BuildBuddy handshake it isn't configured for.
+          SCCACHE_BUILDBUDDY_API_KEY: ${{ steps.r2detect.outputs.backend == 'buildbuddy' && secrets.BUILDBUDDY_API_KEY || '' }}
         run: |
           _TRIAGE_OUT="$(mktemp /tmp/cargo-test-output.XXXXXX)"
           echo "log_path=$_TRIAGE_OUT" >> "$GITHUB_OUTPUT"
