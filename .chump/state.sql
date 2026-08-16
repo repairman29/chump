@@ -32859,6 +32859,7 @@ gaps:
     [2026-08-16T22:16:16Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T22:46:16Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T23:16:17Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T23:46:17Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2250
@@ -33565,6 +33566,7 @@ gaps:
     [2026-08-16T22:16:13Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 4h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T22:46:12Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T23:16:13Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-16T23:46:13Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -69442,6 +69444,8 @@ gaps:
     - "The change described by \"Termux-proof ChumpOS — make the OS a first-class Android/Termux citizen so the Pixel can be the sovereign host; today every Pixel hiccup was a host-assumption bug, not a hardware limit\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    TERMUX QUIRK #13 (2026-08-16): the claude CLI (@anthropic-ai/claude-code) ships NO linux-arm64-android native binary (available: darwin-arm64/x64, linux-x64(-musl), linux-arm64(-musl), win32) — postinstall refuses on Termux/bionic. So FLEET_BACKEND=claude (claude -p) is not directly runnable on the Pixel. Workarounds to test: (a) force the linux-arm64-musl binary (musl statics often run on bionic), (b) SKIP the claude CLI entirely — wire Claude into the chump provider cascade directly (the Anthropic API works from the Pixel: proven curl 200 with the OAuth token + anthropic-beta oauth header; add claude as priority-1 in CHUMP_MODEL_ESCALATION_LADDER / a claude provider so --execute-gap uses it). Option (b) is cleaner (no node/CLI). VERDICT: Pixel HARDWARE proven (compiled 280 crates cool; Claude API 200); coming online as strong primary needs (1) wasmtime→pulley on ARM for self-build [or accept cross-compile-ship], (2) Claude-in-worker via cascade-wiring [not the CLI]. Both are real code tasks for this gap, not hand-switches.
   outcome_id: SOVEREIGN
   evidence: |
     COMMAND: bringing the Pixel up as build host 2026-08-16 — each failure was ChumpOS assuming Mac/datacenter-Linux.
