@@ -1394,6 +1394,7 @@ dependencies = [
  "chump-cancel-registry",
  "chump-coord",
  "chump-cost-tracker",
+ "chump-cron",
  "chump-db-pool",
  "chump-eval-harness",
  "chump-gap-store",
@@ -1569,6 +1570,15 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "rusqlite",
+]
+
+[[package]]
+name = "chump-cron"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chump-ambient-cli",
+ "tempfile",
 ]
 
 [[package]]

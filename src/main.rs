@@ -2045,6 +2045,14 @@ async fn main() -> Result<()> {
         std::process::exit(preflight::run(&sub_args));
     }
 
+    // `chump cron install|uninstall|status` (INFRA-2057) — declarative cron
+    // expr to launchd plist (macOS) / systemd user timer (Linux) generator.
+    // Fleet-durable scheduling: never depends on any agent session being alive.
+    if args.get(1).map(String::as_str) == Some("cron") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(chump_cron::run(&sub_args));
+    }
+
     // `chump verify` (CREDIBLE-155) — unified policy engine: typed rules
     // over parsed diff semantics, one implementation for git hooks and CI.
     // All logic lives in src/verify/ (INFRA-3287: keep this arm tiny).

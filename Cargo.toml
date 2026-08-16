@@ -47,6 +47,7 @@ members = [
     "crates/chump-bench",
     "crates/chump-waste-tally",
     "crates/chump-kpi-report",
+    "crates/chump-cron",
 ]
 resolver = "2"
 
@@ -157,6 +158,7 @@ chump-atomic-claim = { path = "crates/chump-atomic-claim", version = "0.1.0" } #
 chump-bench = { path = "crates/chump-bench", version = "0.1.0" } # EFFECTIVE-405: ChumpBench — run a track as a scoreable lap
 chump-waste-tally = { path = "crates/chump-waste-tally", version = "0.1.0" } # EFFECTIVE-411: waste-tally reports (build-speed extraction)
 chump-kpi-report = { path = "crates/chump-kpi-report", version = "0.1.0" } # EFFECTIVE-418: KPI/impact reports (build-speed extraction)
+chump-cron = { path = "crates/chump-cron", version = "0.1.0" } # INFRA-2057: chump cron — cron expr to launchd/systemd generator
 # META-175: JetStream durable consumer per role — needed by web_server handle_fleet_wire_health.
 chump-coord = { path = "crates/chump-coord", version = "0.2.0" }
 async-nats = "0.50"
