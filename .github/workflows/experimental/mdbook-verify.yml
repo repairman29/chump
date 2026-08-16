@@ -35,7 +35,7 @@ jobs:
   build-and-linkcheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install mdBook
         run: |
@@ -56,7 +56,7 @@ jobs:
   sync-idempotency:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Sync docs into book src
         run: ./scripts/dev/sync-book-from-docs.sh

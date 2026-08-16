@@ -94,7 +94,7 @@ jobs:
 
       - name: Upload findings artifact
         if: steps.checks.outputs.count != '0'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: repo-health-findings
           path: .chump/pr-health-findings.jsonl
