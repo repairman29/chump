@@ -2317,6 +2317,19 @@ async fn main() -> Result<()> {
         std::process::exit(commands::bootstrap::run(&sub_args));
     }
 
+    // `chump swe <prompt> [--budget-secs N] [--budget-tokens N]
+    //   [--budget-dollars N] [--paths CSV] [--dry-run-diff]` (INFRA-2089) —
+    // one-shot bounded SWE-agent wrapper: reserve+claim a synthetic gap from
+    // the prompt, dispatch a headless sub-agent under budget, arm auto-merge,
+    // emit kind=swe_invocation_complete. Productizes the existing per-gap
+    // claim -> worktree -> subagent-dispatch -> auto-merge pipeline
+    // (crate::dispatch::run) as a direct prompt-in surface (Bet 1,
+    // MARKET_POSITIONING_2026-05-27 #2679).
+    if args.get(1).map(String::as_str) == Some("swe") {
+        let sub_args: Vec<String> = args.iter().skip(1).cloned().collect();
+        std::process::exit(commands::swe::run(&sub_args));
+    }
+
     // `chump roadmap-from-vision <vision> --domain D [--outcome ID] [--max-gaps N] [--apply]`
     // (EFFECTIVE-425, COTG spine slice 1) — vision string -> validated Roadmap JSON;
     // with --apply, files each GapDraft via `chump gap reserve --outcome <id>` so
