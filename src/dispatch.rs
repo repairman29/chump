@@ -45,6 +45,8 @@
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 // INFRA-302 blocker (3): reuse the orchestrator's worktree-path convention
@@ -428,10 +430,13 @@ fn spawn_opencode(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
         cmd.args(["--model", model]);
     }
     cmd.current_dir(ws.working_dir());
+    if subagent_stream_budgets_active() {
+        cmd.stdout(std::process::Stdio::piped());
+    }
     let child = cmd
         .spawn()
         .context("spawn `opencode -p` (is opencode CLI on PATH?)")?;
-    let status = wait_with_hang_detection(child, "opencode -p", opts.gap_id)
+    let status = wait_with_hang_detection(child, "opencode -p", opts.gap_id, model)
         .context("waiting for opencode -p to complete")?;
     if !status.success() {
         bail!(
@@ -455,10 +460,13 @@ fn spawn_aider(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
         cmd.args(["--model", model]);
     }
     cmd.current_dir(ws.working_dir());
+    if subagent_stream_budgets_active() {
+        cmd.stdout(std::process::Stdio::piped());
+    }
     let child = cmd
         .spawn()
         .context("spawn `aider --message` (is aider on PATH?)")?;
-    let status = wait_with_hang_detection(child, "aider", opts.gap_id)
+    let status = wait_with_hang_detection(child, "aider", opts.gap_id, model)
         .context("waiting for aider --message to complete")?;
     if !status.success() {
         bail!(
@@ -493,10 +501,13 @@ fn spawn_local(ws: &Workspace, prompt: &str) -> Result<()> {
         // as the other backends, even though `gen` also takes --work-dir
         // explicitly (gen resolves relative paths off cwd otherwise).
         .current_dir(ws.working_dir());
+    if subagent_stream_budgets_active() {
+        cmd.stdout(std::process::Stdio::piped());
+    }
     let child = cmd
         .spawn()
         .context("spawn `chump gen --local` (is chump on PATH / built?)")?;
-    let status = wait_with_hang_detection(child, "chump gen --local", opts.gap_id)
+    let status = wait_with_hang_detection(child, "chump gen --local", opts.gap_id, "")
         .context("waiting for chump gen --local to complete")?;
     if !status.success() {
         bail!(
@@ -531,6 +542,16 @@ fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     // INFRA-302 blocker (3): cwd is the FRESH WORKTREE, NOT opts.repo_root —
     // see Workspace::new for the resolution.
     cmd.current_dir(ws.working_dir());
+    // INFRA-2090: when a token/dollar subagent budget is configured, switch
+    // to `--output-format stream-json --verbose` (same flags scripts/dispatch/
+    // worker.sh already uses for its INFRA-639 token attribution) and pipe
+    // stdout so wait_with_hang_detection can tee+scan per-turn `.usage`
+    // objects. Plain-text output (and inherited stdio) stays the default
+    // when no budget is set, so unrelated dispatches see no behavior change.
+    if subagent_stream_budgets_active() {
+        cmd.args(["--output-format", "stream-json", "--verbose"]);
+        cmd.stdout(std::process::Stdio::piped());
+    }
     // RESILIENT-057: validate-before-use — if the credential this spawn
     // would otherwise inherit is cached as recently dead (a prior spawn
     // already hit an auth rejection), switch to the fallback floor BEFORE
@@ -542,7 +563,7 @@ fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     let child = cmd
         .spawn()
         .context("spawn `claude -p` (is the claude CLI on PATH?)")?;
-    let status = wait_with_hang_detection(child, "claude -p", opts.gap_id)
+    let status = wait_with_hang_detection(child, "claude -p", opts.gap_id, model)
         .context("waiting for claude -p to complete")?;
     if !status.success() {
         bail!(
@@ -571,10 +592,13 @@ fn spawn_exec_gap(ws: &Workspace) -> Result<()> {
         // not from whatever was checked out in the main repo when the
         // operator typed `chump dispatch …`.
         .current_dir(ws.working_dir());
+    if subagent_stream_budgets_active() {
+        cmd.stdout(std::process::Stdio::piped());
+    }
     let child = cmd
         .spawn()
         .with_context(|| format!("spawn `chump --execute-gap {}`", opts.gap_id))?;
-    let status = wait_with_hang_detection(child, "chump --execute-gap", opts.gap_id)
+    let status = wait_with_hang_detection(child, "chump --execute-gap", opts.gap_id, "")
         .context("waiting for chump --execute-gap to complete")?;
     if !status.success() {
         bail!(
@@ -586,18 +610,183 @@ fn spawn_exec_gap(ws: &Workspace) -> Result<()> {
     Ok(())
 }
 
+/// True when either INFRA-2090 streaming-usage budget env var is configured
+/// with a positive value. Callers use this to decide whether to pipe the
+/// child's stdout (needed to observe usage JSON) instead of inheriting it —
+/// piping is skipped by default so the operator keeps seeing live output
+/// inline (the pre-existing behavior) when the feature is unused.
+fn subagent_stream_budgets_active() -> bool {
+    parse_positive_u64_env("CHUMP_SUBAGENT_TOKEN_BUDGET").is_some()
+        || parse_positive_f64_env("CHUMP_SUBAGENT_DOLLAR_BUDGET").is_some()
+}
+
+fn parse_positive_u64_env(name: &str) -> Option<u64> {
+    std::env::var(name)
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|&v| v > 0)
+}
+
+fn parse_positive_f64_env(name: &str) -> Option<f64> {
+    std::env::var(name)
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|&v| v > 0.0)
+}
+
+/// Running token counters fed by [`spawn_usage_reader`], shared between the
+/// reader thread and the [`wait_with_hang_detection`] poll loop.
+#[derive(Clone, Default)]
+struct UsageCounters {
+    input_tokens: Arc<AtomicU64>,
+    output_tokens: Arc<AtomicU64>,
+}
+
+impl UsageCounters {
+    fn totals(&self) -> (u64, u64) {
+        (
+            self.input_tokens.load(Ordering::Relaxed),
+            self.output_tokens.load(Ordering::Relaxed),
+        )
+    }
+}
+
+/// Tee the child's piped stdout to our own stdout (so the operator still
+/// sees live output, matching the previous inherited-stdio behavior) while
+/// scanning each line for a Claude `--output-format stream-json` usage
+/// object — either top-level `.usage` or nested `.message.usage` — and
+/// accumulating `input_tokens` / `output_tokens` into `counters`.
+///
+/// Best-effort: non-JSON lines (other backends' plain-text output) are
+/// simply forwarded and contribute nothing to the counters, so this is a
+/// safe no-op for backends that don't stream usage JSON.
+fn spawn_usage_reader(stdout: std::process::ChildStdout, counters: UsageCounters) {
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        let reader = std::io::BufReader::new(stdout);
+        for line in reader.lines().map_while(std::result::Result::ok) {
+            println!("{line}");
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            let usage = value
+                .get("usage")
+                .or_else(|| value.get("message").and_then(|m| m.get("usage")));
+            let Some(usage) = usage else { continue };
+            if let Some(v) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
+                counters.input_tokens.fetch_add(v, Ordering::Relaxed);
+            }
+            if let Some(v) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
+                counters.output_tokens.fetch_add(v, Ordering::Relaxed);
+            }
+        }
+    });
+}
+
+/// Emit `kind=subagent_killed_at_token_budget` to ambient.jsonl (INFRA-2090).
+fn emit_subagent_killed_at_token_budget(
+    process_name: &str,
+    gap_id: &str,
+    token_budget: u64,
+    tokens_seen: u64,
+    child_pid: u32,
+) {
+    emit_subagent_budget_kill_event(
+        "subagent_killed_at_token_budget",
+        process_name,
+        gap_id,
+        child_pid,
+        &format!(r#","token_budget":{token_budget},"tokens_seen":{tokens_seen}"#),
+    );
+}
+
+/// Emit `kind=subagent_killed_at_dollar_budget` to ambient.jsonl (INFRA-2090).
+fn emit_subagent_killed_at_dollar_budget(
+    process_name: &str,
+    gap_id: &str,
+    dollar_budget: f64,
+    cost_usd: f64,
+    child_pid: u32,
+) {
+    emit_subagent_budget_kill_event(
+        "subagent_killed_at_dollar_budget",
+        process_name,
+        gap_id,
+        child_pid,
+        &format!(r#","dollar_budget":{dollar_budget:.4},"cost_usd":{cost_usd:.6}"#),
+    );
+}
+
+/// Shared writer for the two INFRA-2090 budget-kill ambient events —
+/// mirrors [`emit_subagent_killed_at_budget`]'s shape (ts/session/worktree/
+/// process/gap/pid) plus a `kind`-specific extra-fields suffix.
+fn emit_subagent_budget_kill_event(
+    kind: &str,
+    process_name: &str,
+    gap_id: &str,
+    child_pid: u32,
+    extra_fields_json: &str,
+) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
+
+    let worktree = repo_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"worktree\":\"{worktree}\",\
+         \"event\":\"{kind}\",\"kind\":\"{kind}\",\
+         \"process\":\"{process_name}\",\"gap\":\"{gap_id}\",\"pid\":{child_pid}{extra_fields_json}}}"
+    );
+
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{}", line);
+    }
+
+    if std::env::var("CHUMP_AMBIENT_NATS").as_deref() != Ok("0") {
+        let _ = std::process::Command::new("chump-coord")
+            .arg("emit")
+            .arg(kind)
+            .arg(format!("process={}", process_name))
+            .arg(format!("gap={}", gap_id))
+            .arg(format!("pid={}", child_pid))
+            .status();
+    }
+}
+
 /// Wait for a child process with hang detection (INFRA-406).
 /// If the process doesn't complete within the timeout period, send SIGTERM
 /// and emit an ALERT to ambient.jsonl.
 ///
 /// The timeout is configurable via CHUMP_DISPATCH_HANG_TIMEOUT_SECS env var
 /// (default 3600 = 1 hour). Set to 0 to disable hang detection.
+///
+/// `model` is the model id used to price the dollar budget (INFRA-2090); an
+/// empty string falls back to `session_ledger::cost_usd_from_tokens`'s
+/// Sonnet-default pricing.
 fn wait_with_hang_detection(
     mut child: Child,
     process_name: &str,
     gap_id: &str,
+    model: &str,
 ) -> Result<std::process::ExitStatus> {
-    // Two cooperating deadlines:
+    // Three cooperating deadlines:
     //   1. SUBAGENT BUDGET (CHUMP_SUBAGENT_BUDGET_S, default 900s):
     //      parent-enforced upper bound on wall-clock per subagent dispatch.
     //      INFRA-1972 (critique H3): CLAUDE.md documents this as a
@@ -606,12 +795,21 @@ fn wait_with_hang_detection(
     //      budget without self-honoring it. This is the parent-side hard
     //      enforcement that didn't exist before. On exceed: SIGTERM, then
     //      30s grace, then SIGKILL. Emits kind=subagent_killed_at_budget.
-    //   2. HANG TIMEOUT (CHUMP_DISPATCH_HANG_TIMEOUT_SECS, default 3600s):
+    //   2. TOKEN / DOLLAR BUDGET (CHUMP_SUBAGENT_TOKEN_BUDGET /
+    //      CHUMP_SUBAGENT_DOLLAR_BUDGET, unset by default): INFRA-2090 —
+    //      extends (1) from wall-clock-only to a live streaming-token
+    //      counter fed by the child's `--output-format stream-json` usage
+    //      events (see [`spawn_usage_reader`]), and a per-model-rate-card
+    //      dollar figure derived from those same counts via
+    //      `session_ledger::cost_usd_from_tokens`. Same SIGTERM→30s→SIGKILL
+    //      grace as (1). Emits kind=subagent_killed_at_{token,dollar}_budget.
+    //   3. HANG TIMEOUT (CHUMP_DISPATCH_HANG_TIMEOUT_SECS, default 3600s):
     //      backup deadline — catches a stuck process that somehow survived
     //      the budget kill. SIGKILL only. Emits kind=hang_detector.
     //
-    // Either env set to 0 disables that specific deadline. The budget
-    // (faster) fires first by design; hang is a backstop.
+    // Any of the above set to 0 (or, for the token/dollar budgets, unset)
+    // disables that specific deadline. Wall-clock/token/dollar budgets
+    // (faster) fire first by design; hang is a backstop.
     let budget_secs: u64 = std::env::var("CHUMP_SUBAGENT_BUDGET_S")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -630,9 +828,23 @@ fn wait_with_hang_detection(
         .and_then(|s| s.parse().ok())
         .unwrap_or(3600);
 
+    let token_budget = parse_positive_u64_env("CHUMP_SUBAGENT_TOKEN_BUDGET");
+    let dollar_budget = parse_positive_f64_env("CHUMP_SUBAGENT_DOLLAR_BUDGET");
+
     let no_budget = budget_secs == 0;
     let no_hang = hang_secs == 0;
-    if no_budget && no_hang {
+
+    // Start the usage-tee reader whenever the caller piped stdout (i.e.
+    // subagent_stream_budgets_active() was true at spawn time). Do this
+    // before the early-return fast path below so a token/dollar-only
+    // configuration (CHUMP_SUBAGENT_BUDGET_S=0, CHUMP_DISPATCH_HANG_TIMEOUT_SECS=0)
+    // still gets its counters wired up.
+    let counters = UsageCounters::default();
+    if let Some(stdout) = child.stdout.take() {
+        spawn_usage_reader(stdout, counters.clone());
+    }
+
+    if no_budget && no_hang && token_budget.is_none() && dollar_budget.is_none() {
         return child.wait().context("waiting for child process");
     }
 
@@ -661,17 +873,73 @@ fn wait_with_hang_detection(
                     budget_kill_in_flight = Some(std::time::Instant::now());
                 }
 
+                // INFRA-2090: token / dollar budget enforcement — same
+                // graceful SIGTERM→grace→SIGKILL shape as the wall-clock
+                // budget above, keyed off the live usage counters instead
+                // of elapsed time.
+                if budget_kill_in_flight.is_none()
+                    && (token_budget.is_some() || dollar_budget.is_some())
+                {
+                    let (input_tokens, output_tokens) = counters.totals();
+                    let total_tokens = input_tokens + output_tokens;
+
+                    if let Some(tb) = token_budget {
+                        if total_tokens > tb {
+                            emit_subagent_killed_at_token_budget(
+                                process_name,
+                                gap_id,
+                                tb,
+                                total_tokens,
+                                child_pid,
+                            );
+                            let _ = std::process::Command::new("kill")
+                                .args(["-TERM", &child_pid.to_string()])
+                                .status();
+                            budget_kill_in_flight = Some(std::time::Instant::now());
+                        }
+                    }
+
+                    if budget_kill_in_flight.is_none() {
+                        if let Some(db) = dollar_budget {
+                            let cost_usd = crate::session_ledger::cost_usd_from_tokens(
+                                model,
+                                input_tokens,
+                                output_tokens,
+                                0,
+                            );
+                            if cost_usd > db {
+                                emit_subagent_killed_at_dollar_budget(
+                                    process_name,
+                                    gap_id,
+                                    db,
+                                    cost_usd,
+                                    child_pid,
+                                );
+                                let _ = std::process::Command::new("kill")
+                                    .args(["-TERM", &child_pid.to_string()])
+                                    .status();
+                                budget_kill_in_flight = Some(std::time::Instant::now());
+                            }
+                        }
+                    }
+                }
+
                 // After SIGTERM, allow `grace_secs` for graceful shutdown
                 // before SIGKILL. INFRA-1972 AC: "at budget_secs + 30s: SIGKILL".
                 if let Some(term_at) = budget_kill_in_flight {
                     if term_at.elapsed().as_secs() > grace_secs {
                         let _ = child.kill(); // SIGKILL
                         let _ = child.wait();
+                        let (input_tokens, output_tokens) = counters.totals();
                         bail!(
-                            "{} exceeded subagent budget ({} secs) for gap {}; SIGTERM at budget, \
+                            "{} exceeded subagent budget (wall={} secs, token_budget={:?}, \
+                             dollar_budget={:?}, tokens_seen={}) for gap {}; SIGTERM at budget, \
                              SIGKILL after {}s grace",
                             process_name,
                             budget_secs,
+                            token_budget,
+                            dollar_budget,
+                            input_tokens + output_tokens,
                             gap_id,
                             grace_secs
                         );
@@ -1784,5 +2052,160 @@ mod tests {
         std::env::remove_var("CHUMP_WORK_BACKEND");
         let backend = backend_from_env("".to_string(), "do the thing".to_string());
         assert!(matches!(backend, WorkBackend::Headless { .. }));
+    }
+
+    // ── INFRA-2090: token / dollar subagent budget kill ──────────────────────
+
+    /// Spawn a bash child that emits `--output-format stream-json`-shaped
+    /// `.usage` lines with small gaps between them (so the process outlives
+    /// several of `wait_with_hang_detection`'s 1s poll ticks) and then sleeps
+    /// well past any budget this test configures — the process must never
+    /// exit on its own; only the budget-kill path should end it.
+    fn spawn_fake_usage_emitter(tokens_per_line: u64, num_lines: u64) -> Child {
+        let script: String = (0..num_lines)
+            .map(|_| {
+                format!(
+                    "echo '{{\"usage\":{{\"input_tokens\":{tokens_per_line},\"output_tokens\":0}}}}'\nsleep 0.3\n"
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+            + "sleep 30\n";
+        Command::new("bash")
+            .arg("-c")
+            .arg(script)
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn fake usage emitter")
+    }
+
+    #[test]
+    #[serial_test::serial(ambient_env)]
+    fn wait_with_hang_detection_kills_on_token_budget_exceed() {
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        let ambient = tmp.path().join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", ambient.to_string_lossy().as_ref());
+        std::env::set_var("CHUMP_AMBIENT_NATS", "0");
+        std::env::set_var("CHUMP_SUBAGENT_TOKEN_BUDGET", "250");
+        std::env::remove_var("CHUMP_SUBAGENT_DOLLAR_BUDGET");
+        std::env::set_var("CHUMP_SUBAGENT_BUDGET_S", "0");
+        std::env::set_var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS", "0");
+
+        // 5 lines x 100 tokens = 500 total, budget is 250 — must trip partway
+        // through, well before the process's own ~1.5s+30s natural lifetime.
+        let child = spawn_fake_usage_emitter(100, 5);
+        let start = std::time::Instant::now();
+        let _ = wait_with_hang_detection(child, "test-token-budget", "INFRA-2090-TEST", "");
+        let elapsed = start.elapsed();
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        std::env::remove_var("CHUMP_AMBIENT_NATS");
+        std::env::remove_var("CHUMP_SUBAGENT_TOKEN_BUDGET");
+        std::env::remove_var("CHUMP_SUBAGENT_BUDGET_S");
+        std::env::remove_var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS");
+
+        assert!(
+            elapsed.as_secs() < 30,
+            "expected the token-budget kill to fire well before the process's \
+             own 30s sleep, took {elapsed:?}"
+        );
+
+        let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+        assert!(
+            contents.contains(r#""kind":"subagent_killed_at_token_budget""#),
+            "expected subagent_killed_at_token_budget event, got: {contents}"
+        );
+        assert!(
+            contents.contains("INFRA-2090-TEST"),
+            "expected gap_id in ambient event, got: {contents}"
+        );
+        assert!(
+            contents.contains(r#""token_budget":250"#),
+            "expected token_budget=250 in ambient event, got: {contents}"
+        );
+    }
+
+    #[test]
+    #[serial_test::serial(ambient_env)]
+    fn wait_with_hang_detection_kills_on_dollar_budget_exceed() {
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        let ambient = tmp.path().join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", ambient.to_string_lossy().as_ref());
+        std::env::set_var("CHUMP_AMBIENT_NATS", "0");
+        std::env::remove_var("CHUMP_SUBAGENT_TOKEN_BUDGET");
+        std::env::set_var("CHUMP_SUBAGENT_DOLLAR_BUDGET", "1.0");
+        std::env::set_var("CHUMP_SUBAGENT_BUDGET_S", "0");
+        std::env::set_var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS", "0");
+        // $1,000,000 / MTok input ⇒ $1 per input token, so 2 tokens ($2)
+        // trips the $1.00 budget on the very first usage line.
+        std::env::set_var("CHUMP_COST_INPUT_PER_MTK", "1000000");
+        std::env::set_var("CHUMP_COST_OUTPUT_PER_MTK", "0");
+
+        let child = spawn_fake_usage_emitter(2, 5);
+        let start = std::time::Instant::now();
+        let _ = wait_with_hang_detection(child, "test-dollar-budget", "INFRA-2090-TEST2", "");
+        let elapsed = start.elapsed();
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        std::env::remove_var("CHUMP_AMBIENT_NATS");
+        std::env::remove_var("CHUMP_SUBAGENT_DOLLAR_BUDGET");
+        std::env::remove_var("CHUMP_SUBAGENT_BUDGET_S");
+        std::env::remove_var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS");
+        std::env::remove_var("CHUMP_COST_INPUT_PER_MTK");
+        std::env::remove_var("CHUMP_COST_OUTPUT_PER_MTK");
+
+        assert!(
+            elapsed.as_secs() < 30,
+            "expected the dollar-budget kill to fire well before the process's \
+             own 30s sleep, took {elapsed:?}"
+        );
+
+        let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+        assert!(
+            contents.contains(r#""kind":"subagent_killed_at_dollar_budget""#),
+            "expected subagent_killed_at_dollar_budget event, got: {contents}"
+        );
+        assert!(
+            contents.contains("INFRA-2090-TEST2"),
+            "expected gap_id in ambient event, got: {contents}"
+        );
+    }
+
+    /// Below both new budgets, the process must run to natural completion —
+    /// no kill event, no spurious termination.
+    #[test]
+    #[serial_test::serial(ambient_env)]
+    fn wait_with_hang_detection_leaves_process_alone_under_budget() {
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        let ambient = tmp.path().join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", ambient.to_string_lossy().as_ref());
+        std::env::set_var("CHUMP_AMBIENT_NATS", "0");
+        std::env::set_var("CHUMP_SUBAGENT_TOKEN_BUDGET", "100000");
+        std::env::remove_var("CHUMP_SUBAGENT_DOLLAR_BUDGET");
+        std::env::set_var("CHUMP_SUBAGENT_BUDGET_S", "0");
+        std::env::set_var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS", "0");
+
+        let child = Command::new("bash")
+            .arg("-c")
+            .arg("echo '{\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}'")
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn short-lived child");
+        let status = wait_with_hang_detection(child, "test-under-budget", "INFRA-2090-TEST3", "")
+            .expect("process under budget should exit cleanly, not be killed");
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        std::env::remove_var("CHUMP_AMBIENT_NATS");
+        std::env::remove_var("CHUMP_SUBAGENT_TOKEN_BUDGET");
+        std::env::remove_var("CHUMP_SUBAGENT_BUDGET_S");
+        std::env::remove_var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS");
+
+        assert!(status.success(), "expected clean exit, got {status:?}");
+        let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+        assert!(
+            !contents.contains("subagent_killed_at_token_budget")
+                && !contents.contains("subagent_killed_at_dollar_budget"),
+            "expected no budget-kill events under budget, got: {contents}"
+        );
     }
 }

@@ -2771,6 +2771,27 @@ events:
     consumers: [fleet-brief, watchdog, operator-recall, audit-log]
     fields_required: [ts, session, kind, gap, process, pid, budget_secs]
 
+  - kind: subagent_killed_at_token_budget
+    effect_metric: self
+    emitter: src/dispatch.rs (chump dispatch — wait_with_hang_detection, INFRA-2090)
+    trigger: parent-enforced subagent streaming-token budget exceeded; SIGTERM sent
+      when live usage counters (fed by --output-format stream-json .usage events)
+      exceed CHUMP_SUBAGENT_TOKEN_BUDGET, then SIGKILL after 30s grace. Extends
+      subagent_killed_at_budget (wall-clock-only) with a token-count deadline.
+    consumers: [fleet-brief, watchdog, operator-recall, audit-log]
+    fields_required: [ts, session, kind, gap, process, pid, token_budget, tokens_seen]
+
+  - kind: subagent_killed_at_dollar_budget
+    effect_metric: self
+    emitter: src/dispatch.rs (chump dispatch — wait_with_hang_detection, INFRA-2090)
+    trigger: parent-enforced subagent dollar budget exceeded; SIGTERM sent when the
+      live usage counters priced via session_ledger::cost_usd_from_tokens's
+      per-model rate card exceed CHUMP_SUBAGENT_DOLLAR_BUDGET, then SIGKILL after
+      30s grace. Extends subagent_killed_at_budget (wall-clock-only) with a
+      cost-based deadline.
+    consumers: [fleet-brief, watchdog, operator-recall, audit-log]
+    fields_required: [ts, session, kind, gap, process, pid, dollar_budget, cost_usd]
+
   - kind: subagent_heartbeat
     effect_metric: self
     emitter: src/execute_gap.rs (INFRA-2056)
