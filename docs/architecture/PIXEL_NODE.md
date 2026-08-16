@@ -13,7 +13,7 @@ node can be rebuilt (or a second device onboarded) without re-deriving the setup
 |---|---|---|
 | `pixel-node-supervisor.sh` | `scripts/setup/pixel-node-supervisor.sh` | restarts the two below on death; takes the wake-lock |
 | `pixel-worker.sh` | `scripts/setup/pixel-worker.sh` | express-lane gap worker (`chump --execute-gap`, cascade LLM) |
-| witness probe | `~/witness/run.sh` | 5-min helsinki/NATS + trunk-age watch; DM-alerts on darkness |
+| witness probe | `scripts/setup/witness/probe.py` + `run.sh` | 5-min helsinki/NATS + trunk-age watch; DM-alerts on darkness |
 | `sshd` | (boot hook) | SSH :8022 for Mac-side management |
 
 The worker is **express-lane only**: `WORKER_SKILLS=docs,shell,scripts,md` (no
@@ -54,12 +54,20 @@ starts the supervisor. Idempotent.
 2. **Sync provider keys** — `~/chump/.env` needs the cascade roster
    (`CHUMP_PROVIDER_*`) + `OPENCODE_API_KEY`. These are secrets; sync from the
    Mac, never commit.
-3. **Termux:Boot (F-Droid)** — the boot hook is staged; the app fires it on boot.
+3. **Witness creds** — `~/.witness-env` needs `DISCORD_TOKEN` +
+   `CHUMP_READY_DM_USER_ID` (chmod 600). The probe reads them at runtime; they
+   are never committed.
+4. **Fresh gap registry** — the worker picks from
+   `~/chump-repo/.chump/state.db`, rebuilt from the committed `.chump/state.sql`
+   via `chump gap restore --from-sql`. The committed `state.sql` lags the live
+   registry (reaped gaps can linger as `open`), so re-run `git pull` +
+   `chump gap restore --from-sql` before a long run.
+5. **Termux:Boot (F-Droid)** — the boot hook is staged; the app fires it on boot.
    Note: `adb install` of Termux:Boot v0.8.1 fails (`INSTALL_FAILED_SHARED_USER_INCOMPATIBLE`)
    — its signing key predates the installed Termux 0.119.0-beta.3. Fix = reinstall
    Termux stable v0.118.3 + Termux:Boot v0.8.1 from the same signing era, or
    defer (the node survives normal ops without it).
-4. **Phantom-process bypass (Android 14)** — once, over USB:
+6. **Phantom-process bypass (Android 14)** — once, over USB:
    ```bash
    adb shell device_config put activity_manager max_phantom_processes 2147483647
    adb shell settings put global settings_enable_monitor_phantom_procs false

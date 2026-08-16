@@ -36,6 +36,13 @@ cp -f "$HERE/pixel-worker.sh" "$HOME_DIR/pixel-worker.sh"
 cp -f "$HERE/pixel-node-supervisor.sh" "$HOME_DIR/pixel-node-supervisor.sh"
 chmod +x "$HOME_DIR/pixel-worker.sh" "$HOME_DIR/pixel-node-supervisor.sh"
 
+# witness probe (creds live in ~/.witness-env — never committed; the probe
+# reads DISCORD_TOKEN + CHUMP_READY_DM_USER_ID from there at runtime)
+mkdir -p "$HOME_DIR/witness"
+cp -f "$HERE/witness/probe.py" "$HOME_DIR/witness/probe.py"
+cp -f "$HERE/witness/run.sh" "$HOME_DIR/witness/run.sh"
+chmod +x "$HOME_DIR/witness/run.sh"
+
 # ── 2. stage the boot hook (fires once Termux:Boot is installed) ───────────
 log "staging boot hook at $BOOT_DIR"
 mkdir -p "$BOOT_DIR"
