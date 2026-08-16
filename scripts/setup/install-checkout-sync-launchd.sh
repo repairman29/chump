@@ -27,7 +27,16 @@ case "$(uname -s)" in
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# INFRA-2365: resolve to the MAIN worktree, not whatever worktree this
+# installer runs from (see scripts/lib/resolve-main-worktree.sh; INFRA-451
+# class — a baked-in linked/temp worktree path dies with exit=78 once the
+# worktree is reaped).
+# shellcheck source=../lib/resolve-main-worktree.sh
+source "$SCRIPT_DIR/../lib/resolve-main-worktree.sh"
+REPO_ROOT="$(resolve_main_worktree "${BASH_SOURCE[0]}")" || {
+    echo "FAIL: could not resolve main worktree from ${BASH_SOURCE[0]}" >&2
+    exit 1
+}
 PLIST_NAME="com.chump.checkout-sync"
 DEST="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
 INTERVAL="${CHUMP_CHECKOUT_SYNC_INTERVAL:-300}"

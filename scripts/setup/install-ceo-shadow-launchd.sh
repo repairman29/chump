@@ -4,7 +4,13 @@
 # driver never executes routed commands in v0, so this daemon is read-and-log.
 set -euo pipefail
 
-REPO="${CHUMP_REPO_ROOT:-$HOME/Projects/Chump}"
+# INFRA-2365: prefer the explicit env override, else resolve the MAIN
+# worktree (not whatever worktree this installer runs from — see
+# scripts/lib/resolve-main-worktree.sh / INFRA-451 class), falling back to
+# the historical hardcoded default only if resolution fails.
+# shellcheck source=../lib/resolve-main-worktree.sh
+source "$(cd "$(dirname "$0")" && pwd)/../lib/resolve-main-worktree.sh"
+REPO="${CHUMP_REPO_ROOT:-$(resolve_main_worktree "$0" 2>/dev/null || echo "$HOME/Projects/Chump")}"
 LABEL=com.chump.ceo-shadow
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOGDIR="$HOME/.chump/ceo-shadow"
