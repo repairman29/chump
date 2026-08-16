@@ -11572,6 +11572,18 @@ gaps:
   notes: |
     DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-466 (score 0.75) considered at reserve time — proceeded (advisory-only, no override flag used).
 
+- id: EFFECTIVE-495
+  domain: EFFECTIVE
+  title: Almanac crawls + indexes agent transcripts (Claude Code / Codex / opencode) so the fleet is aware of what agents have done + decided across sessions
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"Almanac crawls + indexes agent transcripts (Claude Code / Codex / opencode) so the fleet is aware of what agents have done + decided across sessions\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  skills_required: "external_repo:repairman29/almanac"
+
 - id: EVAL-085
   title: test eval 085
   status: done
@@ -31681,11 +31693,13 @@ gaps:
 - id: INFRA-2185
   domain: INFRA
   title: "EFFECTIVE P1: META-125 ring-the-bell — per-lane post-merge curator refresh — when PR merges to main, NATS-subscribed curators get filtered notification + auto-refresh internal state"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "Per operator framing 2026-05-29: 'when new code lands on main, how do agents ring the bell and alert each other to update themselves?' Today's evidence the gap is biting us:\n- Handoff curator INFRA-2167 false-positive: didn't know ExternalRepoContract had merged via INFRA-2111\n- Target curator: 12-day-stale ROADMAP_MARCUS.md view\n- TODO ACs persisting because curators didn't see their own gaps merged with stub AC\n- 348-disk-yaml drift class: curators working from stale view of state.db vs disk YAMLs\n- META-123 fully merged this session but curators have NOT been notified — internal memory is stale\n\n## What today's mechanisms DO and DON'T cover\n\nEXISTS (partial):\n- Session-start hook digest — fires only when curator session STARTS, not when something merges\n- ambient.jsonl event stream — live but requires active reader (no curator runs tail -F)\n- NATS CHUMP_EVENTS jetstream — live but zero curator-opus-* subscribers (META-125 C4 productizes)\n- Inbox files (27 inboxes) — async; messages decay until next session-start\n\nMISSING:\n- Per-lane post-merge filter (PR merges to main, no per-curator notification)\n- Stale-context detection (curators don't know their internal memory is out of date)\n- Catchup-on-relevant-merges (no 'here is what landed in your lane since X')\n- Operator surface: chump curator status (no per-role refresh-timestamp visibility)\n\n## The ring-the-bell pattern (this gap)\n\n### Substrate (depends on META-125 C4 — curator-as-NATS-subscriber daemon)\n\n1. EMIT — on every PR merge to main, fire ambient kind=pr_merged_to_main with payload {pr_url, gap_ids_closed, files_changed[], commit_sha, ts, lane_tags[]}. Lane tags derive from file globs: crates/chump-handoff/* → handoff lane; .github/workflows/* → ci-audit lane; docs/strategy/* → external-collab lane; etc.\n\n2. FILTER — each curator subscriber has a lane glob pattern (existing in role doc). Subscriber matches incoming pr_merged_to_main events against its lane pattern.\n\n3. REFRESH ACTION (on lane match):\n   - Update curator's persistent memory at .chump-locks/curator-memory/<role>.json with seen-merges list\n   - Check curator's open gaps for staleness markers: did this merge close/supersede any of MY gaps? Any TODO AC in my gap that the merge might have addressed?\n   - Emit ambient kind=curator_refreshed with {role, pr_url, gaps_checked, staleness_findings[]}\n   - If operator-actionable surfaces (e.g. open gap is now stale, false-positive in prior review, etc.), broadcast FEEDBACK proposal\n\n4. OPERATOR SURFACE — new CLI: chump curator status [--role ROLE]\n   - Shows each curator's last-refresh timestamp\n   - Highlights curators that are >24h stale on their lane\n   - Lists open staleness_findings per curator\n   - chump curator refresh <role> — manual ring-the-bell for one curator (forces re-eval against current main)\n\n### Lane glob examples (initial mapping)\n\n- handoff: crates/chump-handoff/**, src/dispatch*.rs\n- ci-audit: .github/workflows/**, scripts/ci/**\n- decompose: src/main.rs (gap-decompose handler), src/gap_decompose*.rs\n- external-collab: docs/PITCH.md, docs/DEMO_5MIN.md, docs/HIDDEN_GEMS.md, docs/strategy/ROADMAP_MARCUS.md\n- harvester: docs/arsenal/**, cross-pollination/**\n- infra-watcher: scripts/setup/install-*-launchd.sh, ~/Library/LaunchAgents/com.chump.*.plist (out-of-tree)\n- md-links: docs/**/*.md (link-graph)\n- observability: scripts/ci/event-registry-reserved.txt, docs/observability/EVENT_REGISTRY.yaml\n- target: docs/gaps/INFRA-2108-*.yaml, META-123-* children, .claude/agents/target.md\n\n### Implementation surface\n\nNew script: scripts/coord/post-merge-bell.sh (or in chump-curator-subscriber daemon)\n- Subscribes to chump.events.pr_merged_to_main NATS subject\n- For each event, fan out to matching curator subscribers via lane-glob filter\n- Each curator subscriber: read its memory file, compute staleness findings, emit kind=curator_refreshed\n- Subscriber state stored at .chump-locks/curator-memory/<role>.json\n\nNew ambient event kinds (4 new, register per INFRA-754):\n- pr_merged_to_main (emitter: bot-merge.sh post-merge hook OR scripts/coord/main-merge-listener.sh polling GH events)\n- curator_lane_match (emitter: bell-fanout — debug surface)\n- curator_refreshed (emitter: each curator subscriber on refresh)\n- curator_staleness_finding (emitter: subscriber when it detects an open gap is now stale)\n\n### Success criteria\n\n- Time from main merge to curator memory updated: <60s\n- Per-lane filter precision: zero false-fires (handoff doesn't process docs-only merges)\n- Operator surface complete: chump curator status shows all 9 curators with last-refresh timestamp\n- Today's evidence reversed: a curator that issues a FEEDBACK like handoff's INFRA-2167 false-positive would catch it before broadcasting (refresh would surface ExternalRepoContract as just-landed)\n\n### Cross-references\n\n- META-125 (curator-as-NATS-subscriber daemon C4 is the substrate)\n- META-127 (curator suite productization — this is the live-refresh standardization)\n- META-126 (event-sourced gap mutations — pr_merged_to_main is the gap-shipped event)\n- INFRA-2167 (handoff false-positive) — concrete evidence\n- INFRA-2111 (ExternalRepoContract) — what handoff missed\n- INFRA-2185 — depends on META-125 C4 + C8 (aggregator daemon, for fanout)\n\n### Effort breakdown\n\n- pr_merged_to_main event emit (bot-merge.sh hook): xs\n- Lane glob filter + fanout logic: s\n- Per-curator memory file format + diff logic: m\n- chump curator status CLI: s\n- Initial lane glob mapping doc: s\n- 4 ambient event kinds + EVENT_REGISTRY entries: xs\n\nTotal: m. Depends on META-125 C4 landing first."
+  closed_date: '2026-08-16'
+  closed_pr: 3847
   outcome_id: MISSION-010
 
 - id: INFRA-2186
@@ -31891,10 +31905,10 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Events emitted on success/failure/timeout: disk_headroom_route_ok (accepted), disk_headroom_route_refused (permanent: headroom below requirement), disk_headroom_probe_unavailable (transient: df probe failed, fails open) -- all registered in docs/observability/EVENT_REGISTRY.yaml with scanner-anchors in crates/chump-coord/src/disk_headroom.rs"
+    - Cost tracked via DISK_COST_MODEL.yaml sonnet_dispatch_with_worktree.p95_gb (override CHUMP_DISK_DISPATCH_COST_GB); every route_ok/route_refused event logs both headroom_gb and min_headroom_gb so the margin is auditable per decision
+    - "Failure-class taxonomy: transient (df probe failure -- fail open, accept envelope) vs permanent (probe succeeded, headroom below requirement -- hard reject, re-evaluated every poll cycle, not sticky) -- documented in disk_headroom.rs module docs and DISK_AWARE_FLEET_2026-05-29.md"
+    - "Smoke test: bash scripts/ci/test-disk-headroom-routing.sh (static wiring checks + cargo test -p chump-coord -- assign disk_headroom, hermetic, no NATS broker required)"
   outcome_id: MISSION-010
 
 - id: INFRA-2200
@@ -53562,6 +53576,18 @@ gaps:
     IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was INFRA-3626; mac side now frozen/migrated). Original notes follow.
   outcome_id: SOVEREIGN
 
+- id: INFRA-3635
+  domain: INFRA
+  title: Almanac MCP index served to Claude is 50 commits behind (indexes stale Mac ~/Projects/Chump checkout, not origin/main) — film-study reads stale; refresh must pull-then-index or point at helsinkis fresh index
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"Almanac MCP index served to Claude is 50 commits behind (indexes stale Mac ~/Projects/Chump checkout, not origin/main) — film-study reads stale; refresh must pull-then-index or point at helsinkis fresh index\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  skills_required: "external_repo:repairman29/almanac"
+
 - id: INFRA-372
   domain: INFRA
   title: "EFFECTIVE: anthropic prompt caching for chump-local backend — add cache_control on CLAUDE.md+lessons+briefing prefix"
@@ -68998,6 +69024,8 @@ gaps:
     - "The change described by \"fleet DETECTS a broken PR (PRIORITIZE FIX) + rebase-loops it, but no organ applies the code fix to a deterministic lint/test failure — and the rebaser CLOBBERS manual fixes\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    PRIOR ART (almanac film-study 2026-08-16 — EXTEND, do not greenfield): src/improve.rs (fix-applying engine, remediate_incomplete); scripts/coord/pr-failure-auto-rescue.sh (already auto-rescues failed PRs for cargo-fmt/binary-not-found/audit classes — ADD the deterministic-lint-failure class here); docs/process/FAILURE_MODES.yaml (failure->auto-fix taxonomy — register the raw-gh-lint/INFRA-1274 class); scripts/ops/stuck-pr-filer.sh + trunk-sentinel-daemon.sh (stuck-PR detection). The healer = wire pr-failure-auto-rescue -> improve.rs for deterministic-check failures + make the rebaser rebase-onto (not clobber) non-authored commits.
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: tracked #3832 across iterations (gh pr view headRefOid/mergedAt); inspected worker worktree + journalctl.
