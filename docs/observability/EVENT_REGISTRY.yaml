@@ -6311,6 +6311,32 @@ events:
       non-zero — the CI regression it was guarding has been re-introduced
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, source, note]
+  # ── INFRA-2322: actionlint pre-push gate ───────────────────────────────────
+  - kind: actionlint_guard_blocked
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push-actionlint-guard.sh (INFRA-2322)
+    trigger: push blocked because actionlint reported >=1 finding against a
+      changed .github/workflows/*.yml file (permanent failure class — e.g.
+      matrix-in-if or a malformed uses: version pin)
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, source, note, duration_ms]
+
+  - kind: actionlint_guard_skipped
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push-actionlint-guard.sh (INFRA-2322)
+    trigger: guard skipped (non-blocking, transient class) because the
+      actionlint binary is not installed locally or the base ref could not
+      be resolved; the CI-side actionlint step still gates the PR
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, source, note, duration_ms]
+
+  - kind: actionlint_guard_passed
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push-actionlint-guard.sh (INFRA-2322)
+    trigger: actionlint ran against all changed workflow file(s) in this push
+      and reported no findings
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, source, note, duration_ms]
   # ── INFRA-1427: fleet doctor ──────────────────────────────────────────────
   - kind: fleet_doctor_run
     effect_metric: fail_count
