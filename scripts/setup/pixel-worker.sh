@@ -21,7 +21,9 @@ export FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P1,P2}"
 BIN="${CHUMP_BIN:-$CHUMP_HOME/chump}"
 IDLE_S="${PIXEL_WORKER_IDLE_S:-60}"
 COOLDOWN_S="${PIXEL_WORKER_COOLDOWN_S:-3600}"
+REFRESH_S="${PIXEL_WORKER_REFRESH_S:-1800}"
 FAILED_FILE="$HOME/pixel-worker-failed.tsv"   # gap_id<TAB>epoch_s
+LAST_REFRESH=0
 
 [ -x "$BIN" ] || { echo "[pixel-worker] chump binary not found at $BIN" >&2; exit 1; }
 
@@ -30,6 +32,18 @@ echo "[pixel-worker] up: skills=$WORKER_SKILLS machine=$WORKER_MACHINE backend=$
 while true; do
   echo "[pixel-worker] $(date -u +%FT%TZ) tick"
   NOW=$(date +%s)
+
+  # Periodic state refresh (INFRA-3628): the node's local registry drifts from
+  # origin/main. Reconcile every REFRESH_S by pulling fresh docs/gaps and syncing
+  # state.db from the per-file mirror (fresher than the committed state.sql).
+  if [ $(( NOW - LAST_REFRESH )) -ge "$REFRESH_S" ]; then
+    echo "[pixel-worker] refreshing state from origin/main..."
+    git -C "$CHUMP_REPO" fetch origin main --depth 1 >/dev/null 2>&1 \
+      && git -C "$CHUMP_REPO" reset --hard origin/main >/dev/null 2>&1
+    "$BIN" gap sync --pull >/dev/null 2>&1 || true
+    LAST_REFRESH="$NOW"
+    echo "[pixel-worker] state refreshed"
+  fi
 
   # Prune expired cooldown entries (gap_id<TAB>epoch, keep only still-cooling).
   if [ -f "$FAILED_FILE" ]; then
