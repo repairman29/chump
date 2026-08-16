@@ -4485,6 +4485,19 @@ gaps:
   notes: |
     IMPORTED 2026-08-16 from mac registry as part of the CREDIBLE-292 split-brain reconciliation (mac id was CREDIBLE-289; mac side now frozen/migrated). Original notes follow.
 
+- id: CREDIBLE-296
+  domain: CREDIBLE
+  title: "CREDIBLE: provider cascade silently drops slots beyond MAX_SLOTS=14 and accepts degenerate token-starved completions as success"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Found 2026-08-16 diagnosing why the pixel worker executed gaps but never shipped (operator: trying to get a model that actually ships code). TWO defects in src/provider_cascade.rs: (1) SILENT SLOT DROP — from_env() iterates 1..=MAX_SLOTS with MAX_SLOTS=14 (line ~20, INFRA-789); the pixel .env had codestral-latest (the only ALIVE code-specialist in the whole cascade) configured at slot 15 — structurally invisible, never loaded, zero log evidence it existed. Any configured-but-beyond-cap slot dies silently. Fix: warn loudly at load when CHUMP_PROVIDER_{N}_BASE exists for N>MAX_SLOTS (or lift the cap to scan until first fully-empty slot). (2) DEGENERATE-COMPLETION ACCEPTANCE — providers returning 200 with completion_tokens=7-9 against 8k-18k-token work prompts (nvidia, cerebras observed on-device) are treated as success; the model literally echoes the report template including a FAKE PR number (PR #3131/#3133 seen — the CREDIBLE-279 fake-done pattern reproduced at the model layer). The worker ship-check catches it after the fact but the tick is wasted and the cascade never falls through. Fix: cascade-level minimum-completion guard (e.g. completion_tokens < max(32, prompt_tokens/500) and no tool_call => treat as provider failure, fall through to next slot). Receipts: pixel ~/pixel-worker.log 2026-08-16 (cascade lines with prompt_tokens=10875/completion_tokens=7 status=200), pixel .env slot table. Workaround applied on-device: codestral moved into slot 14 at priority 1 (kimi/dead-sub evicted).
+  acceptance_criteria:
+    - Configured slot beyond cap produces a loud load-time warning (or cap removed); regression test with a slot-15 env proves it is either loaded or warned, never silent
+    - Degenerate completion (token-starved, no tool calls) triggers cascade fallthrough with a logged reason; test with a mocked 7-token 200 response proves the next slot is tried
+  outcome_id: CREDIBLE-000
+
 - id: DOC-031
   domain: DOC
   title: "CREDIBLE: reconcile CLAUDE.md / AGENTS.md / DISPATCH_RULES.md into single agent doctrine"
