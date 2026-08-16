@@ -10841,3 +10841,13 @@ events:
       push + auto-merge-arm cycle for a stale DIRTY PR.
     consumers: [ambient]
     fields_required: [pr_number, gap_id, bypasses_used, elapsed_s]
+
+  - kind: swe_invocation_complete
+    effect_metric: self
+    emitter: src/commands/swe.rs (INFRA-2089, chump swe <prompt>)
+    trigger: a `chump swe '<prompt>'` invocation finished its
+      reserve -> claim -> headless-dispatch -> auto-merge-arm cycle, either
+      shipping a PR (success), erroring out (failed), or being killed by
+      the wall-clock subagent budget (killed_at_budget).
+    consumers: [ambient]
+    fields_required: [gap, outcome, detail, prompt, budget_secs]
