@@ -11666,6 +11666,20 @@ gaps:
   notes: |
     DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-463 (score 0.73) considered at reserve time — proceeded (advisory-only, no override flag used).
 
+- id: EFFECTIVE-502
+  domain: EFFECTIVE
+  title: "EFFECTIVE: the fleet Discord voice is confidently empty — redesign to silent-by-default, narrative, honest-awareness (one voice, not 4 organs spamming)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Operator audit verdict 2026-08-16: the fleet Discord DMs ARRIVE but are worthless — 99 bot msgs vs 1 user msg in 21h (~4.7/hr), all hollow status (board-cycle SLA reports 1.8/hr, CEO ticks 0.9/hr, briefings). Operator words: "they do not need to come and/or do not tell me anything worth seeing most of the time. noise without narrative and mainly overconfidence and lack of true awareness." This is the green-dashboard pathology as a NOTIFICATION firehose: 4 organs (board-cycle+board-ceo-briefing on helsinki, CEO loop on mac, witness on pixel) all spam ONE DM thread from one bot (Chump#9705), reporting numbers that look good (0 breaches, HEALTHY no-action) while conveying zero narrative and false confidence. THE REDESIGN (voice contract): (1) SILENT BY DEFAULT — nothing sends unless it genuinely needs the operator; 0 breaches is the ABSENCE of news, not news. (2) NARRATIVE not status — not "board cycle: 0 breaches" but "quiet day, 12 shipped, the one that mattered was X, nothing needs you" and when NOT quiet, the specific problem + the decision needed. (3) HONEST AWARENESS over confidence — "I do not know where shipping runs" beats "HEALTHY"; surface what is broken/uncertain, never a smug all-green. (4) ONE VOICE — board organs STOP DMing; their signals FEED the CEO which synthesizes and speaks only when worth it (this is the CEO chief-of-staff job + FLEET-RADIO done right). ARCHITECTURE: board-cycle/sla/briefing become signal PRODUCERS (write to a feed), CEO is the sole SUBSCRIBER that decides what reaches the operator. Suppress: failed/empty CEO ticks (valid=False currently DMs garbage "Vector: ? Actions:"), every-cycle SLA reports, any all-green status. Manifest change needed to stop the helsinki board-organ DMs (organ-reconcile enforces). Delivery/two-way works; do not touch that.
+  acceptance_criteria:
+    - Board organs no longer DM the operator directly; their signals route to the CEO which is the sole operator-facing voice
+    - "A tick/day only produces a DM when there is genuine signal (decision needed, real breakage, milestone) — measured: operator DM rate drops from ~4.7/hr to <1/day on a quiet day, and quiet days say so in one narrative line"
+    - Failed/empty CEO ticks never send; every operator message carries narrative + at least one honest what-I-do-not-know or what-is-broken when relevant (no all-green status theater)
+  outcome_id: FLEET-RADIO
+
 - id: EVAL-085
   title: test eval 085
   status: done
@@ -69357,6 +69371,8 @@ gaps:
     - a regression test asserts P0-first selection in the RUST path (not only _pick_gap.py)
     - a stale .chump-locks/gap-priority.json planner override never buries a P0 (picker_priority_stale handled/ignored for P0)
     - "verified live: a fresh pickable P0 is claimed within 1-2 worker cycles"
+  notes: |
+    PRE-DIAGNOSIS (crew-chief, read-only, 2026-08-16 — for the builder): The documented Rust picker pick_eligible_gap (crates/chump-coord/src/worker/loop_body.rs:250) LOOKS correct: it store.list(open), sorts a.priority.cmp(b.priority).then(id) (P0<P1 lexically), then returns the first row where WorkerCapability::matches (crates/chump-coord/src/worker/capability.rs:145) is true. VERIFIED RESILIENT-357/356/359 have EMPTY skills_required + EMPTY preferred_machine (sqlite state.db) — identical to the INFRA P1 gaps that ARE being picked (INFRA-2359/2360) — so the external_repo / workspace_scope / skills gates in matches() do NOT exclude them; matches() should return true and the P0 should sort first and win. It does not (live: workers picked INFRA-2359/2360/2294 all P1 while P0 357 sat 50min+). => the RUNTIME pick path DIVERGES from pick_eligible_gap. BUILDER TASK: trace which selector the live worker actually runs (chump-coord worker Rust pick_eligible_gap vs scripts/dispatch/worker.sh -> _pick_gap.py vs the NATS push-tier), confirm whether store.list(open) returns 357 and how priority is represented/compared at runtime; add a regression test asserting a pickable P0 is returned before any P1; and EMIT a signal (kind=p0_skipped) whenever the picker returns a lower-priority gap while a pickable higher-priority one exists, so this can never be silent again. This gap will be DISPATCHED via chump dispatch once RESILIENT-362 (dispatch-under-root fix, PR #3863) lands.
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: chump gap preflight RESILIENT-357 (OK, unclaimed); compared priority+effort of picked gaps (INFRA-2359/2360/2294) vs 357; read scripts/dispatch/_pick_gap.py ordering; almanac -> crates/chump-coord/src/worker/loop_body.rs.
