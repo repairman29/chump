@@ -863,3 +863,5 @@ pattern_fix_pr_opened   # reason: INFRA-2355 (META-269 sub-6) — same as patter
 pattern_fix_dry_run     # reason: INFRA-2355 (META-269 sub-6) — same as pattern_fix_matched above; emitted by scripts/coord/pattern-fix-dispatcher.sh.
 pattern_fix_no_match    # reason: INFRA-2355 (META-269 sub-6) — same as pattern_fix_matched above; emitted by scripts/coord/pattern-fix-dispatcher.sh.
 pattern_fix_failed      # reason: INFRA-2355 (META-269 sub-6) — same as pattern_fix_matched above; emitted by scripts/coord/pattern-fix-dispatcher.sh.
+chump_cron_installed    # reason: INFRA-2045 chump cron lifecycle, emitted by crates/chump-cron/src/lib.rs. Hold off EVENT_REGISTRY.yaml entry until first runtime fire reveals actual emit shape (per Wizard 2026-05-27 13:27Z, INFRA-2003/2020 lease pattern).
+chump_cron_uninstalled  # reason: INFRA-2045 chump cron lifecycle, emitted by crates/chump-cron/src/lib.rs. Hold off EVENT_REGISTRY.yaml entry until first runtime fire reveals actual emit shape (per Wizard 2026-05-27 13:27Z, INFRA-2003/2020 lease pattern).
