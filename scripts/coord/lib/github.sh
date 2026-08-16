@@ -102,7 +102,11 @@ chump_gh_api_tag() {
 _chump_gh_rate_remaining() {
     local out
     out="$(CHUMP_GH_NO_SHIM=1 gh api rate_limit --jq '"\(.resources.core.remaining) \(.resources.graphql.remaining) \(.resources.graphql.reset)"' 2>/dev/null || true)"
-    if [[ -z "$out" ]]; then
+    # INFRA-2362: a stub/mock `gh` that ignores --jq (common in test doubles
+    # that only handle `api` generically) returns something other than the
+    # expected "<int> <int> <int>" shape — guard against that producing
+    # malformed JSON (empty field) in the emitted github_api_call event.
+    if [[ ! "$out" =~ ^-?[0-9]+\ -?[0-9]+\ -?[0-9]+$ ]]; then
         printf '%s' "-1 -1 0"
         return
     fi

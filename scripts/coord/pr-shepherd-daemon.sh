@@ -41,6 +41,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Defense-in-depth: if the env var is absent (manual invocation), fall back to
 # the computed path as before.
 AMBIENT="${CHUMP_AMBIENT_PATH:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+# INFRA-2362: keep scripts/coord/lib/github.sh's chump_gh telemetry pointed at
+# the same ambient file as the rest of this daemon's events (it defaults to a
+# git-toplevel-derived path, which can diverge from AMBIENT above under the
+# same stale-/tmp-worktree condition META-248 fixed for AMBIENT itself).
+export CHUMP_AMBIENT_OVERRIDE="$AMBIENT"
 DRY_RUN="${CHUMP_PR_SHEPHERD_DRY_RUN:-}"
 MAX_REBASES="${CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK:-3}"
 MAX_ARMS="${CHUMP_PR_SHEPHERD_MAX_ARMS_PER_TICK:-5}"
@@ -79,6 +84,17 @@ CASCADE_MAX_HOLD_MINUTES="${CHUMP_CASCADE_MAX_HOLD_MINUTES:-120}"
 # cache_query_open_prs instead of burning raw GraphQL quota.
 # shellcheck source=scripts/coord/lib/github_cache.sh
 source "$REPO_ROOT/scripts/coord/lib/github_cache.sh"
+
+# INFRA-2362: source the gh telemetry lib (function-only — CHUMP_GH_NO_PATH_INJECT
+# skips the transparent PATH shim so only the explicit chump_gh calls below are
+# recorded) and route every mutating gh call the auto-processor makes
+# (admin-merge, flake-rerun, arm-auto-merge) through chump_gh so it emits
+# kind=github_api_call. Without this, the auto-processor's API cost was
+# invisible to scripts/dev/api-cost-leaderboard.sh even though every action
+# it takes is already audited via pr_queue_auto_action.
+CHUMP_GH_NO_PATH_INJECT=1
+# shellcheck source=scripts/coord/lib/github.sh
+source "$REPO_ROOT/scripts/coord/lib/github.sh"
 
 emit_tick() {
   local count="$1"
@@ -878,7 +894,7 @@ for p in prs:
         else
           echo "[pr-shepherd-daemon] admin-merging PR #${pr_num} (author=${author}, ${c})" >&2
           local merge_exit=0
-          gh pr merge "$pr_num" --squash --admin --delete-branch 2>&1 || merge_exit=$?
+          chump_gh pr merge "$pr_num" --squash --admin --delete-branch 2>&1 || merge_exit=$?
           if [ "$merge_exit" -eq 0 ]; then
             _emit_pr_queue_auto_action "$pr_num" "admin_merge" "trusted_author" "$author" "$c"
             admin_merge_count=$((admin_merge_count + 1))
@@ -942,7 +958,7 @@ for p in prs:
             local run_id rerun_exit=0
             run_id=$(gh run list --branch "$head_ref" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || echo "")
             if [ -n "$run_id" ]; then
-              gh run rerun "$run_id" --failed 2>&1 || rerun_exit=$?
+              chump_gh run rerun "$run_id" --failed 2>&1 || rerun_exit=$?
               if [ "$rerun_exit" -eq 0 ]; then
                 _flake_rerun_count "$pr_num" inc >/dev/null
                 _emit_pr_queue_auto_action "$pr_num" "flake_rerun" "known_flake" "$author" "$c"
@@ -1041,7 +1057,7 @@ for p in prs:
         else
           echo "[pr-shepherd-daemon] arming auto-merge PR #${pr_num} (${gap_id})" >&2
           local arm_exit=0
-          gh pr merge "$pr_num" --auto --squash 2>&1 || arm_exit=$?
+          chump_gh pr merge "$pr_num" --auto --squash 2>&1 || arm_exit=$?
           if [ "$arm_exit" -eq 0 ]; then
             _emit_pr_action_taken "$pr_num" "arm_auto_merge" "" "$gap_id"
             arm_count=$((arm_count + 1))
