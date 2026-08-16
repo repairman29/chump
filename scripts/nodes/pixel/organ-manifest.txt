@@ -1,0 +1,11 @@
+# Pixel organ manifest — the Helsinki coordination organs ported to Termux.
+# Format: name|cadence_seconds|guard|command   (cwd = REPO, env sourced)
+# guard: safe = always runs (self-limits via autonomy dial); mutating = only if ~/organs/ACTIVE
+# EXCLUDED on purpose: backlog-sync-writer (single-writer, Helsinki-only — 2 writers = split-brain);
+#                      organ-watchdog (systemd-specific — the pixel supervisor covers liveness).
+conductor|900|safe|chump self-rescue-loop --grace-secs 600
+farmer|30|safe|bash scripts/dispatch/chump-farmer-run.sh
+keep-mergeable|900|mutating|bash scripts/coord/keep-mergeable-organ.sh
+pr-lander|600|mutating|bash scripts/dispatch/pr-lander-beat.sh
+armed-rebaser|1200|mutating|bash scripts/coord/armed-pr-rebaser.sh
+rot-reaper|1800|mutating|bash scripts/ops/rot-reaper.sh
