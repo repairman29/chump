@@ -34424,13 +34424,15 @@ gaps:
 - id: INFRA-2338
   domain: INFRA
   title: extend install-trunk-sentinel.sh to also install fix-trunk-dispatcher plist with REPO_ROOT substitution
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - install-trunk-sentinel.sh writes both com.chump.trunk-sentinel.plist and com.chump.fix-trunk-dispatcher.plist
     - both plists have REPO_ROOT/WorkingDirectory/ProgramArguments substituted with the resolved main-worktree path, no literal REPO_ROOT placeholder left
     - smoke test (scripts/ci/test-install-trunk-sentinel.sh) mocks launchctl/plutil and verifies the above, wired into CI and chump preflight
+  closed_date: '2026-08-16'
+  closed_pr: 3853
   outcome_id: MISSION-010
 
 - id: INFRA-2339
@@ -34497,10 +34499,10 @@ gaps:
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - inbox-check-urgent.sh emits kind=inbox_urgent_surfaced on success (with duration_ms) and kind=inbox_urgent_check_failed on failure/timeout, tagged reason + class
+    - "cost: this hook has no LLM/API cost (local bash+python3, no model call); duration_ms on inbox_urgent_surfaced is the perf/cost proxy against the documented <50ms budget"
+    - "failure-class taxonomy: class=transient (python3 missing, parse/render timeout - cursor NOT advanced, retried next PreToolUse tick) vs class=permanent (cursor write failed - message was shown but will keep re-surfacing until the write path is fixed)"
+    - "smoke test: bash scripts/ci/test-inbox-urgent-hook-failures.sh (python3-missing, malformed JSON, forced timeout, cursor-write-denied, duration_ms-present)"
   outcome_id: MISSION-010
 
 - id: INFRA-2343
