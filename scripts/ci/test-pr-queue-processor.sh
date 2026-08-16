@@ -226,6 +226,20 @@ if ! grep -q 'pr merge 1001 --squash --admin' "$log1"; then
   cat "$log1"
   exit 1
 fi
+# INFRA-2362: verify the admin-merge call is routed through chump_gh so its
+# API cost is recorded (kind=github_api_call) — the auto-processor's cost
+# was previously invisible to scripts/dev/api-cost-leaderboard.sh.
+gh_calls_s1=$(count_events "$ambient1" "github_api_call")
+if [ "$gh_calls_s1" -lt 1 ]; then
+  echo "[test] FAIL scenario 1: no github_api_call telemetry recorded for admin-merge"
+  cat "$ambient1"
+  exit 1
+fi
+if ! grep -q '"kind":"github_api_call".*"api":"pr merge"' "$ambient1"; then
+  echo "[test] FAIL scenario 1: github_api_call event missing api=\"pr merge\" tag"
+  cat "$ambient1"
+  exit 1
+fi
 echo "[test] scenario 1 (trusted+green → admin_merge): OK"
 
 # ── Scenario 2: trusted+behind → no admin_merge (deferred to rebase) ─────────
