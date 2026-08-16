@@ -133,8 +133,16 @@ SYSTEM_UNITS=(
   # install-integrator-daemon-systemd.sh does); the timer no-ops safely until then.
   chump-integrator.service
   chump-integrator.timer
+  # CREDIBLE-292: the backlog-sync single writer — publishes registry truth
+  # (.chump/state.sql) to origin/main so cluster-wide `chump gap reserve`
+  # collision avoidance (the origin-fetch git-history check) and every other
+  # node's --reader actually see current state. Designed (RESILIENT-194) but
+  # never installed on any node until this gap — that gap is what let the
+  # 2026-08-15 registry split-brain go undetected for 21 days.
+  chump-backlog-sync-writer.service
+  chump-backlog-sync-writer.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then

@@ -1,0 +1,24 @@
+# CREDIBLE-292 — the backlog-sync single-writer organ. Runs
+# scripts/coord/backlog-sync.sh --writer: reconciles merged PRs into
+# gap-shipped status, regenerates .chump/state.sql, and commits + pushes it to
+# origin/main so every other node's `--reader` (and cross-node
+# `chump gap reserve`, via the origin-fetch check in reserve()) sees current
+# truth. This organ was DESIGNED (RESILIENT-194) but never installed on any
+# node — origin/main's .chump/state.sql sat stale since 2026-07-24, which is
+# what let the 21-day registry split-brain (CREDIBLE-292) go undetected. Only
+# the hub (helsinki, per patient doctrine) runs --writer — see
+# chump-backlog-sync-writer.timer for the single-writer-by-design rationale.
+#
+# CHUMP_REPO_ROOT / paths mirror chump-rot-reaper.service (primary node =
+# helsinki, root). Non-root nodes: do NOT install this unit — only readers
+# belong off-hub; see docs/process/LINUX_NODE_ONBOARDING.md.
+[Unit]
+Description=Chump backlog-sync writer — publish registry truth to origin/main (CREDIBLE-292)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; cd /root/Projects/chump; exec bash scripts/coord/backlog-sync.sh --writer'
