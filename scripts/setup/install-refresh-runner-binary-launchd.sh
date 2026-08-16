@@ -25,7 +25,21 @@ case "$(uname -s)" in
   *) echo "skip: not macOS"; exit 0 ;;
 esac
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# INFRA-2365: resolve to the MAIN worktree, not whatever worktree this
+# installer happens to run from. Installing from a linked/temp worktree
+# (e.g. a claimed gap worktree under .claude/worktrees/ or /tmp) bakes that
+# worktree's path into ProgramArguments/WorkingDirectory. Once the worktree
+# is reaped or the session ends, launchd can't find the script and the job
+# fails with exit=78 ("script path gone") forever — the root cause behind
+# the refresh-runner-binary daemon going silently stale (see INFRA-451 for
+# the same class fixed in install-farmer-launchd.sh).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/resolve-main-worktree.sh
+source "$SCRIPT_DIR/../lib/resolve-main-worktree.sh"
+REPO_ROOT="$(resolve_main_worktree "${BASH_SOURCE[0]}")" || {
+    echo "FAIL: could not resolve main worktree from ${BASH_SOURCE[0]}" >&2
+    exit 1
+}
 REFRESH_SCRIPT="$REPO_ROOT/scripts/setup/refresh-runner-binary.sh"
 WATCHER_SCRIPT="$REPO_ROOT/scripts/coord/binary-refresh-event-watcher.sh"
 LOG_BASE="$REPO_ROOT/.chump-locks/binary-refresh-logs"
