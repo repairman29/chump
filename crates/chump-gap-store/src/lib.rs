@@ -1443,6 +1443,10 @@ impl GapStore {
             // in a past commit message on any ref; if so, skip it and try the
             // next number. Bounded retry (not unbounded) so a persistently
             // broken git binary can't hang reserve forever.
+            // CREDIBLE-292: pull fresh origin refs once before the retry loop
+            // so git_id_referenced() below can see IDs a sibling node already
+            // merged, even if this checkout's last fetch predates them.
+            fetch_origin_refs(&self.repo_root);
             const MAX_GIT_HISTORY_SKIPS: u32 = 50;
             let mut new_id = String::new();
             for _ in 0..MAX_GIT_HISTORY_SKIPS {
@@ -4057,6 +4061,41 @@ fn git_id_referenced(repo_root: &Path, id: &str) -> bool {
         Ok(out) => out.status.success() && !out.stdout.is_empty(),
         Err(_) => false,
     }
+}
+
+/// CREDIBLE-292: refresh `refs/remotes/origin/*` before [`git_id_referenced`]
+/// runs, so the history check sees IDs a sibling node already merged to
+/// `origin/main` even if this checkout hasn't fetched in a while.
+///
+/// This is the actual fix for the registry split-brain collision pattern
+/// (RESILIENT-331, CREDIBLE-289): `git_id_referenced` only ever searched
+/// refs this checkout already knew about (`git log --all`) — on a node that
+/// hadn't fetched recently (or whose `backlog-sync --reader` daemon was
+/// dead), a sibling node's already-merged ID was invisible, so the naive
+/// counter handed it out again. `origin/main` is the one shared coordination
+/// point every node already pushes to for shipped work, so a cheap fetch
+/// immediately before the check closes the gap without needing new
+/// infrastructure (NATS-KV, node-prefixed ranges, etc).
+///
+/// Best-effort and non-fatal: a network hiccup, missing `origin` remote, or
+/// offline dev box must not brick `reserve()` — the existing DB/lease/PR
+/// sources still apply, and this is defense-in-depth on top of those, not
+/// the sole guard. Bounded by a short timeout via `git`'s own connect
+/// timeout is not configurable here, so instead we just don't block long: if
+/// `git fetch` hangs indefinitely (e.g. auth prompt), that's a pre-existing
+/// risk for every other git-shelling caller in this file too.
+/// Opt out via `CHUMP_RESERVE_FETCH_ORIGIN=0` (offline-only workflows).
+fn fetch_origin_refs(repo_root: &Path) {
+    if std::env::var("CHUMP_RESERVE_FETCH_ORIGIN").as_deref() == Ok("0") {
+        return;
+    }
+    if !repo_root.join(".git").exists() {
+        return;
+    }
+    let _ = std::process::Command::new("git")
+        .args(["fetch", "origin", "--quiet", "--no-tags"])
+        .current_dir(repo_root)
+        .output();
 }
 
 /// INFRA-100: lightweight matcher for `<DOMAIN>-NNN` substrings in a string.
@@ -7587,6 +7626,84 @@ meta:
 
         let id = store.reserve("FRESHDOM", "brand new", "P1", "s").unwrap();
         assert_eq!(id, "FRESHDOM-001");
+    }
+
+    /// CREDIBLE-292: reproduces the registry split-brain collision pattern
+    /// (RESILIENT-331, CREDIBLE-289) — two nodes with independent local
+    /// state.db copies, sharing one `origin` remote. Node A reserves and
+    /// pushes SPLIT-001; node B's checkout hasn't fetched since before that
+    /// push, so its own counter (seeded from an empty local state.db) would
+    /// naively also hand out SPLIT-001. `fetch_origin_refs` + the existing
+    /// git-history check must close that gap: node B's reserve() fetches
+    /// origin first and skips the already-taken ID.
+    #[test]
+    fn reserve_avoids_cross_node_collision_via_origin_fetch() {
+        let git = |dir: &Path, args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+
+        // Bare "origin" both nodes share.
+        let origin_dir = TempDir::new().unwrap();
+        git(
+            origin_dir.path(),
+            &["init", "--bare", "--initial-branch=main", "--quiet"],
+        );
+
+        // Node A: clones origin, reserves+commits+pushes SPLIT-001.
+        let node_a = TempDir::new().unwrap();
+        git(
+            node_a.path(),
+            &["clone", "--quiet", origin_dir.path().to_str().unwrap(), "."],
+        );
+        git(node_a.path(), &["config", "user.email", "a@test.local"]);
+        git(node_a.path(), &["config", "user.name", "node-a"]);
+        git(
+            node_a.path(),
+            &[
+                "commit",
+                "--allow-empty",
+                "-m",
+                "feat(SPLIT-001): node A's reservation",
+            ],
+        );
+        git(node_a.path(), &["push", "--quiet", "origin", "main"]);
+
+        // Node B: independent clone of the SAME origin, but never fetched
+        // after node A's push landed (simulates the dead backlog-sync
+        // window) — its local refs are exactly what they were at clone time.
+        let node_b = TempDir::new().unwrap();
+        git(
+            node_b.path(),
+            &["clone", "--quiet", origin_dir.path().to_str().unwrap(), "."],
+        );
+        git(node_b.path(), &["config", "user.email", "b@test.local"]);
+        git(node_b.path(), &["config", "user.name", "node-b"]);
+
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+            std::env::set_var("CHUMP_RESERVE_GIT_HISTORY_CHECK", "1");
+            std::env::set_var("CHUMP_RESERVE_FETCH_ORIGIN", "1");
+        }
+        let store_b = GapStore::open(node_b.path()).unwrap();
+        // Node B's local state.db has never seen SPLIT-001 — naive counter
+        // would start at SPLIT-001 too. fetch_origin_refs() pulls node A's
+        // push first, so git_id_referenced() catches it and skips ahead.
+        let id = store_b
+            .reserve("SPLIT", "node B's reservation", "P1", "s")
+            .unwrap();
+        assert_eq!(
+            id, "SPLIT-002",
+            "node B must skip SPLIT-001 (already minted by node A on origin/main), got {id}"
+        );
     }
 
     // ── INFRA-208: dump preserves unknown hand-curated fields ──────────

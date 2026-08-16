@@ -1,0 +1,20 @@
+# CREDIBLE-292 — fires the backlog-sync writer every 15 min on the hub.
+# Single-writer by design (RESILIENT-194 doc comment in backlog-sync.sh):
+# only ONE node runs --writer so state.sql has one author and the git
+# merge-driver rarely fires. Install ONLY on the hub (helsinki).
+# Enable: systemctl enable --now chump-backlog-sync-writer.timer
+# Watchdog coverage: chump-organ-watchdog.timer already self-heals ANY failed
+# chump-* organ (reset-failed + restart) fleet-wide — no bespoke watchdog
+# needed. Freshness is independently checked by
+# scripts/coord/fleet-doctor-strict.sh's backlog-sync-freshness check
+# (RED if origin/main .chump/state.sql goes >24h stale).
+[Unit]
+Description=Run the Chump backlog-sync writer every 15 minutes (CREDIBLE-292)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

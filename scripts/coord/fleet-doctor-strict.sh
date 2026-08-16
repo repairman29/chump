@@ -19,6 +19,10 @@
 #                           launchd daemon has last exit code != 0 → emit
 #                           kind=silent_fleet_death; optional auto-heal via
 #                           CHUMP_DOCTOR_AUTOHEAL=1
+#   9. backlog-sync    — CREDIBLE-292: origin/main's .chump/state.sql must not be
+#                        >CHUMP_BACKLOG_SYNC_STALE_HOURS (default 24) stale — a
+#                        dead backlog-sync --writer is the registry split-brain
+#                        precursor.
 #
 # Thresholds (override via env)
 #   LEASE_STALE_HOURS         default 2    — leases older than N hours are flagged
@@ -627,6 +631,31 @@ check_almanac_freshness() {
     register_check "almanac-freshness" "pass" "registry ok, refresh ${age}h fresh, smoke query ${hits} hits" ""
 }
 
+#   9. backlog-sync    — CREDIBLE-292: origin/main's .chump/state.sql (the
+#                         backlog-sync --writer's published truth) must not go
+#                         stale >24h. A dead writer is exactly how the
+#                         2026-08-15 registry split-brain went undetected for
+#                         21 days — this makes it RED within hours instead.
+check_backlog_sync_freshness() {
+    local max_h="${CHUMP_BACKLOG_SYNC_STALE_HOURS:-24}"
+    local last_epoch
+    last_epoch="$(git -C "$REPO_ROOT" log -1 --format='%ct' origin/main -- .chump/state.sql 2>/dev/null)"
+    if [[ -z "$last_epoch" ]]; then
+        register_check "backlog-sync-freshness" "fail" \
+            "no commit history for .chump/state.sql on origin/main — backlog-sync writer has never published" \
+            "install the writer organ: sudo bash scripts/setup/install-helsinki-atc.sh (see chump-backlog-sync-writer.timer)"
+        return
+    fi
+    local age_h=$(( ( $(date +%s) - last_epoch ) / 3600 ))
+    if (( age_h >= max_h )); then
+        register_check "backlog-sync-freshness" "fail" \
+            "origin/main .chump/state.sql is ${age_h}h stale (threshold ${max_h}h) — backlog-sync --writer is dead or not installed, registry split-brain risk" \
+            "check: systemctl status chump-backlog-sync-writer.timer; re-arm: sudo bash scripts/setup/install-helsinki-atc.sh"
+        return
+    fi
+    register_check "backlog-sync-freshness" "pass" "origin/main .chump/state.sql ${age_h}h fresh (threshold ${max_h}h)" ""
+}
+
 check_a2a_consensus() {
     if ! command -v python3 &>/dev/null; then
         register_check "a2a-consensus" "skip" "python3 unavailable — skipping A2A outcome scan" ""
@@ -895,6 +924,7 @@ check_pillar_coverage
 check_silent_fleet_death
 check_a2a_consensus
 check_almanac_freshness
+check_backlog_sync_freshness
 check_required_status_checks
 check_ops_defect_selfdiag
 
