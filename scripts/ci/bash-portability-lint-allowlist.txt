@@ -1,0 +1,52 @@
+# INFRA-2351: Allow-list of scripts with pre-existing non-portable subprocess
+# patterns (GNU-only sed/date flags, bashisms in #!/bin/sh scripts) that
+# predate this lint. DO NOT ADD NEW ENTRIES without a good reason — new
+# scripts and new lines in existing scripts are expected to be portable.
+#
+# Format: relative path from repo root (no leading slash). A listed file's
+# EXISTING violations are suppressed; the lint still runs and would catch
+# any *new* violation type introduced elsewhere in a changed file set passed
+# explicitly (the allowlist only affects whole-repo scans).
+#
+# Comments (#) and blank lines are ignored.
+
+scripts/ci/test-bash-portability-lint.sh  # fixture heredocs intentionally contain anti-pattern text
+scripts/ci/test-cargo-target-reaper-runner-scope.sh
+scripts/ci/test-claude-tmp-cleanup.sh
+scripts/ci/test-cli-fleet-coord.sh
+scripts/ci/test-farmer-check-auth.sh
+scripts/ci/test-farmer.sh
+scripts/ci/test-farmer-stale-lease-heartbeat.sh
+scripts/ci/test-force-push-intent.sh
+scripts/ci/test-gap-list-since.sh
+scripts/ci/test-github-liaison.sh
+scripts/ci/test-inbox-prune.sh
+scripts/ci/test-infra-491-silent-dedup.sh
+scripts/ci/test-node-refresh-green-main.sh
+scripts/ci/test-picker-priority.sh
+scripts/ci/test-reaper-watchdog-self-grade.sh
+scripts/ci/test-sccache-reaper.sh
+scripts/ci/test-stale-worktree-reaper-broad-scan.sh
+scripts/ci/test-stale-worktree-reaper-safety.sh
+scripts/ci/test-stale-worktree-reaper.sh
+scripts/ci/test-stranded-work-detector.sh
+scripts/coord/auto-merge-arm-watcher.sh
+scripts/coord/bot-merge.sh
+scripts/coord/bot-shipped-audit.sh
+scripts/coord/branch-reaper.sh
+scripts/coord/deliberator-loop.sh
+scripts/coord/last-mile-rescuer.sh
+scripts/coord/lease-auto-extend.sh
+scripts/coord/lib/lease.sh
+scripts/coord/orphan-branch-sweeper.sh
+scripts/coord/pr-rescue.sh
+scripts/coord/scratch.sh
+scripts/coord/stale-lease-reaper.sh
+scripts/git-hooks/lib/off-rails-guard.sh
+scripts/ops/backfill-shipped-gaps.sh
+scripts/ops/pr-repair-rebase.sh
+scripts/ops/subagent-watchdog.sh
+scripts/overnight/40-cascade-consumption-report.sh
+scripts/setup/setup-pixel-node.sh
+scripts/setup/switch-mabel-to-qwen3-4b.sh
+scripts/soak/run-4h-precursor.sh
