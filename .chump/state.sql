@@ -30272,11 +30272,12 @@ gaps:
 - id: INFRA-2092
   domain: INFRA
   title: "RESILIENT P1: state.db Postgres backend slice — break single-node SQLite ceiling (sub-slice of INFRA-1967 C4 architectural finding; Bet 4)"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "Implement Postgres backend behind the existing chump-gap-store crate interface — smallest credible slice of INFRA-1967 (C4 architectural critique: single-node SQLite ceiling breaks fleet scale). Same schema, swap storage; SQLite remains the local-dev default."
+  closed_pr: 3844
   outcome_id: MISSION-010
 
 - id: INFRA-2093
@@ -68975,6 +68976,7 @@ gaps:
     [2026-08-16T04:10:00Z] TERMUX:BOOT DEFERRED (operator decision). adb install of termux-boot v0.8.1 FAILS: INSTALL_FAILED_SHARED_USER_INCOMPATIBLE — Termux (0.119.0-beta.3, May 2025) and Termux:Boot share sharedUserId com.termux but the newest Termux:Boot APK (v0.8.1, Jun 2024) is signed with a rotated key. No newer Termux:Boot release exists (repo has Jan-2026 commits, unreleased). Fix = reinstall Termux stable v0.118.3 + Termux:Boot v0.8.1 from same signing era (verify certs first), then re-deploy binary/models/witness/env. Device is dedicated+plugged so witness+wake-lock survive normal ops; Termux:Boot only needed for the Stage-2 forced-reboot drill.
     [2026-08-16T13:56:56Z] PIXEL CURRENT-STATE INVENTORY 2026-08-16 (verified live over ssh; the running-vs-left truth). RUNNING NOW: sshd :8022, ONE supervisor-owned express-lane worker (WORKER_SKILLS=docs/shell/scripts/md, backend=chump-local, FLEET_PRIORITY_FILTER=P1,P2), pixel-node-supervisor (is_alive guard + wake-lock crash-restart — guard is CORRECT, earlier duplicate-worker pileup was operator-session manual test orphans, cleaned), witness loop (5-min helsinki probes, own creds/power/network), node v24.18. WIRED-NOT-PROVEN: codestral slot 14 priority 1 (only alive code model; on first fair test; cascade double-defect = CREDIBLE-296). INSTALLED-BUT-IDLE (the LEFT work): (1) llama.cpp built + 3 Qwen GGUF on disk but NOT wired as a cascade entry — this is the sovereign never-429 local floor, unused; wiring it is the highest-value remaining slice (a phone worker that never rate-limits). (2) aarch64 chump binary runs (2026-08-15 build) + chump-brain db (12 entries) but the native-chump-node path is not driving work — bigpickle worker uses chump-local cascade instead. MISSING (2 physical touches): Termux:Boot app uninstalled = NO reboot survival (hooks staged+correct but nothing fires them; crash self-heals, reboot goes dark); wireless-ADB off = hands un-armed. HW: 9 cores, 11.8GB RAM, 80GB free, AC. NOT DONE: patient-candidacy still needs the 72h gauntlet + local-model floor + reboot survival.
     [2026-08-16T14:16:16Z] REBOOT SURVIVAL + HANDS ARMED 2026-08-16 (via ADB): (1) Termux:Boot installed — official F-Droid build v0.8.1 vc1000, cert-verified to MATCH installed Termux (sha256 228fb2cf...; GitHub-signed build was correctly REJECTED by SHARED_USER_INCOMPATIBLE first, proving the key check works). Installed via push+pm-install (streamed adb install hung on Play-Protect; verifier toggled off then restored). Receiver holds BOOT_COMPLETED, hooks exec-bit set. CAVEAT: secure lockscreen present -> FBE keeps Termux storage locked until ONE unlock after reboot, THEN hooks fire and self-restore. True zero-touch-through-reboot needs lockscreen=None (operator security call). (2) Wireless ADB armed (192.168.86.37:35315, jarvis-era pairing survived); phantom-process bypass confirmed already-persistent (settings_enable_monitor_phantom_procs=false, max_phantom=MAX). ADB port resets per reboot. NET: crash-survival + reboot-survival(gated) + hands all live. REMAINING top item: wire llama.cpp+Qwen local floor as never-429 cascade tail.
+    [2026-08-16T14:38:54Z] CASCADE WIRED + LOCAL FLOOR ASSESSED 2026-08-16: (1) codestral now primary — slot14 pri1, verified selecting AFTER restart (running worker had 8h-stale env; the restart was the fix, not the config edit); codestral gives real coherent output. (2) 429-storm/no-ship was NOT the model — see RESILIENT-353: worker picks gaps needing cargo/grep/find (sandbox-blocked). (3) LOCAL FLOOR: llama.cpp + Qwen 3B/4B on disk but llama-server FAILS to load reliably (RSS stays KB, never resident, empty log; llama-cli load >2min). With operator note it cannot write code, local floor is NOT viable as-is. Deferred: needs tiny coder model (Qwen2.5-Coder-0.5B/1.5B) + llama.cpp debug; low priority vs gap-matching.
   outcome_id: SOVEREIGN
 
 - id: RESILIENT-350
@@ -69027,6 +69029,19 @@ gaps:
     OUTPUT: The keep-mergeable organ (RESILIENT-342, merged #3820/#3832) ships ONLY scripts/setup/install-keep-mergeable-organ-launchd.sh — pure macOS (launchctl/plist/LaunchAgents, 0 systemd refs). helsinki is the PRIMARY node (Linux/systemd), so the organ was NOT running there after merge (merged != running). I hand-created /etc/systemd/system/chump-keep-mergeable.{service,timer} + enabled it (now active, 15min cadence, verified one live cycle: open=6, moved 2 DIRTY->BLOCKED). But that hand-install is UNTRACKED — not in the repo, so it dies on any node rebuild/node-refresh and is not reproducible on a new node.
     THEORY: same class as the chump-integrator port ([[helsinki-port-list]], [[batched-merge-train]]) and validates RESILIENT-351 (merged != running). The install path must be OS-aware and tracked.
     ALT: add a systemd branch to the organ installer (or a scripts/setup/install-keep-mergeable-organ-systemd.sh mirroring chump-integrator install-*.sh), wire it into RUN-INSTALL/node bootstrap, and replace my hand-stood unit with the tracked one. Mirror the integrator unit exactly (Type=oneshot, source providers.env, cd repo, OnUnitActiveSec=15min).
+
+- id: RESILIENT-353
+  domain: RESILIENT
+  title: "RESILIENT: pixel worker picks gaps beyond its sandbox — CREDIBLE gaps need cargo/grep/find (blocklisted) so codestral correctly refuses; ships stay 0 despite healthy cascade"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Found 2026-08-16 wiring the pixel cascade. The pixel express-lane worker (WORKER_SKILLS=docs/shell/scripts/md) PICKS CREDIBLE-class gaps requiring cargo/grep/find — tools BLOCKLISTED in its sandbox — plus TODO-only-AC gaps. Codestral (now correctly primary, priority 1, verified selecting) produces coherent HONEST refusals (cannot run cargo test / find is blocklisted / ACs are all TODOs); ship-check marks NOT-shipped; pixel ships stay 0. MODEL AND CASCADE ARE FINE — defect is gap-to-capability matching: picker feeds the pixel work its sandbox cannot complete. Fix (preferred): picker respects worker capability via a gap tool-requirement signal; also filter TODO-AC gaps. Sibling CREDIBLE-296. Config now correct: codestral slot14 pri1, dead providers 80-90, worker restarted to load it.
+  acceptance_criteria:
+    - Pixel worker only claims gaps satisfiable in its sandbox (no cargo/grep/find) — verified by a run where every claimed gap ships or is dropped out-of-capability before a model call
+    - A gap tool-requirement signal exists so picker matches worker sandbox to gap needs; TODO-AC gaps filtered from claim
+  outcome_id: CHUMPOS
 
 - id: SMOKE-001
   domain: SMOKE
