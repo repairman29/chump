@@ -1649,6 +1649,55 @@ events:
     fields_required: [ts, kind, pr, action, reason, author, mergeStateStatus, dry_run]
     volume_estimate: "~10-30/h during active queue catch-up; ~0-5/h steady-state"
 
+  - kind: flake_rerun_capped
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh (INFRA-2361)
+    purpose: >
+      Detection signal for scripts/coord/flake-auto-quarantine.sh: emitted
+      whenever a PR exhausts its per-PR flake-rerun cap (MAX_FLAKE_RERUNS_PER_PR)
+      on checks that are ALL known-flake-classified. One event per capped PR;
+      the auto-quarantine detector groups these by check_name across many
+      distinct PRs to distinguish a transient blip from a persistently flaky
+      check worth quarantining.
+    trigger: PR hits the flake-rerun cap in the BLOCKED_FLAKE tier (see kind=pr_queue_auto_action action=flake_rerun_skipped reason=capped, emitted alongside)
+    consumers: [flake-auto-quarantine]
+    fields_required: [ts, kind, pr, check_names, author, dry_run]
+
+  - kind: flake_auto_quarantined
+    effect_metric: self
+    emitter: scripts/coord/flake-auto-quarantine.sh (INFRA-2361)
+    purpose: >
+      A check was auto-quarantined into docs/process/KNOWN_FLAKES.yaml
+      check_flakes: because it hit the flake-rerun cap on
+      CHUMP_FLAKE_QUARANTINE_PR_THRESHOLD (default 3) or more distinct PRs
+      within CHUMP_FLAKE_QUARANTINE_WINDOW_HOURS (default 72h). A tracking
+      gap is filed and referenced. failure_class is always "permanent" here
+      (the taxonomy's "transient" case is simply not actioned/not emitted).
+    trigger: flake_rerun_capped events for one check_name reach the PR-count threshold within the window
+    consumers: [flake-auto-quarantine --report, operator-audit]
+    fields_required: [ts, kind, check_name, pr_count, gap_id, failure_class, dry_run]
+
+  - kind: flake_auto_quarantine_failed
+    effect_metric: self
+    emitter: scripts/coord/flake-auto-quarantine.sh (INFRA-2361)
+    purpose: audit trail for a quarantine attempt that failed (gap-reserve call failed, or the KNOWN_FLAKES.yaml write failed) so the candidate isn't silently dropped.
+    trigger: chump gap reserve exits non-zero/unparseable, or the catalog-write python step fails
+    consumers: [flake-auto-quarantine --report, operator-audit]
+    fields_required: [ts, kind, check_name, pr_count, reason, dry_run]
+
+  - kind: flake_auto_quarantine_tick
+    effect_metric: self
+    emitter: scripts/coord/flake-auto-quarantine.sh (INFRA-2361)
+    purpose: >
+      Cost/summary event emitted once per run regardless of outcome — how
+      many checks were evaluated, how many were quarantined, and how many
+      gaps were filed (the "cost" of the tick). This is the surface
+      `--report` and the operator read to answer "what did the auto-detector
+      spend this cycle."
+    trigger: end of every flake-auto-quarantine.sh run (tick or --dry-run)
+    consumers: [flake-auto-quarantine --report, waste-tally, operator-audit]
+    fields_required: [ts, kind, checks_evaluated, quarantined_count, gaps_filed_count, window_hours, pr_threshold, dry_run]
+
   - kind: pr_wedged
     effect_metric: self
     emitter: scripts/coord/pr-shepherd-daemon.sh (INFRA-2346)
