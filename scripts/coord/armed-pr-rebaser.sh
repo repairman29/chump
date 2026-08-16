@@ -12,6 +12,19 @@
 # is CLEAN, push --force-with-lease (auto-merge then lands it); if there's a REAL
 # conflict, abort and emit `armed_pr_needs_conflict_resolution` for a human /
 # conflict-resolver — NEVER force-push a broken state.
+#
+# RESILIENT-350: the worktree used to be built from the bare branch name
+# ("$br"), which resolves to whatever LOCAL branch ref happens to exist in
+# $ROOT's own git dir — not the freshly-fetched remote tip. If $ROOT ever
+# had this branch checked out before (a prior claim/worktree), that local
+# ref is stale, and rebasing+force-pushing from it silently reverts any
+# commit pushed straight to the PR branch since (e.g. a human/agent manual
+# fix). Root-caused live: a manual `chump_gh` fix on #3832 got clobbered
+# twice by this exact path before the raw-gh lint was fixed in-source.
+# Building the worktree from `origin/$br` (which we just fetched) and
+# force-resetting the local branch ref onto it (`-B`) guarantees the
+# rebase base is the true remote tip, so it can only ever ADD commits from
+# main — never drop commits that already landed on the remote branch.
 set -uo pipefail
 
 REPO="${CHUMP_PR_REPO:-repairman29/chump}"
@@ -34,7 +47,11 @@ while read -r num br; do
     git fetch origin "$br" --quiet 2>/dev/null || continue
     wt="/tmp/armed-rebaser-$num"
     git worktree remove "$wt" --force 2>/dev/null || true
-    git worktree add "$wt" "$br" >/dev/null 2>&1 || continue
+    # RESILIENT-350: -B "$br" forces the local branch ref to the just-fetched
+    # origin/$br tip, so the worktree (and the rebase it performs) always
+    # starts from what's actually on the remote — never a stale local ref
+    # that would clobber commits pushed there since.
+    git worktree add -B "$br" "$wt" "origin/$br" >/dev/null 2>&1 || continue
     (
         cd "$wt" || exit 0
         if git rebase origin/main >/dev/null 2>&1 \
