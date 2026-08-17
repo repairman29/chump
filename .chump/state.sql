@@ -32863,6 +32863,7 @@ gaps:
     [2026-08-17T00:16:20Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T00:46:22Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:16:27Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T01:46:28Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2250
@@ -33573,6 +33574,7 @@ gaps:
     [2026-08-17T00:16:17Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T00:46:19Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:16:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T01:46:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -34553,6 +34555,7 @@ gaps:
     [2026-08-17T00:16:14Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T00:46:15Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:16:22Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T01:46:22Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2343
@@ -34848,6 +34851,7 @@ gaps:
     - "smoke test: `chump claim <GAP-ID> --disk-plan-check-only` runs only the check + emits the same events without touching leases/worktrees/state.db; scripts/ci/test-claim-disk-plan-precheck.sh exercises OK/failed/bypass paths"
   notes: |
     [2026-08-17T01:16:18Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T01:46:18Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2361
