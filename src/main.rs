@@ -11102,6 +11102,22 @@ async fn main() -> Result<()> {
                 });
                 match store.preflight(&gap_id) {
                     Ok(gap_store::PreflightResult::Available) => {
+                        // INFRA-2472: local state.db only reflects claims this
+                        // machine has seen (synced via periodic coherence-sync
+                        // commits). Consult the shared NATS registry too — it
+                        // sees claims other machines took that haven't landed
+                        // in a sync commit yet. Fail-open: NATS unconfigured
+                        // or unreachable means no signal, not "must be free".
+                        let self_session = std::env::var("CHUMP_SESSION_ID").ok();
+                        if let Some(holder) = atomic_claim::shared_registry_whois(&gap_id) {
+                            if self_session.as_deref() != Some(holder.as_str()) {
+                                eprintln!(
+                                    "[preflight] FAIL {} — live-claimed by session {} in the shared NATS registry (INFRA-2472; invisible to local state.db).",
+                                    gap_id, holder
+                                );
+                                std::process::exit(1);
+                            }
+                        }
                         println!("[preflight] OK {} — open and unclaimed.", gap_id);
                         // INFRA-1886: soft pre-claim suggestion. If target
                         // is not P0 and CHUMP_PREFLIGHT_NO_SUGGEST is unset,
