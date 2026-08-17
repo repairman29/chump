@@ -32902,6 +32902,7 @@ gaps:
     [2026-08-17T02:16:28Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 9h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:46:28Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 9h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T03:16:29Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 10h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T03:46:29Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 10h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2250
@@ -33616,6 +33617,7 @@ gaps:
     [2026-08-17T02:16:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:46:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 9h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T03:16:27Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 9h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T03:46:26Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 10h) 2026-08-17; re-attempt on fresh main.
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -34601,6 +34603,7 @@ gaps:
     [2026-08-17T02:16:21Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:46:22Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T03:16:24Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T03:46:23Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2343
@@ -34902,6 +34905,7 @@ gaps:
     [2026-08-17T02:16:18Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:46:19Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T03:16:20Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T03:46:20Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2361
@@ -36831,7 +36835,7 @@ gaps:
 - id: INFRA-2472
   domain: INFRA
   title: "RESILIENT P1: lease files are filesystem-local — NATS mesh era needs cross-machine lease registry to prevent invisible collisions"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -36841,6 +36845,7 @@ gaps:
     - All pre-push hooks + atomic_claim path-overlap checks (INFRA-2434 in flight) MUST consult the shared registry, not just local .chump-locks/
     - "Smoke test scripts/ci/test-multi-machine-lease.sh: simulate 2 sessions on different machines claiming same gap; second one refuses; first ones lease visible to second"
     - Companion to INFRA-2446 (lease-selection by branch) — that gap fixes the local-pick logic; this gap fixes the visibility scope
+  closed_pr: 3868
   outcome_id: MISSION-010
 
 - id: INFRA-2473
@@ -37600,13 +37605,14 @@ gaps:
 - id: INFRA-2516
   domain: INFRA
   title: "RESILIENT P1: audit.yml cancel-in-progress:false (INFRA-2452) saturates the audit queue under multi-PR load — 13 runs vs 4 runners wedged merges for ~30min"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "audit.yml concurrency uses cancel-in-progress:true so a newer push cancels the superseded audit run instead of piling up"
     - under N-simultaneous-PR load the audit queue stays drained (no >Krunner backlog)
     - "evidence 2026-06-03: 13 audit runs in_progress / 4 runners stalled #2981 + 3 PRs + fleet merges ~30min until the backlog drained"
+  closed_pr: 3869
   outcome_id: MISSION-010
 
 - id: INFRA-2517
