@@ -32865,6 +32865,7 @@ gaps:
     [2026-08-17T01:16:27Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:46:28Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:16:28Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 9h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T02:46:28Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 9h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2250
@@ -33577,6 +33578,7 @@ gaps:
     [2026-08-17T01:16:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:46:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:16:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T02:46:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 9h) 2026-08-17; re-attempt on fresh main.
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -34560,6 +34562,7 @@ gaps:
     [2026-08-17T01:16:22Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:46:22Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:16:21Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T02:46:22Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2343
@@ -34857,6 +34860,7 @@ gaps:
     [2026-08-17T01:16:18Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:46:18Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:16:18Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T02:46:19Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2361
@@ -53841,6 +53845,56 @@ gaps:
   notes: |
     Duplicate of INFRA-3638 (filed by prior fleet-1 session same day, same design doc). Closing in favor of existing gap.
   outcome_id: EFFECTIVE-000
+
+- id: INFRA-3643
+  domain: INFRA
+  title: "RESILIENT: retrofit substrate-layer companions for Author-time helpers (INFRA-2399)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Per docs/process/SUBSTRATE_LAYER_RULES.md, add the 3 mandatory companions to the Author-time helpers layer (origin INFRA-2399): deprecation timer (expiration-dated allowlist entry, CI fails past-expiration), migration leaderboard entry (wire into scripts/coord/quartermaster-audit-loop.sh migration-leaderboard subcommand with a real old-path/new-path counter), runtime trap (emit kind=infra-2399_directive_violated or a layer-specific kind on old-path invocation). 2. Update the row for this layer in docs/process/SUBSTRATE_LAYER_RULES.md audit table to all-yes. 3. Update scripts/ci/substrate-layer-registry.txt entry for this layer's anchor file."
+  outcome_id: RESILIENT-000
+
+- id: INFRA-3644
+  domain: INFRA
+  title: "RESILIENT: retrofit substrate-layer companions for Cross-PR contract (INFRA-2406)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Per docs/process/SUBSTRATE_LAYER_RULES.md, add the 3 mandatory companions to the Cross-PR contract layer (origin INFRA-2406): deprecation timer (expiration-dated allowlist entry, CI fails past-expiration), migration leaderboard entry (wire into scripts/coord/quartermaster-audit-loop.sh migration-leaderboard subcommand with a real old-path/new-path counter), runtime trap (emit kind=infra-2406_directive_violated or a layer-specific kind on old-path invocation). 2. Update the row for this layer in docs/process/SUBSTRATE_LAYER_RULES.md audit table to all-yes. 3. Update scripts/ci/substrate-layer-registry.txt entry for this layer's anchor file."
+  outcome_id: RESILIENT-000
+
+- id: INFRA-3645
+  domain: INFRA
+  title: "RESILIENT: retrofit substrate-layer companions for Bypass-trailer discipline (INFRA-2407)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Per docs/process/SUBSTRATE_LAYER_RULES.md, add the 3 mandatory companions to the Bypass-trailer discipline layer (origin INFRA-2407): deprecation timer (expiration-dated allowlist entry, CI fails past-expiration), migration leaderboard entry (wire into scripts/coord/quartermaster-audit-loop.sh migration-leaderboard subcommand with a real old-path/new-path counter), runtime trap (emit kind=infra-2407_directive_violated or a layer-specific kind on old-path invocation). 2. Update the row for this layer in docs/process/SUBSTRATE_LAYER_RULES.md audit table to all-yes. 3. Update scripts/ci/substrate-layer-registry.txt entry for this layer's anchor file."
+  outcome_id: RESILIENT-000
+
+- id: INFRA-3646
+  domain: INFRA
+  title: "RESILIENT: retrofit substrate-layer companions for Daemon-exit-loop (INFRA-2417)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Per docs/process/SUBSTRATE_LAYER_RULES.md, add the 3 mandatory companions to the Daemon-exit-loop layer (origin INFRA-2417): deprecation timer (expiration-dated allowlist entry, CI fails past-expiration), migration leaderboard entry (wire into scripts/coord/quartermaster-audit-loop.sh migration-leaderboard subcommand with a real old-path/new-path counter), runtime trap (emit kind=infra-2417_directive_violated or a layer-specific kind on old-path invocation). 2. Update the row for this layer in docs/process/SUBSTRATE_LAYER_RULES.md audit table to all-yes. 3. Update scripts/ci/substrate-layer-registry.txt entry for this layer's anchor file."
+  outcome_id: RESILIENT-000
+
+- id: INFRA-3647
+  domain: INFRA
+  title: "RESILIENT: retrofit substrate-layer companions for No-new-bypass lint (INFRA-2429)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Per docs/process/SUBSTRATE_LAYER_RULES.md, add the 3 mandatory companions to the No-new-bypass lint layer (origin INFRA-2429): deprecation timer (expiration-dated allowlist entry, CI fails past-expiration), migration leaderboard entry (wire into scripts/coord/quartermaster-audit-loop.sh migration-leaderboard subcommand with a real old-path/new-path counter), runtime trap (emit kind=infra-2429_directive_violated or a layer-specific kind on old-path invocation). 2. Update the row for this layer in docs/process/SUBSTRATE_LAYER_RULES.md audit table to all-yes. 3. Update scripts/ci/substrate-layer-registry.txt entry for this layer's anchor file."
+  outcome_id: RESILIENT-000
 
 - id: INFRA-372
   domain: INFRA
