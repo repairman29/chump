@@ -32860,6 +32860,7 @@ gaps:
     [2026-08-16T22:46:16Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T23:16:17Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T23:46:17Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-17T00:16:20Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2250
@@ -33567,6 +33568,7 @@ gaps:
     [2026-08-16T22:46:12Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T23:16:13Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T23:46:13Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
+    [2026-08-17T00:16:17Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -34543,6 +34545,8 @@ gaps:
     - "cost: this hook has no LLM/API cost (local bash+python3, no model call); duration_ms on inbox_urgent_surfaced is the perf/cost proxy against the documented <50ms budget"
     - "failure-class taxonomy: class=transient (python3 missing, parse/render timeout - cursor NOT advanced, retried next PreToolUse tick) vs class=permanent (cursor write failed - message was shown but will keep re-surfacing until the write path is fixed)"
     - "smoke test: bash scripts/ci/test-inbox-urgent-hook-failures.sh (python3-missing, malformed JSON, forced timeout, cursor-write-denied, duration_ms-present)"
+  notes: |
+    [2026-08-17T00:16:14Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2343
