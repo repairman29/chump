@@ -25,3 +25,11 @@
 # CHUMP_REPO-isolated ambient stream) — genuine multi-process/filesystem
 # integration, matches the ingest_librarian precedent.
 scripts/ci/test-chump-scan.sh
+
+# reason: INFRA-2472 multi-machine lease race — spawns two simulated
+# sessions against the separate chump-coord binary (NATS KV CAS), which the
+# lint's own regex intends to exclude but false-matches on the substring
+# "target/debug/chump-coord" (word-boundary after "chump" fires regardless
+# of the "-coord" suffix). Genuine cross-process race test, not chump-binary
+# logic that belongs in cargo test.
+scripts/ci/test-multi-machine-lease.sh
