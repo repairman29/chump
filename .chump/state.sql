@@ -32864,6 +32864,7 @@ gaps:
     [2026-08-17T00:46:22Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:16:27Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:46:28Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T02:16:28Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 9h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2250
@@ -33575,6 +33576,7 @@ gaps:
     [2026-08-17T00:46:19Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:16:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:46:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T02:16:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -34556,6 +34558,7 @@ gaps:
     [2026-08-17T00:46:15Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:16:22Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:46:22Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T02:16:21Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2343
@@ -34852,6 +34855,7 @@ gaps:
   notes: |
     [2026-08-17T01:16:18Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T01:46:18Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T02:16:18Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2361
@@ -53794,6 +53798,48 @@ gaps:
     - "The change described by \"Complete the docs/gaps YAML retirement — 3496 git-TRACKED *.yaml persist despite ZERO-WASTE-020 (2026-07-19) + sync.rs still writes them = stale third source of gap truth + repo bloat\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+
+- id: INFRA-3640
+  domain: INFRA
+  title: "EFFECTIVE: fleet-sidebar 4-tier role-grouping (curator/sub-agent/claim/operator)"
+  status: closed
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"fleet-sidebar 4-tier role-grouping (curator/sub-agent/claim/operator)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Duplicate of INFRA-3636 (filed by prior fleet-1 session same day, same design doc). Closing in favor of existing gap.
+  outcome_id: EFFECTIVE-000
+
+- id: INFRA-3641
+  domain: INFRA
+  title: "EFFECTIVE: cockpit HUD metric strip (TRUNK/SHIP-RATE/WORKERS/ATTENTION/COST/TICKS/YOU)"
+  status: closed
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"cockpit HUD metric strip (TRUNK/SHIP-RATE/WORKERS/ATTENTION/COST/TICKS/YOU)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Duplicate of INFRA-3637 (filed by prior fleet-1 session same day, same design doc). Closing in favor of existing gap.
+  outcome_id: EFFECTIVE-000
+
+- id: INFRA-3642
+  domain: INFRA
+  title: "EFFECTIVE: recorder segments enrichment — role, parent_session, gap_id columns"
+  status: closed
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"recorder segments enrichment — role, parent_session, gap_id columns\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Duplicate of INFRA-3638 (filed by prior fleet-1 session same day, same design doc). Closing in favor of existing gap.
+  outcome_id: EFFECTIVE-000
 
 - id: INFRA-372
   domain: INFRA
