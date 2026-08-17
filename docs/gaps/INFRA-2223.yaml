@@ -6,7 +6,6 @@
   effort: s
   acceptance_criteria:
     - voice-lint (scripts/ci/test-voice-lint.sh) passes on the new doc with zero violations
-  outcome_id: MISSION-010
   notes: |
     Closed as duplicate/already-shipped: .claude/agents/curator-opus-architecture-coach.md
     was shipped by INFRA-2221 (PR #2786, commit fe7467c8), which already covers the
@@ -14,4 +13,5 @@
     scripts/ci/test-voice-lint.sh, which does not exist in this repo (only
     scripts/ci/test-release-note-voice-lint.sh exists, unrelated to agent docs) — the
     AC itself was stale. No new work needed.
+  outcome_id: MISSION-010
 

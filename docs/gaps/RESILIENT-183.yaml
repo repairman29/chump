@@ -1,24 +1,15 @@
 - id: RESILIENT-183
   domain: RESILIENT
-  title: 'RESILIENT: chumpd-eu host provisioning missing GTK webview dev libraries — every ship cycle cold-fails 3 crate builds
-    during clippy --fix'
+  title: "RESILIENT: chumpd-eu host provisioning missing GTK webview dev libraries — every ship cycle cold-fails 3 crate builds during clippy --fix"
   status: done
   priority: P2
   effort: xs
-  description: 'chumpd-eu (Ubuntu, provisioned 2026-07-21) lacked libwebkit2gtk-4.1-dev, libjavascriptcoregtk-4.1-dev, and
-    libsoup-3.0-dev — every bot-merge ship cycle''s ''cargo clippy --workspace --fix'' cold-failed to build soup3-sys, javascriptcore-rs-sys,
-    and webkit2gtk-sys (missing pkg-config .pc files), printing a wall of build errors and burning real wall-clock time on
-    EVERY single ship regardless of gap content, since --fast pre-flight compiles the full workspace. Non-fatal (bot-merge
-    absorbs the failure and proceeds) but wasteful. Fixed live via apt-get install of the three -dev packages, verified with
-    pkg-config --exists. This gap exists so the fix is durable: (a) add these packages to whatever host-bootstrap script provisions
-    a fresh chumpd-eu-class box, (b) confirm clippy --fix now actually succeeds end-to-end on a real cycle instead of just
-    not-erroring on missing pkg-config.
-
-    '
+  description: |
+    chumpd-eu (Ubuntu, provisioned 2026-07-21) lacked libwebkit2gtk-4.1-dev, libjavascriptcoregtk-4.1-dev, and libsoup-3.0-dev — every bot-merge ship cycle's 'cargo clippy --workspace --fix' cold-failed to build soup3-sys, javascriptcore-rs-sys, and webkit2gtk-sys (missing pkg-config .pc files), printing a wall of build errors and burning real wall-clock time on EVERY single ship regardless of gap content, since --fast pre-flight compiles the full workspace. Non-fatal (bot-merge absorbs the failure and proceeds) but wasteful. Fixed live via apt-get install of the three -dev packages, verified with pkg-config --exists. This gap exists so the fix is durable: (a) add these packages to whatever host-bootstrap script provisions a fresh chumpd-eu-class box, (b) confirm clippy --fix now actually succeeds end-to-end on a real cycle instead of just not-erroring on missing pkg-config.
   acceptance_criteria:
-  - The change described by "chumpd-eu host provisioning missing GTK webview dev libraries — every ship cycle cold-fails 3
-    crate builds during clippy --fix" is implemented in the relevant RESILIENT code path(s).
-  - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-  - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - "The change described by \"chumpd-eu host provisioning missing GTK webview dev libraries — every ship cycle cold-fails 3 crate builds during clippy --fix\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   closed_date: '2026-07-25'
   closed_pr: 3258
+

@@ -1,21 +1,16 @@
 - id: MISSION-052
   domain: MISSION
-  title: 'MISSION: chumpd state-API socket — CLI asks the daemon for the canonical db path instead of guessing from cwd (kills
-    resolve-by-cwd class at the root; MISSION-051 slice 2)'
+  title: "MISSION: chumpd state-API socket — CLI asks the daemon for the canonical db path instead of guessing from cwd (kills resolve-by-cwd class at the root; MISSION-051 slice 2)"
   status: done
   priority: P1
   effort: m
-  description: 'Ground-up step 2, slice 2 (docs/design/GROUND_UP_2026-07-19.md): chumpd owns a unix socket (~/.chump/chumpd.sock)
-    answering read-only queries: ping, status (the status JSON), db-path (canonical .chump/state.db path from chumpd''s CHUMP_REPO).
-    The chump CLI''s db resolution tries the socket FIRST (50ms budget) and falls back to today''s cwd-walk when the socket
-    is absent — so every chump gap set/show/reserve from ANY worktree resolves canonical automatically. This deletes the disease
-    behind CREDIBLE-154''s phantom ships, INFRA-3338''s ID collisions, and the INFRA-3340/3341 false pillar-starved alarms.
-
-    '
+  description: |
+    Ground-up step 2, slice 2 (docs/design/GROUND_UP_2026-07-19.md): chumpd owns a unix socket (~/.chump/chumpd.sock) answering read-only queries: ping, status (the status JSON), db-path (canonical .chump/state.db path from chumpd's CHUMP_REPO). The chump CLI's db resolution tries the socket FIRST (50ms budget) and falls back to today's cwd-walk when the socket is absent — so every chump gap set/show/reserve from ANY worktree resolves canonical automatically. This deletes the disease behind CREDIBLE-154's phantom ships, INFRA-3338's ID collisions, and the INFRA-3340/3341 false pillar-starved alarms.
   acceptance_criteria:
-  - chumpd serves ping/status/db-path on ~/.chump/chumpd.sock (thread, std-only)
-  - 'chump CLI db resolution: socket-first with fast timeout, cwd-walk fallback, CHUMP_REPO env still highest precedence'
-  - from a fresh /tmp worktree with no local .chump, chump gap show <id> hits the canonical db (integration test)
-  - test-chumpd.sh gains socket assertions (ping round-trip, db-path correctness, absent-socket fallback)
+    - chumpd serves ping/status/db-path on ~/.chump/chumpd.sock (thread, std-only)
+    - "chump CLI db resolution: socket-first with fast timeout, cwd-walk fallback, CHUMP_REPO env still highest precedence"
+    - from a fresh /tmp worktree with no local .chump, chump gap show <id> hits the canonical db (integration test)
+    - test-chumpd.sh gains socket assertions (ping round-trip, db-path correctness, absent-socket fallback)
   closed_date: '2026-07-25'
   closed_pr: 3239
+

@@ -6,7 +6,6 @@
   effort: xs
   acceptance_criteria:
     - Full friction report at docs/voice/VOA-003-FULL.yaml with wedge_class=auth_dead_false_positive, minutes_lost=20
-    - Proposed fix (gate): "Gate the farmer_auth_dead / auth-dead alert on the RESILIENT-086 validity probe (auth-status.sh) + a recent-merge ship-check BEFORE it emits. It fires while auth is valid and the fleet can transact — the #1 documented false-positive (CLAUDE.md has a whole section). Broken alerting is sloppy ops; make the alert honest or don't emit it."
     - Evidence references documented in FULL report
   notes: |
     [2026-08-09T15:33:33Z] Auto-filed by `chump voice` (INFRA-2258).
@@ -15,3 +14,4 @@
     Evidence:
     - "auth-status.sh output 'AUTH OK'; ambient farmer_auth_dead event 2026-08-09 while valid"
     See docs/voice/VOA-003-FULL.yaml for full report.
+

@@ -1,22 +1,12 @@
 - id: INFRA-2728
   domain: INFRA
-  title: 'RESILIENT: pr-stuck-cluster — 1 PRs blocked >2h as of 2026-06-04'
+  title: "RESILIENT: pr-stuck-cluster — 1 PRs blocked >2h as of 2026-06-04"
   status: done
   priority: P1
   effort: s
   acceptance_criteria:
-  - '1. Decision 4 (pr_unstick) in scripts/coord/opus-curator.sh emits kind=curator_decision with gh_calls and failure_class
-    fields on every success/failure/timeout path.
-
-    2. gh_calls field reports the number of gh API calls made this tick (cost proxy) — see log_curator_decision optional extra_json
-    arg.
-
-    3. _curator_classify_failure() in opus-curator.sh distinguishes transient (timeout rc=124, network/rate-limit messages)
-    from permanent failures; failure_class is threaded through _curator_file_gap via a lock-dir side-channel file (command-substitution
-    subshells drop plain globals).
-
-    4. scripts/ci/test-pr-unstick-observability.sh passes: covers success, gap-reserve permanent failure, gap-reserve transient
-    failure, and gh pr list timeout (does not fall through to gap reserve).'
-  outcome_id: MISSION-010
+    - "1. Decision 4 (pr_unstick) in scripts/coord/opus-curator.sh emits kind=curator_decision with gh_calls and failure_class fields on every success/failure/timeout path.\n2. gh_calls field reports the number of gh API calls made this tick (cost proxy) — see log_curator_decision optional extra_json arg.\n3. _curator_classify_failure() in opus-curator.sh distinguishes transient (timeout rc=124, network/rate-limit messages) from permanent failures; failure_class is threaded through _curator_file_gap via a lock-dir side-channel file (command-substitution subshells drop plain globals).\n4. scripts/ci/test-pr-unstick-observability.sh passes: covers success, gap-reserve permanent failure, gap-reserve transient failure, and gh pr list timeout (does not fall through to gap reserve)."
   closed_date: '2026-07-25'
   closed_pr: 3304
+  outcome_id: MISSION-010
+

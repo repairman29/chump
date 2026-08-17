@@ -1,16 +1,11 @@
 - id: INFRA-3421
   domain: INFRA
-  title: 'CI streamline: wire sccache into clippy + fast-checks jobs (currently cargo-test only)'
+  title: "CI streamline: wire sccache into clippy + fast-checks jobs (currently cargo-test only)"
   status: done
   priority: P1
   effort: m
   acceptance_criteria:
-  - 'SCOPED to clippy (sequenced after INFRA-3420 trunk cache landed, which captured the biggest win; fast-checks + cargo-test-arch-move
-    deferred as lower-value/higher-churn). Wire the proven cargo-test sccache sequence (R2-detect -> install -> INFRA-2288
-    degrade-safe probe -> per-step RUSTC_WRAPPER) into the clippy job (the single biggest compile: --workspace --all-targets).
-    Per-step wrapper (NOT workflow-level, L68-71). No hit-rate gate in clippy (stays cargo-test''s); probe''s no-cache fallback
-    keeps clippy shipping if R2 down. Follow-ups: sccache into fast-checks (multi-build-step, messier) + optional cargo-test
-    x86 move for key-sharing. Verify: clippy job installs sccache + sets RUSTC_WRAPPER; sccache --show-stats shows hits on
-    warm runs.'
+    - "SCOPED to clippy (sequenced after INFRA-3420 trunk cache landed, which captured the biggest win; fast-checks + cargo-test-arch-move deferred as lower-value/higher-churn). Wire the proven cargo-test sccache sequence (R2-detect -> install -> INFRA-2288 degrade-safe probe -> per-step RUSTC_WRAPPER) into the clippy job (the single biggest compile: --workspace --all-targets). Per-step wrapper (NOT workflow-level, L68-71). No hit-rate gate in clippy (stays cargo-test's); probe's no-cache fallback keeps clippy shipping if R2 down. Follow-ups: sccache into fast-checks (multi-build-step, messier) + optional cargo-test x86 move for key-sharing. Verify: clippy job installs sccache + sets RUSTC_WRAPPER; sccache --show-stats shows hits on warm runs."
   closed_date: '2026-07-25'
   closed_pr: 3301
+

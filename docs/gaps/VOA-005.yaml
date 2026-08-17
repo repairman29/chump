@@ -6,7 +6,6 @@
   effort: xs
   acceptance_criteria:
     - Full friction report at docs/voice/VOA-005-FULL.yaml with wedge_class=oauth_refresh_daemon_broken, minutes_lost=5
-    - Proposed fix (tooling): "com.chump.oauth-refresh launchd daemon exits 1 (broken). Auth is valid now but a sustained fleet risks token staleness with no refresher. Fix the daemon."
     - Evidence references documented in FULL report
   notes: |
     [2026-08-09T15:33:33Z] Auto-filed by `chump voice` (INFRA-2258).
@@ -15,3 +14,4 @@
     Evidence:
     - "launchctl list: com.chump.oauth-refresh exit=1"
     See docs/voice/VOA-005-FULL.yaml for full report.
+
