@@ -85,6 +85,11 @@ CASCADE_MAX_HOLD_MINUTES="${CHUMP_CASCADE_MAX_HOLD_MINUTES:-120}"
 # shellcheck source=scripts/coord/lib/github_cache.sh
 source "$REPO_ROOT/scripts/coord/lib/github_cache.sh"
 
+# INFRA-2464: run-id lookups (flake-rerun path) via REST-backed cache instead
+# of raw `gh run list` (GraphQL — top API burner).
+# shellcheck source=scripts/coord/lib/run-cache.sh
+source "$REPO_ROOT/scripts/coord/lib/run-cache.sh"
+
 # INFRA-2362: source the gh telemetry lib (function-only — CHUMP_GH_NO_PATH_INJECT
 # skips the transparent PATH shim so only the explicit chump_gh calls below are
 # recorded) and route every mutating gh call the auto-processor makes
@@ -954,9 +959,10 @@ for p in prs:
             continue
           else
             # Look up the latest run-id for this PR's head branch.
-            # gh run list --branch <head_ref> --limit 1 --json databaseId
+            # INFRA-2464: REST-backed cached lookup instead of raw
+            # `gh run list` (GraphQL — top API burner per INFRA-1081 audit).
             local run_id rerun_exit=0
-            run_id=$(gh run list --branch "$head_ref" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || echo "")
+            run_id=$(run_cache_lookup_run_id "$head_ref" 2>/dev/null || echo "")
             if [ -n "$run_id" ]; then
               chump_gh run rerun "$run_id" --failed 2>&1 || rerun_exit=$?
               if [ "$rerun_exit" -eq 0 ]; then
