@@ -69453,6 +69453,23 @@ gaps:
     THEORY: ChumpOS is Mac/datacenter-Linux-shaped; the Pixel exposes every baked-in host assumption. Sovereign-on-Pixel REQUIRES the OS become host-agnostic (detect Mac vs datacenter-Linux vs Android/Termux and adapt), not just happen-to-work with hand-holding.
     ALT: build a host-detection layer + a Termux profile: (a) exec-race-safe build wrapper, (b) runit/termux-services process supervisor replacing systemd units, (c) toolchain + coreutils bootstrap for Termux, (d) phantom-process bypass in setup, (e) path-abstraction (no hardcoded /root|/Users), (f) Termux-native OAuth refresh (357), (g) thermal-aware backoff. Seed a docs/process/TERMUX_COMPAT.md checklist that this gap and future Pixel work append to.
 
+- id: RESILIENT-365
+  domain: RESILIENT
+  title: Route chump Rust CI to the CJ Linux self-hosted runner (owned CI, off GitHub) — cj-runner is online+Rust-ready but ci.yml self-hosted lanes are macos-arm64-only and CHUMP_SELF_HOSTED_ENABLED=false
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"Route chump Rust CI to the CJ Linux self-hosted runner (owned CI, off GitHub) — cj-runner is online+Rust-ready but ci.yml self-hosted lanes are macos-arm64-only and CHUMP_SELF_HOSTED_ENABLED=false\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: SOVEREIGN
+  evidence: |
+    COMMAND: gh variable list; grep runs-on .github/workflows/ci.yml; gh api runners.
+    OUTPUT: STOOD UP cj-runner on CJ (owned x86 Linux) — online, labels self-hosted,Linux,X64,cj-host, systemd service actions.runner.repairman29-chump.cj-runner, Rust 1.96.0 installed (pinned toolchain). BUT: (1) CHUMP_SELF_HOSTED_ENABLED=false → all CI runs GitHub-hosted ubuntu-latest today (so helsinkis chumpd-eu-runner is ALSO idle/redundant — helsinki-offline does NOT lose CI). (2) The self-hosted lanes in ci.yml route to fromJSON([self-hosted,macos-arm64,chump-fleet]) — Mac-only labels; a Linux/X64 runner (CJ or helsinki) never matches them.
+    THEORY: to run CI on OWNED metal (full sovereignty, off GitHub Actions minutes + the 2-runner cap), ci.yml needs a Linux self-hosted lane targeting [self-hosted,Linux,X64] (+ cj-host) for the Rust build/clippy/cargo-test jobs, plus Linux-appropriate setup steps (sccache, toolchain already present, apt where the macOS lanes skip), and the toggle enabled. This is the Linux half of the self-hosted migration (SELF_HOSTED_RUNNERS.md follow-up), which was built Mac-first.
+    ALT: add runs-on expr routing rust lanes to Linux self-hosted when a CHUMP_SELF_HOSTED_LINUX var is true; keep ubuntu-latest fallback; verify a real PR builds green on cj-runner before pointing the fleet at it (prove-before-cut). CJ home-internet reliability caveat: keep GitHub-hosted fallback so a CJ outage does not stall CI.
+
 - id: SMOKE-001
   domain: SMOKE
   title: coord-surfaces-smoke fixture (auto-clean)
