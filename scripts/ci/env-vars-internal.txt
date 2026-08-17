@@ -899,8 +899,8 @@ CHUMP_GH_SILENT
 
 # AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
 # Replace the AUTO marker with a real description on the next commit.
-# detected in: (standard input)
-CHUMP_AUDIT_BYPASS
+# (INFRA-2525: the dead audit-bypass entry formerly here was culled — zero
+# functional read-sites anywhere in the repo.)
 # detected in: (standard input)
 CHUMP_AUDIT_SKIP
 # detected in: (standard input)

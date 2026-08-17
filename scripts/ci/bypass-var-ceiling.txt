@@ -4,7 +4,7 @@
 # you must delete one. Raising it requires operator sign-off + a reason below.
 # Baseline 2026-06-03 (was 113 when INFRA-2525 was filed — the climb to here is
 # exactly what this ceiling now reverses). Ratchet DOWN as gates are culled.
-232
+221
 
 # 233 → 234 (2026-06-04): CREDIBLE-085 introduced CHUMP_SCCACHE_HIT_RATE_CHECK
 # as a cold-cache escape valve for the new sccache hit-rate gate. Cold-cache
@@ -72,3 +72,22 @@
 # toggles landing on the backlog (CHUMP_PR_AUTO_REBASE_NO_THROTTLE #3806, CHUMP_ROT_REAPER_
 # REQUIRED_CHECKS #3809) with 2 slack remaining so the gate stops being a zero-headroom tripwire
 # (INFRA-3625 AC#4). Recurring cull tracked by INFRA-3625.
+
+# 232 -> 221 (2026-08-17, INFRA-2525): the umbrella gap that originally spawned this whole
+# ceiling+cull mechanism (filed when the raw count was 113/131) finally lands its own DEAD-bucket
+# cull. Audited every "grandfathered gap: TBD" entry in bypass-env-var-allowlist.txt — the
+# Category A vars nobody ever wired to a real gate — and removed 12 with ZERO functional
+# read-sites anywhere in scripts/src/crates/docs (verified per-var via full-repo
+# `grep -rn '\bVAR\b'`; no env::var, no ${...} shell expansion, no os.environ.get, nothing):
+#   CHUMP_AUDIT_BYPASS, CHUMP_AUTOPILOT_SKIP, CHUMP_BYPASS, CHUMP_CLAIM_SKIP,
+#   CHUMP_CLUSTER_MESH_SKIP, CHUMP_DRIFT_SKIP, CHUMP_FLEET_DOCTOR_SKIP, CHUMP_GAP_SHIP_SKIP,
+#   CHUMP_GEN_SKIP, CHUMP_POLICY_SKIP, CHUMP_PR_AUTO_REBASE_SKIP, CHUMP_SKIP
+# (CHUMP_AUDIT_BYPASS's stray env-vars-internal.txt registry line was removed too.) The
+# remaining Category A "gap: TBD" entries (CHUMP_AMBIENT_INSTALL_SKIP, CHUMP_AUTOARM_SKIP,
+# CHUMP_BOT_MERGE_AUTH_PROBE_SKIP, CHUMP_DOCTOR_SKIP, CHUMP_GH_PROBE_SKIP, CHUMP_IGNORE_INBOX,
+# CHUMP_NO_BYPASS, CHUMP_OPERATOR_CONSENSUS_BYPASS, CHUMP_PR_DEDUP_BYPASS, CHUMP_RL_GATE_SKIP,
+# CHUMP_UNBLOCK_SKIP, CHUMP_WEDGE_CLASSIFIER_SKIP, CHUMP_WEDGE_STATE_MACHINE_SKIP) all have live
+# read-sites guarding real gates — GENUINE bucket, left in place; each needs its own
+# fix-the-gate-then-delete-the-bypass follow-up rather than a blanket deletion (INFRA-2525 RULE:
+# never delete a bypass while its gate still hard-blocks). True live count 232 -> 221 with zero
+# headroom spent (no new vars added this pass). Recurring cull tracked by INFRA-3625.

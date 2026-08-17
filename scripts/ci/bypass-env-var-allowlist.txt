@@ -19,30 +19,28 @@ CHUMP_PREFLIGHT_SKIP_PIPEFAIL      # Bypass-Justification: pipefail-sweep gate s
 
 # ── Category A bypasses — deletion gap TBD ───────────────────────────────────
 CHUMP_AMBIENT_INSTALL_SKIP         # Bypass-Justification: ambient install hook skip; grandfathered  gap: TBD
-CHUMP_AUDIT_BYPASS                 # Bypass-Justification: audit gate bypass; grandfathered  gap: TBD
 CHUMP_AUTOARM_SKIP                 # Bypass-Justification: auto-arm step skip; grandfathered  gap: TBD
-CHUMP_AUTOPILOT_SKIP               # Bypass-Justification: autopilot scheduler skip; grandfathered  gap: TBD
 CHUMP_BOT_MERGE_AUTH_PROBE_SKIP    # Bypass-Justification: bot-merge auth probe skip; grandfathered  gap: TBD
-CHUMP_BYPASS                       # Bypass-Justification: top-level generic bypass; grandfathered  gap: TBD
-CHUMP_CLAIM_SKIP                   # Bypass-Justification: claim guard skip; grandfathered  gap: TBD
-CHUMP_CLUSTER_MESH_SKIP            # Bypass-Justification: cluster-mesh step skip; grandfathered  gap: TBD
 CHUMP_DOCTOR_SKIP                  # Bypass-Justification: fleet-doctor skip; grandfathered  gap: TBD
-CHUMP_DRIFT_SKIP                   # Bypass-Justification: drift-check skip; grandfathered  gap: TBD
-CHUMP_FLEET_DOCTOR_SKIP            # Bypass-Justification: fleet-doctor subprocess skip; grandfathered  gap: TBD
-CHUMP_GAP_SHIP_SKIP                # Bypass-Justification: gap-ship gate skip; grandfathered  gap: TBD
-CHUMP_GEN_SKIP                     # Bypass-Justification: code-gen step skip; grandfathered  gap: TBD
 CHUMP_GH_PROBE_SKIP                # Bypass-Justification: gh-probe skip; grandfathered  gap: TBD
 CHUMP_IGNORE_INBOX                 # Bypass-Justification: inbox check ignore; grandfathered  gap: TBD
 CHUMP_NO_BYPASS                    # Bypass-Justification: inverse-bypass sentinel; grandfathered  gap: TBD
 CHUMP_OPERATOR_CONSENSUS_BYPASS    # Bypass-Justification: operator-consensus gate bypass; grandfathered  gap: TBD
-CHUMP_POLICY_SKIP                  # Bypass-Justification: policy-check skip; grandfathered  gap: TBD
-CHUMP_PR_AUTO_REBASE_SKIP          # Bypass-Justification: PR auto-rebase skip; grandfathered  gap: TBD
 CHUMP_PR_DEDUP_BYPASS              # Bypass-Justification: PR dedup gate bypass; grandfathered  gap: TBD
 CHUMP_RL_GATE_SKIP                 # Bypass-Justification: rate-limit gate skip; grandfathered  gap: TBD
-CHUMP_SKIP                         # Bypass-Justification: generic skip sentinel; grandfathered  gap: TBD
 CHUMP_UNBLOCK_SKIP                 # Bypass-Justification: unblock-step skip; grandfathered  gap: TBD
 CHUMP_WEDGE_CLASSIFIER_SKIP        # Bypass-Justification: wedge-classifier skip; grandfathered  gap: TBD
 CHUMP_WEDGE_STATE_MACHINE_SKIP     # Bypass-Justification: wedge-state-machine skip; grandfathered  gap: TBD
+
+# ── INFRA-2525 DEAD cull (2026-08-17) ─────────────────────────────────────────
+# 12 grandfathered "gap: TBD" entries were removed from this allowlist: each had
+# ZERO functional read-sites anywhere in scripts/src/crates/docs (no env::var,
+# no shell ${...} expansion, no os.environ.get) — they existed only as an
+# allowlist line, never wired to any actual gate. Per INFRA-2525 AC (DEAD
+# bucket): "referenced only at its def-site ... delete." Full per-var grep
+# audit trail lives in the INFRA-2525 shipping PR description, not spelled out
+# here — naming deleted vars in this file's own prose double-counts them in
+# the debt-ceiling scan below (the exact RESILIENT-297 phantom-prose class).
 
 # ── preflight gate-specific skips (used by src/preflight.rs) — grandfathered ──
 # These are only triggered as CHUMP_PREFLIGHT_SKIP_<GATE>=1 and all have
