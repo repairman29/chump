@@ -1,25 +1,13 @@
 - id: INFRA-2099
   domain: INFRA
-  title: 'RESILIENT P1: audit all scripts/ci/test-*.sh for hardcoded $ROOT/target paths — migrate to cargo metadata resolution
-    (INFRA-2096 sibling sweep)'
+  title: "RESILIENT P1: audit all scripts/ci/test-*.sh for hardcoded $ROOT/target paths — migrate to cargo metadata resolution (INFRA-2096 sibling sweep)"
   status: done
   priority: P1
   effort: s
   acceptance_criteria:
-  - 1. grep -rEn '\$ROOT/target
-  - '\$\{ROOT\}/target'' scripts/ci/test-*.sh produces ZERO results (all migrated)
-
-    2. Each migrated script uses cargo metadata --no-deps --format-version 1 .target_directory with env+default fallback (see
-    scripts/ci/test-mcp-coord-smoke.sh INFRA-2096 as reference implementation)
-
-    3. Migrated scripts continue to pass on both: (a) self-hosted runner with CARGO_TARGET_DIR=/Users/jeffadkins/.cache/chump-runner/cargo-target
-    set, (b) ubuntu-latest runner with no CARGO_TARGET_DIR set, (c) local dev with .cargo/config.toml target-dir override
-
-    4. CI gate: new scripts/ci/test-cargo-path-discipline.sh that fails the build if any scripts/ci/test-*.sh adds a hardcoded
-    \$ROOT/target reference in the future
-
-    5. Reflection: this gap is the sibling-sweep of INFRA-2096 (the keystone fix that unwedged the trunk-RED). Without this
-    sweep, the same path-bug class re-emerges every time a new test script gets added.'
-  outcome_id: MISSION-010
+    - 1. grep -rEn '\$ROOT/target
+    - "\\$\\{ROOT\\}/target' scripts/ci/test-*.sh produces ZERO results (all migrated)\n2. Each migrated script uses cargo metadata --no-deps --format-version 1 .target_directory with env+default fallback (see scripts/ci/test-mcp-coord-smoke.sh INFRA-2096 as reference implementation)\n3. Migrated scripts continue to pass on both: (a) self-hosted runner with CARGO_TARGET_DIR=/Users/jeffadkins/.cache/chump-runner/cargo-target set, (b) ubuntu-latest runner with no CARGO_TARGET_DIR set, (c) local dev with .cargo/config.toml target-dir override\n4. CI gate: new scripts/ci/test-cargo-path-discipline.sh that fails the build if any scripts/ci/test-*.sh adds a hardcoded \\$ROOT/target reference in the future\n5. Reflection: this gap is the sibling-sweep of INFRA-2096 (the keystone fix that unwedged the trunk-RED). Without this sweep, the same path-bug class re-emerges every time a new test script gets added."
   closed_date: '2026-07-25'
   closed_pr: 3279
+  outcome_id: MISSION-010
+

@@ -1,0 +1,11 @@
+- id: CREDIBLE-167
+  domain: CREDIBLE
+  title: "CREDIBLE: 32 of 50 commits this cycle (64%) are automated coherence syncs; no metric exists for sync overhead ceiling or when it crowds out real work"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The change described by \"32 of 50 commits this cycle (64%) are automated coherence syncs; no metric exists for sync overhead ceiling or when it crowds out real work\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

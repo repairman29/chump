@@ -1,15 +1,15 @@
 - id: INFRA-1764
   domain: INFRA
-  title: 'EFFECTIVE: skill-aware routing via reflection_db at claim time — route gap to historical-best-performer for its
-    task class (Initiative 2)'
+  title: "EFFECTIVE: skill-aware routing via reflection_db at claim time — route gap to historical-best-performer for its task class (Initiative 2)"
   status: done
   priority: P1
   effort: m
   acceptance_criteria:
-  - 'TODO: what events emitted on success/failure/timeout'
-  - 'TODO: how cost tracked and reported to operator'
-  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
-  - 'TODO: smoke test command to verify observability'
-  outcome_id: MISSION-010
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
   closed_date: '2026-07-25'
   closed_pr: 3276
+  outcome_id: MISSION-010
+

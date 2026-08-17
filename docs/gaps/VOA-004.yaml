@@ -6,7 +6,6 @@
   effort: xs
   acceptance_criteria:
     - Full friction report at docs/voice/VOA-004-FULL.yaml with wedge_class=fleet_size_clamped_to_one, minutes_lost=10
-    - Proposed fix (tooling): "run-fleet.sh line 607 arithmetic clamps FLEET_SIZE to 1: '(( ))' errors on an empty scaling-gate metric, so FLEET_SIZE=3 yields size:1. Guard the metric (default 0) so the env var is honored — otherwise the fleet can't scale to clear the backlog."
     - Evidence references documented in FULL report
   notes: |
     [2026-08-09T15:33:33Z] Auto-filed by `chump voice` (INFRA-2258).
@@ -15,3 +14,4 @@
     Evidence:
     - "run-fleet.sh:607 'syntax error ... token is 0'; FLEET_SIZE=3 shows size:1"
     See docs/voice/VOA-004-FULL.yaml for full report.
+

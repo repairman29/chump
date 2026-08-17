@@ -13,15 +13,10 @@
     and applies NEITHER guard. So a PR that starts clean gets corrupted by its own
     remediation loop: runtime junk leaks in and destructive edits go unchecked.
   acceptance_criteria:
-    - fix_pr / remediation commits route through the SAME guarded ceremony as the initial
-      ship (junk-exclusion reset + verify_staged_edit) — ideally a shared helper both call,
-      not two copies.
-    - a remediation commit that would clobber (numstat deletion>=50 && insertion*10<deletion)
-      is rejected, exactly as the ship path rejects it.
-    - runtime junk (.chump-locks/, sessions/, .chump/, *.db / *.db-shm / *.db-wal) never
-      appears in a remediation commit's diff.
-    - "regression test — a remediate run over a clone that has runtime junk on disk produces
-      a clean cumulative PR diff (0 junk files) across ALL commits, not just the first."
+    - fix_pr / remediation commits route through the SAME guarded ceremony as the initial ship (junk-exclusion reset + verify_staged_edit) — ideally a shared helper both call, not two copies.
+    - a remediation commit that would clobber (numstat deletion>=50 && insertion*10<deletion) is rejected, exactly as the ship path rejects it.
+    - runtime junk (.chump-locks/, sessions/, .chump/, *.db / *.db-shm / *.db-wal) never appears in a remediation commit's diff.
+    - regression test — a remediate run over a clone that has runtime junk on disk produces a clean cumulative PR diff (0 junk files) across ALL commits, not just the first.
   evidence: |
     PROVEN 2026-07-29 running `chump improve repairman29/BEAST-MODE --apply` (binary built
     from origin/main 57518ed5, floor present). The OS autonomously picked a REAL gap
@@ -37,3 +32,4 @@
     not in a helper shared by fix_pr's commit path.
   labels: [cotg, reliability, external-improve, self-heal]
   discovered_by: prove-then-move-forward proof run, 2026-07-29
+
