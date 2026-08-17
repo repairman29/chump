@@ -90,6 +90,12 @@ PATH_RE = re.compile(
 NOISE = {
     "docs/gaps", "state.db", "ambient.jsonl", "Cargo.toml", "README.md",
     "CLAUDE.md", "AGENTS.md", ".chump/state.sql",
+    # CREDIBLE-279: `default_acceptance_criteria` (src/main.rs) auto-generates
+    # "...scripts/ci/test-*.sh..." on every gap reserved without explicit AC.
+    # PATH_RE stops at the glob '*' and extracts the truncated fragment
+    # "scripts/ci/test" as if it were a real path — pure boilerplate noise,
+    # not a fix-site signal.
+    "scripts/ci/test",
 }
 
 
@@ -188,38 +194,15 @@ def basename_overlap(gap_paths, pr_files):
     return hit
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--multi-close-only", action="store_true",
-                    help="only PRs that closed >=N gaps — where auto-flip damage concentrates")
-    ap.add_argument("--multi-threshold", type=int, default=3)
-    ap.add_argument("--all", action="store_true")
-    ap.add_argument("--gap", help="audit a single gap id")
-    ap.add_argument("--limit", type=int, default=0, help="cap gaps examined (0 = no cap)")
-    ap.add_argument("--json", action="store_true")
-    ap.add_argument("--strict", action="store_true", help="exit 1 if any suspect found")
-    a = ap.parse_args()
+def run_sweep(done, prf):
+    """Core tiering loop, split out from main() so it is unit-testable without
+    a live `chump`/`gh` — the CI regression fixture (test-false-done-sweep.sh)
+    drives this directly with an in-memory `prf` stub. `done` is a list of gap
+    dicts (status==done, closed_pr set); `prf` is anything with a `.get(pr)`
+    returning a file-path list or None (FETCH-FAILED).
 
-    gaps = load_gaps()
-    done = [g for g in gaps if g.get("status") == "done" and g.get("closed_pr")]
-
-    if a.gap:
-        done = [g for g in done if str(g.get("id")) == a.gap]
-        if not done:
-            sys.exit(f"{a.gap}: not a done gap with a closed_pr")
-    elif a.multi_close_only:
-        by = {}
-        for g in done:
-            by.setdefault(str(g["closed_pr"]), []).append(g)
-        keep = {pr for pr, gs in by.items() if len(gs) >= a.multi_threshold}
-        done = [g for g in done if str(g["closed_pr"]) in keep]
-    elif not a.all:
-        sys.exit("pick one of --multi-close-only / --all / --gap (no silent default scope)")
-
-    if a.limit:
-        done = done[: a.limit]
-
-    prf = PrFiles()
+    Returns a dict with the same shape as the --json report body.
+    """
     suspects, unjudgeable, fetch_failed, bookkeeping, clean = [], [], [], [], 0
 
     for g in done:
@@ -255,15 +238,57 @@ def main():
                 "pr_files": files[:8],
                 "pr_file_count": len(files),
             })
+
+    return {
+        "examined": len(done), "suspects": suspects,
+        "bookkeeping_closed": bookkeeping,
+        "unjudgeable": len(unjudgeable), "fetch_failed": len(fetch_failed),
+        "scope_confirmed": clean,
+    }
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--multi-close-only", action="store_true",
+                    help="only PRs that closed >=N gaps — where auto-flip damage concentrates")
+    ap.add_argument("--multi-threshold", type=int, default=3)
+    ap.add_argument("--all", action="store_true")
+    ap.add_argument("--gap", help="audit a single gap id")
+    ap.add_argument("--limit", type=int, default=0, help="cap gaps examined (0 = no cap)")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--strict", action="store_true", help="exit 1 if any suspect found")
+    a = ap.parse_args()
+
+    gaps = load_gaps()
+    done = [g for g in gaps if g.get("status") == "done" and g.get("closed_pr")]
+
+    if a.gap:
+        done = [g for g in done if str(g.get("id")) == a.gap]
+        if not done:
+            sys.exit(f"{a.gap}: not a done gap with a closed_pr")
+    elif a.multi_close_only:
+        by = {}
+        for g in done:
+            by.setdefault(str(g["closed_pr"]), []).append(g)
+        keep = {pr for pr, gs in by.items() if len(gs) >= a.multi_threshold}
+        done = [g for g in done if str(g["closed_pr"]) in keep]
+    elif not a.all:
+        sys.exit("pick one of --multi-close-only / --all / --gap (no silent default scope)")
+
+    if a.limit:
+        done = done[: a.limit]
+
+    prf = PrFiles()
+    result = run_sweep(done, prf)
     prf.save()
+    suspects = result["suspects"]
+    bookkeeping = result["bookkeeping_closed"]
+    unjudgeable = [None] * result["unjudgeable"]
+    fetch_failed = [None] * result["fetch_failed"]
+    clean = result["scope_confirmed"]
 
     if a.json:
-        print(json.dumps({
-            "examined": len(done), "suspects": suspects,
-            "bookkeeping_closed": bookkeeping,
-            "unjudgeable": len(unjudgeable), "fetch_failed": len(fetch_failed),
-            "scope_confirmed": clean,
-        }, indent=2))
+        print(json.dumps(result, indent=2))
     else:
         print(f"false-done sweep: {len(done)} done gaps examined")
         print(f"  BOOKKEEPING-CLOSED (closing PR shipped NO code)   : {len(bookkeeping)}")

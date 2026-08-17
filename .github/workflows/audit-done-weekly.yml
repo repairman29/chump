@@ -1,0 +1,90 @@
+name: Done-gap audit weekly
+
+# CREDIBLE-279 AC4: `chump gap audit-done` (INFRA-3495, src/done_auditor.rs)
+# has existed since 2026-08-10 but nothing ever invoked it — no cron, no
+# launchd, no CI reference — so a working watchdog produced zero operator
+# signal. This is the fix: a weekly scheduled run whose findings land in the
+# job summary (an operator-read Actions surface) and fail the job when any
+# done gap over-claims, so a red run is visible the same way audit-weekly.yml
+# is. Runs against the real committed .chump/state.db, so the resume cursor
+# (AC3, `.chump-locks/done_auditor_cursor.json`) persists across weeks only
+# if that file is committed — see the "Cursor advances" step below, which
+# commits it so successive scheduled runs actually examine disjoint slices
+# instead of resetting every week.
+
+on:
+  schedule:
+    - cron: "40 7 * * 1"  # Mondays 07:40 UTC — ahead of audit-weekly (08:17)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: audit-done-weekly
+  cancel-in-progress: false
+
+jobs:
+  audit-done:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-audit-done-weekly
+
+      - name: Build chump
+        run: cargo build --release --bin chump
+
+      - name: Run audit-done
+        id: audit
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -o pipefail
+          ./target/release/chump gap audit-done | tee /tmp/audit-done.out
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Publish findings to job summary
+        if: always()
+        run: |
+          {
+            echo "## Done-gap over-claim audit — $(date -u +%Y-%m-%d)"
+            echo '```'
+            cat /tmp/audit-done.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit resume cursor advance
+        # AC3: the cursor file (.chump-locks/done_auditor_cursor.json) is what
+        # makes successive runs examine disjoint gap slices instead of
+        # re-auditing the same prefix forever. It is untracked by default
+        # (.chump-locks/ is gitignored on developer machines) but must be
+        # committed here so the NEXT scheduled run resumes rather than
+        # re-reading the cursor's zero-value default every time.
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f .chump-locks/done_auditor_cursor.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No cursor change to commit."
+            exit 0
+          fi
+          git commit -m "chore(audit-done): advance resume cursor [skip ci]"
+          git push origin HEAD:main || echo "::warning::cursor push failed; next run resumes from the last committed cursor"
+
+      - name: Fail on over-claim
+        if: steps.audit.outcome == 'failure'
+        run: |
+          echo "::error::audit-done flagged one or more done gaps as over-claiming their acceptance criteria — see job summary"
+          exit 1
