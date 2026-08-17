@@ -57,7 +57,7 @@ async fn durable_consumer_replays_unacked_on_restart() {
     if !chump_coord::jetstream_consumer::fleet_wire_enabled() {
         eprintln!(
             "[durable_consumer_replays_unacked_on_restart] SKIP — \
-             CHUMP_FLEET_WIRE_V1=1 + CHUMP_NATS_URL not set"
+             CHUMP_FLEET_WIRE_V1=1 not set"
         );
         return;
     }

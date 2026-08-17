@@ -11138,3 +11138,16 @@ events:
       merge resolves something the curator was tracking as stale.
     consumers: [chump curator status, ambient]
     fields_required: [ts, kind, role, gap_id, reason]
+
+  # ── INFRA-2471: NATS mesh dark-broker detection ───────────────────────────
+  - kind: nats_mesh_dark
+    effect_metric: self
+    emitter: scripts/setup/chump-fleet-bootstrap.sh (--check mode, INFRA-2471)
+    trigger: chump-coord ping succeeds (broker reachable) but CHUMP_NATS_URL
+      is unset in the launchd GUI session (or process env on non-macOS) —
+      i.e. the broker is up but no newly-spawned client process will ever
+      connect to it. Root-cause class of the 2026-08 incident where the
+      broker sat up and idle for 2 days because install-nats-server-launchd.sh
+      only printed the export as advice instead of setting it.
+    consumers: [fleet-doctor, chump-ambient-glance, operator-recall]
+    fields_required: [ts, kind, host]

@@ -160,11 +160,18 @@ async fn main() -> ExitCode {
         cli.idle_sleep_s,
     );
 
-    // Phase 1: NATS PUSH path is stubbed — emit a debug message if
-    // CHUMP_NATS_URL is set, then fall through to PULL.
-    if env::var("CHUMP_NATS_URL").is_ok() {
+    // Phase 1: NATS PUSH path is stubbed — always fall through to PULL.
+    // INFRA-2471: this used to only log when CHUMP_NATS_URL happened to be
+    // set explicitly. CHUMP_NATS_URL now defaults to nats://127.0.0.1:4222
+    // fleet-wide (see jetstream_consumer::fleet_wire_enabled), so gate the
+    // debug message on the actual feature flag instead of env-var presence.
+    if env::var("CHUMP_FLEET_WIRE_V1")
+        .ok()
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false)
+    {
         eprintln!(
-            "[chump-worker] CHUMP_NATS_URL set but PUSH consumer not implemented in Phase 1 \
+            "[chump-worker] CHUMP_FLEET_WIRE_V1=1 but PUSH consumer not implemented in Phase 1 \
              (FLEET-034 follow-up); falling back to PULL"
         );
     }

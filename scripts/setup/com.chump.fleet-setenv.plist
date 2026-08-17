@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.fleet-setenv.plist — INFRA-2471
+
+  Reboot-persistence half of the CHUMP_NATS_URL fix. `launchctl setenv` only
+  affects the CURRENT login session's GUI environment domain — it does not
+  survive logout/reboot on its own. Without this, every reboot silently
+  reintroduces the "broker is up, no client sees CHUMP_NATS_URL" dark-mesh
+  bug (2 days undetected in production, INFRA-2471 root cause) even after
+  install-nats-server-launchd.sh has been run once.
+
+  This RunAtLoad-only agent re-issues `launchctl setenv CHUMP_NATS_URL ...`
+  on every login, so the env var is live for the launchd GUI session (and
+  therefore for every process launchd spawns afterward) before any fleet
+  daemon or worker starts.
+
+  Install:   scripts/setup/install-nats-server-launchd.sh (installs this
+             alongside the broker itself; substitutes __NATS_URL__)
+  Status:    launchctl print gui/$(id -u)/com.chump.fleet-setenv
+  Verify:    launchctl getenv CHUMP_NATS_URL
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.fleet-setenv</string>
+
+    <!-- One-shot on every login; no KeepAlive — there is nothing to keep
+         alive, `launchctl setenv` exits immediately. -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/launchctl</string>
+        <string>setenv</string>
+        <string>CHUMP_NATS_URL</string>
+        <string>__NATS_URL__</string>
+    </array>
+</dict>
+</plist>

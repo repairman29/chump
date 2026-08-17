@@ -275,6 +275,52 @@ for entry in "${REQUIRED_DAEMONS[@]}"; do
     fi
 done
 
+# ── NATS mesh liveness (INFRA-2471) ───────────────────────────────────────────
+# Broker up + client env wired is necessary but not sufficient: verify a
+# client can actually reach it via `chump-coord ping`, and separately warn
+# when the broker is reachable but the local launchd session has no
+# CHUMP_NATS_URL set — that combination is exactly the "up for 2 days, never
+# connected" dark-mesh bug this gap fixes. This is advisory (does not affect
+# exit code) since a fresh single-machine dev box legitimately has no broker.
+_find_coord_bin() {
+    if [[ -n "${CHUMP_COORD_BIN:-}" ]] && [[ -x "$CHUMP_COORD_BIN" ]]; then
+        printf '%s' "$CHUMP_COORD_BIN"; return 0
+    fi
+    for candidate in \
+        "$REPO_ROOT/target/release/chump-coord" \
+        "$REPO_ROOT/target/debug/chump-coord" \
+        "$HOME/.local/bin/chump-coord" \
+        "$HOME/.cargo/bin/chump-coord"
+    do
+        [[ -x "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
+    done
+    return 1
+}
+
+NATS_MESH_DARK=0
+if [[ "$MODE" == "check" ]]; then
+    COORD_BIN="$(_find_coord_bin || true)"
+    if [[ -n "$COORD_BIN" ]]; then
+        if "$COORD_BIN" ping >/dev/null 2>&1; then
+            echo "  ok      nats-mesh-reachable (chump-coord ping)"
+            env_val=""
+            if command -v launchctl >/dev/null 2>&1; then
+                env_val="$(launchctl getenv CHUMP_NATS_URL 2>/dev/null || true)"
+            else
+                env_val="${CHUMP_NATS_URL:-}"
+            fi
+            if [[ -z "$env_val" ]]; then
+                echo "  WARN    nats-mesh-dark: broker reachable but CHUMP_NATS_URL is unset for new client processes"
+                NATS_MESH_DARK=1
+            fi
+        else
+            echo "  MISSING nats-mesh-reachable  (run: bash scripts/setup/install-nats-server-launchd.sh)"
+        fi
+    else
+        echo "  --      nats-mesh-reachable  (chump-coord binary not built; skipping)"
+    fi
+fi
+
 # Ambient emit for audit trail.
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 if [[ -d "$(dirname "$AMBIENT")" ]]; then
@@ -305,6 +351,16 @@ if [[ -d "$(dirname "$AMBIENT")" ]]; then
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             "$missing_labels" \
             "${#MISSING_DAEMONS[@]}" \
+            "$(hostname -s 2>/dev/null || echo unknown)" \
+            >> "$AMBIENT" 2>/dev/null || true
+    fi
+
+    # INFRA-2471: broker reachable but no client env wired — the "up for 2
+    # days, never connected" class. Distinct kind from fleet_bootstrap_incomplete
+    # (that's about missing daemons; this is about a live-but-dark broker).
+    if [[ "$NATS_MESH_DARK" -eq 1 ]]; then
+        printf '{"ts":"%s","kind":"nats_mesh_dark","host":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             "$(hostname -s 2>/dev/null || echo unknown)" \
             >> "$AMBIENT" 2>/dev/null || true
     fi

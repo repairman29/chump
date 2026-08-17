@@ -10,8 +10,10 @@
 //!
 //! ## Phase 1 simplifications (deferred to follow-ups)
 //!
-//! - **No NATS PUSH consumption.** `CHUMP_NATS_URL` is read but the path is
-//!   stubbed to fall through to PULL with a debug message. The actual
+//! - **No NATS PUSH consumption.** `CHUMP_FLEET_WIRE_V1` is read but the path
+//!   is stubbed to fall through to PULL with a debug message. `CHUMP_NATS_URL`
+//!   defaults to `nats://127.0.0.1:4222` fleet-wide (INFRA-2471) rather than
+//!   gating on the var being explicitly set. The actual
 //!   `chump.work.<priority>.<class>.<machine>` subscribe lives in
 //!   FLEET-034 sub-gaps.
 //! - **No KV capability publish.** [`super::capability::WorkerCapability`]

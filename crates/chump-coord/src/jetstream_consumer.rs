@@ -17,9 +17,16 @@
 //
 // ## Feature flag
 //
-// Both `CHUMP_FLEET_WIRE_V1=1` **and** `CHUMP_NATS_URL` must be set for the
-// JetStream path to activate. If either is absent the caller falls back to the
-// file-inbox tick-preamble (INFRA-2262 path).
+// `CHUMP_FLEET_WIRE_V1=1` activates the JetStream path. `CHUMP_NATS_URL` is
+// NOT required to be explicitly set — it defaults to `DEFAULT_NATS_URL`
+// (nats://127.0.0.1:4222), same as every other NATS client in this crate.
+// INFRA-2471: the old gate required BOTH the flag AND an explicitly-set
+// CHUMP_NATS_URL, which meant a fully healthy broker on the default port
+// still left the push tier dark whenever the env var wiring lagged (exactly
+// what happened for 2 days in production). The broker being reachable is
+// verified by actually connecting in `subscribe_for_role` below; callers
+// fall back to the file-inbox tick-preamble (INFRA-2262 path) only on a
+// real connect failure, not on env-var absence.
 //
 // ## Observability
 //
@@ -45,20 +52,20 @@ const DEFAULT_FETCH_TIMEOUT_MS: u64 = 2_000;
 
 // ── Feature-flag guard ────────────────────────────────────────────────────────
 
-/// Returns `true` when **both** `CHUMP_FLEET_WIRE_V1=1` and `CHUMP_NATS_URL`
-/// are set in the process environment.
+/// Returns `true` when `CHUMP_FLEET_WIRE_V1=1` is set in the process
+/// environment. `CHUMP_NATS_URL` does NOT gate this — it defaults to
+/// `DEFAULT_NATS_URL` (see module docs, INFRA-2471).
 ///
 /// Callers should check this before calling `subscribe_for_role`; if it
-/// returns `false` they must fall back to the file-inbox path.
+/// returns `false` they must fall back to the file-inbox path. If it
+/// returns `true` but the broker is actually unreachable, `subscribe_for_role`
+/// returns `Err` and callers should fall back to the file-inbox path then —
+/// i.e. fall back on a real connect failure, not on env-var absence.
 pub fn fleet_wire_enabled() -> bool {
-    let v1_flag = std::env::var("CHUMP_FLEET_WIRE_V1")
+    std::env::var("CHUMP_FLEET_WIRE_V1")
         .ok()
         .map(|v| v.trim() == "1")
-        .unwrap_or(false);
-    let nats_set = std::env::var("CHUMP_NATS_URL")
-        .map(|v| !v.trim().is_empty())
-        .unwrap_or(false);
-    v1_flag && nats_set
+        .unwrap_or(false)
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -287,20 +294,21 @@ mod tests {
     }
 
     #[test]
-    fn fleet_wire_requires_both_flags() {
-        // Only V1 set — disabled.
-        std::env::set_var("CHUMP_FLEET_WIRE_V1", "1");
+    fn fleet_wire_does_not_require_explicit_nats_url() {
+        // INFRA-2471: CHUMP_NATS_URL absence must NOT gate the flag off —
+        // subscribe_for_role() defaults to DEFAULT_NATS_URL and the actual
+        // reachability check happens there via a real connect attempt.
         std::env::remove_var("CHUMP_NATS_URL");
-        assert!(!fleet_wire_enabled());
-
-        // Only NATS_URL set — disabled.
-        std::env::remove_var("CHUMP_FLEET_WIRE_V1");
-        std::env::set_var("CHUMP_NATS_URL", "nats://127.0.0.1:4222");
-        assert!(!fleet_wire_enabled());
-
-        // Both set — enabled.
         std::env::set_var("CHUMP_FLEET_WIRE_V1", "1");
         assert!(fleet_wire_enabled());
+
+        // Explicitly set NATS_URL still works too.
+        std::env::set_var("CHUMP_NATS_URL", "nats://127.0.0.1:4222");
+        assert!(fleet_wire_enabled());
+
+        // Flag off — disabled regardless of NATS_URL.
+        std::env::remove_var("CHUMP_FLEET_WIRE_V1");
+        assert!(!fleet_wire_enabled());
 
         // Cleanup.
         std::env::remove_var("CHUMP_FLEET_WIRE_V1");
