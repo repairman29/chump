@@ -4572,34 +4572,63 @@ events:
 
   - kind: a2a_rpc_timeout
     effect_metric: self
-    emitter: scripts/coord/rpc/_rpc_lib.sh (INFRA-1828)
-    trigger: client deadline (default 10s, CHUMP_RPC_TIMEOUT_S override)
-      expired before a reply with corr_id=<request_id> landed in inbox.
+    emitter: scripts/coord/rpc/_rpc_lib.sh (INFRA-1828); crates/chump-coord/src/rpc.rs (INFRA-1119)
+    trigger: client deadline (default 10s, CHUMP_RPC_TIMEOUT_S override; 10_000ms
+      DEFAULT_RPC_TIMEOUT_MS on the Rust path) expired before a reply with
+      corr_id=<request_id> landed in inbox / no NATS reply arrived.
       Per INFRA-1759 / INFRA-1119 design, no blocking RPC call ever
       exceeds its deadline; this kind announces the dropped call.
+      failure_class is always "transient" (INFRA-2358) — retry may succeed.
     consumers: [audit-log, operator-recall]
-    fields_required: [ts, kind, request_id, timeout_s]
+    fields_required: [ts, kind, request_id, timeout_s, failure_class]
 
   - kind: a2a_rpc_send_failed
     effect_metric: self
     emitter: scripts/coord/rpc/_rpc_lib.sh (INFRA-1828); crates/chump-coord/src/rpc.rs (INFRA-1119)
     trigger: broadcast.sh invocation rc != 0 when sending an RPC request; or NATS
-      publish failed in call_rpc_with_nats
+      publish/transport failed, or the reply payload failed to deserialize, in
+      call_rpc_with_nats. failure_class is always "transient" (INFRA-2358) —
+      retry may succeed (broker hiccup, dropped connection).
     consumers: [audit-log]
-    fields_required: [ts, kind, method, target, request_id]
+    fields_required: [ts, kind, method, target, request_id, failure_class]
   # scanner-anchor: a2a_rpc_handler_crash
   - kind: a2a_rpc_handler_crash  # scanner-anchor
     effect_metric: self
-    emitter: crates/chump-coord/src/rpc.rs::serve_rpc_with_nats (INFRA-1119)
+    emitter: crates/chump-coord/src/rpc.rs::serve_rpc_with_nats + call_rpc_with_nats
+      (INFRA-1119); scripts/coord/rpc/_rpc_lib.sh::_rpc_await (INFRA-1828 / INFRA-2358)
     trigger: >
       Server-side RPC handler returned Err(...) or panicked. Emitted by the
-      serve_rpc background task before returning error="handler_crash: <reason>"
-      in the RpcResponse. Distinct from a2a_rpc_timeout (client-side deadline)
-      and a2a_rpc_send_failed (transport failure). Client detects the
-      "handler_crash:" prefix in the response error field and surfaces
-      RpcError::HandlerCrash.
+      serve_rpc background task (server side) before returning
+      error="handler_crash: <reason>" in the RpcResponse, AND by
+      call_rpc_with_nats (client side) when it detects the "handler_crash:"
+      prefix in the response error field and surfaces RpcError::HandlerCrash.
+      The bash transport mirrors the same wire convention: _rpc_await detects
+      a reply payload whose "error" field starts with "handler_crash:" and
+      emits this kind instead of a2a_rpc_finished. Distinct from
+      a2a_rpc_timeout (client-side deadline) and a2a_rpc_send_failed
+      (transport failure). failure_class is always "permanent" (INFRA-2358)
+      — retrying reproduces the same failure since the peer's handler logic
+      is broken, not the transport.
     consumers: [audit-log, operator-recall]
-    fields_required: [ts, kind, method, session, request_id, reason]
+    fields_required: [ts, kind, request_id, reason, failure_class]
+    docs: "docs/design/A2A_ROADMAP.md (META-061 Layer 2b)"
+    status: stable
+  # scanner-anchor: a2a_rpc_finished
+  - kind: a2a_rpc_finished  # scanner-anchor
+    effect_metric: self
+    emitter: crates/chump-coord/src/rpc.rs::call_rpc_with_nats (INFRA-1119);
+      scripts/coord/rpc/_rpc_lib.sh::_rpc_await (INFRA-1828 / INFRA-2358)
+    trigger: >
+      An RPC call completed successfully — the caller received and decoded a
+      non-error reply before its deadline. Exactly one of
+      {a2a_rpc_finished, a2a_rpc_timeout, a2a_rpc_send_failed,
+      a2a_rpc_handler_crash} fires per RPC call (INFRA-2358 AC-1); this is
+      the success member of that set. Carries latency_ms — the round-trip
+      time the caller observed — as the cost signal, since RPC calls are
+      NATS-native with no LLM spend and call volume + latency is what
+      fleet-brief rolls up per method (INFRA-2358 AC-2).
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, request_id, latency_ms]
     docs: "docs/design/A2A_ROADMAP.md (META-061 Layer 2b)"
     status: stable
   # scanner-anchor: a2a_rpc_registered
