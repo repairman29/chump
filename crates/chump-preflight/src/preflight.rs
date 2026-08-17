@@ -989,6 +989,13 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // scripts/ci/bash-portability-lint.sh actually fire on synthetic
         // fixtures. Pure bash, no network, ~1s.
         "scripts/ci/test-bash-portability-lint.sh",
+        // INFRA-2358: A2A typed RPC v1 observability smoke test — proves the
+        // 4 terminal event kinds (finished/timeout/send_failed/
+        // handler_crash) are registered + emitted from both
+        // crates/chump-coord/src/rpc.rs and scripts/coord/rpc/_rpc_lib.sh,
+        // that latency_ms and failure_class ride along, and runs
+        // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
+        "scripts/ci/test-a2a-rpc-observability.sh",
     ];
     candidates
         .iter()

@@ -108,6 +108,36 @@ _cache_db_path() {
     printf '%s/.chump/github_cache.db' "$root"
 }
 
+# INFRA-2464: _cache_repo_nwo — memoized `gh repo view --json nameWithOwner`.
+# Every cache-miss/refill path in this file (_cache_fetch_and_store,
+# cache_refresh_open_prs, cache_lookup_pr_files) independently re-resolved
+# owner/repo via a live `gh repo view` call, even though nameWithOwner is
+# effectively immutable for the life of a checkout. That's the #3 AC in
+# INFRA-2464's audit — "gh repo view -> single cache fetch + reuse". Cache
+# the value to a file with a long TTL (default 24h) so repeated calls within
+# and across processes hit disk instead of the network.
+_cache_repo_nwo() {
+    local ttl="${CHUMP_REPO_NWO_TTL_S:-86400}"
+    local root; root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    local cache_file="$root/.chump/repo-nwo.cache"
+    if [[ -f "$cache_file" ]]; then
+        local mtime now age
+        mtime=$(stat -f %m "$cache_file" 2>/dev/null || stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+        now=$(date -u +%s)
+        age=$((now - mtime))
+        if [[ "$age" -lt "$ttl" ]]; then
+            local cached; cached="$(cat "$cache_file" 2>/dev/null || true)"
+            [[ -n "$cached" ]] && { printf '%s' "$cached"; return 0; }
+        fi
+    fi
+    local repo
+    repo="$(CHUMP_GH_CALL_CRITICALITY=background gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)"
+    [[ -z "$repo" ]] && return 1
+    mkdir -p "$root/.chump" 2>/dev/null || true
+    printf '%s' "$repo" > "$cache_file" 2>/dev/null || true
+    printf '%s' "$repo"
+}
+
 # cache_query_behind_prs — returns PR numbers for open BEHIND + auto-merge-armed
 # rows. Empty stdout if the cache is empty or the DB doesn't exist yet.
 cache_query_behind_prs() {
@@ -297,7 +327,7 @@ _cache_fetch_and_store() {
     local db; db="$(_cache_db_path)"
     mkdir -p "$(dirname "$db")" 2>/dev/null || true
     local repo
-    repo="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)"
+    repo="$(_cache_repo_nwo)"
     [[ -z "$repo" ]] && return 1
     local resp
     resp="$(gh api "repos/$repo/pulls/$number" 2>/dev/null)"
@@ -509,7 +539,7 @@ cache_refresh_open_prs() {
     local db; db="$(_cache_db_path)"
     mkdir -p "$(dirname "$db")" 2>/dev/null || true
     local repo
-    repo="$(CHUMP_GH_CALL_CRITICALITY=background gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)"
+    repo="$(_cache_repo_nwo)"
     [[ -z "$repo" ]] && return 1
     local resp
     resp="$(CHUMP_GH_CALL_CRITICALITY=background gh api \
@@ -598,7 +628,7 @@ PY
 cache_lookup_pr_files() {
     local number="${1:?cache_lookup_pr_files <number>}"
     local repo
-    repo="$(CHUMP_GH_CALL_CRITICALITY=background gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)"
+    repo="$(_cache_repo_nwo)"
     [[ -z "$repo" ]] && return 1
     CHUMP_GH_CALL_CRITICALITY=background gh api "repos/$repo/pulls/$number/files" \
         --jq '[.[].filename] | join(",")' 2>/dev/null || echo ""
