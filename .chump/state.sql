@@ -11680,6 +11680,41 @@ gaps:
     - Failed/empty CEO ticks never send; every operator message carries narrative + at least one honest what-I-do-not-know or what-is-broken when relevant (no all-green status theater)
   outcome_id: FLEET-RADIO
 
+- id: EFFECTIVE-503
+  domain: EFFECTIVE
+  title: "Bootstrap: A CLI tool that tracks daily habits"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. Repository at /tmp/tmp.GtMMKuGHHz has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"A CLI tool that tracks daily habits\"\n3. Sub-gaps filed for core feature areas"
+  notes: |
+    DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-135 (score 1.00) considered at reserve time — proceeded (advisory-only, no override flag used).
+
+- id: EFFECTIVE-504
+  domain: EFFECTIVE
+  title: "Bootstrap: Another intent"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. Repository at /tmp/tmp.3czSccA7lR has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
+  notes: |
+    DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-136 (score 1.00) considered at reserve time — proceeded (advisory-only, no override flag used).
+
+- id: EFFECTIVE-505
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [triage] fix PR #3866 (CREDIBLE-279) — real CI failures (fast-checks,fast-checks-required,test,verified) keeping valuable work off main"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[triage] fix PR #3866 (CREDIBLE-279) — real CI failures (fast-checks,fast-checks-required,test,verified) keeping valuable work off main\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match EFFECTIVE-440 (score 0.79) considered at reserve time — proceeded (advisory-only, no override flag used).
+
 - id: EVAL-085
   title: test eval 085
   status: done
@@ -32866,6 +32901,7 @@ gaps:
     [2026-08-17T01:46:28Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:16:28Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 9h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:46:28Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 9h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T03:16:29Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 10h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2250
@@ -33579,6 +33615,7 @@ gaps:
     [2026-08-17T01:46:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:16:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 8h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:46:25Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 9h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T03:16:27Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 9h) 2026-08-17; re-attempt on fresh main.
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -34563,6 +34600,7 @@ gaps:
     [2026-08-17T01:46:22Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:16:21Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:46:22Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T03:16:24Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2343
@@ -34861,6 +34899,7 @@ gaps:
     [2026-08-17T01:46:18Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:16:18Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
     [2026-08-17T02:46:19Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 5h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T03:16:20Z] rot-reaper: PR #3858 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2361
@@ -36678,7 +36717,7 @@ gaps:
 - id: INFRA-2464
   domain: INFRA
   title: "RESILIENT P0: polling daemons hit raw gh ~190 calls/30min — migrate queue-driver + shepherd + run-list callers to cache-first per INFRA-1081"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -36688,6 +36727,7 @@ gaps:
     - "After migration: re-run leaderboard, total raw gh calls < 50/hr (down from ~190/30min = 380/hr)"
     - "Smoke test: run scripts/coord/queue-driver.sh tick + verify 0 new github_api_call events with raw script=gh"
     - "Cite Today 2026-06-02: 766/5000 GraphQL burned in <1h purely from polling; wedge-guard aborts blocked 2 shipping PRs (INFRA-2447/2434)"
+  closed_pr: 3865
   outcome_id: MISSION-010
 
 - id: INFRA-2465
