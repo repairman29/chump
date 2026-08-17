@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
-# scripts/ci/test-audit-workflow-not-cancellable.sh — INFRA-2452
+# scripts/ci/test-audit-workflow-not-cancellable.sh — INFRA-2452 / INFRA-2516
 #
 # Regression guard: asserts that the `audit` and `audit-required` jobs live in
-# their own dedicated workflow file (audit.yml) with cancel-in-progress: FALSE
-# at the workflow level. This prevents the recurring trunk-red deadlock where
-# ci.yml's workflow-level cancel-in-progress: true cancels the required `audit`
-# check, causing audit → CANCELLED, audit-required → FAILURE, and every PR
+# their own dedicated workflow file (audit.yml), isolated from ci.yml's
+# workflow-level concurrency block. This prevents the recurring trunk-red
+# deadlock where ci.yml's workflow-level cancel-in-progress: true cancels the
+# required `audit` check as collateral damage from an unrelated job's fixup
+# push, causing audit → CANCELLED, audit-required → FAILURE, and every PR
 # blocked — including the PR that fixes it. (3h fleet-wide deadlock on 2026-06-02)
+#
+# INFRA-2516 update: audit.yml's OWN concurrency now uses cancel-in-progress:
+# true with a per-PR group (not per-SHA/per-run-id) so a newer push to the
+# SAME PR cancels its own superseded audit run instead of piling up stale
+# runs against a fixed runner pool (13 in-flight runs vs 4 runners wedged the
+# queue ~30min on 2026-06-03). This is scoped to audit.yml alone and keyed
+# per-PR — it does not reintroduce the INFRA-2452 cross-workflow collateral
+# cancellation, which checks 3/4 below continue to guard against.
 #
 # What this asserts (inverse of broken state — if this test fails, the regression is back):
 #   1. audit.yml exists (jobs moved out of ci.yml)
-#   2. audit.yml's top-level concurrency has cancel-in-progress: false
+#   2. audit.yml's top-level concurrency is per-PR (not per-SHA/run-id) with cancel-in-progress: true
 #   3. ci.yml does NOT contain a top-level `audit:` job definition
 #   4. ci.yml does NOT contain a top-level `audit-required:` job definition
 
@@ -35,16 +44,27 @@ else
     fail "audit.yml MISSING — audit job not extracted from ci.yml (INFRA-2452 regression)"
 fi
 
-# 2. audit.yml must have workflow-level cancel-in-progress: false
+# 2. audit.yml must have workflow-level cancel-in-progress: true, keyed per-PR
+# (not per-SHA/run-id — that variant never collides, so stale runs pile up
+# regardless of cancel-in-progress; see INFRA-2516).
 # The workflow-level concurrency block is at the top level (not indented under jobs:)
 if [[ -f "$AUDIT_YML" ]]; then
-    cancel_val="$(awk '/^concurrency:/{flag=1; next} flag && /^[a-zA-Z]/{flag=0} flag' "$AUDIT_YML" \
-        | grep 'cancel-in-progress:' \
-        | awk '{print $2}' | head -1)"
-    if [[ "$cancel_val" == "false" ]]; then
-        ok "audit.yml workflow-level cancel-in-progress: false"
+    concurrency_block="$(awk '/^concurrency:/{flag=1; next} flag && /^[a-zA-Z]/{flag=0} flag' "$AUDIT_YML")"
+    cancel_val="$(printf '%s\n' "$concurrency_block" | grep 'cancel-in-progress:' | awk '{print $2}' | head -1)"
+    group_line="$(printf '%s\n' "$concurrency_block" | grep 'group:' | head -1)"
+
+    if [[ "$cancel_val" == "true" ]]; then
+        ok "audit.yml workflow-level cancel-in-progress: true"
     else
-        fail "audit.yml workflow-level cancel-in-progress is '$cancel_val' (expected 'false') — deadlock regression (INFRA-2452)"
+        fail "audit.yml workflow-level cancel-in-progress is '$cancel_val' (expected 'true') — stale-run pileup regression (INFRA-2516)"
+    fi
+
+    if [[ "$group_line" == *github.sha* || "$group_line" == *github.run_id* ]]; then
+        fail "audit.yml concurrency group is keyed per-SHA/run-id — never collides, cancel-in-progress is a no-op (INFRA-2516 regression): $group_line"
+    elif [[ "$group_line" == *pull_request.number* || "$group_line" == *github.ref* ]]; then
+        ok "audit.yml concurrency group is keyed per-PR/ref (not per-SHA/run-id)"
+    else
+        fail "audit.yml concurrency group does not look per-PR/ref — verify manually: $group_line"
     fi
 fi
 
