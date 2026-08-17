@@ -33717,7 +33717,7 @@ gaps:
 - id: INFRA-2294
   domain: INFRA
   title: PWA cockpit + scrubber unification — best-in-class HITL fleet UX consensus (3 options A/B/C + role-grouping sub-question)
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -33753,6 +33753,7 @@ gaps:
     - "1. Consensus tallied: \\`scripts/coord/feedback-report.sh --corr-id cockpit-scrubber-unification\\` shows vote distribution A/B/C; deliberator emits kind=consensus_resolved with winning option\n2. Winning option's design doc written under docs/design/COCKPIT_SCRUBBER_UNIFIED.md including: chosen architecture, deprecation/migration plan for the losing artifact, data-shape changes required (role, parent_session, gap_id), routing/URL strategy\n3. Three sub-gaps filed:\n   (a) fleet-sidebar role-grouping (4-tier hierarchy, if sub-question carried)\n   (b) HUD metric strip (7 tiles per design)\n   (c) recorder segments enrichment (role + parent_session + gap_id columns)\n4. Decision doc reviewed by external-collab curator for Marcus-facing impact\n5. Operator sign-off on the design doc before any code lands"
   notes: |
     [2026-05-30T16:04Z] Amendment broadcast cockpit-mission-lens-amendment sent. Mission-layer framing surfaced: my original A/B/C asked the wrong question first. Should be: vote M/G/S on primary organizing lens (Mission / Gap / Session) BEFORE voting A/B/C on tool unification. Reasoning: if Mission lens wins, scrubber becomes a drill-down tool under Mission-first cockpit (favors A or C); if Gap or Session lens wins, scrubber's flat-gantt becomes a peer (favors B). INFRA-2247 (Mission types) + CREDIBLE-071 (Mission Yield digest) added as blockers — design doc cannot lock in until Mission becomes a queryable primitive, not just a title-prefix convention.
+  closed_pr: 3864
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
