@@ -32861,6 +32861,7 @@ gaps:
     [2026-08-16T23:16:17Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T23:46:17Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
     [2026-08-17T00:16:20Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T00:46:22Z] rot-reaper: PR #3850 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2250
@@ -33569,6 +33570,7 @@ gaps:
     [2026-08-16T23:16:13Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 5h) 2026-08-16; re-attempt on fresh main.
     [2026-08-16T23:46:13Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 6h) 2026-08-16; re-attempt on fresh main.
     [2026-08-17T00:16:17Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 6h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T00:46:19Z] rot-reaper: PR #3851 auto-closed (CONFLICTING, 7h) 2026-08-17; re-attempt on fresh main.
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -34547,6 +34549,7 @@ gaps:
     - "smoke test: bash scripts/ci/test-inbox-urgent-hook-failures.sh (python3-missing, malformed JSON, forced timeout, cursor-write-denied, duration_ms-present)"
   notes: |
     [2026-08-17T00:16:14Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
+    [2026-08-17T00:46:15Z] rot-reaper: PR #3854 auto-closed (CONFLICTING, 4h) 2026-08-17; re-attempt on fresh main.
   outcome_id: MISSION-010
 
 - id: INFRA-2343
@@ -69473,6 +69476,23 @@ gaps:
     OUTPUT: STOOD UP cj-runner on CJ (owned x86 Linux) — online, labels self-hosted,Linux,X64,cj-host, systemd service actions.runner.repairman29-chump.cj-runner, Rust 1.96.0 installed (pinned toolchain). BUT: (1) CHUMP_SELF_HOSTED_ENABLED=false → all CI runs GitHub-hosted ubuntu-latest today (so helsinkis chumpd-eu-runner is ALSO idle/redundant — helsinki-offline does NOT lose CI). (2) The self-hosted lanes in ci.yml route to fromJSON([self-hosted,macos-arm64,chump-fleet]) — Mac-only labels; a Linux/X64 runner (CJ or helsinki) never matches them.
     THEORY: to run CI on OWNED metal (full sovereignty, off GitHub Actions minutes + the 2-runner cap), ci.yml needs a Linux self-hosted lane targeting [self-hosted,Linux,X64] (+ cj-host) for the Rust build/clippy/cargo-test jobs, plus Linux-appropriate setup steps (sccache, toolchain already present, apt where the macOS lanes skip), and the toggle enabled. This is the Linux half of the self-hosted migration (SELF_HOSTED_RUNNERS.md follow-up), which was built Mac-first.
     ALT: add runs-on expr routing rust lanes to Linux self-hosted when a CHUMP_SELF_HOSTED_LINUX var is true; keep ubuntu-latest fallback; verify a real PR builds green on cj-runner before pointing the fleet at it (prove-before-cut). CJ home-internet reliability caveat: keep GitHub-hosted fallback so a CJ outage does not stall CI.
+
+- id: RESILIENT-366
+  domain: RESILIENT
+  title: "chump dispatch: 2 more stacked bugs after the root/IS_SANDBOX fix landed — (a) auto-built prompt starting with --- (doc frontmatter) is parsed as a CLI flag (unknown option), (b) freshly-filed gap not in the dispatch worktree state.db (preflight WARN, cant work it)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"2 more stacked bugs after the root/IS_SANDBOX fix landed — (a) auto-built prompt starting with --- (doc frontmatter) is parsed as a CLI flag (unknown option), (b) freshly-filed gap not in the dispatch worktree state.db (preflight WARN, cant work it)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: chump dispatch RESILIENT-360 --backend headless (after #3863 IS_SANDBOX fix merged+live, binary built 2026-08-17).
+    OUTPUT: root blocker GONE (dispatch got past claude -p, created worktree claude/resilient-360). THEN: [preflight] WARN RESILIENT-360 not found in state.db (run chump gap import first) — the fresh worktree checkout of origin/main does not contain the just-filed gap (state.sql not yet regenerated with it / not synced into the worktree db). AND: error: unknown option ---doc_tag: canonical... — the auto-prompt (which injects docs/process dispatch-rules with YAML frontmatter starting ---) is passed as an argv that a parser reads as flags; needs -- separator or stdin.
+    THEORY: the dispatch autonomy chain has stacked defects — the IS_SANDBOX fix was necessary but not sufficient. (a) prompt must be passed after -- or via stdin so a leading --- is not a flag; (b) dispatch must sync/import the target gap into the worktree state.db (chump gap import / sync --pull) before preflight, or dispatch from a db that has it.
+    ALT: fix argv passing (-- sep or stdin) + gap-sync-into-worktree; add a smoke test dispatching a real gap end-to-end. Part of the restore-fleet-autonomy workstream (with picker P0-skip 360).
 
 - id: SMOKE-001
   domain: SMOKE
