@@ -34858,7 +34858,7 @@ gaps:
 - id: INFRA-2358
   domain: INFRA
   title: A2A typed RPC v1 — refile post INFRA-2341 architecture pivot
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -34866,6 +34866,8 @@ gaps:
     - "Cost tracked: a2a_rpc_finished carries latency_ms (RPC calls are NATS-native with no LLM spend, so call volume + latency is the cost signal fleet-brief rolls up per method)"
     - "Failure-class taxonomy: RpcError::failure_class() returns transient (NoNats/Timeout/Transport, retry may succeed) or permanent (HandlerCrash/Deserialize, retry will reproduce) — every failure ambient event carries a failure_class field"
     - "Smoke test: scripts/ci/test-a2a-rpc-observability.sh verifies event registration, latency_ms presence, failure_class wiring in both Rust and bash paths, and runs cargo test -p chump-coord --lib rpc::"
+  closed_date: '2026-08-17'
+  closed_pr: 3867
   outcome_id: MISSION-010
 
 - id: INFRA-2359
