@@ -5,9 +5,9 @@
   priority: P1
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Events: kind=pr_stuck_cluster_detector_run emitted to ambient.jsonl on every invocation of scripts/coord/pr-stuck-cluster-detector.sh regardless of outcome (no_op, dry_run, cluster_filed, chronic_dry_run, chronic_filed, bad_args, gap_id_extract_failed, gap_reserve_failed, help, error) — shipped under INFRA-2754"
+    - "Cost: run event carries gap_reserve_calls (0 for no_op/dry_run, 1 for a successful or failed --apply) so mutation cost is summable across a window via jq without grepping logs — shipped under INFRA-2877"
+    - "Failure taxonomy: failure_class field on every run event — none (no_op/dry_run/cluster_filed/chronic_filed/chronic_dry_run/help), transient (gap_id_extract_failed/error, retry may succeed as-is), permanent (gap_reserve_failed/bad_args, retry repeats until root cause fixed) — shipped under INFRA-2906, see _pscd_failure_class() in scripts/coord/pr-stuck-cluster-detector.sh"
+    - "Smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh — asserts no-op path emits outcome=no_op/stuck_pr_count=0/failure_class=none, cluster-detected dry-run path emits outcome=dry_run with correct stuck_pr_count and gap_reserve_calls=0, and bad-args path emits outcome=bad_args/failure_class=permanent"
   outcome_id: MISSION-010
 
