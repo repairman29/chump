@@ -64,7 +64,7 @@ print(json.dumps({'rpc': sys.argv[2], 'request_id': sys.argv[3], 'args': args},
 
     bash "$REPO_ROOT/scripts/coord/broadcast.sh" --to "$target" WARN \
         --reason "$payload" >/dev/null 2>&1 || {
-        printf '{"ts":"%s","kind":"a2a_rpc_send_failed","method":"%s","target":"%s","request_id":"%s"}\n' \
+        printf '{"ts":"%s","kind":"a2a_rpc_send_failed","method":"%s","target":"%s","request_id":"%s","failure_class":"transient"}\n' \
             "$(_rpc_now)" "$method" "$target" "$req_id" >> "$AMBIENT_LOG" 2>/dev/null || true
         return 1
     }
@@ -81,10 +81,11 @@ print(json.dumps({'rpc': sys.argv[2], 'request_id': sys.argv[3], 'args': args},
 _rpc_await() {
     local req_id="$1"
     local timeout_s="${2:-$DEFAULT_RPC_TIMEOUT_S}"
-    local self_session inbox_file deadline
+    local self_session inbox_file deadline start_epoch_ms
     self_session="$(_rpc_self_session)"
     inbox_file="$LOCK_DIR/inbox/${self_session//[\/:]/_}.jsonl"
     deadline=$(( $(date -u +%s) + timeout_s ))
+    start_epoch_ms=$(( $(date -u +%s) * 1000 ))
 
     while (( $(date -u +%s) < deadline )); do
         if [[ -r "$inbox_file" ]]; then
@@ -121,6 +122,32 @@ except FileNotFoundError:
 sys.exit(2)
 PYEOF
             )" && {
+                # Exactly one terminal event fires per call (INFRA-2358 AC-1).
+                # latency_ms is the cost signal since RPC calls are NATS-native
+                # with no LLM spend (INFRA-2358 AC-2). A reply whose payload
+                # carries error="handler_crash: ..." (mirrors the Rust wire
+                # format — see module header) is a handler failure, not a
+                # normal finish.
+                local end_epoch_ms latency_ms crash_reason
+                end_epoch_ms=$(( $(date -u +%s) * 1000 ))
+                latency_ms=$(( end_epoch_ms - start_epoch_ms ))
+                crash_reason="$(python3 -c "
+import json, sys
+try:
+    payload = json.loads(sys.argv[1])
+    err = payload.get('error', '') if isinstance(payload, dict) else ''
+    if isinstance(err, str) and err.startswith('handler_crash:'):
+        print(err[len('handler_crash:'):].strip())
+except Exception:
+    pass
+" "$reply" 2>/dev/null)"
+                if [[ -n "$crash_reason" ]]; then
+                    printf '{"ts":"%s","kind":"a2a_rpc_handler_crash","request_id":"%s","reason":"%s","failure_class":"permanent"}\n' \
+                        "$(_rpc_now)" "$req_id" "$crash_reason" >> "$AMBIENT_LOG" 2>/dev/null || true
+                else
+                    printf '{"ts":"%s","kind":"a2a_rpc_finished","request_id":"%s","latency_ms":%d}\n' \
+                        "$(_rpc_now)" "$req_id" "$latency_ms" >> "$AMBIENT_LOG" 2>/dev/null || true
+                fi
                 echo "$reply"
                 return 0
             }
@@ -129,7 +156,7 @@ PYEOF
     done
 
     # Timeout: audit + non-zero rc.
-    printf '{"ts":"%s","kind":"a2a_rpc_timeout","request_id":"%s","timeout_s":%d}\n' \
+    printf '{"ts":"%s","kind":"a2a_rpc_timeout","request_id":"%s","timeout_s":%d,"failure_class":"transient"}\n' \
         "$(_rpc_now)" "$req_id" "$timeout_s" >> "$AMBIENT_LOG" 2>/dev/null || true
     return 124
 }

@@ -411,6 +411,50 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
         }
     }
 
+    // Gate 2b2: INFRA-2472 — shared (NATS KV) registry gap-ID uniqueness.
+    // Local .chump-locks/ only sees leases written on THIS machine; the
+    // shared registry sees claims taken on any machine in the mesh. Skips
+    // cleanly (no gate entry) when CHUMP_NATS_URL is unset — same opt-in
+    // posture as nats_dual_write.
+    if std::env::var("CHUMP_NATS_URL")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
+    {
+        let early_session = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        let bypass = std::env::var("CHUMP_CLAIM_ALLOW_DUPLICATE_GAP")
+            .map(|v| !v.trim().is_empty() && v.trim() != "0")
+            .unwrap_or(false);
+        match check_shared_registry_gap_uniqueness(&args.gap_id, &early_session) {
+            Ok(()) => {
+                gates.push(GateResult {
+                    gate: "gap-id-unique-shared".to_string(),
+                    status: "pass".to_string(),
+                    message: "shared NATS registry holds no live claim from another session"
+                        .to_string(),
+                });
+            }
+            Err(e) if bypass => {
+                gates.push(GateResult {
+                    gate: "gap-id-unique-shared".to_string(),
+                    status: "warn".to_string(),
+                    message: format!("{e} (bypassed via CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1)"),
+                });
+                has_warn = true;
+            }
+            Err(e) => {
+                gates.push(GateResult {
+                    gate: "gap-id-unique-shared".to_string(),
+                    status: "fail".to_string(),
+                    message: e.to_string(),
+                });
+                has_fail = true;
+            }
+        }
+    }
+
     // Gate 2c: INFRA-1646 — refuse when this session already holds a live
     // lease for a DIFFERENT gap (see check_no_active_lease_for_other_gap).
     {
@@ -2871,6 +2915,65 @@ fn resolve_coord_bin() -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// INFRA-2472: cross-machine lease visibility. `chump-coord whois` (INFRA-274)
+/// reads the NATS KV `chump_gaps` bucket directly — the same bucket
+/// `nats_dual_write` CASes into at claim time — so it sees claims taken on
+/// *other* machines that never touched this machine's `.chump-locks/`.
+///
+/// Returns `None` when NATS is unconfigured, the coord binary is
+/// unavailable, or the gap is unclaimed in the shared registry. `None` is
+/// NOT a green light — it means "no cross-machine signal available", same
+/// fail-open posture as `nats_dual_write`'s `Skipped` outcome. Local checks
+/// (`check_gap_id_uniqueness`, `check_intent_overlap`) remain the
+/// single-machine backstop; this is the mesh-wide addition.
+pub fn shared_registry_whois(gap_id: &str) -> Option<String> {
+    let nats_url = std::env::var("CHUMP_NATS_URL").unwrap_or_default();
+    if nats_url.is_empty() {
+        return None;
+    }
+    let coord_bin = resolve_coord_bin()?;
+    shared_registry_whois_with_bin(&coord_bin, gap_id)
+}
+
+/// Test seam: caller-supplied chump-coord path.
+pub(crate) fn shared_registry_whois_with_bin(coord_bin: &Path, gap_id: &str) -> Option<String> {
+    let out = Command::new(coord_bin)
+        .args(["whois", gap_id])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let session = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if session.is_empty() {
+        None
+    } else {
+        Some(session)
+    }
+}
+
+/// INFRA-2472: gate wrapper around `shared_registry_whois` — fails the claim
+/// when the shared registry shows a LIVE holder for `gap_id` from a
+/// different session. This is what closes the visibility gap AC1 describes:
+/// local `.chump-locks/` shows 0 leases while Sonnets on other machines hold
+/// the gap in NATS KV.
+fn check_shared_registry_gap_uniqueness(gap_id: &str, this_session: &str) -> Result<()> {
+    match shared_registry_whois(gap_id) {
+        Some(holder) if holder != this_session => Err(anyhow!(
+            "gap {} is already claimed by session {} in the shared NATS registry \
+             (invisible to local .chump-locks/ — cross-machine claim, INFRA-2472).\n  \
+             Options:\n  \
+             1. Pick a different gap.\n  \
+             2. Wait for session {} to ship or release its lease.\n  \
+             3. Override: CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1 (audit event emitted).",
+            gap_id,
+            holder,
+            holder,
+        )),
+        _ => Ok(()),
+    }
 }
 
 fn emit_nats_conflict_event(ambient_log_path: Option<&Path>, gap_id: &str, session_id: &str) {
@@ -5928,6 +6031,116 @@ mod tests {
             None => std::env::remove_var("CHUMP_COORD_BIN"),
         }
     }
+    // ── INFRA-2472: shared-registry whois gate tests ────────────────────────────
+
+    fn write_whois_shim(path: &Path, rc: i32, stdout_msg: &str) {
+        use std::io::Write as _;
+        use std::os::unix::fs::PermissionsExt;
+        let body = format!(
+            "#!/usr/bin/env bash\nprintf '%s\\n' \"{}\"\nexit {}\n",
+            stdout_msg.replace('"', "\\\""),
+            rc
+        );
+        {
+            let mut f = std::fs::File::create(path).unwrap();
+            f.write_all(body.as_bytes()).unwrap();
+            f.sync_all().unwrap();
+        }
+        let mut perms = std::fs::metadata(path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    #[test]
+    fn shared_registry_whois_returns_holder_session() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-whois-shim");
+        write_whois_shim(&shim, 0, "sess-on-other-machine");
+        let got = shared_registry_whois_with_bin(&shim, "INFRA-2472");
+        assert_eq!(got.as_deref(), Some("sess-on-other-machine"));
+    }
+
+    #[test]
+    fn shared_registry_whois_none_when_unclaimed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-whois-shim");
+        write_whois_shim(&shim, 0, "");
+        let got = shared_registry_whois_with_bin(&shim, "INFRA-2472");
+        assert_eq!(got, None);
+    }
+
+    #[test]
+    fn shared_registry_whois_none_on_nonzero_exit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-whois-shim");
+        write_whois_shim(&shim, 1, "some-session");
+        let got = shared_registry_whois_with_bin(&shim, "INFRA-2472");
+        assert_eq!(got, None);
+    }
+
+    #[test]
+    fn shared_registry_gap_uniqueness_blocks_foreign_holder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-whois-shim");
+        write_whois_shim(&shim, 0, "sess-remote");
+
+        let saved = std::env::var("CHUMP_COORD_BIN").ok();
+        std::env::set_var("CHUMP_COORD_BIN", &shim);
+        let saved_url = std::env::var("CHUMP_NATS_URL").ok();
+        std::env::set_var("CHUMP_NATS_URL", "nats://127.0.0.1:4222");
+
+        let result = check_shared_registry_gap_uniqueness("INFRA-2472", "sess-local");
+        assert!(result.is_err(), "foreign holder must block the claim");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("sess-remote"),
+            "message must name the holder: {msg}"
+        );
+
+        match saved {
+            Some(v) => std::env::set_var("CHUMP_COORD_BIN", v),
+            None => std::env::remove_var("CHUMP_COORD_BIN"),
+        }
+        match saved_url {
+            Some(v) => std::env::set_var("CHUMP_NATS_URL", v),
+            None => std::env::remove_var("CHUMP_NATS_URL"),
+        }
+    }
+
+    #[test]
+    fn shared_registry_gap_uniqueness_allows_self_holder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-whois-shim");
+        write_whois_shim(&shim, 0, "sess-local");
+
+        let saved = std::env::var("CHUMP_COORD_BIN").ok();
+        std::env::set_var("CHUMP_COORD_BIN", &shim);
+        let saved_url = std::env::var("CHUMP_NATS_URL").ok();
+        std::env::set_var("CHUMP_NATS_URL", "nats://127.0.0.1:4222");
+
+        let result = check_shared_registry_gap_uniqueness("INFRA-2472", "sess-local");
+        assert!(result.is_ok(), "self-held claim must not block: {result:?}");
+
+        match saved {
+            Some(v) => std::env::set_var("CHUMP_COORD_BIN", v),
+            None => std::env::remove_var("CHUMP_COORD_BIN"),
+        }
+        match saved_url {
+            Some(v) => std::env::set_var("CHUMP_NATS_URL", v),
+            None => std::env::remove_var("CHUMP_NATS_URL"),
+        }
+    }
+
+    #[test]
+    fn shared_registry_whois_none_when_nats_url_unset() {
+        let saved_url = std::env::var("CHUMP_NATS_URL").ok();
+        std::env::remove_var("CHUMP_NATS_URL");
+        assert_eq!(shared_registry_whois("INFRA-2472"), None);
+        if let Some(v) = saved_url {
+            std::env::set_var("CHUMP_NATS_URL", v);
+        }
+    }
+
     // ── INFRA-1116: INTENT overlap gate tests ──────────────────────────────────
 
     fn mk_intent_tmp(label: &str) -> PathBuf {

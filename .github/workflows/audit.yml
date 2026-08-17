@@ -30,17 +30,25 @@ on:
     branches: [main, master]
   merge_group:
 
-# Workflow-level concurrency: cancel-in-progress: FALSE for this workflow.
-# Each unique SHA gets its own group — a fixup push of commit B does NOT cancel
-# in-flight audit for commit A. Both complete, both report.
+# INFRA-2516: the per-SHA group above (INFRA-2452 fix) never collided — every push
+# gets a new SHA, so cancel-in-progress:false or :true made no difference; stale
+# audit runs for commits a PR had already moved past just kept running to
+# completion. Under multi-PR load that piled up 13 in-flight audit runs against 4
+# runners and wedged the merge queue for ~30min (2026-06-03, #2981 + 3 PRs).
 #
-# Contrast with ci.yml: ci.yml's workflow-level concurrency uses cancel-in-progress:true
-# to save runner cost on rapid fixup pushes for the cost-sensitive jobs (cargo build,
-# e2e, etc.). That is correct for those jobs. Audit is cheap (~5min, no cargo-audit
-# since INFRA-503) and branch-protection required — it must never be cancelled.
+# Fix: group per PR (or per ref for push/merge_group) instead of per SHA, and flip
+# cancel-in-progress back to true. A newer push to the SAME PR now cancels the
+# superseded audit run for that PR instead of letting it occupy a runner slot to
+# completion; the latest commit's own audit run is never the one cancelled, so
+# branch protection always gets a result for HEAD. This does NOT reintroduce
+# INFRA-2452: that incident was ci.yml's *workflow-wide* cancel-in-progress killing
+# the required `audit` job as collateral damage from an unrelated job's fixup push.
+# Here the concurrency group is scoped to audit.yml alone and keyed per-PR, so only
+# a newer audit run for the SAME PR cancels an older one — never cross-PR, never
+# collateral from another workflow.
 concurrency:
-  group: audit-${{ github.event_name == 'push' && github.run_id || github.sha }}
-  cancel-in-progress: false
+  group: audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
