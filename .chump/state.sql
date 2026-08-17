@@ -19524,7 +19524,7 @@ gaps:
 - id: INFRA-1864
   domain: INFRA
   title: "MISSION: Harvester per-file primitive indexing (per CP-002 finding — catalog needed per-file granularity to proactively surface tree-sitter overlap)"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -19536,6 +19536,8 @@ gaps:
     - Document the per-file pattern in docs/arsenal/HARVESTER.md as the discipline that prevents the next CP-002-class miss
     - Coordinate with INFRA-1823 productization (per-file indexing extends the chump harvest CLI surface — the Rust port may want to do this at scan time)
     - "Performance budget: scan must complete under 30s for 76 repos when local clones available (use existing clones, gh api for remaining)"
+  closed_date: '2026-08-17'
+  closed_pr: 3706
   outcome_id: MISSION-010
 
 - id: INFRA-1865
