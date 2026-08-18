@@ -955,4 +955,55 @@ else
   exit 1
 fi
 
-echo "[test-pr-shepherd-daemon] PASS (tick + ${classified_count} pr_classified + META-184 guards + META-185 BLOCKED sub-states + META-186 actions verified)"
+# ── (n) META-189: MERGEABLE → vote-request broadcast + corr_id=pr-N + debounce ─
+META189_AMBIENT="$META186_WORK_DIR/ambient-n.jsonl"
+META189_SIGNAL="$META186_WORK_DIR/vote-request-signaled-n.json"
+: > "$META189_AMBIENT"
+
+META189_HARNESS="$META186_WORK_DIR/harness-n.sh"
+cat > "$META189_HARNESS" << HARNESS_N_EOF
+#!/usr/bin/env bash
+set -euo pipefail
+AMBIENT="$META189_AMBIENT"
+VOTE_REQUEST_SIGNAL_FILE="$META189_SIGNAL"
+DRY_RUN=1
+$(awk '/^_emit_pr_vote_request\(\) \{/,/^\}/' "$DAEMON")
+$(awk '/^_vote_request_signaled_recently\(\) \{/,/^\}/' "$DAEMON")
+$(awk '/^_record_vote_request_signal\(\) \{/,/^\}/' "$DAEMON")
+
+pr_num=701
+gap_id="META-701"
+if ! _vote_request_signaled_recently "\$pr_num"; then
+  _emit_pr_vote_request "\$pr_num" "\$gap_id"
+  _record_vote_request_signal "\$pr_num"
+fi
+# Second tick, same PR — debounce must suppress a second broadcast.
+if ! _vote_request_signaled_recently "\$pr_num"; then
+  _emit_pr_vote_request "\$pr_num" "\$gap_id"
+  _record_vote_request_signal "\$pr_num"
+fi
+HARNESS_N_EOF
+chmod +x "$META189_HARNESS"
+
+bash "$META189_HARNESS" 2>/dev/null || { echo "[test] FAIL (n): vote-request harness non-zero"; exit 1; }
+
+vote_request_count=$(grep -c '"kind":"vote-request"' "$META189_AMBIENT" || true)
+vote_request_ok=$(python3 -c "
+import json
+with open('$META189_AMBIENT') as f:
+    for line in f:
+        ev = json.loads(line.strip())
+        if ev.get('kind') == 'vote-request' and ev.get('event') == 'FEEDBACK' and ev.get('corr_id') == 'pr-701' and ev.get('pr') == 701:
+            print('YES'); break
+    else:
+        print('NO')
+" 2>/dev/null || echo "NO")
+
+if [[ "$vote_request_ok" == "YES" && "$vote_request_count" -eq 1 ]]; then
+  echo "[test] (n) META-189 MERGEABLE -> vote-request (event=FEEDBACK, corr_id=pr-701, debounced): OK"
+else
+  echo "[test] FAIL (n): expected 1 vote-request event with corr_id=pr-701, got count=${vote_request_count} match=${vote_request_ok}"
+  exit 1
+fi
+
+echo "[test-pr-shepherd-daemon] PASS (tick + ${classified_count} pr_classified + META-184 guards + META-185 BLOCKED sub-states + META-186 actions + META-189 vote-request verified)"
