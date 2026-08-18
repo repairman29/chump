@@ -34,11 +34,12 @@
         "opencode",
         "opencode-bigpickle",
         "fleet-dispatcher",
+        "claude",
         "claude-code-ide",
         "manual",
         "unknown"
       ],
-      "description": "Agent harness identity (CREDIBLE-037). Set via CHUMP_AGENT_HARNESS env var or --harness flag. Values: opencode / opencode-bigpickle / fleet-dispatcher / claude-code-ide / manual / unknown."
+      "description": "Agent harness identity (CREDIBLE-037). Set via CHUMP_AGENT_HARNESS env var or --harness flag. Values: opencode / opencode-bigpickle / fleet-dispatcher / claude / claude-code-ide / manual / unknown. 'claude' is worker.sh's own default (scripts/dispatch/worker.sh) for fleet-spawned Claude Code sessions; 'claude-code-ide' is the interactive IDE extension."
     },
     "event": {
       "type": "string",
