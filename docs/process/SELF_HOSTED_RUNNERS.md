@@ -1132,6 +1132,16 @@ only job is closing that gap between "documented disposition" and "actual
 gap-registry state" via `chump gap ship`, so the picker stops re-surfacing
 an investigation that already reached its documented conclusion.
 
+**Sync executed (2026-08-18, fleet-1 slice, this PR):** ran
+`chump gap ship INFRA-1655 --update-yaml --closed-pr 3684 --why`. Result:
+`status` flipped to `done` in canonical `state.db` (confirmed via
+`sqlite3 .chump/state.db "SELECT id,status,closed_pr FROM gaps WHERE
+id='INFRA-1655'"` → `INFRA-1655|done|3684`); `--update-yaml` was a no-op
+per ZERO-WASTE-020 (YAML mirrors are retired, state.db is sole canonical
+source — `docs/gaps/INFRA-1655.yaml` is a stale historical artifact, not
+read by the picker). The gap is now closed end-to-end; no further
+INFRA-1655 slices should be dispatched.
+
 ---
 
 ## Pi mesh provisioner (INFRA-1543)
