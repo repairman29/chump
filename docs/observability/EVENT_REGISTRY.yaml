@@ -2795,6 +2795,10 @@ events:
           gap_reserve_calls cost tracking, failure_class taxonomy, and the
           existing smoke test. No new work required beyond this
           cross-reference.
+        - INFRA-2470 is the same duplicate-placeholder shape, filed earlier
+          (2026-06-03, "2 PRs blocked >2h") for the identical 4 acceptance
+          criteria (run event on every outcome, gap_reserve_calls cost,
+          failure_class taxonomy, smoke test) already answered above.
 
   - kind: fleet_auth_fallback
     effect_metric: self
