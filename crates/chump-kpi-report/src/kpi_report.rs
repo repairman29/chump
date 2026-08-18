@@ -282,6 +282,149 @@ impl MissionGradeHistorySection {
     }
 }
 
+// ── Mission Binary repeatability (MISSION-066) ──────────────────────────────
+// docs/MISSION.md ① THE BINARY answers "did it happen this run". Repeatability
+// answers "does it keep happening" — the gap this section closes, per the
+// scoreboard's own evidence note ("verify zero-touch + repeatable until
+// instrumented"). Reads the `mission_binary_check` events that
+// scripts/dev/mission-scoreboard.sh appends to ambient.jsonl on every run.
+
+/// One recorded scoreboard run of ① THE BINARY.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissionBinaryCheck {
+    pub ts: String,
+    pub repo: String,
+    pub beast_merges_7d: u64,
+    pub beast_zero_touch_7d: u64,
+}
+
+impl MissionBinaryCheck {
+    /// True when this run counts as ① YES (at least one zero-touch merge).
+    pub fn is_yes(&self) -> bool {
+        self.beast_zero_touch_7d > 0
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct MissionBinarySection {
+    /// Most-recent-first history of recorded runs.
+    pub checks: Vec<MissionBinaryCheck>,
+    /// Consecutive YES runs counting back from the most recent (0 if the
+    /// latest run is NO or there is no history yet).
+    pub current_streak: u64,
+    /// Longest consecutive-YES run streak seen in the recorded history.
+    pub longest_streak: u64,
+}
+
+impl MissionBinarySection {
+    pub fn render_text(&self) -> String {
+        let mut out = String::new();
+        out.push_str("═══ Mission Binary Repeatability (① — MISSION-066) ═══\n");
+        if self.checks.is_empty() {
+            out.push_str("  No mission_binary_check runs recorded yet — run scripts/dev/mission-scoreboard.sh.\n");
+            return out;
+        }
+        out.push_str(&format!(
+            "  current streak: {} run(s)   longest streak: {} run(s)   recorded runs: {}\n",
+            self.current_streak,
+            self.longest_streak,
+            self.checks.len()
+        ));
+        for c in self.checks.iter().take(10) {
+            let short_ts = if c.ts.len() > 19 { &c.ts[..19] } else { &c.ts };
+            out.push_str(&format!(
+                "  {:<22} {}  zero-touch {} of {} merge(s)\n",
+                short_ts,
+                if c.is_yes() { "✅ YES" } else { "❌ NO " },
+                c.beast_zero_touch_7d,
+                c.beast_merges_7d
+            ));
+        }
+        out
+    }
+
+    pub fn render_json(&self) -> String {
+        let checks_json: Vec<String> = self
+            .checks
+            .iter()
+            .map(|c| {
+                format!(
+                    r#"{{"ts":"{}","repo":"{}","beast_merges_7d":{},"beast_zero_touch_7d":{},"is_yes":{}}}"#,
+                    c.ts,
+                    c.repo,
+                    c.beast_merges_7d,
+                    c.beast_zero_touch_7d,
+                    c.is_yes()
+                )
+            })
+            .collect();
+        format!(
+            r#"{{"current_streak":{},"longest_streak":{},"checks":[{}]}}"#,
+            self.current_streak,
+            self.longest_streak,
+            checks_json.join(",")
+        )
+    }
+}
+
+/// Pure computation over recorded checks (most-recent-first) — split out from
+/// the ambient-log parser so the streak logic is directly unit-testable.
+fn compute_mission_binary_streaks(checks_most_recent_first: &[MissionBinaryCheck]) -> (u64, u64) {
+    let mut current = 0u64;
+    for c in checks_most_recent_first {
+        if c.is_yes() {
+            current += 1;
+        } else {
+            break;
+        }
+    }
+
+    let mut longest = 0u64;
+    let mut run = 0u64;
+    // Walk oldest-first so consecutive runs are contiguous in time.
+    for c in checks_most_recent_first.iter().rev() {
+        if c.is_yes() {
+            run += 1;
+            longest = longest.max(run);
+        } else {
+            run = 0;
+        }
+    }
+
+    (current, longest)
+}
+
+pub fn build_mission_binary_section(repo_root: &Path) -> MissionBinarySection {
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+    let mut checks = Vec::new();
+
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "mission_binary_check" {
+            continue;
+        }
+        checks.push(MissionBinaryCheck {
+            ts: extract_field(line, "ts").unwrap_or_default(),
+            repo: extract_field(line, "repo").unwrap_or_default(),
+            beast_merges_7d: extract_int_field(line, "beast_merges_7d").unwrap_or(0),
+            beast_zero_touch_7d: extract_int_field(line, "beast_zero_touch_7d").unwrap_or(0),
+        });
+    }
+
+    // Most recent first (matches MissionGradeHistorySection convention).
+    checks.reverse();
+    checks.truncate(50);
+
+    let (current_streak, longest_streak) = compute_mission_binary_streaks(&checks);
+
+    MissionBinarySection {
+        checks,
+        current_streak,
+        longest_streak,
+    }
+}
+
 /// Cost-saving estimate vs Anthropic-only baseline.
 #[derive(Debug, Default)]
 pub struct CostSavingsSection {
@@ -2220,6 +2363,59 @@ mod tests {
         assert_eq!(section.snapshots[0].credible_shipped, 0);
         assert_eq!(section.snapshots[0].total_pickable, 11);
         assert_eq!(section.snapshots[0].total_in_flight, 3);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn mission066_binary_section_empty_without_history() {
+        let tmp = tempdir();
+        let section = build_mission_binary_section(&tmp);
+        assert!(section.checks.is_empty());
+        assert_eq!(section.current_streak, 0);
+        assert_eq!(section.longest_streak, 0);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn mission066_binary_section_computes_current_and_longest_streak() {
+        let tmp = tempdir();
+        // Oldest-first in the log: NO, YES, YES, YES, NO, YES.
+        // Longest run of YES = 3 (runs 2-4). Current streak (most recent run
+        // back until a NO) = 1 (just the final YES).
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2026-08-01T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":1,"beast_zero_touch_7d":0}"#,
+                r#"{"ts":"2026-08-02T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":1,"beast_zero_touch_7d":1}"#,
+                r#"{"ts":"2026-08-03T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":2,"beast_zero_touch_7d":2}"#,
+                r#"{"ts":"2026-08-04T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":2,"beast_zero_touch_7d":1}"#,
+                r#"{"ts":"2026-08-05T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":1,"beast_zero_touch_7d":0}"#,
+                r#"{"ts":"2026-08-06T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":1,"beast_zero_touch_7d":1}"#,
+            ],
+        );
+        let section = build_mission_binary_section(&tmp);
+        assert_eq!(section.checks.len(), 6);
+        // Most-recent-first: the newest entry (08-06, YES) is checks[0].
+        assert_eq!(section.checks[0].ts, "2026-08-06T00:00:00Z");
+        assert!(section.checks[0].is_yes());
+        assert_eq!(section.current_streak, 1);
+        assert_eq!(section.longest_streak, 3);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn mission066_binary_section_all_yes_streak_equals_history_len() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2026-08-01T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":1,"beast_zero_touch_7d":1}"#,
+                r#"{"ts":"2026-08-02T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":2,"beast_zero_touch_7d":2}"#,
+            ],
+        );
+        let section = build_mission_binary_section(&tmp);
+        assert_eq!(section.current_streak, 2);
+        assert_eq!(section.longest_streak, 2);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

@@ -16069,8 +16069,22 @@ async fn main() -> Result<()> {
         let want_agents = args.iter().any(|a| a == "--agents");
         let want_claims = args.iter().any(|a| a == "--claims");
         let want_integration = args.iter().any(|a| a == "--integration");
+        let want_mission_binary = args.iter().any(|a| a == "--mission-binary");
 
         let repo_root = repo_path::repo_root();
+
+        // MISSION-066: --mission-binary shows ① THE BINARY repeatability —
+        // the current/longest zero-touch-BEAST-merge streak recorded by
+        // scripts/dev/mission-scoreboard.sh's mission_binary_check events.
+        if want_mission_binary {
+            let section = kpi_report::build_mission_binary_section(&repo_root);
+            if want_json {
+                println!("{}", section.render_json());
+            } else {
+                print!("{}", section.render_text());
+            }
+            return Ok(());
+        }
 
         // INFRA-2143: --integration shows the integration-cycle dashboard
         // (ship velocity / CI efficiency / quality / external costs).

@@ -2265,6 +2265,12 @@ events:
     trigger: per-cycle pillar grade computed
     consumers: [fleet-brief]
 
+  - kind: mission_binary_check
+    effect_metric: mission_binary_repeatability_streak
+    emitter: scripts/dev/mission-scoreboard.sh (MISSION-066)
+    trigger: every scoreboard run — records THE BINARY (①) zero-touch-BEAST-merge result so repeatability can be verified across runs, not just eyeballed once
+    consumers: [chump kpi report --mission-binary]
+
   - kind: audit_finding
     effect_metric: operator_action_within_60s_for_same_feature_id
     emitter: src/audit.rs (INFRA-1370, `chump audit aha-sweep`)
@@ -2783,6 +2789,10 @@ events:
           gap_reserve_calls cost tracking, failure_class taxonomy, and the
           existing smoke test. No new work required beyond this
           cross-reference.
+        - INFRA-2470 is the same duplicate-placeholder shape, filed earlier
+          (2026-06-03, "2 PRs blocked >2h") for the identical 4 acceptance
+          criteria (run event on every outcome, gap_reserve_calls cost,
+          failure_class taxonomy, smoke test) already answered above.
 
   - kind: fleet_auth_fallback
     effect_metric: self
