@@ -1070,6 +1070,14 @@ stage_start() {
     # INFRA-1422: launch per-stage budget watchdog. Fires after CHUMP_BOT_MERGE_STAGE_BUDGET_S
     # seconds if the stage hasn't called stage_done(). Emits botmerge_wedged + kills bot-merge.
     if [[ -n "${__STAGE_BUDGET_PID:-}" ]]; then
+        # INFRA-2641: `kill` only terminates the watchdog subshell wrapper — its
+        # `sleep "$budget"` grandchild (still running, e.g. 300-1200s) gets
+        # reparented to init and keeps holding whatever fds it inherited (stdout/
+        # stderr, and any pipe from a caller's command substitution) open until
+        # it naturally expires. `pkill -P` first reaps that grandchild, same
+        # fix already applied to _bm_cleanup's EXIT trap (EFFECTIVE-312) but
+        # missing here — every stage_start/stage_done transition orphaned one.
+        pkill -P "$__STAGE_BUDGET_PID" 2>/dev/null || true
         kill "$__STAGE_BUDGET_PID" 2>/dev/null || true
         __STAGE_BUDGET_PID=""
     fi
@@ -1094,7 +1102,12 @@ stage_start() {
 
 stage_done() {
     # INFRA-1422: cancel the per-stage budget watchdog — normal completion.
+    # INFRA-2641: pkill -P first to reap the `sleep "$budget"` grandchild — see
+    # matching comment in stage_start(); `kill` alone orphans it for up to
+    # $budget seconds, holding any inherited pipe fd (e.g. a caller's command
+    # substitution) open and hanging the reader.
     if [[ -n "${__STAGE_BUDGET_PID:-}" ]]; then
+        pkill -P "$__STAGE_BUDGET_PID" 2>/dev/null || true
         kill "$__STAGE_BUDGET_PID" 2>/dev/null || true
         __STAGE_BUDGET_PID=""
     fi
@@ -2365,8 +2378,12 @@ _grade_rebase_clean="null"
 # list, take a "$FLOCK_BIN" on each (one per file). Held until this script exits.
 # Prevents two bot-merges from racing on the same shared file, which is what
 # drives bot_merge_hot_file emissions (META-055 audit: 71.5% of token waste).
+# INFRA-2641: skip under --dry-run — it never pushes, so it can't produce the
+# rebase-race this lock guards against, and it's not worth blocking a dry-run
+# caller (e.g. the integration test chump preflight runs) on a repo-wide,
+# cross-worktree lock for up to 600s while real bot-merges elsewhere hold it.
 _HF_HELPER="${REPO_ROOT}/scripts/coord/hot-file-lock.sh"
-if [[ -r "$_HF_HELPER" ]]; then
+if [[ "$DRY_RUN" != "1" && -r "$_HF_HELPER" ]]; then
     # shellcheck source=./hot-file-lock.sh
     source "$_HF_HELPER"
     if declare -F hot_file_lock_acquire >/dev/null 2>&1; then
@@ -3026,7 +3043,13 @@ fi
 # `git push --force-with-lease` failures and `gh pr merge` races.  Acquire a
 # per-repo file lock so only one bot-merge is in the push/PR/merge critical
 # section at a time.  Timeout = 60s; logs contention if wait > 5s.
-if [[ "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
+# INFRA-2641: --dry-run never pushes or merges (it's read-only), so it has no
+# business contending for this repo-wide, cross-worktree mutex. On a machine
+# with real bot-merge activity in other worktrees (the fleet's normal state),
+# a dry-run caller — e.g. scripts/ci/test-system-integration.sh's Assertion 3,
+# which chump preflight's integration-test gate runs — could block here for up
+# to 60s waiting on a lock it will never need, inflating or timing out preflight.
+if [[ "$DRY_RUN" != "1" && "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
     _bm_lock_dir="${CHUMP_BOT_MERGE_LOCK_DIR:-${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}}"
     _bm_lock_file="${_bm_lock_dir}/bot-merge.lock"
     mkdir -p "$_bm_lock_dir" 2>/dev/null || true
