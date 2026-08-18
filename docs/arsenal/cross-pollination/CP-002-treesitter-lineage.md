@@ -95,7 +95,7 @@ This is not a story of "Chump reinvented echeo's wheel." It's "two repos under t
 
 ## Action items
 
-- File **INFRA-NEW-HARVESTER-INDEX-PRIMITIVES** (P1/m): index per-file primitives, not just per-repo metadata. Schema additions: `(repo, file, primitive_name, dependency, summary_line)`. Surfacing rule: when a gap reaches for `tree-sitter` / `git2` / `nats` / `sqlite` etc., the catalog should be able to answer "what other repos in the arsenal already do this?" before code is written. The 2-day gap between catalog-build (2026-05-21) and INFRA-1719-ship (2026-05-23) is the exact window where this surface would have fired.
+- **INFRA-3526** (P2): index per-file primitives, not just per-repo metadata. Schema additions: `(repo, file, primitive_name, dependency, summary_line)`. Surfacing rule: when a gap reaches for `tree-sitter` / `git2` / `nats` / `sqlite` etc., the catalog should be able to answer "what other repos in the arsenal already do this?" before code is written. The 2-day gap between catalog-build (2026-05-21) and INFRA-1719-ship (2026-05-23) is the exact window where this surface would have fired.
 - Document the divergence in `docs/arsenal/HARVESTER.md` under a new **"Known parallel implementations"** section: list `chump/crates/ast-crawler` and `echeo/src/shredder.rs` together with the (c)-verdict rationale above, so future readers (and the catalog itself) don't mistake them for duplicates and don't waste a future investigation re-running this analysis.
 - **No** lineage header on `crates/ast-crawler/src/lib.rs`. Adding "vendored from echeo" would be misleading — INFRA-1719 was not derived from shredder.rs.
 - **No** consolidation gap. Merging the two would require schema decisions that hurt both consumers.
