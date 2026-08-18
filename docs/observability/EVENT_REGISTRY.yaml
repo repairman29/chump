@@ -2265,6 +2265,12 @@ events:
     trigger: per-cycle pillar grade computed
     consumers: [fleet-brief]
 
+  - kind: mission_binary_check
+    effect_metric: mission_binary_repeatability_streak
+    emitter: scripts/dev/mission-scoreboard.sh (MISSION-066)
+    trigger: every scoreboard run — records THE BINARY (①) zero-touch-BEAST-merge result so repeatability can be verified across runs, not just eyeballed once
+    consumers: [chump kpi report --mission-binary]
+
   - kind: audit_finding
     effect_metric: operator_action_within_60s_for_same_feature_id
     emitter: src/audit.rs (INFRA-1370, `chump audit aha-sweep`)
