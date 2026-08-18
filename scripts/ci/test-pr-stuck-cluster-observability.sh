@@ -171,6 +171,20 @@ test_registry_cross_references_infra_3419() {
     pass "Test 7: EVENT_REGISTRY.yaml cross-references INFRA-3419 as answered by pr_stuck_cluster"
 }
 
+# Test 8 (INFRA-2877): same duplicate-placeholder shape as INFRA-3395/3402/
+# 3414/3419, filed earlier (2026-06-10) for the sub-threshold "1 PR blocked
+# >2h" case. The registry entry must cross-reference it as answered by
+# INFRA-3117 so this placeholder doesn't get re-implemented from scratch.
+test_registry_cross_references_infra_2877() {
+    local registry="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
+    [ -f "$registry" ] || fail "Test 8: EVENT_REGISTRY.yaml not found"
+
+    grep -q "INFRA-2877" "$registry" || \
+        fail "Test 8: expected EVENT_REGISTRY.yaml to cross-reference INFRA-2877"
+
+    pass "Test 8: EVENT_REGISTRY.yaml cross-references INFRA-2877 as answered by INFRA-3117"
+}
+
 echo "[test-pr-stuck-cluster-observability] Starting tests..."
 
 test_no_op_run_event
@@ -180,6 +194,7 @@ test_registry_cross_references_infra_3395
 test_registry_cross_references_infra_3402
 test_registry_cross_references_infra_3414
 test_registry_cross_references_infra_3419
+test_registry_cross_references_infra_2877
 
 echo "[test-pr-stuck-cluster-observability] All tests passed!"
 exit 0

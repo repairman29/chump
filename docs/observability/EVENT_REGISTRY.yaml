@@ -2776,6 +2776,13 @@ events:
           (runnable standalone; covers no_op/dry_run/bad_args outcome paths
           and asserts failure_class on each; wired into `chump preflight`
           per INFRA-2925).
+        - INFRA-2877 is the same duplicate-placeholder shape as
+          INFRA-3395/3402/3414/3419 above (a detector-filed "1 PR blocked
+          >2h" gap re-asking for the same 4 acceptance criteria already
+          answered by INFRA-3117): run-level events on every exit path,
+          gap_reserve_calls cost tracking, failure_class taxonomy, and the
+          existing smoke test. No new work required beyond this
+          cross-reference.
 
   - kind: fleet_auth_fallback
     effect_metric: self
