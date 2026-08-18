@@ -9411,6 +9411,11 @@ fn build_api_router() -> Router {
         // INFRA-1338: server-side ROADMAP.md parser + 60s cache (replaces
         // INFRA-1207 client-side fallback).
         .route("/api/roadmap", get(routes::roadmap::handle_roadmap))
+        // META-080 (META-073 slice): in-memory lesson-sharing endpoint.
+        .route(
+            "/api/lessons",
+            get(routes::lessons::handle_get_lessons).post(routes::lessons::handle_post_lesson),
+        )
         .route("/api/chat", post(handle_chat_with_kill_gate))
         .route("/api/voice/ask", post(handle_voice_ask))
         .route("/api/advisor/ask", post(handle_advisor_ask))
