@@ -322,4 +322,11 @@ whichever first.
 ## What this brief does *not* do
 
 It does not write Rust code, it does not edit `EVENT_REGISTRY.yaml`, it does not modify
-`src/`, and it does not commit. It specifies the contract. Execution lives in INFRA-1844.
+`src/`, and it does not commit. It specifies the contract. Execution shipped in INFRA-1844
+(`src/inference_provider.rs`, PR #3704).
+
+**state.db sync (2026-08-18, fleet-1 slice):** the code above landed via #3704, but the
+gap-registry row was left `status=open`. Ran `chump gap ship INFRA-1844 --closed-pr 3704
+--why`, confirmed via `sqlite3 .chump/state.db "SELECT id,status,closed_pr FROM gaps WHERE
+id='INFRA-1844'"` → `INFRA-1844|done|3704`. No further INFRA-1844 slices should be
+dispatched; the gap is closed end-to-end.
