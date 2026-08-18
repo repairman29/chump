@@ -258,6 +258,46 @@ ships=$(gh pr list --state merged --search "merged:>=$day" --json number --jq 'l
 echo "④ Fleet liveness: last merge ${agem}m ago | merges last 24h: ${ships:-?}"
 echo
 
+# ── ⑤ BEAST-MODE prerequisite readiness (MISSION-066) ───────────────────────
+# MISSION-019 through MISSION-024 (the MISSION-015 slice) are individual
+# "verify fleet can <pipeline step>" gaps that prove Chump can actually pick,
+# clone, commit, push, PR, and monitor against $BEAST. Each is tagged
+# external_repo:$BEAST, which the picker (crates/chump-coord/src/worker/
+# capability.rs, INFRA-2113) skips unless CHUMP_EXTERNAL_REPO_PICK_OK=1 is
+# set in the claiming session's env. If that gate never opens, these gaps
+# rot open with 0 implementation commits and ① above can never turn YES on
+# its own — this section makes that stall visible instead of eyeballed.
+prereq_open=0
+prereq_no_commits=0
+prereq_stuck_ids=""
+if command -v sqlite3 >/dev/null 2>&1 && [[ -f .chump/state.db ]]; then
+    while IFS= read -r gid; do
+        [[ -z "$gid" ]] && continue
+        prereq_open=$((prereq_open+1))
+        commit_count=$(git log --oneline --grep "^${gid}:" -E 2>/dev/null | wc -l | tr -d ' ')
+        if [[ "${commit_count:-0}" -eq 0 ]]; then
+            prereq_no_commits=$((prereq_no_commits+1))
+            prereq_stuck_ids="${prereq_stuck_ids}${prereq_stuck_ids:+, }${gid}"
+        fi
+    done < <(sqlite3 .chump/state.db \
+        "SELECT id FROM gaps WHERE skills_required LIKE '%external_repo:${BEAST}%' AND status='open' ORDER BY id;" 2>/dev/null)
+fi
+pick_gate="closed"
+[[ "${CHUMP_EXTERNAL_REPO_PICK_OK:-0}" == "1" ]] && pick_gate="open"
+echo "⑤ BEAST-MODE prerequisite readiness (MISSION-019..024 slice):"
+echo "     open=$prereq_open  zero-commit=$prereq_no_commits  pick-gate=$pick_gate (CHUMP_EXTERNAL_REPO_PICK_OK)"
+if [[ "$prereq_no_commits" -gt 0 ]]; then
+    echo "     ⚠️  stuck (0 implementation commits): $prereq_stuck_ids"
+    if [[ "$pick_gate" == "closed" ]]; then
+        echo "     → root cause: CHUMP_EXTERNAL_REPO_PICK_OK is unset here; standard fleet workers skip external_repo: tagged gaps (INFRA-2113)."
+    fi
+fi
+mkdir -p .chump-locks 2>/dev/null || true
+printf '{"ts":"%s","kind":"beast_prereq_check","open":%d,"zero_commit":%d,"pick_gate":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$prereq_open" "$prereq_no_commits" "$pick_gate" \
+    >> .chump-locks/ambient.jsonl 2>/dev/null || true
+echo
+
 # ── Verdict ─────────────────────────────────────────────────────────────────
 echo "═══ VERDICT ═══"
 rc=0

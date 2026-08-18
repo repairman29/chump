@@ -2271,6 +2271,12 @@ events:
     trigger: every scoreboard run — records THE BINARY (①) zero-touch-BEAST-merge result so repeatability can be verified across runs, not just eyeballed once
     consumers: [chump kpi report --mission-binary]
 
+  - kind: beast_prereq_check
+    effect_metric: beast_prereq_zero_commit_count
+    emitter: scripts/dev/mission-scoreboard.sh (MISSION-066)
+    trigger: every scoreboard run — counts open MISSION-019..024-slice gaps (external_repo:repairman29/BEAST-MODE tag) with 0 implementation commits and records whether CHUMP_EXTERNAL_REPO_PICK_OK is open in the running session, so the "fleet cannot claim external BEAST-MODE work" stall is measured instead of eyeballed
+    consumers: [mission-scoreboard.sh ⑤ readout]
+
   - kind: audit_finding
     effect_metric: operator_action_within_60s_for_same_feature_id
     emitter: src/audit.rs (INFRA-1370, `chump audit aha-sweep`)
