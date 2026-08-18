@@ -55,7 +55,13 @@ fi
 # When run from inside a worktree, .claude/worktrees/ is at the MAIN repo,
 # not the current worktree. Resolve to the main worktree path via
 # git worktree list (the first entry is always the main one).
-MAIN_REPO="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / {print $2; exit}')"
+# INFRA-2641: awk's early `exit` closes stdin before `git worktree list`
+# finishes writing on repos with many worktrees, so `git` gets SIGPIPE and
+# the pipeline (under `set -o pipefail`) reports 141 instead of the printed
+# value — tripping `set -e` and killing the whole script before it prunes
+# anything. Reading to EOF (guarded by a "first match" flag) avoids the
+# SIGPIPE race entirely.
+MAIN_REPO="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / && !p {print $2; p=1}')"
 if [[ -z "$MAIN_REPO" || ! -d "$MAIN_REPO/$WORKTREE_ROOT" ]]; then
     MAIN_REPO="$REPO_ROOT"
 fi
