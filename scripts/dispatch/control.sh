@@ -39,7 +39,10 @@ _last_critical_check=0
 _fleet_launch_commit=""
 
 while :; do
-    clear
+    # RESILIENT-283: `clear` requires TERM; run-fleet.sh no longer launches
+    # this dashboard on headless nodes, but guard directly too in case
+    # control.sh is invoked standalone (as the gap's evidence did).
+    [[ -n "${TERM:-}" && "$TERM" != "dumb" ]] && clear
     printf '\033[1mchump fleet — session=%s  size=%s  refresh=%ss\033[0m\n' \
         "$FLEET_SESSION" "$FLEET_SIZE" "$REFRESH_S"
     printf '%s\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"

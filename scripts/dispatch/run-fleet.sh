@@ -163,6 +163,12 @@ SCRIPT_DIR="$REPO_ROOT/scripts/dispatch"
 # INFRA-469: route every `chump` invocation through the wedge-heal shim.
 export PATH="$REPO_ROOT/bin:$PATH"
 
+# RESILIENT-283: headless-native detection (see lib/headless-detect.sh for
+# the "why" — control.sh's dashboard needs a real TERM; without this a
+# fresh headless node's tmux session dies before any worker pane spawns).
+# shellcheck source=scripts/dispatch/lib/headless-detect.sh
+source "$SCRIPT_DIR/lib/headless-detect.sh"
+
 # INFRA-351: source $REPO_ROOT/.env (if present) so spawned worker panes
 # inherit ANTHROPIC_API_KEY / OPENAI_API_KEY / TOGETHER_API_KEY etc. and
 # `claude -p` consumes workspace API credit instead of falling back to
@@ -808,9 +814,23 @@ worker_env=(
 )
 env_prefix="$(printf '%s ' "${worker_env[@]}")"
 
-# Pane 0 is the control pane (status dashboard). Agents start at index 1.
-tmux new-session -d -s "$FLEET_SESSION" -n fleet -c "$REPO_ROOT" \
-    "${env_prefix} FLEET_SESSION=$FLEET_SESSION FLEET_SIZE=$FLEET_SIZE $SCRIPT_DIR/control.sh"
+# RESILIENT-283: on an interactive node pane 0 is the control pane (status
+# dashboard); agents start at index 1. On a headless node (no TERM, or
+# FLEET_HEADLESS=1) control.sh would crash instantly ("clear: TERM
+# environment variable not set"), killing the session before any worker
+# pane is split — so pane 0 runs worker 1 instead and the dashboard is
+# skipped entirely (still attachable/inspectable via `tmux attach` +
+# `tail -f` on the agent logs).
+_fleet_headless="$(fleet_headless_mode "${FLEET_HEADLESS:-auto}" "${TERM:-}")"
+if [[ "$_fleet_headless" == "1" ]]; then
+    echo "[run-fleet] RESILIENT-283: TERM=${TERM:-<unset>} — headless mode, dashboard (control.sh) skipped, pane 0 runs worker 1"
+    _first_agent_log="$FLEET_LOG_DIR/agent-1.log"
+    tmux new-session -d -s "$FLEET_SESSION" -n fleet -c "$REPO_ROOT" \
+        "${env_prefix} AGENT_ID=1 $SCRIPT_DIR/worker.sh 2>&1 | tee -a '$_first_agent_log'"
+else
+    tmux new-session -d -s "$FLEET_SESSION" -n fleet -c "$REPO_ROOT" \
+        "${env_prefix} FLEET_SESSION=$FLEET_SESSION FLEET_SIZE=$FLEET_SIZE $SCRIPT_DIR/control.sh"
+fi
 
 mkdir -p "$(dirname "$FLEET_PIDS_FILE")"
 # Truncate any stale pids file from a prior run of the same session name.
@@ -862,7 +882,12 @@ CONTENT_BOT_WORKER_COUNT="${CHUMP_CONTENT_BOT_WORKERS:-1}"
 CONTENT_BOT_FIRST=$((PWA_WORKER_COUNT + 1))
 CONTENT_BOT_LAST=$((PWA_WORKER_COUNT + CONTENT_BOT_WORKER_COUNT))
 
-for i in $(seq 1 "$FLEET_SIZE"); do
+# RESILIENT-283: headless mode already spawned worker 1 in pane 0 above;
+# remaining workers (2..FLEET_SIZE) still split as normal panes. Interactive
+# mode is unchanged — control.sh occupies pane 0, workers are 1..FLEET_SIZE.
+_worker_loop_start=1
+[[ "$_fleet_headless" == "1" ]] && _worker_loop_start=2
+for i in $(seq "$_worker_loop_start" "$FLEET_SIZE"); do
     log="$FLEET_LOG_DIR/agent-${i}.log"
     worker_skills_env=""
     if [[ "$PWA_WORKER_COUNT" -gt 0 && "$i" -le "$PWA_WORKER_COUNT" ]]; then
