@@ -5,9 +5,11 @@
   priority: P1
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Events: evangelist_started/evangelist_completed/evangelist_failed and systematizer_started/systematizer_completed/systematizer_failed emitted to ambient.jsonl (registered in docs/observability/EVENT_REGISTRY.yaml) on every chump evangelize / chump systematize run — success, failure, and non-existent-path cases all covered; no separate timeout path since both phases are static-scan-only (zero LLM/API calls)"
+    - "Cost: EvangelistReport/SystematizerReport carry cost_usd_cents, hardcoded 0 with a code comment \"static scan only — zero LLM/API calls\"; the field is threaded through to the emit_completed ambient payload and the rendered HIDDEN_GEMS.md / CAPABILITIES_REGISTRY.json output so the operator sees it without a separate cost-tracking system"
+    - "Failure taxonomy: FailureClass::PathNotFound (permanent, not retryable without operator action) vs FailureClass::IoError (transient, retryable) in both src/evangelist.rs and src/systematizer.rs, surfaced via .transient() and .as_str() and included in the *_failed ambient event"
+    - "Smoke tests: scripts/ci/test-evangelist-smoke.sh and scripts/ci/test-systematizer-smoke.sh — assert --help exits 0, missing-arg exits 2, non-existent path exits 2 with failure_class=path_not_found, and a fixture repo run exits 0 + emits the *_started/*_completed events + writes the expected artifact"
+  notes: |
+    [2026-08-17T21:59:29Z] Implementation already shipped under INFRA-1746 (closed 2026-05-23, PR #2390) as src/evangelist.rs + src/systematizer.rs. This gaps AC were left as unfilled TODO placeholders from the decompose template; filled in with the actual observability behavior confirmed present in the code and its smoke tests.
   outcome_id: MISSION-010
 
