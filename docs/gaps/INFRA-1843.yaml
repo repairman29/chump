@@ -1,9 +1,11 @@
 - id: INFRA-1843
   domain: INFRA
   title: "EFFECTIVE: vendor pixel-edge bicameral-mind blueprint (Reflexive on-device plus Neocortex cloud) for Chump LLM routing architecture"
-  status: open
+  status: done
   priority: P1
   effort: m
+  closed_date: '2026-08-18'
+  closed_pr: 3702
   acceptance_criteria:
     - Read pixel-edge-server/PIXEL_ARCHITECTURE.md and BLUEPRINT_BEST_IN_CLASS.md locally; document the bicameral-mind decomposition (Reflexive on-device = fast cheap fallback; Neocortex cloud = expensive complex deliberate) in docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
     - Map the bicameral pattern onto Chump's current LLM call sites — gap-decompose, subagent dispatch, preflight reasoning, daily curation — identify which tier each call should default to
