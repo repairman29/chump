@@ -284,17 +284,54 @@ if command -v sqlite3 >/dev/null 2>&1 && [[ -f .chump/state.db ]]; then
 fi
 pick_gate="closed"
 [[ "${CHUMP_EXTERNAL_REPO_PICK_OK:-0}" == "1" ]] && pick_gate="open"
+
+# Consecutive-cycle stall streak: walk beast_prereq_check history in
+# ambient.jsonl backwards from the most recent entry and count how many
+# runs in a row reported zero_commit>0. This turns "MISSION ① = NO for the
+# Nth consecutive cycle" (previously an eyeballed claim in gap titles) into
+# a derived, testable number. Bash-3.2-safe: no mapfile/associative arrays.
+AMBIENT_FILE=".chump-locks/ambient.jsonl"
+prereq_streak=0
+if [[ -f "$AMBIENT_FILE" ]] && command -v tac >/dev/null 2>&1; then
+    while IFS= read -r zc; do
+        [[ -z "$zc" ]] && continue
+        [[ "$zc" -gt 0 ]] || break
+        prereq_streak=$((prereq_streak+1))
+    done < <(tac "$AMBIENT_FILE" 2>/dev/null | grep -F '"kind":"beast_prereq_check"' \
+        | sed -n 's/.*"zero_commit":\([0-9]*\).*/\1/p')
+elif [[ -f "$AMBIENT_FILE" ]]; then
+    # macOS/BSD has no tac by default; fall back to tail -r.
+    while IFS= read -r zc; do
+        [[ -z "$zc" ]] && continue
+        [[ "$zc" -gt 0 ]] || break
+        prereq_streak=$((prereq_streak+1))
+    done < <(tail -r "$AMBIENT_FILE" 2>/dev/null | grep -F '"kind":"beast_prereq_check"' \
+        | sed -n 's/.*"zero_commit":\([0-9]*\).*/\1/p')
+fi
+# This run's own result extends (or breaks) the streak read from history.
+if [[ "$prereq_no_commits" -gt 0 ]]; then
+    prereq_streak=$((prereq_streak+1))
+else
+    prereq_streak=0
+fi
+
 echo "⑤ BEAST-MODE prerequisite readiness (MISSION-019..024 slice):"
 echo "     open=$prereq_open  zero-commit=$prereq_no_commits  pick-gate=$pick_gate (CHUMP_EXTERNAL_REPO_PICK_OK)"
 if [[ "$prereq_no_commits" -gt 0 ]]; then
     echo "     ⚠️  stuck (0 implementation commits): $prereq_stuck_ids"
+    echo "     streak: $prereq_streak consecutive cycle(s) with zero-commit stall"
     if [[ "$pick_gate" == "closed" ]]; then
         echo "     → root cause: CHUMP_EXTERNAL_REPO_PICK_OK is unset here; standard fleet workers skip external_repo: tagged gaps (INFRA-2113)."
     fi
+    if [[ "$prereq_streak" -ge 10 ]]; then
+        echo "     🚨 ESCALATION: stall has persisted $prereq_streak consecutive cycles with no root-cause fix — refiling MISSION-066 without opening the pick-gate or reassigning the prerequisite work will not move MISSION ①."
+    fi
+else
+    echo "     streak: 0 (no zero-commit prerequisites this cycle)"
 fi
 mkdir -p .chump-locks 2>/dev/null || true
-printf '{"ts":"%s","kind":"beast_prereq_check","open":%d,"zero_commit":%d,"pick_gate":"%s"}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$prereq_open" "$prereq_no_commits" "$pick_gate" \
+printf '{"ts":"%s","kind":"beast_prereq_check","open":%d,"zero_commit":%d,"pick_gate":"%s","streak":%d}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$prereq_open" "$prereq_no_commits" "$pick_gate" "$prereq_streak" \
     >> .chump-locks/ambient.jsonl 2>/dev/null || true
 echo
 
