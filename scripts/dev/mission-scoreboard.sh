@@ -203,6 +203,14 @@ elif [ "$beast" -gt 0 ]; then
 else
   echo "     ❌ NO  (BEAST merges last 7d: 0)  ← the mission is NOT yet achieved"
 fi
+
+# MISSION-066: persist ① so repeatability (not just a single lucky run) can be
+# verified across runs via `chump kpi report --mission-binary`, mirroring the
+# mission_grade ambient pattern used for pillar history.
+mkdir -p .chump-locks 2>/dev/null || true
+printf '{"ts":"%s","kind":"mission_binary_check","repo":"%s","beast_merges_7d":%d,"beast_zero_touch_7d":%d}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BEAST" "$beast" "$beast_zt" \
+  >> .chump-locks/ambient.jsonl 2>/dev/null || true
 echo
 
 # ── ② Mission-ship ratio (24h) ──────────────────────────────────────────────
