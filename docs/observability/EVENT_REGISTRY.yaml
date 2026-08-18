@@ -2926,6 +2926,12 @@ events:
     trigger: a specific lesson influenced an agent decision
     consumers: [audit-log]
 
+  - kind: lesson_published
+    effect_metric: self
+    emitter: src/web_server.rs (handle_lessons_post, META-080)
+    trigger: agent POSTed a lesson to the shared in-memory /api/lessons store
+    consumers: [audit-log]
+
   - kind: lesson_not_applied
     effect_metric: self
     emitter: src/lessons_engine.rs
