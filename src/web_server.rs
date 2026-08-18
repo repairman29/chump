@@ -812,6 +812,156 @@ async fn handle_broadcast(
     })))
 }
 
+// ── META-080: lesson sharing endpoint (in-memory store, META-073 slice) ──────
+//
+// Pragmatic subset of the wire format defined in
+// docs/design/LESSON_PROPAGATION_FORMAT.md (META-079). Process-local,
+// non-persistent (v1 scope per that doc's storage-layout note); a
+// NATS-backed v2 is a follow-up once the in-memory store proves the shape.
+
+const LESSON_DEFAULT_TTL_SECS: i64 = 24 * 60 * 60;
+
+static LESSON_STORE: std::sync::OnceLock<std::sync::Mutex<Vec<LessonRecord>>> =
+    std::sync::OnceLock::new();
+
+fn lesson_store() -> &'static std::sync::Mutex<Vec<LessonRecord>> {
+    LESSON_STORE.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+#[derive(Clone, serde::Serialize)]
+struct LessonRecord {
+    lesson_id: String,
+    headline: String,
+    #[serde(default)]
+    body: String,
+    context_tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agent: Option<String>,
+    published_at_ms: i64,
+    expires_at_ms: i64,
+}
+
+#[derive(serde::Deserialize)]
+struct LessonPostRequest {
+    #[serde(default)]
+    lesson_id: Option<String>,
+    headline: String,
+    #[serde(default)]
+    body: Option<String>,
+    /// Task tag(s) this lesson applies to — filtered on in GET /api/lessons?tag=.
+    #[serde(default)]
+    context_tags: Vec<String>,
+    #[serde(default)]
+    agent: Option<String>,
+    /// Override the default 24h expiry. Mainly for tests / short-lived lessons.
+    #[serde(default)]
+    ttl_secs: Option<i64>,
+}
+
+fn now_ms_epoch() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Drops expired lessons. Called on every read/write so the in-memory store
+/// stays bounded without a background reaper task.
+fn prune_expired_lessons(store: &mut Vec<LessonRecord>) {
+    let now = now_ms_epoch();
+    store.retain(|l| l.expires_at_ms > now);
+}
+
+/// META-080: POST /api/lessons — agents publish a lesson to the shared
+/// in-memory store. Lessons expire 24h after publish by default.
+async fn handle_lessons_post(
+    headers: HeaderMap,
+    Json(body): Json<LessonPostRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let headline = body.headline.trim().to_string();
+    if headline.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "headline must be non-empty".to_string(),
+        ));
+    }
+    let ttl_secs = body.ttl_secs.unwrap_or(LESSON_DEFAULT_TTL_SECS).max(1);
+    let now = now_ms_epoch();
+    let lesson_id = body
+        .lesson_id
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let expires_at_ms = now + ttl_secs * 1000;
+    let context_tags: Vec<String> = body
+        .context_tags
+        .into_iter()
+        .map(|t| t.trim().to_lowercase())
+        .filter(|t| !t.is_empty())
+        .collect();
+    let record = LessonRecord {
+        lesson_id: lesson_id.clone(),
+        headline,
+        body: body.body.unwrap_or_default(),
+        context_tags: context_tags.clone(),
+        agent: body.agent.clone(),
+        published_at_ms: now,
+        expires_at_ms,
+    };
+    let count = {
+        let mut store = lesson_store().lock().unwrap_or_else(|e| e.into_inner());
+        prune_expired_lessons(&mut store);
+        store.push(record);
+        store.len()
+    };
+    // scanner-anchor: "kind":"lesson_published"
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "lesson_published".to_string(),
+        fields: vec![
+            ("lesson_id".to_string(), lesson_id.clone()),
+            ("agent".to_string(), body.agent.unwrap_or_default()),
+            ("context_tags".to_string(), context_tags.join(",")),
+        ],
+        ..Default::default()
+    });
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "lesson_id": lesson_id,
+        "expires_at_ms": expires_at_ms,
+        "count": count,
+    })))
+}
+
+/// META-080: GET /api/lessons?tag=<task-tag> — agents read relevant lessons.
+/// Without `tag`, returns all non-expired lessons.
+async fn handle_lessons_get(
+    headers: HeaderMap,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let tag = params
+        .get("tag")
+        .map(|t| t.trim().to_lowercase())
+        .filter(|t| !t.is_empty());
+    let mut store = lesson_store().lock().unwrap_or_else(|e| e.into_inner());
+    prune_expired_lessons(&mut store);
+    let lessons: Vec<&LessonRecord> = store
+        .iter()
+        .filter(|l| match &tag {
+            Some(t) => l.context_tags.iter().any(|ct| ct == t),
+            None => true,
+        })
+        .collect();
+    Ok(Json(serde_json::json!({
+        "lessons": lessons,
+        "count": lessons.len(),
+    })))
+}
+
 /// INFRA-1298: GET /api/inbox/{session} — read targeted-inbox messages.
 async fn handle_inbox_get(
     headers: HeaderMap,
@@ -9276,6 +9426,11 @@ fn build_api_router() -> Router {
             get(handle_inbox_unread_count),
         )
         .route("/api/inbox/{session}/ack", post(handle_inbox_ack))
+        // META-080: lesson sharing endpoint (in-memory store, META-073 slice).
+        .route(
+            "/api/lessons",
+            get(handle_lessons_get).post(handle_lessons_post),
+        )
         .route("/api/approve", post(handle_approve))
         // INFRA-1340: per-tool persistent auto-approve policies (PWA dropdown)
         .route(

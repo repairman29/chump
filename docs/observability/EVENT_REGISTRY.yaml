@@ -98,6 +98,20 @@ events:
     consumers: [dashboard (future, INFRA-1883)]
     fields_required: [ts, kind, agent_a, agent_b, predicted_ts_offset_s, confidence]
 
+  - kind: routing_decision
+    effect_metric: self
+    emitter: src/skill_routing.rs (META-078, first implementation of docs/design/SKILL_AWARE_ROUTING_SCHEMA.md)
+    trigger: the skill-aware routing engine scores candidate agents against a gap's required_skills (Jaccard) and selects a winner, or falls back to round-robin when skills data is unavailable
+    consumers: [picker (future, META-081 integration slice)]
+    fields_required: [ts, kind, schema_version, gap_id, task_type, required_skills, candidates, selected_session, selection_reason, session]
+
+  - kind: skill_routing_no_match
+    effect_metric: self
+    emitter: src/skill_routing.rs (META-078, companion event per docs/design/SKILL_AWARE_ROUTING_SCHEMA.md)
+    trigger: required_skills is non-empty but no candidate shares any skill with it — selected_session is null and the gap stays in queue
+    consumers: [operator visibility]
+    fields_required: [ts, kind, gap_id, required_skills, available_skill_sets, session]
+
   - kind: review_verdict
     effect_metric: self
     emitter: scripts/coord/code-reviewer-agent.sh (CREDIBLE-191 judgment panel)
@@ -2910,6 +2924,12 @@ events:
     effect_metric: self
     emitter: src/lessons_engine.rs
     trigger: a specific lesson influenced an agent decision
+    consumers: [audit-log]
+
+  - kind: lesson_published
+    effect_metric: self
+    emitter: src/web_server.rs (handle_lessons_post, META-080)
+    trigger: agent POSTed a lesson to the shared in-memory /api/lessons store
     consumers: [audit-log]
 
   - kind: lesson_not_applied
