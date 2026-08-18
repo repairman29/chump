@@ -1,7 +1,8 @@
 - id: INFRA-1773
   domain: INFRA
   title: "EFFECTIVE: chump brain CLI surface — unified query/mutate over memory_db + routing_outcomes + reflection_db + per-bot, incremental path to mega-brain stretch"
-  status: open
+  status: done
+  closed_pr: 3686
   priority: P1
   effort: m
   acceptance_criteria:
