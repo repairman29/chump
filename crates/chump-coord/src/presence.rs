@@ -190,12 +190,11 @@ pub async fn mark_terminal(kv: &kv::Store, worker_id: &str) -> Result<()> {
     Ok(())
 }
 
-/// CREDIBLE-256 AC-1: remove a worker's presence record from the
-/// `chump_workers` KV bucket outright — call on ship or exit. Unlike
-/// [`mark_terminal`] (which keeps the record for audit until TTL purge),
-/// this deletes it immediately so "who's currently alive" queries never see
-/// a worker that has already shipped/exited. `kv.delete` on an already-gone
-/// key is a no-op in async-nats, so this is safe to call unconditionally.
+/// CREDIBLE-256 (CREDIBLE-099 slice): deregister a worker on ship/exit by
+/// deleting its presence record from the `chump_workers` KV bucket outright,
+/// rather than leaving a `Terminal` tombstone (as [`mark_terminal`] does).
+/// Non-fatal if the record is already gone — deregistration should never
+/// block a worker's shutdown path.
 pub async fn deregister_presence(kv: &kv::Store, worker_id: &str) -> Result<()> {
     kv.delete(worker_id)
         .await

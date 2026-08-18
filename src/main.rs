@@ -6248,6 +6248,147 @@ async fn main() -> Result<()> {
                 });
                 std::process::exit(status.code().unwrap_or(1));
             }
+            // CREDIBLE-257 (CREDIBLE-099 slice): harness-neutral verb to list
+            // registered workers + live state from the `chump_workers`
+            // NATS-KV bucket (CREDIBLE-246 storage layer). Works from any
+            // harness — this is a plain CLI subcommand, not Claude-Code-only.
+            "workers" => {
+                let want_json = args.iter().any(|a| a == "--json");
+                let nats_url = std::env::var("CHUMP_NATS_URL")
+                    .or_else(|_| std::env::var("NATS_URL"))
+                    .unwrap_or_else(|_| chump_coord::DEFAULT_NATS_URL.to_string());
+
+                let connect_result = tokio::time::timeout(
+                    std::time::Duration::from_secs(3),
+                    async_nats::connect(&nats_url),
+                )
+                .await;
+
+                let nats = match connect_result {
+                    Ok(Ok(n)) => n,
+                    Ok(Err(e)) => {
+                        eprintln!("chump fleet workers: NATS connect failed ({nats_url}): {e}");
+                        std::process::exit(1);
+                    }
+                    Err(_) => {
+                        eprintln!("chump fleet workers: NATS connect timed out ({nats_url})");
+                        std::process::exit(1);
+                    }
+                };
+                let js = async_nats::jetstream::new(nats);
+                let kv = match chump_coord::presence::init_workers_bucket(&js).await {
+                    Ok(kv) => kv,
+                    Err(e) => {
+                        eprintln!("chump fleet workers: workers KV bucket unavailable: {e}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let mut presences = match chump_coord::presence::list_presence(&kv).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("chump fleet workers: list_presence failed: {e}");
+                        std::process::exit(1);
+                    }
+                };
+                presences.sort_by(|a, b| a.worker_id.cmp(&b.worker_id));
+
+                let now = chrono::Utc::now();
+                let today = now.date_naive();
+
+                // ships_today: best-effort — count today's `ship_grade`
+                // ambient events whose agent_id matches this worker_id.
+                // agent_id (AGENT_ID env) and worker_id (presence session
+                // id) are distinct id spaces today, so this only counts
+                // when a caller happened to set them equal; it is not a
+                // hard guarantee. Loaded once and reused per worker.
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                let ambient_content = std::fs::read_to_string(&ambient_path).unwrap_or_default();
+                let ships_today_for = |worker_id: &str| -> u64 {
+                    let mut count = 0u64;
+                    for line in ambient_content.lines() {
+                        if !line.contains("ship_grade") {
+                            continue;
+                        }
+                        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                            continue;
+                        };
+                        if v.get("kind").and_then(|x| x.as_str()) != Some("ship_grade") {
+                            continue;
+                        }
+                        if v.get("agent_id").and_then(|x| x.as_str()) != Some(worker_id) {
+                            continue;
+                        }
+                        let ts_matches_today = v
+                            .get("ts")
+                            .and_then(|x| x.as_str())
+                            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                            .map(|dt| dt.with_timezone(&chrono::Utc).date_naive() == today)
+                            .unwrap_or(false);
+                        if ts_matches_today {
+                            count += 1;
+                        }
+                    }
+                    count
+                };
+
+                if want_json {
+                    let rows: Vec<serde_json::Value> = presences
+                        .iter()
+                        .map(|p| {
+                            let heartbeat_age_s =
+                                now.signed_duration_since(p.updated_at).num_seconds().max(0);
+                            serde_json::json!({
+                                "worker_id": p.worker_id,
+                                "backend": p.backend,
+                                "machine": p.machine,
+                                "skills": p.skills,
+                                "harness": p.harness,
+                                "current_gap": p.current_gap,
+                                "status": p.status,
+                                "heartbeat_age_s": heartbeat_age_s,
+                                "ships_today": ships_today_for(&p.worker_id),
+                            })
+                        })
+                        .collect();
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({ "workers": rows }))
+                            .unwrap_or_else(|_| "{}".to_string())
+                    );
+                } else if presences.is_empty() {
+                    println!(
+                        "No registered workers found in NATS-KV bucket '{}'.",
+                        chump_coord::presence::WORKERS_BUCKET
+                    );
+                } else {
+                    println!(
+                        "{:<24} {:<10} {:<12} {:<20} {:<14} {:<9} {:<9} SKILLS",
+                        "WORKER_ID",
+                        "BACKEND",
+                        "MACHINE",
+                        "CURRENT_GAP",
+                        "STATUS",
+                        "HB_AGE",
+                        "SHIPS_2D"
+                    );
+                    for p in &presences {
+                        let heartbeat_age_s =
+                            now.signed_duration_since(p.updated_at).num_seconds().max(0);
+                        println!(
+                            "{:<24} {:<10} {:<12} {:<20} {:<14} {:<9} {:<9} {}",
+                            p.worker_id,
+                            p.backend,
+                            p.machine.as_deref().unwrap_or("-"),
+                            p.current_gap.as_deref().unwrap_or("-"),
+                            format!("{:?}", p.status).to_lowercase(),
+                            format!("{}s", heartbeat_age_s),
+                            ships_today_for(&p.worker_id),
+                            p.skills.join(","),
+                        );
+                    }
+                }
+            }
             "scale" => {
                 let n_str = args.get(3).cloned().unwrap_or_else(|| {
                     eprintln!("Usage: chump fleet scale <N>");
