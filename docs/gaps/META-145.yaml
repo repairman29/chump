@@ -9,4 +9,15 @@
     - When the keystone file lands on `main`, all currently open PRs are automatically rebased.
     - The auto-rebase mechanism logs its actions and any failures.
   outcome_id: MISSION-010
+  notes: |
+    Already shipped. scripts/coord/queue-driver.sh (cascade_rebase_if_hot,
+    since INFRA-670/711) monitors a configurable set of keystone/hot files
+    (scripts/coord/cascade-rebase-trigger-paths.txt, extended by INFRA-2207)
+    for changes on main. When one lands, it rebases every open non-draft PR
+    (gh pr update-branch, with local-rebase + auto-resolve fallback per
+    INFRA-2255), and logs per-PR success/failure/timeout with failure-class
+    taxonomy to ambient.jsonl (INFRA-1648), with debounce/dedup coalescing
+    (INFRA-2232, INFRA-1310). bot-merge.sh mirrors the same trigger-path
+    config. All 3 AC are met by existing code; this PR only syncs the
+    stale YAML status to match state.db.
 
