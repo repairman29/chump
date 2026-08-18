@@ -21,3 +21,7 @@
     config. All 3 AC are met by existing code; this PR only syncs the
     stale YAML status to match state.db.
 
+    Re-verified 2026-08-18: prior sync PR (#3907) added this note but left
+    status:open and state.db un-flipped. This follow-up commit actually
+    closes the gap.
+
