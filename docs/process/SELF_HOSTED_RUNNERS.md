@@ -1121,6 +1121,17 @@ more than enough times; the ~24 open `INFRA-3544`-`INFRA-3579` sub-gaps
 that duplicate this investigation are being closed as superseded by this
 section for the same reason.
 
+### state.db sync (2026-08-18, fleet-1 slice)
+
+The 2026-08-12 closing commit above (a7413121) updated this doc's
+disposition but never flipped the gap's `status` field in canonical
+`state.db` — it stayed `open`, which is what routed this INFRA-1655 fleet
+dispatch here in the first place (the docs/gaps YAML mirror also still read
+`open`). No new reproduction or root-cause work was needed; this slice's
+only job is closing that gap between "documented disposition" and "actual
+gap-registry state" via `chump gap ship`, so the picker stops re-surfacing
+an investigation that already reached its documented conclusion.
+
 ---
 
 ## Pi mesh provisioner (INFRA-1543)
