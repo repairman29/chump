@@ -876,7 +876,74 @@ impl AgentThroughputSection {
     }
 }
 
-/// Read agent throughput from .chump/metrics/agent-throughput-DATE.json.
+/// CREDIBLE-099 AC-4/AC-7: when no `.chump/metrics/agent-throughput-*.json`
+/// snapshot exists (the tracker script never ran, or hasn't run for this
+/// date), fall back to the worker-presence registry's own audit trail:
+/// `ambient.jsonl` `kind=gap_shipped` events, which every ship path emits
+/// with a `session` field (see `src/execute_gap.rs`'s
+/// `# scanner-anchor: "kind":"gap_shipped"`). This is the same source
+/// `chump_coord::presence::ships_today_counts` reads for "today", generalized
+/// to an arbitrary date so `--date YYYY-MM-DD` also gets real data instead of
+/// silently reporting nothing. `gap_failed` events are detector-emitted and
+/// carry no session attribution today, so `fails` stays 0 in this fallback —
+/// real, just incomplete, rather than fabricated.
+fn build_agent_throughput_section_from_ambient(
+    repo_root: &Path,
+    date: &str,
+) -> AgentThroughputSection {
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let Ok(contents) = std::fs::read_to_string(&ambient_path) else {
+        return AgentThroughputSection::default();
+    };
+
+    let mut ships_by_session: std::collections::BTreeMap<String, u64> =
+        std::collections::BTreeMap::new();
+    for line in contents.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if v.get("kind").and_then(|k| k.as_str()) != Some("gap_shipped") {
+            continue;
+        }
+        let Some(ts) = v.get("ts").and_then(|t| t.as_str()) else {
+            continue;
+        };
+        if !ts.starts_with(date) {
+            continue;
+        }
+        let Some(session) = v.get("session").and_then(|s| s.as_str()) else {
+            continue;
+        };
+        *ships_by_session.entry(session.to_string()).or_insert(0) += 1;
+    }
+
+    if ships_by_session.is_empty() {
+        return AgentThroughputSection::default();
+    }
+
+    let total_ships: u64 = ships_by_session.values().sum();
+    let rows = ships_by_session
+        .into_iter()
+        .map(|(agent_id, ships)| AgentThroughputRow {
+            agent_id,
+            ships,
+            fails: 0,
+            p50_minutes_per_ship: None,
+            top_fail_modes: vec![],
+        })
+        .collect();
+
+    AgentThroughputSection {
+        date: date.to_string(),
+        rows,
+        total_ships,
+        total_fails: 0,
+    }
+}
+
+/// Read agent throughput from .chump/metrics/agent-throughput-DATE.json,
+/// falling back to the ambient `gap_shipped` audit trail (CREDIBLE-099
+/// AC-4/AC-7) when no tracker snapshot exists for the date.
 pub fn build_agent_throughput_section(
     repo_root: &Path,
     date_str: Option<&str>,
@@ -888,11 +955,11 @@ pub fn build_agent_throughput_section(
         .join(format!("agent-throughput-{date}.json"));
     let content = match std::fs::read_to_string(&metrics_path) {
         Ok(c) => c,
-        Err(_) => return AgentThroughputSection::default(),
+        Err(_) => return build_agent_throughput_section_from_ambient(repo_root, date),
     };
     let json: serde_json::Value = match serde_json::from_str(&content) {
         Ok(v) => v,
-        Err(_) => return AgentThroughputSection::default(),
+        Err(_) => return build_agent_throughput_section_from_ambient(repo_root, date),
     };
     let mut section = AgentThroughputSection {
         date: json
@@ -2910,5 +2977,72 @@ mod tests {
         let slug = resolve_repo_slug(&tmp);
         std::env::remove_var("CHUMP_INVENTORY_REPO");
         assert_eq!(slug, Some(("repairman29".to_string(), "chump".to_string())));
+    }
+
+    // ── CREDIBLE-099 AC-4/AC-7: kpi --agents ambient fallback ──────────────
+
+    #[test]
+    fn agent_throughput_falls_back_to_ambient_when_no_metrics_file() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2026-08-18T10:00:00Z","session":"worker-a","kind":"gap_shipped","gap_id":"CREDIBLE-1"}"#,
+                r#"{"ts":"2026-08-18T11:00:00Z","session":"worker-a","kind":"gap_shipped","gap_id":"CREDIBLE-2"}"#,
+                r#"{"ts":"2026-08-18T12:00:00Z","session":"worker-b","kind":"gap_shipped","gap_id":"CREDIBLE-3"}"#,
+                r#"{"ts":"2026-08-17T12:00:00Z","session":"worker-a","kind":"gap_shipped","gap_id":"CREDIBLE-0"}"#,
+                r#"{"ts":"2026-08-18T13:00:00Z","session":"worker-a","kind":"gap_claimed","gap_id":"CREDIBLE-4"}"#,
+            ],
+        );
+        let section = build_agent_throughput_section(&tmp, Some("2026-08-18"));
+        assert_eq!(section.date, "2026-08-18");
+        assert_eq!(section.total_ships, 3);
+        let a = section
+            .rows
+            .iter()
+            .find(|r| r.agent_id == "worker-a")
+            .expect("worker-a row present");
+        assert_eq!(a.ships, 2);
+        let b = section
+            .rows
+            .iter()
+            .find(|r| r.agent_id == "worker-b")
+            .expect("worker-b row present");
+        assert_eq!(b.ships, 1);
+        let text = section.render_text();
+        assert!(!text.contains("No throughput data found"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn agent_throughput_prefers_metrics_file_over_ambient() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2026-08-18T10:00:00Z","session":"worker-a","kind":"gap_shipped","gap_id":"CREDIBLE-1"}"#,
+            ],
+        );
+        let metrics_dir = tmp.join(".chump/metrics");
+        std::fs::create_dir_all(&metrics_dir).unwrap();
+        std::fs::write(
+            metrics_dir.join("agent-throughput-2026-08-18.json"),
+            r#"{"date":"2026-08-18","total_ships":9,"total_fails":1,"agents":[{"agent_id":"worker-file","ships":9,"fails":1}]}"#,
+        )
+        .unwrap();
+        let section = build_agent_throughput_section(&tmp, Some("2026-08-18"));
+        assert_eq!(section.total_ships, 9);
+        assert_eq!(section.rows.len(), 1);
+        assert_eq!(section.rows[0].agent_id, "worker-file");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn agent_throughput_no_data_when_ambient_and_metrics_both_empty() {
+        let tmp = tempdir();
+        let section = build_agent_throughput_section(&tmp, Some("2026-08-18"));
+        assert!(section.date.is_empty());
+        assert!(section.render_text().contains("No throughput data found"));
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
