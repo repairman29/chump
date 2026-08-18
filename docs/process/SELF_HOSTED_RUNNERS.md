@@ -1142,6 +1142,33 @@ source — `docs/gaps/INFRA-1655.yaml` is a stale historical artifact, not
 read by the picker). The gap is now closed end-to-end; no further
 INFRA-1655 slices should be dispatched.
 
+### state.db sync — actual root cause of the resync loop (2026-08-18, fleet-1 slice #2)
+
+The sync above still didn't hold: this gap re-surfaced `open` in the
+canonical `state.db` and routed a second INFRA-1655 fleet-1 dispatch to
+this same worktree. Root cause: `chump gap ship` resolves `.chump/` relative
+to **process cwd**, not the git-common-dir. A linked worktree
+(`.claude/worktrees/<name>/`) has its own `.chump/state.db` — freshly
+scaffolded and empty/stale for a new worktree — which is a *different file*
+from the canonical `.chump/state.db` at the main checkout root
+(`/home/jeff/Projects/chump/.chump/state.db`). The prior slice's `chump gap
+ship` ran from inside the worktree, so it flipped the worktree-local copy
+(which nothing else reads) and never touched the canonical row — `sqlite3
+.chump/state.db ...` in that same slice's verification command was equally
+worktree-relative, so the check "confirmed" a write that never reached the
+shared source of truth.
+
+**Fix applied this slice:** ran `chump gap ship INFRA-1655 --update-yaml
+--why` with cwd set to the main checkout (`/home/jeff/Projects/chump`, not
+the worktree), then verified against that same path:
+`sqlite3 /home/jeff/Projects/chump/.chump/state.db "SELECT id,status,closed_pr
+FROM gaps WHERE id='INFRA-1655'"` → `INFRA-1655|done|`. Any future
+gap-registry mutation issued from a linked worktree should `cd` to the main
+checkout first (or otherwise target the canonical `.chump/state.db` path
+explicitly) — running `chump gap ship`/`chump gap set` from a worktree
+silently no-ops against the shared registry, which is exactly the
+gap-reopens-itself loop this section documents.
+
 ---
 
 ## Pi mesh provisioner (INFRA-1543)
