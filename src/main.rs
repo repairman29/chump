@@ -244,6 +244,7 @@ mod skill_db;
 mod skill_hub;
 mod skill_hub_tool;
 mod skill_metrics;
+mod skill_routing; // META-078: skill-aware routing decision engine (stub skills DB), first impl of docs/design/SKILL_AWARE_ROUTING_SCHEMA.md
 mod skill_tool;
 mod skills;
 mod slack;
