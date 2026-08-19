@@ -400,6 +400,24 @@ print(f"  Allowlisted exceptions: {allowlisted_count}")
 print(f"  UNMIRRORED (FAIL)     : {len(unmirrored)}")
 print()
 
+# INFRA-2084 AC1: report mode — inventory dump for the human-facing audit
+# script (preflight-vs-ci-parity-audit.sh). Never affects exit code; the
+# gate script (this file, invoked without CHUMP_PARITY_REPORT) remains the
+# pass/fail authority.
+if os.environ.get("CHUMP_PARITY_REPORT") == "1":
+    print("[ci-parity] Inventory (AC1):")
+    print(f"  (a) CI gates in scanned workflows : {len(gates)}")
+    print(f"  (b) Gates mirrored in preflight   : {mirrored_count}")
+    print(f"  (c) DELTA (unmirrored, unallowlisted): {len(unmirrored)}")
+    print()
+    if unmirrored:
+        print("  DELTA detail:")
+        for (wf_name, job, step_name, ci_path, _run_cmd) in unmirrored:
+            print(f"    - [{wf_name}] job={job} step='{step_name}' ({ci_path})")
+    else:
+        print("  DELTA detail: (none — full parity)")
+    print()
+
 if unmirrored:
     fail(f"{len(unmirrored)} CI gate(s) lack a preflight mirror and are not allowlisted.")
     fail("Each unaccounted gate emitted kind=ci_parity_drift to ambient.jsonl.")
