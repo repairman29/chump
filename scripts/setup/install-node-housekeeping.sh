@@ -35,7 +35,9 @@ write_runner() {
   local name="$1" script="$2" cadence="$3"
   cat > "$STATE/organs/$name.sh" <<RUN
 #!/usr/bin/env bash
-set -uo pipefail
+# NB: NO 'set -u' — providers.env references unbound vars; sourcing it under set -u
+# terminates the shell (|| true cannot catch a set-u exit). Documented fleet gotcha.
+set -o pipefail
 cd "$REPO" 2>/dev/null || exit 1
 set -a; . "$STATE/providers.env" 2>/dev/null || true; . "$STATE/cj.env" 2>/dev/null || true; set +a
 export PATH="$REPO/target/release:\$PATH" CHUMP_REPO_ROOT="$REPO" CHUMP_STATE_DIR="$STATE" CHUMP_BINARY_STALENESS_CHECK=0
