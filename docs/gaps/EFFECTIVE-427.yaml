@@ -8,5 +8,6 @@
     - "The change described by \"batched integrator healthy + default — conflict-skip (RESILIENT-269) proven to land N green PRs in ONE CI run\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  depends_on: [INFRA-2459]
   outcome_id: SHIP-INFRA
 

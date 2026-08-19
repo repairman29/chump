@@ -8,5 +8,6 @@
     - "The change described by \"gate false-positive audit — every gate a real signal or DELETED (farmer_auth_dead, phantom required checks, reapers freeing 0 bytes, grace-guards that don't guard); measure per-gate FP rate\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  depends_on: [INFRA-1482]
   outcome_id: SHIP-INFRA
 
