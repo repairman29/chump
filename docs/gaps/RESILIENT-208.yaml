@@ -1,0 +1,12 @@
+- id: RESILIENT-208
+  domain: RESILIENT
+  title: "RESILIENT: agent-fix janitor arm — dispatch chump agent-run to FIX stuck PRs (never close real work)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"agent-fix janitor arm — dispatch chump agent-run to FIX stuck PRs (never close real work)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: COTG
+

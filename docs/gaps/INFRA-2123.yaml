@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE P1: event-driven Oracle refresh — trigger oracle-refresh.sh when N new gaps filed since last run (in addition to 4h cadence)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "1. New ambient listener: scripts/ops/oracle-event-trigger.sh tails ambient.jsonl, counts kind=gap_reserved events since last oracle_refresh_succeeded event, triggers `scripts/coord/oracle-refresh.sh --force` when count >= ORACLE_GAP_THRESHOLD (default 5).\n2. Wire as a launchd plist OR as a hook called from scripts/coord/system-gap-tick.sh on each system_gap_tick (which already fires regularly).\n3. The threshold (5) is configurable via CHUMP_ORACLE_GAP_THRESHOLD env var.\n4. Coalesces with the existing 4h cadence — if event-driven fires within last 1h of cadence, dedup (don't double-burst).\n5. After this ships: when operator/curators file a burst of gaps (e.g. the 5 CI-review levers we just filed), Oracle re-ranks within minutes instead of waiting 4h. Strategic priority converges with tactical gap activity.\n6. Depends-on: INFRA-2122 (Oracle silent-staleness fix MUST land first — otherwise this just amplifies the silent failures).\n7. Pairs with: scripts/coord/system-gap-tick.sh, scripts/coord/oracle-refresh.sh, dispatch-flatline-detector pattern."

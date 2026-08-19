@@ -2,7 +2,7 @@
   domain: META
   title: umbrella-progress audit + decompose-cascade daemon — for every open effort=l umbrella, track days-since-last-PR-touching-its-files; >7d idle auto-files xs/s decomposition sub-gap; weekly structural-PR-rate digest emits kind=structural_work_digest; <25% structural-rate over 14d triggers operator-recall
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "scripts/coord/umbrella-progress-audit.sh runs every 6h (launchd plist dev.chump.umbrella-progress-audit). For each open gap matching effort=l AND (title contains UMBRELLA OR META OR IGNITION OR SUBSTRATE OR notes contains depends_on with effort=l gaps): grep AC for file paths/crate names; query git log to find last commit touching any matched path; record days-since-last-touch as kind=umbrella_progress_audit ambient event."

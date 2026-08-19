@@ -1,0 +1,14 @@
+- id: ZERO-WASTE-050
+  domain: ZERO-WASTE
+  title: idle free inference quota is shelved capability — allocate the daily budget or it evaporates
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Daily free-tier quotas RESET — unused inference is not banked, it evaporates. Under this fleet's own pillar ('no idle agents, no duplicated work, no shelved capability') an unspent daily quota is shelved capability, and across 13 configured slots it is plausibly the largest single instance of it
+    - An allocator assigns the day's budget across standing jobs with floors — continuous comprehension (almanac summarize/embed), sweeps and watching (organs, CI, PR rot), queue curation (triage/consolidate/write-ac) — and spends the remainder opportunistically, deepest backlog first
+    - "Scarce high-value slots are reserved by SHAPE not by arrival order: free models exist at 262K and 1M context, and gemini-2.5-pro carries ~2M at roughly 50 requests/day. Whole-repo reads should get those; a triage classification must not consume one"
+    - "MEASURE THE OUTCOME, not the run: report quota consumed vs available per slot per day, and what work it bought. 'The allocator ran' is a signal; 'the summarize backlog dropped by N and the organ sweep covered M repos' is an outcome"
+    - Depends on EFFECTIVE-409 (inference tender) for live per-slot capacity, and on real-traffic failure classification rather than synthetic probes — the operator has ruled probing out because it spends the budget being measured
+  outcome_id: ZERO-WASTE-000
+

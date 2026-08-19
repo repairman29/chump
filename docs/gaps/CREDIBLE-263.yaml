@@ -1,0 +1,10 @@
+- id: CREDIBLE-263
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement harness-neutral verb to list registered workers (CREDIBLE-099 slice)"
+  status: open
+  priority: P3
+  effort: s
+  acceptance_criteria:
+    - A harness-neutral verb is implemented to list registered workers
+    - "The verb returns the required information: worker_id, backend, machine, skills, current_gap, heartbeat_age, ships_today"
+

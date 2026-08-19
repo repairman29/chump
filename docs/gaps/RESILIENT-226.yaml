@@ -1,0 +1,11 @@
+- id: RESILIENT-226
+  domain: RESILIENT
+  title: "drive_task_directed 'git add -A' leaks local runtime state into the shipped commit: swept .chump-locks/ambient.jsonl + sessions/chump_memory.db* (the bench binary's own artifacts in the clone dir) into BEAST-MODE PR #37. Scope the add to the agent's real edits, or gitignore/clean runtime state before commit"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"swept .chump-locks/ambient.jsonl + sessions/chump_memory.db* (the bench binary's own artifacts in the clone dir) into BEAST-MODE PR #37. Scope the add to the agent's real edits, or gitignore/clean runtime state before commit\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

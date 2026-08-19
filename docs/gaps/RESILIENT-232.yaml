@@ -1,0 +1,11 @@
+- id: RESILIENT-232
+  domain: RESILIENT
+  title: "RESILIENT: improve RESUME (COTG-1.4) resumes a CLOSED/unmerged prior PR — blocks re-running a gap after its stub PR is closed"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"improve RESUME (COTG-1.4) resumes a CLOSED/unmerged prior PR — blocks re-running a gap after its stub PR is closed\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

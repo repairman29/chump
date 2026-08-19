@@ -1,0 +1,14 @@
+- id: RESILIENT-252
+  domain: RESILIENT
+  title: "RESILIENT: docker publishes past ufw — the next container on helsinki re-exposes the box silently"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Found while hardening helsinki 2026-08-08. Docker inserts its own iptables rules ahead of ufw's chains, so a container published to 0.0.0.0 is reachable from the internet EVEN WITH ufw enabled and default-deny-incoming. The SearXNG container added the same day is safe only because it was bound explicitly to 100.101.188.30:8888 rather than published broadly — that was a deliberate choice, not a property of the setup, and nothing enforces it for the next container. The trap is that ufw status will read 'active, deny (incoming)' while a published port is wide open, which is precisely the shape of dashboard-lies the fleet has a rule about. Standard mitigations: set iptables=false in /etc/docker/daemon.json and manage rules explicitly, or install the ufw-docker helper and use its rule syntax, or make an operator rule that every container binds a specific interface. Pick one and write it where the next person will look.
+  acceptance_criteria:
+    - a container published to 0.0.0.0 on helsinki is NOT reachable from the public internet — demonstrated by actually publishing a throwaway container and probing it from outside, then removing it
+    - the chosen mitigation is documented where a future container gets run (helsinki runbook or chump docs), not only in this gap
+    - the SearXNG container is confirmed to still answer over Tailscale after whatever mitigation lands
+    - "ufw status and reality agree: if a port is open, the firewall says so"
+

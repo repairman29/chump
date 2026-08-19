@@ -1,0 +1,10 @@
+- id: INFRA-3561
+  domain: INFRA
+  title: "INFRA: Implement proposed fix (INFRA-1655 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Fix is implemented and tested
+    - Fix does not introduce new issues
+

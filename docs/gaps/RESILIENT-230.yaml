@@ -1,0 +1,11 @@
+- id: RESILIENT-230
+  domain: RESILIENT
+  title: "RESILIENT: improve remediation (fix_pr) defaults to claude-sonnet-4-5, violating Principle 0 (cascade-only)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"improve remediation (fix_pr) defaults to claude-sonnet-4-5, violating Principle 0 (cascade-only)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

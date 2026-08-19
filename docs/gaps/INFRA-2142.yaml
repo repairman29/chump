@@ -2,7 +2,7 @@
   domain: INFRA
   title: "CREDIBLE P1: META-124/C14 L2-SLO-6 bisect-quarantine rate < 5% — FLEET_SLOS.md + chump health --slo-check"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "- Add L2-SLO-6 to docs/process/FLEET_SLOS.md:\n    L2-SLO-6: bisect_quarantine_rate < 5%\n    Definition: (count of bisect_quarantine ambient events in last 7d) / (count of integration_cycle_started events in last 7d) × 100\n    Window: 7 days rolling\n    Breach: >= 5% triggers L2-SLO-6 in chump health --slo-check non-zero exit\n    Rationale: high quarantine rate means batched-mode is producing too many failed cycles → either thresholds too aggressive (cycles too big) OR upstream gap quality dropped → operator should investigate\n- Implement check in chump health --slo-check command (Rust, src/health.rs):\n    1. Read ambient.jsonl for last 7d\n    2. Count integration_cycle_started + bisect_quarantine events\n    3. Compute rate; compare to threshold (5%)\n    4. Pretty-print: \"✗ BREACH  L2-SLO-6  [N.N%]  bisect-quarantine rate < 5%  └─ N quarantines / M cycles in 7d\"\n    5. Exit non-zero on breach\n- Add to chump health JSON output (--json) under slos.L2_SLO_6 with full breakdown.\n- 4+ unit tests: 0/0 cycles (no breach, log inconclusive), 1/20 = 5% (breach exactly at threshold), 1/30 (no breach), 5/50 = 10% (breach).\n- Cross-references INFRA-2137 (the quarantine emitter), INFRA-2132 (event kinds), docs/process/FLEET_SLOS.md (parent SLO doc)."

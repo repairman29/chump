@@ -1,0 +1,10 @@
+- id: CREDIBLE-253
+  domain: CREDIBLE
+  title: "CREDIBLE: Create a NATS-KV bucket for worker presence records (CREDIBLE-099 slice)"
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - NATS-KV bucket is created with the correct prefix (chump.workers.*)
+    - Bucket is accessible for writing and reading
+

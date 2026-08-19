@@ -1,0 +1,14 @@
+- id: RESILIENT-216
+  domain: RESILIENT
+  title: "test-deliberator-loop.sh pre-existing failure: voters_list missing + idempotency broken on 2nd tick"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Discovered while verifying RESILIENT-212 (deliberator daemon install fix): 'bash scripts/ci/test-deliberator-loop.sh' fails (exit 1) on a completely FRESH clone of origin/main (verified via a clean 'git clone .git' + 'git checkout origin/main', not this worktree — confirms it is NOT caused by RESILIENT-212's changes). Two assertions fail: (1) 'voters_list field missing from consensus_result' and (2) 'idempotency broken — count changed from 2 to 0' on a second tick run. Note this is likely test-harness state bleed (e.g. a shared temp ambient/feedback path reused across scenarios in the same script run, or a race on file truncation between the first and second tick invocation within the test) rather than a deliberator-loop.sh logic bug — a separate live production tick I ran during RESILIENT-212 verification correctly preserved idempotency and voters_list on real data. Low urgency since deliberator-loop.sh itself was proven correct against real production data, but this CI test giving a false-negative (or true-negative on a harness bug) undermines confidence in the a2a-consensus test suite.
+  acceptance_criteria:
+    - Reproduce scripts/ci/test-deliberator-loop.sh failure locally and isolate whether it's a test-harness fixture bug (shared tmp path, missing isolation between scenarios) or a genuine deliberator-loop.sh regression
+    - "If harness bug: fix test isolation (e.g. unique CHUMP_AMBIENT_LOG/CHUMP_FEEDBACK_LOG tmp paths per scenario) so the test is deterministic"
+    - "If real bug: fix scripts/coord/deliberator-loop.sh so voters_list is always populated and a second tick never re-processes/changes an already-idempotent count"
+    - "Test: scripts/ci/test-deliberator-loop.sh passes 3/3 consecutive runs with no flake"
+

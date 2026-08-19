@@ -2,7 +2,7 @@
   domain: META
   title: "META: Register and emit `kind=agent_admin_merge` ambient event (META-209 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - A new ambient event `kind=agent_admin_merge` is registered in the system's event schema.

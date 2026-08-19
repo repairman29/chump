@@ -1,0 +1,16 @@
+- id: INFRA-3540
+  domain: INFRA
+  title: "audit.yml has no docs-only lane: a 3-file .md PR pays two full cargo builds (~4.5m each) for gates that test nothing it changed"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "MEASURED 2026-08-08 on audit run 31266833185 (green, main). Shard wall-clock: shard-1 7m, shard-4 6m, shard-2 1m, shard-3 1m. Critical path = shard-1, and audit is the floor on EVERY PR including doc-only ones (see EFFECTIVE-415)"
+    - THE COST IS ONE COMPILE, NOT THE GATES. shard-1's slowest step is 'chump gap list domain summary (INFRA-431)' at 239s and shard-4's is 'stale-binary destructive-op guard (INFRA-825)' at 268s. Both are simply the FIRST step in their shard to run 'cargo build --bin chump' so each absorbs the whole cold compile; every later cargo step in the same shard is 1-2s. INFRA-582's own comment on that step claims 'Debug with shared cache completes in <60s' — it is 4x that now, so the comment is stale and should be corrected in the same change
+    - "DO NOT REBALANCE THE SHARDS. The 7/6/1/1 imbalance looks like the bug and is not: shards 1 and 4 are slow because they compile, not because they hold more gates. Their gates are cargo-dependent and cannot move to shards 2/3, which have no binary. Redistributing gates would cost effort and save zero wall-clock. This is written down so the obvious-looking fix is not attempted"
+    - "THE ACTUAL FIX — a docs-only lane in audit.yml. It currently has NO path filtering whatsoever (on: push/pull_request with no paths-ignore and no lane job). ci.yml already computes lane outputs and gates 3 jobs on 'rust'. When a PR changes zero .rs / .toml / .sh / gap-YAML files, the cargo gates in shards 1 and 4 verify binary behavior the PR cannot have altered — skip them"
+    - "SAFETY IS NON-NEGOTIABLE AND THE PATTERN ALREADY EXISTS: audit is branch-protection required, so skipping must use the needs + if:always() aggregator so 'audit' and 'audit-required' still report SUCCESS on a skipped lane. This is proven in-repo — clippy-required and cargo-test-required did exactly this on PR #3489 while their lanes skipped. Do not invent a new mechanism"
+    - "SCOPE THE LANE NARROWLY: Chump gaps are YAML, so 'documentation' is NOT the test — gap-integrity and gap-status gates MUST still run whenever any gap YAML changes. Gate on 'touched only docs/**/*.md and no .rs/.toml/.sh/gap YAML', and prove it with a fixture PR that touches a gap YAML and confirms the cargo gates still fire"
+    - "SEPARATE, SMALLER LEVER (file as follow-up if it does not fit here): sccache hit rate is 31% on that run — 901 compile requests, 714 executed, only 281 hits. Improving it cuts BOTH build shards on every PR, including the Rust PRs a docs-only lane can never help. Record the hit rate in the run so it is trendable rather than rediscovered"
+  outcome_id: MISSION-010
+

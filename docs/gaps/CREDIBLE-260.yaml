@@ -1,0 +1,10 @@
+- id: CREDIBLE-260
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement worker registration RPC handler (CREDIBLE-099 slice)"
+  status: open
+  priority: P3
+  effort: s
+  acceptance_criteria:
+    - The register_worker_rpc_handlers function is implemented to handle worker registration RPC requests
+    - The handler stores the worker presence record in the NATS-KV bucket
+

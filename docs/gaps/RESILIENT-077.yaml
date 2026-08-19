@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "RESILIENT P1: farmer guards trunk + CI capacity — trunk-red auto-dispatch, ghost-runner restart, saturation throttle (playbook #5)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Farmer's Playbook precondition #5 (docs/process/FARMER_PLAYBOOK.md). Production stops when main goes red (blocks ALL merges), a self-hosted runner ghosts (the 17h-online incident: registered+online but picking no jobs), or CI saturates (queued jobs > runner count -> queue wedge). Make the farmer (RESILIENT-068, un-killable + pause-immune) guard these each tick: (a) detect main-CI red + dispatch a rescue, or page operator_recall CI_BROKEN if it can't auto-fix; (b) detect a ghost-online self-hosted runner (online but idle while jobs queue) + restart it; (c) detect CI saturation sustained > N min + emit a throttle signal so the conductor/operator can dial autonomy down. Gate all on AUTONOMY_LEVEL>=1 (kill switch wins).

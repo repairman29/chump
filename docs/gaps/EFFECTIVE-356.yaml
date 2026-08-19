@@ -1,0 +1,15 @@
+- id: EFFECTIVE-356
+  domain: EFFECTIVE
+  title: "EFFECTIVE: growth worker — release notes + docs refresh from merged PRs (factory L7)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Factory-model L7 (growth) is the emptiest layer in the software-factory matrix (docs/strategy/SOFTWARE_FACTORY_MATRIX_2026-08-05.md, DOC-079) and mirrors the operator's own bottleneck: built != shipped != TOLD (GIVEAWAY_SOP Phase E is entirely human today). Rough shape: (a) release-notes generator — weekly sweep of merged PRs + shipped gaps into human-readable notes (reuse merge-history readers in kpi_report / github cache, not new gh polling); (b) stale-doc check — flag docs/ pages whose cited behavior shipped changes; (c) PRODUCT-137 operator weekly digest is the first consumer, not a duplicate — this gap produces the content layer it consumes; (d) loop in holler-inbox counts as the adoption/feedback signal. Constraint: read-only over git/state.db/ambient.jsonl; no new state stores.
+  acceptance_criteria:
+    - A growth chair produces release notes + docs refresh + a draft announcement after ship, closing shipped->told
+    - "Proven: a shipped gap yields release notes + updated docs + an approval-ready announcement, so shipping is followed by telling (not silent)"
+  notes: |
+    M3 CLARIFICATION (Jeff 2026-08-05): 'tell people' = draft posts on JEFF'S OWN SITES in PREVIEW MODE, audited by OUR OWN INFRA, scored against OUR OWN STANDARDS — a self-contained closed loop, low-risk (own sites, preview, own audit), autonomous except the final publish. PIPELINE: draft (herald + content/STYLE.md) -> render PREVIEW on Jeff's own site (Vercel preview deploy / preview surface, NOT prod) -> AUTO-AUDIT via our own infra (release-auditor agent + voice-lint against STYLE.md banned-registers + receipt-check that every claim ties to a merged diff) -> SCORE against our own standards (a copy-judgment organ, same block-seam pattern as the code judgment organ CREDIBLE-191: score voice-fit / factual-receipts / no-agency-polish / no-performed-punk / no-em-dashes; below threshold -> revise loop, not publish) -> queue the PASSING preview for Jeff's one-click approve -> publish. Only the publish is human. REUSE: herald (draft), release-auditor (audit), STYLE.md (standard), the judgment-organ block plumbing (score), Vercel preview deploys (render). SLICE 1: release-notes-from-merge-log drafted -> previewed on a personal-site changelog page -> auto-audited+scored -> Jeff-approve. MORE COMING: Jeff is filing more gaps on this in the store soon — the loop should pick them up. This is M3 on the ladder to M5 (V3/COTG hands-off launch).
+  outcome_id: CHUMPOS
+

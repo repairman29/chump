@@ -4,5 +4,7 @@
   status: open
   priority: P1
   effort: m
+  acceptance_criteria:
+    - bot-merge no longer exits 144 silently; on failure it prints the failing step and a non-zero diagnosable cause, and a regression test reproduces the exit-144 condition asserting a loud failure.
   outcome_id: RESILIENT-000
 

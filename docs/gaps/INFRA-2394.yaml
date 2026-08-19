@@ -2,9 +2,14 @@
   domain: INFRA
   title: "ZERO-WASTE: audit 74 install-*-launchd.sh — only 2 wired to bootstrap; identify ~70 unwired installers"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "[\"Script scripts/audit/audit-launchd-installers.sh ranks all 74 scripts/setup/install-*-launchd.sh by total inbound refs (bootstrap + workflows + docs + sibling scripts)\",\"Audit output: 3 buckets — WIRED (≥2 refs from bootstrap or scripts/coord/), DOCUMENTED (≥1 doc ref but no executor), UNWIRED (zero refs from any executor)\",\"UNWIRED bucket members are surfaced as candidate-delete in audit output; operator decides per-installer (some may be intentional escape hatches)\",\"Audit emits kind=installer_audit_finding to ambient.jsonl per UNWIRED installer with fields {path, introducing_pr, introducing_gap, ref_count_by_class}\",\"No deletions in this PR — only audit + report; deletion is a follow-up gap per-installer or batched\",\"Audit can be re-run as a launchd daemon (scripts/setup/install-installer-audit-launchd.sh, weekly cadence) — file as INFRA-2394-followup if scope balloons\"]"
+    - Script scripts/audit/audit-launchd-installers.sh ranks all 74 scripts/setup/install-*-launchd.sh by total inbound refs (bootstrap + workflows + docs + sibling scripts)
+    - "Audit output: 3 buckets — WIRED (≥2 refs from bootstrap or scripts/coord/), DOCUMENTED (≥1 doc ref but no executor), UNWIRED (zero refs from any executor)"
+    - UNWIRED bucket members are surfaced as candidate-delete in audit output; operator decides per-installer (some may be intentional escape hatches)
+    - Audit emits kind=installer_audit_finding to ambient.jsonl per UNWIRED installer with fields {path, introducing_pr, introducing_gap, ref_count_by_class}
+    - No deletions in this PR — only audit + report; deletion is a follow-up gap per-installer or batched
+    - Audit can be re-run as a launchd daemon (scripts/setup/install-installer-audit-launchd.sh, weekly cadence) — file as INFRA-2394-followup if scope balloons
   outcome_id: MISSION-010
 

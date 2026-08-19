@@ -1,0 +1,20 @@
+- id: PRODUCT-145
+  domain: PRODUCT
+  title: "[peakvinyl.club] Sponsorship/Friend tier price inconsistent: $99 in one place, $49 in another"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Fresh-context stranger-agent cold test of peakvinyl.club (Scout, stranger tier, ~10 min bounded session, no account/payment).
+    
+    The "Friend" sponsorship tier is listed as $99/year in one location on the site and $49/year in another (same tier name, same page context, different number). A prospective sponsor comparing tiers would see conflicting pricing depending on which section they read.
+    
+    context: {"url":"https://peakvinyl.club","tier":"stranger","source":"scout-stranger-agent"}
+    source: holler feedback_events, dedupe 50acca5114983a8d
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/pvc"
+

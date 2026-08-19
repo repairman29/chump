@@ -2,7 +2,7 @@
   domain: INFRA
   title: "CI/QA: every required check accurate, no flakes, zero false-positive failures, 100% catch rate on local-vs-CI parity (META-074 child A)"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   description: |
     Child A of META-074. Operator priority #1: "CI/QA to be 100%."

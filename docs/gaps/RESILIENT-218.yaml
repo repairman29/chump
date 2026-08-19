@@ -1,0 +1,27 @@
+- id: RESILIENT-218
+  domain: RESILIENT
+  title: "orphan_worktree_detected reports claim_gap_id:null for actively-claimed worktrees -- tier3 reaper then destroys them"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - orphan_worktree_detected sets claim_gap_id to the owning gap for actively-claimed worktrees (never null); the tier3 reaper skips any worktree with a live claim/lease so active work is never destroyed.
+  notes: |
+    Root-cause candidate found 2026-08-02, NOT fixed — deliberately left for the fleet given the stakes (this gap's own notes already describe a near-miss on the main checkout). scripts/coord/orphan-worktree-watchdog.sh's _get_gap_id() (line 149) matches a worktree to its claim via FUZZY SUBSTRING matching: either the worktree path appears literally inside the claim file's 'purpose' string, or a gap-ID-derived slug appears inside the branch name (orphan-worktree-watchdog.sh:160-174). Both are heuristics, not a direct field lookup — if a real claim's purpose/branch text doesn't happen to contain the expected substring (plausible given how many scripts write claim-*.json across this codebase, e.g. src/atomic_claim.rs's purpose field sometimes reads 'reserve' or 'fleet:pick_and_claim' with no worktree-path or gap-slug substring at all, per the fleet_status.rs test fixture), the match silently fails and the worktree gets reported orphaned even while genuinely claimed. Proper fix needs someone with real context on the current claim-file schema (does every claim file reliably carry a worktree_path field the watchdog could match directly instead of guessing from purpose/branch strings?) and the ability to test against live concurrent claims — not something to touch blind given the near-miss already on record.
+  outcome_id: RESILIENT-000
+  evidence: |
+    COMMAND: grep effective-330 .chump-locks/ambient.jsonl | grep -E "orphan|tier3"
+    OUTPUT:
+    {"ts":"2026-07-30T13:12:51Z","kind":"orphan_worktree_detected","worktree_path":"/private/tmp/chump-effective-330","branch":"chump/effective-330-claim","uncommitted_line_count":2,"age_minutes":17,"claim_gap_id":null}
+    (repeats at 13:17, 13:22, 13:28, 13:33, 13:38 -- claim_gap_id stays null every time)
+    {"ts":"2026-07-30T14:57:42Z","kind":"worktree_orphan_pruned_tier3","path":"/private/tmp/chump-effective-330","freed_mb":4074}
+    
+    COMMAND: cat .chump-locks/claim-effective-330-*.json (at the time of detection)
+    OUTPUT: a real, valid, non-expired claim lease existed for EFFECTIVE-330 the entire time -- I was actively editing/committing/shipping in that exact worktree when the detector logged claim_gap_id:null and, ~1h45m later, a "tier3" reaper destroyed it.
+    
+    THEORY: the orphan-worktree detector (separate from scripts/ops/prune-worktrees.sh, which correctly checks for an active lease per RESILIENT-013's own doc comment) is failing to correlate this worktree to its real lease -- likely a session-id / lease-file-naming mismatch, or it's checking a different lease directory/pattern than chump claim actually writes. Once it decides claim_gap_id is null often enough, a separate "tier3" prune step (kind=worktree_orphan_pruned_tier3) destroys the worktree with no open-PR check and no re-verification against the live lease at deletion time.
+    
+    IMPACT: in this incident the branch had already been pushed to origin, so recovery was possible (re-fetch + rebase + re-push, done live this session). If the same misclassification hits a worktree with real uncommitted, unpushed work, this reaper would silently destroy it -- a real data-loss path, not just a disk-hygiene one.
+    
+    ALT: could also be a stale/duplicate orphan-detector daemon left over from a prior scheme (INFRA-1461 mentions worktree path standardization drift) that was never fully retired when prune-worktrees.sh's safer, lease-aware version (RESILIENT-013) shipped.
+

@@ -1,0 +1,20 @@
+- id: CREDIBLE-214
+  domain: CREDIBLE
+  title: "CREDIBLE: runtime claims have no honesty gate — tools report what they DID and never what they could not do"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    The third category of inflated claim, and the only one with zero coverage. Mapped 2026-08-07: (1) DOC claims — README/docs saying more than the code does; covered by CREDIBLE-209 (almanac audit, now P1) for the portfolio and by almanac's own docs_match_reality tests in-repo. (2) MEASUREMENT claims — quality numbers drifting from reality; covered by scripts/eval-gate.sh, which exists precisely because the README advertised 94 percent hit@5 while live had fallen to 76. (3) RUNTIME claims — a tool's own summary of a run it just performed. Nothing covers these, and they are the most trusted line a tool ever prints because it is emitted by the thing that just did the work. Scope: every command that ends in a summary (index, add-ref, embed, summarize, refresh, gc, and the MCP equivalents) must account for material work NOT done alongside work done. CREDIBLE-210 is the discovered instance (add-ref over a C repo) and may ship as slice 1 of this or be folded in and closed with a pointer — decide at claim time, do not do both.
+  acceptance_criteria:
+    - every CLI and MCP summary that reports work performed also reports material work SKIPPED with counts — unsupported languages, excluded paths, unreadable and failed files
+    - "materiality is defined and testable rather than a judgement call: a skipped language that is the crawl's plurality or the repo's primary language ALWAYS speaks, as does any skip above a stated percentage of files crawled; a skipped lockfile does not"
+    - the accounting appears in the machine-readable surface (--json and MCP responses), not only human stderr — agents are the primary consumer and they never see stderr
+    - a test proves a crawl that drops a repo's PRIMARY language cannot emit an unqualified success line, and fails without the change
+    - "CREDIBLE-210 is explicitly resolved one way or the other in the same PR: shipped as the first instance, or closed with a pointer to this gap — never left open alongside a fix that covers it"
+    - DEPTH.md updated in the same commit naming the depth tier and the remaining gaps
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: almanac add-ref https://github.com/DeusData/codebase-memory-mcp --rev v0.9.0  then  sqlite3 ~/.almanac/indexes/codebase-memory-mcp.db 'SELECT language, COUNT(*) FROM files GROUP BY language'  |  OUTPUT: the CLI printed unqualified success — "reference 'codebase-memory-mcp' indexed: 137 files, 899 symbols. Query it: almanac api <name> codebase-memory-mcp". The index holds ZERO rows for the repo's PRIMARY language: 528 non-vendored .c/.h files, 401,440 lines, dropped because ast-crawler maps only rs/py/js/ts/go/sh/yaml/md and parse.rs continues past anything else. A reader of that line has no way to know 97 percent of the source was invisible.  |  THEORY: almanac's honesty layer is asymmetric. The RETRIEVAL side is well covered — fallback_reason, mode_used, coverage percentages, staleness, zero-hit notes, impact's lower-bound note. The PRODUCTION side has nothing: index, add-ref, embed, summarize, refresh and gc all report work COMPLETED and never work SKIPPED, so a count with no denominator reads as completeness. Identical failure shape to the retrieval side before fallback_reason existed, and to the markdown-invisibility incident (almanac#3, 2026-08-02) where the pipeline dropped a whole language class in silence.  |  ALT: considered letting CREDIBLE-210 (the add-ref instance) stand alone — rejected: patching one summary line leaves the same hole in five other commands, and this fleet's own history says single-stage checks get routed around (INFRA-1969 docs-delta, and CREDIBLE-213 filed today). Considered warning on ANY skip — rejected as noise: a skipped lockfile is not news. The rule has to be materiality-scoped so the warning keeps its meaning.
+

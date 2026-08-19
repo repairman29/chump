@@ -1,0 +1,16 @@
+- id: CREDIBLE-241
+  domain: CREDIBLE
+  title: "CREDIBLE: [almanac] non-git sources can never go stale because refresh has no HEAD to compare — and one is stamped with its parent repo's commit"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Two related defects found 2026-08-08 while auditing source freshness. (1) refresh() decides staleness by comparing git HEAD to indexed_commit. For a non-git directory head_commit() returns None, the match falls through to '_ => force', and the repo is re-indexed ONLY under --force. The hourly cron runs plain 'almanac refresh', so a non-git source is indexed once and never again. Three are registered today — fucked, twenty1, house-sit-form-helper — all added this session, all now permanently frozen unless someone remembers --force. (2) Worse and subtler: 'almanac refresh fucked' reports 'fresh 4a0315b...' — a commit hash, for a directory with no .git. Cause: head_commit runs 'git -C <path> rev-parse HEAD', which WALKS UP the tree. ~/Projects is itself a git repo, so every non-git child inherits the PARENT's HEAD as its indexed_commit. The consequence is not merely cosmetic: those children now re-index whenever ~/Projects commits, for reasons wholly unrelated to their own content, and report 'fresh' the rest of the time. Fix direction: detect the repo boundary (git rev-parse --show-toplevel and compare to the indexed root) and treat a mismatch as non-git; then give non-git sources a real change signal — a content digest or max-mtime over the crawl — so they can be honestly stale. Related: the discovery cron only finds git repos, which is why non-git dirs must be registered by hand (the opportunity-library blind spot) — this gap is that blind spot's other half, freshness rather than discovery.
+  acceptance_criteria:
+    - "head_commit does not attribute an ancestor repo's HEAD to a non-git subdirectory: rev-parse --show-toplevel is compared against the indexed root and a mismatch yields None"
+    - non-git sources get a real staleness signal (content digest or max-mtime over the crawl) so plain 'almanac refresh' can detect a change without --force
+    - "a test covers the exact live shape: a non-git directory nested inside a git repo must NOT report the parent's commit and must NOT report 'fresh' after its files change"
+    - the three currently-registered non-git sources re-index correctly after an edit, proven by editing one and running plain refresh
+    - almanac repos or status shows which sources use which staleness mechanism, so 'this one cannot detect changes' is visible rather than inferred
+  skills_required: "external_repo:repairman29/almanac"
+

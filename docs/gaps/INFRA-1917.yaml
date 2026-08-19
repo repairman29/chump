@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: productize 7 curator roles as .claude/agents/ definitions + slash commands (mirror INFRA-1823 Harvester pattern, A2A-collected AC)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - Each of 7 curator roles (shepherd, ci-audit, target, decompose, handoff, md-links, orchestrator) gets a .claude/agents/<role>.md definition that mirrors the .claude/README.md discipline (capability lives in a script under scripts/coord or scripts/dispatch; agent body delegates to it; no logic duplication)

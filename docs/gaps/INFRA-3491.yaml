@@ -1,0 +1,14 @@
+- id: INFRA-3491
+  domain: INFRA
+  title: "RESILIENT: [COTG-2.3] cross-PR coordination / merge-order hazard detection"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-2.3] cross-PR coordination / merge-order hazard detection\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~30% -> FINISH. collision_prediction.rs is a mock; better neighbor = contract-scan --in-flight (+ scripts/ci/test-cross-pr-contract.sh) which detects writer/reader key-mismatch across open PRs. Add a numeric double-bump detector there.
+  outcome_id: COTG
+

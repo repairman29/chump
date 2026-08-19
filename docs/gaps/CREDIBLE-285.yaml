@@ -1,0 +1,15 @@
+- id: CREDIBLE-285
+  domain: CREDIBLE
+  title: "CREDIBLE: almanac import-edge resolution is ~20% (540/2765) — resolve Rust mod/use/crate:: edges so impact+neighbors give a real dependency DAG, not a false near-empty lower-bound"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "almanac resolves Rust module edges (mod X; use crate::X; use super::) so a file wired into the tree reports non-empty imported_by/imports — proven: almanac_neighbors(front_door.rs) shows main.rs (or its parent mod) as an importer"
+    - "almanac_architecture edges_resolved/edges_total rises materially above the current ~20% (target: >70% for Rust) — measured on chump"
+    - almanac_impact returns a real transitive blast radius for a hub file (repo_path.rs, imported_by 27) instead of a near-empty walk
+    - Also resolve shell source and python import edges where cheap; the note keeps stating the resolved fraction so degradation stays loud
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: mcp almanac_architecture(chump) + almanac_neighbors(front_door.rs). OUTPUT: note says LOWER BOUND 540 of 2765 import edges resolved (~20 pct); front_door.rs returns imported_by:[] imports:[] though it is clearly wired into main.rs. THEORY: almanac does not resolve Rust mod/use/crate:: (and likely shell source, python import) edges, so almanac_impact/neighbors return a near-empty graph — unusable for dependency-ordering / CI-batching / blast-radius, and silently wrong (returns [] not error). Clustering (architecture modules+hubs) and fusion search WORK; only the edge graph is broken. ALT rejected: keep using it for deps (gives false 80-pct-blind DAG). Siblings: INFRA-3529 (fusion favors code over docs), INFRA-3530 (SQL unindexed).
+

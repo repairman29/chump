@@ -1,0 +1,17 @@
+- id: EFFECTIVE-374
+  domain: EFFECTIVE
+  title: "EFFECTIVE: mop and bucket — posse + fluff-audit sweep the owned portfolio, findings holler back into the fleet"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    The retroactive front: a portfolio-wide bullshit sweep over OWNED repos only (posse outward NO-GO 2026-08-04 binding — allowlist, never strangers). Compose three existing organs: (a) posse crawl/stranger over live surfaces via scan-portfolio.mjs — dead links, broken flows, works-cold failures (receipts of the disease already shipped: beast-mode.dev both CTAs 307 into a dead Supabase hostname; upshift 0.5.5 dead on npm 14 days with a 0-byte README); (b) almanac fluff-audit (CREDIBLE-209) over the same repos' textual claims — README promises vs index reality (receipt: BEAST-MODE claims 'Enterprise Quality Intelligence Platform', dossier grades 3-star claimed; REALITY_MAP par.0 exists because self-description overstates); (c) findings file via report-holler.mjs dedupe into holler, drain via the proven holler-to-chump bridge (5-bug fix verified 2026-08-05; --apply rerun owed under EFFECTIVE-368) into gaps the fleet fixes. Cadence: weekly sweep, prioritized by opportunity-library leverage tier (4-star+ repos first). Sequencing: needs CREDIBLE-209 (the audit tool) and rides EFFECTIVE-368's sweep infrastructure — do not build a second sweeper.
+  acceptance_criteria:
+    - one full sweep of 4-star+ repos completed with findings in holler
+    - zero foreign surfaces touched (allowlist enforced)
+    - bridge drains the findings into gaps with external_repo tags
+    - repeat sweep is one command plus a launchd entry
+    - bust findings counted per repo so the mop-and-bucket trend is measurable
+  depends_on: [CREDIBLE-209]
+  outcome_id: MOP-BUCKET
+

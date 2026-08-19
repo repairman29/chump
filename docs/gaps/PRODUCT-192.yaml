@@ -1,0 +1,20 @@
+- id: PRODUCT-192
+  domain: PRODUCT
+  title: "[chump] CONFIRMED: main fails 19 tests under stable 1.97 sequential run - order-dependent state poisoning, machine-coupled"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Confidence: unknown -- no tier recorded (filed before the tier field existed, or by a producer that has not adopted it yet) -- verify independently before trusting it.
+    
+    Controlled experiment 2026-08-05: clean origin/main, full `cargo test --bin chump -- --test-threads=1` under stable 1.97 -> 19 FAILED (diff_review_tool + repo_tools + repo_path + tool_middleware families); identical run under 1.96 scheduling -> green. The Phase D branch shows the same failures (same families) -> diff-independent, pre-existing on main. Failure mechanism: victims resolve repo root to /Users/jeffadkins/Projects/Chump instead of their own tempdir fixtures - an earlier test in the a..d alphabetical range leaves global repo-resolution state poisoned (candidates: the WORKING_REPO_OVERRIDE static in repo_path.rs, or CHUMP_REPO/HOME unset-then-fallback). Contributing smells found during the dig, all worth fixing: (1) web_server.rs:2270 hardcodes "/Users/jeffadkins/Projects/Chump" as a PROD fallback - breaks any other machine and masks fixture isolation failures; (2) tool_middleware tests check_postconditions_write_file_fails_when_file_{missing,empty_but_claimed_content} set CHUMP_HOME with no restore; (3) five env/override-mutating tests lacked #[serial] (fix included on branch feat/almanac-phase-d-grounded-dispatch: doctor.rs, routes/roadmap.rs, tool_middleware.rs x3). Impact: the INFRA-761 pre-push gate hard-blocks any .rs push from a machine whose PATH cargo is 1.97, forcing audited bypasses. Repro logs preserved in the landing-session scratchpad.
+    
+    context: {"source":"claude-triage/phase-d-landing-2026-08-05","related":"PRODUCT-169","supersedes":"pre-push test gate fails on trees that pass..."}
+    source: holler feedback_events, dedupe b3e49831351e933a
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/chump"
+

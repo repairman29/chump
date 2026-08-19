@@ -1,0 +1,12 @@
+- id: RESILIENT-272
+  domain: RESILIENT
+  title: "RESILIENT: helsinki ships 0/10 grinding junk pillar-starved gaps — filter to real work so it becomes a live 2nd host"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - the helsinki picker filters out pillar-starvation/junk gaps and selects real work; a measured run ships >0 real gaps where it previously shipped 0/10.
+  outcome_id: FLEET-BUILD-SPEED
+  evidence: |
+    ~/.chump/chumpbar-helsinki.json: helsinki 2 workers, grind mode, last10=0/10, both grinding manufactured pillar-starved gaps (INFRA-2789 'MISSION-ZERO-WASTE: pillar starved', INFRA-2802 'MISSION-RESILIENT: pillar starved') — the exact junk-gap class CLAUDE.md Mission-Driver §2 warns against. Helsinki is online, NATS-coordinated, own filesystem (no shared-lock) = free 2nd shipping host, but failing everything.
+

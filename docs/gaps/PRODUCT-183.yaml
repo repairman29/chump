@@ -1,0 +1,13 @@
+- id: PRODUCT-183
+  domain: PRODUCT
+  title: "PRODUCT: Implement Two-Speed Response for Agentic Tasks (PRODUCT-177 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Long-running tasks return an immediate 'spoken' acknowledgment (e.g., 'I'm digging into that now')
+    - Server-side process continues to run after the initial response is sent
+    - Result of the background task is cached and delivered on the subsequent user ask
+  depends_on: [PRODUCT-180]
+  outcome_id: EFFECTIVE-000
+

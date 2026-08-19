@@ -2,7 +2,7 @@
   domain: VOA
   title: "VOICE-OF-AGENT VOA-008: node-disk-hygiene-missing — 25 min lost; fix-shape: tooling"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
     - Full friction report at docs/voice/VOA-008-FULL.yaml with wedge_class=node-disk-hygiene-missing, minutes_lost=25

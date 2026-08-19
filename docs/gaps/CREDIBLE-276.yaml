@@ -1,0 +1,17 @@
+- id: CREDIBLE-276
+  domain: CREDIBLE
+  title: "loose ends from the 2026-08-09 session: uninvestigated tools, a dead flag I shipped, stale docs, and unclassified PRs"
+  status: open
+  priority: P3
+  effort: s
+  acceptance_criteria:
+    - HOUSEKEEPING GAP — deliberately low priority, filed so these do not evaporate. Every item was OBSERVED during the 2026-08-09 session and never chased
+    - 1. pr-title-drift-detector.sh (scripts/coord/) reads PR title + body + files + diff and was never examined. It may already do part of what CREDIBLE-268 needs — a check that a PR matches what its title claims. Determine whether it runs on a schedule and whether it overlaps 268 before building anything new there
+    - "2. A DEAD FLAG SHIPPED TO MAIN BY THIS SESSION: scripts/ops/first-pass-yield.sh parses --json into AS_JSON and never uses it (2 references, both inert). Either implement it or remove it. Noted with some irony: it was written hours after filing several gaps about exactly this class of defect"
+    - "3. MAIN CI FAILURE at 2026-08-09T22:16:30Z went uninvestigated — a job-level query returned nothing and it was not chased. Main was green again at 22:19:40, so it was likely the proof_of_merge flake (CREDIBLE-251), but that is UNVERIFIED. Confirm or find the real cause"
+    - "4. THREE FLEET WORKTREES IN FLIGHT were never examined: chump/doc-093-claim, chump/resilient-269-claim, chump/credible-201-claim. DOC-093 matters most — it is a gap this session FILED (the Discord decision record) now being worked by another session, and nobody here knows what it says. Check it does not contradict the openclaw port policy the operator set"
+    - "5. STALE ARTIFACTS: DISCORD_HANDOFF.md still says RESILIENT-266 is \"in progress\" and that nothing is linked with depends_on — both false since 2026-08-09T21:18Z. Almanac chump index sits at a7b79c63 while head is aa5652e2"
+    - "6. YIELD SAMPLE IS HALF-CLASSIFIED: CREDIBLE-273 reports 14 PRs but only 7 had their failures classified into real-defect / late-obligation / false-signal / scope-blind. The headline claim that under 5% of failures were real defects rests on those 7. Classify the other 7 before that number is quoted as fleet-wide"
+    - "7. THE DISCORD GATEWAY IS STILL RUNNING AND STILL BROKEN (RESILIENT-277): it will keep producing dead approval cards on any tool-gated request. Either land 277 or stop the daemon — launchctl bootout gui/$(id -u)/ai.chump.discord-gateway. Leaving a known-broken user-facing surface running is its own small defect"
+  outcome_id: MISSION-010
+

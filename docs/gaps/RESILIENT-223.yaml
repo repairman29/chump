@@ -1,0 +1,11 @@
+- id: RESILIENT-223
+  domain: RESILIENT
+  title: "Expired leases block own-gap ship: INFRA-3455 reconciles CHUMP_SESSION_ID to an EXPIRED lease row (ignores expires_at), and the lease-reaper leaves expired rows in state.db — a stale ~20h lease made bot-merge preflight-FAIL a self-owned gap. Fix: INFRA-3455 must skip expired leases; reap expired lease rows"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"INFRA-3455 reconciles CHUMP_SESSION_ID to an EXPIRED lease row (ignores expires_at), and the lease-reaper leaves expired rows in state.db — a stale ~20h lease made bot-merge preflight-FAIL a self-owned gap. Fix: INFRA-3455 must skip expired leases; reap expired lease rows\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

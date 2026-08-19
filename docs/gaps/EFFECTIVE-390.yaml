@@ -1,0 +1,13 @@
+- id: EFFECTIVE-390
+  domain: EFFECTIVE
+  title: holler-bridge + dispatch grounding query the WRONG repo for external_repo gaps
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "almanac_grounding_block (crates/chump-orchestrator/src/dispatch.rs:980-1005) passes repo_root — the Chump checkout — as the almanac repo selector, with no external_repo branch anywhere in dispatch.rs. So a gap tagged external_repo:repairman29/olive is grounded against CHUMP's index and the agent receives Chump file:line hits for a bug that lives in olive. Wrong-repo grounding is worse than none: it is confidently misleading"
+    - "Fix: when a gap carries skills_required external_repo:<owner>/<name>, resolve that repo's almanac slug and query THAT index; if the target repo is not registered, emit no grounding block rather than a wrong one (fail silent, never fail misleading — matches the existing every-failure-path-leaves-the-prompt-unchanged contract)"
+    - "Deterministic intake enrichment: the holler->chump bridge (games/shared/playtest/holler-to-chump.mjs) attaches candidate almanac hits for the TARGET repo into the gap at reserve time, so the grounding is visible to the picker and any human triager rather than only to the one dispatched agent. Bridged gaps currently land with generic template ACs and no location at all"
+    - Candidates must be labelled candidates. Carry the same discipline Phase D already uses — a map, not an answer — plus the indexed commit, so a stale hit is detectable. Dispatch-time grounding still runs and refreshes it
+    - "Zero-LLM: the enrichment is a search call, not a judgment. The bridge's deterministic spine (HOLLER_CHUMP_BRIDGE.md) must stay LLM-free — deciding whether a hit is RELEVANT stays with the agent"
+

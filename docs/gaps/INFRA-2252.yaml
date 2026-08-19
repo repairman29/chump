@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: local merge queue — scripts/coord/local-merge-queue.sh replaces gh pr merge --auto when CHUMP_GITHUB_MODE=offline (referenced in OFFLINE_FIRST.md as INFRA-1321 but never filed; Phase 3 of INFRA-2246 offline-first roadmap)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - scripts/coord/local-merge-queue.sh — when CHUMP_GITHUB_MODE=offline, gap shipping merges to local main via this script instead of gh pr merge --auto

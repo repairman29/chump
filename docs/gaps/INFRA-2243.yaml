@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE P1: nextest matrix sharding — split cargo-test across 4 ubuntu-latest runners via cargo-nextest --partition; 4× test wall-clock parallelism"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "1. .github/workflows/ci.yml cargo-test job converted to matrix with N=4 shards. Each runs 'cargo nextest run --partition count:i/4'. Parallel ubuntu-latest runners."

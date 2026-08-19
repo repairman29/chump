@@ -1,0 +1,11 @@
+- id: INFRA-3535
+  domain: INFRA
+  title: pre-push test gate should use nextest like bot-merge (CREDIBLE-175) — cargo test false-reds env races
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The pre-push hook's INFRA-761 test gate prefers cargo nextest run --bin chump (process-isolated) when nextest is installed, falling back to cargo test only when absent — the same CREDIBLE-175 fix bot-merge's own test stage already made
+    - The known false-red set (repo_path/repo_tools/tool_middleware CHUMP_REPO env races, INFRA-3534) passes the gate from a bare shell with a live chumpd daemon
+    - The hook source of truth is updated wherever hooks are installed from, not just .git/hooks on one machine
+

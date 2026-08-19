@@ -1,0 +1,19 @@
+- id: EFFECTIVE-419
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [almanac] the key discount trades catalog discoverability for ranking — a generic tools question buries the catalog"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    A tension I introduced on 2026-08-08 and have not resolved. Indexing JSON catalogs cost chump-breadth 0.10 fusion MRR at flat hit-rate, so  symbols are halved in keyword scoring (commit 8ffbef3, harder than the 25% heading discount because a key carries a name and no prose). That fixed ranking and cost discoverability. Measured the same day: 'mcp_tools filesystem git gaps memory' — a plainly catalog-shaped question — returns orchestrator main.rs, a webhook receiver, gap-store and highlight.js, and NOT docs/CAPABILITIES_REGISTRY.json, which holds 5,982 indexed symbols and is exactly the right answer. A targeted query ('CAPABILITIES_REGISTRY crate_apis event_kinds') returns it at rank 1. So the catalog is findable when you already know its name, which is the opposite of what a catalog is for. Possible directions, to be MEASURED not assumed: score a key by whether the query looks catalog-shaped rather than by a flat discount; boost keys whose file is small and dense (a registry) over keys in incidental config; or treat catalog files as a distinct kind from ordinary JSON config. Whatever is tried must run through all four gate suites including almanac-docs, since the flat discount is currently what holds chump-breadth's MRR up.
+  acceptance_criteria:
+    - a generic catalog-shaped question ('what mcp tools does the fleet have', 'which cli commands exist') surfaces CAPABILITIES_REGISTRY.json in the top 5 — that exact query is the regression test and it must fail without the change
+    - chump-breadth fusion MRR does not fall back toward the -0.10 the flat discount was introduced to fix; all four suites run before and after with numbers in the commit message
+    - the mechanism chosen is stated with its reasoning, since the next person will otherwise read the discount as arbitrary
+    - DEPTH.md's retrieve.rs row is updated — it currently records the key discount as measured-but-not-unit-tested, and whatever replaces it needs the same honesty
+  depends_on: [CREDIBLE-240]
+  notes: |
+    Description note: one word was eaten by shell backtick expansion at filing time — the sentence reads "so  symbols are halved" and should read "so KEY-kind symbols are halved". The mechanism is the h.kind == "key" branch in crates/almanac-core/src/retrieve.rs, which halves the score of every JSON key symbol.
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: EFFECTIVE-000
+

@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE P1 (META-128 SCALE): BuildBuddy RBE integration — drop-in sccache R2 replacement with bonus remote-execution preview + test-result cache (free tier validates AI-fleet-scale economics)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "1. Sign up for BuildBuddy free tier (https://app.buildbuddy.io); operator stores BUILDBUDDY_API_KEY in GH secrets"

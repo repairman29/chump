@@ -2,12 +2,9 @@
   domain: INFRA
   title: "EFFECTIVE P1: META-125/C7 chump consensus resolve and status subcommands — aggregator + queryable decision state"
   status: open
-  priority: P1
+  priority: P3
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "`chump consensus resolve` aggregates votes to a decision and `status` returns current queryable state for a consensus_id."
   outcome_id: MISSION-010
 

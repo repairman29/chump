@@ -2,7 +2,7 @@
   domain: META
   title: "ZERO-WASTE: productize queue-tender curator role — daemon + plist + installer + role doc + skill (the cron loop I've been running, made permanent)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "1. scripts/coord/queue-tender-loop.sh exists and is executable with tick/heartbeat/help subcommands; 2. .chump/launchd/com.chump.queue-tender.plist exists with StartInterval=300; 3. scripts/setup/install-queue-tender.sh install/uninstall/status/check subcommands work idempotently; 4. scripts/ci/test-queue-tender.sh runs 7 tests and all pass; 5. .claude/agents/curator-opus-queue-tender.md and .claude/skills/queue-tender/SKILL.md exist; 6. docs/process/QUEUE_TENDER_DOCTRINE.md exists; 7. kind=queue_tend_tick emitted on each tick cycle; 8. CHUMP_SKIP_QUEUE_TENDER=1 exits 0 immediately; 9. hysteresis prevents re-rebase within 5 min; 10. lane discipline: no gh pr merge --admin in source"

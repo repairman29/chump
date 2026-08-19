@@ -1,0 +1,19 @@
+- id: GAME-006
+  domain: GAME
+  title: "[space-shooter] Stranger bot: stuck on \"reach-wave-3\" (single run)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Cold run ended stuck. deaths=0 maxProgress=150.
+    Single-run stuck is weak evidence for exploration games — prefer repeat.mjs aggregates; for linear games it is usually real.
+    
+    context: {"level":"reach-wave-3","deaths":0,"source":"playtest-bot","maxProgress":150}
+    source: holler feedback_events, dedupe c86f0254581cb32f
+  acceptance_criteria:
+    - "The originating check passes on re-run in repairman29/space-shooter (tool + target in the description: surveyor edge -> verdict PASS; repeat milestone -> completed >=1/N; bot/widget error -> no longer reproduces)"
+    - space-shooter test suite stays green
+    - FINDINGS.md / DEPTH.md in repairman29/space-shooter updated in the same commit
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/space-shooter"
+

@@ -1,0 +1,14 @@
+- id: RESILIENT-215
+  domain: RESILIENT
+  title: "conductor-rescue proposals invisible to deliberator (missing event:FEEDBACK field)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    scripts/coord/conductor*.sh (self-rescue proposal emitter, EFFECTIVE-264) writes kind=proposal lines to ambient.jsonl WITHOUT the "event":"FEEDBACK" field that scripts/coord/broadcast.sh normally stamps. scripts/coord/deliberator-loop.sh (_cmd_tick and _cmd_audit) hard-filters on line_event=="FEEDBACK" before considering a line a proposal at all, so every conductor-rescue-* proposal (observed firing every ~30min on 2026-07-30, e.g. corr_id=conductor-rescue-1785413638) is completely invisible to the tally/consensus pipeline. Discovered live during RESILIENT-212 (deliberator daemon install fix) via: grep '"kind":"proposal"' .chump-locks/ambient.jsonl | tail -1 | python3 -m json.tool — showed corr_id/kind/rationale/source/subject/ts but no event field. Two legitimate fixes: (a) emit the missing event:FEEDBACK field from the conductor's proposal emitter so deliberator sees it, or (b) if the 300s veto-window self-rescue pattern is intentionally a SEPARATE lighter-weight consensus lane from the deliberator's tally scheme, document that explicitly (e.g. a comment in the conductor script + a note in A2A_MASTER_PLAN) so it's not mistaken for a bug next time someone audits consensus_result==0.
+  acceptance_criteria:
+    - "Locate the conductor script(s) that emit kind=proposal self-rescue events (grep -rn 'kind.*proposal' scripts/coord/conductor*.sh or similar) and confirm whether the missing event:FEEDBACK field is a bug or an intentional separate lane"
+    - "If a bug: add the event:FEEDBACK field so deliberator-loop.sh tallies these proposals (with an appropriate quorum/veto rule matching the existing 300s veto-window semantics, since the deliberator's yes>=3/no>=2 quorum rule may not fit a fast self-rescue veto)"
+    - "If intentional: add a code comment at the emission site + a one-line note in docs/design/A2A_MASTER_PLAN_2026-06-03.md documenting the two parallel proposal lanes so this isn't re-flagged as a mystery bug"
+    - "Test: scripts/ci/test-deliberator-loop.sh (or a new sibling) proves conductor-style proposals are either tallied or explicitly excluded on purpose"
+

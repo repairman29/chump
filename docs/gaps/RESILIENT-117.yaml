@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "RESILIENT: chump-commit index mutex (FD 200 flock) held by sibling-worktree rustc — cross-worktree mutex leak"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "Reproducer documented: with 2+ active chump claims (sibling worktrees with concurrent cargo builds), lsof on /Users/.../Chump/.git/worktrees/X/.chump-index-mutex shows FD 200 held by processes whose --out-dir is /tmp/chump-Y/target (X != Y)"
