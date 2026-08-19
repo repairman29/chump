@@ -14,4 +14,40 @@
     - "Smoke test scripts/ci/test-oauth-refresher.sh: synthetic stale token in test temp dir, run refresher, verify file timestamp updated and token blob changed"
     - CLAUDE.md Auth modes section updated to reflect actual refresher reality (drop the aspirational 'every 5 min' claim if not shipping, or point at this gap as the substrate)
   outcome_id: MISSION-010
+  notes: |
+    [2026-08-19] Verified already shipped, under different (equivalent) artifact
+    names than the original AC literal paths — closing as duplicate-of-shipped
+    per the INFRA-1865/RESILIENT-134/RESILIENT-244 pattern.
+
+    AC-by-AC, verified against this clean checkout of origin/main (cd5f2d07):
+    - AC1 (plist, StartInterval 300): launchd/com.chump.oauth-refresh.plist
+      (not scripts/launchd/com.chump.oauth-token-refresher.plist — same
+      substrate, different path chosen at implementation time under
+      INFRA-2124). StartInterval=300 confirmed.
+    - AC2 (keychain extraction -> ~/.chump/oauth-token.json): implemented in
+      scripts/coord/oauth-token-refresh.sh (not scripts/ops/refresh-oauth-token.sh)
+      via `security find-generic-password -w -a "$(whoami)" -s "$KEYCHAIN_SERVICE"`.
+    - AC3 (hash-compare, no-rewrite-when-unchanged, kind=oauth_token_refreshed):
+      _token_hash() + AC3 comment block in oauth-token-refresh.sh, verified by
+      `bash scripts/ci/test-oauth-refresher.sh` PASS "unchanged token does not
+      rewrite the file" + "does not emit kind=oauth_token_refreshed".
+    - AC4 (validate before write, kind=oauth_token_invalid, old file kept on
+      failure): implemented, verified by test-oauth-refresher.sh PASS "failed
+      validation leaves the existing token file untouched" + emits the kind.
+    - AC5 (macOS-only, loud Linux error): `uname -s` gate with
+      CHUMP_OAUTH_PLATFORM_OVERRIDE test hook, emits
+      kind=oauth_refresh_unsupported_platform on non-Darwin; test PASS.
+    - AC6 (idempotent installer): scripts/setup/install-oauth-refresh-launchd.sh
+      (not install-oauth-refresher-launchd.sh — same substrate, different name).
+    - AC7 (smoke test): scripts/ci/test-oauth-refresher.sh exists and passes
+      8/8 on this checkout (stale-token replace, mtime advance, refreshed
+      event, no-op on unchanged, no spam, invalid-token guard + event,
+      non-Darwin platform gate).
+    - AC8 (CLAUDE.md updated): CLAUDE.md "Auth modes" section already
+      documents the real substrate (scripts/coord/oauth-token-refresh.sh,
+      "hardened INFRA-1865"), cadence, install command, platform limitation,
+      smoke test, and the staleness detector — no aspirational claim remains.
+
+    No code change required; closing via ship pipeline once merged, per the
+    same rationale as RESILIENT-134 (#3922) and RESILIENT-244 (#3920).
 
