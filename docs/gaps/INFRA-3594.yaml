@@ -1,7 +1,8 @@
 - id: INFRA-3594
   domain: INFRA
   title: CI apt-mirror flake in audit-shard jams merge queue — bake/cache chump-desktop Linux packages
-  status: open
+  status: closed
+  closed_pr: 3923
   priority: P0
   effort: m
   acceptance_criteria:
@@ -10,4 +11,10 @@
     - "receipt 2026-08-19: audit-shard(4) chump-desktop apt timed out, failed 3 RESILIENT-330 retries → failed audit-required; INFRA-557 caps 1 rerun/run-id so twice-flaking mirror stuck; BLOCKED #3913/#3918"
   notes: |
     [2026-08-19T03:16:38Z] Land/merge-queue P0. Relates INFRA-557, INFRA-2287, RESILIENT-330.
+    [2026-08-19T04:25:00Z] Shipped #3923: audit-shard's chump-desktop apt install now
+    goes through awalsh128/cache-apt-pkgs-action — cache-hit runs make zero network
+    calls (no apt-get update), eliminating the hung-mirror path AC1/AC2 call out.
+    RESILIENT-330's bounded-retry apt-get kept as fallback on cache-action failure.
+    chump gap ship / gap import hung on state.db access in this session (unrelated
+    to the code change) — closing via direct YAML edit per the documented fallback.
 
