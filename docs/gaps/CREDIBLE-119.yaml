@@ -1,7 +1,7 @@
 - id: CREDIBLE-119
   domain: CREDIBLE
   title: "CREDIBLE: chump fleet doctor exits 0 (auth OK) while BOTH auth probes actually fail — masked a 46h outage"
-  status: open
+  status: closed
   priority: P1
   effort: s
   description: |
@@ -12,5 +12,6 @@
     - "regression test: with an invalid api-key + invalid oauth token, fleet doctor exits non-zero"
   notes: |
     Sibling of RESILIENT-054 (auth floor) + INFRA-2031 (gh-auth false-positive). This is the DOCTOR-side lie: the health check that should have screamed stayed green.
+    CLOSED 2026-08-19: already shipped in #3951 (commit 48f13a2f). `chump fleet doctor` shells out to scripts/coord/fleet-doctor-strict.sh, which now runs Check 13 (auth-probe) — it reuses the RESILIENT-086 live probe (scripts/coord/auth-status.sh) to make a real authenticated call and fails the whole doctor run with "auth dead: both paths rejected" when both credential paths are invalid. Regression coverage: scripts/ci/test-fleet-doctor-auth-probe.sh, case "both paths invalid → fail, detail says auth dead: both paths rejected" — verified passing on this checkout. This gap record was left open post-ship; closing to match reality.
   outcome_id: CREDIBLE-000
 
