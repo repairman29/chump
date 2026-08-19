@@ -818,6 +818,23 @@ Do **not** disable these via `CHUMP_REAPER_SAFETY_CHECK=0` in production —
 the gate exists because INFRA-1346 lost two attempts worth of work in one
 session before INFRA-1347 closed the holes.
 
+**Related — deep claim-collision detection (INFRA-1604).** `chump claim`
+also runs a *structural* collision check, distinct from the gitdir-repair
+above: before the worktree is created, it computes the full set
+intersection of `--paths` for this claim against every sibling
+`.chump-locks/*.json` lease's declared `paths[]` — with glob (`src/foo/*.rs`
+overlaps `src/foo/bar.rs`) and directory-prefix (`docs/` overlaps
+`docs/gaps/X.yaml`) matching, not just the 5 hardcoded hot files from
+INFRA-1394's AC-text scan (which stays as a secondary defense-in-depth
+check for gaps whose AC mentions a hot file but whose `paths[]` doesn't
+declare it). On a collision it prints one line per overlapping path pair
+plus the sibling's `session_id`/`gap_id`, emits `kind=lease_path_collision`
+to `ambient.jsonl` (fields: `claim_gap`, `sibling_gap`, `sibling_session`,
+`overlap_paths[]`, `paths_count`), and exits 15 unless `--force-overlap` is
+passed (the event still fires on bypass). Implementation:
+`crates/chump-atomic-claim/src/atomic_claim.rs` (`check_deep_path_collision`,
+`path_specs_overlap`). Test: `scripts/ci/test-deep-claim-collision.sh`.
+
 ---
 
 <a id="stale-lease-cleanup"></a>
