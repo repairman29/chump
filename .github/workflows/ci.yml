@@ -720,6 +720,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # META-197/META-199: catches broken workflow syntax (bad `uses:` refs,
+      # typos in rustup component-add / apt-get lines, invalid expression
+      # syntax) at PR time instead of after trunk-RED. Tier-D in
+      # docs/process/CI_GATES_INVENTORY.md and preflight-ci-parity-exceptions.txt
+      # (needs the actionlint binary, not available in the local preflight env).
+      - name: actionlint (META-197/META-199)
+        uses: rhysd/actionlint@v1.7.7
+
       # INFRA-1556: when this job lands on a self-hosted macOS runner, verify
       # the runner's plist PATH resolves every CLI the workflow needs. Skips
       # cleanly on ubuntu-latest. Catches "exit 127 / command not found" before
