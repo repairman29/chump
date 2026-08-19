@@ -2,7 +2,7 @@
   domain: MISSION
   title: "MISSION P0: deploy SCRIPTS to the fleet — running checkout drifts stale so merged script fixes (e.g. #3055 picker) never reach the fleet; MISSION-012 deploys the binary but NOT the checkout"
   status: done
-  closed_pr: 3588
+  closed_pr: 3921
   priority: P0
   effort: m
   description: |
