@@ -23,4 +23,15 @@
   acceptance_criteria:
     - audit-required passes on all currently-open PRs; no open PR is blocked by an audit-required failure.
   outcome_id: MISSION-010
+  notes: |
+    Verification receipt (2026-08-19): all 6 originally-affected PRs
+    (#2979 #2978 #2977 #2976 #2975 #2974) are already MERGED or CLOSED —
+    the audit-required failure cluster self-resolved once those PRs shipped.
+    Re-checked every currently-open PR's statusCheckRollup for a FAILURE
+    conclusion on the "audit-required" check: zero matches. The
+    audit-required aggregator job is still live and correctly wired in
+    .github/workflows/audit.yml (moved there from ci.yml per INFRA-2452).
+    No open PR is blocked by this check today. Closing — no code changes
+    needed. Same pattern as INFRA-1890 / INFRA-1865 / INFRA-1811 stale-state
+    syncs.
 
