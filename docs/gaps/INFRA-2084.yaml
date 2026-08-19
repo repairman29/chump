@@ -1,7 +1,7 @@
 - id: INFRA-2084
   domain: INFRA
   title: "RESILIENT P0 STRUCTURAL: chump preflight ≡ ALL CI gates parity — every CI step also runnable locally in <60s; eliminates 80% of today's CI-rot saga by surfacing wedges at commit time instead of post-push"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -12,7 +12,7 @@
     - "Trunk-RED elimination: after this gap ships, any wedge that surfaces in CI was ALSO visible at chump preflight — operator philosophy of <60s local catch becomes structural truth, not aspirational"
     - "Sibling: META-070 + META-071 partially shipped this; this gap is the COMPLETION + parity-audit gate. Audit the 6+ already-shipped META-070 sub-gaps for coverage gaps"
     - "Smoke test: synth a fresh CI gate that always fails; assert chump preflight catches it; assert preflight-ci-parity-audit reports 0 delta"
-  notes: |
-    Filed 2026-05-27 by curator-opus-shepherd after today's CI-rot saga: 4 independent wedges all surfacing post-push because preflight didn't mirror CI. Today's 4-PR cascade (#2672/#2674/#2677/#2678) would have been visible at commit time with parity coverage. ESTIMATED IMPACT: 80% reduction in 'PR fails CI' round-trips.
+    - "receipt 2026-08-19: ACs 1-6 (inventory/coverage/gate/perf/trunk-red/sibling-audit phases) were already shipped across INFRA-1867, INFRA-1927, INFRA-2120, and META-268 (see docs/process/CI_PREFLIGHT_PARITY.md + scripts/ci/test-preflight-ci-parity.sh). AC7's synthetic-gate smoke test landed in #3943 (d9b44ed8, merged 2026-08-19), adding scripts/ci/test-preflight-ci-parity-smoke.sh + env-var fixture overrides so the parity script's catch/resolve logic is exercised against a synthesized unmirrored gate. state.db never converged to the yaml mirror (open/no closed_pr); ran chump gap ship --closed-pr 3943 to reconcile."
   outcome_id: MISSION-010
+  closed_pr: 3943
 
