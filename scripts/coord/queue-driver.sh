@@ -463,10 +463,24 @@ except Exception:
 # Previously this function only accepted conflicts in the (now-defunct)
 # docs/gaps.yaml legacy file — that left ~6 PRs/day stuck DIRTY for hours.
 # Returns 0 on successful push, non-zero otherwise.
+# INFRA-2464: cache-first branch resolution, mirroring cascade_auto_resolve_pr
+# above — this was the one unconditional raw `gh pr view` left in the file
+# (every other read site here already tries the sqlite cache before falling
+# back to a live call).
 resolve_dirty_pr() {
   local pr="$1"
   local branch
-  branch=$(gh pr view "$pr" --json headRefName -q .headRefName)
+  branch=$(cache_lookup_pr "$pr" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+    print(d.get("headRefName") or d.get("head_ref") or "")
+except Exception:
+    pass
+' 2>/dev/null)
+  if [[ -z "$branch" ]]; then
+    branch=$(CHUMP_GH_CALL_CRITICALITY=background chump_gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)
+  fi
   if [[ -z "$branch" ]]; then
     echo "queue-driver: ✗ #$pr — could not resolve branch name"
     return 1
