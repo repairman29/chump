@@ -1,0 +1,13 @@
+- id: INFRA-3604
+  domain: INFRA
+  title: PR-reopener resurrects manually-closed PRs in ~25s while gap open — stale conflicting PRs cannot be retired, accumulate into merge-queue jam
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "closing a stale+CONFLICTING PR whose gap was demoted STICKS: not auto-reopened within seconds"
+    - "reopener and stale-PR-reaper share one policy: keep a PR alive only if gap open AND branch mergeable/rebaseable; retire conflicting+stale+low-priority PRs (gap stays open for clean re-pick)"
+    - "receipt 2026-08-19: closed #3919(INFRA-1784)/#3910(META-193) 03:14:1x, reopened by repairman29 at 03:14:4x (~25s); both DIRTY+P2 → un-retireable, re-jam"
+  notes: |
+    [2026-08-19T03:47:05Z] Relates stale-pr-reaper, pr-shepherd reopener, pr-auto-rebase (no content-conflict resolution). Hit while unjamming queue 2026-08-19.
+
