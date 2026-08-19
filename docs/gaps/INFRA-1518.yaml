@@ -2,7 +2,7 @@
   domain: INFRA
   title: "ZERO-WASTE: chump-fleet-bootstrap.sh enforces Merge Queue on main (setup-invariant; flip via API every fleet up)"
   status: open
-  priority: P2
+  priority: P1
   effort: m
   acceptance_criteria:
     - "scripts/setup/chump-fleet-bootstrap.sh gains merge-queue-enforcement section: query gh api repos/<owner>/<repo>/branches/main/protection for .required_pull_request_reviews.merge_queue.enabled"
