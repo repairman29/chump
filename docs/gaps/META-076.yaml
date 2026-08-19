@@ -2,7 +2,7 @@
   domain: META
   title: "META: Implement basic predictive collision detection (mock inputs) (META-073 slice)"
   status: open
-  priority: P1
+  priority: P3
   effort: s
   acceptance_criteria:
     - System emits 'collision_prediction' event when trajectory overlap is detected

@@ -21,9 +21,6 @@
       3. If no: fix the script and ship a patch PR first.
       4. Once root cause resolved, re-arm affected PRs via bot-merge.sh.
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - fast-checks-required passes on all currently-open PRs; no open PR is blocked by it.
   outcome_id: MISSION-010
 

@@ -1,0 +1,13 @@
+- id: RESILIENT-245
+  domain: RESILIENT
+  title: "[ai-gm-service] CI has been red since 2026-01-21 — workflow calls a lint script that does not exist"
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - "The CI workflow's lint step either gets a real 'lint' script in package.json or the step is removed — currently every run dies on 'npm error Missing script: lint' before any test executes"
+    - "Receipt: main red continuously since 2026-01-21; failure signature identical on main and on PR #2, which is how PR #2 was verified safe to merge on 2026-08-07"
+    - After the fix, main's CI actually passes (verify a real run, do not assume)
+  skills_required: "external_repo:repairman29/ai-gm-service"
+  outcome_id: RESILIENT-000
+

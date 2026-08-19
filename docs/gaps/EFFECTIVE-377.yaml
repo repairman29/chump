@@ -1,0 +1,20 @@
+- id: EFFECTIVE-377
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [almanac] impact --diff — map a git diff to affected symbols + blast radius with computed risk tiers"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Borrowed idea (2026-08-07) from DeusData/codebase-memory-mcp v0.9.0 (MIT, read at source): their 'detect_changes' tool maps a git diff to affected symbols with risk classification. Almanac already owns the hard half — almanac_impact walks transitive importers level by level over resolved edges — but it takes a FILE PATH, so a human must already know which file to ask about. The diff is the natural input: what did I just change, and what can it break. NOT a duplicate of EFFECTIVE-319: that gap is the Chump-side gate/test mapping (which CI gates does a diff exercise) and is P2/l; this is the almanac-side primitive that 319 can consume. Filed separately so the primitive can land small and independently. Keep almanac's honesty discipline: impact answers are a LOWER BOUND (only resolved intra-repo edges walk, ~20-40% resolution on big repos), and every answer already carries that note — a risk tier must not launder a lower bound into a confident verdict.
+  acceptance_criteria:
+    - almanac impact --diff [--base <ref>] maps changed files to affected symbols and walks the existing transitive-importer graph, with no new graph machinery
+    - works on BOTH a dirty worktree (uncommitted changes) and a branch compared against a base ref
+    - risk tier per changed file is derived from measurable inputs only (blast-radius size, hub in-degree, edge-resolution rate) and the output states how each tier was computed — no unexplained score
+    - "the existing lower-bound caveat survives verbatim in the output: a tier is a floor, and the response carries the repo's actual edge-resolution rate"
+    - at least one test proves the behavior and fails without the change
+    - DEPTH.md updated in the same commit; attribution note for the borrowed idea (DeusData/codebase-memory-mcp, MIT) recorded at borrow time
+  notes: |
+    Demoted P1->P2 2026-08-07 during queue alignment: I filed ~14 P1s in one session into a pool of 61 (a 23% inflation of the P1 signal). This one is real but is an enhancement, not a blocker — it returns to P1 when a force-multiplier ahead of it lands or when someone needs it.
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: EFFECTIVE-000
+

@@ -1,0 +1,20 @@
+- id: PRODUCT-148
+  domain: PRODUCT
+  title: "[mytrove.app] Privacy Policy and Terms of Service are both unreachable (footer href=\"#\", /privacy and /terms both 404)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Fresh-context stranger-agent cold test of mytrove.app (Scout, stranger tier, ~10 min bounded session, no account/real data).
+    
+    The homepage badges "Secure & Private" right next to "Free Forever Plan," but the footer's Privacy and Terms links are href="#", and navigating directly to /privacy and /terms both return 404. This is a product that asks users to upload photos of their real possessions and create an account -- having no reachable privacy policy is a real trust/compliance gap, not cosmetic, and it's the first thing a cautious first-time visitor would look for before signing up.
+    
+    context: {"url":"https://mytrove.app","tier":"stranger","source":"scout-stranger-agent"}
+    source: holler feedback_events, dedupe 96dcc4afa4be9a56
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/trove-web"
+

@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0: pin Rust toolchain to 1.95.0 — upstream v1.96.0 manifest references rustc-codegen-cranelift which isn't available for x86_64-unknown-linux-gnu (queue-wide Rust CI wedge 2026-05-30 08:17Z+)"
   status: open
-  priority: P1
+  priority: P0
   effort: xs
   acceptance_criteria:
     - Change every occurrence of dtolnay/rust-toolchain@stable in .github/workflows/ci.yml to dtolnay/rust-toolchain@1.95.0 (last known good stable before the 1.96.0 manifest break)

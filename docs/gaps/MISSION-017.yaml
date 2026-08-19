@@ -2,7 +2,7 @@
   domain: MISSION
   title: "MISSION: Persist parsed external-repo gaps from onboard scan to database (MISSION-015 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - A new API endpoint or command-line tool exists to ingest the parsed gaps.
@@ -10,5 +10,5 @@
     - "Each new `Gap` record has the `external_repo:repairman29/BEAST-MODE` tag."
     - The new gaps are visible in the admin dashboard with the correct external repo tag.
   depends_on: [MISSION-016]
-  outcome_id: MISSION-010
+  outcome_id: MISSION-032
 

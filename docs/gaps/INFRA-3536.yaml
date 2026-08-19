@@ -1,0 +1,12 @@
+- id: INFRA-3536
+  domain: INFRA
+  title: bot-merge recovery mode omits CHUMP_BOT_MERGE_IN_PROGRESS — its own push trips the INFRA-719 guard
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - The INFRA-1422 recovery fast-path exports CHUMP_BOT_MERGE_IN_PROGRESS=1 before its push, same as the normal path does at the section-5 push
+    - "A recovery-mode ship of a first-push gap branch goes through without manually exporting the flag (reproduced live 2026-08-06 shipping PRODUCT-176: recovery push blocked by the hook's own INFRA-719 guard while inside bot-merge)"
+  notes: |
+    [2026-08-07T00:12:28Z] Second recovery-mode bug found same ship: the fast-path's 'gh pr create --json number' uses a flag gh pr create does not support, so PR creation always fails in recovery mode even after a successful push (fix: parse the URL from stdout, or gh pr view --json after create). Reproduced 2026-08-06; PRODUCT-176 finished via the documented manual fallback (gh pr create + gh pr merge --auto --squash = PR #3490).
+

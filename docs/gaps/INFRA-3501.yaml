@@ -1,0 +1,14 @@
+- id: INFRA-3501
+  domain: INFRA
+  title: "RESILIENT: [COTG-4.4] compounding memory (this run makes the next run smarter)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-4.4] compounding memory (this run makes the next run smarter)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:24Z] DISCOVERY EXISTS-COMPLETE (richer than described) -> DONE, verify only. capture+inject + per-directive adoption grading (src/lesson_action.rs) + A/B semantic-vs-recency (EVAL-099). Confirm META-040 aggregation runs, then close.
+  outcome_id: COTG
+

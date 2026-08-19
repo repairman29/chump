@@ -1,0 +1,18 @@
+- id: PRODUCT-174
+  domain: PRODUCT
+  title: "[jeffadkins-dev] Upgrade Treadmill guide: downloads claim now contradicts its own live receipt link; og:image missing"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Release-audit advisories (2026-08-02, non-blocking but pre-Phase-E-post is the right moment). (1) The guide says upshift-cli 'moved 70 downloads on npm last week' and links the live npm API as the receipt - that API now returns 29 for the trailing week, so the guide's own receipt link contradicts its number. True at write time (2026-07-18); under-sells rather than inflates, but the guide's brand is receipts. Reframe to a dated figure or drop the number. (2) The page has og:title/description but NO og:image (twitter:card=summary only) - link shares on HN/LinkedIn render without a visual card, and Phase E posting is imminent. Brand-matched 1200x630 needed (terminal-green identity per SITES.md).
+    
+    context: {"url":"https://jeffadkins.dev/guides/upgrade-treadmill/","source":"claude-triage/release-audit-2026-08-02"}
+    source: holler feedback_events, dedupe 53a942df9d6ac666
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/jeffadkins-dev"
+

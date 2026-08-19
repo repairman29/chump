@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: investigate repairman29/registry ACP fork (276 commits ahead of upstream) — plan Chump coord/ACP alignment"
   status: open
-  priority: P1
+  priority: P3
   effort: m
   acceptance_criteria:
     - Compare repairman29/registry HEAD vs agentclientprotocol/registry HEAD; document the 276 divergent commits at a category level (added features, changed protocols, removed assumptions) in docs/arsenal/cross-pollination/CP-007-acp-alignment.md

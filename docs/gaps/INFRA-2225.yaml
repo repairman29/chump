@@ -5,6 +5,6 @@
   priority: P1
   effort: s
   acceptance_criteria:
-    - "- Discovered 2026-05-29 overnight: with 25+ PRs in flight, auto-rebase daemon lagged — 8 BEHIND PRs accumulated; manual gh pr update-branch on individual PRs was 10× faster than waiting for daemon tick.\n- Daemon location: scripts/setup/install-pr-auto-rebase-launchd.sh (per CLAUDE.md daemon inventory) + the script it installs.\n- Three fixes:\n  (a) Concurrency: daemon currently serial-rebases one PR at a time; add parallel batch (max 5 concurrent gh pr update-branch calls).\n  (b) Queue-aware throttle: when in-flight PR count > 15 AND avg time-since-last-merge > 15 min, daemon prioritizes BEHIND PRs over new triage.\n  (c) Operator surface: chump fleet rebase-queue subcommand (or extend chump health --slo-check) shows current BEHIND count + auto-rebase backlog age.\n- Test: scripts/ci/test-pr-auto-rebase-concurrency.sh — fixture with 10 BEHIND PRs verifies parallel rebase pattern (5 at once, not 1).\n- Cross-references CLAUDE.md daemon section, INFRA-2125 reaper pattern (similar daemon-cadence concern), INFRA-2181 post-ship trigger (sibling reaper enhancement)."
+    - "Auto-rebase daemon keeps pace under queue saturation: with >20 PRs in flight, no PR sits BEHIND longer than a bounded threshold; verified by draining a backlog without manual rebase."
   outcome_id: MISSION-010
 

@@ -1724,22 +1724,6 @@ events:
     fields_required: [ts, kind, pr, author, age_hours, dry_run]
     volume_estimate: "~0-3/h; debounced per PR per 24h"
 
-  - kind: vote-request
-    effect_metric: self
-    emitter: scripts/coord/pr-shepherd-daemon.sh (META-189 / META-180 slice)
-    purpose: >
-      FEEDBACK-event vote-request for a PR classified MERGEABLE (CLEAN,
-      no auto-merge armed, author not on the CLEAN_GREEN trust list) —
-      arms consensus voting so `chump vote pr-N +1|-1|0` and the existing
-      corr_id-generic tally (consensus_tally.rs / deliberator-loop.sh /
-      `chump consensus resolve pr-N`) can reach a PASSED/FAILED verdict
-      before the PR is admin-merged. corr_id is always `pr-<N>`. Debounced
-      to once per PR per 24h via .chump-locks/pr-vote-request-signaled.json.
-    trigger: emitted when a PR classifies MERGEABLE and not signaled within last 24h
-    consumers: [deliberator-loop.sh, chump consensus resolve/status, curator voters]
-    fields_required: [ts, event, kind, corr_id, session, pr, gap_id, subject, dry_run]
-    volume_estimate: "~0-5/h; debounced per PR per 24h"
-
   - kind: pr_queue_skipped_trunk_red
     effect_metric: self
     emitter: scripts/coord/pr-shepherd-daemon.sh (INFRA-2346)

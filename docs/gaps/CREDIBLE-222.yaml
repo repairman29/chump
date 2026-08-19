@@ -1,0 +1,17 @@
+- id: CREDIBLE-222
+  domain: CREDIBLE
+  title: "[almanac] triage chump's 211-flag drift backlog — the flagship claim is mostly parser noise at scale"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Separate real incoherence from representation noise. Measured 2026-08-07 on chump: 211 DRIFT flags, up from the 181 recorded in ROADMAP O2, still untriaged"
+    - "NOISE examples that must stop being reported as drift: ANTHROPIC_API_KEY 'default= "
+    - " (unset) "
+    - " <unset>' (three spellings of no-default, 78 reads); CARGO_MANIFEST_DIR 'default= "
+    - " unknown'; CHUMP_AMBIENT_LOG with 44 variants that are nearly all the same path via different local variable names (307 reads); CARGO_TARGET_DIR 15 variants of $X/target"
+    - "REAL examples that must survive triage: BEAST_MODE_API localhost:3000 vs https://beast-mode.com across 270 reads; BEAST_MODE_API_URL with 5 values including the typo domain beastmode.dev vs beast-mode.dev; BASE_URL 3000 vs 7777; BEAST_MODE_CLOUD_MODEL llama-3.3-70b vs gpt-4o-mini; CHUMPBAR_SSH_TIMEOUT 15 vs 6"
+    - "Normalize before comparing: empty/unset spellings collapse to one value, and $VAR-interpolated paths compare by resolved shape not literal text. Then re-report the real count — ROADMAP O2 calls drift the organ's flagship claim and says it is unverified at scale; this is that verification"
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: CREDIBLE-000
+

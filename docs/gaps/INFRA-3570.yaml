@@ -1,0 +1,11 @@
+- id: INFRA-3570
+  domain: INFRA
+  title: "INFRA: Integrate the chump LLM-complete model with the reviewer (INFRA-3462 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The chump LLM-complete model is integrated with the reviewer
+    - The integration is tested with a sample code review
+  depends_on: [INFRA-3569]
+

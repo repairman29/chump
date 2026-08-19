@@ -1,0 +1,12 @@
+- id: EFFECTIVE-378
+  domain: EFFECTIVE
+  title: "[chump] harvester scans only our own repos — teach the prior-art check to look outward"
+  status: open
+  priority: P3
+  effort: s
+  acceptance_criteria:
+    - "scripts/arsenal/harvest.sh gains an external mode using 'gh search repos --sort stars' (verified 2026-08-07: unsorted best-match returned three 0-star repos and MISSED chatwoot at 35,579 stars, so sorting is required not optional)"
+    - "AGENT_OPERATING_MODEL.md:44 calls the harvester the 'prior-art check before building' while harvest.sh:67 runs 'gh repo list' over our own repos only — reconcile the claim with the behavior"
+    - Results carry license (via 'gh api repos/O/R/license'; note licenseInfo.spdxId returns null for non-standard licenses and NOASSERTION means read LICENSE by hand)
+  outcome_id: ZERO-WASTE-000
+

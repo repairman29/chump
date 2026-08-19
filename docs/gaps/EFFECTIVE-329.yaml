@@ -1,0 +1,18 @@
+- id: EFFECTIVE-329
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [coloringbook delivery / external_repo:repairman29/coloringbook] wire the in-browser CV engine into the UI + add printable export"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    coloringbook is broken in prod: frontend/src/UltimateColoringApp.js processImage() fetches a DEAD localhost API (http://127.0.0.1:8000/api/convert) with no fallback, and the real client-side CV engine frontend/src/neuralProcessing.js (edge-detection to line-art) is imported NOWHERE. Wire the engine into the UI so photo->coloring-page runs fully in-browser on canvas ImageData with no backend, remove the dead API fetch, delete the fictional api/ FastAPI backend, and add a Print/Download-PDF export of the generated page. Static client-only app — do NOT add a backend.
+  acceptance_criteria:
+    - Uploading a photo produces a printable line-art coloring page entirely client-side with ZERO network calls
+    - neuralProcessing.js is imported and drives processImage (no fetch to 127.0.0.1)
+    - the api/ FastAPI backend is deleted
+    - a Print or Download-PDF button exports the coloring page
+    - npm run build succeeds
+  notes: |
+    2026-07-29: chump improve --gap ran the FULL rails on coloringbook (clone->worktree->chump-local[Principle-0]->provenance-stamp->deterministic PR #1->verify->remediate) but the implement stage produced a NON-FUNCTIONAL 4-line stub test (assert someFunction()) — ZERO real work. PR closed. Proves: (a) rails production-grade, (b) implement-stage real-build-quality NOT there even opus-class, (c) NO gate caught the stub because outcome-verification (COTG-3.1/INFRA-3494) is unbuilt + verify_staged_edit only catches clobbers/invalid-files not do-nothing stubs. This is the load-bearing delivery gap.
+  outcome_id: COTG
+

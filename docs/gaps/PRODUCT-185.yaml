@@ -1,0 +1,15 @@
+- id: PRODUCT-185
+  domain: PRODUCT
+  title: "Siri Shortcut client: shared template + key minting/connect doc (PRODUCT-177 slice)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    The client half PRODUCT-177's decompose truncated away (decompose warned 'partial — 7 of potentially more slices'; server slices 178-184 have no user-facing entry point without this). Port olive's Path A (olive:src/app/shop/siri/page.tsx): ONE shared Shortcut template (dictate → POST {key,text} to the ask endpoint → speak returned 'spoken'), personal key minted/revoked server-side, paste-once setup. Deliverables: the Shortcut build steps documented + a connect doc covering key mint/revoke; iCloud share link once the template is shared from a device (olive precedent: page ships with manual build until then).
+  acceptance_criteria:
+    - "documented Shortcut build reproducible from scratch on a clean iPhone in under 5 minutes: dictate → POST → Siri speaks the reply"
+    - key mint + paste-once setup documented; revoking the key makes the next invocation return the spoken reconnect hint
+    - works from iPhone/Watch invocation surfaces, not just Mac
+  depends_on: [PRODUCT-178, PRODUCT-179]
+  outcome_id: EFFECTIVE-000
+

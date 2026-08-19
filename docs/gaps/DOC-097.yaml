@@ -1,0 +1,18 @@
+- id: DOC-097
+  domain: DOC
+  title: "[olive] the headless MCP rail is LIVE in production and appears in no product doc — half of recent commits are a strategy the roadmap does not know about"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "OPERATOR STATED THE SETTLED SHAPE 2026-08-09, and this is the authority the docs are missing: \"the plan is 2 surfaces. MCP + web for now and then we decide how to go from here on paid vs not.\" So the headless MCP rail is NOT an experiment or a side quest — it is one of two first-class product surfaces. Monetisation (paid vs free) is an EXPLICITLY DEFERRED decision, not an open question the docs should speculate about"
+    - "ALSO SETTLED: verification runs through codex and claude agents and is working. Do NOT file or chase \"one clean verify:live run still owed\" as a blocker — that note in DEPTH.md predates the current process"
+    - "THE DOCS ARE A FULL PRODUCT-GENERATION BEHIND, which is the real defect — olive is thoroughly documented, not under-documented. 87 commits landed in the ~3 weeks since the doc layer froze. THREE separate docs still describe /dashboard/next as the product: docs/ROADMAP.md (8 refs, 0 to /shop), docs/OLIVE_PRODUCT_MASTER_MANUAL.md section 0 (\"The real product is the hidden route /dashboard/next\"), and docs/REDESIGN-PLAN.md section 1 which still asks for SIGN-OFF on \"one app, not two\""
+    - "THAT DECISION ALREADY SHIPPED AND THE CODE SAYS SO: src/app/shop/page.tsx is 2,125 lines and is the app; src/app/dashboard/next/page.tsx now contains only a redirect with the comment \"The agent UI moved to /shop\"; src/app/dashboard/page.tsx redirects with \"The classic card dashboard is retired. Olive is one app now: you SHOP at /shop.\" A doc asking for sign-off on a shipped decision actively misleads"
+    - "VERIFIED LIVE 2026-08-09: POST https://shopolive.xyz/api/mcp tools/list returns the real schema, ping returns HTTP 200. Three tools — price_grocery_list (read-only, no account), add_to_cart (key-gated, writes a REAL Kroger cart), send_feedback. Backed by src/app/api/mcp/route.ts and src/lib/tools/{price,cart,feedback}Tool.ts + oliveKey.ts, with /connect and /connect/success for onboarding"
+    - "THE WRITE-UP: state the TWO-SURFACE architecture plainly at the top of ROADMAP.md and README.md — web (/shop) and MCP (api/mcp), both first-class, monetisation deferred. Give the MCP rail honest per-tool status; read-only pricing and a key-gated real-cart write are very different risk profiles and should not share one status line"
+    - "FIX THE STALE REFERENCES IN THE SAME PASS: the 8 /dashboard/next mentions in ROADMAP.md, MASTER_MANUAL section 0, and REDESIGN-PLAN section 1 sign-off request. Otherwise any agent reading them builds in a retired route"
+    - "TRUST BOUNDARY IN THE MCP CONTEXT: olive promise is \"Olive fills the cart; the user taps Buy. Olive never touches money.\" add_to_cart writes a real Kroger cart from inside a THIRD-PARTY assistant — a materially different consent surface from a click in olive own UI. Document how consent is obtained and what the key gates"
+    - DO NOT ADD AN 18TH ROADMAP — same lesson as DOC-089. One track in the existing roadmap plus a README line
+  outcome_id: COTG
+

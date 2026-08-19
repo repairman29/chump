@@ -2,7 +2,7 @@
   domain: INFRA
   title: "META-070: preflight mirror for CLI/observability/pre-push/misc audit-job scripts (41 scripts, cluster 5/5)"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   description: |
     Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster cli-observability-misc). Largest/lowest-priority cluster — grab-bag of one-off smoke tests, lowest cascade risk per script but highest count.

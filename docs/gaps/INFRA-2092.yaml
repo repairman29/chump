@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P1: state.db Postgres backend slice — break single-node SQLite ceiling (sub-slice of INFRA-1967 C4 architectural finding; Bet 4)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "Implement Postgres backend behind the existing chump-gap-store crate interface — smallest credible slice of INFRA-1967 (C4 architectural critique: single-node SQLite ceiling breaks fleet scale). Same schema, swap storage; SQLite remains the local-dev default."

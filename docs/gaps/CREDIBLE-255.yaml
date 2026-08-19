@@ -1,0 +1,10 @@
+- id: CREDIBLE-255
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement worker heartbeat file writing (CREDIBLE-099 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Heartbeat file is written to the correct location (/tmp/chump-fleet-worker-<id>.heartbeat)
+    - File contains the required information (worker_id, backend, machine, skills, started_at, current_gap)
+

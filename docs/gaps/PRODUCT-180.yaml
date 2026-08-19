@@ -1,0 +1,13 @@
+- id: PRODUCT-180
+  domain: PRODUCT
+  title: "PRODUCT: Implement Server-Side Conversation State Persistence (PRODUCT-177 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Conversation history is persisted server-side per user/key
+    - Follow-up queries (e.g., 'what repo was that in?') resolve against the previous turn's context
+    - State is cleared or rotated based on session timeout patterns
+  depends_on: [PRODUCT-179]
+  outcome_id: EFFECTIVE-000
+

@@ -2,12 +2,9 @@
   domain: INFRA
   title: "MISSION-CREDIBLE: pillar starved — only 0 pickable xs/s/m gaps as of 2026-06-11"
   status: open
-  priority: P1
+  priority: P3
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - Picker reports >=3 pickable xs/s/m CREDIBLE-pillar gaps; starvation signal clears.
   outcome_id: MISSION-010
 

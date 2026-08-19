@@ -1,0 +1,12 @@
+- id: RESILIENT-258
+  domain: RESILIENT
+  title: "RESILIENT: advertise agent operating-practices AT THE POINT OF WORK — --briefing + gap template surface mine-almanac / holler-friction / use-organs per gap, so agents do it because it's in front of them (not because they read CLAUDE.md)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    The gap + chump --briefing ARE the agent's context at work-time; CLAUDE.md is read-once and skipped. So the practices we WANT (mine almanac before build/holler, holler friction via chump voice, use the comprehend organs) must be ADVERTISED where the agent actually is. Rough shape: (a) chump --briefing <gap> prints a per-gap 'how we work here' block: the exact almanac command WITH the repo arg pre-filled, the chump voice one-liner, the relevant organs — 0 almanac mentions in briefing today; (b) worker.sh first step on claim = almanac_comprehend the gap's area (0 almanac refs in worker.sh today); (c) chump voice runs almanac_search_fleet dedup before filing (no dup VOAs); (d) optional gap-template field 'suggested_tools/practices' surfaced in list+briefing. Root insight (Jeff 2026-08-09): we over-invested almanac's ENGINE and never wired its DEMAND — same supply-rich/demand-poor trap as the portfolio, applied to our own tool. Advertise at point-of-work > document in a manual nobody re-reads.
+  acceptance_criteria:
+    - chump --briefing and the gap template surface the mine-almanac-before-build and holler operating practices at the point of work (visible in briefing output and template).
+  outcome_id: COTG
+

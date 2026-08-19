@@ -1,0 +1,15 @@
+- id: RESILIENT-282
+  domain: RESILIENT
+  title: "RESILIENT: no security baseline check across fleet nodes — closetjunky ran unhardened since July"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    closetjunky ran with ufw inactive, fail2ban absent, and SSH password authentication ENABLED from 2026-07-23 until 2026-08-09 (17 days). On the new network it also held a globally routable IPv6 address with sshd on [::]:22, so password-guessable SSH was internet-facing. Helsinki held the correct posture the whole time and nothing compared the two. Operator decision 2026-08-09: a node failing baseline should be REFUSED WORK by the picker, not merely flagged.
+  acceptance_criteria:
+    - "A probe set verifies the node security baseline using EFFECTIVE config values, never file presence: ufw active with default deny incoming, allow on tailscale0, sshd -T reports passwordauthentication no, fail2ban active, and no non-loopback listener outside the tailnet"
+    - The sshd check reads sshd -T output specifically, because sshd_config.d drop-ins are first-value-wins and a 50-cloud-init.conf silently overrode a 99-hardening.conf on closetjunky on 2026-08-09 while a naive grep would have reported PASS
+    - Public-address exposure is probed FROM ANOTHER NODE, not locally, since a local bind check cannot prove external reachability
+    - Failure emits an ambient event and exits non-zero; the check runs on a schedule and is referenced from a curator role doc so it does not become shelf-ware
+    - Baseline covers every node including the Mac, per operator decision 2026-08-09
+

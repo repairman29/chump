@@ -1,0 +1,15 @@
+- id: ZERO-WASTE-042
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: a writer still syncs the retired docs/gaps YAML mirrors — finish the ZERO-WASTE-020 retirement"
+  status: open
+  priority: P3
+  effort: s
+  description: |
+    ZERO-WASTE-020 (#3215) retired docs/gaps/*.yaml mirrors — state.db canonical, gap ship --update-yaml is a no-op. But some writer still syncs mirrors: observed 2026-08-05, INFRA-3429/MISSION-045/RESILIENT-133.yaml re-dirtied in the main checkout twice in one evening (restored once, re-dirtied within hours), carrying accurate state.db truth (e.g. RESILIENT-133 open->done after its ship tonight, serializer quote-style flip ' vs "). Consequence: permanent uncommitted churn in the checkout (the status-noise ZERO-WASTE-041 fights) and mirrors on main that contradict state.db for anyone reading files. Rough shape: (a) find the surviving writer — candidates: an older chump binary on a worker path, a daemon (deliberator/curator), or a gap-arm code path missed by #3215; (b) either delete the write path (true retirement, plus consider removing the mirror files from the tree per #3215's versioned-dump design) or, if mirrors are wanted after all, make the sync a committed pipeline step, not silent checkout dirt; (c) no silent middle state.
+  acceptance_criteria:
+    - writer identified with a receipt (process/binary/code path)
+    - either mirrors stop changing on an idle checkout or their updates land as commits through the pipeline
+    - decision recorded on whether docs/gaps/*.yaml stay in the tree at all
+    - idle git status stays clean for a full fleet cycle
+  outcome_id: ZERO-WASTE-000
+

@@ -1,0 +1,11 @@
+- id: CREDIBLE-280
+  domain: CREDIBLE
+  title: "CREDIBLE: de-flake chump-gap-store proof_of_merge test — passes locally 6/6, intermittently FAILs in CI, blocks unrelated PRs"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"de-flake chump-gap-store proof_of_merge test — passes locally 6/6, intermittently FAILs in CI, blocks unrelated PRs\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

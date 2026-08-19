@@ -2,7 +2,7 @@
   domain: CREDIBLE
   title: "CREDIBLE: reality-check.sh false-REFUTED when ground-truth ship-gap contradicts known-false-positive-gap heuristic"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     scripts/dev/reality-check.sh returned a FALSE 'REFUTED — do NOT act' verdict during the 2026-06-28 onboarding of the real 6-day outage. Ground truth in the SAME run said 'fleet last shipped 8729min ago (6 days) | trunk=green' — i.e. the fleet was genuinely NOT shipping, the belief was TRUE — yet the tool printed '🔴 REFUTED' solely because an OPEN false-positive gap (INFRA-2031) matches the 'AUTH_DEAD' detector string (step 4 'SIGNAL RELIABILITY'). The false-positive-gap heuristic OVERRODE the ground-truth ship-gap. This is a credibility bug in the credibility tool: when the predicted outcome (no recent merges) is CONFIRMED by ground truth, a matching false-positive gap must NOT downgrade the verdict to REFUTED. At most it should read CONFIRMED-BUT-DETECTOR-NOISY. A blind operator following the REFUTED verdict would have stood down on a real outage.

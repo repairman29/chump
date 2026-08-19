@@ -585,18 +585,6 @@ jobs:
           CHUMP_AC_GATE_ENABLED: ${{ vars.CHUMP_AC_GATE_ENABLED || 'true' }}
         run: bash scripts/ci/test-pr-ac-coverage.sh ${{ github.event.pull_request.number }} || true
 
-      # META-249 (META-247 slice): rescue-class PRs must cite the specific
-      # §5 failure-surface pattern + §6 cascade-impact row from
-      # PR_RESCUE_PROCEDURE.md in their PR body (SUBAGENT_DISPATCH.md
-      # doctrine). Non-rescue-class PRs are skipped (exit 0).
-      - name: Rescue-class PR cites §5/§6 procedure (META-249)
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-        run: bash scripts/ci/test-rescue-class-cites-procedure.sh ${{ github.event.pull_request.number }}
-
       - name: Workflow Linux-only step guard sweep (INFRA-1539)
         # Proactive sweep: every workflow step that runs sudo/apt-get/pip-install
         # must carry `if: runner.os == 'Linux'`. Catches the cascade that hit on

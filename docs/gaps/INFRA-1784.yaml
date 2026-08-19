@@ -2,12 +2,9 @@
   domain: INFRA
   title: "EFFECTIVE: Orchestration + takeover certificate + auto-gaps + auto-PRs (INFRA-1746 phase 5)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - Running the takeover orchestration on a target repo emits a takeover certificate, auto-creates gaps from the HIDDEN_GEMS/CAPABILITIES findings, and opens at least one PR; each stage emits start/complete/fail events.
   outcome_id: MISSION-010
 

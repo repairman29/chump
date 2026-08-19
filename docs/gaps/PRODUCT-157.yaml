@@ -1,0 +1,18 @@
+- id: PRODUCT-157
+  domain: PRODUCT
+  title: "[mytrove.app] Terms of Service link is a dead href=\"#\" placeholder (confirmed: /terms also 404s)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Same issue as the Privacy Policy finding, same root cause. Directly verified: footer "Terms" link is href="#", /terms returns HTTP 404.
+    
+    context: {"url":"https://mytrove.app","note":"crawl.mjs missed this due to a routing gap, fixed by direct fetch verification","source":"manual-verification"}
+    source: holler feedback_events, dedupe (computed, see holler-to-chump.mjs stableHash)
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/trove-web"
+

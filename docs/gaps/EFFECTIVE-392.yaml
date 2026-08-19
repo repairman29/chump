@@ -1,0 +1,19 @@
+- id: EFFECTIVE-392
+  domain: EFFECTIVE
+  title: "EFFECTIVE: cheap idea drop — filing a well-formed gap is expensive, so agents hold ideas in memory until the session dies"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Operator diagnosis 2026-08-07, and the session that produced it is the evidence. Filing a good gap costs real effort — a title, a domain, a priority, an effort estimate, an outcome link, evidence for P1s in some domains, a description with receipts, and 4-6 specific acceptance criteria. That cost is CORRECT for work about to be executed and WRONG as the price of admission for an idea. So agents do the rational thing: they hold ideas in working memory, surface the ones that come up naturally, and let the rest die at the session boundary. In this session alone roughly 29 gaps were filed by hand, each taking minutes, while the SEQUENCING and RATIONALE behind them lived only in the conversation and would have evaporated at exit. The pieces to fix this arrived today from another direction: EFFECTIVE-386 (AC-writer, shipped #3503) generates specific testable criteria from a gap, and EFFECTIVE-387 (synth-AC) does it at the gate. Compose them into an intake: an agent drops ONE LINE plus a citation, the curator digests on cadence, calls the AC-writer, links an outcome, and either files a real gap or attaches the idea to an existing one. Holler is the natural inbox (the operator's own framing: the front door that is not a Claude session) but the drop must be cheaper than holler's current shape. Hard dependency on RESILIENT-246: the curator that would do the digesting has been dead since 2026-07-26. Related chair: EFFECTIVE-357 (factory L1 objective intake) covers business-objective-to-stories; this covers agent-idea-to-gap, the same chair from the other side.
+  acceptance_criteria:
+    - an agent can record an idea in ONE call with only a sentence and a citation — no domain, priority, effort, outcome, or acceptance criteria required at drop time
+    - "dropped ideas are durable and visible: they survive session exit and appear somewhere an operator or curator will actually look, never a file nobody opens"
+    - a cadence job digests the drop queue, invokes the shipped AC-writer (EFFECTIVE-386) to generate criteria, assigns domain/priority/outcome, and either files a gap or attaches the idea as a receipt on an existing one
+    - the digester dedupes against the registry before filing, reusing ZERO-WASTE-045's check rather than a second implementation
+    - drops that the digester cannot shape are surfaced for a human rather than silently dropped or filed as garbage — an unshapeable idea is a signal, not waste
+    - "dogfood receipt: at least one real idea goes drop -> digest -> filed gap end to end, recorded in the notes"
+    - blocked until RESILIENT-246 restores the curator
+  depends_on: [RESILIENT-246]
+  outcome_id: CHUMPOS
+

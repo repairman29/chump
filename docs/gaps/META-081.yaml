@@ -2,7 +2,7 @@
   domain: META
   title: "META: Integrate collision detection with routing system (META-073 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - Routing engine avoids paths flagged by collision predictor

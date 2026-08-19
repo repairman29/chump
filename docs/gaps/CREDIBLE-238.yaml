@@ -1,0 +1,18 @@
+- id: CREDIBLE-238
+  domain: CREDIBLE
+  title: "CREDIBLE: exclude R&D from the mission-ship ratio or the 2/3 scaling gate becomes clearable by experimenting"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    One-line semantics, deliberately its own gap because losing it is silent and expensive. R&D counts for pillar BALANCE and RESTOCK (so the curator can see it starving) and is EXCLUDED from the mission-ship ratio in gate 2 (so the scaling gate cannot be cleared by experimenting). Both behaviours asserted, not assumed. Depends on META-329 landing the pillar first.
+  acceptance_criteria:
+    - a merged R&D gap does NOT increment the mission-ship ratio numerator, proven by a test that computes the ratio with and without an R&D merge in the window
+    - the same R&D gap DOES appear in pillar inventory and pillar_coverage, so balance_restock can still detect starvation
+    - the scoreboard's gate-2 line states that R&D is excluded, so a reader is not left inferring it from code
+    - a comment at the exclusion site says WHY, citing the gameable-gate reasoning — an unexplained exclusion gets 'cleaned up' by a future refactor
+  depends_on: [META-329]
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: scripts/dev/mission-scoreboard.sh ; head -22 src/mission_grade.rs  |  OUTPUT: gate 2 reads 'Mission-ship ratio (24h): 15/28 (target >= 2/3 — mission-linked merges / total)', up from 5/18 on 2026-08-05. mission_grade.rs (INFRA-599) computes per-pillar counts by gap-title prefix and emits kind=mission_grade every 30 min via launchd.  |  THEORY: R&D's output is frequently a NO-GO — a kill counts as a successful run under the pillar's inverted success axis. If R&D merges count as mission-linked ships, the fleet can clear the 2/3 scaling gate by running experiments instead of shipping mission work, and gate 2 is the single number that says whether the factory has earned the right to point outward. That number is currently the operator's stated exit condition for factory-first sequencing, so corrupting it would remove the only objective brake on going outward too early. The six existing NO-GOs prove the volume is real, not hypothetical.  |  ALT: considered handling it inside META-329's refactor — rejected and deliberately split out: a broad mechanical 37-file change is exactly where a one-line metric semantic gets lost, and the failure is SILENT (the ratio just reads higher). Considered excluding R&D from all metrics — rejected: it must still count for balance and restock, or the curator cannot detect a starving pillar.
+

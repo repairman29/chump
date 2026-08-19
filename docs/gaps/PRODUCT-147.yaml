@@ -1,0 +1,20 @@
+- id: PRODUCT-147
+  domain: PRODUCT
+  title: "[postsub.io] All 10 footer links are dead placeholders (href=\"#\")"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Fresh-context stranger-agent cold test of postsub.io (Scout, stranger tier, ~10 min bounded session, no account/payment).
+    
+    Every footer link -- Templates, Integrations, About, Blog, Careers, Contact, Help Center, Documentation, Status, Community -- is href="#" and does nothing on click. Also related: "View Demo" and "View Live Demo" buttons in the hero/CTA sections do nothing (the closest thing to a demo is a "Interactive demo coming soon" placeholder under one feature heading). A first-time visitor has no way to see the product in action or find company/support info before being funneled to the sign-up wall.
+    
+    context: {"url":"https://postsub.io","tier":"stranger","source":"scout-stranger-agent"}
+    source: holler feedback_events, dedupe 32259333f5592a26
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/postsub"
+

@@ -2,7 +2,7 @@
   domain: META
   title: "[UMBRELLA] Doctrine Loom — seamstress daemon that continuously threads playbooks (PR_RESCUE_PROCEDURE, SHIP_ASSIST, CLAUDE_GOTCHAS, OPERATOR_PLAYBOOK, SUBAGENT_DISPATCH, agents/*.md, etc.) into one living, continuous, stronger weave; auto-publishes DOCTRINE_INDEX.md + DOCTRINE_GRAPH.md; injected into every Sonnet briefing"
   status: open
-  priority: P1
+  priority: P3
   effort: l
   description: |
     OPERATOR DIRECTIVE 2026-05-31T17:15Z (verbatim): 'We have other playbooks and have been developing a procedures protocol of some sort. We need to keep that in mind and have some process to automate "threading" some amazing seamstress type of automation that weaves and stitches our products and processes together into something incredible and artistic, stronger, living, continuous.'

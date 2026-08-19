@@ -1,0 +1,17 @@
+- id: EFFECTIVE-382
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [almanac] recon packet — one command that orients an agent in an unfamiliar repo (architecture + comprehend + coverage)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    MISSION-032 is 'scale to 100s-to-10000s of external repos' and COTG is repo takeover; both require an agent to become competent in a codebase it has never seen, fast. The pieces exist and are never used together: almanac_architecture (subsystem map, hub files, cross-module edges — structural and instant), the five comprehension organs via comprehend (is it wired, what gates it, what flags govern it, why does it exist, what did the run do), and almanac coverage (whether this repo's semantic layer is real or keyword wearing a fusion label). Build 'almanac recon <repo>' to emit one packet combining them, sized for an agent prompt rather than a human report. This is the standard first move on any repo the fleet takes over, and it is the natural consumer of the prior-art skill's add-ref flow for external repos.
+  acceptance_criteria:
+    - "almanac recon <repo> emits a single packet: subsystem map, hub files, entry points, organ coverage summary, and the semantic-layer honesty line, with citations throughout"
+    - the packet is bounded for prompt injection (a stated token/line budget) — a recon that blows the context window is not recon
+    - it works on a freshly add-ref'd external repo with no embeddings, degrading to structural-only and SAYING so rather than silently thinning
+    - the output names what it could not see — unsupported languages per CREDIBLE-214, unindexed SQL per INFRA-3530 — so an agent knows the shape of its blind spot before it starts
+    - "dogfood receipt: run against one real external repo (codebase-memory-mcp is already indexed) and record the packet in the gap notes"
+    - DEPTH.md updated same commit
+  skills_required: "external_repo:repairman29/almanac"
+

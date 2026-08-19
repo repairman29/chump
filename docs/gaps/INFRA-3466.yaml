@@ -1,0 +1,11 @@
+- id: INFRA-3466
+  domain: INFRA
+  title: "EFFECTIVE: migrate code-reviewer Tier-1 to the shared LLM service (chump llm-complete) — kill the CHUMP_PROVIDER_1..10 slot-duplication"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"migrate code-reviewer Tier-1 to the shared LLM service (chump llm-complete) — kill the CHUMP_PROVIDER_1..10 slot-duplication\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

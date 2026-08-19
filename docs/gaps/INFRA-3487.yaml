@@ -1,0 +1,14 @@
+- id: INFRA-3487
+  domain: INFRA
+  title: "RESILIENT: [COTG-1.5] supervision-tree escalation (catch storms on cycle 4, not 30)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-1.5] supervision-tree escalation (catch storms on cycle 4, not 30)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~50% -> FINISH. unify neuromod pause (autonomy_loop.rs:1133) + src/hitl_escalation.rs + tool-storm exit 76 (execute_gap.rs:1339) into one restart-intensity policy that marks blocked+escalates after N no-progress cycles.
+  outcome_id: COTG
+

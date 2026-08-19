@@ -1,0 +1,17 @@
+- id: CREDIBLE-242
+  domain: CREDIBLE
+  title: "CREDIBLE: [almanac] reference-repo citations carry no provenance — third-party code looks identical to ours"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    almanac add-ref clones a PUBLIC third-party repo and indexes it so agents can ground against a real API instead of inventing one — tokio is the documented example, and codebase-memory-mcp (MIT, 37.9k stars) was added 2026-08-08. The citations those produce are indistinguishable from the fleet's own: 'codebase-memory-mcp:internal/cbm/foo.c:42' looks exactly like 'chump:src/foo.rs:42'. Nothing in the response says the code is third-party, what licence governs it, or which revision it was pinned at. That matters more here than for ordinary search because almanac_api EXISTS to make agents copy the exact signature verbatim — the anti-hallucination lookup is also, structurally, a copy-this instruction. An agent lifting an implementation from an MIT or GPL reference has no signal that attribution is owed. The registry already knows origin_url for remote entries and add-ref already takes --rev, so most of the facts are in hand; they are simply not carried into the answer. Related but distinct: the four repairman29 clones under ~/.chump/external are deliberately NOT indexed (they duplicate registered sources and are mutable agent worktrees) — that is a coverage decision, this is a provenance one.
+  acceptance_criteria:
+    - a hit from an add-ref'd repo is marked as external in both CLI and MCP output — an agent can tell third-party code from ours without knowing the slug
+    - the citation carries origin URL, pinned rev, and licence where detectable (LICENSE file or SPDX header); undetectable licence says 'licence unknown', never blank
+    - almanac_api specifically flags external results, since it is the surface whose whole purpose is 'copy this verbatim'
+    - the registry records which entries came from add-ref versus local registration, so the distinction survives a re-index
+    - a test asserts an external hit cannot render identically to a first-party hit
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: CREDIBLE-000
+

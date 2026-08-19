@@ -2,7 +2,7 @@
   domain: INFRA
   title: "Gemini cascade slot — handle malformed/missing function_declarations gracefully (current: 400 on every bare chump call)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "src/provider_cascade.rs: should_cascade_on_error_string recognizes Gemini malformed-tool-config 400s (`function_declarations`, `function calling config is set without`, malformed `function_declaration`) and cascades to next slot rather than aborting."

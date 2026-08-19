@@ -2,7 +2,7 @@
   domain: INFRA
   title: "CREDIBLE P1: META-124/C15 chump kpi report --integration dashboard (P50 latency / CI runs per gap / runner util / bisect rate)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "- New chump kpi report --integration subcommand. Reads ambient.jsonl + state.db + GitHub Actions API for the last 7d. Produces dashboard:\n\n    ═══ Integration Cycle Dashboard (last 7d) ═══\n    \n    SHIP VELOCITY\n      Cycles shipped:        N\n      Gaps shipped:          M\n      Mean gaps per cycle:   M/N\n      P50 cycle wall time:   X min\n      P95 cycle wall time:   Y min\n    \n    EFFICIENCY VS PER-PR BASELINE\n      CI runs / shipped gap: 0.XX  (target: < 0.15)\n      Runner peak util:      ZZ%   (target: < 50%)\n      Wall time saved est:   Q hours (vs hypothetical per-PR baseline)\n    \n    QUALITY\n      Bisect-quarantine rate: A.A%  (target: < 5%)\n      Cycles with 0 fails:    B/N (BB%)\n      Rerun cycles:           C\n    \n    EXTERNAL COSTS\n      GraphQL exhaustion / day:  D.D  (target: < 0.5)\n      Operator flake-rerun interventions / day: E.E (target: < 1)\n\n- Reads metrics from:\n    - state.db gap_state for shipped + bisect_quarantined counts\n    - ambient.jsonl filtered to last 7d for cycle events\n    - gh api repos/.../actions/runs for runner job count\n    - GraphQL exhaustion counts from existing api-cost-leaderboard.sh data\n- Supports --json (machine-readable), --window 24h"

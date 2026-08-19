@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "RESILIENT: target-dir reaper races freshly-provisioned worktree cargo build (.chump-no-reap escape hatch leaks)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "Identify which reaper(s) race a fresh worktree cargo build — candidates: scripts/ops/cargo-target-reaper.sh, scripts/ops/stale-worktree-reaper-tmp.sh (INFRA-2020), worktree-reaper-safety (INFRA-1074)"

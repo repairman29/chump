@@ -2,7 +2,7 @@
   domain: META
   title: "META: Create `test-auto-admin-merge-policy.sh` skeleton and 5-PR fixture (META-209 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - File `scripts/ci/test-auto-admin-merge-policy.sh` is created and is executable.

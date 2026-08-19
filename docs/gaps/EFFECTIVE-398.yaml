@@ -1,0 +1,17 @@
+- id: EFFECTIVE-398
+  domain: EFFECTIVE
+  title: "[almanac] organs emit prose only — give them --findings-json so they can file into holler"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "All 5 organs (comprehend, flagmap, gatemap, livemap, tracemap) gain --findings-json emitting structured findings. Verified 2026-08-07: NONE has --json, --findings or --format today; they print human prose, which is the structural reason they cannot talk to holler — there is nothing to pipe"
+    - "Organs stay pure: they emit JSON to stdout, they do NOT do network or hold credentials. A thin emitter files into holler, reusing posse's proven pattern (posse/report-holler.mjs fileFinding with reporter + stable dedupe_hash of project+title) with reporter=almanac-<organ>"
+    - "STABLE dedupe hashes are the load-bearing requirement, not a nicety: chump alone reports 211 drift flags, 764 gates and 64 bypasses. A daily sweep without stable hashes files hundreds of duplicate rows per run and the inbox becomes unreadable — which is exactly how an instrument stops being read"
+    - "Normalize BEFORE filing (see CREDIBLE-222): chump's 211 drift is mostly representation noise (three spellings of no-default; 44 same-path variants differing only by local variable name). Filing raw counts would flood holler with non-findings and discredit the organ"
+    - "Coverage honesty travels with every finding: a partial/none organ result must say so in the row, so a thin scan can never be read as a clean bill of health (RELEASE_CHECKLIST 1.5c already requires this for humans — the machine path needs it too)"
+    - context.repo uses a BARE slug, not owner/repo — the bridge prefixes the owner and double-prefixed tags route to a repo that does not exist (fixed at source 2026-08-07, do not reintroduce)
+    - "Unblocks three things that are all currently manual or impossible: EFFECTIVE-389 (scheduled code-posse sweep), the RELEASE_CHECKLIST 1e/1.5 auditor filing what it finds instead of only printing it, and CREDIBLE-221 (organ usage telemetry)"
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: CHUMPOS
+

@@ -2,7 +2,7 @@
   domain: CREDIBLE
   title: "CREDIBLE: chump CLI hallucinates on unknown subcommand instead of erroring (farmer status / cron list returned LLM prose)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "chump <unknown-subcommand> exits non-zero with usage error, NOT a hallucinated LLM answer (observed: 'chump farmer status' -> 'a farmer is an individual who works in agriculture')"

@@ -1,0 +1,16 @@
+- id: RESILIENT-243
+  domain: RESILIENT
+  title: "claim worktrees have no target/ symlink — acp-smoke gate can never find the binary, fails 4ms on EVERY rust ship from a claim (workaround: CARGO_TARGET_DIR)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "REPRO: chump claim <ID> creates the worktree, then chump preflight fails 'acp-smoke ... ✗ (4ms)' with 'ERROR: no chump binary found; tried CARGO_TARGET_DIR=<unset> and <worktree>/target/{release,debug}/chump'. Confirmed 2026-08-07 on /tmp/chump-infra-1965"
+    - "ROOT CAUSE: .cargo/config.toml sets target-dir=~/.cargo/chump-shared-target, so cargo builds never populate <worktree>/target/. The MAIN checkout works only because ~/Projects/Chump/target is a SYMLINK to the shared dir. Claim worktrees get a real empty dir instead"
+    - "SCOPE IS UNIVERSAL, not one bad worktree: verified all three live claim worktrees (chump-credible-201, chump-credible-212, chump-effective-361) have no target dir at all; only the main checkout has the symlink. Every rust ship from a claim hits this"
+    - "FIX: chump claim symlinks <worktree>/target -> the resolved cargo target-dir at creation time (matching the main checkout), OR the acp-smoke gate resolves target-dir from .cargo/config.toml instead of assuming <repo>/target. Prefer the latter — it fixes every gate with the same assumption, not just this one"
+    - "REGRESSION TEST: scripts/ci/ test asserts a freshly-claimed worktree can run the acp-smoke gate with no CARGO_TARGET_DIR in the environment"
+    - "AUDIT the sibling assumption: grep the gate scripts for other hardcoded <repo>/target paths and fix them in the same pass"
+  notes: |
+    Found 2026-08-07 while shipping INFRA-1965 slice 2. Workaround that unblocked it: CARGO_TARGET_DIR=/Users/jeffadkins/.cargo/chump-shared-target chump preflight
+

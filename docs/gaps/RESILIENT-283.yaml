@@ -1,0 +1,12 @@
+- id: RESILIENT-283
+  domain: RESILIENT
+  title: "RESILIENT: headless-native fleet worker runner — run-fleet/control.sh is tmux-dashboard-centric, won't spawn workers on a fresh Linux node"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - run-fleet/control.sh can spawn workers headlessly with no tmux/dashboard dependency; a worker starts and heartbeats on a node with no tmux server.
+  outcome_id: MISSION-010
+  evidence: |
+    COMMAND: on helsinki (chumpd-eu, headless): chump fleet up --size 2, then bash scripts/dispatch/control.sh directly | OUTPUT: 'can't find session: chump-fleet'; control.sh renders a curses dashboard then 'TERM environment variable not set'; rc=1; pgrep worker.sh = 0 (no workers spawned) | THEORY: run-fleet.sh:812 creates a tmux session running control.sh, but control.sh is the INTERACTIVE tmux DASHBOARD (needs TERM/tty), not a headless worker spawner; the launcher is Mac-interactive-tmux-centric so the session dies immediately on a headless node and no workers spawn. Need a headless worker-runner (systemd-per-worker or plain supervised loops) with the dashboard as optional attach. | ALT: rejected 'disk-budget REFUSE is the blocker' — 71G free, the guard downsized to 2 and proceeded PAST it (auth probe ran after); the tmux/TERM failure is the real cause. Proven interim: chump dispatch --backend headless works headless (shipped DOC-042/#3563).
+

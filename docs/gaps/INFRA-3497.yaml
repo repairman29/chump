@@ -1,0 +1,14 @@
+- id: INFRA-3497
+  domain: INFRA
+  title: "CREDIBLE: [COTG-3.4] test-depth honesty at the delivery boundary"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-3.4] test-depth honesty at the delivery boundary\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:23Z] DISCOVERY NOT-STARTED ~10% -> BUILD from scratch. e2e/DEPTH.md is ABSENT; nearest is src/pr_ac_coverage.rs.
+  outcome_id: COTG
+

@@ -2,12 +2,10 @@
   domain: RESILIENT
   title: "RESILIENT: chump claim auto-recovers orphan claim-worktrees when no live lease exists — dead runs poison retries of the same gap"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   description: |
     When a dispatch dies after 'chump claim' created /tmp/chump-<gap> (worktree + branch), the corpse persists: the next claim of the same gap fails 'worktree path already exists' and bot-merge exits with META-156 AC#2 session-unknown (observed repeatedly on chumpd-eu cycles 14-17). The INFRA-919 trap removes the lease but never the claim worktree/branch. Fix: when claim hits worktree-exists AND no live lease exists for the gap in state.db (and no sidecar), treat it as an orphan: git worktree remove --force + branch -D + proceed with a fresh claim, emitting kind=orphan_claim_worktree_recovered. INFRA-2744's committed-work concern doesn't apply when NO lease exists — but preserve safety by refusing if the orphan branch has commits ahead of main (rename to <branch>-orphan-<ts> instead of deleting).
   acceptance_criteria:
-    - "The change described by \"chump claim auto-recovers orphan claim-worktrees when no live lease exists — dead runs poison retries of the same gap\" is implemented in the relevant RESILIENT code path(s)."
-    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - chump claim detects orphan claim-worktrees (worktree present, no live lease) and recovers/recycles them before allocating a new one; a poisoned prior run no longer blocks retrying the same gap.
 

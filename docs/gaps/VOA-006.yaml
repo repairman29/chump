@@ -2,7 +2,7 @@
   domain: VOA
   title: "VOICE-OF-AGENT VOA-006: gap_import_broken_by_corrupt_entry — 15 min lost; fix-shape: tooling"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
     - Full friction report at docs/voice/VOA-006-FULL.yaml with wedge_class=gap_import_broken_by_corrupt_entry, minutes_lost=15

@@ -1,0 +1,11 @@
+- id: INFRA-3582
+  domain: INFRA
+  title: bot-merge.sh gh_api_probe hangs 10s when stdin not redirected from /dev/null (--silent reads stdin)
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"bot-merge.sh gh_api_probe hangs 10s when stdin not redirected from /dev/null (--silent reads stdin)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+
