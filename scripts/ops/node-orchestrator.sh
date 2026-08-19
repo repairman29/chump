@@ -23,9 +23,10 @@ AUTOPLACE="${CHUMP_ORCH_AUTOPLACE:-0}"          # 0 = sense+recommend only; 1 = 
 WORKER_UNIT="${CHUMP_ORCH_WORKER_UNIT:-chump-cj-worker}"   # worker@1 is this; worker@N are extras
 WORKER_MAX="${CHUMP_ORCH_WORKER_MAX:-0}"        # 0 = auto (cores-1)
 SCALE_UP_LOAD="${CHUMP_ORCH_SCALE_UP_LOAD:-70}"   # per-core load% below which we may scale up
-SCALE_DN_LOAD="${CHUMP_ORCH_SCALE_DN_LOAD:-140}"  # per-core load% above which we scale down
+SCALE_DN_LOAD="${CHUMP_ORCH_SCALE_DN_LOAD:-300}"  # per-core load% = GENUINE thrash (build fleets peg cores; busy≠oversubscribed)
+RAM_SHED_MB="${CHUMP_ORCH_RAM_SHED_MB:-800}"      # RAM-avail floor: real shed signal is memory pressure, not busy CPU
 DISK_PLACE_PCT="${CHUMP_ORCH_DISK_PLACE_PCT:-90}" # root%>= this triggers placement consideration
-HOUSEKEEPING="chump-rot-reaper.timer chump-worktree-reaper.timer chump-cj-disk-monitor.service"
+HOUSEKEEPING="${CHUMP_ORCH_HOUSEKEEPING:-chump-rot-reaper.service chump-worktree-reaper.service chump-disk-monitor.service}"
 mkdir -p "$STATE_DIR"
 log(){ printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 
@@ -36,7 +37,8 @@ sense() {
   RAM_AVAIL_MB=$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo)
   ROOT_PCT=$(df -P / | awk 'NR==2{gsub("%","",$5); print $5}')
   # per-volume free (largest-free non-root, non-boot volume for placement targets)
-  BEST_VOL=$(df -P -x tmpfs -x devtmpfs 2>/dev/null | awk 'NR>1 && $6!~"/boot" && $6!="/" {print $4, $6}' | sort -rn | head -1)
+  # placement targets: real data volumes only — exclude vfat (printer/boot) which can't hold cargo symlinks/perms
+  BEST_VOL=$(df -P -x tmpfs -x devtmpfs -x vfat 2>/dev/null | awk 'NR>1 && $6!~"/boot" && $6!~"/print" && $6!="/" {print $4, $6}' | sort -rn | head -1)
   BEST_VOL_FREE_KB=$(echo "$BEST_VOL" | awk '{print $1}')
   BEST_VOL_MNT=$(echo "$BEST_VOL" | awk '{print $2}')
   WORKERS_UP=$(systemctl list-units "${WORKER_UNIT}*" 'chump-cj-worker2*' --state=active --no-legend 2>/dev/null | grep -c "\.service")
@@ -56,8 +58,9 @@ scale() {
   # scale up only with idle CPU AND >=1.5G free RAM per new worker
   if [ "$LOADPCT" -lt "$SCALE_UP_LOAD" ] && [ "$RAM_AVAIL_MB" -gt 1500 ] && [ "$WORKERS_UP" -lt "$max" ]; then
     target=$((WORKERS_UP+1)); log "SCALE: idle (load ${LOADPCT}%/core, RAM ${RAM_AVAIL_MB}MB) -> $WORKERS_UP->$target (max $max)"
-  elif [ "$LOADPCT" -gt "$SCALE_DN_LOAD" ] && [ "$WORKERS_UP" -gt 1 ]; then
-    target=$((WORKERS_UP-1)); log "SCALE: overloaded (load ${LOADPCT}%/core) -> $WORKERS_UP->$target"
+  elif { [ "$RAM_AVAIL_MB" -lt "$RAM_SHED_MB" ] || [ "$LOADPCT" -gt "$SCALE_DN_LOAD" ]; } && [ "$WORKERS_UP" -gt 1 ]; then
+    # shed only on REAL pressure: low RAM (OOM risk) or genuine thrash — NOT normal build-busy CPU
+    target=$((WORKERS_UP-1)); log "SCALE: shed on pressure (RAM ${RAM_AVAIL_MB}MB<${RAM_SHED_MB} or load ${LOADPCT}%/core>${SCALE_DN_LOAD}) -> $WORKERS_UP->$target"
   fi
   # hysteresis: require the same decision twice before acting
   local mark="$STATE_DIR/.orch-scale-intent"
