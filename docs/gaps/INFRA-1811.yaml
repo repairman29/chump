@@ -1,7 +1,8 @@
 - id: INFRA-1811
   domain: INFRA
   title: "RESILIENT: pr-auto-rebase falls back to local rebase + custom merge drivers BEFORE giving up — handles additive ci.yml conflicts the daemon currently fails (would have rescued tonight's 9 stale PRs)"
-  status: open
+  status: done
+  closed_pr: 3318
   priority: P1
   effort: m
   description: |
@@ -35,20 +36,16 @@
     work shipped months ago; syncing here per the RESILIENT-244/RESILIENT-134
     precedent.
 
-    Already shipped: local-rebase fallback landed in PR #2553 (commit
-    7cafaccf, INFRA-1958) and was extended with the timeout guard +
-    driver/conflict telemetry in PR #3318 (commit 31b11a22, this gap's own
-    ID). Verified on this checkout of origin/main: scripts/coord/pr-auto-rebase.sh
-    contains git worktree add into a /tmp/chump-rebase-fb-* scratch dir,
-    resolve_merge_drivers() (git check-attr merge), push --force-with-lease,
-    a CHUMP_PR_AUTO_REBASE_LOCAL_TIMEOUT_S cost guard, and emits both
-    kind=pr_auto_rebase_recovered and kind=pr_auto_rebase_unresolvable.
-    scripts/ci/test-pr-auto-rebase-local-fallback.sh (AC#7/#8) exists and
-    passes 12/12. All 9 acceptance criteria are satisfied on main. Closing
-    as no-op — no code change required. state.db had gone empty and
-    re-imported this gap from stale docs/gaps/INFRA-1811.yaml as status:open
-    (same canonical-store split-brain class as INFRA-3606) even though the
-    work shipped months ago; syncing here per the RESILIENT-244/RESILIENT-134
-    precedent.
+    [2026-08-19] SYNC: this gap has already been documented as
+    already-shipped twice (#3926, #3927-adjacent commit 631c4ac9) but
+    state.db kept re-importing it as status:open from this stale YAML —
+    same split-brain class as INFRA-1865 (#3929) and INFRA-3606. Reverified
+    on this checkout: scripts/coord/pr-auto-rebase.sh still contains
+    resolve_merge_drivers(), the /tmp/chump-rebase-fb-* worktree fallback,
+    the CHUMP_PR_AUTO_REBASE_LOCAL_TIMEOUT_S guard, and both
+    pr_auto_rebase_recovered/pr_auto_rebase_unresolvable emit sites;
+    scripts/ci/test-pr-auto-rebase-local-fallback.sh passes 12/12. Flipping
+    status to done against PR #3318 (the PR that did the actual work) so
+    the picker stops re-surfacing a gap that shipped months ago.
   outcome_id: MISSION-010
 
