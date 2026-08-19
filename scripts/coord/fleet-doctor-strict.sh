@@ -925,12 +925,13 @@ print(found)
 # paths are dead; rc=2 means a valid path exists but isn't the active one
 # (the precedence trap) — both are real failures a worker will hit.
 #
-# Bypass: CHUMP_FLEET_DOCTOR_SKIP_AUTH_PROBE=1 (network-free CI contexts).
+# No bypass env var: a host with NO credentials configured at all naturally
+# SKIPs (auth-status.sh's "no credentials found" case — that absence is
+# already a distinct, pre-existing signal owned by fleet_doctor_validate()
+# presence checks and the farmer's AUTH_DEAD path). This check's job is
+# narrower — catch CONFIGURED-but-invalid credentials — so it never forces
+# a live network probe on a credential-less CI runner or fresh dev box.
 check_auth_probe() {
-    if [[ "${CHUMP_FLEET_DOCTOR_SKIP_AUTH_PROBE:-0}" == "1" ]]; then
-        register_check "auth-probe" "skip" "CHUMP_FLEET_DOCTOR_SKIP_AUTH_PROBE=1 bypass active" ""
-        return
-    fi
     local probe_script="$REPO_ROOT/scripts/coord/auth-status.sh"
     if [[ ! -f "$probe_script" ]]; then
         register_check "auth-probe" "skip" "auth-status.sh not found — skipping live probe" ""
@@ -943,6 +944,9 @@ check_auth_probe() {
 
     if [[ "$probe_rc" -eq 0 ]]; then
         register_check "auth-probe" "pass" "$probe_out" ""
+    elif [[ "$probe_out" == *"no credentials found"* ]]; then
+        register_check "auth-probe" "skip" \
+            "no credentials configured to probe — $probe_out" ""
     elif [[ "$probe_rc" -eq 2 ]]; then
         register_check "auth-probe" "fail" \
             "auth misconfigured: a valid credential exists but is not the active path — $probe_out" \

@@ -8,7 +8,9 @@
 #      path) → pass.
 #   3. api-key invalid but oauth valid, mode=api-key (precedence trap: a
 #      valid path exists but isn't the active one) → fail.
-#   4. Bypass via CHUMP_FLEET_DOCTOR_SKIP_AUTH_PROBE=1 → skip, no probe run.
+#   4. Both api-key and oauth ABSENT (no credentials configured at all) →
+#      skip, not fail — that's a distinct pre-existing signal owned by
+#      fleet_doctor_validate()'s presence checks, not this live-probe check.
 #
 # Proves the CREDIBLE-119 behavior: `chump fleet doctor` must exit non-zero
 # when a LIVE authenticated probe rejects both credential paths, not just
@@ -85,16 +87,16 @@ else
     fail "expected fail/'not the active path', got status=$(last_status) detail=$(last_detail)"
 fi
 
-# ── Test 4: bypass skips the probe entirely ──────────────────────────────────
-CHUMP_FLEET_DOCTOR_SKIP_AUTH_PROBE=1 \
+# ── Test 4: no credentials configured at all → skip, not fail ───────────────
 CHUMP_AUTH_STATUS_CACHE="$(next_cache)" \
-CHUMP_AUTH_STATUS_FAKE_OAUTH=invalid \
-CHUMP_AUTH_STATUS_FAKE_APIKEY=invalid \
+CHUMP_AUTH_STATUS_FAKE_OAUTH=absent \
+CHUMP_AUTH_STATUS_FAKE_APIKEY=absent \
+CHUMP_AUTH_STATUS_FAKE_MODE=auto \
     check_auth_probe
-if [[ "$(last_status)" == "skip" ]]; then
-    pass "CHUMP_FLEET_DOCTOR_SKIP_AUTH_PROBE=1 → skip"
+if [[ "$(last_status)" == "skip" ]] && [[ "$(last_detail)" == *"no credentials configured"* ]]; then
+    pass "no credentials at all → skip (not this check's signal to own)"
 else
-    fail "expected skip with bypass set, got status=$(last_status) detail=$(last_detail)"
+    fail "expected skip/'no credentials configured', got status=$(last_status) detail=$(last_detail)"
 fi
 
 echo "=== all fleet-doctor auth-probe tests passed ==="

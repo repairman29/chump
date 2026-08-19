@@ -76,14 +76,3 @@ CHUMP_SCCACHE_HIT_RATE_CHECK
 # pause; emits kind=binary_auto_deploy_skipped. Deletion path: when daemon gains
 # an explicit pause/resume CLI (MISSION-013 or later) we remove this env var.
 CHUMP_SKIP_AUTO_DEPLOY
-
-# CHUMP_FLEET_DOCTOR_SKIP_AUTH_PROBE — network-free CI/isolated-fixture escape
-# hatch for the CREDIBLE-119 live auth-probe check in
-# scripts/coord/fleet-doctor-strict.sh (mirrors the existing
-# CHUMP_FLEET_DOCTOR_SKIP_REQUIRED_CHECKS sibling for the same script).
-# Bypass-Justification: CREDIBLE-119 — the check makes a real authenticated
-# call (via scripts/coord/auth-status.sh); CI runners and offline dev boxes
-# without live credentials need to opt out without the doctor script itself
-# false-failing on infra it can't reach. Deletion path: TBD — would need a
-# fully-mocked auth transport to remove this escape valve.
-CHUMP_FLEET_DOCTOR_SKIP_AUTH_PROBE
