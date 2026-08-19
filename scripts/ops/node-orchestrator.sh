@@ -26,7 +26,7 @@ SCALE_UP_LOAD="${CHUMP_ORCH_SCALE_UP_LOAD:-70}"   # per-core load% below which w
 SCALE_DN_LOAD="${CHUMP_ORCH_SCALE_DN_LOAD:-300}"  # per-core load% = GENUINE thrash (build fleets peg cores; busy≠oversubscribed)
 RAM_SHED_MB="${CHUMP_ORCH_RAM_SHED_MB:-800}"      # RAM-avail floor: real shed signal is memory pressure, not busy CPU
 DISK_PLACE_PCT="${CHUMP_ORCH_DISK_PLACE_PCT:-90}" # root%>= this triggers placement consideration
-HOUSEKEEPING="chump-rot-reaper.timer chump-worktree-reaper.timer chump-cj-disk-monitor.service"
+HOUSEKEEPING="${CHUMP_ORCH_HOUSEKEEPING:-chump-rot-reaper.service chump-worktree-reaper.service chump-disk-monitor.service}"
 mkdir -p "$STATE_DIR"
 log(){ printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 
