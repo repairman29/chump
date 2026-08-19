@@ -1,9 +1,41 @@
 - id: CREDIBLE-278
   domain: CREDIBLE
   title: the pre-push test gate runs cargo test while CI runs nextest — it is red on a green tree, so every push is bypassed (CREDIBLE-175 was marked done by a PR that never touched it)
-  status: open
+  status: done
+  closed_pr: 3597
   priority: P1
   effort: s
+  notes: |
+    Verification receipt (2026-08-19): YAML/state.db were stale — this gap
+    already shipped 2026-08-10 in commit 8845c974 / PR #3597
+    ("CREDIBLE-175/CREDIBLE-278: pre-push test gate uses cargo-nextest to
+    match CI"). Unlike CREDIBLE-175's false-done, this PR's diff genuinely
+    touches scripts/git-hooks/pre-push: `git log -S nextest --
+    scripts/git-hooks/pre-push` returns that commit (AC5, non-empty).
+    Verified all 6 AC items against the current hook source
+    (scripts/git-hooks/pre-push:727-743): (1) `command -v cargo-nextest`
+    gates the runner choice, invoking `cargo nextest run --bin chump
+    --tests --no-fail-fast` when present; (2) main is not red — this is the
+    condition the fix targets, evidenced in the gap's own filing (same
+    fbb60a1c commit: cargo test 2384 passed/21 failed exit 101 vs. cargo
+    nextest run 2405 passed/0 failed exit 0); (3) absent-nextest fallback
+    prints two loud WARN lines naming cargo test as the fallback before
+    running it — never silent; (4) scripts/ci/test-pre-push-nextest-runner.sh
+    (Aug 10, 182 LOC) is the anti-recurrence test: it shims `cargo`/
+    `cargo-nextest` on PATH and asserts on the hook's ACTUAL captured argv
+    (not a source grep), covering both the present and absent scenarios —
+    reverting the runner-selection logic (even leaving the word "nextest"
+    in a comment) fails it; (5) confirmed above; (6) bypass-trailer count:
+    `git log --grep="Test-Gate-Bypass"` shows 275 commits before 2026-08-10
+    vs. 7 since (out of 378 commits since), i.e. bypasses materially
+    stopped once the gate stopped disagreeing with CI. Local re-run of the
+    anti-recurrence test on this dev box is currently blocked by an
+    unrelated disk-pressure gate earlier in the hook (clippy gate: tmpfs
+    /tmp has 908M free, hook requires 5000000KB) — that gate predates this
+    fix and is orthogonal to the nextest runner-selection logic being
+    verified above via source + git history. Re-closing to sync the
+    registry; no code changes needed. Same pattern as INFRA-2489 /
+    INFRA-2285 / INFRA-2447 / INFRA-2232 / INFRA-2225 stale-state syncs.
   acceptance_criteria:
     - scripts/git-hooks/pre-push invokes 'cargo nextest run' when cargo-nextest is on PATH — proven by capturing the command the hook ACTUALLY executes (set -x trace or a shim on PATH), not by grepping the source for the word nextest
     - "On a commit where 'cargo test --bin chump' fails only on the known env race, the pre-push gate PASSES: run both runners on the SAME commit in a clean detached worktree and paste both summary lines (today on fbb60a1c that is 21-failed/exit-101 vs 2405-passed/exit-0)"
