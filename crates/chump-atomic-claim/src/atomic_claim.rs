@@ -67,6 +67,10 @@ pub struct ClaimArgs {
     /// `CHUMP_CLAIM_NO_FUZZY=1` env. Emits `claim_duplicate_bypassed` for
     /// audit when set.
     pub force_duplicate: bool,
+    /// INFRA-2434: bypass the claim-time path-overlap-with-open-PR gate.
+    /// Mirrors CHUMP_CLAIM_PATH_OVERLAP_OPERATOR=1. Proceeds despite an
+    /// overlap; emits claim_path_overlap_allowed for audit.
+    pub allow_overlap: bool,
     /// Run all preflight gates without creating worktree or lease.
     pub check_only: bool,
     /// Output JSON format (used with --check-only).
@@ -105,6 +109,7 @@ impl ClaimArgs {
                                         auto-rename to <branch>-N and continue instead of aborting\n  \
                        --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
+                       --allow-overlap  Proceed despite a path-overlap-with-open-PR block (INFRA-2434; audit-logged)\n  \
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
                        --json        Output JSON format (use with --check-only)"
@@ -147,6 +152,7 @@ impl ClaimArgs {
         let mut force_recover = false;
         let mut force_overlap = false;
         let mut allow_duplicate_pr = false;
+        let mut allow_overlap = false;
         let mut force_duplicate = false;
         let mut check_only = false;
         let mut json = false;
@@ -196,6 +202,10 @@ impl ClaimArgs {
                     allow_duplicate_pr = true;
                     i += 1;
                 }
+                "--allow-overlap" => {
+                    allow_overlap = true;
+                    i += 1;
+                }
                 "--force-duplicate" => {
                     force_duplicate = true;
                     i += 1;
@@ -240,6 +250,7 @@ impl ClaimArgs {
             force_recover,
             force_overlap,
             allow_duplicate_pr,
+            allow_overlap,
             force_duplicate,
             check_only,
             json,
@@ -1210,6 +1221,73 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
             "[claim] INFRA-1763: diff-collision check done in {}ms ({} siblings checked, {} matches)",
             diff_result.duration_ms, diff_result.siblings_checked, diff_result.matches.len()
         );
+    }
+
+    // 5.66. INFRA-2434: claim-time path-overlap-with-open-PR gate.
+    //
+    // Kills the "duplicate-work-under-different-names" class: two gaps with
+    // different IDs and titles both touch the same file/region because
+    // nothing checked the *open PR* file lists, only sibling leases/AC text
+    // (5.5/5.6/5.65 above all reason about other claims, not GitHub state).
+    // Trigger case (2026-06-02): INFRA-2343 (PR #2924) and INFRA-2347 both
+    // fixed the same 3 printf/grep -q patterns in
+    // scripts/coord/trunk-sentinel-daemon.sh — different gap IDs, same code.
+    //
+    // Best-effort: `gh` failures degrade to "no overlap found" (never blocks
+    // on an infra hiccup). Must run before the worktree is created so a
+    // refusal never leaves a dangling worktree.
+    //
+    // Bypass: --allow-overlap flag OR operator-only CHUMP_CLAIM_PATH_OVERLAP_OPERATOR=1
+    // (source-controlled env, skips the check entirely — operator may know
+    // they want 2 PRs touching the same file).
+    {
+        let operator_bypass = std::env::var("CHUMP_CLAIM_PATH_OVERLAP_OPERATOR")
+            .map(|v| !v.trim().is_empty() && v.trim() != "0")
+            .unwrap_or(false);
+        if !operator_bypass && !claim_paths.is_empty() {
+            let own_paths: Vec<String> = claim_paths
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let pr_matches = check_pr_path_overlap(&args.repo_root, &worktree_path, &own_paths);
+            for m in &pr_matches {
+                if args.allow_overlap {
+                    emit_claim_path_overlap_allowed(
+                        &ambient_log,
+                        &args.gap_id,
+                        m.pr_number,
+                        &m.pr_gap_id,
+                        &m.overlap_paths,
+                    );
+                    eprintln!(
+                        "[claim] INFRA-2434: --allow-overlap set; proceeding despite overlap with open PR #{} ({}): {}",
+                        m.pr_number,
+                        m.pr_gap_id,
+                        m.overlap_paths.join(", ")
+                    );
+                } else {
+                    emit_claim_path_overlap_blocked(
+                        &ambient_log,
+                        &args.gap_id,
+                        m.pr_number,
+                        &m.pr_gap_id,
+                        &m.overlap_paths,
+                    );
+                    bail!(
+                        "[claim] paths overlap with open PR #{} (gap {}, paths: {}).\n  \
+                         Options: (a) coordinate with #{} author and merge into that PR, \
+                         (b) wait for #{} to land then rebase, \
+                         (c) --allow-overlap to proceed anyway (audit-logged via kind=claim_path_overlap_allowed).",
+                        m.pr_number,
+                        m.pr_gap_id,
+                        m.overlap_paths.join(", "),
+                        m.pr_number,
+                        m.pr_number,
+                    );
+                }
+            }
+        }
     }
 
     // 5.7. INFRA-1692: pre-flight team-nugget search.
@@ -4187,6 +4265,289 @@ fn append_ambient_line(ambient_log: &Path, event: &serde_json::Value) {
         let _ = f.write_all(event.to_string().as_bytes());
         let _ = f.write_all(b"\n");
     }
+}
+
+// ── INFRA-2434: claim-time path-overlap-with-open-PR gate ──────────────────
+//
+// Distinct from the 5.5/5.6/5.65 gates above: those reason about OTHER
+// CLAIMS (live leases, INTENT, sibling worktree diffs) — none of them look
+// at GitHub's open-PR state directly. This gate is the complement: scan
+// every currently-open PR's changed-file set and refuse the claim if the
+// declared --paths overlap a PR that's already in flight, regardless of
+// whether that PR's author ever took a chump lease at all (e.g. a human
+// contributor, or a claim from before this gate existed).
+
+/// One open PR whose changed files overlap this claim's declared paths.
+struct PrOverlapMatch {
+    pr_number: u64,
+    /// Gap ID parsed out of the PR title, best-effort ("unknown" if none found).
+    pr_gap_id: String,
+    overlap_paths: Vec<String>,
+}
+
+/// List every open PR's (number, title, changed-file paths) via `gh pr
+/// list --json number,title,files`. Best-effort: any `gh` failure (offline,
+/// unauthenticated, rate-limited) returns an empty list so the gate never
+/// blocks the claim on an infra hiccup.
+fn list_open_pr_files(repo_root: &Path) -> Vec<(u64, String, Vec<String>)> {
+    let out = Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--json",
+            "number,title,files",
+            "--limit",
+            "100",
+        ])
+        .current_dir(repo_root)
+        .output();
+    let Ok(out) = out else {
+        return Vec::new();
+    };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    let arr: Vec<serde_json::Value> = match serde_json::from_slice(&out.stdout) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    arr.iter()
+        .filter_map(|v| {
+            let number = v.get("number")?.as_u64()?;
+            let title = v.get("title").and_then(|t| t.as_str()).unwrap_or("");
+            let files: Vec<String> = v
+                .get("files")
+                .and_then(|f| f.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|f| {
+                            f.get("path")
+                                .or_else(|| f.get("filename"))
+                                .and_then(|p| p.as_str())
+                                .map(|s| s.to_string())
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some((number, title.to_string(), files))
+        })
+        .collect()
+}
+
+/// Best-effort DOMAIN-NUMBER extraction from a PR title (e.g. "INFRA-2434:
+/// ..." -> "INFRA-2434"). Returns "unknown" when no such token is found.
+fn extract_gap_id_from_title(title: &str) -> String {
+    for token in title.split(|c: char| c.is_whitespace() || c == ':' || c == '(' || c == ')') {
+        let bytes = token.as_bytes();
+        let Some(dash) = token.find('-') else {
+            continue;
+        };
+        let (domain, rest) = (&token[..dash], &token[dash + 1..]);
+        if domain.len() < 2
+            || !domain.chars().all(|c| c.is_ascii_uppercase())
+            || rest.is_empty()
+            || !rest.chars().next().is_some_and(|c| c.is_ascii_digit())
+        {
+            continue;
+        }
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if digits.is_empty() {
+            continue;
+        }
+        let _ = bytes;
+        return format!("{domain}-{digits}");
+    }
+    "unknown".to_string()
+}
+
+/// Parse `@@ -a,b +c,d @@` unified-diff hunk headers for a single file's
+/// section out of a full `gh pr diff` payload, returning the NEW-side
+/// (post-change) line ranges as `(start, end_inclusive)`.
+fn parse_diff_hunks_for_path(diff_text: &str, path: &str) -> Vec<(u32, u32)> {
+    let marker_a = format!("diff --git a/{path} b/{path}");
+    let mut ranges = Vec::new();
+    let mut in_section = false;
+    for line in diff_text.lines() {
+        if line.starts_with("diff --git ") {
+            in_section = line == marker_a;
+            continue;
+        }
+        if !in_section || !line.starts_with("@@") {
+            continue;
+        }
+        // "@@ -l,s +l,s @@ optional-context"
+        let Some(plus_idx) = line.find('+') else {
+            continue;
+        };
+        let rest = &line[plus_idx + 1..];
+        let spec = rest.split_whitespace().next().unwrap_or("");
+        let mut parts = spec.splitn(2, ',');
+        let Some(start_str) = parts.next() else {
+            continue;
+        };
+        let Ok(start) = start_str.parse::<u32>() else {
+            continue;
+        };
+        let len: u32 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(1);
+        let end = if len == 0 { start } else { start + len - 1 };
+        ranges.push((start, end));
+    }
+    ranges
+}
+
+fn ranges_overlap(a: &[(u32, u32)], b: &[(u32, u32)]) -> bool {
+    a.iter()
+        .any(|(a0, a1)| b.iter().any(|(b0, b1)| a0 <= b1 && b0 <= a1))
+}
+
+/// AC3: when the SAME single file overlaps, try to narrow the collision to
+/// actual touched line-ranges rather than blocking on file identity alone.
+/// Returns `true` when the two sides are known to touch disjoint ranges
+/// (safe to allow). Best-effort: a fresh claim has no diff of its own yet
+/// (worktree doesn't exist until after this gate runs), so in that common
+/// case there is nothing to disambiguate against and the file-level match
+/// stands — this only narrows the `--resume` case where the claimant's
+/// worktree already has committed changes ahead of the base branch.
+fn same_file_ranges_disjoint(
+    repo_root: &Path,
+    worktree_path: &Path,
+    pr_number: u64,
+    path: &str,
+) -> bool {
+    if !worktree_path.exists() {
+        return false;
+    }
+    let own_diff = Command::new("git")
+        .args([
+            "-C",
+            &worktree_path.to_string_lossy(),
+            "diff",
+            "main...HEAD",
+            "--unified=0",
+            "--",
+            path,
+        ])
+        .output();
+    let Ok(own_diff) = own_diff else {
+        return false;
+    };
+    if !own_diff.status.success() {
+        return false;
+    }
+    let own_text = String::from_utf8_lossy(&own_diff.stdout);
+    let own_ranges = parse_diff_hunks_for_path(&own_text, path);
+    if own_ranges.is_empty() {
+        return false;
+    }
+
+    let pr_diff = Command::new("gh")
+        .args(["pr", "diff", &pr_number.to_string()])
+        .current_dir(repo_root)
+        .output();
+    let Ok(pr_diff) = pr_diff else {
+        return false;
+    };
+    if !pr_diff.status.success() {
+        return false;
+    }
+    let pr_text = String::from_utf8_lossy(&pr_diff.stdout);
+    let pr_ranges = parse_diff_hunks_for_path(&pr_text, path);
+    if pr_ranges.is_empty() {
+        return false;
+    }
+
+    !ranges_overlap(&own_ranges, &pr_ranges)
+}
+
+/// Scan every open PR for path overlap against `own_paths` (INFRA-2434).
+/// File-level match by exact path or directory-prefix (mirrors
+/// `paths_overlap`'s semantics); for a same-single-file match, attempt the
+/// AC3 line-range narrowing before counting it as a real collision.
+fn check_pr_path_overlap(
+    repo_root: &Path,
+    worktree_path: &Path,
+    own_paths: &[String],
+) -> Vec<PrOverlapMatch> {
+    let mut matches = Vec::new();
+    for (pr_number, title, files) in list_open_pr_files(repo_root) {
+        let mut overlap_paths: Vec<String> = Vec::new();
+        for own in own_paths {
+            for f in &files {
+                let same_file = own == f;
+                let dir_overlap = !same_file
+                    && (f.starts_with(&format!("{own}/")) || own.starts_with(&format!("{f}/")));
+                if !same_file && !dir_overlap {
+                    continue;
+                }
+                if same_file && same_file_ranges_disjoint(repo_root, worktree_path, pr_number, f) {
+                    continue;
+                }
+                overlap_paths.push(f.clone());
+            }
+        }
+        if overlap_paths.is_empty() {
+            continue;
+        }
+        overlap_paths.sort();
+        overlap_paths.dedup();
+        matches.push(PrOverlapMatch {
+            pr_number,
+            pr_gap_id: extract_gap_id_from_title(&title),
+            overlap_paths,
+        });
+    }
+    matches
+}
+
+/// Emit `kind=claim_path_overlap_blocked` to ambient.jsonl (INFRA-2434).
+// scanner-anchor: "kind":"claim_path_overlap_blocked"
+fn emit_claim_path_overlap_blocked(
+    ambient_log: &Path,
+    claimed_gap: &str,
+    blocking_pr: u64,
+    blocking_gap: &str,
+    overlapping_paths: &[String],
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let event = serde_json::json!({
+        "ts": iso8601_from_unix(now),
+        "kind": "claim_path_overlap_blocked",
+        "claimed_gap": claimed_gap,
+        "blocking_pr": blocking_pr,
+        "blocking_gap": blocking_gap,
+        "overlapping_paths": overlapping_paths,
+    });
+    append_ambient_line(ambient_log, &event);
+}
+
+/// Emit `kind=claim_path_overlap_allowed` to ambient.jsonl (INFRA-2434) —
+/// fires when --allow-overlap bypassed a detected overlap.
+// scanner-anchor: "kind":"claim_path_overlap_allowed"
+fn emit_claim_path_overlap_allowed(
+    ambient_log: &Path,
+    claimed_gap: &str,
+    blocking_pr: u64,
+    blocking_gap: &str,
+    overlapping_paths: &[String],
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let event = serde_json::json!({
+        "ts": iso8601_from_unix(now),
+        "kind": "claim_path_overlap_allowed",
+        "claimed_gap": claimed_gap,
+        "blocking_pr": blocking_pr,
+        "blocking_gap": blocking_gap,
+        "overlapping_paths": overlapping_paths,
+    });
+    append_ambient_line(ambient_log, &event);
 }
 
 // ── INFRA-1415: Check-only helpers ──────────────────────────────────────────
