@@ -102,8 +102,26 @@ jobs:
       # ── 8 shared setup steps (replicated in every shard) ────────────────────
       - uses: actions/checkout@v7
 
-      - name: Install Linux packages for chump-desktop (workspace member)
+      # INFRA-3594: cached primary path — on a warm cache, restore_pkgs.sh in
+      # this action untars the previously-installed .deb contents straight
+      # onto the filesystem with ZERO network calls (no apt-get update, no
+      # mirror dependency at all). Only a cache miss (first run after the
+      # package list or weekly version stamp changes) touches the network,
+      # via apt-fast's own parallel downloader. This is what actually kills
+      # the "live apt-get every PR run" flake AC1 calls out — RESILIENT-330's
+      # bounded retry below only fires as a fallback on that rare miss path.
+      - name: Install Linux packages for chump-desktop (cached, INFRA-3594)
         if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips apt
+        id: apt-cached
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
+        with:
+          packages: webkit2gtk-4.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev build-essential pkg-config libssl-dev libgtk-3-dev librsvg2-dev util-linux
+          version: audit-shard-v1
+
+      - name: Install Linux packages for chump-desktop (fallback, RESILIENT-330)
+        if: runner.os == 'Linux' && steps.apt-cached.outcome == 'failure'
         # RESILIENT-330: bound apt so a hung Ubuntu mirror can't consume the whole
         # 25-min job budget. Root cause (run 31863996317, audit-shard 2): apt-get
         # stalled ~24 min with no output (last line 04:16:54, then dead until
@@ -115,6 +133,8 @@ jobs:
         # `timeout` (kills a stuck connection) + retry against a fresh connection,
         # plus apt's own Acquire retries/timeouts. Common transient stall now
         # recovers in ~1 attempt instead of hanging to the wall.
+        # INFRA-3594: demoted to a fallback behind the cached path above — this
+        # only runs when the cache action itself failed or timed out.
         timeout-minutes: 18
         run: |
           set -uo pipefail
