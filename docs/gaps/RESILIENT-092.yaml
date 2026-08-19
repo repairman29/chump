@@ -1,9 +1,21 @@
 - id: RESILIENT-092
   domain: RESILIENT
   title: "RESILIENT P0: Chump must MANAGE pty exhaustion — detect + mitigate before forkpty fails machine-wide (the Claude Code pty leak DoS'd the fleet + terminals 2026-06-04)"
-  status: open
+  status: already_satisfied
   priority: P1
   effort: m
+  closed_pr: 3721
+  notes: |
+    Already shipped by PR #3721 (commit 8e726197, merged 2026-08-13): infra-watcher
+    check-ptys (scripts/coord/infra-watcher-loop.sh cmd_check_ptys) detects pty
+    usage vs kern.tty.ptmx_max / /proc/sys/kernel/pty/{max,nr} at CHUMP_INFRA_WATCHER_PTY_THRESHOLD
+    (default 80%), emits infra_watcher_finding + pages operator-recall.sh with
+    PTY_EXHAUSTION before forkpty fails (AC1, AC3). scripts/setup/persist-pty-limit.sh
+    raises + persists kern.tty.ptmx_max to >=4096 via sysctl -w + boot launchd (macOS)
+    (AC2). scripts/ci/test-infra-watcher-pty-check.sh simulates high pty usage and
+    asserts detection fires before exhaustion (AC4). This gap's YAML was never
+    flipped to closed when #3721 shipped — closing now as already_satisfied
+    (CREDIBLE-197 precedent), no new PR needed.
   description: |
     VERIFIED 2026-06-04: a long Claude-Code /loop session leaked 505 master ptys (held by the main Claude.app pid 34081) -> kern.tty.ptmx_max=511 EXHAUSTED -> forkpty 'Device not configured' MACHINE-WIDE -> terminals unusable + Chump fleet down ~2h (tmux/workers can't allocate ptys). Upstream root: Claude Code (2.1.156) leaks ~1 pty per Bash-tool call; a tight Bash-heavy loop exhausts the limit (being reported to Anthropic separately). Chump must MANAGE this so it never causes an outage again — this is substrate health (infra-watcher's lane): (a) infra-watcher monitors allocated-ptys vs kern.tty.ptmx_max each tick and emits operator_recall/scream when usage >80% of the limit, BEFORE forkpty fails; (b) raise kern.tty.ptmx_max to >=4096 PERSISTENTLY (operator one-time: sysctl -w + persist via /etc/sysctl.conf or a boot launchd) for headroom; (c) on imminent exhaustion, scream + page the operator to restart the leaking Claude Code app (or, if a narrow sudoers entry exists, raise the ceiling dynamically). Complements RESILIENT-087 (fleet must not fatally depend on ptys). Without this, the next long session silently DoS's the whole machine again. MISSION-010 substrate-health dependency.
   acceptance_criteria:
