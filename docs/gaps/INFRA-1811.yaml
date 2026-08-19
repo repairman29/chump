@@ -18,5 +18,21 @@
     - cargo fmt/clippy/shellcheck clean per CLAUDE.md
   notes: |
     Pillar: RESILIENT. Direct observation: 9-of-9 stale PRs tonight failed the daemon, but the same conflicts I had to resolve manually last night via git rebase + merge drivers succeeded. Pairs with INFRA-1482 (merge-driver bugs — separate concern, lives in scripts/coord/.gitattributes). Pairs with INFRA-1648 (chump pr cascade-rebase command — same code path could power both). Without this fix, every cascade from a hotspot file (ci.yml is the canonical example) requires manual shepherd-level rescue. Effort=m because the worktree-add-then-rebase loop has edge cases (gitdir confusion per INFRA-779, lease collision, etc).
+
+    Already shipped: local-rebase fallback landed in PR #2553 (commit
+    7cafaccf, INFRA-1958) and was extended with the timeout guard +
+    driver/conflict telemetry in PR #3318 (commit 31b11a22, this gap's own
+    ID). Verified on this checkout of origin/main: scripts/coord/pr-auto-rebase.sh
+    contains git worktree add into a /tmp/chump-rebase-fb-* scratch dir,
+    resolve_merge_drivers() (git check-attr merge), push --force-with-lease,
+    a CHUMP_PR_AUTO_REBASE_LOCAL_TIMEOUT_S cost guard, and emits both
+    kind=pr_auto_rebase_recovered and kind=pr_auto_rebase_unresolvable.
+    scripts/ci/test-pr-auto-rebase-local-fallback.sh (AC#7/#8) exists and
+    passes 12/12. All 9 acceptance criteria are satisfied on main. Closing
+    as no-op — no code change required. state.db had gone empty and
+    re-imported this gap from stale docs/gaps/INFRA-1811.yaml as status:open
+    (same canonical-store split-brain class as INFRA-3606) even though the
+    work shipped months ago; syncing here per the RESILIENT-244/RESILIENT-134
+    precedent.
   outcome_id: MISSION-010
 
