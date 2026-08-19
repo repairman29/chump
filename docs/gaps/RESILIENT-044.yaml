@@ -1,7 +1,7 @@
 - id: RESILIENT-044
   domain: RESILIENT
   title: "RESILIENT: audit gate silent-exit-1 after 31 PASS lines — required gate blocker, need to identify which sub-test fails without [FAIL] marker (post-trunk-RED inherited)"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -12,5 +12,9 @@
     - "If the wrapper swallows the error: add explicit [FAIL: <reason>] output so future failures are debuggable"
     - Required CI gate audit passes on a fresh PR against main containing this fix
     - "If the issue is the audit aggregator wrapper hiding failure details: file a follow-up gap to instrument all audit sub-test runners with consistent [PASS]/[FAIL] output (META-quality)"
+  notes: |
+    CLOSED 2026-08-19: already shipped. #3733 diagnosed the root cause — the symptom (31 [PASS] lines then silent exit 1) was specific to the pre-INFRA-2565 monolithic serial 'audit' job, where a sub-script hitting `set -euo pipefail` on a bare command failure (no pass()/fail() wrapper) silently terminated the whole job. INFRA-2565 (merged 2026-06-03) split 'audit' into a 4-way audit-shard matrix where every scripts/ci/test-*.sh invocation is its own named GitHub Actions step, so a failing sub-test is now directly attributable by step name in the Actions UI — the silent-exit class no longer reproduces. #3733 also added scripts/ci/test-audit-step-isolation.sh as a regression guard against re-chaining multiple test scripts into one run: block. #3950 documented the root cause + verification in docs/diagnostics/RESILIENT-044-audit-silent-exit1.md (verified audit-shard/audit/audit-required all green on main). AC #5 follow-up (19 scripts still lacking internal [PASS]/[FAIL] markers) filed as META-333 — the diagnostic doc referenced META-023 but that gap was never actually filed in state.db, so this closure re-files it. This gap record was left open after the fix shipped; closing to match reality.
   outcome_id: RESILIENT-000
+  closed_pr: 3950
+  closed_date: 2026-08-19
 

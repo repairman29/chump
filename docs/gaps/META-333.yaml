@@ -1,0 +1,12 @@
+- id: META-333
+  domain: META
+  title: "META-quality: instrument remaining audit sub-test scripts with consistent [PASS]/[FAIL] markers"
+  status: open
+  priority: P3
+  effort: m
+  description: "Diagnostic doc docs/diagnostics/RESILIENT-044-audit-silent-exit1.md found that 19 of 132 scripts referenced by .github/workflows/audit.yml's audit-shard steps rely on bare 'set -euo pipefail' exits with no internal [PASS]/[FAIL] marker convention. INFRA-2565 made every script its own named CI step (attributable failure), but a failure inside one of these 19 scripts still doesn't say WHICH assertion failed, only which script. Follow-up: audit the 19 scripts, add pass()/fail() wrapper output matching the scripts/ci/test-gap-ac-requirement.sh convention."
+  acceptance_criteria:
+    - "Enumerate the 19 scripts referenced by audit.yml lacking [PASS]/[FAIL] markers"
+    - "Add pass()/fail() style output to each, or a documented rationale for exemption"
+    - "scripts/ci/test-audit-step-isolation.sh (from RESILIENT-044/#3733) continues to pass"
+  outcome_id: RESILIENT-000
