@@ -1,9 +1,11 @@
 - id: RESILIENT-133
   domain: RESILIENT
   title: "RESILIENT: bot-merge per-stage budget — global 300s stage-watchdog SIGTERMs cold cargo-test/clippy mid-compile"
-  status: open
+  status: done
   priority: P1
   effort: m
+  closed_pr: 3440
+  closed_date: "2026-08-01"
   description: |
     bot-merge stage_start() (scripts/coord/bot-merge.sh) launches a per-stage budget watchdog that SIGTERMs bot-merge after a single global CHUMP_BOT_MERGE_STAGE_BUDGET_S (default 300s) regardless of stage. But cargo test (its run_timed_hb gtimeout is 1200s) and cargo clippy (900s) legitimately exceed 300s on a cold worktree, so the watchdog kills them mid-compile, emits botmerge_wedged, releases the lease, and forces a fragile re-claim. Observed shipping CREDIBLE-128: cargo-test stage exceeded budget 300s at elapsed 300s mid-compile on a fresh worktree. Fix: stage_start takes an optional per-stage budget as positional arg 2, defaulting to the current global; set cargo-test=1200 and both clippy stages=900 to match their gtimeouts. Backward-compatible (unspecified stages keep 300s).
   acceptance_criteria:
