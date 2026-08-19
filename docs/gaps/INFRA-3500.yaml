@@ -1,0 +1,14 @@
+- id: INFRA-3500
+  domain: INFRA
+  title: "EFFECTIVE: [COTG-4.3] strategic comprehension (architect altitude, not just repo)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-4.3] strategic comprehension (architect altitude, not just repo)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:24Z] DISCOVERY PARTIAL ~55% -> FINISH. src/briefing.rs:29-36 reads strategy docs PER-GAP after pick; add a PRE-selection pass over mission_grade/roadmap_status so the picker biases to highest-leverage mission moves.
+  outcome_id: COTG
+

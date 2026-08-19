@@ -1,0 +1,16 @@
+- id: EFFECTIVE-407
+  domain: EFFECTIVE
+  title: "run the queue through write-ac: 74 open gaps carry the generic template and audit-ac reports only 6"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "DETECTOR IS BLIND TO THE DOMINANT CASE — fix this first, it is the more important half. 'chump gap audit-ac --open' reports 'Vague open gaps: 6/239' because it only flags todo_placeholder (literally empty or TODO acceptance criteria). Measured 2026-08-07: 74 of 239 open gaps carry the default_acceptance_criteria template ('The change described by <title> is implemented in the relevant <DOMAIN> code path(s)' + the boilerplate test/fmt/clippy lines). That is filled text, so the detector scores it healthy. It under-reports by 12x, and a health check that says 6 when the truth is 74 teaches people to ignore it"
+    - audit-ac must classify template-AC as vague, distinctly from todo_placeholder, so the two failure modes stay separately countable
+    - "THE WRITER ALREADY EXISTS AND IS REACHABLE: 'chump gap write-ac <GAP-ID> [--apply]' (src/main.rs:11741 -> pr_ac_coverage::generate_ac_for_gap), shipped 2026-08-07 by EFFECTIVE-386 and hardened by EFFECTIVE-388 (repo-grounding: feed the writer REAL repo files so it stops hallucinating paths). Nothing runs it over the backlog — this is the seventh instance today of the built-not-wired pattern (see ZERO-WASTE-036)"
+    - "A queue pass runs write-ac across template-AC gaps. NOT blind bulk --apply: generated ACs are a CANDIDATE. Land them for gaps whose title+description carry enough signal, and leave the rest flagged, because a confidently wrong AC is worse than an obviously generic one — it makes an unclaimable gap look claimable and sends a worker down a wrong path"
+    - "Ordering matters for cost: run highest-value first (P0/P1, then unblocking-bonus per chump-planner scoring) rather than newest-first, so the LLM spend lands where a claimable gap actually moves the fleet"
+    - "MEASURE THE OUTCOME, not the run: report the template-AC count before and after, and re-run audit-ac to prove the number moved. 'the pass ran' is a signal, not an outcome"
+    - "WORKED EXAMPLE from tonight: ZERO-WASTE-036 — the systematic fix for the built-not-wired pattern itself — sat at P2 with pure template ACs and was effectively unclaimable until they were hand-written. The most important gap in the queue was invisible because of this exact problem"
+  outcome_id: EFFECTIVE-000
+

@@ -2,9 +2,9 @@
   domain: INFRA
   title: "CREDIBLE: balanced-1"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
-    - verify it works
+    - Synthetic test-fixture gap (balanced-1); purge or close.
   outcome_id: MISSION-010
 

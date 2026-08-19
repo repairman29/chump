@@ -1,0 +1,14 @@
+- id: EFFECTIVE-397
+  domain: EFFECTIVE
+  title: "[almanac] tracemap reads 0.45% of chump's ambient stream — 70 event kinds, it groups only gap-run events"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Measured 2026-08-07: tracemap --events .chump-locks/ambient.jsonl consumed 20 of 4394 events (5 runs) while 70 distinct event kinds exist. The organ's own help names this exact file as its example input, so this is the intended input being 99.5% unread"
+    - "The top unread kinds are the fleet's real operational signal and each answers a question nobody is asking today: farmer_auth_dead 769, farmer_heartbeat 769, github_api_call 561, operator_recall_suppressed 522, operator_recall 247, farmer_drain_guard 198, cache_miss 138, queue_health_check_failed 133"
+    - Extend TRACES beyond gap-run grouping to summarize operational event classes over a window (rates, spikes, ratios) — e.g. 769 farmer_auth_dead is either a real recurring outage or a known false-positive class (INFRA-2031 precedent), and today nothing tells you which
+    - "Keep the organ's coverage-honesty rule: state what share of the stream was interpreted, never imply a full read"
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: ZERO-WASTE-000
+

@@ -1,0 +1,16 @@
+- id: EFFECTIVE-413
+  domain: EFFECTIVE
+  title: wire ALL inference slots — 25 free tool-capable models unreachable, and a paid sub never loads
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "MEASURED 2026-08-07 (opportunity-library/inference-inventory.csv, 48 rows): only 16 of 48 inference options are reachable. 32 are not loaded, and 25 of those are FREE and tool_call-capable"
+    - "RAISE MAX_SLOTS: src/provider_cascade.rs:20 pins const MAX_SLOTS=14 while .env configures 5 lines of CHUMP_PROVIDER_15_* (Mistral codestral-latest, MODEL_CLASS=opus, an ACTIVE PAID SUB added 2026-08-05 as the dedicated coder). It has never loaded. Also fix the stale comment on the same line, which still describes slots 12-14 as Gemini variants when they are OpenCode Zen"
+    - "ORDERING RULE (operator, 2026-08-07): free slots first, then paid-per-token, then SUBSCRIPTIONS LAST as the final rung. This matches EFFECTIVE-366's existing escalation shape (spend Claude only after every cheaper tier failed). Encode it in PRIORITY values — today slots 12-15 declare NO priority at all, so the '.env comment claiming free-first, paid-fallback' is not actually encoded and nothing guarantees free nemotron (12) is tried before paid deepseek-v4-pro (14)"
+    - "CAP THE ONE UNBOUNDED PAID SLOT FIRST — this is the money risk: slots 12 and 13 carry RPD=150; slot 14 (deepseek-v4-pro, PAID at 1.74/3.84 per M) has NO RPD line, and rpd_limit=0 means unlimited (provider_cascade.rs:418). Verified directly. Give it a cap before wiring anything else"
+    - "WIRE THE 25 FREE ZEN MODELS, all tool_call=true. Highest value: longcat-2.0-free and mimo-v2-pro-free (~1M context, free), grok-code (free, 256K in/out, purpose-built coder), and deepseek-v4-flash-free — the FREE sibling of the uncapped paid slot 14, which should absorb most of its traffic at zero cost"
+    - "ALSO WIRE the three providers holding live keys with no slot: xai (a ready template already sits unused in .env.example:430-433), openai-direct, deepseek-direct. And decide on the two disabled slots: together (3) and github-models (7), the latter of which has a literal unexpanded '' as its key"
+    - "DEDUPE slot 4 vs slot 8: both declare model=gemini-2.5-flash on the same base at the SAME priority=12, so ordering between them is arbitrary. Slot 4 claims RPD 86400 (~36x the real free quota) and CONTEXT_K=128 for a 1M-context model, and carries no privacy tier while its twin is marked trains. Slot 4 is a stale hand-entry"
+  outcome_id: CHUMPOS
+

@@ -2,7 +2,7 @@
   domain: META
   title: "META: Assemble full admin-merge policy logic in daemon (META-209 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - The `auto-admin-merge-daemon.sh` script integrates all policy checks (fix-class, consensus, no conflict, no T-trigger, no HOLD) into a single decision-making flow.

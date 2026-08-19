@@ -2,10 +2,11 @@
   domain: MISSION
   title: "MISSION: BEAST-MODE prerequisites MISSION-019 through MISSION-024 all have 0 implementation commits — fleet cannot claim external BEAST-MODE work; MISSION ① = NO for 15th consecutive cycle"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "The change described by \"BEAST-MODE prerequisites MISSION-019 through MISSION-024 all have 0 implementation commits — fleet cannot claim external BEAST-MODE work; MISSION ① = NO for 15th consecutive cycle\" is implemented in the relevant MISSION code path(s)."
-    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - Each of MISSION-019 through MISSION-024 has at least one implementation commit landed; the BEAST-MODE external-repo prerequisite chain is claimable end-to-end with no prereq blocking on 0-commit status.
+  outcome_id: CHUMPOS
+  evidence: |
+    Mission scoreboard 2026-07-27: THE BINARY shows YES (2 BEAST merges/7d) but flagged 'verify zero-touch + repeatable until instrumented' — the core mission proof is unverified/uninstrumented.
 

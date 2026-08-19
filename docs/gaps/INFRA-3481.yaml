@@ -1,0 +1,18 @@
+- id: INFRA-3481
+  domain: INFRA
+  title: "CREDIBLE: [COTG-0.2] honest go/no-go on a user's vision (evidence-before-build)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    [grounded plan] Add an honest go/no-go gate on the CREATE/build path, extending three existing rails rather than building from zero. (1) The LLM-judge rail is already proven in src/pr_ac_coverage.rs::llm_judge_ac (lines 829-892): it shells out to `chump llm-complete --model <m> --max-tokens <n>`, pipes a prompt via stdin, and parses structured one-line-per-item output via parse_judge_verdicts; default model env-overridable (CHUMP_AC_JUDGE_MODEL, opus for trustworthy gates). Clone that shape into a NEW src/gonogo.rs that emits a 4-way Verdict {Go, NoGo, NeedsNarrowing, NoGoOnCost} plus a plain-language reason. Encode the venture-go-no-go doctrine from ~/Projects/.claude/workflows/venture-go-no-go.js into the prompt: default-bias NO-GO, demand+incumbent skepticism, evidence-before-build. (2) The cost axis (AC4/AC5): budget_tracker.rs::tier_default_cost_usd already defines grounded USD build ceilings (xs=$  FIRST SLICE: One PR: NEW src/gonogo.rs (Verdict enum + blocks_build + parse_verdict cloned from pr_ac_coverage::parse_judge_verdicts + cost_axis + run_llm_gonogo cloned from llm_judge_ac's `chump llm-complete` rail + render_json/render_human + deterministic unit tests), a minimal `chump gonogo` dispatch arm + `mod gonogo;` in main.rs, the gate guard at top of commands/bootstrap.rs::run() with CHUMP_GONOGO_SKIP bypass and CHUMP_GONOGO_FORCE_VERDICT test seam, and scripts/ci/test-gonogo.sh asserting exit codes
+  acceptance_criteria:
+    - "gonogo::parse_verdict maps a fixture of 5 LLM-shaped output lines (2 GO / 2 NO-GO / 1 NEEDS-NARROWING) to the correct Verdict, and Verdict::blocks_build() returns true for NoGo+NoGoOnCost and false for Go+NeedsNarrowing — asserted by `cargo test gonogo::` (green)."
+    - "gonogo::cost_axis(estimate_usd, ceiling_usd) returns Verdict::NoGoOnCost when estimate>ceiling and passes the input verdict through otherwise: unit test with (8.0,5.0)->NoGoOnCost and (3.0,5.0)->passthrough passes in src/gonogo.rs #[cfg(test)]."
+    - "`chump gonogo \"<vision>\" --json` prints a JSON object with keys verdict/reason/cost_estimate_usd/tier_ceiling_usd and exits non-zero for NO-GO and NO-GO-ON-COST, 0 for GO/NEEDS-NARROWING — exit codes asserted in scripts/ci/test-gonogo.sh using CHUMP_GONOGO_FORCE_VERDICT."
+    - "With CHUMP_GONOGO_FORCE_VERDICT=NO-GO, `chump bootstrap \"x\" --dir <tmp> --skip-arch-decision` exits non-zero, creates no .git/ or Cargo.toml in <tmp>, and prints the plain-language reason; with CHUMP_GONOGO_SKIP=1 it scaffolds exactly as today — both asserted in scripts/ci/test-gonogo.sh."
+    - scripts/ci/test-gonogo.sh is mirrored into src/preflight.rs (or classified Tier-D/allowlist per CLAUDE.md) so `chump preflight` and the preflight-vs-CI parity gate stay green after the new gate is added.
+  notes: |
+    [2026-07-29T03:21:22Z] DISCOVERY NOT-STARTED -> BUILD. venture-go-no-go skill exists but unwired; wire it as the engine + gate ahead of bootstrap.
+  outcome_id: COTG
+

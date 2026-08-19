@@ -1,0 +1,15 @@
+- id: DOC-084
+  domain: DOC
+  title: "CREDIBLE: artifact-organization survey v2 amendments — publishing engines exist; add upshift, oracle, postsub, jarvis, echeovid; method hardened"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Amend docs/strategy/ARTIFACT_ORGANIZATION_2026-08-05.md (lands via DOC-083 / PR #3485; ship this AFTER it merges) with the hardened v2 survey results — the v1 keyword-only pass was refuted on its biggest negative claim. Exact edits: (1) Publishing row: replace 'Nothing built' with the found engines — postsub:src/services/substackIntegration.ts:118 (SubstackIntegrationService, 449 LOC) + ContentScheduler + rssGenerator + templateService; echeovid:src/components/SmartPublishingHub.tsx:39 (433 LOC); jarvis:skills/video-creation/record-website.js:27 (recordDemo + per-product templates incl. recordOliveDemo, olive-targeted) — PUBLISHER.md remains the governing DESIGN (approval gate), these are mineable engines for its Draft/Drive stages. (2) Add rows/receipts: upshift LIVE customer-comm (upshiftai/platform/lib/waitlistEmail.js:17 sendWaitlistWelcomeEmail, src/commands/buy-credits.ts, out-of-credits messaging, scan-page generateMetadata SEO); oracle analytics dashboard + Python/JS SDKs (sdk/python/oracle_ai/models.py:174 AnalyticsMetrics — also Documentation dept SDK examples); slidemate AIExperimentationPlatform + AIFeatureFlagManager + stripe-integration + uptime-monitoring; olive src/lib/metrics.ts + InstallPrompt; echeo-web verify-email-ab-setup (email A/B). (3) Method section v2: denominator FIRST (almanac repos: 103; coverage: 80 fully fed, slidemate 29%), then multi-pass (fleet keyword x2 phrasings, per-repo semantic for negative space, verify pass wc-l + read on load-bearing files — all 8 checked real, 135-449 LOC, no stubs), coverage holes filed as CREDIBLE-203. (4) Honesty note: v1's own bucketed-scan bias (REALITY_MAP par.6) produced the false negative; the hardened method is the guard.
+  acceptance_criteria:
+    - Publishing row corrected with the three engine receipts
+    - "upshift/oracle/slidemate/olive/echeo-web additions landed with repo:path:line receipts"
+    - method v2 section records denominator, passes, verify grading, and CREDIBLE-203
+    - "ships after PR #3485 merges, no conflict"
+  outcome_id: CHUMPOS
+

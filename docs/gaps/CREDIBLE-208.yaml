@@ -1,0 +1,20 @@
+- id: CREDIBLE-208
+  domain: CREDIBLE
+  title: "CREDIBLE: claim-lint in the ship pipeline — agent claims must ground against the diff and the index or bounce"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    The pre-ship bullshit gate: parse an agent's claims at ship time (commit subject/body, PR description, AC checkbox assertions) into checkable statements and ground each against the diff and the almanac index — named symbols exist at a real path:line INSIDE the diff, claimed tests are present AND executed (read the 'running N tests' line, exit 0 is not assertions — DURABLE_FIX_DOCTRINE ban-list), claimed touched files appear in the diff. Ungrounded claims bounce the ship back to the agent exactly like EFFECTIVE-361's force-edit does for described-not-applied edits — same muscle, applied at the gate wall instead of the edit loop. Emits per-model/per-agent bust-rate to ambient (kind registered in EVENT_REGISTRY.yaml) so fluff becomes a measured KPI feeding picker bias (chump gap rate precedent). Rough shape: (a) claim extractor (structured trailers first, NL fallback via cascade); (b) grounding checks via almanac CLI --json + git diff; (c) gate step in bot-merge before arming, bounce path with a re-prompt; (d) bust-rate ambient + kpi surface. Prior art in-repo: pr_triage/ac_coverage (~5K LOC PR-review intelligence), the hardened ChumpBench judge, grounded dispatch (#3477).
+  acceptance_criteria:
+    - a PR claiming a symbol/test the diff does not contain gets bounced with the specific ungrounded claim named
+    - claims that ground pass with zero added latency beyond budget (<15s)
+    - bust-rate per model visible in kpi report
+    - kind registered in EVENT_REGISTRY with CI parity
+    - fixture PRs for both paths in scripts/ci
+  notes: |
+    SEAM with the COTG AC-judge family (discovered at filing time — the fleet is building the other half concurrently): EFFECTIVE-367 (full-AC review gate + send-back loop, slice 1 #3492 merged 2026-08-06 feeding the judge REAL ACs), EFFECTIVE-373 (LLM per-bullet MET/UNMET/PARTIAL over the diff), EFFECTIVE-372 (local-first blocking gate hosting it), CREDIBLE-207 (reviewer determinism). Division of labor: 373 judges SATISFACTION (semantic, LLM — did the diff meet the AC); this gap judges GROUNDING (mechanical, index — do the agent's claims correspond to reality: symbols exist, tests ran, files touched). Run grounding FIRST as the cheap deterministic pre-check — ungrounded claims short-circuit before burning judge tokens — and reuse 367's send-back loop as the bounce path, NOT a second one. Do not build parallel gate plumbing; land inside 372's gate host.
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: registry + git history review 2026-08-06. OUTPUT: the describe-vs-do disease is measured and recurring — fleet ship-count once reported 78 vs 2 real merges (CREDIBLE-146/149); the ChumpBench judge had to be hardened so a do-nothing PR scores STUB not verify (CREDIBLE-192/194/195); EFFECTIVE-361 merged 2026-08-06 (#3487) re-prompting agents that only DESCRIBED a change instead of applying it; this session's own v1 fleet survey claimed 'publishing: nothing built' and was refuted by deeper almanac passes (DOC-084 record). THEORY: agent claims are structured text (commit subject, PR body, AC checkboxes) and almanac can ground each one in milliseconds — symbol exists at path:line, test file present in diff and executed, touched files actually in diff; ungrounded claims bounce like force-edit does, and bust-rate per model becomes a KPI. ALT: human review catches fluff — refuted by the 39x ship-count lie surviving weeks and the 0-byte README shipping to npm.
+

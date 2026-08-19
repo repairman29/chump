@@ -2,7 +2,7 @@
   domain: INFRA
   title: "META-269 sub-2: cross-platform portability lint — bash subprocess smokes"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     META-269 sub-2: cross-platform lint for bash subprocess calls. Catches non-portable patterns before CI.

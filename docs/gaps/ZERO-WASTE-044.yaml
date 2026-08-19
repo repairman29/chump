@@ -1,0 +1,17 @@
+- id: ZERO-WASTE-044
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: [almanac] dead-symbol CANDIDATE report — zero-importer symbols minus entry points, honest about its false-positive floor"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Borrowed idea (2026-08-07) from DeusData/codebase-memory-mcp v0.9.0 (MIT): 'dead code detection — finds functions with zero callers, excluding entry points', ~150ms via full graph scan with degree filtering. Almanac already stores the import graph and computes in-degree for architecture hub-ranking, so the report is mostly assembly. Deliberately filed P2, not P1: the value is real but bounded, and the honesty burden is high. Almanac resolves only ~20-40 percent of import edges on large repos (the number is reported by every impact/architecture call), and it walks FILE-level import edges, not call graphs — so 'zero importers' is much weaker evidence of deadness than their type-inferred call graph gives them. This ships as a CANDIDATE list or it does not ship: an over-confident dead-code report that gets acted on is how real code gets deleted. Pairs with ZERO-WASTE-036 (the wiring-sweep curator) as a detection input; it is NOT that gap — this is one report, not an act-on-detection loop.
+  acceptance_criteria:
+    - reports symbols/files with zero resolved importers, excluding entry points (bins, lib roots, tests, examples, and anything reachable from a manifest entrypoint)
+    - every line of output is labelled a CANDIDATE and carries the repo's actual edge-resolution rate, so a reader cannot mistake a floor for a finding
+    - "the report states its two structural limits in its own output: file-level import edges are not a call graph, and unresolved edges are invisible"
+    - never deletes, never rewrites, never auto-files — the archive-only rule holds; output is a list a human or a curator gap acts on
+    - at least one test with a fixture where a symbol is imported only via an UNRESOLVED edge, proving that symbol is NOT reported as dead (the false-positive case that matters)
+    - attribution note for the borrowed idea (DeusData/codebase-memory-mcp, MIT) recorded at borrow time
+  skills_required: "external_repo:repairman29/almanac"
+

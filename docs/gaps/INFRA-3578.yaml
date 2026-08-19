@@ -1,0 +1,10 @@
+- id: INFRA-3578
+  domain: INFRA
+  title: "INFRA: Document potential operational workarounds in docs/process/SELF_HOSTED_RUNNERS.md (INFRA-1655 slice)"
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - Workarounds are documented
+    - Workarounds are reviewed and approved
+

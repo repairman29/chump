@@ -1,0 +1,31 @@
+- id: MISSION-077
+  domain: MISSION
+  title: picker scores score(gap) not score(gap, agent) — fine for one repo, wrong the moment agents differ
+  status: open
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - "STATE (verified 2026-08-07): chump-planner/src/score.rs weighs priority, effort, unblocking_bonus, cycle_age, roadmap_alignment — all properties of the GAP. score() never takes an agent. That is correct while every worker is interchangeable (Claude, one repo, warm context) and becomes wrong the moment agents differ by repo, language or capability"
+    - "DEAD ROUTING SCHEMA: gaps already carry skills_required, preferred_backend, preferred_machine, required_model, estimated_minutes (INFRA-314, INFRA-418). Of 233 open gaps: 0 populate backend, machine, model or estimated_minutes, and the 77 non-empty skills_required are all just the external_repo tag, not skills. Nothing in the planner or autonomy loop reads any of them. Either populate and use them, or delete them — a schema that lies about its own capability is worse than an honest gap"
+    - "REPO AFFINITY is the load-bearing addition for multi-repo, and it is an economics argument not a preference: per-repo cold start is real (clone+index of a mid-size repo runs minutes; almanac reindex of chump alone is 21.8s). A picker with no locality makes an agent pay clone+index on every pick. An agent that just worked olive should strongly prefer the next olive gap — CPU-cache-affinity semantics, or a repo lease drained before switching"
+    - "CAPABILITY MATCH, using prior art already inventoried in opportunity-library/ROUTING_SYSTEMS.md rather than invented: beast-mode's a2a_agents (capabilities TEXT[] + GIN index + load + last_seen, with 5-min staleness eviction) is the strongest matcher in the fleet; SpecialistRouter's learned tiebreak successRate*(1+log10(evidence+1)) with a >0.7 override gate is the bandit-lite layer; jarvis farm-balancer's busy<parallel capacity gate is the backpressure model"
+    - "INTERNAL vs EXTERNAL agents resolve to the SAME mechanism once score takes an agent: an internal tmux worker and an external service (a Copilot-style cloud agent on another repo) are both just agents with different capability sets, load and locality. Do not build two pickers"
+    - "SEQUENCING: this is a WALK-stage dependency of MISSION-076, not a crawl-stage one. Crawl is read-only and needs no capability routing. Do not build this before crawl produces the multi-repo backlog it is meant to route"
+  notes: |
+    [2026-08-08T02:17:09Z] PREMISE CORRECTION 2026-08-07 — this is WIRING, not building. Both halves already exist and neither is called.
+    
+    WORKER SIDE, twice over:
+    - crates/chump-coord/src/worker/capability.rs:69 WorkerCapability { skills (from WORKER_SKILLS env), machine (WORKER_MACHINE), backend (WORKER_BACKEND), session_id }. Its own module doc at worker/mod.rs:10 calls it a 'picker filter', and it is designed to match gaps.preferred_machine / preferred_backend.
+    - crates/chump-team/src/capabilities.rs:36 WorkerCapability { team_id, user_id, machine, skills: Vec<String>, backend (Claude|Opencode|Codex|Manual), max_concurrent_gaps, last_heartbeat_at }. Postgrest/Supabase-backed. This is capability match + capacity gate + liveness heartbeat — precisely the a2a_agents + jarvis-farm-balancer combination ROUTING_SYSTEMS.md recommends grafting, already implemented in-house.
+    
+    GAP SIDE: gaps carry skills_required, preferred_backend, preferred_machine, required_model, estimated_minutes.
+    
+    THE WIRE IS MISSING ON BOTH ENDS: 0 of 233 open gaps populate backend/machine/model/estimated_minutes, and neither chump-planner nor autonomy_loop.rs ever constructs or consults a WorkerCapability. Grep confirms the coord picker-filter has zero callers outside its own crate.
+    
+    CONSEQUENCE FOR EFFORT: likely smaller than the 'l' this was filed at — closer to connecting two finished halves plus a backfill of the gap-side fields, than to designing capability routing.
+    
+    CONSEQUENCE FOR PRODUCT TEAMS (operator question, same day): teams are ALREADY the data model — chump-team carries team_id and OperatorQuota. And a worker can ALREADY declare a specialty at launch via WORKER_SKILLS / WORKER_MACHINE / WORKER_BACKEND. What is missing is only the honoring: nothing reads the declaration when picking. So 'product team per repo' is a launch-flag + picker-filter change, not new architecture.
+    
+    This is the fifth instance today of the same fleet pattern: instrument built, never run (cf. pr-rescue.sh unscheduled RESILIENT-247, non-chump CI unwatched CREDIBLE-220, organs never swept EFFECTIVE-389, tracemap never pointed at its own example input EFFECTIVE-397).
+  outcome_id: MISSION-032
+

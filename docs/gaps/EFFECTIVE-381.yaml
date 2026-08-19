@@ -1,0 +1,15 @@
+- id: EFFECTIVE-381
+  domain: EFFECTIVE
+  title: "EFFECTIVE: API-ground the dispatch prompt — inject verbatim signatures via almanac api before an agent writes code"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Phase D (chump-orchestrator build_prompt_grounded, shipped 2026-08-05) already pre-queries almanac with the dispatched gap's title and injects grounded path:line starting points. It injects LOCATIONS. It does not inject SIGNATURES. almanac_api exists precisely as the anti-hallucination lookup — exact signature verbatim, its doc, and a real cited usage — and it is the single best defense against an agent inventing an API that does not exist. Extension: extract identifier-shaped tokens from the gap title and acceptance criteria, run almanac_api on each, and inject the real signatures alongside the existing location hints. Directly aimed at EFFECTIVE-351 (agent shipped syntactically-invalid truncated code under tool-storm) and the broader invented-API class. Must inherit Phase D's existing failure discipline verbatim: every failure path leaves the prompt exactly as it was, because a dispatch must never fail, hang, or wait on almanac.
+  acceptance_criteria:
+    - identifier-shaped tokens from the gap title and AC are resolved via almanac_api and their verbatim signatures injected into the dispatch prompt, labelled as the real API to copy
+    - every failure path (no binary, no index, zero hits, unparseable, timeout) leaves the prompt byte-identical to today — the Phase D invariant, asserted by a test
+    - "injected signatures carry their path:line citation and the index's grounding commit, so a stale signature is detectable rather than silently trusted"
+    - "kill switch honored: CHUMP_ALMANAC_DISPATCH_GROUNDING=0 disables this along with the existing grounding"
+    - a test proves a gap naming a real fleet symbol gets that symbol's true signature in the prompt, and fails without the change
+

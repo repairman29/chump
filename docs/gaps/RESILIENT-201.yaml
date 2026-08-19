@@ -1,0 +1,14 @@
+- id: RESILIENT-201
+  domain: RESILIENT
+  title: "repo_tools::/repo_path::/tool_middleware:: tests fail only inside linked git worktrees (20 tests) — forces test-gate bypass on every worktree push"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \":/repo_path::/tool_middleware:: tests fail only inside linked git worktrees (20 tests) — forces test-gate bypass on every worktree push\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    MISSION-045 session 2026-07-27: landing one anti-bloat gate took 3 full CI rounds (~20min each) because failures surfaced serially, not up front. cargo test --bin chump from /private/tmp/wt-backlog: 2568 pass, 20 fail — all repo_tools::/repo_path::/diff_review_tool::/tool_middleware:: (git-fixture setup, e.g. missing __tests__/add.test.js). Pass in CI clean checkout (cargo-test=success). Every worktree push needs a Test-Gate-Bypass trailer as a result.
+

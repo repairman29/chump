@@ -1,0 +1,30 @@
+- id: PRODUCT-193
+  domain: PRODUCT
+  title: "[almanac] INFRA-3530 (SQL indexing) is open as a capability gap but ROADMAP defers it by design — reconcile"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Confidence: operator_verified -- a human or session directly investigated and confirmed this before filing -- high confidence.
+    
+    Two sources of truth disagree about whether almanac should index SQL.
+    
+    Chump gap INFRA-3530 is OPEN, framed as a capability gap: "almanac never indexes SQL — blind to migrations/RLS/schema".
+    
+    ROADMAP.md (entry dated 2026-08-04, commit 4437452) defers it BY DESIGN with a stated reason: indexing migration files would serve stale schema with confidence, because the fleet's deployed mega-DB has drifted from its migrations. An agent asking about RLS would get authoritative-looking wrong answers. The live-schema path (Supabase MCP) is already doctrine.
+    
+    So the gap reads as unfinished work, while the roadmap reads as a deliberate decision. Whoever picks up INFRA-3530 next will either re-derive that reasoning or, worse, implement the thing the roadmap argues against.
+    
+    Fix direction: either close INFRA-3530 as wontfix citing the ROADMAP rationale, or re-scope it to what the roadmap actually leaves open — "index SQL ONLY with a drift warning attached to every hit (this is what migrations SAY, not what the database IS)". The second is a real, buildable gap; the current framing is not.
+    
+    Note the sibling gap INFRA-3529 (fusion ranking disadvantages doc-only files) IS still a genuine open gap and is unaffected by this.
+    
+    context: {"repo":"almanac","source":"claude-triage/almanac-capability-audit-2026-08-05"}
+    source: holler feedback_events, dedupe almanac-infra3530-roadmap-drift
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/almanac"
+

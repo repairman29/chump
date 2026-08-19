@@ -221,27 +221,6 @@ For each pattern: **detect signal**, **upstream source**, **fix action**, **prop
 - **Fix**: `gh pr close <N> --comment "Ghost — gap already status=done; closing per META-225 auto-fixer"`.
 - **Propagation**: None (closes 1 PR, no cascade).
 
-### 5.13 Wedge-class quick reference (synthesized from `SHIP_ASSIST_PLAYBOOK.md` §1, META-247 slice)
-
-The 12 patterns above are CI-log-level signatures. The 7 classes below are the
-broader operational wedge shapes a shepherd hits across a loop session — queue-wide
-Rust/CI wedges, tooling stalls, and process footguns. Full detail (evidence,
-prevention status) lives in [`SHIP_ASSIST_PLAYBOOK.md` §1](./SHIP_ASSIST_PLAYBOOK.md#1-wedge-taxonomy-7-classes-from-todays-incident-chain).
-
-| Class | Symptom | Fastest fix |
-|---|---|---|
-| **1. fmt-drift on main** | Every Rust PR fails `fast-checks` on `cargo fmt --check`, flagging files it didn't touch — inherited dirty state from main. | P0/xs `fmt-sweep` gap: `cargo fmt --all` in a clean worktree, commit, ship alone. |
-| **2. raw-gh-allowlist-miss** | Every PR fails `audit`'s raw-gh lint gate on a script outside the allowlist. | One-line append to `scripts/ci/raw-gh-allowlist.txt` with a migration-gap comment; P0/xs ship. |
-| **3. sccache-R2-pair-mismatch** | Every Rust CI job fails `sccache` S3 `Unauthorized`; `cargo metadata` exit 101. | `bash scripts/ops/rotate-sccache-r2-gh-only.sh --execute` — rotate the key+secret pair together (half-rotation re-wedges). |
-| **4. bot-merge.sh silent wedge** | `bot-merge.sh --auto-merge` runs >4 min with zero output; process alive, no progress. | Kill it; fall back to manual `git push` → `gh pr create` → `gh pr merge --auto --squash`; clear the stale claim lease. |
-| **5. Sonnet sub-agent stall (~600s no progress)** | Dispatched sub-agent stops emitting tool calls; watchdog kills it with `Agent stalled: no progress for 600s`. | Check the worktree for WIP **before** any reclaim; commit-as-WIP if present, else re-dispatch with recovery notes. Never `--force-recover` first (→ Class 6). |
-| **6. `chump claim --force-recover` wipes uncommitted state** | `--force-recover` destroys the worktree, including any uncommitted WIP. | Prevention over cure: `cd` into the worktree and `git stash` before recovering; re-apply after. |
-| **7. gap-status auto-flip silently no-ops** | PR with `<GAP-ID>` in its title merges, but `chump gap show <ID>` still reads `status: open`. | `chump gap ship <ID> --closed-pr <N> --update-yaml` to manually flip; file a follow-up if it recurs on the same gap class. |
-
-(A 8th class — **shelfware**, a shipped artifact with no curator role-doc
-reference — is a post-ship operationalization gap rather than a mid-ship
-wedge; see `SHIP_ASSIST_PLAYBOOK.md` §1 Class 8 and the quartermaster curator.)
-
 ---
 
 ## 6. Cascade impact tables (fix X → expect Y)

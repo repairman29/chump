@@ -2,7 +2,7 @@
   domain: META
   title: "META: Implement consensus tally check in daemon (META-209 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - The `auto-admin-merge-daemon.sh` script can execute `chump consensus-tally <PR_NUMBER>`.

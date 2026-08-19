@@ -1,0 +1,13 @@
+- id: INFRA-3534
+  domain: INFRA
+  title: chumpd_repo_root OnceLock freezes first-call env state — poisons cargo-test process when daemon is live
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "repo_path::chumpd_repo_root re-checks CHUMP_REPO/CHUMP_HOME on every call (env precedence must hold at call time, not first-call time) while still caching only the socket lookup itself"
+    - "A regression test proves: set env after a first unset-env call, and repo_root() honors the env var (currently it returns the frozen daemon answer)"
+    - "The 2026-08-06 failure shape is documented in the fix: nextest (process-per-test) green 2734/2734 while pre-push cargo test failed 17 repo_path/repo_tools tests, because an unset-env window during api_battle_tests let a live chumpd's answer freeze into the cache"
+  notes: |
+    [2026-08-06T22:05:52Z] A/B receipt (2026-08-06): full cargo test --bin chump from a bare shell (no CHUMP_REPO), chumpd live (up since Jul 31): BASE d8287752 = 27 FAILED; PRODUCT-176 branch = 21 FAILED — same repo_path/repo_tools/tool_middleware/diff_review shape on both, so the branch is not the cause. Same subset passes standalone (repo_path::tests 5/5) because the first repo_root() call then happens with env set. Fleet tmux workers pass pre-push only because their env carries CHUMP_REPO from process start. Workaround for bare-shell ships: export CHUMP_REPO before bot-merge. Real fix per AC: re-check env on every chumpd_repo_root call, cache only the socket lookup.
+

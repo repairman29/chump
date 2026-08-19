@@ -2,7 +2,7 @@
   domain: META
   title: "MISSION: audit-job preflight mirror DECOMPOSITION — survey ci.yml audit job's ~20 test scripts + group into ship-sized sub-gaps (proper INFRA-1856 followup after scope discovery)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     INFRA-1856 was closed 2026-05-23 after scope discovery — the ci.yml audit job is NOT 2 sub-checks but ~20+ distinct test scripts. Properly decomposing it needs a survey + grouping pass, then 3-5 ship-sized sub-gaps. This is META-070 Tier-C continuation work.

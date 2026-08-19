@@ -2,12 +2,9 @@
   domain: INFRA
   title: chump claim pre-claim disk-plan check — refile post META-128 refactor
   status: open
-  priority: P1
+  priority: P3
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - pre-claim disk-plan check is refiled against the post-META-128 claim path and gates a claim in a test.
   outcome_id: MISSION-010
 

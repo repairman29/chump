@@ -1,0 +1,20 @@
+- id: PRODUCT-188
+  domain: PRODUCT
+  title: "[slidemate] JSDoc-injection bot corrupted 1,649 files — comments spliced mid-statement, files unparseable"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Confidence: operator_verified -- a human or session directly investigated and confirmed this before filing -- high confidence.
+    
+    An automated JSDoc-generation pass (fingerprint: "TODO: Add return description" stubs) spliced comment blocks into the middle of statements across 1,649 .ts/.js files. Example: frontend/lib/agents/redis-locks.ts:61-66 splits redisClient=null into re + comment + disClient=null; another block lands inside acquireLock parameter list (line 77). Verified corrupted on GitHub HEAD via contents API, not a mirror artifact. This silently converted the fleet best Redis SET-NX-EX claim/lock implementation (redis-locks.ts + task-queue-db.ts dependency-aware transactional claim) into unbuildable code. Fix path: find the commit(s) the bot made, revert or regenerate; grep fingerprint "TODO: Add return description" to enumerate all 1,649 files. Found 2026-08-06 during fleet routing-systems inventory.
+    
+    context: {"repo":"slidemate"}
+    source: holler feedback_events, dedupe 6e1758d0cf2f4ee6
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/slidemate"
+

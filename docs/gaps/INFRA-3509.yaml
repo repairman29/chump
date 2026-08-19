@@ -1,0 +1,12 @@
+- id: INFRA-3509
+  domain: INFRA
+  title: "CREDIBLE: [COTG-S.2] stall diagnosis (detect half-done AND why it stalled)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-S.2] stall diagnosis (detect half-done AND why it stalled)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: COTG
+

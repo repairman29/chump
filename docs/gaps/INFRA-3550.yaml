@@ -1,0 +1,10 @@
+- id: INFRA-3550
+  domain: INFRA
+  title: "INFRA: Reproduce actions/checkout@v6 failure on jeffs-macbook-air-10-X (INFRA-1655 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Failure is reproduced on jeffs-macbook-air-10-X within 30 seconds
+    - Failure is specific to actions/checkout@v6 step
+

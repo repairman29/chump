@@ -2,7 +2,7 @@
   domain: INFRA
   title: "CREDIBLE: chump fleet log-triage — daily structured pass over last 24h ambient.jsonl × state.db cross-reference, outputs Markdown triage report with ≤5 candidate findings + dedup status (operator gate before filing; replaces ad-hoc 'maybe I should review the logs' habit)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - 1. New chump fleet log-triage subcommand (Rust, in main chump CLI; new file e.g. src/log_triage.rs and a clap subcommand definition)

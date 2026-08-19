@@ -2,7 +2,7 @@
   domain: META
   title: "META: Implement assertions for `test-auto-admin-merge-policy.sh` (META-209 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - The `test-auto-admin-merge-policy.sh` script runs the `auto-admin-merge-daemon.sh` against the 5-PR fixture.

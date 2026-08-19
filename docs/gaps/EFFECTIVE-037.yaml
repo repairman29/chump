@@ -2,7 +2,7 @@
   domain: EFFECTIVE
   title: "EFFECTIVE: A2A L5 — event-sourcing coordination bus (typed subjects + subscriptions + corr_id sagas)"
   status: open
-  priority: P1
+  priority: P3
   effort: l
   description: |
     Tier-1 L5 per docs/design/A2A_MASTER_PLAN_2026-06-03.md — the highest-leverage upgrade: convert ambient.jsonl from write-only telemetry into a typed domain-event log on NATS JetStream with SUBSCRIPTIONS. Builds on INFRA-1118 (delivery, done). Today agents broadcast telemetry into the void; they do not react to each other.

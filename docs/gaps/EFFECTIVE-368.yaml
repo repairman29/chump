@@ -1,0 +1,16 @@
+- id: EFFECTIVE-368
+  domain: EFFECTIVE
+  title: "EFFECTIVE: stranger gate — posse product-tier adapter (npx cold-install + README walk), nightly allowlist sweep, release-auditor wiring"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Generalize posse (inward-only — the 2026-08-04 outward NO-GO is accepted and binding; targets.json is an allowlist of repairman29-owned surfaces) from games to every public surface we tell people about. Receipt for urgency: upshift-cli 0.5.5 shipped DEAD on npm for 14 days — 726 downloads of a tarball missing dist/ — because no stranger ever ran it cold. Rough shape: (a) product-tier stranger adapter — clean-env npx cold-install + README-walk of our own packages/guides/sites, files stuck/lost findings via report-holler.mjs dedupe path; (b) finish adapters/olive.draft.mjs; (c) nightly launchd sweep over the allowlist via scan-portfolio.mjs (holler drains stay session-driven per the 2026-08-02 no-service-key decision); (d) re-run the fixed holler-to-chump bridge with --apply (5-bug fix of 2026-08-05 verified against snapshot but never applied); (e) stranger-GO becomes a RELEASE_CHECKLIST line — release-auditor reads the latest posse report for any surface entering Phase E. Nearly done: 3-agent core, 4 proven game adapters, scan-portfolio, report-holler, cold zero-adapter scans (vite.dev 88 elements), and the generalized bridge ALL exist in repairman29/posse.
+  acceptance_criteria:
+    - npx cold-install stranger run produces a findings report for upshift-cli and one more package
+    - nightly sweep files to holler with dedupe, allowlist-only, zero foreign surfaces
+    - release-auditor checklist consumes a stranger-GO
+    - bridge --apply run clean
+    - outward NO-GO boundary stated in posse README and enforced by allowlist
+  outcome_id: STRANGER-GATE
+

@@ -2,7 +2,7 @@
   domain: INFRA
   title: "META-271 follow-up: SessionStart INVENTORY HEALTH digest from chump inventory class-stats"
   status: open
-  priority: P1
+  priority: P3
   effort: s
   acceptance_criteria:
     - "SessionStart hook adds INVENTORY HEALTH section: tier-0 surface count, top-3 high-volume finding classes, count of unreviewed findings >30d old, current class-stats summary (any class eligible for promotion?); shown only when DB age <24h to avoid stale digest noise; toggleable via CHUMP_SESSION_INVENTORY_DIGEST=0"

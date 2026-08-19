@@ -1,0 +1,15 @@
+- id: RESILIENT-221
+  domain: RESILIENT
+  title: "Flaky test dial_zero_halts: #[serial] env-race on CHUMP_AUTONOMY_LEVEL_FILE (got Proposed, expected Halted) — false-red in full-suite cargo-test"
+  status: open
+  priority: P3
+  effort: s
+  description: |
+    fleet_self_rescue_conductor::tests::dial_zero_halts (src/fleet_self_rescue_conductor.rs:355) intermittently fails in the full-suite cargo-test (CI) with 'assertion left==right failed, left: Proposed, right: Halted'. Marked #[serial] but reads/writes the GLOBAL env var CHUMP_AUTONOMY_LEVEL_FILE (+ CHUMP_AMBIENT_LOG); a concurrently-scheduled test that is NOT #[serial] and touches the same env races it, so the dial reads non-zero and returns Proposed instead of Halted. nextest's per-test isolation masks it locally; the CI cargo-test wrapper exposes it (known env-race false-red class). Observed on PR #3432 (unrelated bench change) 2026-07-31; cleared on rerun.
+    
+    FIX: audit all tests that set CHUMP_AUTONOMY_LEVEL_FILE / read the autonomy dial and ensure they ALL carry #[serial] (one non-serial sibling defeats the guard), OR make the dial read take an explicit path arg in tests instead of the process-global env var. Low priority (rerun clears it) but it's a gate-credibility papercut.
+  acceptance_criteria:
+    - "The change described by \"#[serial] env-race on CHUMP_AUTONOMY_LEVEL_FILE (got Proposed, expected Halted) — false-red in full-suite cargo-test\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

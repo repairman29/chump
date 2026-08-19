@@ -1,0 +1,12 @@
+- id: INFRA-3469
+  domain: INFRA
+  title: "EFFECTIVE: WIRING organ — add ecosystem adapters beyond Rust (comprehend UAT pilot-1 B3, the #1 coverage gap)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"WIRING organ — add ecosystem adapters beyond Rust (comprehend UAT pilot-1 B3, the #1 coverage gap)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  skills_required: "external_repo:repairman29/almanac"
+

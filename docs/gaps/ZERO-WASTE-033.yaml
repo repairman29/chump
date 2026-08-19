@@ -1,0 +1,12 @@
+- id: ZERO-WASTE-033
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: fleet leaves dead local branches (2289 accrued; no post-merge prune + wip-snapshot spam)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"fleet leaves dead local branches (2289 accrued; no post-merge prune + wip-snapshot spam)\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: ZERO-WASTE-000
+

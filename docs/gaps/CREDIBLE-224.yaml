@@ -1,0 +1,15 @@
+- id: CREDIBLE-224
+  domain: CREDIBLE
+  title: planner's strategic inputs are inert — roadmap_alignment weight exists but roadmap_refs is never supplied in production
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "DECIDE, then make the code say what was decided. Full analysis with citations: opportunity-library/STRATEGY_scheduler-has-no-plan-input.md"
+    - "EVIDENCE: score.rs:60 sets roadmap_alignment=100.0 (largest single constant) but score.rs:151 gates it on 'if let Some(refs) = telemetry.roadmap_refs', and crates/chump-planner/src/bin/chump-plan.rs:111 passes TelemetryInputs::default() where that field is None. The only Some(&roadmap) in the tree is inside #[cfg(test)] at score.rs:251. score.rs:13 and lib.rs:10 both state it: v0.1 zeros roadmap_refs, 'wired in v0.2'"
+    - "SECOND LEVER ALSO INERT: score.rs never mentions outcome, so the 18 outcomes and their P0/P1/P2 priorities contribute nothing to picking. Live scoring is priority + effort + unblocking_bonus + cycle_age — all properties of a gap in isolation, nothing encoding what the fleet is trying to achieve"
+    - "THREE ACCEPTABLE ENDINGS, any is fine, silence is not: (a) wire roadmap_refs from docs/ROADMAP.md at plan time — smallest change, needs no telemetry pipeline, and makes editing ROADMAP a real prioritization act which everyone already assumes it is; (b) additionally wire outcome priority, deciding how it composes with gap priority; (c) accept tactical-only scheduling and DOCUMENT it, so no future reader believes either lever works"
+    - "NOTE THE ASYMMETRY when deciding: roadmap_refs is a mechanical input (is this ID named in a file — cheap, auditable, no telemetry). pillar_share and waste_rate_7d are genuinely telemetry-derived and carry real distortion risk. They were zeroed as one class in v0.1 and may not deserve the same treatment now"
+    - "WHATEVER IS CHOSEN, remove the misleading surface: a live 100.0 constant named roadmap_alignment that can never fire reads to every future reader as a working lever. Either connect it or delete it"
+  outcome_id: CREDIBLE-000
+

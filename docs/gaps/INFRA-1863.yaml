@@ -2,7 +2,7 @@
   domain: INFRA
   title: "OWNER-BY-SCOPE: replace file-leases with role/skill-typed claims; agents own modules/concerns, conflict-resolver handles overlap (META-074 child C)"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   description: |
     Child C of META-074. Operator priority #3: "owner by scope and role

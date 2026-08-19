@@ -1,0 +1,14 @@
+- id: INFRA-3482
+  domain: INFRA
+  title: "EFFECTIVE: [COTG-0.3] vision -> MVP scope negotiation (smallest honest first tool)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-0.3] vision -> MVP scope negotiation (smallest honest first tool)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:22Z] DISCOVERY PARTIAL ~20% -> FINISH. layer phase/deferral persistence onto src/decompose_task_tool.rs + depends_on + the outcome ladder (plan_mode.rs is collision-gate, not scope).
+  outcome_id: COTG
+

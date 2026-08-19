@@ -1,0 +1,16 @@
+- id: INFRA-3507
+  domain: INFRA
+  title: "CREDIBLE: [COTG-6.3] ownership & non-enclosure guarantees (the tool is theirs)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - every delivered tool carries the protective license posture (AGPLv3 apps / Apache-2.0 substrate) and revoke-before-publish is enforced before anything the tool exposes goes public
+    - "the security/secret sweep is an ENFORCED pre-publish gate, not advisory (src/standard_missions.rs:94 today) -- a tool with a live secret cannot be published"
+    - "test: a tool with a live secret cannot be published; a clean one can"
+    - "widened 2026-07-30: the pre-publish gate also runs broader vulnerability scanning (SAST + known-CVE dependency audit) on the delivered artifact itself, not just secret-leak detection -- this repo already holds itself to security-review-before-public for its OWN releases; nothing extended that discipline to code shipped FOR customers"
+    - "test: a delivered tool with a known-CVE dependency or an injectable SAST finding is blocked from promote; a clean one passes"
+  notes: |
+    [2026-07-29T03:21:24Z] DISCOVERY PARTIAL ~30% -> FINISH. LICENSE-AGPL/NOTICE present; security-sweep skill unwired; secret-scan is advisory (src/standard_missions.rs:94). Wire security-sweep into an ENFORCED pre-publish gate + license injection per delivered tool.
+  outcome_id: COTG
+

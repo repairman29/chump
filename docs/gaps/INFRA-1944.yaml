@@ -2,7 +2,7 @@
   domain: INFRA
   title: "INFRA-1862 slice A: broadcast.sh delivery-confirmation receipts — sender gets ack when recipient reads (file-mtime on cursor + ambient kind=a2a_msg_delivered)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "Background — INFRA-1115 broadcast.sh / chump-inbox.sh dual-write to ambient.jsonl + .chump-locks/inbox/<session>.jsonl, but sender has zero visibility into whether recipient READ the msg. Today's session burned 30+ min sending dispatches into dormant inboxes (wizard at 16:24Z roll-call to 4 silent curators) with no signal back"

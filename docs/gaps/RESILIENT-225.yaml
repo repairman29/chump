@@ -1,0 +1,12 @@
+- id: RESILIENT-225
+  domain: RESILIENT
+  title: "2 pre-existing bot-merge.sh test failures: test-bot-merge-gap-fatal.sh + test-bot-merge-rebase-before-test.sh Test 7"
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - "The change described by \"test-bot-merge-gap-fatal.sh + test-bot-merge-rebase-before-test.sh Test 7\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: RESILIENT-000
+

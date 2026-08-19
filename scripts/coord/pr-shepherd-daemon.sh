@@ -12,8 +12,6 @@
 # META-186: action paths for BLOCKED_GREEN + BLOCKED_REAL_FAIL:
 #           BLOCKED_GREEN     → gh pr merge --auto --squash (arm auto-merge)
 #           BLOCKED_REAL_FAIL → chump gap reserve (file follow-up gap with fingerprint dedup)
-# META-189: MERGEABLE        → broadcast FEEDBACK kind=vote-request corr_id=pr-N (arms
-#           consensus voting; corr_id-generic tally already tracks votes per PR)
 #
 # Skeleton for the relentless PR-shepherd daemon. This tick walks all open PRs,
 # classifies each, and (META-184+) acts on BEHIND PRs via rebase.
@@ -68,9 +66,6 @@ FILED_GAPS_FILE="$REPO_ROOT/.chump/pr-shepherd-filed-gaps.jsonl"
 # INFRA-2346: persistent per-PR state for flake-rerun cap and wedged-DM debounce.
 FLAKE_RERUN_FILE="${CHUMP_FLAKE_RERUN_FILE:-$REPO_ROOT/.chump-locks/flake-rerun-count.json}"
 WEDGED_SIGNAL_FILE="${CHUMP_WEDGED_SIGNAL_FILE:-$REPO_ROOT/.chump-locks/pr-wedged-signaled.json}"
-# META-189: per-PR debounce for the MERGEABLE consensus-vote-request broadcast —
-# without this a PR sitting MERGEABLE for hours would re-broadcast every tick.
-VOTE_REQUEST_SIGNAL_FILE="${CHUMP_VOTE_REQUEST_SIGNAL_FILE:-$REPO_ROOT/.chump-locks/pr-vote-request-signaled.json}"
 SAFE_MODE_STATE_FILE="${CHUMP_SAFE_MODE_STATE_FILE:-$REPO_ROOT/.chump-locks/pr-shepherd-safe-mode.json}"
 # INFRA-2349: trunk-sentinel's own state file (red_since_epoch) — authoritative
 # source for how long trunk has actually been red, so the cascade gate can be
@@ -482,76 +477,6 @@ _emit_pr_wedged() {
   if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
   printf '{"ts":"%s","kind":"pr_wedged","pr":%d,"author":"%s","age_hours":%d,"dry_run":%s}\n' \
     "$ts" "$pr_num" "$author" "$age_hours" "$dry" >> "$AMBIENT"
-}
-
-# _emit_pr_vote_request — broadcast FEEDBACK kind=vote-request for a MERGEABLE
-# PR (META-189 / META-180 slice). corr_id=pr-N so `chump vote pr-N +1|-1|0`
-# and the existing consensus tally (src/commands/consensus.rs,
-# consensus_tally.rs, deliberator-loop.sh) track votes per PR out of the box —
-# the tally/quorum machinery is corr_id-generic, so this is the only new
-# plumbing this gap needs to add.
-# Args: $1=pr_num $2=gap_id
-# scanner-anchor: "kind":"vote-request"
-_emit_pr_vote_request() {
-  local pr_num="$1" gap_id="$2"
-  local ts dry corr_id session_id
-  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  corr_id="pr-${pr_num}"
-  session_id="${CHUMP_SESSION_ID:-pr-shepherd-daemon}"
-  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
-  printf '{"ts":"%s","event":"FEEDBACK","kind":"vote-request","corr_id":"%s","session":"%s","pr":%d,"gap_id":"%s","subject":"admin-merge PR #%d","dry_run":%s}\n' \
-    "$ts" "$corr_id" "$session_id" "$pr_num" "$gap_id" "$pr_num" "$dry" >> "$AMBIENT"
-}
-
-# _vote_request_signaled_recently — returns 0 if a vote-request was broadcast
-# for this PR in the last 24h (debounce). Same shape as
-# _wedged_signaled_recently.
-# Args: $1=pr_num
-_vote_request_signaled_recently() {
-  local pr_num="$1"
-  [[ -f "$VOTE_REQUEST_SIGNAL_FILE" ]] || return 1
-  python3 - "$VOTE_REQUEST_SIGNAL_FILE" "$pr_num" << 'PYEOF'
-import json, sys
-from datetime import datetime, timezone, timedelta
-path, pr_num = sys.argv[1], sys.argv[2]
-cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-try:
-    with open(path) as f:
-        data = json.load(f)
-except Exception:
-    sys.exit(1)
-ts_str = data.get(pr_num)
-if not ts_str:
-    sys.exit(1)
-try:
-    ev_ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
-    if ev_ts >= cutoff:
-        sys.exit(0)
-except Exception:
-    pass
-sys.exit(1)
-PYEOF
-}
-
-# _record_vote_request_signal — mark this PR as vote-request-broadcast now
-# Args: $1=pr_num
-_record_vote_request_signal() {
-  local pr_num="$1"
-  mkdir -p "$(dirname "$VOTE_REQUEST_SIGNAL_FILE")"
-  [[ -f "$VOTE_REQUEST_SIGNAL_FILE" ]] || echo '{}' > "$VOTE_REQUEST_SIGNAL_FILE"
-  python3 - "$VOTE_REQUEST_SIGNAL_FILE" "$pr_num" << 'PYEOF'
-import json, sys
-from datetime import datetime, timezone
-path, pr_num = sys.argv[1], sys.argv[2]
-try:
-    with open(path) as f:
-        data = json.load(f)
-except Exception:
-    data = {}
-data[pr_num] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-with open(path, 'w') as f:
-    json.dump(data, f)
-PYEOF
 }
 
 # _is_trusted_author — returns 0 if author appears in TRUST_AUTHORS list.
@@ -1210,23 +1135,6 @@ print(m.group(0) if m else '')
             _emit_pr_action_taken "$pr_num" "file_followup_gap" "no_id_parsed" "$gap_id"
             gap_file_count=$((gap_file_count + 1))
           fi
-        fi
-
-      # META-189: MERGEABLE → arm consensus vote (broadcast FEEDBACK
-      # kind=vote-request corr_id=pr-N). Untrusted-author MERGEABLE PRs
-      # reach here (trusted-author MERGEABLE PRs already went through the
-      # CLEAN_GREEN admin-merge tier above and `continue`d). Debounced to
-      # one broadcast per PR per 24h so a PR sitting MERGEABLE for hours
-      # doesn't re-request votes every tick.
-      elif [ "$c" = "MERGEABLE" ]; then
-        if ! _vote_request_signaled_recently "$pr_num"; then
-          if [ -n "$DRY_RUN" ]; then
-            echo "[pr-shepherd-daemon] DRY_RUN: would broadcast vote-request PR #${pr_num} (${gap_id})" >&2
-          else
-            echo "[pr-shepherd-daemon] broadcasting vote-request PR #${pr_num} (${gap_id})" >&2
-          fi
-          _emit_pr_vote_request "$pr_num" "$gap_id"
-          _record_vote_request_signal "$pr_num"
         fi
       fi
     done <<< "$classified"

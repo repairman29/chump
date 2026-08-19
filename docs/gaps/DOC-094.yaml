@@ -1,0 +1,15 @@
+- id: DOC-094
+  domain: DOC
+  title: Discord gateway has FOUR independent opt-in gates and each one only reveals itself after you clear the previous
+  status: open
+  priority: P3
+  effort: s
+  acceptance_criteria:
+    - "DISCOVERED SEQUENTIALLY 2026-08-09 while standing the gateway up for RESILIENT-266. Four gates, and every one is invisible until the one before it is satisfied — so the cost is four build/run cycles, one of which is a 14m27s compile: (1) CARGO FEATURE — discord is not in default (default = [] in Cargo.toml:79; discord = [dep:serenity] at :103). Without it the binary has no --discord flag at all; (2) RUNTIME FLAG --discord; (3) CHUMP_DISCORD_ENABLED=1, the PRODUCT-014 opt-in, which fails with a clear message but only AFTER the first two are cleared; (4) CHUMP_ALLOW_DISCORD_RUSTLS=1, the SECURITY-005 gate on RUSTSEC-2026-0104"
+    - "EACH GATE IS INDIVIDUALLY DEFENSIBLE — that is what makes this a docs gap rather than a design defect. The feature keeps serenity out of the default build (measured: +6.2MB and 14m27s cold). PRODUCT-014 is a deliberate product opt-in. SECURITY-005 is a real HIGH advisory and SHOULD block. The problem is purely that nothing states the sequence in one place"
+    - "WRITE IT DOWN in docs/operations/ next to DISCORD_TROUBLESHOOTING.md: all four gates, in order, with the exact error each produces so the next person can match a message to a gate instead of rediscovering the chain. Include the measured build cost so the 14-minute compile is an expectation rather than a surprise"
+    - "THE SHIPPED FIX ALREADY EXISTS FOR TWO OF THEM: scripts/setup/install-discord-gateway.sh verifies the feature is compiled in before installing, and both it and discord-gateway-run.sh set CHUMP_DISCORD_ENABLED explicitly. Document that the supported path is the installer, not four hand-set variables"
+    - "DO NOT COLLAPSE THE GATES. It is tempting to fold them into one flag. Resist: they gate different things (build size, product opt-in, and an unpatched CVE) and a single switch would let someone accept a HIGH security advisory while thinking they were only enabling a feature"
+    - ALSO NOTE the r2d2 database is locked ERROR lines emitted twice at every gateway startup. They are non-fatal (startup continues) but they are logged at ERROR, so anyone reading the log while debugging will chase them first
+  outcome_id: CHUMPOS
+

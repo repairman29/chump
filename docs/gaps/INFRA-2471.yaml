@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P1: productize NATS mesh wiring — installer must SET CHUMP_NATS_URL (not just print) + code default-to-localhost so the push-tier can't silently go dark"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - install-nats-server-launchd.sh SETS CHUMP_NATS_URL via launchctl setenv + installs a com.chump.fleet-setenv LaunchAgent (RunAtLoad, reboot-persistent) + appends export to the shell rc — replaces the current advisory-only printf that left the mesh dark for 2 days

@@ -1,0 +1,10 @@
+- id: CREDIBLE-257
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement harness-neutral verb to list registered workers (CREDIBLE-099 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Verb lists registered workers with their live state
+    - Verb returns the required information (worker_id, backend, machine, skills, current_gap, heartbeat_age, ships_today)
+

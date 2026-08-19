@@ -1,0 +1,20 @@
+- id: PRODUCT-190
+  domain: PRODUCT
+  title: "[chump] Flag-default drift: three BEAST_MODE endpoint flags with 7 conflicting defaults (incl. typo-domain)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Confidence: unknown -- no tier recorded (filed before the tier field existed, or by a producer that has not adopted it yet) -- verify independently before trusting it.
+    
+    almanac flagmap drift triage 2026-08-05 (parser noise removed first — nested-brace shell parsing fixed, 239 -> 215 drift lines). The top REAL incoherence class, same family as the FLEET_BACKEND/CHUMP_WORK_BACKEND incident: THREE flags name the same beast-mode endpoint with conflicting defaults across 356 read sites. BEAST_MODE_API: localhost:3000 | https://beast-mode.com (270 reads). BEAST_MODE_API_URL: localhost:3000 | localhost:7777 | https://beast-mode.dev | https://beast-mode.dev/api | https://beastmode.dev (56 reads — note beastmode.dev vs beast-mode.dev is a TYPO-DOMAIN, one of them silently talks to the wrong host). BEAST_MODE_URL: localhost:3000 | localhost:7777 (30 reads). Also real: CHUMPBAR_SSH_TIMEOUT 15|6, BEAST_MODE_CLOUD_MODEL llama-3.3-70b-versatile|openai/gpt-4o-mini, BASE_URL 3000|7777, and CARGO_TARGET_DIR resolved 14 different ways across 171 sites (the repo-root-resolution chaos class behind the test-suite poisoning). Fix shape: one canonical flag per endpoint with one default in one place, aliases reading through it. Receipt: `flagmap --repo ~/Projects/Chump --drift` (binary: almanac/target/release/flagmap).
+    
+    context: {"domain":"PRODUCT","found_by":"almanac flagmap drift triage (UAT 181-drift pending item)","external_repo":"repairman29/chump"}
+    source: holler feedback_events, dedupe chump-beastmode-endpoint-drift-2026-08-05
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/chump"
+

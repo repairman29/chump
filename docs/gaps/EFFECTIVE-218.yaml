@@ -2,7 +2,7 @@
   domain: EFFECTIVE
   title: "EFFECTIVE: chump-commit.sh cargo-fmt git add -A sweeps untracked files despite explicit argv"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   acceptance_criteria:
     - scripts/coord/chump-commit.sh line ~687 — after cargo fmt --all, the script runs git add -A which captures any untracked file in the worktree (e.g. .chump-no-reap marker) and commits it

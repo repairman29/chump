@@ -1,0 +1,13 @@
+- id: CREDIBLE-207
+  domain: CREDIBLE
+  title: "code-reviewer-agent non-deterministic + opaque: CONCERN reasons swallowed, verdict flip-flops on identical diff"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"CONCERN reasons swallowed, verdict flip-flops on identical diff\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    STRONGER SIGNAL 2026-08-07 (PR #3495 EFFECTIVE-373): reviewer raised CONCERN listing 'new unwrap()/expect() in production' + 'new external dependencies added' — BOTH demonstrably FALSE in the diff (0 bare unwrap/expect, no Cargo.toml change). It dumped its entire boilerplate concern-reason list rather than specific verified findings. So the reviewer doesn't just flip-flop (non-determinism) — it HALLUCINATES concerns that don't apply. Fix must make the reviewer cite SPECIFIC evidence per concern (file:line) or it's noise that blocks clean changes; ties to the COTG judge's 'reasoning must be grounded' requirement.
+

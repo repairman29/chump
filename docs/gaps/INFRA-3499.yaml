@@ -1,0 +1,14 @@
+- id: INFRA-3499
+  domain: INFRA
+  title: "CREDIBLE: [COTG-4.2] the do -> reflect loop (the OS reviews its own work)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-4.2] the do -> reflect loop (the OS reviews its own work)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~50% -> FINISH. reflect hook is WIRED (autonomy_loop.rs:1352 reflect_heuristic->reflection_db). Compose reality-check+durable-fix+anti-over-claim at the hook, route findings to gap_store (src/reflection.rs:34 lists feed-back-as-gaps as future).
+  outcome_id: COTG
+

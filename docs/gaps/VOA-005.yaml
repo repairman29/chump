@@ -2,7 +2,7 @@
   domain: VOA
   title: "VOICE-OF-AGENT VOA-005: oauth_refresh_daemon_broken — 5 min lost; fix-shape: tooling"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
     - Full friction report at docs/voice/VOA-005-FULL.yaml with wedge_class=oauth_refresh_daemon_broken, minutes_lost=5

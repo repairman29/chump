@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: investigate jeffs-macbook-air-10-X actions/checkout flake (M-runner unblocker)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Self-hosted M4 runners (jeffs-macbook-air-10-2/-10-3/etc.) failed actions/checkout@v6 repeatedly in <30s during the 2026-05-20 Marcus cron-loop session. Master kill-switch was flipped (CHUMP_SELF_HOSTED_ENABLED=false) + 5 RUNNER_* lane-vars deleted to bypass; all CI is now on ubuntu-latest, M4 hardware idle. Need root cause before flipping back, else next push hits the same flake.

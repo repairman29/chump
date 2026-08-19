@@ -1,0 +1,12 @@
+- id: EFFECTIVE-326
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Flow-style typed state machine for multi-step gap execution (CrewAI borrow → ChumpOS kernel ABI)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"Flow-style typed state machine for multi-step gap execution (CrewAI borrow → ChumpOS kernel ABI)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: MISSION-032
+

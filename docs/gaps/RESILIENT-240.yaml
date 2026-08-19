@@ -1,0 +1,19 @@
+- id: RESILIENT-240
+  domain: RESILIENT
+  title: "RESILIENT: [almanac] init hard-codes a Tailscale IP — the tool installs cleanly on exactly one machine on Earth"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Found 2026-08-07 while scoping what it would take to hand Almanac to a beta tester; the beta is now NO-GO on market grounds but this fix stands on its own as internal resilience. almanac init's --embed-url defaults to a Tailscale-only IP, so the FTUE produces a working install on precisely one machine. Fix is small and surgical: default to localhost:11434 (matching the compiled defaults the rest of the code already uses), keep the stable-host path available via explicit --embed-url and the machine config, env still wins. Do NOT touch scripts/ — clone-and-index-fleet.sh, embed-fleet.sh, summarize-supervisor.sh and eval-gate-cron.sh legitimately hard-code Jeff's hosts and paths; they are fleet ops, not product surface.
+  acceptance_criteria:
+    - "almanac init with no flags defaults its embed endpoint to http://localhost:11434, matching DEFAULT_OLLAMA_URL in embed.rs and summarize.rs"
+    - a stable/remote host is still reachable via explicit --embed-url and via the persisted machine config; resolution order env > machine config > default is unchanged
+    - no private IP remains as a compiled-in default anywhere under crates/ (scripts/ is out of scope and stays as-is)
+    - "the giveaway-discipline comment at registry.rs:40 is no longer contradicted by the CLI it describes"
+    - a test or documented manual receipt shows a machine with only local Ollama getting a working fusion path from almanac init alone
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: RESILIENT-000
+  evidence: |
+    COMMAND: grep -n -B3 -A12 'Init {' crates/almanac-core/src/bin/almanac.rs  |  OUTPUT: line 93 — #[arg(long, default_value = "http://100.101.188.30:11434")] embed_url: String  (helsinki over Tailscale). Contrast crates/almanac-core/src/embed.rs:15 and summarize.rs:22, both DEFAULT_OLLAMA_URL = http://localhost:11434; and registry.rs:40 whose comment reads 'Deliberately NOT a compiled-in default: source stays infra-free (giveaway discipline)'.  |  THEORY: the struct honors infra-freedom but the CLI arg does not, so 'almanac init' persists a tailnet-only IP into ~/.almanac machine-wide. Any machine not on Jeff's tailnet — a rebuilt laptop, a second machine, a beta tester, future-Jeff — silently degrades every semantic query to keyword, because a configured-but-unreachable host is exactly the 3s-probe degradation path. Confirmed live this session: ~/.almanac/registry.json holds embed_url=http://100.101.188.30:11434.  |  ALT: considered 'bundle the embedding model into the binary' (how codebase-memory-mcp avoids inference entirely) — rejected as the fix for THIS gap: it needs an ONNX/candle runtime, bundled weights, a model license review, and it is a one-way embedding-model swap that invalidates every vector in the fleet. A one-line default change buys the same resilience for this use case. Also considered leaving it and documenting — rejected: a default that only works for its author is a single point of failure, which is the RESILIENT pillar's definition.
+

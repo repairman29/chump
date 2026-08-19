@@ -2,9 +2,9 @@
   domain: INFRA
   title: "EFFECTIVE: m-effort"
   status: open
-  priority: P1
+  priority: P3
   effort: m
   acceptance_criteria:
-    - verify it
+    - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
   outcome_id: MISSION-010
 

@@ -2,10 +2,8 @@
   domain: ZERO-WASTE
   title: "ZERO-WASTE: bulk-close 143 open pillar-starvation zombie gaps (MISSION-EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE pillar-starved — only N picked); growing 3+ cycles; 649 more blocked on import by title-similarity"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
-    - "The change described by \"bulk-close 143 open pillar-starvation zombie gaps (MISSION-EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE pillar-starved — only N picked); growing 3+ cycles; 649 more blocked on import by title-similarity\" is implemented in the relevant ZERO-WASTE code path(s)."
-    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - the 143 identified pillar-starvation zombie gaps are bulk-closed with reason=pillar-starvation; open-gap count drops by ~143.
 

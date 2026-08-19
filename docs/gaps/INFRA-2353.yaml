@@ -2,7 +2,7 @@
   domain: INFRA
   title: "META-269 sub-4: queue-stagnation alarm — detect 24h idle queue + bell"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     META-269 sub-4: queue-stagnation alarm. Detects when pickable-gap queue is 24h+ idle and bells operator.

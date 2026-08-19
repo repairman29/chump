@@ -1,0 +1,12 @@
+- id: EFFECTIVE-425
+  domain: EFFECTIVE
+  title: "EFFECTIVE: wire chump roadmap-from-vision --apply — vision string to >=1 outcome-linked gap (COTG spine slice 1; Phase-1 contract already built at contracts.rs:753)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Running 'chump roadmap-from-vision \"<vision>\" --domain INFRA --outcome <existing-id> --max-gaps 3 --apply' (a) calls provider_cascade::build_provider() with RoadmapFromVisionContract::prompt() [contracts.rs:753-1081, ALREADY BUILT+tested], (b) extracts+parses+validates a Roadmap via existing chump_handoff::extract_json_block + Roadmap::validate(), (c) shells out to 'chump gap reserve --outcome ...' for >=1 GapDraft (NOT GapStore::reserve_verified direct — must inherit MISSION-045/pillar/similarity gates, mirror bootstrap.rs:871-931 reserve_umbrella_gap), (d) chump gap show <filed-id> confirms outcome_id set. No dry-run/truncation/bootstrap-wiring in this slice — follow-ons."
+    - "--apply is opt-in; bare invocation only prints the validated Roadmap JSON."
+    - max_gaps clamped client-side (never trust model compliance).
+  outcome_id: COTG
+
