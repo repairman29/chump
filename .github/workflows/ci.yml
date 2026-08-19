@@ -1146,6 +1146,9 @@ jobs:
       - name: gap-status-flip guard (INFRA-158)
         run: bash scripts/ci/test-gap-status-flip.sh
 
+      - name: A2A L2 waiting_operator task state machine (EFFECTIVE-038)
+        run: bash scripts/ci/test-gap-waiting-operator.sh
+
       - name: speculative-on-speculative arm guard (INFRA-684)
         run: bash scripts/ci/test-speculative-on-speculative-guard.sh
 

@@ -671,6 +671,23 @@ impl GapStore {
             .conn
             .execute("ALTER TABLE gaps ADD COLUMN evidence TEXT", []);
 
+        // EFFECTIVE-038: A2A L2 task state machine — `waiting_operator` status
+        // carries a structured JSON payload (kind: input_required|auth_required,
+        // question, resume_status, waiting_since, max_wait_seconds, answer) so a
+        // suspended gap can RESUME exactly where it paused instead of either
+        // guessing wrong or spawning a free-text follow-up gap. Nullable TEXT —
+        // NULL for every gap that has never been suspended.
+        let _ = self
+            .conn
+            .execute("ALTER TABLE gaps ADD COLUMN waiting_payload TEXT", []);
+        let _ = self.conn.execute_batch(
+            "INSERT OR IGNORE INTO gap_status_registry (status, added_by, note)
+             VALUES
+               ('waiting_operator', 'EFFECTIVE-038', 'suspended — awaiting operator input_required/auth_required answer; see waiting_payload'),
+               ('failed',           'EFFECTIVE-038', 'terminal: gap could not complete (e.g. input_required SLA elapsed with no answer)');
+            ",
+        );
+
         // MISSION-033: first-class repos table + 3 indexes.
         // Derived index: auto-upserted on `chump gap import` for every
         // `external_repo:<owner>/<repo>` tag in gaps.skills_required.
@@ -2238,6 +2255,227 @@ impl GapStore {
             }
         }
         Ok(())
+    }
+
+    /// EFFECTIVE-038: suspend a gap into `waiting_operator` carrying a
+    /// structured JSON question payload — the A2A L2 `input_required` /
+    /// `auth_required` states ("suspended, not failed"). `kind` distinguishes
+    /// the two: `input_required` (agent is most of the way done, needs an
+    /// operator decision) and `auth_required` (missing/exhausted credential —
+    /// ties RESILIENT-054, the incident where a dead credential silently
+    /// killed the fleet for 46h instead of raising a visible, resumable
+    /// suspension). The gap's current status is captured as `resume_status`
+    /// so `respond()` knows exactly where to resume.
+    pub fn suspend(
+        &self,
+        gap_id: &str,
+        kind: &str,
+        question_json: &str,
+        max_wait_seconds: Option<i64>,
+    ) -> Result<()> {
+        const VALID_KINDS: &[&str] = &["input_required", "auth_required"];
+        if !VALID_KINDS.contains(&kind) {
+            bail!(
+                "chump gap suspend: invalid --kind {:?}. Must be one of: {}",
+                kind,
+                VALID_KINDS.join(", ")
+            );
+        }
+        let question: serde_json::Value = serde_json::from_str(question_json)
+            .with_context(|| format!("--question is not valid JSON: {question_json}"))?;
+
+        let current_status: String = self
+            .conn
+            .query_row(
+                "SELECT status FROM gaps WHERE id=?1",
+                params![gap_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("gap {} not found", gap_id))?;
+        if current_status == "waiting_operator" {
+            bail!(
+                "gap {} is already waiting_operator — respond to the pending question before suspending again",
+                gap_id
+            );
+        }
+
+        let now = unix_now();
+        let waiting_since = unix_to_iso_full(now);
+        let payload = serde_json::json!({
+            "kind": kind,
+            "question": question,
+            "resume_status": current_status,
+            "waiting_since": waiting_since,
+            "max_wait_seconds": max_wait_seconds,
+        });
+        let payload_str = payload.to_string();
+
+        let changed = self.conn.execute(
+            "UPDATE gaps SET status='waiting_operator', waiting_payload=?1 WHERE id=?2",
+            params![payload_str, gap_id],
+        )?;
+        if changed == 0 {
+            bail!("gap {} not found", gap_id);
+        }
+
+        // Best-effort ambient audit event — never fail the caller on write errors.
+        {
+            use std::io::Write as _;
+            let ts = unix_to_iso_full(now);
+            // scanner-anchor: gap_waiting_operator (EFFECTIVE-038)
+            let line = format!(
+                r#"{{"ts":"{ts}","kind":"gap_waiting_operator","gap_id":"{gap_id}","suspend_kind":"{kind}","resume_status":"{current_status}"}}"#,
+            ) + "\n";
+            let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+            let _ = std::fs::create_dir_all(amb.parent().unwrap_or(&self.repo_root));
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
+        Ok(())
+    }
+
+    /// EFFECTIVE-038: resume a `waiting_operator` gap with the operator's
+    /// answer. Restores `status` to whatever it was before `suspend()` was
+    /// called (`resume_status`) so work continues exactly where it paused,
+    /// and folds `answer` into the stored `waiting_payload` JSON so the
+    /// answer stays attached to the question it resolves.
+    pub fn respond(&self, gap_id: &str, answer_json: &str) -> Result<()> {
+        let answer: serde_json::Value = serde_json::from_str(answer_json)
+            .with_context(|| format!("--answer is not valid JSON: {answer_json}"))?;
+
+        let row: Option<(String, Option<String>)> = self
+            .conn
+            .query_row(
+                "SELECT status, waiting_payload FROM gaps WHERE id=?1",
+                params![gap_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let (status, payload_str) =
+            row.ok_or_else(|| anyhow::anyhow!("gap {} not found", gap_id))?;
+        if status != "waiting_operator" {
+            bail!(
+                "gap {} is not waiting_operator (status={}) — nothing to respond to",
+                gap_id,
+                status
+            );
+        }
+
+        let mut payload: serde_json::Value = payload_str
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        let resume_status = payload
+            .get("resume_status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("open")
+            .to_string();
+        let now = unix_now();
+        payload["answer"] = answer;
+        payload["answered_at"] = serde_json::Value::String(unix_to_iso_full(now));
+        let payload_str = payload.to_string();
+
+        let changed = self.conn.execute(
+            "UPDATE gaps SET status=?1, waiting_payload=?2 WHERE id=?3 AND status='waiting_operator'",
+            params![resume_status, payload_str, gap_id],
+        )?;
+        if changed == 0 {
+            bail!(
+                "gap {} was not waiting_operator at write time (race?) — no change made",
+                gap_id
+            );
+        }
+
+        // Best-effort ambient audit event — never fail the caller on write errors.
+        {
+            use std::io::Write as _;
+            let ts = unix_to_iso_full(now);
+            // scanner-anchor: gap_responded (EFFECTIVE-038)
+            let line = format!(
+                r#"{{"ts":"{ts}","kind":"gap_responded","gap_id":"{gap_id}","resume_status":"{resume_status}"}}"#,
+            ) + "\n";
+            let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+            let _ = std::fs::create_dir_all(amb.parent().unwrap_or(&self.repo_root));
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
+        Ok(())
+    }
+
+    /// EFFECTIVE-038 SLA guard: A2A's own spec has no timeout on
+    /// `input_required`/`auth_required` — a task can hang forever if nobody
+    /// answers. This sweeps every `waiting_operator` gap whose
+    /// `waiting_since + max_wait_seconds` has elapsed, flips it to the
+    /// terminal `failed` status, and emits `task_stalled` so it surfaces
+    /// instead of hanging silently. Gaps with no `max_wait_seconds` set never
+    /// auto-fail (operator opted out of the SLA). Returns the IDs that were
+    /// transitioned.
+    pub fn sweep_stalled(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, waiting_payload FROM gaps WHERE status='waiting_operator' AND waiting_payload IS NOT NULL",
+        )?;
+        let rows: Vec<(String, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get::<_, String>(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        drop(stmt);
+
+        let now = unix_now();
+        let mut stalled = Vec::new();
+        for (gap_id, payload_str) in rows {
+            let Ok(payload) = serde_json::from_str::<serde_json::Value>(&payload_str) else {
+                continue;
+            };
+            let Some(max_wait) = payload.get("max_wait_seconds").and_then(|v| v.as_i64()) else {
+                continue;
+            };
+            let Some(waiting_since) = payload.get("waiting_since").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(since_ts) = parse_iso_to_unix(waiting_since) else {
+                continue;
+            };
+            if now - since_ts < max_wait {
+                continue;
+            }
+
+            let changed = self.conn.execute(
+                "UPDATE gaps SET status='failed' WHERE id=?1 AND status='waiting_operator'",
+                params![gap_id],
+            )?;
+            if changed == 0 {
+                continue;
+            }
+            stalled.push(gap_id.clone());
+
+            use std::io::Write as _;
+            let ts = unix_to_iso_full(now);
+            // scanner-anchor: task_stalled (EFFECTIVE-038)
+            let line = format!(
+                r#"{{"ts":"{ts}","kind":"task_stalled","gap_id":"{gap_id}","max_wait_seconds":{max_wait}}}"#,
+            ) + "\n";
+            let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+            let _ = std::fs::create_dir_all(amb.parent().unwrap_or(&self.repo_root));
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
+        Ok(stalled)
     }
 
     /// INFRA-2134: Record how/where a gap was shipped in the `shipped_in` JSON

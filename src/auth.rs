@@ -151,6 +151,42 @@ impl ActiveAuth {
     }
 }
 
+/// EFFECTIVE-038 / RESILIENT-054: when [`on_auth_failure_classified`] returns
+/// `None` — both OAuth and API-key credentials are exhausted — the caller
+/// must NOT just exit or silently die (that's exactly the failure mode that
+/// killed the fleet for 46h: a dead credential with no visible signal).
+/// Instead, suspend the in-flight gap into `waiting_operator`/`auth_required`
+/// so it's resumable via `chump gap respond` the moment a fresh credential
+/// lands, rather than lost.
+///
+/// No-op (returns `false`) if `CHUMP_GAP_ID` isn't set (no gap context to
+/// suspend) or the gap store can't be opened — callers should still treat an
+/// exhausted fallback as fatal in that case, this is best-effort visibility
+/// on top, not a replacement for the underlying error handling.
+///
+/// [`on_auth_failure_classified`]: ActiveAuth::on_auth_failure_classified
+pub fn suspend_on_exhausted_auth(err: &str, repo_root: &Path) -> bool {
+    let gap_id = match std::env::var("CHUMP_GAP_ID") {
+        Ok(v) if !v.trim().is_empty() => v,
+        _ => return false,
+    };
+    let store = match chump_gap_store::GapStore::open(repo_root) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let question = serde_json::json!({
+        "message": "credential exhausted — both OAuth and API-key fallback failed",
+        "raw_error": err,
+    })
+    .to_string();
+    // RESILIENT-054: default 1h SLA so a dead credential surfaces via
+    // `chump gap sla-check` instead of hanging the gap forever if nobody
+    // rotates the credential in time.
+    store
+        .suspend(&gap_id, "auth_required", &question, Some(3600))
+        .is_ok()
+}
+
 /// Classification of an auth-call failure, used to decide whether a
 /// fallback to the other credential is warranted (RESILIENT-057).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

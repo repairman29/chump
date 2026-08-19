@@ -11629,6 +11629,122 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            "suspend" => {
+                // EFFECTIVE-038: A2A L2 task state machine. Suspend a gap into
+                // `waiting_operator` — "70% done, need an operator decision,
+                // then resume" (input_required) or "missing credential"
+                // (auth_required) — instead of guessing wrong or silently
+                // dying (RESILIENT-054).
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap suspend <GAP-ID> --kind <input_required|auth_required> --question <JSON> [--max-wait-seconds N]\n\n\
+                         Suspend a gap into status=waiting_operator carrying a structured JSON\n\
+                         question payload. Resume with `chump gap respond <GAP-ID> --answer <JSON>`.\n\n\
+                         Options:\n  \
+                           --kind K              Required. input_required | auth_required\n  \
+                           --question JSON       Required. Structured question payload (JSON)\n  \
+                           --max-wait-seconds N  Optional SLA. If elapsed with no answer, `chump gap\n  \
+                                                  sla-check --apply` auto-fails the gap and emits task_stalled."
+                    );
+                    return Ok(());
+                }
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap suspend <GAP-ID> --kind <input_required|auth_required> --question <JSON>");
+                    std::process::exit(2);
+                });
+                let kind = flag("--kind").unwrap_or_else(|| {
+                    eprintln!(
+                        "chump gap suspend: --kind is required (input_required|auth_required)"
+                    );
+                    std::process::exit(2);
+                });
+                let question = flag("--question").unwrap_or_else(|| {
+                    eprintln!("chump gap suspend: --question is required (JSON)");
+                    std::process::exit(2);
+                });
+                let max_wait_seconds = flag("--max-wait-seconds").map(|s| {
+                    s.parse::<i64>().unwrap_or_else(|_| {
+                        eprintln!("chump gap suspend: --max-wait-seconds must be an integer");
+                        std::process::exit(2);
+                    })
+                });
+                match store.suspend(&gap_id, &kind, &question, max_wait_seconds) {
+                    Ok(()) => {
+                        println!(
+                            "suspended {} (kind={}, status=waiting_operator)",
+                            gap_id, kind
+                        );
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap suspend: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "respond" => {
+                // EFFECTIVE-038: resume a waiting_operator gap from exactly
+                // where it paused.
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap respond <GAP-ID> --answer <JSON>\n\n\
+                         Resume a gap suspended via `chump gap suspend`. Restores status to\n\
+                         whatever it was before suspension and folds --answer into the stored\n\
+                         question payload."
+                    );
+                    return Ok(());
+                }
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap respond <GAP-ID> --answer <JSON>");
+                    std::process::exit(2);
+                });
+                let answer = flag("--answer").unwrap_or_else(|| {
+                    eprintln!("chump gap respond: --answer is required (JSON)");
+                    std::process::exit(2);
+                });
+                match store.respond(&gap_id, &answer) {
+                    Ok(()) => {
+                        println!("responded {} (resumed)", gap_id);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap respond: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "sla-check" => {
+                // EFFECTIVE-038: A2A's own spec has no timeout on
+                // input_required/auth_required — a task can hang forever if
+                // nobody answers. This sweep auto-fails any waiting_operator
+                // gap whose max_wait_seconds elapsed and emits task_stalled
+                // so it surfaces instead of hanging silently.
+                let stalled = match store.sweep_stalled() {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("chump gap sla-check: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+                if stalled.is_empty() {
+                    println!("sla-check: no stalled waiting_operator gaps");
+                } else {
+                    println!(
+                        "sla-check: {} gap(s) auto-failed on SLA elapse: {}",
+                        stalled.len(),
+                        stalled.join(", ")
+                    );
+                }
+                return Ok(());
+            }
             "set" | "update" | "modify" | "edit" | "change" => {
                 // INFRA-1036: 'set' and natural-language aliases for gap mutation.
                 // CREDIBLE-016: unknown-flag detection — if the positional GAP-ID slot
