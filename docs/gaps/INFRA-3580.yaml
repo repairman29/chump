@@ -1,7 +1,7 @@
 - id: INFRA-3580
   domain: INFRA
   title: reopening a gap leaves a stale closed_pr and there is no supported way to clear it
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -11,5 +11,8 @@
     - "FIX: let --status open clear closed_pr and closed_date automatically — reopening logically retracts the close — or add an explicit --clear-closed-pr. Guard it behind CHUMP_ALLOW_RECYCLE like the reopen itself, so it cannot quietly rewrite shipping history"
     - "VERIFY: reopen a gap that has closed_pr set, then assert sqlite reports zero rows for status=open AND closed_pr IS NOT NULL. Today that count is 3 and cannot be driven to zero by any supported command"
     - "SCOPE: repair path for CREDIBLE-268. 268 is why gaps get falsely closed; this is why the damage cannot be fully undone once they are"
+  notes: |
+    [2026-08-19T10:13:21Z] Verification receipt (2026-08-19): YAML/state.db were stale — this gap already shipped in commit c3eef69b / PR #3630 ("INFRA-3580: auto-clear stale closed_pr/closed_date on gap reopen"). crates/chump-gap-store/src/lib.rs set_fields() now computes auto_clear_closure (status->open, CHUMP_ALLOW_RECYCLE=1, no explicit --closed-pr/--closed-date supplied) and clears closed_pr/closed_date on reopen, satisfying all 6 AC items including the CHUMP_ALLOW_RECYCLE gating and explicit-override precedence. Re-closing to sync the registry; no code changes needed. Same pattern as INFRA-2285 / INFRA-2447 / INFRA-2232 / INFRA-2225 / INFRA-1890 stale-state syncs.
+  closed_pr: 3630
   outcome_id: MISSION-010
 
