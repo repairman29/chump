@@ -1169,6 +1169,43 @@ explicitly) — running `chump gap ship`/`chump gap set` from a worktree
 silently no-ops against the shared registry, which is exactly the
 gap-reopens-itself loop this section documents.
 
+### state.db sync — per-machine local db is the actual root cause (2026-08-19, fleet-1 slice)
+
+Despite the two prior slices fixing the worktree-vs-main-checkout cwd bug and
+confirming `INFRA-1655` flipped to `done` (via `sqlite3 .../.chump/state.db`
+on that machine), this gap re-surfaced `open` and routed a *third* fleet-1
+dispatch — this time to a session on a different physical host (`closetjunky`,
+Linux) than the machine(s) those earlier fixes ran on.
+
+**Root cause: `state.db` is gitignored (`.chump/state.db` — see
+`.gitignore`) and therefore purely local per machine, not shared fleet-wide.**
+Every previous "sync executed, confirmed done" slice only ever proved the
+flip held on *that one machine's* local `state.db`. It never propagated to
+any other machine's copy — there is no sync mechanism between them, by
+design (state.db is intentionally excluded from git). A fleet worker
+dispatched on a machine that never ran the `chump gap ship` flip locally
+sees `status=open` in its own `state.db` and legitimately re-picks the gap,
+because from that machine's point of view the gap genuinely never shipped.
+
+This means "run `chump gap ship` from the main checkout, not the worktree"
+(the INFRA-1655-fleet-1-slice-#2 fix above) is necessary but not sufficient
+across a multi-machine fleet — it has to be run **once per machine** that
+might dispatch this gap, or the picker will keep re-surfacing it on whichever
+host hasn't locally flipped it yet. There is currently no cross-machine
+gap-registry sync; each host's `chump gap reserve`/`chump gap ship` only ever
+mutates its own local file.
+
+**Action taken this slice:** flipped `status=done` in this host's
+(`closetjunky`) local `.chump/state.db` for `INFRA-1655`, from the main
+checkout (not this worktree), matching the same command form used on the
+prior fix. This closes the loop for *this* machine. Any other machine that
+has never locally shipped `INFRA-1655` will still show it `open` in its own
+`state.db` until it, too, runs the flip — that is expected given the
+per-machine-local design, not a bug to chase further. **No further
+INFRA-1655 investigation slices are warranted on any host** — if the gap
+resurfaces again, the fix is a one-line local `chump gap ship` from that
+host's main checkout, not another reproduction/root-cause pass.
+
 ---
 
 ## Pi mesh provisioner (INFRA-1543)
