@@ -30,7 +30,8 @@ rot-reaper|scripts/ops/rot-reaper.sh|1800
 worktree-reaper|scripts/ops/stale-worktree-reaper.sh --execute|900
 disk-monitor|scripts/ops/disk-health-monitor.sh|300
 main-health-watchdog|scripts/ops/main-health-watchdog.sh|600
-pr-lander|scripts/dispatch/pr-lander-beat.sh|600"
+pr-lander|scripts/dispatch/pr-lander-beat.sh|600
+cargo-sweep-gc|scripts/ops/cargo-sweep-gc.sh|3600"
 
 # write the self-contained loop-runner for an organ (sources creds, sets PATH, loops at cadence)
 write_runner() {
@@ -99,7 +100,7 @@ EOF
 # self-test
 log "self-test:"
 fail=0
-for name in node-orchestrator rot-reaper worktree-reaper disk-monitor main-health-watchdog pr-lander; do
+for name in node-orchestrator rot-reaper worktree-reaper disk-monitor main-health-watchdog pr-lander cargo-sweep-gc; do
   case "$SUP" in
     systemd) systemctl is-active "chump-$name.service" >/dev/null 2>&1 && log "  ✓ $name up" || { log "  ✗ $name DOWN"; fail=1; } ;;
     runit)   sv status "$SVDIR/chump-$name" 2>/dev/null | grep -q '^run' && log "  ✓ $name up" || { log "  ✗ $name DOWN"; fail=1; } ;;
