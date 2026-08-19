@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # scripts/coord/pr-shepherd-daemon.sh — META-181 / META-180 slice 1
-# META-182: cache-first tick via cache_query_open_prs + CHUMP_GH_CALL_CRITICALITY=background
+# META-182: background-criticality-tagged tick (CHUMP_GH_CALL_CRITICALITY=background)
+#           so the queue-wide gh pr list yields the GH bucket under quota pressure.
+#           NOTE (INFRA-2464 audit): the field set this tick needs
+#           (statusCheckRollup, headRefOid, ...) is GraphQL-only / not stored
+#           by the webhook-fed sqlite cache, so this call is NOT cache-first —
+#           see the comment on the gh pr list call in cmd_tick for why.
 # META-183: classification engine — classifies each PR into BEHIND/MERGEABLE/ARMED/DIRTY/BLOCKED/UNKNOWN
 #           and emits one pr_classified ambient event per PR.
 # META-184: action engine — for each BEHIND PR, calls gh pr update-branch --rebase;
@@ -80,8 +85,10 @@ TRUNK_SENTINEL_STATE_FILE="${CHUMP_TRUNK_SENTINEL_STATE_FILE:-$REPO_ROOT/.chump/
 # permanent (needs operator, >=cap) trunk-red per the INFRA-2349 taxonomy.
 CASCADE_MAX_HOLD_MINUTES="${CHUMP_CASCADE_MAX_HOLD_MINUTES:-120}"
 
-# Cache-first reads (INFRA-1081): source cache lib so cmd_tick can use
-# cache_query_open_prs instead of burning raw GraphQL quota.
+# Cache-first reads (INFRA-1081): sourced so cache_lookup_pr/cache_query_*
+# helpers are available in this process. cmd_tick's queue-wide list call
+# is NOT cache-first today — see the INFRA-2464 audit note on that call
+# site for why a like-for-like cache read isn't safe here yet.
 # shellcheck source=scripts/coord/lib/github_cache.sh
 source "$REPO_ROOT/scripts/coord/lib/github_cache.sh"
 
@@ -632,6 +639,21 @@ cmd_tick() {
   # INFRA-2346: include author, baseRefName, updatedAt for new tiers (CLEAN_GREEN
   # admin-merge needs author for trust check + baseRefName for base=main guard;
   # WEDGED_24H needs updatedAt to detect 12h-no-commit staleness).
+  #
+  # INFRA-2464 audit: the full field set above (statusCheckRollup, headRefOid,
+  # ...) isn't stored by the webhook-fed sqlite cache — pr_state only carries
+  # the fields upserted from `pull_request` webhook payloads, and
+  # statusCheckRollup is GraphQL-only. A like-for-like cache read can't
+  # replace this call without a schema extension (tracked separately; see
+  # gap notes). Deliberately NOT adding a "skip when cache_query_open_prs is
+  # empty" short-circuit here: this daemon is the only reader of
+  # mergeStateStatus/statusCheckRollup for the whole open-PR queue, and a
+  # stale or unpopulated cache (webhook receiver down, fresh checkout, DB
+  # reset) would silently starve every PR in the queue with no fallback —
+  # exactly the kind of silent-daemon wedge the fleet pages on. The call
+  # already carries CHUMP_GH_CALL_CRITICALITY=background (INFRA-1080) so it
+  # yields the GH bucket to ship-blocking writes under quota pressure, which
+  # is the safe mitigation for this call site.
   local prs_json
   prs_json=$(CHUMP_GH_CALL_CRITICALITY=background gh pr list --state open --limit 200 \
     --json number,title,mergeStateStatus,autoMergeRequest,createdAt,headRefOid,statusCheckRollup,author,baseRefName,headRefName,updatedAt 2>/dev/null || echo "[]")
