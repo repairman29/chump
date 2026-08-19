@@ -116,6 +116,7 @@ install-daemon-exit-loop-watcher-launchd.sh
 install-ghost-gap-reaper-launchd.sh
 install-auto-deploy-launchd.sh
 install-checkout-sync-launchd.sh
+install-checkout-sync-drift-watchdog-launchd.sh
 install-node-refresh-systemd.sh
 install-opencode-harness.sh
 install-armed-pr-rebaser-launchd.sh

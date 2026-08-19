@@ -3698,6 +3698,32 @@ events:
     expected_min_per_day: 0
     status: stable
 
+  - kind: checkout_sync_drift_ok
+    effect_metric: self
+    emitter: scripts/coord/checkout-sync-drift-watchdog.sh (RESILIENT-149)
+    trigger: >
+      The running checkout's HEAD sha == origin/main sha — checkout-sync
+      (MISSION-027) is keeping up, no drift.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, sha]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: checkout_sync_drift_exceeded
+    effect_metric: self
+    emitter: scripts/coord/checkout-sync-drift-watchdog.sh (RESILIENT-149)
+    trigger: >
+      origin/main advanced but the running checkout is still behind past
+      either the commit-count tolerance (default 10) or the age SLO (default
+      1800s) — the checkout-sync daemon (MISSION-027) stalled or its plist
+      unloaded. The watchdog runs checkout-sync.sh directly to self-heal and
+      kickstarts com.chump.checkout-sync (unless
+      CHUMP_CHECKOUT_DRIFT_NO_HEAL=1).
+    consumers: [fleet-brief, ops-audit, main-health-watchdog]
+    fields_required: [ts, kind, checkout_sha, main_sha, drift_commits, drift_age_secs, max_commits, slo_secs]
+    expected_min_per_day: 0
+    status: stable
+
   - kind: auto_merge_rearmed
     effect_metric: effective
     emitter: scripts/coord/auto-merge-rearm-daemon.sh (INFRA-2309)
