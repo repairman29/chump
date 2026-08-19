@@ -239,7 +239,7 @@ _emit_worker_stuck() {
 write_heartbeat() {
     local gap_id="${1:-none}"
     local now; now=$(date +%s)
-    local heartbeat_file="/tmp/chump-fleet-worker-${AGENT_ID}.heartbeat"
+    local heartbeat_file="${CHUMP_HEARTBEAT_DIR:-/tmp}/chump-fleet-worker-${AGENT_ID}.heartbeat"
     printf '%s %s\n' "$now" "$gap_id" > "$heartbeat_file" 2>/dev/null || true
 }
 

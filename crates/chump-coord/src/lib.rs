@@ -514,8 +514,8 @@ impl CoordClient {
         presence::mark_terminal(&self.workers_kv, worker_id).await
     }
 
-    /// CREDIBLE-256 AC-1: remove a worker's presence record from the
-    /// `chump_workers` KV bucket outright — call on ship or exit.
+    /// CREDIBLE-256: deregister a worker's presence record on ship/exit by
+    /// deleting it from the `chump_workers` KV bucket outright.
     pub async fn deregister_worker_presence(&self, worker_id: &str) -> Result<()> {
         presence::deregister_presence(&self.workers_kv, worker_id).await
     }
