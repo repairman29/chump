@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: [COTG-0.1] conversational vision intake (plain language -> scoped outcome)"
   status: open
-  priority: P1
+  priority: P0
   effort: m
   description: |
     [grounded plan] Build the CREATE-mode conversational intake that sits DOWNSTREAM of the existing front-door router (src/front_door.rs / `chump start`, EFFECTIVE-330 done — do NOT rebuild it). Add a new `VisionIntakeContract` to crates/chump-handoff/src/contracts.rs following the existing HandoffContract pattern (like RoadmapFromVisionContract at contracts.rs:967): Input = free-text problem + prior answers; Output = {restatement, clarifying_questions[1..=3], proposed_dod}, all plain language. Put the jargon-scrubber IN the contract's `Output::validate()` so a software-vocabulary leak (PR/branch/CI/test/deploy/commit/merge/repo/gap...) is a `ValidationError`, not a silent pass — this makes the golden-transcript guarantee structural, not cosmetic. New module src/vision_intake.rs owns the CLI flow and dispatches the contract via the existing transport (StubTransport in tests, provider_cascade::build_provide  FIRST SLICE: One-shot `chump intake "<text>" [--json] [--create]`: new src/vision_intake.rs + `VisionIntakeContract` in chump-handoff + main.rs dispatch. It (a) runs the contract once to produce restatement + 1-3 clarifying questions + a plain-language DoD, (b) enforces the jargon-scrubber inside Output::validate() so a leak is a hard ValidationError, (c) with --create writes an outcome row via store.create_outcome and stamps a `data_tier=third_party_content` ambient event. Ships the two jargon tests (unit +
@@ -14,5 +14,6 @@
     - "Each intake writes an ambient event `kind=vision_intake` to .chump-locks/ambient.jsonl carrying `data_tier=\"third_party_content\"`, and the LLM call is made at PrivacyTier::Safe (never Trains); a unit test asserts the tag field is present on the emitted event."
   notes: |
     [2026-07-29T03:21:22Z] DISCOVERY PARTIAL ~35% -> FINISH. outcomes table+CLI built (crates/chump-gap-store/src/lib.rs:110,4291); add conversational restate/clarify (INFRA-2267) feeding create_outcome. bootstrap LLM stub at src/commands/bootstrap.rs:9.
+    [2026-08-19T13:52:04Z] Jeff 2026-08-19: pivot to factory-forward. Engine now trustworthy (closer fixed, reapers installed, queue clean) — promote the COTG intake front door (conversational vision intake) to P0 so the fleets next real work is factory-forward, not self-maintenance.
   outcome_id: COTG
 
