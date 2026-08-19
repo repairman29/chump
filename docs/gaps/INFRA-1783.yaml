@@ -11,5 +11,6 @@
     - "Smoke tests: scripts/ci/test-evangelist-smoke.sh and scripts/ci/test-systematizer-smoke.sh — assert --help exits 0, missing-arg exits 2, non-existent path exits 2 with failure_class=path_not_found, and a fixture repo run exits 0 + emits the *_started/*_completed events + writes the expected artifact"
   notes: |
     [2026-08-17T21:59:29Z] Implementation already shipped under INFRA-1746 (closed 2026-05-23, PR #2390) as src/evangelist.rs + src/systematizer.rs. This gaps AC were left as unfilled TODO placeholders from the decompose template; filled in with the actual observability behavior confirmed present in the code and its smoke tests.
+    [2026-08-19T00:00:00Z] Re-verified all 4 AC directly against src/evangelist.rs, src/systematizer.rs, docs/observability/EVENT_REGISTRY.yaml, and ran scripts/ci/test-evangelist-smoke.sh + scripts/ci/test-systematizer-smoke.sh (both PASS, all 4 sub-checks each). No code changes needed; syncing stale status to done.
   outcome_id: MISSION-010
 
