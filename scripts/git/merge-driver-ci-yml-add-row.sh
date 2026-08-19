@@ -27,6 +27,14 @@
 #     if theirs_tail contained an incomplete step. GitHub Actions rejects such files
 #     outright — zero CI jobs run. Fixed: validate_step_bodies() checks every
 #     '- name:' in theirs_tail is followed by 'run:' or 'uses:' before writing.
+#
+# YAML-aware last resort (INFRA-1482):
+#   - All the above heuristics are line-diff based and refuse on interleaved
+#     additions (ours inserts a step between two main-added steps). Before
+#     giving up (rc=1), try scripts/git/ci-yml-yaml-merge.py, which unions
+#     jobs.<job>.steps by step name/uses key instead of raw line offsets.
+#     Only if that ALSO fails do we emit kind=merge_driver_fallback and
+#     return rc=1 for the standard 3-way merge to take over.
 
 set -euo pipefail
 
@@ -35,6 +43,51 @@ OURS="$2"
 THEIRS="$3"
 # CONFLICT_MARKER_LEN="$4"  # not used
 MERGE_FILE="$OURS"  # Modify ours in-place
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+YAML_MERGE_PY="$SCRIPT_DIR/ci-yml-yaml-merge.py"
+
+_emit_ambient() {
+  local kind="$1"; shift
+  local extra_fields="$1"
+  local _repo _amb
+  _repo=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+  [[ -z "$_repo" ]] && return 0
+  _amb="${CHUMP_AMBIENT_LOG:-$_repo/.chump-locks/ambient.jsonl}"
+  [[ -w "$(dirname "$_amb")" ]] 2>/dev/null || return 0
+  printf '{"ts":"%s","kind":"%s","ours":"%s","theirs":"%s"%s}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$kind" "$OURS" "$THEIRS" "$extra_fields" \
+    >> "$_amb" 2>/dev/null || true
+}
+
+# INFRA-1482: last-resort YAML-aware fallback, tried before any give-up.
+# Operates on a scratch copy of OURS so a failed attempt cannot corrupt the
+# in-progress merge state the line-diff heuristics may still want to use.
+_try_yaml_aware_merge() {
+  command -v python3 > /dev/null 2>&1 || return 1
+  [[ -f "$YAML_MERGE_PY" ]] || return 1
+  local _scratch
+  _scratch=$(mktemp)
+  cp -- "$OURS" "$_scratch"
+  if python3 "$YAML_MERGE_PY" "$ANCESTOR" "$_scratch" "$THEIRS" 2>/dev/null; then
+    cp -- "$_scratch" "$MERGE_FILE"
+    rm -f "$_scratch"
+    _emit_ambient "ci_yml_row_add_merged" ',"mode":"yaml_aware"'
+    return 0
+  fi
+  rm -f "$_scratch"
+  return 1
+}
+
+# Give up: try the YAML-aware fallback once; if it also fails, emit the
+# fallback-observability event and exit 1 so git's 3-way merge takes over.
+# scanner-anchor: "kind":"merge_driver_fallback"
+give_up() {
+  if _try_yaml_aware_merge; then
+    exit 0
+  fi
+  _emit_ambient "merge_driver_fallback" ""
+  exit 1
+}
 
 # Sanity checks
 if [[ ! -f "$ANCESTOR" ]] || [[ ! -f "$OURS" ]] || [[ ! -f "$THEIRS" ]]; then
@@ -47,7 +100,7 @@ theirs_lines=$(wc -l < "$THEIRS")
 
 # Both branches must have at least as many lines as ancestor (no deletions).
 if [[ $ours_lines -lt $ancestor_lines ]] || [[ $theirs_lines -lt $ancestor_lines ]]; then
-  exit 1
+  give_up
 fi
 
 # Pure-append check: the first ancestor_lines of ours and theirs must be
@@ -69,7 +122,7 @@ _pure_append=$(( _pure_ours & _pure_theirs ))
 # git's 3-way merge handle it — applying theirs' diff to ours would insert
 # theirs' mid-file content into ours (corruption, INFRA-1205 regression).
 if [[ $_pure_ours -eq 1 && $_pure_theirs -eq 0 ]]; then
-  exit 1
+  give_up
 fi
 
 if [[ $_pure_append -eq 0 ]]; then
@@ -94,7 +147,7 @@ if [[ $_pure_append -eq 0 ]]; then
   if [[ "$_dels" -gt 0 ]]; then
     # Theirs has real edits/deletes; can't safely patch.
     rm -f "$_diff_theirs"
-    exit 1
+    give_up
   fi
   # ADD-ONLY diff. Try two strategies in order:
   #   (a) patch --fuzz=3 — handles case where ours+theirs added at different
@@ -110,17 +163,9 @@ if [[ $_pure_append -eq 0 ]]; then
   else
     # git merge-file --union ALSO returned non-zero (true failure).
     rm -f "$_diff_theirs"
-    exit 1
+    give_up
   fi
-  _repo=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
-  if [[ -n "$_repo" ]]; then
-    _amb="${CHUMP_AMBIENT_LOG:-$_repo/.chump-locks/ambient.jsonl}"
-    if [[ -w "$(dirname "$_amb")" ]] 2>/dev/null; then
-      printf '{"ts":"%s","kind":"ci_yml_row_add_merged","ours":"%s","theirs":"%s","mode":"%s","adds":%s}\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$OURS" "$THEIRS" "$_mode" "$_adds" \
-        >> "$_amb" 2>/dev/null || true
-    fi
-  fi
+  _emit_ambient "ci_yml_row_add_merged" ",\"mode\":\"$_mode\",\"adds\":$_adds"
   rm -f "$_diff_theirs"
   exit 0
 fi
@@ -162,16 +207,11 @@ validate_step_bodies() {
 
 if ! validate_step_bodies "$theirs_tail"; then
   # INFRA-1199: theirs_tail has a '- name:' step without 'run:'/'uses:'.
-  # Emit ambient event for auditability, then fall back to standard 3-way merge.
-  _repo=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
-  if [[ -n "$_repo" ]]; then
-    _amb="${CHUMP_AMBIENT_LOG:-$_repo/.chump-locks/ambient.jsonl}"
-    if [[ -w "$(dirname "$_amb")" ]]; then
-      printf '{"ts":"%s","kind":"ci_yml_merge_driver_abort","ours":"%s","theirs":"%s"}\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$OURS" "$THEIRS" >> "$_amb" 2>/dev/null || true
-    fi
-  fi
-  exit 1
+  # Emit ambient event for auditability, then try the YAML-aware fallback
+  # (which carries its own INFRA-1199 body-completeness guard) before
+  # falling back to the standard 3-way merge.
+  _emit_ambient "ci_yml_merge_driver_abort" ""
+  give_up
 fi
 
 # Safe to merge: append theirs' new steps to ours.

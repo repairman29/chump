@@ -2087,6 +2087,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "ci-yml-merge-driver-yaml-aware",
+            &["bash", "scripts/ci/test-ci-yml-merge-driver.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "merge-driver-coverage",
             &["bash", "scripts/ci/test-merge-driver-coverage.sh"],
             GateKind::Scripts,
