@@ -10,4 +10,5 @@
     - "verified: induce root>90%, relocates while fleet stays up + builds keep working"
   notes: |
     [2026-08-19T20:20:31Z] Code EXISTS (node-orchestrator.sh place()) but OFF. Tonight foreground-mv of 23G cargo=50-min outage; /tmp-quota broke builds. Highest-value COTG gap. storage-relocation-lesson.
+    [2026-08-19T20:31:33Z] 2026-08-19: GRACEFUL CARGO AUTO-PLACEMENT ARMED + PROVEN — rsync+atomic-swap+validate tested on scratch (canary intact, zero disruption); AUTOPLACE=1 live on CJ (no-op, cargo already on USB; fires on future root>90%). REMAINING SLICE: extend place() to worktrees + auto-route TMPDIR on tmpfs pressure, + a real forced->90% integration test.
 
