@@ -5,9 +5,16 @@
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Events: kind=ingest_orchestrate_started (once, before phase 1b), kind=ingest_complete (phases_completed/prs_attempted/prs_green_first_pass/gaps_proposed/total_cost_usd_cents/elapsed_min), kind=ingest_orchestrate_failed (phase/failure_class/transient/message) — all keyed off chump_repo_root, registered in docs/observability/EVENT_REGISTRY.yaml. Source: src/ingest_orchestrate.rs::emit_started|emit_completed|emit_failed."
+    - "Cost tracking: all four orchestrated phases are static heuristics (no LLM/network call) so total_cost_usd_cents is always 0 in v1; OrchestrateConfig::budget_usd is checked after every phase via check_budget so enforcement activates the moment a phase adds a real paid call without an orchestrator code change."
+    - "Failure-class taxonomy: FailureClass in src/ingest_orchestrate.rs classifies every abort into path_not_found (transient=no), io_error (transient=yes), or budget_exceeded (transient=no, currently unreachable in v1 since --budget-usd must be positive and every phase costs $0) — first failure aborts remaining phases, artifacts from earlier successful phases are left in place."
+    - "Smoke test: bash scripts/ci/test-ingest-orchestrate-smoke.sh — asserts a bad target path exits 1 with failure_class=path_not_found on ingest_failed (and ingest_orchestrate_started correctly does not fire), a valid fixture repo exits 0 and writes certificate.json + proposed-gaps.json while emitting ingest_orchestrate_started + ingest_complete, and ingest_complete reports total_cost_usd_cents=0 with all four phase names in phases_completed. Runs in <30s, no network, isolated via CHUMP_REPO/CHUMP_HOME."
   outcome_id: MISSION-010
+  notes: >
+    Implementation shipped in #3689 (6e0b5c7a); this AC's observability
+    doc (docs/process/INGEST_ORCHESTRATE_OBSERVABILITY.md) shipped in #3893
+    (b7cf2cca), which already fully answers all 4 TODO items above. Gap was
+    absent from state.db (not claimable via `chump gap ship`) so this PR
+    syncs the stale YAML status to match already-shipped reality, per the
+    b5083e13/b4f4bedf precedent.
 
