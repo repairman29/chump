@@ -1,7 +1,7 @@
 - id: INFRA-3606
   domain: INFRA
   title: "Canonical-store split-brain: gap ship treats state.db as canonical (ZERO-WASTE-020, yaml retired) but gap sync --pull/--push still treat YAML as canonical and revert state.db — no manual gap close/edit sticks; likely root of merged≠done"
-  status: open
+  status: done
   priority: P0
   effort: m
   acceptance_criteria:
@@ -10,4 +10,5 @@
     - "receipt 2026-08-19: RESILIENT-134 (dup of shipped RESILIENT-143 #3119, own PR #3922 merged) — gap set --status done reverted by pull; gap ship --update-yaml = no-op (ZERO-WASTE-020); gap sync --push wont push status; gap stayed P0/open and worker re-picked it (cycle24) wasting claude cycles"
   notes: |
     [2026-08-19T05:19:08Z] Split-brain between ZERO-WASTE-020 (state.db canonical) and gap sync (yaml canonical). Blast radius: every merged-but-open gap lingers + gets re-picked; every manual reconcile silently reverts. Relates RESILIENT-351 (merged≠done gate). Crew-chief hit it trying to unwedge a P0 re-pick loop.
+  closed_pr: 3925
 
