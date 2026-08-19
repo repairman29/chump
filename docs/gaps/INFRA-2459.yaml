@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: chump-integrator daemon silently dead (exit 127, binary never installed) — bootstrap must install it + infra-watcher must catch daemon exit!=0"
   status: open
-  priority: P2
+  priority: P1
   effort: m
   acceptance_criteria:
     - chump-fleet-bootstrap.sh --check verifies ~/.cargo/bin/chump-integrator exists + matches the integrator-daemon.plist ProgramArguments path, and installs via cargo install --path crates/chump-integrator if missing
