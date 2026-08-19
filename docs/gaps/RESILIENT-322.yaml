@@ -1,0 +1,13 @@
+- id: RESILIENT-322
+  domain: RESILIENT
+  title: "COTG: orchestrator storage auto-placement LIVE — graceful cargo/worktree/TMPDIR relocation, no hand disk-moves"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "orchestrator senses per-volume free (incl USB)+tmpfs pressure; on root>threshold w/ a bigger volume, relocates cargo(+worktrees+TMPDIR) GRACEFULLY: bg rsync while fleet runs→atomic symlink swap→validate→reap; NEVER foreground mv"
+    - enabled by default after forced-pressure test on CJ; full /tmp auto-routes TMPDIR to a data volume
+    - "verified: induce root>90%, relocates while fleet stays up + builds keep working"
+  notes: |
+    [2026-08-19T20:20:31Z] Code EXISTS (node-orchestrator.sh place()) but OFF. Tonight foreground-mv of 23G cargo=50-min outage; /tmp-quota broke builds. Highest-value COTG gap. storage-relocation-lesson.
+

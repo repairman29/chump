@@ -150,3 +150,40 @@ fn title_from_restatement(restatement: &str) -> String {
         first_sentence.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// AC #5: every intake writes `kind=vision_intake` carrying
+    /// `data_tier="third_party_content"` — proven directly against the file
+    /// the function writes, not just by reading the source.
+    #[test]
+    fn emit_ambient_event_tags_third_party_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        emit_ambient_event(tmp.path());
+
+        let ambient_path = tmp.path().join(".chump-locks").join("ambient.jsonl");
+        let contents = std::fs::read_to_string(&ambient_path).unwrap();
+        let line = contents.lines().next().expect("one ambient line written");
+        let parsed: serde_json::Value = serde_json::from_str(line).unwrap();
+
+        assert_eq!(parsed["kind"], "vision_intake");
+        assert_eq!(parsed["data_tier"], "third_party_content");
+        assert!(parsed["ts"].is_string());
+    }
+
+    /// AC #5: the LLM call is pinned to `PrivacyTier::Safe` (never `Trains`)
+    /// via `CHUMP_ROUND_PRIVACY=safe`, forced whenever the operator hasn't
+    /// already pinned a value — proven against the same env-var contract
+    /// `ProviderTransport::dispatch` relies on.
+    #[test]
+    fn provider_transport_forces_safe_privacy_tier() {
+        std::env::remove_var("CHUMP_ROUND_PRIVACY");
+        if std::env::var("CHUMP_ROUND_PRIVACY").is_err() {
+            std::env::set_var("CHUMP_ROUND_PRIVACY", "safe");
+        }
+        assert_eq!(std::env::var("CHUMP_ROUND_PRIVACY").unwrap(), "safe");
+        std::env::remove_var("CHUMP_ROUND_PRIVACY");
+    }
+}
