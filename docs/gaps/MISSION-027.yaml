@@ -1,7 +1,8 @@
 - id: MISSION-027
   domain: MISSION
   title: "MISSION P0: deploy SCRIPTS to the fleet — running checkout drifts stale so merged script fixes (e.g. #3055 picker) never reach the fleet; MISSION-012 deploys the binary but NOT the checkout"
-  status: open
+  status: done
+  closed_pr: 3921
   priority: P0
   effort: m
   description: |
@@ -12,4 +13,16 @@
     - the dirty-tree case is handled (runtime state doesn't block the sync)
     - "verified: the fleet's _pick_gap.py matches origin/main automatically"
   outcome_id: MISSION-012
+  notes: |
+    [2026-08-19] Re-verified: scripts/ops/checkout-sync.sh (fetch + disposable-path
+    reset + stash-protect dirty tree + ff-only merge, ambient checkout_synced /
+    checkout_sync_failed / checkout_sync_dirty_tree_protected / checkout_sync_skipped)
+    plus scripts/setup/install-checkout-sync-launchd.sh (5 min cadence LaunchAgent,
+    INFRA-2365-hardened worktree resolution) already shipped under PR #3588
+    (merged 2026-08-10), with a follow-up path fix in #3861. All 4 AC verified
+    against scripts/ci/test-checkout-sync.sh — 5/5 assertions PASS (idempotent
+    no-op, script-fix propagation, disposable-path handling, dirty-tree
+    stash-protect, non-main-branch skip). Gap was absent from local state.db
+    (per-machine db, see INFRA-1655) so this PR syncs the stale YAML status to
+    match already-shipped reality, per the b5083e13/INFRA-2470 precedent.
 
