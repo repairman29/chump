@@ -1,7 +1,8 @@
 - id: INFRA-1865
   domain: INFRA
   title: "RESILIENT: build OAuth-token refresher (the 5-min refresh promise in CLAUDE.md is aspirational — ~/.chump/oauth-token.json went 16d stale, blocking fleet launch)"
-  status: open
+  status: done
+  closed_pr: 3712
   priority: P1
   effort: m
   acceptance_criteria:
@@ -50,4 +51,15 @@
 
     No code change required; closing via ship pipeline once merged, per the
     same rationale as RESILIENT-134 (#3922) and RESILIENT-244 (#3920).
+
+    [2026-08-19] SYNC: the hardening PR (#3712, commit 1ee779a2, merged
+    2026-08-13) already shipped under this exact gap ID — it directly
+    implements AC3/AC4/AC5 (rotation-safe hash compare, pre-write
+    validation, macOS platform gate) plus the AC7 smoke test, all reverified
+    passing (8/8) on this checkout. The gap was never flipped to done via
+    `chump gap ship` when #3712 merged, so state.db/YAML sat status:open
+    for 6 days after the actual fix shipped. This closes it against #3712
+    (the PR that did the work), following the b5083e13/INFRA-2470 /
+    RESILIENT-244 (#3920) stale-status-sync precedent — no code change in
+    this PR, doc-only closure.
 
