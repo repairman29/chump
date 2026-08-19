@@ -1,0 +1,13 @@
+- id: INFRA-3594
+  domain: INFRA
+  title: CI apt-mirror flake in audit-shard jams merge queue — bake/cache chump-desktop Linux packages
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - audit-shard no longer runs live apt-get for chump-desktop every PR run — cached or baked into chump-rust-builder image (INFRA-2287)
+    - "one hung apt mirror no longer fails audit-required: 0 apt-timeout failures across 20 consecutive PR audit runs"
+    - "receipt 2026-08-19: audit-shard(4) chump-desktop apt timed out, failed 3 RESILIENT-330 retries → failed audit-required; INFRA-557 caps 1 rerun/run-id so twice-flaking mirror stuck; BLOCKED #3913/#3918"
+  notes: |
+    [2026-08-19T03:16:38Z] Land/merge-queue P0. Relates INFRA-557, INFRA-2287, RESILIENT-330.
+
