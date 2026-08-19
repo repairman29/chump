@@ -1,0 +1,11 @@
+- id: RESILIENT-333
+  domain: RESILIENT
+  title: "primary-checkout hygiene organ: keep the node repo checkout ON main (drifted to a stale integration branch tonight, hand-restored) — COTG self-heal"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"keep the node repo checkout ON main (drifted to a stale integration branch tonight, hand-restored) — COTG self-heal\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

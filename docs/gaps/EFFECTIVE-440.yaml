@@ -1,0 +1,11 @@
+- id: EFFECTIVE-440
+  domain: EFFECTIVE
+  title: "PILOT scaffold-and-holes: architect emits a MERGED skeleton (traits + todo!() holes + failing tests) as ONE stable PR, then N leaf fill-this-hole gaps each pointing at one todo!()+its test — makes agent diffs tiny+disjoint+mechanically-verifiable (structural fix for merge-race + definition-of-ready). Measure CI-time + collision-rate vs open-ended gaps"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"architect emits a MERGED skeleton (traits + todo!() holes + failing tests) as ONE stable PR, then N leaf fill-this-hole gaps each pointing at one todo!()+its test — makes agent diffs tiny+disjoint+mechanically-verifiable (structural fix for merge-race + definition-of-ready). Measure CI-time + collision-rate vs open-ended gaps\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+
