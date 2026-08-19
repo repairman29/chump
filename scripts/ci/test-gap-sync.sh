@@ -140,8 +140,23 @@ cat > "$FAKE_ROOT/docs/gaps/INFRA-9104.yaml" <<'EOF'
     - the AC
 EOF
 
-# ── 1. `sync --check` reports 4 drift entries, exits non-zero ───────────
-info "step 1: chump gap sync --check (expect 4 drift entries, non-zero exit)"
+# Case 5 (INFRA-3606): shipped gap — DB status=done, YAML mirror stale at
+# open (push never rewrites terminal-status YAMLs). Pull must NOT revert
+# the done status — this is the canonical-store split-brain fix.
+sqlite3 "$FAKE_DB" "INSERT INTO gaps(id, domain, title, status, priority, effort, acceptance_criteria, depends_on, created_at) VALUES ('INFRA-9105', 'INFRA', 'case5-shipped', 'done', 'P1', 's', '[\"the AC\"]', '[]', 100);"
+cat > "$FAKE_ROOT/docs/gaps/INFRA-9105.yaml" <<'EOF'
+- id: INFRA-9105
+  domain: INFRA
+  title: case5-shipped
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - the AC
+EOF
+
+# ── 1. `sync --check` reports 5 drift entries, exits non-zero ───────────
+info "step 1: chump gap sync --check (expect 5 drift entries, non-zero exit)"
 set +e
 CHECK_OUT="$("$CHUMP_BIN" gap sync --check --state-db "$FAKE_DB" --gaps-dir "$FAKE_ROOT/docs/gaps" --json 2>&1)"
 CHECK_RC=$?
@@ -154,13 +169,14 @@ echo "$CHECK_OUT" | grep -q 'INFRA-9101' || fail "case1 missing from check outpu
 echo "$CHECK_OUT" | grep -q 'INFRA-9102' || fail "case2 missing from check output"
 echo "$CHECK_OUT" | grep -q 'INFRA-9103' || fail "case3 missing from check output"
 echo "$CHECK_OUT" | grep -q 'INFRA-9104' || fail "case4 missing from check output"
+echo "$CHECK_OUT" | grep -q 'INFRA-9105' || fail "case5 missing from check output"
 echo "$CHECK_OUT" | grep -q 'yaml-only' || fail "case1 expected kind 'yaml-only' missing"
 echo "$CHECK_OUT" | grep -q 'db-only' || fail "case2 expected kind 'db-only' missing"
-echo "$CHECK_OUT" | grep -q 'divergent' || fail "divergent kind missing (case3+case4)"
-pass "check reported all 4 drift cases + non-zero exit ($CHECK_RC)"
+echo "$CHECK_OUT" | grep -q 'divergent' || fail "divergent kind missing (case3+case4+case5)"
+pass "check reported all 5 drift cases + non-zero exit ($CHECK_RC)"
 
-# ── 2. `sync --pull` updates DB for cases 1, 3, 4 ───────────────────────
-info "step 2: chump gap sync --pull (expect DB updates)"
+# ── 2. `sync --pull` updates DB for cases 1, 3, 4 — skips case5 (INFRA-3606) ──
+info "step 2: chump gap sync --pull (expect DB updates, terminal status preserved)"
 set +e
 PULL_OUT="$("$CHUMP_BIN" gap sync --pull --state-db "$FAKE_DB" --gaps-dir "$FAKE_ROOT/docs/gaps" --json 2>&1)"
 PULL_RC=$?
@@ -168,7 +184,8 @@ set -e
 [[ $PULL_RC -eq 0 ]] || fail "pull exited non-zero: $PULL_RC. Output:\n$PULL_OUT"
 echo "$PULL_OUT" | grep -q '"inserted":1' || fail "pull should insert exactly 1 row (case1). Output:\n$PULL_OUT"
 echo "$PULL_OUT" | grep -q '"updated":2' || fail "pull should update exactly 2 rows (case3, case4). Output:\n$PULL_OUT"
-pass "pull reported 1 insert + 2 updates"
+echo "$PULL_OUT" | grep -q '"skipped":1' || fail "pull should skip exactly 1 row (case5, terminal status guard). Output:\n$PULL_OUT"
+pass "pull reported 1 insert + 2 updates + 1 skipped (terminal status)"
 
 # Verify case1 inserted into DB.
 INSERTED_TITLE=$(sqlite3 "$FAKE_DB" "SELECT title FROM gaps WHERE id='INFRA-9101';")
@@ -191,21 +208,31 @@ CASE4_TITLE=$(sqlite3 "$FAKE_DB" "SELECT title FROM gaps WHERE id='INFRA-9104';"
     || fail "case4 title in DB: expected 'case4-YAML-NOW-WINS', got '$CASE4_TITLE'"
 pass "case4 title updated from YAML"
 
-# ── 3. `sync --check` now reports only case2 (still no YAML) ────────────
-info "step 3: chump gap sync --check after pull (expect only case2 drift)"
+# Verify case5 (INFRA-3606) status was NOT reverted from done to the stale
+# YAML's open — this is the split-brain regression this gap fixes.
+CASE5_STATUS=$(sqlite3 "$FAKE_DB" "SELECT status FROM gaps WHERE id='INFRA-9105';")
+[[ "$CASE5_STATUS" == "done" ]] \
+    || fail "INFRA-3606 REGRESSION: case5 status in DB: expected 'done', got '$CASE5_STATUS' — gap sync --pull reverted a shipped gap"
+pass "case5 (shipped gap) status stayed 'done' across sync --pull"
+
+# ── 3. `sync --check` now reports case2 + case5 (status still stale) ────
+info "step 3: chump gap sync --check after pull (expect case2 + case5 drift)"
 set +e
 CHECK_OUT2="$("$CHUMP_BIN" gap sync --check --state-db "$FAKE_DB" --gaps-dir "$FAKE_ROOT/docs/gaps" --json 2>&1)"
 CHECK_RC2=$?
 set -e
-[[ $CHECK_RC2 -ne 0 ]] || fail "expected non-zero (case2 still missing); got 0"
+[[ $CHECK_RC2 -ne 0 ]] || fail "expected non-zero (case2/case5 still drifted); got 0"
 echo "$CHECK_OUT2" | grep -q 'INFRA-9102' || fail "case2 should still be in drift report"
+echo "$CHECK_OUT2" | grep -q 'INFRA-9105' || fail "case5 should still be in drift report (YAML mirror still stale)"
 echo "$CHECK_OUT2" | grep -q 'INFRA-9101' && fail "case1 should be clean now"
 echo "$CHECK_OUT2" | grep -q 'INFRA-9103' && fail "case3 should be clean now"
 echo "$CHECK_OUT2" | grep -q 'INFRA-9104' && fail "case4 should be clean now"
-pass "post-pull check: only case2 remains as drift"
+pass "post-pull check: only case2 + case5 remain as drift"
 
-# ── 4. `sync --push` writes the missing YAML for case2 ──────────────────
-info "step 4: chump gap sync --push (expect case2 YAML created)"
+# ── 4. `sync --push` writes case2's missing YAML + refreshes case5's stale
+#       terminal-status YAML (INFRA-3606: push now mirrors every status,
+#       not just open/in-progress, so the YAML side converges) ───────────
+info "step 4: chump gap sync --push (expect case2 + case5 YAML written)"
 set +e
 PUSH_OUT="$("$CHUMP_BIN" gap sync --push --state-db "$FAKE_DB" --gaps-dir "$FAKE_ROOT/docs/gaps" --json 2>&1)"
 PUSH_RC=$?
@@ -218,6 +245,9 @@ grep -q 'case2-db-only' "$FAKE_ROOT/docs/gaps/INFRA-9102.yaml" \
 grep -q 'only-in-db' "$FAKE_ROOT/docs/gaps/INFRA-9102.yaml" \
     || fail "case2 YAML missing AC"
 pass "case2 YAML written by push"
+grep -q 'status: done' "$FAKE_ROOT/docs/gaps/INFRA-9105.yaml" \
+    || fail "case5 YAML still says status != done after push: $(cat "$FAKE_ROOT/docs/gaps/INFRA-9105.yaml")"
+pass "case5 YAML refreshed to status: done by push"
 
 # ── 5. Final `sync --check` reports clean ───────────────────────────────
 info "step 5: chump gap sync --check after push (expect clean)"
