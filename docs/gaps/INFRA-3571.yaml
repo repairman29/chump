@@ -1,0 +1,11 @@
+- id: INFRA-3571
+  domain: INFRA
+  title: "INFRA: Write tests for the new behavior (INFRA-3462 slice)"
+  status: open
+  priority: P3
+  effort: s
+  acceptance_criteria:
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior
+    - The test fails without the change
+  depends_on: [INFRA-3570]
+

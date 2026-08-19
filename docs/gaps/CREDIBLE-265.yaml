@@ -1,0 +1,17 @@
+- id: CREDIBLE-265
+  domain: CREDIBLE
+  title: "sweep scripts for the gitignored-.env-in-a-worktree bug: hit 3 times in one evening, each with a different misleading symptom"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "THREE OCCURRENCES IN ONE EVENING, 2026-08-09, same root cause and DIFFERENT symptoms each time — which is exactly why it is not spotted as one bug: (1) scripts/coord/lib/notify-operator.sh — escalation alerts SKIPPED SILENTLY from a claim worktree, the worst shape because the logs looked healthy; (2) scripts/setup/install-discord-gateway.sh — refused to install, reporting DISCORD_TOKEN is not set when it was set all along; (3) scripts/coord/discord-gateway-run.sh — daemon started under launchd then died repeatedly with DISCORD_TOKEN unset"
+    - "ROOT CAUSE: .env is GITIGNORED so it exists ONLY in the main checkout, while chump claim creates a worktree for every gap — so most Chump code runs somewhere .env is not. Any script that reads REPO_ROOT/.env directly is broken from a worktree"
+    - "FIX ALREADY EXISTS, USE IT: scripts/coord/lib/resolve-env.sh (added in RESILIENT-266) resolves via git rev-parse --git-common-dir, which maps a worktree back to the MAIN .git whose parent holds the .env. It exposes chump_env_file / chump_env_get / chump_env_load. It was extracted precisely because three inline copies would have become three places to fix this a fourth time"
+    - "THE SWEEP: grep scripts/ for direct .env reads under REPO_ROOT and convert each to the shared resolver. Report the COUNT found — that number is the size of the debt and is the real deliverable here, not the individual edits"
+    - "PRIORITISE BY SYMPTOM, they are not equally dangerous: a script that FAILS LOUDLY (installer, daemon) costs minutes. A script that SILENTLY SKIPS (notify-operator) costs an incident, because everything downstream reads as healthy. Fix the silent ones first and state which is which"
+    - VERIFY FROM A WORKTREE, never from the main checkout — the bug is invisible from the main checkout by construction, which is why it survived. Claim any gap and run the script from the resulting worktree
+    - "SAME FAMILY as CREDIBLE-237 (tests pinned to src/main.rs, broken by a refactor) and CREDIBLE-239 (env-var gate scanning only src/ while code moved to crates/): all three are the code moved and the tooling assumed it did not"
+  closed_pr: 3551
+  outcome_id: MISSION-010
+

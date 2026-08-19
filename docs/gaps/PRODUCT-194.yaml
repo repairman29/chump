@@ -1,0 +1,28 @@
+- id: PRODUCT-194
+  domain: PRODUCT
+  title: "[almanac] Coverage denominator is duplicated by hand in two files with no test asserting they agree"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Confidence: operator_verified -- a human or session directly investigated and confirmed this before filing -- high confidence.
+    
+    almanac coverage decides which files are "summarizable" with SQL in crates/almanac-core/src/coverage.rs (measure(): "language = 'markdown' OR EXISTS(symbols)"). The summarizer decides the same thing independently in Store::file_symbol_digest (symbols, else the markdown content fallback). The two rules are kept in sync BY HAND and no test asserts they agree.
+    
+    Receipt: this exact class of desync already shipped once. The first version of coverage.rs used symbols alone as the denominator and reported chump at 110% fed — impossible, caught only because it crossed 100%. An error in the other direction (the earlier 67% reading) looked completely plausible and would have stood.
+    
+    Why it matters: the coverage report is what tells an operator whether a repo's fusion is real or a keyword shell. If file_symbol_digest's rule changes (e.g. a fallback added for another prose format) coverage.rs silently starts lying, and the failure is a plausible-looking number, not an error.
+    
+    Fix direction: extract one shared predicate both call, or a test that runs both against a fixture repo containing markdown + code + config and asserts identical file sets. coverage.rs already has coverage_can_never_exceed_one_hundred_percent as a bound check; that catches the >100% direction only.
+    
+    Files: crates/almanac-core/src/coverage.rs, crates/almanac-core/src/store.rs (file_symbol_digest / markdown_fallback_digest).
+    
+    context: {"repo":"almanac","source":"claude-triage/almanac-capability-audit-2026-08-05"}
+    source: holler feedback_events, dedupe almanac-coverage-denominator-duplicated
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/almanac"
+

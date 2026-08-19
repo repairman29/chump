@@ -1,0 +1,12 @@
+- id: INFRA-3449
+  domain: INFRA
+  title: "EFFECTIVE: wire worker.sh + gap-strike to INVOKE 'chump gap route' — replace blanket escalate (EFFECTIVE-314) / blanket decompose (EFFECTIVE-310) with the router's per-gap discipline"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"wire worker.sh + gap-strike to INVOKE 'chump gap route' — replace blanket escalate (EFFECTIVE-314) / blanket decompose (EFFECTIVE-310) with the router's per-gap discipline\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: MISSION-010
+

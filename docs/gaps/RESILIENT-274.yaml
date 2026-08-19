@@ -1,0 +1,18 @@
+- id: RESILIENT-274
+  domain: RESILIENT
+  title: "RESILIENT: wire the incident-commander as a STANDING duty-officer + playbook registry (signal->tier->action) — remove the operator as the incident-response SPOF"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Make the incident-commander a STANDING duty-officer loop (not a doc): (1) continuously watches health signals (ambient.jsonl kinds, ship-rate, disk, auth, wedges); (2) a playbook REGISTRY maps signal -> tier -> action: Tier1 executable auto-heal (code/daemons, e.g. RESILIENT-273), Tier2 agent-run runbook (REALITY_CHECK first, then the matching playbook), Tier3 escalate to operator (only novel/halt-class per the 4 triggers); (3) routes each incident through T1->T2->T3 and pages the operator ONLY at T3; (4) progressively executable-ize the top recurring incidents, starting with this session's four. Design doc first (tiers + registry format + duty-officer contract + how a business instantiates its own), then wire the standing loop. This is the RUN-the-business owner for customer-0 AND the productized per-business ops-owner for COTG/any-business."
+  notes: |
+    CORRECTION (2026-08-09, per DISCORD_HANDOFF.md — verified-by-running): my earlier 'escalation is dark / no-op' note was HALF WRONG. Outbound Discord DM to Jeff's phone WORKS NOW and is proven by real delivery (3 DMs). It uses src/discord_dm.rs (send_dm_if_configured, 5 callers) + notify-operator.sh (bash+curl, no bot), keyed on DISCORD_TOKEN + CHUMP_READY_DM_USER_ID (present) — NOT the dead operator-recall.sh/CHUMP_OPERATOR_RECALL_URL path I checked. So RESILIENT-274 tier-3 SEND already has a working substrate; do not rebuild it.
+    
+    What is genuinely NOT wired yet (owned, in-order): RECEIVE/replies+buttons — the gateway was compiled out; RESILIENT-266 compiles --features discord + runs it under launchd (THE unlock). Then RESILIENT-265 routes PR auto-close through request_approval() (approve/deny buttons; src/discord.rs:1210 + approval_resolver.rs, built+unit-tested) and RESILIENT-262 does retry-vs-escalate triage. The approve/deny loop has NEVER been exercised end-to-end on a real phone (RESILIENT-265 acceptance test). DOC-093 = comms-on-Discord decision; openclaw code may be PORTED (MIT) but its system NOT run.
+    
+    So RESILIENT-274 (duty-officer router) is a CONSUMER of: discord_dm (send, works) + RESILIENT-266 (receive) + RESILIENT-265 (approval routing) + RESILIENT-262 (triage). Its only new surface remains the registry + standing loop + 'is my notify channel live' self-check. ALSO: the disk/target work I filed (RESILIENT-273 self-heal + FLEET-BUILD-SPEED) OVERLAPS the pre-existing RESILIENT-275 (P0: target is a symlink to the shared dir, so a worktree release build deletes the fleet binary mid-build). Reconcile with RESILIENT-275, do not fight it; per handoff do NOT revert ZERO-WASTE-029.
+  outcome_id: CHUMPOS
+  evidence: |
+    2026-08-09 session: 4 incidents (shared-target disk bloat->deadlock, run-fleet gh-probe brittleness, integrator aborts-whole-batch-on-first-conflict, can't-ship-when-fleet-down) EACH required the operator to notice + route. Fixes were not hard; the SPOF was that nobody was on duty. 7 playbook docs exist (OPERATOR_PLAYBOOK, SHIP_ASSIST_PLAYBOOK, SHEPHERD_LOOP_PLAYBOOK, REALITY_CHECK, ROLLBACK_RUNBOOK...) + an incident-commander ROLE doc (.claude/agents/curator-opus-incident-commander.md) — but all inert: docs a human reads + a role definition, not a standing process. Detectors fire into ambient.jsonl and wait for the operator.
+

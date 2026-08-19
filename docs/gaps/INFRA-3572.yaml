@@ -1,0 +1,11 @@
+- id: INFRA-3572
+  domain: INFRA
+  title: "INFRA: Run cargo fmt, clippy, and existing tests (INFRA-3462 slice)"
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt + clippy --all-targets -D warnings + check pass
+    - No regression to existing tests
+  depends_on: [INFRA-3571]
+

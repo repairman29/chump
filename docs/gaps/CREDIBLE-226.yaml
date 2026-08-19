@@ -1,0 +1,20 @@
+- id: CREDIBLE-226
+  domain: CREDIBLE
+  title: "CREDIBLE: [almanac] huge doc sections became term-magnets — INFRA-3529's heading symbols crowd code out of code queries"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    A regression I introduced with INFRA-3529 on 2026-08-06 and found on 2026-08-07 while grading the opportunity library. Docs going from invisible to first-class was the right change and its eval receipt stands (docs suite fusion 0/8 -> 7/8, chump code suite UP). This is the cost that measurement missed, because the docs gold set asks doc-shaped questions and the code suites run on repos with few large prose files. The opportunity-library repo is the pathological case: 4,167-line OPPORTUNITIES.md, a 600-line leverage table under one heading, and every technical term in the portfolio inside one 200-line snippet window. Likely fix directions, to be measured rather than assumed: normalize coverage by snippet length or term density so a huge section cannot win on breadth alone; cap the span a heading symbol claims (a heading is a label, not a container); or score headings on the heading TEXT with the body available only to the semantic legs. Whatever is chosen must be run through scripts/eval-gate.sh on all four suites INCLUDING almanac-docs, since the fix trades directly against the win that suite exists to protect.
+  acceptance_criteria:
+    - "a fleet keyword query whose answer is code returns that code above prose headings — the openfec case is the regression test: 'openfec paginator rate limit backoff' must surface fucked:scripts/openfec_*.py, and it must fail without the fix"
+    - the almanac-docs suite does NOT regress past tolerance — the docs win (0/8 -> 7/8) is protected, proven by an eval-gate run recorded in the commit message
+    - all four gate suites run before and after with numbers in the commit; a fix that improves code queries by breaking doc queries is rejected
+    - the mechanism chosen is stated with its reasoning (coverage normalization vs span cap vs heading-text-only), so the next person knows what was traded
+    - "a test covers the pathological shape directly: one heading whose section contains many unrelated technical terms must not outrank an exact code match"
+    - DEPTH.md retrieve.rs and parse.rs rows updated in the same commit
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: almanac search-fleet 'openfec paginator rate limit backoff' --limit 4  |  OUTPUT: all four hits are DOC headings, zero are code — opportunity-library:OPPORTUNITIES.md:8 (heading 'Leverage ranking') and :681, VENTURES.md:117, projects:COMMERCIALIZATION.md:11, each scoring 3018. The actual answer (fucked:scripts/openfec_http.py and three sibling openfec_*.py files) does not appear at all. Searching the repo directly finds them instantly at 2025.  |  THEORY: INFRA-3529 (shipped by me 2026-08-06) turns markdown ATX headings into symbols whose snippet spans to the next heading, capped at MAX_SNIPPET_LINES=200. A heading over a huge section — OPPORTUNITIES.md's leverage table is ~600 lines of repo names and capability prose — therefore carries a 200-line snippet that contains nearly every technical term in the portfolio. Keyword scoring ranks by term COVERAGE, so that one row matches almost any multi-term query and wins on coverage before the 25% heading discount can matter. The discount was calibrated on small headings and does not scale with section size.  |  ALT: considered raising the flat heading discount — rejected: it would suppress legitimately-relevant small doc sections, undoing the docs win INFRA-3529 measured at 0/8 -> 7/8. Considered dropping heading symbols entirely — rejected for the same reason. The defect is that coverage is computed over an arbitrarily large snippet, so the fix belongs at the snippet/normalization layer, not the discount.
+

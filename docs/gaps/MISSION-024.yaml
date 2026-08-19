@@ -2,7 +2,7 @@
   domain: MISSION
   title: "MISSION: Implement monitoring for external repairman29/BEAST-MODE PR status (MISSION-015 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - The system can periodically poll or receive webhooks for PR status updates from `github.com/repairman29/BEAST-MODE`.

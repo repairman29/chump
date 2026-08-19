@@ -1,0 +1,13 @@
+- id: CREDIBLE-219
+  domain: CREDIBLE
+  title: "[almanac] index reports no semantic-layer delta — an expected regeneration and a real wipe look identical"
+  status: open
+  priority: P3
+  effort: s
+  acceptance_criteria:
+    - almanac index prints the file_summaries / embeddings counts BEFORE and AFTER (a delta), not just the restored-from-cache line, so a drop is visible at the console
+    - "Rationale with receipt: on 2026-08-07 opportunity-library went 193 -> 0 summaries and workspace-docs 26 -> 0 after an INFRA-3529 reindex. That was EXPECTED markdown-cache invalidation, but nothing in the output distinguished it from data loss, and it was misdiagnosed as a regression and wrongly filed before the language-split check corrected it"
+    - A large expected drop should be self-labelling (e.g. name the markdown share) so the next reader does not have to re-derive the distinction
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: CREDIBLE-000
+

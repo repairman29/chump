@@ -2008,8 +2008,3 @@ CHUMP_RUN_CACHE_DIR
 # detected in: (standard input)
 CHUMP_RUN_CACHE_TTL_S
 CHUMP_HEARTBEAT_DIR
-
-# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
-# Replace the AUTO marker with a real description on the next commit.
-# detected in: (standard input)
-CHUMP_VOTE_REQUEST_SIGNAL_FILE

@@ -1,0 +1,20 @@
+- id: RESILIENT-277
+  domain: RESILIENT
+  title: duplicate approval cards make the approval surface UNANSWERABLE — taps resolve orphaned request_ids and the turn stays hung
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "ESCALATED 2026-08-09 AFTER A LIVE TAP: the operator tapped a button and got \"another button then hung\". This is not spam, it is an UNUSABLE approval surface — the feature RESILIENT-265 depends on does not work when a human actually tries to use it"
+    - "ROOT CAUSE: the retry loop mints a NEW request_id per attempt, so three cards carry three DIFFERENT ids. The loop abandons the earlier receivers and waits on the latest, so tapping any older card calls resolve_approval on an id with NO receiver — approval_resolver::resolve_approval does a guard.remove(request_id) and silently drops an unknown id. The tap is accepted by Discord, does nothing, and the turn stays blocked. From the phone that is indistinguishable from a broken button"
+    - "THE custom_ids ARE CORRECT — verified src/discord.rs:671/673 mint chump_approve and chump_deny with the rid, and interaction_create at :1210 parses exactly those prefixes. Do NOT go hunting a prefix mismatch; the ids are fine, the TARGETS are stale"
+    - "FIX 1, DEDUPE IN-FLIGHT: before minting a request_id, check approval_resolver::is_pending for the same tool and normalized args, and JOIN the existing request rather than creating a second. One question, one card, one live receiver"
+    - "FIX 2, AWAIT INSTEAD OF SPINNING: the loop must await the oneshot with CHUMP_APPROVAL_TIMEOUT_SECS, not re-enter the model. Log evidence: iter=3 through 8 alternating LLM calls with EndTurn synthetic tools, model_calls 2 to 7 in about 13 seconds. Each spin costs a provider call AND creates the orphan above"
+    - FIX 3, SUPERSEDE STALE CARDS — this is what makes the surface honest. When a request is abandoned or resolved, EDIT its message to say superseded and disable its buttons. A card that looks tappable but resolves nothing is worse than no card at all
+    - FIX 4, MAKE TAPS OBSERVABLE. interaction_create logs NOTHING on success and silently returns on an unmatched custom_id, so a tap that arrived and a tap that never came look identical in the log. That is why this needed a live operator report instead of showing up in telemetry. Log the request_id, the decision, and whether a receiver was actually found — resolve_approval should distinguish HIT from ORPHAN
+    - "VERIFY BY REPRODUCTION: trigger a gated tool, do not tap, assert exactly ONE card appears and model_calls does not climb while waiting. Then tap Deny and assert the log records a receiver HIT and the turn ends with the denial honoured. Then tap a superseded card and assert it is inert and says so"
+    - "RELATED: RESILIENT-276 (no provider timeout) is the same root shape — the agent loop has no bounded wait for anything slow or human, so it spins instead of waiting. Fix them together"
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: operator DM to the live Discord gateway 2026-08-09T20:31Z, then read ~/.chump/logs/discord-gateway.err | OUTPUT: Discord shows THREE identical cards, "Approve tool? run_cli (risk: low). no high-risk pattern" each with Allow once / Deny, and the bot still typing. The log shows a tight retry loop: iter=3 EndTurn, iter=4 EndTurn, iter=5 EndTurn, iter=6, iter=7, iter=8, with model_calls climbing 2 to 7 between 20:32:07 and 20:32:32 — roughly 13 seconds — and a native tool batch with pending_count=4 | THEORY: the tool needs approval, request_approval() blocks on a tap that has not come, the model retries, and each retry mints a NEW approval request instead of joining the one already pending. There is no dedupe on (tool, args) for in-flight approvals | ALT: rejected the model is confused by the question — it answered the previous DM correctly at 2:29PM ("task queue is empty, brain shows beast-mode and chump-chassis"). Rejected a Discord duplicate-delivery problem — the log shows genuinely distinct iterations and rising model_calls, so these are three real requests, not one message delivered three times
+

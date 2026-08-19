@@ -1,0 +1,18 @@
+- id: EFFECTIVE-389
+  domain: EFFECTIVE
+  title: "code-posse: schedule almanac's organs across the fleet and file what they find (posse has no code-side member)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - A scheduled sweep runs the comprehension organs (comprehend/flagmap/gatemap/livemap/whymap) across registered repos and files NEW findings into holler with found_by=almanac-sweep, following the existing holler->chump bridge conventions (dedupe_hash, context.repo as a BARE slug not owner/repo, and the 2026-08-07 security screen)
+    - "Only NEW findings file: the sweep diffs against the previous run's state so a standing condition does not refile every cycle (the posse bots already solve this shape — reuse their approach rather than inventing one)"
+    - "Placement decided and justified: almanac/scripts (where the organ binaries, launchd patterns and existing crons live) OR the posse repo (where the conceptual siblings live). Recommend almanac for practical coherence, and note in posse's README that it gained a code-side sibling"
+    - "Proven on one real repo end-to-end: the sweep produces at least one finding that reaches a chump gap, with a file:line receipt"
+    - "Honest coverage note in the output: organ coverage on non-Rust repos is still landing (CONFIG got a JS/TS adapter 2026-08-05, Python pending; WIRING recently got Next.js + Python routes), so a sweep must state which repos it could only shallowly inspect rather than implying a clean bill of health"
+    - "FROM CREDIBLE-217 (superseded into this gap 2026-08-07): benign sentinel variance is classified and suppressed BY A STATED RULE, not by hand — AGENT_ID placeholders, empty-string vs unset, and build-script path variance are the known noise classes, and the rule that suppresses them appears in the output so a reader can disagree with it"
+    - "FROM CREDIBLE-217: the CONFIG organ's proven finding classes are the acceptance bar for signal quality — the sweep must be able to surface incoherences of the kind already found by hand (CARGO_TARGET_DIR resolved 14 ways across 171 sites in chump; three conflicting BEAST_MODE endpoint flags across 356 reads including a beast-mode.dev vs beastmode.dev typo-domain; OPENAI_API_KEY with 4 defaults over 49 reads in Maclawd)"
+  notes: |
+    Bumped P2->P1 2026-08-07: operator asked for this capability directly ('can we build tech debt agents with/on posse using almanac'), and it is the trunk of a four-gap cluster all parked at P2 — CREDIBLE-217 (folded in, superseded), ZERO-WASTE-036 (the ACT-on-detection loop, now depends on this), EFFECTIVE-374 (posse + fluff-audit sweep, depends on CREDIBLE-209). Detection must land before the act layer has anything to act on. Outcome linked at bump time, not via the set --priority side door (cf CREDIBLE-213).
+  outcome_id: ZERO-WASTE-000
+

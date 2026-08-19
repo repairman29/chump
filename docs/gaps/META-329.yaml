@@ -1,0 +1,18 @@
+- id: META-329
+  domain: META
+  title: "META: add R&D as the fifth pillar — 37 files enumerate the four-pillar set"
+  status: open
+  priority: P3
+  effort: m
+  description: |
+    Operator decision 2026-08-08: fifth pillar, not a separate ledger. Design and reasoning in docs/rfcs/RFC-rnd-pillar.md (shipped PR #3526, corrected #3530). Mechanical but broad: 37 files enumerate EFFECTIVE|CREDIBLE|RESILIENT|ZERO-WASTE, including mission_grade.rs (classifies by gap-title prefix, case-insensitive, untagged excluded), roadmap_status.rs (pillar_coverage), kpi_report.rs, health.rs, execute_gap.rs, fleet_health.rs, intent_parser.rs, completion.rs. Chose pillar over ledger specifically to inherit the curator's balance_restock, which is the only thing that prevents silent starvation — so this gap is only worth landing if RESILIENT-246 revives the curator, otherwise the fifth pillar starves on day one exactly like the LIGHTHOUSE outcomes. R&D's success axis inverts (learning per spend; a fast NO-GO is a win), so it must not be summed into pillar metrics built for delivered value. Ship-ratio exclusion is a SEPARATE gap because forgetting it corrupts the scaling gate.
+  acceptance_criteria:
+    - "R&D: is a recognized gap-title prefix everywhere the other four are — enumerated, not special-cased, so the next pillar is a one-line change"
+    - chump gap reserve --domain R&D works and mission_grade counts it in pillar inventory
+    - pillar_coverage in roadmap-status reports R&D alongside the others
+    - "a gap titled 'R&D: ...' is pickable and shippable end to end, proven by one real trivial R&D gap through the pipeline"
+    - R&D's inverted success axis is documented where mission_grade computes pillar health, so nobody later sums learning-per-spend into delivered-value metrics
+    - "blocked until RESILIENT-246 restores the curator: without balance_restock a fifth pillar starves silently"
+  depends_on: [RESILIENT-246]
+  outcome_id: CHUMPOS
+

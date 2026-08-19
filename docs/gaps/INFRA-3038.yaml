@@ -2,9 +2,9 @@
   domain: INFRA
   title: "ZERO-WASTE: balance-b"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
-    - verify it works
+    - Test-fixture gap; close as non-work once identified as scheduler balance test noise.
   outcome_id: MISSION-010
 

@@ -2,7 +2,7 @@
   domain: VOA
   title: "VOICE-OF-AGENT VOA-007: almanac_default_repo_empty_breaks_mine_before_holler — 20 min lost; fix-shape: tooling"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
     - Full friction report at docs/voice/VOA-007-FULL.yaml with wedge_class=almanac_default_repo_empty_breaks_mine_before_holler, minutes_lost=20

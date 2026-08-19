@@ -2,7 +2,7 @@
   domain: META
   title: "META: Implement lesson sharing endpoint (in-memory store) (META-073 slice)"
   status: open
-  priority: P1
+  priority: P3
   effort: s
   acceptance_criteria:
     - Agents can POST lessons to shared endpoint

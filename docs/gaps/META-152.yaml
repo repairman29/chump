@@ -2,7 +2,7 @@
   domain: META
   title: chump fleet lane-recommend — current-state-aware curator-lane bottleneck picker (replaces ad-hoc AskUserQuestion at onboard time)
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Demonstrated 2026-05-30: ci-audit-onboarding session sent AskUserQuestion "which lane should I onboard into?" — operator answered "no preference" — which means the FLEET should have decided. The data exists: 4 curator sessions DARK (target/external-collab/infra-watcher/observability never emitted from the 2026-05-28 cohort), 5 alive (ci-audit/handoff/decompose/shepherd/md-links). All 4 dark lanes were coverage gaps; ci-audit was alive-but-idle (silent_agent SLO root cause). A data-driven picker would have ranked ci-audit (alive-but-not-acting > dark on impact) or target (highest user-facing pillar gap) without operator input. Pairs with META-132 fresh-eyes (which audits AFTER lane-pick) — this acts BEFORE.

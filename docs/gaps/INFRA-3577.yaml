@@ -1,0 +1,10 @@
+- id: INFRA-3577
+  domain: INFRA
+  title: "INFRA: Investigate queue contention as a potential root cause (INFRA-1655 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Queue contention is identified or ruled out
+    - Recommendations for queue optimization are provided
+

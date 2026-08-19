@@ -1,0 +1,10 @@
+- id: ZERO-WASTE-052
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: reclaim Mac disk — 96% full blocks build-speed work; reap 72GB shared target + orphaned worktree targets"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Mac /System/Volumes/Data is 96%% full (20GB free); ~/.cargo/chump-shared-target is 72GB. Run scripts/ops/cargo-target-reaper.sh (aggressive mode) + prune orphaned /tmp/chump-*/target from dead worktrees; reclaim to <85%% used. Wire the reaper to run on a schedule so it stays bounded. Report GB reclaimed.
+  outcome_id: FLEET-BUILD-SPEED
+

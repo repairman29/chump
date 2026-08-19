@@ -1,0 +1,18 @@
+- id: PRODUCT-177
+  domain: PRODUCT
+  title: "voice seam: Siri Shortcut → key-gated orchestrator ask endpoint (port olive's production pattern)"
+  status: open
+  priority: P2
+  effort: l
+  description: |
+    Operator directive 2026-08-06: talk to the orchestrator by voice, with almanac mastery as part of its brain (docs/ALMANAC.md). Port olive's PRODUCTION seam (olive:src/app/api/voice/ask/route.ts — 'the Hey Siri, Olive seam'): Siri Shortcut dictates → POST {key,text} → orchestrator → Siri speaks the returned 'spoken' field. Copy the hardened parts: personal voice keys minted per device w/ revocation (olive_voice_keys pattern) + env-key fallback WITH the orphan-account existence check (olive incident 2026-08-02); rate limiting; conversation state persists SERVER-side per user because Siri invocations are stateless (olive persists cart+history across calls). Spoken replies follow the voice contract in docs/ALMANAC.md (VOICE_ADDENDUM port: 1-3 plain sentences, verdict+count+repo names, NEVER a file:line aloud; receipts to a turn log — olive src/app/shop/siri/logs is the pattern). Long agentic turns use the two-speed rule: speak the quick-pass answer + 'still digging', continue server-side. Measured almanac budget fits one Siri exchange: 9ms repo keyword / 1.2s semantic / 2.5-4s fleet-wide.
+  acceptance_criteria:
+    - Shortcut POST {key,text} returns {spoken} for quick queries fast enough that Siri reads it in one exchange (~5s)
+    - "conversation persists across two consecutive Siri invocations: a follow-up ('what repo was that in?') resolves against the prior turn server-side"
+    - "spoken replies obey the docs/ALMANAC.md voice contract: no markdown, no enumerated hit lists, no file:line aloud; repo:path:line receipts land in a queryable turn log"
+    - "deep/agentic asks get a two-speed response: immediate spoken acknowledgment, work continues server-side, result delivered on the next ask"
+    - unknown or revoked key is refused with a spoken reconnect hint, never a silent failure
+  notes: |
+    Decomposed into 7 slices: PRODUCT-178, PRODUCT-179, PRODUCT-180, PRODUCT-181, PRODUCT-182, PRODUCT-183, PRODUCT-184
+  source_doc: docs/ALMANAC.md
+

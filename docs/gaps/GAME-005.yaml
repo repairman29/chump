@@ -1,0 +1,21 @@
+- id: GAME-005
+  domain: GAME
+  title: "[realm-of-shadows] Stranger bot: milestone \"forest_west\" never reached (0/3 runs)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Repeated cold runs never completed this milestone.
+    deaths per run: [1,2,1] · areas discovered per run: [4,5,5]
+    Triage: surveyor passes reachability — this is survivability: first-minute lethality (realm FINDINGS.md #8).
+    
+    context: {"level":"forest_west","deaths":[1,2,1],"source":"playtest-repeat","areasFound":[4,5,5]}
+    source: holler feedback_events, dedupe 8915c3b4bf621274
+  acceptance_criteria:
+    - "After the FINDINGS.md #8 lethality fix (or explicit difficulty decision), repeat.mjs 3-run aggregate completes forest_west in at least 1/3 runs"
+    - realm DEPTH.md sweep rates updated in the same commit
+  notes: |
+    INVESTIGATED 2026-08-04 (same sweep). forest_west = 0/3, bot reaches depth 5-6 (maxProgress [5,5,6]) and gets STUCK (only 2 deaths in 3 runs) — navigation/progression blocked, not lethality. Same conclusion as GAME-004: cold-traverse navigation is the blocker; difficulty reduction does not move it (DEPTH.md Easy 0/3, warm-start 3/3). Also gated by switch/torch puzzles + root_cellar mini-boss key. REFRAME to deep-traverse legibility + puzzle/key reachability, not lethality. Stays OPEN.
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/realm-of-shadows"
+

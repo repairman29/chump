@@ -2,7 +2,7 @@
   domain: INFRA
   title: "ZERO-WASTE P0: chump gap reserve checks title-similarity against open-PR titles (not just other gaps)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - chump gap reserve --title X also runs Jaccard similarity vs all currently-open PR titles (gh pr list --json title)

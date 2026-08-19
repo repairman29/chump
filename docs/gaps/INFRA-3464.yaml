@@ -1,0 +1,11 @@
+- id: INFRA-3464
+  domain: INFRA
+  title: "EFFECTIVE: migrate gap-decompose-verify to the shared cascade — drop the bespoke LocalOpenAIProvider@api.anthropic.com (OAuth-incompatible) for provider_cascade::build_provider()"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"migrate gap-decompose-verify to the shared cascade — drop the bespoke LocalOpenAIProvider@api.anthropic.com (OAuth-incompatible) for provider_cascade::build_provider()\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

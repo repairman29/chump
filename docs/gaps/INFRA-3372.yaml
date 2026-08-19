@@ -2,7 +2,7 @@
   domain: INFRA
   title: "META-070: preflight mirror for docs/hygiene/commit-guard audit-job scripts (21 scripts, cluster 4/5)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster docs-hygiene-guard).

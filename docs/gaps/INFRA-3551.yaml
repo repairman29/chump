@@ -1,0 +1,10 @@
+- id: INFRA-3551
+  domain: INFRA
+  title: "INFRA: Investigate disk full as potential root cause (INFRA-1655 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Disk usage on jeffs-macbook-air-10-X is checked
+    - Disk full is identified as a potential root cause or ruled out
+

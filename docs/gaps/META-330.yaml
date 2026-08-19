@@ -1,0 +1,16 @@
+- id: META-330
+  domain: META
+  title: "META: backfill the six NO-GOs as R&D's founding history so the pillar does not launch at 0%"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    A new pillar at zero reads as neglect, which is precisely the trap the three LIGHTHOUSE outcomes are sitting in (0, 0 and 1 gaps against MISSION-010's 2,621 — a goal with no work looks like a wish). R&D does not need to launch empty: six go/no-go verdicts already exist and are currently filed as FAILURES. Under the pillar they are the product — a fast NO-GO is a successful run. The best-documented is the posse-outward bet: venture-go-no-go workflow, 7 agents, survived 0 of 3 kill attempts, killed on economics not technology, accepted by the operator 2026-08-04, and the reasoning preserved in posse/OUTWARD_READINESS.md. Backfill each as an R&D gap with its verdict, what it cost, and what was learned — retro-tagged, not re-litigated. Also worth capturing: the embedder A/B that came back a wash, and the cross-encoder rerank measured negative and left OFF, both of which are real R&D returns the fleet already banked.
+  acceptance_criteria:
+    - each of the six NO-GOs exists as a closed R&D gap carrying its verdict, spend if known, and what was learned — with a pointer to where the reasoning already lives rather than a rewrite
+    - the pillar shows non-zero history on its first day, so a coherence check (META-328) reads it as deliberate rather than starving
+    - a NO-GO is recorded as a SUCCESSFUL outcome, not a failure — if the registry cannot express that, say so rather than filing them as losses
+    - "the embedder A/B (a wash) and the rerank measurement (negative, left off) are included: a null result is the pillar's product"
+    - no verdict is re-opened or re-argued; this is bookkeeping
+  depends_on: [META-329]
+

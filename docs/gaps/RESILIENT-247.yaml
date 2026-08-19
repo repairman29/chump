@@ -1,0 +1,13 @@
+- id: RESILIENT-247
+  domain: RESILIENT
+  title: pr-rescue.sh exists but is not scheduled — stuck PRs rot silently until someone happens to look
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "scripts/coord/pr-rescue.sh runs on a schedule (launchd per SCHEDULING_LAYERS.md, since it must survive session close) rather than only when a human remembers — verified 2026-08-07: the script exists, zero cron/launchd entries reference it"
+    - It surfaces PRs that are DIRTY/BLOCKED past a threshold age, with the diagnosis attached to the gap rather than printed and lost
+    - "Receipt: PR #3499 (INFRA-1965) sat DIRTY for 9 hours with auto-merge armed and nobody watching. Its conflict was ONE region caused by two known main.rs commits, diagnosable in under a minute — but only because a human happened to ask 'can we help the fleet'. A 6000-line refactor of the fleet's hottest file rots by the hour"
+    - "Pairs with CREDIBLE-220 (nothing watches non-chump CI): same class — an instrument exists, nothing runs it on a clock"
+  outcome_id: ZERO-WASTE-000
+

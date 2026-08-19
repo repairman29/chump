@@ -1,0 +1,9 @@
+- id: RESILIENT-268
+  domain: RESILIENT
+  title: local disk at 99% (7.8GB free) on /System/Volumes/Data — disk_critical alert firing
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - 1. Identify what's consuming disk on /System/Volumes/Data (likely cargo target dirs, worktrees, or claude/docker caches). 2. Free space back above 15% (69GB) via targeted cleanup (cargo-target-reaper, worktree reaper, docker prune) not blind deletion. 3. If a specific runaway consumer is found, file a follow-up to cap/rotate it so this doesn't recur.
+

@@ -1,0 +1,10 @@
+- id: INFRA-3549
+  domain: INFRA
+  title: "INFRA: Implement fix or workaround for the identified root cause (INFRA-1655 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Fix or workaround is implemented and tested
+    - Fix or workaround resolves the actions/checkout@v6 failure
+

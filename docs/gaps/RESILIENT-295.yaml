@@ -2,13 +2,8 @@
   domain: RESILIENT
   title: "RESILIENT: self-rescue conductor is blind to RECENT stalls — reports HEALTHY on 3h window while 0 merged in 75min + armed PRs pile up; add a short-window stall detector so helsinki self-heals"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "The change described by \"self-rescue conductor is blind to RECENT stalls — reports HEALTHY on 3h window while 0 merged in 75min + armed PRs pile up; add a short-window stall detector so helsinki self-heals\" is implemented in the relevant RESILIENT code path(s)."
-    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
-  outcome_id: RESILIENT-000
-  evidence: |
-    COMMAND: chump self-rescue-loop; git log origin/main --since=75min. OUTPUT: conductor printed HEALTHY merges_3h=11 while 0 PRs merged in the prior 75min and 8 armed PRs piled unmerged. THEORY: the 3h window hides a fresh stall behind old merges; add a short-window (30-60min) merge-rate detector so the conductor backs off production / pages instead of reporting healthy. ALT: (a) lean on back-pressure controller — partial, it watches pile-depth not merge-rate; (b) operator notices — rejected, that IS the empty-chair failure this exists to prevent.
+    - the self-rescue conductor evaluates a recent window (<=30min) and reports UNHEALTHY when 0 merges plus armed-but-stuck PRs are present, instead of reporting HEALTHY off a stale 3h window.
 

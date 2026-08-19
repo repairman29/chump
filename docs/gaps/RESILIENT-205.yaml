@@ -1,0 +1,14 @@
+- id: RESILIENT-205
+  domain: RESILIENT
+  title: dead-session leases in state.db block re-work — preflight sees stale claim, no prompt reaper
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"dead-session leases in state.db block re-work — preflight sees stale claim, no prompt reaper\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    2026-07-27: bot-merge preflight repeatedly aborted CREDIBLE-169 with 'live-claimed by session ...47431' even after removing all .chump-locks/*.json files — because the claim lives in the state.db 'leases' table (session_id, gap_id, worktree, expires_at), which file cleanup does not touch. 3 orphaned rows from dead test sessions persisted with future expires_at (hours out), so preflight treated them as active and blocked ALL re-work on the gap. A worker that dies (or a claim not cleanly released via 'chump --release') leaves a DB lease that blocks the gap until expiry. Need a reaper that deletes leases whose session is provably dead (no process / heartbeat) rather than waiting for expires_at, and 'chump --release' should clear DB rows not just files.
+

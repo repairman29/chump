@@ -1,0 +1,14 @@
+- id: RESILIENT-236
+  domain: RESILIENT
+  title: "RESILIENT: respawn daemon parks the primary checkout on a respawn-N branch and leaves it there after the PR resolves"
+  status: open
+  priority: P3
+  effort: s
+  description: |
+    Observed 2026-08-06: the primary checkout at ~/Projects/Chump was found on branch respawn-3485-98962 (tracking origin/chump/doc-083-claim), created by the respawn machinery while PR #3485 sat unarmed — with a second sibling respawn-3485-92037 and a STAGED copy of the stale-worktree-reaper edit (byte-identical to already-merged #3486). After #3485 merged, nothing restored the checkout to main: ff-pulls fail with not-possible-to-fast-forward, gap ship blocks on AUTO-FETCH, and every instrument that assumes checkout==main reads wrong. Session also found respawn-3305/respawn-3350 residue branches in the 2026-08-05 sweep — this is a pattern, not a one-off. Rough shape: respawn flow works in its own worktree (never switches the primary checkout), or a post-resolution hook restores main + deletes the respawn branch; emit an ambient event either way.
+  acceptance_criteria:
+    - respawn never leaves the primary checkout off main after its PR resolves
+    - respawn branches self-delete on merge/close
+    - regression test covers the parked-checkout case
+  outcome_id: RESILIENT-000
+

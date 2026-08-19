@@ -1,0 +1,11 @@
+- id: ZERO-WASTE-043
+  domain: ZERO-WASTE
+  title: "CI fan-out: a 1-file PR triggers ~37 checks across many workflows — waste + fragility to any GH-infra blip"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"a 1-file PR triggers ~37 checks across many workflows — waste + fragility to any GH-infra blip\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

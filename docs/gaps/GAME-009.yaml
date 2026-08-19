@@ -1,0 +1,21 @@
+- id: GAME-009
+  domain: GAME
+  title: "[crystal-rush] Stranger bot: stuck on \"survive-30s\" (single run)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Confidence: mechanical -- a deterministic check, not a judgment call -- high confidence, but some "dead" mechanical findings are an intentional no-op (e.g. an already-active tab); verify it is actually meant to work.
+    
+    Cold run ended stuck. deaths=1 maxProgress=21.
+    Single-run stuck is weak evidence for exploration games — prefer repeat.mjs aggregates; for linear games it is usually real.
+    
+    context: {"level":"survive-30s","deaths":1,"source":"playtest-bot","maxProgress":21}
+    source: holler feedback_events, dedupe 763cf9f4ee079e1c
+  acceptance_criteria:
+    - "The originating check passes on re-run in repairman29/crystal-rush (tool + target in the description: surveyor edge -> verdict PASS; repeat milestone -> completed >=1/N; bot/widget error -> no longer reproduces)"
+    - crystal-rush test suite stays green
+    - FINDINGS.md / DEPTH.md in repairman29/crystal-rush updated in the same commit
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/crystal-rush"
+

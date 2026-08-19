@@ -1,0 +1,15 @@
+- id: DOC-098
+  domain: DOC
+  title: "RESILIENT: ADD_A_FLEET_NODE.md documents Ethernet only — no Wi-Fi bringup path"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Real incident 2026-08-09: closetjunky moved to a new location, had to be recovered by hand at the console. The runbook covers Ethernet only, so every Wi-Fi step was re-derived live. Operator typed a netplan file with five independent defects (wlan0 instead of wlp4s0, version:2 missing space, wrong indentation, empty renderer, lowercase SSID). Recovery path that finally worked: USB tether from a Pixel to get temporary uplink, then SSH in and fix properly.
+  acceptance_criteria:
+    - "ADD_A_FLEET_NODE.md gains a Wi-Fi bringup subsection: find the real interface via ls /sys/class/net (wl* prefix, never assume wlan0), the netplan wifis stanza with correct nesting, case-sensitive SSID matching, and netplan generate to validate before apply"
+    - "Doc names the real failure signatures with exact log strings: 4-Way Handshake failed reason=WRONG_KEY means bad PSK; an empty iw scan usually means iw is not installed on server images and does NOT mean a dead radio; cloud-init regenerates 50-cloud-init.yaml over hand-edits"
+    - Doc gives the headless-safe apply pattern (detached setsid netplan apply plus an auto-rollback timer) because the operator is usually changing the same link they are connected over
+    - Doc records the USB phone-tether fallback as the zero-typing recovery path for an off-network box, including that charge-only cables silently fail to tether
+    - Runbook branches by declared link_class so an Ethernet assumption never again forces a console session
+

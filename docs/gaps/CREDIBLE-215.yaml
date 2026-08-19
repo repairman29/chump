@@ -1,0 +1,22 @@
+- id: CREDIBLE-215
+  domain: CREDIBLE
+  title: "CREDIBLE: mechanical stub detection — verify a PR touched code that can actually reach the gap's target"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    The deterministic half of anti-stub enforcement, complementing the judgment panel (CREDIBLE-191) rather than replacing it. Given a gap that names a target (file, symbol, or capability) and a PR claiming to close it, ask almanac whether any changed file has a resolved import path to that target. Three verdicts, all honest about the graph's limits: REACHES (a changed file imports or is imported by the target, transitively), TEST-ONLY (every changed file is a test/fixture), UNRELATED (no changed file has any resolved path to the target). Must carry almanac's standing lower-bound caveat — only resolved intra-repo edges walk, roughly 20-40 percent on large repos — so UNRELATED is a STRONG SIGNAL FOR REVIEW, never an automatic reject. The asymmetry is the point: REACHES proves nothing about quality, but TEST-ONLY and UNRELATED on a gap that asked for a source fix are exactly the two shapes EFFECTIVE-354 and CREDIBLE-200 describe.
+  acceptance_criteria:
+    - given a gap ID and a PR or diff, the check emits one of REACHES / TEST-ONLY / UNRELATED with the citations that justify it
+    - the verdict carries the repo's actual edge-resolution rate, and UNRELATED is explicitly labelled review-signal not auto-reject — a lower bound must never be laundered into a rejection
+    - TEST-ONLY fires when every changed file is a test, fixture, or snapshot, and correctly does NOT fire for a gap whose own acceptance criteria asked only for tests
+    - runs in the ship path early enough to save a CI round (pre-push or at bot-merge), not after
+    - a test reproduces the CREDIBLE-200 shape — a diff containing only an added assert-true test and no source change, against a gap naming a source target — and proves it is flagged; fails without the change
+    - explicitly linked to EFFECTIVE-354 and CREDIBLE-200 so whichever ships first records what it did and did not cover
+  notes: |
+    [2026-08-07T20:50:05Z] Integration target of record: src/improve.rs — the external improve/ship path where verify-reaches runs (AC4). First slice: src/commands/reachability.rs (pure classifier + chump verify-reaches --gap <ID> --diff <name-only-file>), wired via src/commands/dispatch_external.rs, NOT src/main.rs.
+    [2026-08-09T17:14:18Z] CREDIBLE-233 shipped the CLOSE-time mis-attribution check (verify_pr_touched_gap in crates/chump-gap-store/src/lib.rs, wired into ship() and set_fields()) — mechanical file-touch check (own YAML or any non-doc file), not the import-graph REACHES/TEST-ONLY/UNRELATED semantic classifier this gap still owns. CREDIBLE-233 catches mis-attribution at CLOSE time; this gap still catches the stub shape at SHIP/pre-review time. Not yet built as of this note.
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: chump gap list --status open | grep -E 'EFFECTIVE-354|CREDIBLE-200'  |  OUTPUT: two open P1 gaps say the same thing in the fleet's own words — EFFECTIVE-354 'cascade implement stubs real external bugs (no diagnosis, no source fix) — worker competence is the core can-chump-do-the-jobs blocker'; CREDIBLE-200 'cascade implement can ship a stub test (assert 1==1) with no source fix; organ only catches it on green CI'. Both describe the same undetected shape: a PR that is green and empty.  |  THEORY: nothing mechanically relates a PR's DIFF to the gap's stated TARGET. Almanac already computes exactly that relation — almanac_impact walks transitive importers, almanac_neighbors gives per-file import edges — so 'did this diff touch anything with a path to the thing the gap named' is a graph query the fleet already owns and never asks. A stub is cheap to write and currently costs a full CI round plus a human read to detect; making it fail before review inverts that economics.  |  ALT: considered relying on the judgment panel (CREDIBLE-191) — rejected as complementary, not a substitute: a panel is an LLM read that costs tokens and can be fooled by plausible prose, while this is a deterministic graph check that cannot be talked out of a verdict. Considered requiring a source-file change by file-extension heuristic (touched a non-test .rs) — rejected as too weak: it passes any unrelated source edit, and fails legitimately test-only fixes. The import-path relation is the honest version.
+

@@ -1,0 +1,14 @@
+- id: CREDIBLE-179
+  domain: CREDIBLE
+  title: zero real votes ever cast on any FEEDBACK proposal despite mandatory-voting doctrine
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Discovered live during RESILIENT-212 (deliberator daemon install fix): ran 'bash scripts/coord/deliberator-loop.sh audit' for real against the production .chump-locks/feedback.jsonl (86 lines) and tallied ~65 distinct kind=proposal FEEDBACK entries spanning 2026-05-29 through 2026-07-19. EVERY SINGLE ONE showed yes=0 no=0 abstain=0 total=0 — not one real vote (kind=vote or kind=preference carrying a vote field) exists in feedback.jsonl or ambient.jsonl for any of them, despite CLAUDE.md's 'A2A consensus is always-on and mandatory (INFRA-2515)' section stating 'Vote on every open proposal in your inbox, every cycle... Silence is not an option.' This is the deeper reason kind=consensus_result has fired 0 times ever (compounding the separately-fixed daemon-never-loaded bug): even with the daemon running, there is no vote data to tally. I cast one real +1 vote (corr_id=a2a-outcome-check-proof-2026-06-07) as a smoke test — it tallied correctly (yes=1, still NO_QUORUM, needs yes>=3) but this doesn't fix the systemic non-participation.
+  acceptance_criteria:
+    - Determine why curator loops (.claude/agents/*, scripts/coord/*-loop.sh) are not calling 'chump vote' on inbox-surfaced proposals despite the CLAUDE.md mandate — is the inbox-read step wired to actually surface kind=proposal broadcasts, or is 'read inbox' silently skipping FEEDBACK items?
+    - Check whether curator loop scripts (ci-audit-loop.sh, handoff-loop.sh, deliberator-loop.sh, etc.) have a concrete 'cast a vote' step wired in, or whether the mandate exists only in CLAUDE.md prose with no code enforcement
+    - Propose + ship at least one concrete fix (e.g. a lane-scoped auto-vote step in one curator loop, or a fleet-doctor check that flags proposals with total=0 votes past N hours) that gets real votes flowing, and verify via a real (not fabricated) proposal reaching quorum
+    - "Test: after the fix, a newly-broadcast FEEDBACK proposal accumulates >=1 real vote within one curator-loop cycle, observable via scripts/coord/deliberator-loop.sh audit --corr-id <new-corr-id>"
+

@@ -1,0 +1,13 @@
+- id: EFFECTIVE-351
+  domain: EFFECTIVE
+  title: "Agent produces syntactically-invalid/truncated code under tool-storm: photo-renamer rename_photos.py shipped with an unclosed print() paren after the agent stormed on git_commit + aborted mid-write (heat 2026-08-02, 1397s flail). The real V1.5->V2 capability gap. Add a syntax pre-check before scoring (fail fast + feed the error back), and harden the tool-call loop against the git_commit storm (seen 3x)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"photo-renamer rename_photos.py shipped with an unclosed print() paren after the agent stormed on git_commit + aborted mid-write (heat 2026-08-02, 1397s flail). The real V1.5->V2 capability gap. Add a syntax pre-check before scoring (fail fast + feed the error back), and harden the tool-call loop against the git_commit storm (seen 3x)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    EVIDENCE PRESERVED AND NOW INDEXED 2026-08-08. The artifact is still on disk at ~/.chump/external/bootstrap_photo-renamer/clone/rename_photos.py and still broken: python3 -c 'ast.parse(...)' returns SyntaxError: '(' was never closed. Registered in almanac as slug 'bootstrap_photo-renamer', so the failure is now citable at path:line rather than described from memory. Its README is the original bootstrap PROMPT verbatim ('Build a command-line tool in a file named rename_photos.py, using the Pillow (PIL) library, that renames every JPEG... read the date from EXIF DateTimeOriginal'), which makes this a complete specimen: the instruction given, the code produced, and the exact way it failed — useful for the syntax-pre-check AC this gap asks for, and as a fixture for testing it.
+

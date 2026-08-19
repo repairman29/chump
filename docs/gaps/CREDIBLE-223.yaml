@@ -1,0 +1,15 @@
+- id: CREDIBLE-223
+  domain: CREDIBLE
+  title: "CREDIBLE: [almanac] impact/neighbors under-report Rust coupling — inline crate:: path refs arent edges, so blast radius is a silent lower bound"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "almanac impact/neighbors resolve inline Rust crate::/super:: path references as graph edges so a file coupled only via an inline path appears in its blast radius; a Rust fixture with an inline crate:: reference returns the coupled file in impact output."
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: validating the EFFECTIVE-394 crate extraction, ran almanac_impact on src/pr_ac_coverage.rs and almanac_neighbors on the 3 files being extracted, cross-checked against grep 'crate::pr_ac_coverage' over src/ plus the cargo compiler.
+    OUTPUT: almanac_impact reported total_affected=1 (only src/done_auditor.rs) with edges_resolved=492/2545 (19%). grep + compiler found 3 MORE real callers it missed: src/improve.rs (uses crate::pr_ac_coverage::run_with_ac and ::CoverageStatus as INLINE paths), src/main.rs (crate::pr_ac_coverage::generate_ac_for_gap / ::cited_paths), src/commands/dispatch_external.rs (crate::external_verify_merge::run — the live command dispatch). almanac_impact on external_verify_merge.rs returned total_affected=0 despite dispatch_external.rs calling it. neighbors on confidence.rs returned imported_by=[] despite pr_ac_coverage using crate::confidence.
+    THEORY: almanac's edge-walker resolves 'use <path>;' import statements but NOT inline crate::module::item path references, which is how most Rust intra-crate calls are written. done_auditor was found precisely because it uses a 'use crate::pr_ac_coverage::{self,AcCoverageResult};' import; the missed callers use inline paths. So impact/neighbors are a silent LOWER BOUND that omits inline-path callers — same silent-incompleteness class as PRODUCT-186 (unparsed langs) and INFRA-3530 (SQL never indexed). This directly endangers the crate-extraction speed campaign (splitting the 190k-line bin), which depends on true per-module blast radius.
+    ALT: emit a dependency edge for every crate::/self::/super::/<crate_name>:: path reference (not just use), OR at minimum have impact/neighbors print a loud 'inline-path refs not walked; grep <symbol> to confirm' caveat with the resolved-edge fraction prominent. Interim doctrine: grep + compiler are authoritative for Rust extraction coupling; almanac_impact is a cross-check only.
+

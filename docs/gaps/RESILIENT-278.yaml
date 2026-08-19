@@ -1,0 +1,12 @@
+- id: RESILIENT-278
+  domain: RESILIENT
+  title: "SHIP-INFRA 3/7 [RELIABILITY]: green-means-landed — guarantee auto-merge fires on green; admin-merge becomes an alerting INCIDENT (tracked, trends to 0), not a routine tool"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"green-means-landed — guarantee auto-merge fires on green; admin-merge becomes an alerting INCIDENT (tracked, trends to 0), not a routine tool\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: SHIP-INFRA
+

@@ -1,0 +1,14 @@
+- id: RESILIENT-202
+  domain: RESILIENT
+  title: "daemon plists missing /usr/bin:/bin in PATH — breaks any script using core tools (12 plists incl. farmer)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"/bin in PATH — breaks any script using core tools (12 plists incl. farmer)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    2026-07-27: dev.chump.farmer-brown.plist (and 11 others) set EnvironmentVariables:PATH to '/usr/local/bin:/opt/homebrew/bin:~/.local/bin' with NO /usr/bin:/bin. auth-status.sh (python3/date/stat/grep/sqlite3) then can't find its tools — exit 127 — so the farmer read it as validity_probe_broken and emitted false farmer_auth_dead every cycle, threatening to block the fleet. Reproduced: 'env -i PATH=<farmer-path> bash auth-status.sh' -> 'env: bash: No such file or directory'. Hot-fixed 6 running plists via PlistBuddy (append :/usr/bin:/bin); 6 more (closed-pr-watchdog, distill-pr-skills, gap-doctor-cron, pr-watch-shepherd, stale-branch-reaper, syspolicyd-doctor) failed PlistBuddy on an ampersand-escape and still need fixing. DURABLE FIX: the installer/plist template must always include /usr/bin:/bin; audit + repair all ~90 plists; add a fleet-doctor check for daemon PATH sanity. Sibling to the farmer false-positive (CREDIBLE-090 class).
+

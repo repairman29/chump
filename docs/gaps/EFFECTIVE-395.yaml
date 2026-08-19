@@ -1,0 +1,12 @@
+- id: EFFECTIVE-395
+  domain: EFFECTIVE
+  title: "[almanac] add ROADMAP phase O6 — continuous organ sweep (the plan gates at release only)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "ROADMAP.md gains an explicit O6 phase for continuous fleet-wide organ sweeping, so it lives in the plan rather than only in a gap. Verified 2026-08-07: O1-O5 cover ecosystem parity, claim correctness, convergence/release-gate and agent surface — none covers running the organs on a schedule across repos"
+    - O6 references EFFECTIVE-389 (the code-posse sweep implementation) as its delivery vehicle, and states the exit condition
+    - "Rationale to record: organs ARE proactively used today, but only at RELEASE time (RELEASE_CHECKLIST 1e flagmap + 1.5 comprehend). That catches a problem the moment something ships public; nothing catches it in the weeks between. olive's committed TEST_USER_PASSWORD sat until a release audit happened to look"
+  skills_required: "external_repo:repairman29/almanac"
+

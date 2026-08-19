@@ -2,7 +2,7 @@
   domain: VOA
   title: "VOICE-OF-AGENT VOA-009: broken-daemon-exit — 10 min lost; fix-shape: gate"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
     - Full friction report at docs/voice/VOA-009-FULL.yaml with wedge_class=broken-daemon-exit, minutes_lost=10

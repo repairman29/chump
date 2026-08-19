@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "RESILIENT: cargo CARGO_TARGET_DIR on /tmp gets purged mid-build → dep-info corruption + forced cold rebuilds"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "1. Worktree builds use a CARGO_TARGET_DIR on a stable, non-/tmp path (e.g. ~/.cache/chump-targets/<worktree> or the worktree's own target) so macOS /tmp purges don't corrupt artifacts mid-build. 2. A build no longer fails with 'could not parse/generate dep info at .../wasmtime_wasi-*.d' from a partially-purged /tmp target. 3. Cold-rebuild frequency drops (warm incremental builds survive across a session). 4. Pairs with RESILIENT-161 (the package-cache lock) as the Phase-3 substrate fix. Test/proof: a worktree build + a simulated /tmp prune does not corrupt the target."

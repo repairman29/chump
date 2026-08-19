@@ -1,0 +1,16 @@
+- id: ZERO-WASTE-047
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: holler bridge dedupes on an exact row hash — five wordings of one finding become five gaps"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    holler-to-chump.mjs dedupes with stableHash(row), an exact-content hash. Any two reports of the same underlying problem in different words — which is the NORMAL case across five producers (playtest-bot, posse-crawl, scout-stranger, claude-triage, manual-verification) plus the widget's human reporters — hash differently and become separate gaps. As holler gains producers (the CONFIG drift sweep CREDIBLE-217, the fluff-audit CREDIBLE-209, and other inward detectors now filed) this compounds: the same broken thing gets found by several detectors on the same cadence tick. The registry already carries the cost of duplicates elsewhere (chump gap consolidate, INFRA-935, exists precisely to find near-duplicate titles after the fact). Better to cluster at intake than to consolidate after. Almanac's index is available to the bridge for similarity, or a cheap local embedding — the point is that N reports of one problem should file ONE gap carrying N receipts, which is also strictly better evidence than one report.
+  acceptance_criteria:
+    - near-duplicate findings cluster into a single gap that carries every contributing report as a receipt, rather than filing one gap per report
+    - "clustering is conservative and its threshold is stated: a false merge hides a real second bug, so the bridge prefers filing two gaps over merging two distinct problems, and logs near-misses for review"
+    - an already-filed gap that receives a new matching report gets the report appended to its notes instead of a new gap being minted
+    - the existing exact-hash path still short-circuits identical resubmissions with no extra cost
+    - a test proves two differently-worded reports of the same issue produce one gap with two receipts, and two genuinely distinct reports still produce two gaps
+  skills_required: "external_repo:repairman29/games-workspace"
+

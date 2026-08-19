@@ -2,9 +2,9 @@
   domain: INFRA
   title: "EFFECTIVE: under-b"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
-    - verify it works
+    - Synthetic picker test-fixture gap (under-b); purge or close — no product/loop behavior to verify.
   outcome_id: MISSION-010
 

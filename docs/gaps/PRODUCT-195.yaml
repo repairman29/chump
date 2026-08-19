@@ -1,0 +1,28 @@
+- id: PRODUCT-195
+  domain: PRODUCT
+  title: "[almanac] Eval regression gate never runs in CI — cargo test passes without it, so it is not actually a gate"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Confidence: operator_verified -- a human or session directly investigated and confirmed this before filing -- high confidence.
+    
+    scripts/eval-gate.sh + scripts/eval-compare.py are the Phase G retrieval regression gate (built 2026-08-04/05, eval/baselines.json holds three baselined suites). They are shell + Python, so NOTHING invokes them automatically: `cargo test --release` exits 0 without scoring a single query.
+    
+    Receipt: cargo test passes on a tree where the gate has never been run; the gate is only ever executed by hand.
+    
+    Why it matters: the gate exists because almanac advertised 94% hit@5 for weeks while nothing re-measured it. A gate that requires someone to remember to run it reproduces exactly that failure mode, just with more machinery. It already earned its keep once (caught a fusion graph-leg change that measured negative) — but only because a human ran it in the same session.
+    
+    Fix direction: a CI job (or a pre-push/cron hook) that runs scripts/eval-gate.sh and fails on non-zero. Needs a reachable embedder, so it likely belongs on a schedule against helsinki rather than in a per-commit hook — note the gate already distinguishes a BROKEN RUN (embedder unreachable) from a real regression, so a scheduled run degrades honestly.
+    
+    Files: scripts/eval-gate.sh, scripts/eval-compare.py, eval/baselines.json, DEPTH.md (gap is documented there, unfixed).
+    
+    context: {"repo":"almanac","source":"claude-triage/almanac-capability-audit-2026-08-05"}
+    source: holler feedback_events, dedupe almanac-eval-gate-not-in-ci
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/almanac"
+

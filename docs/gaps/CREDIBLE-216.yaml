@@ -1,0 +1,15 @@
+- id: CREDIBLE-216
+  domain: CREDIBLE
+  title: "CREDIBLE: no go/no-go verdict ships without a prior-art receipt — a market call that never opened a competitor's repo must say so"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Receipt from 2026-08-07, this session: a market scan written from web-search summaries claimed the leading OSS cousin 'stays per-repo structural' with no fleet registry, no hybrid retrieval, and no honesty layer, and named those three as almanac's moat. Cloning and indexing that repo (almanac add-ref, 14 seconds) refuted TWO of the three inside an hour — it has cross-repo edges, and it has semantic search with the embedding model compiled into the binary, needing no inference at all. The wrong version was committed to ROADMAP.md and would have steered real build priorities. The prior-art skill (built 2026-08-07) now encodes the method; what is missing is the gate. Make it structural: the go/no-go template and RELEASE_CHECKLIST require, for any verdict that characterizes an external tool, at least one add-ref'd repo with file:line citations — or an explicit written statement that no competitor source was read and the verdict is therefore provisional.
+  acceptance_criteria:
+    - the go/no-go template and RELEASE_CHECKLIST both require a prior-art section naming the external repos actually read, with citations
+    - a verdict with no source read is not blocked but MUST carry an explicit provisional label — the honest option stays available, the silent option does not
+    - the requirement names the cheap path (almanac add-ref <url> --rev <tag>, measured at ~14s for a 182MB repo) so it is never skipped on effort grounds
+    - the release-auditor agent checks for the section and flags its absence
+    - at least one existing verdict is retrofitted or explicitly marked provisional, proving the rule is applyable to what already exists
+

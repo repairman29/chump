@@ -1,0 +1,19 @@
+- id: CREDIBLE-269
+  domain: CREDIBLE
+  title: "SHIP-INFRA 1/7 [FOUNDATION]: collapse the merge gate to ONE legible always-runs required check (audit BP+ruleset+path-filters+grace-guards; pick one system; a green PR is provably mergeable)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - main branch protection requires EXACTLY ONE aggregating always-runs check (e.g. ci-required) that rolls up all sub-gates; individual sub-checks are removed from required status
+    - A PR any sub-gate would fail shows RED on the single required check (no confusing green/cancelled/missing mix); a clean PR shows GREEN
+    - "Proven: gh pr checks <n> --required returns exactly one required check, and a PR merges iff it is green"
+  notes: |
+    COORDINATION (2026-08-09): a sibling (bigpickle) is drafting docs/rfcs/RFC-ship-gate-consensus.md (worktree /tmp/chump-rfc-ship, branch doc-rfc-ship-gate). Do NOT build a competing gate. The ship gate is TWO composing layers, ONE system:
+      (1) CI-TECHNICAL (this gap, CREDIBLE-269 / the META-134 'verified' aggregator): mechanical 'all lanes passed or correctly path-skipped' -> ONE required check named 'verified'; branch-protection+ruleset point at only it. Kills the phantom-check/3-surface-drift wedge.
+      (2) DECISION / CLAIM-TRUTH (bigpickle's RFC): aim the EXISTING consensus machine (crates/chump-coord/src/consensus.rs — Vote/ConsensusDecision/finalize) at shipping. Votes are per-CLAIM not per-PR: extract every factual assertion from the diff/commit/PR and RUN it; a vote without a receipt does not count. This catches the 'confident false assertion with a receipt' class — the RFC's evidence base is 5 false-dones from 2026-08-09 (cache-key 'verified' from reading 8/16, reaper 'branch merged' on a 0-commit branch, holler security_invoker false 4 days, 'ALL GREEN' before the run started, RESILIENT-267 wrong gap-id) — several of which THIS session (opus) also committed.
+    BUILD ORDER: (1) verified aggregator gives the single legible required check now (unblocks the whack-a-mole). (2) the claim-verification consensus becomes a lane that FEEDS 'verified' (verified = green when CI-lanes pass AND consensus proceeds). Align with bigpickle's RFC; the claim-verification insight is also the core of SHIP-INFRA gap 4/7 (CREDIBLE-271, every gate a real signal). Coordinate via the RFC, one coherent gate.
+  outcome_id: SHIP-INFRA
+  evidence: |
+    2026-08-09: a careful agent w/ full repo access spent a session unable to predict if a green PR lands — classic branch-protection + an ACTIVE ruleset 'Protect main' + path filters + grace-guards + -required aggregators + phantom 'test'/'fast-checks-required' contexts. Illegible = unreliable.
+

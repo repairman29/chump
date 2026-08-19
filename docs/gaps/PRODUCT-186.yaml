@@ -1,0 +1,17 @@
+- id: PRODUCT-186
+  domain: PRODUCT
+  title: "[almanac] Unparsed languages (Ruby/PHP/Java/...) index as 0 symbols silently — a 0-hit search reads as absence"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Confidence: operator_verified -- a human or session directly investigated and confirmed this before filing -- high confidence.
+    
+    almanac parses Rust/Python/JS/TS/Go/Bash/YAML (+ markdown as whole files). It does NOT parse Ruby, PHP, Java, Kotlin, C#, Elixir, C/C++, or Swift. Measured 2026-08-07 on the first prior-art run: add-ref of chatwoot/chatwoot@v4.16.2 reported a healthy-looking 1,527 files / 4,677 symbols — entirely its JS/Vue frontend and YAML. Zero Ruby indexed. sqlite3 on the ref db: SELECT language,COUNT(*) FROM files -> javascript 1052, yaml 445, typescript 19, markdown 7, bash 4. Ruby absent. Why it matters beyond one repo: the two files that produced every finding of that scan (app/models/conversation.rb, db/schema.rb) were not in the index at all, and search-fleet for the exact concepts returned only our own repos with no Chatwoot hit. A 0-hit answer therefore means nothing for a repo in an unparsed language — the failure is silent and reads exactly like absence, which is the one thing this project exists to refuse. Scope: this now sits directly in the path of real work. The reference-library strategy (index external prior art so it surfaces in ordinary fleet search) only compounds for parsed languages, and most mature prior art in helpdesk, CRM, ERP and commerce is Rails, PHP or Java. Chatwoot and Zammad — the two leading open-source helpdesks — are both Rails. Asks, in order of value: (1) a Ruby tree-sitter adapter in the crawler (tree-sitter-ruby exists; the adapter pattern is already established for 7 languages); PHP and Java next by the same argument. (2) Until then, make the silence loud — index/status should report the unparsed-language share of a repo, and a 0-hit search against a repo whose dominant language is unparsed should carry a note/fallback_reason saying so, exactly like the existing inference-down and no-embeddings degradation notes. Workaround that works today and should be documented rather than discovered: add-ref still earns its k
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/almanac"
+

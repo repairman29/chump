@@ -2,12 +2,9 @@
   domain: INFRA
   title: "EFFECTIVE P1: META-125/C3 9 new ambient event kinds for consensus pipeline — register + scanner anchors"
   status: open
-  priority: P1
+  priority: P3
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - 9 consensus event kinds are registered in the event registry and recognized by the scanner without unknown-kind warnings.
   outcome_id: MISSION-010
 

@@ -1,0 +1,11 @@
+- id: RESILIENT-224
+  domain: RESILIENT
+  title: "Pre-push cargo-test gate exposes ~19 CHUMP_REPO/CHUMP_HOME parallel-env-race false-reds (repo_path/repo_tools/tool_middleware) that nextest masks — forces Test-Gate-Bypass on unrelated ships. Fix: make pre-push/cargo-test-with-rerun use nextest, or #[serial]+env-guard the repo-path tests"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"make pre-push/cargo-test-with-rerun use nextest, or #[serial]+env-guard the repo-path tests\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

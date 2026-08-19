@@ -2,10 +2,8 @@
   domain: INFRA
   title: "RESILIENT: pr-stuck-cluster — 1 PRs blocked >2h as of 2026-07-21"
   status: open
-  priority: P1
+  priority: P3
   effort: s
   acceptance_criteria:
-    - "The change described by \"pr-stuck-cluster — 1 PRs blocked >2h as of 2026-07-21\" is implemented in the relevant INFRA code path(s)."
-    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - No PR remains blocked >2h; the flagged PR is merged, closed, or escalated.
 

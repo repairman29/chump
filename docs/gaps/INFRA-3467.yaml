@@ -1,0 +1,11 @@
+- id: INFRA-3467
+  domain: INFRA
+  title: "RESILIENT: add multimodal (image) content to ProviderCascade/Provider so screen_vision can migrate off bespoke /chat/completions"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"add multimodal (image) content to ProviderCascade/Provider so screen_vision can migrate off bespoke /chat/completions\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+
