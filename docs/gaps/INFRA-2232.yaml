@@ -1,9 +1,27 @@
 - id: INFRA-2232
   domain: INFRA
   title: "RESILIENT P1: mass-rebase triggers total CI re-run cascade — 30 PRs back to ok=1 after rebase batch; need 'preserve check state on rebase' OR 'skip-redundant-rerun' gate"
-  status: open
+  status: done
+  closed_pr: 3807
   priority: P1
   effort: s
+  notes: |
+    Verification receipt (2026-08-19): YAML/state.db were stale — this gap
+    already shipped 2026-08-15 in commit b67ac09c / PR #3807
+    ("INFRA-2232: skip-redundant-rerun gate for cascade rebase — coalesce
+    hot-file commit batches"). scripts/coord/queue-driver.sh's
+    cascade_rebase_if_hot() implements the AC: a
+    CHUMP_CASCADE_REBASE_DEBOUNCE_S (default 180s) gate backed by a
+    .chump-locks/cascade-rebase-last-run.ts marker coalesces a batch of
+    hot-file commits into ONE full sweep, emitting
+    cascade_rebase_skipped_redundant (not a full CI-reset) for every
+    later commit inside the window, with a
+    CHUMP_CASCADE_REBASE_FORCE_RESWEEP=1 operator bypass. Re-ran
+    scripts/ci/test-cascade-rebase-skip-redundant.sh live: 4/4 assertions
+    passed (first commit sweeps, second in-window commit coalesces,
+    force-bypass re-sweeps, post-window commit sweeps again). Re-closing
+    to sync the registry; no code changes needed. Same pattern as
+    INFRA-1890 / INFRA-1865 / INFRA-1811 stale-state syncs.
   acceptance_criteria:
     - After a mass-rebase batch, passing CI checks are preserved rather than fully re-run; a rebased PR that was green does not re-trigger the entire cargo-test suite from scratch.
   outcome_id: MISSION-010
