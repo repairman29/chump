@@ -6609,6 +6609,17 @@ events:
       from 2026-05-16T04:30 in the audit trail.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, ours, theirs, mode, adds]
+  # ── INFRA-1482: ci.yml merge driver YAML-aware layer + fallback measure ──
+  - kind: merge_driver_fallback
+    emitter: scripts/git/merge-driver-ci-yml-add-row.sh (INFRA-1482)
+    trigger: >
+      Every attempt (YAML-aware step-identity merge, pure-append, patch-fuzz3,
+      git-merge-file --union) failed to resolve a .github/workflows/ci.yml
+      conflict and the driver gave up (exit 1), leaving standard 3-way merge
+      conflict markers for a human to resolve. Measures how often manual
+      resolution is still needed despite the driver's coverage.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, ours, theirs]
   - kind: pre_commit_ac_test_missing
     emitter: scripts/git-hooks/pre-commit-ac-completeness.sh (INFRA-1401)
     trigger: A commit referencing a gap ID has acceptance_criteria that name a

@@ -27,6 +27,16 @@
 #     if theirs_tail contained an incomplete step. GitHub Actions rejects such files
 #     outright — zero CI jobs run. Fixed: validate_step_bodies() checks every
 #     '- name:' in theirs_tail is followed by 'run:' or 'uses:' before writing.
+#
+# YAML-aware layer (INFRA-1482):
+#   - The line-diff heuristics below refuse interleaved additions (ours adds a
+#     step between two steps that main independently added) even though both
+#     sides only ever ADD steps — a false conflict. Before falling back to the
+#     line-diff heuristics, try scripts/git/ci-yml-yaml-merge.py, which
+#     identifies step boundaries via the `steps:` YAML structure and merges
+#     by step identity (name:, keyed union) rather than by line offset. It
+#     bails out (exit 2) to the line-diff path below on anything it can't
+#     prove safe (renamed/modified-by-both steps, non-step-array edits).
 
 set -euo pipefail
 
@@ -39,6 +49,35 @@ MERGE_FILE="$OURS"  # Modify ours in-place
 # Sanity checks
 if [[ ! -f "$ANCESTOR" ]] || [[ ! -f "$OURS" ]] || [[ ! -f "$THEIRS" ]]; then
   exit 1
+fi
+
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_yaml_merge="$_script_dir/ci-yml-yaml-merge.py"
+_repo_for_ambient=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+_emit_ambient() {
+  # $1 = json kind, remaining args are extra "key":"value" fragments
+  local kind="$1"; shift
+  [[ -z "$_repo_for_ambient" ]] && return 0
+  local amb="${CHUMP_AMBIENT_LOG:-$_repo_for_ambient/.chump-locks/ambient.jsonl}"
+  [[ -w "$(dirname "$amb")" ]] 2>/dev/null || return 0
+  local extra=""
+  for kv in "$@"; do extra="${extra},${kv}"; done
+  printf '{"ts":"%s","kind":"%s"%s}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$kind" "$extra" >> "$amb" 2>/dev/null || true
+}
+
+# INFRA-1482 AC4: every path below that gives up (exit 1) means a human
+# has to resolve the conflict by hand. Emit once, regardless of which exit-1
+# site fired, so we can measure how often that still happens.
+trap '_rc=$?; [[ $_rc -eq 1 ]] && _emit_ambient "merge_driver_fallback" "\"ours\":\"$OURS\"" "\"theirs\":\"$THEIRS\""; exit $_rc' EXIT
+
+if [[ -x "$_yaml_merge" || -f "$_yaml_merge" ]] && command -v python3 >/dev/null 2>&1; then
+  if python3 "$_yaml_merge" "$ANCESTOR" "$OURS" "$THEIRS" 2>/dev/null; then
+    _emit_ambient "ci_yml_row_add_merged" "\"mode\":\"yaml_aware\"" "\"ours\":\"$OURS\"" "\"theirs\":\"$THEIRS\""
+    exit 0
+  fi
+  # exit 2 (not applicable) or any other non-zero: fall through to the
+  # line-diff heuristics unchanged. python3 may have partially written OURS
+  # only on its success path (exit 0), so OURS is untouched here.
 fi
 
 ancestor_lines=$(wc -l < "$ANCESTOR")
