@@ -8,7 +8,17 @@
 # See docs/process/COTG_NODE_INSTALL.md.  RESILIENT-318 / RESILIENT-364.
 #
 # Usage:
-#   chump-node-install.sh --role brain|muscle|all [--home DIR] [--self-test-only] [--dry-run]
+#   chump-node-install.sh --role factory|data|embed [--home DIR] [--with-embeds] [--self-test-only] [--dry-run]
+#
+# Roles (RESILIENT-320, COTG role-aware; supersedes the role-blind brain|muscle|all
+# split that would have put pr-lander on a data node):
+#   factory — workers + pr-lander + reapers (rot-reaper/worktree-reaper/cargo-sweep-gc)
+#             + integrator + orchestrator + disk-monitor + main-health-watchdog. (was: CJ)
+#   data    — orchestrator + disk-monitor + main-health-watchdog + Postgres. NO
+#             pr-lander/PR-reapers — a data node never lands PRs. (was: Pixel/brain)
+#   embed   — orchestrator + disk-monitor only. Lightest footprint.
+#   --with-embeds — factory role also runs local embedding inference; shaves one
+#                   worker off the capacity formula (see provision_workers below).
 #
 # Phases: DETECT -> HOME -> CREDS -> BINARY -> ORGANS -> SUPERVISE -> SELF-TEST
 # Idempotent + non-destructive: installs into $NODE_DIR (default ~/.chumpnode) and
@@ -16,20 +26,28 @@
 set -uo pipefail
 
 # ---------- args ----------
-ROLE="brain"; NODE_DIR="${CHUMP_NODE_DIR:-$HOME/.chumpnode}"; SELF_TEST_ONLY=0; DRY=0
+ROLE="factory"; NODE_DIR="${CHUMP_NODE_DIR:-$HOME/.chumpnode}"; SELF_TEST_ONLY=0; DRY=0; WITH_EMBEDS=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --role) ROLE="$2"; shift 2;;
     --home) NODE_DIR="$2"; shift 2;;
+    --with-embeds) WITH_EMBEDS=1; shift;;
     --self-test-only) SELF_TEST_ONLY=1; shift;;
     --dry-run) DRY=1; shift;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
-case "$ROLE" in brain|muscle|all) ;; *) echo "role must be brain|muscle|all" >&2; exit 2;; esac
+# back-compat: retiring brain|muscle|all names (RESILIENT-320 COTG role split)
+case "$ROLE" in
+  brain) echo "note: --role brain is deprecated -> data" >&2; ROLE=data;;
+  muscle) echo "note: --role muscle is deprecated -> factory" >&2; ROLE=factory;;
+  all) echo "note: --role all is deprecated -> factory" >&2; ROLE=factory;;
+esac
+case "$ROLE" in factory|data|embed) ;; *) echo "role must be factory|data|embed" >&2; exit 2;; esac
 
 STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"
+REPO_ROOT_HINT="${CHUMP_REPO_ROOT:-$HOME/Projects/chump}"
 CREDS="$STATE_DIR/providers.env"
 LOG_DIR="$NODE_DIR/logs"
 ORGAN_DIR="$NODE_DIR/organs"
@@ -135,12 +153,64 @@ ensure_binary() {
 }
 
 # ---------- 5. ORGANS (from manifest) ----------
-brain_organs() {  # name|exec
-  echo "node-heartbeat|$ORGAN_DIR/node-heartbeat.sh"
+# node-heartbeat is universal proof-of-life for every role. The heavy organ
+# suite (orchestrator/reapers/disk-monitor/watchdog/pr-lander/integrator) is
+# role-FILTERED inside install-node-housekeeping.sh (RESILIENT-320) so a data
+# or embed node never gets pr-lander/PR-reapers hand-placed onto it.
+role_organs() { echo "node-heartbeat|$ORGAN_DIR/node-heartbeat.sh"; }
+
+# worker capacity formula (RESILIENT-320 AC2): factory role only.
+#   N = clamp(1, cores-1); minus 1 more if --with-embeds (node also serves
+#   local embedding inference alongside the worker pool).
+# No hand-placed worker units/caps: this installer provisions the systemd
+# template unit + N instances + writes CHUMP_ORCH_WORKER_MAX itself.
+worker_count() {
+  local cores; cores="$(nproc 2>/dev/null || echo 2)"
+  local n=$((cores - 1)); [ "$n" -lt 1 ] && n=1
+  [ "$WITH_EMBEDS" = 1 ] && { n=$((n - 1)); [ "$n" -lt 1 ] && n=1; }
+  echo "$n"
 }
-muscle_organs() { echo "worker|$ORGAN_DIR/worker.sh"; }
+provision_workers() {
+  [ "$ROLE" = factory ] || return 0
+  local n; n="$(worker_count)"
+  if [ "$SUPERVISOR" = systemd ]; then
+    # unit names match node-orchestrator.sh's scale() expectations exactly:
+    # chump-cj-worker (worker 1) + chump-cj-worker2, chump-cj-worker3, ... (extras).
+    # NOT a systemd template (@N) — the orchestrator's scale() start/stop calls
+    # "chump-cj-worker${n}" literally, so units must be named that way.
+    local i=1
+    while [ "$i" -le "$n" ]; do
+      local unit="chump-cj-worker"; [ "$i" -gt 1 ] && unit="chump-cj-worker${i}"
+      run "cat > '$SVC_DIR/$unit.service' <<EOF
+[Unit]
+Description=ChumpOS factory worker $i (RESILIENT-320 role-aware sizing)
+After=network-online.target
+[Service]
+ExecStart=$REPO_ROOT_HINT/scripts/dispatch/worker.sh
+Restart=always
+RestartSec=10
+Environment=CHUMP_NODE_DIR=$NODE_DIR
+WorkingDirectory=$REPO_ROOT_HINT
+[Install]
+WantedBy=multi-user.target
+EOF"
+      i=$((i+1))
+    done
+    run "systemctl daemon-reload"
+    i=1
+    while [ "$i" -le "$n" ]; do
+      local unit="chump-cj-worker"; [ "$i" -gt 1 ] && unit="chump-cj-worker${i}"
+      run "systemctl enable --now '$unit' 2>/dev/null || true"
+      i=$((i+1))
+    done
+    ok "workers provisioned: $n (cores=$(nproc 2>/dev/null || echo '?') with_embeds=$WITH_EMBEDS)"
+  else
+    info WORKERS "target=$n workers (non-systemd host: worker pool managed by node-orchestrator loop, not per-unit)"
+  fi
+  echo "$n"
+}
 install_organs() {
-  # write the heartbeat organ (brain's proof-of-life: refresh heartbeat + node profile)
+  # write the heartbeat organ (universal proof-of-life: refresh heartbeat + node profile)
   run "cat > '$ORGAN_DIR/node-heartbeat.sh' <<'HB'
 #!/data/data/com.termux/files/usr/bin/env bash
 STATE=\"\${CHUMP_STATE_DIR:-\$HOME/.chump}\"
@@ -150,11 +220,11 @@ while true; do
 done
 HB"
   run "chmod +x '$ORGAN_DIR/node-heartbeat.sh'"
-  local list; case "$ROLE" in brain) list="$(brain_organs)";; muscle) list="$(muscle_organs)";; all) list="$(brain_organs; muscle_organs)";; esac
-  echo "$list" | while IFS='|' read -r name exec; do
+  role_organs | while IFS='|' read -r name exec; do
     [ -z "$name" ] && continue
     svc_install "$name" "$exec"; svc_up "$name"; ok "organ installed+up: $name"
   done
+  provision_workers >/dev/null
 }
 
 # ---------- 6. SUPERVISE (survive reboot) ----------
@@ -181,8 +251,9 @@ self_test() {
   [ -n "$HOST_KIND" ] && ok "host detected: $HOST_KIND/$ARCH" || { no "host detect"; fail=1; }
   check_creds || fail=1
   if [ -x "$BIN" ]; then ok "binary linked: $BIN"; else no "binary"; fail=1; fi
-  # each role organ supervised & up
-  local list; case "$ROLE" in brain) list="$(brain_organs)";; muscle) list="$(muscle_organs)";; all) list="$(brain_organs; muscle_organs)";; esac
+  # each role organ supervised & up (heartbeat only here — heavy suite is
+  # self-tested by install-node-housekeeping.sh --role $ROLE, called below)
+  local list; list="$(role_organs)"
   echo "$list" | while IFS='|' read -r name _; do [ -z "$name" ] && continue
     if [ "$(svc_status "$name")" = up ]; then ok "organ up: $name"; else no "organ DOWN: $name"; fi
   done
@@ -194,6 +265,12 @@ self_test() {
   else no "no heartbeat yet (organ just started; re-run --self-test-only in ~70s)"; fi
   # aggregate organ-down check (subshell above can't set fail; re-check here)
   echo "$list" | while IFS='|' read -r name _; do [ -z "$name" ] && continue; [ "$(svc_status "$name")" = up ] || exit 1; done || fail=1
+  # factory: worker count sanity (best-effort, systemd only)
+  if [ "$ROLE" = factory ] && [ "$SUPERVISOR" = systemd ]; then
+    local want; want="$(worker_count)"
+    local up_n; up_n=$(systemctl list-units 'chump-cj-worker*' --state=active --no-legend 2>/dev/null | grep -c '\.service' || echo 0)
+    if [ "$up_n" -ge 1 ]; then ok "workers up: $up_n (target $want)"; else no "no workers up (target $want)"; fail=1; fi
+  fi
   echo
   if [ "$fail" = 0 ]; then printf '\033[42m INSTALLED ✓ \033[0m role=%s host=%s\n' "$ROLE" "$HOST_KIND"; return 0
   else printf '\033[41m NOT FULLY INSTALLED \033[0m — fix the ✗ above\n'; return 1; fi
@@ -208,7 +285,9 @@ check_creds || info CREDS "fix creds before organs will authenticate"
 ensure_binary || info BINARY "install a binary, then re-run"
 install_organs
 install_supervise
-# RESILIENT-318: install the self-management suite (orchestrator + reapers + disk-monitor)
-[ "$SELF_TEST_ONLY" = 1 ] || bash "$(dirname "$0")/install-node-housekeeping.sh" || info ORGANS "housekeeping install skipped"
+# RESILIENT-318/320: install the role-filtered self-management suite (a data/embed
+# node never gets pr-lander/PR-reapers hand-placed onto it — AC1).
+HK_DRY_FLAG=""; [ "$DRY" = 1 ] && HK_DRY_FLAG="--dry-run"
+bash "$(dirname "$0")/install-node-housekeeping.sh" --role "$ROLE" --worker-max "$(worker_count)" $HK_DRY_FLAG || info ORGANS "housekeeping install skipped"
 echo
 self_test
