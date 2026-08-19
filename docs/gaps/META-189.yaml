@@ -1,11 +1,25 @@
 - id: META-189
   domain: META
   title: "META: Implement consensus vote arming for MERGEABLE PRs (requires INFRA-2274) (META-180 slice)"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
     - PRs classified as `MERGEABLE` trigger broadcast of `FEEDBACK kind=vote-request` with `corr_id=pr-N`.
     - Consensus votes are tracked per PR, keyed by `corr_id`.
+  closed_pr: 3908
   outcome_id: MISSION-010
+  notes: |
+    Already shipped in PR #3908 (commit e3e4dcee), which is already on
+    main. scripts/coord/pr-shepherd-daemon.sh's MERGEABLE branch (untrusted
+    author path) calls _emit_pr_vote_request, which broadcasts
+    `{"event":"FEEDBACK","kind":"vote-request","corr_id":"pr-<N>",...}` to
+    ambient.jsonl, debounced 24h per PR via
+    _vote_request_signaled_recently/_record_vote_request_signal. Votes are
+    tracked per corr_id by the existing corr_id-generic tally machinery
+    (chump vote, src/commands/consensus.rs, consensus_tally.rs,
+    deliberator-loop.sh) — no new tally plumbing was needed since corr_id
+    doubles as the PR key. Both AC are met by existing code; this PR only
+    syncs the stale YAML status (state.db has no META-189 row in this
+    worktree) to match what's already on main.
 
