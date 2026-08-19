@@ -25,10 +25,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
-WORKFLOWS_DIR=".github/workflows"
-PREFLIGHT_SRC="crates/chump-preflight/src/preflight.rs"
-GATES_INVENTORY="docs/process/CI_GATES_INVENTORY.md"
-EXCEPTIONS_FILE="scripts/ci/preflight-ci-parity-exceptions.txt"
+# INFRA-2084: overridable via env so the AC7 smoke test
+# (test-preflight-ci-parity-smoke.sh) can point this script at synthetic
+# fixtures instead of the real repo files. Defaults are unchanged.
+WORKFLOWS_DIR="${CHUMP_PARITY_WORKFLOWS_DIR:-.github/workflows}"
+PREFLIGHT_SRC="${CHUMP_PARITY_PREFLIGHT_SRC:-crates/chump-preflight/src/preflight.rs}"
+GATES_INVENTORY="${CHUMP_PARITY_GATES_INVENTORY:-docs/process/CI_GATES_INVENTORY.md}"
+EXCEPTIONS_FILE="${CHUMP_PARITY_EXCEPTIONS_FILE:-scripts/ci/preflight-ci-parity-exceptions.txt}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-.chump-locks/ambient.jsonl}"
 
 # ── Bypass ────────────────────────────────────────────────────────────────────
