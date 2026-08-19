@@ -6,11 +6,11 @@
 //!     row to match YAML where they diverge. Insert NEW rows for YAML
 //!     files without a DB entry. This is the RECOVERY operation for the
 //!     `chump gap reserve` TODO-AC class (INFRA-2022 territory).
-//!   * [`sync_push`] — DB → YAML. For each state.db row with `status` in
-//!     `(open, in-progress)`, regenerate `docs/gaps/{ID}.yaml` from the DB
-//!     row. Uses [`crate::GapStore::dump_per_file_single`] which atomically
-//!     writes a tempfile then renames into place; preserves the canonical
-//!     schema and hand-curated unknown fields (INFRA-208).
+//!   * [`sync_push`] — DB → YAML. For every state.db row, regenerate
+//!     `docs/gaps/{ID}.yaml` from the DB row. Uses
+//!     [`crate::GapStore::dump_per_file_single`] which atomically writes a
+//!     tempfile then renames into place; preserves the canonical schema and
+//!     hand-curated unknown fields (INFRA-208).
 //!   * [`sync_check`] — dry-run diff. NO mutations. Exits non-zero on any
 //!     drift. Reports per-field divergence per gap id.
 //!
@@ -25,6 +25,18 @@
 //! multi-machine sync (file-locking against concurrent state.db writes);
 //! deleting / archiving YAMLs for `done` / `superseded` gaps; rewiring
 //! callers like `chump gap reserve` to internally call `sync_pull`.
+//!
+//! INFRA-3606 — canonical-store split-brain fix: state.db is canonical
+//! (ZERO-WASTE-020; `chump gap ship --update-yaml` is a no-op), but
+//! [`sync_pull`] used to treat YAML as authoritative for every field
+//! including `status`, so a gap shipped via `chump gap ship`/`gap close`
+//! (state.db moves to a terminal status) got silently reverted to `open` by
+//! the very next `sync --pull`, because [`sync_push`] never wrote terminal
+//! statuses back out to keep the YAML mirror fresh. [`sync_pull`] now
+//! refuses to pull *any* field over a state.db row already in a terminal
+//! status (see `is_terminal_status`) and [`sync_push`] now mirrors every
+//! status (not just open/in-progress) so the YAML side converges instead of
+//! staying permanently stale.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -144,6 +156,7 @@ pub fn sync_pull(store: &GapStore, gaps_dir: &Path, dry_run: bool) -> Result<Syn
     let snapshot = build_snapshot(store, gaps_dir)?;
     let mut report = SyncReport::default();
     let conn = store.conn_for_sync();
+    let allow_recycle = std::env::var("CHUMP_ALLOW_RECYCLE").as_deref() == Ok("1");
 
     for (id, pair) in &snapshot.by_id {
         let Some(yaml_row) = pair.yaml.as_ref() else {
@@ -161,6 +174,18 @@ pub fn sync_pull(store: &GapStore, gaps_dir: &Path, dry_run: bool) -> Result<Syn
                 report.changed_ids.push(id.clone());
             }
             Some(db_row) => {
+                // INFRA-3606: state.db is the canonical store (ZERO-WASTE-020;
+                // `chump gap ship --update-yaml` is a documented no-op). Once a
+                // gap reaches a terminal status in state.db, a stale/racing
+                // YAML mirror must not resurrect it. Without this guard,
+                // sync_pull's raw UPDATE
+                // (which deliberately bypasses `set_fields`'s recycled-ID guard)
+                // reverts `chump gap ship`/`gap close` back to open on the next
+                // `--pull`, which is exactly the split-brain this gap fixes.
+                if is_terminal_status(&db_row.status) && !allow_recycle {
+                    report.skipped += 1;
+                    continue;
+                }
                 let diff_fields = compare_fields(db_row, yaml_row);
                 if diff_fields.is_empty() {
                     report.skipped += 1;
@@ -179,16 +204,23 @@ pub fn sync_pull(store: &GapStore, gaps_dir: &Path, dry_run: bool) -> Result<Syn
     Ok(report)
 }
 
-/// Reconcile DB → YAML. For each state.db row with status in
-/// (`open`, `in_progress`, `in-progress`), regenerate
+/// Reconcile DB → YAML. For every state.db row, regenerate
 /// `docs/gaps/{ID}.yaml` from the DB row. Uses
 /// [`GapStore::dump_per_file_single`] which writes atomically (tempfile +
 /// rename) and merges hand-curated unknown fields (INFRA-208).
 ///
-/// Phase 1 syncs OPEN + IN-PROGRESS only — `done` and `superseded` YAMLs
-/// are intentionally left alone (their lifecycle is owned by
-/// `chump gap ship --update-yaml` and operator review). This keeps the
-/// blast radius small for the first iteration.
+/// Originally (Phase 1) this only synced OPEN + IN-PROGRESS rows, leaving
+/// `done` / `superseded` YAMLs alone under the theory that their lifecycle
+/// was owned by `chump gap ship --update-yaml`. That flag is now a
+/// documented no-op (ZERO-WASTE-020 — state.db is canonical), which left
+/// terminal-status YAMLs permanently stale with no path to reconcile them —
+/// contributing to the INFRA-3606 split-brain (a stale `status: open` YAML
+/// mirror looks like real drift forever). Pushing every status closes the
+/// loop: state.db values flow out to the YAML mirror on the very next
+/// `--push`, so `sync --check` converges to clean instead of staying dirty
+/// on every shipped gap. [`sync_pull`]'s terminal-status guard (see
+/// `is_terminal_status`) is what keeps this direction from being circular —
+/// once a status is terminal, pull will never write it back into state.db.
 pub fn sync_push(store: &GapStore, gaps_dir: &Path, dry_run: bool) -> Result<SyncReport> {
     let snapshot = build_snapshot(store, gaps_dir)?;
     let mut report = SyncReport::default();
@@ -198,10 +230,6 @@ pub fn sync_push(store: &GapStore, gaps_dir: &Path, dry_run: bool) -> Result<Syn
             // DB missing — push is a no-op for YamlOnly drift (pull handles it).
             continue;
         };
-        if !is_pushable_status(&db_row.status) {
-            report.skipped += 1;
-            continue;
-        }
         let needs_write = match pair.yaml.as_ref() {
             None => true, // DbOnly drift — write the missing YAML
             Some(yaml_row) => !compare_fields(db_row, yaml_row).is_empty(),
@@ -421,10 +449,22 @@ fn normalize_list(s: &str) -> Vec<String> {
     items
 }
 
-fn is_pushable_status(status: &str) -> bool {
+/// Terminal statuses that must never be reverted by [`sync_pull`]'s
+/// YAML-is-authoritative UPDATE. Mirrors the guard lists enforced elsewhere
+/// in `state.db` writers: `set_fields`'s INFRA-456 recycled-ID guard (`done`)
+/// and `close`'s valid-reason terminal set (`superseded`, `wontfix`, etc.).
+fn is_terminal_status(status: &str) -> bool {
     matches!(
         status.trim(),
-        "open" | "in_progress" | "in-progress" | "in progress"
+        "done"
+            | "superseded"
+            | "wontfix"
+            | "wont_fix"
+            | "closed"
+            | "closed_not_a_bug"
+            | "already_satisfied"
+            | "obsolete"
+            | "duplicate"
     )
 }
 
@@ -748,6 +788,41 @@ mod tests {
         // Re-check should be clean.
         let recheck = sync_check(&store, &gaps_dir).unwrap();
         assert!(recheck.is_clean(), "post-pull drift: {:?}", recheck.entries);
+    }
+
+    #[test]
+    fn pull_does_not_revert_done_status() {
+        // INFRA-3606: a gap shipped via `chump gap ship` (status=done in
+        // state.db) must NOT be reverted back to open by a later
+        // `gap sync --pull` just because the YAML mirror on disk is stale
+        // (push never rewrites terminal-status YAMLs — see
+        // `is_pushable_status`). This was the root cause of the P0
+        // canonical-store split-brain: manual closes silently reverted on
+        // the next pull, and re-pick loops burned cycles on already-done work.
+        let root = tempdir().unwrap();
+        let store = fresh_store(root.path());
+        insert_minimal(&store, "INFRA-9010", "Shipped gap", "[\"do thing\"]");
+        // Simulate `chump gap ship`: flip status to done directly in state.db.
+        store
+            .conn_for_sync()
+            .execute("UPDATE gaps SET status='done' WHERE id='INFRA-9010'", [])
+            .unwrap();
+        // Stale YAML mirror still says open (never rewritten post-ship).
+        let gaps_dir = root.path().join("docs/gaps");
+        write_yaml(
+            &gaps_dir,
+            "INFRA-9010",
+            "- id: INFRA-9010\n  domain: INFRA\n  title: Shipped gap\n  status: open\n  priority: P1\n  effort: s\n  acceptance_criteria:\n    - do thing\n",
+        );
+
+        let report = sync_pull(&store, &gaps_dir, false).unwrap();
+        assert_eq!(report.updated, 0, "terminal-status row must not be pulled");
+        assert_eq!(report.skipped, 1);
+        let after = store.get("INFRA-9010").unwrap().unwrap();
+        assert_eq!(
+            after.status, "done",
+            "gap sync --pull reverted a shipped gap"
+        );
     }
 
     #[test]
