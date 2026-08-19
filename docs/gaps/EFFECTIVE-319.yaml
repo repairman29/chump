@@ -1,0 +1,14 @@
+- id: EFFECTIVE-319
+  domain: EFFECTIVE
+  title: "chump impact <diff>: enumerate which gates/tests a diff exercises (blast-radius preview before push)"
+  status: open
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - "The change described by \"enumerate which gates/tests a diff exercises (blast-radius preview before push)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    MISSION-045 session 2026-07-27: landing one anti-bloat gate took 3 full CI rounds (~20min each) because failures surfaced serially, not up front. The outcome gate (one behavior change) broke ~6 tests across 4 files; none were knowable before CI. An impact analyzer mapping enforcement-path edits -> exercising tests would enumerate the blast radius pre-push.
+

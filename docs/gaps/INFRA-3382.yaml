@@ -2,7 +2,7 @@
   domain: INFRA
   title: preflight-mirror CI-infra + observability-coverage gates (~10 scripts, META-086 cluster 4/5)
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     Mirror the ~10 unmirrored scripts/ci/test-*.sh gates covering CI infra + observability coverage (changes-job-self-hosted, self-hosted-runner-deps, obs-coverage-guard, observability-coverage, ci-flake-rerun, flake-autorerun, fleet-brief, preflight-ci-parity, inspect-resume-scrap, orchestrate-session-summary) into src/preflight.rs. Full inventory: docs/process/AUDIT_JOB_DECOMPOSITION.md cluster 'ci-observability'.

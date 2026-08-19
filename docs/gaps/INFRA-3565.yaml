@@ -1,0 +1,10 @@
+- id: INFRA-3565
+  domain: INFRA
+  title: "INFRA: Investigate network issues as potential root cause (INFRA-1655 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Network connectivity is checked on jeffs-macbook-air-10-X
+    - Network connectivity is compared to known valid states
+

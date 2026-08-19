@@ -1,0 +1,10 @@
+- id: RESILIENT-257
+  domain: RESILIENT
+  title: "RESILIENT: fleet-doctor broadens to ops-defect self-diagnosis + auto-files VOA (broken daemon exit codes, false-positive alerts cross-checked vs validity/ship-rate) — the factory catches its own sloppy ops without a human noticing"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - fleet-doctor detects ops defects (broken daemon exit codes, false-positive stuck signals) and auto-files a VOA gap for each, with a machine-readable defect record.
+  outcome_id: COTG
+

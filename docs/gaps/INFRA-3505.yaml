@@ -1,0 +1,14 @@
+- id: INFRA-3505
+  domain: INFRA
+  title: "CREDIBLE: [COTG-6.1] the trust panel (what works, what's pending, what it costs)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-6.1] the trust panel (what works, what's pending, what it costs)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:24Z] DISCOVERY PARTIAL ~35% -> FINISH. project a plain-language USER view over existing operator telemetry (src/dashboard.rs, fleet_status.rs, kpi_report.rs); add honest test-depth.
+  outcome_id: COTG
+

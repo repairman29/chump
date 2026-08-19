@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: Phase 3 & 4 artifacts — HIDDEN_GEMS.md + CAPABILITIES_REGISTRY.json (INFRA-1746 phases 3-4)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "Events: evangelist_started/evangelist_completed/evangelist_failed and systematizer_started/systematizer_completed/systematizer_failed emitted to ambient.jsonl (registered in docs/observability/EVENT_REGISTRY.yaml) on every chump evangelize / chump systematize run — success, failure, and non-existent-path cases all covered; no separate timeout path since both phases are static-scan-only (zero LLM/API calls)"

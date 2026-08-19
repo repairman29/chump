@@ -2,7 +2,7 @@
   domain: META
   title: "META: Implement `pr-rescue-leaderboard.sh` CLI for recurring fingerprints (META-247 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - Create `scripts/dev/pr-rescue-leaderboard.sh` with executable permissions.

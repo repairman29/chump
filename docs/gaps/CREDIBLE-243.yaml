@@ -1,0 +1,9 @@
+- id: CREDIBLE-243
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement PRESENCE record structure (CREDIBLE-099 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The PRESENCE record structure is defined with the required fields: worker_id, backend, machine, skills, harness, started_at, current_gap"
+

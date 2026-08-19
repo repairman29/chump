@@ -1,0 +1,10 @@
+- id: INFRA-3566
+  domain: INFRA
+  title: "INFRA: Investigate queue contention as potential root cause (INFRA-1655 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Queue contention is checked on jeffs-macbook-air-10-X
+    - Queue contention is compared to known thresholds
+

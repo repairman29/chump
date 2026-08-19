@@ -2,7 +2,7 @@
   domain: VOA
   title: "VOICE-OF-AGENT VOA-003: auth_dead_false_positive — 20 min lost; fix-shape: gate"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
     - Full friction report at docs/voice/VOA-003-FULL.yaml with wedge_class=auth_dead_false_positive, minutes_lost=20

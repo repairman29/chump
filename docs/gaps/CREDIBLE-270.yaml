@@ -1,0 +1,14 @@
+- id: CREDIBLE-270
+  domain: CREDIBLE
+  title: "SHIP-INFRA 2/7 [FOUNDATION]: definition-of-ready — no PR opens until chump preflight is green locally (shift quality left; CI becomes a rubber-stamp)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - The PR-open path (bot-merge) runs chump preflight and REFUSES to open a PR unless preflight is green (fmt/clippy/check/relevant tests)
+    - "Proven: a branch with a fmt or clippy violation produces NO open PR - blocked locally with the failing gate named; a clean branch opens normally"
+    - "Bypass audited: CHUMP_DOR_SKIP requires --skip-reason"
+  outcome_id: SHIP-INFRA
+  evidence: |
+    Today PRs failed in CI on things (fmt/clippy/parity/test) that a local chump preflight would have caught in 60s — 15-min round-trips discovering failures remotely. Jeff: prep gaps to near-done before shipping.
+

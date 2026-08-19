@@ -1,0 +1,11 @@
+- id: INFRA-3543
+  domain: INFRA
+  title: "EFFECTIVE: audit shard rebalance by MEASURED duration + per-shard timing record + no-checkout audit-required (real EFFECTIVE-420 AC; #3532/#3534 shipped only the cache-key/cold-build fixes)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"audit shard rebalance by MEASURED duration + per-shard timing record + no-checkout audit-required (real EFFECTIVE-420 AC; #3532/#3534 shipped only the cache-key/cold-build fixes)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

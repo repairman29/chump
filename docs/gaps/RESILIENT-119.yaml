@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "RESILIENT: first-class triage-close (chump gap close --reason) — kill the reset-hard/proof-of-merge band-aid for non-PR gaps"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - chump gap close <ID> --reason <superseded

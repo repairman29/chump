@@ -2,7 +2,7 @@
   domain: MISSION
   title: "MISSION: Verify fleet can open a PR against repairman29/BEAST-MODE (MISSION-015 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - The fleet successfully opens a Pull Request from its new branch to the `main` branch of `repairman29/BEAST-MODE`.
@@ -13,4 +13,6 @@
   depends_on: [MISSION-022]
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
+  evidence: |
+    Superseded by done end-state slices: MISSION-025 (zero-touch PR MERGE in BEAST, PR#3062) + MISSION-020 (clone/prepare, PR#3205) demonstrate the full pick->commit->push->openPR->merge chain end-to-end; this intermediate verify-slice is subsumed.
 

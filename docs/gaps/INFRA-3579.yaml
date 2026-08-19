@@ -1,0 +1,10 @@
+- id: INFRA-3579
+  domain: INFRA
+  title: "INFRA: Develop a fix for the identified root cause (INFRA-1655 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Fix is implemented
+    - Fix is reviewed and approved
+

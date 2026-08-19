@@ -1,0 +1,15 @@
+- id: INFRA-3527
+  domain: INFRA
+  title: wire RoadmapFromVisionContract into a real CLI command (INFRA-2267 follow-up)
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    chump bootstrap has a --with-roadmap flag advertised in --help that currently prints 'TODO: --with-roadmap requires chump roadmap-from-vision (INFRA-2267 follow-up)' and exits without doing anything (bootstrap.rs:41-45, by design, exit 0). The RoadmapFromVisionContract it's meant to call (chump-handoff/src/contracts.rs:930) is a real, well-specified typed LLM contract — vision doc in, structured Roadmap out, grouped by product-line/pillar/effort — with zero callers anywhere in the codebase. Its own commit (0211d1bf/INFRA-2267) says 'Phase 1 design (typed contract only)'; Phase 2 (wire it up) never happened. Found 2026-08-02 during a portfolio-wide 'what does done look like' audit: no repo in the portfolio except Chump itself (via roadmap-status) and grave-dancer (hand-written) has a real, computable %-to-goal, because nothing generates a roadmap for a repo that doesn't already have one. Fix: implement the --with-roadmap path — call RoadmapFromVisionContract with the target repo's intent doc (or an operator-supplied vision string), write the result as docs/ROADMAP.md in grave-dancer's proven phased/done-when format, verify against a real product repo before calling it done (not just unit tests on the contract).
+  acceptance_criteria:
+    - chump bootstrap --with-roadmap actually calls RoadmapFromVisionContract instead of printing TODO
+    - output is a real docs/ROADMAP.md, not just console text
+    - tested end-to-end against at least one real existing repo (retrofit case), not just net-new bootstrap
+    - a human reviews the generated roadmap's phases and done-when criteria for actual usefulness before this ships as done
+  source_doc: session 2026-08-02, first-mate portfolio audit; follows INFRA-2267
+

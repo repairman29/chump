@@ -1,0 +1,11 @@
+- id: INFRA-3558
+  domain: INFRA
+  title: "INFRA: Analyze system information for potential root causes (INFRA-1655 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Disk full condition is identified or ruled out
+    - Stale runner registration is identified or ruled out
+    - Network issues are identified or ruled out
+

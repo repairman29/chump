@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P1: self-hosted runner cargo-registry corruption for tauri-2.11.2 (bundle.global.js missing) — needs runner-side cargo clean -p tauri or actions cache invalidation"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   acceptance_criteria:
     - "1. Diagnosis: `cargo build` on any PR touching src/ that triggers chump-desktop recompile fails with `tauri::generate_context!() proc macro panicked` + `failed to read plugin global API script .../tauri-2.11.2/scripts/bundle.global.js: No such file or directory`. Observed PR #2692 (EFFECTIVE-025) 2026-05-28T13:21Z. Class: cargo registry corruption sibling of INFRA-2082 silent-build-failure.\n2. Reproduce on each self-hosted runner: `ls ~/.cargo/registry/src/index.crates.io-*/tauri-2.11.2/scripts/bundle.global.js` returns non-existent file. Full tauri-2.11.2 contents are partially extracted.\n3. Fix (operator-side, ~5 min): on each self-hosted Mac runner (chump-runner{,-2,-3,-4}), run `rm -rf ~/.cargo/registry/src/index.crates.io-*/tauri-2.11.2/` then trigger a re-fetch via any cargo invocation that depends on tauri.\n4. Prevention: add `Swatinem/rust-cache@v2` with `cache-key-suffix: tauri-2.11.2-rev2` bump to force a fresh registry pull, OR add a pre-build step that verifies `tauri/scripts/bundle.global.js` exists and re-fetches if missing.\n5. Future detection: INFRA-2098 (chump_cargo_build wrapper) already detects the `proc macro panicked` class with `kind=cargo_registry_corruption` ambient emit. Wire that wrapper into the cargo-test step (or a preflight step) to convert the silent panic into a structured failure pointing at the fix."

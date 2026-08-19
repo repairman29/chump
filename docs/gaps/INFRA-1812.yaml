@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: investigate possible DRY violation — INFRA-1719 tree-sitter crawler vs echeo/src/shredder.rs prior art"
   status: open
-  priority: P1
+  priority: P3
   effort: m
   acceptance_criteria:
     - Read INFRA-1719 implementation files (find via grep -rln 'tree.sitter' src/) and document tree-sitter call sites + language coverage (TS/Rust/Python/Go/?) + extraction shape (functions/classes/?)

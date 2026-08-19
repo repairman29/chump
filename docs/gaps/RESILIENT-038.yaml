@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "RESILIENT P1: supervisor substrate-vs-code triage — detect environmental causes (disk/runner/NATS/auth) and skip Sonnet spawn"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     Risk 2 of 10. supervisor blindly spawns Sonnet on any detected failure. But disk-full / runner-ghost / NATS-down / OAuth-expired cause all 6 curators to fail simultaneously — code changes won't help. Supervisor should triage substrate vs code BEFORE spawning.

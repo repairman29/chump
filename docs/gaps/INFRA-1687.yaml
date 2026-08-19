@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: decompose src/main.rs (6k LOC) via inventory-style subcommand self-registration — kill hot-file shared-edit class"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   description: |
     Strategic followup from 2026-05-22 collision-scaling conversation. Today

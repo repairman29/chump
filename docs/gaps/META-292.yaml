@@ -2,7 +2,7 @@
   domain: META
   title: SessionStart doctrine-delta injection — surface 'CLAUDE.md/AGENTS.md/docs/process/* changes since session's last commit' in the digest, so agents see what doctrine just shipped (today CREDIBLE-105 shipped during my session; tomorrow's agent has no reason to know unless they re-read the whole file)
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - scripts/coord/doctrine-delta-inject.sh wired into SessionStart hook (alongside ambient-context-inject.sh + inbox-check-urgent.sh).

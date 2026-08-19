@@ -1,0 +1,16 @@
+- id: CREDIBLE-231
+  domain: CREDIBLE
+  title: software-factory matrix is a DELIVERY org chart — the business chairs (support, money, legal) are not layers at all
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - DOC-079 (docs/strategy/SOFTWARE_FACTORY_MATRIX_2026-08-05.md, done 2026-08-05) is a rigorous 8-layer audit L0-L8 and correctly names three missing chairs — L1 intake (EFFECTIVE-357), L3 design (EFFECTIVE-358), L7 growth (EFFECTIVE-356), all still open. This gap does not redo that work
+    - "WHAT IT DOES NOT COVER, measured by grep over the matrix 2026-08-07 — zero occurrences of: support, service, pricing, revenue, finance, legal, licens*, complian*, sales, billing. One occurrence of 'security', and it is fleet-internal (tool-governance + WASM sandbox 'for the fleet itself'), not product security for a customer"
+    - "L0-L8 is a SOFTWARE DELIVERY organization: problem in, shipped diff out. A business that RUNS a shipped tool needs chairs the matrix has no row for — post-ship support/service, money (pricing, cost-to-serve, margin), legal/licensing/compliance, and customer-facing security. The matrix is not wrong; its scope is delivery and that scope should be stated rather than implied"
+    - "CONCRETE PROOF THE GAP IS LIVE: the 2026-08-07 session designed an entire support organ end-to-end — holler intake, an almanac-grounded answer agent, handoff-as-event rather than a confidence threshold (SHAPE_SCAN_support.md), routing into gaps. That is a factory chair with no seat on the org chart. We are building a layer the map does not have"
+    - "ALSO ALREADY EXISTS OUTSIDE THE MAP: LICENSING.md, RELEASE_CHECKLIST.md's revoke-before-publish gate, GIVEAWAY_SOP Phase E, and the cost governor / waste taxonomy in L6. The business functions are partly PRESENT as artifacts and gates while being ABSENT as roles — which is the same built-not-wired shape as ZERO-WASTE-036, one level up"
+    - "DELIVERABLE: extend the matrix (or add a companion) with the business layers, each audited the same honest way — what exists, status, receipt — so 'autonomous software COMPANY' (essay phase 6, currently marked ❌ overall) is scored against the full org rather than the delivery half"
+    - "GRAIN NOTE WORTH PRESERVING from DOC-079: stage-specialization wins where the artifact is a DIFF; job-title specialization matters at the boundaries where the artifact is a DECISION. Every missing business chair is a decision-artifact chair, which predicts they will need role shape, not stage shape"
+  outcome_id: CHUMPOS
+

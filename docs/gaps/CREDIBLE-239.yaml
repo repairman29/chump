@@ -1,0 +1,15 @@
+- id: CREDIBLE-239
+  domain: CREDIBLE
+  title: env-var coverage gate scans only src/, so every var read solely from crates/ is unchecked — and the fleet is mostly crates now
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "MEASURED 2026-08-08. scripts/ci/test-env-var-coverage.sh:24 greps for env::var reads under \"$REPO_ROOT/src/\" ONLY. Nothing under crates/ is scanned, so a var read exclusively from a workspace crate is never required to appear in .env.example or scripts/ci/env-vars-internal.txt"
+    - "CONCRETE PROOF, not theory: CHUMP_ALMANAC_BIN has been read at crates/chump-orchestrator/src/dispatch.rs:914 for some time and is in NEITHER registry. main passes this gate today with it undocumented. It only became visible when PR #3510 (CREDIBLE-215) added the first src/ reader at src/commands/reachability.rs:239 — at which point the gate failed on a var that had been unregistered all along"
+    - SO THE GATE REPORTS A CLEAN BILL OF HEALTH OVER A SHRINKING FRACTION OF THE CODE. The fleet has been actively extracting code OUT of src/ into crates/ — chump-verify, chump-atomic-claim, chump-gap-store, chump-orchestrator and more. Every such extraction silently moves its env vars out of this gate's view. The gate gets weaker with each refactor while continuing to print PASS
+    - "WIDEN THE SCAN to crates/**/src/ as well as src/, then expect a backlog: run it once and record how many vars surface, because that count is the real size of the debt and it should be triaged, not bulk-allowlisted"
+    - SAME FAILURE CLASS AS CREDIBLE-237 (CI gates pinned to src/main.rs) and EFFECTIVE-407 (audit-ac blind to template ACs). A detector whose scope does not follow the code reads as evidence of health. Consider whether these three warrant one sweep for scope-blind gates rather than three separate fixes
+    - DO NOT bulk-add everything found to env-vars-internal.txt. Tier-1 operator-tunable vars belong in .env.example where operators can discover them; dumping them all in the internal list would preserve the green check and keep the actual documentation gap
+  outcome_id: MISSION-010
+

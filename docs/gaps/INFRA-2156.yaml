@@ -2,12 +2,9 @@
   domain: INFRA
   title: "EFFECTIVE P1: META-125/C5 chump consensus ask subcommand — publish question + return consensus_id + optional block-and-wait"
   status: open
-  priority: P1
+  priority: P3
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "`chump consensus ask` publishes a question to NATS, returns a consensus_id, and optionally blocks until quorum; verified by a round-trip test."
   outcome_id: MISSION-010
 

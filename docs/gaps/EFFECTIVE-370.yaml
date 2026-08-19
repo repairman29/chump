@@ -1,0 +1,16 @@
+- id: EFFECTIVE-370
+  domain: EFFECTIVE
+  title: "EFFECTIVE: honest degradation at the limit — lighthouse surfaces fail to a truthful card, never a dead endpoint"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    The anti-beast-mode.dev rule, applied: when a free/trial bucket dies or hits quota, the user sees a truthful state, never a dead endpoint (receipt: beast-mode.dev CTAs 307 into a dead Supabase hostname since at least 2026-08-04). Umbrella — decompose at claim per surface. Rough shape: (a) arcade: games playable even when Supabase is down/limited — leaderboard and feedback widget degrade to a quiet 'scores are napping' state, game loop untouched; (b) upshift CLI: registry-data explain path works with NO AI bucket; AI-explain path detects quota exhaustion and says so with the credits machinery that already exists (skills/upshiftai loadPricingTierCredits), never hangs or stack-traces; (c) olive: Kroger/AI failures degrade to list-keeping (the core loop) with an honest banner; (d) each surface's degraded state is itself stranger-tested (EFFECTIVE-368 adapter runs with buckets deliberately blocked). Depends on CREDIBLE-206 naming the dependencies first.
+  acceptance_criteria:
+    - each lighthouse surface verified usable-or-honest with its buckets blocked in a test
+    - no dead-endpoint path reachable from a primary CTA on any lighthouse surface
+    - degraded states copy-reviewed (write-as-jeff register)
+    - stranger run against degraded mode files zero got-stuck findings
+  depends_on: [CREDIBLE-206]
+  outcome_id: READY-GATE
+

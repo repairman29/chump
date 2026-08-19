@@ -1,0 +1,14 @@
+- id: PRODUCT-182
+  domain: PRODUCT
+  title: "PRODUCT: Implement Turn Logging for Voice Receipts (PRODUCT-177 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Every voice turn is logged to a queryable turn log
+    - Log includes the original query, the internal orchestrator result, and the final spoken output
+  depends_on: [PRODUCT-179]
+  notes: |
+    bumped P2->P1: turn logging is the receipts leg of the voice contract (shop rule 1) — parent AC requires a queryable turn log
+  outcome_id: EFFECTIVE-000
+

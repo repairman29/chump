@@ -2,7 +2,7 @@
   domain: INFRA
   title: "ZERO-BYPASS P0: delete CHUMP_PREFLIGHT_SKIP_PIPEFAIL — pipefail-race gate is correct; no legitimate reason to skip"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   acceptance_criteria:
     - "[\"Delete CHUMP_PREFLIGHT_SKIP_PIPEFAIL from scripts/ci/env-vars-internal.txt\",\"Remove its read site from src/preflight.rs\",\"The pipefail-race-sweep gate catches real silent-false-negative bugs; no legitimate reason to skip\",\"If a script genuinely needs printf"

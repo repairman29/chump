@@ -1,0 +1,12 @@
+- id: MISSION-073
+  domain: MISSION
+  title: "MISSION: Implement systemd daemon parity (Signal Handling) (MISSION-065 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Daemon correctly handles SIGTERM and SIGINT for graceful shutdown
+    - Shutdown sequence ensures disk-floor gates are closed and workers drained
+    - Process exits with correct status codes
+  outcome_id: CHUMPOS
+

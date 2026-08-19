@@ -1,0 +1,10 @@
+- id: CREDIBLE-254
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement worker presence record writing to NATS-KV bucket (CREDIBLE-099 slice)"
+  status: open
+  priority: P3
+  effort: s
+  acceptance_criteria:
+    - Worker presence record is written to the NATS-KV bucket on claim
+    - Record contains the required fields (worker_id, backend, machine, skills, started_at, current_gap)
+

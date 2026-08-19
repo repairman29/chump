@@ -1,0 +1,19 @@
+- id: GAME-007
+  domain: GAME
+  title: "[grave-dancer] Stranger bot: stuck on \"act2-level3\" (single run)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Cold run ended stuck. deaths=3 maxProgress=3960.1995500000567.
+    Single-run stuck is weak evidence for exploration games — prefer repeat.mjs aggregates; for linear games it is usually real.
+    
+    context: {"level":"act2-level3","deaths":3,"source":"playtest-bot","maxProgress":3960.1995500000567}
+    source: holler feedback_events, dedupe f921a8de97676cf8
+  acceptance_criteria:
+    - "The originating check passes on re-run in repairman29/grave-dancer (tool + target in the description: surveyor edge -> verdict PASS; repeat milestone -> completed >=1/N; bot/widget error -> no longer reproduces)"
+    - grave-dancer test suite stays green
+    - FINDINGS.md / DEPTH.md in repairman29/grave-dancer updated in the same commit
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/grave-dancer"
+

@@ -1,0 +1,15 @@
+- id: DOC-080
+  domain: DOC
+  title: "CREDIBLE: reconcile MISSION.md and REALITY_MAP with the August wins — the BINARY is YES, MISSION-012 done, INFRA-3287 done"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    MISSION.md (untouched since 2026-06-05) now contradicts its own scoreboard after the August verification wins: it hardcodes '(1) ... today: NO' (YES since the week of 2026-08-05 — 4/10 zero-touch BEAST merges) and still frames Goal 1 self-deploy as 'CURRENT MULTIPLIER: until this lands' (MISSION-012 done, scoreboard (3) auto-deploy in place). Sibling staleness: CODEBASE_REALITY_MAP.md par.5 keystone 1 still frames monolith decomposition as the binding blocker — INFRA-3287 closed done. One intent: post-BINARY-YES reconciliation of the two mission-tier docs. Scope: update stale claims only, invent nothing; per REALITY_MAP par.0 discipline, keep claimed-vs-verified wording. Edits to existing files — no Net-new-docs trailer needed.
+  acceptance_criteria:
+    - MISSION.md (1) status reflects the verified YES with date + the repeatability caveat (MISSION-066 owns making it stick)
+    - Goal 1 multiplier framing updated — next lever re-derived from the current scoreboard, not left as self-deploy
+    - REALITY_MAP par.5 notes INFRA-3287 done with date
+    - no new claims without receipts
+  outcome_id: CREDIBLE-000
+

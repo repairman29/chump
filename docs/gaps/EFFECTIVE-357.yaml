@@ -1,0 +1,14 @@
+- id: EFFECTIVE-357
+  domain: EFFECTIVE
+  title: "EFFECTIVE: objective intake — business objective to user stories, AC, outcome (factory L1)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Factory-model L1 (executive intake) — the front door of the factory (docs/strategy/SOFTWARE_FACTORY_MATRIX_2026-08-05.md, DOC-079). chump bootstrap (INFRA-2265) takes one sentence to scaffold; nothing discovers requirements. The jump from 'accept a business objective' to 'user stories + acceptance criteria + risks + outcome row' is the difference between a fleet and a company, and is the COTG story verbatim. Rough shape: (a) 'chump intake <business objective>' — one-shot or conversational elicitation producing user stories, AC, risks, non-goals; (b) writes an outcome row + umbrella gap linked to it, reusing the outcomes table and the MISSION-045 intake firewall (P0/P1 require --outcome); (c) two-phase decomposition doctrine holds — intake writes decomposition INTENT into the umbrella description only, sub-gaps still generated at claim time via gap decompose; (d) generated gaps must pass gap preflight and audit-ac with no human editing.
+  acceptance_criteria:
+    - A non-technical persons plain-language input (a paragraph, a broken repo, a spreadsheet, I want X) becomes a structured requirement set + a pickable gap/outcome WITH real authored AC — meeting the idea in whatever state it is in, no well-formed ticket required (that is the part most people cannot produce)
+    - "Built ON the existing substrate: front_door.rs router (Create/Improve modes) + chump-perception (entity/constraint/risk extraction); intake asks confidence-scored clarifying questions when ambiguous rather than guessing"
+    - "Proven: given 3 raw inputs (a 1-paragraph idea, an abandoned repo, a vague ask), intake emits a structured requirement doc + a pickable gap with real AC for each, with the person never writing a spec"
+  outcome_id: COTG
+

@@ -2,7 +2,7 @@
   domain: META
   title: "META: AGENT_START_HERE north-star + session-start injection + fleet-brief merge-age honesty (cut confused-agent re-folding)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Agents repeatedly get confused / off-mission on this large repo (1584-line core docs + 545 total .md; the load-bearing mission/anti-patterns drown). Add ONE short target-agnostic north-star docs/process/AGENT_START_HERE.md that points at the LIVE mission source (cat ACTIVE_MISSION + mission-scoreboard.sh; never hard-codes a target repo), inject it at session-start ahead of the fleet brief, and fix fleet-brief.sh which false-reported fleet-looks-healthy while the fleet was dead 13h (only alerts on daemons-dead, missing the daemons-alive-but-zero-merges case). Born from 2026-06-08: an agent had all docs in context yet trusted the lying brief, hand-ground bot-merge 30 turns, trusted a broken auth probe.

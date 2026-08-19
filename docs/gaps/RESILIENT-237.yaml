@@ -1,0 +1,14 @@
+- id: RESILIENT-237
+  domain: RESILIENT
+  title: "RESILIENT: bot-merge preflight rejects the operator's OWN live claim when run from the claim worktree"
+  status: open
+  priority: P3
+  effort: s
+  description: |
+    Observed 2026-08-06 shipping CREDIBLE-201 slice 2: bot-merge run from the claim worktree (/tmp/chump-credible-201) failed gap preflight with 'live-claimed by session claim-credible-201-36858-1786031364' — the invoker's OWN session. Setting CHUMP_SESSION_ID to that exact value did not help; deleting the .chump-locks lock file did not help; only DELETE FROM leases in state.db unblocked (the same statement bot-merge's own vacuum uses). So the INFRA-3446 preflight_claim_is_self / INFRA-3455 reconcile chain fails to recognize self-claims in at least one worktree path — likely lease_session_from_statedb resolving the wrong state.db from the worktree, or the reconcile block not firing before preflight. Repro shape: chump claim <id> --paths ... from an IDE session (no exported CHUMP_SESSION_ID), cd worktree, bot-merge --gap <id>. Fix: make self-claim recognition work from the worktree without env plumbing; regression test with a fixture claim.
+  acceptance_criteria:
+    - bot-merge from a claim worktree recognizes the claiming session's own lease with no CHUMP_SESSION_ID exported
+    - no DB surgery needed to ship one's own claim
+    - regression test covers claim-then-bot-merge-from-worktree
+  outcome_id: RESILIENT-000
+

@@ -98,7 +98,6 @@ Documented for completeness; do **not** file follow-ups.
 | `test-review-handoff-smoke.sh` | INFRA-3383 — INFRA-774 end-to-end smoke (synthesizes a CI failure + simulates `review --serve` + telemetry assertions); needs the full CI fixture env |
 | `test-rollup-semantic.sh` | INFRA-3383 — unconditionally runs `cargo test --bin chump rollup_cmd` when `cargo` is available; too slow for the preflight fast loop |
 | `test-research-026-preflight.sh` | INFRA-3383 — eval harness preflight; requires `scripts/eval/` setup not present in a bare preflight run |
-| `test-rescue-class-cites-procedure.sh` | META-249 — asserts rescue-class PRs cite §5/§6 of `PR_RESCUE_PROCEDURE.md` in the live PR body/title from `github.event.pull_request`; requires the GitHub PR event payload (or a `gh pr view` fallback), not present in a bare preflight run |
 
 ## Promotion criteria for Tier C → Tier A
 

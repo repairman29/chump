@@ -1,0 +1,18 @@
+- id: PRODUCT-169
+  domain: PRODUCT
+  title: "[chump] Rust builds duplicated: crons on stable(1.97.1) vs sessions pinned 1.96.0, plus split CARGO_TARGET_DIRs"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Storage survey 2026-08-04, receipts live. (1) chump-binary-refresh cron builds with the stable toolchain (1.97.1) while interactive sessions pin 1.96.0 - every crate compiles twice into every cache. (2) The refresh cron uses CARGO_TARGET_DIR=~/Projects/Chump/target while sessions use ~/.cargo/chump-shared-target - zero artifact sharing between them. (3) Chump/target was recently zeroed, so the cron cold-builds all of Chump every run (observed live: 4+ min release build from a /tmp clone). The shared cache had bloated to ~70GB of orphaned layers; cargo-sweep -t30 reclaimed 36GiB on 2026-08-04. Fix: ONE pinned toolchain via rust-toolchain.toml in repo root + ONE shared CARGO_TARGET_DIR for sessions and crons. DECISION IS THE CAPTAIN'S (parked in ~/Projects/TODO.md 2026-08-04) - implement only after blessing. Follow-up hygiene: a monthly cargo-sweep cron keeps the cache from re-bloating.
+    
+    context: {"source":"claude-triage/storage-survey-2026-08-04","decision_owner":"jeff"}
+    source: holler feedback_events, dedupe d846cb53dc777682
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/chump"
+

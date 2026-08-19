@@ -1,0 +1,11 @@
+- id: INFRA-3575
+  domain: INFRA
+  title: "INFRA: Gather system information from jeffs-macbook-air-10-X (INFRA-1655 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Disk usage is collected
+    - Network configuration is collected
+    - Runner registration information is collected
+

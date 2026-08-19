@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "RESILIENT P1: chump farmer status — the readiness gate work pings FIRST (lights-on check)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     Per docs/design/FARMER_2026-06-03.md section 2. One command, exit 0/1: GREEN = sentinel absent + zero exit-78 supervisors + oauth fresh + farmer heartbeat <120s. Reads only local state (<100ms, pause-immune). Wire into session-start preflight, chump claim, the gap-reserve admission guard (src/main.rs:7735), and worker.sh tick — RED admits no NEW claims but the Farmer's recovery routes around it.

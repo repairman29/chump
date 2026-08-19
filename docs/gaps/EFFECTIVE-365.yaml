@@ -1,0 +1,15 @@
+- id: EFFECTIVE-365
+  domain: EFFECTIVE
+  title: "EFFECTIVE: publisher co-pilot per PUBLISHER.md — draft, approval queue, drive, track; human keeps the irreversible click"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Build the Publisher co-pilot to the spec in ~/Projects/PUBLISHER.md (first-mate design 2026-07-19 — the landscape, landmines, and the only safe architecture are already decided there; build, do not redesign). Four stages: (1) Draft — from a ship/release artifact, per-platform posts in Jeff's voice (content/STYLE.md; per-surface framing: Show HN title+body, per-subreddit, LinkedIn paste-ready, Substack full); (2) Approve — a queue Jeff reads/edits/blesses, nothing proceeds without it; (3) Drive — own surfaces (Substack, jeffadkins.dev, upshiftai.dev) may complete on explicit go; all others fill-and-stop or hand-off text; NEVER automate LinkedIn sessions; (4) Track — log what/where/when, surface replies for Jeff to answer as himself. Consumes the EFFECTIVE-364 approval queue. Hard constraints from the spec: platform ToS walls, the one-guy-honest-receipts brand, and the operator-approval boundary are each independently fatal to an autopilot — the co-pilot IS the product. Prior art to mine, not rebuild: beast-mode scripts/growth/launch/hackernews-launch.js + product-hunt-launch.js + GhostWriterService (claimed capability, REALITY_MAP par.0 discount).
+  acceptance_criteria:
+    - Per PUBLISHER.md, a publisher co-pilot drafts the outward launch (per-platform posts in Jeffs voice) staged for approval — NEVER auto-posted
+    - "Proven: a shipped giveaway/product gets approval-ready launch drafts (Show HN / Reddit / LinkedIn) in-voice, gated on Jeffs explicit send"
+  notes: |
+    2026-08-05 v2 survey (hardened, multi-pass): primary prior art is richer than first found — postsub (SubstackIntegrationService 449 LOC, ContentScheduler, rssGenerator, templateService: the Substack/newsletter lane nearly whole), echeovid SmartPublishingHub (433 LOC), jarvis skills/video-creation (recordDemo + per-product templates incl. recordOliveDemo — demo video/screenshot artifacts, already pointed at olive). beast-mode launch scripts remain secondary. All claimed capability: real code by line count, integrations unverified (Substack has no official API).
+  outcome_id: COTG
+

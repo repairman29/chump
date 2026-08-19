@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "RESILIENT: durable gap-noise-reaper daemon — drain auto-filer-noise gaps on launchd (no Claude session)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - new scripts/ops/gap-noise-reaper.sh closes auto-filer-noise gaps via 'chump gap edit --status superseded' (NOT chump gap ship — INFRA-1392 proof-of-merge blocks no-PR gaps)

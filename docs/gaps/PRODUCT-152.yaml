@@ -1,0 +1,23 @@
+- id: PRODUCT-152
+  domain: PRODUCT
+  title: "[playsmuggler.com] Dead a: \"READ THE DOCS[ACCESS_GRANTED]\" -- HTTP 404"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Posse Tier 0 (deterministic liveness crawler, no LLM). Checked https://playsmuggler.com on 2026-08-05T01:13:59.546Z.
+    
+    Element: <a> "READ THE DOCS[ACCESS_GRANTED]" href="/docs/gm-guide"
+    Reason: HTTP 404
+    
+    This is a mechanical check (does clicking/following this do anything), not a judgment call -- verify it's actually meant to work before treating as a real bug (e.g. a coming-soon placeholder intentionally left inert).
+    
+    context: {"tag":"a","url":"https://playsmuggler.com","href":"/docs/gm-guide","tier":"crawl","source":"posse-crawl"}
+    source: holler feedback_events, dedupe 586817e4ba944063
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/smuggler"
+

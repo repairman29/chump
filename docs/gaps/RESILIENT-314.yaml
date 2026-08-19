@@ -1,0 +1,12 @@
+- id: RESILIENT-314
+  domain: RESILIENT
+  title: "RESILIENT: self-host Supabase OSS stack on CJ for fleet/dev — Auth+Storage+PostgREST+Postgres+RLS parity (production cutover is a separate Jeff decision)"
+  status: open
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - The Supabase OSS stack (Postgres + GoTrue auth + PostgREST + Storage) is self-hosted on CJ (docker-compose or equiv), supervised, reachable on the tailnet
+    - A non-prod test app authenticates via GoTrue, reads/writes a table via PostgREST (from + rpc), and uploads/retrieves a file via Storage against CJ - parity proven for the pillars we ACTUALLY use (auth, storage, postgrest, RLS)
+    - RLS policies are migrated + re-audited on CJ Postgres (no OR auth.uid() IS NULL anon-read holes) - proven with a live anon-key probe returning 0 unauthorized rows
+    - "SCOPE: fleet/dev/staging ONLY. Production cutover for real Olive/Upshift user data is OUT (separate Jeff decision: availability + backups + exposure)"
+
