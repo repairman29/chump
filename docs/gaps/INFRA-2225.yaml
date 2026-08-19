@@ -1,10 +1,27 @@
 - id: INFRA-2225
   domain: INFRA
   title: "RESILIENT P1: auto-rebase daemon dormant under queue saturation — 8 BEHIND PRs accumulating, daemon not keeping pace with new PR rate"
-  status: open
+  status: done
+  closed_pr: 3806
   priority: P1
   effort: s
   acceptance_criteria:
     - "Auto-rebase daemon keeps pace under queue saturation: with >20 PRs in flight, no PR sits BEHIND longer than a bounded threshold; verified by draining a backlog without manual rebase."
+  description: |
+    [2026-08-19] SYNC: already shipped in PR #3806 (commit a84aa2e3,
+    this gap's own ID) — parallel-batch rebase (process_pr backgrounded,
+    MAX_CONCURRENT default 5, capped via `wait -n`) plus a queue-aware
+    throttle (avg_merge_gap_min + inflight-count heuristic prioritizing
+    BEHIND over DIRTY/BLOCKED when inflight>15 and avg merge gap>15min) in
+    scripts/coord/pr-auto-rebase.sh. Reverified on this checkout: all
+    contract markers present (MAX_CONCURRENT, CHUMP_PR_AUTO_REBASE_MAX_CONCURRENT,
+    process_pr, wait -n, pr_auto_rebase_throttle, CHUMP_PR_AUTO_REBASE_NO_THROTTLE,
+    avg_merge_gap_min); scripts/ci/test-pr-auto-rebase-concurrency.sh passes
+    13/13 (peak concurrency=5, MAX_CONCURRENT=2 override caps at 2, all 10
+    BEHIND PRs drained). state.db had re-imported this as status:open from
+    this stale YAML — same split-brain class as INFRA-1811/INFRA-1865/
+    INFRA-3606. Flipping status to done against PR #3806 (the PR that did
+    the actual work) so the picker stops re-surfacing a gap that shipped
+    days ago.
   outcome_id: MISSION-010
 
