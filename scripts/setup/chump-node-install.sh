@@ -208,5 +208,7 @@ check_creds || info CREDS "fix creds before organs will authenticate"
 ensure_binary || info BINARY "install a binary, then re-run"
 install_organs
 install_supervise
+# RESILIENT-318: install the self-management suite (orchestrator + reapers + disk-monitor)
+[ "$SELF_TEST_ONLY" = 1 ] || bash "$(dirname "$0")/install-node-housekeeping.sh" || info ORGANS "housekeeping install skipped"
 echo
 self_test
