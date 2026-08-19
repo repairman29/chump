@@ -1,7 +1,8 @@
 - id: INFRA-1784
   domain: INFRA
   title: "EFFECTIVE: Orchestration + takeover certificate + auto-gaps + auto-PRs (INFRA-1746 phase 5)"
-  status: open
+  status: done
+  closed_pr: 3919
   priority: P1
   effort: m
   acceptance_criteria:
