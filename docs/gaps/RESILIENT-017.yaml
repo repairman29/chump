@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: Move slow e2e checks to nightly, unblock merge queue
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - At least 2 slow e2e checks (currently blocking the merge queue) are moved from ci.yml required checks to a nightly workflow (nightly.yml or equivalent)
