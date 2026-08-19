@@ -11181,3 +11181,84 @@ events:
       merge resolves something the curator was tracking as stale.
     consumers: [chump curator status, ambient]
     fields_required: [ts, kind, role, gap_id, reason]
+
+  # ── INFRA-3614: resolve-or-retire organ for CONFLICTING PRs ────────────────
+  # pr-auto-rebase.sh only fast-forwards/rebases CLEAN-or-cleanly-rebaseable
+  # branches. A PR with a true conflict was left DIRTY/CONFLICTING forever —
+  # no daemon resolved it or retired it. These kinds close that gap: content
+  # is either provably redundant (diff vs main empty → retire), rebaseable
+  # (content-rebase → push), or a genuine unresolved conflict (escalate).
+
+  - kind: pr_retired_redundant
+    effect_metric: resilient
+    emitter: scripts/coord/pr-resolve-or-retire.sh (INFRA-3614)
+    trigger: >
+      A DIRTY/CONFLICTING open PR's diff against main is empty — the work
+      is already merged. Closed the PR and deleted the branch rather than
+      leaving it stranded indefinitely.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, pr, branch, gap]
+    expected_volume: "0-N per cadence (one per redundant PR found)"
+    status: stable
+
+  - kind: pr_content_rebased
+    effect_metric: resilient
+    emitter: scripts/coord/pr-resolve-or-retire.sh (INFRA-3614)
+    trigger: >
+      A DIRTY/CONFLICTING PR had a true conflict against main (non-empty
+      diff) that a local worktree rebase resolved cleanly; pushed with
+      force-with-lease.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, branch]
+    expected_volume: "0-N per cadence"
+    status: stable
+
+  - kind: pr_conflict_unresolvable
+    effect_metric: resilient
+    emitter: scripts/coord/pr-resolve-or-retire.sh (INFRA-3614)
+    trigger: >
+      A DIRTY/CONFLICTING PR has a true conflict against main AND the diff
+      is non-empty (genuinely redundant work would have been retired
+      instead) — local rebase could not resolve it. Needs a
+      human/shepherd to triage the conflicting hunks; not auto-retired
+      because the work is still needed.
+    consumers: [shepherd, ops-audit]
+    fields_required: [ts, kind, pr, branch, conflict_files]
+    expected_volume: "0-N per cadence"
+    status: stable
+
+  - kind: pr_resolve_or_retire_skip
+    effect_metric: self
+    emitter: scripts/coord/pr-resolve-or-retire.sh (INFRA-3614)
+    trigger: a targeted PR could not be processed (e.g. gh pr close failed).
+    consumers: [ops-audit]
+    fields_required: [ts, kind, pr, reason, branch]
+    expected_volume: "rare"
+    status: stable
+
+  - kind: gap_yaml_only_pr_blocked
+    effect_metric: zero_waste
+    emitter: scripts/coord/bot-merge.sh (INFRA-3614)
+    trigger: >
+      bot-merge.sh refused to open a PR because every changed file in the
+      diff was a retired docs/gaps/*.yaml mirror (ZERO-WASTE-020 made
+      state.db canonical; these mirrors are no longer a write path).
+      Prevents the fleet from re-opening the "sync stale YAML" zombie-PR
+      class (receipt: #3919/#3924, 2026-08-19).
+    consumers: [waste-tally, ops-audit]
+    fields_required: [ts, kind, branch, gap]
+    expected_volume: "rare (blocked before creation)"
+    status: stable
+
+  - kind: pr_rescue_refused_redundant
+    effect_metric: resilient
+    emitter: scripts/coord/pr-rescue-false-close.sh (INFRA-3614)
+    trigger: >
+      pr-rescue-false-close.sh (the reopener) was asked to revive a closed
+      PR whose branch diff against main is empty — the PR was retired as
+      redundant, not falsely closed. Refused to reopen it, preventing the
+      revive-into-permanent-limbo cycle (receipt: INFRA-3604).
+    consumers: [shepherd, ops-audit]
+    fields_required: [ts, kind, pr, branch, gap]
+    expected_volume: "rare"
+    status: stable

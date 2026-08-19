@@ -79,6 +79,29 @@ fi
 # Best-effort gap-id extraction.
 gap_id="$(echo "$head_ref" | sed -E 's|^chump/||' | awk -F- '{print toupper($1)"-"$2}')"
 
+# ── INFRA-3614 AC3: redundancy guard ────────────────────────────────────────
+# A PR retired by pr-resolve-or-retire.sh (or closed by hand as redundant)
+# was closed because its diff against main was EMPTY — the work was
+# already merged. Reviving that PR just re-creates the same dead end it
+# was retired from (receipt: INFRA-3604, reopener revives closes into
+# permanent limbo). Refuse to reopen when the branch still exists but its
+# diff vs. main is empty; only revive PRs whose work is still needed. No
+# bypass hatch — a redundant PR is redundant regardless of who's asking;
+# if the branch has genuinely-needed new work, re-push it and open a
+# fresh PR instead of reopening the closed one.
+git fetch origin main "$head_ref" --quiet 2>/dev/null || true
+_diff_stat="$(git diff --stat "origin/main...origin/$head_ref" 2>/dev/null)"
+if [[ -z "$_diff_stat" ]]; then
+    echo "[pr-rescue] REFUSE #$PR — branch '$head_ref' diff vs main is empty (redundant, already merged)." >&2
+    echo "[pr-rescue]   This PR looks retired-as-redundant, not falsely closed. Not reopening." >&2
+    mkdir -p "$(dirname "$AMBIENT")" 2>/dev/null || true
+    # scanner-anchor: "kind":"pr_rescue_refused_redundant"
+    printf '{"ts":"%s","kind":"pr_rescue_refused_redundant","pr":%s,"branch":"%s","gap":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PR" "$head_ref" "$gap_id" \
+        >> "$AMBIENT" 2>/dev/null || true
+    exit 1
+fi
+
 # ── Reopen + comment + re-arm ──────────────────────────────────────────────
 if [[ "$state" == "CLOSED" ]]; then
     echo "[pr-rescue] Reopening PR #$PR ($head_ref)..."

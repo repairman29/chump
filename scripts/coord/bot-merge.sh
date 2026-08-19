@@ -3342,6 +3342,39 @@ if [[ "${CHUMP_RAW_YAML_EDIT_CHECK:-1}" != "0" ]]; then
     fi
 fi
 
+# ── 5c. INFRA-3614: hard-block gap-YAML-only PRs ────────────────────────────
+# docs/gaps/<ID>.yaml per-gap mirrors were retired by ZERO-WASTE-020
+# (2026-07-19) — state.db is canonical, nothing reads these files as a
+# write path anymore. Despite that, agents keep hand-authoring "sync stale
+# YAML" PRs against them (receipt: #3919/#3924, 2026-08-19) that add zero
+# value, can never be content-rebased against a real code change, and sit
+# CONFLICTING forever once main drifts. If EVERY changed file in the diff
+# is a docs/gaps/*.yaml mirror (or the aggregate docs/gaps.yaml), refuse
+# to open the PR outright — the sync belongs in state.db, not a PR. No env
+# bypass (EFFECTIVE-094 zero-bypass thesis) — a gap-yaml-only PR is never
+# legitimate post-ZERO-WASTE-020; if this ever fires on a real edge case,
+# fix the detection logic rather than adding an escape hatch.
+_bm_yaml_only_files="$(git diff --name-only "${REMOTE}/${BASE_BRANCH}..HEAD" 2>/dev/null)"
+if [[ -n "$_bm_yaml_only_files" ]]; then
+    _bm_non_yaml_count="$(printf '%s\n' "$_bm_yaml_only_files" \
+        | grep -vE '^docs/gaps(\.yaml$|/.*\.yaml$)' | grep -cE '.' || true)"
+    if [[ "$_bm_non_yaml_count" -eq 0 ]]; then
+        red "INFRA-3614: refusing to gh pr create — every changed file is a docs/gaps/*.yaml mirror."
+        red "          Those mirrors were retired by ZERO-WASTE-020; state.db is canonical."
+        red "          Changed files:"
+        printf '%s\n' "$_bm_yaml_only_files" | sed 's/^/            /' >&2
+        red ""
+        red "  Recovery: sync the gap in state.db directly — 'chump gap set <ID> --status done"
+        red "  --closed-pr <N>' or 'chump gap ship <ID> --closed-pr <N>'. No PR needed."
+        _ambient_path="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
+        # scanner-anchor: "kind":"gap_yaml_only_pr_blocked"
+        printf '{"ts":"%s","kind":"gap_yaml_only_pr_blocked","branch":"%s","gap":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "${GAP_ID:-unknown}" \
+            >> "$_ambient_path" 2>/dev/null || true
+        _bm_fail "pr-create" 17 "diff touches only retired docs/gaps/*.yaml mirrors (INFRA-3614)"
+    fi
+fi
+
 # ── 6. Open or update PR ─────────────────────────────────────────────────────
 # META-156 AC#1: step=pr_create
 _bm_step_start "pr_create"
