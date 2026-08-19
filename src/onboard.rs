@@ -368,29 +368,7 @@ fn run_inner(args: &[String]) -> Result<()> {
     eprintln!("chump onboard: scanning {} ...", owner_repo);
 
     // Read intent inputs
-    let mut inputs_read: Vec<InputRead> = Vec::new();
-    let mut context_parts: Vec<String> = Vec::new();
-
-    let intent_files = [
-        "README.md",
-        "CLAUDE.md",
-        "AGENTS.md",
-        "ideas/TODO.md",
-        "IMPLEMENTATION.md",
-        "ROADMAP.md",
-        "docs/ROADMAP.md",
-    ];
-    for rel in &intent_files {
-        if let Some((content, sha)) = read_file_with_sha(&clone_dir, rel) {
-            let preview = truncate_chars(&content, 3000);
-            context_parts.push(format!("### {rel}\n{preview}"));
-            inputs_read.push(InputRead {
-                path: rel.to_string(),
-                sha256: sha,
-                summary: first_line(&content),
-            });
-        }
-    }
+    let (mut inputs_read, mut context_parts) = read_intent_docs(&clone_dir);
 
     // Last 20 commit messages
     let commits = git_log(&clone_dir, 20);
@@ -1338,6 +1316,41 @@ fn gh_repo_clone(url: &str, dest: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Read the fixed set of intent documents (README, CLAUDE.md, AGENTS.md,
+/// ideas/TODO.md, IMPLEMENTATION.md, ROADMAP.md, docs/ROADMAP.md) relative to
+/// `clone_dir` and return the `(inputs_read, context_parts)` pair used to
+/// build the scout prompt. Files that don't exist under `clone_dir` are
+/// silently skipped — an empty return means `clone_dir` pointed at the wrong
+/// place (e.g. the EFFECTIVE-290 `local/<repo>` clone-path bug) rather than
+/// the repo genuinely lacking intent docs.
+fn read_intent_docs(clone_dir: &Path) -> (Vec<InputRead>, Vec<String>) {
+    let mut inputs_read: Vec<InputRead> = Vec::new();
+    let mut context_parts: Vec<String> = Vec::new();
+
+    let intent_files = [
+        "README.md",
+        "CLAUDE.md",
+        "AGENTS.md",
+        "ideas/TODO.md",
+        "IMPLEMENTATION.md",
+        "ROADMAP.md",
+        "docs/ROADMAP.md",
+    ];
+    for rel in &intent_files {
+        if let Some((content, sha)) = read_file_with_sha(clone_dir, rel) {
+            let preview = truncate_chars(&content, 3000);
+            context_parts.push(format!("### {rel}\n{preview}"));
+            inputs_read.push(InputRead {
+                path: rel.to_string(),
+                sha256: sha,
+                summary: first_line(&content),
+            });
+        }
+    }
+
+    (inputs_read, context_parts)
+}
+
 /// Read a file relative to `root`, returning `(content, sha256_hex)` or `None`.
 fn read_file_with_sha(root: &Path, rel: &str) -> Option<(String, String)> {
     let content = fs::read_to_string(root.join(rel)).ok()?;
@@ -1865,6 +1878,98 @@ mod tests {
         // FS-existence guard: a path that exists is never mistaken for a remote.
         assert!(!looks_like_github_slug(&existing));
         std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn test_read_intent_docs_finds_readme() {
+        // EFFECTIVE-290 AC 3: a repo with a README (and no other intent docs)
+        // must yield a non-empty scan, not "no readable intent documents
+        // found" — this is the regression check for `clone_dir` pointing at
+        // the actual clone rather than the bogus `local/<repo>` path.
+        let dir = std::env::temp_dir().join(format!(
+            "chump_intent_docs_probe_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("README.md"),
+            "# BEAST-MODE\n\nA fleet automation project.\n",
+        )
+        .unwrap();
+
+        let (inputs_read, context_parts) = read_intent_docs(&dir);
+
+        assert!(
+            !context_parts.is_empty(),
+            "expected README.md to produce non-empty context_parts"
+        );
+        assert!(
+            !inputs_read.is_empty(),
+            "expected README.md to produce a non-empty inputs_read"
+        );
+        assert!(inputs_read.iter().any(|i| i.path == "README.md"));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_read_intent_docs_empty_dir_yields_no_context() {
+        // Sanity check for the inverse: a directory with none of the known
+        // intent docs (e.g. the old bogus `local/<repo>` path that never
+        // existed) legitimately produces empty context — this is the
+        // condition run_inner bails on, and it must NOT fire for a real
+        // clone that has a README.
+        let dir = std::env::temp_dir().join(format!(
+            "chump_intent_docs_empty_probe_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let (inputs_read, context_parts) = read_intent_docs(&dir);
+
+        assert!(context_parts.is_empty());
+        assert!(inputs_read.is_empty());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_onboard_scan_yields_non_empty_proposed_gaps_offline() {
+        // EFFECTIVE-290 AC 3: onboarding a repo with a README yields a scan
+        // with non-empty proposed_gaps. Exercised offline (no LLM/network)
+        // via the two ingredients that feed run_inner's proposed_gaps list:
+        // intent-doc discovery (read_intent_docs) and the L1 foundation-gate
+        // injection (inject_l1_gaps), which does not require any LLM call.
+        // A freshly-created repo dir has no CI/tests/etc. so at least one L1
+        // gate is unmet and inject_l1_gaps is guaranteed non-empty.
+        let dir = std::env::temp_dir().join(format!(
+            "chump_onboard_scan_probe_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("README.md"),
+            "# BEAST-MODE\n\nA fleet automation project.\n",
+        )
+        .unwrap();
+
+        let (_inputs_read, context_parts) = read_intent_docs(&dir);
+        assert!(
+            !context_parts.is_empty(),
+            "clone_dir with a README must not trip the 'no readable intent \
+             documents found' bail"
+        );
+
+        let proposed_gaps = inject_l1_gaps(&dir, "repairman29/BEAST-MODE");
+        assert!(
+            !proposed_gaps.is_empty(),
+            "expected at least one unmet L1 foundation gap for a fresh repo"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
