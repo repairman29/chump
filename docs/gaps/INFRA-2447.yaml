@@ -1,9 +1,26 @@
 - id: INFRA-2447
   domain: INFRA
   title: "RESILIENT P0: stale-gap-lock-reaper reaps live leases mid-bot-merge (zero-mtime-grace issue)"
-  status: open
+  status: done
+  closed_pr: 3824
   priority: P1
   effort: s
+  notes: |
+    Verification receipt (2026-08-19): this gap already shipped in commit
+    720e6522 / PR #3824 ("INFRA-2447: reaper checks live bot-merge health
+    file before reaping claim lease"). scripts/ops/stale-gap-lock-reaper.sh
+    now reads .chump-locks/bot-merge-<pid>.health before falling through to
+    the PID/TTL reap path: matches gap_ids, confirms the health file's pid
+    is a live process, and requires last_heartbeat_at fresher than
+    CHUMP_BOT_MERGE_HEALTH_TTL_S (default 120s) — skipping the reap with
+    kind=stale_gap_lock_protected reason=active_bot_merge when all hold.
+    scripts/ci/test-reaper-bot-merge-protection.sh is exactly the smoke
+    test AC #3 asked for (simulates a live bot-merge health file on
+    INFRA-2438 with a dead claim PID + stale claim heartbeat, asserts the
+    lease survives; control case with a stale health file asserts it's
+    reaped). Re-ran it live: 3/3 PASS, exit 0. Re-closing to sync the
+    registry; no code changes needed. Same pattern as INFRA-1890 /
+    INFRA-1865 / INFRA-1811 stale-state syncs.
   acceptance_criteria:
     - scripts/coord/stale-gap-lock-reaper.sh (or wherever it lives — grep for reap_stale) deleted my INFRA-2438 lease while bot-merge.sh was actively running in the corresponding worktree
     - Reaper must consult heartbeat_at OR detect an active bot-merge process on the same gap before reaping
