@@ -2,7 +2,7 @@
   domain: INFRA
   title: "Merge loop strands CONFLICTING PRs — no organ resolves-or-retires a DIRTY PR; fleet only handles CLEAN ones (COTG: pick up 100% of PRs)"
   status: open
-  priority: P0
+  priority: P2
   effort: m
   acceptance_criteria:
     - "every open PR reaches a terminal state within N ticks: CLEAN→armed/merged, DIRTY→content-rebased-and-merged OR auto-retired-if-redundant (work already on main); no PR sits CONFLICTING+stale indefinitely"
@@ -11,4 +11,5 @@
     - "receipt 2026-08-19: only 3 open PRs existed, ALL 3 CONFLICTING + already-shipped — #3919/#3924 were pure gap-YAML-sync zombies, #3910 was real code the fleet could not content-rebase. Auto-rebaser only fast-forwards clean branches; batched merge-train only pulls CLEAN; reopener revived closes → permanent limbo. Retired by hand (close+delete-branch)."
   notes: |
     [2026-08-19T13:19:59Z] Jeff 2026-08-19: fleet not picking up 100% of GitHub PRs — this is why. COTG keystone: a human-facing factory cannot silently strand PRs. Prioritized AHEAD of INFRA-3612 (effective-priority, P1). Relates INFRA-3604 (reopener revives closes), the ZERO-WASTE-020 yaml/state.db split, and the CLEAN-only merge-train.
+    [2026-08-19T13:33:57Z] RECONCILE 2026-08-19: the CONFLICTING-PR-drain half is ALREADY the rot-reaper organ (RESILIENT-324) — now ported+running on CJ as chump-rot-reaper.timer. Do NOT rebuild it (that IS the duplicate-work waste). Remaining UNIQUE scope here = WASTE-PREVENTION: stop the fleet opening pointless gap-YAML-sync PRs (post-ZERO-WASTE-020 YAML is non-canonical). Demoted P0->P2; the reaping side is covered by RESILIENT-324 + porting under RESILIENT-318.
 
