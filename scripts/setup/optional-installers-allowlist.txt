@@ -147,7 +147,6 @@ install-helsinki-atc.sh
 # on any machine that wants a standing WIRED/DOCUMENTED/UNWIRED report, but
 # not required for fresh-bootstrap correctness.
 install-installer-audit-launchd.sh
-<<<<<<< HEAD
 
 # reason: RESILIENT-315 / RESILIENT-318 — Linux/systemd installer for the
 # Batched Merge Train (chump-integrator). Node-specific bring-up, not a
@@ -156,6 +155,5 @@ install-installer-audit-launchd.sh
 # dev checkout has no business enabling it. Run manually per
 # docs/process/SCALING.md / LINUX_NODE_ONBOARDING.md to install it standalone.
 install-integrator-daemon-systemd.sh
-=======
 install-ceo-shadow-launchd.sh
->>>>>>> 677c6402 (INFRA-3584: CEO loop v0 — shadow driver, pinned battle-tested prompt, contract tests)
+install-node-housekeeping.sh
