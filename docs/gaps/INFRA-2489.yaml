@@ -1,9 +1,21 @@
 - id: INFRA-2489
   domain: INFRA
   title: "CI blocker: test failing on 6+ open PRs"
-  status: open
+  status: done
+  closed_pr: 2979
   priority: P1
   effort: s
+  notes: |
+    Verification receipt (2026-08-19): YAML/state.db were stale. The 6 PRs
+    cited as blocked by the 'test' check (#2979 #2978 #2977 #2976 #2975
+    #2974, filed by stuck-pr-filer 2026-06-03) are all already resolved:
+    #2979/#2978/#2977/#2976/#2974 merged, #2975 closed. Confirmed via
+    `gh pr view <N> --json state` on each. Trunk is green — last completed
+    origin/main CI run (headSha 3a44800b, 2026-08-19T08:24:40Z) concluded
+    'success'; the queued runs since are backlog, not failures. No open PR
+    is currently blocked by the 'test' check. Closing to sync the registry;
+    no code changes needed. Same pattern as INFRA-2285 / INFRA-2447 /
+    INFRA-2232 / INFRA-2225 / INFRA-1890 stale-state syncs.
   description: |
     Shared CI-blocker detected by stuck-pr-filer (2026-06-03T01:12:55Z).
     
