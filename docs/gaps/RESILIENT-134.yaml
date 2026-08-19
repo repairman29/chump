@@ -1,7 +1,8 @@
 - id: RESILIENT-134
   domain: RESILIENT
   title: "RESILIENT: run-fleet+test-fleet-auth-check auth probe uses removed 'claude --once' flag — false-fails, blocks all fleet relaunch"
-  status: open
+  status: done
+  closed_pr: 3119
   priority: P0
   effort: m
   description: |
