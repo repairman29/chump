@@ -1814,6 +1814,23 @@ events:
     fields_required: [ts, kind, pr_number, action, reason, gap_id, dry_run]
     fields_optional: [new_gap_id]
 
+  - kind: pr_shepherd_operator_attention
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh (META-193, META-180 AC #8)
+    purpose: >
+      Surfaces a daemon classification outcome the daemon cannot resolve by
+      itself into the PWA cockpit operator-attention queue
+      (web/v2/operator-attention.js). MERGEABLE/ARMED/BEHIND/BLOCKED_GREEN
+      (auto-rebase/rearm/merge targets) never emit this — only the three
+      classifications a human needs to look at.
+    trigger: |
+      emitted once per PR per tick for classification in {UNKNOWN, DIRTY, BLOCKED_REAL_FAIL}:
+        UNKNOWN            — mergeStateStatus still computing after this tick
+        DIRTY              — semantic merge conflict, daemon cannot resolve
+        BLOCKED_REAL_FAIL  — a check reported FAILURE (file_followup_gap already ran; human still owns the fix)
+    consumers: [operator-attention-cockpit, fleet-brief]
+    fields_required: [ts, kind, pr, classification, gap_id, note, dry_run]
+
   - kind: pr_merged
     effect_metric: self
     emitter: scripts/coord/bot-merge.sh; GitHub webhook / PR close hook

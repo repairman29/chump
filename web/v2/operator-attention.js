@@ -27,6 +27,10 @@ const TRACKED_KINDS = [
   { kind: 'gh_shim_worktree_install_blocked', icon: '🔧', label: 'gh shim install blocked' },
   // INFRA-779 — gitdir back-ref repair fired
   { kind: 'worktree_gitdir_repair_fired', icon: '🩹', label: 'Worktree gitdir repaired' },
+  // META-193 — pr-shepherd-daemon outcomes the daemon can't resolve itself
+  // (UNKNOWN / DIRTY / BLOCKED_REAL_FAIL only; MERGEABLE / auto-rebased
+  // classifications never escalate here — see META-180 AC #8)
+  { kind: 'pr_shepherd_operator_attention', icon: '🛎️', label: 'PR needs operator attention' },
 ];
 
 const DEFER_TTL_S = 4 * 60 * 60; // 4 hours

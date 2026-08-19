@@ -132,6 +132,25 @@ _emit_pr_classified() {
     "$ts" "$pr_num" "$classification" "$gap_id" "$age_minutes" "$dry" >> "$AMBIENT"
 }
 
+# _emit_pr_shepherd_operator_attention — surface a daemon outcome to the PWA
+# cockpit operator-attention queue (META-193, META-180 AC #8). Fired ONLY for
+# classifications a human needs to look at: UNKNOWN (gh still computing —
+# repeated UNKNOWN across ticks means something's stuck), DIRTY (semantic
+# merge conflict — daemon cannot resolve), BLOCKED_REAL_FAIL (a real content
+# failure, not a flake — file_followup_gap already ran, but the human still
+# owns the fix). MERGEABLE/ARMED/BEHIND/BLOCKED_GREEN never call this — those
+# are auto-rebase/auto-rearm/auto-merge targets the daemon handles itself.
+# Args: $1=pr_number $2=classification $3=gap_id $4=note
+# scanner-anchor: kind=pr_shepherd_operator_attention (META-193)
+_emit_pr_shepherd_operator_attention() {
+  local pr_num="$1" classification="$2" gap_id="$3" note="$4"
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","kind":"pr_shepherd_operator_attention","pr":%d,"classification":"%s","gap_id":"%s","note":"%s","dry_run":%s}\n' \
+    "$ts" "$pr_num" "$classification" "$gap_id" "$note" "$dry" >> "$AMBIENT"
+}
+
 # _emit_pr_action_taken — emit pr_action_taken event
 # Args: $1=pr_number $2=action $3=reason $4=gap_id
 # scanner-anchor: kind=pr_action_taken (META-184/META-186)
@@ -950,6 +969,21 @@ for p in prs:
       age_hours=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('age_hours',0))" 2>/dev/null || echo "0")
       fail_check_names=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('fail_check_names',''))" 2>/dev/null || echo "")
       _emit_pr_classified "$pr_num" "$c" "$gap_id" "$age"
+
+      # META-193: operator-attention escalation — UNKNOWN/DIRTY/BLOCKED_REAL_FAIL
+      # only. MERGEABLE, ARMED, BEHIND, and BLOCKED_GREEN (auto-rebase/rearm/merge
+      # targets) never escalate — the daemon handles those without a human.
+      case "$c" in
+        UNKNOWN)
+          _emit_pr_shepherd_operator_attention "$pr_num" "$c" "$gap_id" "mergeability still computing after this tick"
+          ;;
+        DIRTY)
+          _emit_pr_shepherd_operator_attention "$pr_num" "$c" "$gap_id" "merge conflict — needs manual resolution"
+          ;;
+        BLOCKED_REAL_FAIL)
+          _emit_pr_shepherd_operator_attention "$pr_num" "$c" "$gap_id" "check failure: ${fail_job:-unknown job}"
+          ;;
+      esac
 
       # ─── INFRA-2346 tier A: CLEAN_GREEN → auto-admin-merge ──────────────────
       # Independent of META-184/186 paths: a PR can be MERGEABLE or BLOCKED_GREEN

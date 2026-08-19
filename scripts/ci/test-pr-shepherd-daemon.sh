@@ -1006,4 +1006,72 @@ else
   exit 1
 fi
 
-echo "[test-pr-shepherd-daemon] PASS (tick + ${classified_count} pr_classified + META-184 guards + META-185 BLOCKED sub-states + META-186 actions + META-189 vote-request verified)"
+# ── (o) META-193: pr_shepherd_operator_attention escalation gate ────────────
+# UNKNOWN/DIRTY/BLOCKED_REAL_FAIL must escalate; MERGEABLE/ARMED/BEHIND/
+# BLOCKED_GREEN (auto-rebase/rearm/merge targets) must NOT.
+META193_AMBIENT="$META186_WORK_DIR/ambient-n.jsonl"
+: > "$META193_AMBIENT"
+
+META193_HARNESS="$META186_WORK_DIR/harness-n.sh"
+cat > "$META193_HARNESS" << HARNESS_N_EOF
+#!/usr/bin/env bash
+set -euo pipefail
+AMBIENT="$META193_AMBIENT"
+DRY_RUN=1
+
+_emit_pr_shepherd_operator_attention() {
+  local n="\$1" c="\$2" gid="\$3" note="\$4" ts
+  ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","kind":"pr_shepherd_operator_attention","pr":%d,"classification":"%s","gap_id":"%s","note":"%s","dry_run":true}\n' "\$ts" "\$n" "\$c" "\$gid" "\$note" >> "\$AMBIENT"
+}
+
+classified=\$(python3 -c "
+import json
+for i, c in enumerate(['UNKNOWN','DIRTY','BLOCKED_REAL_FAIL','MERGEABLE','ARMED','BEHIND','BLOCKED_GREEN']):
+    print(json.dumps({'pr':700+i,'classification':c,'gap_id':'','fail_job':'cargo-test'}))
+")
+
+while IFS= read -r line; do
+  pr_num=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pr"])')
+  c=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["classification"])')
+  gap_id=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["gap_id"])')
+  fail_job=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("fail_job",""))')
+  case "\$c" in
+    UNKNOWN)
+      _emit_pr_shepherd_operator_attention "\$pr_num" "\$c" "\$gap_id" "mergeability still computing after this tick"
+      ;;
+    DIRTY)
+      _emit_pr_shepherd_operator_attention "\$pr_num" "\$c" "\$gap_id" "merge conflict — needs manual resolution"
+      ;;
+    BLOCKED_REAL_FAIL)
+      _emit_pr_shepherd_operator_attention "\$pr_num" "\$c" "\$gap_id" "check failure: \${fail_job:-unknown job}"
+      ;;
+  esac
+done <<< "\$classified"
+HARNESS_N_EOF
+chmod +x "$META193_HARNESS"
+
+bash "$META193_HARNESS" 2>/dev/null || { echo "[test] FAIL (o): operator-attention harness non-zero"; exit 1; }
+
+o_check=$(python3 -c "
+import json
+escalated = set()
+with open('$META193_AMBIENT') as f:
+    for line in f:
+        ev = json.loads(line.strip())
+        escalated.add(ev.get('classification'))
+expected = {'UNKNOWN', 'DIRTY', 'BLOCKED_REAL_FAIL'}
+not_expected = {'MERGEABLE', 'ARMED', 'BEHIND', 'BLOCKED_GREEN'}
+if escalated == expected and not (escalated & not_expected):
+    print('OK')
+else:
+    print(f'FAIL escalated={sorted(escalated)}')
+" 2>/dev/null || echo "FAIL python-error")
+if [[ "$o_check" == "OK" ]]; then
+  echo "[test] (o) META-193 operator-attention escalation gate: OK (UNKNOWN/DIRTY/BLOCKED_REAL_FAIL only)"
+else
+  echo "[test] FAIL (o): $o_check"
+  exit 1
+fi
+
+echo "[test-pr-shepherd-daemon] PASS (tick + ${classified_count} pr_classified + META-184 guards + META-185 BLOCKED sub-states + META-186 actions + META-189 vote-request + META-193 operator-attention gate verified)"
