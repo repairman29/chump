@@ -2,7 +2,7 @@
   domain: CREDIBLE
   title: the agent loop logs provider_ms but never WHICH provider — a 15-slot cascade with no way to see which slot served the turn
   status: open
-  priority: P2
+  priority: P1
   effort: s
   acceptance_criteria:
     - "WHAT CANNOT BE ANSWERED TODAY, and every one of these is an operator question that came up within a minute of the gateway going live: which models actually carry my traffic; is the cascade ever reaching past slot 1; did that reply spend a PAID slot or a free one; which slot is slow; which slot is silently failing over. A 15-slot failover ladder that cannot be observed is a config file, not a system"
@@ -12,6 +12,8 @@
     - NEVER LOG CREDENTIALS. Slot number, model name, base-URL HOST at most. No keys, not even partially — the same rule the escalation channel follows
     - "VERIFY ON REAL TRAFFIC: send two Discord DMs and read the log. Each turn must name the slot and model that served it. Then force a slot failure (revoke one key in a scratch config) and confirm the failover and its reason are both recorded"
     - "MEASURED BASELINE to compare against: 2026-08-09 live turns showed provider_ms 309 and 503 with tools_ms 0 and rounds 1, so sub-second replies are real — the question is only which slot earned them"
+  notes: |
+    [2026-08-19T13:15:20Z] Crew-chief 2026-08-19: lifted P2->P1 — it is a declared prerequisite of P1 RESILIENT-262 + RESILIENT-276, so it inherits P1 (blocker-of-a-P1 is P1 work). Per Jeff: a P2/P3 required for higher-priority ship IS higher-priority work.
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: read ~/.chump/logs/discord-gateway.err after two live Discord DM turns on 2026-08-09 | OUTPUT: the INFRA-185 phase-timings line records request_id, compaction_ms=0, provider_ms=309 and 503, tools_ms=0, other_ms, rounds=1, total_ms=321 and 521 — and NO provider identity and NO model name. Grepping the whole log for provider/model/slot yields only provider_ms values and model_calls=0 | THEORY: the cascade is configured with 15 keyed slots (CHUMP_PROVIDER_1..15_MODEL all set: gemma-4-31b, llama-3.3-70b-versatile, Llama-3.3-70B-Instruct, gemini-2.5-flash, Qwen3-Coder-480B, qwen3-coder:free, gemini-2.0-flash-lite, gemini-2.5-pro, nemotron-3-ultra-free, big-pickle, deepseek-v4-pro, codestral-latest and more) and the loop reports how LONG the provider took but never WHICH one answered | ALT: rejected the identity is elsewhere in the log — grepped the full gateway log for provider, model and slot; the only matches are provider_ms and model_calls
