@@ -2162,6 +2162,11 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-meta-011-git-stomp.sh"],
             GateKind::Scripts,
         ));
+        steps.push(step(
+            "preflight-ci-parity-smoke",
+            &["bash", "scripts/ci/test-preflight-ci-parity-smoke.sh"],
+            GateKind::Scripts,
+        ));
     }
 
     // INFRA-3377 (META-070): commit-content-guards mirrors. --pre-commit
