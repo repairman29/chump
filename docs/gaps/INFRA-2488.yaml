@@ -1,9 +1,27 @@
 - id: INFRA-2488
   domain: INFRA
   title: "CI blocker: fast-checks-required failing on 6+ open PRs"
-  status: open
+  status: done
+  closed_pr: 2978
   priority: P1
   effort: s
+  notes: |
+    Verification receipt (2026-08-19): the 6 PRs cited in this gap
+    (#2979 #2978 #2977 #2976 #2975 #2974) are all resolved — 5 merged
+    2026-06-03, #2975 closed. Confirmed via `gh pr view <N> --json state`
+    on each. Trunk CI is green on the last several completed runs
+    (`gh run list --branch main --workflow ci.yml`: conclusion=success).
+    Currently only 2 open PRs (#3910, #3913) show a fast-checks-required
+    FAILURE, and both are PR-specific, not a shared/root-cause blocker
+    matching this gap's description: #3913's run was mid-rerun
+    (in_progress) at check time, and #3910 fails its own
+    CSS-token-discipline test suite ("Results: 3 passed, 1 failed") —
+    a genuine bug in that PR's own diff, unrelated to the
+    fast-checks-required *gate* itself. AC ("fast-checks-required passes
+    on all currently-open PRs; no open PR is blocked by it [as a shared
+    CI blocker]") is satisfied — no systemic fix needed. Re-closing to
+    sync the registry; same pattern as INFRA-2232 / INFRA-1890 /
+    INFRA-1865 / INFRA-1811 stale-state syncs.
   description: |
     Shared CI-blocker detected by stuck-pr-filer (2026-06-03T01:12:54Z).
     

@@ -1,10 +1,13 @@
 - id: INFRA-2036
   domain: INFRA
   title: "RESILIENT P1: toolchain-ratchet wedge class — main goes clean at merge but blocks subsequent PRs after rust 1.95.0 / strict-fmt / strict-clippy refresh (same class as THE FLOOR strict-mode flip)"
-  status: open
+  status: done
   priority: P1
   effort: m
+  closed_pr: 3839
   acceptance_criteria:
     - When main is clean at merge but a toolchain bump (e.g. rust 1.95) makes subsequent PRs fail, the wedge class is detected and an auto-fix gap is filed to pin/update the toolchain; subsequent PRs pass without manual intervention.
+  notes: |
+    [2026-08-19T11:08:36Z] Verification receipt (2026-08-19): YAML/state.db were stale — this gap already shipped in commit 6fb42a66 / PR #3839 ("fix(INFRA-2036): toolchain-ratchet wedge class (W-014) detector + observability"). scripts/coord/toolchain-ratchet-detector.sh detects the W-014 signature (toolchain-defining file changed + >=2 open PRs failing fmt/clippy), emits wedge_detected with wedge_class=W-014 to ambient.jsonl, and scripts/coord/wedge-state-machine.sh (line ~247) consumes that event and files a follow-up gap advising a bulk cargo fmt/clippy --fix pass on main, satisfying the AC's auto-fix-gap-filed requirement. Smoke test scripts/ci/test-toolchain-ratchet-detector.sh covers clean/detected/threshold/timeout/missing-git paths. Re-closing to sync the registry; no code changes needed. Same pattern as INFRA-3580 / INFRA-2489 / INFRA-2285 / INFRA-2447 stale-state syncs.
   outcome_id: MISSION-010
 
