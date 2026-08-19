@@ -2024,3 +2024,8 @@ CHUMP_PARITY_WORKFLOWS_DIR
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_PARITY_REPORT
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CLAIM_PATH_OVERLAP_OPERATOR
