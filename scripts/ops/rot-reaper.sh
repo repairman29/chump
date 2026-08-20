@@ -82,6 +82,13 @@
 #                                   (default 10). Prevents a runaway mass-close.
 #   CHUMP_ROT_REAPER_LABEL          terminal-close label (default rot-reaped).
 #                                   Revivers skip any PR bearing it.
+#   CHUMP_ROT_REAPER_RESPAWN_CAP    EFFECTIVE-434: max times a gap may be
+#                                   auto-closed+re-queued before the reaper
+#                                   stops re-queuing it and escalates to the
+#                                   operator instead (default 3). The PR still
+#                                   gets closed either way; only the automatic
+#                                   respawn stops. Prevents a genuinely-buggy
+#                                   PR from recycling forever.
 #   CHUMP_ROT_REAPER_REQUIRED_CHECKS  comma-separated override of the required-
 #                                   check set (default: fetched from branch
 #                                   protection, fallback to the known 4).
@@ -100,6 +107,16 @@ reaper_setup rot
 reaper_rotate_log /tmp/chump-rot-reaper.out.log
 reaper_rotate_log /tmp/chump-rot-reaper.err.log
 
+# EFFECTIVE-434: escalate-to-operator path once a gap's respawn cap is hit.
+# Sourced, not required — a missing notifier must not take the reaper down.
+# shellcheck source=../coord/lib/notify-operator.sh
+if [[ -f "$(dirname "$0")/../coord/lib/notify-operator.sh" ]]; then
+    # shellcheck source=../coord/lib/notify-operator.sh
+    source "$(dirname "$0")/../coord/lib/notify-operator.sh"
+else
+    notify_operator() { echo "[notify-operator] MISSING lib/notify-operator.sh" >&2; return 0; }
+fi
+
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
@@ -110,6 +127,12 @@ MAX_CLOSE="${CHUMP_ROT_REAPER_MAX:-10}"
 LABEL="${CHUMP_ROT_REAPER_LABEL:-rot-reaped}"
 REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
+# EFFECTIVE-434 (COTG recycle path): a gap re-queued this many times by the
+# reaper's own "rot-reaper: PR #... auto-closed" notes is no longer a flake or
+# a fixable red — the same failure keeps recurring across fresh attempts, so
+# another automatic redo just burns another PR/CI cycle. Past the cap, stop
+# re-queuing (the PR still closes) and escalate to the operator instead.
+RESPAWN_CAP="${CHUMP_ROT_REAPER_RESPAWN_CAP:-3}"
 # NO-ABANDON DEADLINE: past this age (hours) an open PR must be terminal; any
 # still non-terminal is counted in the pr_no_abandon_backlog metric (target 0).
 NO_ABANDON_DEADLINE_HOURS="${CHUMP_ROT_REAPER_DEADLINE_HOURS:-$REALFAIL_AGE_HOURS}"
@@ -234,6 +257,15 @@ emit_backlog_metric() {  # <count> <pr_list>
     fi
 }
 
+# EFFECTIVE-434: a gap that hit its respawn cap — recorded so the operator
+# escalation is observable in ambient.jsonl, not just a Discord ping.
+emit_respawn_cap_event() {  # <gap_id> <pr_num> <respawn_count>
+    local gid="$1" pr="$2" n="$3"
+    printf '{"ts":"%s","kind":"gap_respawn_cap_reached","source":"rot-reaper","gap":"%s","pr":%s,"respawn_count":%s,"cap":%s}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$gid" "$pr" "$n" "$RESPAWN_CAP" \
+        >> "$AMBIENT_LOG" 2>/dev/null || true
+}
+
 if [[ -z "$ROWS" ]]; then
     info "No open PRs found — nothing to reap."
     emit_backlog_metric 0 ""
@@ -246,6 +278,7 @@ fi
 # global REQUEUED. A `done` gap (work landed elsewhere) is left done.
 requeue_gaps() {  # <pr_num> <age_h> <reason_short> <title>
     local pr="$1" age="$2" reason="$3" title="$4" gid cur status note
+    local prior_notes respawn_count cap_note
     local ids; ids="$(printf '%s\n' "$title" | grep -oE '\b[A-Z]+-[0-9]+\b' | sort -u || true)"
     for gid in $ids; do
         [[ -z "$gid" ]] && continue
@@ -258,6 +291,27 @@ requeue_gaps() {  # <pr_num> <age_h> <reason_short> <title>
         if [[ "$status" == "done" ]]; then
             info "  $gid already done — stale duplicate PR; closing without re-queue."; continue
         fi
+
+        # EFFECTIVE-434: respawn cap. Count how many times this gap has already
+        # been auto-closed+re-queued by the reaper (each prior cycle leaves a
+        # "rot-reaper: PR #... auto-closed" note). Past RESPAWN_CAP, the same
+        # failure is recurring across fresh attempts — stop re-queuing and
+        # escalate to the operator instead of recycling forever. The PR itself
+        # still gets closed by the caller; only the gap re-open is skipped.
+        prior_notes="$(chump gap show "$gid" --field notes 2>/dev/null || true)"
+        respawn_count="$(printf '%s' "$prior_notes" | grep -oE 'rot-reaper: PR #[0-9]+ auto-closed' | wc -l | tr -d ' ')"
+        if [[ "${respawn_count:-0}" -ge "$RESPAWN_CAP" ]]; then
+            warn "  $gid respawn cap reached (${respawn_count} >= ${RESPAWN_CAP}) — escalating to operator, NOT re-queuing"
+            if [[ $DRY_RUN -eq 1 ]]; then dry "would escalate $gid to operator (respawn cap ${RESPAWN_CAP} reached)"; continue; fi
+            cap_note="rot-reaper: PR #${pr} auto-closed (${reason}, ${age}h) $(date -u +%Y-%m-%d); RESPAWN CAP ${RESPAWN_CAP} reached (${respawn_count} prior recycles) — NOT re-queued, escalating to operator."
+            chump gap set "$gid" --add-note "$cap_note" >/dev/null 2>&1 \
+                || warn "chump gap set $gid --add-note failed"
+            emit_respawn_cap_event "$gid" "$pr" "$respawn_count"
+            notify_operator "$(printf '🛑 **%s hit its respawn cap (%s)** — rot-reaper will not re-queue it again.\n\nPR #%s just closed (%s, %sh). This gap has been auto-closed+re-queued %s time(s) already by the reaper; the same failure keeps recurring, which means it needs a human, not another automatic redo.\n\nGap left CLOSED — reopen manually after diagnosing.' \
+                "$gid" "$RESPAWN_CAP" "$pr" "$reason" "$age" "$respawn_count")" || true
+            continue
+        fi
+
         note="rot-reaper: PR #${pr} auto-closed (${reason}, ${age}h) $(date -u +%Y-%m-%d); re-attempt on fresh main."
         if [[ $DRY_RUN -eq 1 ]]; then dry "would re-queue $gid (status=$status) + note"; continue; fi
         [[ "$status" != "open" ]] && { chump gap set "$gid" --status open >/dev/null 2>&1 \

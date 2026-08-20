@@ -98,4 +98,63 @@ echo "$out" | grep -q 'NO-ABANDON BACKLOG: 0' && ok "no-abandon backlog is 0 (no
 
 echo ""
 echo "=== rot-reaper selection: $pass passed, $fail failed ==="
+
+# ── EFFECTIVE-434: respawn-cap escalation ─────────────────────────────────────
+# A second run with a `chump` stub that answers `gap show` per gap-id (instead
+# of the always-empty stub above) proves the respawn cap: a gap already
+# carrying RESPAWN_CAP (2, here) prior "rot-reaper: PR #... auto-closed" notes
+# must NOT be re-queued again — the reaper escalates to the operator instead —
+# while a gap with zero prior notes re-queues normally.
+STUB2="$TMP/bin2"; mkdir -p "$STUB2"
+cat > "$STUB2/gh" <<'EOF'
+#!/usr/bin/env bash
+[[ "$1" == "api" && "$2" == "user" ]] && { echo "repairman29"; exit 0; }
+exit 0
+EOF
+cat > "$STUB2/chump" <<'EOF'
+#!/usr/bin/env bash
+# Minimal `chump gap show <ID> [--field notes]` stub keyed by gap id.
+if [[ "$1" == "gap" && "$2" == "show" ]]; then
+    gid="$3"
+    field=""
+    [[ "$4" == "--field" ]] && field="$5"
+    notes=""
+    if [[ "$gid" == "RESILIENT-951" ]]; then
+        notes=$'rot-reaper: PR #100 auto-closed (required-check-red, 9h) 2026-08-01; re-attempt on fresh main.\nrot-reaper: PR #150 auto-closed (required-check-red, 9h) 2026-08-05; re-attempt on fresh main.'
+    fi
+    if [[ "$field" == "notes" ]]; then
+        printf '%s\n' "$notes"
+    else
+        printf -- '- id: %s\n  status: open\n  notes: |\n' "$gid"
+    fi
+    exit 0
+fi
+exit 0
+EOF
+chmod +x "$STUB2"/*
+
+FIX2="$TMP/prs2.json"
+cat > "$FIX2" <<EOF
+[
+  {"number":209,"title":"RESILIENT-950: mergeable but required check RED, old, fresh gap","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","createdAt":"$OLD","headRefName":"rs-950","isDraft":false,"autoMergeRequest":{"enabledAt":"x"},"statusCheckRollup":[{"name":"audit-required","conclusion":"FAILURE"}]},
+  {"number":210,"title":"RESILIENT-951: mergeable but required check RED, old, gap already recycled twice","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","createdAt":"$OLD","headRefName":"rs-951","isDraft":false,"autoMergeRequest":{"enabledAt":"x"},"statusCheckRollup":[{"name":"audit-required","conclusion":"FAILURE"}]}
+]
+EOF
+
+out2="$(PATH="$STUB2:$PATH" CHUMP_ROT_REAPER_PR_JSON="$FIX2" CHUMP_ROT_REAPER_REQUIRED_CHECKS="$REQ" CHUMP_ROT_REAPER_RESPAWN_CAP=2 bash "$REAPER" --dry-run 2>&1)"
+echo "$out2"
+echo "---"
+
+# #209: fresh gap (0 prior recycles) → normal re-queue path, no escalation
+echo "$out2" | grep -qE 'PR #209 .*→ REAP' && ok "#209 fresh-gap reaped" || bad "#209 not reaped"
+echo "$out2" | grep -q 'RESILIENT-950 respawn cap reached' && bad "#209 wrongly hit respawn cap" || ok "#209 did not hit respawn cap"
+echo "$out2" | grep -q 'would re-queue RESILIENT-950' && ok "#209 re-queue attempted (fresh gap)" || bad "#209 re-queue not attempted"
+
+# #210: gap already has 2 prior recycles, cap=2 → escalate, do NOT re-queue
+echo "$out2" | grep -qE 'PR #210 .*→ REAP' && ok "#210 still reaped (PR itself always closes)" || bad "#210 not reaped"
+echo "$out2" | grep -q 'RESILIENT-951 respawn cap reached (2 >= 2)' && ok "#210 respawn cap escalation fired" || bad "#210 respawn cap escalation missing"
+echo "$out2" | grep -q 'would re-queue RESILIENT-951' && bad "#210 wrongly re-queued past its cap" || ok "#210 not re-queued past its cap"
+
+echo ""
+echo "=== rot-reaper respawn-cap: $pass passed, $fail failed ==="
 [[ "$fail" -eq 0 ]]
