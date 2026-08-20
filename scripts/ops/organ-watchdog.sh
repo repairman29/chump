@@ -405,5 +405,15 @@ emit organ_watchdog_tick "\"healed\":$healed,\"dry_run\":$DRY_RUN"
 
 echo "[organ-watchdog] cycle complete: healed=$healed dry_run=$DRY_RUN"
 
-[[ "$scan_fail" == "1" ]] && exit 2
+# RESILIENT-356: a monitored organ that could not be healed is a FINDING, not a
+# watchdog failure. It is already emitted as organ_self_heal_failed for the
+# duty-officer to escalate/page. Exiting non-zero here marked the watchdog's OWN
+# service `failed`, and since nothing heals the healer, a single unhealable organ
+# (chump-sla-scorecard, 2026-08-20) killed the watchdog for 16h, unwatched. The
+# healer must never self-immolate: emit the finding, exit clean. Non-zero is
+# reserved for the watchdog's own internal breakage (missing systemctl /
+# unreadable manifest — those exit 1 above).
+if [[ "$scan_fail" == "1" ]]; then
+    echo "[organ-watchdog] NOTE: one or more organs could not be healed this cycle — organ_self_heal_failed emitted for escalation; watchdog exiting clean so it keeps running"
+fi
 exit 0
