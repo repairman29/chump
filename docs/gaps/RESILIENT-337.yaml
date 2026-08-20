@@ -1,11 +1,35 @@
 - id: RESILIENT-337
   domain: RESILIENT
   title: "SYSTEMIC-RED tripwire: detect + page when N>=3 open code PRs fail the IDENTICAL required check (shared broken gate) — distinct from main-health-watchdog (which only sees red MAIN). Tonight 14 PRs stacked on a farmer-flap false-red for hours with ZERO alarm; the board eyeballed it only after operator prodding. Detector = group open-PR failing-check names, alarm on any check failing >=3 PRs, name the shared check + suspected root cause."
-  status: open
+  status: done
+  closed_pr: 4038
   priority: P1
   effort: m
   acceptance_criteria:
     - "The change described by \"detect + page when N>=3 open code PRs fail the IDENTICAL required check (shared broken gate) — distinct from main-health-watchdog (which only sees red MAIN). Tonight 14 PRs stacked on a farmer-flap false-red for hours with ZERO alarm; the board eyeballed it only after operator prodding. Detector = group open-PR failing-check names, alarm on any check failing >=3 PRs, name the shared check + suspected root cause.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    RECONCILE (2026-08-20): already shipped via PR #4038 (commit 2de22384,
+    "SYSTEMIC-RED tripwire — alarm when N>=3 open PRs share an identical
+    failing check"), an ancestor of current main — but this YAML never got
+    flipped to done (same stale-record class as CREDIBLE-270/RESILIENT-277).
+    This worktree ("fleet-2") was a duplicate concurrent claim on the same
+    gap ID; the other claim shipped first.
+
+    Verified all AC against scripts/coord/systemic-red-detector.sh and
+    scripts/ci/test-systemic-red-detector.sh on main:
+    - Groups all open PRs' failing check names via `gh pr list
+      --json number,statusCheckRollup` and fires kind=wedge_detected
+      wedge_class=W-015 naming the shared check + PR numbers + a suspected
+      root cause when any single check is shared by >= threshold
+      (default 3, CHUMP_SYSTEMIC_RED_THRESHOLD) open PRs (AC1).
+    - scripts/ci/test-systemic-red-detector.sh: 9/9 passed locally,
+      covering detect/below-threshold/no-shared-check/--check-only/bypass/
+      threshold-override/wedge-watch wiring/wedge-state-machine routing
+      (AC2).
+    - cargo fmt/clippy/check untouched by this reconcile (doc-only YAML
+      edit); PR #4038 already passed CI with these gates (AC3).
+    Reconciled via direct YAML edit (gap absent from this worktree's
+    state.db — same pattern as the CREDIBLE-270 precedent).
 
