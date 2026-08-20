@@ -1,10 +1,12 @@
 - id: INFRA-3563
   domain: INFRA
   title: "INFRA: Investigate disk full as potential root cause (INFRA-1655 slice)"
-  status: open
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
     - Disk usage is checked on jeffs-macbook-air-10-X
     - Disk usage is compared to known thresholds
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping INFRA-3551; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
 

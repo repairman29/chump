@@ -1,10 +1,13 @@
 - id: INFRA-3282
   domain: INFRA
   title: "MISSION-CREDIBLE: pillar starved — only 0 pickable xs/s/m gaps as of 2026-07-05"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
     - The MISSION-CREDIBLE pillar has >=1 pickable xs/s/m gap; the starvation alarm auto-resolves.
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping INFRA-3229; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
+  closed_date: '2026-08-19'
   outcome_id: MISSION-010
 

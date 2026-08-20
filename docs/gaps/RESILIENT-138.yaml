@@ -2,7 +2,6 @@
   domain: RESILIENT
   title: "RESILIENT (Cut-Friction): chump claim must sync the gap YAML into the worktree — every fresh-gap ship hits bot-merge not-found until copied in"
   status: done
-  closed_pr: 4013
   priority: P1
   effort: m
   description: |
@@ -33,5 +32,7 @@
     concurrent fleet claims of this gap; f41e25f6/#4013 is the one that
     landed on origin/main. Same reconcile pattern as RESILIENT-052
     (#4016), RESILIENT-081 (#4015), RESILIENT-218 (#4014).
+  closed_date: '2026-08-20'
+  closed_pr: 4013
   outcome_id: RESILIENT-000
 

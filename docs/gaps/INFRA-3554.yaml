@@ -1,10 +1,12 @@
 - id: INFRA-3554
   domain: INFRA
   title: "INFRA: Investigate queue contention as potential root cause (INFRA-1655 slice)"
-  status: open
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
     - Queue contention on jeffs-macbook-air-10-X is checked
     - Queue contention is identified as a potential root cause or ruled out
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping INFRA-3547; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
 

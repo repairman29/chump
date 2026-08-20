@@ -1,10 +1,12 @@
 - id: INFRA-3559
   domain: INFRA
   title: "INFRA: Investigate queue contention as a potential root cause (INFRA-1655 slice)"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
     - Queue contention is identified or ruled out
     - Recommendations for reducing queue contention are documented
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping INFRA-3554; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
 
