@@ -1,12 +1,15 @@
 - id: INFRA-3494
   domain: INFRA
   title: "CREDIBLE: [COTG-3.1] outcome-level verification (does the shipped thing SOLVE the problem?)"
-  status: open
+  status: done
+  closed_pr: 3593
+  closed_date: "2026-08-10"
   priority: P1
   effort: m
   acceptance_criteria:
     - Outcome-level verification checks the shipped artifact against the user's original stated problem (not just CI green) and emits a PASS/FAIL solve-verdict with evidence.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~45% -> FINISH (gate 5.1/5.3/6.2 depend on). src/external_verify_merge.rs is stronger than CI-green (proves fix fails-on-base/passes-on-head, no-regression). Add a post-merge LIVE outcome probe + promote src/browser.rs (static fetch) to real CDP.
+    [2026-08-20T00:00:00Z] RECONCILE: already shipped 2026-08-10 via cf55e83c (PR #3593, same gap ID in the commit trailer) — `run_outcome_probe`/`outcome_probe_matches` in crates/chump-verify/src/external_verify_merge.rs fetches a caller-supplied live URL post-`--apply`-merge and asserts an expected substring, emitting kind=outcome_probe_verified/outcome_probe_failed with evidence (url + note). Covered by unit tests at crates/chump-verify/src/external_verify_merge.rs:2893-2981. AC is met; gap YAML was left status:open in this worktree only — state.db has no open row for it. Same reconcile pattern as RESILIENT-133 (#3964). The "promote browser.rs static fetch to real CDP" line above was aspirational future scope beyond the single stated AC, not a blocker for this gap.
   outcome_id: COTG
 
