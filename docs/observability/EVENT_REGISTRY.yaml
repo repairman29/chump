@@ -1268,6 +1268,13 @@ events:
     consumers: [board-cycle, fleet-brief, operator-recall]
     fields_required: [ts, kind, gap, pr, respawn_count, cap]
 
+  - kind: rot_reaper_false_red_skip
+    effect_metric: self
+    emitter: scripts/ops/rot-reaper.sh (RESILIENT-339)
+    trigger: a PR eligible for REALFAIL-close has every one of its failing required checks ALSO failing on >= CHUMP_ROT_REAPER_SHARED_MIN (default 3) other open fleet PRs (a shared/systemic-red condition, e.g. a farmer-flap cascade or flaky shared gate, the RESILIENT-337 signal) — the reaper skips the close and posts an alert PR comment instead of closing good code
+    consumers: [board-cycle, fleet-brief]
+    fields_required: [ts, kind, pr, checks, age_h, shared_min]
+
   - kind: reaper_silent
     effect_metric: self
     emitter: scripts/ops/reaper-heartbeat-watchdog.sh (INFRA-120)

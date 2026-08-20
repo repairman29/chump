@@ -92,6 +92,16 @@
 #   CHUMP_ROT_REAPER_REQUIRED_CHECKS  comma-separated override of the required-
 #                                   check set (default: fetched from branch
 #                                   protection, fallback to the known 4).
+#   CHUMP_ROT_REAPER_SHARED_MIN     RESILIENT-339 false-red guard: a required
+#                                   check failing identically across >= this
+#                                   many open fleet PRs is treated as
+#                                   shared/systemic red (farmer-flap cascade,
+#                                   flaky gate), NOT a defect unique to any one
+#                                   PR — REALFAIL-close is SKIPPED for any PR
+#                                   whose EVERY failing required check is
+#                                   systemic (default 3, matches the
+#                                   back-pressure-controller SHARED_MIN
+#                                   convention).
 #   CHUMP_ROT_REAPER_PR_JSON        TEST HOOK: path to a JSON file used INSTEAD
 #                                   of `gh pr list`. Lets CI exercise the
 #                                   selection logic without a live GitHub. Each
@@ -133,6 +143,8 @@ BASE="${BASE:-main}"
 # another automatic redo just burns another PR/CI cycle. Past the cap, stop
 # re-queuing (the PR still closes) and escalate to the operator instead.
 RESPAWN_CAP="${CHUMP_ROT_REAPER_RESPAWN_CAP:-3}"
+# RESILIENT-339: false-red guard threshold — see header comment.
+SHARED_MIN="${CHUMP_ROT_REAPER_SHARED_MIN:-3}"
 # NO-ABANDON DEADLINE: past this age (hours) an open PR must be terminal; any
 # still non-terminal is counted in the pr_no_abandon_backlog metric (target 0).
 NO_ABANDON_DEADLINE_HOURS="${CHUMP_ROT_REAPER_DEADLINE_HOURS:-$REALFAIL_AGE_HOURS}"
@@ -180,10 +192,12 @@ else
 fi
 
 # Rows as TSV: number \t mergeable \t createdAt \t title \t mergeState \t
-#              isDraft \t hasAutoMerge \t requiredFail
+#              isDraft \t hasAutoMerge \t requiredFail \t requiredFailNames
 # requiredFail = "1" iff a branch-protection-REQUIRED check has concluded
 # FAILURE/ERROR/TIMED_OUT (not pending, not skipped) — the "real content gate is
 # red" signal that separates a stuck PR from one merely waiting on CI/approval.
+# requiredFailNames = "|"-joined set of the required checks that are failing on
+# THIS PR — feeds the RESILIENT-339 false-red guard's shared-check lookup.
 ROWS="$(printf '%s' "$PR_JSON" | REQ_CHECKS="$REQUIRED_CHECKS" python3 -c '
 import json, os, sys
 required = {c.strip() for c in os.environ.get("REQ_CHECKS","").split(",") if c.strip()}
@@ -201,14 +215,45 @@ for r in rows:
     draft = "1" if r.get("isDraft") else "0"
     has_am = "1" if r.get("autoMergeRequest") else "0"
     req_fail = "0"
+    req_fail_names = []
     for c in (r.get("statusCheckRollup") or []):
         name = c.get("name") or c.get("context") or ""
         # CheckRun uses conclusion; StatusContext uses state.
         concl = (c.get("conclusion") or c.get("state") or "").upper()
         if name in required and concl in FAIL:
             req_fail = "1"
-            break
-    print(f"{num}\t{mrg}\t{made}\t{title}\t{mstate}\t{draft}\t{has_am}\t{req_fail}")
+            if name not in req_fail_names:
+                req_fail_names.append(name)
+    names_field = "|".join(req_fail_names)
+    print(f"{num}\t{mrg}\t{made}\t{title}\t{mstate}\t{draft}\t{has_am}\t{req_fail}\t{names_field}")
+' 2>/dev/null || true)"
+
+# ── RESILIENT-339: fleet-wide shared-check counts (false-red guard input) ────
+# For every open fleet PR (not just the one being classified), how many OTHER
+# PRs currently have the SAME required check failing? A count >= SHARED_MIN
+# means that check is red fleet-wide (farmer-flap cascade / flaky shared gate,
+# the RESILIENT-337 signal) rather than a defect unique to one PR. Computed
+# once up front so the per-PR guard below is a cheap lookup, not a rescan.
+CHECK_COUNTS="$(printf '%s' "$PR_JSON" | REQ_CHECKS="$REQUIRED_CHECKS" python3 -c '
+import json, os, sys
+from collections import Counter
+required = {c.strip() for c in os.environ.get("REQ_CHECKS","").split(",") if c.strip()}
+FAIL = {"FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED"}
+try:
+    rows = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+counts = Counter()
+for r in rows:
+    seen = set()
+    for c in (r.get("statusCheckRollup") or []):
+        name = c.get("name") or c.get("context") or ""
+        concl = (c.get("conclusion") or c.get("state") or "").upper()
+        if name in required and concl in FAIL and name not in seen:
+            seen.add(name)
+            counts[name] += 1
+for name, cnt in counts.items():
+    print(f"{name}\t{cnt}")
 ' 2>/dev/null || true)"
 
 # age_hours ISO8601 — whole hours since createdAt (python, bash-free of `date -d`).
@@ -356,7 +401,40 @@ label_and_close() {  # <pr_num> <close_msg>
     return 1
 }
 
-while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQFAIL; do
+# ── RESILIENT-339: false-red guard ────────────────────────────────────────────
+# Before REALFAIL-closing a PR, cross-check: is EVERY one of its failing
+# required checks ALSO failing on >= SHARED_MIN other open fleet PRs right now?
+# If so this is a shared/systemic-red condition — a farmer-flap cascade, a
+# flaky shared gate, exactly the RESILIENT-337 >=3-PRs-same-check signal — not
+# a defect unique to this PR's code. NEVER close on that; skip and alert
+# instead. Only a failure genuinely UNIQUE to this PR (not shared) may close.
+is_systemic_red() {  # <"|"-joined required-check names failing on this PR>
+    local names="$1" name cnt
+    [[ -z "$names" ]] && return 1
+    local IFS_SAVE="$IFS"
+    IFS='|' read -ra _names <<< "$names"
+    IFS="$IFS_SAVE"
+    for name in "${_names[@]}"; do
+        [[ -z "$name" ]] && continue
+        cnt="$(awk -F'\t' -v n="$name" '$1==n{print $2}' <<< "$CHECK_COUNTS")"
+        cnt="${cnt:-0}"
+        if [[ "$cnt" -lt "$SHARED_MIN" ]]; then
+            return 1   # at least one failing check is PR-specific → genuine red
+        fi
+    done
+    return 0   # every failing required check is shared >= SHARED_MIN → systemic
+}
+alert_false_red() {  # <pr_num> <names> <age>
+    local pr="$1" names="$2" age="$3"
+    printf '{"ts":"%s","kind":"rot_reaper_false_red_skip","source":"rot-reaper","pr":%s,"checks":"%s","age_h":%s,"shared_min":%s}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "$names" "$age" "$SHARED_MIN" \
+        >> "$AMBIENT_LOG" 2>/dev/null || true
+    local msg="rot-reaper (RESILIENT-339 false-red guard): this PR's required check(s) [\`${names}\`] are RED, but the SAME check(s) are ALSO failing on >= ${SHARED_MIN} other open fleet PRs right now — a shared/systemic-red condition (farmer-flap cascade or a flaky shared gate, the RESILIENT-337 signal), not a defect unique to this PR. Skipping the REALFAIL auto-close so good code isn't lost; will re-evaluate once the shared red clears or a check unique to this PR is found."
+    if [[ $DRY_RUN -eq 1 ]]; then dry "would alert false-red on PR #$pr (checks: $names)"; return 0; fi
+    gh pr comment "$pr" --body "$msg" >/dev/null 2>&1 || warn "gh pr comment $pr failed (false-red alert)"
+}
+
+while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQFAIL REQFAIL_NAMES; do
     [[ -z "$PR_NUM" ]] && continue
 
     # Never self-close a gap-filing PR (belt: also excluded from every class).
@@ -402,6 +480,13 @@ while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQF
         if [[ "$CLOSED" -ge "$MAX_CLOSE" ]]; then
             warn "Reached MAX_CLOSE=$MAX_CLOSE this run; deferring the rest."
             BACKLOG=$((BACKLOG + 1)); BACKLOG_PRS+="${PR_NUM} "; continue
+        fi
+        # RESILIENT-339 false-red guard: NEVER close on shared/systemic red.
+        if is_systemic_red "$REQFAIL_NAMES"; then
+            warn "PR #$PR_NUM — REQUIRED check RED (${REQFAIL_NAMES}) but SHARED across >= ${SHARED_MIN} open PRs (systemic/false-red) — SKIP close, alert instead"
+            info "  title: $TITLE"
+            alert_false_red "$PR_NUM" "$REQFAIL_NAMES" "$AGE"
+            SKIPPED=$((SKIPPED + 1)); continue
         fi
         red "PR #$PR_NUM — MERGEABLE but REQUIRED check RED, ${AGE}h old → REAP"
         info "  title: $TITLE"
