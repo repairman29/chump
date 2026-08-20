@@ -6,6 +6,8 @@
 # Installs, as supervised loop-services wrapping the TRACKED repo scripts (never reinvented):
 #   node-orchestrator  — the resource-aware brain (sense cores/RAM/disk → heal/scale/place)
 #   rot-reaper         — drain CONFLICTING PRs (RESILIENT-324)
+#   armed-pr-rebaser   — SALVAGE organ: rebases armed BEHIND/DIRTY PRs onto main so
+#                        the reaper never has to close them (RESILIENT-346)
 #   worktree-reaper    — reclaim disk from merged/dead worktrees
 #   disk-monitor       — disk headroom alarm + auto-remediate
 #   reviver            — reopen closed-but-gap-open fleet PRs = work wrongly trashed by a
@@ -29,6 +31,7 @@ log "supervisor=$SUP repo=$REPO user=$USER_N"
 # organ table: name|repo-relative-script[ args]|cadence-seconds (0 = script self-loops, e.g. orchestrator)
 ORGANS="node-orchestrator|scripts/ops/node-orchestrator.sh|0
 rot-reaper|scripts/ops/rot-reaper.sh|1800
+armed-pr-rebaser|scripts/coord/armed-pr-rebaser.sh|600
 worktree-reaper|scripts/ops/stale-worktree-reaper.sh --execute|900
 disk-monitor|scripts/ops/disk-health-monitor.sh|300
 main-health-watchdog|scripts/ops/main-health-watchdog.sh|600
@@ -103,7 +106,7 @@ EOF
 # self-test
 log "self-test:"
 fail=0
-for name in node-orchestrator rot-reaper worktree-reaper disk-monitor main-health-watchdog pr-lander cargo-sweep-gc reviver; do
+for name in node-orchestrator rot-reaper armed-pr-rebaser worktree-reaper disk-monitor main-health-watchdog pr-lander cargo-sweep-gc reviver; do
   case "$SUP" in
     systemd) systemctl is-active "chump-$name.service" >/dev/null 2>&1 && log "  ✓ $name up" || { log "  ✗ $name DOWN"; fail=1; } ;;
     runit)   sv status "$SVDIR/chump-$name" 2>/dev/null | grep -q '^run' && log "  ✓ $name up" || { log "  ✗ $name DOWN"; fail=1; } ;;

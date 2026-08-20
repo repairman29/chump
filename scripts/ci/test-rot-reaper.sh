@@ -157,4 +157,55 @@ echo "$out2" | grep -q 'would re-queue RESILIENT-951' && bad "#210 wrongly re-qu
 
 echo ""
 echo "=== rot-reaper respawn-cap: $pass passed, $fail failed ==="
+
+# ── RESILIENT-346: conflict-rebase guard ──────────────────────────────────────
+# A PR still labeled CONFLICTING by GitHub's stale snapshot must NOT be closed
+# if a fresh rebase onto main actually resolves clean — that's exactly the
+# #3958/#3963 incident (5 real commits each, thrown away over a transient
+# conflict). CHUMP_ROT_REAPER_REBASE_CHECK_CMD stubs the git rebase machinery
+# so this is testable without a live repo: PR #301's branch "resolves-clean"
+# reports clean (guard fires, PR stays open); PR #302's branch
+# "real-conflict" reports a genuine conflict (guard fails, PR is reaped).
+STUB3="$TMP/bin3"; mkdir -p "$STUB3"
+cat > "$STUB3/gh" <<'EOF'
+#!/usr/bin/env bash
+[[ "$1" == "api" && "$2" == "user" ]] && { echo "repairman29"; exit 0; }
+exit 0
+EOF
+cat > "$STUB3/chump" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$STUB3/rebase-check-stub.sh" <<'EOF'
+#!/usr/bin/env bash
+# <pr_num> <branch> — simulate rebase outcome by branch name
+br="$2"
+[[ "$br" == "resolves-clean" ]] && exit 0
+exit 1
+EOF
+chmod +x "$STUB3"/*
+
+FIX3="$TMP/prs3.json"
+cat > "$FIX3" <<EOF
+[
+  {"number":301,"title":"RESILIENT-960: stale conflict, actually resolves clean","mergeStateStatus":"DIRTY","mergeable":"CONFLICTING","createdAt":"$OLD","headRefName":"resolves-clean","isDraft":false,"autoMergeRequest":null,"statusCheckRollup":[]},
+  {"number":302,"title":"RESILIENT-961: genuinely still conflicting after rebase","mergeStateStatus":"DIRTY","mergeable":"CONFLICTING","createdAt":"$OLD","headRefName":"real-conflict","isDraft":false,"autoMergeRequest":null,"statusCheckRollup":[]}
+]
+EOF
+
+out3="$(PATH="$STUB3:$PATH" CHUMP_ROT_REAPER_PR_JSON="$FIX3" CHUMP_ROT_REAPER_REQUIRED_CHECKS="$REQ" \
+    CHUMP_ROT_REAPER_REBASE_CHECK_CMD="$STUB3/rebase-check-stub.sh" bash "$REAPER" --dry-run 2>&1)"
+echo "$out3"
+echo "---"
+
+# #301: rebase resolves clean → NOT closed, "stale/transient conflict" rescue path
+echo "$out3" | grep -q 'PR #301 — labeled CONFLICTING but rebased CLEAN' && ok "#301 stale-conflict rescued (not closed)" || bad "#301 not rescued"
+echo "$out3" | grep -qE 'PR #301 .*→ REAP' && bad "#301 wrongly reaped despite clean rebase" || ok "#301 not reaped"
+
+# #302: rebase confirms a real conflict → REAPED as before
+echo "$out3" | grep -q 'PR #302 — rebase confirmed a real conflict' && ok "#302 real conflict confirmed" || bad "#302 real-conflict confirmation missing"
+echo "$out3" | grep -qE 'PR #302 — CONFLICTING, [0-9]+h old → REAP' && ok "#302 real conflict reaped" || bad "#302 not reaped"
+
+echo ""
+echo "=== rot-reaper conflict-rebase guard: $pass passed, $fail failed ==="
 [[ "$fail" -eq 0 ]]

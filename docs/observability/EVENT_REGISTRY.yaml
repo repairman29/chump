@@ -1261,6 +1261,13 @@ events:
     consumers: [board-cycle, fleet-brief]
     fields_required: [ts, kind, count, deadline_h, prs]
 
+  - kind: pr_conflict_stale_rescued
+    effect_metric: self
+    emitter: scripts/ops/rot-reaper.sh (RESILIENT-346)
+    trigger: a PR labeled CONFLICTING by GitHub's stale merge-race snapshot rebases CLEAN onto current main when the reaper's guard tries it before closing — the branch is pushed rebased and the PR is left open instead of being reaped
+    consumers: [board-cycle, fleet-brief]
+    fields_required: [ts, kind, pr, age_h]
+
   - kind: gap_respawn_cap_reached
     effect_metric: self
     emitter: scripts/ops/rot-reaper.sh (EFFECTIVE-434)

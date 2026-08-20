@@ -180,7 +180,7 @@ else
 fi
 
 # Rows as TSV: number \t mergeable \t createdAt \t title \t mergeState \t
-#              isDraft \t hasAutoMerge \t requiredFail
+#              isDraft \t hasAutoMerge \t requiredFail \t headRefName
 # requiredFail = "1" iff a branch-protection-REQUIRED check has concluded
 # FAILURE/ERROR/TIMED_OUT (not pending, not skipped) — the "real content gate is
 # red" signal that separates a stuck PR from one merely waiting on CI/approval.
@@ -200,6 +200,7 @@ for r in rows:
     mstate = r.get("mergeStateStatus", "") or ""
     draft = "1" if r.get("isDraft") else "0"
     has_am = "1" if r.get("autoMergeRequest") else "0"
+    headref = (r.get("headRefName") or "").replace("\t", " ").replace("\n", " ")
     req_fail = "0"
     for c in (r.get("statusCheckRollup") or []):
         name = c.get("name") or c.get("context") or ""
@@ -208,7 +209,7 @@ for r in rows:
         if name in required and concl in FAIL:
             req_fail = "1"
             break
-    print(f"{num}\t{mrg}\t{made}\t{title}\t{mstate}\t{draft}\t{has_am}\t{req_fail}")
+    print(f"{num}\t{mrg}\t{made}\t{title}\t{mstate}\t{draft}\t{has_am}\t{req_fail}\t{headref}")
 ' 2>/dev/null || true)"
 
 # age_hours ISO8601 — whole hours since createdAt (python, bash-free of `date -d`).
@@ -356,7 +357,53 @@ label_and_close() {  # <pr_num> <close_msg>
     return 1
 }
 
-while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQFAIL; do
+# ── CONFLICT-REBASE GUARD (RESILIENT-346) ─────────────────────────────────────
+# GitHub's `mergeable=CONFLICTING` is a computed snapshot that goes stale under
+# merge-race churn — main advancing under other concurrent PRs — so a PR can
+# still be labeled CONFLICTING long after a fresh rebase onto CURRENT main
+# would resolve cleanly (root cause of #3958/#3963: both carried 5 real commits
+# and rebased CLEAN, but the reaper trusted the stale label and threw the work
+# away). Before closing a CONFLICTING PR, attempt an actual rebase; only close
+# if it genuinely does NOT resolve. If it resolves, push the rebased branch and
+# leave the PR open — nothing is lost to a transient conflict signal.
+#
+# Returns 0 (clean — branch rebased + pushed, do NOT close) or 1 (real conflict
+# remains — proceed to close).
+#
+# CHUMP_ROT_REAPER_REBASE_CHECK_CMD: TEST HOOK — "<cmd> <pr_num> <branch>"
+# overrides the git rebase machinery so CI can exercise the guard without a
+# live git remote. Exit 0 = clean/resolved, exit 1 = real conflict.
+rebase_would_resolve() {  # <pr_num> <branch>
+    local pr="$1" br="$2"
+    if [[ -n "${CHUMP_ROT_REAPER_REBASE_CHECK_CMD:-}" ]]; then
+        $CHUMP_ROT_REAPER_REBASE_CHECK_CMD "$pr" "$br"
+        return $?
+    fi
+    [[ -z "$br" ]] && return 1
+    command -v git >/dev/null 2>&1 || return 1
+    git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || true
+    git fetch "$REMOTE" "$br" --quiet 2>/dev/null || return 1
+    local wt="/tmp/rot-reaper-rebase-check-${pr}"
+    git worktree remove "$wt" --force >/dev/null 2>&1 || true
+    git worktree add -B "$br" "$wt" "$REMOTE/$br" >/dev/null 2>&1 || return 1
+    local resolved
+    (
+        cd "$wt" || exit 1
+        if git rebase "$REMOTE/$BASE" >/dev/null 2>&1 \
+           && [[ -z "$(git diff --name-only --diff-filter=U 2>/dev/null)" ]]; then
+            if git push "$REMOTE" "$br" --force-with-lease >/dev/null 2>&1; then
+                exit 0
+            fi
+        fi
+        git rebase --abort >/dev/null 2>&1 || true
+        exit 1
+    )
+    resolved=$?
+    git worktree remove "$wt" --force >/dev/null 2>&1 || true
+    return $resolved
+}
+
+while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQFAIL HEADREF; do
     [[ -z "$PR_NUM" ]] && continue
 
     # Never self-close a gap-filing PR (belt: also excluded from every class).
@@ -381,6 +428,22 @@ while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQF
             warn "Reached MAX_CLOSE=$MAX_CLOSE this run; deferring the rest."
             BACKLOG=$((BACKLOG + 1)); BACKLOG_PRS+="${PR_NUM} "; continue
         fi
+        # RESILIENT-346: don't trust a stale CONFLICTING snapshot — try a real
+        # rebase first. The test hook fires even in --dry-run (it's a stub, no
+        # live network); live rebase attempts are skipped in --dry-run since
+        # they'd otherwise force-push a real branch.
+        if [[ -n "${CHUMP_ROT_REAPER_REBASE_CHECK_CMD:-}" || $DRY_RUN -eq 0 ]]; then
+            info "PR #$PR_NUM — CONFLICTING, ${AGE}h old; trying a fresh rebase onto ${BASE} before closing (RESILIENT-346 guard)."
+            if rebase_would_resolve "$PR_NUM" "$HEADREF"; then
+                green "PR #$PR_NUM — labeled CONFLICTING but rebased CLEAN onto ${BASE} (stale/transient conflict, ${AGE}h old) → pushed, NOT closing"
+                printf '{"ts":"%s","kind":"pr_conflict_stale_rescued","source":"rot-reaper","pr":%s,"age_h":%s}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PR_NUM" "$AGE" >> "$AMBIENT_LOG" 2>/dev/null || true
+                SKIPPED=$((SKIPPED + 1))
+                continue
+            fi
+            info "PR #$PR_NUM — rebase confirmed a real conflict (not stale); proceeding to reap."
+        fi
+
         red "PR #$PR_NUM — CONFLICTING, ${AGE}h old → REAP"
         info "  title: $TITLE"
         requeue_gaps "$PR_NUM" "$AGE" "CONFLICTING" "$TITLE"
