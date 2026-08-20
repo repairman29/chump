@@ -1,8 +1,9 @@
 # CI `verified` Aggregator — Architecture Spec (META-134)
 
-> **Status:** FLIPPED — CREDIBLE-269 (SHIP-INFRA 1/7, foundation landed
-> 2026-08-11, flip completed 2026-08-20). `scripts/ci/aggregator-verified.sh`
-> implements the §2.2-2.3 lane-classification decision logic (unit-tested by
+> **Status:** cross-workflow polling landed (shadow) — CREDIBLE-269
+> (SHIP-INFRA 1/7, foundation landed 2026-08-11, cross-workflow lanes landed
+> 2026-08-20). `scripts/ci/aggregator-verified.sh` implements the §2.2-2.3
+> lane-classification decision logic (unit-tested by
 > `scripts/ci/test-aggregator-verified.sh`) and a `verified` job in
 > `.github/workflows/ci.yml` runs it on every PR over the ci.yml-local lanes
 > (`fast-checks`, `clippy`, `cargo-test`, `pr-hygiene`, `test`) **plus**
@@ -12,12 +13,13 @@
 > (fail-closed on timeout — never leaves a lane ambiguously "pending"),
 > feeding the result into the same classification logic as a same-workflow
 > lane. `verified` emits `kind=verified_aggregator_decision` to
-> `ambient.jsonl`. **Branch protection AND ruleset 15133729 now require ONLY
-> `verified`** (`docs/baselines/branch-protection-main.json`) — the prior
-> required-trio (`audit` / `test` / `ACP protocol smoke test` on the ruleset;
-> `ACP protocol smoke test` / `cargo-test-required` / `audit-required` /
-> `clippy-required` on classic branch protection) has been removed from both
-> surfaces. `gh pr checks <n> --required` now returns exactly one entry.
+> `ambient.jsonl`. **Branch protection and ruleset 15133729 flip to require
+> ONLY `verified` as a follow-up step once this lands on main** and a live PR
+> proves the cross-workflow polling resolves real `audit` / `ACP protocol
+> smoke test` conclusions — flipping in the same PR that adds the polling
+> code would be untested-at-flip-time. The flip itself
+> (`docs/baselines/branch-protection-main.json` + live `gh api` update) is
+> tracked as the immediate next slice, not yet done as of this commit.
 > **Slice of:** META-131 (CI Required-Check Productization).
 > **Pair doc:** [`docs/strategy/CI_POLICY_AUDIT.md`](../strategy/CI_POLICY_AUDIT.md) (META-133 — inventory of today's state).
 > **Filed:** 2026-05-30, owner: curator-opus-handoff.

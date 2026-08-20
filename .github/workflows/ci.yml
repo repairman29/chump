@@ -478,9 +478,11 @@ jobs:
   # sees same-workflow jobs) — then prints a single PASS/FAIL verdict + emits
   # kind=verified_aggregator_decision to ambient.jsonl for offline audit.
   #
-  # branch-protection + ruleset 15133729 require ONLY this check
-  # (docs/baselines/branch-protection-main.json) — no more 3-surface drift
-  # between ci.yml / branch-protection / ruleset (docs/design/CI_VERIFIED_AGGREGATOR.md, META-134).
+  # Not yet required by branch-protection/ruleset 15133729 as of this commit
+  # — flipping happens as an immediate follow-up once this cross-workflow
+  # polling is proven live on a real PR (docs/design/CI_VERIFIED_AGGREGATOR.md,
+  # META-134). Today's required contexts remain `test` / `audit` / `ACP
+  # protocol smoke test` per docs/baselines/branch-protection-main.json.
   verified:
     name: verified
     needs: [fast-checks, clippy, cargo-test, pr-hygiene, test]
