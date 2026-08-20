@@ -8,6 +8,5 @@
     - "a gap merged via PR (closed_pr set or squash commit on main) but still status=ready_to_ship is reconciled to done — current stale examples: INFRA-1120 (#2821), INFRA-2188 (#2963)"
     - chump-integrator skips (warn+continue) a ready_to_ship gap whose origin branch no longer exists instead of failing the whole batch with git fetch exit 128
     - the dual ship-path split (bot-merge Mode A -> integrator queue vs direct PR auto-merge) is documented so an operator knows which path a gap is on and why Mode-A can leave a gap status=open in limbo
-  depends_on: [INFRA-2459]
   outcome_id: MISSION-010
 
