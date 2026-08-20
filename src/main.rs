@@ -2109,18 +2109,14 @@ async fn main() -> Result<()> {
             .filter(|a| a.as_str() != "--skip-farmer-gate")
             .cloned()
             .collect();
-        if !farmer_gate_bypass {
-            let fs = farmer_status::compute(&repo_root);
-            if !fs.green {
-                eprintln!("chump claim: farmer status RED — no new claims admitted.");
-                for r in &fs.reasons {
-                    eprintln!("  - {r}");
-                }
-                eprintln!("Run `chump farmer status` for detail. Bypass: --skip-farmer-gate");
-                std::process::exit(1);
-            }
-        }
-
+        // CREDIBLE-291: validate the request (GAP-ID format) BEFORE the farmer
+        // readiness gate. A malformed/invalid GAP-ID must return a format error
+        // regardless of farmer GREEN/RED — otherwise a transient farmer-RED flap
+        // makes `claim <bad-id>` print "farmer status RED" instead of the format
+        // error, failing test-cli-integration.sh (fast-checks) and cascading
+        // fast-checks -> test -> verified red on EVERY code PR (fleet-wide
+        // false-red jam, 2026-08-20). Mirrors CREDIBLE-166's autonomy-gate fix:
+        // validate request shape before any health/admission gate.
         let claim_args = match atomic_claim::ClaimArgs::from_argv(&claim_argv, repo_root.clone()) {
             Ok(a) => a,
             Err(e) => {
@@ -2135,6 +2131,21 @@ async fn main() -> Result<()> {
                 std::process::exit(2);
             }
         };
+
+        // RESILIENT-069: farmer readiness gate — admit no NEW (valid) claims
+        // until the farmer is lights-on again. Runs AFTER format validation
+        // (CREDIBLE-291) so a farmer blip never masks a bad-request error.
+        if !farmer_gate_bypass {
+            let fs = farmer_status::compute(&repo_root);
+            if !fs.green {
+                eprintln!("chump claim: farmer status RED — no new claims admitted.");
+                for r in &fs.reasons {
+                    eprintln!("  - {r}");
+                }
+                eprintln!("Run `chump farmer status` for detail. Bypass: --skip-farmer-gate");
+                std::process::exit(1);
+            }
+        }
         match atomic_claim::run_claim(claim_args) {
             Ok(report) => {
                 atomic_claim::print_report(&report);
