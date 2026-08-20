@@ -655,6 +655,12 @@ async fn run_one_discord_turn(
                 let build_agent_ms = t2.elapsed().as_millis();
                 let t3 = Instant::now();
                 let mut reply_text = String::new();
+                // RESILIENT-277 FIX3: remember which Discord message each
+                // approval card lives in so a superseded (timed-out /
+                // abandoned) request can be edited to say so instead of
+                // sitting there looking tappable while resolving nothing.
+                let mut approval_cards: std::collections::HashMap<String, Message> =
+                    std::collections::HashMap::new();
                 while let Some(ev) = event_rx.recv().await {
                     match ev {
                         AgentEvent::ToolApprovalRequest {
@@ -675,9 +681,32 @@ async fn run_one_discord_turn(
                             ]);
                             let builder =
                                 CreateMessage::new().content(content).components(vec![row]);
-                            if let Err(e) = channel_id.send_message(&*http, builder).await {
-                                eprintln!("chump: Discord approval message send: {:?}", e);
+                            match channel_id.send_message(&*http, builder).await {
+                                Ok(msg) => {
+                                    tracing::info!(request_id = %rid, tool = %tool_name, "posted approval card (RESILIENT-277)");
+                                    approval_cards.insert(rid, msg);
+                                }
+                                Err(e) => {
+                                    eprintln!("chump: Discord approval message send: {:?}", e);
+                                }
                             }
+                        }
+                        AgentEvent::ToolApprovalSuperseded {
+                            request_id: rid,
+                            reason,
+                        } => {
+                            if let Some(mut msg) = approval_cards.remove(&rid) {
+                                let edit = serenity::builder::EditMessage::new()
+                                    .content(format!(
+                                        "{}\n\n_Superseded: {}._",
+                                        msg.content, reason
+                                    ))
+                                    .components(vec![]);
+                                if let Err(e) = msg.edit(&*http, edit).await {
+                                    eprintln!("chump: Discord approval supersede edit: {:?}", e);
+                                }
+                            }
+                            tracing::info!(request_id = %rid, reason = %reason, "approval card superseded (RESILIENT-277)");
                         }
                         AgentEvent::TurnComplete { full_text, .. } => {
                             reply_text = full_text;
@@ -1223,14 +1252,46 @@ impl EventHandler for Handler {
             } else {
                 return;
             };
-            approval_resolver::resolve_approval(request_id, allowed);
-            if let Err(e) = c
-                .create_response(
-                    &ctx.http,
-                    serenity::builder::CreateInteractionResponse::Acknowledge,
-                )
-                .await
-            {
+            // RESILIENT-277 FIX4: log the tap, the decision, and whether it
+            // actually reached a live receiver (HIT) or resolved nothing
+            // (ORPHAN — id already resolved/abandoned/unknown). Previously a
+            // tap that arrived and a tap that never came looked identical in
+            // the log; this is what turned a broken-looking button into a
+            // silent no-op instead of an observable event.
+            let outcome = approval_resolver::resolve_approval(request_id, allowed);
+            tracing::info!(
+                request_id = %request_id,
+                allowed,
+                outcome = ?outcome,
+                "discord approval tap (RESILIENT-277)"
+            );
+            // RESILIENT-277 FIX3: edit the tapped card in place so it's
+            // observably resolved (or observably dead, if the tap arrived
+            // after the request was superseded) rather than staying tappable
+            // forever regardless of outcome.
+            let decision_label = if allowed { "Approved" } else { "Denied" };
+            let status_text = match outcome {
+                approval_resolver::ResolveOutcome::Hit => {
+                    format!("_{} — resolved._", decision_label)
+                }
+                approval_resolver::ResolveOutcome::Orphan => {
+                    "_This request already expired or was resolved elsewhere — no action taken._"
+                        .to_string()
+                }
+            };
+            let original_content = c
+                .message
+                .content
+                .split("\n\n_")
+                .next()
+                .unwrap_or(&c.message.content)
+                .to_string();
+            let response = serenity::builder::CreateInteractionResponse::UpdateMessage(
+                serenity::builder::CreateInteractionResponseMessage::new()
+                    .content(format!("{}\n\n{}", original_content, status_text))
+                    .components(vec![]),
+            );
+            if let Err(e) = c.create_response(&ctx.http, response).await {
                 eprintln!("chump: approval interaction response: {:?}", e);
             }
         }

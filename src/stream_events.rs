@@ -75,6 +75,15 @@ pub enum AgentEvent {
     WebSessionReady {
         session_id: String,
     },
+    /// RESILIENT-277: a previously-issued ToolApprovalRequest is no longer
+    /// live (timed out waiting, or the whole turn was abandoned/cancelled).
+    /// UI surfaces (Discord) should edit the corresponding card to say
+    /// superseded and disable its buttons rather than leaving it tappable
+    /// but dead.
+    ToolApprovalSuperseded {
+        request_id: String,
+        reason: String,
+    },
 }
 
 impl AgentEvent {
@@ -94,6 +103,7 @@ impl AgentEvent {
             AgentEvent::ToolApprovalRequest { .. } => "tool_approval_request",
             AgentEvent::ToolVerificationResult { .. } => "tool_verification_result",
             AgentEvent::WebSessionReady { .. } => "web_session_ready",
+            AgentEvent::ToolApprovalSuperseded { .. } => "tool_approval_superseded",
         }
     }
 }

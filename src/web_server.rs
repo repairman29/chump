@@ -505,7 +505,13 @@ async fn handle_approve(
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    approval_resolver::resolve_approval(body.request_id.trim(), body.allowed);
+    let outcome = approval_resolver::resolve_approval(body.request_id.trim(), body.allowed);
+    tracing::info!(
+        request_id = %body.request_id.trim(),
+        allowed = body.allowed,
+        outcome = ?outcome,
+        "web approval decision (RESILIENT-277)"
+    );
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 

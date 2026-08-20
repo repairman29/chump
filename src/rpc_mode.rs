@@ -152,7 +152,8 @@ pub async fn run_rpc_loop() -> Result<()> {
                     })?;
                     continue;
                 }
-                approval_resolver::resolve_approval(rid, allowed);
+                let outcome = approval_resolver::resolve_approval(rid, allowed);
+                tracing::info!(request_id = %rid, allowed, outcome = ?outcome, "rpc approval decision (RESILIENT-277)");
                 write_jsonl(&RpcOut::Ack { id })?;
             }
 
