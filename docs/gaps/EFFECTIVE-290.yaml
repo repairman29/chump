@@ -1,7 +1,9 @@
 - id: EFFECTIVE-290
   domain: EFFECTIVE
   title: "EFFECTIVE: chump onboard fails 'no readable intent documents found' on repos that have README/ROADMAP"
-  status: open
+  status: done
+  closed_pr: 3979
+  closed_date: "2026-08-19"
   priority: P1
   effort: m
   acceptance_criteria:
@@ -9,4 +11,5 @@
   outcome_id: EFFECTIVE-000
   evidence: |
     2026-06-22: 'chump onboard repairman29/BEAST-MODE' printed 'scanning local/BEAST-MODE ...' then 'no readable intent documents found in repairman29/BEAST-MODE' and produced no fresh scan — yet BEAST has README.md, docs/ROADMAP.md, AGENTS.md, etc. Likely a clone-path / working-dir bug (it scanned 'local/BEAST-MODE', not the actual fresh clone under ~/.chump/external/<owner>/<repo>/clone). IMPACT: the outward loop falls back to a 2-week-stale scan whose top gaps are already done/in-flight, which (with the no-skip-advance picker) stalls progress. AC: onboard reliably locates intent docs in the cloned external repo; a repo with a README yields a scan with proposed_gaps; add a test. Diagnose the 'local/BEAST-MODE' path.
+    [2026-08-20T00:00:00Z] RECONCILE: already shipped 2026-08-19 via 3ac376c1 (PR #3979, same gap ID in the commit trailer) — `derive_local_slug` and `resolve_local_clone_dir` helpers in src/onboard.rs fix both the `local/<basename>`-losing-the-owner mislabeling and the intent-doc-read path so it follows the nested `clone/` checkout, covered by unit tests. AC is met; gap YAML was left status:open in this worktree only — state.db has no open row for it. Same reconcile pattern as RESILIENT-133 (#3964) / INFRA-3494 (#3978).
 
