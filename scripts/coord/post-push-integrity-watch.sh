@@ -28,7 +28,9 @@
 #   scripts/setup/install-post-push-integrity-launchd.sh
 #
 # Telemetry:
-#   kind=post_push_auto_close_recovered — PR was auto-closed after push; reopened
+#   kind=post_push_auto_close_recovered      — PR was auto-closed after push; reopened
+#   kind=post_push_reopen_skipped_conflicting — PR closed while CONFLICTING with base;
+#                                                skipped reopen, stamped terminal label (INFRA-3604)
 #   kind=post_push_integrity_watch_ok   — scan ran, no incidents found
 #   kind=post_push_integrity_watch_err  — gh API call failed or script error
 #
@@ -38,6 +40,7 @@
 #   CHUMP_REPO                      — repo root (default: git rev-parse --show-toplevel)
 #
 # scanner-anchor: "kind":"post_push_auto_close_recovered"
+# scanner-anchor: "kind":"post_push_reopen_skipped_conflicting"
 # scanner-anchor: "kind":"post_push_integrity_watch_ok"
 # scanner-anchor: "kind":"post_push_integrity_watch_err"
 
@@ -130,12 +133,12 @@ CLOSED_PRS_JSON="$(gh pr list \
     --repo "$REPO_SLUG" \
     --state closed \
     --limit 20 \
-    --json number,headRefName,state,stateReason,closedAt,title,labels,mergedAt 2>/dev/null)" || \
+    --json number,headRefName,state,stateReason,closedAt,title,labels,mergedAt,mergeable 2>/dev/null)" || \
 CLOSED_PRS_JSON="$(gh pr list \
     --repo "$REPO_SLUG" \
     --state closed \
     --limit 20 \
-    --json number,headRefName,state,closedAt,title,labels,mergedAt 2>/dev/null)" || {
+    --json number,headRefName,state,closedAt,title,labels,mergedAt,mergeable 2>/dev/null)" || {
     log "WARN: gh pr list failed (API issue); skipping this cycle"
     emit post_push_integrity_watch_err '"reason":"gh_pr_list_failed"'
     exit 0
@@ -164,6 +167,7 @@ while IFS= read -r pr_json; do
     title="$(printf '%s' "$pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['title'])")"
     merged_at="$(printf '%s' "$pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('mergedAt') or '')")"
     labels_csv="$(printf '%s' "$pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(','.join(l.get('name','') for l in (d.get('labels') or [])))")"
+    mergeable="$(printf '%s' "$pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('mergeable') or '')")"
 
     # Only care about chump/* branches.
     if [[ "$branch" != ${BRANCH_RE}* ]]; then
@@ -225,6 +229,31 @@ except Exception as e:
             log "SKIP reopen PR #$pr_num — gap $_gap_id already $_gap_status (superseded dupe / intentional close, not a stale-push auto-close)"
             continue
         fi
+    fi
+
+    # INFRA-3604: reopener and stale-PR-reaper (rot-reaper.sh) must share one
+    # policy — keep a PR alive only if its gap is open AND the branch is
+    # mergeable/rebaseable. A PR closed while CONFLICTING is not lost work; it
+    # is dead weight that would immediately jam the queue again if resurrected
+    # (2026-08-19 incident: #3919/#3910 closed manually, reopened here ~25s
+    # later, both DIRTY+P2 and un-retireable). Skip the reopen and stamp the
+    # same rot-reaped label rot-reaper.sh uses so the close STICKS — the
+    # existing TERMINAL_LABEL guard above then makes this permanent across
+    # future scans, and the gap stays open for a clean re-pick on fresh main.
+    if [[ "$mergeable" == "CONFLICTING" ]]; then
+        log "SKIP reopen PR #$pr_num — branch is CONFLICTING with base; a stale conflicting PR must be redone, not resurrected. Labeling '$TERMINAL_LABEL' so the close sticks."
+        emit post_push_reopen_skipped_conflicting \
+            "\"pr\":$pr_num,\"branch\":\"$branch\",\"gap_id\":\"${_gap_id:-}\""
+        if [[ "$DRY_RUN" != "1" ]]; then
+            if ! gh label list --repo "$REPO_SLUG" --limit 300 2>/dev/null | grep -qE "^${TERMINAL_LABEL}([[:space:]]|$)"; then
+                gh label create "$TERMINAL_LABEL" --repo "$REPO_SLUG" --color B60205 \
+                    --description "Closed terminally by the no-abandon janitor; do not reopen — a fresh PR comes from the requeued gap." \
+                    >/dev/null 2>&1 || true
+            fi
+            gh pr edit "$pr_num" --repo "$REPO_SLUG" --add-label "$TERMINAL_LABEL" >/dev/null 2>&1 \
+                || log "  WARN: could not add label '$TERMINAL_LABEL' to PR #$pr_num"
+        fi
+        continue
     fi
 
     # This is an incident: a chump/* PR was closed (not merged) within our window.

@@ -305,6 +305,38 @@ else
 fi
 teardown_sandbox "$SB"
 
+# ── T9: closed PR with CONFLICTING branch → skipped, not reopened (INFRA-3604) ──
+# Shared policy with rot-reaper.sh: keep a PR alive only if the branch is
+# mergeable/rebaseable. A closed PR whose branch is CONFLICTING is dead weight —
+# reopening it just re-jams the queue (2026-08-19: #3919/#3910 DIRTY+P2).
+
+printf '\nT9: closed PR with CONFLICTING branch → skipped (no reopen)\n'
+GH_JSON="$(python3 -c "
+import json, datetime
+now = datetime.datetime.now(datetime.timezone.utc)
+pr = {
+    'number': 3919,
+    'headRefName': 'chump/infra-1784-claim',
+    'state': 'CLOSED',
+    'stateReason': 'NOT_PLANNED',
+    'closedAt': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'title': 'INFRA-1784: some stale conflicting work',
+    'labels': [],
+    'mergedAt': None,
+    'mergeable': 'CONFLICTING',
+}
+print(json.dumps([pr]))
+")"
+
+SB="$(setup_sandbox)"
+OUT="$(run_daemon "$SB" "$GH_JSON")"
+if echo "$OUT" | grep -q "SKIP reopen PR #3919" && ! echo "$OUT" | grep -q "INCIDENT"; then
+    pass "T9: CONFLICTING closed PR skipped, not treated as incident"
+else
+    fail "T9" "expected SKIP + no INCIDENT for CONFLICTING PR; output: $OUT"
+fi
+teardown_sandbox "$SB"
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 
 printf '\n────────────────────────────────────────────\n'
