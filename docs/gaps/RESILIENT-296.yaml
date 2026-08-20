@@ -1,9 +1,10 @@
 - id: RESILIENT-296
   domain: RESILIENT
   title: "RESILIENT: pr-failure-auto-rescue 7h-close (INFRA-3542) has no freshness gate — false-closed a PR minutes after a fix was pushed + CI re-running (RESILIENT-263 class)"
-  status: open
+  status: done
   priority: P1
   effort: m
+  closed_pr: 3628
   acceptance_criteria:
     - pr-failure-auto-rescue applies a freshness gate and does not close a PR whose head/checks updated within the grace window, preventing false-close of PRs a fix just landed on.
 
