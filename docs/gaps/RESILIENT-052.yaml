@@ -1,28 +1,10 @@
 - id: RESILIENT-052
   domain: RESILIENT
   title: "bot-merge exit-144-silent recurs post-#2169 — root-cause + loud-fail + regression test"
-  status: done
-  closed_pr: 4010
+  status: open
   priority: P1
   effort: m
   acceptance_criteria:
     - bot-merge no longer exits 144 silently; on failure it prints the failing step and a non-zero diagnosable cause, and a regression test reproduces the exit-144 condition asserting a loud failure.
-  notes: |
-    RECONCILE: already shipped via PR #4010 (8cb1bcb6, "fix(RESILIENT-052):
-    bot-merge ERR trap — root-cause + loud-fail for silent exit-144").
-    Root cause (INFRA-2688): bot-merge.sh ran under `set -euo pipefail` with
-    no ERR trap, so any child process dying non-zero (e.g. a gh sub-process
-    killed by SIGURG, exit 128+16=144) propagated silently — indistinguishable
-    from a hang. Fix adds `trap '_bm_err_handler "$?" "$BASH_COMMAND" "$LINENO"' ERR`
-    (scripts/coord/bot-merge.sh:396) which prints the failing step, exit code,
-    and decoded signal name to stderr and emits kind=bot_merge_uncaught_error
-    to ambient.jsonl (registered in EVENT_REGISTRY.yaml).
-    scripts/ci/test-bot-merge-err-trap-loud-fail.sh reproduces the exit-144
-    condition against the real extracted handler and asserts a loud
-    diagnosable failure + ambient event — 10/10 assertions pass. All AC
-    bullets are met. state.db already showed RESILIENT-052 as open in
-    this worktree's local copy; this commit brings docs/gaps/RESILIENT-052.yaml
-    in sync. Same reconcile pattern as RESILIENT-081 (#4015) / RESILIENT-218
-    (#4014).
   outcome_id: RESILIENT-000
 
