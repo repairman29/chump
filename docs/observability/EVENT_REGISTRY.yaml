@@ -6167,6 +6167,37 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, unit]
 
+  - kind: organ_reconcile_not_applicable
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-347)
+    trigger: an `enabled` organ's manifest-declared `requires=` (bin:/env:/dep:)
+      is unmet on this node — the reconcile skips it entirely rather than
+      attempting `enable --now` and failing. Replaces the pre-347 blast-all
+      behavior that tried to install the WHOLE helsinki roster onto every
+      node regardless of which binaries/deps were actually present.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit, role, reason]
+
+  - kind: organ_reconcile_backoff
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-347)
+    trigger: an applicable organ failed to `enable --now` or did not verify
+      active a moment after enabling — the reconcile disables the unit and
+      starts a cooldown (default 1h, CHUMP_ORGAN_RECONCILE_BACKOFF_COOLDOWN_S)
+      instead of leaving it to fail identically every reconcile cycle (the
+      pre-347 churn on integrator/sla-scorecard/backlog-sync-writer/farmer).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit, role, reason]
+
+  - kind: organ_reconcile_backoff_skip
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-347)
+    trigger: a previously-failed organ is still inside its backoff cooldown —
+      the reconcile skips re-attempting it this cycle. Observable proof the
+      reconcile is NOT re-churning a structurally-broken unit every tick.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit, role]
+
   - kind: organ_self_healed
     effect_metric: organ_self_heal_rate
     emitter: scripts/ops/organ-watchdog.sh (INFRA-3595)

@@ -2076,3 +2076,16 @@ CHUMP_SYSTEMIC_RED_DISABLED
 CHUMP_SYSTEMIC_RED_PR_LIMIT
 # detected in: (standard input)
 CHUMP_SYSTEMIC_RED_THRESHOLD
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ORGAN_RECONCILE_BACKOFF_COOLDOWN_S
+# detected in: (standard input)
+CHUMP_ORGAN_RECONCILE_BACKOFF_DIR
+# detected in: (standard input)
+CHUMP_ORGAN_RECONCILE_ALLOW_NONROOT
+# detected in: (standard input)
+CHUMP_ORGAN_RECONCILE_SYSTEMCTL_BIN
+# detected in: (standard input)
+CHUMP_ORGAN_RECONCILE_VERIFY_DELAY_S
