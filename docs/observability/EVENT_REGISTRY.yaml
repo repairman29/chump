@@ -5625,6 +5625,16 @@ events:
     trigger: merge driver detected an orphan '- name:' step without 'run:'/'uses:'
       body in theirs_tail; aborts instead of writing a corrupt workflow file.
     consumers: [fleet-brief, operator-recall]
+  # ── INFRA-1482: ci-yml merge driver final give-up ─────────────────────────
+  - kind: merge_driver_fallback
+    effect_metric: self
+    emitter: scripts/git/merge-driver-ci-yml-add-row.sh give_up() (INFRA-1482)
+    trigger: every line-diff heuristic AND the YAML-aware last-resort fallback
+      (scripts/git/ci-yml-yaml-merge.py) failed to resolve a ci.yml merge;
+      driver exits 1 and git falls back to conflict markers / manual
+      resolution. Measures how often manual intervention is still needed.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, ours, theirs, reason]
     fields_required: [ts, kind, ours, theirs]
   # ── INFRA-1149: reserve-time title similarity check ───────────────────────
   - kind: gap_reserve_similarity_warn
