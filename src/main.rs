@@ -3645,10 +3645,15 @@ async fn main() -> Result<()> {
     }
 
     // MISSION-008 / MISSION-030: `chump outcome <sub>` — first-class Outcome object commands.
-    // INFRA-3480: chump intake "<plain-language problem>" [--json] [--create]
+    // INFRA-3480 / EFFECTIVE-357: chump intake "<plain-language problem>" [--json] [--create]
     // CREATE-mode conversational intake — plain-language restatement, 1-3
     // clarifying questions, and a proposed definition-of-done. Never emits
     // software jargon (structurally enforced in VisionIntakeContract::validate).
+    // With --create: writes an outcome row, then — only when chump-perception
+    // scores the raw input below the ambiguity threshold — files ONE
+    // structured umbrella gap with real acceptance criteria via the existing
+    // roadmap-from-vision pipeline (EFFECTIVE-357). Above the threshold,
+    // intake stops at the clarifying questions instead of guessing AC.
     if args.get(1).map(String::as_str) == Some("intake") {
         let json_out = args.iter().any(|a| a == "--json");
         let create = args.iter().any(|a| a == "--create");
@@ -3659,6 +3664,10 @@ async fn main() -> Result<()> {
             .cloned()
             .unwrap_or_else(|| {
                 eprintln!("Usage: chump intake \"<plain-language problem>\" [--json] [--create]");
+                eprintln!(
+                    "  --create   Write an outcome row, and (if the input isn't too ambiguous) \
+                     a structured gap with real acceptance criteria"
+                );
                 std::process::exit(2);
             });
         if let Err(e) = vision_intake::run(&text, json_out, create).await {
