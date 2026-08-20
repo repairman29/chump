@@ -538,6 +538,18 @@ if [[ "$FLEET_BACKEND" == "claude" ]]; then
         fi
     done
 
+    # RESILIENT-088: a 404/model-not-found error means the API rejected the
+    # *model* the probe (or claude's own default resolution) picked, not the
+    # credentials — Anthropic authenticates the request before it looks up
+    # the model, so reaching a 404 at all is itself proof auth was accepted.
+    # Retired model IDs 404 identically for valid and invalid keys, so the
+    # old code (any non-zero probe rc == auth failure) misread "model gone"
+    # as "credentials bad" and halted the fleet on perfectly good auth.
+    if [[ $_probe_rc -ne 0 ]] && grep -qiE '404|model_not_found|not_found_error|no such model|model[^0-9a-z]*(not found|does not exist)' <<<"$_probe_out" 2>/dev/null; then
+        echo "[run-fleet] INFRA-621/RESILIENT-088: probe got model-not-found (404), not an auth failure — treating as auth-OK"
+        _probe_rc=0
+    fi
+
     if [[ $_probe_rc -eq 0 ]]; then
         echo "[run-fleet] INFRA-621: auth probe succeeded"
         printf '{"ts":"%s","kind":"fleet_auth_verified","auth_mode":"%s","auth_path":"%s"}\n' \
