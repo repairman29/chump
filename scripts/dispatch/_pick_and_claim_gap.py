@@ -70,6 +70,70 @@ PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
 EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
 PILLAR_TAGS = {"EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE", "MISSION"}
 
+
+def _parse_dep_list(deps_raw: object) -> list[str]:
+    """Normalize a gap's depends_on field (JSON-string or list) to a list of IDs."""
+    if isinstance(deps_raw, str):
+        try:
+            parsed = json.loads(deps_raw) if deps_raw.strip() else []
+        except json.JSONDecodeError:
+            return []
+        return parsed if isinstance(parsed, list) else []
+    if isinstance(deps_raw, list):
+        return deps_raw
+    return []
+
+
+def compute_effective_priority(gaps: list[dict]) -> dict[str, int]:
+    """INFRA-3612: propagate priority through depends_on so a blocker inherits
+    the max priority (min PRIO_RANK) of every gap it transitively unblocks.
+
+    Mirrors crates/chump-planner/src/graph.rs `unblocks()` semantics: a hard
+    Blocks edge runs dep -> dependent (the dep must close before the dependent
+    can ship). effective_priority(gap) = min PRIO_RANK over {own priority}
+    union {priority of every OPEN gap this gap transitively unblocks}. A P3
+    that blocks a P0 is picked as P0 — effective priority is the PRIMARY sort
+    band, not a within-priority-band tiebreaker (that was the INFRA-3612 bug:
+    a P3 blocker for a P0 sat behind every P1/P2 because nothing propagated
+    the P0's urgency backward through the dependency edge, risking a deadlock
+    where the blocked P0 waits behind all P1s while its own P2/P3 prereq sits
+    unworked).
+
+    Only OPEN gaps participate in the graph — a dependency on a done/closed
+    gap has already been satisfied and carries no priority left to propagate.
+    """
+    by_id = {g.get("id"): g for g in gaps if isinstance(g, dict) and g.get("id")}
+    open_ids = {gid for gid, g in by_id.items() if g.get("status") == "open"}
+
+    # Reverse adjacency: dep_id -> [gap_ids that depend on dep_id] (closing
+    # dep_id unblocks these). Built only over open<->open edges — a closed
+    # dependent has nothing left to propagate.
+    unblocks_of: dict[str, list[str]] = {}
+    for gid in open_ids:
+        for dep in _parse_dep_list(by_id[gid].get("depends_on")):
+            if dep in open_ids:
+                unblocks_of.setdefault(dep, []).append(gid)
+
+    own_rank = {
+        gid: PRIO_RANK.get((by_id[gid].get("priority") or "").upper(), 9)
+        for gid in open_ids
+    }
+
+    effective: dict[str, int] = {}
+    for gid in open_ids:
+        best = own_rank[gid]
+        seen = {gid}
+        stack = list(unblocks_of.get(gid, []))
+        while stack:
+            nxt = stack.pop()
+            if nxt in seen:
+                continue
+            seen.add(nxt)
+            best = min(best, own_rank.get(nxt, 9))
+            stack.extend(unblocks_of.get(nxt, []))
+        effective[gid] = best
+    return effective
+
 # MISSION-011: default active mission outcome when no explicit override is set.
 # Canonical copy lives in _pick_gap.py; keep in sync.
 _DEFAULT_ACTIVE_MISSION = "MISSION-010"
