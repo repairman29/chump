@@ -655,6 +655,14 @@ async fn run_one_discord_turn(
                 let build_agent_ms = t2.elapsed().as_millis();
                 let t3 = Instant::now();
                 let mut reply_text = String::new();
+                // RESILIENT-277 FIX 3: track this turn's live approval cards
+                // by request_id so a resolution (tap or timeout) can supersede
+                // the card — edit it inert instead of leaving a tappable card
+                // that resolves nothing.
+                let mut approval_cards: std::collections::HashMap<
+                    String,
+                    serenity::model::id::MessageId,
+                > = std::collections::HashMap::new();
                 while let Some(ev) = event_rx.recv().await {
                     match ev {
                         AgentEvent::ToolApprovalRequest {
@@ -675,8 +683,33 @@ async fn run_one_discord_turn(
                             ]);
                             let builder =
                                 CreateMessage::new().content(content).components(vec![row]);
-                            if let Err(e) = channel_id.send_message(&*http, builder).await {
-                                eprintln!("chump: Discord approval message send: {:?}", e);
+                            match channel_id.send_message(&*http, builder).await {
+                                Ok(msg) => {
+                                    approval_cards.insert(rid, msg.id);
+                                }
+                                Err(e) => {
+                                    eprintln!("chump: Discord approval message send: {:?}", e);
+                                }
+                            }
+                        }
+                        AgentEvent::ToolApprovalResolved {
+                            request_id: rid,
+                            allowed,
+                            via,
+                        } => {
+                            if let Some(msg_id) = approval_cards.remove(&rid) {
+                                let label = match (allowed, via.as_str()) {
+                                    (true, _) => "✅ Approved — resolved",
+                                    (false, "timeout") => "⌛ Superseded — timed out waiting",
+                                    (false, _) => "🚫 Denied — resolved",
+                                };
+                                let edit = serenity::builder::EditMessage::new()
+                                    .content(label)
+                                    .components(vec![]);
+                                if let Err(e) = channel_id.edit_message(&*http, msg_id, edit).await
+                                {
+                                    eprintln!("chump: Discord approval card supersede: {:?}", e);
+                                }
                             }
                         }
                         AgentEvent::TurnComplete { full_text, .. } => {
@@ -1223,7 +1256,16 @@ impl EventHandler for Handler {
             } else {
                 return;
             };
-            approval_resolver::resolve_approval(request_id, allowed);
+            // RESILIENT-277 FIX 4: log every tap — request_id, decision, and
+            // whether a receiver was actually found (HIT) or the id was
+            // already dead (ORPHAN). Previously interaction_create logged
+            // nothing on success, so a tap that landed and a tap that never
+            // arrived looked identical in the log.
+            let outcome = approval_resolver::resolve_approval(request_id, allowed);
+            eprintln!(
+                "chump: approval tap request_id={} allowed={} outcome={:?}",
+                request_id, allowed, outcome
+            );
             if let Err(e) = c
                 .create_response(
                     &ctx.http,

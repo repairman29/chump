@@ -64,6 +64,17 @@ pub enum AgentEvent {
         reason: String,
         expires_at_secs: u64,
     },
+    /// RESILIENT-277 FIX 3: emitted once a `ToolApprovalRequest` is resolved
+    /// (tapped, joined-and-resolved, or timed out) so the UI can supersede
+    /// the card — edit it to show the outcome and disable its buttons. A
+    /// card that still looks tappable but resolves nothing is worse than no
+    /// card at all.
+    ToolApprovalResolved {
+        request_id: String,
+        allowed: bool,
+        /// "tap" | "timeout" — why this resolved.
+        via: String,
+    },
     /// Post-execution verification result for write tools.
     ToolVerificationResult {
         call_id: String,
@@ -92,6 +103,7 @@ impl AgentEvent {
             AgentEvent::TurnComplete { .. } => "turn_complete",
             AgentEvent::TurnError { .. } => "turn_error",
             AgentEvent::ToolApprovalRequest { .. } => "tool_approval_request",
+            AgentEvent::ToolApprovalResolved { .. } => "tool_approval_resolved",
             AgentEvent::ToolVerificationResult { .. } => "tool_verification_result",
             AgentEvent::WebSessionReady { .. } => "web_session_ready",
         }

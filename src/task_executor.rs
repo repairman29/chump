@@ -253,82 +253,124 @@ pub async fn execute_tool_calls_sequential<'a>(
                 );
                 tool_policy::record_approval_stat(&tc.name, "auto_approved", &risk_level);
             } else {
-                let (request_id, rx) = approval_resolver::request_approval();
-                if pending_peer_approval::peer_approve_tools().contains(&tc.name.to_lowercase()) {
-                    pending_peer_approval::write_pending_peer_approval(
-                        &request_id,
-                        &tc.name,
-                        &tc.input,
+                // RESILIENT-277 FIX 1: dedupe in-flight. Joining an existing
+                // pending request (same tool + normalized args) means we must
+                // NOT emit a second approval card, spawn a second escalation
+                // timer, or write a second peer-approval record — there is
+                // only one live receiver for this question.
+                let handle = approval_resolver::request_approval(&tc.name, &tc.input);
+                let request_id = handle.request_id.clone();
+                let mut rx = handle.rx;
+                if !handle.joined {
+                    if pending_peer_approval::peer_approve_tools().contains(&tc.name.to_lowercase())
+                    {
+                        pending_peer_approval::write_pending_peer_approval(
+                            &request_id,
+                            &tc.name,
+                            &tc.input,
+                        );
+                    }
+                    let expires_at_secs = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs() + timeout_secs)
+                        .unwrap_or(0);
+                    send_event(
+                        event_tx,
+                        AgentEvent::ToolApprovalRequest {
+                            request_id: request_id.clone(),
+                            tool_name: tc.name.clone(),
+                            tool_input: tc.input.clone(),
+                            risk_level: risk_level.clone(),
+                            reason: reason.clone(),
+                            expires_at_secs,
+                        },
+                    );
+
+                    // INFRA-1340 (audio cue): fire-and-forget OS chime when the
+                    // operator has CHUMP_APPROVAL_AUDIO=1. Independent of dropdown
+                    // and push escalation.
+                    tool_policy::play_approval_audio_cue();
+
+                    // INFRA-1340 (web push escalation): spawn a background task that,
+                    // after CHUMP_APPROVAL_ESCALATION_SECS (default 60s), checks if
+                    // the request is still pending and dispatches Web Push if so.
+                    if tool_policy::approval_escalation_enabled() {
+                        let escalation_secs = tool_policy::approval_escalation_secs();
+                        let req_id_for_push = request_id.clone();
+                        let tool_for_push = tc.name.clone();
+                        let risk_for_push = risk_level.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_secs(escalation_secs))
+                                .await;
+                            if !approval_resolver::is_pending(&req_id_for_push) {
+                                return; // operator already decided.
+                            }
+                            #[cfg(feature = "web-push")]
+                            let title = format!("Chump: approve {}?", tool_for_push);
+                            #[cfg(feature = "web-push")]
+                            let body = format!(
+                                "{} request pending for {}s (risk={})",
+                                tool_for_push, escalation_secs, risk_for_push
+                            );
+                            #[cfg(feature = "web-push")]
+                            let (ok, fail) =
+                                crate::web_push_send::broadcast_json_notification(&title, &body)
+                                    .await;
+                            #[cfg(not(feature = "web-push"))]
+                            let (ok, fail) = (0usize, 0usize);
+                            tool_policy::emit_ambient_json(
+                                "tool_approval_escalated",
+                                serde_json::json!({
+                                    "request_id": req_id_for_push,
+                                    "tool_name": tool_for_push,
+                                    "risk_level": risk_for_push,
+                                    "idle_secs": escalation_secs,
+                                    "push_ok": ok,
+                                    "push_fail": fail,
+                                }),
+                            );
+                        });
+                    }
+                } else {
+                    tracing::info!(
+                        request_id = %request_id,
+                        tool = %tc.name,
+                        "approval request joined an existing in-flight request (RESILIENT-277 dedupe)"
                     );
                 }
-                let expires_at_secs = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs() + timeout_secs)
-                    .unwrap_or(0);
+
+                // RESILIENT-277 FIX 2: await the shared oneshot/watch for the
+                // full CHUMP_APPROVAL_TIMEOUT_SECS window — do not re-enter
+                // the model loop while a human decision is outstanding.
+                let approval_result = tokio::time::timeout(
+                    std::time::Duration::from_secs(timeout_secs),
+                    rx.wait_for(|v| v.is_some()),
+                )
+                .await;
+                let (allowed, result_label) = match approval_result {
+                    Ok(Ok(v)) => {
+                        let allowed = v.unwrap_or(false);
+                        (allowed, if allowed { "allowed" } else { "denied" })
+                    }
+                    Ok(Err(_)) => (false, "denied"),
+                    Err(_) => {
+                        // Timed out waiting: expire the request so (a) any
+                        // other joined waiter also unblocks as denied, (b) the
+                        // dedupe key frees up for a genuinely new ask, and (c)
+                        // a later tap on the now-dead card is an observable
+                        // ORPHAN (FIX 4) instead of a silent no-op.
+                        approval_resolver::expire_approval(&request_id);
+                        (false, "timeout")
+                    }
+                };
                 send_event(
                     event_tx,
-                    AgentEvent::ToolApprovalRequest {
+                    AgentEvent::ToolApprovalResolved {
                         request_id: request_id.clone(),
-                        tool_name: tc.name.clone(),
-                        tool_input: tc.input.clone(),
-                        risk_level: risk_level.clone(),
-                        reason: reason.clone(),
-                        expires_at_secs,
+                        allowed,
+                        via: result_label.to_string(),
                     },
                 );
-
-                // INFRA-1340 (audio cue): fire-and-forget OS chime when the
-                // operator has CHUMP_APPROVAL_AUDIO=1. Independent of dropdown
-                // and push escalation.
-                tool_policy::play_approval_audio_cue();
-
-                // INFRA-1340 (web push escalation): spawn a background task that,
-                // after CHUMP_APPROVAL_ESCALATION_SECS (default 60s), checks if
-                // the request is still pending and dispatches Web Push if so.
-                if tool_policy::approval_escalation_enabled() {
-                    let escalation_secs = tool_policy::approval_escalation_secs();
-                    let req_id_for_push = request_id.clone();
-                    let tool_for_push = tc.name.clone();
-                    let risk_for_push = risk_level.clone();
-                    tokio::spawn(async move {
-                        tokio::time::sleep(std::time::Duration::from_secs(escalation_secs)).await;
-                        if !approval_resolver::is_pending(&req_id_for_push) {
-                            return; // operator already decided.
-                        }
-                        #[cfg(feature = "web-push")]
-                        let title = format!("Chump: approve {}?", tool_for_push);
-                        #[cfg(feature = "web-push")]
-                        let body = format!(
-                            "{} request pending for {}s (risk={})",
-                            tool_for_push, escalation_secs, risk_for_push
-                        );
-                        #[cfg(feature = "web-push")]
-                        let (ok, fail) =
-                            crate::web_push_send::broadcast_json_notification(&title, &body).await;
-                        #[cfg(not(feature = "web-push"))]
-                        let (ok, fail) = (0usize, 0usize);
-                        tool_policy::emit_ambient_json(
-                            "tool_approval_escalated",
-                            serde_json::json!({
-                                "request_id": req_id_for_push,
-                                "tool_name": tool_for_push,
-                                "risk_level": risk_for_push,
-                                "idle_secs": escalation_secs,
-                                "push_ok": ok,
-                                "push_fail": fail,
-                            }),
-                        );
-                    });
-                }
-
-                let approval_result =
-                    tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), rx).await;
-                let (allowed, result_label) = match approval_result {
-                    Ok(Ok(true)) => (true, "allowed"),
-                    Ok(Ok(false)) => (false, "denied"),
-                    Ok(Err(_)) => (false, "denied"),
-                    Err(_) => (false, "timeout"),
-                };
                 chump_log::log_tool_approval_audit(
                     &tc.name,
                     &args_preview,
@@ -610,9 +652,14 @@ mod tests {
     // ------------------------------------------------------------------
     #[tokio::test]
     async fn approval_resolver_timeout_produces_false() {
-        let (_id, rx) = crate::approval_resolver::request_approval();
+        let mut handle =
+            crate::approval_resolver::request_approval("test_tool", &json!({"scenario": 8}));
         // Don't call resolve — let the receiver time out via tokio::time::timeout.
-        let result = tokio::time::timeout(std::time::Duration::from_millis(50), rx).await;
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            handle.rx.wait_for(|v| v.is_some()),
+        )
+        .await;
         assert!(result.is_err(), "should have timed out");
     }
 
@@ -621,9 +668,10 @@ mod tests {
     // ------------------------------------------------------------------
     #[tokio::test]
     async fn approval_resolver_allow_produces_true() {
-        let (id, rx) = crate::approval_resolver::request_approval();
-        crate::approval_resolver::resolve_approval(&id, true);
-        let allowed = rx.await.unwrap();
+        let mut handle =
+            crate::approval_resolver::request_approval("test_tool", &json!({"scenario": 9}));
+        crate::approval_resolver::resolve_approval(&handle.request_id, true);
+        let allowed = handle.rx.wait_for(|v| v.is_some()).await.unwrap().unwrap();
         assert!(allowed);
     }
 
@@ -632,9 +680,10 @@ mod tests {
     // ------------------------------------------------------------------
     #[tokio::test]
     async fn approval_resolver_deny_produces_false() {
-        let (id, rx) = crate::approval_resolver::request_approval();
-        crate::approval_resolver::resolve_approval(&id, false);
-        let allowed = rx.await.unwrap();
+        let mut handle =
+            crate::approval_resolver::request_approval("test_tool", &json!({"scenario": 10}));
+        crate::approval_resolver::resolve_approval(&handle.request_id, false);
+        let allowed = handle.rx.wait_for(|v| v.is_some()).await.unwrap().unwrap();
         assert!(!allowed);
     }
 
