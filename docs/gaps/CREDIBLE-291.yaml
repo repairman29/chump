@@ -1,11 +1,34 @@
 - id: CREDIBLE-291
   domain: CREDIBLE
   title: "CI false-red fleet-wide when farmer flaps RED: the claim bad-GAP-ID CLI test (fast-checks CREDIBLE-018) hits the farmer-RED refusal BEFORE gap-ID format validation, so a transient farmer-RED fails fast-checks -> test -> fast-checks-required -> verified on EVERY code PR and jams the whole merge pipeline. Fix: validate gap-ID format before the farmer-status gate (or make the test robust to farmer-RED). Env-race false-red gate site."
-  status: open
+  status: done
+  closed_pr: 3981
   priority: P1
   effort: m
   acceptance_criteria:
     - "The change described by \"the claim bad-GAP-ID CLI test (fast-checks CREDIBLE-018) hits the farmer-RED refusal BEFORE gap-ID format validation, so a transient farmer-RED fails fast-checks -> test -> fast-checks-required -> verified on EVERY code PR and jams the whole merge pipeline. Fix: validate gap-ID format before the farmer-status gate (or make the test robust to farmer-RED). Env-race false-red gate site.\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    RECONCILE (2026-08-20): already shipped via PR #3981 ("CREDIBLE-291:
+    validate GAP-ID format before farmer gate (unjam fleet-wide
+    false-red)", merged 2026-08-20T02:26:29Z, squash commit 2d663c8e on
+    origin/main) — but this YAML never got flipped to done, same
+    stale-record class as RESILIENT-337/CREDIBLE-270. This worktree
+    ("fleet-2") was a duplicate concurrent claim on the same gap ID; the
+    other claim shipped first.
+
+    Verified all AC against src/main.rs on main:
+    - `chump claim <bad-id>` now calls
+      `atomic_claim::ClaimArgs::from_argv` (format validation) BEFORE the
+      RESILIENT-069 farmer readiness gate (src/main.rs:2112-2148) — a
+      malformed GAP-ID returns the format/usage error even when
+      `.chump/fleet-paused` forces farmer RED (AC1).
+    - scripts/ci/test-cli-integration.sh lines 316-326: forces farmer-RED
+      via the fleet-paused sentinel and asserts `claim bad-format-id`
+      still returns the format error, not "farmer status RED" (AC2).
+    - `cargo fmt --all -- --check` passes clean on this worktree; the
+      fix is doc/gap-registry-only from this worktree's perspective (AC3).
+    Reconciled via direct YAML edit (gap absent from this worktree's
+    state.db — same pattern as the RESILIENT-337/CREDIBLE-270 precedent).
 
