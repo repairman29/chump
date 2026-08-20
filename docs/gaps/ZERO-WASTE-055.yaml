@@ -1,0 +1,11 @@
+- id: ZERO-WASTE-055
+  domain: ZERO-WASTE
+  title: "kill the gap-edit durability dance: chump gap set must auto-persist durably (state.db to yaml to PR) so board/operator edits never need pause-sync+sync--push+commit+PR by hand and never revert (relates INFRA-3606 split-brain)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"chump gap set must auto-persist durably (state.db to yaml to PR) so board/operator edits never need pause-sync+sync--push+commit+PR by hand and never revert (relates INFRA-3606 split-brain)\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+
