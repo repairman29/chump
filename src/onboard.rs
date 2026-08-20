@@ -292,6 +292,46 @@ fn owner_repo_from_path(path: &str) -> Result<String> {
     Ok(format!("{owner}/{repo}"))
 }
 
+/// Derive the `owner_repo` slug for a local-path `chump onboard` invocation.
+///
+/// EFFECTIVE-290: a local path that is actually a previously-cloned external
+/// repo (e.g. `~/.chump/external/<owner>/<repo>` or its `.../clone` subdir,
+/// as can be passed by `--schedule`/`--iter-once` or by re-running onboard
+/// against an already-onboarded repo) was mislabeled `local/<basename>` --
+/// e.g. `local/BEAST-MODE` -- losing the owner and producing a slug that
+/// didn't match the real clone's tag. When `canonical` resolves under
+/// `external_root`, derive the real `<owner>/<repo>` slug via
+/// `owner_repo_from_path` instead of the generic `local/` fallback.
+fn derive_local_slug(path: &Path, canonical: &Path, external_root: &Path) -> String {
+    let fallback = || {
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| format!("local/{n}"))
+            .unwrap_or_else(|| "local/repo".to_string())
+    };
+    if canonical.starts_with(external_root) {
+        owner_repo_from_path(&canonical.to_string_lossy()).unwrap_or_else(|_| fallback())
+    } else {
+        fallback()
+    }
+}
+
+/// Resolve the directory onboard should actually read intent docs from, for
+/// a local (non-URL) `chump onboard` invocation.
+///
+/// EFFECTIVE-290: when `clone_root` is the external-repo root
+/// (`.../<owner>/<repo>`) rather than the actual checkout, follow the nested
+/// `clone/` subdir so intent docs are read from the real clone instead of
+/// the (fileless) parent directory -- this is what produced "no readable
+/// intent documents found" for repos that plainly have a README.
+fn resolve_local_clone_dir(clone_root: &Path) -> PathBuf {
+    if !clone_root.join(".git").exists() && clone_root.join("clone").join(".git").exists() {
+        clone_root.join("clone")
+    } else {
+        clone_root.to_path_buf()
+    }
+}
+
 fn run_inner(args: &[String]) -> Result<()> {
     let opts = parse_args(args)?;
     let mut repo_url_or_path = opts.repo_url_or_path.trim().to_string();
@@ -329,11 +369,10 @@ fn run_inner(args: &[String]) -> Result<()> {
         (slug, dest)
     } else {
         let path = PathBuf::from(&repo_url_or_path);
-        let slug = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| format!("local/{n}"))
-            .unwrap_or_else(|| "local/repo".to_string());
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let external_root = PathBuf::from(home).join(".chump").join("external");
+        let slug = derive_local_slug(&path, &canonical, &external_root);
         let dest = match opts.clone_to {
             Some(ref p) => p.clone(),
             None => path.clone(),
@@ -362,7 +401,7 @@ fn run_inner(args: &[String]) -> Result<()> {
         }
         git_dir
     } else {
-        clone_root.clone()
+        resolve_local_clone_dir(&clone_root)
     };
 
     eprintln!("chump onboard: scanning {} ...", owner_repo);
@@ -1884,6 +1923,69 @@ mod tests {
             owner_repo_from_path("/root/.chump/external/foo/bar/").unwrap(),
             "foo/bar"
         );
+    }
+
+    #[test]
+    fn test_derive_local_slug_under_external_root_uses_owner_repo() {
+        // EFFECTIVE-290: a local path under ~/.chump/external/<owner>/<repo>
+        // must resolve to the real owner/repo slug, not `local/<basename>`.
+        let external_root = PathBuf::from("/home/jeff/.chump/external");
+        let path = PathBuf::from("/home/jeff/.chump/external/repairman29/BEAST-MODE");
+        assert_eq!(
+            derive_local_slug(&path, &path, &external_root),
+            "repairman29/BEAST-MODE"
+        );
+        // .../clone subdir variant
+        let clone_path = PathBuf::from("/home/jeff/.chump/external/repairman29/BEAST-MODE/clone");
+        assert_eq!(
+            derive_local_slug(&clone_path, &clone_path, &external_root),
+            "repairman29/BEAST-MODE"
+        );
+    }
+
+    #[test]
+    fn test_derive_local_slug_outside_external_root_falls_back_to_local() {
+        let external_root = PathBuf::from("/home/jeff/.chump/external");
+        let path = PathBuf::from("/home/jeff/Projects/myrepo");
+        assert_eq!(
+            derive_local_slug(&path, &path, &external_root),
+            "local/myrepo"
+        );
+    }
+
+    #[test]
+    fn test_resolve_local_clone_dir_follows_nested_clone() {
+        let base = std::env::temp_dir().join(format!(
+            "chump_onboard_clonedir_probe_{}_a",
+            std::process::id()
+        ));
+        let clone_sub = base.join("clone");
+        std::fs::create_dir_all(clone_sub.join(".git")).unwrap();
+        assert_eq!(resolve_local_clone_dir(&base), clone_sub);
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn test_resolve_local_clone_dir_uses_root_when_no_nested_clone() {
+        let base = std::env::temp_dir().join(format!(
+            "chump_onboard_clonedir_probe_{}_b",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("README.md"), "# hi").unwrap();
+        assert_eq!(resolve_local_clone_dir(&base), base);
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn test_resolve_local_clone_dir_uses_root_when_it_is_itself_a_git_repo() {
+        let base = std::env::temp_dir().join(format!(
+            "chump_onboard_clonedir_probe_{}_c",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(base.join(".git")).unwrap();
+        assert_eq!(resolve_local_clone_dir(&base), base);
+        std::fs::remove_dir_all(&base).ok();
     }
 
     #[test]
