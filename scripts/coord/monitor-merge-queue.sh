@@ -44,6 +44,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Source chump_gh wrapper for rate-limit awareness + ambient recording
 source "$SCRIPT_DIR/lib/github.sh"
+# INFRA-2464: cache-first PR queue reads (cache_query_pr_queue) + REST-not-
+# GraphQL queued-run counts, so this 10s-cadence daemon doesn't burn `gh run
+# list` / `gh pr list` (GraphQL) every tick.
+source "$SCRIPT_DIR/lib/github_cache.sh"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 mkdir -p "$(dirname "$AMBIENT")"
 
@@ -69,12 +73,30 @@ _timeout_cmd() {
 }
 
 gh_query_queued_workflows() {
-    # Count GitHub Actions runs with status=queued. Timeout after 8s.
-    CHUMP_GH_CALL_CRITICALITY=background _timeout_cmd 8 chump_gh run list --status queued --json databaseId --limit 100 \
-        --jq 'length' 2>/dev/null || echo "ERROR"
+    # Count GitHub Actions runs with status=queued. INFRA-2464: `gh run list`
+    # is a GraphQL call; the equivalent REST endpoint
+    # (actions/runs?status=queued) hits the REST bucket instead, which stays
+    # healthy during GraphQL exhaustion. Timeout after 8s.
+    local repo
+    repo="$(_cache_repo_nwo 2>/dev/null || true)"
+    if [[ -z "$repo" ]]; then
+        echo "ERROR"
+        return
+    fi
+    CHUMP_GH_CALL_CRITICALITY=background _timeout_cmd 8 chump_gh api \
+        "repos/$repo/actions/runs?status=queued&per_page=100" \
+        --jq '.total_count' 2>/dev/null || echo "ERROR"
 }
 gh_query_auto_merge_prs() {
-    # Count open PRs with autoMergeRequest set. Uses REST search.
+    # Count open PRs with auto-merge armed. INFRA-2464: cache-first via the
+    # webhook-fed pr_state table (cache_query_pr_queue); falls back to the
+    # REST-backed `gh pr list` only when the cache is empty/stale.
+    local rows
+    rows="$(cache_query_pr_queue 2>/dev/null || true)"
+    if [[ -n "$rows" ]]; then
+        printf '%s\n' "$rows" | awk -F'\t' '$5 == 1' | wc -l | tr -d ' '
+        return
+    fi
     CHUMP_GH_CALL_CRITICALITY=background _timeout_cmd 8 chump_gh pr list --state open --json autoMergeRequest \
         --jq '[.[] | select(.autoMergeRequest != null)] | length' 2>/dev/null \
     || echo "ERROR"

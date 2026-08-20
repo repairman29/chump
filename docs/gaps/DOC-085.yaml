@@ -1,0 +1,18 @@
+- id: DOC-085
+  domain: DOC
+  title: "land almanac-mastery doctrine: commit docs/ALMANAC.md + thin .claude skill + AGENTS.md row"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Two files drafted 2026-08-06 sit UNTRACKED in the chump working tree (left uncommitted deliberately — tracked-file edits collide with fleet sessions, new files don't): (1) docs/ALMANAC.md — the harness-neutral almanac protocol: surfaces (CLI canonical, MCP secondary), tool-by-question-shape table, seven trust rules each carrying its incident receipt (frozen-index 2026-08-04, markdown-invisible almanac#3, OR-tokenize 2026-08-01, INFRA-3529 docs ranking, INFRA-3530 SQL blindness, fusion-label-hides-keyword, index-locates-file-testifies), measured latency numbers, and the voice contract ported from olive's VOICE_ADDENDUM. (2) .claude/skills/almanac-mastery/SKILL.md — thin adapter per .claude/README.md (trigger frontmatter + pointer + routing, no doctrine in .claude/). Landing them requires the .claude/README.md rule-4 compliance step: one row in the AGENTS.md docs table pointing at the almanac CLI + docs/ALMANAC.md.
+  acceptance_criteria:
+    - docs/ALMANAC.md and .claude/skills/almanac-mastery/SKILL.md committed
+    - AGENTS.md docs table gains a row pointing at the almanac CLI + docs/ALMANAC.md (README rule 4)
+    - SKILL.md body remains a pointer — no doctrine duplicated inside .claude/
+  notes: |
+    PR #3489 open (branch doc-085-almanac-doctrine); ship with --closed-pr 3489 once merged
+  source_doc: .claude/README.md
+  closed_date: '2026-08-07'
+  closed_pr: 3489
+

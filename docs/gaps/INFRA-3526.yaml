@@ -1,0 +1,18 @@
+- id: INFRA-3526
+  domain: INFRA
+  title: almanac never auto-discovers new repos, only refreshes known ones
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    almanac refresh (hourly cron) only re-indexes repos already in its registry when their git HEAD moves. It never discovers brand-new repos on disk. Found 2026-08-02: 6 repos created in the prior 48h (crystal-rush, games-workspace, grave-dancer, holler, realm-of-shadows, space-shooter) were completely invisible to almanac_search_fleet until manually indexed one by one. Fix: a periodic discovery sync (scan ~/Projects for git repos not yet in the almanac registry, almanac index each) installed as its own cron, same cadence as the existing hourly refresh.
+  acceptance_criteria:
+    - a script exists that diffs ~/Projects git repos against almanac's registered repos
+    - the script auto-indexes any gap it finds
+    - it runs on a schedule without manual invocation
+    - re-running after a fresh repo is created closes the gap within one cycle
+  notes: |
+    Shipped in repairman29/almanac#2 (merged, squashed), not Chump's own repo — this gap was about almanac's repo-discovery gap, so the fix correctly lives there. Chump's proof-of-merge guard (INFRA-1392) can't see cross-repo merges, hence the bypass; the merge itself is real and verifiable at that PR URL. Script: almanac/scripts/discover-new-repos.sh, hourly cron installed at :15. Verified: 6 real repos found+indexed, 22 false-positive duplicates caught+cleaned via a real dry run before shipping, steady-state (0 new) confirmed on re-run.
+  source_doc: session 2026-08-02, first-mate portfolio audit
+  closed_pr: 2
+

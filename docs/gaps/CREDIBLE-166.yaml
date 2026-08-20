@@ -1,0 +1,11 @@
+- id: CREDIBLE-166
+  domain: CREDIBLE
+  title: claim autonomy gate fires before format validation; fast-checks tests hardcode $ROOT/target + skip — fix cohort, then enable fast-checks caching
+  status: superseded
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Discovered via CREDIBLE-163 (PR #3321) + the CI cache target-dir work (#3317). TWO coupled issues: (A) ORDERING BUG: 'chump claim <bad-format-id>' returns 'fleet stopped (AUTONOMY_LEVEL=0)' (RESILIENT-073 kill switch) BEFORE validating the ID format — so a malformed ID gives the wrong error. Format/usage validation should run BEFORE the autonomy gate (a malformed arg is invalid regardless of fleet state). Fix the ordering in src/atomic_claim.rs / the claim arg parse. (B) LATENT-SKIP COHORT: multiple fast-checks guards hardcode $ROOT/target/debug/chump (e.g. scripts/ci/test-cli-integration.sh line 28 CHUMP=${REPO_ROOT}/target/debug/chump) — with INFRA-2118's /tmp CARGO_TARGET_DIR that path is empty, so they skip/no-op (false-green like coord-surfaces-smoke was). When fast-checks is pointed at ./target (for Swatinem caching, the CREDIBLE-163 deferred half), they un-skip and fail on issue (A). Audit ALL scripts/ci/*.sh that reference $ROOT/target or REPO_ROOT/target/debug/chump; make them honor ${CARGO_TARGET_DIR:-...} and set/restore AUTONOMY_LEVEL where they exercise claim (per coord-surfaces-smoke pattern). THEN flip fast-checks CARGO_TARGET_DIR to the clippy/cargo-test conditional to enable ./target Swatinem caching (completes the caching unlock on the 3rd hot job). Verify: (1) claim bad-id → format error not 'fleet stopped'; (2) each un-skipped guard passes; (3) fast-checks v1-trunk cache grows past 0.2 GB."
+  notes: |
+    [2026-07-26T23:55:25Z] shipped in #3325 (claim format-ordering gate merged)
+

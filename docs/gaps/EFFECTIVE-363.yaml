@@ -1,0 +1,17 @@
+- id: EFFECTIVE-363
+  domain: EFFECTIVE
+  title: "EFFECTIVE: artifact_type on gaps and outcomes plus per-type quality gates — the pipeline learns non-code artifacts"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    The pipeline is artifact-agnostic in principle but code-typed in practice: its gates are cargo/CI-shaped, so only code artifacts flow. Teach it artifact types. Rough shape: (a) artifact_type field on gaps/outcomes (code | doc | release-note | copy | design | deck | analytics-report | ...), default code, stored in state.db, surfaced by picker/briefing; (b) per-type quality-gate registry mapping artifact_type -> gate scripts, following the CI_GATES_INVENTORY pattern — copy gets voice-lint (content/STYLE.md rules: no em dashes, receipts-not-adjectives), docs get stale-ref + Net-new-docs discipline, design gets the contrast-audit class (see slidemate frontend/lib/accessibility/contrast-audit.ts for prior art), tests keep DEPTH tiers; (c) preflight dispatches by type instead of assuming cargo; (d) two-phase decomposition doctrine holds — this gap defines schema + registry + one non-code type end-to-end (release-note, pairing with EFFECTIVE-356), further types are follow-up gaps. Adding a capability then = registering a type + gate + publish target, not reinventing the pipeline.
+  acceptance_criteria:
+    - artifact_type on gap schema with default code, no migration breakage
+    - gate registry maps type -> checks and preflight dispatches on it
+    - one non-code type (release-note) passes its own gate end-to-end in CI
+    - adding a further type requires only registry entries (proven by a fixture type in tests)
+  closed_date: '2026-08-10'
+  closed_pr: 3575
+  outcome_id: CHUMPOS
+

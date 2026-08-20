@@ -1,0 +1,14 @@
+- id: CREDIBLE-190
+  domain: CREDIBLE
+  title: "Effort data (CREDIBLE-188) exposes anomalies to verify: create-linecount took 1453s for a trivial task (flailing), and comprehend/improve passed in ~76-79s — verify those fast passes aren't stale-clone false-passes (COMPREHEND/IMPROVE don't wipe the clone, so a prior lap's deliverable can satisfy the check without this lap producing it)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"create-linecount took 1453s for a trivial task (flailing), and comprehend/improve passed in ~76-79s — verify those fast passes aren't stale-clone false-passes (COMPREHEND/IMPROVE don't wipe the clone, so a prior lap's deliverable can satisfy the check without this lap producing it)\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    CONCRETE ANOMALY (2026-08-03, CREDIBLE-195 proof lap): rescue-beast-ci --implement took wall_clock_s=1909 (~32min) for a TRIVIAL 1-line rescue that took 16s and 93s on earlier runs. Tool activity: 26 write_file + 3 git_commit + 1 read_file → ~73s/agent-turn. NOT the git_commit tool-storm (EFFECTIVE-351) — only 3 commits. Looks like a slow model route (cascade sent the sonnet-class lap to a slow provider) OR an agent loop that kept rewriting. INVISIBLE in the scorecard: bench spawns agent-run with .status() (src/bench.rs drive_task_directed ~L972) so its output isn't captured — the scorecard shows wall_clock+model_class but NOT the actual provider/model used nor the tool-call count, so 'slow model' vs 'agent looping' can't be distinguished. To verify effort anomalies (this gap's charter), first make them legible: capture agent-run output to count tool calls, and/or surface the ACTUAL provider/model the cascade used (CREDIBLE-189 territory). Then a 1909s lap is diagnosable.
+  closed_pr: 3458
+

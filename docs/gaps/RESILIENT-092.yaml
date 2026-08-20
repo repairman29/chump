@@ -1,7 +1,7 @@
 - id: RESILIENT-092
   domain: RESILIENT
   title: "RESILIENT P0: Chump must MANAGE pty exhaustion — detect + mitigate before forkpty fails machine-wide (the Claude Code pty leak DoS'd the fleet + terminals 2026-06-04)"
-  status: open
+  status: shipped
   priority: P1
   effort: m
   description: |
@@ -11,5 +11,6 @@
     - kern.tty.ptmx_max is raised + persisted to >=4096 headroom (survives reboot)
     - a pty-exhaustion trend triggers mitigation (scream + operator action), never a silent machine-wide outage
     - "repro/test: simulated high pty usage fires detection before exhaustion"
+  closed_pr: 3721
   outcome_id: RESILIENT-000
 

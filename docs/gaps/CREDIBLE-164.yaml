@@ -1,0 +1,16 @@
+- id: CREDIBLE-164
+  domain: CREDIBLE
+  title: "CREDIBLE: run-fleet-smoke picker fixtures stale — missing status/AC, haiku-gated m-effort P0"
+  status: superseded
+  priority: P2
+  effort: m
+  description: |
+    test-run-fleet-smoke.sh (test 3/3b/3c) fails on clean main: its synthetic _pick_gap.py fixtures predate three picker guards — INFRA-397 (skip status!=open), INFRA-1259 (skip vague/empty acceptance_criteria), and the INFRA-471 haiku m/l/xl effort gate combined with run-fleet now defaulting FLEET_MODEL=sonnet (INFRA-2998). Fixtures have no status/AC fields so every gap is filtered out (picker returns ''), and the invocations don't set FLEET_MODEL so INFRA-104 (P0, effort m) is haiku-gated. Not a picker bug — the picker is correct; the test fixtures are stale.
+  acceptance_criteria:
+    - "every fixture gap in test-run-fleet-smoke.sh has status:open and a non-vague acceptance_criteria"
+    - picker invocations set FLEET_MODEL=sonnet to match run-fleet default so effort=m P0 is pickable
+    - bash scripts/ci/test-run-fleet-smoke.sh exits 0 (all sub-cases pass)
+    - no change to _pick_gap.py — fix is test-only
+  notes: |
+    [2026-07-26T19:29:43Z] [gap-bankruptcy 2026-07-26] work already merged to origin/main (gap-ID in a merged commit); closing ghost-open gap. Reversible via `chump gap requeue CREDIBLE-164`.
+

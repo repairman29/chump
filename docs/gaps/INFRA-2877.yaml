@@ -2,7 +2,6 @@
   domain: INFRA
   title: "RESILIENT: pr-stuck-cluster — 1 PRs blocked >2h as of 2026-06-10"
   status: done
-  closed_pr: 3879
   priority: P1
   effort: s
   acceptance_criteria:
@@ -14,5 +13,7 @@
     - bad_args
     - help
     - "error); documented in script header.\n2. Cost tracked via gap_reserve_calls field on the run event; reportable to operator via jq sum over ambient.jsonl (documented in script header).\n3. Failure-class taxonomy documented: gap_id_extract_failed and gap_reserve_failed are transient (retry next run); error (trap default) is permanent until fixed.\n4. Smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh (already exists, covers no_op + dry_run paths)."
+  closed_date: '2026-08-18'
+  closed_pr: 3879
   outcome_id: MISSION-010
 

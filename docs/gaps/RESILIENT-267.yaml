@@ -1,0 +1,42 @@
+- id: RESILIENT-267
+  domain: RESILIENT
+  title: reaper's '0 commits ahead = merged' misread RECURRED — RESILIENT-099's fix only covered leased worktrees
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"reaper's '0 commits ahead = merged' misread RECURRED — RESILIENT-099's fix only covered leased worktrees\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-09'
+  closed_pr: 3546
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: grep worktree_reaped .chump-locks/ambient.jsonl
+    OUTPUT: {"ts":"2026-08-09T16:44:48Z","kind":"worktree_reaped","worktree":"/tmp/chump-r246",
+      "reason":"branch merged into origin/main","branch":"resilient-246-curator"}
+    Created ~35 min earlier by 'git worktree add -b resilient-246-curator main'; a session
+    was actively editing it. Hit a SECOND time the same hour by another agent, independently.
+    
+    PRIOR ART I FAILED TO CHECK FIRST: RESILIENT-099 (status=done, 2026-06-05) is the same
+    misreading — 'reaps an ACTIVELY-LEASED 0-commits-ahead worktree (misreads branch merged
+    into origin/main)'. Its acceptance was scoped to 'active lease must hard-block reap', so
+    the fix protected LEASED worktrees and left the root misreading in place. A worktree made
+    by a bare 'git worktree add' holds no chump lease, so it inherited none of that protection.
+    This is a RECURRENCE of a gap marked done, not a new discovery.
+    
+    THEORY: 'git merge-base --is-ancestor branch origin/main' answers TRUE for a branch with
+    zero commits, because such a branch trivially IS an ancestor. Ancestry is not evidence of
+    merging; it is the absence of divergence. RESILIENT-099 treated the symptom (protect the
+    leased case) rather than the predicate.
+    
+    ALT rejected: extend lease coverage to every worktree. That keeps a false predicate and
+    makes correctness depend on every creator remembering to take a lease — the same shape
+    that failed here.
+    
+    STATUS: fix already merged in PR #3545 (branch_has_own_commits + a new-worktree grace
+    window + 8 regression tests in scripts/ci/test-stale-worktree-reaper-empty-branch.sh).
+    This gap exists to carry the correct ID: that PR cites RESILIENT-263, which is an
+    UNRELATED gap (the operator escalation channel, PR #3544). I invented the number instead
+    of reserving one. The wrong reference is on main and needs correcting.
+

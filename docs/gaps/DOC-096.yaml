@@ -1,0 +1,16 @@
+- id: DOC-096
+  domain: DOC
+  title: adding a step to audit.yml silently obliges a preflight mirror — INFRA-1867 caught it 4 times in one session, each after a full CI round-trip
+  status: done
+  priority: P3
+  effort: s
+  acceptance_criteria:
+    - "OBSERVED FOUR TIMES ON 2026-08-09, same mistake each time, each costing a CI round-trip: RESILIENT-248 (pr-rescue zero-CI detector), EFFECTIVE-396 (mold RUSTFLAGS step, which correctly belonged in the exceptions file instead), RESILIENT-263 (notify-operator test), and RESILIENT-266 (gateway guard) — the last one pre-empted by hand ONLY because the previous three had already taught it"
+    - THE OBLIGATION IS INVISIBLE AT THE POINT OF EDIT. scripts/ci/test-preflight-ci-parity.sh scans ci.yml PLUS 23 sibling workflows, so adding a step to audit.yml silently incurs a duty to either mirror it in crates/chump-preflight/src/preflight.rs, classify it Tier-D, or allowlist it. Nothing in audit.yml says so; you find out minutes later when fast-checks goes red
+    - "THE FIX IS A POINTER, NOT A NEW GATE. The gate works and is valuable. Put a comment at the TOP of audit.yml and ci.yml: any step added here must be mirrored in preflight, or added to scripts/ci/preflight-ci-parity-exceptions.txt, or classified Tier-D, and INFRA-1867 will fail fast-checks otherwise"
+    - "STATE THE DECISION RULE, because the right answer differs and BOTH were seen the same day: MIRROR when the step can run on a developer machine (pure shell, no CI credentials) — test-notify-operator.sh and test-discord-gateway.sh. ALLOWLIST when it is CI-only env setup with nothing to assert — the mold RUSTFLAGS step. The distinction is simply whether it can run locally"
+    - "OPTIONAL IF CHEAP: have the pre-commit or pre-push hook run the parity check when the diff touches .github/workflows/, converting a CI round-trip into a local second. Skip it if it noticeably slows the hook; the doc pointer captures most of the value"
+    - DO NOT WEAKEN THE GATE. It caught four real omissions in one session, including one where allowlisting would have quietly left local preflight weaker than CI for the escalation path it guards. The problem is discoverability, not strictness
+  closed_pr: 3556
+  outcome_id: MISSION-010
+

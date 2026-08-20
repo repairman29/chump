@@ -109,6 +109,15 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
 set -euo pipefail
 
+# RESILIENT-132 AC#1: bind stdin to /dev/null for the whole run. bot-merge is
+# invoked headlessly (fleet workers, subagent dispatch) with no tty attached;
+# any child process (git, gh) that unexpectedly probes stdin for a credential
+# prompt or confirmation blocks forever with no children and no network
+# activity visible — the exact silent hang observed shipping CREDIBLE-128
+# (failure mode 9). Every internal `while read` loop in this script already
+# redirects its own input (`< file` / `<<<`), so this is safe: it only
+# changes behavior for commands that would otherwise inherit a live tty/pipe.
+exec </dev/null
 
 # INFRA-956: default harness to a schema-valid value (kills missing_attribution noise).
 export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
@@ -222,6 +231,9 @@ _bm_emit_step_stalled() {
     printf '\033[0;31m[bot-merge]   kind=bot_merge_step_stalled emitted to ambient.\033[0m\n' >&2
     printf '\033[0;31m[bot-merge]   Override timeout: CHUMP_BOT_MERGE_STEP_TIMEOUT_S=<seconds>\033[0m\n' >&2
     printf '\033[0;31m[bot-merge]   See: docs/process/SHIP_ASSIST_PLAYBOOK.md §1 Class 4\033[0m\n' >&2
+    # RESILIENT-132 AC#4: see _emit_hang_alert — same recoverable-timeout
+    # contract applies to per-step gtimeout stalls.
+    _BM_TIMEOUT_EXIT=1
 }
 
 # Run a command with per-step gtimeout + progress ledger update.
@@ -332,7 +344,17 @@ _bm_sigterm_handler() {
         >> "$_ambient" 2>/dev/null || true
     printf '\033[0;31m[bot-merge] TIMEOUT (INFRA-2426): SIGTERM received at phase="%s" elapsed=%ds — kind=bot_merge_timeout emitted to ambient.\033[0m\n' \
         "$_step" "$_elapsed" >&2 || true
-    _BM_LEASE_VACUUM_OK=1   # INFRA-3455: killed → vacuum the phantom lease
+    # RESILIENT-132 AC#4: a budget-watchdog timeout is a recoverable stall, not
+    # a give-up — the caller (fleet worker / operator) typically retries the
+    # SAME claim rather than re-claiming from scratch. Previously this handler
+    # set _BM_LEASE_VACUUM_OK=1 (vacuuming the state.db lease row) exactly like
+    # a deliberate ctrl-C kill, and the outer EXIT trap unconditionally deleted
+    # the on-disk lease file too — so every stage timeout released the lease,
+    # which is what forced the re-claim path (worktree/branch-exists,
+    # ghost-NATS-KV-claim) documented in this gap. Leave _BM_LEASE_VACUUM_OK
+    # unset here so _bm_cleanup's default (lease survives) applies, and set
+    # _BM_TIMEOUT_EXIT so the outer EXIT trap skips its own lease-file rm.
+    _BM_TIMEOUT_EXIT=1
     _bm_cleanup
     exit 1
 }
@@ -1225,6 +1247,11 @@ _emit_hang_alert() {
     local now gap_label
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     gap_label="${GAP_IDS[0]:-none}"
+    # RESILIENT-132 AC#4: any phase-timeout (fmt/clippy/test/push/rebase/...)
+    # is recoverable, not a give-up — the outer EXIT trap checks this flag
+    # and skips releasing the on-disk lease file so a retry can resume the
+    # same claim instead of re-claiming from scratch.
+    _BM_TIMEOUT_EXIT=1
     _ambient_write "$ambient" \
         "$(printf '{"ts":"%s","session":"bot-merge-%d","event":"ALERT","kind":"bot_merge_hang","phase":"%s","timeout_secs":%s,"gap_id":"%s","note":"bot-merge phase timed out after %ss — possible hang (INFRA-587)"}' \
             "$now" "$_BM_PID" "$phase" "$timeout_secs" "$gap_label" "$timeout_secs")"
@@ -1614,7 +1641,14 @@ fi
 # loop that appended "⏳ alive — step=<stale>" to the cycle log every 30s
 # forever (30+ ghost processes on chumpd-eu masqueraded as init hangs).
 # Chain _bm_cleanup here instead of clobbering it.
-trap '_bm_cleanup; [[ "${DRY_RUN:-0}" -eq 0 && -n "${CHUMP_SESSION_ID:-}" ]] && rm -f "${LOCK_DIR:-$REPO_ROOT/.chump-locks}/${CHUMP_SESSION_ID}.json" 2>/dev/null || true' EXIT
+# RESILIENT-132 AC#4: this rm used to fire unconditionally, so ANY stage
+# timeout (budget-watchdog SIGTERM, per-step gtimeout, git-push stall) threw
+# away the lease file even though _emit_hang_alert / _bm_sigterm_handler
+# treat those as recoverable stalls, not a give-up. Skip the rm when
+# _BM_TIMEOUT_EXIT is set so the lease survives and a retry can resume the
+# same claim instead of re-claiming from scratch (root cause of the
+# worktree/branch-exists + ghost-NATS-KV-claim cascade in this gap).
+trap '_bm_cleanup; [[ "${DRY_RUN:-0}" -eq 0 && "${_BM_TIMEOUT_EXIT:-0}" != "1" && -n "${CHUMP_SESSION_ID:-}" ]] && rm -f "${LOCK_DIR:-$REPO_ROOT/.chump-locks}/${CHUMP_SESSION_ID}.json" 2>/dev/null || true' EXIT
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ "$BRANCH" == "HEAD" ]]; then
@@ -3458,7 +3492,15 @@ if [[ -z "$EXISTING_PR" ]]; then
     # ergonomics rather than adding a second, contradictory local-check path.
     _DOR_GATE="$REPO_ROOT/scripts/coord/definition-of-ready-gate.sh"
     if [[ $FAST -eq 0 && -x "$_DOR_GATE" && "${CHUMP_DOR_DISABLE:-0}" != "1" ]]; then
-        stage_start "definition-of-ready gate (chump preflight)"
+        # RESILIENT-132 AC#2: same mismatch class as RESILIENT-133 (clippy/test
+        # above) — this stage shells out to `chump preflight`, which falls back
+        # to raw `cargo fmt/clippy/check` when the `chump` binary isn't already
+        # built (cold worktree). Under fleet build contention that cold
+        # compile alone can exceed the 300s stage-watchdog default even though
+        # `chump preflight`'s own internal budget is far larger, so the
+        # watchdog fired mid-compile rather than on a genuine gate failure.
+        # Match the 900s budget already used for the clippy/test stages.
+        stage_start "definition-of-ready gate (chump preflight)" 900
         if ! "$_DOR_GATE" "${GAP_ID:-}"; then
             _bm_fail "pr-create" 21 "CREDIBLE-270 definition-of-ready gate refused — chump preflight not green locally"
         fi

@@ -1,0 +1,13 @@
+- id: EFFECTIVE-344
+  domain: EFFECTIVE
+  title: Add stdlib-only self-contained CREATE track → attempt first GREEN zero-touch CREATE pass
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"Add stdlib-only self-contained CREATE track → attempt first GREEN zero-touch CREATE pass\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-31'
+  closed_pr: 3431
+

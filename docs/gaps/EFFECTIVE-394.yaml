@@ -1,0 +1,17 @@
+- id: EFFECTIVE-394
+  domain: EFFECTIVE
+  title: "EFFECTIVE: build-speed pt2 — extract COTG verify (pr_ac_coverage+external_verify_merge+confidence, ~4.3k lines) out of the 190k-line bin crate into crates/chump-verify"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    SPEED lever pt2 (the real fix — cache is off in CI + doesn't help since the bin recompiles every change). Extract the COTG-verify cluster OUT of the 190k-line chump bin crate into a NEW library crate crates/chump-verify. CLUSTER (fully coupling-mapped): move src/pr_ac_coverage.rs (1847L), src/external_verify_merge.rs (2436L), src/confidence.rs (182L) → crates/chump-verify/src/{lib.rs + modules}. DEPS: external_verify_merge → only crate::pr_ac_coverage; pr_ac_coverage → crate::ambient_emit (already the chump-ambient-cli crate — import chump_ambient_cli) + crate::confidence (moves with it); confidence → zero crate deps. So the new crate depends only on chump-ambient-cli + normal external crates. INBOUND: 4 bin files import pr_ac_coverage (bench.rs, done_auditor.rs, improve.rs, main.rs) — repoint them to chump_verify::. Wire crates/chump-verify into workspace Cargo.toml members + add it as a dep of the chump bin. This removes ~4.5k lines from the bin crate → they become a CACHED library that only recompiles when verify code changes; a bin-only PR no longer recompiles them.
+  acceptance_criteria:
+    - crates/chump-verify/ exists (Cargo.toml + src/lib.rs) containing pr_ac_coverage, external_verify_merge, confidence as modules; src/{pr_ac_coverage,external_verify_merge,confidence}.rs are DELETED from the bin crate and their mod declarations removed from main.rs.
+    - "The 4 inbound importers (src/bench.rs, src/done_auditor.rs, src/improve.rs, src/main.rs) reference the moved items via chump_verify:: (or a bin-crate re-export use chump_verify::pr_ac_coverage), not crate::pr_ac_coverage."
+    - cargo build --workspace is GREEN and cargo test -p chump-verify passes (the moved unit tests — effective373/375/386/388/etc. — run in the new crate); no test lost.
+    - "MEASURED speed win: after the extraction, touching src/improve.rs (a bin file) + cargo check --bin chump does NOT recompile the verify code (it's a cached dep); report the before/after bin-crate incremental-check delta in the PR."
+    - cargo fmt --all -- --check + cargo clippy --workspace -- -D warnings green; new crate added to workspace CI path filters if any (INFRA-682).
+  closed_pr: 3511
+  outcome_id: CHUMPOS
+

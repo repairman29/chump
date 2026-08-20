@@ -1,0 +1,12 @@
+- id: INFRA-3587
+  domain: INFRA
+  title: Conduct Unit Testing
+  status: wontfix
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All unit tests pass without errors.
+    - The CLI tool's core functionality is fully tested
+  notes: EFFECTIVE-425 self-verify smoke test artifact — not real work, closing
+  outcome_id: COTG
+

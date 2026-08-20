@@ -1,0 +1,13 @@
+- id: EFFECTIVE-408
+  domain: EFFECTIVE
+  title: "improve: edit-verify FAILURE (broken edit) should trigger EFFECTIVE-366 escalation, not just the no-edit case"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"edit-verify FAILURE (broken edit) should trigger EFFECTIVE-366 escalation, not just the no-edit case\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3522
+  outcome_id: CHUMPOS
+

@@ -1,0 +1,13 @@
+- id: ZERO-WASTE-037
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: branch-reaper — delete safe (PR-merged or git-ancestor-of-main) remote branches on a cadence; 672 branches accumulated, no reaper exists"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"branch-reaper — delete safe (PR-merged or git-ancestor-of-main) remote branches on a cadence; 672 branches accumulated, no reaper exists\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-07'
+  closed_pr: 3464
+

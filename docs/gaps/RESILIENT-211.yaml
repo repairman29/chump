@@ -1,0 +1,45 @@
+- id: RESILIENT-211
+  domain: RESILIENT
+  title: canary rollout for self-deploy — stage to one fleet node before the second (Helsinki + closetjunky)
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Context (2026-07-29, operator discussion on environment tiering for ChumpOS): MISSION-012
+    self-deploy pushes straight from merged-main to the running binary with no staged
+    rollout step. This is the same shape that produced the 13-day-stale-binary incident
+    and the class of silent-outage failures already documented (June 22 - July 18 fleet
+    dark period; auth-cache + lid-close class outages).
+    
+    Rejected approach: a full named dev/test/stage/prod environment ceremony. Heavyweight
+    for a solo-operator fast-moving project, fights the throughput work already underway,
+    and doesn't match how the rest of Chump already works (ephemeral worktree-per-gap
+    isolation, not persistent named environments).
+    
+    Correct-sized approach: Chump already runs a two-node fleet (Helsinki = chump-local +
+    broker, closetjunky = claude, per docs/process/ADD_A_FLEET_NODE.md, RESILIENT-191) and
+    already has the health checks needed to gate a rollout (bash scripts/dev/mission-scoreboard.sh,
+    chump fleet doctor --slo-check). Canary rollout = deploy the new binary to ONE node
+    first, run the existing health checks against it, only then roll to the second node.
+    No new environment, no new named tier -- just sequencing + a gate using tooling that
+    already exists.
+    
+    Rough shape (not pre-sliced, per two-phase decomposition doctrine):
+    (a) identify the current self-deploy trigger path (MISSION-012's daemon/script) and
+        where it currently pushes to both nodes simultaneously (or verify if it already
+        doesn't -- confirm actual current behavior before assuming)
+    (b) add a sequencing step: deploy to node A, wait for a health-check pass
+        (mission-scoreboard.sh verdict != STALLED/DRIFTING-on-deploy-lag, fleet doctor
+        --slo-check exit 0), then deploy to node B
+    (c) on health-check failure at node A, do NOT proceed to node B; surface via ambient
+        event (kind=canary_rollout_failed) rather than a silent partial-deploy state
+    (d) this is a small sequencing/gating change to existing deploy tooling, not new
+        infrastructure -- scope small
+  acceptance_criteria:
+    - self-deploy rolls out to Helsinki and closetjunky sequentially, not simultaneously
+    - a health-check gate (mission-scoreboard.sh or fleet doctor --slo-check) must pass on the first node before the second node receives the new binary
+    - a failed health check on the first node blocks rollout to the second and emits an ambient event (kind=canary_rollout_failed) rather than failing silently
+    - "test: a simulated unhealthy first-node deploy does not propagate to the second node"
+  closed_date: '2026-07-30'
+  closed_pr: 3408
+

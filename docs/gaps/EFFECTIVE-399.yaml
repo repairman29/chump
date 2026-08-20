@@ -1,0 +1,13 @@
+- id: EFFECTIVE-399
+  domain: EFFECTIVE
+  title: "EFFECTIVE: build-speed — extract src/atomic_claim.rs (6333L) out of the 190k-line bin into crates/chump-atomic-claim"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"build-speed — extract src/atomic_claim.rs (6333L) out of the 190k-line bin into crates/chump-atomic-claim\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3513
+  outcome_id: CHUMPOS
+
