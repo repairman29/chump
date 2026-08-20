@@ -1,7 +1,8 @@
 - id: RESILIENT-138
   domain: RESILIENT
   title: "RESILIENT (Cut-Friction): chump claim must sync the gap YAML into the worktree — every fresh-gap ship hits bot-merge not-found until copied in"
-  status: open
+  status: done
+  closed_pr: 4013
   priority: P1
   effort: m
   description: |
@@ -10,5 +11,25 @@
     - after chump claim, docs/gaps/<ID>.yaml + the state.db entry exist in the worktree with no manual copy
     - OR bot-merge auto-imports the gap from the canonical store on not-found
     - a freshly reserved+claimed gap ships via bot-merge with no manual gap-def step
+  notes: |
+    RECONCILE: already shipped via PR #4013 (f41e25f6, "fix(RESILIENT-138):
+    bot-merge defaults CHUMP_REPO to the main checkout"). Root cause: bare
+    `chump` invocations inside bot-merge.sh (gap show/preflight/set/ship)
+    resolve their state.db path via repo_path::repo_root(), which falls
+    back to CWD when CHUMP_REPO/CHUMP_HOME are unset and no .env is found.
+    In a linked worktree that CWD has no .chump/state.db of its own, so a
+    freshly reserved+claimed gap looked "not found in state.db" until an
+    operator manually exported CHUMP_REPO. The fix exports
+    CHUMP_REPO="${CHUMP_REPO:-$MAIN_REPO}" right after sourcing
+    lib/repo-paths.sh (scripts/coord/bot-merge.sh), so every subsequent
+    bare `chump` call in the script resolves against the canonical main
+    checkout's state.db — satisfying AC#2 (bot-merge reads from the
+    canonical store on what would otherwise be a not-found) and AC#3 (no
+    manual gap-def/import step is needed to ship). Verified live in this
+    worktree: `chump gap show RESILIENT-138` fails with CHUMP_REPO unset,
+    succeeds once CHUMP_REPO points at the main checkout — exactly the
+    codepath bot-merge.sh now exercises unconditionally. Same reconcile
+    pattern as RESILIENT-052 (#4016) / RESILIENT-081 (#4015) /
+    RESILIENT-218 (#4014).
   outcome_id: RESILIENT-000
 
