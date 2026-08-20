@@ -1,9 +1,10 @@
 - id: RESILIENT-081
   domain: RESILIENT
   title: "RESILIENT P1: pr-shepherd strict-aware rebase — skip update-branch when branch-protection strict=false (kill the reset churn)"
-  status: open
+  status: done
   priority: P1
   effort: m
+  closed_pr: 4011
   description: |
     VERIFIED 2026-06-03 (conductor): pr-shepherd-daemon.sh META-184 calls `gh pr update-branch --rebase` on every BEHIND PR each tick (CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK, default 3). Under branch-protection strict=false, BEHIND PRs merge fine WITHOUT a rebase, so the rebase is pure churn: every main advance -> pr-shepherd rebases all open BEHIND PRs -> each rebase RESETS that PR's CI (new head SHA) -> the 4-runner self-hosted pool drowns in re-runs -> nothing finishes. Observed: keystone #3005 re-committed (rebased) at 20:17:46 right after #3012 merged at 20:15:21; 28 CI runs queued, 1 in_progress; zero merges ~30min. This is the quadratic reset cascade re-entering through the side door AFTER strict was reconciled to false. STOPGAP applied this tick: CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK=0 in com.chump.pr-shepherd.plist + launchd setenv. DURABLE FIX: make pr-shepherd read the live strict flag (gh api .../branches/main/protection/required_status_checks .strict, cached) and skip the rebase action when strict=false; only rebase when strict=true OR merge-queue (RESILIENT-079) is the gate. Remove the hardcoded env=0 stopgap once this lands. Classification + arming + flake-rerun + DIRTY rescue all continue unchanged — only the rebase action becomes strict-conditional. The farmer (RESILIENT-076) then keeps this config green.
   acceptance_criteria:
