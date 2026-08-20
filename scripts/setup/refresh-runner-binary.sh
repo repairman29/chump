@@ -99,6 +99,14 @@ log "using cargo: $CARGO"
 # was met on paper, broken in production.
 BUILD_WORKTREE="${CHUMP_BINARY_REFRESH_WORKTREE:-/tmp/chump-binary-refresh-$$}"
 log "creating detached worktree at origin/main ($MAIN_SHA) → $BUILD_WORKTREE"
+# RESILIENT-348: a prior run killed mid-build (timeout / SIGKILL / systemctl stop)
+# leaves a registered worktree at a FIXED BUILD_WORKTREE path (the EXIT trap below
+# never fired), and `worktree add` then fails "already exists" — silently freezing
+# self-deploy until a human clears it. Proactively remove any stale worktree at this
+# path BEFORE creating a fresh one.
+git -C "$REPO_ROOT" worktree remove --force "$BUILD_WORKTREE" >>"$LOG" 2>&1 || true
+rm -rf "$BUILD_WORKTREE" >>"$LOG" 2>&1 || true
+git -C "$REPO_ROOT" worktree prune >>"$LOG" 2>&1 || true
 if ! git -C "$REPO_ROOT" worktree add -d -f "$BUILD_WORKTREE" "origin/main" >>"$LOG" 2>&1; then
     log "FATAL: failed to create build worktree at $BUILD_WORKTREE"
     emit runner_binary_refresh_failed "\"reason\":\"worktree_add_failed\""
