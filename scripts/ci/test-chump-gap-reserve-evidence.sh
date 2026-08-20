@@ -120,7 +120,7 @@ EVIDENCE_TEXT="$(printf 'COMMAND: pgrep -f mesh-worker\nOUTPUT: (empty)\nTHEORY:
 B_ID=$("$BIN" gap reserve --domain MISSION --priority P1 --effort xs \
     --title "test-evidence-gate-b" \
     --evidence "$EVIDENCE_TEXT" \
-    --skip-obs-acs \
+    --skip-obs-acs --no-ac-required \
     --quiet 2>/dev/null || true)
 if [[ -n "$B_ID" ]]; then
     ok "(b) P1 MISSION with --evidence reserved successfully (id=$B_ID)"
@@ -142,7 +142,7 @@ echo
 echo "--- (c) P2 RESILIENT without --evidence ---"
 "$BIN" gap reserve --domain RESILIENT --priority P2 --effort xs \
     --title "test-evidence-gate-c" \
-    --skip-obs-acs \
+    --skip-obs-acs --no-ac-required \
     --quiet 2>/dev/null
 CNT=$("$BIN" gap list --status open 2>/dev/null | grep -c "test-evidence-gate-c" || true)
 if [[ "$CNT" -ge 1 ]]; then
@@ -156,7 +156,7 @@ echo
 echo "--- (d) P0 INFRA without --evidence ---"
 "$BIN" gap reserve --domain INFRA --priority P0 --effort xs \
     --title "test-evidence-gate-d" \
-    --skip-obs-acs \
+    --skip-obs-acs --no-ac-required \
     --quiet 2>/dev/null
 CNT=$("$BIN" gap list --status open 2>/dev/null | grep -c "test-evidence-gate-d" || true)
 if [[ "$CNT" -ge 1 ]]; then
@@ -170,7 +170,7 @@ echo
 echo "--- (e) bypass via CHUMP_GAP_RESERVE_NO_EVIDENCE=1 ---"
 CHUMP_GAP_RESERVE_NO_EVIDENCE=1 "$BIN" gap reserve --domain RESILIENT --priority P0 --effort xs \
     --title "test-evidence-gate-e" \
-    --skip-obs-acs \
+    --skip-obs-acs --no-ac-required \
     --quiet 2>/dev/null
 CNT=$("$BIN" gap list --status open 2>/dev/null | grep -c "test-evidence-gate-e" || true)
 if [[ "$CNT" -ge 1 ]]; then

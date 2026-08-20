@@ -263,6 +263,10 @@ jobs:
         # the chump binary when it is missing.
         run: bash scripts/ci/test-outcome-gate.sh
 
+      - name: acceptance-criteria gate — P0/P1 blocked w/o AC, verbatim storage, decompose preserves parent AC (CREDIBLE-284)
+        if: matrix.shard == 1
+        run: bash scripts/ci/test-credible-284-ac-firewall.sh
+
       - name: farmer stale-lease heartbeat — a present lease must never crash the tick (RESILIENT-313)
         if: matrix.shard == 1
         # Runs ON LINUX by design (test-farmer.sh SKIPs non-Darwin and never

@@ -84,8 +84,10 @@ else
 fi
 
 # 4c. vague-ac: open gap with empty AC → reason=vague-ac, action=add-ac, exit 1.
+# CREDIBLE-284: P1 now requires --acceptance-criteria unless bypassed; this
+# fixture deliberately wants an empty/vague-AC gap, so use --no-ac-required.
 "$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
-    --title "triage-fixture-vague" --quiet 2>/dev/null
+    --title "triage-fixture-vague" --no-ac-required --quiet 2>/dev/null
 if ! "$BIN" gap triage >/dev/null 2>&1; then
     ok "exit 1 when vague-ac gap present"
 else

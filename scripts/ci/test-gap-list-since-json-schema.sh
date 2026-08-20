@@ -47,11 +47,10 @@ export CHUMP_RESERVE_NO_AUTOSTAGE=1
 # reserves without --evidence. Test fixtures aren't real gaps and don't
 # need real evidence; bypass the gate for the seeding loop only.
 export CHUMP_GAP_RESERVE_NO_EVIDENCE=1
-# EFFECTIVE-294: default AC are now concrete (no TODO placeholders), which
-# makes fixture gaps *pickable* — activating the INFRA-1152 pillar-balance
-# gate inside this synthetic 5-gap DB (first pillar reserve = 100% of pool →
-# blocked, seeding dies at 1/5). The fixture isn't real pillar inventory;
-# disable the gate for seeding, same rationale as the evidence bypass above.
+# INFRA-1152: the pillar-balance gate can activate inside this synthetic
+# 5-gap DB (first pillar reserve = 100% of pool → blocked, seeding dies at
+# 1/5). The fixture isn't real pillar inventory; disable the gate for
+# seeding, same rationale as the evidence bypass above.
 export CHUMP_PILLAR_BALANCE_DISABLE=1
 
 # ── 3. Seed 5 synthetic gaps ──────────────────────────────────────────────────
@@ -73,6 +72,7 @@ for domain in "${DOMAINS[@]}"; do
                     --effort xs \
                     --title "$title" \
                     --force-duplicate \
+                    --no-ac-required \
                     --quiet 2>&1)"; then
             seeded=1
             break

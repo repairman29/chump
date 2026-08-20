@@ -10159,6 +10159,10 @@ async fn main() -> Result<()> {
                 // CREDIBLE-107: --evidence required for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
                 let reserve_evidence = flag("--evidence");
                 let no_evidence_required = args.iter().any(|a| a == "--no-evidence-required");
+                // CREDIBLE-284: --acceptance-criteria required for P0/P1 gaps of any
+                // domain — the done-definition (WHAT) must be authored at filing
+                // time, not deferred to claim-time `chump gap decompose`.
+                let no_ac_required = args.iter().any(|a| a == "--no-ac-required");
                 // MISSION-008: optional --outcome <id> to assign gap to an outcome at reserve time.
                 let reserve_outcome_id = flag("--outcome");
                 // MISSION-041: optional --external-repo <owner/repo> to tag the gap
@@ -10173,26 +10177,21 @@ async fn main() -> Result<()> {
                 // to stdout so operator scripts can parse without grep.
                 let json_out = args.iter().any(|a| a == "--json");
                 let why = args.iter().any(|a| a == "--why");
-                let skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
                 let custom_acceptance_criteria = flag("--acceptance-criteria");
 
-                // INFRA-756: compute acceptance_criteria. Default to 4 obs-AC templates
-                // unless --skip-obs-acs is set or --acceptance-criteria is provided.
-                let acceptance_criteria_json = match custom_acceptance_criteria {
+                // CREDIBLE-284: reserve no longer auto-fills a tautological
+                // placeholder ("The change described by X is implemented in the
+                // relevant Y code path(s).") — that text reads as covered AC to
+                // every downstream gate (audit-ac, claim) while carrying zero
+                // signal. An unauthored gap now has genuinely EMPTY AC, which
+                // audit-ac flags honestly. `--skip-obs-acs` is now a no-op alias
+                // kept for CLI back-compat (previously suppressed the auto-fill).
+                let acceptance_criteria_json = match &custom_acceptance_criteria {
                     Some(raw) => {
                         let parts: Vec<&str> = raw.split('|').collect();
                         serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
                     }
-                    None if !skip_obs_acs => {
-                        // EFFECTIVE-294: concrete, claimable default AC (no TODO
-                        // placeholders) so a reserved gap is immediately pickable.
-                        // The old obs-AC TODO template left ~32% of the open queue
-                        // unclaimable. The title carries the *what*; these carry the
-                        // *done-bar*. For gap-specific AC, run `chump gap decompose`.
-                        let acs = default_acceptance_criteria(&title, &domain);
-                        serde_json::to_string(&acs).unwrap_or_else(|_| "[]".into())
-                    }
-                    _ => "[]".into(),
+                    None => "[]".into(),
                 };
 
                 // FLEET-029: ambient glance before allocating ID
@@ -10867,6 +10866,67 @@ async fn main() -> Result<()> {
                     }
                 }
                 // ── end CREDIBLE-107 evidence gate ──────────────────────────────────────
+
+                // ── CREDIBLE-284: acceptance-criteria gate for P0/P1 (any domain) ──
+                // The done-definition (WHAT "done" means) is intent and doesn't rot;
+                // only the decomposition (HOW / which files) ages. Deferring the
+                // done-definition to claim-time `chump gap decompose` (an LLM call)
+                // removes the external anchor — the same model family writes the AC,
+                // does the work, and the AC-gate judges the work against its own
+                // self-authored AC. This gate forces the WHAT to be authored at
+                // filing time, same firewall shape as --outcome/--evidence above.
+                {
+                    let enforce_priorities = ["P0", "P1"];
+                    if enforce_priorities.contains(&priority.as_str()) {
+                        let ac_text = custom_acceptance_criteria.as_deref().unwrap_or("").trim();
+
+                        if ac_text.is_empty() && !no_ac_required {
+                            eprintln!();
+                            eprintln!(
+                                "chump gap: P0/P1 gaps require --acceptance-criteria (per CREDIBLE-284 intake firewall)."
+                            );
+                            eprintln!(
+                                "The done-definition (WHAT done means) must be authored at filing time,"
+                            );
+                            eprintln!(
+                                "not deferred to claim-time `chump gap decompose`. Separate multiple"
+                            );
+                            eprintln!(
+                                "items with '|': --acceptance-criteria \"item one|item two\""
+                            );
+                            eprintln!("Bypass: --no-ac-required (audited).");
+                            std::process::exit(1);
+                        }
+
+                        if ac_text.is_empty() && no_ac_required {
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let ambient_path =
+                                worktree_root.join(".chump-locks").join("ambient.jsonl");
+                            let safe_domain = domain.replace(['"', '\\'], "");
+                            let safe_title = title.replace(['"', '\\'], "");
+                            if let Some(parent) = ambient_path.parent() {
+                                let _ = std::fs::create_dir_all(parent);
+                            }
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write;
+                                let _ = writeln!(
+                                    f,
+                                    r#"{{"ts":"{ts}","kind":"gap_reserved_no_ac","priority":"{priority}","domain":"{safe_domain}","title":"{safe_title}","bypass_reason":"--no-ac-required flag"}}"#
+                                );
+                            }
+                            if !quiet {
+                                eprintln!(
+                                    "[reserve] WARN: gap_reserved_no_ac emitted (bypass=--no-ac-required flag)"
+                                );
+                            }
+                        }
+                    }
+                }
+                // ── end CREDIBLE-284 acceptance-criteria gate ───────────────────────────
 
                 // ── MISSION-045: outcome gate for P0/P1 (anti-bloat keystone) ──
                 // Every P0/P1 gap must trace to a real outcome (a row in the
@@ -20485,28 +20545,6 @@ fn external_repo_target_from_skills(skills: &str) -> Option<String> {
         .filter(|s| !s.is_empty() && s.contains('/'))
 }
 
-/// EFFECTIVE-294: concrete, claimable default acceptance criteria for a gap
-/// reserved without an explicit `--acceptance-criteria`. Replaces the old TODO
-/// obs-AC template that left ~32% of the open queue unclaimable (`chump claim`
-/// refuses a gap whose AC are TODO placeholders). The gap *title* carries the
-/// "what"; these encode the ship "done-bar" so the gap is immediately pickable.
-/// For gap-specific AC, run `chump gap decompose` (LLM).
-fn default_acceptance_criteria(title: &str, domain: &str) -> Vec<String> {
-    // Strip a leading "DOMAIN:" / pillar tag from the title to get the "what".
-    let what = title
-        .split_once(':')
-        .map(|(_, rest)| rest.trim())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| title.trim());
-    vec![
-        format!(
-            "The change described by \"{what}\" is implemented in the relevant {domain} code path(s)."
-        ),
-        "At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.".to_string(),
-        "cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.".to_string(),
-    ]
-}
-
 #[cfg(test)]
 mod tests {
     use crate::agent_factory;
@@ -20514,31 +20552,6 @@ mod tests {
     use serial_test::serial;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    // EFFECTIVE-294: a reserved gap with no explicit AC gets concrete, claimable
-    // AC (zero TODO placeholders) so `chump claim` accepts it.
-    #[test]
-    fn default_acceptance_criteria_are_concrete_no_todo() {
-        let acs = crate::default_acceptance_criteria("EFFECTIVE: add a foo widget", "EFFECTIVE");
-        assert!(acs.len() >= 3, "at least 3 AC items: {acs:?}");
-        assert!(
-            acs.iter().all(|a| !a.contains("TODO")),
-            "no TODO placeholders: {acs:?}"
-        );
-        assert!(
-            acs[0].contains("add a foo widget") && !acs[0].contains("EFFECTIVE: add"),
-            "first AC names the de-prefixed work: {}",
-            acs[0]
-        );
-        // a title without a ':' is used verbatim as the "what"
-        let acs2 = crate::default_acceptance_criteria("no prefix here", "INFRA");
-        assert!(
-            acs2[0].contains("no prefix here"),
-            "verbatim what: {}",
-            acs2[0]
-        );
-        assert!(acs2[0].contains("INFRA"), "names the domain: {}", acs2[0]);
-    }
 
     /// Full agent turn against a mock HTTP server: no real model. Asserts reply content.
     ///
