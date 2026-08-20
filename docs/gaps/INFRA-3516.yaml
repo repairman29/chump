@@ -1,7 +1,8 @@
 - id: INFRA-3516
   domain: INFRA
   title: "COTG-1.3: remediation/fix_pr commit path bypasses deterministic_ship guards (junk-exclusion + verify_staged_edit)"
-  status: open
+  status: done
+  closed_pr: 3396
   priority: P1
   effort: s
   description: |
@@ -32,4 +33,14 @@
     not in a helper shared by fix_pr's commit path.
   labels: [cotg, reliability, external-improve, self-heal]
   discovered_by: prove-then-move-forward proof run, 2026-07-29
+  notes: |
+    [2026-08-20T00:00:00Z] RECONCILE: already shipped via b344ae92 (PR #3396,
+    "fix(INFRA-3516): guarded remediation ceremony (re-land, rebased+clippy-clean)"),
+    preceded by 6fea9e55/741f365f. src/improve.rs now has guarded_stage_and_commit()
+    as the ONE staging+commit ceremony shared by deterministic_ship (initial ship)
+    and fix_pr_dispatch (remediation path) — junk-exclusion reset + verify_staged_edit
+    + verify_not_stub all run on both paths. Regression coverage:
+    guarded_commit_drops_junk_and_rejects_clobber test at src/improve.rs:5382. All 4
+    AC bullets met. Gap YAML was left status:open in this worktree only — state.db
+    has no open row for it (chump gap ship already run, closed_pr=3396).
 
