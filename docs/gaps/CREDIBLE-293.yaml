@@ -1,0 +1,11 @@
+- id: CREDIBLE-293
+  domain: CREDIBLE
+  title: "mission-scoreboard ③ Deploy check false-positives on normal transient deploy-lag: it compares running-binary SHA to origin/main SHA at the INSTANT, so any moment main is ahead of the last 20-min auto-deploy cycle (i.e. most of the time — main moves ~q10-20min, deploy runs q20min) reads as \"NO auto-deploy — MISSION-012 open — THE MULTIPLIER\" and flips the verdict off ON-TRACK on timing luck. Auto-deploy is actually healthy (SKIP-when-current, deploys on main-move). Fix: ③ should be a FRESHNESS SLA — pass if the binary is within N minutes / M commits of the latest main-move (e.g. deployed within 30min), fail only if deploy-lag persists beyond the auto-deploy cadence+build-time. A flickering ③ erodes the scoreboard as the one honest measure + risks alarm-fatigue masking a REAL deploy regression."
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"it compares running-binary SHA to origin/main SHA at the INSTANT, so any moment main is ahead of the last 20-min auto-deploy cycle (i.e. most of the time — main moves ~q10-20min, deploy runs q20min) reads as \"NO auto-deploy — MISSION-012 open — THE MULTIPLIER\" and flips the verdict off ON-TRACK on timing luck. Auto-deploy is actually healthy (SKIP-when-current, deploys on main-move). Fix: ③ should be a FRESHNESS SLA — pass if the binary is within N minutes / M commits of the latest main-move (e.g. deployed within 30min), fail only if deploy-lag persists beyond the auto-deploy cadence+build-time. A flickering ③ erodes the scoreboard as the one honest measure + risks alarm-fatigue masking a REAL deploy regression.\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+
