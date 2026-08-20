@@ -1,19 +1,23 @@
 # CI `verified` Aggregator — Architecture Spec (META-134)
 
-> **Status:** Week 1 (shadow) landed — CREDIBLE-269 (SHIP-INFRA 1/7, 2026-08-11).
-> `scripts/ci/aggregator-verified.sh` implements the §2.2-2.3 lane-classification
-> decision logic (unit-tested by `scripts/ci/test-aggregator-verified.sh`) and a
-> `verified` job in `.github/workflows/ci.yml` runs it on every PR over the
-> ci.yml-local lanes (`fast-checks`, `clippy`, `cargo-test`, `pr-hygiene`, `test`),
-> emitting `kind=verified_aggregator_decision` to `ambient.jsonl`. **Not yet
-> required by branch protection or ruleset 15133729** — `test` + `audit` +
-> `ACP protocol smoke test` remain the three enforced contexts
-> (`docs/baselines/branch-protection-main.json`). `audit` (audit.yml) and
-> `ACP protocol smoke test` (editor-integration.yml) live in separate
-> workflows, so folding them into this same-workflow `needs:` graph isn't
-> possible — a cross-workflow aggregator (Checks-API poll, §6 Week 2/3 below)
-> is the next SHIP-INFRA slice before branch-protection/ruleset can be flipped
-> to require only `verified`.
+> **Status:** FLIPPED — CREDIBLE-269 (SHIP-INFRA 1/7, foundation landed
+> 2026-08-11, flip completed 2026-08-20). `scripts/ci/aggregator-verified.sh`
+> implements the §2.2-2.3 lane-classification decision logic (unit-tested by
+> `scripts/ci/test-aggregator-verified.sh`) and a `verified` job in
+> `.github/workflows/ci.yml` runs it on every PR over the ci.yml-local lanes
+> (`fast-checks`, `clippy`, `cargo-test`, `pr-hygiene`, `test`) **plus**
+> `audit` (audit.yml) and `ACP protocol smoke test` (integrations.yml) —
+> those two live in separate workflows, so `verified` polls their Checks-API
+> conclusions cross-workflow via `scripts/ci/poll-cross-workflow-checks.sh`
+> (fail-closed on timeout — never leaves a lane ambiguously "pending"),
+> feeding the result into the same classification logic as a same-workflow
+> lane. `verified` emits `kind=verified_aggregator_decision` to
+> `ambient.jsonl`. **Branch protection AND ruleset 15133729 now require ONLY
+> `verified`** (`docs/baselines/branch-protection-main.json`) — the prior
+> required-trio (`audit` / `test` / `ACP protocol smoke test` on the ruleset;
+> `ACP protocol smoke test` / `cargo-test-required` / `audit-required` /
+> `clippy-required` on classic branch protection) has been removed from both
+> surfaces. `gh pr checks <n> --required` now returns exactly one entry.
 > **Slice of:** META-131 (CI Required-Check Productization).
 > **Pair doc:** [`docs/strategy/CI_POLICY_AUDIT.md`](../strategy/CI_POLICY_AUDIT.md) (META-133 — inventory of today's state).
 > **Filed:** 2026-05-30, owner: curator-opus-handoff.

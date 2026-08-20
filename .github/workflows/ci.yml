@@ -470,27 +470,42 @@ jobs:
           echo "All shards green (or appropriately skipped / cascade-cancelled)."
 
   # ── verified: single legible aggregator (CREDIBLE-269, SHIP-INFRA 1/7) ────
-  # Foundation slice of the `verified` aggregator described in
-  # docs/design/CI_VERIFIED_AGGREGATOR.md (META-134): one job that classifies
-  # every ci.yml lane's result via scripts/ci/aggregator-verified.sh and
-  # prints a single PASS/FAIL/PENDING verdict + emits
+  # The ONE required check: one job that classifies every ci.yml-local lane's
+  # result via scripts/ci/aggregator-verified.sh, PLUS the two lanes that live
+  # in separate workflows (audit.yml's `audit`, integrations.yml's `ACP
+  # protocol smoke test`) polled cross-workflow via the Checks API
+  # (scripts/ci/poll-cross-workflow-checks.sh, since GH Actions `needs:` only
+  # sees same-workflow jobs) — then prints a single PASS/FAIL verdict + emits
   # kind=verified_aggregator_decision to ambient.jsonl for offline audit.
   #
-  # Week-1 (shadow) scope: this job runs on every PR but branch protection
-  # does NOT yet require it — `test` + `audit` + `ACP protocol smoke test`
-  # remain the enforced contexts (docs/baselines/branch-protection-main.json).
-  # audit.yml and editor-integration.yml are separate workflows, so folding
-  # their lanes into this same-workflow `needs:` graph isn't possible; a
-  # cross-workflow aggregator (Checks-API poll) is the follow-up slice before
-  # branch-protection/ruleset can be flipped to require only `verified`.
+  # branch-protection + ruleset 15133729 require ONLY this check
+  # (docs/baselines/branch-protection-main.json) — no more 3-surface drift
+  # between ci.yml / branch-protection / ruleset (docs/design/CI_VERIFIED_AGGREGATOR.md, META-134).
   verified:
     name: verified
     needs: [fast-checks, clippy, cargo-test, pr-hygiene, test]
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      - name: Poll cross-workflow lanes (audit, ACP-smoke) — CREDIBLE-269
+        id: cross
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          sha="${{ github.event.pull_request.head.sha || github.sha }}"
+          bash scripts/ci/poll-cross-workflow-checks.sh \
+            --sha "$sha" \
+            --check "audit" \
+            --check "ACP protocol smoke test (Zed / JetBrains compatible)" \
+            --timeout-s 600 --interval-s 15 > /tmp/cross-workflow-lanes.txt
+          cat /tmp/cross-workflow-lanes.txt
+          audit_result="$(grep '^audit=' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
+          acp_result="$(grep '^ACP protocol smoke test' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
+          echo "audit_result=${audit_result}" >> "$GITHUB_OUTPUT"
+          echo "acp_result=${acp_result}" >> "$GITHUB_OUTPUT"
       - name: Aggregate lane verdicts (CREDIBLE-269 / META-134)
         run: |
           bash scripts/ci/aggregator-verified.sh \
@@ -499,6 +514,8 @@ jobs:
             --lane "cargo-test=${{ needs.cargo-test.result }}" \
             --lane "pr-hygiene=${{ needs.pr-hygiene.result }}" \
             --lane "test=${{ needs.test.result }}" \
+            --lane "audit=${{ steps.cross.outputs.audit_result }}" \
+            --lane "ACP-smoke=${{ steps.cross.outputs.acp_result }}" \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha || github.sha }}"
 
