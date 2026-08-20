@@ -23,6 +23,10 @@
 #                        >CHUMP_BACKLOG_SYNC_STALE_HOURS (default 24) stale — a
 #                        dead backlog-sync --writer is the registry split-brain
 #                        precursor.
+#   13. auth-probe      — CREDIBLE-119: live Anthropic auth-path validity (reuses
+#                        scripts/coord/auth-status.sh, RESILIENT-086) — fails when
+#                        credential PRESENCE checks would report healthy but a
+#                        real authenticated call rejects both paths.
 #
 # Thresholds (override via env)
 #   LEASE_STALE_HOURS         default 2    — leases older than N hours are flagged
@@ -906,6 +910,54 @@ print(found)
     register_check "ops-defect" "fail" "$detail" "$remedy"
 }
 
+# ── Check 13 (CREDIBLE-119): Live Anthropic auth-path validity ─────────────────
+#
+# `fleet_doctor_validate()` (src/auth.rs) only checks credential PRESENCE —
+# a 108-char ANTHROPIC_API_KEY and a 3-day-stale OAUTH token both count as
+# "present" even though neither authenticates. That gap let the fleet sit
+# dead for ~46h (2026-06-07) while `chump fleet doctor` reported healthy;
+# only run-fleet's separate INFRA-621 launch-time probe caught it.
+#
+# Reuse the canonical RESILIENT-086 live probe (scripts/coord/auth-status.sh)
+# instead of re-implementing it: it makes a real authenticated call down
+# each credential path (a cheap `claude -p`/REST call) and returns 0 only
+# when the path `claude -p` would actually use is valid. rc=1 means BOTH
+# paths are dead; rc=2 means a valid path exists but isn't the active one
+# (the precedence trap) — both are real failures a worker will hit.
+#
+# No bypass env var: a host with NO credentials configured at all naturally
+# SKIPs (auth-status.sh's "no credentials found" case — that absence is
+# already a distinct, pre-existing signal owned by fleet_doctor_validate()
+# presence checks and the farmer's AUTH_DEAD path). This check's job is
+# narrower — catch CONFIGURED-but-invalid credentials — so it never forces
+# a live network probe on a credential-less CI runner or fresh dev box.
+check_auth_probe() {
+    local probe_script="$REPO_ROOT/scripts/coord/auth-status.sh"
+    if [[ ! -f "$probe_script" ]]; then
+        register_check "auth-probe" "skip" "auth-status.sh not found — skipping live probe" ""
+        return
+    fi
+
+    local probe_out probe_rc
+    probe_rc=0
+    probe_out="$(bash "$probe_script" --quiet 2>&1)" || probe_rc=$?
+
+    if [[ "$probe_rc" -eq 0 ]]; then
+        register_check "auth-probe" "pass" "$probe_out" ""
+    elif [[ "$probe_out" == *"no credentials found"* ]]; then
+        register_check "auth-probe" "skip" \
+            "no credentials configured to probe — $probe_out" ""
+    elif [[ "$probe_rc" -eq 2 ]]; then
+        register_check "auth-probe" "fail" \
+            "auth misconfigured: a valid credential exists but is not the active path — $probe_out" \
+            "bash $probe_script --probe  # shows exact fix; workers fail until the active path is switched"
+    else
+        register_check "auth-probe" "fail" \
+            "auth dead: both paths rejected — $probe_out" \
+            "run 'claude setup-token' for a fresh oauth token, or provide a funded ANTHROPIC_API_KEY; see bash $probe_script --probe"
+    fi
+}
+
 # When sourced for testing (FLEET_DOCTOR_SOURCED=1), stop here — the test
 # harness calls individual check_* functions directly instead of paying for
 # the full (networked) sweep.
@@ -927,6 +979,7 @@ check_almanac_freshness
 check_backlog_sync_freshness
 check_required_status_checks
 check_ops_defect_selfdiag
+check_auth_probe
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then

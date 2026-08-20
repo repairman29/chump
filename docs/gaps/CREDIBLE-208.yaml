@@ -1,7 +1,9 @@
 - id: CREDIBLE-208
   domain: CREDIBLE
   title: "CREDIBLE: claim-lint in the ship pipeline — agent claims must ground against the diff and the index or bounce"
-  status: open
+  status: done
+  closed_pr: 3602
+  closed_date: "2026-08-10"
   priority: P1
   effort: m
   description: |
@@ -13,6 +15,27 @@
     - kind registered in EVENT_REGISTRY with CI parity
     - fixture PRs for both paths in scripts/ci
   notes: |
+    Reconciled 2026-08-20 — already fully shipped via commit d37de94f
+    (CREDIBLE-208: claim-lint — the pre-ship bullshit gate, PR #3602,
+    merged 2026-08-10). All 5 AC verified present on main:
+    - Claim extraction (structured Files-Touched/Symbols-Touched/Tests-Run
+      trailers first, NL backtick-token fallback) + grounding against the
+      diff, with the specific ungrounded claim named on bounce:
+      src/commands/claim_lint.rs.
+    - Local diff/grep-based grounding (no network/LLM calls) keeps latency
+      well under the 15s budget.
+    - Per-model bust-rate surfaced via `chump kpi report --claims`:
+      crates/chump-kpi-report/src/kpi_report.rs (ClaimBustSection).
+    - `kind=claim_lint_result` registered in
+      docs/observability/EVENT_REGISTRY.yaml with CI-parity fields.
+    - Grounded-path and bounce-path fixtures (with ambient-emission
+      assertions) in scripts/ci/test-claim-lint.sh.
+    - Live gate wired into scripts/coord/bot-merge.sh section 6.6, ahead
+      of auto-merge arming (bypass: CHUMP_CLAIM_LINT=0).
+    This gap was a stale record — not present in canonical state.db, only
+    the docs/gaps/CREDIBLE-208.yaml mirror (superseded by an older
+    checkout). No new code needed.
+
     SEAM with the COTG AC-judge family (discovered at filing time — the fleet is building the other half concurrently): EFFECTIVE-367 (full-AC review gate + send-back loop, slice 1 #3492 merged 2026-08-06 feeding the judge REAL ACs), EFFECTIVE-373 (LLM per-bullet MET/UNMET/PARTIAL over the diff), EFFECTIVE-372 (local-first blocking gate hosting it), CREDIBLE-207 (reviewer determinism). Division of labor: 373 judges SATISFACTION (semantic, LLM — did the diff meet the AC); this gap judges GROUNDING (mechanical, index — do the agent's claims correspond to reality: symbols exist, tests ran, files touched). Run grounding FIRST as the cheap deterministic pre-check — ungrounded claims short-circuit before burning judge tokens — and reuse 367's send-back loop as the bounce path, NOT a second one. Do not build parallel gate plumbing; land inside 372's gate host.
   outcome_id: CREDIBLE-000
   evidence: |

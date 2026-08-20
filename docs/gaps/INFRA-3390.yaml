@@ -1,9 +1,21 @@
 - id: INFRA-3390
   domain: INFRA
   title: "RESILIENT: bot-merge.sh silently dies (set -e) on cache_lookup_pr_by_branch miss + unbound $REPO var"
-  status: open
+  status: done
+  closed_pr: 3242
+  closed_date: "2026-07-22"
   priority: P1
   effort: m
   acceptance_criteria:
     - bot-merge.sh survives a cache_lookup_pr_by_branch miss without exiting under set -e (miss is logged and handled), and $REPO is guarded against unbound expansion; a lookup miss no longer silently kills the merge.
+  notes: |
+    Reconciled 2026-08-20 — both AC items already fixed on main:
+    - cache_lookup_pr_by_branch miss guarded via commit 5c25e64d
+      (fix(EFFECTIVE-312), PR #3242, 2026-07-22): assignment now uses
+      `|| true` so a cache-miss no longer kills bot-merge under set -e.
+    - Unbound $REPO eliminated via commit 6a638c839 (fix(INFRA-2925),
+      PR #3225, 2026-07-20): the duplicate-PR gh pr list block no longer
+      references $REPO at all — every gh pr call relies on gh's cwd
+      auto-detection (see scripts/coord/bot-merge.sh:3210-3212 comment).
+    No code change needed; gap was filed/stale against an older checkout.
 
