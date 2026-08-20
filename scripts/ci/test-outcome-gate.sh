@@ -46,8 +46,11 @@ export CHUMP_GAP_RESERVE_NO_EVIDENCE=1
 
 reserve() {  # domain priority effort title [extra-args...]
     local domain="$1" priority="$2" effort="$3" title="$4"; shift 4
+    # CREDIBLE-284: --no-ac-required keeps this fixture isolated to testing
+    # the outcome gate only — without it, every P0/P1 case here would also
+    # need to pass --acceptance-criteria to clear the separate AC gate.
     "$BIN" gap reserve --domain "$domain" --priority "$priority" --effort "$effort" \
-        --title "$title" --quiet --force-duplicate "$@"
+        --title "$title" --quiet --force-duplicate --no-ac-required "$@"
 }
 
 # ── DB WITH outcomes ─────────────────────────────────────────────────────────

@@ -60,8 +60,9 @@ fi
 # Shared test helpers
 reserve_gap() {
     local title="$1" priority="${2:-P1}" effort="${3:-xs}"
+    # CREDIBLE-284: --no-ac-required — these fixtures don't need real AC.
     "$BIN" gap reserve --domain INFRA --priority "$priority" --effort "$effort" \
-        --title "$title" --quiet --force-duplicate 2>/dev/null
+        --title "$title" --quiet --force-duplicate --no-ac-required 2>/dev/null
 }
 
 # ── Fixture: perfectly balanced ──────────────────────────────────────────────

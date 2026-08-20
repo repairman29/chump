@@ -73,6 +73,7 @@ for domain in "${DOMAINS[@]}"; do
                     --effort xs \
                     --title "$title" \
                     --force-duplicate \
+                    --no-ac-required \
                     --quiet 2>&1)"; then
             seeded=1
             break

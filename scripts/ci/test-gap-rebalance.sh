@@ -50,8 +50,10 @@ reserve_gap() {
     # MISSION-045: these synthetic P0/P1 fixtures have no real outcome to trace
     # to; --no-outcome-required is the audited escape hatch (no env-var bypass,
     # per the EFFECTIVE-094 debt ceiling). Same spirit as CHUMP_GAP_RESERVE_NO_EVIDENCE above.
+    # CREDIBLE-284: --no-ac-required is the parallel audited escape hatch for
+    # the acceptance-criteria gate — these fixtures don't need real AC either.
     "$BIN" gap reserve --domain INFRA --priority "$priority" --effort "$effort" \
-        --title "$title" --quiet --force-duplicate --no-outcome-required 2>/dev/null
+        --title "$title" --quiet --force-duplicate --no-outcome-required --no-ac-required 2>/dev/null
 }
 
 export CHUMP_HOME="$(mktemp -d)"

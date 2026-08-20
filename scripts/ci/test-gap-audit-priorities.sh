@@ -91,8 +91,11 @@ fi
 # INFRA-2984: since EFFECTIVE-294, `gap reserve` auto-fills concrete default
 # AC unless --skip-obs-acs is passed — without it this fixture no longer
 # produces a vague gap and the test below silently stopped testing anything.
+# CREDIBLE-284: the default-AC autofill is gone entirely and P1 now REFUSES
+# without authored --acceptance-criteria; --no-ac-required is the audited
+# bypass needed to still produce an empty-AC (vague) fixture on purpose.
 "$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
-    --title "audit-prio-fixture-vague" --skip-obs-acs --quiet 2>/dev/null
+    --title "audit-prio-fixture-vague" --skip-obs-acs --no-ac-required --quiet 2>/dev/null
 if ! "$BIN" gap audit-priorities >/dev/null 2>&1; then
     ok "exit 1 on vague pickable gap"
 else

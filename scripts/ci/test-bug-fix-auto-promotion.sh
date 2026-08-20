@@ -93,7 +93,7 @@ export CHUMP_RESERVE_VERIFY=0
 # 3a. File 6 auto-filed P0 gaps — should NOT trigger P0 budget failure.
 for i in $(seq 1 6); do
     GID=$("$BIN" gap reserve --domain INFRA --priority P0 --effort xs \
-        --title "CREDIBLE: fix CI failure auto-$i" --quiet 2>/dev/null)
+        --title "CREDIBLE: fix CI failure auto-$i" --no-ac-required --quiet 2>/dev/null)
     "$BIN" gap set "$GID" \
         --notes "auto-filed by pr-triage-bot" \
         --acceptance-criteria "CI passes" 2>/dev/null
@@ -126,7 +126,7 @@ fi
 # 3b. Add 6 manual P0s (no auto-filed marker) — budget should now fail (>5 manual).
 for i in $(seq 1 6); do
     GID=$("$BIN" gap reserve --domain INFRA --priority P0 --effort xs \
-        --title "RESILIENT: manual P0 gap $i" --quiet 2>/dev/null)
+        --title "RESILIENT: manual P0 gap $i" --no-ac-required --quiet 2>/dev/null)
     "$BIN" gap set "$GID" \
         --acceptance-criteria "done" 2>/dev/null
 done

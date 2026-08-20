@@ -7554,6 +7554,22 @@ async fn handle_gap_create(
             "P0/P1 gaps require outcome_id (MISSION-045); use P2/P3 for exploration",
         ));
     }
+    // CREDIBLE-284 parity: P0/P1 requires authored acceptance_criteria. The CLI
+    // refuses `chump gap reserve` without --acceptance-criteria; the HTTP
+    // surface must not become the workaround that reintroduces the
+    // tautological-placeholder autofill this gate replaces.
+    if (priority == "P0" || priority == "P1")
+        && body
+            .acceptance_criteria
+            .as_ref()
+            .map(|l| l.is_empty())
+            .unwrap_or(true)
+    {
+        return Err(gap_api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "P0/P1 gaps require acceptance_criteria (CREDIBLE-284); use P2/P3 for exploration",
+        ));
+    }
 
     let repo_root = match std::env::var("CHUMP_REPO") {
         Ok(r) => PathBuf::from(r),
@@ -7583,14 +7599,13 @@ async fn handle_gap_create(
 
     // Optional extras in one set_fields pass. Mirrors the CLI's warn-and-continue:
     // the gap exists once reserve succeeds; extras failing must not orphan it.
+    // CREDIBLE-284: no autofill — P0/P1 already refused above without authored
+    // AC; P2/P3 legitimately get empty AC when the caller supplies none.
     let ac_json = match &body.acceptance_criteria {
         Some(list) if !list.is_empty() => {
             serde_json::to_string(list).unwrap_or_else(|_| "[]".into())
         }
-        _ => {
-            let acs = crate::default_acceptance_criteria(&title, &domain);
-            serde_json::to_string(&acs).unwrap_or_else(|_| "[]".into())
-        }
+        _ => "[]".into(),
     };
     let skills = match (
         body.skills_required.as_deref(),

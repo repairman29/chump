@@ -10173,26 +10173,28 @@ async fn main() -> Result<()> {
                 // to stdout so operator scripts can parse without grep.
                 let json_out = args.iter().any(|a| a == "--json");
                 let why = args.iter().any(|a| a == "--why");
-                let skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
+                // --skip-obs-acs: legacy no-op, kept accepted so existing callers
+                // don't break. The old obs-AC TODO-placeholder autofill was removed
+                // by CREDIBLE-284 — an unauthored gap now gets EMPTY AC (which
+                // audit-ac flags as vague/unpickable) instead of a tautological
+                // placeholder that read as covered but graded nothing.
+                let _skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
                 let custom_acceptance_criteria = flag("--acceptance-criteria");
 
-                // INFRA-756: compute acceptance_criteria. Default to 4 obs-AC templates
-                // unless --skip-obs-acs is set or --acceptance-criteria is provided.
+                // CREDIBLE-284: acceptance_criteria is AUTHORED, not synthesized.
+                // No more default_acceptance_criteria() autofill — that placeholder
+                // ("The change described by X is implemented in the relevant Y code
+                // path(s).") was tautological: it always reads true, so it graded
+                // nothing. The done-definition (WHAT) is intent that doesn't rot;
+                // deferring it to claim-time `chump gap decompose` (an LLM call) let
+                // the same model author the AC, do the work, and grade itself against
+                // its own AC. See the P0/P1 AC gate below for enforcement.
                 let acceptance_criteria_json = match custom_acceptance_criteria {
                     Some(raw) => {
                         let parts: Vec<&str> = raw.split('|').collect();
                         serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
                     }
-                    None if !skip_obs_acs => {
-                        // EFFECTIVE-294: concrete, claimable default AC (no TODO
-                        // placeholders) so a reserved gap is immediately pickable.
-                        // The old obs-AC TODO template left ~32% of the open queue
-                        // unclaimable. The title carries the *what*; these carry the
-                        // *done-bar*. For gap-specific AC, run `chump gap decompose`.
-                        let acs = default_acceptance_criteria(&title, &domain);
-                        serde_json::to_string(&acs).unwrap_or_else(|_| "[]".into())
-                    }
-                    _ => "[]".into(),
+                    None => "[]".into(),
                 };
 
                 // FLEET-029: ambient glance before allocating ID
@@ -10951,6 +10953,65 @@ async fn main() -> Result<()> {
                     }
                 }
                 // ── end MISSION-045 outcome gate ────────────────────────────────────────
+
+                // ── CREDIBLE-284: acceptance-criteria gate for P0/P1 (anti-placeholder) ──
+                // Same firewall shape as the --outcome/--evidence gates above: P0/P1
+                // gaps must carry an AUTHORED --acceptance-criteria at file time, or
+                // reserve refuses. This replaces the removed default_acceptance_criteria()
+                // autofill — a gap with no authored AC now gets EMPTY AC (flagged by
+                // audit-ac as vague/unpickable) rather than a tautological placeholder
+                // that silently read as "done-bar covered". Bypass: --no-ac-required
+                // (audited, same pattern as --no-outcome-required).
+                {
+                    let enforce_priorities = ["P0", "P1"];
+                    if enforce_priorities.contains(&priority.as_str()) {
+                        let no_ac_required = args.iter().any(|a| a == "--no-ac-required");
+                        let ac_authored = acceptance_criteria_json != "[]"
+                            && !acceptance_criteria_json.trim().is_empty();
+
+                        if !ac_authored && !no_ac_required {
+                            eprintln!();
+                            eprintln!(
+                                "chump gap: P0/P1 gaps require --acceptance-criteria \"...\" (CREDIBLE-284 anti-placeholder gate)."
+                            );
+                            eprintln!(
+                                "Author the done-definition now (the WHAT) — `chump gap decompose` \
+                                 at claim time only generates implementation sub-steps (the HOW) \
+                                 and must never overwrite it."
+                            );
+                            eprintln!(
+                                "Use '|' to separate multiple criteria: --acceptance-criteria \"AC one|AC two\""
+                            );
+                            eprintln!("Bypass: --no-ac-required (audited).");
+                            std::process::exit(1);
+                        }
+                        if !ac_authored && no_ac_required {
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let ambient_path =
+                                worktree_root.join(".chump-locks").join("ambient.jsonl");
+                            let safe_domain = domain.replace(['"', '\\'], "");
+                            let safe_title = title.replace(['"', '\\'], "");
+                            let bypass_reason = "--no-ac-required flag";
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write;
+                                let _ = writeln!(
+                                    f,
+                                    r#"{{"ts":"{ts}","kind":"ac_gate_bypassed","priority":"{priority}","domain":"{safe_domain}","title":"{safe_title}","bypass_reason":"{bypass_reason}"}}"#
+                                );
+                            }
+                            if !quiet {
+                                eprintln!(
+                                    "[reserve] WARN: ac_gate_bypassed (bypass={bypass_reason})"
+                                );
+                            }
+                        }
+                    }
+                }
+                // ── end CREDIBLE-284 acceptance-criteria gate ───────────────────────────
 
                 // ── RESILIENT-069: farmer readiness gate (gap-reserve admission guard) ──
                 // RED = farmer has positive evidence of trouble — admit no NEW
@@ -20485,28 +20546,6 @@ fn external_repo_target_from_skills(skills: &str) -> Option<String> {
         .filter(|s| !s.is_empty() && s.contains('/'))
 }
 
-/// EFFECTIVE-294: concrete, claimable default acceptance criteria for a gap
-/// reserved without an explicit `--acceptance-criteria`. Replaces the old TODO
-/// obs-AC template that left ~32% of the open queue unclaimable (`chump claim`
-/// refuses a gap whose AC are TODO placeholders). The gap *title* carries the
-/// "what"; these encode the ship "done-bar" so the gap is immediately pickable.
-/// For gap-specific AC, run `chump gap decompose` (LLM).
-fn default_acceptance_criteria(title: &str, domain: &str) -> Vec<String> {
-    // Strip a leading "DOMAIN:" / pillar tag from the title to get the "what".
-    let what = title
-        .split_once(':')
-        .map(|(_, rest)| rest.trim())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| title.trim());
-    vec![
-        format!(
-            "The change described by \"{what}\" is implemented in the relevant {domain} code path(s)."
-        ),
-        "At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.".to_string(),
-        "cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.".to_string(),
-    ]
-}
-
 #[cfg(test)]
 mod tests {
     use crate::agent_factory;
@@ -20514,31 +20553,6 @@ mod tests {
     use serial_test::serial;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    // EFFECTIVE-294: a reserved gap with no explicit AC gets concrete, claimable
-    // AC (zero TODO placeholders) so `chump claim` accepts it.
-    #[test]
-    fn default_acceptance_criteria_are_concrete_no_todo() {
-        let acs = crate::default_acceptance_criteria("EFFECTIVE: add a foo widget", "EFFECTIVE");
-        assert!(acs.len() >= 3, "at least 3 AC items: {acs:?}");
-        assert!(
-            acs.iter().all(|a| !a.contains("TODO")),
-            "no TODO placeholders: {acs:?}"
-        );
-        assert!(
-            acs[0].contains("add a foo widget") && !acs[0].contains("EFFECTIVE: add"),
-            "first AC names the de-prefixed work: {}",
-            acs[0]
-        );
-        // a title without a ':' is used verbatim as the "what"
-        let acs2 = crate::default_acceptance_criteria("no prefix here", "INFRA");
-        assert!(
-            acs2[0].contains("no prefix here"),
-            "verbatim what: {}",
-            acs2[0]
-        );
-        assert!(acs2[0].contains("INFRA"), "names the domain: {}", acs2[0]);
-    }
 
     /// Full agent turn against a mock HTTP server: no real model. Asserts reply content.
     ///
