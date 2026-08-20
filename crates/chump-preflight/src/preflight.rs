@@ -64,6 +64,37 @@ fn step(name: &'static str, argv: &[&str], kind: GateKind) -> Step {
     }
 }
 
+/// RESILIENT-072: `scripts/ci/cargo-test-with-rerun.sh` REQUIRES a `--
+/// <cmd> [args...]` separator + command — invoking it bare prints usage
+/// and exits non-zero without running a single test. This builds the argv
+/// so the `--` + command are structurally guaranteed present, and is unit
+/// tested below to keep that guarantee from regressing silently.
+fn cargo_test_argv(nextest_available: bool) -> Vec<&'static str> {
+    if nextest_available {
+        vec![
+            "bash",
+            "scripts/ci/cargo-test-with-rerun.sh",
+            "--",
+            "cargo",
+            "nextest",
+            "run",
+            "--bin",
+            "chump",
+        ]
+    } else {
+        vec![
+            "bash",
+            "scripts/ci/cargo-test-with-rerun.sh",
+            "--",
+            "cargo",
+            "test",
+            "--bin",
+            "chump",
+            "--tests",
+        ]
+    }
+}
+
 /// INFRA-3377 (META-070): staged-diff commit-content-guards mirrored from
 /// `scripts/git-hooks/pre-commit-*.sh` into `chump preflight --pre-commit`.
 /// Each of these scripts inspects `git diff --cached` directly (same input
@@ -1549,30 +1580,11 @@ pub fn run(argv: &[String]) -> i32 {
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false);
-            let test_argv: &[&str] = if nextest_available {
-                &[
-                    "bash",
-                    "scripts/ci/cargo-test-with-rerun.sh",
-                    "--",
-                    "cargo",
-                    "nextest",
-                    "run",
-                    "--bin",
-                    "chump",
-                ]
-            } else {
-                &[
-                    "bash",
-                    "scripts/ci/cargo-test-with-rerun.sh",
-                    "--",
-                    "cargo",
-                    "test",
-                    "--bin",
-                    "chump",
-                    "--tests",
-                ]
-            };
-            steps.push(step("cargo-test", test_argv, GateKind::Rust));
+            steps.push(step(
+                "cargo-test",
+                &cargo_test_argv(nextest_available),
+                GateKind::Rust,
+            ));
         }
 
         // INFRA-1857: system-integration-test gate (INFRA-849). Mirrors
@@ -2996,6 +3008,43 @@ mod tests {
             "test-pr-stuck-cluster-detection.sh must be wired into preflight's \
              always-run allowlist so detector regressions surface locally"
         );
+    }
+
+    // RESILIENT-072: cargo-test-with-rerun.sh exits non-zero on a bare
+    // invocation (prints "usage: ..." without running any test) unless
+    // called with `-- <cmd> [args...]`. Assert both argv variants carry
+    // the separator + a real cargo invocation so this can't regress back
+    // to the usage-bug that silently disabled the cargo-test gate fleet-wide.
+    #[test]
+    fn resilient072_cargo_test_argv_has_required_separator() {
+        for nextest_available in [true, false] {
+            let argv = cargo_test_argv(nextest_available);
+            assert_eq!(
+                argv[0], "bash",
+                "must invoke the wrapper via bash, nextest_available={nextest_available}"
+            );
+            assert!(
+                argv[1].ends_with("cargo-test-with-rerun.sh"),
+                "must invoke scripts/ci/cargo-test-with-rerun.sh, nextest_available={nextest_available}"
+            );
+            let sep_pos = argv.iter().position(|a| *a == "--").unwrap_or_else(|| {
+                panic!(
+                    "cargo-test-with-rerun.sh requires a `--` separator before its \
+                     command args — omitting it prints usage and exits non-zero \
+                     without running any tests (nextest_available={nextest_available})"
+                )
+            });
+            assert_eq!(
+                argv.get(sep_pos + 1),
+                Some(&"cargo"),
+                "the arg immediately after `--` must be `cargo`, nextest_available={nextest_available}"
+            );
+            assert!(
+                argv.len() > sep_pos + 2,
+                "must pass a subcommand after `cargo` (nextest/test), \
+                 nextest_available={nextest_available}"
+            );
+        }
     }
 
     // RESILIENT-196: disk-floor guard (pure comparison — no env/process races).
