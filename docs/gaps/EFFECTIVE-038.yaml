@@ -1,7 +1,9 @@
 - id: EFFECTIVE-038
   domain: EFFECTIVE
   title: "EFFECTIVE: A2A L2 — task state machine with input_required + auth_required (suspended, not failed)"
-  status: open
+  status: done
+  closed_pr: 3962
+  closed_date: "2026-08-20"
   priority: P1
   effort: m
   description: |
@@ -13,5 +15,6 @@
     - an ambiguous-decision case suspends to waiting_operator instead of guessing-wrong or filing a follow-up gap
   notes: |
     [2026-06-08T01:09:35Z] CUTTING-EDGE (research 2026-06): input_required/auth_required EXACTLY match Google A2A v1.0 task lifecycle — validated. BUT A2A proves they're SIGNALING not ENFORCEMENT: task hangs FOREVER if no agent responds (A2A has no timeout). ADD: SLA on input_required — max_wait_seconds; on elapse auto-transition failed + emit task_stalled (no silent hang). Wire: task→input_required emits a P0 inbox msg to the responder, whose CREDIBLE-114 hook drains it first. Refs: a2a-protocol.org spec, arXiv 2604.02369.
+    [2026-08-20T00:00:00Z] RECONCILE: already shipped via PR #3962 (feat(EFFECTIVE-038): A2A L2 task suspension — waiting_operator status (input_required + auth_required)), with a preflight follow-up in f66e63b0 (waiting_operator gaps must fail preflight, not report Available). `GapStore::suspend_waiting` (crates/chump-gap-store/src/lib.rs) flips status='waiting_operator', stores a structured JSON payload {kind, question, context} and captures resume_status so `GapStore::respond_gap` (via `chump gap respond <ID> --answer JSON`) restores the exact pre-suspend status (AC1/AC2). `chump gap suspend <ID> --kind auth_required|input_required --question TEXT` is the generic entry point any agent calls on a missing credential (AC3, ties RESILIENT-054) or an ambiguous decision (AC4) instead of silently dying or filing a disconnected follow-up gap. Covered by crates/chump-gap-store/src/lib.rs::waiting_operator_tests. Gap YAML was left status:open in this worktree only — state.db has no open row for it. Same reconcile pattern as INFRA-3494 (#3978) / RESILIENT-133 (#3964) / EFFECTIVE-357 (#3991).
   outcome_id: EFFECTIVE-000
 
