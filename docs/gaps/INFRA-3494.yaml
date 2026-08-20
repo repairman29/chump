@@ -1,12 +1,15 @@
 - id: INFRA-3494
   domain: INFRA
   title: "CREDIBLE: [COTG-3.1] outcome-level verification (does the shipped thing SOLVE the problem?)"
-  status: open
+  status: done
+  closed_pr: 3999
+  closed_date: "2026-08-20"
   priority: P1
   effort: m
   acceptance_criteria:
     - Outcome-level verification checks the shipped artifact against the user's original stated problem (not just CI green) and emits a PASS/FAIL solve-verdict with evidence.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~45% -> FINISH (gate 5.1/5.3/6.2 depend on). src/external_verify_merge.rs is stronger than CI-green (proves fix fails-on-base/passes-on-head, no-regression). Add a post-merge LIVE outcome probe + promote src/browser.rs (static fetch) to real CDP.
+    [2026-08-20T07:33:00Z] RECONCILE (3rd time): AC fully shipped across two PRs under this gap ID — PR #3593 (cf55e83c) added run_outcome_probe/outcome_probe_matches (post-merge LIVE URL fetch + substring assertion, PASS/FAIL evidence via kind=outcome_probe_verified/outcome_probe_failed) and PR #3999 (d65c4c34) promoted the probe to real-CDP render (CHUMP_OUTCOME_PROBE_RENDER=1, headless Chromium --dump-dom, curl fallback) closing the JS-rendered-SPA blind spot noted above. state.db carries no row for this ID (chump gap set/ship both report "not found"); the prior two reconcile attempts (859f2efe/#3978, and an abandoned wip-branch commit 5ef346ed) were clobbered back to status:open by later bulk gap-queue sync commits that didn't carry this file's edit forward. Reapplying status:done directly on main via this gap's own worktree to break the clobber cycle.
   outcome_id: COTG
 
