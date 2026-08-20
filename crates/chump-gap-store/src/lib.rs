@@ -6064,7 +6064,9 @@ mod tests {
         // ever needed (that churn was ~half of all merges). Locks in the two ops
         // the CLI handler chains; removing the dump call fails this.
         let (store, _dir) = test_store();
-        let id = store.reserve("ZERO-WASTE", "ship-yaml-sync test", "P1", "s").unwrap();
+        let id = store
+            .reserve("ZERO-WASTE", "ship-yaml-sync test", "P1", "s")
+            .unwrap();
         let gaps_dir = _dir.path().join("docs").join("gaps");
         store.ship(&id, "s", Some(4242)).unwrap();
         let wrote = store.dump_per_file_single(&id, &gaps_dir).unwrap();
