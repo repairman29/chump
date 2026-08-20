@@ -223,3 +223,10 @@ installers:
     install: bash scripts/setup/install-a2a-dead-letter-reaper-launchd.sh
     check: bash scripts/setup/install-a2a-dead-letter-reaper-launchd.sh --check
     adds: ~/Library/LaunchAgents/com.chump.a2a-dead-letter-reaper.plist + 30-min run
+
+  - id: sccache-local
+    why: "RESILIENT-323 — install-sccache.sh (INFRA-202) has existed since 2026-05 but was never registered in this manifest, so local/fleet dev machines never got it: sccache was effectively CI-only (mozilla-actions/sccache-action in ci.yml), so every fresh worktree still paid a cold rustc-wrapper-less rebuild. Registering it closes that gap the same way every other 'shipped but never installed' entry in this file does."
+    priority: P2
+    install: bash scripts/setup/install-sccache.sh
+    check: grep -q 'rustc-wrapper = "sccache"' .cargo/config.toml 2>/dev/null
+    adds: .cargo/config.toml with rustc-wrapper=sccache + 20G local cache

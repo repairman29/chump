@@ -11222,3 +11222,49 @@ events:
       merge resolves something the curator was tracking as stale.
     consumers: [chump curator status, ambient]
     fields_required: [ts, kind, role, gap_id, reason]
+
+  # ── RESILIENT-323: adaptive storage-minimize layer ────────────────────────
+  # storage-footprint-optimizer.sh SENSEs target/sccache/archive sizes + disk
+  # headroom + cores, LEARNs a growth rate from history, and BUDGETs a
+  # disk-aware/cores-aware cap that cargo-sweep-gc.sh and sccache-reaper.sh
+  # ENFORCE by sourcing (this is the "adaptive" layer the fixed-threshold
+  # reapers were missing).
+  - kind: storage_footprint_budget
+    effect_metric: disk_free_gb
+    emitter: scripts/ops/storage-footprint-optimizer.sh (RESILIENT-323)
+    trigger: >
+      The optimizer completed a SENSE/LEARN/BUDGET tick and (unless
+      --dry-run) wrote ~/.chump/storage-footprint-budget.env with a
+      disk-aware cargo-target cap, a growth-aware sweep TTL, and a
+      cores-aware sccache cap for cargo-sweep-gc.sh / sccache-reaper.sh to
+      pick up on their next run.
+    consumers: [fleet-brief, disk-health-monitor, ops-audit]
+    fields_required: [ts, kind, target_mb, target_growth_mb_day, sccache_mb, sccache_growth_mb_day, disk_free_mb, disk_free_pct, cores, cap_mb, time_days, sccache_cap_gb, dry_run]
+
+  - kind: storage_archive_compressed
+    effect_metric: disk_free_gb
+    emitter: scripts/ops/compress-stale-archive.sh (RESILIENT-323)
+    trigger: >
+      A single stale, unreferenced data file (docs/archive .jsonl/.json, or
+      a rotated runtime log) was gzip'd and the original removed.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, file, before_kb, after_kb]
+
+  - kind: storage_archive_compress_skipped
+    effect_metric: self
+    emitter: scripts/ops/compress-stale-archive.sh (RESILIENT-323)
+    trigger: >
+      A candidate file was NOT compressed because it is still referenced
+      elsewhere in the tracked tree (docs-archive mode's safety check) or is
+      an active append-log/db by name pattern (runtime-logs mode).
+    consumers: [ops-audit]
+    fields_required: [ts, kind, file, reason]
+
+  - kind: storage_archive_compressed_run
+    effect_metric: disk_free_gb
+    emitter: scripts/ops/compress-stale-archive.sh (RESILIENT-323)
+    trigger: a compress-stale-archive.sh invocation finished; summarizes how
+      many files were compressed/skipped and the bytes reclaimed (dry_run
+      runs report candidate_kb instead of a real saved_kb).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, mode, compressed, skipped, saved_kb, candidate_kb, dry_run]

@@ -16,6 +16,12 @@ set -uo pipefail
 
 REPO_ROOT="${CHUMP_REPO:-${CHUMP_HOME:-/Users/jeffadkins/Projects/Chump}}"
 SCCACHE_DIR="${SCCACHE_DIR:-$HOME/Library/Caches/Mozilla.sccache}"
+
+# RESILIENT-323: source the adaptive optimizer's computed cores/disk-aware
+# cap (`:=`-style — an explicit caller env still wins; absent file = no-op).
+CHUMP_STORAGE_BUDGET_FILE="${CHUMP_STORAGE_BUDGET_FILE:-${CHUMP_STATE_DIR:-$HOME/.chump}/storage-footprint-budget.env}"
+[[ -f "$CHUMP_STORAGE_BUDGET_FILE" ]] && source "$CHUMP_STORAGE_BUDGET_FILE"
+
 SCCACHE_CACHE_CAP_GB="${SCCACHE_CACHE_CAP_GB:-10}"
 DRY_RUN=1
 

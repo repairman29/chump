@@ -22,6 +22,14 @@
 set -uo pipefail
 
 REPO_ROOT="${CHUMP_REPO:-${CHUMP_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo $HOME/Projects/chump)}}"
+
+# RESILIENT-323: the adaptive optimizer computes a disk-aware, growth-aware
+# cap and writes it here via `:=`-style assignment, so an explicit caller env
+# var still wins and an absent/stale budget file is a harmless no-op (we keep
+# our own hardcoded defaults below either way).
+CHUMP_STORAGE_BUDGET_FILE="${CHUMP_STORAGE_BUDGET_FILE:-${CHUMP_STATE_DIR:-$HOME/.chump}/storage-footprint-budget.env}"
+[[ -f "$CHUMP_STORAGE_BUDGET_FILE" ]] && source "$CHUMP_STORAGE_BUDGET_FILE"
+
 CAP_MB="${CHUMP_CARGO_TARGET_CAP_MB:-20000}"
 TIME_DAYS="${CHUMP_CARGO_SWEEP_TIME_DAYS:-14}"
 AMB="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
