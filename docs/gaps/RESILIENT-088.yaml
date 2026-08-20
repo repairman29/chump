@@ -1,7 +1,8 @@
 - id: RESILIENT-088
   domain: RESILIENT
   title: "RESILIENT P1: run-fleet INFRA-621 auth-probe false-fails on VALID auth (retired model name → 404) — halts fleet launch unnecessarily"
-  status: open
+  status: done
+  closed_pr: 4005
   priority: P1
   effort: s
   description: |
@@ -12,4 +13,14 @@
     - the fleet launches on valid credentials WITHOUT needing CHUMP_FLEET_FORCE_LAUNCH=1
     - "test: valid key + retired-model probe → launch proceeds"
   outcome_id: RESILIENT-000
-
+  notes: |
+    [2026-08-20T00:00:00Z] RECONCILE: already shipped via PR #4005
+    (df4eb72b, "fix(RESILIENT-088): run-fleet auth probe misreads
+    retired-model 404 as auth failure"), merged 2026-08-20T09:44:17Z.
+    scripts/dispatch/run-fleet.sh now treats a 404/model_not_found/
+    not_found_error probe response as auth-OK (Anthropic authenticates
+    before resolving the model, so reaching a 404 at all proves the
+    credential was accepted) instead of retrying-then-failing as an
+    auth error. All 4 AC bullets met. Gap YAML was left status:open in
+    this worktree only — state.db has no open row for it (chump gap
+    ship already run, closed_pr=4005).
