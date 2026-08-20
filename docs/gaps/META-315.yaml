@@ -1,10 +1,12 @@
 - id: META-315
   domain: META
   title: main worktree cleanup — 440 untracked yaml + 0 commits behind
-  status: open
+  status: done
   priority: P3
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping META-314; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
   outcome_id: MISSION-010
 

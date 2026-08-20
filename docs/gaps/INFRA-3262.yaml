@@ -1,10 +1,12 @@
 - id: INFRA-3262
   domain: INFRA
   title: "EFFECTIVE: combo-2"
-  status: open
+  status: done
   priority: P3
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping INFRA-3261; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
   outcome_id: MISSION-010
 

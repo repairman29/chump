@@ -2,7 +2,6 @@
   domain: RESILIENT
   title: "bot-merge exit-144-silent recurs post-#2169 — root-cause + loud-fail + regression test"
   status: done
-  closed_pr: 4010
   priority: P1
   effort: m
   acceptance_criteria:
@@ -16,7 +15,7 @@
     gap's done row — regressing an already-closed gap. Filed INFRA follow-up for the
     bulk-reconcile script to skip/warn on gaps whose YAML already carries closed_pr
     rather than blindly overwriting from a possibly-stale db read.
-
+    
     Root cause (INFRA-2688): bot-merge.sh ran under `set -euo pipefail` with
     no ERR trap, so any child process dying non-zero (e.g. a gh sub-process
     killed by SIGURG, exit 128+16=144) propagated silently — indistinguishable
@@ -28,5 +27,7 @@
     condition against the real extracted handler and asserts a loud
     diagnosable failure + ambient event — 10/10 assertions pass. All AC
     bullets are met.
+  closed_date: '2026-08-20'
+  closed_pr: 4010
   outcome_id: RESILIENT-000
 

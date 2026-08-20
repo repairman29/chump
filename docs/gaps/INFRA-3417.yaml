@@ -1,9 +1,12 @@
 - id: INFRA-3417
   domain: INFRA
   title: "MISSION-RESILIENT: pillar starved — only 0 pickable xs/s/m gaps as of 2026-07-24"
-  status: open
+  status: done
   priority: P3
   effort: s
   acceptance_criteria:
     - The gap-picker surfaces at least one pickable xs/s/m gap for the RESILIENT pillar, clearing the starvation alert.
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping INFRA-3412; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
+  closed_date: '2026-08-19'
 

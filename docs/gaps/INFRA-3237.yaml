@@ -1,10 +1,12 @@
 - id: INFRA-3237
   domain: INFRA
   title: "CREDIBLE: balanced-2"
-  status: open
+  status: done
   priority: P3
   effort: xs
   acceptance_criteria:
     - Synthetic test-fixture gap (balanced-2); purge or close.
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping INFRA-3236; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
   outcome_id: MISSION-010
 
