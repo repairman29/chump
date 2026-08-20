@@ -10,6 +10,11 @@
 #   disk-monitor       — disk headroom alarm + auto-remediate
 #   reviver            — reopen closed-but-gap-open fleet PRs = work wrongly trashed by a
 #                        stale-base auto-close (INFRA-2026 post-push-integrity-watch, RESILIENT-341)
+#   pr-stuck-live-scan — LIVE gh-pr scan (INFRA-307 stuck-pr-filer) emitting kind=pr_stuck
+#                        from real GitHub state so the OS notices PRs sitting failing/DIRTY/
+#                        armed-not-merging (RESILIENT-349)
+#   pr-stuck-cluster-detector — consumes kind=pr_stuck, escalates clusters/chronic stalls
+#                        (INFRA-1133, RESILIENT-349)
 # The orchestrator then keeps the others alive (heal loop). One install, self-managing node.
 set -uo pipefail
 REPO="${CHUMP_REPO_ROOT:-$HOME/Projects/chump}"
@@ -34,7 +39,9 @@ disk-monitor|scripts/ops/disk-health-monitor.sh|300
 main-health-watchdog|scripts/ops/main-health-watchdog.sh|600
 pr-lander|scripts/dispatch/pr-lander-beat.sh|600
 cargo-sweep-gc|scripts/ops/cargo-sweep-gc.sh|3600
-reviver|scripts/coord/post-push-integrity-watch.sh|60"
+reviver|scripts/coord/post-push-integrity-watch.sh|60
+pr-stuck-live-scan|scripts/ops/stuck-pr-filer.sh|3600
+pr-stuck-cluster-detector|scripts/coord/pr-stuck-cluster-detector.sh --apply|1800"
 
 # write the self-contained loop-runner for an organ (sources creds, sets PATH, loops at cadence)
 write_runner() {
@@ -103,7 +110,7 @@ EOF
 # self-test
 log "self-test:"
 fail=0
-for name in node-orchestrator rot-reaper worktree-reaper disk-monitor main-health-watchdog pr-lander cargo-sweep-gc reviver; do
+for name in node-orchestrator rot-reaper worktree-reaper disk-monitor main-health-watchdog pr-lander cargo-sweep-gc reviver pr-stuck-live-scan pr-stuck-cluster-detector; do
   case "$SUP" in
     systemd) systemctl is-active "chump-$name.service" >/dev/null 2>&1 && log "  ✓ $name up" || { log "  ✗ $name DOWN"; fail=1; } ;;
     runit)   sv status "$SVDIR/chump-$name" 2>/dev/null | grep -q '^run' && log "  ✓ $name up" || { log "  ✗ $name DOWN"; fail=1; } ;;

@@ -426,8 +426,12 @@ ${details}"
         info "  PR #$pr_num is $_pr_state — suppressed pr_stuck emit (INFRA-1247)"
         return
     fi
-    printf '{"event":"alert","kind":"pr_stuck","ts":"%s","pr":%s,"reason":"%s","filed_gap":"%s"}\n' \
-        "$ts" "$pr_num" "$reason" "$reserved" >> "$ambient" 2>/dev/null || true
+    # RESILIENT-349: emit both "gap" (consumed by pr-stuck-cluster-detector.sh's
+    # ev.get('gap','')) and "filed_gap" (the historical field name other
+    # consumers/docs reference) so the cluster/chronic escalation chain can
+    # resolve the originating gap id.
+    printf '{"event":"alert","kind":"pr_stuck","ts":"%s","pr":%s,"reason":"%s","gap":"%s","filed_gap":"%s"}\n' \
+        "$ts" "$pr_num" "$reason" "$reserved" "$reserved" >> "$ambient" 2>/dev/null || true
 
     FILED=$((FILED + 1))
 }
