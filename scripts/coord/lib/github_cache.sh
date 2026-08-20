@@ -122,7 +122,15 @@ _cache_repo_nwo() {
     local cache_file="$root/.chump/repo-nwo.cache"
     if [[ -f "$cache_file" ]]; then
         local mtime now age
-        mtime=$(stat -f %m "$cache_file" 2>/dev/null || stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+        # GNU stat (-c) first: Linux fleet hosts. BSD stat (-f) is the macOS
+        # fallback. Order matters — GNU stat treats `-f` as "filesystem info"
+        # (not BSD's "format"), so `stat -f %m FILE` on Linux doesn't error,
+        # it silently emits multi-line filesystem-info junk to stdout, which
+        # then corrupts $mtime and blows up the `$((now - mtime))` arithmetic
+        # under `set -u` (INFRA-2464 follow-up: caught by
+        # scripts/ci/test-merge-sla-scorecard.sh once this helper gained a
+        # caller running under `set -u`).
+        mtime=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null || echo 0)
         now=$(date -u +%s)
         age=$((now - mtime))
         if [[ "$age" -lt "$ttl" ]]; then
