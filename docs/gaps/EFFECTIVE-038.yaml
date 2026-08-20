@@ -1,7 +1,8 @@
 - id: EFFECTIVE-038
   domain: EFFECTIVE
   title: "EFFECTIVE: A2A L2 — task state machine with input_required + auth_required (suspended, not failed)"
-  status: open
+  status: done
+  closed_pr: 3962
   priority: P1
   effort: m
   description: |
