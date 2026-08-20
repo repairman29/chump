@@ -1,13 +1,27 @@
 - id: RESILIENT-218
   domain: RESILIENT
   title: "orphan_worktree_detected reports claim_gap_id:null for actively-claimed worktrees -- tier3 reaper then destroys them"
-  status: open
+  status: done
+  closed_pr: 3648
   priority: P1
   effort: m
   acceptance_criteria:
     - orphan_worktree_detected sets claim_gap_id to the owning gap for actively-claimed worktrees (never null); the tier3 reaper skips any worktree with a live claim/lease so active work is never destroyed.
   notes: |
-    Root-cause candidate found 2026-08-02, NOT fixed — deliberately left for the fleet given the stakes (this gap's own notes already describe a near-miss on the main checkout). scripts/coord/orphan-worktree-watchdog.sh's _get_gap_id() (line 149) matches a worktree to its claim via FUZZY SUBSTRING matching: either the worktree path appears literally inside the claim file's 'purpose' string, or a gap-ID-derived slug appears inside the branch name (orphan-worktree-watchdog.sh:160-174). Both are heuristics, not a direct field lookup — if a real claim's purpose/branch text doesn't happen to contain the expected substring (plausible given how many scripts write claim-*.json across this codebase, e.g. src/atomic_claim.rs's purpose field sometimes reads 'reserve' or 'fleet:pick_and_claim' with no worktree-path or gap-slug substring at all, per the fleet_status.rs test fixture), the match silently fails and the worktree gets reported orphaned even while genuinely claimed. Proper fix needs someone with real context on the current claim-file schema (does every claim file reliably carry a worktree_path field the watchdog could match directly instead of guessing from purpose/branch strings?) and the ability to test against live concurrent claims — not something to touch blind given the near-miss already on record.
+    RECONCILE (2nd pass): already shipped via PR #3648 ("RESILIENT-218: fix fuzzy
+    claim-file correlation that let tier3 destroy live claims", commit 804651cb,
+    2026-08-10). orphan-worktree-watchdog.sh's _get_gap_id()/_get_session_id() now
+    derive the expected gap_id directly from the worktree's deterministic
+    chump-<gap_id.lower()> basename and match it against each claim file's gap_id
+    JSON field (Strategy 1, deterministic field lookup) before falling back to the
+    old fuzzy purpose/branch substring heuristic. disk-pressure-reaper.sh's tier3
+    reap loop independently builds an active_gaps set from every live
+    .chump-locks/*.json lease and skips any worktree whose gap_id is in that set,
+    plus the shared worktree_is_active() lease-freshness guard (INFRA-1074) — so a
+    worktree with a live claim/lease is never destroyed. Both AC bullets verified
+    against current main. Bulk-reconcile PR #4018 clobbered this record back to
+    status:open from a stale/empty state.db read (same regression class as
+    RESILIENT-052, INFRA-011 follow-up filed there covers the root cause).
   outcome_id: RESILIENT-000
   evidence: |
     COMMAND: grep effective-330 .chump-locks/ambient.jsonl | grep -E "orphan|tier3"
