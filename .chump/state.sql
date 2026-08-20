@@ -66558,13 +66558,15 @@ gaps:
 - id: RESILIENT-328
   domain: RESILIENT
   title: "node-orchestrator must ENFORCE WORKER_MAX every tick + throttle production on CI-queue backpressure (drifted to 3 workers tonight, hand-stopped worker3; orchestrator is blind to CI saturation so workers over-produce PRs the merge pipeline cannot drain) — COTG: any fresh node self-caps + self-throttles"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "The change described by \"any fresh node self-caps + self-throttles\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-20'
+  closed_pr: 4035
 
 - id: RESILIENT-333
   domain: RESILIENT
