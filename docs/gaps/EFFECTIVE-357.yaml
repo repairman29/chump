@@ -1,7 +1,9 @@
 - id: EFFECTIVE-357
   domain: EFFECTIVE
   title: "EFFECTIVE: objective intake — business objective to user stories, AC, outcome (factory L1)"
-  status: open
+  status: done
+  closed_pr: 3984
+  closed_date: "2026-08-19"
   priority: P1
   effort: m
   description: |
@@ -10,5 +12,7 @@
     - A non-technical persons plain-language input (a paragraph, a broken repo, a spreadsheet, I want X) becomes a structured requirement set + a pickable gap/outcome WITH real authored AC — meeting the idea in whatever state it is in, no well-formed ticket required (that is the part most people cannot produce)
     - "Built ON the existing substrate: front_door.rs router (Create/Improve modes) + chump-perception (entity/constraint/risk extraction); intake asks confidence-scored clarifying questions when ambiguous rather than guessing"
     - "Proven: given 3 raw inputs (a 1-paragraph idea, an abandoned repo, a vague ask), intake emits a structured requirement doc + a pickable gap with real AC for each, with the person never writing a spec"
+  notes: |
+    [2026-08-20T00:00:00Z] RECONCILE: already shipped 2026-08-19 via 1447ee44 (PR #3984, same gap ID in the commit trailer) — `src/vision_intake.rs` (`chump intake "<text>" --create`) writes an outcome row via `GapStore::create_outcome`, rule-based-scores ambiguity via `chump_perception::perceive` (AC2), and below the AMBIGUITY_GAP_THRESHOLD feeds the restatement/DoD/detected entities-constraints-risks into `RoadmapFromVisionContract` (max_gaps=1) to author ONE umbrella gap with real AC via the existing `chump gap reserve --outcome <id>` path (AC1/AC3), inheriting the MISSION-045 gate. At/above threshold intake stops at clarifying questions instead of guessing (AC2). Covered by unit tests in src/vision_intake.rs (ambiguity_threshold_separates_vague_from_concrete_input, intake_json_omits_gap_fields_when_not_filed, emit_ambient_event_tags_third_party_content). Gap YAML was left status:open in this worktree only — state.db has no open row for it. Same reconcile pattern as INFRA-3494 (#3978) / RESILIENT-133 (#3964).
   outcome_id: COTG
 
