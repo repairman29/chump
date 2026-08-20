@@ -1,10 +1,12 @@
 - id: INFRA-2969
   domain: INFRA
   title: "CREDIBLE: under-a"
-  status: open
+  status: done
   priority: P3
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler/balance test noise.
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping INFRA-2964; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
   outcome_id: MISSION-010
 

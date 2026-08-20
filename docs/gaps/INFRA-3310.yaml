@@ -1,10 +1,12 @@
 - id: INFRA-3310
   domain: INFRA
   title: "CREDIBLE: meas-b"
-  status: open
+  status: done
   priority: P3
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping INFRA-3309; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
   outcome_id: MISSION-010
 
