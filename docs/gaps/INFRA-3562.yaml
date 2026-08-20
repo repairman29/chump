@@ -1,10 +1,12 @@
 - id: INFRA-3562
   domain: INFRA
   title: "INFRA: Reproduce actions/checkout@v6 failure on jeffs-macbook-air-10-X (INFRA-1655 slice)"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
     - Failure is reproduced within 30 seconds
     - Failure is specific to jeffs-macbook-air-10-X runners
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping INFRA-3556; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
 

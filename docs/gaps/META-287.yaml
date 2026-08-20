@@ -1,7 +1,7 @@
 - id: META-287
   domain: META
   title: "META: AGENT_START_HERE north-star + session-start injection + fleet-brief merge-age honesty (cut confused-agent re-folding)"
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -11,5 +11,7 @@
     - north-star injected into session-start context ahead of the fleet brief
     - fleet-brief.sh downgrades fleet-looks-healthy whenever last origin/main merge older than ~2-3h regardless of daemon-liveness or blocked-PR count
     - "regression: alive-daemons + no-merge-in-threshold reports NOT-healthy"
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping META-286; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
   outcome_id: MISSION-010
 
