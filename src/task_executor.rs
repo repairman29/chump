@@ -253,8 +253,15 @@ pub async fn execute_tool_calls_sequential<'a>(
                 );
                 tool_policy::record_approval_stat(&tc.name, "auto_approved", &risk_level);
             } else {
-                let (request_id, rx) = approval_resolver::request_approval();
-                if pending_peer_approval::peer_approve_tools().contains(&tc.name.to_lowercase()) {
+                // RESILIENT-277 FIX 1: join an in-flight request for the same
+                // (tool, args) instead of minting a fresh id per retry — that
+                // was the root cause of "3 cards, 3 ids, 2 dead". Only the
+                // first attempt gets a card; joined attempts share its receiver.
+                let (request_id, mut rx, joined) =
+                    approval_resolver::request_approval_for(&tc.name, &tc.input);
+                if pending_peer_approval::peer_approve_tools().contains(&tc.name.to_lowercase())
+                    && !joined
+                {
                     pending_peer_approval::write_pending_peer_approval(
                         &request_id,
                         &tc.name,
@@ -265,17 +272,25 @@ pub async fn execute_tool_calls_sequential<'a>(
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs() + timeout_secs)
                     .unwrap_or(0);
-                send_event(
-                    event_tx,
-                    AgentEvent::ToolApprovalRequest {
-                        request_id: request_id.clone(),
-                        tool_name: tc.name.clone(),
-                        tool_input: tc.input.clone(),
-                        risk_level: risk_level.clone(),
-                        reason: reason.clone(),
-                        expires_at_secs,
-                    },
-                );
+                if joined {
+                    tracing::info!(
+                        tool = %tc.name,
+                        request_id = %request_id,
+                        "joining in-flight approval request instead of posting a duplicate card"
+                    );
+                } else {
+                    send_event(
+                        event_tx,
+                        AgentEvent::ToolApprovalRequest {
+                            request_id: request_id.clone(),
+                            tool_name: tc.name.clone(),
+                            tool_input: tc.input.clone(),
+                            risk_level: risk_level.clone(),
+                            reason: reason.clone(),
+                            expires_at_secs,
+                        },
+                    );
+                }
 
                 // INFRA-1340 (audio cue): fire-and-forget OS chime when the
                 // operator has CHUMP_APPROVAL_AUDIO=1. Independent of dropdown
@@ -285,7 +300,9 @@ pub async fn execute_tool_calls_sequential<'a>(
                 // INFRA-1340 (web push escalation): spawn a background task that,
                 // after CHUMP_APPROVAL_ESCALATION_SECS (default 60s), checks if
                 // the request is still pending and dispatches Web Push if so.
-                if tool_policy::approval_escalation_enabled() {
+                // Skip on a joined attempt — the original request already
+                // owns (or will own) an escalation task for this id.
+                if tool_policy::approval_escalation_enabled() && !joined {
                     let escalation_secs = tool_policy::approval_escalation_secs();
                     let req_id_for_push = request_id.clone();
                     let tool_for_push = tc.name.clone();
@@ -321,11 +338,22 @@ pub async fn execute_tool_calls_sequential<'a>(
                     });
                 }
 
-                let approval_result =
-                    tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), rx).await;
+                // RESILIENT-277 FIX 2 (already in place): await the receiver
+                // bounded by CHUMP_APPROVAL_TIMEOUT_SECS rather than re-entering
+                // the model. A timeout no longer drops the pending-request
+                // bookkeeping (see approval_resolver) so a later retry on the
+                // same (tool, args) joins this same live request above.
+                let approval_result = tokio::time::timeout(
+                    std::time::Duration::from_secs(timeout_secs),
+                    rx.wait_for(|v| v.is_some()),
+                )
+                .await;
                 let (allowed, result_label) = match approval_result {
-                    Ok(Ok(true)) => (true, "allowed"),
-                    Ok(Ok(false)) => (false, "denied"),
+                    Ok(Ok(guard)) => match *guard {
+                        Some(true) => (true, "allowed"),
+                        Some(false) => (false, "denied"),
+                        None => (false, "denied"),
+                    },
                     Ok(Err(_)) => (false, "denied"),
                     Err(_) => (false, "timeout"),
                 };
@@ -610,9 +638,14 @@ mod tests {
     // ------------------------------------------------------------------
     #[tokio::test]
     async fn approval_resolver_timeout_produces_false() {
-        let (_id, rx) = crate::approval_resolver::request_approval();
+        let (_id, mut rx, _joined) =
+            crate::approval_resolver::request_approval_for("test_tool", &json!({}));
         // Don't call resolve — let the receiver time out via tokio::time::timeout.
-        let result = tokio::time::timeout(std::time::Duration::from_millis(50), rx).await;
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            rx.wait_for(|v| v.is_some()),
+        )
+        .await;
         assert!(result.is_err(), "should have timed out");
     }
 
@@ -621,10 +654,11 @@ mod tests {
     // ------------------------------------------------------------------
     #[tokio::test]
     async fn approval_resolver_allow_produces_true() {
-        let (id, rx) = crate::approval_resolver::request_approval();
+        let (id, mut rx, _joined) =
+            crate::approval_resolver::request_approval_for("test_tool", &json!({"scenario": 9}));
         crate::approval_resolver::resolve_approval(&id, true);
-        let allowed = rx.await.unwrap();
-        assert!(allowed);
+        rx.changed().await.unwrap();
+        assert_eq!(*rx.borrow(), Some(true));
     }
 
     // ------------------------------------------------------------------
@@ -632,10 +666,11 @@ mod tests {
     // ------------------------------------------------------------------
     #[tokio::test]
     async fn approval_resolver_deny_produces_false() {
-        let (id, rx) = crate::approval_resolver::request_approval();
+        let (id, mut rx, _joined) =
+            crate::approval_resolver::request_approval_for("test_tool", &json!({"scenario": 10}));
         crate::approval_resolver::resolve_approval(&id, false);
-        let allowed = rx.await.unwrap();
-        assert!(!allowed);
+        rx.changed().await.unwrap();
+        assert_eq!(*rx.borrow(), Some(false));
     }
 
     // ------------------------------------------------------------------
