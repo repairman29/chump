@@ -175,6 +175,15 @@ if [[ "$(id -u)" != "0" ]]; then
 fi
 
 echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board-cycle, organ-watchdog, board-ceo-briefing, organ-reconcile, pr-approval) =="
+# RESILIENT-353: HOST-AGNOSTIC reconcile. The tracked units are helsinki-shaped
+# (User=root, /root/.chump, /root/.cargo). Verbatim-copying them onto an owned
+# node (CJ=jeff, Termux, ...) installs broken units that source a nonexistent
+# /root/.chump and run as the wrong user (no git/ssh/cargo). Rewrite per-host on
+# copy so the SAME manifest wires correctly everywhere — this is what lets
+# organ-watchdog end the shipped-but-dark disease on any node, not just helsinki.
+RUN_USER="${CHUMP_RUN_USER:-$(stat -c %U "$REPO_ROOT" 2>/dev/null || echo root)}"
+RUN_HOME="$(getent passwd "$RUN_USER" 2>/dev/null | cut -d: -f6)"; [[ -z "$RUN_HOME" ]] && RUN_HOME="/home/$RUN_USER"
+echo "  host-rewrite target: User=$RUN_USER HOME=$RUN_HOME"
 CHANGED_UNITS=()
 for unit in "${SYSTEM_UNITS[@]}"; do
   src="$REPO_ROOT/scripts/dispatch/$unit"
@@ -183,11 +192,17 @@ for unit in "${SYSTEM_UNITS[@]}"; do
     echo "ERROR: $src not found" >&2
     exit 1
   fi
-  if [[ ! -f "$dest" ]] || ! cmp -s "$src" "$dest"; then
+  tmp="$(mktemp)"
+  sed -e "s#/root/#${RUN_HOME%/}/#g" -e "s#^User=root#User=${RUN_USER}#" "$src" > "$tmp"
+  # ensure a [Service] runs as the repo-owning user (git/ssh/cargo), not root
+  if grep -q "^\[Service\]" "$tmp" && ! grep -q "^User=" "$tmp"; then
+    sed -i "/^\[Service\]/a User=${RUN_USER}" "$tmp"
+  fi
+  if [[ ! -f "$dest" ]] || ! cmp -s "$tmp" "$dest"; then
     CHANGED_UNITS+=("$unit")
   fi
-  cp -f "$src" "$dest"
-  echo "  installed $unit"
+  cp -f "$tmp" "$dest"; rm -f "$tmp"
+  echo "  installed $unit (host-rewritten -> $RUN_USER)"
 done
 
 # RESILIENT-318 / INFRA-2130: the Batched Merge Train needs its own binary, which
