@@ -531,6 +531,27 @@ impl GapStore {
             "ALTER TABLE gaps ADD COLUMN artifact_type TEXT NOT NULL DEFAULT 'code'",
             [],
         );
+        // EFFECTIVE-038: A2A L2 task-suspension columns. A gap that hits
+        // input_required (ambiguous decision, needs operator judgment) or
+        // auth_required (missing credential — RESILIENT-054's silent-death
+        // mode) flips status='waiting_operator' instead of failing or
+        // spawning a free-text follow-up gap. `waiting_payload` carries the
+        // structured question (kind + question + any context); `resume_status`
+        // is the status to restore on `chump gap respond` (almost always
+        // whatever the gap's status was the instant before it suspended, so
+        // it resumes exactly where it paused instead of falling back to a
+        // generic 'open'). All three are nullable/defaulted so existing rows
+        // are unaffected until a gap actually suspends.
+        let _ = self
+            .conn
+            .execute("ALTER TABLE gaps ADD COLUMN waiting_payload TEXT", []);
+        let _ = self.conn.execute(
+            "ALTER TABLE gaps ADD COLUMN resume_status TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = self
+            .conn
+            .execute("ALTER TABLE gaps ADD COLUMN waiting_since INTEGER", []);
         // Backfill closed_date for done rows that predate the column. Idempotent:
         // only touches rows where closed_date is empty AND closed_at is set, so
         // re-running is a no-op once the row is healed. UTC matches `unix_to_iso_date`.
@@ -617,7 +638,8 @@ impl GapStore {
                ('wontfix',             'legacy',       'will not be implemented'),
                ('ready_to_ship',       'INFRA-2130',   'passed preflight; awaiting integration batch'),
                ('bisect_quarantined',  'INFRA-2137',   'failed integration-bisect; needs operator review'),
-               ('already_satisfied',   'CREDIBLE-197', 'acceptance verified already met in the repo; closed with an evidence receipt, no PR — a Scout/Holler finding that was already fixed');
+               ('already_satisfied',   'CREDIBLE-197', 'acceptance verified already met in the repo; closed with an evidence receipt, no PR — a Scout/Holler finding that was already fixed'),
+               ('waiting_operator',    'EFFECTIVE-038','suspended — carrying a structured question payload (input_required | auth_required); chump gap respond resumes it');
             ",
         );
 
@@ -1305,6 +1327,133 @@ impl GapStore {
             |r| r.get(0),
         )?;
         Ok(v)
+    }
+
+    /// EFFECTIVE-038 (A2A L2): suspend a gap into `waiting_operator`, carrying
+    /// a structured question payload — the Google-A2A-shaped alternative to
+    /// "silently die" (auth_required, RESILIENT-054) or "guess wrong / file a
+    /// disconnected follow-up gap" (input_required, ambiguous decision).
+    ///
+    /// `kind` is `"input_required"` or `"auth_required"`; `question` is a
+    /// human-readable prompt for the operator; `context_json` is an optional
+    /// caller-supplied JSON blob (e.g. partial progress) round-tripped
+    /// verbatim into the payload so `respond` can hand it back unchanged.
+    ///
+    /// Captures the gap's current status as `resume_status` so `respond`
+    /// resumes exactly where the gap paused, not to a generic 'open'.
+    /// Refuses to suspend a gap that is already `done` or `waiting_operator`.
+    pub fn suspend_waiting(
+        &self,
+        gap_id: &str,
+        kind: &str,
+        question: &str,
+        context_json: Option<&str>,
+    ) -> Result<()> {
+        if kind != "input_required" && kind != "auth_required" {
+            bail!(
+                "suspend_waiting: kind must be 'input_required' or 'auth_required', got '{}'",
+                kind
+            );
+        }
+        let cur_status: Option<String> = self
+            .conn
+            .query_row("SELECT status FROM gaps WHERE id=?1", [gap_id], |r| {
+                r.get(0)
+            })
+            .ok();
+        let cur_status = match cur_status {
+            Some(s) => s,
+            None => bail!("gap {} not found", gap_id),
+        };
+        if cur_status == "done" {
+            bail!(
+                "gap {} is already done; cannot suspend to waiting_operator",
+                gap_id
+            );
+        }
+        if cur_status == "waiting_operator" {
+            bail!(
+                "gap {} is already waiting_operator; respond to it first before suspending again",
+                gap_id
+            );
+        }
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let payload = serde_json::json!({
+            "kind": kind,
+            "question": question,
+            "context": context_json.and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok()),
+        });
+        self.conn.execute(
+            "UPDATE gaps SET status='waiting_operator', waiting_payload=?1,
+             resume_status=?2, waiting_since=?3 WHERE id=?4",
+            params![payload.to_string(), cur_status, now, gap_id],
+        )?;
+        Ok(())
+    }
+
+    /// EFFECTIVE-038: read the structured question payload of a gap
+    /// currently in `waiting_operator`. Returns `None` if the gap has no
+    /// pending payload (never suspended, or already resumed).
+    pub fn get_waiting_payload(&self, gap_id: &str) -> Result<Option<String>> {
+        let v: Option<String> = self.conn.query_row(
+            "SELECT waiting_payload FROM gaps WHERE id=?1",
+            [gap_id],
+            |r| r.get(0),
+        )?;
+        Ok(v)
+    }
+
+    /// EFFECTIVE-038: resume a `waiting_operator` gap with the operator's
+    /// answer. Restores `status` to whatever it was the instant before
+    /// suspension (`resume_status`), clears the waiting payload, and appends
+    /// the question + answer to `notes` as an audit trail. Returns the
+    /// resumed status. Errors if the gap is not currently `waiting_operator`.
+    pub fn respond_gap(&self, gap_id: &str, answer_json: &str) -> Result<String> {
+        let row: Option<(String, Option<String>, String, String)> = self
+            .conn
+            .query_row(
+                "SELECT status, waiting_payload, resume_status, notes FROM gaps WHERE id=?1",
+                [gap_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .ok();
+        let (status, payload, resume_status, notes) = match row {
+            Some(v) => v,
+            None => bail!("gap {} not found", gap_id),
+        };
+        if status != "waiting_operator" {
+            bail!(
+                "gap {} is not waiting_operator (current status: '{}') — nothing to respond to",
+                gap_id,
+                status
+            );
+        }
+        let resume_status = if resume_status.is_empty() {
+            "open".to_string()
+        } else {
+            resume_status
+        };
+        let question = payload
+            .as_deref()
+            .and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok())
+            .and_then(|v| v.get("question").and_then(|q| q.as_str()).map(String::from))
+            .unwrap_or_default();
+        let mut new_notes = notes;
+        if !new_notes.is_empty() {
+            new_notes.push('\n');
+        }
+        new_notes.push_str(&format!(
+            "[operator response] Q: {question} A: {answer_json}"
+        ));
+        self.conn.execute(
+            "UPDATE gaps SET status=?1, waiting_payload=NULL, resume_status='', notes=?2
+             WHERE id=?3",
+            params![resume_status, new_notes, gap_id],
+        )?;
+        Ok(resume_status)
     }
 
     /// Reserve a new gap ID atomically using a per-domain counter row.
@@ -9048,5 +9197,110 @@ mod quarantine_tests {
             .claim("INFRA-GHOST", "session-x", "wt-x", 3600)
             .unwrap_err();
         assert!(err.to_string().contains("not found in state.db"));
+    }
+}
+
+// ── EFFECTIVE-038: A2A L2 waiting_operator suspend/respond tests ─────────────
+#[cfg(test)]
+mod waiting_operator_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn test_store() -> (GapStore, tempfile::TempDir) {
+        let dir = tempdir().unwrap();
+        let store = GapStore::open(dir.path()).unwrap();
+        (store, dir)
+    }
+
+    #[test]
+    fn waiting_operator_is_a_known_status() {
+        let (store, _dir) = test_store();
+        let statuses = store.known_statuses().unwrap();
+        assert!(statuses.iter().any(|s| s == "waiting_operator"));
+    }
+
+    #[test]
+    fn suspend_then_respond_resumes_from_prior_status() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("EFFECTIVE", "suspend test", "P1", "s")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("claimed".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        store
+            .suspend_waiting(
+                &id,
+                "input_required",
+                "which backend should this target?",
+                Some(r#"{"progress":"70%"}"#),
+            )
+            .unwrap();
+
+        let g = store.get(&id).unwrap().unwrap();
+        assert_eq!(g.status, "waiting_operator");
+        let payload = store.get_waiting_payload(&id).unwrap().unwrap();
+        assert!(payload.contains("input_required"));
+        assert!(payload.contains("70%"));
+
+        let resumed = store.respond_gap(&id, r#"{"backend":"claude"}"#).unwrap();
+        assert_eq!(resumed, "claimed");
+        let g = store.get(&id).unwrap().unwrap();
+        assert_eq!(g.status, "claimed");
+        assert!(g.notes.contains("operator response"));
+        assert!(g.notes.contains(r#"{"backend":"claude"}"#));
+        assert!(store.get_waiting_payload(&id).unwrap().is_none());
+    }
+
+    #[test]
+    fn auth_required_suspends_instead_of_silent_death() {
+        // RESILIENT-054: a missing credential must suspend, not die silently.
+        let (store, _dir) = test_store();
+        let id = store.reserve("EFFECTIVE", "auth test", "P1", "s").unwrap();
+
+        store
+            .suspend_waiting(&id, "auth_required", "missing GH_TOKEN", None)
+            .unwrap();
+
+        let g = store.get(&id).unwrap().unwrap();
+        assert_eq!(g.status, "waiting_operator");
+        let payload = store.get_waiting_payload(&id).unwrap().unwrap();
+        assert!(payload.contains("auth_required"));
+    }
+
+    #[test]
+    fn respond_without_pending_suspension_errors() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EFFECTIVE", "no suspend", "P1", "s").unwrap();
+        let err = store.respond_gap(&id, r#"{"x":1}"#).unwrap_err();
+        assert!(err.to_string().contains("not waiting_operator"));
+    }
+
+    #[test]
+    fn cannot_suspend_a_done_gap() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EFFECTIVE", "done test", "P1", "s").unwrap();
+        store.ship(&id, "session-x", Some(1)).unwrap();
+        let err = store
+            .suspend_waiting(&id, "input_required", "q?", None)
+            .unwrap_err();
+        assert!(err.to_string().contains("already done"));
+    }
+
+    #[test]
+    fn suspend_rejects_unknown_kind() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EFFECTIVE", "bad kind", "P1", "s").unwrap();
+        let err = store
+            .suspend_waiting(&id, "bogus_kind", "q?", None)
+            .unwrap_err();
+        assert!(err.to_string().contains("kind must be"));
     }
 }

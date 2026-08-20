@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "node-orchestrator must ENFORCE WORKER_MAX every tick + throttle production on CI-queue backpressure (drifted to 3 workers tonight, hand-stopped worker3; orchestrator is blind to CI saturation so workers over-produce PRs the merge pipeline cannot drain) — COTG: any fresh node self-caps + self-throttles"
   status: open
-  priority: P2
+  priority: P1
   effort: m
   acceptance_criteria:
     - "The change described by \"any fresh node self-caps + self-throttles\" is implemented in the relevant RESILIENT code path(s)."

@@ -1,0 +1,16 @@
+- id: INFRA-3486
+  domain: INFRA
+  title: "RESILIENT: [COTG-1.4] durable/resumable gap execution (journal; crash -> resume)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-1.4] durable/resumable gap execution (journal; crash -> resume)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:22Z] DISCOVERY PARTIAL ~55% -> FINISH. src/checkpoint_db.rs + src/resume_cmd.rs are WIRED to autonomy_loop (chump resume <gap-id>, INFRA-1456); extend the same journal/resume to the external improve Flow.
+  closed_date: '2026-07-30'
+  closed_pr: 3378
+  outcome_id: COTG
+

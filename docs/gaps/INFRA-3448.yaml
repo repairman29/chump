@@ -1,0 +1,13 @@
+- id: INFRA-3448
+  domain: INFRA
+  title: "EFFECTIVE: discipline router — the OS routes a STUCK gap to escalate-model / decompose / flag-human by (effort-size x strikes), instead of always escalating"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"discipline router — the OS routes a STUCK gap to escalate-model / decompose / flag-human by (effort-size x strikes), instead of always escalating\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3348
+  outcome_id: MISSION-010
+

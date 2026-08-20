@@ -1,0 +1,11 @@
+- id: RESILIENT-198
+  domain: RESILIENT
+  title: install (refresh-runner-binary.sh) must ad-hoc codesign after cp — unsigned binary hangs every exec via syspolicyd
+  status: superseded
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "scripts/setup/refresh-runner-binary.sh (the MISSION-012 auto-deploy install, run by com.chump.auto-deploy launchd every 30min) does cp -> chmod +x -> mv (atomic rename) to /opt/homebrew/bin/chump but NEVER codesigns. Discovered 2026-07-26 (via CREDIBLE-168): a freshly-copied unsigned 51MB binary makes macOS syspolicyd re-scan it on EVERY exec, hanging each 'chump' call 90s+ (chump --version hung >90s until ad-hoc signing dropped it to 472ms). This wedges every git hook, launchd daemon, and fleet script that shells out to chump. Fix (shipped in this gap): ad-hoc codesign --force --sign - the tempfile before the atomic rename, guarded to Darwin + codesign-present (no-op on Linux nodes), warn-not-fail. Verify: after a refresh, chump --version runs sub-second (not 90s). Related: [[installed-binary-runs-hooks]] memory; RESILIENT-172/CREDIBLE-151 (installed-binary staleness). Also worth checking why the auto-deploy launchd job appears not to have run (installed binary was 2 days stale) — possible disabled-in-override-DB per infra-watcher-loop.sh."
+  notes: |
+    [2026-07-26T19:29:58Z] [gap-bankruptcy 2026-07-26] work already merged to origin/main (gap-ID in a merged commit); closing ghost-open gap. Reversible via `chump gap requeue RESILIENT-198`.
+

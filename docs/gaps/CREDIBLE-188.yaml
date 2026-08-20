@@ -1,0 +1,13 @@
+- id: CREDIBLE-188
+  domain: CREDIBLE
+  title: "Measure effort per bench lap: record wall-clock + routed model-class into the scorecard (LapScore) so every drill is DATA not just a green cell. First honest slice; token/cost attribution is a filed dependency (agent-run subprocess must emit per-run cost)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"record wall-clock + routed model-class into the scorecard (LapScore) so every drill is DATA not just a green cell. First honest slice; token/cost attribution is a filed dependency (agent-run subprocess must emit per-run cost)\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-02'
+  closed_pr: 3450
+

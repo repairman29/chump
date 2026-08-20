@@ -8,4 +8,5 @@
     - "The change described by \"node-orchestrator SENSES GitHub/CI (open-PR backlog, per-PR check conclusions, merge-flow, systemic-red, farmer<->CI false-red cascade) as a first-class surface alongside cpu/ram/disk, and AUTO-HEALS — rerun false-red CI when the root cause clears (e.g. farmer back GREEN), requeue abandoned-red PRs, resolve green-stuck armed PRs (mergeable=UNKNOWN). COTG: installs via housekeeping ORGANS table on any fresh node, GitHub-wired, verified by self-test. Tonight the OS was blind to a 14-PR jam + farmer-flap false-red; the board hand-diagnosed + hand-reran (RESILIENT-337 tripwire + CREDIBLE-291 decouple are pieces; this is the sensing+healing spine).\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  depends_on: [RESILIENT-328, RESILIENT-337, RESILIENT-339, RESILIENT-341]
 

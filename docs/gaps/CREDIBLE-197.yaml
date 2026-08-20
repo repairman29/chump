@@ -1,0 +1,20 @@
+- id: CREDIBLE-197
+  domain: CREDIBLE
+  title: "CREDIBLE: external-gap execution needs a VERIFY-BEFORE-EXECUTE gate — check the AC is already satisfied before spending an agent (Scout/Holler re-surface already-fixed findings)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"external-gap execution needs a VERIFY-BEFORE-EXECUTE gate — check the AC is already satisfied before spending an agent (Scout/Holler re-surface already-fixed findings)\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    SCOPE = two linked findings from the first real Scout/Holler lap (realm-of-shadows, 2026-08-03): (1) VERIFY-BEFORE-EXECUTE — run a gap's acceptance_criteria read-only against current repo state before spending an agent; if already PASS, do not execute. (2) ALREADY-SATISFIED DISPOSITION — chump has no clean way to close such a gap: INFRA-402 refuses status=done without a numeric closed_pr (verified live: blocked GAME-001/002/003). Need a close reason like 'already-satisfied' that carries the verification receipt instead of a PR (and is honest in the audit / doesn't read as a bypass). Both belong in the external-gap execution path; sibling of CREDIBLE-186 honest-acceptance. Concrete first cases waiting: GAME-001 (World.js:353), GAME-002/003 (FINDINGS #3/#14).
+  closed_pr: 3461
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: Jeff loaded 5 Scout-sourced GAME gaps (external_repo:repairman29/realm-of-shadows); 3 (GAME-001/002/003) had their fix ALREADY PRESENT in the repo (GAME-001 verified: World.js:353 spawnX 17->16 off water + code comment; GAME-002/003: FINDINGS.md #3/#14 marked FIXED).
+    OUTPUT: chump's autonomous external-gap path (chump agent-run / --execute-gap) has NO 'is the acceptance already met?' check — it would clone + spend a cascade agent on an already-fixed bug, producing either an honest no-op OR (the risk) a spurious change that false-greens. The conductor caught it by hand this time; autonomous chump would not.
+    THEORY: the Scout->Holler->chump pipeline CONSTANTLY re-surfaces findings for already-fixed things (Scout re-runs; gaps get loaded post-fix). Without an idempotency gate, chump churns agents on done work and risks false-greening no-op changes on external repos. FIX: before executing an external gap, run its acceptance_criteria as a read-only check against the current repo state; if ALREADY PASS -> close the gap 'already-satisfied' with the receipt, spend NO agent. This is the external-repo sibling of the honest-acceptance work (CREDIBLE-186) + a direct waste/false-green guard. Verify-before-believe (shop rule #2) as code.
+    ALT: (a) rely on the agent to self-report 'nothing to do' — unreliable + wastes a full agent-run + risks the spurious-change false-green; (b) dedup only at Holler (dedupe_hash) — helps repeats but not 'gap loaded after an out-of-band fix'. The gate belongs in chump's execution path.
+

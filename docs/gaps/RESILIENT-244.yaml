@@ -2,7 +2,6 @@
   domain: RESILIENT
   title: "TRUNK RED: docs-delta-guard fails on clean main — '[FAIL] bypass env didn't allow doc-add' makes every preflight in the fleet FAIL"
   status: done
-  closed_pr: 3627
   priority: P0
   effort: s
   acceptance_criteria:
@@ -11,38 +10,11 @@
     - chump preflight reaches PASS on an unmodified clean-main checkout — today it cannot, because this gate is in the default rust+scripts scope and every run FAILs on it
     - "Quantify the blast radius before closing: this gate is red on trunk, so every preflight in the fleet currently ends in FAIL and operators must judge red-vs-red by eye. Report how long it has been red (git log on the guard + its test) in the closing note"
     - If the answer is that the test was stale, add whatever CI signal would have caught a gate self-test going red on trunk — a red trunk gate that everyone routes around is the failure this gap is really about
-  notes: >
-    DECISION (AC#1): the TEST was stale, not the guard. CREDIBLE-155
-    (2026-07-19, ab7ab2fa) ported docs-delta into the `chump verify` unified
-    policy engine and collapsed every rule onto ONE audited bypass surface,
-    the `Verify-Bypass: <rule-id>: <reason>` commit trailer. Case 3 of the
-    self-test still asserted the retired `CHUMP_DOCS_DELTA_CHECK=0` env-var
-    bypass, which only still works via a legacy fallback path that never
-    runs once a real `chump` binary is on PATH (true for every `chump
-    preflight`, false for the bare CI invocation of the test script with no
-    chump build step) -- that CI/local split is why CI stayed green while
-    trunk preflight stayed red. Per EFFECTIVE-089 the fix does NOT re-add a
-    bypass; it rewrites case 3 to exercise the real Verify-Bypass trailer.
-    RECEIPT: fixed in PR #3627 (commit a6aa53f1, merged 2026-08-11T00:17Z),
-    which also added a `cargo build --bin chump` + PATH step ahead of the
-    CI invocation (.github/workflows/ci.yml docs-delta-guard step) so CI now
-    exercises the same engine path `chump preflight` does -- that's the AC#5
-    signal: CI can no longer be green while this self-test is red on trunk.
-    BLAST RADIUS (AC#4): the guard's engine migration (ab7ab2fa) landed
-    2026-07-19; the self-test broke then and was first caught 2026-08-07
-    (this gap's evidence, during INFRA-1965 slice 2) and fixed 2026-08-11 —
-    ~22 days red on trunk, matching the PR's own count, during which every
-    `chump preflight` run in the fleet ended FAIL on this gate and operators
-    had to judge red-vs-red by eye.
-    VERIFIED 2026-08-19 (this gap's claim session): `bash
-    scripts/ci/test-docs-delta-guard.sh` on this clean checkout of origin/main
-    (89d2aae0) returns `Passed: 4  Failed: 0`; `chump preflight --scope
-    scripts` shows `docs-delta-guard ... ✓`. Gap was never closed via `chump
-    gap ship` when #3627 merged, so state.db/YAML stayed status:open for 8
-    days after the actual fix shipped — this PR syncs the stale status to
-    match already-shipped reality, per the b5083e13/INFRA-2470 precedent.
-
+  notes: |
+    DECISION (AC#1): the TEST was stale, not the guard. CREDIBLE-155 (2026-07-19, ab7ab2fa) ported docs-delta into the `chump verify` unified policy engine and collapsed every rule onto ONE audited bypass surface, the `Verify-Bypass: <rule-id>: <reason>` commit trailer. Case 3 of the self-test still asserted the retired `CHUMP_DOCS_DELTA_CHECK=0` env-var bypass, which only still works via a legacy fallback path that never runs once a real `chump` binary is on PATH (true for every `chump preflight`, false for the bare CI invocation of the test script with no chump build step) -- that CI/local split is why CI stayed green while trunk preflight stayed red. Per EFFECTIVE-089 the fix does NOT re-add a bypass; it rewrites case 3 to exercise the real Verify-Bypass trailer. RECEIPT: fixed in PR #3627 (commit a6aa53f1, merged 2026-08-11T00:17Z), which also added a `cargo build --bin chump` + PATH step ahead of the CI invocation (.github/workflows/ci.yml docs-delta-guard step) so CI now exercises the same engine path `chump preflight` does -- that's the AC#5 signal: CI can no longer be green while this self-test is red on trunk. BLAST RADIUS (AC#4): the guard's engine migration (ab7ab2fa) landed 2026-07-19; the self-test broke then and was first caught 2026-08-07 (this gap's evidence, during INFRA-1965 slice 2) and fixed 2026-08-11 — ~22 days red on trunk, matching the PR's own count, during which every `chump preflight` run in the fleet ended FAIL on this gate and operators had to judge red-vs-red by eye. VERIFIED 2026-08-19 (this gap's claim session): `bash scripts/ci/test-docs-delta-guard.sh` on this clean checkout of origin/main (89d2aae0) returns `Passed: 4  Failed: 0`; `chump preflight --scope scripts` shows `docs-delta-guard ... ✓`. Gap was never closed via `chump gap ship` when #3627 merged, so state.db/YAML stayed status:open for 8 days after the actual fix shipped — this PR syncs the stale status to match already-shipped reality, per the b5083e13/INFRA-2470 precedent.
     Found 2026-08-07 while shipping INFRA-1965 slice 2: my change was preflight-clean on all 30 other gates, and this was the only failure — pre-existing on trunk.
+  closed_date: '2026-08-19'
+  closed_pr: 3627
   outcome_id: MISSION-010
   evidence: |
     COMMAND: bash scripts/ci/test-docs-delta-guard.sh, run in ~/Projects/Chump on a clean checkout of origin/main (d760498e), no local modifications

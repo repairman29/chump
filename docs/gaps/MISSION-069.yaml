@@ -1,0 +1,11 @@
+- id: MISSION-069
+  domain: MISSION
+  title: "MISSION: Implement disk-floor gate logic (MISSION-065 slice)"
+  status: blocked
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Disk space check logic is implemented to verify minimum available floor
+    - System prevents worker startup or task assignment if disk floor is not met
+    - Gate failure triggers a specific error log/metric
+

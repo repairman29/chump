@@ -1,0 +1,16 @@
+- id: DOC-091
+  domain: DOC
+  title: "DOC: land RFC-rnd-pillar — R&D as the fifth pillar (naming, mechanics, ship-ratio trap, 37-file blast radius)"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Land docs/rfcs/RFC-rnd-pillar.md, drafted 2026-08-07 at the operator's request. Records: the naming decision (R&D as the pillar, FAFO as the license inside it — 'FAFO' already means 'already tried' in this fleet per RESILIENT-048's shipped --force-fafo-bypass vocabulary); the four places R&D already runs unlabeled (venture-go-no-go workflow, posse, embedder-ab, the eval gate); five mechanics (outside the picker, hypothesis+ceiling instead of ACs, verdict as output, free-tier + sunk-cost-local budget, gated on telling not trying); the trap that R&D must be EXCLUDED from the mission-ship ratio or the 2/3 scaling gate becomes clearable by experimenting instead of shipping; and the 37-file pillar-enumeration blast radius. Four decisions left marked for the operator. Doc-only — express lane per the chump-ship skill.
+  acceptance_criteria:
+    - docs/rfcs/RFC-rnd-pillar.md is on origin/main and follows the existing RFC header convention (Status / Date / Related)
+    - the four operator decisions remain explicitly marked as undecided — this RFC records options and a recommendation, it does not silently decide the pillar
+    - the dependency on RESILIENT-246 (dead curator = dead balance_restock = a fifth pillar that starves on day one) is stated in the doc
+    - "no code is touched: the 37-file refactor is described, not started"
+  closed_date: '2026-08-08'
+  closed_pr: 3526
+

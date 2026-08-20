@@ -1,0 +1,45 @@
+- id: EFFECTIVE-420
+  domain: EFFECTIVE
+  title: "EFFECTIVE: audit is the merge floor and its shards are imbalanced 6:1 — median PR could go 12.5 min to ~5"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Measured 2026-08-08 across the last 12 merged PRs and 3 Audit runs. Median open-to-merge is 12.5 min (min 7.5, max 780) and Audit is the floor on EVERY pr including doc-only ones, since the express lane skips the heavy Rust lanes but audit always runs. Two costs, both structural, neither requiring any change to WHAT is checked. (1) SHARD IMBALANCE: shards run in parallel so wall time is max-of-shards, and they are assigned by CATEGORY not by cost — shard-1 (cargo gates, needs cargo build) 7.6 min, shard-4 (cross-PR + security) 6.5, shard-3 (bash) 1.5, shard-2 (event-registry) 1.2. Total work 16.8 min over 4 runners; balanced that is 4.2 each. INFRA-2565 built this matrix targeting '14 min -> ~4-6 min' and landed at 7.6, so it half-achieved its own stated goal. (2) AGGREGATOR OVERHEAD: audit-required takes 4.5 min to assert that audit passed. It runs-on ubuntu-latest and does a full actions/checkout@v7 — a fresh runner provision plus a large-repo checkout — to read a needs-context conclusion it already has. Together the critical path is ~12.1 min; balanced shards plus a checkout-free aggregator projects to ~4.4. NOT batching: PRs already run concurrently and the merge queue already exists (INFRA-1377, done), so batching would save compute at the cost of 1:1 gap-to-PR traceability, blast-radius isolation and clean reverts — all three of which this fleet has active incidents about (CREDIBLE-233, CREDIBLE-215, revert_pr.rs).
+  acceptance_criteria:
+    - shards are balanced by MEASURED duration rather than category — rebalanced from observed timings, and max-of-shards drops below 5 min on a representative PR
+    - "the balance is maintainable: something records per-shard timings so the next drift is visible, since category-assignment drifted to 6:1 without anyone noticing"
+    - audit-required stops doing a full checkout to assert a status — no checkout, or a minimal one, taking under 1 min
+    - "nothing changes about WHAT is audited: the same gates run, proven by comparing the gate list before and after"
+    - "measured after: median open-to-merge on 10 subsequent PRs, reported in the closing comment — the claim is a time saving and it needs a receipt"
+    - the express lane still applies (doc-only PRs skip the Rust lanes) and doc-only audit gets cheaper too, since audit is their entire cost
+  notes: |
+    MEASURED RECEIPT (2026-08-09). audit wall-clock is max-of-jobs; all four runs are on main.
+    
+      commit      shard1  shard4  audit-required   FLOOR
+      3c4f16cb     476s    422s      297s          476s   <- baseline, before either change
+      6bda4ec9     318s    259s        -           318s   <- after #3534 (CARGO_TARGET_DIR) only
+      14d2f44e     289s    249s        -           289s   <- after #3532 (shared-key) also landed
+      c20ebe12     281s    241s      284s          284s   <- current
+    
+      476s -> 284s = 192s (40%) off audit's floor, on every PR.
+    
+    Attribution: #3534 (stable target dir, so rust-cache can hold compiled artifacts)
+    did the bulk — 476->318 = 158s. #3532's shared-key change added ~30s more by
+    pointing audit at the 1159MB ci-fast-checks cache instead of its own 207MB one.
+    
+    NOTE on #3532: it merged at 02:41 despite my attempt to close it — the bot had
+    already merged it. Its CHANGE turned out mildly beneficial, but its stated
+    REASONING was false and that false claim is now a comment on main (audit.yml:118
+    says shared-key ci-audit was written by NOTHING; five such caches existed). Filed
+    separately to correct the comment — a wrong receipt in the tree is worse than no
+    comment, since the next person will trust it.
+    
+    BOTTLENECK HAS MOVED: audit-required is now 284s vs shard1's 281s. Further shard
+    rebalancing buys ~0 until audit-required is addressed. It runs three real test
+    scripts (I nearly deleted its checkout earlier assuming it was vestigial — it is
+    not). That is the next lever for anyone continuing the faster-merge work.
+  closed_date: '2026-08-09'
+  closed_pr: 3534
+  outcome_id: EFFECTIVE-000
+

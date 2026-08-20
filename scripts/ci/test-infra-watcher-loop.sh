@@ -129,8 +129,9 @@ print(t.strftime('%Y-%m-%dT%H:%M:%SZ'))
 # Stub gh for runner ghost-online test
 if [[ "\$*" == *"actions/runners"* ]]; then
     printf '{"runners":[{"id":1,"name":"mac-runner-1","status":"online","busy":false}]}\n'
-elif [[ "\$*" == *"run list"* ]]; then
-    printf '[{"databaseId":9001,"createdAt":"${ten_min_ago}","status":"queued"}]\n'
+elif [[ "\$*" == *"actions/runs"*"status=queued"* ]]; then
+    # INFRA-2464: REST actions/runs response, filtered via --jq '.workflow_runs'
+    printf '[{"id":9001,"created_at":"${ten_min_ago}","status":"queued"}]\n'
 else
     printf '[]\n'
 fi

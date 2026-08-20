@@ -48,7 +48,13 @@ write_gh_stub() {
     cat > "$STUB_DIR/gh" <<STUB
 #!/usr/bin/env bash
 # Stub gh for testing monitor-merge-queue.sh
-if [[ "\$*" == *"run list"* ]]; then
+# INFRA-2464: queued-workflow count now goes via REST actions/runs (not
+# GraphQL run list), and repo slug resolution goes via _cache_repo_nwo (gh
+# repo view). auto-merge count still falls back to \`pr list\` since there's
+# no pr_state cache DB in this test's WORK dir.
+if [[ "\$*" == *"repo view"* ]]; then
+    echo "repairman29/Chump"
+elif [[ "\$*" == *"actions/runs"* ]]; then
     echo "$queued"
 elif [[ "\$*" == *"pr list"* ]]; then
     echo "$auto_merge"
@@ -69,12 +75,18 @@ STUB
 run_monitor() {
     local ambient="$WORK/ambient.jsonl"
     rm -f "$ambient"
+    # INFRA-2464: monitor-merge-queue.sh now resolves the repo slug via
+    # _cache_repo_nwo (github_cache.sh), which caches to
+    # `$(git rev-parse --show-toplevel)/.chump/repo-nwo.cache`. Run from a
+    # throwaway git repo (same pattern as
+    # test-queue-driver-cache-migration.sh) so that write lands in $WORK
+    # instead of polluting this checkout's real .chump/ cache.
     # Redirect stdout to /dev/null so only the path is captured by callers.
-    PATH="$STUB_DIR:$PATH" \
+    ( cd "$WORK" && PATH="$STUB_DIR:$PATH" \
         MONITOR_ONCE=1 \
         CHUMP_AMBIENT_LOG="$ambient" \
         QUEUE_ALERT_THRESHOLD=50 \
-        bash "$SCRIPT" >/dev/null 2>/dev/null
+        bash "$SCRIPT" >/dev/null 2>/dev/null )
     echo "$ambient"
 }
 
