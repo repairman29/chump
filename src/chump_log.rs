@@ -268,6 +268,34 @@ pub fn log_config_summary(enabled: &[String], warnings: &[String]) {
     }
 }
 
+/// RESILIENT-277 FIX4: log every Discord approval-button tap, including
+/// whether it actually hit a live receiver ("hit") or resolved nothing
+/// ("orphan" — an unknown/already-resolved/abandoned request_id). Before
+/// this, interaction_create logged nothing on success and silently returned
+/// on an unmatched custom_id, so a tap that arrived and a tap that never
+/// came looked identical in the log.
+pub fn log_approval_tap(request_id: &str, decision: &str, outcome: &str) {
+    if structured_log() {
+        let obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "approval_tap",
+            "request_id": request_id,
+            "decision": decision,
+            "outcome": outcome,
+        });
+        append_line(&obj.to_string());
+    } else {
+        let line = format!(
+            "{} | approval_tap | req={} | decision={} | outcome={}",
+            ts_iso(),
+            request_id,
+            decision,
+            outcome
+        );
+        append_line(&line);
+    }
+}
+
 /// Audit log for tool approval: tool name, args preview, risk level, result (allowed/denied/timeout).
 /// No PII; args_preview should be short and redaction is applied to the written line.
 pub fn log_tool_approval_audit(

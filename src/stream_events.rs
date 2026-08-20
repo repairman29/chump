@@ -64,6 +64,17 @@ pub enum AgentEvent {
         reason: String,
         expires_at_secs: u64,
     },
+    /// RESILIENT-277 FIX3: emitted once a `ToolApprovalRequest` reaches a
+    /// final state (approved / denied / timed out). UI surfaces (Discord)
+    /// should edit the original card to reflect this and disable its
+    /// buttons — a card that still looks tappable after this fires resolves
+    /// nothing if tapped.
+    ToolApprovalResolved {
+        request_id: String,
+        tool_name: String,
+        /// "allowed" | "denied" | "timeout"
+        decision: String,
+    },
     /// Post-execution verification result for write tools.
     ToolVerificationResult {
         call_id: String,
@@ -92,6 +103,7 @@ impl AgentEvent {
             AgentEvent::TurnComplete { .. } => "turn_complete",
             AgentEvent::TurnError { .. } => "turn_error",
             AgentEvent::ToolApprovalRequest { .. } => "tool_approval_request",
+            AgentEvent::ToolApprovalResolved { .. } => "tool_approval_resolved",
             AgentEvent::ToolVerificationResult { .. } => "tool_verification_result",
             AgentEvent::WebSessionReady { .. } => "web_session_ready",
         }
