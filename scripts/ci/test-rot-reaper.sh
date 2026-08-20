@@ -15,6 +15,14 @@
 #   • gap-filing PR                 → never touched                      [324]
 #   • past-deadline non-terminal
 #     hidden class                  → counted in no-abandon backlog      [311]
+#   • MERGEABLE + REQUIRED check
+#     FAILED + old, but the SAME
+#     check is ALSO red on >= 3
+#     other open PRs (systemic/
+#     shared/false-red)             → SKIP close, alert instead          [339]
+#   • MERGEABLE + REQUIRED check
+#     FAILED + old, check is
+#     PR-specific (not shared)      → still REAP (genuine red)           [339]
 #
 # Runs scripts/ops/rot-reaper.sh in --dry-run against a synthetic PR fixture
 # (CHUMP_ROT_REAPER_PR_JSON) with gh/chump stubbed on PATH — no live GitHub,
@@ -157,4 +165,57 @@ echo "$out2" | grep -q 'would re-queue RESILIENT-951' && bad "#210 wrongly re-qu
 
 echo ""
 echo "=== rot-reaper respawn-cap: $pass passed, $fail failed ==="
+
+# ── RESILIENT-339: false-red guard ────────────────────────────────────────────
+# Three PRs (#301-303) all failing the SAME required check ("fast-checks") —
+# a shared/systemic-red condition (RESILIENT-337's >=3-PRs-same-check signal,
+# SHARED_MIN=3 here) — must be SKIPPED, not REALFAIL-closed, and must get an
+# alert (`gh pr comment`) instead. A fourth PR (#304) failing a DIFFERENT
+# required check that no one else shares ("clippy-required") is genuinely
+# broken and must still be REAPED. A `gh` stub records every `pr comment`
+# invocation so the alert-instead-of-close behavior is provable, not assumed.
+STUB3="$TMP/bin3"; mkdir -p "$STUB3"
+COMMENTS_LOG="$TMP/pr_comments.log"
+: > "$COMMENTS_LOG"
+cat > "$STUB3/gh" <<EOF
+#!/usr/bin/env bash
+if [[ "\$1" == "api" && "\$2" == "user" ]]; then echo "repairman29"; exit 0; fi
+if [[ "\$1" == "pr" && "\$2" == "comment" ]]; then echo "\$3" >> "$COMMENTS_LOG"; exit 0; fi
+exit 0
+EOF
+cat > "$STUB3/chump" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$STUB3"/*
+
+FIX3="$TMP/prs3.json"
+cat > "$FIX3" <<EOF
+[
+  {"number":301,"title":"RESILIENT-960: shared-red victim 1","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","createdAt":"$OLD","headRefName":"rs-960","isDraft":false,"autoMergeRequest":{"enabledAt":"x"},"statusCheckRollup":[{"name":"fast-checks","conclusion":"FAILURE"}]},
+  {"number":302,"title":"RESILIENT-961: shared-red victim 2","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","createdAt":"$OLD","headRefName":"rs-961","isDraft":false,"autoMergeRequest":{"enabledAt":"x"},"statusCheckRollup":[{"name":"fast-checks","conclusion":"FAILURE"}]},
+  {"number":303,"title":"RESILIENT-962: shared-red victim 3","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","createdAt":"$OLD","headRefName":"rs-962","isDraft":false,"autoMergeRequest":{"enabledAt":"x"},"statusCheckRollup":[{"name":"fast-checks","conclusion":"FAILURE"}]},
+  {"number":304,"title":"RESILIENT-963: genuinely broken, unique red","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","createdAt":"$OLD","headRefName":"rs-963","isDraft":false,"autoMergeRequest":{"enabledAt":"x"},"statusCheckRollup":[{"name":"clippy-required","conclusion":"FAILURE"}]}
+]
+EOF
+
+REQ3='fast-checks,clippy-required'
+out3="$(PATH="$STUB3:$PATH" CHUMP_ROT_REAPER_PR_JSON="$FIX3" CHUMP_ROT_REAPER_REQUIRED_CHECKS="$REQ3" CHUMP_ROT_REAPER_SHARED_MIN=3 bash "$REAPER" --dry-run 2>&1)"
+echo "$out3"
+echo "---"
+
+# #301-303: shared red on >=3 PRs → SKIP close, never REAP
+for n in 301 302 303; do
+    echo "$out3" | grep -qE "PR #$n .*SHARED across" && ok "#$n shared-red flagged systemic" || bad "#$n not flagged systemic"
+    echo "$out3" | grep -qE "PR #$n .*→ REAP" && bad "#$n wrongly reaped despite shared red" || ok "#$n not reaped (systemic)"
+done
+# alert fired for all three (gh pr comment invoked) — even in dry-run this is a `dry` no-op,
+# so assert on the dry-run marker instead of the comments log.
+echo "$out3" | grep -c 'would alert false-red on PR #30[123]' | grep -q '^3$' && ok "false-red alert fired for all 3 shared-red PRs" || bad "false-red alert count wrong"
+# #304: unique red (not shared) → still REAPED, no false-red alert
+echo "$out3" | grep -qE 'PR #304 .*→ REAP' && ok "#304 unique-red still reaped" || bad "#304 unique-red not reaped"
+echo "$out3" | grep -q 'would alert false-red on PR #304' && bad "#304 wrongly flagged systemic" || ok "#304 not flagged systemic"
+
+echo ""
+echo "=== rot-reaper false-red guard: $pass passed, $fail failed ==="
 [[ "$fail" -eq 0 ]]
