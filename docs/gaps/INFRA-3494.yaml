@@ -1,12 +1,14 @@
 - id: INFRA-3494
   domain: INFRA
   title: "CREDIBLE: [COTG-3.1] outcome-level verification (does the shipped thing SOLVE the problem?)"
-  status: open
+  status: done
+  closed_pr: 3999
   priority: P1
   effort: m
   acceptance_criteria:
     - Outcome-level verification checks the shipped artifact against the user's original stated problem (not just CI green) and emits a PASS/FAIL solve-verdict with evidence.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~45% -> FINISH (gate 5.1/5.3/6.2 depend on). src/external_verify_merge.rs is stronger than CI-green (proves fix fails-on-base/passes-on-head, no-regression). Add a post-merge LIVE outcome probe + promote src/browser.rs (static fetch) to real CDP.
+    [2026-08-20] SHIPPED via #3999 — CHUMP_OUTCOME_PROBE_RENDER=1 renders --outcome-probe-url through headless Chromium (crates/chump-verify/src/external_verify_merge.rs) before matching --outcome-probe-contains, falling back to curl automatically when no Chromium binary is found or the render fails. AC1 satisfied: PASS/FAIL solve-verdict with evidence already implemented (external_verify_merge.rs lines ~1850-1863); this PR promoted it from static-fetch to real CDP render, finishing COTG-3.1.
   outcome_id: COTG
 

@@ -1,10 +1,30 @@
 - id: INFRA-2464
   domain: INFRA
   title: "RESILIENT P0: polling daemons hit raw gh ~190 calls/30min — migrate queue-driver + shepherd + run-list callers to cache-first per INFRA-1081"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "[\"Audit pass via scripts/dev/api-cost-leaderboard.sh --window 1h to enumerate top 10 burners\",\"Migrate the top burners: (a) queue-driver.sh pr list → cache_query_open_prs, (b) shepherd run list/run view → check if webhook receiver feeds runs/checks tables and use those, (c) gh repo view → single cache fetch + reuse\",\"Add scripts/coord/run-cache.sh helper IF webhook receiver does not currently capture run-list / run-view data (INFRA-1275 + extensions covered PR side; runs may need new table)\",\"After migration: re-run leaderboard, total raw gh calls < 50/hr (down from ~190/30min = 380/hr)\",\"Smoke test: run scripts/coord/queue-driver.sh tick + verify 0 new github_api_call events with raw script=gh\",\"Cite Today 2026-06-02: 766/5000 GraphQL burned in <1h purely from polling; wedge-guard aborts blocked 2 shipping PRs (INFRA-2447/2434)\"]"
+  notes: |
+    CLOSED 2026-08-20: already shipped. #3865 migrated queue-driver.sh's
+    cascade PR-list path to cache_query_open_non_draft_prs (AC2a, on top of
+    INFRA-2186's earlier BEHIND/DIRTY-scan migration), added
+    scripts/coord/lib/run-cache.sh — a REST-backed (actions/runs?branch=X)
+    short-TTL cache for run-id lookups — and migrated pr-shepherd-daemon.sh's
+    flake-rerun path off raw `gh run list` (GraphQL) onto it (AC2b/AC3), and
+    added _cache_repo_nwo() to memoize `gh repo view --json nameWithOwner`
+    with a 24h TTL (AC2c). #3995 finished AC2c by moving
+    merge-sla-scorecard.sh's repo-view lookup onto the same memoized helper.
+    Re-ran scripts/dev/api-cost-leaderboard.sh --window 1h (AC4): 2 total
+    github_api_call events, both merge-sla-scorecard repo-view (now fixed
+    by #3995) — down from the cited 766/5000 GraphQL burn in <1h. Smoke
+    test (AC5): ran scripts/coord/queue-driver.sh live — 14 github_api_call
+    events, all routed through chump_gh (0 with raw script=gh). AC1
+    (leaderboard audit) and AC6 (citation) satisfied by this record. This
+    gap was left open after the code shipped; closing to match reality.
+    Per-gap docs/gaps/INFRA-2464.yaml file was stale (state.sql already
+    said done since #3996) — synced here to match canonical state.
+  closed_pr: 3995
   outcome_id: MISSION-010
 
