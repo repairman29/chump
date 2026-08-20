@@ -1621,6 +1621,18 @@ events:
     trigger: YAML file without state.db row
     consumers: [fleet-brief]
 
+  - kind: yaml_orphan_pruned
+    effect_metric: self
+    emitter: scripts/coord/gap-doctor.py (safe-sweep --prune-orphans)
+    trigger: >
+      docs/gaps/<ID>.yaml deleted because a state.db re-check performed
+      immediately before the delete confirmed no row exists for that ID
+      (EFFECTIVE-219). State always wins: if the re-check finds a row, the
+      file is rewritten from state.db instead of deleted, and no event is
+      emitted for that ID.
+    fields_required: [gap_id, file_path, reason, daemon_name]
+    consumers: [fleet-brief]
+
   - kind: pr_classified
     effect_metric: self
     emitter: scripts/coord/pr-shepherd-daemon.sh (META-183, META-185)
