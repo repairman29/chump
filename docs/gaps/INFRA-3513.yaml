@@ -1,0 +1,14 @@
+- id: INFRA-3513
+  domain: INFRA
+  title: "RESILIENT: [COTG-2.7] bot-merge.lock stale-lock reaper — stalled the ship queue 3x this session"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-2.7] bot-merge.lock stale-lock reaper — stalled the ship queue 3x this session\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3380
+  outcome_id: COTG
+

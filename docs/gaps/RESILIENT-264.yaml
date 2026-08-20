@@ -1,0 +1,16 @@
+- id: RESILIENT-264
+  domain: RESILIENT
+  title: "RESILIENT: harden run-fleet gh-probe — single-shot exit-1 gate aborts whole fleet on any transient gh blip (CREDIBLE-032)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"harden run-fleet gh-probe — single-shot exit-1 gate aborts whole fleet on any transient gh blip (CREDIBLE-032)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-09'
+  closed_pr: 3540
+  outcome_id: COTG
+  evidence: |
+    6/6 run-fleet.sh launches on 2026-08-09 aborted at 0 workers. Root cause verified in code: the gh-reachability probe (scripts/dispatch/run-fleet.sh:456-473, CREDIBLE-032) does a SINGLE 10s 'gh api /rate_limit' with no retry and a bare 'exit 1' on any non-zero rc (incl. exit-124 timeout), and — unlike the sibling auth-probe at :488-569 which retries 3x AND honors CHUMP_FLEET_FORCE_LAUNCH — it does not honor FORCE_LAUNCH. So a single transient rate_limit blip / API slowness at launch nukes the whole fleet. Fix: mirror the auth-probe hardening (retry N times w/ backoff, honor FORCE_LAUNCH as proceed-with-warning since each worker re-checks gh itself).
+

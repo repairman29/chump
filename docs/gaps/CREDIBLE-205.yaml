@@ -1,0 +1,17 @@
+- id: CREDIBLE-205
+  domain: CREDIBLE
+  title: "CREDIBLE: scoreboard build-date + next-lever strings — slice 2 of CREDIBLE-201, orphaned when bookkeeping closed the gap"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    The surviving half of CREDIBLE-201: mission-scoreboard.sh still prints the symlink's creation date as '(binary built ...)' and hardcodes 'Next lever: MISSION-012' one line under 'MISSION-012 done'. The fix is BUILT and verified (build-date resolves via readlink -f + stat -L; next-lever computed from the verdict's own signals; test-mission-scoreboard-zerotouch PASS) — it lived as PR #3488, which the close-superseded-prs sweep closed when CREDIBLE-201 was bookkept done against slice 1 (#3482). Commit sits on origin branch chump/credible-201-claim-s2 (8b89930a). Work: cherry-pick 8b89930a, re-title to this gap ID, ship through bot-merge. Two-slice lesson feeds CREDIBLE-204.
+  acceptance_criteria:
+    - scoreboard prints the resolved target's build time
+    - next-lever line computed from verdict signals, never names a goal already reported done
+    - test-mission-scoreboard-zerotouch passes
+    - ships via standard pipeline, no bypass trailers
+  closed_date: '2026-08-07'
+  closed_pr: 3491
+  outcome_id: CREDIBLE-000
+

@@ -1,0 +1,15 @@
+- id: INFRA-3483
+  domain: INFRA
+  title: "EFFECTIVE: [COTG-1.1] typed Flow state machine for gap execution (the kernel ABI)"
+  status: shipped
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-1.1] typed Flow state machine for gap execution (the kernel ABI)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:22Z] DISCOVERY BUILT-NOT-WIRED -> FINISH (Wave-A keystone). src/autonomy_fsm.rs is a COMPLETE typestate FSM, instantiated as dead `let _fsm` at src/autonomy_loop.rs:998, unused by improve.rs. Thread real transitions through improve.rs pick->dedup->implement->verify->ship.
+  closed_pr: 3377
+  outcome_id: COTG
+

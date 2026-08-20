@@ -1,0 +1,14 @@
+- id: CREDIBLE-180
+  domain: CREDIBLE
+  title: harden pr_ac_coverage check_coverage rules against 3 confirmed-gameable classes (CREDIBLE-177 redteam)
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"harden pr_ac_coverage check_coverage rules against 3 confirmed-gameable classes (CREDIBLE-177 redteam)\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3418
+  outcome_id: CREDIBLE-000
+

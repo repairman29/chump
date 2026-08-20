@@ -2,7 +2,6 @@
   domain: INFRA
   title: "EFFECTIVE: lease-time predictive collision detection — git-diff intersection across active leases at claim time (Initiative 2)"
   status: done
-  closed_pr: 3791
   priority: P1
   effort: m
   acceptance_criteria:
@@ -10,5 +9,7 @@
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  closed_date: '2026-08-18'
+  closed_pr: 3791
   outcome_id: MISSION-010
 

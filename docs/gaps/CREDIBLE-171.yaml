@@ -1,0 +1,14 @@
+- id: CREDIBLE-171
+  domain: CREDIBLE
+  title: "CREDIBLE: [COTG-3.1] honest zero-touch streak metric (provenance/trailer-based, not operator-email)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-3.1] honest zero-touch streak metric (provenance/trailer-based, not operator-email)\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3388
+  outcome_id: COTG
+

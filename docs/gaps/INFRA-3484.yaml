@@ -1,0 +1,15 @@
+- id: INFRA-3484
+  domain: INFRA
+  title: "EFFECTIVE: [COTG-1.2] deterministic ceremony (agent edits; the OS ships)"
+  status: shipped
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-1.2] deterministic ceremony (agent edits; the OS ships)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:22Z] DISCOVERY BUILT-NOT-WIRED -> FINISH (biggest reliability win). crates/chump-ship plan()/decide_steps() is a deterministic ship engine, internal-only. improve.rs:867-943 delegates git/PR to the agent; contract expects agent to return pr_url+commit_sha (crates/chump-handoff/src/contracts.rs:350). Rewrite ExternalRepoContract edit-only, call chump-ship after edits.
+  closed_pr: 3375
+  outcome_id: COTG
+

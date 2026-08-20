@@ -2,7 +2,6 @@
   domain: INFRA
   title: "RESILIENT: build OAuth-token refresher (the 5-min refresh promise in CLAUDE.md is aspirational — ~/.chump/oauth-token.json went 16d stale, blocking fleet launch)"
   status: done
-  closed_pr: 3712
   priority: P1
   effort: m
   acceptance_criteria:
@@ -14,12 +13,11 @@
     - Install via scripts/setup/install-oauth-refresher-launchd.sh (idempotent)
     - "Smoke test scripts/ci/test-oauth-refresher.sh: synthetic stale token in test temp dir, run refresher, verify file timestamp updated and token blob changed"
     - CLAUDE.md Auth modes section updated to reflect actual refresher reality (drop the aspirational 'every 5 min' claim if not shipping, or point at this gap as the substrate)
-  outcome_id: MISSION-010
   notes: |
     [2026-08-19] Verified already shipped, under different (equivalent) artifact
     names than the original AC literal paths — closing as duplicate-of-shipped
     per the INFRA-1865/RESILIENT-134/RESILIENT-244 pattern.
-
+    
     AC-by-AC, verified against this clean checkout of origin/main (cd5f2d07):
     - AC1 (plist, StartInterval 300): launchd/com.chump.oauth-refresh.plist
       (not scripts/launchd/com.chump.oauth-token-refresher.plist — same
@@ -48,10 +46,10 @@
       documents the real substrate (scripts/coord/oauth-token-refresh.sh,
       "hardened INFRA-1865"), cadence, install command, platform limitation,
       smoke test, and the staleness detector — no aspirational claim remains.
-
+    
     No code change required; closing via ship pipeline once merged, per the
     same rationale as RESILIENT-134 (#3922) and RESILIENT-244 (#3920).
-
+    
     [2026-08-19] SYNC: the hardening PR (#3712, commit 1ee779a2, merged
     2026-08-13) already shipped under this exact gap ID — it directly
     implements AC3/AC4/AC5 (rotation-safe hash compare, pre-write
@@ -62,4 +60,7 @@
     (the PR that did the work), following the b5083e13/INFRA-2470 /
     RESILIENT-244 (#3920) stale-status-sync precedent — no code change in
     this PR, doc-only closure.
+  closed_date: '2026-08-19'
+  closed_pr: 3712
+  outcome_id: MISSION-010
 

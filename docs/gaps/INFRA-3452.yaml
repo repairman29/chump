@@ -1,0 +1,13 @@
+- id: INFRA-3452
+  domain: INFRA
+  title: "CREDIBLE: agent-tool-invocation smoke harness — assert the DEPLOYED agent actually CALLS each critical tool (the receipt-as-a-test that would have caught the comprehend_repo profile gap)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"agent-tool-invocation smoke harness — assert the DEPLOYED agent actually CALLS each critical tool (the receipt-as-a-test that would have caught the comprehend_repo profile gap)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3351
+  outcome_id: MISSION-010
+

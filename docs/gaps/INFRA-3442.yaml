@@ -1,0 +1,13 @@
+- id: INFRA-3442
+  domain: INFRA
+  title: installed-P2-check DELETEME
+  status: superseded
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"installed-P2-check DELETEME\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-26T23:50:39Z] test cleanup
+

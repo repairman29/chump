@@ -1,0 +1,14 @@
+- id: EFFECTIVE-367
+  domain: EFFECTIVE
+  title: "COTG keystone: full-AC review gate + decompose-on-review loop (ship / send-back-for-correction / try-again / no-ship)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"full-AC review gate + decompose-on-review loop (ship / send-back-for-correction / try-again / no-ship)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    AC-WRITER finding 2026-08-07: PRODUCT-145's generic AC ('verifiably fixed on the LIVE site', 'No regression', 'fix or remove the claim') is a BOILERPLATE TEMPLATE from the Scout/Holler stranger-bot product-gap intake — same 3 bullets for every product finding, not per-gap specific. That's why even opus judged pvc#2 all-MET: the AC never names the join page. AC-writer slice = make the intake (+ gap-architect.py / decomposition) emit SPECIFIC verifiable bullets that name the exact files/URLs/values (e.g. 'website/app/join/page.tsx shows Friend $99/yr'). Mined: existing gen machinery = scripts/coord/gap-architect.py, chump-decomposition-propose.sh, opus-curator.sh (don't rebuild — extend). Next-slice order: HARD GATE (self-contained: make CHUMP_AC_JUDGE_LLM authoritative, any UNMET⇒verdict!=verified) is buildable now; AC-writer (touches intake) is the higher-leverage but bigger piece.
+  closed_pr: 3492
+

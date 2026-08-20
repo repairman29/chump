@@ -1,0 +1,13 @@
+- id: EFFECTIVE-379
+  domain: EFFECTIVE
+  title: "EFFECTIVE: remediate_incomplete — converge a HELD(ac-incomplete) PR by re-dispatching scoped to ONLY the unmet AC bullets"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"remediate_incomplete — converge a HELD(ac-incomplete) PR by re-dispatching scoped to ONLY the unmet AC bullets\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3500
+  outcome_id: COTG
+

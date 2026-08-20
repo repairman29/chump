@@ -1,0 +1,13 @@
+- id: CREDIBLE-183
+  domain: CREDIBLE
+  title: Make CREATE-lap human-touch metric provable (0 zero-touch) — bootstrap+implement commits carry Chump-Agent, full-history tally
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"Make CREATE-lap human-touch metric provable (0 zero-touch) — bootstrap+implement commits carry Chump-Agent, full-history tally\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-31'
+  closed_pr: 3432
+

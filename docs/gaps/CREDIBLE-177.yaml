@@ -1,0 +1,35 @@
+- id: CREDIBLE-177
+  domain: CREDIBLE
+  title: red-team the judgment organ itself — adversarial known-bad fixtures against AC-coverage/outcome-verification, on a schedule
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Context: COTG's entire trust model rests on WS1/COTG-3.1 (the judgment organ --
+    AC-coverage gate + outcome-verification) correctly refusing to merge/deliver work
+    that doesn't satisfy AC. The origin story of the whole COTG plan is a case where
+    this exact kind of check passed a 4-line stub (the coloringbook drill). Nothing in
+    the backlog re-tests the verifier once built -- build once, trust forever, and
+    you've reproduced the founding failure one level up.
+    
+    docs/agents/RED_TEAM_VERIFICATION.md exists but is a DIFFERENT thing -- verified
+    via existence-check before filing this -- it checks whether "no movement/stalled"
+    claims about GAPS are accurate (git log --grep), not whether the AC-coverage/
+    outcome-verification engine correctly rejects bad submissions.
+    
+    Rough shape (not pre-sliced): a small, versioned fixture set of known-bad
+    submissions (a stub that looks done but isn't, a test that asserts nothing
+    meaningful, a diff that touches unrelated files, an outcome-verification target
+    that's CI-green but doesn't perform its DoD) run against the live judgment organ
+    on a schedule (nightly, alongside ChumpBench per docs/strategy/CHUMPBENCH.md SS6's
+    regression-run pattern -- reuse that cadence, don't invent a new one). Alert if a
+    known-bad fixture starts passing.
+  acceptance_criteria:
+    - a versioned fixture set of known-bad submissions (stub-passes-as-done, meaningless test, DoD-unmet-but-CI-green) exists and is checked into the repo
+    - the fixture set runs against the live judgment organ (WS1/COTG-3.1) on the same schedule as ChumpBench's nightly regression run, not a separate new cadence
+    - a fixture that starts passing (verifier regression) fires an alert distinct from a normal ChumpBench lap failure
+    - "test: seeding a deliberately-broken judgment-organ build causes at least one known-bad fixture to incorrectly pass, proving the red-team suite actually catches regressions rather than always passing"
+  closed_date: '2026-07-30'
+  closed_pr: 3414
+  outcome_id: COTG
+

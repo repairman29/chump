@@ -1,0 +1,25 @@
+- id: GAME-002
+  domain: GAME
+  title: "[realm-of-shadows] Surveyor: SPAWN_IN_COLLISION on cavern_deep -> cavern_entrance"
+  status: already_satisfied
+  priority: P2
+  effort: s
+  description: |
+    Deterministic world-graph walk failed this authored exit.
+    verdict=SPAWN_IN_COLLISION exitRect=(4,0,3x1) authoredSpawn=(10,12) landed=cavern_entrance@(10.0,12.0)
+    Triage: benign while dungeonState persists — spawn is a gate tile (realm FINDINGS.md #3).
+    
+    context: {"edge":"cavern_deep -> cavern_entrance","source":"playtest-surveyor","verdict":"SPAWN_IN_COLLISION"}
+    source: holler feedback_events, dedupe 0f1a82bc02146cf7
+  acceptance_criteria:
+    - "Decision recorded: keep gate-tile spawn (benign while dungeonState persists) or move it off the gate"
+    - "surveyor edge verdict PASS or documented-accepted in FINDINGS.md #3"
+    - no regression to gate persistence behavior
+  notes: |
+    VERIFIED ALREADY-SATISFIED: gate-tile spawn FIXED 2026-08-03 (FINDINGS #3/#14). Awaiting already-satisfied disposition (CREDIBLE-197).
+  source_doc: "holler:feedback_events"
+  closed_date: '2026-08-03'
+  skills_required: "external_repo:repairman29/realm-of-shadows"
+  evidence: |
+    AC already met: cavern_deep->cavern_entrance gate-tile spawn FIXED 2026-08-03 (FINDINGS #3/#14).
+

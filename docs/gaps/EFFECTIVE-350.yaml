@@ -1,0 +1,12 @@
+- id: EFFECTIVE-350
+  domain: EFFECTIVE
+  title: RESCUE acceptance = PR-green by default (score on the fix's PR making required_check green), autonomous merge-to-main only behind CHUMP_BENCH_SHIP + a pre-merge gate (merge only once required_check is green on the PR). Eliminates the pollution class; Jeff decision 2026-08-01
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"RESCUE acceptance = PR-green by default (score on the fix's PR making required_check green), autonomous merge-to-main only behind CHUMP_BENCH_SHIP + a pre-merge gate (merge only once required_check is green on the PR). Eliminates the pollution class; Jeff decision 2026-08-01\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-02'
+

@@ -1,0 +1,16 @@
+- id: DOC-082
+  domain: DOC
+  title: "CREDIBLE: no parked diff without a pointer — session close-out rule + pre-file dedupe against merged history"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Two doctrine lines for CLAUDE.md/AGENTS.md session discipline, both receipted 2026-08-05. (1) Session close-out: before a session ends, work-in-progress either ships, or becomes a branch WITH a gap pointing at it, or is deliberately dropped — a diff parked in a checkout with no gap is invisible to the factory, which ships from origin/main worktrees (receipt: Phase D residue sat 4-5 days; almanac race fix stranded same-day on an unmerged branch with the checkout left switched onto it). (2) Pre-file dedupe: before filing a ship-gap for found/stranded work, check git log origin/main -- <files> and recent merged-PR subjects — the factory may have already shipped it under another ID (receipts: EFFECTIVE-362 filed for already-merged #3477 and superseded within minutes; almanac dry-run commit near-duplicated its own already-merged PR #4; EFFECTIVE-354 vs #3477 shipped two coexisting grounding paths the same evening). Pairs with ZERO-WASTE-039 (the detector); this is the human/agent-side rule.
+  acceptance_criteria:
+    - both rules land in AGENTS.md (canonical) with a CLAUDE.md pointer
+    - each rule cites its 2026-08-05 receipt
+    - reserve-time hint or checklist line added so the dedupe check happens before gap filing
+  closed_date: '2026-08-06'
+  closed_pr: 3484
+  outcome_id: CREDIBLE-000
+
