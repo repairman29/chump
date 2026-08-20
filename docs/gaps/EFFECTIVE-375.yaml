@@ -1,0 +1,12 @@
+- id: EFFECTIVE-375
+  domain: EFFECTIVE
+  title: "COTG hard gate: an UNMET AC bullet blocks the verdict (make the LLM judge authoritative, not advisory)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"an UNMET AC bullet blocks the verdict (make the LLM judge authoritative, not advisory)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3496
+

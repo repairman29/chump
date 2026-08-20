@@ -1,0 +1,12 @@
+- id: INFRA-3537
+  domain: INFRA
+  title: THROWAWAY probe A — combined rewrite test
+  status: wontfix
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - first criterion here
+    - second criterion here
+  notes: |
+    THROWAWAY probe for the INFRA-1965 wontfix investigation (2026-08-07). Bug did NOT reproduce. Disposed per archive-only rule — not deleted.
+

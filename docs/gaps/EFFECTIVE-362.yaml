@@ -1,0 +1,21 @@
+- id: EFFECTIVE-362
+  domain: EFFECTIVE
+  title: "EFFECTIVE: almanac-grounded gap dispatch — live-registry wiring plus grounded prompt pre-query, cut over from the frozen src-only snapshot"
+  status: already_satisfied
+  priority: P2
+  effort: m
+  description: |
+    Ship the built-but-stranded almanac integration (written 2026-08-01/02, sat uncommitted in the operator's main checkout since — invisible to the fleet, which ships from origin/main worktrees). Three files, one intent: gap dispatch becomes almanac-grounded against the LIVE index. (a) chump-mcp.json: drop the hardcoded ALMANAC_DB pointing at almanac/indexes/chump-src.db — a frozen 2026-07-26 snapshot of src/ alone, 302 files, measured 0/16 on a gold set where the live registry index scores 12/16 — in favor of ALMANAC_DEFAULT_REPO=chump; (b) src/almanac_tool.rs: fallback order prefers ~/.almanac/indexes/chump.db (hourly-refreshed, 6,792 files) over the legacy snapshot; (c) crates/chump-orchestrator/src/dispatch.rs: build_prompt_grounded() prepends an almanac_grounding_block (top-5 hits, 12s timeout-guarded CLI call, kills hung children) to gap dispatch prompts, with unit tests for disabled/absent/timeout/nonzero-exit paths. Recovery patch archived in session scratchpad.
+  acceptance_criteria:
+    - chump preflight green in the claim worktree
+    - new dispatch unit tests pass (cargo test -p chump-orchestrator)
+    - no consumer still references indexes/chump-src.db as primary
+    - merged to origin/main via bot-merge
+    - main checkout reconciled clean afterward
+  notes: |
+    [2026-08-05] Work already merged to origin/main as PR #3477 (dbbe7bf1, 'almanac Phase D: grounded dispatch + retire the frozen-index wiring') before this gap was filed — same three files, same intent, plus fmt/clippy cleanup the stranded copy lacked. Gap filed from a stale local HEAD (b695babc) that predated the merge. Precedent: gap-bankruptcy already-merged pattern. Recovery patches archived in session scratchpad; checkout residue reconciled.
+  closed_date: '2026-08-05'
+  outcome_id: CHUMPOS
+  evidence: |
+    Phase D almanac grounded-dispatch merged as #3477 (dbbe7bf1) on origin/main; ~/Projects/chump checkout now 0 commits behind — the stranded work landed. Remaining dirty state is gap-YAML drift + runtime junk, not real work.
+

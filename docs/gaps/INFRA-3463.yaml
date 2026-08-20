@@ -1,0 +1,14 @@
+- id: INFRA-3463
+  domain: INFRA
+  title: "CREDIBLE: shared-service contract — CANONICAL_SERVICES registry + Shared-Service-Bypass pre-commit gate + doctrine, so new bespoke LLM calls are surfaced/audited instead of silently siloed (PR-3)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"shared-service contract — CANONICAL_SERVICES registry + Shared-Service-Bypass pre-commit gate + doctrine, so new bespoke LLM calls are surfaced/audited instead of silently siloed (PR-3)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3362
+  outcome_id: MISSION-010
+

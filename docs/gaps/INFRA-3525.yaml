@@ -1,0 +1,13 @@
+- id: INFRA-3525
+  domain: INFRA
+  title: "RESILIENT: bot-merge's own 'cargo clippy --workspace --fix' auto-correct pass times out under --fast (3rd redundant clippy after INFRA-3521/3524)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"bot-merge's own 'cargo clippy --workspace --fix' auto-correct pass times out under --fast (3rd redundant clippy after INFRA-3521/3524)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3420
+

@@ -1,0 +1,31 @@
+- id: EFFECTIVE-330
+  domain: EFFECTIVE
+  title: "[COTG-0.0] front-door router — plain language to CREATE/IMPROVE/RESCUE/COMPREHEND/INGEST mode"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    CHUMP_FRONT_DOOR.md (DOC-071) specs this as COTG-0.0, the front-door intent router --
+    "Adds the front-door router as a new gap in E0, before the existing 0.1 vision-intake"
+    -- but it was never actually filed as a gap. Filing now per the 2026-07-30 execution
+    matrix (docs/strategy/COTG_EXECUTION_MATRIX.md).
+    
+    Graft, don't build from scratch: src/intent_parser.rs (828 lines, INFRA-798, merged,
+    live via `chump orchestrate`) is the exact right shape -- typed enum + pattern-match
+    + LLM-fallback-on-Unknown + ambient emission. It has zero CREATE/IMPROVE/RESCUE/
+    COMPREHEND/INGEST variants today (every IntentOp is an internal chump CLI command).
+    Clone the shape, swap the enum, add the confidence+confirm-back step neither
+    intent_parser.rs nor the smaller src/discord_intent.rs (169 lines, PRODUCT-014) has.
+    
+    OSS prior art (narrow patterns, not framework adoption): semantic-router
+    (aurelio-labs, MIT) for embed+threshold classification; Rasa's two-stage-fallback
+    pattern for the confirm/rephrase UX. Port patterns, don't take the dependency.
+  acceptance_criteria:
+    - a single entry point takes plain language and classifies intent into CREATE/IMPROVE/RESCUE/COMPREHEND/INGEST with a confidence score + a one-line confirmation the user can correct
+    - ambiguous or mixed intent is asked about in the person's words, never silently guessed
+    - routes to the mode engine with the comprehended starting state attached
+    - "test: a fixture set of plain-language asks maps to the right mode; an adversarial mixed-intent ask resolves without a wrong lap"
+  closed_date: '2026-07-30'
+  closed_pr: 3413
+  outcome_id: COTG
+

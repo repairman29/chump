@@ -1,0 +1,23 @@
+- id: EFFECTIVE-383
+  domain: EFFECTIVE
+  title: "EFFECTIVE: holler bridge drops producer-supplied acceptance criteria — every finding gets one of two hardcoded templates"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Found 2026-08-07 while filing ten workflow gaps: holler-to-chump.mjs (games-workspace, shared/playtest/) reserves a gap then ALWAYS overwrites acceptance criteria from one of two hardcoded arrays — a games-shaped template for GAME domain, a live-site template for everything else ('verifiably fixed on the LIVE site — re-check the real URL after deploy'). That default is correct for posse/widget findings, which is what it was built for, and actively wrong for anything structural: a code-level finding filed through holler gets ACs telling the fixer to re-check a URL. The template exists for a good reason (chump reserve auto-fills a Rust-repo cargo/clippy template that faceplants external agents — verified against GAME-001..005, 2026-08-02), so the fix is not to remove it but to let a producer that KNOWS its criteria pass them through. Small change, and it is what makes holler usable as the fleet's non-session front door for anything beyond live-site bugs. Deliberately NOT in scope: turning holler into a detector or extending it to carry capability proposals — holler is the bus, and the intake chair that authors criteria from scratch is EFFECTIVE-357 (factory L1).
+  acceptance_criteria:
+    - feedback_events rows may carry optional producer-supplied acceptance criteria; the bridge uses them verbatim when present and falls back to the existing templates when absent
+    - the fallback templates are unchanged for rows without criteria — posse and widget findings keep behaving exactly as they do today, proven by a test
+    - the gap description records WHICH path was used (producer-supplied vs template) so a reviewer can tell authored criteria from boilerplate at a glance
+    - producer-supplied criteria are validated as non-empty and non-placeholder before use, so a producer passing a TODO string does not silently defeat INFRA-936's empty-AC guard
+    - "a test covers both paths: a row with criteria produces a gap carrying them, a row without produces the current template"
+  notes: |
+    SCOPE CHANGE 2026-08-07 (post-filing): EFFECTIVE-386 'AC-writer — generate SPECIFIC testable acceptance criteria for a gap' SHIPPED (#3503) hours after this was filed, alongside EFFECTIVE-387 synth-AC at the gate. That is strictly better than the passthrough this gap proposes: instead of requiring every producer to author criteria, the bridge should CALL the AC-writer when a row carries none. Preferred implementation is now: producer-supplied criteria win when present, AC-writer generates when absent, hardcoded template becomes the last-resort fallback only. Re-scope before claiming — do not build passthrough alone.
+    [2026-08-10T05:22:19Z] Shipped in repairman29/games-workspace#1 (merged) — another fleet worker had already produced the exact re-scoped fix (producer-supplied context.acceptance_criteria -> AC-writer -> template last-resort) concurrently with this claim; verified its test suite (10/10 checks) before merging rather than duplicating the work.
+    [2026-08-10T05:23:53Z] closed_pr=1 refers to repairman29/games-workspace#1 (external repo), NOT a chump-repo PR — this is an external_repo:repairman29/games-workspace gap; chump's own proof-of-merge gate (INFRA-1392) is ship()-only and doesn't apply to gap set, so this direct status flip is the correct closure path for external-repo work per INFRA-402's numeric-closed_pr requirement.
+  closed_date: '2026-08-10'
+  closed_pr: 1
+  skills_required: "external_repo:repairman29/games-workspace"
+  outcome_id: EFFECTIVE-000
+

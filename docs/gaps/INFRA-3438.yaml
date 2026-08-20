@@ -1,0 +1,13 @@
+- id: INFRA-3438
+  domain: INFRA
+  title: "RESILIENT: /System/Volumes/Data at 0% free blocking local cargo builds+tests"
+  status: superseded
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"/System/Volumes/Data at 0% free blocking local cargo builds+tests\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-26T19:30:08Z] [gap-bankruptcy 2026-07-26] transient disk-pressure alert auto-filed from a past event. Reversible via `chump gap requeue INFRA-3438`.
+

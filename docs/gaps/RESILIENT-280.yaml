@@ -1,0 +1,30 @@
+- id: RESILIENT-280
+  domain: RESILIENT
+  title: the curator supervisor reported 'all curators healthy' while watching an event kind no curator emits — three stacked defects in silent_stall_check
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"the curator supervisor reported 'all curators healthy' while watching an event kind no curator emits — three stacked defects in silent_stall_check\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-08-10T02:05Z] Shipped as PR #3562, merged to main at 2026-08-10T01:59:45Z as e9101279 with 27/27 checks green. Verified on origin/main, not assumed: `git show origin/main:crates/chump-curator-supervisor/src/main.rs | grep -c 'NeverSeen|HeartbeatState|heartbeat_kind_for'` = 43 matches.
+    
+    THE FIX: silent_stall_check's bool became a four-state verdict (Fresh/Stalled/NeverSeen/Blind). Only Stalled is auto-remediated — a role that never started has no pane to respawn, and a scan that cannot cover its threshold window reports blindness rather than guessing. Heartbeat matching now accepts BOTH the generic curator_heartbeat kind and each productized role's own <role>_heartbeat kind, which is the defect that kept the fail-open invisible: the detector was subscribed to a channel no working curator publishes to. Window is no longer a fixed 500 lines (12.0 min at the measured 41.7 lines/min, against a 10-min threshold); coverage is proven per tick against the oldest observed timestamp, so the nightly ambient rotation yields one honest 'cannot see' instead of six false P0s. All-roles-never-started aggregates to ONE launcher-level gap with no restarts and no sub-agents.
+    
+    VERIFIED AGAINST LIVE AMBIENT (dry-run, three scenarios): nothing running -> 6 dead, ONE P0, no remediation. All six emitting their real kinds -> 'all 6 curators healthy', silent. Rotated 1 min ago -> one BLIND warning, zero gaps. 24 Rust unit tests (10 new) + the shell suite green.
+    
+    ALSO REPAIRED, same PR: scripts/ci/test-curator-supervisor.sh could not find its own binary (hardcoded $REPO_ROOT/target after CARGO_TARGET_DIR moved — built it, failed to locate it, exit 1 on main for everyone); seven 'grep -c ... || echo 0' counters where grep -c prints its count AND exits 1, making the value $'0\n0' and [[ -gt ]] a syntax error that bash reports before SKIPPING the assertion — the check that the circuit breaker suppresses sonnet spawns could never fail.
+    
+    STILL OPEN, deliberately not done here: the six curators are genuinely not running (tmux has no server). Starting them is six panes and six Opus sessions — an operator decision, not a side effect of a detector fix. This gap closes the lying, not the silence.
+    
+    FOLLOW-UPS FILED: RESILIENT-281 (the same grep -c pattern in 102 files, 74 feeding a numeric comparison). CREDIBLE-277 (EVENT_REGISTRY.yaml, the declared ground-truth contract, does not parse as YAML — pre-existing on main).
+    
+    PROCESS NOTE: RESILIENT-246's notes claimed this defect was 'filed separately'; no such gap existed. The filing was claimed, not done — which is why this one got a reserved ID and a receipt rather than a mention.
+  closed_date: '2026-08-10'
+  closed_pr: 3562
+  outcome_id: MISSION-010
+  evidence: |
+    COMMAND: grep -c curator_heartbeat .chump-locks/ambient.jsonl{,.1,.2} ; grep -n '_heartbeat' scripts/coord/*-loop.sh ; tmux has-session -t chump-curators  |  OUTPUT: ZERO curator_heartbeat events across 30,783 retained ambient lines and three days (Aug 7-9); the four productized curators each emit their OWN kind instead — handoff_heartbeat, ci_audit_heartbeat, decompose_heartbeat (role='curator-opus-decompose', not 'decompose'), md_links_heartbeat; 'no server running' — the tmux session hosting all six curators does not exist. silent_stall_check returned Ok((false,None)) = HEALTHY for a role that had never heartbeated, and again when the ambient file was missing, under a comment claiming it would 'treat as stalled if file truly missing'. Its unit test asserted the fail-open: assert!(!stalled, 'no ambient file -> should not stall'). Third defect: the scan read a fixed 500 lines, which at the measured 41.7 lines/min covers 12.0 minutes against a 10-minute threshold.  |  THEORY: three defects that each hid the next. The name mismatch meant the detector was subscribed to a channel no working curator publishes to, so the fail-open had nothing to fail open on and the check read permanently green; the 500-line window meant that even after fixing both, a busier fleet would scroll a healthy heartbeat out of view. RESILIENT-246's notes say this was 'filed separately' but no such gap exists in the registry — the filing was claimed, not done.  |  ALT: considered fixing only the fail-open as RESILIENT-246's note proposed — rejected and PROVEN wrong by experiment: with the name mismatch left in place that change pages all four productized roles as dead on every tick while they run perfectly. Considered widening the 500-line window to a bigger constant — rejected: a window that must be re-tuned whenever the fleet gets chattier is not a check; coverage is now proven per tick against the oldest observed timestamp instead.
+

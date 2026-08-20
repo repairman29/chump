@@ -1,0 +1,16 @@
+- id: EFFECTIVE-324
+  domain: EFFECTIVE
+  title: wire Almanac into the native agent loop (execute_gap/ChumpAgent) toolset for grounded jump-to-code
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"wire Almanac into the native agent loop (execute_gap/ChumpAgent) toolset for grounded jump-to-code\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-28'
+  closed_pr: 3342
+  outcome_id: CHUMPOS
+  evidence: |
+    2026-07-27: chump-local native loop + cascade + devstral-2512 = clean tool-calls (no storming), no hang, no rate-limit, cheap — but SLOW to converge: 6 tool calls in 700s, all blind list_dir/read_file exploration, never found the target file. Almanac (grounded search, #3330) is wired into OPENCODE's toolset but NOT execute_gap/agent_loop/agent_factory (grep empty). Add an almanac_search tool to the native ChumpAgent so devstral jumps straight to the relevant file:line instead of exploring — cuts turns (=cost) and converges. Pairs with EFFECTIVE-323 (opencode side already done).
+

@@ -1,0 +1,13 @@
+- id: INFRA-3478
+  domain: INFRA
+  title: "EFFECTIVE: external-repo per-agent worktrees off a shared clone (N agents, one repo, no collision) — Phase-1 substrate"
+  status: shipped
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"external-repo per-agent worktrees off a shared clone (N agents, one repo, no collision) — Phase-1 substrate\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3368
+  outcome_id: MISSION-010
+

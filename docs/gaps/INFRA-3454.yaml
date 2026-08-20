@@ -1,0 +1,13 @@
+- id: INFRA-3454
+  domain: INFRA
+  title: "RESILIENT: merge-to-deployed lag watchdog — alert + self-heal when main advances but the installed binary stays stale past SLO"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"merge-to-deployed lag watchdog — alert + self-heal when main advances but the installed binary stays stale past SLO\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3353
+  outcome_id: MISSION-010
+

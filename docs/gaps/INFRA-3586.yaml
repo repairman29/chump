@@ -1,0 +1,12 @@
+- id: INFRA-3586
+  domain: INFRA
+  title: Develop Test Suite
+  status: wontfix
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - The test suite covers all core features of the CLI tool.
+    - All tests pass without errors
+  notes: EFFECTIVE-425 self-verify smoke test artifact — not real work, closing
+  outcome_id: COTG
+

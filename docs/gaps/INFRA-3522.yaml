@@ -1,0 +1,13 @@
+- id: INFRA-3522
+  domain: INFRA
+  title: "RESILIENT: pr_rescue.rs missing install-manifest/compile-missing-dep rescue arm (INFRA-3490 shipped only debt-ceiling of its 2 scoped arms)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"pr_rescue.rs missing install-manifest/compile-missing-dep rescue arm (INFRA-3490 shipped only debt-ceiling of its 2 scoped arms)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3412
+

@@ -1,0 +1,20 @@
+- id: RESILIENT-275
+  domain: RESILIENT
+  title: "a --features build in ANY worktree deletes the fleet's chump binary mid-build: shared target dir has no isolation"
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "BLAST RADIUS, and why this is P0: the fleet runs ~145 workers that shell out to chump. During any ad-hoc release build they get \"No such file or directory\" — not a stale binary, an ABSENT one. Failures land wherever chump happened to be invoked, look unrelated to each other, and vanish when the build finishes, so they read as flakes. This session already produced one"
+    - "SECOND FAILURE MODE, observed the same evening and arguably worse because it is SILENT: a --features discord build put a discord-enabled binary at the shared path, and a later default build REPLACED it minutes later. Anything depending on an opted-in feature loses it with no error and no log line. The RESILIENT-266 daemon hit exactly this — the installer refused to install because the binary it had just verified no longer had --discord"
+    - THE FIX IS NOT TO REVERT ZERO-WASTE-029. Per-repo target dirs cost 54GB and caused a disk-100% incident; that decision was right. The gap is that a SHARED WRITE TARGET needs either isolation or a publish step
+    - "OPTION A, isolation: ad-hoc and worktree builds get their own CARGO_TARGET_DIR (the pattern the git hooks already use per INFRA-1374), leaving the shared dir for one designated builder. Costs disk, which is what ZERO-WASTE-029 was avoiding — measure before choosing"
+    - "OPTION B, publish step, and the one already proven tonight: builds write wherever they like, and consumers read a STABLE published path. RESILIENT-266 does this — the installer copies to ~/.chump/bin/chump-discord so the fleet cannot clobber the daemon. Generalise it: workers execute a published binary, never a build output"
+    - WHICHEVER IS CHOSEN, MAKE THE ABSENCE WINDOW IMPOSSIBLE. Even with a shared dir, publishing should be atomic — build to a temp name, then rename into place. A rename is atomic on the same filesystem, so consumers see the old binary or the new one, never nothing
+    - "VERIFY BY REPRODUCTION, not by inspection: start a release build in a worktree and, while it runs, invoke chump from the main checkout in a loop. Today that produces \"No such file or directory\". After the fix it must produce a working binary for every invocation"
+    - WHILE THIS IS OPEN, warn in the installer and in CLAUDE.md that a --features build in a worktree takes the fleet binary down for the duration
+  closed_pr: 3553
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: cargo build --release --features discord --bin chump, run from the claim worktree /tmp/chump-resilient-266, then ls the fleet binary during the build | OUTPUT: ls: /Users/jeffadkins/.cargo/chump-shared-target/release/chump: No such file or directory — while the build was still running (2 cargo procs live). ~/Projects/Chump/target is a SYMLINK to that shared dir (verified: same inode 556232956), so the fleet path ~/Projects/Chump/target/release/chump was simultaneously dead. An unrelated command in this session failed with "no such file or directory: ./target/release/chump" as a direct result | THEORY: ZERO-WASTE-029 points ALL local cargo builds at ~/.cargo/chump-shared-target via .cargo/config.toml [build] target-dir, to stop per-repo target/ dirs eating disk (the 54GB 2026-07-26 incident). It achieved that, but it also removed ALL isolation: any build in any of ~145 worker worktrees replaces — and mid-build, DELETES — the single binary every other worker executes | ALT: rejected "only feature builds do this" — a plain cargo build relinks the same path. The feature build makes it worse and longer (14m27s vs a warm rebuild) but the hazard is structural, not feature-specific. Also rejected "workers use their own target dirs" — the pre-commit/pre-push hooks set INFRA-1374 isolated dirs, but ad-hoc builds (curators, interactive sessions, this one) explicitly do NOT, which is the exact case config.toml was written to capture
+

@@ -1,0 +1,11 @@
+- id: ZERO-WASTE-054
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: cargo-sweep GC is broken under launchd (cargo not in plist PATH) + hides its own error as 'nothing to clean' — fix the safety net + make it honest"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The cargo-sweep GC (days-and-days disk safety net) is BROKEN under launchd: its plist PATH has ~/.cargo/bin (a symlink to the rustup shim) but NOT $HOME/bin where the real cargo lives, so cargo-sweep's 'cargo metadata' fails (rc=127 cargo-not-found -> rc=1) and the GC cleans nothing every 30min while LOOKING like it ran ('nothing to clean rc=1'). Two fixes: (1) cargo-sweep-gc.sh robustly locates cargo (prepend $HOME/bin + ~/.cargo/bin to PATH; assert cargo resolves or emit cargo_sweep_gc_skipped with reason cargo-not-found); (2) HONEST SIGNAL — when cargo-sweep rc!=0, emit cargo_sweep_gc_errored with the actual error output, never mislabel an error as 'nothing to clean'; (3) plist PATH adds $HOME/bin. Verify the GC actually cleans under a launchd-minimal env. This is the credibility discipline: a safety net that silently no-ops is worse than none."
+  closed_pr: 3557
+  outcome_id: FLEET-BUILD-SPEED
+

@@ -1,0 +1,14 @@
+- id: RESILIENT-207
+  domain: RESILIENT
+  title: "RESILIENT: auto-document new CHUMP_* env vars on the universal commit path (kill the 5+/week env-var-coverage CI failure)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"auto-document new CHUMP_* env vars on the universal commit path (kill the 5+/week env-var-coverage CI failure)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3391
+  outcome_id: COTG
+

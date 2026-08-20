@@ -1,0 +1,13 @@
+- id: EFFECTIVE-385
+  domain: EFFECTIVE
+  title: "EFFECTIVE: decompose-on-review — carve unmet AC into a scoped child gap before closing an unconverged PR"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"decompose-on-review — carve unmet AC into a scoped child gap before closing an unconverged PR\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3502
+  outcome_id: COTG
+

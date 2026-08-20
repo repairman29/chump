@@ -1,0 +1,16 @@
+- id: INFRA-3496
+  domain: INFRA
+  title: "CREDIBLE: [COTG-3.3] verified zero-touch provenance (prove autonomy, don't assume)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-3.3] verified zero-touch provenance (prove autonomy, don't assume)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:23Z] DISCOVERY BUILT-NOT-WIRED ~40% -> FINISH (CHEAPEST WIN, fixes the COTG measure). producer complete: Chump-Agent trailer on every commit (improve.rs:831-853). Consumer absent: mission-scoreboard.sh:48 counts raw merges. Parse the trailer (git log --format trailer split).
+  closed_date: '2026-07-30'
+  closed_pr: 3373
+  outcome_id: COTG
+

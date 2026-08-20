@@ -1,0 +1,13 @@
+- id: INFRA-3477
+  domain: INFRA
+  title: "EFFECTIVE: chump improve defaults to chump-local (agent-run in the clone) not claude CLI + ensures clone exists (external-repo execution Phase-1)"
+  status: shipped
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"chump improve defaults to chump-local (agent-run in the clone) not claude CLI + ensures clone exists (external-repo execution Phase-1)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3368
+  outcome_id: MISSION-010
+
