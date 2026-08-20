@@ -176,7 +176,35 @@ CONTROL_PLANE_LABELS=(
     "com.chump.queue-health-monitor"
     "dev.chump.premature-closure-watch"
     "dev.chump.system-invariants-monitor"
+    "com.chump.integrator-daemon"
 )
+
+# RESILIENT-132 AC#5: labels whose ProgramArguments binary path is baked in
+# at install time by a dedicated installer (not a static repo script path).
+# exit=127 for these means the baked path is stale/missing — a bare
+# `launchctl kickstart` re-runs the SAME broken command and just loops. The
+# fix is to re-run the installer (idempotent, re-resolves the binary and
+# rewrites the plist) before kickstarting.
+declare -A LABEL_REPAIR_INSTALLER=(
+    ["com.chump.integrator-daemon"]="scripts/setup/install-integrator-daemon.sh"
+)
+
+# _repair_daemon_binary LABEL — re-run the label's installer (if any) to
+# rebake a stale ProgramArguments binary path. No-op for labels without a
+# registered installer.
+_repair_daemon_binary() {
+    local label="$1"
+    local installer="${LABEL_REPAIR_INSTALLER[$label]:-}"
+    [[ -z "$installer" ]] && return 0
+    local installer_path="$REPO_ROOT/$installer"
+    if [[ -x "$installer_path" ]]; then
+        log "$label exit=127 — re-running installer to rebake binary path: $installer"
+        run_cmd bash "$installer_path"
+        emit "farmer_daemon_binary_repaired" "\"label\":\"$label\",\"installer\":\"$installer\""
+    else
+        log "$label exit=127 — no installer found at $installer_path, skipping rebake"
+    fi
+}
 
 # label_is_loaded LABEL — returns 0 if launchd has the label loaded
 label_is_loaded() {
@@ -528,6 +556,7 @@ revive_control_plane() {
                 emit "farmer_escalated" "\"label\":\"$label\",\"exit_code\":$exit_code"
                 TICK_ESCALATED_N=$(( TICK_ESCALATED_N + 1 ))
             else
+                [[ "$exit_code" == "127" ]] && _repair_daemon_binary "$label"
                 kick_daemon "$label"
             fi
         fi
@@ -552,6 +581,7 @@ check_dead_supervisors() {
             emit "farmer_escalated" "\"label\":\"$label\",\"exit_code\":$exit_code"
                 TICK_ESCALATED_N=$(( TICK_ESCALATED_N + 1 ))
         else
+            [[ "$exit_code" == "127" ]] && _repair_daemon_binary "$label"
             kick_daemon "$label"
         fi
     done
