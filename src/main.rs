@@ -10173,26 +10173,23 @@ async fn main() -> Result<()> {
                 // to stdout so operator scripts can parse without grep.
                 let json_out = args.iter().any(|a| a == "--json");
                 let why = args.iter().any(|a| a == "--why");
-                let skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
                 let custom_acceptance_criteria = flag("--acceptance-criteria");
+                let no_ac_required = args.iter().any(|a| a == "--no-ac-required");
 
-                // INFRA-756: compute acceptance_criteria. Default to 4 obs-AC templates
-                // unless --skip-obs-acs is set or --acceptance-criteria is provided.
-                let acceptance_criteria_json = match custom_acceptance_criteria {
+                // CREDIBLE-284: acceptance_criteria is the author's done-definition
+                // (the WHAT) and must be authored at file time, not auto-filled with
+                // a tautological placeholder ("The change described by [title] is
+                // implemented...") that reads as covered but proves nothing. An
+                // unauthored gap now gets EMPTY AC (which `chump audit-ac` flags),
+                // never a fake-pass placeholder. See gate below for the P0/P1
+                // requirement. `chump gap decompose` (claim-time) generates the HOW
+                // (implementation sub-steps) and must never overwrite this field.
+                let acceptance_criteria_json = match &custom_acceptance_criteria {
                     Some(raw) => {
                         let parts: Vec<&str> = raw.split('|').collect();
                         serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
                     }
-                    None if !skip_obs_acs => {
-                        // EFFECTIVE-294: concrete, claimable default AC (no TODO
-                        // placeholders) so a reserved gap is immediately pickable.
-                        // The old obs-AC TODO template left ~32% of the open queue
-                        // unclaimable. The title carries the *what*; these carry the
-                        // *done-bar*. For gap-specific AC, run `chump gap decompose`.
-                        let acs = default_acceptance_criteria(&title, &domain);
-                        serde_json::to_string(&acs).unwrap_or_else(|_| "[]".into())
-                    }
-                    _ => "[]".into(),
+                    None => "[]".into(),
                 };
 
                 // FLEET-029: ambient glance before allocating ID
@@ -10951,6 +10948,64 @@ async fn main() -> Result<()> {
                     }
                 }
                 // ── end MISSION-045 outcome gate ────────────────────────────────────────
+
+                // ── CREDIBLE-284: acceptance-criteria gate for P0/P1 (stop the
+                // tautological placeholder) ─────────────────────────────────────────
+                // The done-definition (WHAT done means) is intent authored by a
+                // human/filing-agent and does not rot; only the decomposition (HOW /
+                // which files) ages. Deferring the done-definition to claim-time
+                // `chump gap decompose` (an LLM call) removes the external anchor —
+                // the same model family writes the AC, does the work, and the AC-gate
+                // judges the work against its own self-authored AC. Same firewall
+                // shape as the MISSION-045 outcome gate above. Bypass:
+                // --no-ac-required (audited).
+                {
+                    let enforce_priorities = ["P0", "P1"];
+                    if enforce_priorities.contains(&priority.as_str()) {
+                        let ac_text = custom_acceptance_criteria.as_deref().unwrap_or("").trim();
+
+                        if ac_text.is_empty() && !no_ac_required {
+                            eprintln!();
+                            eprintln!(
+                                "chump gap: P0/P1 gaps require --acceptance-criteria (CREDIBLE-284 anti-tautology gate)."
+                            );
+                            eprintln!(
+                                "Author the done-definition now — decompose only slices it into sub-steps later, it never invents it."
+                            );
+                            eprintln!(
+                                "Example: --acceptance-criteria \"first bullet|second bullet|third bullet\""
+                            );
+                            eprintln!("Bypass: --no-ac-required (audited).");
+                            std::process::exit(1);
+                        }
+
+                        if ac_text.is_empty() && no_ac_required {
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let ambient_path =
+                                worktree_root.join(".chump-locks").join("ambient.jsonl");
+                            let safe_domain = domain.replace(['"', '\\'], "");
+                            let safe_title = title.replace(['"', '\\'], "");
+                            let bypass_reason = "--no-ac-required flag";
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write;
+                                let _ = writeln!(
+                                    f,
+                                    r#"{{"ts":"{ts}","kind":"ac_gate_bypassed","priority":"{priority}","domain":"{safe_domain}","title":"{safe_title}","bypass_reason":"{bypass_reason}"}}"#
+                                );
+                            }
+                            if !quiet {
+                                eprintln!(
+                                    "[reserve] WARN: ac_gate_bypassed (bypass={bypass_reason})"
+                                );
+                            }
+                        }
+                    }
+                }
+                // ── end CREDIBLE-284 acceptance-criteria gate ───────────────────────────
 
                 // ── RESILIENT-069: farmer readiness gate (gap-reserve admission guard) ──
                 // RED = farmer has positive evidence of trouble — admit no NEW
@@ -14314,7 +14369,11 @@ async fn main() -> Result<()> {
                         }
                     }
 
-                    // Demote parent to P2
+                    // Demote parent to P2. CREDIBLE-284: this update intentionally
+                    // never touches `acceptance_criteria` — the parent's authored AC
+                    // is the fixed done-definition (the WHAT); decompose only
+                    // generates the HOW (these filed sub-slices). Do not add
+                    // `acceptance_criteria: Some(...)` to this GapFieldUpdate.
                     let _ = store.set_fields(
                         &gap_id,
                         gap_store::GapFieldUpdate {
@@ -16066,6 +16125,7 @@ async fn main() -> Result<()> {
                 eprintln!("chump gap <subcommand> [options]");
                 eprintln!("  list             [--status open|done] [--json]");
                 eprintln!("  reserve          --domain D --title T [--priority P1] [--effort s] [--external-repo owner/repo]");
+                eprintln!("                     [--acceptance-criteria \"a|b|c\"]  # REQUIRED for P0/P1 (CREDIBLE-284); bypass: --no-ac-required");
                 eprintln!(
                     "                     (positional) D title…  — same as --domain / --title"
                 );

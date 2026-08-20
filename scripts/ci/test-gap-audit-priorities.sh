@@ -92,7 +92,7 @@ fi
 # AC unless --skip-obs-acs is passed — without it this fixture no longer
 # produces a vague gap and the test below silently stopped testing anything.
 "$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
-    --title "audit-prio-fixture-vague" --skip-obs-acs --quiet 2>/dev/null
+    --title "audit-prio-fixture-vague" --no-ac-required --quiet 2>/dev/null
 if ! "$BIN" gap audit-priorities >/dev/null 2>&1; then
     ok "exit 1 on vague pickable gap"
 else
