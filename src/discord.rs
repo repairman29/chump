@@ -655,6 +655,12 @@ async fn run_one_discord_turn(
                 let build_agent_ms = t2.elapsed().as_millis();
                 let t3 = Instant::now();
                 let mut reply_text = String::new();
+                // RESILIENT-277 FIX 3: track every approval card we post so
+                // that, once the turn ends, any card still awaiting a
+                // decision can be edited to say "superseded" and have its
+                // buttons disabled — a tappable card that resolves nothing
+                // is worse than no card at all.
+                let mut approval_cards: Vec<(String, serenity::model::id::MessageId)> = Vec::new();
                 while let Some(ev) = event_rx.recv().await {
                     match ev {
                         AgentEvent::ToolApprovalRequest {
@@ -675,8 +681,11 @@ async fn run_one_discord_turn(
                             ]);
                             let builder =
                                 CreateMessage::new().content(content).components(vec![row]);
-                            if let Err(e) = channel_id.send_message(&*http, builder).await {
-                                eprintln!("chump: Discord approval message send: {:?}", e);
+                            match channel_id.send_message(&*http, builder).await {
+                                Ok(sent) => approval_cards.push((rid, sent.id)),
+                                Err(e) => {
+                                    eprintln!("chump: Discord approval message send: {:?}", e)
+                                }
                             }
                         }
                         AgentEvent::TurnComplete { full_text, .. } => {
@@ -688,6 +697,18 @@ async fn run_one_discord_turn(
                             break;
                         }
                         _ => {}
+                    }
+                }
+                for (rid, message_id) in &approval_cards {
+                    if !approval_resolver::is_pending(rid) {
+                        continue;
+                    }
+                    approval_resolver::abandon(rid);
+                    let edit = serenity::builder::EditMessage::new()
+                        .content("~~Approve tool?~~ *superseded — this request is no longer live.*")
+                        .components(vec![]);
+                    if let Err(e) = channel_id.edit_message(&*http, *message_id, edit).await {
+                        eprintln!("chump: Discord approval card supersede-edit: {:?}", e);
                     }
                 }
                 let agent_run_ms = t3.elapsed().as_millis();
@@ -1221,9 +1242,24 @@ impl EventHandler for Handler {
             } else if let Some(rid) = custom_id.strip_prefix("chump_deny:") {
                 (rid, false)
             } else {
+                // RESILIENT-277 FIX 4: a tap that never arrived and a tap on
+                // an unrecognized custom_id used to look identical (silent
+                // return, nothing logged). Log it so the two are distinguishable.
+                tracing::warn!(custom_id = %custom_id, "chump: interaction with unmatched custom_id ignored");
                 return;
             };
-            approval_resolver::resolve_approval(request_id, allowed);
+            // RESILIENT-277 FIX 4: log the decision and whether a receiver
+            // was actually found (HIT) or the tap resolved nothing because
+            // the request had already been abandoned/resolved (ORPHAN) —
+            // this is exactly the class of tap that used to be
+            // indistinguishable from "no tap arrived" in the log.
+            let outcome = approval_resolver::resolve_approval(request_id, allowed);
+            tracing::info!(
+                request_id = %request_id,
+                decision = if allowed { "approve" } else { "deny" },
+                outcome = outcome.as_str(),
+                "chump: approval tap received"
+            );
             if let Err(e) = c
                 .create_response(
                     &ctx.http,
