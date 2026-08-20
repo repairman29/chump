@@ -873,3 +873,7 @@ toolchain_ratchet_scan_completed  # reason: INFRA-2036 emitted by scripts/coord/
 toolchain_ratchet_scan_timeout    # reason: INFRA-2036 emitted by scripts/coord/toolchain-ratchet-detector.sh when the git-log scan exceeds CHUMP_W014_TIMEOUT_S; failure_class=transient; printf-direct JSON not grep-scannable as kind=X literal
 chump_cron_installed    # reason: INFRA-2045 chump cron lifecycle, emitted by crates/chump-cron/src/lib.rs. Hold off EVENT_REGISTRY.yaml entry until first runtime fire reveals actual emit shape (per Wizard 2026-05-27 13:27Z, INFRA-2003/2020 lease pattern).
 chump_cron_uninstalled  # reason: INFRA-2045 chump cron lifecycle, emitted by crates/chump-cron/src/lib.rs. Hold off EVENT_REGISTRY.yaml entry until first runtime fire reveals actual emit shape (per Wizard 2026-05-27 13:27Z, INFRA-2003/2020 lease pattern).
+
+# ── EFFECTIVE-358: L3 design-pass chair ───────────────────────────────────────
+design_pass_spec_emitted  # reason: EFFECTIVE-358 emitted by scripts/design/design-pass.sh spec subcommand (scanner-anchor comment at the emit_ambient call site); scripts/design/ is not in the scanner's PROD_PATHS list, so this is a scanner-coverage gap, not a real orphan — verified by scripts/ci/test-design-pass.sh scenario 1.
+design_pass_spec_failed   # reason: EFFECTIVE-358 same as design_pass_spec_emitted above — emitted by scripts/design/design-pass.sh on empty/malformed claude output; verified by scripts/ci/test-design-pass.sh scenarios 2-3.

@@ -2459,6 +2459,32 @@ events:
       "curator-opus-decompose". Pairs with kind=decompose_audit and
       kind=decompose_sliced to verify the role is active when expected.
 
+  - kind: design_pass_spec_emitted
+    effect_metric: self
+    emitter: scripts/design/design-pass.sh (EFFECTIVE-358)
+    trigger: design-pass.sh spec subcommand successfully wrote a UI/brand/interaction
+             spec for a gap to docs/design/specs/<gap_id>-design-spec.md
+    consumers: [audit-log]
+    fields_required: [ts, kind, gap_id, spec_path]
+    docs: |
+      Emitted by the L3 design chair (EFFECTIVE-358) when it emits a design
+      spec for a user-facing gap, graded against
+      docs/design/DESIGN_PASS_CHECKLIST.md. spec_path is repo-relative.
+      Pairs with kind=design_pass_spec_failed for the negative case.
+
+  - kind: design_pass_spec_failed
+    effect_metric: self
+    emitter: scripts/design/design-pass.sh (EFFECTIVE-358)
+    trigger: design-pass.sh spec subcommand called claude -p but got back an
+             unusable response (empty, or missing the required
+             "## Consumed by implement" section)
+    consumers: [audit-log]
+    fields_required: [ts, kind, gap_id]
+    docs: |
+      Signals a design-pass generation failure so it doesn't silently ship
+      an empty/malformed spec. Investigate via re-run with
+      CHUMP_DESIGN_CHECKLIST/CHUMP_DESIGN_SPEC_DIR overrides for debugging.
+
   - kind: shepherd_heartbeat
     effect_metric: self
     emitter: scripts/coord/shepherd-loop.sh (INFRA-1917)
