@@ -1,0 +1,20 @@
+- id: EFFECTIVE-380
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [almanac] mine the zero-hit query log — the fleet's own unanswered questions are an uncollected roadmap"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    almanac usage already logs every CLI and MCP call to ~/.almanac/usage.jsonl and reports a zero-hit rate (6 percent over 106 calls in the sample taken 2026-08-06). A zero-hit is a question the fleet actually asked, in its own words, that the index could not answer — the highest-signal capability backlog in the system, generated for free by real usage rather than by anyone speculating. It has never been read. Build: 'almanac usage --zero-hits' clustering the misses by shape so the output is a short ranked list of themes rather than a raw log, and distinguishing the three causes that need different fixes — the content is genuinely absent from the fleet, the content exists but retrieval missed it (a quality bug), or the query names an unsupported artifact class (SQL per INFRA-3530, unsupported languages per CREDIBLE-210). Those three demand completely different responses and lumping them is why nobody reads the log.
+  acceptance_criteria:
+    - almanac usage --zero-hits emits clustered themes with representative queries and counts, not a raw dump
+    - each cluster is classified absent / retrieval-miss / unsupported-artifact, and the classification method is stated in the output so a reader can disagree with it
+    - "a retrieval-miss cluster is verifiable: for at least one example the report shows that content DOES exist in the index, proving the miss was a quality bug and not absence"
+    - the report is machine-readable (--json) so a future cadence job can file the top themes as gaps without a human transcribing them
+    - first real run is recorded — its output pasted into the gap notes or a doc — so the backlog this generates is visible immediately rather than waiting on a cron
+    - DEPTH.md updated in the same commit
+  closed_date: '2026-08-10'
+  closed_pr: 3570
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: EFFECTIVE-000
+

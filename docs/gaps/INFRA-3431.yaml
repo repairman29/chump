@@ -1,0 +1,14 @@
+- id: INFRA-3431
+  domain: INFRA
+  title: Modernize fleet coordination scripts with local cache and shared primitives
+  status: ready_to_ship
+  priority: P1
+  effort: s
+  description: |
+    Modernize core coordination and reaper scripts to prioritize local GitHub cache lookups, reducing API rate-limit pressure. Centralize lease parsing into a shared library and unify worktree scanning logic across the fleet.
+  acceptance_criteria:
+    - 5 reaper scripts migrated to cache-first
+    - fleet-status.sh uses cache-first
+    - lease parsing centralized in lib/lease.sh
+    - worktree scanning unified via worktree-iter.sh
+

@@ -1,0 +1,13 @@
+- id: EFFECTIVE-401
+  domain: EFFECTIVE
+  title: "EFFECTIVE: build-speed — extract src/inventory.rs (2508L) out of the 190k-line bin into crates/chump-inventory"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"build-speed — extract src/inventory.rs (2508L) out of the 190k-line bin into crates/chump-inventory\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3515
+  outcome_id: CHUMPOS
+

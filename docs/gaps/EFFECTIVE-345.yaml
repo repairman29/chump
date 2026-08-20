@@ -1,0 +1,26 @@
+- id: EFFECTIVE-345
+  domain: EFFECTIVE
+  title: Task-directed execution for existing-repo bench modes (IMPROVE/FINISH/COMPREHEND) — clone + agent-run the TRACK task, not generic improve
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Keystone to green the real-repo half of the V1 scorecard. RECON FINDING (bench heat baseline 1/6): the existing-repo mode drives ignore the track's TASK. drive_engine runs 'chump improve <repo> --apply' for RESCUE/IMPROVE/FINISH — which works the repo's OWN gaps, not the track task — and COMPREHEND runs 'comprehend --repo' which REPORTS but doesn't WRITE the onboarding map. So improve-beast-website (add dark-mode), finish-chump-chassis (make cargo test pass), comprehend-mythseeker (write docs/ONBOARDING_MAP.md) can never satisfy their acceptances.
+    
+    BUILD (mirror CREATE's --implement, but on an EXISTING repo): in src/bench.rs drive_engine, add a task-directed path for IMPROVE/FINISH/COMPREHEND (and later RESCUE) used under --implement:
+    (a) clone the track.repo (shallow) into a working dir the scorer runs acceptance in (analogous to local_clone_dir; reuse for existing repos);
+    (b) run 'chump agent-run --slim --cwd <clone> --prompt-file <task>' with CHUMP_FREE_TIER_WRITE_FILE=1 (EFFECTIVE-342 pattern) so the agent DOES the track's specific task;
+    (c) commit the agent's working-tree output with a Chump-Agent trailer (CREDIBLE-183) so the touch metric proves zero-touch;
+    (d) score_track runs the acceptance in that clone.
+    Keep the generic 'chump improve' path for --apply (non-implement) as-is.
+    
+    SCOPE: this unlocks the 3 LOCAL-acceptance tracks (grep clone / cargo test / file-exists). rescue-beast-ci needs LIVE ci-green (real merge + CI on BEAST-MODE) — that's the harder full-improve-loop path, separate follow-up. create-photo-renamer is env-heavy (deps+fixtures, EFFECTIVE-343).
+    
+    ACCEPTANCE: chump bench run --track improve-beast-website-darkmode.yaml --implement drives the agent to add dark-mode in the clone; the acceptance grep passes; touches:0. Same shape for finish + comprehend. Pillar: EFFECTIVE.
+  acceptance_criteria:
+    - "The change described by \"Task-directed execution for existing-repo bench modes (IMPROVE/FINISH/COMPREHEND) — clone + agent-run the TRACK task, not generic improve\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-31'
+  closed_pr: 3434
+

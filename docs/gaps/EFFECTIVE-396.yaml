@@ -1,0 +1,14 @@
+- id: EFFECTIVE-396
+  domain: EFFECTIVE
+  title: "EFFECTIVE: build-speed pt3 — WIRE the mold linker in CI (it's apt-installed since INFRA-2242 but never set via RUSTFLAGS, so CI still links with default ld)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "The change described by \"build-speed pt3 — WIRE the mold linker in CI (it's apt-installed since INFRA-2242 but never set via RUSTFLAGS, so CI still links with default ld)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-08'
+  closed_pr: 3509
+  outcome_id: CHUMPOS
+

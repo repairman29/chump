@@ -1,0 +1,19 @@
+- id: INFRA-3502
+  domain: INFRA
+  title: "EFFECTIVE: [COTG-5.1] auto-deploy to a usable surface (URL/app, never a repo)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - a shipped tool deploys to an ephemeral per-lap stage surface, not the customer-facing URL yet
+    - COTG-3.1's outcome-verification runs against the stage surface; only a pass promotes -- atomic flip, no rebuild -- to the customer-facing surface
+    - "test: a tool deploys to stage, passes DoD there, and only then promotes; a failing tool never reaches the customer surface; promote is a flip of the already-verified artifact, not a fresh build"
+    - "build-vs-source (COTG-S.3): source commodity substrate -- wrap Vercel preview/promote (hosted) or a Dokku/e2b-style pattern (self-hosted/air-gapped), don't build a deploy mechanism from scratch"
+    - "widened 2026-07-30: post-promote monitoring watches the live customer-facing surface; on a detected regression, automatic rollback to the last-good promoted artifact fires -- no silent broken-tool window for a user who, per COTG's own framing, cannot audit the output themselves"
+    - "test: a synthetic post-promote regression triggers automatic rollback to the prior artifact within a bounded window, with an honest note to the user if one was already looking at the surface"
+  depends_on: [INFRA-3494]
+  notes: |
+    [2026-07-29T03:21:24Z] DISCOVERY NOT-STARTED ~10% -> BUILD. auto-deploy.sh is self-binary only; chump-ship stops at pr_url; deploy_to_vercel MCP unwired. Reuse chump-ship as a pre-deploy stage into a user-facing surface.
+  closed_pr: 3507
+  outcome_id: COTG
+

@@ -1,0 +1,18 @@
+- id: DOC-089
+  domain: DOC
+  title: "consolidate the strategy corpus: one vision anchor, classify all 70 docs, teach the freshness gate to see untagged ones"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "PLAN + FULL EVIDENCE: opportunity-library/VISION_CONSOLIDATION.md. Do NOT add an 18th roadmap — there are already 17 roadmap docs plus MASTER_PLAN.md, and adding one is the opposite of consolidating"
+    - "ONE ANCHOR: a single canonical doc stating what the factory is for — 'anyone with an idea or a dream, no matter what state it is in, gets ChumpOS on board helping them succeed' — naming COTG and CHUMPOS as its outcomes and linking DOC-079 (8-layer matrix), DOC-083 (artifact organization), PUBLISHER.md, and the six open chair gaps. Everything else points at it"
+    - "CLASSIFY ALL 70 docs/strategy docs into the EXISTING taxonomy, no new one: canonical (currently true, owned, audited) / log (a record of what we thought then, explicitly NOT current) / decision-record (binding decision, not a plan). Measured 2026-08-07: 7 canonical, 15 log, 2 decision-record, and 43 with NO frontmatter at all. Most of the operator's 'things we used to aspire to be' belong in log, and saying so is the highest-value single act here"
+    - "MAKE THE GATE SEE THEM. scripts/ci/test-doc-freshness.sh (DOC-041) runs in CI at .github/workflows/ci.yml:729 but (a) is warn-only, (b) thresholds at 180 days so the 25 docs over 60 days — oldest 104 — never warn, and (c) scans ONLY docs that already carry last_audited, so the 43 untagged are structurally invisible. An untagged doc under docs/strategy/ must become a finding, not a silence"
+    - "THRESHOLD BY TAG, not globally: a canonical doc unaudited for 104 days is the real risk; a log doc being old is CORRECT and must not be flagged. Applying one threshold to both is why the current gate had to be warn-only"
+    - SCHEDULE IT via the existing curator-loop pattern (ci-audit / md-links / decompose). A one-time cleanup that is not scheduled is stale again within a quarter — which is exactly how the corpus reached this state
+    - "HONEST SCOPE: this makes the vision legible and maintained; it does NOT make it operative. The scheduler reads neither outcomes nor ROADMAP.md (CREDIBLE-224). Land that alongside, or the consolidated trail is one more well-maintained document the factory floor never reads"
+  closed_date: '2026-08-08'
+  closed_pr: 3524
+  outcome_id: COTG
+

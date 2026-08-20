@@ -1,0 +1,13 @@
+- id: EFFECTIVE-406
+  domain: EFFECTIVE
+  title: "build-speed: extract src/eval_harness.rs (2186L) → crates/chump-eval-harness (Wave-1)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"extract src/eval_harness.rs (2186L) → crates/chump-eval-harness (Wave-1)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3519
+  outcome_id: CHUMPOS
+
