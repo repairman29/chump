@@ -11583,16 +11583,34 @@ async fn main() -> Result<()> {
                             }
                         }
                         if update_yaml {
-                            // ZERO-WASTE-020: YAML mirrors retired — state.db
-                            // is canonical, .chump/state.sql is the tracked
-                            // dump. `--update-yaml` is now a documented no-op
-                            // kept for CLI compatibility with existing callers
-                            // (bot-merge.sh auto-close path) rather than a
-                            // hard error. Use `chump gap show <ID>` for
-                            // human-readable per-gap inspection.
-                            eprintln!(
-                                "chump gap ship --update-yaml: no-op (ZERO-WASTE-020 — YAML mirrors retired, state.db is canonical)"
-                            );
+                            // ZERO-WASTE-056: `--update-yaml` was made a no-op
+                            // by ZERO-WASTE-020, on the theory that state.db
+                            // alone is canonical. In practice docs/gaps/<ID>.yaml
+                            // is still git-tracked and treated as canonical by
+                            // `chump gap sync` / the reconcile bot, so the no-op
+                            // left every shipped gap in DB==done / YAML==open
+                            // drift — requiring a SEPARATE reconcile PR (full
+                            // agent+CI+merge pipeline) just to sync the file.
+                            // Write it atomically in the SAME op as the status
+                            // flip so the yaml change lands in the work PR
+                            // itself and no reconcile is ever needed.
+                            let gaps_dir = worktree_root.join("docs").join("gaps");
+                            match store.dump_per_file_single(&gap_id, &gaps_dir) {
+                                Ok(true) => {
+                                    if why {
+                                        eprintln!(
+                                            "  updated docs/gaps/{gap_id}.yaml (status=done, closed_pr={})",
+                                            closed_pr.map(|n| n.to_string()).unwrap_or_default()
+                                        );
+                                    }
+                                }
+                                Ok(false) => {}
+                                Err(e) => {
+                                    eprintln!(
+                                        "chump gap ship: WARN — failed to update docs/gaps/{gap_id}.yaml: {e:#}"
+                                    );
+                                }
+                            }
                         }
                         return Ok(());
                     }
