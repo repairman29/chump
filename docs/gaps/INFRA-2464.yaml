@@ -5,7 +5,12 @@
   priority: P1
   effort: m
   acceptance_criteria:
-    - "[\"Audit pass via scripts/dev/api-cost-leaderboard.sh --window 1h to enumerate top 10 burners\",\"Migrate the top burners: (a) queue-driver.sh pr list → cache_query_open_prs, (b) shepherd run list/run view → check if webhook receiver feeds runs/checks tables and use those, (c) gh repo view → single cache fetch + reuse\",\"Add scripts/coord/run-cache.sh helper IF webhook receiver does not currently capture run-list / run-view data (INFRA-1275 + extensions covered PR side; runs may need new table)\",\"After migration: re-run leaderboard, total raw gh calls < 50/hr (down from ~190/30min = 380/hr)\",\"Smoke test: run scripts/coord/queue-driver.sh tick + verify 0 new github_api_call events with raw script=gh\",\"Cite Today 2026-06-02: 766/5000 GraphQL burned in <1h purely from polling; wedge-guard aborts blocked 2 shipping PRs (INFRA-2447/2434)\"]"
+    - Audit pass via scripts/dev/api-cost-leaderboard.sh --window 1h to enumerate top 10 burners
+    - "Migrate the top burners: (a) queue-driver.sh pr list → cache_query_open_prs, (b) shepherd run list/run view → check if webhook receiver feeds runs/checks tables and use those, (c) gh repo view → single cache fetch + reuse"
+    - Add scripts/coord/run-cache.sh helper IF webhook receiver does not currently capture run-list / run-view data (INFRA-1275 + extensions covered PR side; runs may need new table)
+    - "After migration: re-run leaderboard, total raw gh calls < 50/hr (down from ~190/30min = 380/hr)"
+    - "Smoke test: run scripts/coord/queue-driver.sh tick + verify 0 new github_api_call events with raw script=gh"
+    - "Cite Today 2026-06-02: 766/5000 GraphQL burned in <1h purely from polling; wedge-guard aborts blocked 2 shipping PRs (INFRA-2447/2434)"
   notes: |
     CLOSED 2026-08-20: already shipped. #3865 migrated queue-driver.sh's
     cascade PR-list path to cache_query_open_non_draft_prs (AC2a, on top of
@@ -25,6 +30,7 @@
     gap was left open after the code shipped; closing to match reality.
     Per-gap docs/gaps/INFRA-2464.yaml file was stale (state.sql already
     said done since #3996) — synced here to match canonical state.
+  closed_date: '2026-08-20'
   closed_pr: 3995
   outcome_id: MISSION-010
 

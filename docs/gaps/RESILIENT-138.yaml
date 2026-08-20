@@ -1,7 +1,8 @@
 - id: RESILIENT-138
   domain: RESILIENT
   title: "RESILIENT (Cut-Friction): chump claim must sync the gap YAML into the worktree — every fresh-gap ship hits bot-merge not-found until copied in"
-  status: open
+  status: done
+  closed_pr: 4013
   priority: P1
   effort: m
   description: |
@@ -10,5 +11,27 @@
     - after chump claim, docs/gaps/<ID>.yaml + the state.db entry exist in the worktree with no manual copy
     - OR bot-merge auto-imports the gap from the canonical store on not-found
     - a freshly reserved+claimed gap ships via bot-merge with no manual gap-def step
+  notes: |
+    RECONCILE: already shipped via PR #4013 (f41e25f6, "fix(RESILIENT-138):
+    bot-merge defaults CHUMP_REPO to the main checkout"), which is on
+    origin/main. Root cause: bare `chump` invocations inside bot-merge.sh
+    (gap show/preflight/set/ship) resolve state.db via
+    `repo_path::repo_root()`, which falls back to CWD when CHUMP_REPO/
+    CHUMP_HOME are unset and no .env is found — in a linked worktree that
+    CWD has no `.chump/state.db` of its own, so a freshly reserved+claimed
+    gap reported "not found in state.db" until CHUMP_REPO was exported by
+    hand. Fix: `export CHUMP_REPO="${CHUMP_REPO:-$MAIN_REPO}"`
+    (scripts/coord/bot-merge.sh:1521), defaulting to MAIN_REPO (already
+    resolved via --git-common-dir, correct regardless of env/.env state)
+    right after sourcing repo-paths.sh, while still respecting an
+    explicitly-set CHUMP_REPO. This satisfies AC bullet 2 (bot-merge
+    transparently resolves state.db lookups to the canonical main-checkout
+    store on a worktree-local miss) and therefore bullet 3 (a
+    freshly reserved+claimed gap ships via bot-merge with no manual
+    gap-def step). Two later duplicate attempts at the same fix
+    (d3a394c5, 4967a8ff) exist on unmerged sibling branches from
+    concurrent fleet claims of this gap; f41e25f6/#4013 is the one that
+    landed on origin/main. Same reconcile pattern as RESILIENT-052
+    (#4016), RESILIENT-081 (#4015), RESILIENT-218 (#4014).
   outcome_id: RESILIENT-000
 
