@@ -260,6 +260,23 @@ _bm_run_step() {
     return "$rc"
 }
 
+# RESILIENT-140: several read-only `gh pr view`/`gh pr list` lookups in the
+# pre-push section ran bare — no timeout at all. A hung `gh` call (auth
+# refresh stall, network blip) blocked indefinitely with no progress signal,
+# and since no stage_start() bracketed that span either, the heartbeat kept
+# showing whatever stage ran last (e.g. "cargo fmt") — the hang looked like
+# the wrong stage was stuck. Wrap these lookups with a tight timeout; every
+# call site already treats empty/failed output as "no existing PR found" so
+# timing out fails safely into that fallback instead of hanging the ship.
+_BM_GH_QUICK_TIMEOUT_S="${CHUMP_BOT_MERGE_GH_QUICK_TIMEOUT_S:-20}"
+_bm_gh_quick() {
+    if [[ -n "${_BM_TIMEOUT_CMD:-}" ]]; then
+        "$_BM_TIMEOUT_CMD" "$_BM_GH_QUICK_TIMEOUT_S" gh "$@" 2>/dev/null || true
+    else
+        gh "$@" 2>/dev/null || true
+    fi
+}
+
 # INFRA-1035: append one JSONL entry to the steps file.
 # Usage: _bm_steps_append <transition> <step> [elapsed_s]
 _bm_steps_append() {
@@ -2824,6 +2841,19 @@ else
     info "Skipping tests (--skip-tests)."
 fi
 
+# RESILIENT-140: everything from here through the "5. Push" header below
+# (shell-test gate, decomp advisory, ambient glance, prereg guard, INFRA-306
+# MERGED check, WIP squash, bot-merge mutex, staleness/rebase gate,
+# duplicate-PR check) previously ran with NO stage_start() covering it. The
+# heartbeat/stall-alert reads whatever stage_start last wrote to
+# _BM_STEP_FILE, so a hang anywhere in this ~450-line span (e.g. the bare
+# `gh pr view`/`gh pr list` calls below, which had no timeout) printed a
+# STALE "step=cargo fmt" or "step=<skip-tests>" label — making the real
+# stall look like fmt was hanging. Bracket the whole span in one stage so
+# the label is honest, and give it a generous budget (staleness gate can
+# legitimately rebase; mutex can legitimately wait up to 60s).
+stage_start "pre-push checks (dup-PR / MERGED / mutex / staleness)" 600
+
 # ── 4a. CI shell-test gate for THIS PR's new/modified tests (INFRA-222) ──────
 # `cargo test` covers Rust unit/integration tests but NOT the shell-script
 # guard tests under `scripts/ci/test-*.sh`. PR #729 (INFRA-200) shipped with
@@ -3018,7 +3048,7 @@ if [[ "${CHUMP_SKIP_MERGED_CHECK:-0}" != "1" ]]; then
         fi
     fi
     if [[ -z "$_existing_state" ]]; then
-        _existing_state=$(gh pr view "$BRANCH" --json state --jq '.state' 2>/dev/null || echo "")
+        _existing_state=$(_bm_gh_quick pr view "$BRANCH" --json state --jq '.state')
     fi
     if [[ "$_existing_state" == "MERGED" ]]; then
         # INFRA-3532: a MERGED PR for this branch is normally a settled race (auto-merge
@@ -3244,9 +3274,9 @@ if [[ "${FORCE_DUPLICATE}" != "1" && ${#GAP_IDS[@]} -gt 0 ]]; then
         # INFRA-2925: $REPO was never assigned anywhere in this script — every
         # other `gh pr` call here relies on gh's cwd auto-detection instead.
         # Under `set -u` this was an unconditional "unbound variable" crash.
-        _existing=$(gh pr list --state open \
+        _existing=$(_bm_gh_quick pr list --state open \
             --search "${_gid} in:title" --json number,headRefName \
-            --limit 10 2>/dev/null || true)
+            --limit 10)
         if [[ -z "$_existing" ]]; then
             continue
         fi
@@ -3273,6 +3303,7 @@ print(' '.join(conflicts))
         _bm_fail "dup-pr" 16 "duplicate PR detected for gap ${GAP_IDS[*]:-}: existing ${_dup_pr_numbers}"
     fi
 fi
+stage_done
 
 # ── 5. Push ───────────────────────────────────────────────────────────────────
 # META-156 AC#1: step=push
@@ -3393,7 +3424,7 @@ if declare -F cache_lookup_pr_by_branch >/dev/null 2>&1; then
     fi
 fi
 if [[ -z "$EXISTING_PR" ]]; then
-    EXISTING_PR=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
+    EXISTING_PR=$(_bm_gh_quick pr view "$BRANCH" --json number --jq '.number')
 fi
 
 # INFRA-997: refuse to open a PR when the branch's commits since divergence
