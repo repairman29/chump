@@ -211,12 +211,13 @@ cmd_check_runners() {
 
     # Standalone ghost-online detection
     local gh_bin="${CHUMP_GH_BIN:-gh}"
+    local repo_slug
+    repo_slug="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null \
+        | sed 's|.*github.com[:/]||; s|\.git$||')"
 
     # Get runner state — fail gracefully if gh unavailable
     local runners_json
-    if ! runners_json="$("$gh_bin" api repos/"$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null \
-        | sed 's|.*github.com[:/]||; s|\.git$||')" \
-        /actions/runners --paginate 2>/dev/null)"; then
+    if ! runners_json="$("$gh_bin" api "repos/${repo_slug}/actions/runners" --paginate 2>/dev/null)"; then
         printf '[infra-watcher] check-runners: gh api unavailable — skipping runner check\n'
         return 0
     fi
@@ -236,9 +237,14 @@ print(sum(1 for r in runners if r.get('status')=='online' and r.get('busy')==Fal
         return 0
     fi
 
-    # Check for queued runs older than 5 minutes
+    # Check for queued runs older than 5 minutes. INFRA-2464: `gh run list`
+    # is a GraphQL call; the REST equivalent (actions/runs?status=queued)
+    # hits the REST bucket instead, which stays healthy during GraphQL
+    # exhaustion — and reuses repo_slug resolved above instead of a second
+    # lookup.
     local queued_json
-    if ! queued_json="$("$gh_bin" run list --status queued --limit 20 --json databaseId,createdAt,status 2>/dev/null)"; then
+    if ! queued_json="$("$gh_bin" api "repos/${repo_slug}/actions/runs?status=queued&per_page=20" \
+        --jq '.workflow_runs' 2>/dev/null)"; then
         printf '[infra-watcher] check-runners: cannot read queued runs — skipping\n'
         return 0
     fi
@@ -250,7 +256,7 @@ import json,sys
 from datetime import datetime, timezone, timedelta
 runs=json.load(sys.stdin)
 cutoff=datetime.now(timezone.utc) - timedelta(minutes=5)
-old=[r for r in runs if datetime.fromisoformat(r['createdAt'].replace('Z','+00:00')) < cutoff]
+old=[r for r in runs if datetime.fromisoformat(r['created_at'].replace('Z','+00:00')) < cutoff]
 print(len(old))
 " 2>/dev/null || echo 0)"
 
