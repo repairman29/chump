@@ -1,0 +1,25 @@
+- id: INFRA-3474
+  domain: INFRA
+  title: "RESILIENT: outward-flywheel execution is BLOCKED — chump improve requires the claude CLI (not installed); no chump-local external-repo path"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    STRATEGIC (operator 2026-07-28): the OS must NEVER default to the claude CLI — it contradicts 'own your tools' + the swappable-harness design + the shared-service discipline. External-repo execution must DEFAULT to chump-local (ProviderCascade), claude CLI opt-in.
+    
+    CONFIRMED BLOCKER (scoped in worktree): execute_gap conflates gap-source and file-root. It reads the gap via repo_path::main_checkout_root() (git-common-dir from repo_root, which follows CHUMP_REPO/cwd) AND roots the agent's file tools at the same CHUMP_REPO. External work needs them DECOUPLED: gap from chump's canonical state.db, files in the external clone. Setting CHUMP_REPO=clone breaks gap lookup (looks in almanac's state.db → INFRA-3468 not found). So it's a refactor, not a flag.
+    
+    RECOMMENDED APPROACH A (cleanest, testable, reuses improve's contract): add a 'chump agent-run --prompt-file <f> [--cwd <dir>] [--model <class>]' subcommand that runs the chump-local ChumpAgent (build_chump_agent_cli → ProviderCascade, DEFAULT all-tools profile incl git_push/gh) on an ad-hoc prompt in cwd — NO gap lookup, so no conflation. Then improve.rs implement_gap gets CHUMP_IMPROVE_BACKEND (default 'chump-local'): spawn 'chump agent-run --prompt-file <improve's ExternalRepoContract prompt> --cwd <clone>' instead of 'claude -p'; the agent implements+commits+pushes+opens the PR per the existing contract prompt; improve extracts pr_url same as today. claude path becomes opt-in (CHUMP_IMPROVE_BACKEND=claude). Also fix: improve --gap must ensure the clone exists (scout is skipped). PART 1 (built, not yet shipped): execute_gap CHUMP_EXECUTE_GAP_NO_SHIP edit-only mode — keep for approach B or drop.
+    
+    APPROACH B (bigger): give execute_gap external-repo awareness (separate CHUMP_GAP_SOURCE root from CHUMP_REPO file-root) + improve branch/push/PR orchestration. More invasive.
+    
+    This is the mission's critical execution path — build carefully, test the external PR end-to-end before trusting. Reconcile: how does BEAST-MODE ship today (claude CLI on another machine?).
+  acceptance_criteria:
+    - "The change described by \"outward-flywheel execution is BLOCKED — chump improve requires the claude CLI (not installed); no chump-local external-repo path\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    STALE, not a real blocker — verified 2026-08-02. This gap's own 'Approach A' (add chump agent-run + default CHUMP_IMPROVE_BACKEND to chump-local, claude opt-in) was independently built and shipped as INFRA-3475 (chump agent-run, PR #3366) and INFRA-3477 (the default switch, PR #3368) — both already 'shipped' status, neither cross-referenced back to close this diagnosis gap. Verified functionally just now, not just by reading code: 'chump agent-run --help' responds as a real subcommand (not unknown-command), and resolve_improve_backend() in src/improve.rs:926-931 genuinely returns 'chump-local' unless CHUMP_IMPROVE_BACKEND is explicitly set — matching the doctrine comment at improve.rs:1273-1278 ('the OS runs on its OWN runtime by default and NEVER defaults to the claude CLI'). closed_pr set to #3368 (the more directly relevant of the two) since this gap never had its own PR — it was a diagnosis, and the diagnosis's own recommended fix is what shipped. Found while auditing the fleet for claude-CLI hard-dependencies per an explicit operator ask (2026-08-02): 'go through and look at anything claude dependent, we don't want that to be the solution.' This was the one real candidate; verified it's already fixed, just not closed.
+  closed_pr: 3368
+  outcome_id: MISSION-010
+

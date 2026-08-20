@@ -1,0 +1,57 @@
+- id: RESILIENT-256
+  domain: RESILIENT
+  title: an agent ran git reset --hard on a SHARED checkout and destroyed ~574 lines of another session's uncommitted work — permanently
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - destructive-git guard refuses reset --hard / checkout -- . / clean -fd against a dirty tree and NAMES every file it would destroy, wired as a PreToolUse hook agents actually invoke (chump git-guard, repo-local .claude/settings.json + fleet-wide installer)
+    - agents get their own worktree; the primary checkout is read-mostly, enforced by chump git-guard --hook-write refusing Edit/Write into a primary that live linked worktrees share, plus one-command scripts/dev/own-worktree.sh
+    - "uncommitted-work watchdog: WIP idle >3h in any checkout is surfaced AND written to the object store via chump wip-snapshot (refs/wip/, working tree untouched); dev.chump.wip-watchdog launchd, graded as 'wip' by the reaper heartbeat watchdog"
+    - regression test proves the destructive command is REFUSED against a dirty tree and PERMITTED against a clean one (scripts/ci/test-git-destructive-guard.sh, wired into audit.yml shard 4)
+    - the lost coverage trust-signal was rebuilt separately in almanac 279b180 and is NOT still missing
+  notes: |
+    Root cause was three stacked failures, and the reset is the LEAST interesting: (1) work sat UNCOMMITTED for 13h in a shared checkout — the one loss class git cannot recover; (2) the agent worked in the PRIMARY checkout other sessions share instead of its own worktree; (3) reset --hard ran against a dirty tree with no check. Git has NO pre-reset hook, so a hook-based fix inside git is impossible; the design weights the object-store snapshot (criterion 3) as load-bearing and the refusal (criterion 1) as the seatbelt. Recovery of the original bytes was attempted and IS impossible (git fsck --lost-found + cat-file over every dangling commit/tree/blob found nothing). NOTE: the destroyed coverage trust-signal for MCP responses was REBUILT SEPARATELY in almanac commit 279b180 — it is not still missing.
+  closed_pr: 3549
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: cd ~/Projects/almanac && git reflog -6
+    OUTPUT:
+      869d896 HEAD@{0}: reset: moving to origin/main
+      869d896 HEAD@{1}: checkout: moving from main to main
+      869d896 HEAD@{2}: branch: Reset to origin/main
+    
+    COMMAND: git fsck --lost-found, then cat-file every dangling commit/tree for
+      crates/almanac-core/src/coverage.rs containing 'measure_from_store'
+    OUTPUT: NOT FOUND in any dangling object. 16 loose objects exist from the
+      2026-08-08 20:00-22:00 authoring window; none carry the content. Unstaged
+      work never entered the object store, so there is nothing to recover.
+    
+    WHAT WAS LOST: ~574 insertions across 7 files in the almanac PRIMARY checkout
+    (coverage.rs +51, embed.rs +98, fusion.rs +29, almanac-mcp/src/main.rs +224,
+    almanac-mcp/tests/roundtrip.rs +93, scripts/embed-fleet.sh +115, README.md +23):
+    a coverage trust-signal so an MCP search response carries its own reliability
+    marker inline (measure_from_store — measure a repo from an already-open Store,
+    no second DB open on the hot path). Authored 2026-08-08 20:40-21:10, still
+    uncommitted 13h later. A second session's in-flight work (RESILIENT-255) died
+    in the same reset.
+    
+    THEORY: three failures stacked; the reset is the least interesting one.
+      1. Work sat UNCOMMITTED for 13 hours in a shared checkout. Unstaged changes
+         are the one class git cannot recover — no reflog, no fsck, no stash. It
+         was one cleanup away from gone the whole time, reset or not.
+      2. Agents work directly in the PRIMARY checkout other sessions share, rather
+         than in their own worktree. almanac already has .claude/worktrees/.
+      3. reset --hard ran against a dirty tree with no check; git has no pre-reset
+         hook, so nothing could warn.
+    The lost work also left the suite RED (added a test, never updated DEPTH.md's
+    count), so it violated shop rule #8 and was never shippable as it sat.
+    
+    ALT rejected: 'tell agents to be careful'. This is the SECOND multi-session git
+    incident — the first is already in auto-memory as 'ship via git fetch . branch:main
+    when the primary checkout belongs to a sibling session'. A rule that already
+    existed and was already violated is not a fix. ALT rejected: make reset itself
+    safe — git offers no pre-reset hook. The durable fix is that work reaches the
+    object store EARLY, so recovery stays possible even when the destructive command
+    is legitimate.
+

@@ -1,0 +1,15 @@
+- id: EFFECTIVE-325
+  domain: EFFECTIVE
+  title: "unify fleet backend selection: worker.sh reads FLEET_BACKEND, dispatch.rs reads CHUMP_WORK_BACKEND — two vars, silent divergence"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"worker.sh reads FLEET_BACKEND, dispatch.rs reads CHUMP_WORK_BACKEND — two vars, silent divergence\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3345
+  outcome_id: CHUMPOS
+  evidence: |
+    2026-07-27: configured the cheap fleet with CHUMP_WORK_BACKEND=chump-local (drives dispatch.rs / chump improve / chump --execute-gap) but the fleet worker kept spawning claude -p sonnet — because worker.sh reads a DIFFERENT var, FLEET_BACKEND, which defaults to 'claude' whenever an OAuth token is present (worker.sh:111-116). Two backend-selection vars that silently diverge is a productization trap: an operator sets one, the other path ignores it. Unify to a single var (or make worker.sh honor CHUMP_WORK_BACKEND), and have 'chump fleet start' echo the resolved backend so it's visible.
+

@@ -1,0 +1,13 @@
+- id: MISSION-072
+  domain: MISSION
+  title: "MISSION: Implement systemd daemon parity (Service File) (MISSION-065 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - systemd unit file is created with correct Restart, User, and Environment settings
+    - Service file matches the operational requirements of the MISSION daemon
+  closed_date: '2026-07-28'
+  closed_pr: 3344
+  outcome_id: CHUMPOS
+

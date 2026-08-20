@@ -1,0 +1,12 @@
+- id: CREDIBLE-187
+  domain: CREDIBLE
+  title: "rescue-beast-ci track is mis-specified: required_check 'ml-pipeline' is a PUSH-ONLY workflow (never runs on PRs), so (a) it does NOT 'block merges' as the task claims, and (b) PR-green scoring + the pre-merge gate structurally cannot verify a fix for it. A proving-ground RESCUE track must target a check that runs on PRs (build/smoke-tests/quality-gate) so the fix is verifiable pre-merge. Re-spec the track or pick a PR-verifiable failing target"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"required_check 'ml-pipeline' is a PUSH-ONLY workflow (never runs on PRs), so (a) it does NOT 'block merges' as the task claims, and (b) PR-green scoring + the pre-merge gate structurally cannot verify a fix for it. A proving-ground RESCUE track must target a check that runs on PRs (build/smoke-tests/quality-gate) so the fix is verifiable pre-merge. Re-spec the track or pick a PR-verifiable failing target\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-02'
+

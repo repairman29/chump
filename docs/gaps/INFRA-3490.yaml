@@ -1,0 +1,16 @@
+- id: INFRA-3490
+  domain: INFRA
+  title: "RESILIENT: [COTG-2.2] deterministic CI-gate self-heal (fix the OS's own 1-line failures)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-2.2] deterministic CI-gate self-heal (fix the OS's own 1-line failures)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~45% -> FINISH. src/pr_rescue.rs is WIRED (chump pr-rescue, force-with-lease-only), covers 2/4 classes (env-var, ambient-kind). Add debt-ceiling + install-manifest arms mirroring the env-var arm; detection logic lives in src/verify/rules/.
+  closed_date: '2026-07-30'
+  closed_pr: 3381
+  outcome_id: COTG
+

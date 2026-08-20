@@ -1,0 +1,14 @@
+- id: DOC-069
+  domain: DOC
+  title: "DOC: COTG readiness backlog — the full grounded plan from vision to in-hands tool (docs/strategy/COTG_READINESS_BACKLOG.md)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"COTG readiness backlog — the full grounded plan from vision to in-hands tool (docs/strategy/COTG_READINESS_BACKLOG.md)\" is implemented in the relevant DOC code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3371
+  outcome_id: COTG
+

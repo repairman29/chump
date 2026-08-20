@@ -1,0 +1,51 @@
+- id: RESILIENT-255
+  domain: RESILIENT
+  title: "RESILIENT: 71 of 108 almanac sources are frozen — the untether sweep removed worktrees without backfilling origin_url"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Backfill origin_url for the 71 orphaned entries so Phase F's probe-and-materialise path actually engages, then make the failure mode impossible to miss again. Derivation: slug -> https://github.com/repairman29/<slug>, VERIFIED per repo with gh before writing (several slugs differ in case or hyphenation from the GitHub name, and today's session already proved a case-sensitive assumption can lose four repos). Any slug that does not resolve is reported, not guessed. Second half, which matters as much: 'missing' must stop being the answer for three different situations — genuinely deleted, un-migrated, and origin-unreachable are distinct states and only one of them is the operator's problem. This is the same honesty rule the retrieval side already follows with fallback_reason.
+  acceptance_criteria:
+    - origin_url is populated for every orphaned entry whose GitHub repo resolves, verified with gh rather than string-derived, and any slug that does NOT resolve is listed in the run output rather than silently skipped
+    - after backfill, 'almanac refresh' re-indexes those repos via the probe path — proven on at least one repo whose origin sha has moved since its indexed_commit
+    - refresh distinguishes deleted / un-migrated / origin-unreachable instead of reporting all three as 'missing'
+    - almanac repos (or coverage) reports refreshability per source, so a frozen index is visible without running a categorisation script by hand
+    - search_fleet or status surfaces that a served index is frozen — today all 71 answer queries with no staleness signal at all, which is the confident-wrong-answer shape
+    - "a regression test covers an entry with no worktree and no origin_url: it must report un-migrated, never 'fresh' and never 'missing'"
+  notes: |
+    SHIPPED 2026-08-09 in almanac 4ccc6b9 + cdf45e5 (repairman29/almanac origin/main). No chump PR — the fix lives in almanac and landed by direct commit.
+    
+    All six acceptance criteria met:
+    1. origin_url backfilled for all 71 orphaned entries, verified against the live
+       GitHub repo list via gh (one call, matched case-insensitively) rather than
+       string-derived. Three slugs differ from their GitHub name and would each have
+       been written as a 404: jarvis->JARVIS, jarvis-premium->JARVIS-Premium,
+       mythseeker->MythSeeker. Every slug resolved; an unresolved one would have been
+       listed, not skipped. 25 of 71 are archived — still clonable, still refreshable.
+    2. refresh re-indexes via the probe path — 'almanac refresh pixi-game' now reports
+       'fresh (probe only, no worktree)' off a live ls-remote, impossible before.
+    3. 'missing' split into un-migrated / deleted; origin-unreachable already existed.
+       Both new branches verified live against a synthetic ALMANAC_HOME.
+    4. 'almanac repos' prints refreshability per source (71 remote, 39 worktree,
+       0 frozen) and warns on any FROZEN count.
+    5. search_fleet + MCP carry the frozen signal — on the HIT, not as a droppable
+       response note; absent from JSON when false so existing callers are unaffected.
+    6. 6 regression tests: 4 on classify_absent (un-migrated vs deleted, never
+       'fresh', never re-collapsed), 2 on the frozen serialization contract.
+       DEPTH.md updated in the same commits, naming what they do NOT cover.
+    
+    CORRECTION to this gap's framing: 0 of the 71 had actually drifted. All origins
+    were reachable and every indexed_commit still matched HEAD, so almanac was never
+    serving stale CONTENT. The exposure was latent — un-refreshable, not wrong. The
+    title said 'frozen', which was right; it implied 'stale', which was not.
+    
+    NOTE: this work was completed once, destroyed by a sibling session's
+    'git reset --hard' on the shared checkout (RESILIENT-256), and rebuilt in a
+    worktree with an immediate commit.
+  closed_date: '2026-08-09'
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: RESILIENT-000
+  evidence: |
+    COMMAND: python3 categorise ~/.almanac/registry.json by (origin_url present / worktree present / .git present) ; almanac refresh biomeweavers ; sqlite3 ~/.almanac/indexes/biomeweavers.db  |  OUTPUT: 108 registered sources — 34 local-git, 3 local-nongit, 0 remote-tracked, and 71 ORPHAN (no worktree AND no origin_url). 'almanac refresh biomeweavers' prints 'missing'. Its index is NOT missing: biomeweavers.db holds 11 files, indexed_at 2026-08-07, and search_fleet skips only on !db.exists(), so all 71 frozen indexes are still searched and served today.  |  THEORY: Phase F shipped the mechanism correctly — RepoEntry gained origin_url, refresh_entry dispatches to refresh_remote_entry when it is set, and remote_head_sha/materialize_shallow implement probe-then-materialise. The untether sweep then reclaimed 9.4GB by deleting cache worktrees. The two halves were never joined: no migration wrote origin_url for the 71 existing entries, so refresh_entry falls through to the !root.exists() branch and returns 'missing' forever. 66 percent of the fleet index is frozen at whatever commit it last saw, still answering queries with no staleness signal, and the word 'missing' actively misleads — it reads as 'gone' when it means 'un-migrated'.  |  ALT: considered re-cloning all 71 to restore worktrees — rejected, that undoes the 9.4GB reclaim the sweep was built for. Considered dropping the 71 from the registry — rejected: their indexes are real and answering; deleting them loses fleet coverage and violates archive-only. The fix is a backfill, and the URL is derivable: these are repairman29 repos and the slug maps to the GitHub name, verifiable with gh repo view before writing.
+

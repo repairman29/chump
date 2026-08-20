@@ -1,0 +1,14 @@
+- id: INFRA-3479
+  domain: INFRA
+  title: "CREDIBLE: mission-scoreboard must VERIFY zero-touch (Chump-Agent trailer) on BEAST merges, not just COUNT them"
+  status: shipped
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"mission-scoreboard must VERIFY zero-touch (Chump-Agent trailer) on BEAST merges, not just COUNT them\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:42:13Z] Fixed by INFRA-3496 / PR #3373 (same fix: scoreboard classifies BEAST merges by the Chump-Agent trailer).
+  closed_pr: 3373
+

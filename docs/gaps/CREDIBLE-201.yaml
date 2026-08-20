@@ -1,0 +1,19 @@
+- id: CREDIBLE-201
+  domain: CREDIBLE
+  title: "CREDIBLE: binary-age gauge stats the symlink not the target — freshness gate cries CRITICAL_STALE, scoreboard prints false build-date"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Two instruments report a ~95-day-old deployed binary while auto-deploy is verifiably working (target rebuilt 2026-08-05 17:48; PR #3478 merged 23:41Z same day). Root cause per evidence: binary-age is measured against ~/.local/bin/chump, a symlink created 2026-05-02, instead of resolving to ~/.cargo/bin/chump — 8251242s lands exactly on the symlink's date. Blast radius: (a) scripts/coord/freshness-preamble.sh (META-115) reports CRITICAL_STALE at every session start — a mandatory gate crying wolf trains agents to ignore it; (b) scripts/dev/mission-scoreboard.sh prints '(binary built 2026-05-02T11:47Z)' beside a passing (3) SHA check; (c) the scoreboard verdict hardcodes 'Next lever: MISSION-012 (self-deploy)' one line under 'MISSION-012 done'. Rough shape: stat -L (or readlink -f then stat) wherever binary mtime is read; derive the verdict's next-lever line from computed state instead of a literal; CI sibling with a symlink fixture so this class can't regress.
+  acceptance_criteria:
+    - freshness-preamble binary-age resolves symlinks (stat -L) and reports fresh when the deploy target is current
+    - mission-scoreboard build-date resolves the target and matches the deployed SHA claim
+    - verdict next-lever line is computed, not hardcoded — never names a goal the same run reports done
+    - scripts/ci regression test covers the symlink case
+  closed_date: '2026-08-06'
+  closed_pr: 3482
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: bash scripts/coord/freshness-preamble.sh; ls -la ~/.local/bin/chump ~/.cargo/bin/chump. OUTPUT: 'Freshness: CRITICAL_STALE (commits-behind=0, binary-age=8251242s, cron-health=unavailable, bootstrap=FAIL)' while ~/.cargo/bin/chump mtime is 2026-08-05 17:48 (rebuilt same day) and ~/.local/bin/chump is a symlink created 2026-05-02 05:47 pointing at it. THEORY: the gauge lstats the symlink instead of stat -L on the resolved target — 8251242s is ~95.5d which lands exactly on 2026-05-02; mission-scoreboard's '(binary built 2026-05-02T11:47Z)' shares the same artifact, and its verdict still prints 'Next lever: MISSION-012 (self-deploy)' one line under 'MISSION-012 done'. ALT: auto-deploy genuinely dead and the binary truly stale — refuted: target rebuilt today, scoreboard (3) SHA-vs-origin/main check passes (CREDIBLE-151), fleet shipping (PR #3478 merged 2026-08-05T23:41Z).
+

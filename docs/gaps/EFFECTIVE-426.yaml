@@ -1,0 +1,14 @@
+- id: EFFECTIVE-426
+  domain: EFFECTIVE
+  title: "EFFECTIVE: install+wire fast linker fleet-wide (lld Mac / mold Linux) — cheapest big build win, currently missing"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "No linker override exists today (verified: only Apple ld on Mac, no mold/lld). Install + wire a fast linker fleet-wide: lld on macOS (brew install llvm/lld, -C link-arg=-fuse-ld=lld), mold on Linux hosts (via provision-chumpd-host.sh so helsinki/closetjunky get it). Put the config where it propagates (provision script / committed template) NOT just the gitignored .cargo/config.toml. Measure a warm incremental link before/after and record the delta."
+  notes: |
+    [2026-08-10T11:20:34Z] Already implemented+merged via PR #3585 by a sibling worktree claim before this session started; verified fast-linker install script + provision wiring landed on main. Flipping status to reflect reality (chump gap ship blocked by unrelated dirty WIP in primary checkout).
+  closed_date: '2026-08-10'
+  closed_pr: 3585
+  outcome_id: FLEET-BUILD-SPEED
+

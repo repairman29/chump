@@ -1,0 +1,82 @@
+- id: EFFECTIVE-391
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [almanac] duplicate census — one query found retry logic written 13 times, 5 of them literal copies"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Probe run 2026-08-07, unplanned: almanac_search_fleet 'retry exponential backoff' returned implementations in 13 repos — postsub, beast-mode (FOUR separate ones), slidemate, bulwark, code-roach, coderoach, echeovid, maclawd, openclaw, smuggler (two), smugglers, trove-web. Structural evidence of copying, not convergent design: bulwark:src/retry-patterns.js:10 and smugglers:shared-utils/retry-patterns/index.js:10 are the same class at the same line; RetryService sits at src/services/retryService.js:6 in three separate repos. And smugglers/shared-utils/retry-patterns/ proves an extraction ALREADY HAPPENED and never propagated. That is the fleet's latent-value shape in one query: not missing capability, unpropagated capability. Build 'almanac census <concept>' — every implementation across registered repos, literal-copy detection by structural identity (same symbol, same relative path, same line), and an extractability score from what almanac already measures (importer count, coupling via neighbors/impact, test presence). Output ranks 'built N times, here is the best one, here is the adoption cost'. Serves rule 5 (mine before archive), the ZERO-WASTE pillar, and the living-stack mission, since extracted shared components ARE the stack. Scope narrowly: a --concept query over the existing index first, proven on the retry case, BEFORE any general clustering pass.
+  acceptance_criteria:
+    - "almanac census <concept> lists every implementation across registered repos with repo:path:line, grouped so one capability reads as one row with N sites"
+    - literal copies are flagged by structural identity (same symbol name + same relative path + same start line), distinguishing 'copied' from 'independently written' — the retry case must show bulwark/smugglers and the three RetryService sites as copies
+    - each cluster carries an extractability signal computed from real index data (importer counts, coupling, test presence), and states which inputs were unavailable rather than scoring on partial data
+    - "the report names an EXISTING extraction when one is present — smugglers/shared-utils/retry-patterns is the proof case: the tool must say 'already extracted, N repos have not adopted it'"
+    - "honest about vocabulary: keyword mode only finds shared-vocabulary concepts, so the output states its retrieval mode and warns that divergent naming is invisible until fleet embedding coverage (15% on 2026-08-07) drains"
+    - "dogfood receipt: the retry census output recorded in the gap notes"
+    - DEPTH.md updated same commit
+  notes: |
+    [2026-08-10T06:21:20Z] Dogfood receipt (retry probe, fixture=scripts/dev/fixtures/almanac-census-retry-example.json since almanac binary is not present in this worktree): almanac-census.py reproduces the census — 16 sites/12 capabilities/5 literal-copy sites, RetryService flagged verbatim (3 repos), RetryPatterns flagged moved (bulwark+smugglers) with existing-extraction call-out naming bulwark as non-adopter, vocabulary+retrieval-mode caveat present. Full output:
+    almanac census — concept: 'retry exponential backoff'
+      retrieval mode: fixture — loaded from fixture scripts/dev/fixtures/almanac-census-retry-example.json, no live almanac call made
+      16 sites across 12 capabilities, 5 flagged as literal copies
+      WARNING: keyword mode only finds shared-vocabulary concepts: this census groups strictly by exact symbol name and CANNOT see implementations that solve the same problem under a different name. Fleet embedding coverage is 15% (as of 2026-08-07, source: fallback (last measured, almanac coverage unavailable live)) — until that drains, divergent naming is invisible to this tool.
+    
+    [RetryService] 3 site(s)
+        postsub:src/services/retryService.js:6 (COPY)
+        beast-mode:src/services/retryService.js:6 (COPY)
+        slidemate:src/services/retryService.js:6 (COPY)
+        -> copy group (verbatim): postsub:src/services/retryService.js:6, beast-mode:src/services/retryService.js:6, slidemate:src/services/retryService.js:6
+        extractability: 61/100 — importer_count(max=4) + test_presence(True) + coupling(max=5, lower is easier to extract)
+    
+    [RetryPatterns] 2 site(s)
+        bulwark:src/retry-patterns.js:10 (COPY)
+        smugglers:shared-utils/retry-patterns/index.js:10 (COPY)
+        -> copy group (moved): bulwark:src/retry-patterns.js:10, smugglers:shared-utils/retry-patterns/index.js:10
+        EXISTING EXTRACTION: already extracted at smugglers:shared-utils/retry-patterns/index.js:10 — 1 repo(s) have not adopted it: bulwark
+        extractability: 72/100 — importer_count(max=6) + test_presence(True) + coupling(max=4, lower is easier to extract)
+    
+    [retry_with_backoff] 2 site(s)
+        beast-mode:utils/retry.py:15
+        code-roach:src/retry.py:12
+        extractability: 62/100 — importer_count(max=2) + test_presence(True) + coupling(max=2, lower is easier to extract)
+    
+    [ExponentialBackoff] 1 site(s)
+        beast-mode:lib/backoff.js:20
+        extractability: 61/100 — importer_count(max=1) + test_presence(True) + coupling(max=1, lower is easier to extract)
+    
+    [RetryHelper] 1 site(s)
+        beast-mode:workers/retry_helper.rb:8
+        extractability: unscored — not scored — real inputs unavailable for at least one site: importer_count, test_presence. Scoring on partial data would misrepresent confidence.
+    
+    [retry_attempt] 1 site(s)
+        coderoach:src/retry.py:12
+        extractability: 31/100 — importer_count(max=1) + test_presence(False) + coupling(max=1, lower is easier to extract)
+    
+    [withRetry] 1 site(s)
+        echeovid:src/utils/retry.js:5
+        extractability: 59/100 — importer_count(max=2) + test_presence(True) + coupling(max=3, lower is easier to extract)
+    
+    [RetryPolicy] 1 site(s)
+        maclawd:ios/RetryPolicy.swift:9
+        extractability: 31/100 — importer_count(max=1) + test_presence(False) + coupling(max=1, lower is easier to extract)
+    
+    [Backoff] 1 site(s)
+        openclaw:src/retry/backoff.go:14
+        extractability: 66/100 — importer_count(max=3) + test_presence(True) + coupling(max=2, lower is easier to extract)
+    
+    [retryRequest] 1 site(s)
+        smuggler:src/retry.js:7
+        extractability: 31/100 — importer_count(max=1) + test_presence(False) + coupling(max=1, lower is easier to extract)
+    
+    [BackoffTimer] 1 site(s)
+        smuggler:src/utils/backoffTimer.js:3
+        extractability: 30/100 — importer_count(max=0) + test_presence(False) + coupling(max=0, lower is easier to extract)
+    
+    [retryFetch] 1 site(s)
+        trove-web:lib/retryFetch.js:11
+        extractability: 65/100 — importer_count(max=2) + test_presence(True) + coupling(max=1, lower is easier to extract)
+  closed_date: '2026-08-10'
+  closed_pr: 3578
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: EFFECTIVE-000
+

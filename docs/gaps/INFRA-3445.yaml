@@ -1,0 +1,13 @@
+- id: INFRA-3445
+  domain: INFRA
+  title: "EFFECTIVE: free-tier prompt routes weak models to almanac_search as the grounding step (tool wired in EFFECTIVE-324, workflow never mentioned it)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"free-tier prompt routes weak models to almanac_search as the grounding step (tool wired in EFFECTIVE-324, workflow never mentioned it)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3346
+  outcome_id: MISSION-010
+
