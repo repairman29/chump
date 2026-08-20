@@ -1,7 +1,8 @@
 - id: CREDIBLE-270
   domain: CREDIBLE
   title: "SHIP-INFRA 2/7 [FOUNDATION]: definition-of-ready — no PR opens until chump preflight is green locally (shift quality left; CI becomes a rubber-stamp)"
-  status: open
+  status: done
+  closed_pr: 3650
   priority: P1
   effort: m
   acceptance_criteria:
@@ -11,4 +12,24 @@
   outcome_id: SHIP-INFRA
   evidence: |
     Today PRs failed in CI on things (fmt/clippy/parity/test) that a local chump preflight would have caught in 60s — 15-min round-trips discovering failures remotely. Jeff: prep gaps to near-done before shipping.
+  notes: |
+    RECONCILE (2026-08-20): already shipped via PR #3650 (6c097b58,
+    "definition-of-ready gate — no PR opens until chump preflight is green
+    locally"), an ancestor of current main — but state.db had no open->done
+    transition recorded, so this YAML never got flipped to done. Same
+    stale-record class as the CREDIBLE-269/RESILIENT-277 reconciles.
+
+    Verified all AC against scripts/coord/bot-merge.sh and
+    scripts/coord/definition-of-ready-gate.sh on main:
+    - bot-merge.sh:3499-3519 calls definition-of-ready-gate.sh before
+      `gh pr create`, and `_bm_fail`s the PR-open path on non-zero exit (AC1).
+    - definition-of-ready-gate.sh runs `chump preflight --scope all`
+      (falling back to raw fmt/clippy/check when the binary isn't built) and
+      exits 21 on failure, naming the failing gate in preflight's own output;
+      exit 0 on a clean run (AC2).
+    - `CHUMP_DOR_SKIP=1` without `--skip-reason` exits 22 and refuses; with a
+      reason it emits `kind=definition_of_ready_bypassed` with the reason to
+      ambient.jsonl (AC3).
+    Reconciled via direct YAML edit (gap absent from state.db, same as the
+    CREDIBLE-269 precedent).
 
