@@ -6057,6 +6057,30 @@ mod tests {
     }
 
     #[test]
+    fn zerowaste056_ship_syncs_yaml_to_done() {
+        // ZERO-WASTE-056: the `gap ship` CLI writes docs/gaps/<ID>.yaml atomically
+        // (via dump_per_file_single) in the same op as the state.db flip, so the
+        // gap-close rides in the WORK PR and no separate per-gap reconcile PR is
+        // ever needed (that churn was ~half of all merges). Locks in the two ops
+        // the CLI handler chains; removing the dump call fails this.
+        let (store, _dir) = test_store();
+        let id = store.reserve("ZERO-WASTE", "ship-yaml-sync test", "P1", "s").unwrap();
+        let gaps_dir = _dir.path().join("docs").join("gaps");
+        store.ship(&id, "s", Some(4242)).unwrap();
+        let wrote = store.dump_per_file_single(&id, &gaps_dir).unwrap();
+        assert!(wrote, "dump_per_file_single should write the yaml on ship");
+        let yaml = std::fs::read_to_string(gaps_dir.join(format!("{id}.yaml"))).unwrap();
+        assert!(
+            yaml.contains("status: done"),
+            "post-ship yaml must show status: done (no drift), got: {yaml}"
+        );
+        assert!(
+            yaml.contains("closed_pr: 4242"),
+            "post-ship yaml must record closed_pr, got: {yaml}"
+        );
+    }
+
+    #[test]
     fn credible218_ship_refuses_deliberate_terminal() {
         // A superseded/wontfix gap is a deliberate operator decision — ship() must NOT
         // silently flip it to done just because a commit mentions the ID.
