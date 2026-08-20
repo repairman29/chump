@@ -1,0 +1,19 @@
+- id: CREDIBLE-217
+  domain: CREDIBLE
+  title: "CREDIBLE: [almanac] run the CONFIG organ fleet-wide on cadence — drift detection that fired once during UAT and never again"
+  status: superseded
+  priority: P2
+  effort: m
+  description: |
+    The CONFIG organ already proved it finds real incoherence, once. During the comprehend UAT it surfaced CARGO_TARGET_DIR resolved 14 different ways across 171 sites in chump, three conflicting BEAST_MODE endpoint flags across 356 reads including a beast-mode.dev vs beastmode.dev typo-domain, OPENAI_API_KEY with 4 different defaults over 49 reads in Maclawd, and HEARTBEAT_DURATION set to both 2m and 8h. Every one of those is a live-config landmine. It ran as a one-off audit and has not run since. Make it a cadence job across all 103 registered repos, reporting only CHANGES in the drift set so the output stays signal — a first run establishes the baseline, subsequent runs report what is new or newly-resolved. Route material findings to holler so they become gaps through the existing bridge; this is genuinely a found-defect flow, which is what holler is for.
+  acceptance_criteria:
+    - a scheduled sweep runs the CONFIG organ across every registered repo and persists the drift set per repo
+    - subsequent runs report DELTAS (new drift, resolved drift) not the full set — a report that repeats 171 known sites every run gets ignored, which is how the last one died
+    - "per-ecosystem coverage honesty is preserved: a repo whose language has no CONFIG adapter reports None, never Full over nothing"
+    - material findings route to holler with project set to the real repo slug so the existing holler-to-chump bridge files them (this IS a found-defect flow — the correct use of that intake)
+    - benign sentinel variance (AGENT_ID placeholders, empty-string vs unset) is classified and suppressed by rule, not by hand, with the rule stated in the output
+    - first sweep's summary recorded so the baseline is visible
+  notes: |
+    Superseded by EFFECTIVE-389 (code-posse) 2026-08-07. I filed this as a CONFIG-organ-only cadence sweep without checking the registry first — EFFECTIVE-389 already covered it and is strictly more general (all five organs, posse-pattern diffing, holler bridge conventions, placement decision). My two unique contributions (the stated-rule sentinel suppression, and the proven finding classes as a signal-quality bar) were folded into 389's AC list before closing this. This is exactly the DOC-082 dedupe failure that ZERO-WASTE-045 exists to prevent, committed by the agent who filed ZERO-WASTE-045 four hours earlier.
+  skills_required: "external_repo:repairman29/almanac"
+

@@ -2,7 +2,6 @@
   domain: INFRA
   title: "RESILIENT: pr-auto-rebase falls back to local rebase + custom merge drivers BEFORE giving up — handles additive ci.yml conflicts the daemon currently fails (would have rescued tonight's 9 stale PRs)"
   status: done
-  closed_pr: 3318
   priority: P1
   effort: m
   description: |
@@ -19,7 +18,7 @@
     - cargo fmt/clippy/shellcheck clean per CLAUDE.md
   notes: |
     Pillar: RESILIENT. Direct observation: 9-of-9 stale PRs tonight failed the daemon, but the same conflicts I had to resolve manually last night via git rebase + merge drivers succeeded. Pairs with INFRA-1482 (merge-driver bugs — separate concern, lives in scripts/coord/.gitattributes). Pairs with INFRA-1648 (chump pr cascade-rebase command — same code path could power both). Without this fix, every cascade from a hotspot file (ci.yml is the canonical example) requires manual shepherd-level rescue. Effort=m because the worktree-add-then-rebase loop has edge cases (gitdir confusion per INFRA-779, lease collision, etc).
-
+    
     Already shipped: local-rebase fallback landed in PR #2553 (commit
     7cafaccf, INFRA-1958) and was extended with the timeout guard +
     driver/conflict telemetry in PR #3318 (commit 31b11a22, this gap's own
@@ -35,7 +34,7 @@
     (same canonical-store split-brain class as INFRA-3606) even though the
     work shipped months ago; syncing here per the RESILIENT-244/RESILIENT-134
     precedent.
-
+    
     [2026-08-19] SYNC: this gap has already been documented as
     already-shipped twice (#3926, #3927-adjacent commit 631c4ac9) but
     state.db kept re-importing it as status:open from this stale YAML —
@@ -47,5 +46,7 @@
     scripts/ci/test-pr-auto-rebase-local-fallback.sh passes 12/12. Flipping
     status to done against PR #3318 (the PR that did the actual work) so
     the picker stops re-surfacing a gap that shipped months ago.
+  closed_date: '2026-08-19'
+  closed_pr: 3318
   outcome_id: MISSION-010
 

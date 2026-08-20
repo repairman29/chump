@@ -1,0 +1,22 @@
+- id: DOC-093
+  domain: DOC
+  title: "decision record: fleet comms run Chump-native on Discord; openclaw code may be PORTED (MIT), its system never run"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "WRITE THE DECISION RECORD at docs/strategy/ with doc_tag: decision-record (per the DOC-089 taxonomy). Binding decision, not a plan"
+    - "THE DECISION, in the operator's words: 'we can port their code into our ops but not using their system.' Running openclaw as ChumpOS's transport would bolt the OS onto a third-party agent runtime — what the ChumpOS directive forbids and what he called 'a violation of my goals/practice'. Porting the logic INTO Chump makes the capability ours"
+    - "LICENSE CLEARED: openclaw is MIT (LICENSE: 'MIT License, Copyright (c) 2025 Peter Steinberger'; package.json license MIT, v2026.3.3, upstream github.com/openclaw/openclaw). Permissive, so porting is permitted and there is NO copyleft contamination risk for almanac/Chump as giveaway candidates — the failure mode that only surfaces at publish time (shop rule #4)"
+    - "ATTRIBUTION — OPERATOR'S CALL, and it is proportionate: the port is TS -> Rust, a reimplementation rather than a copy, so credit goes in the PR description ('inspired by openclaw, MIT, github.com/openclaw/openclaw') rather than MIT headers in every ported file. MIT's notice requirement attaches to substantial portions of the SOURCE, and a from-scratch Rust rewrite of a concept is not that"
+    - "THE ONE LINE THAT STILL TRIGGERS A FILE HEADER: if any artifact ends up substantially verbatim — a transcribed regex, a copied constant/lookup table, an algorithm carried line-by-line — that file carries the MIT notice. Concept-level borrowing does not. Judge per file at port time, not retroactively"
+    - "WHAT TO PORT, ranked by what Chump genuinely lacks: (1) inbound-job.ts + inbound-worker.ts — a DURABLE QUEUE for inbound messages; Chump has no equivalent and it is the difference between dropping a reply and processing it; (2) dm-command-auth.ts + dm-command-decision.ts — authorize a DM command, then decide what it means, literally the operator's question; (3) allow-list.ts; (4) chunk.ts + draft-stream.ts for Discord's 2000-char cap — discord_dm.rs and notify-operator.sh both TRUNCATE today, so long alerts silently lose their tail; (5) gateway-error-guard.ts; (6) exec-approvals.ts + agent-components.ts button patterns, cross-checked against Chump's existing chump_approve:/chump_deny: scheme"
+    - "WHAT NOT TO PORT: anything assuming openclaw's plugin runtime, config schema, or gateway registry. Port capability, not architecture — importing its shape wholesale is running its system under another name"
+    - "WHAT CHUMP ALREADY HAS, so nobody rebuilds it: approval_resolver.rs (tested); discord.rs gateway bot with owner verification at :932/:964/:999 and interaction_create at :1210 already parsing chump_approve:<id>/chump_deny:<id>; discord_dm.rs REST send needing NO bot (proven live, HTTP 200 twice on 2026-08-09); platform_router.rs MessagingAdapter; telegram.rs; POST /api/approve; web/v2/approval.js; INFRA-1340 web-push escalation"
+    - "SURFACE DESIGN — server AND DMs, different jobs. DM = 'a line stopped, decide now', severity-gated, rate-limited, with buttons. Channels = ambient (#ops-alerts, #ci, #ships, #gaps). THREAD PER ARTIFACT (one per PR/gap) so conversation lives with the work rather than a firehose — that is what makes running the business from a phone workable"
+    - "THE ONE REAL BLOCKER: the shipped binary has NO discord feature (--cfg feature=default; discord/telegram are optional cargo features) and no chump discord process runs. Nothing is RECEIVED until it is compiled in and running under launchd WITH a liveness check. Outbound already works without it"
+    - "SECURITY BOUNDARY from holler: the gateway runs a FULL agent turn, so a commanding DM is an authorization surface. Reading/explaining may be conversational; state changes go ONLY through buttons or a fixed verb set. Owner-ID checks are necessary, not sufficient — an agent can be steered by content quoted into it from a PR, log or stack trace"
+    - "LINK: RESILIENT-262, RESILIENT-263 (shipped), RESILIENT-265"
+  closed_pr: 3544
+  outcome_id: CHUMPOS
+

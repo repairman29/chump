@@ -1,0 +1,12 @@
+- id: CREDIBLE-189
+  domain: CREDIBLE
+  title: "Attribute token+cost+actual-model per bench lap: agent-run subprocess must emit its per-run cost (model, in/out tokens) to ambient session_end or cost_ledger so the bench can read it (current session_end rows are bare; in-process cost_tracker can't see the subprocess). Builds on CREDIBLE-188 wall-clock"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"agent-run subprocess must emit its per-run cost (model, in/out tokens) to ambient session_end or cost_ledger so the bench can read it (current session_end rows are bare; in-process cost_tracker can't see the subprocess). Builds on CREDIBLE-188 wall-clock\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3470
+

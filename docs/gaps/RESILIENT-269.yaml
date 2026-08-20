@@ -1,0 +1,15 @@
+- id: RESILIENT-269
+  domain: RESILIENT
+  title: "RESILIENT: integrator aborts whole batch on first merge conflict — skip-and-continue like CREDIBLE-158 fetch-fail (batching never lands)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"integrator aborts whole batch on first merge conflict — skip-and-continue like CREDIBLE-158 fetch-fail (batching never lands)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3550
+  outcome_id: COTG
+  evidence: |
+    Live 2026-08-09: integrator LIVE cycles abort every time — 'cycle integration-2026-08-09-1758 aborted — merge conflict on INFRA-1655', earlier 'aborted — merge conflict on INFRA-3431' (a STALE branch/fetch-fail). Root cause: build_integration_branch (crates/chump-integrator/src/cycle/merge_branch.rs:121-141) does 'git merge --abort' then RETURNS on the FIRST merge conflict (line 137, comment 'abort on first conflict'), while the sibling fetch-failure path (line 89-99, CREDIBLE-158) already skip-and-continues. AND daemon.rs:298 aborts the whole cycle if conflicts is non-empty — which even negates the CREDIBLE-158 fetch-skip. Net: one conflicting or stale branch kills the entire batch, so batching never lands and the queue grows (331->351) instead of draining. Fix: merge conflict -> continue (mirror fetch-fail); daemon proceeds with merged_gaps if non-empty, aborts only if nothing merged.
+

@@ -1,0 +1,12 @@
+- id: INFRA-3439
+  domain: INFRA
+  title: "CI cache-budget: measure hot-cache survival post-churn-fix; disable nightly caching if still starved"
+  status: wontfix
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "After the cache-budget churn fix (audit/e2e/integration trunk-scoped, cache-budget PR #3316) merges + a few main pushes repopulate the v1-trunk hot caches: MEASURE whether the clippy/cargo-test/fast-checks v1-trunk caches now survive (gh api repos/repairman29/chump/actions/caches "
+    - " grep v1-trunk-ci-clippy) and RESTORE warm (a PR's cargo-test 'Cache cargo' step should say 'Cache restored' not 'No cache found'). Steady-state main-saved set (clippy~3 + cargo-test~3 + fast-checks~2 + e2e~1 + integration~0.9 + audit~0.2 + nightly~3.2 = ~13 GB) still exceeds GitHub's 10 GB/repo limit, so LRU may still evict. IF hot caches still don't survive: disable Swatinem caching on the 3 nightly workflows (coverage-nightly.yml, ci-nightly.yml, e2e-dogfood-nightly.yml — ~3 GB, nightly crons don't need warm caches) to guarantee headroom. Verify: cargo-test restores warm + clippy/cargo-test durations drop toward their true warm floor (clippy ~150-200s, cargo-test ~200-300s if deps cached)."
+  notes: |
+    [2026-07-26T23:55:26Z] mission-focus prune 2026-07-26: fleet-meta, not product/mission-critical; reversible via chump gap requeue INFRA-3439
+

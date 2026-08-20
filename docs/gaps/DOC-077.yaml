@@ -1,0 +1,12 @@
+- id: DOC-077
+  domain: DOC
+  title: "DOC: reconcile the plan-of-record with the shipped judge+reliability work (Scribe audit) — DOC-074 no longer says 'nothing checks intent', DEPTH.md + ROADMAP.md reflect the bench/reliability progress"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The change described by \"reconcile the plan-of-record with the shipped judge+reliability work (Scribe audit) — DOC-074 no longer says 'nothing checks intent', DEPTH.md + ROADMAP.md reflect the bench/reliability progress\" is implemented in the relevant DOC code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3460
+

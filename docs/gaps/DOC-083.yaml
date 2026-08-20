@@ -1,0 +1,17 @@
+- id: DOC-083
+  domain: DOC
+  title: "CREDIBLE: artifact-organization survey — the fleet already contains the full software org, one department per dormant repo (doc)"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Ship docs/strategy/ARTIFACT_ORGANIZATION_2026-08-05.md — sibling to SOFTWARE_FACTORY_MATRIX_2026-08-05.md (DOC-079). Records the operator's artifact-organization thesis (code is 25-35% of turning ideas into successful software; model the factory around artifact production: Inputs -> Process -> Outputs -> Quality Gates -> Publication -> Feedback) and the 2026-08-05 almanac fleet survey proving the org already exists as buried engines: beast-mode (ProductToMarketPipeline, CPO dashboards, ExpertDesigner, ReleaseNotesGenerator, HN/ProductHunt launch scripts, GhostWriter), slidemate (sales deck templates, email templates, knowledge base, WCAG contrast audit), smugglers (RevenueAnalyticsService, SupportResponseCenter, rollback), echeo-web (design system, support chatbot), postsub/commercial-platform/analytics-platform-service (analytics). Names the implementing gaps: EFFECTIVE-363 (artifact_type + per-type gates), EFFECTIVE-364 (publication stage), EFFECTIVE-365 (publisher co-pilot). REALITY_MAP par.0 discipline: all dormant-repo findings are claimed capability, mine-before-archive applies.
+  acceptance_criteria:
+    - "doc lands in docs/strategy/ with repo:path receipts per department"
+    - cross-links DOC-079 and EFFECTIVE-363/364/365
+    - BEAST-MODE lesson stated honestly (org-chart-as-UI vs gated pipeline)
+    - claimed-vs-verified caveat on all dormant-repo findings
+  closed_date: '2026-08-06'
+  closed_pr: 3485
+  outcome_id: CHUMPOS
+

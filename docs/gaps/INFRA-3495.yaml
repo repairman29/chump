@@ -1,0 +1,15 @@
+- id: INFRA-3495
+  domain: INFRA
+  title: "CREDIBLE: [COTG-3.2] anti-over-claim watchdog (umbrella-done != actually-done)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-3.2] anti-over-claim watchdog (umbrella-done != actually-done)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~35% -> FINISH. src/roadmap_status.rs:170 already loads depends_on; add parent->child open-tail rollup + emit 'closed with N open' downgrade.
+  closed_pr: 3472
+  outcome_id: COTG
+

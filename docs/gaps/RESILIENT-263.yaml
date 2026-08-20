@@ -1,0 +1,20 @@
+- id: RESILIENT-263
+  domain: RESILIENT
+  title: the escalation channel Jeff needs is already built, credentialed and live — the auto-closer just never calls it ('operator_alert' is a log label, not an alert)
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "SLICE of RESILIENT-262, carved out because it is small and immediately valuable: wire the EXISTING Discord DM path into pr-failure-auto-rescue.sh. Do not add Pushover, iMessage, Telegram or any new channel for this — Discord DM already reaches the operator's phone via the Discord mobile app, the token and destination are already set, and five callers already prove the path works"
+    - "THE ONE-LINE VERSION OF THE BUG: scripts/coord/pr-failure-auto-rescue.sh:275 records outcome 'operator_alert' via log_rescue + an ambient event and sends NOTHING. A daemon that names an outcome 'operator_alert' while alerting no operator is worse than one that does not try, because the event stream reads as though somebody was told"
+    - "MINIMUM WIRING — notify on the CLOSE path at line 328-329, where the PR is actually destroyed. The message must carry: PR number and title, which required check(s) were red, how long, whether that check is green on main right now, the gap ID, and a direct link. #3510's close comment already assembles most of this into ; send that same content rather than inventing a second format"
+    - "ALSO NOTIFY on the 'operator_alert' outcome at :275, which exists precisely for 'no handler could fix this, a human must decide' — the case the operator asked to be told about"
+    - "SEVERITY GATE IT so the phone stays trustworthy: closes and operator_alert escalations reach Discord DM; routine rescue/retry activity stays in ambient. An escalation channel that cries wolf gets muted, and a muted channel is the dead operator-recall handler again (see RESILIENT-262)"
+    - "VERIFY WITH A REAL SEND, not a mock: trigger the path in dry-run against a fixture PR and confirm the DM actually arrives on the operator's phone. A notification test that stops at 'the function was called' is exactly how the operator-recall handler sat dead since May"
+    - "NOTE FOR THE IMPLEMENTER: the operator ALSO has TELEGRAM_BOT_TOKEN present and src/telegram.rs exists, but TELEGRAM_CHAT_ID is ABSENT so that path is not addressable today. Discord is the ready one. Telegram is a fallback worth wiring later, not now"
+  closed_date: '2026-08-09'
+  closed_pr: 3554
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: credential presence check (names only, no values) + caller grep + read of scripts/coord/pr-failure-auto-rescue.sh | OUTPUT: DISCORD_TOKEN PRESENT, TELEGRAM_BOT_TOKEN PRESENT, CHUMP_READY_DM_USER_ID PRESENT — and src/discord_dm.rs:14 send_dm_if_configured() already has 5 live callers (src/discord.rs:1102, src/main.rs:16069/16665/16719, src/messaging/discord_shim.rs:43). Its own doc comment states the intent exactly: 'send it via POST /users/@me/channels ... so the owner gets DMs from heartbeat rounds without running the Discord bot'. Meanwhile pr-failure-auto-rescue.sh contains ZERO calls to discord_dm, notify, or any operator channel; its only 'alert' is line 275 log_rescue ... operator_alert plus an ambient event | THEORY: the phone-reaching escalation channel is fully built, credentialed, addressed and in daily use — and the one daemon that closes PRs does not call it | ALT: rejected 'we need a new channel (Pushover/iMessage)' — that was my recommendation before checking, and it was wrong. Building a second channel while a working one sits uncalled would be the fleet's most-repeated mistake
+

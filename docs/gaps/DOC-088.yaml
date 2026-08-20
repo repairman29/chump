@@ -1,0 +1,16 @@
+- id: DOC-088
+  domain: DOC
+  title: "CREDIBLE: registry-coordinated factory diagram — the figure for the ChumpOS coordination model"
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    Commit the ChumpOS coordination-model diagram (drawn 2026-08-06 in session, operator-approved): the registry-coordinated factory — registry (state.db: gaps/leases/events/outcomes/votes) at the center instead of a hub agent; parallel worker lanes each running one gap linearly (single-agent inside, multi-agent across); gates as infrastructure (preflight/CI/judge/auditor), not an evaluation agent; Jeff at ring-0 holding the irreversible click; PEOPLE feeding back via holler/posse into intake. Standalone SVG (self-contained colors, no host CSS) at docs/img/chumpos-registry-factory.svg + one figure reference in docs/strategy/ARTIFACT_ORGANIZATION_2026-08-05.md par.2 (the 6-stage abstraction it illustrates).
+  acceptance_criteria:
+    - SVG renders standalone on GitHub light and dark
+    - referenced from the artifact-organization doc, not shelf-ware
+    - no host-CSS classes, all colors literal
+  closed_date: '2026-08-07'
+  closed_pr: 3494
+  outcome_id: CHUMPOS
+
