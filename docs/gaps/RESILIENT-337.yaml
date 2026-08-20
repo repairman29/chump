@@ -1,0 +1,11 @@
+- id: RESILIENT-337
+  domain: RESILIENT
+  title: "SYSTEMIC-RED tripwire: detect + page when N>=3 open code PRs fail the IDENTICAL required check (shared broken gate) — distinct from main-health-watchdog (which only sees red MAIN). Tonight 14 PRs stacked on a farmer-flap false-red for hours with ZERO alarm; the board eyeballed it only after operator prodding. Detector = group open-PR failing-check names, alarm on any check failing >=3 PRs, name the shared check + suspected root cause."
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"detect + page when N>=3 open code PRs fail the IDENTICAL required check (shared broken gate) — distinct from main-health-watchdog (which only sees red MAIN). Tonight 14 PRs stacked on a farmer-flap false-red for hours with ZERO alarm; the board eyeballed it only after operator prodding. Detector = group open-PR failing-check names, alarm on any check failing >=3 PRs, name the shared check + suspected root cause.\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+
