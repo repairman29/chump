@@ -26,6 +26,7 @@ log "supervisor=$SUP repo=$REPO user=$USER_N"
 
 # organ table: name|repo-relative-script[ args]|cadence-seconds (0 = script self-loops, e.g. orchestrator)
 ORGANS="node-orchestrator|scripts/ops/node-orchestrator.sh|0
+node-updater|scripts/ops/node-updater.sh|300
 rot-reaper|scripts/ops/rot-reaper.sh|1800
 worktree-reaper|scripts/ops/stale-worktree-reaper.sh --execute|900
 disk-monitor|scripts/ops/disk-health-monitor.sh|300
@@ -100,7 +101,7 @@ EOF
 # self-test
 log "self-test:"
 fail=0
-for name in node-orchestrator rot-reaper worktree-reaper disk-monitor main-health-watchdog pr-lander cargo-sweep-gc; do
+for name in node-orchestrator node-updater rot-reaper worktree-reaper disk-monitor main-health-watchdog pr-lander cargo-sweep-gc; do
   case "$SUP" in
     systemd) systemctl is-active "chump-$name.service" >/dev/null 2>&1 && log "  ✓ $name up" || { log "  ✗ $name DOWN"; fail=1; } ;;
     runit)   sv status "$SVDIR/chump-$name" 2>/dev/null | grep -q '^run' && log "  ✓ $name up" || { log "  ✗ $name DOWN"; fail=1; } ;;
