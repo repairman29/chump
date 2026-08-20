@@ -960,6 +960,9 @@ jobs:
       - name: gap-doctor safe-sweep (INFRA-308)
         run: bash scripts/ci/test-gap-doctor-safe-sweep.sh
 
+      - name: yaml-orphan-prune state-aware (EFFECTIVE-219)
+        run: bash scripts/ci/test-yaml-orphan-prune-state-aware.sh
+
       - name: supervision trees — per-gap + fleet restart-intensity (RESILIENT-058)
         run: bash scripts/ci/test-supervision-trees.sh
 

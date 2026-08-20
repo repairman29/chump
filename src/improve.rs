@@ -5813,6 +5813,89 @@ Some prose from the agent.
         );
     }
 
+    /// EFFECTIVE-289: a scan whose TOP-ranked gap is already covered by an open
+    /// PR must not stop the pick — the dedup loop (mirroring `run()`'s Stage 2,
+    /// improve.rs:248-285) advances to the next ranked candidate and picks that
+    /// one instead of reporting "nothing to do". Guards the MISSION-056 behavior
+    /// against regression now that a dedicated regression test exists for it.
+    #[test]
+    fn dedup_loop_skips_top_redundant_and_picks_next_candidate() {
+        let tmp = TempDir::new().unwrap();
+        let clone_dir = tmp.path().join("clone");
+        fs::create_dir_all(&clone_dir).unwrap();
+        git_repo_with_commit_b5(&clone_dir, "initial commit: unrelated work");
+
+        // Fake gh: an open PR exists that matches the TOP candidate's title
+        // keywords ("streaming pipeline") but not the second candidate's
+        // ("retry backoff").
+        let fake_gh = tmp.path().join("gh");
+        write_fake_gh(
+            &fake_gh,
+            r#"[{"number":99,"title":"add streaming pipeline for async events"}]"#,
+            0,
+        );
+
+        let make_gap = |title: &str, excerpt: &str| ProposedGap {
+            title: title.to_string(),
+            domain: "EFFECTIVE".to_string(),
+            priority: Priority::P1,
+            effort: Effort::S,
+            confidence: Confidence::High,
+            source_of_evidence: SourceOfEvidence {
+                input_path: "README.md".to_string(),
+                section: "## Roadmap".to_string(),
+                excerpt: excerpt.to_string(),
+            },
+            acceptance_criteria_draft: vec![format!("{title} implemented")],
+            layer: None,
+            doctrine_justification: None,
+        };
+
+        let candidates = vec![
+            make_gap(
+                "EFFECTIVE: add streaming pipeline",
+                "streaming pipeline not yet built",
+            ),
+            make_gap(
+                "EFFECTIVE: add retry backoff xyzzy99",
+                "retry backoff xyzzy99 not built",
+            ),
+        ];
+
+        // Same loop shape as run()'s Stage 2 (improve.rs:248-285), minus the
+        // fleet-internal sourcing resolver (covered separately, and it touches
+        // real CHUMP_REPO_ROOT/arsenal state — out of scope for this unit test).
+        let mut chosen: Option<ProposedGap> = None;
+        let mut skipped_titles: Vec<String> = Vec::new();
+        for cand in &candidates {
+            match dedup_check(
+                "owner/testrepo",
+                &clone_dir,
+                cand,
+                &fake_gh.to_string_lossy(),
+            )
+            .unwrap()
+            {
+                DedupResult::Redundant { .. } => skipped_titles.push(cand.title.clone()),
+                DedupResult::NotRedundant => {
+                    chosen = Some(cand.clone());
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(
+            skipped_titles,
+            vec!["EFFECTIVE: add streaming pipeline".to_string()],
+            "top candidate must be dedup-skipped (covered by open PR), not silently kept"
+        );
+        assert_eq!(
+            chosen.map(|g| g.title),
+            Some("EFFECTIVE: add retry backoff xyzzy99".to_string()),
+            "loop must advance past the redundant top candidate and pick the next undone one, not exit"
+        );
+    }
+
     // ── EFFECTIVE-288 GREEN-FIRST doctrine ────────────────────────────────
     // "Step 1: make it green. Step 2: ship something new."
 
