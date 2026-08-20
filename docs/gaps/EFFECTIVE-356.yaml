@@ -1,7 +1,8 @@
 - id: EFFECTIVE-356
   domain: EFFECTIVE
   title: "EFFECTIVE: growth worker — release notes + docs refresh from merged PRs (factory L7)"
-  status: open
+  status: done
+  closed_pr: 3980
   priority: P1
   effort: m
   description: |
