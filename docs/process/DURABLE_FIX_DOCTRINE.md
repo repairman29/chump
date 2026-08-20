@@ -145,6 +145,42 @@ If any box is empty, you are not done.
 
 ---
 
+## Case study: the docs/gaps YAML-rewrite cycle (EFFECTIVE-219)
+
+The 2026-06-05 RESILIENT-110 ship attempt hit a variant of the same lie in a
+different guise: it kept getting forced into a `docs/gaps/<ID>.yaml` rewrite
+cycle mid-ship. The proximate cause looked like "some background daemon is
+deleting the YAML mirror between reserve and claim" — a band-aid response
+would have been to just keep re-running `chump gap dump --per-file` to paper
+over the churn every time it happened, never asking why the file kept
+disappearing.
+
+The durable-fix investigation (EFFECTIVE-219) surveyed every drift-repair
+surface that touches `docs/gaps/*.yaml` — `scripts/coord/gap-doctor.py`
+safe-sweep, `crates/chump-gap-store/src/sync.rs`,
+`crates/chump-gap-store/src/maintenance/doctor.rs` — and found that **none
+of them ever deleted an orphaned mirror file**; bucket 4 (YAML present, no
+`state.db` row) was always ALERT-only. The actual root cause of the
+YAML-rewrite churn was upstream and had already been fixed by **ZERO-WASTE-020**
+(#3215, landed 2026-07-20): `chump gap reserve` used to write the per-file
+mirror at reserve time and only commit the DB row afterward, leaving a real
+window where a sibling sweep could see "YAML with no DB row yet" and treat it
+as bucket 4. ZERO-WASTE-020 retired the reserve-time YAML write entirely —
+state.db is the sole write target at reserve, closing the window at the
+source instead of teaching every reader to tolerate it.
+
+EFFECTIVE-219's own contribution was defense-in-depth for the *general*
+class, not just this one instance: `gap-doctor.py safe-sweep` gained an
+opt-in `--prune-orphans` mode that deletes bucket-4 files, but only after a
+**fresh** `state.db` re-check performed immediately before each delete — if
+a row has appeared since the sweep's snapshot, the file is rewritten from
+state.db instead of deleted, and a `kind=yaml_orphan_pruned` ambient event
+records every actual delete. STATE WINS is now enforced in code, not just
+asserted in this doc. See `scripts/ci/test-yaml-orphan-prune-state-aware.sh`
+for the regression guard.
+
+---
+
 ## See also
 
 - [`REALITY_CHECK.md`](./REALITY_CHECK.md) (CREDIBLE-090) — signal ≠ outcome; the
