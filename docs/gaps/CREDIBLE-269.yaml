@@ -1,7 +1,8 @@
 - id: CREDIBLE-269
   domain: CREDIBLE
   title: "SHIP-INFRA 1/7 [FOUNDATION]: collapse the merge gate to ONE legible always-runs required check (audit BP+ruleset+path-filters+grace-guards; pick one system; a green PR is provably mergeable)"
-  status: open
+  status: done
+  closed_pr: 4027
   priority: P1
   effort: m
   acceptance_criteria:
@@ -13,6 +14,23 @@
       (1) CI-TECHNICAL (this gap, CREDIBLE-269 / the META-134 'verified' aggregator): mechanical 'all lanes passed or correctly path-skipped' -> ONE required check named 'verified'; branch-protection+ruleset point at only it. Kills the phantom-check/3-surface-drift wedge.
       (2) DECISION / CLAIM-TRUTH (bigpickle's RFC): aim the EXISTING consensus machine (crates/chump-coord/src/consensus.rs — Vote/ConsensusDecision/finalize) at shipping. Votes are per-CLAIM not per-PR: extract every factual assertion from the diff/commit/PR and RUN it; a vote without a receipt does not count. This catches the 'confident false assertion with a receipt' class — the RFC's evidence base is 5 false-dones from 2026-08-09 (cache-key 'verified' from reading 8/16, reaper 'branch merged' on a 0-commit branch, holler security_invoker false 4 days, 'ALL GREEN' before the run started, RESILIENT-267 wrong gap-id) — several of which THIS session (opus) also committed.
     BUILD ORDER: (1) verified aggregator gives the single legible required check now (unblocks the whack-a-mole). (2) the claim-verification consensus becomes a lane that FEEDS 'verified' (verified = green when CI-lanes pass AND consensus proceeds). Align with bigpickle's RFC; the claim-verification insight is also the core of SHIP-INFRA gap 4/7 (CREDIBLE-271, every gate a real signal). Coordinate via the RFC, one coherent gate.
+
+    RECONCILE (2026-08-20): already shipped via PR #4026 (4a8a2656, "cross-workflow
+    verified aggregation") and confirmed live via PR #4027 (727c3cfa, "confirm live
+    flip to single 'verified' required check, refresh baseline"), both ancestors of
+    current main — but state.db has no row for this gap (chump gap preflight reports
+    "not found in state.db"), so this YAML never got flipped to done. Same
+    stale-record class as the CREDIBLE-275/RESILIENT-052/RESILIENT-138 reconciles.
+
+    Verified all AC live against GitHub, independent of the PR #4027 commit message:
+    - `gh api repos/repairman29/chump/branches/main/protection` returns
+      required_status_checks.contexts = ["verified"] — exactly one context (AC1).
+    - `gh pr checks 4027 --required` returns exactly one row: `verified  pass` (AC3).
+    - docs/baselines/branch-protection-main.json and docs/design/CI_VERIFIED_AGGREGATOR.md
+      were refreshed in #4027 to match live state (was stale from the pre-flip
+      3-check era), so the docs and reality now agree (AC2 — a red sub-gate fails
+      the single aggregating 'verified' check by construction, per
+      CI_VERIFIED_AGGREGATOR.md's design).
   outcome_id: SHIP-INFRA
   evidence: |
     2026-08-09: a careful agent w/ full repo access spent a session unable to predict if a green PR lands — classic branch-protection + an ACTIVE ruleset 'Protect main' + path filters + grace-guards + -required aggregators + phantom 'test'/'fast-checks-required' contexts. Illegible = unreliable.
