@@ -1508,6 +1508,17 @@ _bm_health_init() {
 # visible to siblings. queue-health-monitor.sh reads from the main repo path.
 # shellcheck source=../lib/repo-paths.sh
 source "$(dirname "$0")/../lib/repo-paths.sh"
+# RESILIENT-138: bare `chump` invocations below (gap show/preflight/set/ship
+# etc.) resolve their state.db path via `repo_path::repo_root()`, which falls
+# back to CWD when CHUMP_REPO/CHUMP_HOME are unset and no `.env` is found —
+# in a linked worktree that CWD has no `.chump/state.db` of its own, so a
+# freshly reserved+claimed gap looks "not found in state.db" until an
+# operator manually exports CHUMP_REPO. MAIN_REPO (just resolved above via
+# --git-common-dir) is always correct regardless of env/`.env` state, so
+# default CHUMP_REPO to it for the rest of this script. Respect an
+# explicitly-set CHUMP_REPO (e.g. multi-repo test harnesses) rather than
+# clobbering it.
+export CHUMP_REPO="${CHUMP_REPO:-$MAIN_REPO}"
 # INFRA-2744: lease_session_from_statedb — resolve a gap's claim session from the
 # canonical state.db leases table (interactive `chump claim` writes no JSON sidecar).
 # shellcheck source=../lib/lease.sh
