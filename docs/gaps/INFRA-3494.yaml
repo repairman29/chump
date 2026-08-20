@@ -1,12 +1,14 @@
 - id: INFRA-3494
   domain: INFRA
   title: "CREDIBLE: [COTG-3.1] outcome-level verification (does the shipped thing SOLVE the problem?)"
-  status: open
+  status: shipped
+  closed_pr: 3999
   priority: P1
   effort: m
   acceptance_criteria:
     - Outcome-level verification checks the shipped artifact against the user's original stated problem (not just CI green) and emits a PASS/FAIL solve-verdict with evidence.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~45% -> FINISH (gate 5.1/5.3/6.2 depend on). src/external_verify_merge.rs is stronger than CI-green (proves fix fails-on-base/passes-on-head, no-regression). Add a post-merge LIVE outcome probe + promote src/browser.rs (static fetch) to real CDP.
+    [2026-08-20T00:39:04Z] RECONCILE: full AC verified present on main via PR #3999 (d65c4c34) — CHUMP_OUTCOME_PROBE_RENDER=1 renders the post-merge outcome probe through headless Chromium (--dump-dom) before matching --outcome-probe-contains, falling back to curl automatically when no Chromium binary is found or the render fails. Gap YAML was left status:open in this worktree only; same reconcile pattern as EFFECTIVE-038 (#3997) / RESILIENT-132 (#3998) / INFRA-2464 (#3996).
   outcome_id: COTG
 
