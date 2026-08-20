@@ -1,7 +1,9 @@
 - id: CREDIBLE-175
   domain: CREDIBLE
   title: "CREDIBLE: preflight cargo-test must use nextest to match CI — cargo-test thread-race false-reds locally (env-var race) while CI nextest isolates it, forcing bypasses"
-  status: open
+  status: done
+  closed_pr: 3597
+  closed_date: '2026-08-10'
   priority: P1
   effort: m
   acceptance_criteria:
@@ -16,7 +18,20 @@
     STILL REPRODUCIBLE on latest main fbb60a1c, both runners on the SAME commit in a clean detached worktree: cargo test --bin chump -> FAILED 2384 passed / 21 failed / exit 101; cargo nextest run --bin chump -> 2405 passed / 0 failed / exit 0. Main is NOT red. cargo test threads tests in one process and they race on process-global env (CHUMP_REPO); nextest gives each test its own process. CI already uses nextest (.github/workflows/ci.yml:1429, installed :1375 per INFRA-2094). scripts/git-hooks/pre-push has 16 'cargo test' references and ZERO 'nextest'.
     
     ACTIVE WORK ITEM: CREDIBLE-278 (P1, open) holds the full evidence and the precise fix shape. This gap stays open as the parent so its false-done is visible in the registry rather than buried; close it when 278 lands.
-  closed_date: '2026-07-30'
-  closed_pr: 3552
+
+    [2026-08-20] CLOSING — CREDIBLE-278 has landed. The actual runner-selection
+    fix shipped in commit 8845c974 / PR #3597 ("CREDIBLE-175/CREDIBLE-278:
+    pre-push test gate uses cargo-nextest to match CI", 2026-08-10):
+    scripts/git-hooks/pre-push:733-740 now prefers `cargo nextest run --bin
+    chump --tests --no-fail-fast` when cargo-nextest is on PATH, falling back
+    to `cargo test` with two loud WARN lines (never silent) when absent.
+    Anti-recurrence receipt satisfied: `git log -S nextest --
+    scripts/git-hooks/pre-push` returns commit 8845c974 (non-empty), unlike
+    the false-done PR #3552 this gap was reopened over. CREDIBLE-278 itself
+    was reconciled done (closed_pr 3597) in PR #3940 after its own YAML/state
+    briefly drifted stale against this same shipped commit. Re-pointing this
+    gap's closed_pr to 3597 (the PR that actually touched the runner) rather
+    than to CREDIBLE-278's gap ID, since 278 is itself just a record pointing
+    at 3597. No further code change needed — this is a registry-only sync.
   outcome_id: COTG
 
