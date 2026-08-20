@@ -2,7 +2,7 @@
   domain: INFRA
   title: "ZERO-WASTE: ci-yml-add-row merge driver fails on multi-step interleaved additions — returns rc=1 forcing manual conflict resolution (today: rebase of #2088 still needed manual ci.yml edit despite INFRA-1389 driver coverage)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     Today's session: rebase of #2088 (INFRA-1339) against main went DIRTY on .github/workflows/ci.yml. The ci-yml-add-row driver is registered in .gitattributes and runs, but returned rc=1 (couldn't resolve). Operator had to manually take main's version + re-add the INFRA-1339 step. The driver is currently line-diff based; a YAML-aware driver could handle this case cleanly.
