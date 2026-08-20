@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: deepen claim-collision detection beyond INFRA-1394 — full path-set intersection of lease.paths[] instead of 5-hot-file AC-scan; supports globs + directory overlap"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     INFRA-1394 shipped a claim-collision check that:
