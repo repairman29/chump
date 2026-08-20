@@ -2062,3 +2062,8 @@ CHUMP_PR_SHEPHERD_STRICT_CACHE_TTL_S
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_APPROVAL_TIMEOUT_SECS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ROT_REAPER_SHARED_MIN
