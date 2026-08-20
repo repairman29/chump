@@ -313,6 +313,18 @@ check_error "gap ship NOTEXIST → error (not found, rebase, usage, or INFRA-139
 check_error "claim bad-GAP-ID format → error" "error|invalid|Usage|format|not found|reserve" \
     claim 12345-not-valid
 
+# CREDIBLE-291: a transient farmer-RED must NOT mask a GAP-ID format error.
+# Before the fix the farmer readiness gate ran BEFORE format validation, so a
+# brief farmer-RED made `claim <bad-id>` print "farmer status RED" instead of
+# the format error — failing this suite and cascading a fleet-wide false-red
+# jam (2026-08-20). Force farmer RED via the fleet-paused sentinel; the format
+# error must still win.
+_fp291="$(git rev-parse --show-toplevel 2>/dev/null || echo .)/.chump/fleet-paused"
+mkdir -p "$(dirname "$_fp291")"; : > "$_fp291"
+check_error "claim bad-id under farmer-RED still returns format error (CREDIBLE-291)" \
+    "invalid|format|Usage|not found|reserve" claim bad-format-id
+rm -f "$_fp291"
+
 # dispatch route with unknown backend → error or usage
 {
     rc=0; output=$("$CHUMP" dispatch route --backend totally-unknown-xyz 2>&1) || rc=$?
