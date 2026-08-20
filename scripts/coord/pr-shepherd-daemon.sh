@@ -85,6 +85,16 @@ TRUNK_SENTINEL_STATE_FILE="${CHUMP_TRUNK_SENTINEL_STATE_FILE:-$REPO_ROOT/.chump/
 # permanent (needs operator, >=cap) trunk-red per the INFRA-2349 taxonomy.
 CASCADE_MAX_HOLD_MINUTES="${CHUMP_CASCADE_MAX_HOLD_MINUTES:-120}"
 
+# RESILIENT-081: strict-aware rebase. Under branch-protection strict=false,
+# BEHIND PRs merge fine without a rebase — issuing one anyway is pure churn
+# (new head SHA -> full CI reset -> self-hosted runner pool drowns in
+# re-runs). Skip update-branch --rebase unless strict=true or a merge queue
+# is the gate. Cached (REST, not GraphQL) so a 60s tick doesn't hammer the
+# branch-protection endpoint.
+REPO="${GITHUB_REPOSITORY:-$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's#.*[:/]([^/]+/[^/.]+)(\.git)?$#\1#')}"
+STRICT_CACHE_FILE="${CHUMP_PR_SHEPHERD_STRICT_CACHE_FILE:-$REPO_ROOT/.chump/pr-shepherd-strict-cache.json}"
+STRICT_CACHE_TTL_S="${CHUMP_PR_SHEPHERD_STRICT_CACHE_TTL_S:-300}"
+
 # Cache-first reads (INFRA-1081): sourced so cache_lookup_pr/cache_query_*
 # helpers are available in this process. cmd_tick's queue-wide list call
 # is NOT cache-first today — see the INFRA-2464 audit note on that call
@@ -260,6 +270,69 @@ _emit_pr_queue_cascade_gate_expired() {
   if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
   printf '{"ts":"%s","kind":"pr_queue_cascade_gate_expired","red_minutes":%d,"max_hold_minutes":%d,"dry_run":%s}\n' \
     "$ts" "$red_minutes" "$CASCADE_MAX_HOLD_MINUTES" "$dry" >> "$AMBIENT"
+}
+
+# _merge_queue_active — returns "true"/"false". Merge-queue mode is the other
+# gate under which rebasing BEHIND PRs is meaningful (queue serializes CI, no
+# per-rebase reset). Env override mirrors auto-merge-armer.sh's
+# _detect_merge_queue so the two daemons agree without a live API round-trip
+# in the common (unset) case.
+_merge_queue_active() {
+  if [[ "${CHUMP_MERGE_QUEUE_ENABLED:-}" == "1" ]]; then
+    echo "true"; return 0
+  fi
+  echo "false"
+}
+
+# _pr_shepherd_strict_enabled — RESILIENT-081. Returns "true"/"false" for the
+# live branch-protection strict flag (required_status_checks.strict on
+# `main`), REST not GraphQL, TTL-cached so a 60s tick doesn't hit the API
+# every time. When strict=false, a BEHIND PR merges fine without a rebase —
+# the daemon should skip update-branch --rebase entirely (that's pure CI-reset
+# churn). Fails safe: an unreadable/failed live check returns "true" (preserve
+# today's rebase behavior) rather than silently going quiet on a repo that
+# actually has strict=true.
+_pr_shepherd_strict_enabled() {
+  local now cached
+  now="$(date +%s)"
+  if [[ -f "$STRICT_CACHE_FILE" ]]; then
+    cached="$(python3 -c "
+import json
+try:
+    d = json.load(open('$STRICT_CACHE_FILE'))
+    age = $now - int(d.get('ts', 0))
+    if age < $STRICT_CACHE_TTL_S:
+        print(str(d.get('strict', 'true')).lower())
+except Exception:
+    pass
+" 2>/dev/null)"
+    if [[ -n "$cached" ]]; then
+      echo "$cached"
+      return 0
+    fi
+  fi
+
+  local live strict_val
+  live="$(CHUMP_GH_CALL_CRITICALITY=background gh api "repos/${REPO}/branches/main/protection/required_status_checks" 2>/dev/null)" || true
+  if [[ -n "$live" ]]; then
+    strict_val="$(printf '%s' "$live" | python3 -c "
+import json, sys
+try:
+    print(str(json.load(sys.stdin).get('strict', True)).lower())
+except Exception:
+    print('true')
+" 2>/dev/null)"
+    [[ -n "$strict_val" ]] || strict_val="true"
+  else
+    strict_val="true"
+  fi
+
+  mkdir -p "$(dirname "$STRICT_CACHE_FILE")" 2>/dev/null || true
+  python3 -c "
+import json
+json.dump({'ts': $now, 'strict': '$strict_val'}, open('$STRICT_CACHE_FILE', 'w'))
+" 2>/dev/null || true
+  echo "$strict_val"
 }
 
 # _pr_has_active_claim — returns 0 (true/skip) if gap_id matches any active claim lease
@@ -868,6 +941,19 @@ for p in prs:
     fi
   fi
 
+  # RESILIENT-081: strict-aware rebase gate. Computed once per tick (cached
+  # underneath, see _pr_shepherd_strict_enabled) — rebasing is only
+  # meaningful when strict=true (BEHIND blocks the merge) or a merge queue
+  # is the gate (queue serializes CI, no per-rebase reset). Under
+  # strict=false with no merge queue, BEHIND PRs merge fine as-is, so
+  # rebasing them is pure CI-reset churn.
+  local rebase_gate_open=0
+  if [ "$(_pr_shepherd_strict_enabled)" = "true" ] || [ "$(_merge_queue_active)" = "true" ]; then
+    rebase_gate_open=1
+  else
+    echo "[pr-shepherd-daemon] strict=false, no merge queue — rebase gate closed this tick" >&2
+  fi
+
   local rebase_count=0
   local arm_count=0
   local gap_file_count=0
@@ -1006,6 +1092,14 @@ for p in prs:
 
       # META-184: action phase — only for BEHIND PRs
       if [ "$c" = "BEHIND" ]; then
+        # Guard -1 (RESILIENT-081): strict=false + no merge queue — BEHIND
+        # PRs merge fine without a rebase, so issuing one is pure CI-reset
+        # churn. Skip before any of the more expensive guards below.
+        if [ "$rebase_gate_open" -eq 0 ]; then
+          _emit_pr_action_taken "$pr_num" "rebase_skipped" "not_strict" "$gap_id"
+          continue
+        fi
+
         # Guard 0: cascade gate — trunk-sentinel says main is red, hold the queue
         if [ "$cascade_held" -eq 1 ]; then
           _emit_pr_action_taken "$pr_num" "rebase_skipped" "cascade_held" "$gap_id"

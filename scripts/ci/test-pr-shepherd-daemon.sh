@@ -7,6 +7,9 @@
 # (g) META-184: trunk-red guard — all BEHIND PRs get rebase_skipped reason=trunk_red,
 # (h) META-184: claim guard — PR with active claim gets rebase_skipped reason=claim,
 # (i) META-184: throttle guard — more than MAX_REBASES BEHIND PRs → overflow gets rebase_skipped reason=throttle.
+# (n) RESILIENT-081: strict-aware rebase gate — strict=false → 0 rebases issued (all
+#     rebase_skipped reason=not_strict) even with N BEHIND PRs; strict=true → rebases
+#     proceed up to MAX_REBASES budget.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -955,4 +958,85 @@ else
   exit 1
 fi
 
-echo "[test-pr-shepherd-daemon] PASS (tick + ${classified_count} pr_classified + META-184 guards + META-185 BLOCKED sub-states + META-186 actions verified)"
+# ── (n) RESILIENT-081: strict-aware rebase gate ───────────────────────────────
+# strict=false -> 0 rebases issued even with N BEHIND PRs (all rebase_skipped
+# reason=not_strict). strict=true -> rebases proceed up to MAX_REBASES.
+_run_strict_gate_harness() {  # $1=strict_val ("true"|"false") $2=out_ambient
+  local strict_val="$1" out_ambient="$2"
+  local harness="$WORK_DIR/strict-gate-${strict_val}.sh"
+  : > "$out_ambient"
+  cat > "$harness" << STRICT_EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$REPO_ROOT"
+AMBIENT="$out_ambient"
+DRY_RUN=1
+MAX_REBASES=3
+REBASE_DEBOUNCE_FILE="$WORK_DIR/debounce-strict-${strict_val}"
+: > "\$REBASE_DEBOUNCE_FILE"
+
+source "\$REPO_ROOT/scripts/coord/lib/github_cache.sh"
+
+_emit_pr_action_taken() {
+  local n="\$1" act="\$2" rsn="\$3" gid="\$4" ts
+  ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","kind":"pr_action_taken","pr_number":%d,"action":"%s","reason":"%s","gap_id":"%s","dry_run":true}\n' "\$ts" "\$n" "\$act" "\$rsn" "\$gid" >> "\$AMBIENT"
+}
+_should_skip_trunk_red() { return 1; }
+_pr_has_active_claim() { return 1; }
+_pr_in_rebase_debounce() { return 1; }
+_record_rebase_debounce() { :; }
+# Stub the live/cached checks so this harness exercises the gate logic only —
+# no real gh call, no cache-file coupling.
+_pr_shepherd_strict_enabled() { echo "$strict_val"; }
+_merge_queue_active() { echo "false"; }
+
+rebase_gate_open=0
+if [ "\$(_pr_shepherd_strict_enabled)" = "true" ] || [ "\$(_merge_queue_active)" = "true" ]; then
+  rebase_gate_open=1
+fi
+
+# 4 synthetic BEHIND PRs (gap_id + head_sha only — classification is pre-decided)
+pr_nums="201 202 203 204"
+rebase_count=0
+for pr_num in \$pr_nums; do
+  gap_id="INFRA-\${pr_num}"
+  if [ "\$rebase_gate_open" -eq 0 ]; then
+    _emit_pr_action_taken "\$pr_num" "rebase_skipped" "not_strict" "\$gap_id"
+    continue
+  fi
+  if [ "\$rebase_count" -ge "\$MAX_REBASES" ]; then
+    _emit_pr_action_taken "\$pr_num" "rebase_skipped" "throttle" "\$gap_id"
+    continue
+  fi
+  _emit_pr_action_taken "\$pr_num" "rebase" "" "\$gap_id"
+  rebase_count=\$((rebase_count + 1))
+done
+STRICT_EOF
+  chmod +x "$harness"
+  bash "$harness" 2>/dev/null || { echo "[test] FAIL: strict-gate(${strict_val}) harness non-zero"; exit 1; }
+}
+
+STRICT_FALSE_AMBIENT="$WORK_DIR/ambient-strict-false"
+_run_strict_gate_harness "false" "$STRICT_FALSE_AMBIENT"
+rebase_issued_false=$(grep -c '"action":"rebase"' "$STRICT_FALSE_AMBIENT" 2>/dev/null || true)
+not_strict_skipped=$(grep -c '"reason":"not_strict"' "$STRICT_FALSE_AMBIENT" 2>/dev/null || true)
+if [[ "${rebase_issued_false:-0}" -eq 0 && "${not_strict_skipped:-0}" -eq 4 ]]; then
+  echo "[test] (n) strict=false: OK (0 rebases, 4 skipped reason=not_strict)"
+else
+  echo "[test] FAIL (n): strict=false expected 0 rebases + 4 not_strict skips, got rebases=${rebase_issued_false:-0} skipped=${not_strict_skipped:-0}"
+  exit 1
+fi
+
+STRICT_TRUE_AMBIENT="$WORK_DIR/ambient-strict-true"
+_run_strict_gate_harness "true" "$STRICT_TRUE_AMBIENT"
+rebase_issued_true=$(grep -c '"action":"rebase"' "$STRICT_TRUE_AMBIENT" 2>/dev/null || true)
+throttled_true=$(grep -c '"reason":"throttle"' "$STRICT_TRUE_AMBIENT" 2>/dev/null || true)
+if [[ "${rebase_issued_true:-0}" -eq 3 && "${throttled_true:-0}" -eq 1 ]]; then
+  echo "[test] (n) strict=true: OK (3 rebases up to budget, 1 throttled)"
+else
+  echo "[test] FAIL (n): strict=true expected 3 rebases + 1 throttled, got rebases=${rebase_issued_true:-0} throttled=${throttled_true:-0}"
+  exit 1
+fi
+
+echo "[test-pr-shepherd-daemon] PASS (tick + ${classified_count} pr_classified + META-184 guards + META-185 BLOCKED sub-states + META-186 actions + RESILIENT-081 strict-gate verified)"
