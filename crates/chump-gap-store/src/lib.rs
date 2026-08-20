@@ -2143,6 +2143,9 @@ impl GapStore {
         match row {
             None => return Ok(PreflightResult::NotFound),
             Some(s) if s == "done" => return Ok(PreflightResult::Done),
+            // EFFECTIVE-038: a suspended gap is not pickable — it's waiting on
+            // an operator answer (input_required | auth_required), not open work.
+            Some(s) if s == "waiting_operator" => return Ok(PreflightResult::WaitingOperator),
             _ => {}
         }
         let live_claim: Option<String> = self
@@ -3983,6 +3986,7 @@ pub enum PreflightResult {
     NotFound,
     Done,
     Claimed(String),
+    WaitingOperator,
 }
 
 fn unix_now() -> i64 {
@@ -8254,6 +8258,25 @@ meta:
         if let PreflightResult::Claimed(s) = result {
             assert_eq!(s, "session-owner");
         }
+    }
+
+    #[test]
+    fn preflight_waiting_operator_gap_not_pickable() {
+        // EFFECTIVE-038: a suspended gap has no active lease, so without the
+        // waiting_operator special-case preflight() would wrongly report
+        // Available — a fleet worker could pick up a gap mid-suspension.
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("EFFECTIVE", "will-be-suspended", "P2", "s")
+            .unwrap();
+        store
+            .suspend_waiting(&id, "input_required", "which env?", None)
+            .unwrap();
+        let result = store.preflight(&id).unwrap();
+        assert!(
+            matches!(result, PreflightResult::WaitingOperator),
+            "expected WaitingOperator, got {result:?}"
+        );
     }
 
     #[test]
