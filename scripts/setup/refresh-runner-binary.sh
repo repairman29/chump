@@ -97,7 +97,35 @@ log "using cargo: $CARGO"
 # emitted prev_sha==new_sha forever. Operator's installed binary stuck at the
 # stale local sha while origin/main advanced. Wizard-retirement criterion #1
 # was met on paper, broken in production.
-BUILD_WORKTREE="${CHUMP_BINARY_REFRESH_WORKTREE:-/tmp/chump-binary-refresh-$$}"
+# RESILIENT-348: default the worktree parent to CHUMP_STATE_DIR (durable disk
+# on every known node) instead of /tmp. /tmp is frequently a small tmpfs (CJ:
+# 3.6G tmpfs, 753M free) that can't hold a `git worktree add` checkout of the
+# full 8425-file tree, so the build fails "unable to write file / Could not
+# reset index" every cycle and self-deploy silently freezes. If the state dir
+# also looks tight, auto-pick whichever known candidate volume currently
+# reports the most free space rather than defaulting blindly to /tmp.
+BUILD_WORKTREE_MIN_FREE_KB="${CHUMP_BINARY_REFRESH_MIN_FREE_KB:-2097152}"  # 2G headroom
+pick_build_worktree_parent() {
+    local state_dir="${CHUMP_STATE_DIR:-$HOME/.chump}"
+    mkdir -p "$state_dir" 2>/dev/null || true
+    local candidates=("$state_dir" "$REPO_ROOT" "/tmp")
+    local best="" best_free=-1 c free_kb
+    for c in "${candidates[@]}"; do
+        [[ -d "$c" ]] || continue
+        free_kb="$(df -Pk "$c" 2>/dev/null | awk 'NR==2{print $4}')"
+        [[ "$free_kb" =~ ^[0-9]+$ ]] || continue
+        if [[ "$c" == "$state_dir" && "$free_kb" -ge "$BUILD_WORKTREE_MIN_FREE_KB" ]]; then
+            echo "$c"
+            return 0
+        fi
+        if [[ "$free_kb" -gt "$best_free" ]]; then
+            best_free="$free_kb"
+            best="$c"
+        fi
+    done
+    echo "${best:-$state_dir}"
+}
+BUILD_WORKTREE="${CHUMP_BINARY_REFRESH_WORKTREE:-$(pick_build_worktree_parent)/chump-binary-refresh-$$}"
 log "creating detached worktree at origin/main ($MAIN_SHA) → $BUILD_WORKTREE"
 # RESILIENT-348: a prior run killed mid-build (timeout / SIGKILL / systemctl stop)
 # leaves a registered worktree at a FIXED BUILD_WORKTREE path (the EXIT trap below
