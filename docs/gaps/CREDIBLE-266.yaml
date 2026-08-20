@@ -1,7 +1,8 @@
 - id: CREDIBLE-266
   domain: CREDIBLE
   title: the agent loop logs provider_ms but never WHICH provider — a 15-slot cascade with no way to see which slot served the turn
-  status: open
+  status: done
+  closed_pr: 3647
   priority: P1
   effort: s
   acceptance_criteria:
@@ -14,6 +15,17 @@
     - "MEASURED BASELINE to compare against: 2026-08-09 live turns showed provider_ms 309 and 503 with tools_ms 0 and rounds 1, so sub-second replies are real — the question is only which slot earned them"
   notes: |
     [2026-08-19T13:15:20Z] Crew-chief 2026-08-19: lifted P2->P1 — it is a declared prerequisite of P1 RESILIENT-262 + RESILIENT-276, so it inherits P1 (blocker-of-a-P1 is P1 work). Per Jeff: a P2/P3 required for higher-priority ship IS higher-priority work.
+    [2026-08-20T00:00:00Z] RECONCILE: already shipped via PR #3647 ("CREDIBLE-266: log
+    resolved provider slot + model + failover trail on every turn", merged
+    2026-08-11T04:00:44Z, commit 84067e2a). src/agent_loop/orchestrator.rs's INFRA-185
+    phase-timings line now carries provider_slot, model, and failovers alongside
+    compaction_ms/provider_ms/tools_ms/rounds/total_ms; src/provider_cascade.rs adds
+    get_last_used_slot/get_last_used_model/get_last_failovers plus
+    emit_provider_slot_ambient_event() for the ambient `provider_slot_resolved` event.
+    Regression coverage in src/provider_cascade.rs (failover-trail-reset test at
+    line ~3698, last-used-slot/model round-trip test at line ~3716). All 6 AC bullets
+    met. Gap YAML was left status:open in this worktree only. Same reconcile pattern
+    as INFRA-3494 (#4002) / RESILIENT-296 (#4004) / INFRA-3516 (#4006).
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: read ~/.chump/logs/discord-gateway.err after two live Discord DM turns on 2026-08-09 | OUTPUT: the INFRA-185 phase-timings line records request_id, compaction_ms=0, provider_ms=309 and 503, tools_ms=0, other_ms, rounds=1, total_ms=321 and 521 — and NO provider identity and NO model name. Grepping the whole log for provider/model/slot yields only provider_ms values and model_calls=0 | THEORY: the cascade is configured with 15 keyed slots (CHUMP_PROVIDER_1..15_MODEL all set: gemma-4-31b, llama-3.3-70b-versatile, Llama-3.3-70B-Instruct, gemini-2.5-flash, Qwen3-Coder-480B, qwen3-coder:free, gemini-2.0-flash-lite, gemini-2.5-pro, nemotron-3-ultra-free, big-pickle, deepseek-v4-pro, codestral-latest and more) and the loop reports how LONG the provider took but never WHICH one answered | ALT: rejected the identity is elsewhere in the log — grepped the full gateway log for provider, model and slot; the only matches are provider_ms and model_calls
