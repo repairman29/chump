@@ -88,6 +88,14 @@ signals:
     verify: "the flagged PRs merge or are explicitly deprioritized with a follow-up gap"
     false_positive_class: none
 
+  - signal: pr_stuck_chronic
+    tier: 2
+    detect: "ambient kind=pr_stuck_chronic (single PR stuck >=6h, below the 3-PR cluster threshold — pr-stuck-cluster-detector.sh INFRA-3352)"
+    reality_check: "gh pr checks <pr> — confirm the PR is still open and actually failing/DIRTY/armed-not-merging, not already resolved"
+    action: scripts/coord/pr-rescue.sh
+    verify: "the chronic PR merges, or is explicitly closed/re-dispatched with a follow-up gap"
+    false_positive_class: none
+
   - signal: ci_gate_unmirrored
     tier: 2
     detect: "a CI parity break blocks every PR for hours (2026-08-09 incident)"
