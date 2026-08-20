@@ -75,12 +75,38 @@ use axonerai::agent::Agent;
 use axonerai::file_session_manager::FileSessionManager;
 use axonerai::tool::ToolRegistry;
 use serenity::model::id::UserId;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
+
+/// RESILIENT-277 FIX3: request_id -> (channel, message) for approval cards
+/// still awaiting a tap, so a `ToolApprovalResolved` event can find and edit
+/// the right message once the request settles (allowed/denied/timeout).
+static APPROVAL_CARDS: std::sync::OnceLock<
+    Mutex<HashMap<String, (ChannelId, serenity::model::id::MessageId)>>,
+> = std::sync::OnceLock::new();
+
+fn approval_cards() -> &'static Mutex<HashMap<String, (ChannelId, serenity::model::id::MessageId)>>
+{
+    APPROVAL_CARDS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn record_approval_card(
+    request_id: &str,
+    channel_id: ChannelId,
+    message_id: serenity::model::id::MessageId,
+) {
+    if let Ok(mut guard) = approval_cards().lock() {
+        guard.insert(request_id.to_string(), (channel_id, message_id));
+    }
+}
+
+fn take_approval_card(request_id: &str) -> Option<(ChannelId, serenity::model::id::MessageId)> {
+    approval_cards().lock().ok()?.remove(request_id)
+}
 
 /// One queued Discord message (when at capacity). Stored as one JSON line in discord-message-queue.jsonl.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -675,8 +701,43 @@ async fn run_one_discord_turn(
                             ]);
                             let builder =
                                 CreateMessage::new().content(content).components(vec![row]);
-                            if let Err(e) = channel_id.send_message(&*http, builder).await {
-                                eprintln!("chump: Discord approval message send: {:?}", e);
+                            match channel_id.send_message(&*http, builder).await {
+                                Ok(sent) => record_approval_card(&rid, channel_id, sent.id),
+                                Err(e) => {
+                                    eprintln!("chump: Discord approval message send: {:?}", e)
+                                }
+                            }
+                        }
+                        // RESILIENT-277 FIX3: a request reached a final state —
+                        // edit its card so it stops looking tappable. A card
+                        // that still shows Allow/Deny after this resolves
+                        // nothing if tapped (the receiver is already gone).
+                        AgentEvent::ToolApprovalResolved {
+                            request_id: rid,
+                            tool_name,
+                            decision,
+                        } => {
+                            if let Some((chan, msg_id)) = take_approval_card(&rid) {
+                                let label = match decision.as_str() {
+                                    "allowed" => "✅ Approved".to_string(),
+                                    "denied" => "❌ Denied".to_string(),
+                                    "timeout" => {
+                                        "⌛ Superseded — approval window expired".to_string()
+                                    }
+                                    other => other.to_string(),
+                                };
+                                let edit = serenity::builder::EditMessage::new()
+                                    .content(format!(
+                                        "~~Approve tool? **{}**~~\n{}",
+                                        tool_name, label
+                                    ))
+                                    .components(vec![]);
+                                if let Err(e) = chan.edit_message(&*http, msg_id, edit).await {
+                                    eprintln!(
+                                        "chump: approval card supersede-edit failed: {:?}",
+                                        e
+                                    );
+                                }
                             }
                         }
                         AgentEvent::TurnComplete { full_text, .. } => {
@@ -1221,9 +1282,26 @@ impl EventHandler for Handler {
             } else if let Some(rid) = custom_id.strip_prefix("chump_deny:") {
                 (rid, false)
             } else {
+                // RESILIENT-277 FIX4: an unmatched custom_id used to return
+                // silently here, making a tap that arrived and a tap that
+                // never came indistinguishable in the log.
+                eprintln!(
+                    "chump: approval interaction with unrecognized custom_id: {}",
+                    custom_id
+                );
                 return;
             };
-            approval_resolver::resolve_approval(request_id, allowed);
+            // RESILIENT-277 FIX4: log HIT (a receiver was actually found and
+            // notified) vs ORPHAN (the id was unknown/already resolved) so a
+            // tap on a stale card is visible without needing a live operator
+            // report to catch it.
+            let decision_label = if allowed { "allowed" } else { "denied" };
+            let outcome = approval_resolver::resolve_approval(request_id, allowed);
+            let outcome_label = match outcome {
+                approval_resolver::ResolveOutcome::Hit => "hit",
+                approval_resolver::ResolveOutcome::Orphan => "orphan",
+            };
+            chump_log::log_approval_tap(request_id, decision_label, outcome_label);
             if let Err(e) = c
                 .create_response(
                     &ctx.http,
