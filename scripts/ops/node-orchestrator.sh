@@ -6,6 +6,11 @@
 #   SENSE  — cores, load, RAM-free, disk-free per mounted volume -> resource-inventory.json
 #   HEAL   — ensure the housekeeping organs (reapers + disk-monitor) are running; restart if down
 #   SCALE  — worker pool tracks capacity: target = clamp(1 .. cores-1) by load + free RAM, with hysteresis
+#   ENFORCE— WORKER_MAX is a hard cap, checked EVERY tick regardless of hysteresis or how the drift
+#            happened (hand-started extra worker, installer bug, etc) — RESILIENT-328. Also throttles
+#            scale-UP (never scale-down/heal/place) when the merge pipeline is CI-saturated: reads the
+#            most recent kind=merge_queue_health ambient event and honors backpressure_recommended so
+#            workers stop over-producing PRs the merge pipeline cannot drain.
 #   PLACE  — under sustained disk pressure, relocate heavy churn (cargo) to the largest-free volume
 #            GRACEFULLY: background rsync (fleet stays up) -> atomic symlink swap -> validate.
 #            Foreground mv is BANNED (it wedged the fleet 50min on 2026-08-19, unkillable D-state).
@@ -27,8 +32,52 @@ SCALE_DN_LOAD="${CHUMP_ORCH_SCALE_DN_LOAD:-300}"  # per-core load% = GENUINE thr
 RAM_SHED_MB="${CHUMP_ORCH_RAM_SHED_MB:-800}"      # RAM-avail floor: real shed signal is memory pressure, not busy CPU
 DISK_PLACE_PCT="${CHUMP_ORCH_DISK_PLACE_PCT:-90}" # root%>= this triggers placement consideration
 HOUSEKEEPING="${CHUMP_ORCH_HOUSEKEEPING:-chump-rot-reaper.service chump-worktree-reaper.service chump-disk-monitor.service}"
+AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO/.chump-locks/ambient.jsonl}"
+BACKPRESSURE_MAX_AGE_S="${CHUMP_ORCH_BACKPRESSURE_MAX_AGE_S:-900}"  # stale signal (>15min) is ignored, not trusted
 mkdir -p "$STATE_DIR"
 log(){ printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
+
+# effective_max — the enforced cap, single source of truth for both enforce_cap() and scale().
+effective_max() {
+  local max=$WORKER_MAX; [ "$max" = 0 ] && max=$((CORES-1)); [ "$max" -lt 1 ] && max=1
+  echo "$max"
+}
+
+# ci_backpressure — true (rc 0) when the most recent merge_queue_health ambient
+# event (within BACKPRESSURE_MAX_AGE_S) recommends backpressure. Stale or
+# absent signal = not backpressured (fail open, since the monitor daemon may
+# not be installed on every node yet).
+ci_backpressure() {
+  [ -f "$AMBIENT" ] || return 1
+  local line
+  line=$(grep '"kind":"merge_queue_health"' "$AMBIENT" 2>/dev/null | tail -1)
+  [ -z "$line" ] && return 1
+  local bp ts ts_epoch now_epoch
+  bp=$(printf '%s' "$line" | grep -o '"backpressure_recommended":[a-z]*' | cut -d: -f2)
+  [ "$bp" = "true" ] || return 1
+  ts=$(printf '%s' "$line" | grep -o '"ts":"[^"]*"' | head -1 | cut -d'"' -f4)
+  ts_epoch=$(date -u -d "$ts" +%s 2>/dev/null || echo 0)
+  now_epoch=$(date -u +%s)
+  [ "$ts_epoch" -gt 0 ] && [ "$((now_epoch - ts_epoch))" -le "$BACKPRESSURE_MAX_AGE_S" ]
+}
+
+# enforce_cap — hard cap on WORKER_MAX, run EVERY tick regardless of hysteresis
+# or scale()'s own state — closes RESILIENT-328 (drifted to 3 workers, orchestrator
+# blind to the overshoot because scale() only ever nudges by ±1 off its own
+# hysteresis mark). Stops the highest-numbered extra worker(s) until at/under cap.
+enforce_cap() {
+  local max; max=$(effective_max)
+  while [ "$WORKERS_UP" -gt "$max" ]; do
+    local n=$WORKERS_UP
+    if sudo systemctl stop "chump-cj-worker${n}" 2>/dev/null; then
+      log "ENFORCE: WORKERS_UP=$WORKERS_UP > WORKER_MAX=$max -> stopped chump-cj-worker${n}"
+    else
+      log "ENFORCE: WORKERS_UP=$WORKERS_UP > WORKER_MAX=$max but could not stop chump-cj-worker${n} -> giving up this tick"
+      break
+    fi
+    WORKERS_UP=$((WORKERS_UP-1))
+  done
+}
 
 sense() {
   CORES=$(nproc)
@@ -53,11 +102,15 @@ heal() {
 }
 
 scale() {
-  local max=$WORKER_MAX; [ "$max" = 0 ] && max=$((CORES-1)); [ "$max" -lt 1 ] && max=1
+  local max; max=$(effective_max)
   local target=$WORKERS_UP
-  # scale up only with idle CPU AND >=1.5G free RAM per new worker
-  if [ "$LOADPCT" -lt "$SCALE_UP_LOAD" ] && [ "$RAM_AVAIL_MB" -gt 1500 ] && [ "$WORKERS_UP" -lt "$max" ]; then
+  # scale up only with idle CPU AND >=1.5G free RAM per new worker AND no CI-queue backpressure —
+  # RESILIENT-328: an idle-looking node is still the wrong node to add PR-producing capacity to
+  # when the merge pipeline can't drain what's already queued.
+  if [ "$LOADPCT" -lt "$SCALE_UP_LOAD" ] && [ "$RAM_AVAIL_MB" -gt 1500 ] && [ "$WORKERS_UP" -lt "$max" ] && ! ci_backpressure; then
     target=$((WORKERS_UP+1)); log "SCALE: idle (load ${LOADPCT}%/core, RAM ${RAM_AVAIL_MB}MB) -> $WORKERS_UP->$target (max $max)"
+  elif [ "$LOADPCT" -lt "$SCALE_UP_LOAD" ] && [ "$RAM_AVAIL_MB" -gt 1500 ] && [ "$WORKERS_UP" -lt "$max" ] && ci_backpressure; then
+    log "SCALE: idle capacity available but CI-queue backpressure active -> holding at $WORKERS_UP (not adding PR-producing capacity)"
   elif { [ "$RAM_AVAIL_MB" -lt "$RAM_SHED_MB" ] || [ "$LOADPCT" -gt "$SCALE_DN_LOAD" ]; } && [ "$WORKERS_UP" -gt 1 ]; then
     # shed only on REAL pressure: low RAM (OOM risk) or genuine thrash — NOT normal build-busy CPU
     target=$((WORKERS_UP-1)); log "SCALE: shed on pressure (RAM ${RAM_AVAIL_MB}MB<${RAM_SHED_MB} or load ${LOADPCT}%/core>${SCALE_DN_LOAD}) -> $WORKERS_UP->$target"
@@ -98,11 +151,15 @@ place() {
   rm -f "$lock"
 }
 
-log "node-orchestrator up (interval ${INTERVAL}s, autoplace=$AUTOPLACE)"
-while true; do
-  sense
-  heal
-  scale
-  place
-  sleep "$INTERVAL"
-done
+# Sourceable for tests (RESILIENT-328): only run the daemon loop when executed directly.
+if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
+  log "node-orchestrator up (interval ${INTERVAL}s, autoplace=$AUTOPLACE)"
+  while true; do
+    sense
+    heal
+    enforce_cap
+    scale
+    place
+    sleep "$INTERVAL"
+  done
+fi
