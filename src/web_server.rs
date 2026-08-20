@@ -7852,6 +7852,14 @@ async fn handle_gap_claim(
                 "status": "not_found"
             })))
         }
+        Ok(gap_store::PreflightResult::WaitingOperator) => {
+            // EFFECTIVE-038: suspended gaps are not claimable until answered.
+            tracing::warn!("gap-claim: {} is waiting_operator (suspended)", gap_id);
+            Ok(Json(serde_json::json!({
+                "error": "Gap is suspended (waiting_operator) — respond to it first via `chump gap respond`",
+                "status": "blocked"
+            })))
+        }
         Err(e) => {
             tracing::warn!("gap-claim: preflight check failed: {}", e);
             Ok(Json(serde_json::json!({

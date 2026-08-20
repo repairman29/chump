@@ -11323,6 +11323,15 @@ async fn main() -> Result<()> {
                         eprintln!("[preflight] WARN {} — not found in state.db (run `chump gap import` first).", gap_id);
                         return Ok(());
                     }
+                    Ok(gap_store::PreflightResult::WaitingOperator) => {
+                        // EFFECTIVE-038: suspended gaps are not pickable until
+                        // `chump gap respond` resumes them.
+                        eprintln!(
+                            "[preflight] FAIL {} — waiting_operator (suspended; run `chump gap respond {} --answer JSON` to resume).",
+                            gap_id, gap_id
+                        );
+                        std::process::exit(1);
+                    }
                     Err(e) => {
                         eprintln!("chump gap preflight: {e:#}");
                         std::process::exit(1);
