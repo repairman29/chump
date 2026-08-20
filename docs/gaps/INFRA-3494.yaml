@@ -1,12 +1,14 @@
 - id: INFRA-3494
   domain: INFRA
   title: "CREDIBLE: [COTG-3.1] outcome-level verification (does the shipped thing SOLVE the problem?)"
-  status: open
+  status: done
+  closed_pr: 3999
   priority: P1
   effort: m
   acceptance_criteria:
     - Outcome-level verification checks the shipped artifact against the user's original stated problem (not just CI green) and emits a PASS/FAIL solve-verdict with evidence.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~45% -> FINISH (gate 5.1/5.3/6.2 depend on). src/external_verify_merge.rs is stronger than CI-green (proves fix fails-on-base/passes-on-head, no-regression). Add a post-merge LIVE outcome probe + promote src/browser.rs (static fetch) to real CDP.
+    [2026-08-20T08:00:45Z] RECONCILE: already shipped via d65c4c34 (PR #3999, same gap ID in commit trailer) — crates/chump-verify/src/external_verify_merge.rs::run_outcome_probe now supports CHUMP_OUTCOME_PROBE_RENDER=1 to render the post-merge outcome-probe URL through headless Chromium (--dump-dom, same engine src/browser.rs shells to) before the --outcome-probe-contains substring match, with automatic curl fallback on missing binary/timeout/failure. AC is met: the probe checks the shipped artifact against the live outcome (not just CI green) and emits kind=outcome_probe_verified/outcome_probe_failed with evidence. Gap YAML was left status:open in this worktree only — state.db has no open row for it.
   outcome_id: COTG
 
