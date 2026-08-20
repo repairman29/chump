@@ -11643,17 +11643,25 @@ async fn main() -> Result<()> {
                                     .spawn(); // fire-and-forget
                             }
                         }
-                        if update_yaml {
-                            // ZERO-WASTE-020: YAML mirrors retired — state.db
-                            // is canonical, .chump/state.sql is the tracked
-                            // dump. `--update-yaml` is now a documented no-op
-                            // kept for CLI compatibility with existing callers
-                            // (bot-merge.sh auto-close path) rather than a
-                            // hard error. Use `chump gap show <ID>` for
-                            // human-readable per-gap inspection.
-                            eprintln!(
-                                "chump gap ship --update-yaml: no-op (ZERO-WASTE-020 — YAML mirrors retired, state.db is canonical)"
-                            );
+                        // ZERO-WASTE-056: write docs/gaps/<ID>.yaml ATOMICALLY on
+                        // every ship, so the gap-close rides in the WORK PR and no
+                        // separate per-gap reconcile PR is ever needed (that churn
+                        // was ~half of all merges). Uses the LOSSLESS single-file
+                        // writer (dump_per_file_single merge-preserves hand-curated
+                        // fields) — NOT the destructive bulk regen ZERO-WASTE-020
+                        // disabled. --update-yaml is now the default; the flag is
+                        // still accepted (bot-merge.sh path) but no longer required.
+                        let _ = update_yaml;
+                        let gaps_dir = repo_root.join("docs/gaps");
+                        match store.dump_per_file_single(&gap_id, &gaps_dir) {
+                            Ok(true) => {
+                                println!("  synced docs/gaps/{}.yaml (status=done)", gap_id)
+                            }
+                            Ok(false) => {}
+                            Err(e) => eprintln!(
+                                "chump gap ship: warning — could not sync docs/gaps/{}.yaml: {e:#}",
+                                gap_id
+                            ),
                         }
                         return Ok(());
                     }
