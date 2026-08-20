@@ -6267,6 +6267,66 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason]
 
+  - kind: node_updater_noop
+    effect_metric: self
+    emitter: scripts/ops/node-updater.sh (RESILIENT-345)
+    trigger: node-updater fetched origin/main and found local HEAD already
+      matches it — no rebuild needed this cycle.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, sha]
+
+  - kind: node_updater_main_moved
+    effect_metric: self
+    emitter: scripts/ops/node-updater.sh (RESILIENT-345)
+    trigger: node-updater detected origin/main advanced past local HEAD —
+      the node's running organs are about to be rebuilt onto the new commit.
+      Closes the 2026-08-20 incident where CJ organs ran a 3-day/114-commit
+      -stale binary because the only sync mechanism (chump-cj-sync)
+      git-fetched but never rebuilt — merged fixes (e.g. CREDIBLE-291) never
+      reached the process actually executing on the node.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, from, to]
+
+  - kind: node_updater_failed
+    effect_metric: self
+    emitter: scripts/ops/node-updater.sh (RESILIENT-345)
+    trigger: the pull/build/atomic-swap step (delegated to
+      node-refresh-chump.sh) failed — surfaced so a node stuck on a stale
+      binary is visible rather than silently perpetuating the merged!=running
+      gap.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, reason]
+
+  - kind: node_updater_organs_restarted
+    effect_metric: self
+    emitter: scripts/ops/node-updater.sh (RESILIENT-345)
+    trigger: after a binary rebuild+swap, node-updater restarted every other
+      housekeeping organ (systemd restart, or nohup kill+relaunch) read from
+      the tracked ORGANS table so they re-exec against the fresh binary
+      instead of continuing to run the stale in-memory one.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, count]
+
+  - kind: node_updater_self_test_passed
+    effect_metric: self
+    emitter: scripts/ops/node-updater.sh (RESILIENT-345)
+    trigger: post-swap self-test called `chump self-check-staleness --json`
+      against the installed binary and confirmed 0 commits behind
+      origin/main — freshness, not just that the binary links/executes.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, commits_behind]
+
+  - kind: node_updater_self_test_failed
+    effect_metric: self
+    emitter: scripts/ops/node-updater.sh (RESILIENT-345)
+    trigger: the installed binary either could not execute, or executed
+      successfully but self-check-staleness reported it is still commits
+      behind origin/main after the swap — the exact "runs fine but is
+      3-day/114-commit stale" failure mode from the 2026-08-20 CJ incident,
+      now caught instead of silently returning stale answers.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, reason]
+
   - kind: pre_restart
     effect_metric: self
     emitter: src/main.rs (chump fleet restart prep)
