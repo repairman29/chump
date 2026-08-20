@@ -435,6 +435,52 @@ radius of an automated `--fix` run on main.
 as THE FLOOR strict-mode flip" pattern; no live incident yet at detector
 ship-time.
 
+---
+
+## Class W-015 — SYSTEMIC-RED shared-check wedge (N>=3 open PRs, identical failing check)
+
+**Signature**:
+- >= 3 open code PRs are all failing the SAME named required (or non-required)
+  check, regardless of `mergeStateStatus` (they don't need to have reached
+  BLOCKED yet).
+- Distinct from **main-health-watchdog** (INFRA-1656), which only inspects the
+  latest CI run on `main` itself — a shared-check wedge can exist while main
+  is perfectly green (e.g. a farmer-flap false-red every open PR inherits on
+  rebase).
+- Distinct from **W-AGG** in `wedge-watch.sh`, which only counts "any PR
+  BLOCKED with any failing check" — a coarse aggregate that never confirms
+  the failures share one check, never names it, and requires
+  `mergeStateStatus=BLOCKED` (a false-red often hasn't reached BLOCKED yet).
+
+**Time-to-recovery target**: <5 min to alarm + name the shared gate (the fix
+itself depends on root cause — flake-restart vs. genuine gate fix).
+
+**Detection**: `scripts/coord/systemic-red-detector.sh` — groups all open
+PRs' failing check names (via `gh pr list --json number,statusCheckRollup`),
+alarms when any single check name is shared by >= `CHUMP_SYSTEMIC_RED_THRESHOLD`
+(default 3) open PRs. Fires `kind=wedge_detected wedge_class=W-015` naming the
+shared check + a best-effort suspected root cause. Wired into the 5-min
+wedge-watch sweep; wedge-state-machine.sh routes W-015 to an advisory WARN
+broadcast (no auto-mutation — remediation depends on whether the shared
+check is a flake or a genuine regression).
+
+**Recovery playbook**:
+1. Read the `wedge_detected` event's `check` + `pr_numbers` fields to see the
+   shared gate and affected PRs.
+2. Open one affected PR's run for that check; determine flake vs. genuine
+   regression (per Verify-before-alarm, CLAUDE.md).
+3. Flake (e.g. farmer-flap false-red): restart/re-arm the offending daemon or
+   re-run the check on the affected PRs.
+4. Genuine regression: fix the gate itself (or the shared root cause it's
+   catching) and let affected PRs re-run on next push/rebase.
+
+**Hardening shipped**: RESILIENT-337 ships the detector
+(`scripts/coord/systemic-red-detector.sh`) + W-015 routing in
+wedge-state-machine.sh.
+
+**First seen**: 2026-08-20 — 14 PRs stacked on a farmer-flap false-red for
+hours with zero alarm; the board only caught it after operator prodding.
+
 ## When you find a new class
 
 Add a section here with:

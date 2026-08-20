@@ -8,7 +8,9 @@
 #   rot-reaper         — drain CONFLICTING PRs (RESILIENT-324)
 #   worktree-reaper    — reclaim disk from merged/dead worktrees
 #   disk-monitor       — disk headroom alarm + auto-remediate
-# The orchestrator then keeps the other three alive (heal loop). One install, self-managing node.
+#   reviver            — reopen closed-but-gap-open fleet PRs = work wrongly trashed by a
+#                        stale-base auto-close (INFRA-2026 post-push-integrity-watch, RESILIENT-341)
+# The orchestrator then keeps the others alive (heal loop). One install, self-managing node.
 set -uo pipefail
 REPO="${CHUMP_REPO_ROOT:-$HOME/Projects/chump}"
 STATE="${CHUMP_STATE_DIR:-$HOME/.chump}"
@@ -31,7 +33,8 @@ worktree-reaper|scripts/ops/stale-worktree-reaper.sh --execute|900
 disk-monitor|scripts/ops/disk-health-monitor.sh|300
 main-health-watchdog|scripts/ops/main-health-watchdog.sh|600
 pr-lander|scripts/dispatch/pr-lander-beat.sh|600
-cargo-sweep-gc|scripts/ops/cargo-sweep-gc.sh|3600"
+cargo-sweep-gc|scripts/ops/cargo-sweep-gc.sh|3600
+reviver|scripts/coord/post-push-integrity-watch.sh|60"
 
 # write the self-contained loop-runner for an organ (sources creds, sets PATH, loops at cadence)
 write_runner() {
@@ -100,7 +103,7 @@ EOF
 # self-test
 log "self-test:"
 fail=0
-for name in node-orchestrator rot-reaper worktree-reaper disk-monitor main-health-watchdog pr-lander cargo-sweep-gc; do
+for name in node-orchestrator rot-reaper worktree-reaper disk-monitor main-health-watchdog pr-lander cargo-sweep-gc reviver; do
   case "$SUP" in
     systemd) systemctl is-active "chump-$name.service" >/dev/null 2>&1 && log "  ✓ $name up" || { log "  ✗ $name DOWN"; fail=1; } ;;
     runit)   sv status "$SVDIR/chump-$name" 2>/dev/null | grep -q '^run' && log "  ✓ $name up" || { log "  ✗ $name DOWN"; fail=1; } ;;

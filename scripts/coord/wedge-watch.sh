@@ -15,6 +15,8 @@
 #   W-008: PR mergeStateStatus=CLEAN with autoMergeRequest + age > 1h
 #   W-014: toolchain-defining file changed + ≥2 open PRs now failing fmt/clippy
 #          (delegated to scripts/coord/toolchain-ratchet-detector.sh, INFRA-2036)
+#   W-015: ≥3 open PRs failing the IDENTICAL named check (shared broken gate)
+#          (delegated to scripts/coord/systemic-red-detector.sh, RESILIENT-337)
 #   W-AGG: ≥3 PRs BLOCKED + failing same test in last 30 min (aggregate)
 #
 # Usage:
@@ -155,6 +157,24 @@ elif [[ -x "$W014_DETECTOR" ]]; then
     CHUMP_REPO_ROOT="$REPO_ROOT" CHUMP_AMBIENT_LOG="$AMBIENT" \
         bash "$W014_DETECTOR" --check-only >/dev/null 2>&1
     [[ $? -eq 1 ]] && FIRED+=("W-014: toolchain-ratchet signature")
+fi
+
+# ── W-015: systemic-red shared-check wedge (delegated, RESILIENT-337) ────────
+# Own observability contract (scan_started/completed, cost, per-check
+# reason/pr_numbers/suspected_cause) lives in the detector script;
+# wedge-watch only needs its wedge_detected side-effect, which the detector
+# already emits to $AMBIENT.
+W015_DETECTOR="$REPO_ROOT/scripts/coord/systemic-red-detector.sh"
+if [[ -x "$W015_DETECTOR" ]] && [[ "$CHECK_ONLY" -eq 0 ]]; then
+    W015_OUT="$(CHUMP_REPO_ROOT="$REPO_ROOT" CHUMP_AMBIENT_LOG="$AMBIENT" \
+        bash "$W015_DETECTOR" 2>&1)"
+    if echo "$W015_OUT" | grep -q "DETECTED"; then
+        FIRED+=("W-015: systemic-red shared-check wedge (see ambient wedge_detected for detail)")
+    fi
+elif [[ -x "$W015_DETECTOR" ]]; then
+    CHUMP_REPO_ROOT="$REPO_ROOT" CHUMP_AMBIENT_LOG="$AMBIENT" \
+        bash "$W015_DETECTOR" --check-only >/dev/null 2>&1
+    [[ $? -eq 1 ]] && FIRED+=("W-015: systemic-red shared-check wedge")
 fi
 
 # ── W-AGG: ≥3 PRs all failing same CI line ────────────────────────────────────
