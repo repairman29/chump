@@ -1,9 +1,14 @@
 # Duty Officer — the standing owner of fleet health (RESILIENT-274)
 
-> **Status:** Design v1 — pre-build review surface.
+> **Status:** Slices 1-3 shipped — registry + loop skeleton (#3623) + this
+> session's standing-invocation wiring: `.claude/agents/duty-officer.md`
+> (curator role) + `.claude/skills/duty-officer/SKILL.md` (`/duty-officer`)
+> so the loop is dispatchable/pickable like its sibling curators instead of
+> living only as a script nobody calls. Slice 4 (T2 agent-runbooks worked
+> end-to-end) and slice 5 (scoreboard) remain open.
 > **Filed:** 2026-08-09, from a session where every incident needed the operator to notice and route.
 > **Outcome:** CHUMPOS (hands-off) + the RUN-the-business owner for customer-0, productized per-business for COTG.
-> **Pairs with:** [RFC-ship-gate-consensus.md](../rfcs/RFC-ship-gate-consensus.md) (the ship-decision gate), [CI_VERIFIED_AGGREGATOR.md](CI_VERIFIED_AGGREGATOR.md) (the CI-technical gate), `.claude/agents/curator-opus-incident-commander.md` (the role, today inert).
+> **Pairs with:** [RFC-ship-gate-consensus.md](../rfcs/RFC-ship-gate-consensus.md) (the ship-decision gate), [CI_VERIFIED_AGGREGATOR.md](CI_VERIFIED_AGGREGATOR.md) (the CI-technical gate), `.claude/agents/curator-opus-incident-commander.md` (the narrower trunk-red multi-curator coordination role this loop hands off to).
 
 ## 1. Problem
 
@@ -122,10 +127,11 @@ For **customer-0** (ChumpOS itself) the duty officer runs continuously and owns 
 
 ## 8. Build slices
 
-1. **[s] Registry format + the first entries** — `PLAYBOOK_REGISTRY.yaml` with the 6 incidents from §1 (the ones we already fixed become T1 entries with `verify`; the false-positives get their class). No behavior yet; just the machine-readable map.
-2. **[m] The standing loop skeleton** — a daemon that reads the registry + ambient, routes T1 (run action, confirm verify), and emits a heartbeat. T2/T3 stubbed to "log + would-escalate."
-3. **[m] Wire T3 over Discord** — escalation via notify-operator.sh + the startup notify-channel health check. (SEND only until RESILIENT-266 lands the receive half.)
-4. **[m] T2 agent-runbooks** — REALITY_CHECK-first execution of the top recurring runbook (pipeline-wedged / ship-assist), one worked example end-to-end.
-5. **[s] Scoreboard** — admin-merge count, incidents-by-tier, escalations; the FLEET-RADIO daily surface (ties to CREDIBLE-272 in SHIP-INFRA).
+1. **[s] Registry format + the first entries** ✅ shipped — `PLAYBOOK_REGISTRY.yaml` with the incidents from §1 (the ones we already fixed become T1 entries with `verify`; the false-positives get their class).
+2. **[m] The standing loop skeleton** ✅ shipped — `scripts/coord/duty-officer-loop.sh` reads the registry + ambient, routes T1 (run action, confirm verify), and emits a heartbeat.
+2.5. **[s] Standing invocation** ✅ shipped — `.claude/agents/duty-officer.md` + `.claude/skills/duty-officer/SKILL.md` so the loop is a dispatchable curator like its siblings (target/ci-audit/observability), not just a script nobody calls.
+3. **[m] Wire T3 over Discord** ✅ shipped — escalation via notify-operator.sh + the startup notify-channel health check. (SEND only until RESILIENT-266 lands the receive half.)
+4. **[m] T2 agent-runbooks** — open. REALITY_CHECK-first execution of the top recurring runbook (pipeline-wedged / ship-assist), one worked example end-to-end.
+5. **[s] Scoreboard** — open. admin-merge count, incidents-by-tier, escalations; the FLEET-RADIO daily surface (ties to CREDIBLE-272 in SHIP-INFRA).
 
 Do not build the whole thing at once. Slice 1 (the registry) is the keystone: it makes the un-owned tail visible and gives every future auto-heal a home.

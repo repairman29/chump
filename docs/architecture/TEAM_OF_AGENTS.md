@@ -207,6 +207,7 @@ skill, loop, cron, or CLAUDE.md/AGENTS.md reference — i.e. shelfware risk).
 | observability | ◐ partial | ✅ | `observability-loop.sh` | telemetry tuning; not in CLAUDE.md/TEAM |
 | deliberator | ◐ partial | ✅ | `deliberator-loop.sh` | vote tally; not in CLAUDE.md/TEAM |
 | harvester | ◐ partial | ✅ | (uses `scripts/arsenal/harvest.sh`) | fleet cartographer; no `*-loop.sh` |
+| duty-officer | ✅ wired | ✅ | `duty-officer-loop.sh` | standing signal->tier->action router (RESILIENT-274); pages operator T3-only |
 | shepherd | ✅ wired | ✅ | `shepherd-loop.sh` (INFRA-1917) | PR rescue; wraps `opus-shepherd-triage.sh` + `pr-shepherd-daemon.sh` |
 | orchestrator | ✅ wired | ✅ | `orchestrator-loop.sh` (INFRA-1917) | wizard role; wraps `pr-pulse.sh` + `chump-inbox.sh` + `role-card-emit.sh` |
 | quartermaster | ○ **doc-only** | — | — | **anti-shelfware role — itself shelfware** (META-205) |
