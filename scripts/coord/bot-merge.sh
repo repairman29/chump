@@ -362,6 +362,39 @@ trap '_bm_sigterm_handler' TERM
 # INFRA-3455: ctrl-C is a kill → vacuum the phantom lease (recoverable EXIT does not).
 trap '_BM_LEASE_VACUUM_OK=1; _bm_cleanup; exit 1' INT
 
+# RESILIENT-052: bot-merge runs under `set -euo pipefail` (line 110) but,
+# until now, had NO `ERR` trap — so any command that died non-zero (most
+# notoriously a `gh` sub-process crashing on SIGURG, exit 128+16=144; see
+# INFRA-2688) killed the whole script silently: `set -e` propagates the raw
+# child exit code straight out with zero stderr output and zero ambient
+# trace. Only the TERM/INT paths above were ever loud. This trap makes EVERY
+# `set -e` death loud: it prints the failing command, its exit code (and the
+# signal name when the exit code encodes one, i.e. rc > 128), and the
+# in-flight step/phase — then emits an ambient event so fleet monitors catch
+# it too. It intentionally does not change the propagated exit code (callers
+# scripted against specific codes keep working); it only removes the silence.
+# scanner-anchor: "kind":"bot_merge_uncaught_error"
+_bm_err_handler() {
+    local _rc="$1" _cmd="${2:-unknown}" _line="${3:-0}"
+    local _ts _step _ambient _gap_label _sig _signame=""
+    _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _step="${_BM_NAMED_STEP:-${__STAGE_LABEL:-unknown}}"
+    _gap_label="${GAP_IDS[*]:-${GAP_ID:-unknown}}"
+    _ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    if [[ "$_rc" -gt 128 ]]; then
+        _sig=$(( _rc - 128 ))
+        _signame="$(kill -l "$_sig" 2>/dev/null || echo "SIG$_sig")"
+    fi
+    printf '{"ts":"%s","kind":"bot_merge_uncaught_error","gap":"%s","step":"%s","exit_code":%d,"signal":"%s","line":%d,"cmd":"%s","note":"RESILIENT-052: set -e death now loud (was silent, e.g. exit 144)"}\n' \
+        "$_ts" "$_gap_label" "$_step" "$_rc" "$_signame" "$_line" "${_cmd//\"/\\\"}" \
+        >> "$_ambient" 2>/dev/null || true
+    printf '\033[0;31m[bot-merge] UNCAUGHT FAILURE (RESILIENT-052): step="%s" exit_code=%d%s at line %d\033[0m\n' \
+        "$_step" "$_rc" "${_signame:+ (signal=$_signame)}" "$_line" >&2 || true
+    printf '\033[0;31m[bot-merge]   failing command: %s\033[0m\n' "$_cmd" >&2 || true
+    printf '\033[0;31m[bot-merge]   kind=bot_merge_uncaught_error emitted to ambient.\033[0m\n' >&2 || true
+}
+trap '_bm_err_handler "$?" "$BASH_COMMAND" "$LINENO"' ERR
+
 # ── META-156: per-step ambient observability ─────────────────────────────────
 # Emit kind=bot_merge_step_started / kind=bot_merge_step_done to ambient.jsonl
 # for each named step (init, preflight, claim, push, pr_create, pr_merge_arm,
