@@ -14,8 +14,8 @@
 # having the reconcile re-apply it on a timer converges the node to the repo
 # automatically and survives the reset.
 #
-# Format: one directive per line, "<state>  <unit>". Blank lines and lines
-# beginning with '#' are ignored. Two states:
+# Format: one directive per line, "<state>  <unit>  [role=ROLE] [requires=SPEC,SPEC,...]".
+# Blank lines and lines beginning with '#' are ignored. Two states:
 #
 #   enabled     <unit>  → this organ must be enabled AND active. The reconcile
 #                         runs `systemctl enable --now <unit>` if it is not
@@ -31,6 +31,42 @@
 #                         (the .d/ dir is untouched) AND survives the mirror's
 #                         `git reset --hard` (its content is re-applied from
 #                         this repo, not a one-time host edit).
+#
+# RESILIENT-347 (per-node-applicable reconcile): `enabled` lines may declare
+# two optional fields, space-separated after the unit name:
+#
+#   role=brain|muscle|data   Informational classification of what the organ
+#                            does (brain=decision/coordination, muscle=acts on
+#                            the world e.g. merges/pushes, data=publishes
+#                            state). Surfaced on every applicability/backoff
+#                            ambient event so an operator can see WHICH class
+#                            of organ is dark on a given node. Defaults to
+#                            "brain" if omitted.
+#
+#   requires=SPEC,SPEC,...   Comma-separated preconditions that must ALL hold
+#                            on THIS node before the reconcile will even
+#                            attempt to enable the organ. Missing a
+#                            precondition is NOT an error — it means the organ
+#                            is simply not applicable to this node (e.g. a
+#                            Rust helper binary that isn't built there yet),
+#                            and the reconcile skips it silently (one
+#                            organ_reconcile_not_applicable event, no retry
+#                            churn). Supported spec kinds:
+#                              bin:<name>   `command -v <name>` must succeed
+#                              env:<VAR>    $VAR must be a non-empty env var
+#                              dep:<unit>   another systemd unit must already
+#                                           be active
+#
+# Applicability is the FIRST gate (blast-all -> per-node-applicable, was
+# RESILIENT-347's core ask). If an organ IS applicable but `enable --now`
+# either fails outright or the unit is not verified active a few seconds
+# later, the reconcile does NOT leave it to fail identically every single
+# cycle (the pre-347 churn that re-installed 4 broken units every 5 minutes
+# on CJ: integrator/sla-scorecard/backlog-sync-writer/farmer). Instead it
+# disables the unit and records a cooldown backoff
+# ($CHUMP_ORGAN_RECONCILE_BACKOFF_DIR/<unit>.json, default 1h via
+# CHUMP_ORGAN_RECONCILE_BACKOFF_COOLDOWN_S) so the SAME broken unit is only
+# retried once the cooldown expires, not every tick.
 
 # --- Auto-pagers that must stay OFF (2026-08-13 operator DM-spam loop) --------
 # heartbeat-monitor pages node_heartbeat_incomplete for the (known) closetjunky
@@ -48,26 +84,26 @@ paging_off  chump-board-ceo-briefing.service
 # every deploy + boot), same as every other ATC timer. Clean separation: the
 # installer keeps the timer alive, the timer runs the reconcile, the reconcile
 # enforces this manifest.
-enabled     chump-discord-gateway.service
-enabled     chump-pr-lander.timer
+enabled     chump-discord-gateway.service  role=brain
+enabled     chump-pr-lander.timer  role=muscle requires=bin:gh
 # chump-ci-flake-rerun.timer: the CI-flake self-heal organ (RESILIENT-306).
 # Reruns known-flaky red required-checks on open fleet PRs so a flaky test
 # (e.g. credible218) cannot jam the merge queue; escalates real failures once
 # instead of looping. Declared here so reconcile re-arms it if it drifts/fails
 # (it sat in `failed` all night on 2026-08-13 — a SIGPIPE bug, now fixed).
-enabled     chump-ci-flake-rerun.timer
+enabled     chump-ci-flake-rerun.timer  role=muscle requires=bin:gh
 # chump-pr-approval.timer: the approve-from-phone SURFACER (RESILIENT-265).
 # Detects OS-authored PRs on external product repos (default repairman29/olive)
 # that need Jeff's approval and DMs each to his phone with ✅ Merge / ❌ Reject
 # buttons; the gateway acts on the tap. Declared here so reconcile re-arms it if
 # it drifts or fails. (Detection only — it NEVER merges without a real tap.)
-enabled     chump-pr-approval.timer
+enabled     chump-pr-approval.timer  role=muscle requires=bin:gh
 # chump-farmer.timer: the persistent farmer runner (RESILIENT-313). Fires the
 # farmer tick every 30s so the worker-gate heartbeat (RESILIENT-069) never crosses
 # its 120s stale threshold — the fix for the recurring silent fleet-stall. Retires
 # the fragile, hand-installed transient `chump-farmer-bridge` unit. Declared here
 # so organ-reconcile re-arms it if it drifts or fails.
-enabled     chump-farmer.timer
+enabled     chump-farmer.timer  role=brain requires=bin:chump
 # chump-rot-reaper.timer: the CONFLICTING-PR drain (RESILIENT-324). Closes open
 # PRs that are genuinely CONFLICTING and older than the age gate — the ones the
 # armed-rebaser CANNOT rebase — and re-queues their gaps to be redone on fresh
@@ -75,7 +111,7 @@ enabled     chump-farmer.timer
 # the fleet stays halted in the hysteresis dead-zone with no auto-recovery (the
 # 2026-08-14 hours-long deadlock). Declared here so organ-reconcile re-arms it if
 # it drifts or fails.
-enabled     chump-rot-reaper.timer
+enabled     chump-rot-reaper.timer  role=muscle requires=bin:gh
 # chump-integrator.timer: the Batched Merge Train (RESILIENT-318 / INFRA-2130).
 # Batches up to 5 ready_to_ship gaps through a preflight gate into ONE
 # integration branch so CI runs once per batch instead of once per gap
@@ -85,7 +121,7 @@ enabled     chump-rot-reaper.timer
 # Flipping LIVE is a separate operator decision gated on trunk-GREEN
 # (docs/process/SCALING.md). Declared here so organ-reconcile re-arms it if it
 # drifts or fails.
-enabled     chump-integrator.timer
+enabled     chump-integrator.timer  role=muscle requires=bin:chump-integrator
 
 # chump-backlog-sync-writer.timer: the registry single-writer (CREDIBLE-292,
 # design RESILIENT-194). Publishes .chump/state.sql to origin/main every
@@ -97,4 +133,4 @@ enabled     chump-integrator.timer
 # checked by fleet-doctor-strict.sh's backlog-sync-freshness check (RED if
 # origin/main .chump/state.sql goes >24h stale). Declared here so
 # organ-reconcile re-arms it if it drifts or fails.
-enabled     chump-backlog-sync-writer.timer
+enabled     chump-backlog-sync-writer.timer  role=data requires=bin:git,bin:chump
