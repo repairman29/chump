@@ -337,6 +337,80 @@ def detect_and_emit_pillar_imbalance(ambient_path: str) -> None:
             break  # Only emit one alert per check
 
 
+def _parse_deps(deps_raw: object) -> list[str]:
+    """Normalize a gap's `depends_on` field (JSON-string or list) to a list."""
+    if isinstance(deps_raw, str):
+        try:
+            parsed = json.loads(deps_raw) if deps_raw.strip() else []
+        except json.JSONDecodeError:
+            return []
+        return [d for d in parsed if isinstance(d, str) and d]
+    if isinstance(deps_raw, list):
+        return [d for d in deps_raw if isinstance(d, str) and d]
+    return []
+
+
+def _build_dependents_map(gaps: list[dict]) -> dict[str, list[str]]:
+    """dep_gap_id -> list of gap_ids whose depends_on includes dep_gap_id.
+
+    Mirrors the edge direction of chump-planner's DependencyGraph: "A
+    depends_on B" means B blocks A, i.e. closing B unblocks A.
+    """
+    dependents: dict[str, list[str]] = {}
+    for g in gaps:
+        gid = g.get("id") or ""
+        if not gid:
+            continue
+        for dep in _parse_deps(g.get("depends_on")):
+            dependents.setdefault(dep, []).append(gid)
+    return dependents
+
+
+def compute_effective_priority_ranks(gaps: list[dict]) -> dict[str, int]:
+    """INFRA-3612: effective_priority(gap) = min priority-rank over
+    {own priority} union {priority of every gap it transitively unblocks}.
+
+    Mirrors chump-planner's `DependencyGraph::unblocks()` (crates/
+    chump-planner/src/graph.rs): transitive hard-dependents still open. A
+    P3 that (directly or transitively) blocks a P0 inherits P0's rank —
+    the fleet must work the blocker before the P0 can ever become
+    pickable, so ranking the blocker at its own nominal priority left the
+    P0 stranded behind the entire P1 band. This is the PRIMARY sort key,
+    not a within-band tiebreaker (see MISSION-028 wedge_rank comment
+    above, which remains tiebreaker-only).
+    """
+    by_id = {g.get("id"): g for g in gaps if g.get("id")}
+    open_set = {gid for gid, g in by_id.items() if g.get("status") == "open"}
+    dependents = _build_dependents_map(gaps)
+
+    own_rank = {
+        gid: PRIO_RANK.get((g.get("priority") or "").upper(), 9)
+        for gid, g in by_id.items()
+    }
+
+    effective: dict[str, int] = {}
+
+    def resolve(gid: str, path: frozenset[str]) -> int:
+        if gid in effective:
+            return effective[gid]
+        if gid in path:
+            # Cycle in depends_on — don't loop forever; fall back to the
+            # node's own rank like chump-planner's toposort cycle policy.
+            return own_rank.get(gid, 9)
+        best = own_rank.get(gid, 9)
+        next_path = path | {gid}
+        for child in dependents.get(gid, []):
+            if child not in open_set:
+                continue
+            best = min(best, resolve(child, next_path))
+        effective[gid] = best
+        return best
+
+    for gid in open_set:
+        resolve(gid, frozenset())
+    return effective
+
+
 def csv(env_key: str) -> list[str]:
     return [s.strip() for s in os.environ.get(env_key, "").split(",") if s.strip()]
 
@@ -638,6 +712,13 @@ def main() -> int:
     # Canonical logic mirrors _pick_gap.py (_load_active_mission / _is_mission_linked).
     active_mission = _load_active_mission()
 
+    # INFRA-3612: effective_priority propagation — computed once over the
+    # FULL gap list (not just filtered candidates) so a blocked P0's rank
+    # reaches its P2/P3 prerequisite even though the P0 itself never
+    # becomes a candidate (it's filtered below for having non-empty
+    # depends_on).
+    effective_priority_ranks = compute_effective_priority_ranks(gaps)
+
     candidates = []
     for g in gaps:
         gid = g.get("id", "")
@@ -770,11 +851,22 @@ def main() -> int:
         # below as a within-band tiebreaker only.
         prio_rank = PRIO_RANK.get(p, 9)
 
+        # INFRA-3612: effective_prio_rank replaces prio_rank as the PRIMARY
+        # sort key. It is the min priority-rank over {this gap's own
+        # priority} union {priority of every open gap it transitively
+        # unblocks} — a P3 that (directly or transitively) blocks a P0
+        # sorts as a P0, not merely as a within-P3-band tiebreak winner.
+        # Falls back to prio_rank when the gap has no dependents (the
+        # common case), so behavior is unchanged for the vast majority of
+        # gaps and every INFRA-3616 invariant above still holds.
+        effective_prio_rank = effective_priority_ranks.get(gid, prio_rank)
+
         # MISSION-028: mission_rank = 0 for gaps linked to the active mission,
-        # 1 for everything else. Placed AFTER prio_rank so a P0-MISSION gap beats
-        # a P0-self-maintenance gap within the same priority band, but a
-        # substrate P0 (prio_rank=0) still beats a mission P1 (prio_rank=1)
-        # because prio_rank is compared first.
+        # 1 for everything else. Placed AFTER effective_prio_rank so a
+        # P0-MISSION gap beats a P0-self-maintenance gap within the same
+        # priority band, but a substrate P0 (effective_prio_rank=0) still
+        # beats a mission P1 (effective_prio_rank=1) because
+        # effective_prio_rank is compared first.
         mission_rank = 0 if _is_mission_linked(g, active_mission) else 1
 
         # INFRA-3616: wedge_rank folds the affinity + FLEET-046/INFRA-720
@@ -786,10 +878,10 @@ def main() -> int:
         wedge_rank = -(affinity_score + rebalance_boost)
 
         # Canonical sort order matches _pick_gap.py:
-        #   (prio_rank, mission_rank, wedge_rank, effort_rank, age, id)
+        #   (effective_prio_rank, mission_rank, wedge_rank, effort_rank, age, id)
         candidates.append(
             (
-                prio_rank,
+                effective_prio_rank,
                 mission_rank,
                 wedge_rank,
                 EFFORT_RANK.get(e, 9),

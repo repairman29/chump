@@ -109,8 +109,27 @@ fn gap(
     outcome: &str,
     created_at: i64,
 ) -> String {
+    gap_with_deps(id, domain, priority, effort, outcome, created_at, &[])
+}
+
+/// Same as `gap`, but with an explicit `depends_on` list — needed for the
+/// INFRA-3612 effective-priority propagation tests below.
+fn gap_with_deps(
+    id: &str,
+    domain: &str,
+    priority: &str,
+    effort: &str,
+    outcome: &str,
+    created_at: i64,
+    depends_on: &[&str],
+) -> String {
+    let deps_json = depends_on
+        .iter()
+        .map(|d| format!("\"{d}\""))
+        .collect::<Vec<_>>()
+        .join(",");
     format!(
-        r#"{{"id":"{id}","domain":"{domain}","title":"{id} title","priority":"{priority}","effort":"{effort}","status":"open","depends_on":"","notes":"","skills_required":"","preferred_backend":"","preferred_machine":"","required_model":"","outcome_id":"{outcome}","created_at":{created_at}}}"#
+        r#"{{"id":"{id}","domain":"{domain}","title":"{id} title","priority":"{priority}","effort":"{effort}","status":"open","depends_on":[{deps_json}],"notes":"","skills_required":"","preferred_backend":"","preferred_machine":"","required_model":"","outcome_id":"{outcome}","created_at":{created_at}}}"#
     )
 }
 
@@ -195,5 +214,56 @@ fn infra3616_priority_dominates_mission_across_tiers() {
     assert_eq!(
         picked, "AAA-300",
         "a substrate P0 must beat a mission P1 — mission is a tiebreak, not a tier-jump (got {picked})"
+    );
+}
+
+/// INFRA-3612: effective_priority propagation. A P3 that a P0 depends_on
+/// must be picked BEFORE unrelated P1/P2 gaps — the blocker inherits the
+/// max priority of what it transitively unblocks (via unblocks()), not
+/// just its own nominal band. The P0 itself is declared with a
+/// `depends_on` on the P3, so the P0 never becomes a candidate directly
+/// (unresolved deps keep it filtered) — proving the propagation reaches
+/// the picker only through the blocker, exactly the "P0 waits behind all
+/// P1s while its own prereq sits unworked" deadlock the gap AC names.
+#[test]
+fn infra3612_blocker_inherits_effective_priority_of_blocked_p0() {
+    if !python3_available() {
+        eprintln!("skipping: python3 not available");
+        return;
+    }
+    let gaps = format!(
+        "[{},{},{},{}]",
+        gap("AAA-100", "CREDIBLE", "P1", "xs", "", 1), // unrelated P1, oldest
+        gap("BBB-101", "CREDIBLE", "P2", "xs", "", 2), // unrelated P2
+        gap("CCC-200", "CREDIBLE", "P3", "xs", "", 3), // P3, no deps of its own — the pickable leaf blocker
+        gap_with_deps("ZZZ-999", "INFRA", "P0", "m", "", 4, &["CCC-200"]), // P0 blocked on the P3
+    );
+    let picked = pick(&gaps, "", "P0,P1,P2,P3");
+    assert_eq!(
+        picked, "CCC-200",
+        "a P3 that a P0 depends_on must be picked before unrelated P1/P2 gaps (got {picked})"
+    );
+}
+
+/// INFRA-3612 (corollary): effective priority is transitive through a
+/// multi-hop chain — a P3 that unblocks a P2 that unblocks a P0 still
+/// inherits the P0's rank, not just the immediate P2's.
+#[test]
+fn infra3612_effective_priority_is_transitive() {
+    if !python3_available() {
+        eprintln!("skipping: python3 not available");
+        return;
+    }
+    let gaps = format!(
+        "[{},{},{},{}]",
+        gap("AAA-100", "CREDIBLE", "P1", "xs", "", 1), // unrelated P1
+        gap("CCC-200", "CREDIBLE", "P3", "xs", "", 2), // P3, no deps of its own — the pickable leaf blocker
+        gap_with_deps("BBB-201", "CREDIBLE", "P2", "xs", "", 3, &["CCC-200"]), // P2, blocked on the P3
+        gap_with_deps("ZZZ-999", "INFRA", "P0", "m", "", 4, &["BBB-201"]), // P0, blocked on the P2 (2 hops from the P3)
+    );
+    let picked = pick(&gaps, "", "P0,P1,P2,P3");
+    assert_eq!(
+        picked, "CCC-200",
+        "a P3 two hops from a P0 must still inherit the P0's effective priority (got {picked})"
     );
 }

@@ -89,6 +89,81 @@ def is_manufactured_pillar_starved_junk(title: str) -> bool:
     return bool(_MANUFACTURED_PILLAR_STARVED_RE.match((title or "").lstrip()))
 
 
+def _parse_deps(deps_raw: object) -> list[str]:
+    """Normalize a gap's `depends_on` field (JSON-string or list) to a list."""
+    if isinstance(deps_raw, str):
+        try:
+            parsed = json.loads(deps_raw) if deps_raw.strip() else []
+        except json.JSONDecodeError:
+            return []
+        return [d for d in parsed if isinstance(d, str) and d]
+    if isinstance(deps_raw, list):
+        return [d for d in deps_raw if isinstance(d, str) and d]
+    return []
+
+
+def _build_dependents_map(gaps: list[dict]) -> dict[str, list[str]]:
+    """dep_gap_id -> list of gap_ids whose depends_on includes dep_gap_id.
+
+    Mirrors the edge direction of chump-planner's DependencyGraph: "A
+    depends_on B" means B blocks A, i.e. closing B unblocks A.
+    """
+    dependents: dict[str, list[str]] = {}
+    for g in gaps:
+        gid = g.get("id") or ""
+        if not gid:
+            continue
+        for dep in _parse_deps(g.get("depends_on")):
+            dependents.setdefault(dep, []).append(gid)
+    return dependents
+
+
+def compute_effective_priority_ranks(gaps: list[dict]) -> dict[str, int]:
+    """INFRA-3612: effective_priority(gap) = min priority-rank over
+    {own priority} union {priority of every gap it transitively unblocks}.
+
+    Canonical copy — mirrored in scripts/dispatch/_pick_and_claim_gap.py
+    (keep in sync). Mirrors chump-planner's `DependencyGraph::unblocks()`
+    (crates/chump-planner/src/graph.rs): transitive hard-dependents still
+    open. A P3 that (directly or transitively) blocks a P0 inherits P0's
+    rank — the fleet must work the blocker before the P0 can ever become
+    pickable, so ranking the blocker at its own nominal priority left the
+    P0 stranded behind the entire P1 band. This is the PRIMARY sort key,
+    not a within-band tiebreaker (planner_rank below remains
+    tiebreaker-only).
+    """
+    by_id = {g.get("id"): g for g in gaps if g.get("id")}
+    open_set = {gid for gid, g in by_id.items() if g.get("status") == "open"}
+    dependents = _build_dependents_map(gaps)
+
+    own_rank = {
+        gid: PRIO_RANK.get((g.get("priority") or "").upper(), 9)
+        for gid, g in by_id.items()
+    }
+
+    effective: dict[str, int] = {}
+
+    def resolve(gid: str, path: frozenset[str]) -> int:
+        if gid in effective:
+            return effective[gid]
+        if gid in path:
+            # Cycle in depends_on — don't loop forever; fall back to the
+            # node's own rank like chump-planner's toposort cycle policy.
+            return own_rank.get(gid, 9)
+        best = own_rank.get(gid, 9)
+        next_path = path | {gid}
+        for child in dependents.get(gid, []):
+            if child not in open_set:
+                continue
+            best = min(best, resolve(child, next_path))
+        effective[gid] = best
+        return best
+
+    for gid in open_set:
+        resolve(gid, frozenset())
+    return effective
+
+
 def csv(env_key: str) -> list[str]:
     return [s.strip() for s in os.environ.get(env_key, "").split(",") if s.strip()]
 
@@ -431,6 +506,12 @@ def main() -> int:
     # ~/.chump/ACTIVE_MISSION file.
     active_mission = _load_active_mission()
 
+    # INFRA-3612: effective_priority propagation — computed once over the
+    # FULL gap list (not just filtered candidates) so a blocked P0's rank
+    # reaches its P2/P3 prerequisite even though the P0 itself never
+    # becomes a candidate (its unresolved deps keep it filtered below).
+    effective_priority_ranks = compute_effective_priority_ranks(gaps)
+
     candidates = []
     for g in gaps:
         gid = g.get("id", "")
@@ -550,9 +631,19 @@ def main() -> int:
         # INFRA-756: downrank gaps with incomplete acceptance_criteria (obs-AC placeholders)
         # by adding 5 to priority rank. This keeps them pickable but below fully-specified gaps.
         prio_rank = PRIO_RANK.get(p, 9)
+
+        # INFRA-3612: effective_prio_rank replaces prio_rank as the PRIMARY
+        # sort key. It is the min priority-rank over {this gap's own
+        # priority} union {priority of every open gap it transitively
+        # unblocks} — a P3 that (directly or transitively) blocks a P0
+        # sorts as a P0, not merely as a within-P3-band tiebreak winner.
+        # Falls back to prio_rank when the gap has no dependents (the
+        # common case).
+        effective_prio_rank = effective_priority_ranks.get(gid, prio_rank)
+
         ac_text_upper = ac_text.upper()
         if ac_text and ("TODO" in ac_text_upper or "TBD" in ac_text_upper or "<FILL IN>" in ac_text_upper):
-            prio_rank += 5
+            effective_prio_rank += 5
 
         # INFRA-1258: planner rank is used as a within-priority-band tiebreaker.
         # Lower rank = better (1 is rank-1 best). Gaps not in the planner output
@@ -570,17 +661,19 @@ def main() -> int:
         planner_rank = planner_ranks.get(gid, 10_000)
 
         # MISSION-011: mission_rank = 0 for gaps linked to the active mission
-        # outcome, 1 for everything else. Placed AFTER prio_rank so it acts as
-        # a within-priority-band tiebreaker. A substrate P0 (prio_rank=0) still
-        # beats a mission P1 (prio_rank=1) because prio_rank is compared first.
-        # Within the same priority band (both P1), mission_rank=0 causes the
-        # mission gap to sort before the substrate gap (mission_rank=1).
-        # Sort tuple: (prio_rank, mission_rank, planner_rank, effort_rank, age, id)
+        # outcome, 1 for everything else. Placed AFTER effective_prio_rank so
+        # it acts as a within-priority-band tiebreaker. A substrate P0
+        # (effective_prio_rank=0) still beats a mission P1
+        # (effective_prio_rank=1) because effective_prio_rank is compared
+        # first. Within the same priority band (both P1), mission_rank=0
+        # causes the mission gap to sort before the substrate gap
+        # (mission_rank=1).
+        # Sort tuple: (effective_prio_rank, mission_rank, planner_rank, effort_rank, age, id)
         mission_rank = 0 if _is_mission_linked(g, active_mission) else 1
 
         candidates.append(
             (
-                prio_rank,
+                effective_prio_rank,
                 mission_rank,
                 planner_rank,
                 EFFORT_RANK.get(e, 9),
