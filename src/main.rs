@@ -11602,6 +11602,95 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // EFFECTIVE-038: A2A L2 task-suspension. `suspend` moves a gap
+            // into status=waiting_operator carrying a structured question
+            // payload — used when an agent hits auth_required (missing
+            // credential, RESILIENT-054's silent-death mode) or an
+            // ambiguous input_required decision instead of guessing wrong
+            // or filing a disconnected follow-up gap.
+            "suspend" => {
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap suspend <GAP-ID> --kind input_required|auth_required --question TEXT [--context JSON]\n\n\
+                         Suspends the gap into status=waiting_operator, carrying a structured\n\
+                         question payload. `chump gap respond <ID> --answer JSON` resumes it\n\
+                         from exactly the status it was in before suspending."
+                    );
+                    return Ok(());
+                }
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap suspend <GAP-ID> --kind K --question TEXT");
+                    std::process::exit(2);
+                });
+                let kind = flag("--kind").unwrap_or_else(|| {
+                    eprintln!("chump gap suspend: --kind input_required|auth_required is required");
+                    std::process::exit(2);
+                });
+                let question = flag("--question").unwrap_or_else(|| {
+                    eprintln!("chump gap suspend: --question TEXT is required");
+                    std::process::exit(2);
+                });
+                let context = flag("--context");
+                match store.suspend_waiting(&gap_id, &kind, &question, context.as_deref()) {
+                    Ok(()) => {
+                        if json_out {
+                            println!(
+                                r#"{{"id":"{gap_id}","status":"waiting_operator","kind":"{kind}"}}"#
+                            );
+                        } else {
+                            println!(
+                                "{gap_id} suspended → waiting_operator (kind={kind}). Respond with: chump gap respond {gap_id} --answer '<json>'"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap suspend: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            // EFFECTIVE-038: resumes a waiting_operator gap with the
+            // operator's answer, restoring the status it paused from.
+            "respond" => {
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap respond <GAP-ID> --answer JSON\n\n\
+                         Resumes a gap suspended via `chump gap suspend`. Restores the status\n\
+                         the gap held immediately before suspension and appends the Q/A pair\n\
+                         to notes as an audit trail."
+                    );
+                    return Ok(());
+                }
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap respond <GAP-ID> --answer JSON");
+                    std::process::exit(2);
+                });
+                let answer = flag("--answer").unwrap_or_else(|| {
+                    eprintln!("chump gap respond: --answer JSON is required");
+                    std::process::exit(2);
+                });
+                match store.respond_gap(&gap_id, &answer) {
+                    Ok(resumed_status) => {
+                        if json_out {
+                            println!(r#"{{"id":"{gap_id}","resumed_status":"{resumed_status}"}}"#);
+                        } else {
+                            println!("{gap_id} resumed → status={resumed_status}");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap respond: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             "close" => {
                 // RESILIENT-119: first-class triage-close. Unlike `chump gap
                 // ship`, this path never expects a PR — it flips status
