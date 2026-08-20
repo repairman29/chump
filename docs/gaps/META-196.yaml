@@ -6,6 +6,5 @@
   effort: xl
   acceptance_criteria:
     - bot-merge.sh per-PR path is replaced by GitHub native merge_group; main branch protection routes merges through the merge queue; a batched set of PRs lands through the queue in a single CI run.
-  depends_on: [RESILIENT-017]
   outcome_id: MISSION-010
 
