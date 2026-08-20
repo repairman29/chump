@@ -1261,6 +1261,13 @@ events:
     consumers: [board-cycle, fleet-brief]
     fields_required: [ts, kind, count, deadline_h, prs]
 
+  - kind: gap_respawn_cap_reached
+    effect_metric: self
+    emitter: scripts/ops/rot-reaper.sh (EFFECTIVE-434)
+    trigger: a gap has already been auto-closed+re-queued CHUMP_ROT_REAPER_RESPAWN_CAP (default 3) times by the reaper's own notes — the same failure keeps recurring across fresh attempts, so the reaper stops re-queuing it and pages the operator instead of recycling forever
+    consumers: [board-cycle, fleet-brief, operator-recall]
+    fields_required: [ts, kind, gap, pr, respawn_count, cap]
+
   - kind: reaper_silent
     effect_metric: self
     emitter: scripts/ops/reaper-heartbeat-watchdog.sh (INFRA-120)
