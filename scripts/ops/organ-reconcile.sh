@@ -40,6 +40,14 @@ SYSTEMD_DIR="/etc/systemd/system"
 DROPIN_NAME="zz-organ-reconcile-pager-off.conf"
 LEGACY_DROPIN="zz-autopage-off.conf"   # tonight's host-only snowflake — remove it
 
+# RESILIENT-347: stubbable systemctl (test hook, mirrors organ-watchdog.sh's
+# CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN pattern) + per-node-applicable reconcile
+# tunables.
+SYSTEMCTL_BIN="${CHUMP_ORGAN_RECONCILE_SYSTEMCTL_BIN:-systemctl}"
+BACKOFF_DIR="${CHUMP_ORGAN_RECONCILE_BACKOFF_DIR:-$REPO_ROOT/.chump-locks/organ-backoff}"
+BACKOFF_COOLDOWN_S="${CHUMP_ORGAN_RECONCILE_BACKOFF_COOLDOWN_S:-3600}"
+VERIFY_DELAY_S="${CHUMP_ORGAN_RECONCILE_VERIFY_DELAY_S:-2}"
+
 AMBIENT_LOG="${NODE_AMBIENT:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 LIB_AMBIENT="$REPO_ROOT/scripts/coord/lib/ambient-write.sh"
 [[ -f "$LIB_AMBIENT" ]] && source "$LIB_AMBIENT"
@@ -58,6 +66,65 @@ emit() {  # kind, extra-json (no leading/trailing comma)
   return 0  # emit is best-effort telemetry; it must never sink the reconcile (set -e)
 }
 
+# RESILIENT-347: is `unit` applicable to THIS node given its declared
+# `requires=` spec (comma-separated bin:/env:/dep: tokens, see manifest
+# header)? Empty/absent requires means "always applicable" (back-compat with
+# pre-347 manifest lines). Writes the first unmet reason into $2 (a nameref
+# target via printf -v) for the caller to log/emit.
+organ_is_applicable() {
+  local unit="$1" requires="$2" reason_var="$3"
+  [[ -z "$requires" ]] && return 0
+  local tok IFS=','
+  for tok in $requires; do
+    case "$tok" in
+      bin:*)
+        local bin="${tok#bin:}"
+        if ! command -v "$bin" >/dev/null 2>&1; then
+          printf -v "$reason_var" 'missing_bin:%s' "$bin"; return 1
+        fi
+        ;;
+      env:*)
+        local var="${tok#env:}"
+        if [[ -z "${!var:-}" ]]; then
+          printf -v "$reason_var" 'missing_env:%s' "$var"; return 1
+        fi
+        ;;
+      dep:*)
+        local dep="${tok#dep:}"
+        if ! "$SYSTEMCTL_BIN" is-active --quiet "$dep" 2>/dev/null; then
+          printf -v "$reason_var" 'missing_dep:%s' "$dep"; return 1
+        fi
+        ;;
+      *)
+        printf -v "$reason_var" 'unknown_requires_spec:%s' "$tok"; return 1
+        ;;
+    esac
+  done
+  return 0
+}
+
+# RESILIENT-347: is `unit` still cooling down from a prior verify failure?
+# Returns 0 (true, skip it) while now - since < BACKOFF_COOLDOWN_S.
+organ_in_backoff() {
+  local unit="$1" f="$BACKOFF_DIR/${unit}.json"
+  [[ -f "$f" ]] || return 1
+  local since; since="$(grep -o '"since":[0-9]*' "$f" 2>/dev/null | head -1 | cut -d: -f2)"
+  [[ "$since" =~ ^[0-9]+$ ]] || return 1
+  local now; now="$(date +%s)"
+  (( now - since < BACKOFF_COOLDOWN_S ))
+}
+
+record_backoff() {  # unit, reason
+  local unit="$1" reason="$2"
+  mkdir -p "$BACKOFF_DIR" 2>/dev/null || return 0
+  printf '{"unit":"%s","since":%d,"reason":"%s"}\n' "$unit" "$(date +%s)" "$reason" \
+    > "$BACKOFF_DIR/${unit}.json" 2>/dev/null || true
+}
+
+clear_backoff() {  # unit
+  rm -f "$BACKOFF_DIR/${1}.json" 2>/dev/null || true
+}
+
 # Repo-declared drop-in body that neuters an auto-pager's ExecStart.
 dropin_body() {
   local unit="$1"
@@ -73,19 +140,32 @@ ExecStart=/bin/true
 EOF
 }
 
-# ── read manifest into two arrays ────────────────────────────────────────────
+# ── read manifest into arrays (+ per-unit role/requires, RESILIENT-347) ─────
 PAGING_OFF=()
 ENABLED=()
+declare -A ORGAN_ROLE
+declare -A ORGAN_REQUIRES
 if [[ ! -f "$MANIFEST" ]]; then
   echo "ERROR: manifest not found: $MANIFEST" >&2
   exit 1
 fi
-while read -r state unit _rest; do
+while read -r state unit rest; do
   [[ -z "${state:-}" ]] && continue
   [[ "$state" == \#* ]] && continue
+  role="" requires=""
+  for tok in $rest; do
+    case "$tok" in
+      role=*)     role="${tok#role=}" ;;
+      requires=*) requires="${tok#requires=}" ;;
+    esac
+  done
   case "$state" in
     paging_off) PAGING_OFF+=("$unit") ;;
-    enabled)    ENABLED+=("$unit") ;;
+    enabled)
+      ENABLED+=("$unit")
+      ORGAN_ROLE["$unit"]="${role:-brain}"
+      ORGAN_REQUIRES["$unit"]="$requires"
+      ;;
     *) echo "WARN: unknown state '$state' for '$unit' in manifest; ignoring" >&2 ;;
   esac
 done < "$MANIFEST"
@@ -97,12 +177,22 @@ if [[ "$MODE" == "--check" ]]; then
   fail=0
   for unit in "${PAGING_OFF[@]}"; do
     # effective ExecStart must be neutered to /bin/true
-    if ! systemctl show "$unit" -p ExecStart 2>/dev/null | grep -q '/bin/true'; then
+    if ! "$SYSTEMCTL_BIN" show "$unit" -p ExecStart 2>/dev/null | grep -q '/bin/true'; then
       echo "DRIFT: $unit auto-paging is NOT neutered"; fail=1
     fi
   done
   for unit in "${ENABLED[@]}"; do
-    if ! systemctl is-active --quiet "$unit" 2>/dev/null; then
+    requires="${ORGAN_REQUIRES[$unit]:-}"
+    reason=""
+    if ! organ_is_applicable "$unit" "$requires" reason; then
+      echo "SKIP: $unit not applicable to this node ($reason)"
+      continue
+    fi
+    if organ_in_backoff "$unit"; then
+      echo "SKIP: $unit is backed off (cooling down after a prior failure)"
+      continue
+    fi
+    if ! "$SYSTEMCTL_BIN" is-active --quiet "$unit" 2>/dev/null; then
       echo "DRIFT: $unit is not active"; fail=1
     fi
   done
@@ -111,7 +201,11 @@ if [[ "$MODE" == "--check" ]]; then
 fi
 
 # ── --apply mode ─────────────────────────────────────────────────────────────
-if [[ "$(id -u)" != "0" ]]; then
+# CHUMP_ORGAN_RECONCILE_ALLOW_NONROOT is a test-only hook (mirrors the stub
+# pattern organ-watchdog.sh uses for its own tests) so scripts/ci/test-organ-reconcile.sh
+# can exercise the applicability/backoff logic against a stubbed systemctl
+# without needing real root / a real systemd bus.
+if [[ "$(id -u)" != "0" && "${CHUMP_ORGAN_RECONCILE_ALLOW_NONROOT:-0}" != "1" ]]; then
   echo "WARN: organ-reconcile needs root to write $SYSTEMD_DIR; skipping (non-root context)" >&2
   # scanner-anchor: "kind":"organ_reconcile_skipped" (RESILIENT-305; fires when
   # the reconcile is invoked without root and cannot write /etc/systemd/system)
@@ -143,29 +237,83 @@ for unit in "${PAGING_OFF[@]}"; do
 done
 
 if [[ "$NEED_RELOAD" == 1 ]]; then
-  systemctl daemon-reload
+  "$SYSTEMCTL_BIN" daemon-reload
 fi
 
 # Stop any pager still running so an in-flight page cycle halts. (Oneshot pagers
 # are usually already inactive; this is the belt for the suspenders.)
 for unit in "${PAGING_OFF[@]}"; do
-  if systemctl is-active --quiet "$unit" 2>/dev/null; then
-    systemctl stop "$unit" 2>/dev/null || true
+  if "$SYSTEMCTL_BIN" is-active --quiet "$unit" 2>/dev/null; then
+    "$SYSTEMCTL_BIN" stop "$unit" 2>/dev/null || true
     CHANGED+=("stopped:$unit")
   fi
 done
 
-# 2) Enabled organs → enable --now if not already active.
+# 2) Enabled organs → per-node-applicable reconcile (RESILIENT-347).
+#    a. Not applicable to this node (unmet `requires=`)? Skip — silently, no
+#       churn, one advisory event. This is the blast-all -> curated-per-node
+#       fix: the pre-347 reconcile tried `enable --now` on every `enabled`
+#       line regardless of whether the node could ever run it.
+#    b. Still cooling down from a prior verify failure? Skip — this is what
+#       stops a structurally-broken organ (wrong binary/role/deps) from being
+#       re-installed and re-failing every single cycle.
+#    c. Otherwise enable --now, then VERIFY it is actually active a moment
+#       later (not just that the systemctl call exited 0 — a oneshot unit can
+#       "enable" fine and still fail inside ExecStart). A verify failure
+#       disables the unit and starts a backoff cooldown instead of leaving it
+#       to churn identically forever.
 for unit in "${ENABLED[@]}"; do
-  if ! systemctl is-active --quiet "$unit" 2>/dev/null; then
-    if systemctl enable --now "$unit" 2>/dev/null; then
-      CHANGED+=("started:$unit")
-    else
-      echo "WARN: could not enable --now $unit" >&2
-      # scanner-anchor: "kind":"organ_reconcile_unit_failed" (RESILIENT-305; an
-      # organ the manifest marks `enabled` could not be enable --now'd)
-      emit organ_reconcile_unit_failed "\"unit\":\"$unit\""
-    fi
+  role="${ORGAN_ROLE[$unit]:-brain}"
+  requires="${ORGAN_REQUIRES[$unit]:-}"
+  reason=""
+
+  if ! organ_is_applicable "$unit" "$requires" reason; then
+    echo "SKIP (not applicable to this node): $unit ($reason)"
+    # scanner-anchor: "kind":"organ_reconcile_not_applicable" (RESILIENT-347;
+    # fires when an `enabled` organ's requires= are unmet on this node — the
+    # curated-per-node skip that replaces blast-all install)
+    emit organ_reconcile_not_applicable "\"unit\":\"$unit\",\"role\":\"$role\",\"reason\":\"$reason\""
+    continue
+  fi
+
+  if organ_in_backoff "$unit"; then
+    echo "SKIP (backed off, cooling down after a prior failure): $unit"
+    # scanner-anchor: "kind":"organ_reconcile_backoff_skip" (RESILIENT-347;
+    # fires when a previously-failed organ is still inside its backoff
+    # cooldown — proof the reconcile is NOT re-churning it every cycle)
+    emit organ_reconcile_backoff_skip "\"unit\":\"$unit\",\"role\":\"$role\""
+    continue
+  fi
+
+  if "$SYSTEMCTL_BIN" is-active --quiet "$unit" 2>/dev/null; then
+    clear_backoff "$unit"
+    continue
+  fi
+
+  if ! "$SYSTEMCTL_BIN" enable --now "$unit" 2>/dev/null; then
+    echo "WARN: could not enable --now $unit" >&2
+    # scanner-anchor: "kind":"organ_reconcile_unit_failed" (RESILIENT-305; an
+    # organ the manifest marks `enabled` could not be enable --now'd)
+    emit organ_reconcile_unit_failed "\"unit\":\"$unit\""
+    record_backoff "$unit" "enable_failed"
+    CHANGED+=("backoff:$unit")
+    # scanner-anchor: "kind":"organ_reconcile_backoff" (RESILIENT-347; fires
+    # when an applicable organ fails to enable/verify and the reconcile backs
+    # it off instead of retrying it every cycle)
+    emit organ_reconcile_backoff "\"unit\":\"$unit\",\"role\":\"$role\",\"reason\":\"enable_failed\""
+    continue
+  fi
+
+  sleep "$VERIFY_DELAY_S"
+  if "$SYSTEMCTL_BIN" is-active --quiet "$unit" 2>/dev/null; then
+    CHANGED+=("started:$unit")
+    clear_backoff "$unit"
+  else
+    echo "WARN: $unit enabled but did not verify active — disabling + backing off" >&2
+    "$SYSTEMCTL_BIN" disable --now "$unit" 2>/dev/null || true
+    record_backoff "$unit" "verify_failed"
+    CHANGED+=("backoff:$unit")
+    emit organ_reconcile_backoff "\"unit\":\"$unit\",\"role\":\"$role\",\"reason\":\"verify_failed\""
   fi
 done
 
