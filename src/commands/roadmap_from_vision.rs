@@ -182,7 +182,7 @@ fn first_n_chars(s: &str, n: usize) -> String {
 /// outcome-required gate, the pillar title-tag convention, and the
 /// INFRA-1149 similarity check. Mirrors `bootstrap.rs::reserve_umbrella_gap`
 /// (bootstrap.rs:871-931).
-fn reserve_gap(draft: &GapDraft, domain: &str, outcome_id: &str) -> Option<String> {
+pub(crate) fn reserve_gap(draft: &GapDraft, domain: &str, outcome_id: &str) -> Option<String> {
     // `chump gap reserve --acceptance-criteria` splits on `|`, not newline.
     let ac = draft.acceptance_criteria.join("|");
     let priority = match draft.priority {
