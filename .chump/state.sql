@@ -67809,6 +67809,30 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
 
+- id: ZERO-WASTE-060
+  domain: ZERO-WASTE
+  title: "Standing mission — harvest every drop of free inference + free tools before ever paying (use what is freely given; do not waste the commons). AC: routing prefers free/local tiers first; a report shows free-tokens used + dollars saved; the fleet never pays when a free tier can serve the job."
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"routing prefers free/local tiers first; a report shows free-tokens used + dollars saved; the fleet never pays when a free tier can serve the job.\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    reconciled: gap dispatched to this session but was never present in
+    state.db/state.sql. crates/chump-kpi-report/src/kpi_report.rs already
+    implements build_free_tier_savings_section() (free_tokens_used,
+    dollars_saved_usd, sums cascade_routed ambient events) and
+    src/provider_cascade.rs already prefers local/free tiers first in the
+    slot-selection cascade, shipped via PR #4046 (commits f3f8fb1b /
+    13c8cc21) before this session started work. Same stale-record class as
+    RESILIENT-328/RESILIENT-341/RESILIENT-361 — no new implementation
+    needed, just closing the gap record.
+  opened_date: '2026-08-21'
+  closed_date: '2026-08-21'
+  closed_pr: 4046
+
 - id: RESILIENT-361
   domain: RESILIENT
   title: "Bound _parse_token_usage FIFO read with a timeout — dead-writer wedge froze both CJ workers ~5h (silent fleet drought). SIGALRM cap; token accounting best-effort never worth a wedged worker."
