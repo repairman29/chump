@@ -2229,3 +2229,14 @@ CHUMP_RACE_WASTE_THRESHOLD
 # detected in: (standard input)
 CHUMP_RACE_WINDOW
 CHUMP_ALMANAC_HEALTH_REPO
+CHUMP_NETWORK_CHECK_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_NETWORK_CHECK_URL
+# detected in: (standard input)
+CHUMP_NETWORK_SYNC_CACHE
+# detected in: (standard input)
+CHUMP_NETWORK_SYNC_INTERVAL_S
+# detected in: (standard input)
+CHUMP_PENDING_PUSH_QUEUE
+# detected in: (standard input)
+CHUMP_PUSH_TIMEOUT_S
