@@ -54,6 +54,12 @@
 #                                           production unit sets this, tests
 #                                           and dev boxes leave it off so a
 #                                           real WIP checkout is never reset)
+#   CHUMP_ORGAN_RECONCILE_BACKOFF_DIR    — RESILIENT-347: shared with
+#                                           organ-reconcile.sh; a unit with a
+#                                           backoff file here (or its .timer
+#                                           counterpart) is SKIPPED by section
+#                                           1's failed-service heal instead of
+#                                           being resurrected every cycle
 #   CHUMP_AMBIENT_LOG                    — override ambient.jsonl path
 #
 # Exit codes:
@@ -74,6 +80,14 @@ SYSTEMCTL_BIN="${CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN:-systemctl}"
 GIT_BIN="${CHUMP_ORGAN_WATCHDOG_GIT_BIN:-git}"
 DEPLOY_SCRIPT="${CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT:-$REPO_ROOT/scripts/setup/install-helsinki-atc.sh}"
 
+# RESILIENT-347: share organ-reconcile.sh's backoff registry. Without this,
+# section 1 below (blind reset-failed+restart of ANY failed chump-*.service)
+# resurrects a unit that organ-reconcile just deliberately disabled + backed
+# off after a verify failure — recreating the exact "re-installs the failing
+# unit every cycle" churn RESILIENT-347 exists to end, just through the
+# watchdog's door instead of the installer's.
+BACKOFF_DIR="${CHUMP_ORGAN_RECONCILE_BACKOFF_DIR:-$REPO_ROOT/.chump-locks/organ-backoff}"
+
 mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null || true
 
 emit() {  # kind, extra-json (no leading/trailing comma)
@@ -83,6 +97,20 @@ emit() {  # kind, extra-json (no leading/trailing comma)
     if [[ -n "$extra" ]]; then line="{\"ts\":\"$ts\",\"kind\":\"$kind\",$extra}"
     else line="{\"ts\":\"$ts\",\"kind\":\"$kind\"}"; fi
     printf '%s\n' "$line" >> "$AMBIENT_LOG" 2>/dev/null || true
+}
+
+# RESILIENT-347: is `unit` currently cooling down in organ-reconcile.sh's
+# backoff registry? Backoff is recorded against the MANIFEST unit, which for
+# oneshot organs is usually the .timer (e.g. chump-integrator.timer), while
+# this function is called with the *.service name systemd reports as failed
+# (e.g. chump-integrator.service) — so also check the .timer counterpart.
+organ_watchdog_in_backoff() {  # unit
+    local unit="$1"
+    [[ -f "$BACKOFF_DIR/${unit}.json" ]] && return 0
+    if [[ "$unit" == *.service ]]; then
+        [[ -f "$BACKOFF_DIR/${unit%.service}.timer.json" ]] && return 0
+    fi
+    return 1
 }
 
 if ! command -v "$SYSTEMCTL_BIN" >/dev/null 2>&1; then
@@ -147,6 +175,16 @@ FAILED_SERVICES="$("$SYSTEMCTL_BIN" list-units --all --type=service --state=fail
 if [[ -n "$FAILED_SERVICES" ]]; then
     while IFS= read -r unit; do
         [[ -z "$unit" ]] && continue
+        if organ_watchdog_in_backoff "$unit"; then
+            echo "[organ-watchdog] SKIP (backed off by organ-reconcile): $unit"
+            # scanner-anchor: "kind":"organ_watchdog_backoff_skip"  (RESILIENT-347;
+            # fires when a failed chump-*.service is currently cooling down in
+            # organ-reconcile's backoff registry — the watchdog defers to that
+            # curated decision instead of blindly resurrecting the unit every
+            # cycle, which is the churn RESILIENT-347 exists to end)
+            emit organ_watchdog_backoff_skip "\"unit\":\"$unit\""
+            continue
+        fi
         echo "[organ-watchdog] FAILED: $unit"
         if [[ "$DRY_RUN" == "1" ]]; then
             echo "[organ-watchdog]   (dry-run) would reset-failed + restart $unit"
