@@ -2121,3 +2121,16 @@ CHUMP_ORGAN_RECONCILE_
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_GAP_PATTERN_HOLD_SKIP
+# detected in: (standard input)
+CHUMP_PATTERN_DETECTOR_HOLD
+# detected in: (standard input)
+CHUMP_PATTERN_DETECTOR_NO_RCA
+# detected in: (standard input)
+CHUMP_PATTERN_DETECTOR_QUIET
+# detected in: (standard input)
+CHUMP_PATTERN_DETECTOR_STATE
