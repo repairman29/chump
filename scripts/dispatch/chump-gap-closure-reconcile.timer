@@ -1,0 +1,9 @@
+# Pairs with chump-gap-closure-reconcile.service. Every 15 min.
+[Unit]
+Description=Run the Chump gap-closure reconciler every 15 minutes (INFRA-303)
+[Timer]
+OnBootSec=6min
+OnUnitActiveSec=15min
+Persistent=true
+[Install]
+WantedBy=timers.target

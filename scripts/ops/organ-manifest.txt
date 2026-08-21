@@ -160,3 +160,7 @@ enabled     chump-organ-watchdog.timer  role=brain
 # Declared here so organ-reconcile re-arms it if it drifts or fails — the
 # same peer-heartbeat mechanism every other organ in this manifest relies on.
 enabled     chump-conflict-resolution-consumer.timer  role=muscle requires=bin:gh
+
+# chump-gap-closure-reconcile.timer: close open-but-merged gaps from GitHub truth (INFRA-303).
+# Backstop for the fragile bot-merge auto-close; without it the gap store drifts from GitHub.
+enabled     chump-gap-closure-reconcile.timer  role=janitor requires=bin:gh
