@@ -2130,3 +2130,12 @@ CHUMP_METRICS_DIR
 CHUMP_MMB_DATE
 # detected in: (standard input)
 CHUMP_MMB_FIXTURE
+CHUMP_GAP_PATTERN_HOLD_SKIP
+# detected in: (standard input)
+CHUMP_PATTERN_DETECTOR_HOLD
+# detected in: (standard input)
+CHUMP_PATTERN_DETECTOR_NO_RCA
+# detected in: (standard input)
+CHUMP_PATTERN_DETECTOR_QUIET
+# detected in: (standard input)
+CHUMP_PATTERN_DETECTOR_STATE
