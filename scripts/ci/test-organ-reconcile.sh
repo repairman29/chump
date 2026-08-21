@@ -39,6 +39,16 @@ for unit in chump-integrator.timer chump-farmer.timer chump-backlog-sync-writer.
 done
 pass "real organ-manifest.txt declares role+requires on the previously-churning organs"
 
+# ── 2b. RESILIENT-356: the healer itself is a peer-supervised organ ────────
+# chump-organ-watchdog.timer heals every OTHER organ; without a manifest line
+# for it, chump-organ-reconcile.timer (an independent peer on its own cadence)
+# never notices if the watchdog's own timer goes inactive/disabled, so nothing
+# restarts the healer. This line is what makes the watchdog "supervised by a
+# peer heartbeat" (RESILIENT-356 AC2) — same mechanism as every other organ.
+watchdog_line="$(grep -E '^enabled +chump-organ-watchdog\.timer' "$REAL_MANIFEST")"
+[[ -n "$watchdog_line" ]] || fail "real manifest missing 'enabled chump-organ-watchdog.timer' — the healer itself is unsupervised"
+pass "real organ-manifest.txt declares chump-organ-watchdog.timer as a peer-supervised organ (RESILIENT-356)"
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 

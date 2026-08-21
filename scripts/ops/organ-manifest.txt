@@ -134,3 +134,18 @@ enabled     chump-integrator.timer  role=muscle requires=bin:chump-integrator
 # origin/main .chump/state.sql goes >24h stale). Declared here so
 # organ-reconcile re-arms it if it drifts or fails.
 enabled     chump-backlog-sync-writer.timer  role=data requires=bin:git,bin:chump
+
+# chump-organ-watchdog.timer: the healer itself (INFRA-3595). RESILIENT-356:
+# the watchdog heals every OTHER organ (reset-failed + restart on failure) but
+# nothing watched the watchdog — on 2026-08-20 it self-immolated on a single
+# unhealable organ and sat dead 16h, unwatched, while the merge train rotted.
+# That self-immolation bug is fixed (the watchdog now exits 0 on a per-unit
+# heal failure), but a *supervisor* is still needed for the case where the
+# watchdog's own timer/unit goes inactive or disabled for an unrelated reason
+# (a bad manual edit, a botched reinstall, systemd state drift). Declaring it
+# here closes that loop: chump-organ-reconcile.timer is an INDEPENDENT peer
+# organ on its own cadence — if it ever finds chump-organ-watchdog.timer not
+# active, it re-enables + starts it, the same "peer heartbeat" mechanism every
+# other organ in this manifest already relies on. This is the "watchdog itself
+# is supervised... so the healer can never stay dead" half of RESILIENT-356.
+enabled     chump-organ-watchdog.timer  role=brain
