@@ -475,9 +475,12 @@ if [ "${CHUMP_STOMP_WARN:-1}" != "0" ]; then
             # Only check files that still exist in the working tree.
             # Deletions and renames-to-nonexistent are out of scope.
             [ -f "$f" ] || continue
-            # stat flags differ macOS vs Linux. Try macOS first; fall back to
-            # Linux on failure.
-            mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)
+            # stat flags differ macOS vs Linux. GNU `stat -f` means
+            # --file-system (not BSD's "format"), so it exits nonzero but
+            # still prints filesystem info to stdout on Linux, corrupting
+            # the `||` fallback capture. Try Linux (-c) first, matching the
+            # pattern in scripts/coord/lib/github_cache.sh.
+            mtime=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
             [ "$mtime" -gt 0 ] || continue
             age=$((now_epoch - mtime))
             if [ "$age" -gt "$threshold" ]; then
