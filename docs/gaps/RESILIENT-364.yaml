@@ -1,0 +1,13 @@
+- id: RESILIENT-364
+  domain: RESILIENT
+  title: "GitHub-truth gap-closure reconciler: fix + wire it. The gap store drifts from GitHub because bot-merge INFRA-154 auto-close silently skips (CREDIBLE-295), leaving OPEN-BUT-LANDED ghosts, and the backstop (gap-doctor-reconcile.py --check-closure-drift, INFRA-303) was TRIPLY broken: (1) gh api --jq expression escaped quotes wrong so every check errored -> reported 0 drift for weeks (green facade); (2) emit-only, never closed the gap; (3) wired to run nowhere. Fixed: correct jq, close drifted gaps in canonical state.db directly (bookkeeping close must not use ship-CLI which guards on current-main), wire as chump-gap-closure-reconcile.timer (15min) + organ-manifest. Cleaned 4 live ghosts on first run. AC: a merged PR whose gap is still open is auto-closed within one reconcile cycle; the reconciler NEVER reports 0-drift when drift exists (no jq green facade); prove by leaving a gap open after its PR merges and watching it close hands-off. Stopgap toward the substrate cutover (one canonical store)."
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"fix + wire it. The gap store drifts from GitHub because bot-merge INFRA-154 auto-close silently skips (CREDIBLE-295), leaving OPEN-BUT-LANDED ghosts, and the backstop (gap-doctor-reconcile.py --check-closure-drift, INFRA-303) was TRIPLY broken: (1) gh api --jq expression escaped quotes wrong so every check errored -> reported 0 drift for weeks (green facade); (2) emit-only, never closed the gap; (3) wired to run nowhere. Fixed: correct jq, close drifted gaps in canonical state.db directly (bookkeeping close must not use ship-CLI which guards on current-main), wire as chump-gap-closure-reconcile.timer (15min) + organ-manifest. Cleaned 4 live ghosts on first run. AC: a merged PR whose gap is still open is auto-closed within one reconcile cycle; the reconciler NEVER reports 0-drift when drift exists (no jq green facade); prove by leaving a gap open after its PR merges and watching it close hands-off. Stopgap toward the substrate cutover (one canonical store).\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: MISSION-010
+  closed_date: '2026-08-21'
+  closed_pr: 4075
