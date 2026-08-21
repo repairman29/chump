@@ -38,7 +38,7 @@
 #
 # Env:
 #   CHUMP_PATTERN_DETECTOR_QUIET=1     # same as --quiet (suppresses stdout, only emits ALERTs)
-#   CHUMP_PATTERN_DETECTOR_NO_RCA=1    # same as --no-rca (skip gap-filing + hold reflex; ALERT only)
+#   CHUMP_PATTERN_DETECTOR_ALERT_ONLY=1    # same as --no-rca (skip gap-filing + hold reflex; ALERT only)
 #   CHUMP_AMBIENT_LOG=<path>           # override ambient.jsonl path (test fixture uses this)
 #   CHUMP_PATTERN_DETECTOR_STATE=<path> # override state file path (test fixture uses this)
 #   CHUMP_PATTERN_DETECTOR_HOLD=<path>  # override hold file path (test fixture uses this)
@@ -52,7 +52,7 @@ NO_RCA=0
 if [ "${CHUMP_PATTERN_DETECTOR_QUIET:-}" = "1" ]; then
     QUIET=1
 fi
-if [ "${CHUMP_PATTERN_DETECTOR_NO_RCA:-}" = "1" ]; then
+if [ "${CHUMP_PATTERN_DETECTOR_ALERT_ONLY:-}" = "1" ]; then
     NO_RCA=1
 fi
 
