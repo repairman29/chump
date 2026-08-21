@@ -502,6 +502,30 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [gap_id, worker_count, until]
 
+  - kind: unverified_ship_attempt
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (EFFECTIVE-441)
+    trigger: gap claimed + worked, rc=0, but no ship evidence found (kind=unverified_ship);
+      persistent per-gap attempt counter incremented
+    consumers: [fleet-brief, watchdog]
+    fields_required: [gap_id, agent_id, count, action]
+
+  - kind: gap_model_escalated
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (EFFECTIVE-441)
+    trigger: per-gap unverified_ship attempt count reaches CHUMP_UNVERIFIED_SHIP_ESCALATE_N
+      (default 3); required_model bumped to opus
+    consumers: [fleet-brief, watchdog]
+    fields_required: [gap_id, count, new_model]
+
+  - kind: gap_parked_unverified_ship
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (EFFECTIVE-441)
+    trigger: per-gap unverified_ship attempt count reaches CHUMP_UNVERIFIED_SHIP_PARK_M
+      (default 6); gap status flipped to needs_decompose, taken out of the open pool
+    consumers: [fleet-brief, watchdog]
+    fields_required: [gap_id, count, reason]
+
   - kind: worker_circuit_open
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (FLEET-043)
