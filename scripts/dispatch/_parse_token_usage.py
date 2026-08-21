@@ -11,7 +11,16 @@ Exits cleanly when the write-end of the pipe is closed (EOF).
 import sys
 import json
 import os
+import signal
 from datetime import datetime, timezone
+
+
+class _ParseTimeout(Exception):
+    """RESILIENT-361: raised by SIGALRM to unblock a wedged FIFO open/read."""
+
+
+def _on_alarm(signum, frame):  # noqa: ARG001
+    raise _ParseTimeout()
 
 
 def main() -> None:
@@ -21,6 +30,22 @@ def main() -> None:
 
     fifo_path, amb_path, gap_id, cycle_id, session_id = sys.argv[1:6]
     amb_dir = os.path.dirname(amb_path)
+
+    # RESILIENT-361: `open(fifo)` BLOCKS until a writer connects (wait_for_partner),
+    # and the following `for raw in fh` blocks until EOF. If the claude agent dies
+    # or the worker never closes the write-end, this hangs FOREVER and wedges the
+    # worker that waits on us — observed 2026-08-21: two CJ workers frozen ~5h, the
+    # whole fleet drought behind an all-green facade. The docstring promises "never
+    # block the worker"; enforce it with a hard alarm just above the agent timeout
+    # (2700s), so a live run is never cut but a dead-writer wedge is bounded.
+    timeout_s = 0
+    try:
+        timeout_s = int(os.environ.get("CHUMP_TOKEN_PARSE_TIMEOUT_S", "3000") or 3000)
+        if timeout_s > 0:
+            signal.signal(signal.SIGALRM, _on_alarm)
+            signal.alarm(timeout_s)
+    except (ValueError, OSError, AttributeError):
+        timeout_s = 0  # no SIGALRM here (non-main-thread / unsupported) — degrade
 
     try:
         with open(fifo_path) as fh:
@@ -55,8 +80,17 @@ def main() -> None:
                     os.makedirs(amb_dir, exist_ok=True)
                 with open(amb_path, "a") as af:
                     af.write(line)
+    except _ParseTimeout:
+        # write-end never closed within the budget — the agent is gone; bail so the
+        # worker's wait() returns instead of hanging on a dead pipe.
+        pass
     except Exception:
         pass  # best-effort — never block the worker
+    finally:
+        try:
+            signal.alarm(0)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
