@@ -1,0 +1,12 @@
+- id: RESILIENT-352
+  domain: RESILIENT
+  title: "Almanac refresh must track origin/main, not the parked local-checkout HEAD — it ran rc=0 0-reindexed for ~11 days while 106/112 fleet indexes rotted (green facade). Fetch+reindex when index_commit != origin/main; protect index checkouts from dev-hijack (dedicated force-reset worktree). AC: move origin/main -> index tracks within one cycle, no human action; log distinguishes real-fresh from parked."
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    1. The change described by "move origin/main -> index tracks within one cycle, no human action; log distinguishes real-fresh from parked." is implemented in the relevant RESILIENT code path(s).
+    2. At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    3. cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-21'
+  closed_pr: 4066
