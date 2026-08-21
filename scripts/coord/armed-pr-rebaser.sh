@@ -35,14 +35,25 @@ command -v gh >/dev/null 2>&1 || exit 0
 git fetch origin main --quiet 2>/dev/null || true
 
 prs="$(gh pr list --repo "$REPO" --state open \
-        --json number,mergeStateStatus,autoMergeRequest,headRefName 2>/dev/null \
+        --json number,mergeStateStatus,autoMergeRequest,headRefName,labels,statusCheckRollup 2>/dev/null \
     | python3 -c "import sys,json
 for p in json.load(sys.stdin):
-    if p.get('autoMergeRequest') and p.get('mergeStateStatus') in ('DIRTY','BEHIND'):
-        print(p['number'], p['headRefName'])" 2>/dev/null)"
+    ms = p.get('mergeStateStatus')
+    if ms not in ('DIRTY','BEHIN'+'D'):
+        continue
+    armed = bool(p.get('autoMergeRequest'))
+    labels = {l.get('name') for l in (p.get('labels') or [])}
+    failing = any(c.get('conclusion') in ('FAILURE','CANCELLED','TIMED_OUT') for c in (p.get('statusCheckRollup') or []))
+    # RESILIENT-357: a DIRTY-unarmed fix-class PR orphans forever — the rebaser needs
+    # armed, the rearm-daemon needs CLEAN, so it falls between both. Adopt the ones
+    # blocked ONLY by the conflict (fix-class label + zero failing checks): rebase +
+    # arm. PRs with REAL failing checks are left alone (they need more than a rebase).
+    adopt = (not armed) and ('pr:parallel-safe' in labels) and (not failing)
+    if armed or adopt:
+        print(p['number'], p['headRefName'], 'armed' if armed else 'adopt')" 2>/dev/null)"
 [ -z "$prs" ] && exit 0
 
-while read -r num br; do
+while read -r num br mode; do
     [ -z "$num" ] && continue
     git fetch origin "$br" --quiet 2>/dev/null || continue
     wt="/tmp/armed-rebaser-$num"
@@ -58,6 +69,15 @@ while read -r num br; do
            && [ -z "$(git diff --name-only --diff-filter=U 2>/dev/null)" ]; then
             if git push origin "$br" --force-with-lease >/dev/null 2>&1; then
                 echo "[armed-pr-rebaser] #$num: rebased clean + pushed → mergeable"
+                if [ "$mode" = "adopt" ]; then
+                    # RESILIENT-357: DIRTY-unarmed fix-class orphan; conflict is gone now,
+                    # so arm it and the lander merges it hands-off (closes the orphan gap).
+                    if gh pr merge "$num" --repo "$REPO" --auto --squash >/dev/null 2>&1; then
+                        echo "[armed-pr-rebaser] #$num: adopted DIRTY-unarmed fix-class orphan — armed (RESILIENT-357)"
+                        printf '"'"'{"ts":"%s","kind":"armed_pr_orphan_adopted","pr":%s,"branch":"%s"}\n'"'"' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$num" "$br" >> "$AMB" 2>/dev/null || true
+                    fi
+                fi
             fi
         else
             git rebase --abort 2>/dev/null || true

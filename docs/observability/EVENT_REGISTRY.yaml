@@ -2007,6 +2007,15 @@ events:
       state) for a human / conflict-resolver to resolve.
     consumers: [audit-log, fleet]
 
+  - kind: armed_pr_orphan_adopted
+    effect_metric: pr_rescue_action_within_4h
+    emitter: scripts/coord/armed-pr-rebaser.sh (RESILIENT-357)
+    trigger: a DIRTY/BEHIND but UNARMED fix-class PR (pr:parallel-safe label, zero
+      failing checks) was blocked only by the conflict; the rebaser rebased it clean
+      and armed it for auto-merge — adopting an orphan that neither the rebaser (needs
+      armed) nor the rearm-daemon (needs CLEAN) would otherwise touch.
+    consumers: [audit-log, fleet]
+
   # ── RESILIENT-301: consumer/accountability organ for armed_pr_needs_conflict_resolution ──
   - kind: conflict_resolution_consumer_tick
     effect_metric: pr_rescue_action_within_4h
