@@ -874,6 +874,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
     // Conservative whitelist — these are the ones that have most often
     // failed-on-CI-but-would-have-passed-locally in the last 48h.
     let candidates = [
+        // RESILIENT-361: dead-writer FIFO wedge regression — proves the
+        // CHUMP_TOKEN_PARSE_TIMEOUT_S SIGALRM bound actually unblocks
+        // _parse_token_usage.py instead of hanging forever. Fast (~1s),
+        // pure local (fifo + subshell, no network).
+        "scripts/ci/test-parse-token-usage-dead-writer-timeout.sh",
         "scripts/ci/test-event-registry-coverage.sh",
         // MISSION-045: outcome-gate keystone — proves P0/P1 reserves are blocked
         // without an outcome (when outcomes exist), the audited flag + empty-DB
