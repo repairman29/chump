@@ -31,6 +31,7 @@ case "$ROLE" in brain|muscle|all) ;; *) echo "role must be brain|muscle|all" >&2
 
 STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"
 CREDS="$STATE_DIR/providers.env"
+REPO_URL="${CHUMP_NODE_REPO_URL:-https://github.com/repairman29/chump.git}"
 LOG_DIR="$NODE_DIR/logs"
 ORGAN_DIR="$NODE_DIR/organs"
 BIN="$NODE_DIR/bin/chump"
@@ -107,8 +108,38 @@ svc_status() {  # prints "up" or "down"
 # ---------- 2. HOME ----------
 ensure_home() {
   run "mkdir -p '$NODE_DIR/bin' '$ORGAN_DIR' '$LOG_DIR' '$STATE_DIR'"
-  if [ -d "$NODE_DIR/repo/.git" ]; then ok "repo present ($NODE_DIR/repo)"
-  else info HOME "repo checkout expected at $NODE_DIR/repo (clone chump there; skipping in v1)"; fi
+  # GH_TOKEN from providers.env, if present, for an authenticated clone of a
+  # private repo. Never pass the token through run()'s echo path (--dry-run
+  # would leak it) — build the token-injected URL only on the execute path.
+  local gh_token=""
+  if [ -f "$CREDS" ]; then
+    gh_token="$(grep -E '^(export )?GH_TOKEN=' "$CREDS" | tail -1 | sed -E 's/^(export )?GH_TOKEN=//; s/^"(.*)"$/\1/')"
+  fi
+  local clone_url="$REPO_URL"
+  case "$REPO_URL" in
+    https://github.com/*) [ -n "$gh_token" ] && clone_url="https://x-access-token:${gh_token}@${REPO_URL#https://}";;
+  esac
+  if [ -d "$NODE_DIR/repo/.git" ]; then
+    if [ "$DRY" = 1 ]; then
+      echo "  DRY: git -C '$NODE_DIR/repo' fetch origin main --quiet"
+      echo "  DRY: git -C '$NODE_DIR/repo' reset --hard origin/main --quiet"
+    elif git -C "$NODE_DIR/repo" fetch origin main --quiet && git -C "$NODE_DIR/repo" reset --hard origin/main --quiet; then
+      ok "repo present ($NODE_DIR/repo), synced to origin/main"
+    else
+      no "repo fetch/reset FAILED ($NODE_DIR/repo)"; return 1
+    fi
+  else
+    if [ "$DRY" = 1 ]; then
+      echo "  DRY: git clone --quiet '$REPO_URL' '$NODE_DIR/repo'  # authenticated via GH_TOKEN from $CREDS if present"
+    else
+      [ -z "$gh_token" ] && info HOME "no GH_TOKEN in $CREDS; attempting unauthenticated clone (public repos only)"
+      if git clone --quiet "$clone_url" "$NODE_DIR/repo"; then
+        ok "repo cloned: $NODE_DIR/repo"
+      else
+        no "repo clone FAILED: $NODE_DIR/repo"; return 1
+      fi
+    fi
+  fi
   ok "node home: $NODE_DIR"
 }
 
@@ -180,6 +211,13 @@ self_test() {
   local fail=0
   [ -n "$HOST_KIND" ] && ok "host detected: $HOST_KIND/$ARCH" || { no "host detect"; fail=1; }
   check_creds || fail=1
+  if [ -d "$NODE_DIR/repo/.git" ]; then
+    local head_sha origin_sha
+    head_sha="$(git -C "$NODE_DIR/repo" rev-parse HEAD 2>/dev/null)"
+    origin_sha="$(git -C "$NODE_DIR/repo" rev-parse origin/main 2>/dev/null)"
+    if [ -n "$head_sha" ] && [ "$head_sha" = "$origin_sha" ]; then ok "repo HEAD at origin/main ($head_sha)"
+    else no "repo HEAD not at origin/main (HEAD=$head_sha origin/main=$origin_sha)"; fail=1; fi
+  else no "repo missing: $NODE_DIR/repo/.git"; fail=1; fi
   if [ -x "$BIN" ]; then ok "binary linked: $BIN"; else no "binary"; fail=1; fi
   # each role organ supervised & up
   local list; case "$ROLE" in brain) list="$(brain_organs)";; muscle) list="$(muscle_organs)";; all) list="$(brain_organs; muscle_organs)";; esac
@@ -203,7 +241,7 @@ self_test() {
 printf '\033[1m=== chump-node-install: role=%s home=%s ===\033[0m\n' "$ROLE" "$NODE_DIR"
 detect_host
 if [ "$SELF_TEST_ONLY" = 1 ]; then self_test; exit $?; fi
-ensure_home
+ensure_home || { no "HOME phase failed (repo clone/fetch) — fix and re-run"; exit 1; }
 check_creds || info CREDS "fix creds before organs will authenticate"
 ensure_binary || info BINARY "install a binary, then re-run"
 install_organs
