@@ -6250,6 +6250,46 @@ events:
     consumers: [fleet-brief, ops-audit, operator-recall]
     fields_required: [ts, kind, worker_ids, halt_age_s]
 
+  - kind: almanac_summarize_restarted
+    effect_metric: self
+    emitter: scripts/ops/almanac-summarize-watchdog.sh (RESILIENT-354)
+    trigger: the almanac summarize fleet launcher's process was not found
+      alive on a watchdog cycle, and the watchdog relaunched it with no
+      human step. Closes the 2026-08-10 incident where the launcher died to
+      SIGTERM and sat dead for 10 days, stuck at 68.6% summarized, with no
+      alarm.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pattern]
+
+  - kind: almanac_summarize_restart_failed
+    effect_metric: self
+    emitter: scripts/ops/almanac-summarize-watchdog.sh (RESILIENT-354)
+    trigger: the watchdog found the summarize driver dead but the restart
+      command itself errored — surfaced so a genuinely broken launcher
+      pages rather than looping silently.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pattern]
+
+  - kind: almanac_summarize_coverage_drop
+    effect_metric: almanac_summarize_coverage_pct
+    emitter: scripts/ops/almanac-summarize-watchdog.sh (RESILIENT-354)
+    trigger: a served repo's summarized-percentage is below the floor
+      (CHUMP_ALMANAC_SUMMARIZE_MIN_PCT, default 95%). Escalates to
+      operator-recall.sh --condition ALMANAC_SUMMARIZE_COVERAGE_DROP — the
+      same halt-class paging path every other organ failure uses, closing
+      the blind spot where the fusion NL search leg silently degraded to
+      keyword-only on a third of served repos for 10 days with no page.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, below_count, worst_repo, worst_pct, floor]
+
+  - kind: almanac_summarize_watchdog_tick
+    effect_metric: self
+    emitter: scripts/ops/almanac-summarize-watchdog.sh (RESILIENT-354)
+    trigger: every watchdog cycle, success or no-op — the heartbeat proving
+      the watchdog itself is alive.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, restarted, coverage_status, dry_run]
+
   - kind: worker_spin_healed
     effect_metric: self
     emitter: scripts/ops/organ-watchdog.sh (RESILIENT-332)
