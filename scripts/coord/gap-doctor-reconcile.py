@@ -45,6 +45,7 @@ effort, domain are always populated by `chump gap reserve`.)
 import argparse
 import glob
 import json
+import sqlite3
 import os
 import subprocess
 import sys
@@ -242,7 +243,7 @@ def check_closure_drift(db: dict, ambient_path: Path, dry_run: bool) -> int:
         # REST endpoint — costs core bucket, NOT graphql.
         r = subprocess.run(
             ["gh", "api", f"repos/{repo}/pulls/{pr_num}",
-             "--jq", '"\\(.state) \\(.merged_at // \\"-\\")"'],
+             "--jq", '"\\(.state) \\(.merged_at // "-")"'],
             capture_output=True, text=True,
         )
         if r.returncode != 0:
@@ -266,6 +267,29 @@ def check_closure_drift(db: dict, ambient_path: Path, dry_run: bool) -> int:
             }
             with ambient_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(ev, separators=(",", ":")) + "\n")
+            # INFRA-303 backstop: don't just DETECT the drift, RESOLVE it. GitHub is
+            # the ground truth here — the PR merged, so the gap IS done. Close it via
+            # the canonical path (records closed_pr + syncs yaml via ZERO-WASTE-056).
+            # This is the safety net for the fragile bot-merge auto-close step
+            # (CREDIBLE-295), which silently skips and leaves OPEN-BUT-LANDED ghosts.
+            # Best-effort: a failure just re-tries next cycle (idempotent).
+            # Write the canonical store directly (state.db) — a bookkeeping close of
+            # an already-merged PR must not go through the ship-workflow CLI (which
+            # guards on current-main). This reconciler IS the state.db owner. The
+            # sibling field-reconcile pass keeps the YAML mirror in sync.
+            try:
+                import os as _os
+                _sdb = _os.environ.get("CHUMP_STATE_DB") or _os.path.join(
+                    _os.environ.get("CHUMP_REPO_ROOT", "."), ".chump", "state.db")
+                _con = sqlite3.connect(_sdb)
+                _con.execute(
+                    "UPDATE gaps SET status='done', closed_pr=?, closed_date=? "
+                    "WHERE id=? AND status!='done'",
+                    (pr_num, merged_at[:10], gid))
+                _con.commit(); _con.close()
+                print(f"  CLOSED {gid} (PR #{pr_num} merged {merged_at[:10]}) — drift resolved")
+            except Exception as _e:
+                print(f"  WARN could not close {gid}: {_e}")
 
     if dry_run:
         print(f"  (dry-run — {drift} drift case(s) would emit kind=gap_closure_drift)")
