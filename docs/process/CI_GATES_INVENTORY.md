@@ -99,6 +99,19 @@ Documented for completeness; do **not** file follow-ups.
 | `test-rollup-semantic.sh` | INFRA-3383 — unconditionally runs `cargo test --bin chump rollup_cmd` when `cargo` is available; too slow for the preflight fast loop |
 | `test-research-026-preflight.sh` | INFRA-3383 — eval harness preflight; requires `scripts/eval/` setup not present in a bare preflight run |
 
+## Required-vs-advisory disposition decisions
+
+Gates that were demoted out of `ci.yml` (INFRA-1381) and now run only in
+`ci-nightly.yml` / `ci-advisory.yml` need an explicit disposition: PROMOTE
+back to required, or KEEP-ADVISORY with a documented reason + review-by
+date. `docs/process/CI_GATES.md` referenced by earlier gap filings does not
+exist in this repo — this section (`CI_GATES_INVENTORY.md`) is the
+canonical home for these decisions.
+
+| Gate | Disposition | Rationale | Flake/fail rate cited | Review by |
+|---|---|---|---|---|
+| `tauri-cowork-e2e` | **KEEP-ADVISORY** (nightly + post-merge only, INFRA-1385) | Full Tauri + WebDriver smoke is failing almost every run, not flaking occasionally — this is a broken/too-fragile-to-gate environment, not a borderline-flaky test. Promoting to required would block ~every PR. | `gh run view` job-level conclusion for the `tauri-cowork-e2e` job: **30/30 failures** on `ci-nightly.yml` (last 30 runs) and **29/30 failures** on `ci-advisory.yml` (post-merge, last 30 runs) as of 2026-08-21. `scripts/ci/check-gate-fire-rate.sh` referenced by earlier gap filings does not exist in this repo; `scripts/dispatch/gate-fire-rate.sh` covers chump-internal `gate_check_*` ambient events, not GitHub Actions job outcomes, so job-level `gh run view` history was used instead. | 2026-11-21 (re-check after Tauri/WebDriver environment work, or after 90 days, whichever first) |
+
 ## Promotion criteria for Tier C → Tier A
 
 Each follow-up gap (INFRA-1787..1794) ships when:
