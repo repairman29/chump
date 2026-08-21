@@ -1,7 +1,8 @@
 - id: RESILIENT-341
   domain: RESILIENT
   title: "REVIVER must be a COTG organ on every node: post-push-integrity-watch (reopen closed-but-gap-open fleet PRs = work wrongly trashed) is NOT installed on owned nodes (absent on CJ) and appears missing from the repo. The net that recovers good code closed by a reaper is not COTG. Add reviver to install-node-housekeeping.sh ORGANS table; verified by fresh-node self-test. Pairs with rot-reaper false-red guard."
-  status: open
+  status: done
+  closed_pr: 4039
   priority: P1
   effort: m
   acceptance_criteria:
