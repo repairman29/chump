@@ -1,9 +1,11 @@
 - id: RESILIENT-328
   domain: RESILIENT
   title: "node-orchestrator must ENFORCE WORKER_MAX every tick + throttle production on CI-queue backpressure (drifted to 3 workers tonight, hand-stopped worker3; orchestrator is blind to CI saturation so workers over-produce PRs the merge pipeline cannot drain) — COTG: any fresh node self-caps + self-throttles"
-  status: open
+  status: closed
+  closed_pr: 4035
   priority: P1
   effort: m
+  notes: "Reconcile: implementation (enforce_cap()/ci_backpressure()/effective_max() in scripts/ops/node-orchestrator.sh) and its test (scripts/ci/test-node-orchestrator-max-throttle.sh, 13/13 passing) already shipped via PR #4035 (commit 047b4179). This record was stuck open (never reconciled) and got re-claimed/re-dispatched; closing against the already-shipped PR instead of re-implementing. state.db on this node has an empty gaps table (separate infra issue, out of scope here), so this yaml edit is the manual-fallback reconciliation path."
   acceptance_criteria:
     - "The change described by \"any fresh node self-caps + self-throttles\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
