@@ -268,3 +268,11 @@ enabled     chump-race-control.timer  role=data requires=bin:gh
 # (scripts/ci/test-resilient-366-organ-roll-call.sh) sees a manifest line for
 # the tracked unit files and organ-watchdog re-arms it if it drifts.
 enabled     chump-organ-deploy.timer  role=janitor requires=bin:git
+# RESILIENT-366 retirement: chump-gap-closure-reconcile.timer/.service
+# (RESILIENT-364) is DELETED, not just removed from this manifest. It wrote
+# gap-closed status directly into state.db with no matching docs/gaps/*.yaml
+# entry, so its "fix" for drift was itself an undetected drift source running
+# in parallel with the coherence writer above. The single-writer backlog-sync
+# organ (chump-backlog-sync-writer.timer) is the one sanctioned path for
+# merged-PR -> gap-closed reconciliation; a second organ mutating the same
+# state.db defeats "single-writer by design" and worsens split-brain risk.
