@@ -1,11 +1,13 @@
 - id: RESILIENT-349
   domain: RESILIENT
   title: "OS BLIND to PRs sitting in GitHub — wire the full PR-sitting chain COTG. Sensors exist but dark + broken chain: pr-stuck-cluster-detector.sh (INFRA-1133, 6h chronic-stuck threshold) aggregates ambient stuck-EVENTS, but nothing EMITS them from live GitHub state, so it finds nothing while real PRs sit (today #4008 6h+3-fails, #4012 5h DIRTY-not-armed — OS did not notice). FIX (COTG, installer-wired, works OOTB): (1) a LIVE-scan emitter — periodically gh-pr-list open PRs, emit kind=pr_stuck for any open >6h that is failing / DIRTY-unsalvaged / green-armed-not-merging (age from createdAt); (2) pr-stuck-cluster-detector consumes it (wired on CJ 2026-08-20, scaffold); (3) duty-officer routes pr_stuck_cluster/chronic → T1 heal (re-arm / trigger armed-rebaser for DIRTY / requeue abandoned-red) or T2 runbook; (4) all in install-node-housekeeping.sh ORGANS so every node sees sitting PRs. This is the OS understanding its own GitHub PR plane (pairs with RESILIENT-338)."
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "The change described by \"pr-stuck-cluster-detector.sh (INFRA-1133, 6h chronic-stuck threshold) aggregates ambient stuck-EVENTS, but nothing EMITS them from live GitHub state, so it finds nothing while real PRs sit (today #4008 6h+3-fails, #4012 5h DIRTY-not-armed — OS did not notice). FIX (COTG, installer-wired, works OOTB): (1) a LIVE-scan emitter — periodically gh-pr-list open PRs, emit kind=pr_stuck for any open >6h that is failing / DIRTY-unsalvaged / green-armed-not-merging (age from createdAt); (2) pr-stuck-cluster-detector consumes it (wired on CJ 2026-08-20, scaffold); (3) duty-officer routes pr_stuck_cluster/chronic → T1 heal (re-arm / trigger armed-rebaser for DIRTY / requeue abandoned-red) or T2 runbook; (4) all in install-node-housekeeping.sh ORGANS so every node sees sitting PRs. This is the OS understanding its own GitHub PR plane (pairs with RESILIENT-338).\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-21'
+  closed_pr: 4044
 
