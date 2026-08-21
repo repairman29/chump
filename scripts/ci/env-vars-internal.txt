@@ -2416,3 +2416,18 @@ CHUMP_UNVERIFIED_SHIP_ESCALATE_N
 # detected in: (standard input)
 CHUMP_UNVERIFIED_SHIP_PARK_M
 CHUMP_RCA_REFLEX_LLM_DISABLED
+CHUMP_BARNACLE_AMBIENT
+# detected in: (standard input)
+CHUMP_BARNACLE_CHUMP_CMD
+# detected in: (standard input)
+CHUMP_BARNACLE_DEBOUNCE_HOURS
+# detected in: (standard input)
+CHUMP_BARNACLE_REGISTRY
+# detected in: (standard input)
+CHUMP_BARNACLE_SKIP_RESERVE
+# detected in: (standard input)
+CHUMP_BARNACLE_STATE_DIR
+# detected in: (standard input)
+CHUMP_CALLS
+# detected in: (standard input)
+CHUMP_SHIM_DIR
