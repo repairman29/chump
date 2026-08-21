@@ -7,10 +7,11 @@ name: CI Advisory (post-merge)
 #
 # Run ONLY on push to main (post-merge signal) — never block a PR.
 #
-# Final disposition for each job — promote to required or keep advisory:
-#   INFRA-1385: tauri-cowork-e2e — pending decision
-#   INFRA-1386: e2e-battle-sim — pending decision
-#   INFRA-1387: e2e-golden-path — pending decision
+# Final disposition for each job — promote to required or keep advisory.
+# See docs/process/CI_GATES_INVENTORY.md for full rationale + review-by dates.
+#   INFRA-1385: tauri-cowork-e2e — KEEP-ADVISORY (broken/too-fragile-to-gate)
+#   INFRA-1386: e2e-battle-sim  — KEEP-ADVISORY (currently a no-op, no LLM credential wired)
+#   INFRA-1387: e2e-golden-path — KEEP-ADVISORY (real signal, cost-driven demotion)
 #
 # Drift gate: the advisory-drift-gate job at the bottom of this file verifies
 # that these three job names are NOT present in ci.yml.  If someone
