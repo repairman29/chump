@@ -1,0 +1,10 @@
+# RESILIENT-360 — pairs with chump-conflict-resolution-consumer.service.
+# Fires every 15 min (matches the launchd StartInterval 900s it replaces).
+[Unit]
+Description=Run the Chump conflict-resolution consumer every 15 minutes (RESILIENT-360/301)
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+[Install]
+WantedBy=timers.target
