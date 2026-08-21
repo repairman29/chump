@@ -517,4 +517,49 @@ grep -q '"kind":"organ_self_healed"' "$AMB19" \
     || fail "expected organ_self_healed when there is no backoff record; ambient: $(cat "$AMB19")"
 pass "19: a failed service with no backoff record still self-heals as before (no regression)"
 
+# ── 20. RESILIENT-347 AC 3: organ-watchdog directly invokes organ-reconcile ─
+# Proves the "wire organ-watchdog to run it" wiring: a stubbed
+# organ-reconcile.sh must be called with `--apply` on a normal (non-dry-run)
+# cycle, and must NOT be called under --dry-run.
+STUB20="$TMP/systemctl-healthy20"
+cat > "$STUB20" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$STUB20"
+RECONCILE_CALL_LOG20="$TMP/reconcile-calls20.log"
+RECONCILE_STUB20="$TMP/reconcile-stub20.sh"
+cat > "$RECONCILE_STUB20" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$RECONCILE_CALL_LOG20"
+exit 0
+EOF
+chmod +x "$RECONCILE_STUB20"
+AMB20="$TMP/ambient20.jsonl"
+: > "$AMB20"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB20" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$RECONCILE_STUB20" \
+    CHUMP_AMBIENT_LOG="$AMB20" "$WATCHDOG" >/dev/null 2>&1
+[[ -f "$RECONCILE_CALL_LOG20" ]] || fail "expected organ-reconcile.sh to be invoked at least once; nothing logged"
+grep -q -- "--apply" "$RECONCILE_CALL_LOG20" \
+    || fail "expected organ-reconcile.sh to be called with --apply; calls: $(cat "$RECONCILE_CALL_LOG20")"
+pass "20: organ-watchdog directly invokes organ-reconcile.sh --apply every cycle (RESILIENT-347 AC 3)"
+
+# ── 21. --dry-run must NOT invoke organ-reconcile.sh for real ──────────────
+RECONCILE_CALL_LOG21="$TMP/reconcile-calls21.log"
+RECONCILE_STUB21="$TMP/reconcile-stub21.sh"
+cat > "$RECONCILE_STUB21" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$RECONCILE_CALL_LOG21"
+exit 0
+EOF
+chmod +x "$RECONCILE_STUB21"
+AMB21="$TMP/ambient21.jsonl"
+: > "$AMB21"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB20" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$RECONCILE_STUB21" \
+    CHUMP_AMBIENT_LOG="$AMB21" "$WATCHDOG" --dry-run >/dev/null 2>&1
+[[ -f "$RECONCILE_CALL_LOG21" ]] && fail "organ-reconcile.sh must NOT run for real under --dry-run; calls: $(cat "$RECONCILE_CALL_LOG21")"
+pass "21: --dry-run does not invoke organ-reconcile.sh for real"
+
 echo "ALL PASS"
