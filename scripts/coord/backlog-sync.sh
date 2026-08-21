@@ -41,6 +41,19 @@ cd "$REPO" 2>/dev/null || { echo "[backlog-sync] no repo at $REPO" >&2; exit 1; 
 log(){ printf '[backlog-sync:%s] %s\n' "$ROLE" "$*"; }
 DB="$REPO/.chump/state.db"
 CACHE="$REPO/.chump/github_cache.db"
+AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO/.chump-locks/ambient.jsonl}"
+
+# RESILIENT-366: emit liveness on every --writer run (not just log output) so
+# the coherence clerk's heartbeat is answerable from ambient.jsonl without
+# ssh — the exact blind spot that let this organ sit disabled 21 days
+# undetected (CREDIBLE-292).
+emit_writer_ran() {
+  local closed="$1" checked="$2" ts
+  mkdir -p "$(dirname "$AMBIENT")" 2>/dev/null || true
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)"
+  printf '{"ts":"%s","kind":"backlog_sync_writer_ran","gaps_closed":%d,"gaps_checked":%d,"source":"backlog-sync-writer"}\n' \
+    "$ts" "$closed" "$checked" >> "$AMBIENT" 2>/dev/null || true
+}
 
 # ── reader: pull the shared truth, rebuild the local backlog ────────────────
 reader() {
@@ -95,6 +108,7 @@ writer() {
   done < "$tmp"
   rm -f "$tmp"
   log "reconciled: $closed merged-but-open gaps closed (of $checked distinct merged gap ids)"
+  emit_writer_ran "$closed" "$checked"
 
   [[ "$DRY" == 1 ]] && { log "dry-run — not regenerating/pushing state.sql"; return 0; }
 
