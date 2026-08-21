@@ -66616,13 +66616,16 @@ gaps:
 - id: RESILIENT-341
   domain: RESILIENT
   title: "REVIVER must be a COTG organ on every node: post-push-integrity-watch (reopen closed-but-gap-open fleet PRs = work wrongly trashed) is NOT installed on owned nodes (absent on CJ) and appears missing from the repo. The net that recovers good code closed by a reaper is not COTG. Add reviver to install-node-housekeeping.sh ORGANS table; verified by fresh-node self-test. Pairs with rot-reaper false-red guard."
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "The change described by \"post-push-integrity-watch (reopen closed-but-gap-open fleet PRs = work wrongly trashed) is NOT installed on owned nodes (absent on CJ) and appears missing from the repo. The net that recovers good code closed by a reaper is not COTG. Add reviver to install-node-housekeeping.sh ORGANS table; verified by fresh-node self-test. Pairs with rot-reaper false-red guard.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-21'
+  closed_pr: 4039
+  outcome_id: RESILIENT-000
 
 - id: RESILIENT-345
   domain: RESILIENT
@@ -66649,13 +66652,16 @@ gaps:
 - id: RESILIENT-347
   domain: RESILIENT
   title: "SELF-WIRING LOOP: per-node-applicable organ reconcile (end shipped-but-dark for good). The loop EXISTS (organ-watchdog + 29 tracked chump-*.service|.timer + install-helsinki-atc reconciler) + keystone host-rewrite landed (RESILIENT-353). REMAINING: reconciling the WHOLE helsinki roster onto CJ failed 4 units (integrator/sla-scorecard/backlog-sync-writer/farmer) that need more than a path-rewrite (binary/role/deps). Add: (1) each organ declares ROLE (brain|muscle|data) + REQUIRES (binary/dep/env) in the manifest; (2) reconciler installs ONLY organs applicable to THIS node + VERIFIES start, backing off (disable, dont churn) any that fail instead of the current install-all; (3) THEN wire organ-watchdog to run it. Until (1)-(2), do NOT enable organ-watchdog auto-reconcile (it re-installs the 4 failing units every cycle). This is the durable answer to \"agents that wire what is built\" — curated per-node, not blast-all."
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "The change described by \"per-node-applicable organ reconcile (end shipped-but-dark for good). The loop EXISTS (organ-watchdog + 29 tracked chump-*.service|.timer + install-helsinki-atc reconciler) + keystone host-rewrite landed (RESILIENT-353). REMAINING: reconciling the WHOLE helsinki roster onto CJ failed 4 units (integrator/sla-scorecard/backlog-sync-writer/farmer) that need more than a path-rewrite (binary/role/deps). Add: (1) each organ declares ROLE (brain|muscle|data) + REQUIRES (binary/dep/env) in the manifest; (2) reconciler installs ONLY organs applicable to THIS node + VERIFIES start, backing off (disable, dont churn) any that fail instead of the current install-all; (3) THEN wire organ-watchdog to run it. Until (1)-(2), do NOT enable organ-watchdog auto-reconcile (it re-installs the 4 failing units every cycle). This is the durable answer to \"agents that wire what is built\" — curated per-node, not blast-all.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-21'
+  closed_pr: 4042
+  outcome_id: RESILIENT-000
 
 - id: RESILIENT-348
   domain: RESILIENT
