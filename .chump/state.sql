@@ -66682,6 +66682,20 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
 
+- id: RESILIENT-356
+  domain: RESILIENT
+  title: "organ-watchdog must be robust + self-supervised — it died on ONE reset-failed error (exit-2) taking every organ down with it, and nothing restarts the healer. AC: watchdog survives any single unit error (per-unit try, never whole-loop abort); watchdog itself is supervised (Restart=always or a peer heartbeat) so the healer can never stay dead; timer stays enabled across reboot."
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"watchdog survives any single unit error (per-unit try, never whole-loop abort); watchdog itself is supervised (Restart=always or a peer heartbeat) so the healer can never stay dead; timer stays enabled across reboot.\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-21'
+  closed_pr: 4052
+  outcome_id: RESILIENT-000
+
 - id: SMOKE-001
   domain: SMOKE
   title: coord-surfaces-smoke fixture (auto-clean)
@@ -67795,3 +67809,24 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
 
+- id: RESILIENT-361
+  domain: RESILIENT
+  title: "Bound _parse_token_usage FIFO read with a timeout — dead-writer wedge froze both CJ workers ~5h (silent fleet drought). SIGALRM cap; token accounting best-effort never worth a wedged worker."
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"Bound _parse_token_usage FIFO read with a timeout — dead-writer wedge froze both CJ workers ~5h (silent fleet drought). SIGALRM cap; token accounting best-effort never worth a wedged worker.\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    reconciled: gap dispatched to this session but was never present in
+    state.db/state.sql. scripts/dispatch/_parse_token_usage.py already
+    implements the SIGALRM-bounded FIFO read (CHUMP_TOKEN_PARSE_TIMEOUT_S,
+    default 3000s) exactly as described, shipped via PR #4051 (commit
+    87473ccb) before this session started work. Same stale-record class as
+    RESILIENT-328/RESILIENT-341/CREDIBLE-291 — no new implementation
+    needed, just closing the gap record.
+  opened_date: '2026-08-21'
+  closed_date: '2026-08-21'
+  closed_pr: 4051
