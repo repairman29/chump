@@ -1,7 +1,8 @@
 - id: INFRA-1387
   domain: INFRA
   title: "ZERO-WASTE: e2e-golden-path disposition — PROMOTE to required or KEEP-ADVISORY (nightly-only)"
-  status: open
+  status: shipped
+  closed_pr: 4084
   priority: P2
   effort: s
   acceptance_criteria:
