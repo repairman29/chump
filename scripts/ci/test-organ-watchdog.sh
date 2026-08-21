@@ -444,4 +444,77 @@ grep -q '"kind":"worker_spin_healed"' "$AMB17" \
     && fail "must not write spin-heal state on a host with no chump-worker@ template"
 pass "17: no chump-worker@ template on this host: spin-heal is a full no-op"
 
+# ── 18-19. RESILIENT-347: watchdog defers to organ-reconcile's backoff ──────
+# organ-reconcile.sh disables + backs off a unit that fails to verify active,
+# specifically so it is NOT re-attempted every cycle. Without this wiring,
+# section 1's blind "any failed chump-*.service gets reset-failed+restart"
+# loop would resurrect that exact unit every 5 minutes through the watchdog's
+# own door — recreating the churn RESILIENT-347 exists to end. Backoff is
+# recorded against the manifest unit (usually a .timer), so the watchdog must
+# also consult the failed .service's .timer counterpart.
+STUB18="$TMP/systemctl-backoff18"
+CALL_LOG18="$TMP/calls18.log"
+cat > "$STUB18" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$CALL_LOG18"
+if [[ "\$1" == "list-units" ]]; then
+    echo "chump-integrator.service loaded failed failed Chump batched merge train"
+    exit 0
+fi
+if [[ "\$1" == "list-unit-files" ]]; then
+    exit 0
+fi
+exit 0
+EOF
+chmod +x "$STUB18"
+BACKOFF_DIR18="$TMP/organ-backoff18"
+mkdir -p "$BACKOFF_DIR18"
+printf '{"unit":"chump-integrator.timer","since":%d,"reason":"verify_failed"}\n' "$(date +%s)" \
+    > "$BACKOFF_DIR18/chump-integrator.timer.json"
+AMB18="$TMP/ambient18.jsonl"
+: > "$AMB18"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB18" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_RECONCILE_BACKOFF_DIR="$BACKOFF_DIR18" \
+    CHUMP_AMBIENT_LOG="$AMB18" "$WATCHDOG" >/dev/null 2>&1
+grep -q "reset-failed chump-integrator.service" "$CALL_LOG18" \
+    && fail "must NOT reset-failed a unit whose .timer counterpart is backed off; calls: $(cat "$CALL_LOG18")"
+grep -q "restart chump-integrator.service" "$CALL_LOG18" \
+    && fail "must NOT restart a unit whose .timer counterpart is backed off; calls: $(cat "$CALL_LOG18")"
+grep -q '"kind":"organ_watchdog_backoff_skip"' "$AMB18" \
+    || fail "expected organ_watchdog_backoff_skip emitted; ambient: $(cat "$AMB18")"
+grep -q '"unit":"chump-integrator.service"' "$AMB18" \
+    || fail "expected the skip event to name the backed-off service; ambient: $(cat "$AMB18")"
+pass "18: a failed service whose .timer is in organ-reconcile backoff is SKIPPED, not resurrected (RESILIENT-347)"
+
+# ── 19. Regression: a failed service with NO backoff record still heals ────
+STUB19="$TMP/systemctl-backoff19"
+CALL_LOG19="$TMP/calls19.log"
+cat > "$STUB19" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$CALL_LOG19"
+if [[ "\$1" == "list-units" ]]; then
+    echo "chump-integrator.service loaded failed failed Chump batched merge train"
+    exit 0
+fi
+if [[ "\$1" == "list-unit-files" ]]; then
+    exit 0
+fi
+exit 0
+EOF
+chmod +x "$STUB19"
+BACKOFF_DIR19="$TMP/organ-backoff19"
+mkdir -p "$BACKOFF_DIR19"   # empty — no backoff record for this unit
+AMB19="$TMP/ambient19.jsonl"
+: > "$AMB19"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB19" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_RECONCILE_BACKOFF_DIR="$BACKOFF_DIR19" \
+    CHUMP_AMBIENT_LOG="$AMB19" "$WATCHDOG" >/dev/null 2>&1
+grep -q "reset-failed chump-integrator.service" "$CALL_LOG19" \
+    || fail "expected reset-failed when there is no backoff record; calls: $(cat "$CALL_LOG19")"
+grep -q "restart chump-integrator.service" "$CALL_LOG19" \
+    || fail "expected restart when there is no backoff record; calls: $(cat "$CALL_LOG19")"
+grep -q '"kind":"organ_self_healed"' "$AMB19" \
+    || fail "expected organ_self_healed when there is no backoff record; ambient: $(cat "$AMB19")"
+pass "19: a failed service with no backoff record still self-heals as before (no regression)"
+
 echo "ALL PASS"

@@ -6207,6 +6207,18 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, unit, role]
 
+  - kind: organ_watchdog_backoff_skip
+    effect_metric: self
+    emitter: scripts/ops/organ-watchdog.sh (RESILIENT-347)
+    trigger: a chump-*.service unit is ActiveState=failed but its manifest unit
+      (itself, or its .timer counterpart) is currently cooling down in
+      organ-reconcile.sh's backoff registry — the watchdog defers to that
+      curated decision instead of blindly reset-failed+restart'ing the unit
+      every cycle, which would recreate the pre-347 resurrection churn through
+      the watchdog's own door.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit]
+
   - kind: organ_self_healed
     effect_metric: organ_self_heal_rate
     emitter: scripts/ops/organ-watchdog.sh (INFRA-3595)
