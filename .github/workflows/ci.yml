@@ -1072,6 +1072,9 @@ jobs:
       - name: stale-process watchdog (INFRA-1663)
         run: bash scripts/ci/test-stale-process-watchdog.sh
 
+      - name: almanac summarize watchdog (RESILIENT-354)
+        run: bash scripts/ci/test-almanac-summarize-watchdog.sh
+
       - name: default-flip advisory guard (INFRA-762)
         run: bash scripts/ci/test-default-flip-guard.sh
 

@@ -6,6 +6,7 @@
 install-a2a-dead-letter-reaper-launchd.sh
 install-active-target-reaper-launchd.sh
 install-allowlist-audit-launchd.sh
+install-almanac-summarize-watchdog.sh
 install-ambient-hooks.sh
 install-ambient-rotate-launchd.sh
 install-api-cost-digest-launchd.sh

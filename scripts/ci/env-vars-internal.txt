@@ -2094,3 +2094,18 @@ CHUMP_ORGAN_RECONCILE_VERIFY_DELAY_S
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_TOKEN_PARSE_TIMEOUT_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ALMANAC_SUMMARIZE_MIN_PCT
+# detected in: (standard input)
+CHUMP_ALMANAC_SUMMARIZE_PROC_PATTERN
+# detected in: (standard input)
+CHUMP_ALMANAC_WATCHDOG_COVERAGE_BIN
+# detected in: (standard input)
+CHUMP_ALMANAC_WATCHDOG_PGREP_BIN
+# detected in: (standard input)
+CHUMP_ALMANAC_WATCHDOG_RECALL_SCRIPT
+# detected in: (standard input)
+CHUMP_ALMANAC_WATCHDOG_RESTART_CMD
