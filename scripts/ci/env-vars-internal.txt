@@ -2130,3 +2130,11 @@ CHUMP_METRICS_DIR
 CHUMP_MMB_DATE
 # detected in: (standard input)
 CHUMP_MMB_FIXTURE
+# detected in: (standard input)
+CHUMP_PATTERN_DETECTOR_HOLD
+# detected in: (standard input)
+CHUMP_PATTERN_DETECTOR_ALERT_ONLY
+# detected in: (standard input)
+CHUMP_PATTERN_DETECTOR_QUIET
+# detected in: (standard input)
+CHUMP_PATTERN_DETECTOR_STATE

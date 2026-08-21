@@ -3128,6 +3128,13 @@ events:
     trigger: same failure shape filed multiple times
     consumers: [operator-recall]
 
+  - kind: recurring_gap_pattern_rca_filed
+    effect_metric: self
+    emitter: scripts/coord/recurring-gap-pattern-detector.sh (RESILIENT-365)
+    trigger: recurring_gap_pattern cluster reflex filed/refreshed a META RCA gap + symptom-cluster hold
+    consumers: [audit-log]
+    fields_required: [ts, kind, keyword, gap_count, window_days, gap_ids, rca_gap]
+
   - kind: roadmap_status
     effect_metric: self
     emitter: scripts/ops/roadmap-status.sh

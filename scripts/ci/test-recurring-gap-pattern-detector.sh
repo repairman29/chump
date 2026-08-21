@@ -208,6 +208,89 @@ else
     fail "Test 7 confirm: expected cluster of 2 (excluding legacy); output: $out2"
 fi
 
+# ── Test 8: RCA reflex — cluster fires a META RCA gap + hold record ──────────
+echo "--- Test 8: cluster detection files RCA gap + writes hold record (RESILIENT-365) ---"
+reset_repo
+seed_gap "TEST-001" "$TODAY"     "reconcile drift in the widget layer"
+seed_gap "TEST-002" "$YESTERDAY" "reconcile drift after restart"
+seed_gap "TEST-003" "$LAST_WEEK" "reconcile drift on cold boot"
+
+FAKE_BIN="$TMPDIR_BASE/fakebin"
+mkdir -p "$FAKE_BIN"
+RESERVE_LOG="$TMPDIR_BASE/reserve.log"
+: > "$RESERVE_LOG"
+cat > "$FAKE_BIN/chump" <<EOF
+#!/usr/bin/env bash
+if [ "\$1 \$2" = "gap reserve" ]; then
+    echo "\$*" >> "$RESERVE_LOG"
+    echo "META-9001"
+    exit 0
+fi
+exit 1
+EOF
+chmod +x "$FAKE_BIN/chump"
+
+amb="$FAKE_REPO/.chump-locks/ambient.jsonl"
+state="$FAKE_REPO/.chump-locks/pattern-detector-state.json"
+hold="$FAKE_REPO/.chump-locks/pattern-detector-hold.json"
+out=$(cd "$FAKE_REPO" && PATH="$FAKE_BIN:$PATH" CHUMP_AMBIENT_LOG="$amb" \
+    CHUMP_PATTERN_DETECTOR_STATE="$state" CHUMP_PATTERN_DETECTOR_HOLD="$hold" \
+    "$DETECTOR" --days 7 --threshold 3 2>&1)
+
+if grep -q "gap reserve --domain META" "$RESERVE_LOG"; then
+    ok "Test 8a: RCA reflex called 'chump gap reserve --domain META'"
+else
+    fail "Test 8a: expected a META gap reserve call; log: $(cat "$RESERVE_LOG" 2>/dev/null)"
+fi
+
+if [ -f "$state" ] && grep -q "META-9001" "$state" && grep -q "reconcile" "$state"; then
+    ok "Test 8b: state file records keyword → RCA gap id"
+else
+    fail "Test 8b: state file missing/incorrect: $(cat "$state" 2>/dev/null)"
+fi
+
+if [ -f "$hold" ] && grep -q "META-9001" "$hold" && grep -q "reconcile" "$hold"; then
+    ok "Test 8c: hold file records keyword → RCA gap id"
+else
+    fail "Test 8c: hold file missing/incorrect: $(cat "$hold" 2>/dev/null)"
+fi
+
+if grep -q "recurring_gap_pattern_rca_filed" "$amb"; then
+    ok "Test 8d: ambient emits recurring_gap_pattern_rca_filed"
+else
+    fail "Test 8d: ambient missing recurring_gap_pattern_rca_filed event"
+fi
+
+# ── Test 9: RCA reflex is idempotent — repeat run doesn't refile ─────────────
+echo "--- Test 9: repeat detection reuses existing RCA gap, no second reserve ---"
+: > "$RESERVE_LOG"
+out2=$(cd "$FAKE_REPO" && PATH="$FAKE_BIN:$PATH" CHUMP_AMBIENT_LOG="$amb" \
+    CHUMP_PATTERN_DETECTOR_STATE="$state" CHUMP_PATTERN_DETECTOR_HOLD="$hold" \
+    "$DETECTOR" --days 7 --threshold 3 2>&1)
+if [ ! -s "$RESERVE_LOG" ]; then
+    ok "Test 9: second sweep reused existing RCA gap (no new reserve call)"
+else
+    fail "Test 9: expected no new reserve call; log: $(cat "$RESERVE_LOG")"
+fi
+
+# ── Test 10: --no-rca skips the reflex entirely ───────────────────────────────
+echo "--- Test 10: --no-rca suppresses RCA reflex ---"
+reset_repo
+seed_gap "TEST-001" "$TODAY"     "orphaned lease sweep first"
+seed_gap "TEST-002" "$YESTERDAY" "orphaned lease sweep second"
+seed_gap "TEST-003" "$LAST_WEEK" "orphaned lease sweep third"
+state2="$FAKE_REPO/.chump-locks/pattern-detector-state2.json"
+hold2="$FAKE_REPO/.chump-locks/pattern-detector-hold2.json"
+: > "$RESERVE_LOG"
+( cd "$FAKE_REPO" && PATH="$FAKE_BIN:$PATH" CHUMP_AMBIENT_LOG="$amb" \
+    CHUMP_PATTERN_DETECTOR_STATE="$state2" CHUMP_PATTERN_DETECTOR_HOLD="$hold2" \
+    "$DETECTOR" --days 7 --threshold 3 --no-rca >/dev/null 2>&1 )
+if [ ! -s "$RESERVE_LOG" ] && [ ! -f "$state2" ] && [ ! -f "$hold2" ]; then
+    ok "Test 10: --no-rca skipped gap-reserve + state/hold writes"
+else
+    fail "Test 10: --no-rca should skip reflex entirely (reserve log: $(cat "$RESERVE_LOG" 2>/dev/null))"
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
