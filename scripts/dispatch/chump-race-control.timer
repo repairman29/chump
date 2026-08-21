@@ -1,0 +1,19 @@
+# CREDIBLE-296 — fires the Race Control merge-mix board every hour.
+# Reads the last CHUMP_RACE_WINDOW merged PRs (default 60), classifies the
+# user-value / self-maintenance / reconcile-waste mix, and emits
+# kind=race_control_mix (always) + kind=race_control_waste_alarm (when
+# reconcile-waste% exceeds CHUMP_RACE_WASTE_THRESHOLD) to ambient.jsonl.
+# Enable: systemctl enable --now chump-race-control.timer
+# Watchdog coverage: chump-organ-watchdog.timer self-heals ANY failed
+# chump-* organ (reset-failed + restart) fleet-wide — no bespoke watchdog
+# needed. Roll-Call coverage: scripts/ops/organ-manifest.txt (RESILIENT-366).
+[Unit]
+Description=Run the Chump Race Control merge-mix board hourly (CREDIBLE-296)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
