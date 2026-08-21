@@ -49,6 +49,23 @@ watchdog_line="$(grep -E '^enabled +chump-organ-watchdog\.timer' "$REAL_MANIFEST
 [[ -n "$watchdog_line" ]] || fail "real manifest missing 'enabled chump-organ-watchdog.timer' — the healer itself is unsupervised"
 pass "real organ-manifest.txt declares chump-organ-watchdog.timer as a peer-supervised organ (RESILIENT-356)"
 
+# ── 2c. RESILIENT-360: conflict-resolution consumer is a peer-supervised organ
+# The systemd unit/timer shipped in RESILIENT-360's first PR (#4049) but was
+# never added to organ-manifest.txt, so armed_pr_needs_conflict_resolution
+# signals still had no revivable consumer on CJ — a dead unit would sit dead
+# forever since nothing in the manifest told organ-reconcile to keep it alive
+# (real-conflict DIRTY PRs #4033/4036/4037/4040/4041 rotted). Without this
+# manifest line, this check fails.
+crc_line="$(grep -E '^enabled +chump-conflict-resolution-consumer\.timer' "$REAL_MANIFEST")"
+[[ -n "$crc_line" ]] || fail "real manifest missing 'enabled chump-conflict-resolution-consumer.timer' — REAL-conflict DIRTY PRs have no revivable consumer"
+echo "$crc_line" | grep -q 'role=' || fail "real manifest line for chump-conflict-resolution-consumer.timer has no role="
+echo "$crc_line" | grep -q 'requires=' || fail "real manifest line for chump-conflict-resolution-consumer.timer has no requires="
+[[ -f "$REPO_ROOT/scripts/dispatch/chump-conflict-resolution-consumer.service" ]] \
+    || fail "manifest declares chump-conflict-resolution-consumer.timer but the tracked .service unit is missing"
+[[ -f "$REPO_ROOT/scripts/dispatch/chump-conflict-resolution-consumer.timer" ]] \
+    || fail "manifest declares chump-conflict-resolution-consumer.timer but the tracked .timer unit is missing"
+pass "real organ-manifest.txt declares chump-conflict-resolution-consumer.timer as a peer-supervised organ (RESILIENT-360), tracked units present"
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 

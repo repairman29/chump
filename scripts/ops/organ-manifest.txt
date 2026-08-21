@@ -149,3 +149,14 @@ enabled     chump-backlog-sync-writer.timer  role=data requires=bin:git,bin:chum
 # other organ in this manifest already relies on. This is the "watchdog itself
 # is supervised... so the healer can never stay dead" half of RESILIENT-356.
 enabled     chump-organ-watchdog.timer  role=brain
+
+# chump-conflict-resolution-consumer.timer: drains REAL-conflict DIRTY PRs
+# (RESILIENT-360, Linux port of RESILIENT-301). armed_pr_needs_conflict_
+# resolution signals previously had NO consumer on CJ/Linux — the launchd
+# installer only wired the Mac side — so real-conflict DIRTY fix-class PRs
+# rotted with no owner (#4033/4036/4037/4040/4041, 2+ conflict files each).
+# RESILIENT-357's armed-pr-rebaser adopts+drains the trivial/BEHIND orphans;
+# this organ drains the real-conflict ones via conflict-resolver-agent.sh.
+# Declared here so organ-reconcile re-arms it if it drifts or fails — the
+# same peer-heartbeat mechanism every other organ in this manifest relies on.
+enabled     chump-conflict-resolution-consumer.timer  role=muscle requires=bin:gh
