@@ -162,7 +162,14 @@ fi
 AUTO=0
 [[ "${1:-}" == "--auto" ]] && AUTO=1
 
-if [[ "$(id -u)" != "0" ]]; then
+# RESILIENT-347: stubbable systemd dest-dir + systemctl + root-check (test
+# hooks, mirror organ-reconcile.sh's CHUMP_ORGAN_RECONCILE_* pattern) so the
+# full --auto roster-install path — including a per-unit enable failure —
+# can be exercised in CI without touching a real /etc/systemd/system.
+SYSTEMD_DEST_DIR="${CHUMP_INSTALL_ATC_SYSTEMD_DIR:-/etc/systemd/system}"
+SYSTEMCTL_BIN="${CHUMP_INSTALL_ATC_SYSTEMCTL_BIN:-systemctl}"
+
+if [[ "$(id -u)" != "0" && "${CHUMP_INSTALL_ATC_ALLOW_NONROOT:-0}" != "1" ]]; then
   if [[ "$AUTO" == "1" ]]; then
     echo "WARN: --auto invoked without root; skipping system-unit deploy (this worker context cannot install system units)" >&2
     # scanner-anchor: "kind":"organ_units_deploy_failed"  (INFRA-3593; fires
@@ -184,10 +191,11 @@ echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board
 RUN_USER="${CHUMP_RUN_USER:-$(stat -c %U "$REPO_ROOT" 2>/dev/null || echo root)}"
 RUN_HOME="$(getent passwd "$RUN_USER" 2>/dev/null | cut -d: -f6)"; [[ -z "$RUN_HOME" ]] && RUN_HOME="/home/$RUN_USER"
 echo "  host-rewrite target: User=$RUN_USER HOME=$RUN_HOME"
+mkdir -p "$SYSTEMD_DEST_DIR"
 CHANGED_UNITS=()
 for unit in "${SYSTEM_UNITS[@]}"; do
   src="$REPO_ROOT/scripts/dispatch/$unit"
-  dest="/etc/systemd/system/$unit"
+  dest="$SYSTEMD_DEST_DIR/$unit"
   if [[ ! -f "$src" ]]; then
     echo "ERROR: $src not found" >&2
     exit 1
@@ -231,17 +239,29 @@ if [[ ! -x "$INTEGRATOR_BIN_DEST" ]]; then
   fi
 fi
 
-if ! systemctl daemon-reload 2>&1; then
+if ! "$SYSTEMCTL_BIN" daemon-reload 2>&1; then
   echo "ERROR: systemctl daemon-reload failed (no systemd bus reachable?)" >&2
   emit organ_units_deploy_failed "\"reason\":\"systemctl_daemon_reload_failed\""
   [[ "$AUTO" == "1" ]] && exit 0
   exit 1
 fi
+# RESILIENT-347: a single timer failing to `enable --now` (e.g.
+# chump-integrator.timer/chump-backlog-sync-writer.timer/chump-farmer.timer
+# on a node missing that organ's binary/deps) must NOT abort the whole
+# --auto roster install. Before this fix, `exit 0` here under --auto meant
+# the run stopped dead on the FIRST failing unit and never reached the
+# ORGAN_RECONCILE call below — so the curated per-node-applicable reconcile
+# (which backs the failing unit off cleanly instead of re-churning it) never
+# even got a chance to run. Non---auto (manual sudo invocation) still hard-
+# fails, since an operator running this by hand wants to see the error stop
+# the script rather than have it silently continue.
 for t in "${SYSTEM_TIMERS[@]}"; do
-  if ! systemctl enable --now "$t" 2>&1; then
+  if ! "$SYSTEMCTL_BIN" enable --now "$t" 2>&1; then
     echo "ERROR: systemctl enable --now $t failed" >&2
     emit organ_units_deploy_failed "\"reason\":\"systemctl_enable_failed\",\"unit\":\"$t\""
-    [[ "$AUTO" == "1" ]] && exit 0
+    if [[ "$AUTO" == "1" ]]; then
+      continue
+    fi
     exit 1
   fi
   echo "  enabled + started $t"

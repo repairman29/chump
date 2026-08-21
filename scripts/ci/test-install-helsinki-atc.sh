@@ -70,4 +70,65 @@ grep -q 'Not propagating it as CHUMP_NODE_REPO' "$SCRIPT" \
     || fail "install-helsinki-atc.sh guard doesn't skip CHUMP_NODE_REPO propagation for worktree paths"
 ok "install-helsinki-atc.sh guards against baking an ephemeral worktree into CHUMP_NODE_REPO"
 
+# ── Test: --auto must NOT abort the roster on a single unit enable failure
+#       (RESILIENT-347) ─────────────────────────────────────────────────────
+# Before RESILIENT-347, `systemctl enable --now $t` failing for ANY one timer
+# under --auto exited the whole script immediately (`exit 0`) — later timers
+# in the roster never even got an enable attempt, and the ORGAN_RECONCILE
+# call (which backs a structurally-broken organ off cleanly instead of
+# re-churning it every cycle) never ran. This is the exact real-world failure
+# named in the gap: chump-integrator/sla-scorecard/backlog-sync-writer/farmer
+# failing on a node missing that organ's binary/deps must not take the rest
+# of the ATC roster down with it.
+mkdir -p "$TMP/atc-dest" "$TMP/atc-bins" "$TMP/atc-cargo-bin" "$TMP/atc-locks"
+cat > "$TMP/atc-bins/systemctl" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$ATC_CALL_LOG"
+case "$1" in
+    enable)
+        unit="${@: -1}"
+        grep -qxF "$unit" "$ATC_ENABLE_FAIL_FILE" 2>/dev/null && exit 1
+        exit 0
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+chmod +x "$TMP/atc-bins/systemctl"
+# chump-integrator's own binary build path is unrelated to this test — stub
+# CARGO_BIN_DIR with a pre-existing fake binary so the script's "build it if
+# missing" branch (which needs a real cargo/network) never triggers.
+cat > "$TMP/atc-cargo-bin/chump-integrator" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TMP/atc-cargo-bin/chump-integrator"
+
+ATC_CALL_LOG="$TMP/atc-calls.log"
+ATC_ENABLE_FAIL_FILE="$TMP/atc-enable-fail.txt"
+: > "$ATC_CALL_LOG"
+echo "chump-farmer.timer" > "$ATC_ENABLE_FAIL_FILE"
+
+ATC_CALL_LOG="$ATC_CALL_LOG" ATC_ENABLE_FAIL_FILE="$ATC_ENABLE_FAIL_FILE" \
+    CHUMP_INSTALL_ATC_ALLOW_NONROOT=1 \
+    CHUMP_INSTALL_ATC_SYSTEMD_DIR="$TMP/atc-dest" \
+    CHUMP_INSTALL_ATC_SYSTEMCTL_BIN="$TMP/atc-bins/systemctl" \
+    CARGO_BIN_DIR="$TMP/atc-cargo-bin" \
+    NODE_AMBIENT="$TMP/atc-locks/ambient.jsonl" \
+    bash "$SCRIPT" --auto >"$TMP/atc-out.log" 2>&1
+atc_rc=$?
+[ "$atc_rc" -eq 0 ] || fail "--auto with one failing unit must still exit 0 (non-fatal); got $atc_rc: $(cat "$TMP/atc-out.log")"
+grep -q '"kind":"organ_units_deploy_failed".*"unit":"chump-farmer.timer"' "$TMP/atc-locks/ambient.jsonl" \
+    || fail "expected organ_units_deploy_failed for chump-farmer.timer: $(cat "$TMP/atc-locks/ambient.jsonl" 2>/dev/null)"
+# The two units the gap names as needing more than a path-rewrite
+# (chump-integrator.timer, chump-backlog-sync-writer.timer) sit AFTER
+# chump-farmer.timer in SYSTEM_TIMERS — proof the loop kept going past the
+# failure instead of aborting on it.
+grep -q "enable --now chump-integrator.timer" "$TMP/atc-calls.log" \
+    || fail "a later timer (chump-integrator.timer) never got an enable attempt — the loop aborted early: $(cat "$TMP/atc-calls.log")"
+grep -q "enable --now chump-backlog-sync-writer.timer" "$TMP/atc-calls.log" \
+    || fail "a later timer (chump-backlog-sync-writer.timer) never got an enable attempt — the loop aborted early: $(cat "$TMP/atc-calls.log")"
+grep -q "== reconciling organ manifest" "$TMP/atc-out.log" \
+    || fail "ORGAN_RECONCILE was never reached after the mid-roster enable failure: $(cat "$TMP/atc-out.log")"
+ok "--auto with one unit's enable failure continues the roster loop AND still reaches organ-reconcile.sh (RESILIENT-347)"
+
 echo "ALL PASS"
