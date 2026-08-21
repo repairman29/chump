@@ -104,6 +104,57 @@ svc_status() {  # prints "up" or "down"
   esac
 }
 
+# ---------- 1.5 TOOLCHAIN PREFLIGHT (INFRA-3621) ----------
+# Runs before HOME so a partial install never happens on a box missing a
+# basic tool. Host-agnostic: termux pkg / linux apt|dnf / macos brew hints,
+# reusing detect_host()'s HOST_KIND rather than re-detecting.
+install_hint() {
+  local tool="$1"
+  case "$HOST_KIND" in
+    termux) echo "pkg install -y $tool";;
+    macos) echo "brew install $tool";;
+    linux-systemd|linux-nosystemd)
+      if command -v apt >/dev/null 2>&1; then echo "sudo apt install -y $tool"
+      elif command -v dnf >/dev/null 2>&1; then echo "sudo dnf install -y $tool"
+      else echo "install $tool via your distro's package manager"; fi
+      ;;
+    *) echo "install $tool";;
+  esac
+}
+
+ensure_rust() {
+  if command -v cargo >/dev/null 2>&1 && command -v rustc >/dev/null 2>&1; then
+    ok "rust toolchain present ($(rustc --version 2>/dev/null))"
+    return 0
+  fi
+  info TOOLCHAIN "cargo/rustc missing — installing for host=$HOST_KIND"
+  case "$HOST_KIND" in
+    termux) run "pkg install -y rust";;
+    macos|linux-systemd|linux-nosystemd)
+      run "curl https://sh.rustup.rs -sSf | sh -s -- -y"
+      # shellcheck disable=SC1091
+      [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+      ;;
+  esac
+  if command -v cargo >/dev/null 2>&1; then ok "rust toolchain installed"
+  else no "rust toolchain install failed ($(install_hint rust))"; return 1; fi
+}
+
+toolchain_preflight() {
+  info PREFLIGHT "checking required tools (host=$HOST_KIND)"
+  local required="git jq curl" missing=""
+  for t in $required; do
+    command -v "$t" >/dev/null 2>&1 || missing="$missing $t"
+  done
+  if [ -n "$missing" ]; then
+    for t in $missing; do no "missing: $t -> install with: $(install_hint "$t")"; done
+    echo "fix missing tools above, then re-run" >&2
+    exit 1
+  fi
+  ok "required tools present (git, jq, curl)"
+  ensure_rust || { echo "fix rust toolchain above (see hint), then re-run" >&2; exit 1; }
+}
+
 # ---------- 2. HOME ----------
 ensure_home() {
   run "mkdir -p '$NODE_DIR/bin' '$ORGAN_DIR' '$LOG_DIR' '$STATE_DIR'"
@@ -203,6 +254,7 @@ self_test() {
 printf '\033[1m=== chump-node-install: role=%s home=%s ===\033[0m\n' "$ROLE" "$NODE_DIR"
 detect_host
 if [ "$SELF_TEST_ONLY" = 1 ]; then self_test; exit $?; fi
+toolchain_preflight
 ensure_home
 check_creds || info CREDS "fix creds before organs will authenticate"
 ensure_binary || info BINARY "install a binary, then re-run"
