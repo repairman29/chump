@@ -169,6 +169,66 @@ if [[ "$(uname)" == "Darwin" ]] && command -v codesign >/dev/null 2>&1; then
 fi
 mv -f "$TARGET_BIN.new" "$TARGET_BIN"
 
+# RESILIENT-355: the deploy used to build+install ONLY `chump`. Aux
+# merge-critical binaries (chump-integrator — the batched merge train) were never
+# installed here, so when one vanished from the bin dir NOTHING reinstalled it:
+# chump-integrator went missing 2026-08-20 and the merge train sat dead 16h while
+# PRs jammed. Build + install the merge-critical aux binaries alongside chump.
+# Best-effort: a missing/broken aux warns + emits, but never fails the chump
+# deploy (chump is the critical path and is already installed above).
+CHUMP_AUX_MERGE_BINS="${CHUMP_AUX_MERGE_BINS:-chump-integrator}"
+INSTALL_DIR="$(dirname "$TARGET_BIN")"
+for _aux in $CHUMP_AUX_MERGE_BINS; do
+    if PATH="$(dirname "$CARGO"):$PATH" CARGO_TARGET_DIR="$SHARED_TARGET" \
+         "$CARGO" build --release --bin "$_aux" --manifest-path "$BUILD_WORKTREE/Cargo.toml" >>"$LOG" 2>&1 \
+       && [[ -x "$SHARED_TARGET/release/$_aux" ]]; then
+        if cp -f "$SHARED_TARGET/release/$_aux" "$INSTALL_DIR/$_aux.new" 2>>"$LOG"; then
+            chmod +x "$INSTALL_DIR/$_aux.new"
+            if [[ "$(uname)" == "Darwin" ]] && command -v codesign >/dev/null 2>&1; then
+                codesign --force --sign - "$INSTALL_DIR/$_aux.new" 2>>"$LOG" || true
+            fi
+            mv -f "$INSTALL_DIR/$_aux.new" "$INSTALL_DIR/$_aux"
+            log "RESILIENT-355: installed aux merge binary $_aux → $INSTALL_DIR/$_aux"
+        else
+            log "WARN (RESILIENT-355): cp of aux binary $_aux failed"
+            emit runner_binary_refresh_failed "\"reason\":\"aux_cp_failed\",\"bin\":\"$_aux\""
+        fi
+    else
+        log "WARN (RESILIENT-355): aux merge binary $_aux failed to build — merge train may lack it"
+        emit runner_binary_refresh_failed "\"reason\":\"aux_build_failed\",\"bin\":\"$_aux\""
+    fi
+done
+
+# RESILIENT-355: the deploy used to build+install ONLY `chump`. Aux
+# merge-critical binaries (chump-integrator — the batched merge train) were never
+# installed here, so when one vanished from the bin dir NOTHING reinstalled it:
+# chump-integrator went missing 2026-08-20 and the merge train sat dead 16h while
+# PRs jammed. Build + install the merge-critical aux binaries alongside chump.
+# Best-effort: a missing/broken aux warns + emits, but never fails the chump
+# deploy (chump is the critical path and is already installed above).
+CHUMP_AUX_MERGE_BINS="${CHUMP_AUX_MERGE_BINS:-chump-integrator}"
+INSTALL_DIR="$(dirname "$TARGET_BIN")"
+for _aux in $CHUMP_AUX_MERGE_BINS; do
+    if PATH="$(dirname "$CARGO"):$PATH" CARGO_TARGET_DIR="$SHARED_TARGET" \
+         "$CARGO" build --release --bin "$_aux" --manifest-path "$BUILD_WORKTREE/Cargo.toml" >>"$LOG" 2>&1 \
+       && [[ -x "$SHARED_TARGET/release/$_aux" ]]; then
+        if cp -f "$SHARED_TARGET/release/$_aux" "$INSTALL_DIR/$_aux.new" 2>>"$LOG"; then
+            chmod +x "$INSTALL_DIR/$_aux.new"
+            if [[ "$(uname)" == "Darwin" ]] && command -v codesign >/dev/null 2>&1; then
+                codesign --force --sign - "$INSTALL_DIR/$_aux.new" 2>>"$LOG" || true
+            fi
+            mv -f "$INSTALL_DIR/$_aux.new" "$INSTALL_DIR/$_aux"
+            log "RESILIENT-355: installed aux merge binary $_aux → $INSTALL_DIR/$_aux"
+        else
+            log "WARN (RESILIENT-355): cp of aux binary $_aux failed"
+            emit runner_binary_refresh_failed "\"reason\":\"aux_cp_failed\",\"bin\":\"$_aux\""
+        fi
+    else
+        log "WARN (RESILIENT-355): aux merge binary $_aux failed to build — merge train may lack it"
+        emit runner_binary_refresh_failed "\"reason\":\"aux_build_failed\",\"bin\":\"$_aux\""
+    fi
+done
+
 NEW_SHA="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || echo unknown)"
 
 # INFRA-2101 guard: detect the silent-failure mode (prev_sha == new_sha despite
