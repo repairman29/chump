@@ -2056,6 +2056,23 @@ Operator or sibling worker can rescue this branch via:
         else
             _cycle_kind="unverified_ship"
             log "CREDIBLE-154: rc=0 but NO ship evidence (branch=${_ship_branch}, no PR in cache/gh, gap not ready_to_ship) — classifying unverified_ship"
+            # EFFECTIVE-441: an unverified_ship gap (claimed + worked, rc=0, but
+            # produced NO merging PR) used to release straight back to open and be
+            # RE-PICKED next cycle forever, burning inference on a gap the agent
+            # cannot crack (live: RESILIENT-354 re-picked at cycle 130 AND 135).
+            # Feed it into the SAME cooldown pipeline as preflight_fail: a per-worker
+            # cooldown file makes the picker skip it for a backoff window, and when
+            # FLEET_COOLDOWN_THRESHOLD distinct workers all unverified_ship the same
+            # gap it auto-escalates to a cluster-wide skip (park) — so the OS learns
+            # "hard gap it cannot crack" vs "not tried yet" instead of looping. Longer
+            # window than preflight_fail (a real work attempt failed, not a stale
+            # claim). Tunable via CHUMP_UNVERIFIED_SHIP_COOLDOWN_S.
+            _cd_dir="$REPO_ROOT/.chump-locks/cooldown"
+            mkdir -p "$_cd_dir" 2>/dev/null || true
+            _cd_until=$(( $(date +%s) + ${CHUMP_UNVERIFIED_SHIP_COOLDOWN_S:-1800} ))
+            printf '"'"'{"gap_id":"%s","until":%d,"agent":"%s","ts":"%s","reason":"unverified_ship"}\n'"'"' \
+                "$GAP_ID" "$_cd_until" "$AGENT_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                > "$_cd_dir/${AGENT_ID}-${GAP_ID}.json" 2>/dev/null || true
         fi
     elif [ "${_is_wedge:-0}" -eq 1 ]; then
         _cycle_kind="wedge"
