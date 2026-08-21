@@ -105,6 +105,15 @@ REQUIRED_DAEMONS=(
     # this very script. Solves the bootstrap problem on first manual run so
     # it never reverts to "shipped but not installed" again.
     "com.chump.bootstrap-auto-install|scripts/setup/install-bootstrap-auto-launchd.sh"
+    # RESILIENT-354: almanac-summarize-watchdog — supervises the almanac
+    # summarize fleet launcher (restarts it within one cycle if dead, pages
+    # the operator on served-repo coverage drop below floor). The watchdog
+    # script + installer shipped in #4064 but were never added here, so the
+    # exact failure the gap describes (launcher SIGTERM'd 2026-08-10, never
+    # restarted, chump stuck at 68.6% summarized for 10 days) could still
+    # recur on any host that never ran the installer by hand. REQUIRED so
+    # this can't become another shipped-but-uninstalled daemon.
+    "com.chump.almanac-summarize-watchdog|scripts/setup/install-almanac-summarize-watchdog.sh"
 )
 UID_VAL="$(id -u)"
 

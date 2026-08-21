@@ -45,6 +45,17 @@ grep -q "com.chump.almanac-summarize-watchdog" "$PLIST" \
     || fail "plist missing expected Label"
 pass "script + plist + installer present, syntax clean"
 
+# ── 1b. Bootstrap wiring — REQUIRED_DAEMONS (RESILIENT-354) ────────────────
+# A watchdog that exists on disk but isn't in REQUIRED_DAEMONS is exactly the
+# failure this gap is about: shipped-but-never-installed, so the launcher
+# stays unsupervised on any host that didn't run the installer by hand.
+echo "--- 1b: bootstrap wiring ---"
+BOOTSTRAP="$REPO_ROOT/scripts/setup/chump-fleet-bootstrap.sh"
+[[ -f "$BOOTSTRAP" ]] || fail "bootstrap script missing: $BOOTSTRAP"
+grep -qF "com.chump.almanac-summarize-watchdog|scripts/setup/install-almanac-summarize-watchdog.sh" "$BOOTSTRAP" \
+    || fail "almanac-summarize-watchdog not registered in REQUIRED_DAEMONS — will never auto-install"
+pass "almanac-summarize-watchdog registered in REQUIRED_DAEMONS"
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
