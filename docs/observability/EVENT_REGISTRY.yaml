@@ -5240,6 +5240,14 @@ events:
     consumers: [fleet-brief, curator, PWA-daily-brief]
     fields_required: [ts, kind, prev_rate, curr_rate, drop_pp]
 
+  # ── CREDIBLE-296: merge-mix board waste-over-threshold alarm ──────────────
+  - kind: merge_mix_waste_threshold_breach
+    effect_metric: self
+    emitter: scripts/dispatch/merge-mix-board.sh (CREDIBLE-296)
+    trigger: reconcile-waste% of last-window merged PRs exceeds --threshold (default 40%)
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, reconcile_waste_pct, threshold_pct, total_prs]
+
   # ── CREDIBLE-052: cross-session gap-ID collision prevention ───────────────
   - kind: gap_id_allocator_offline
     effect_metric: self
