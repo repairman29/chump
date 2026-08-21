@@ -1,9 +1,11 @@
 - id: RESILIENT-341
   domain: RESILIENT
   title: "REVIVER must be a COTG organ on every node: post-push-integrity-watch (reopen closed-but-gap-open fleet PRs = work wrongly trashed) is NOT installed on owned nodes (absent on CJ) and appears missing from the repo. The net that recovers good code closed by a reaper is not COTG. Add reviver to install-node-housekeeping.sh ORGANS table; verified by fresh-node self-test. Pairs with rot-reaper false-red guard."
-  status: open
+  status: done
   priority: P1
   effort: m
+  closed_pr: 4039
+  notes: "Duplicate of already-shipped work: reviver organ (post-push-integrity-watch.sh) was added to install-node-housekeeping.sh's ORGANS table + self-test in commit ac7bf2ea / PR #4039. Verified on main: ORGANS table has 'reviver|scripts/coord/post-push-integrity-watch.sh|60', scripts/ci/test-install-node-housekeeping.sh T1-T4 all pass, no diff between this worktree and origin/main for the relevant files. Closing docs/gaps YAML mirror as done to match reality (mirror had gone stale, same class as INFRA-2942)."
   acceptance_criteria:
     - "The change described by \"post-push-integrity-watch (reopen closed-but-gap-open fleet PRs = work wrongly trashed) is NOT installed on owned nodes (absent on CJ) and appears missing from the repo. The net that recovers good code closed by a reaper is not COTG. Add reviver to install-node-housekeeping.sh ORGANS table; verified by fresh-node self-test. Pairs with rot-reaper false-red guard.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
