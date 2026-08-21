@@ -1,0 +1,13 @@
+- id: RESILIENT-366
+  domain: RESILIENT
+  title: "Coherence loop as tracked organ: backlog-sync --writer must live in organ roster + Roll-Call revivable gate so it cannot be silently disabled"
+  status: shipped
+  closed_pr: 4090
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    1. The change described by "backlog-sync --writer must live in organ roster + Roll-Call revivable gate so it cannot be silently disabled" is implemented in the relevant RESILIENT code path(s).
+    2. At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    3. cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  evidence: |
+    COMMAND: systemctl is-active chump-backlog-sync-writer.timer; enable + run once. OUTPUT: was inactive/disabled; enabling closed 44 merged-but-open gaps in one pass. THEORY: designed coherence loop (RESILIENT-194) silently disabled -> drift -> reconcile firehose (50% of merges); no organ detected it. ALT: gap-closure reconciler RESILIENT-364 — rejected, wrote state.db without yaml, worsened drift.
