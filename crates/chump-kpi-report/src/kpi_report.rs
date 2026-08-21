@@ -471,6 +471,111 @@ impl CostSavingsSection {
     }
 }
 
+/// ZERO-WASTE-060: free/local-tier routing savings, built from `cascade_routed`
+/// ambient events (INFRA-1004, extended by ZERO-WASTE-060 to carry a `tokens`
+/// field). Every cascade slot — cloud (Groq/Cerebras/Mistral/OpenRouter/Gemini/
+/// GitHub Models/NVIDIA NIM/SambaNova) or local (Ollama) — is a free-tier
+/// provider the cascade prefers *before* ever falling back to a paid
+/// Anthropic-only call, so this section answers "how much of the fleet's
+/// inference did we get for free, and what would it have cost otherwise."
+#[derive(Debug, Default)]
+pub struct FreeTierSavingsSection {
+    /// Total estimated tokens served by a free (cloud-cascade or local) slot.
+    pub free_tokens_used: u64,
+    /// Tokens served by a cloud free-tier slot (Groq, Cerebras, Gemini, ...).
+    pub free_cloud_tokens: u64,
+    /// Tokens served by the local (Ollama) slot.
+    pub free_local_tokens: u64,
+    /// Count of cascade_routed events in the window.
+    pub routed_calls: u64,
+    /// Estimated USD saved: what `free_tokens_used` would have cost at
+    /// Anthropic-only (Sonnet) rates, priced entirely as output tokens (the
+    /// cascade doesn't currently split input/output at the ambient-event
+    /// granularity, so this is a conservative-ish single-bucket estimate).
+    pub dollars_saved_usd: f64,
+    pub window_days: u64,
+}
+
+impl FreeTierSavingsSection {
+    pub fn render_text(&self) -> String {
+        let mut out = String::new();
+        out.push_str(&format!(
+            "═══ Free/Local-Tier Routing Savings (last {} days) ═══\n",
+            self.window_days
+        ));
+        out.push_str(&format!("  Routed calls:        {}\n", self.routed_calls));
+        out.push_str(&format!(
+            "  Free tokens used:    {} (cloud: {}, local: {})\n",
+            self.free_tokens_used, self.free_cloud_tokens, self.free_local_tokens
+        ));
+        out.push_str(&format!(
+            "  Dollars saved:       ${:.4}\n",
+            self.dollars_saved_usd
+        ));
+        out
+    }
+
+    pub fn render_json(&self) -> String {
+        format!(
+            r#"{{"free_tokens_used":{},"free_cloud_tokens":{},"free_local_tokens":{},"routed_calls":{},"dollars_saved_usd":{:.6},"window_days":{}}}"#,
+            self.free_tokens_used,
+            self.free_cloud_tokens,
+            self.free_local_tokens,
+            self.routed_calls,
+            self.dollars_saved_usd,
+            self.window_days
+        )
+    }
+}
+
+fn build_free_tier_savings_section(repo_root: &Path, window_days: u64) -> FreeTierSavingsSection {
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+    let window_secs = window_days * 86_400;
+    let now_unix = current_unix();
+    let cutoff = now_unix.saturating_sub(window_secs);
+
+    let mut free_cloud_tokens = 0u64;
+    let mut free_local_tokens = 0u64;
+    let mut routed_calls = 0u64;
+
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "cascade_routed" {
+            continue;
+        }
+        let ts_unix = extract_field(line, "ts")
+            .and_then(|t| parse_iso8601_to_unix(&t))
+            .unwrap_or(0);
+        if ts_unix < cutoff {
+            continue;
+        }
+        let tokens = extract_int_field(line, "tokens").unwrap_or(0);
+        let tier = extract_field(line, "tier").unwrap_or_default();
+        routed_calls += 1;
+        if tier == "local" {
+            free_local_tokens += tokens;
+        } else {
+            free_cloud_tokens += tokens;
+        }
+    }
+
+    let free_tokens_used = free_cloud_tokens + free_local_tokens;
+    // Priced as pure output tokens at Anthropic-only (Sonnet) rates — the
+    // conservative side of the estimate, since output tokens are the
+    // expensive half of the rate table.
+    let dollars_saved_usd = cost_usd_from_tokens("unknown", 0, free_tokens_used, 0);
+
+    FreeTierSavingsSection {
+        free_tokens_used,
+        free_cloud_tokens,
+        free_local_tokens,
+        routed_calls,
+        dollars_saved_usd,
+        window_days,
+    }
+}
+
 /// One gap's leverage score: how many other gaps depend on it.
 #[derive(Debug)]
 pub struct LeverageEntry {
@@ -743,6 +848,7 @@ pub struct KpiReport {
     pub ship_rate: ShipRateSection,
     pub mission_history: MissionGradeHistorySection,
     pub cost_savings: CostSavingsSection,
+    pub free_tier_savings: FreeTierSavingsSection,
     pub leverage: LeverageSection,
     pub tokens_per_ship: TokensPerShipReport,
     pub handoff_rate: HandoffRateSection,
@@ -760,6 +866,8 @@ impl KpiReport {
         out.push('\n');
         out.push_str(&self.cost_savings.render_text());
         out.push('\n');
+        out.push_str(&self.free_tier_savings.render_text());
+        out.push('\n');
         out.push_str(&self.leverage.render_text());
         out.push('\n');
         out.push_str(&self.tokens_per_ship.render_text());
@@ -770,10 +878,11 @@ impl KpiReport {
 
     pub fn render_json(&self) -> String {
         format!(
-            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{}}}"#,
+            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"free_tier_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{}}}"#,
             self.ship_rate.render_json(),
             self.mission_history.render_json(),
             self.cost_savings.render_json(),
+            self.free_tier_savings.render_json(),
             self.leverage.render_json(),
             self.tokens_per_ship.render_json(),
             self.handoff_rate.render_json(),
@@ -1011,6 +1120,7 @@ pub fn build_full_report(repo_root: &Path, window_days: u64) -> KpiReport {
         ship_rate: build_ship_rate_section(repo_root),
         mission_history: build_mission_history_section(repo_root),
         cost_savings: build_cost_savings_section(repo_root, window_days),
+        free_tier_savings: build_free_tier_savings_section(repo_root, window_days),
         leverage: build_leverage_section(repo_root),
         tokens_per_ship: build_report(repo_root, window_days),
         handoff_rate: build_handoff_rate_section(repo_root, window_days),
@@ -2508,6 +2618,56 @@ mod tests {
             section.anthropic_only_cost_usd
         );
         assert!(section.anthropic_only_cost_usd > 0.0);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn zero_waste_060_free_tier_savings_sums_cascade_routed_tokens() {
+        ensure_pricing();
+        let tmp = tempdir();
+        let ts = fixture_ts();
+        write_ambient(
+            &tmp,
+            &[
+                &format!(
+                    r#"{{"ts":"{ts}","kind":"cascade_routed","slot":"groq-llama","tier":"cloud","cascade_mode":"cloud-first","tokens":5000}}"#
+                ),
+                &format!(
+                    r#"{{"ts":"{ts}","kind":"cascade_routed","slot":"ollama-local","tier":"local","cascade_mode":"cloud-first","tokens":1000}}"#
+                ),
+                // Wrong kind: must not contribute to the tally.
+                &format!(
+                    r#"{{"ts":"{ts}","kind":"session_end","session_id":"s1","gap_id":"TEST-S","outcome":"shipped","input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"model_id":"unknown"}}"#
+                ),
+            ],
+        );
+        let section = build_free_tier_savings_section(&tmp, 30);
+        assert_eq!(section.routed_calls, 2);
+        assert_eq!(section.free_cloud_tokens, 5000);
+        assert_eq!(section.free_local_tokens, 1000);
+        assert_eq!(section.free_tokens_used, 6000);
+        assert!(
+            section.dollars_saved_usd > 0.0,
+            "6000 free tokens at Anthropic-only rates must price above $0, got {}",
+            section.dollars_saved_usd
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn zero_waste_060_free_tier_savings_ignores_old_events() {
+        ensure_pricing();
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2000-01-01T00:00:00Z","kind":"cascade_routed","slot":"groq-llama","tier":"cloud","cascade_mode":"cloud-first","tokens":9999}"#,
+            ],
+        );
+        let section = build_free_tier_savings_section(&tmp, 30);
+        assert_eq!(section.routed_calls, 0);
+        assert_eq!(section.free_tokens_used, 0);
+        assert_eq!(section.dollars_saved_usd, 0.0);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

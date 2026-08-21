@@ -113,7 +113,14 @@ fn emit_cascade_backoff_event(kind: &str, backoff_s: u64) {
 
 /// INFRA-1004: emit a `cascade_routed` ambient event on every successful slot selection.
 /// Records which slot was chosen and the active cascade mode for routing observability.
-fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str) {
+///
+/// ZERO-WASTE-060: also carries the estimated token count served by this slot.
+/// Every cascade slot (Cloud or Local) is a free-tier provider — the cascade
+/// exists specifically to serve requests without ever touching the paid
+/// Anthropic-only path — so `tokens` here is what `chump kpi report`'s
+/// free-tier-savings section sums to estimate dollars saved vs an
+/// Anthropic-only baseline.
+fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str, tokens: u64) {
     let repo_root = crate::repo_path::runtime_base();
     let lock_dir = repo_root.join(".chump-locks");
     let _ = std::fs::create_dir_all(&lock_dir);
@@ -126,7 +133,8 @@ fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str) {
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let line = format!(
         "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"cascade_routed\",\
-         \"slot\":\"{slot_name}\",\"tier\":\"{tier}\",\"cascade_mode\":\"{cascade_mode}\"}}"
+         \"slot\":\"{slot_name}\",\"tier\":\"{tier}\",\"cascade_mode\":\"{cascade_mode}\",\
+         \"tokens\":{tokens}}}"
     );
     use std::io::Write as _;
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -1401,6 +1409,7 @@ impl Provider for ProviderCascade {
                                         &local_slot.name,
                                         self.cascade_mode(),
                                         "local",
+                                        est,
                                     );
                                     return Ok(r);
                                 }
@@ -1634,7 +1643,7 @@ impl Provider for ProviderCascade {
                     } else {
                         "local"
                     };
-                    emit_cascade_routed_event(&slot.name, self.cascade_mode(), tier_str);
+                    emit_cascade_routed_event(&slot.name, self.cascade_mode(), tier_str, est);
                     return Ok(r);
                 }
                 Err(e) => {
@@ -3552,7 +3561,7 @@ mod tests {
         let log_path = dir.path().join("ambient.jsonl");
         std::env::set_var("CHUMP_AMBIENT_LOG", log_path.to_string_lossy().to_string());
 
-        emit_cascade_routed_event("test-slot", "local-only", "local");
+        emit_cascade_routed_event("test-slot", "local-only", "local", 42);
 
         let contents = std::fs::read_to_string(&log_path).unwrap_or_default();
         assert!(contents.contains("cascade_routed"), "event kind missing");
@@ -3568,6 +3577,7 @@ mod tests {
             contents.contains("\"tier\":\"local\""),
             "tier field missing"
         );
+        assert!(contents.contains("\"tokens\":42"), "tokens field missing");
 
         std::env::remove_var("CHUMP_AMBIENT_LOG");
     }
