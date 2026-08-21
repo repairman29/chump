@@ -212,6 +212,48 @@ impl ChumpTeam {
         })
     }
 
+    /// Insert-or-update one gap row by primary key (`id`). Unlike
+    /// [`Self::reserve_gap`] (insert-only, fails on conflict) this is a true
+    /// upsert — used by the INFRA-3618 shadow-write path, where the same
+    /// gap ID is written repeatedly across its lifecycle (reserve, claim,
+    /// ship, close) and each write must land regardless of whether the row
+    /// already exists on the shared side.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_gap(
+        &self,
+        gap_id: &str,
+        team_id: Uuid,
+        domain: &str,
+        title: &str,
+        priority: Priority,
+        effort: Effort,
+        status: GapStatus,
+        created_by_user_id: Uuid,
+        closed_pr: Option<i32>,
+    ) -> Result<SharedGap> {
+        let payload = serde_json::json!({
+            "id": gap_id,
+            "team_id": team_id,
+            "domain": domain,
+            "title": title,
+            "priority": priority.as_db_str(),
+            "effort": effort.as_db_str(),
+            "status": status.as_db_str(),
+            "created_by_user_id": created_by_user_id,
+            "closed_pr": closed_pr,
+        });
+        let q = self
+            .postgrest()
+            .from("shared_gaps")
+            .upsert(payload.to_string());
+        let rows: Vec<SharedGap> = fetch_json(q, "shared_gaps").await?;
+        rows.into_iter().next().ok_or_else(|| {
+            ChumpTeamError::Other(anyhow::anyhow!(
+                "upsert_gap: returned no row (representation header missing?)"
+            ))
+        })
+    }
+
     /// Fetch one gap by ID. Returns None if not visible (RLS) or missing.
     pub async fn get_gap(&self, gap_id: &str) -> Result<Option<SharedGap>> {
         let q = self

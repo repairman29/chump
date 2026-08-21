@@ -11,6 +11,7 @@
 
 pub mod backend;
 pub mod maintenance;
+pub mod shadow;
 pub mod sync;
 
 use anyhow::{bail, Context, Result};
@@ -1069,6 +1070,20 @@ impl GapStore {
         Ok(out)
     }
 
+    /// INFRA-3618: fire the best-effort shadow write for one gap mutation.
+    /// No-op (and zero cost) unless `CHUMP_STORE_SHADOW=1` — see
+    /// `crate::shadow` for the full safety invariant. Re-reads the row from
+    /// state.db so the shadow always mirrors the post-mutation canonical
+    /// state, not whatever the caller happened to pass in.
+    fn dispatch_shadow(&self, op: &'static str, gap_id: &str) {
+        if !crate::shadow::shadow_enabled() {
+            return;
+        }
+        if let Ok(Some(row)) = self.get(gap_id) {
+            crate::shadow::shadow_write_gap(&self.repo_root, op, row);
+        }
+    }
+
     /// Update mutable fields on an existing gap row. Pass None to leave a
     /// field unchanged. Used by `chump gap set` so agents can author
     /// description / acceptance / notes without hand-editing YAML.
@@ -1313,6 +1328,7 @@ impl GapStore {
         if changed == 0 {
             bail!("gap {} not found", gap_id);
         }
+        self.dispatch_shadow("set", gap_id);
         Ok(())
     }
 
@@ -1648,6 +1664,7 @@ impl GapStore {
         match result {
             Ok(id) => {
                 self.conn.execute_batch("COMMIT")?;
+                self.dispatch_shadow("reserve", &id);
                 Ok(id)
             }
             Err(e) => {
@@ -2102,6 +2119,7 @@ impl GapStore {
                  worktree=excluded.worktree, expires_at=excluded.expires_at",
             params![session_id, gap_id, worktree, expires_at],
         )?;
+        self.dispatch_shadow("claim", gap_id);
         Ok(())
     }
 
@@ -2327,6 +2345,7 @@ impl GapStore {
             "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
             params![session_id, gap_id],
         );
+        self.dispatch_shadow("ship", gap_id);
         Ok(())
     }
 
@@ -2386,6 +2405,7 @@ impl GapStore {
                 let _ = f.write_all(line.as_bytes());
             }
         }
+        self.dispatch_shadow("close", gap_id);
         Ok(())
     }
 
@@ -8783,6 +8803,94 @@ meta:
         );
         assert_eq!(si["integration_id"], "integration-2026-05-29-1500");
         assert_eq!(si["merge_sha"], "babe0022");
+    }
+
+    /// INFRA-3618 AC #8: fault-injection — the shadow store is unreachable
+    /// (CHUMP_TEAM_URL points at a closed port) but the canonical mutation
+    /// still succeeds, and the failure is logged rather than swallowed
+    /// silently into nothing.
+    #[test]
+    #[serial_test::serial(shadow_store_env)]
+    fn shadow_write_unreachable_store_does_not_block_canonical_mutation() {
+        unsafe {
+            std::env::set_var("CHUMP_STORE_SHADOW", "1");
+            // Port 1 is reserved/unassigned — connection refused, fast.
+            std::env::set_var("CHUMP_TEAM_URL", "http://127.0.0.1:1");
+            std::env::set_var("CHUMP_TEAM_API_KEY", "test-key-unreachable");
+        }
+        let (store, dir) = test_store();
+        let id = store
+            .reserve("INFRA", "shadow fault-injection gap", "P1", "s")
+            .unwrap();
+
+        // Canonical mutation must succeed regardless of shadow reachability.
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    notes: Some("shadow fault-injection".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let row = store.get(&id).unwrap().expect("row exists");
+        assert_eq!(row.notes, "shadow fault-injection");
+
+        // The background shadow write should eventually fail and log —
+        // poll briefly rather than sleeping a fixed long window.
+        let amb = dir.path().join(".chump-locks").join("ambient.jsonl");
+        let mut saw_failure = false;
+        for _ in 0..50 {
+            if let Ok(contents) = std::fs::read_to_string(&amb) {
+                if contents
+                    .lines()
+                    .any(|l| l.contains("shadow_write_failed") && l.contains(&id))
+                {
+                    saw_failure = true;
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        assert!(
+            saw_failure,
+            "expected kind=shadow_write_failed in ambient.jsonl for gap {id}"
+        );
+
+        unsafe {
+            std::env::remove_var("CHUMP_STORE_SHADOW");
+            std::env::remove_var("CHUMP_TEAM_URL");
+            std::env::remove_var("CHUMP_TEAM_API_KEY");
+        }
+    }
+
+    /// INFRA-3618 AC #7: reversible — with the flag off (default), no
+    /// thread spawns and no ambient event is ever written, even if
+    /// CHUMP_TEAM_URL happens to be set from a prior test/session.
+    #[test]
+    #[serial_test::serial(shadow_store_env)]
+    fn shadow_write_disabled_is_true_no_op() {
+        unsafe {
+            std::env::remove_var("CHUMP_STORE_SHADOW");
+            std::env::set_var("CHUMP_TEAM_URL", "http://127.0.0.1:1");
+            std::env::set_var("CHUMP_TEAM_API_KEY", "test-key-unreachable");
+        }
+        let (store, dir) = test_store();
+        let _id = store
+            .reserve("INFRA", "shadow disabled gap", "P1", "s")
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let amb = dir.path().join(".chump-locks").join("ambient.jsonl");
+        if let Ok(contents) = std::fs::read_to_string(&amb) {
+            assert!(
+                !contents.contains("shadow_write_failed"),
+                "shadow disabled must never emit shadow_write_failed"
+            );
+        }
+        unsafe {
+            std::env::remove_var("CHUMP_TEAM_URL");
+            std::env::remove_var("CHUMP_TEAM_API_KEY");
+        }
     }
 }
 

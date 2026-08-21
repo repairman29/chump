@@ -8671,6 +8671,23 @@ events:
     expected_volume: "1 per gap shipped via any path"
     status: stable
     # payload: {gap_id: string, shape: "integration"|"per_pr", ts: string}
+  - kind: shadow_write_failed
+    effect_metric: resilient
+    emitter: crates/chump-gap-store/src/shadow.rs (INFRA-3618)
+    trigger: >
+      Emitted whenever a best-effort shadow dual-write of a gap mutation
+      (reserve/set/claim/ship/close) to the self-hosted shared_gaps
+      PostgREST substrate fails — network unreachable, schema mismatch,
+      HTTP error, or missing CHUMP_TEAM_URL/CHUMP_TEAM_API_KEY. Only
+      emitted when CHUMP_STORE_SHADOW=1; the failure is always swallowed
+      on the canonical state.db path — this event is the only record of
+      it. Feeds the S2 parity gate (scripts/coord/substrate-parity.sh).
+    consumers: [substrate-parity, fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_id, op, reason]
+    related_kinds: [gap_shipped_in_set]
+    expected_volume: "0 in steady state once the self-hosted store is up; spikes during outages"
+    status: stable
+    # payload: {gap_id: string, op: "reserve"|"set"|"claim"|"ship"|"close", reason: string, ts: string}
   - kind: ship_autofetch_pulled
     effect_metric: resilient
     emitter: crates/chump-gap-store/src/lib.rs GapStore::ship() (INFRA-2423)

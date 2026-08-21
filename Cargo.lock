@@ -1705,6 +1705,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "chump-team",
  "postgres",
  "rusqlite",
  "serde",
@@ -1714,6 +1715,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
+ "uuid 1.24.1",
 ]
 
 [[package]]
