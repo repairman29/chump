@@ -1,0 +1,17 @@
+# INFRA-303 / drift-fix — periodic GitHub-truth gap-closure reconciler.
+# Runs gap-doctor-reconcile.py --check-closure-drift: any gap still `open` whose
+# PR has MERGED on GitHub is closed (status=done + closed_pr) in the canonical
+# state.db. This is the backstop for the fragile bot-merge auto-close (CREDIBLE-295,
+# which silently skips and leaves OPEN-BUT-LANDED ghosts). Without this organ the
+# gap store drifts from GitHub reality permanently (found 2026-08-21: the checker's
+# jq expression was broken so it reported 0 drift while gaps sat landed-but-open).
+[Unit]
+Description=Chump gap-closure reconciler — close open-but-merged gaps from GitHub truth (INFRA-303)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; cd /root/Projects/chump; exec python3 scripts/coord/gap-doctor-reconcile.py --check-closure-drift'
+TimeoutStartSec=300
