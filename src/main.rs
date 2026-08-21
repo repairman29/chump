@@ -11488,6 +11488,77 @@ async fn main() -> Result<()> {
                                 "shipped {gap_id} — why: status flipped to done{pr_note}, session={session_id}"
                             );
                         }
+                        // ZERO-WASTE-059: run the queue-hygiene sweep in the SAME
+                        // op as the ship — dedup-check other open gaps for
+                        // near-duplicate titles (the "reconcile stale gap —
+                        // already shipped via #NNNN" PR class) + AC-hygiene on
+                        // the gap that just shipped. Best-effort: never fails
+                        // the ship itself.
+                        if let Ok(Some(shipped_gap)) = store.get(&gap_id) {
+                            let dedupe_threshold: f64 =
+                                std::env::var("CHUMP_SHIP_HYGIENE_DEDUPE_THRESHOLD")
+                                    .ok()
+                                    .and_then(|v| v.parse().ok())
+                                    .unwrap_or(0.65);
+                            match store.ship_hygiene_check(
+                                &gap_id,
+                                &shipped_gap.title,
+                                &shipped_gap.acceptance_criteria,
+                                dedupe_threshold,
+                            ) {
+                                Ok(report) => {
+                                    let ts =
+                                        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                                    let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                                    for (dup_id, dup_title, score) in &report.duplicate_candidates {
+                                        let safe_title = dup_title.replace(['"', '\\'], "");
+                                        eprintln!(
+                                            "chump gap ship: ZERO-WASTE-059 dedupe hit — open gap \
+                                             {dup_id} (\"{safe_title}\") looks like a duplicate of \
+                                             just-shipped {gap_id} (score {score:.2}). Consider \
+                                             closing it now instead of a later reconcile PR: \
+                                             chump gap close {dup_id} --reason duplicate"
+                                        );
+                                        let event = format!(
+                                            "{{\"ts\":\"{ts}\",\"kind\":\"ship_dedupe_candidate_flagged\",\
+                                             \"shipped_gap\":\"{gap_id}\",\"candidate_gap\":\"{dup_id}\",\
+                                             \"score\":{score:.4}}}\n"
+                                        );
+                                        let _ = std::fs::OpenOptions::new()
+                                            .append(true)
+                                            .create(true)
+                                            .open(&ambient_log)
+                                            .and_then(|mut f| {
+                                                use std::io::Write;
+                                                f.write_all(event.as_bytes())
+                                            });
+                                    }
+                                    if report.shipped_ac_was_vague {
+                                        eprintln!(
+                                            "chump gap ship: ZERO-WASTE-059 AC-hygiene — {gap_id} \
+                                             shipped with vague/placeholder acceptance criteria."
+                                        );
+                                        let event = format!(
+                                            "{{\"ts\":\"{ts}\",\"kind\":\"ship_ac_hygiene_warning\",\
+                                             \"gap_id\":\"{gap_id}\"}}\n"
+                                        );
+                                        let _ = std::fs::OpenOptions::new()
+                                            .append(true)
+                                            .create(true)
+                                            .open(&ambient_log)
+                                            .and_then(|mut f| {
+                                                use std::io::Write;
+                                                f.write_all(event.as_bytes())
+                                            });
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "chump gap ship: ZERO-WASTE-059 hygiene check skipped: {e:#}"
+                                    );
+                                }
+                            }
+                        }
                         // INFRA-1144: atomically close orphan PRs for this gap
                         // (complements INFRA-1139 sweeper). Emits orphan_pr_closed_at_ship
                         // events for each closure.

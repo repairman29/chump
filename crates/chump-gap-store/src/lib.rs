@@ -162,6 +162,19 @@ pub struct GapStore {
     repo_root: PathBuf,
 }
 
+/// ZERO-WASTE-059: result of the ship-time queue-hygiene sweep. See
+/// `GapStore::ship_hygiene_check`.
+#[derive(Debug, Default, Clone)]
+pub struct ShipHygieneReport {
+    /// Other OPEN gaps whose title is a near-duplicate of the gap that just
+    /// shipped: (id, title, jaccard score). Likely already satisfied by the
+    /// work that just shipped.
+    pub duplicate_candidates: Vec<(String, String, f64)>,
+    /// True when the gap that just shipped had vague/placeholder acceptance
+    /// criteria per the INFRA-1411 definition.
+    pub shipped_ac_was_vague: bool,
+}
+
 impl GapStore {
     pub fn db_path(repo_root: &Path) -> PathBuf {
         if let Ok(p) = std::env::var("CHUMP_STATE_DB") {
@@ -2328,6 +2341,43 @@ impl GapStore {
             params![session_id, gap_id],
         );
         Ok(())
+    }
+
+    /// ZERO-WASTE-059: run in the SAME op as `ship()`, immediately after a
+    /// gap flips to status=done. Scans the OTHER still-open gaps for
+    /// title-similarity duplicates of the gap that just shipped — the exact
+    /// class that used to surface days/weeks later as a one-off "reconcile
+    /// stale gap — already shipped via #NNNN" PR — plus checks whether the
+    /// shipped gap's own acceptance criteria was vague (INFRA-1411
+    /// definition). Read-only: never mutates other gaps, only reports so the
+    /// ship caller can flag/note them in the same commit instead of a
+    /// separate reconcile PR.
+    pub fn ship_hygiene_check(
+        &self,
+        shipped_gap_id: &str,
+        shipped_title: &str,
+        shipped_ac: &str,
+        threshold: f64,
+    ) -> Result<ShipHygieneReport> {
+        let open_gaps = self.list(Some("open"))?;
+        let mut duplicate_candidates: Vec<(String, String, f64)> = open_gaps
+            .iter()
+            .filter(|g| g.id != shipped_gap_id)
+            .map(|g| {
+                (
+                    g.id.clone(),
+                    g.title.clone(),
+                    Self::title_jaccard(shipped_title, &g.title),
+                )
+            })
+            .filter(|(_, _, score)| *score >= threshold)
+            .collect();
+        duplicate_candidates
+            .sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(ShipHygieneReport {
+            duplicate_candidates,
+            shipped_ac_was_vague: acceptance_criteria_is_vague(shipped_ac),
+        })
     }
 
     /// RESILIENT-119: first-class triage-close for gaps that will never ship
@@ -8404,6 +8454,119 @@ meta:
         assert!(
             candidates.is_empty(),
             "nonexistent gap ID must be skipped, not error"
+        );
+    }
+
+    // ZERO-WASTE-059: ship_hygiene_check tests — the ship-time dedup +
+    // AC-hygiene sweep that runs in the SAME op as `ship()`, so a
+    // near-duplicate open gap and a vague-AC ship are both flagged
+    // immediately instead of surfacing later as a one-off reconcile PR.
+    #[test]
+    fn ship_hygiene_check_flags_open_duplicate_gap() {
+        let (store, _dir) = test_store();
+        let shipped_id = store
+            .reserve(
+                "ZERO-WASTE",
+                "close the shipped gap atomically on ship",
+                "P1",
+                "m",
+            )
+            .unwrap();
+        store.ship(&shipped_id, "session-x", None).unwrap();
+        let dup_id = store
+            .reserve(
+                "ZERO-WASTE",
+                "close the shipped gap atomically at ship time",
+                "P1",
+                "m",
+            )
+            .unwrap();
+
+        let report = store
+            .ship_hygiene_check(
+                &shipped_id,
+                "close the shipped gap atomically on ship",
+                "",
+                0.5,
+            )
+            .unwrap();
+        assert!(
+            report
+                .duplicate_candidates
+                .iter()
+                .any(|(id, _, score)| id == &dup_id && *score >= 0.5),
+            "near-duplicate open gap must be flagged: {:?}",
+            report.duplicate_candidates
+        );
+    }
+
+    #[test]
+    fn ship_hygiene_check_ignores_unrelated_open_gaps() {
+        let (store, _dir) = test_store();
+        let shipped_id = store
+            .reserve(
+                "ZERO-WASTE",
+                "close the shipped gap atomically on ship",
+                "P1",
+                "m",
+            )
+            .unwrap();
+        store.ship(&shipped_id, "session-x", None).unwrap();
+        store
+            .reserve("INFRA", "completely unrelated disk pressure fix", "P2", "s")
+            .unwrap();
+
+        let report = store
+            .ship_hygiene_check(
+                &shipped_id,
+                "close the shipped gap atomically on ship",
+                "",
+                0.5,
+            )
+            .unwrap();
+        assert!(
+            report.duplicate_candidates.is_empty(),
+            "unrelated open gap must not be flagged: {:?}",
+            report.duplicate_candidates
+        );
+    }
+
+    #[test]
+    fn ship_hygiene_check_flags_vague_acceptance_criteria() {
+        let (store, _dir) = test_store();
+        let shipped_id = store
+            .reserve("ZERO-WASTE", "some gap with no real AC", "P2", "s")
+            .unwrap();
+        store.ship(&shipped_id, "session-x", None).unwrap();
+
+        let report = store
+            .ship_hygiene_check(&shipped_id, "some gap with no real AC", "", 0.5)
+            .unwrap();
+        assert!(
+            report.shipped_ac_was_vague,
+            "empty acceptance criteria must be flagged as vague"
+        );
+    }
+
+    #[test]
+    fn ship_hygiene_check_does_not_flag_real_acceptance_criteria() {
+        let (store, _dir) = test_store();
+        let shipped_id = store
+            .reserve("ZERO-WASTE", "some gap with real AC", "P2", "s")
+            .unwrap();
+        store.ship(&shipped_id, "session-x", None).unwrap();
+
+        let report = store
+            .ship_hygiene_check(
+                &shipped_id,
+                "some gap with real AC",
+                r#"["the CLI prints a success message", "a test proves the behavior"]"#,
+                0.5,
+            )
+            .unwrap();
+        assert!(
+            !report.shipped_ac_was_vague,
+            "concrete acceptance criteria must not be flagged as vague"
         );
     }
 

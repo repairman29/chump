@@ -3339,6 +3339,22 @@ events:
     fields_required: [ts, kind, pr, gap, ship_pr]
     notes: structural orphan closing at write time; complements orphan-pr-closer.sh sweeper (INFRA-1139)
 
+  - kind: ship_dedupe_candidate_flagged
+    effect_metric: self
+    emitter: src/main.rs (ZERO-WASTE-059, chump gap ship — GapStore::ship_hygiene_check)
+    trigger: chump gap ship finds another still-open gap whose title is a near-duplicate (Jaccard >= CHUMP_SHIP_HYGIENE_DEDUPE_THRESHOLD, default 0.65) of the gap that just shipped
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, shipped_gap, candidate_gap, score]
+    notes: runs in the SAME op as the ship so the duplicate can be closed immediately, eliminating the one-off "reconcile stale gap — already shipped via #NNNN" PR class
+
+  - kind: ship_ac_hygiene_warning
+    effect_metric: self
+    emitter: src/main.rs (ZERO-WASTE-059, chump gap ship — GapStore::ship_hygiene_check)
+    trigger: chump gap ship flips a gap to done whose acceptance_criteria was vague/placeholder per the INFRA-1411 definition (acceptance_criteria_is_vague)
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, gap_id]
+    notes: retroactive AC-hygiene signal captured at ship time rather than left for a later cleanup pass
+
   - kind: orphan_pr_close_failed
     effect_metric: self
     emitter: scripts/coord/orphan-pr-closer.sh --apply
