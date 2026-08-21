@@ -204,7 +204,11 @@ json.dump({'pr':$num,'attempts':$attempts,'first_seen':'$first_seen','escalated_
         fi
     else
         (cd "$wt" && git rebase --abort 2>/dev/null || true)
-        gap_id="$(echo "$br" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | head -1)"
+        # RESILIENT-360: real branch names are lowercase (chump/resilient-322-fleet-2-...),
+        # but gap IDs in state.db are uppercase (RESILIENT-322) — case-insensitive match +
+        # uppercase, or gap_id is silently empty and the resolver is NEVER dispatched (the
+        # root cause of the consumer no-op'ing on every live real-conflict orphan).
+        gap_id="$(echo "$br" | grep -ioE '[a-z][a-z0-9]*-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]')"
         if [ -n "$gap_id" ] && [ -x "$RESOLVER" ]; then
             (cd "$wt" && git rebase origin/main >/dev/null 2>&1) || true
             if (cd "$wt" && REPO_ROOT="$wt" GAP_ID="$gap_id" \
