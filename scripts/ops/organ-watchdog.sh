@@ -49,6 +49,9 @@
 #   CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN   — path to a stubbed `systemctl`
 #   CHUMP_ORGAN_WATCHDOG_GIT_BIN         — path to a stubbed `git`
 #   CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT   — override for install-helsinki-atc.sh
+#   CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT — RESILIENT-347: override for
+#                                           organ-reconcile.sh, called directly
+#                                           every cycle (step 0.6, see below)
 #   CHUMP_ORGAN_WATCHDOG_CLONE_REFRESH   — 1 = fast-forward CHUMP_REPO_ROOT to
 #                                           origin/main first (default 0; the
 #                                           production unit sets this, tests
@@ -164,6 +167,34 @@ elif [[ -x "$DEPLOY_SCRIPT" ]]; then
         || echo "[organ-watchdog] WARN: $DEPLOY_SCRIPT --auto exited non-zero (non-fatal)" >&2
 else
     echo "[organ-watchdog] WARN: deploy script not found/executable: $DEPLOY_SCRIPT" >&2
+fi
+
+# ── 0.6. run organ-reconcile.sh directly (RESILIENT-347 step 3) ────────────
+# install-helsinki-atc.sh --auto (step 0.5 above) already calls
+# organ-reconcile.sh --apply itself as its LAST step (RESILIENT-305 /
+# RESILIENT-347's "don't let one failed unit abort the auto-deploy before
+# organ-reconcile runs" fix), but that path is coupled to the FULL roster
+# install succeeding far enough to reach it (unit-file copy, host-rewrite,
+# daemon-reload — any of which can legitimately fail or be skipped, e.g.
+# `systemctl daemon-reload` failing exits 0 under --auto WITHOUT ever
+# reaching the reconcile call). This watchdog is the fleet's own periodic
+# heal cadence (5 min), so it is the right place to call the
+# per-node-applicable reconcile (role/requires-gated, verify+backoff —
+# RESILIENT-347 steps 1-2, already shipped) DIRECTLY and unconditionally,
+# closing the loop described in RESILIENT-347's AC 3: "THEN wire
+# organ-watchdog to run it". Safe now specifically BECAUSE steps 1-2 landed
+# first — a structurally-broken organ (missing binary/role/deps) is skipped
+# as not-applicable or backed off after one failed verify, instead of being
+# re-installed and re-failing every single cycle (the pre-347 CJ incident:
+# integrator/sla-scorecard/backlog-sync-writer/farmer).
+RECONCILE_SCRIPT="${CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT:-$REPO_ROOT/scripts/ops/organ-reconcile.sh}"
+if [[ "$DRY_RUN" == "1" ]]; then
+    echo "[organ-watchdog] (dry-run) would run: $RECONCILE_SCRIPT --apply"
+elif [[ -x "$RECONCILE_SCRIPT" ]]; then
+    NODE_AMBIENT="$AMBIENT_LOG" "$RECONCILE_SCRIPT" --apply \
+        || echo "[organ-watchdog] WARN: $RECONCILE_SCRIPT --apply exited non-zero (non-fatal)" >&2
+else
+    echo "[organ-watchdog] WARN: reconcile script not found/executable: $RECONCILE_SCRIPT" >&2
 fi
 
 healed=0
