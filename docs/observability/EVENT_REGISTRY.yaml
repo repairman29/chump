@@ -4195,6 +4195,18 @@ events:
       catch on its own. Surfaces silent auto-close failures.
     consumers: [fleet-brief, operator-recall, audit-priorities]
     fields_required: [ts, kind, gap_id, pr_number, merged_at, source]
+
+  # ── RESILIENT-366: coherence loop liveness (backlog-sync --writer) ────────
+  - kind: backlog_sync_writer_ran
+    effect_metric: self
+    emitter: scripts/coord/backlog-sync.sh --writer (RESILIENT-194, RESILIENT-366)
+    trigger: every --writer invocation, at the end of its run (regardless of
+      whether any gaps were closed). Without this the coherence clerk's
+      liveness was only answerable by ssh + systemctl on the hub — exactly
+      the blind spot that let it sit disabled for 21 days undetected
+      (CREDIBLE-292).
+    consumers: [fleet-brief, fleet-doctor-strict]
+    fields_required: [ts, kind, gaps_closed, gaps_checked, source]
   # ── INFRA-1040: graphql exhaustion fleet-wide signal ──────────────────────
   - kind: graphql_exhausted
     effect_metric: self
