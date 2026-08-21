@@ -130,6 +130,33 @@ else
     fail "structural: expected rebase conflict did not occur"
 fi
 
+# RESILIENT-360: gap-id extraction must work on REAL (lowercase) branch names.
+# Branches are named chump/<lowercase-domain>-<num>-fleet-N-<timestamp> but gap
+# IDs in state.db are uppercase (RESILIENT-322) — a case-sensitive-only regex
+# silently extracts nothing, so conflict-resolver-agent.sh is NEVER dispatched
+# on any real orphan (the root cause of the consumer no-op'ing on live PRs).
+extract_gap_id() {
+    echo "$1" | grep -ioE '[a-z][a-z0-9]*-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]'
+}
+for case in \
+    "chump/resilient-322-fleet-2-20260820-195831=RESILIENT-322" \
+    "chump/credible-099-fleet-1-20260818-184349=CREDIBLE-099" \
+    "chump/resilient-360-fleet-1-20260821-160649=RESILIENT-360"; do
+    br="${case%%=*}"
+    want="${case##*=}"
+    got="$(extract_gap_id "$br")"
+    if [ "$got" = "$want" ]; then
+        ok "AC#2: gap_id extracted from real branch '$br' -> $got"
+    else
+        fail "AC#2: gap_id extraction on '$br' got '$got' want '$want'"
+    fi
+done
+if grep -q "grep -ioE" "$SCRIPT" && grep -q "tr '\[:lower:\]' '\[:upper:\]'" "$SCRIPT"; then
+    ok "AC#2: script's gap_id extraction is case-insensitive (matches lowercase branch names)"
+else
+    fail "AC#2: script's gap_id extraction is case-SENSITIVE-only — will never match real lowercase branch names"
+fi
+
 echo ""
 echo "=== Summary: $PASS passed, $FAIL failed ==="
 if (( FAIL > 0 )); then
