@@ -66682,6 +66682,20 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
 
+- id: RESILIENT-356
+  domain: RESILIENT
+  title: "organ-watchdog must be robust + self-supervised — it died on ONE reset-failed error (exit-2) taking every organ down with it, and nothing restarts the healer. AC: watchdog survives any single unit error (per-unit try, never whole-loop abort); watchdog itself is supervised (Restart=always or a peer heartbeat) so the healer can never stay dead; timer stays enabled across reboot."
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"watchdog survives any single unit error (per-unit try, never whole-loop abort); watchdog itself is supervised (Restart=always or a peer heartbeat) so the healer can never stay dead; timer stays enabled across reboot.\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-21'
+  closed_pr: 4052
+  outcome_id: RESILIENT-000
+
 - id: SMOKE-001
   domain: SMOKE
   title: coord-surfaces-smoke fixture (auto-clean)
