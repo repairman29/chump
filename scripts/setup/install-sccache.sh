@@ -66,16 +66,28 @@ fi
 # ── 2. pick a LOCAL cache dir — prefer an external/USB data disk ────────
 # Never a cloud path (no Cloudflare/R2 — see docs/process/SCCACHE_R2_CACHE.md
 # for that separate, CI-only, opt-in mechanism).
+# INFRA-3661: generalized past the INFRA-3660 cjdata3-specific pin — any
+# future owned node should default to $HOME's disk when it has headroom, and
+# only reach for a mounted USB/external data disk when $HOME is tight.
+SCCACHE_HOME_FREE_THRESHOLD_KB=$((25 * 1024 * 1024))  # 25G, matches AC
+
 detect_sccache_dir() {
     if [[ -n "${SCCACHE_DIR:-}" ]]; then
         echo "$SCCACHE_DIR"
         return
     fi
-    # INFRA-3660: /mnt/cjdata3 is the named target (13G free) — cjdata1 was
-    # already full at its own 13G target when this gap was filed, so "most
-    # free space" alone would wrongly re-pick it. Prefer cjdata3 explicitly;
-    # fall back to whichever /mnt/cjdata* has the most free space for a
-    # future machine that doesn't have a cjdata3.
+    local home_avail_kb
+    home_avail_kb="$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"
+    if [[ -n "$home_avail_kb" ]] && (( home_avail_kb >= SCCACHE_HOME_FREE_THRESHOLD_KB )); then
+        echo "$HOME/.cache/sccache"
+        return
+    fi
+    # /home free < 25G (or undeterminable) — fall back to a mounted USB/data
+    # disk. INFRA-3660: /mnt/cjdata3 is the named target on Ubuntu CJ (13G
+    # free) — cjdata1 was already full at its own 13G target when that gap
+    # was filed, so "most free space" alone would wrongly re-pick it. Prefer
+    # cjdata3 explicitly; otherwise pick whichever mounted /mnt or /media
+    # path (excluding the root fs) has the most free space.
     if [[ -d /mnt/cjdata3 && -w /mnt/cjdata3 ]]; then
         echo "/mnt/cjdata3/sccache"
         return
@@ -90,7 +102,7 @@ detect_sccache_dir() {
             best_avail_kb=$avail_kb
             best="$mnt"
         fi
-    done < <(df -Pk /mnt/cjdata* 2>/dev/null | awk 'NR>1{print $1, $4, $6}')
+    done < <(df -Pk /mnt/* /media/*/* 2>/dev/null | awk 'NR>1{print $1, $4, $6}')
     if [[ -n "$best" ]]; then
         echo "$best/sccache"
     else
