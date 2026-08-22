@@ -148,4 +148,23 @@ grep -q 'organ_watchdog_tick fresh' "$TMP/out-live-check.log" \
     || fail "check-process-organ-heal-live.sh default discovery did not find the fake checkout's own ambient.jsonl:\n$(cat "$TMP/out-live-check.log")"
 pass "check-process-organ-heal-live.sh default discovery finds its own checkout's ambient.jsonl (no manual override needed)"
 
+# ── 8. check-process-organ-heal-live.sh honors $CHUMP_REPO_ROOT ─────────────
+# Regression guard for the 2026-08-22 fleet-worker finding: a *different*
+# worktree checkout than the one the systemd service actually deploys from
+# (CHUMP_REPO_ROOT env var) reproduces the same false NOT-LIVE verdict that
+# step 7 guards against, because self-location alone always resolves to the
+# invoking script's own checkout, not the service's. process-organ-heal.sh
+# already honors CHUMP_REPO_ROOT (scripts/ops/process-organ-heal.sh:52); the
+# live-check script must honor it the same way, ranked above self-location.
+OTHER_CHECKOUT="$TMP/other-checkout"
+mkdir -p "$OTHER_CHECKOUT/.chump-locks"
+printf '{"ts":"%s","kind":"organ_watchdog_tick","source":"process-organ-heal"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OTHER_CHECKOUT/.chump-locks/ambient.jsonl"
+env -i HOME="$TMP/no-such-home" PATH="$PATH" CHUMP_REPO_ROOT="$OTHER_CHECKOUT" \
+    bash "$FAKE_CHECKOUT/scripts/ops/check-process-organ-heal-live.sh" \
+    > "$TMP/out-live-check-repo-root.log" 2>&1 || true
+grep -q 'organ_watchdog_tick fresh' "$TMP/out-live-check-repo-root.log" \
+    || fail "check-process-organ-heal-live.sh did not honor CHUMP_REPO_ROOT over self-location:\n$(cat "$TMP/out-live-check-repo-root.log")"
+pass "check-process-organ-heal-live.sh honors \$CHUMP_REPO_ROOT (matches process-organ-heal.sh's own env-var precedence)"
+
 echo "=== all process-organ-heal tests passed ==="
