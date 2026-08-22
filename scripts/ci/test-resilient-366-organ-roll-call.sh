@@ -79,4 +79,17 @@ grep -qE '^enabled +chump-backlog-sync-writer\.timer' "$MANIFEST" \
   || fail "chump-backlog-sync-writer.timer must be an 'enabled' line in organ-manifest.txt (Roll-Call revivable gate)"
 ok "chump-backlog-sync-writer.timer is declared 'enabled' in organ-manifest.txt"
 
+# INFRA-3642 (TREK-16): pin the owned-node factory organs — worker,
+# coherence-sync, and self-hosted gap-store/postgrest — that ran only as
+# hand-installed units on CJ with no organ-manifest.txt line until this gap.
+# Without these, organ-reconcile can never revive them, the same class of
+# silent-disable this whole roll-call test exists to catch.
+for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.service"; do
+  line="$(grep -E "^enabled +${unit//./\\.}" "$MANIFEST")"
+  [ -n "$line" ] || fail "$unit must be an 'enabled' line in organ-manifest.txt (INFRA-3642 owned-node factory organ)"
+  echo "$line" | grep -q 'role=' || fail "organ-manifest.txt line for $unit has no role="
+  echo "$line" | grep -q 'requires=' || fail "organ-manifest.txt line for $unit has no requires="
+done
+ok "worker/coherence-sync/gap-store organs are declared 'enabled' with role+requires in organ-manifest.txt (INFRA-3642)"
+
 echo "ALL PASS"
