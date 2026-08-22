@@ -7,6 +7,28 @@
 > Filed as MISSION-014. Canonical mission gap: **MISSION-010**. Current
 > multiplier: **MISSION-012** (self-deploy).
 
+## Ribbon-only focus (operator decision, Jeff 2026-08-22)
+
+> *"The job is the factory. We don't care about any other products until we all
+> cut the ribbon. Cutting the ribbon is what fucking matters."* — operator, 2026-08-22
+
+**The job is the factory.** Not a product on the side, not "outcomes elsewhere" —
+the factory itself, and only the factory. This is **not a new mission**; it names
+the **current singular focus of MISSION-010** (the self-coordinating fleet /
+empty conductor's chair). Everything below still holds — this says *which* part
+we run at, starting now.
+
+**The ribbon — the one success bar.** A bare box, then `git clone` + one command,
+then a working factory, pointed at a real job, and an outcome lands in a person's
+hands: hands-off, sovereign (owned iron), **from a CLEAN install.** A hand-cranked
+box does not count. This is MISSION-010's outcome delivered end-to-end from zero.
+
+**Everything else is parked.** All other products, outcomes, and side-quests wait
+until the ribbon is cut. We do not care about any other product until then.
+
+**The one question for every piece of work:** *"Does this move the factory toward a
+hands-off ribbon from a clean install?"* If not, park it.
+
 ## North Star (the *why* — never "done")
 
 A solo developer — even offline, on local LLMs — can build and ship real
