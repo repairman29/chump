@@ -6256,12 +6256,25 @@ events:
 
   - kind: organ_watchdog_tick
     effect_metric: self
-    emitter: scripts/ops/organ-watchdog.sh (INFRA-3595)
+    emitter: scripts/ops/organ-watchdog.sh (INFRA-3595); also
+      scripts/ops/process-organ-heal.sh (INFRA-3650, distinguished by a
+      "source" field) — reuses the same kind rather than a parallel tick
+      kind, per that gap's AC2.
     trigger: every watchdog cycle, success or no-op — the heartbeat proving
       the watchdog itself is alive (paired with reaper-heartbeat-watchdog's
       cadence-grading pattern so a dead watchdog is itself observable).
     consumers: [fleet-brief]
     fields_required: [ts, kind, healed, dry_run]
+
+  - kind: process_organ_revived
+    effect_metric: process_organ_heal_rate
+    emitter: scripts/ops/process-organ-heal.sh (INFRA-3650)
+    trigger: a registered process-organ (scripts/ops/process-organ-registry.txt,
+      e.g. almanac-vision-keeper — a raw background bash proc, not a systemd
+      unit) was not found via `pgrep -f` and the heal loop respawned it with
+      no human step.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, name, path, dry_run]
 
   - kind: worker_liveness_zero
     effect_metric: worker_halt_duration

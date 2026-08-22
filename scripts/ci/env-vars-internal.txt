@@ -2183,3 +2183,15 @@ CHUMP_GAP_STORE_URL
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_INTEGRATOR_LIVE
+CHUMP_RUN_USER
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PROCESS_ORGAN_HEAL_INTERVAL_S
+# detected in: (standard input)
+CHUMP_PROCESS_ORGAN_PGREP_BIN
+# detected in: (standard input)
+CHUMP_PROCESS_ORGAN_REGISTRY
+# detected in: (standard input)
+CHUMP_VISION_KEEPER_INTERVAL_S

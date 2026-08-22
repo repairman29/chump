@@ -131,4 +131,50 @@ grep -q "== reconciling organ manifest" "$TMP/atc-out.log" \
     || fail "ORGAN_RECONCILE was never reached after the mid-roster enable failure: $(cat "$TMP/atc-out.log")"
 ok "--auto with one unit's enable failure continues the roster loop AND still reaches organ-reconcile.sh (RESILIENT-347)"
 
+# ── Test: chump-organ-watchdog.service is host-agnostic (INFRA-3647) ───────
+# Before INFRA-3647 the tracked unit hardcoded HOME=/root,
+# CHUMP_REPO_ROOT=/root/Projects/chump and source /root/.chump/providers.env
+# — the ONLY thing that made it work on an owned node (CJ, non-root) was
+# this installer's blanket "/root/" -> $RUN_HOME sed rewrite at copy time.
+# The unit now resolves its own paths via the systemd %h specifier, so it's
+# correct on ANY node straight from the tracked file, with no rewrite step
+# required. Assert both: (a) the tracked source has no absolute /root path,
+# and (b) installing it for a non-root run-user still ends up correct (User=
+# inserted, no /root path leaked into the installed copy either).
+ORGAN_WATCHDOG_SRC="$REPO_ROOT/scripts/dispatch/chump-organ-watchdog.service"
+grep -q '/root' "$ORGAN_WATCHDOG_SRC" \
+    && fail "chump-organ-watchdog.service still pins an absolute /root path: $(grep -n '/root' "$ORGAN_WATCHDOG_SRC")"
+grep -q '%h' "$ORGAN_WATCHDOG_SRC" \
+    || fail "chump-organ-watchdog.service should resolve its home dir via the %h systemd specifier"
+ok "chump-organ-watchdog.service (tracked source) has no hardcoded /root path"
+
+mkdir -p "$TMP/cj-dest" "$TMP/cj-bins" "$TMP/cj-cargo-bin" "$TMP/cj-locks"
+cat > "$TMP/cj-bins/systemctl" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TMP/cj-bins/systemctl"
+cat > "$TMP/cj-cargo-bin/chump-integrator" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TMP/cj-cargo-bin/chump-integrator"
+
+CHUMP_INSTALL_ATC_ALLOW_NONROOT=1 \
+    CHUMP_INSTALL_ATC_SYSTEMD_DIR="$TMP/cj-dest" \
+    CHUMP_INSTALL_ATC_SYSTEMCTL_BIN="$TMP/cj-bins/systemctl" \
+    CHUMP_RUN_USER=jeff \
+    CARGO_BIN_DIR="$TMP/cj-cargo-bin" \
+    NODE_AMBIENT="$TMP/cj-locks/ambient.jsonl" \
+    bash "$SCRIPT" --auto >"$TMP/cj-out.log" 2>&1
+cj_rc=$?
+[ "$cj_rc" -eq 0 ] || fail "--auto for CHUMP_RUN_USER=jeff must exit 0; got $cj_rc: $(cat "$TMP/cj-out.log")"
+CJ_INSTALLED="$TMP/cj-dest/chump-organ-watchdog.service"
+[ -f "$CJ_INSTALLED" ] || fail "chump-organ-watchdog.service was not installed to the stubbed dest dir"
+grep -q '^User=jeff' "$CJ_INSTALLED" \
+    || fail "installed chump-organ-watchdog.service missing User=jeff (host-rewrite): $(cat "$CJ_INSTALLED")"
+grep -q '/root' "$CJ_INSTALLED" \
+    && fail "installed chump-organ-watchdog.service leaked an absolute /root path for a non-root run-user: $(cat "$CJ_INSTALLED")"
+ok "chump-organ-watchdog.service installs for a non-root run-user (CJ shape) with no /root path"
+
 echo "ALL PASS"
