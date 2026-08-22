@@ -1,0 +1,35 @@
+# scripts/setup/node-organ-manifest.txt — INFRA-3641
+#
+# The organ roster for chump-node-install.sh's host-agnostic ORGANS phase
+# (Termux / systemd-Linux / macOS brain+muscle nodes) — distinct from
+# scripts/ops/organ-manifest.txt, which declares the systemd-only ATC roster
+# for the PRIMARY node (helsinki). Same declarative grammar (state, unit,
+# role=, requires=; see that file's header for the full bin:/env:/dep: spec),
+# parsed by the SAME shared lib (scripts/ops/lib/organ-manifest-lib.sh) so
+# the two rosters can never drift on parsing/applicability semantics.
+#
+# One extra token this file uses that organ-manifest.txt does not:
+#
+#   exec=<path>   the script (relative to $ORGAN_DIR) that
+#                 svc_install/svc_up runs for this organ. install_organs()
+#                 writes/copies that script's body before wiring the organ,
+#                 then supervises it via the host's native supervisor
+#                 (runit/systemd/nohup — see svc_install in
+#                 chump-node-install.sh). Unknown to organ-reconcile.sh's
+#                 parser — it's carried through untouched as part of <extra>.
+#
+# install_organs() reads the 'enabled' lines below, filters to the current
+# --role (brain/muscle/all), and skips (never fails) any organ whose
+# requires= is unmet on this host — the same curated-per-node applicability
+# gate organ-reconcile.sh uses (RESILIENT-347), reused via the shared lib.
+# Never hand-add an organ to chump-node-install.sh directly — declare it here.
+
+# node-heartbeat: brain's proof-of-life (refreshes $STATE/node-heartbeat +
+# node profile every 60s). Always applicable — no external deps.
+enabled  node-heartbeat  role=brain  exec=node-heartbeat.sh
+
+# worker: muscle's fleet-work loop, sourced from the canonical
+# scripts/setup/pixel-worker.sh (INFRA-3641 AC2 — previously referenced by
+# the old hardcoded muscle_organs() but never written, so a muscle install
+# permanently reported this organ DOWN). Needs a chump binary on $PATH.
+enabled  worker  role=muscle  requires=bin:chump  exec=worker.sh

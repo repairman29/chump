@@ -52,6 +52,12 @@ AMBIENT_LOG="${NODE_AMBIENT:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 LIB_AMBIENT="$REPO_ROOT/scripts/coord/lib/ambient-write.sh"
 [[ -f "$LIB_AMBIENT" ]] && source "$LIB_AMBIENT"
 
+# INFRA-3641: manifest parser + requires= applicability gate now live in a
+# shared lib so chump-node-install.sh's host-agnostic ORGANS phase can reuse
+# the exact same grammar/gate instead of re-implementing it.
+LIB_ORGAN_MANIFEST="$REPO_ROOT/scripts/ops/lib/organ-manifest-lib.sh"
+source "$LIB_ORGAN_MANIFEST"
+
 emit() {  # kind, extra-json (no leading/trailing comma)
   local kind="$1" extra="${2:-}"
   local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -66,42 +72,12 @@ emit() {  # kind, extra-json (no leading/trailing comma)
   return 0  # emit is best-effort telemetry; it must never sink the reconcile (set -e)
 }
 
-# RESILIENT-347: is `unit` applicable to THIS node given its declared
-# `requires=` spec (comma-separated bin:/env:/dep: tokens, see manifest
-# header)? Empty/absent requires means "always applicable" (back-compat with
-# pre-347 manifest lines). Writes the first unmet reason into $2 (a nameref
-# target via printf -v) for the caller to log/emit.
-organ_is_applicable() {
-  local unit="$1" requires="$2" reason_var="$3"
-  [[ -z "$requires" ]] && return 0
-  local tok IFS=','
-  for tok in $requires; do
-    case "$tok" in
-      bin:*)
-        local bin="${tok#bin:}"
-        if ! command -v "$bin" >/dev/null 2>&1; then
-          printf -v "$reason_var" 'missing_bin:%s' "$bin"; return 1
-        fi
-        ;;
-      env:*)
-        local var="${tok#env:}"
-        if [[ -z "${!var:-}" ]]; then
-          printf -v "$reason_var" 'missing_env:%s' "$var"; return 1
-        fi
-        ;;
-      dep:*)
-        local dep="${tok#dep:}"
-        if ! "$SYSTEMCTL_BIN" is-active --quiet "$dep" 2>/dev/null; then
-          printf -v "$reason_var" 'missing_dep:%s' "$dep"; return 1
-        fi
-        ;;
-      *)
-        printf -v "$reason_var" 'unknown_requires_spec:%s' "$tok"; return 1
-        ;;
-    esac
-  done
-  return 0
-}
+# RESILIENT-347 / INFRA-3641: organ_is_applicable() now comes from the shared
+# lib (organ-manifest-lib.sh, sourced above). It defaults requires=dep:X
+# checks to `systemctl is-active` — wire that default to THIS script's
+# stubbable $SYSTEMCTL_BIN so tests + the CHUMP_ORGAN_RECONCILE_SYSTEMCTL_BIN
+# override keep working exactly as before.
+_organ_reconcile_dep_check() { "$SYSTEMCTL_BIN" is-active --quiet "$1" 2>/dev/null; }
 
 # RESILIENT-347: is `unit` still cooling down from a prior verify failure?
 # Returns 0 (true, skip it) while now - since < BACKOFF_COOLDOWN_S.
@@ -141,6 +117,9 @@ EOF
 }
 
 # ── read manifest into arrays (+ per-unit role/requires, RESILIENT-347) ─────
+# INFRA-3641: parsing itself now comes from the shared lib's TSV emitter —
+# this loop just buckets the TSV rows into the arrays the rest of the script
+# already expects.
 PAGING_OFF=()
 ENABLED=()
 declare -A ORGAN_ROLE
@@ -149,26 +128,17 @@ if [[ ! -f "$MANIFEST" ]]; then
   echo "ERROR: manifest not found: $MANIFEST" >&2
   exit 1
 fi
-while read -r state unit rest; do
-  [[ -z "${state:-}" ]] && continue
-  [[ "$state" == \#* ]] && continue
-  role="" requires=""
-  for tok in $rest; do
-    case "$tok" in
-      role=*)     role="${tok#role=}" ;;
-      requires=*) requires="${tok#requires=}" ;;
-    esac
-  done
+while IFS=$'\t' read -r state unit role requires _extra; do
   case "$state" in
     paging_off) PAGING_OFF+=("$unit") ;;
     enabled)
       ENABLED+=("$unit")
-      ORGAN_ROLE["$unit"]="${role:-brain}"
+      ORGAN_ROLE["$unit"]="$role"
       ORGAN_REQUIRES["$unit"]="$requires"
       ;;
     *) echo "WARN: unknown state '$state' for '$unit' in manifest; ignoring" >&2 ;;
   esac
-done < "$MANIFEST"
+done < <(organ_manifest_parse_tsv "$MANIFEST")
 
 MODE="${1:---apply}"
 
@@ -184,7 +154,7 @@ if [[ "$MODE" == "--check" ]]; then
   for unit in "${ENABLED[@]}"; do
     requires="${ORGAN_REQUIRES[$unit]:-}"
     reason=""
-    if ! organ_is_applicable "$unit" "$requires" reason; then
+    if ! organ_is_applicable "$unit" "$requires" reason _organ_reconcile_dep_check; then
       echo "SKIP: $unit not applicable to this node ($reason)"
       continue
     fi
@@ -267,7 +237,7 @@ for unit in "${ENABLED[@]}"; do
   requires="${ORGAN_REQUIRES[$unit]:-}"
   reason=""
 
-  if ! organ_is_applicable "$unit" "$requires" reason; then
+  if ! organ_is_applicable "$unit" "$requires" reason _organ_reconcile_dep_check; then
     echo "SKIP (not applicable to this node): $unit ($reason)"
     # scanner-anchor: "kind":"organ_reconcile_not_applicable" (RESILIENT-347;
     # fires when an `enabled` organ's requires= are unmet on this node — the
