@@ -31,18 +31,27 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Default discovery order: explicit override > this checkout's own repo root
-# (same trick process-organ-heal.sh uses — this script lives in a tracked
-# repo, so SCRIPT_DIR/../.. IS the repo root wherever it's checked out) >
-# legacy $CHUMP_NODE_DIR/repo shape, for back-compat with any install that
-# still uses that layout. Ground truth from a real closetjunky run
-# (2026-08-22): systemd's chump-process-organ-heal.service sets
-# CHUMP_REPO_ROOT=/home/jeff/Projects/chump, NOT $HOME/.chumpnode/repo — the
-# old hardcoded default silently produced a false NOT-LIVE verdict here.
+# Default discovery order: explicit override > $CHUMP_REPO_ROOT (the same env
+# var process-organ-heal.sh itself honors, and what chump-process-organ-heal's
+# systemd drop-in sets — a worktree checkout running this script may not be
+# the checkout the service actually writes ambient.jsonl from, so trust the
+# service's own env over self-location) > this checkout's own repo root (same
+# trick process-organ-heal.sh uses when CHUMP_REPO_ROOT is unset — this
+# script lives in a tracked repo, so SCRIPT_DIR/../.. IS the repo root
+# wherever it's checked out) > legacy $CHUMP_NODE_DIR/repo shape, for
+# back-compat with any install that still uses that layout. Ground truth
+# from a real closetjunky run (2026-08-22): systemd's
+# chump-process-organ-heal.service sets CHUMP_REPO_ROOT=/home/jeff/Projects/chump,
+# NOT $HOME/.chumpnode/repo — the old hardcoded default silently produced a
+# false NOT-LIVE verdict here, and self-location alone reproduces the same
+# false negative when the script is run from a *different* worktree than the
+# one the service points at.
 REPO_ROOT_GUESS="$(cd "$SCRIPT_DIR/../.." && pwd)"
 NODE_DIR="${CHUMP_NODE_DIR:-$HOME/.chumpnode}"
 if [[ -n "${CHUMP_AMBIENT_LOG:-}" ]]; then
     AMBIENT_LOG="$CHUMP_AMBIENT_LOG"
+elif [[ -n "${CHUMP_REPO_ROOT:-}" && -f "$CHUMP_REPO_ROOT/.chump-locks/ambient.jsonl" ]]; then
+    AMBIENT_LOG="$CHUMP_REPO_ROOT/.chump-locks/ambient.jsonl"
 elif [[ -f "$REPO_ROOT_GUESS/.chump-locks/ambient.jsonl" ]]; then
     AMBIENT_LOG="$REPO_ROOT_GUESS/.chump-locks/ambient.jsonl"
 else
