@@ -192,6 +192,27 @@ fi
 export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
 export CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-line-tables-only}"
 
+# INFRA-3660: activate the LOCAL sccache compile cache for this worker's
+# cargo invocations, not just the pre-push probe (scripts/git-hooks/pre-push
+# already probes+heals an existing wrapper but never installs one). Runs
+# once at worker startup, not per-cycle. `.cargo/config.toml` (written by
+# install-sccache.sh) already sets rustc-wrapper for anything invoked with
+# CWD under REPO_ROOT, but linked worktrees under .claude/worktrees/ walk
+# up to the same config — export RUSTC_WRAPPER explicitly too so caching is
+# active even for tooling that reads the env var instead of cargo's own
+# config discovery. No-op (silent) on hosts without a USB/cjdata* cache
+# target or where install fails — this must never block a worker from
+# picking up work.
+if [[ -z "${RUSTC_WRAPPER:-}" ]]; then
+    if [[ ! -f "$REPO_ROOT/.cargo/config.toml" ]] && command -v cargo >/dev/null 2>&1; then
+        mkdir -p "$FLEET_LOG_DIR" 2>/dev/null || true
+        bash "$REPO_ROOT/scripts/setup/install-sccache.sh" >>"$FLEET_LOG_DIR/sccache-install-$AGENT_ID.log" 2>&1 || true
+    fi
+    if command -v sccache >/dev/null 2>&1; then
+        export RUSTC_WRAPPER="sccache"
+    fi
+fi
+
 # Per-worker counter of consecutive empty picks. Reset on every
 # successful pick.
 _starve_count=0
