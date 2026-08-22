@@ -327,7 +327,13 @@ json.dump({'pr':$num,'attempts':$attempts,'first_seen':'$first_seen','escalated_
     wt="$WT_BASE/conflict-resolution-consumer-$num"
     git worktree remove "$wt" --force 2>/dev/null || true
     rm -rf "$wt" 2>/dev/null || true
-    git worktree add "$wt" "$br" >/dev/null 2>&1 || continue
+    # RESILIENT-360: check out DETACHED at origin/$br. The PR branch is almost
+    # always STILL checked out in its originating fleet worktree
+    # (.claude/worktrees/...), so `git worktree add "$wt" "$br"` fails with
+    # "already used by worktree" and the loop silently `continue`d on EVERY
+    # candidate (drained 0, wrote no state). Detached HEAD on the freshly
+    # fetched origin/$br sidesteps the shared-checkout lock entirely.
+    git worktree add --detach "$wt" "origin/$br" >/dev/null 2>&1 || continue
 
     # Rebase HEAD onto origin/main, draining union/stale conflicts the durable
     # drain2 way. `via` is the resolution method on success; empty on real
@@ -337,7 +343,7 @@ json.dump({'pr':$num,'attempts':$attempts,'first_seen':'$first_seen','escalated_
     outcome="fail"
 
     if [ "$resolve_rc" -eq 0 ]; then
-        if (cd "$wt" && git push --no-verify origin "$br" --force-with-lease >/dev/null 2>&1); then
+        if (cd "$wt" && git push --no-verify origin "HEAD:refs/heads/$br" --force-with-lease >/dev/null 2>&1); then
             [ "$is_armed" = "1" ] || _arm_pr "$num" || true
             # scanner-anchor: "kind":"conflict_resolution_consumer_rebase_clean"
             _emit "conflict_resolution_consumer_rebase_clean" "{\"pr\":$num,\"branch\":\"$br\",\"via\":\"${via:-plain}\",\"was_armed\":$is_armed}"
@@ -358,7 +364,7 @@ json.dump({'pr':$num,'attempts':$attempts,'first_seen':'$first_seen','escalated_
             if (cd "$wt" && REPO_ROOT="$wt" GAP_ID="$gap_id" \
                     CHUMP_CONFLICT_RESOLVER_ENABLED="${CHUMP_CONFLICT_RESOLVER_ENABLED:-1}" \
                     CHUMP_AMBIENT_LOG="$AMB" "$RESOLVER" "$gap_id" >/dev/null 2>&1); then
-                if (cd "$wt" && git push --no-verify origin "$br" --force-with-lease >/dev/null 2>&1); then
+                if (cd "$wt" && git push --no-verify origin "HEAD:refs/heads/$br" --force-with-lease >/dev/null 2>&1); then
                     [ "$is_armed" = "1" ] || _arm_pr "$num" || true
                     # scanner-anchor: "kind":"conflict_resolution_consumer_resolved"
                     _emit "conflict_resolution_consumer_resolved" "{\"pr\":$num,\"branch\":\"$br\",\"gap_id\":\"$gap_id\"}"
