@@ -8,6 +8,15 @@
 # CHUMP_REPO_ROOT is REQUIRED: the script's default $HOME/Projects/Chump is
 # capital-C and does not exist on case-sensitive Linux (see
 # docs/process/LINUX_NODE_ONBOARDING.md).
+#
+# INFRA-3647: host-agnostic via the systemd %h specifier (home dir of the
+# configured User=) instead of a hardcoded root home path. install-helsinki
+# -atc.sh (RESILIENT-353) inserts the per-node User= line at deploy time, so
+# %h resolves to the root account's home on helsinki and to jeff's home on
+# an owned node (CJ) from this SAME tracked unit — no per-host path-rewrite
+# needed. Absent an explicit User=, systemd defaults a system unit to root,
+# so %h still resolves to root's home (matching the prior hardcoded
+# behavior).
 [Unit]
 Description=Chump organ watchdog — self-heal failed chump-* organs (INFRA-3595)
 After=network-online.target
@@ -15,7 +24,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-Environment=HOME=/root
-Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+Environment=HOME=%h
+Environment=CHUMP_REPO_ROOT=%h/Projects/chump
 Environment=CHUMP_ORGAN_WATCHDOG_CLONE_REFRESH=1
-ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/organ-watchdog.sh'
+ExecStart=/bin/bash -lc 'set -a; source %h/.chump/providers.env 2>/dev/null; set +a; exec %h/Projects/chump/scripts/ops/organ-watchdog.sh'
