@@ -552,6 +552,117 @@ fn check_live_outcome(bullet: &str) -> (bool, String) {
     )
 }
 
+// ── proof-AC synthesis on-ramp (PEER-VERI-08, INFRA-3655) ──────────────────
+//
+// CREDIBLE-281 above makes proof bullets un-fakeable IF one exists — but a
+// gap whose author never wrote a `PROVEN-BY` bullet skips the live-outcome
+// check entirely by omission, not by honest scoping. A diff that adds/edits
+// a systemd unit, an install script, or a deploy path is exactly the class
+// where "the diff looks right" and "the thing is actually running" diverge
+// (see the CREDIBLE-281 doc comment's INFRA-3598 precedent). This closes
+// that gap at AC-synthesis time: when such a diff is detected and no bullet
+// in the (stored or synthesized) set is already a proof bullet, inject one
+// naming a concrete target lifted straight from the diff — so it is always
+// `check_live_outcome`-parseable by construction, never a hallucinated path.
+
+/// True when a unified diff touches a systemd unit, an install script, or a
+/// deploy path — the three surfaces where "diff landed" and "thing is live"
+/// can diverge. Matches on diff path headers (`diff --git a/X b/X`,
+/// `+++ b/X`) so renames/adds/edits are all caught.
+fn diff_touches_service_surface(diff: &str) -> bool {
+    for line in diff.lines() {
+        let path = if let Some(p) = line.strip_prefix("+++ b/") {
+            p
+        } else if let Some(rest) = line.strip_prefix("diff --git a/") {
+            // "diff --git a/<old> b/<new>" — take the b/ side.
+            match rest.split(" b/").nth(1) {
+                Some(p) => p,
+                None => continue,
+            }
+        } else {
+            continue;
+        };
+        let lower = path.to_ascii_lowercase();
+        if lower.ends_with(".service") || lower.ends_with(".timer") {
+            return true;
+        }
+        if lower.contains("systemd/") || lower.contains("launchd/") {
+            return true;
+        }
+        if (lower.contains("/install") || lower.starts_with("install")) && lower.ends_with(".sh") {
+            return true;
+        }
+        if lower.contains("deploy")
+            && (lower.ends_with(".sh") || lower.ends_with(".yml") || lower.ends_with(".yaml"))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Pull the first mechanically-checkable target (`<unit>.service`/`.timer`,
+/// `kind=<event>`, or a literal URL) out of a diff's *added* lines — the
+/// same three shapes [`check_live_outcome`] knows how to probe. Scanning
+/// added lines only (not context/removed lines) keeps the extracted target
+/// tied to what this PR actually introduced.
+fn extract_live_proof_target(diff: &str) -> Option<String> {
+    // A new/renamed unit file's path IS the checkable target even when its
+    // added *content* never spells out its own filename (a `.service` file's
+    // body is `[Unit]`/`[Service]` stanzas, not a self-reference).
+    for line in diff.lines() {
+        let path = if let Some(p) = line.strip_prefix("+++ b/") {
+            Some(p)
+        } else if let Some(rest) = line.strip_prefix("diff --git a/") {
+            rest.split(" b/").nth(1)
+        } else {
+            None
+        };
+        if let Some(p) = path {
+            if let Some(name) = p.rsplit('/').next() {
+                if name.ends_with(".service") || name.ends_with(".timer") {
+                    return Some(name.to_string());
+                }
+            }
+        }
+    }
+    for line in diff.lines() {
+        let added = match line.strip_prefix('+') {
+            // Exclude the "+++ b/path" file-header line itself.
+            Some(rest) if !rest.starts_with("++ ") && !line.starts_with("+++") => rest,
+            _ => continue,
+        };
+        if let Some(unit) = find_systemd_unit_token(added) {
+            return Some(unit);
+        }
+        if let Some(kind) = find_event_kind_token(added) {
+            return Some(format!("kind={kind}"));
+        }
+        if let Some(url) = find_url_token(added) {
+            return Some(url);
+        }
+    }
+    None
+}
+
+/// Build a synthesized proof bullet for a service/install/deploy-touching
+/// diff, or `None` when the diff doesn't touch that surface, already has a
+/// proof bullet, or names no concrete checkable target (fail-open per AC#3
+/// — a docs-only or target-less diff gets no injected bullet).
+pub(crate) fn maybe_inject_proof_ac(diff: &str, existing_bullets: &[String]) -> Option<String> {
+    if !diff_touches_service_surface(diff) {
+        return None;
+    }
+    if existing_bullets.iter().any(|b| is_proof_bullet(b)) {
+        return None;
+    }
+    let target = extract_live_proof_target(diff)?;
+    Some(format!(
+        "PROVEN-BY {target} — live-outcome check required (this diff touches a \
+         systemd unit / install script / deploy path; PEER-VERI-08 INFRA-3655)"
+    ))
+}
+
 // ── ambient emit wrapper ──────────────────────────────────────────────────────
 
 fn ambient(kind: &str, fields: Vec<(&str, String)>) {
@@ -823,6 +934,10 @@ fn score_against_bullets(
     // Evaluate each bullet
     let mut bullets = Vec::new();
     let mut any_miss = false;
+    // PEER-VERI-08 (INFRA-3655): track proof-bullet misses separately —
+    // these are the ones CHUMP_VERIFY_LIVE_BLOCKING can promote past the
+    // advisory fail-open path below.
+    let mut any_proof_miss = false;
 
     for (i, text) in raw_bullets.iter().enumerate() {
         // Check if waived (0-based index)
@@ -867,6 +982,9 @@ fn score_against_bullets(
 
         if !covered {
             any_miss = true;
+            if is_proof {
+                any_proof_miss = true;
+            }
             let prefix = &text[..text.len().min(40)];
             ambient(
                 if is_proof {
@@ -898,8 +1016,16 @@ fn score_against_bullets(
 
     // Determine status
     let is_advisory = std::env::var("CHUMP_AC_GATE_ADVISORY").as_deref() == Ok("true");
+    // PEER-VERI-08 (INFRA-3655) AC#2: an unproven live-outcome result BLOCKS
+    // the close instead of being swallowed by the advisory fail-open path —
+    // but only when the operator has ratcheted CHUMP_VERIFY_LIVE_BLOCKING on
+    // (default off). Non-proof misses are untouched by this flag (AC#3).
+    let live_blocking =
+        any_proof_miss && std::env::var("CHUMP_VERIFY_LIVE_BLOCKING").as_deref() == Ok("1");
     let status = if any_miss {
-        if is_advisory {
+        if live_blocking {
+            CoverageStatus::Miss
+        } else if is_advisory {
             CoverageStatus::Advisory
         } else {
             CoverageStatus::Miss
@@ -907,6 +1033,15 @@ fn score_against_bullets(
     } else {
         CoverageStatus::Pass
     };
+    if live_blocking {
+        ambient(
+            "ac_coverage_live_blocking",
+            vec![
+                ("pr_number", pr_number.to_string()),
+                ("gap_id", gap_id.clone()),
+            ],
+        );
+    }
 
     // Print miss list to stderr
     if any_miss {
@@ -1873,6 +2008,105 @@ mod tests {
         assert!(
             !b.covered,
             "LLM judge must not override a proof bullet's live-outcome verdict"
+        );
+    }
+
+    // ── PEER-VERI-08 (INFRA-3655): systemic proof-AC synthesis + blocking ──
+
+    #[test]
+    fn peerveri08_service_touching_diff_gets_injected_proof_ac() {
+        let diff = concat!(
+            "diff --git a/systemd/chump-worker.service b/systemd/chump-worker.service\n",
+            "+++ b/systemd/chump-worker.service\n",
+            "+[Unit]\n",
+            "+Description=chump worker\n",
+        );
+        let injected = maybe_inject_proof_ac(diff, &[]);
+        assert!(injected.is_some(), "service-unit diff must get a proof AC");
+        let bullet = injected.unwrap();
+        assert!(is_proof_bullet(&bullet));
+        assert_eq!(
+            find_systemd_unit_token(&bullet),
+            Some("chump-worker.service".to_string()),
+            "injected bullet must name the concrete unit check_live_outcome can parse: {bullet}"
+        );
+    }
+
+    #[test]
+    fn peerveri08_docs_only_diff_gets_no_injected_proof_ac() {
+        let diff = "+++ b/docs/process/FOO.md\n+some docs text\n";
+        assert!(
+            maybe_inject_proof_ac(diff, &[]).is_none(),
+            "docs-only diff must not get a proof AC injected"
+        );
+    }
+
+    #[test]
+    fn peerveri08_existing_proof_bullet_is_not_duplicated() {
+        let diff = concat!(
+            "diff --git a/systemd/chump-worker.service b/systemd/chump-worker.service\n",
+            "+++ b/systemd/chump-worker.service\n",
+            "+[Unit]\n",
+        );
+        let existing = vec!["PROVEN-BY chump-worker.service already covers this".to_string()];
+        assert!(
+            maybe_inject_proof_ac(diff, &existing).is_none(),
+            "a diff that already carries a proof bullet must not get a second one injected"
+        );
+    }
+
+    #[test]
+    fn peerveri08_install_script_diff_with_no_derivable_target_gets_no_injection() {
+        // AC#3: fail-open when no concrete, check_live_outcome-parseable
+        // target can be derived, even though the surface (install script)
+        // matched.
+        let diff = "+++ b/scripts/setup/install-foo.sh\n+echo hello\n";
+        assert!(maybe_inject_proof_ac(diff, &[]).is_none());
+    }
+
+    #[test]
+    fn peerveri08_live_blocking_flag_promotes_proof_miss_past_advisory() {
+        let _guard = AMBIENT_ENV_LOCK.lock().unwrap();
+        std::env::set_var("CHUMP_AC_GATE_ADVISORY", "true");
+        std::env::set_var("CHUMP_VERIFY_LIVE_BLOCKING", "1");
+        let bullet =
+            "PROVEN-BY chump-nonexistent-unit-xyz123.service reaching active state".to_string();
+        let result = score_against_bullets(
+            1,
+            "INFRA-TEST".to_string(),
+            vec![bullet],
+            String::new(),
+            None,
+        );
+        std::env::remove_var("CHUMP_AC_GATE_ADVISORY");
+        std::env::remove_var("CHUMP_VERIFY_LIVE_BLOCKING");
+        assert_eq!(
+            result.status,
+            CoverageStatus::Miss,
+            "an inactive-unit proof AC must BLOCK (Miss) when CHUMP_VERIFY_LIVE_BLOCKING=1, \
+             even though CHUMP_AC_GATE_ADVISORY=true would otherwise fail it open"
+        );
+    }
+
+    #[test]
+    fn peerveri08_live_blocking_flag_off_keeps_advisory_fail_open() {
+        let _guard = AMBIENT_ENV_LOCK.lock().unwrap();
+        std::env::set_var("CHUMP_AC_GATE_ADVISORY", "true");
+        std::env::remove_var("CHUMP_VERIFY_LIVE_BLOCKING");
+        let bullet =
+            "PROVEN-BY chump-nonexistent-unit-xyz123.service reaching active state".to_string();
+        let result = score_against_bullets(
+            1,
+            "INFRA-TEST".to_string(),
+            vec![bullet],
+            String::new(),
+            None,
+        );
+        std::env::remove_var("CHUMP_AC_GATE_ADVISORY");
+        assert_eq!(
+            result.status,
+            CoverageStatus::Advisory,
+            "with CHUMP_VERIFY_LIVE_BLOCKING unset (default off), advisory mode must still fail open"
         );
     }
 

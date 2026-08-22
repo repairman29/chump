@@ -103,6 +103,8 @@ ac_coverage_miss        # reason: INFRA-1541 pre-merge AC coverage gate; emitter
 ac_coverage_no_ac       # reason: INFRA-1541 pass-through marker when gap has no AC bullets; outside PROD_PATHS
 ac_coverage_no_gap_ref  # reason: INFRA-1541 pass-through marker for hotfix PRs without gap ref; outside PROD_PATHS
 ac_coverage_proof_miss  # reason: CREDIBLE-281 proof-AC live-outcome check failed; same gate as ac_coverage_miss, outside PROD_PATHS
+ac_coverage_live_blocking  # reason: PEER-VERI-08 INFRA-3655 — CHUMP_VERIFY_LIVE_BLOCKING=1 promoted a proof-AC miss past the advisory path; emitted from crates/chump-verify/src/pr_ac_coverage.rs::score_against_bullets, same gate as ac_coverage_miss
+ac_coverage_live_blocking_held_close  # reason: PEER-VERI-08 INFRA-3655 — scripts/coord/bot-merge.sh held an auto-close because CHUMP_VERIFY_LIVE_BLOCKING=1 and the PR's proof AC was unverified; printf emit in bot-merge.sh, outside PROD_PATHS
 ac_coverage_waived      # reason: INFRA-1541 waiver trailer audit emit from same gate; outside PROD_PATHS
 allowlist_stale_entry  # reason: INFRA-1868 — audit-allowlist-staleness.sh daily staleness detector; emitted via python3 heredoc, not grep-scannable as kind=X literal
 ast_crawler_unsupported_language  # reason: INFRA-1719 emitted from crates/ast-crawler when an unsupported language is encountered; emit site uses struct-field syntax not grep-scannable as `kind=X` literal
