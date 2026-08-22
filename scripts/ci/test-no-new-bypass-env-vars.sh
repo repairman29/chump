@@ -48,6 +48,22 @@ fi
 # DELIBERATELY no env bypass: an anti-bypass gate must not ship its own bypass var
 # (that would both defeat the purpose AND add to the count). The ONLY way up is the
 # operator editing the ceiling file — a visible, reviewed, single source of truth.
+# ── RESILIENT-298: functional read-site detector (shared by the debt-ceiling
+# counter above and its self-test below). Returns 0 (true) iff the given bypass
+# var name is READ somewhere under the given roots — shell $VAR/${VAR}, an inline
+# `VAR=... cmd` assignment, or an env accessor (Rust env::var / this repo's
+# env_trim_eq|env_flags|env_bool helpers, C getenv, Python os.environ|os.getenv,
+# JS process.env, Deno.env). A name that appears ONLY as a bare string mention
+# (doc/registry/comment/absence-assertion/concat-fragment) has no read-site and is
+# NOT a functional bypass. Generous by design: err toward COUNTING so a real var is
+# never dropped; only provable phantoms fall out.
+_bypass_var_has_readsite() {
+  local _v="$1"; shift
+  local _tmpl='(\$\{?VAR\b|env::var(_os)?\([[:space:]]*"?VAR|env_trim_eq\([[:space:]]*"?VAR|env_flags::[a-z_]+\([[:space:]]*"?VAR|env_bool\([[:space:]]*"?VAR|getenv\([[:space:]]*"?VAR|os\.getenv\([[:space:]]*"?VAR|os\.environ[^)]*VAR|process\.env[.\[][[:space:]]*"?VAR|Deno\.env[^)]*VAR|(^|[^A-Za-z0-9_])VAR=)'
+  local _rx="${_tmpl//VAR/$_v}"
+  grep -rqE "$_rx" "$@" 2>/dev/null
+}
+
 if [[ "${1:-}" != "--self-test" ]]; then
   _ceiling_file="$REPO_ROOT/scripts/ci/bypass-var-ceiling.txt"
   _ceiling="$(grep -oE '^[0-9]+' "$_ceiling_file" 2>/dev/null | head -1 || true)"
@@ -69,11 +85,38 @@ if [[ "${1:-}" != "--self-test" ]]; then
   #      branch matched it as a false positive.
   # This is a ratchet-DOWN of the honest baseline, not a bypass: the true count of
   # real bypass USE-SITES falls, and the ceiling file falls with it.
-  _now="$(grep -rhoE 'CHUMP_[A-Z0-9_]*(BYPASS|SKIP|IGNORE|_CHECK|NO_)[A-Z0-9_]*' \
+  # RESILIENT-298: count only bypass vars that have a FUNCTIONAL READ-SITE. The bare
+  # string-mention scan over-counted PHANTOMS — names that appear ONLY in documentation,
+  # registry lines (env-vars-internal.txt), absence-assertion guards (a test grepping
+  # that a DELETED var is *not* present), string-concat fragments of removed names,
+  # include-guard sentinels (_CHUMP_*_LOADED), or out-of-scope toggles read in web/
+  # (localStorage) or .github/ (Actions repo-vars). So the act of DOCUMENTING or
+  # GUARDING a var inflated the very count it documents. A real bypass var must be READ
+  # to function, so requiring a read-site cannot hide a genuine bypass (the per-PR
+  # diff-scanner below still blocks any NEW unallowlisted var at add-time) — it only
+  # stops counting phantoms. Honest instrument: the ceiling measures real read-backed
+  # bypass debt, not string mentions. Before/after on main: 221 (mentions) -> 211 (read-backed, excl. linter meta-files).
+  _cands="$(grep -rhoE 'CHUMP_[A-Z0-9_]*(BYPASS|SKIP|IGNORE|_CHECK|NO_)[A-Z0-9_]*' \
             "$REPO_ROOT/scripts" "$REPO_ROOT/src" "$REPO_ROOT/crates" 2>/dev/null \
             --exclude='test-no-new-bypass-env-vars.sh' \
             --exclude='bypass-var-ceiling.txt' \
-            | grep -vE '_CMD$' | sort -u | wc -l | tr -d ' ')"
+            | grep -vE '_CMD$' | sort -u)"
+  # Speed: build a one-pass haystack of every line that mentions a candidate token,
+  # then read-site-test each candidate against that small in-memory file (grep -rq on a
+  # single file). Identical detection to scanning the tree per-var, ~1s instead of ~12s.
+  _hayfile="$(mktemp)"
+  grep -rhE 'CHUMP_[A-Z0-9_]*(BYPASS|SKIP|IGNORE|_CHECK|NO_)' \
+    "$REPO_ROOT/scripts" "$REPO_ROOT/src" "$REPO_ROOT/crates" 2>/dev/null \
+    --exclude='test-no-new-bypass-env-vars.sh' \
+    --exclude='bypass-var-ceiling.txt' > "$_hayfile" || true
+  _now=0
+  while IFS= read -r _v; do
+    [ -z "$_v" ] && continue
+    if _bypass_var_has_readsite "$_v" "$_hayfile"; then
+      _now=$((_now + 1))
+    fi
+  done <<< "$_cands"
+  rm -f "$_hayfile"
   if [ "${_now:-0}" -gt "$_ceiling" ]; then
     {
       echo "[bypass-lint] FAIL (EFFECTIVE-094 debt-ceiling): bypass/skip/check var count ${_now} > ceiling ${_ceiling}."
@@ -171,6 +214,33 @@ if [[ "${1:-}" == "--self-test" ]]; then
   run_case "actual shell dereference of bypass var → exit 1" \
     '+    if [[ -n "${CHUMP_BRAND_NEW_BYPASS:-}" ]]; then' \
     1
+
+  # ── RESILIENT-298: read-site counter cases. Prove the debt-ceiling counter counts
+  # a var ONLY when it has a functional read-site, so phantom mentions never inflate it.
+  _rs_root="$(mktemp -d)"
+  # A real read: shell dereference.
+  printf '%s\n' 'if [ "${CHUMP_RS_REAL_SKIP:-0}" = "1" ]; then :; fi' > "$_rs_root/real.sh"
+  # A phantom: bare name in a registry-style doc + an absence-assertion grep — no read.
+  printf '%s\n' 'CHUMP_RS_PHANTOM_SKIP' > "$_rs_root/registry.txt"
+  printf '%s\n' 'grep -q "CHUMP_RS_PHANTOM_SKIP" "$f" && fail "must be absent"' > "$_rs_root/guard.sh"
+  if _bypass_var_has_readsite "CHUMP_RS_REAL_SKIP" "$_rs_root"; then
+    echo "  PASS: read-backed var is counted (has read-site)"; PASS=$((PASS + 1))
+  else
+    echo "  FAIL: read-backed var CHUMP_RS_REAL_SKIP was not detected"; FAIL=$((FAIL + 1))
+  fi
+  if _bypass_var_has_readsite "CHUMP_RS_PHANTOM_SKIP" "$_rs_root"; then
+    echo "  FAIL: phantom var CHUMP_RS_PHANTOM_SKIP counted despite no read-site"; FAIL=$((FAIL + 1))
+  else
+    echo "  PASS: phantom (mention-only) var is NOT counted"; PASS=$((PASS + 1))
+  fi
+  # The env_trim_eq helper form (this repo's Rust accessor) must count as a read.
+  printf '%s\n' 'crate::env_flags::env_trim_eq("CHUMP_RS_HELPER_SKIP", "1")' > "$_rs_root/helper.rs"
+  if _bypass_var_has_readsite "CHUMP_RS_HELPER_SKIP" "$_rs_root"; then
+    echo "  PASS: env_trim_eq read-site is counted"; PASS=$((PASS + 1))
+  else
+    echo "  FAIL: env_trim_eq read-site not detected (would undercount live vars)"; FAIL=$((FAIL + 1))
+  fi
+  rm -rf "$_rs_root"
 
   echo ""
   if [[ $FAIL -gt 0 ]]; then

@@ -4,7 +4,7 @@
 # you must delete one. Raising it requires operator sign-off + a reason below.
 # Baseline 2026-06-03 (was 113 when INFRA-2525 was filed — the climb to here is
 # exactly what this ceiling now reverses). Ratchet DOWN as gates are culled.
-221
+214
 
 # 233 → 234 (2026-06-04): CREDIBLE-085 introduced CHUMP_SCCACHE_HIT_RATE_CHECK
 # as a cold-cache escape valve for the new sccache hit-rate gate. Cold-cache
@@ -91,3 +91,22 @@
 # fix-the-gate-then-delete-the-bypass follow-up rather than a blanket deletion (INFRA-2525 RULE:
 # never delete a bypass while its gate still hard-blocks). True live count 232 -> 221 with zero
 # headroom spent (no new vars added this pass). Recurring cull tracked by INFRA-3625.
+
+# 221 -> 214 (2026-08-22, RESILIENT-298): HONEST-INSTRUMENT fix, not a bump. The
+# counter (in test-no-new-bypass-env-vars.sh) matched bare var-name STRINGS, so it
+# counted PHANTOMS that are not functional bypass vars: registry-only lines, tests
+# that assert a DELETED var is ABSENT (documenting an absence counted it as present),
+# a string-concat fragment of a removed name, an include-guard sentinel
+# (_CHUMP_DISK_CHECK_LOADED), and out-of-scope toggles read only in web/ (localStorage
+# CHUMP_NO_TOAST) or .github/ Actions repo-vars (CHUMP_SELF_HOSTED_FAST_CHECKS). Eight
+# such phantoms inflated the count. The counter now requires a FUNCTIONAL READ-SITE
+# (shell $VAR/${VAR}, inline VAR=, or an env accessor incl. this repo's env_trim_eq/
+# env_flags/env_bool helpers) — which cannot hide a real bypass (the per-PR diff-scanner
+# still blocks any NEW unallowlisted var at add-time), it only stops counting phantoms.
+# True read-backed count on main: 221(mentions) -> 211(read-backed). This was the
+# ROOT cause of the CI-pass-rate red: main sat at the phantom-inflated ceiling with
+# ~zero headroom, so audit-shard(4) jammed EVERY branch that legitimately added one
+# escape-hatch var (222>221) — a whole cohort of PRs stuck on one tripwire. New ceiling
+# 214 = true 211 + 3 doctrine headroom (per the 236->238 / 232 precedents). Net honest
+# debt FALLS 221 -> 214. No real bypass var added or hidden; enforcement unchanged.
+# The residual RESILIENT-298 tracked ("count is still string-mention based") is now closed.
