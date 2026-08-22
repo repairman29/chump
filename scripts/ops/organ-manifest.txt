@@ -196,6 +196,16 @@ enabled     chump-gap-closure-reconcile.timer  role=janitor requires=bin:gh
 # if a roster timer is ever added to the installer without a matching line
 # here, so this class of drift cannot recur silently again.
 enabled     chump-armed-rebaser.timer  role=muscle requires=bin:gh
+
+# chump-merge-serializer.timer: RESILIENT-372 native-merge-queue substitute.
+# Native GitHub merge queue is Team/Enterprise-only and unavailable on this
+# personal-account repo (docs/process/MERGE_QUEUE_SETUP.md). This serializes the
+# FINAL merge step: rebase the OLDEST viable armed PR onto latest origin/main,
+# wait for ITS `verified` to go green undisturbed, squash-merge, loop. It rebases
+# only the ONE PR it drives, so other PRs verified is not reset (the aging cure).
+# Supersedes armed-rebaser for the clean-rebase case; where BOTH run, prefer
+# disabling chump-armed-rebaser.timer so it stops resetting verified on main moves.
+enabled     chump-merge-serializer.timer  role=muscle requires=bin:gh
 enabled     chump-board-cycle.timer  role=brain
 
 # --- Owned-node factory organs (TREK-16 / INFRA-3642, install-a-Trek-from-0) -
