@@ -25,6 +25,12 @@ REFRESH_S="${PIXEL_WORKER_REFRESH_S:-1800}"
 FAILED_FILE="$HOME/pixel-worker-failed.tsv"   # gap_id<TAB>epoch_s
 LAST_REFRESH=0
 
+# INFRA-3664: claim atomically via `chump claim` (INFRA-513 fix — single DB
+# transaction) instead of executing straight off a `gap list` pick. Without
+# this, a second worker picking the same gap in the same window races the
+# first and produces a silent_agent event (fleet-scaling-2026-05-06.md).
+WORKTREE_BASE="${CHUMP_WORKTREE_BASE:-/tmp}"
+
 [ -x "$BIN" ] || { echo "[pixel-worker] chump binary not found at $BIN" >&2; exit 1; }
 
 echo "[pixel-worker] up: skills=$WORKER_SKILLS machine=$WORKER_MACHINE backend=$CHUMP_WORK_BACKEND bin=$BIN cooldown=${COOLDOWN_S}s"
@@ -94,9 +100,32 @@ for g in rows:
     continue
   fi
 
-  echo "[pixel-worker] executing gap=$GAP"
+  echo "[pixel-worker] claiming gap=$GAP"
+  CHUMP_WORKTREE_BASE="$WORKTREE_BASE" "$BIN" claim "$GAP" 2>&1 | tail -20
+  claim_rc=${PIPESTATUS[0]}
+
+  if [ "$claim_rc" -ne 0 ]; then
+    # Lost the atomic-claim race (or a gate blocked it) — another worker won
+    # this gap. Not a gap failure: don't cooldown, just re-pick next tick.
+    echo "[pixel-worker] claim failed for gap=$GAP (rc=$claim_rc); skipping this tick"
+    sleep "$IDLE_S"
+    continue
+  fi
+
+  gap_lower="$(echo "$GAP" | tr 'A-Z' 'a-z')"
+  wt_path="$WORKTREE_BASE/chump-$gap_lower"
+  if [ ! -d "$wt_path" ]; then
+    echo "[pixel-worker] claim reported success but worktree missing at $wt_path" >&2
+    printf "%s\t%s\n" "$GAP" "$(date +%s)" >> "$FAILED_FILE"
+    sleep "$IDLE_S"
+    continue
+  fi
+
+  echo "[pixel-worker] executing gap=$GAP in $wt_path"
+  cd "$wt_path" || { echo "[pixel-worker] cannot cd to $wt_path" >&2; sleep "$IDLE_S"; continue; }
   "$BIN" --execute-gap "$GAP" 2>&1 | tail -40
   rc=${PIPESTATUS[0]}
+  cd "$CHUMP_REPO" || exit 1
 
   if [ "$rc" -eq 0 ]; then
     echo "[pixel-worker] gap=$GAP shipped (rc=0)"
