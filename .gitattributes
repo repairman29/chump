@@ -114,3 +114,13 @@ scripts/ci/legacy-bypass-trailer-allowlist.txt merge=union
 scripts/ci/raw-gh-allowlist.txt merge=union
 scripts/ci/research-integrity-phantom-allowlist.txt merge=union
 scripts/ci/shell-test-allowlist.txt merge=union
+
+# ── INFRA-1688: extend union to the append-only hot files that still reap PRs ──
+# Proven 2026-08-22: rebasing keystone PRs (Race Control #4096, coherence #4095)
+# onto main conflicted ONLY on these append-only registries — the union-marked
+# files auto-merged cleanly. Each is one-entry-per-line; union concatenates unique
+# lines from both sides, dissolving the append-collision that sends good PRs
+# CONFLICTING → reaped. Same rationale as INFRA-310 / RESILIENT-344 above.
+scripts/ops/organ-manifest.txt merge=union
+scripts/setup/optional-installers-allowlist.txt merge=union
+scripts/ci/preflight-ci-parity-exceptions.txt merge=union
