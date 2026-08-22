@@ -6401,6 +6401,17 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason]
 
+  - kind: faculty_status
+    effect_metric: self
+    emitter: scripts/ops/faculty-collector.sh (OS self-portrait data source)
+    trigger: every faculty-collector pass (chump-faculty-collector.timer, 15m),
+      after it reads the live endpoints for all 11 faculties and writes
+      ~/.chump/faculty-status.json. A vision_acuity-style heartbeat so a dead
+      collector — and a frozen self-portrait — is itself observable from the
+      ambient stream instead of silently going stale.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, faculties, avg_position, build_merges_24h, see_avg_pct, out]
+
   - kind: worker_spin_healed
     effect_metric: self
     emitter: scripts/ops/organ-watchdog.sh (RESILIENT-332)
