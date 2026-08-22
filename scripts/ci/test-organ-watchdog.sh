@@ -562,4 +562,175 @@ CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB20" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT=
 [[ -f "$RECONCILE_CALL_LOG21" ]] && fail "organ-reconcile.sh must NOT run for real under --dry-run; calls: $(cat "$RECONCILE_CALL_LOG21")"
 pass "21: --dry-run does not invoke organ-reconcile.sh for real"
 
+# ── 22. INFRA-3651: binary-heal is off by default (no --user systemctl calls,
+#      no node-refresh invocation) even on a checkout with no target/release
+#      binary — proves section 5 can't surprise-trigger a real cargo build in
+#      unrelated test runs that don't set CHUMP_ORGAN_WATCHDOG_BINARY_HEAL ──
+STUB22="$TMP/systemctl-healthy22"
+CALL_LOG22="$TMP/calls22.log"
+cat > "$STUB22" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$CALL_LOG22"
+exit 0
+EOF
+chmod +x "$STUB22"
+NODE_REFRESH_CALL_LOG22="$TMP/node-refresh-calls22.log"
+NODE_REFRESH_STUB22="$TMP/node-refresh-stub22.sh"
+cat > "$NODE_REFRESH_STUB22" <<EOF
+#!/usr/bin/env bash
+echo "called" >> "$NODE_REFRESH_CALL_LOG22"
+exit 0
+EOF
+chmod +x "$NODE_REFRESH_STUB22"
+AMB22="$TMP/ambient22.jsonl"
+: > "$AMB22"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB22" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_NODE_REFRESH_SCRIPT="$NODE_REFRESH_STUB22" \
+    CHUMP_AMBIENT_LOG="$AMB22" "$WATCHDOG" >/dev/null 2>&1
+[[ -f "$NODE_REFRESH_CALL_LOG22" ]] && fail "binary-heal must default OFF — node-refresh must not be invoked; calls: $(cat "$NODE_REFRESH_CALL_LOG22")"
+grep -q -- "--user" "$CALL_LOG22" && fail "binary-heal must default OFF — no --user systemctl scope calls expected; calls: $(cat "$CALL_LOG22")"
+pass "22: binary-heal (section 5) defaults off — no node-refresh or --user systemctl calls"
+
+# ── 23. INFRA-3651 AC1/AC4: CHUMP_ORGAN_WATCHDOG_BINARY_HEAL=1 + failed
+#      chump-node-refresh.service (--user scope) — the watchdog must call
+#      `systemctl --user reset-failed` + `systemctl --user restart` on it and
+#      emit organ_self_healed, clearing the failed-refresh condition within
+#      one cycle (AC 4's regression contract). System-scope calls (no
+#      --user) report nothing failed, so section 1 stays silent and only
+#      section 5b acts — proving the two scopes are handled independently.
+CALL_LOG23="$TMP/calls23.log"
+STUB23="$TMP/systemctl-user-failed23"
+cat > "$STUB23" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$CALL_LOG23"
+if [[ "\$1" == "--user" ]]; then
+    shift
+    if [[ "\$1" == "list-units" ]]; then
+        echo "chump-node-refresh.service loaded failed failed chump node binary refresh"
+        exit 0
+    fi
+    exit 0
+fi
+if [[ "\$1" == "list-units" || "\$1" == "list-unit-files" ]]; then
+    exit 0
+fi
+exit 0
+EOF
+chmod +x "$STUB23"
+NODE_REFRESH_CALL_LOG23="$TMP/node-refresh-calls23.log"
+NODE_REFRESH_STUB23="$TMP/node-refresh-stub23.sh"
+cat > "$NODE_REFRESH_STUB23" <<EOF
+#!/usr/bin/env bash
+echo "called" >> "$NODE_REFRESH_CALL_LOG23"
+exit 0
+EOF
+chmod +x "$NODE_REFRESH_STUB23"
+# Fake repo with NO .git: section 5a's `git rev-parse origin/main` lookup
+# fails silently, so MAIN_HEAD_SHA is empty and the present, executable
+# target/release/chump is never judged stale — isolates this test to 5b only.
+FAKE_REPO23="$TMP/fake-repo23"
+mkdir -p "$FAKE_REPO23/target/release"
+cat > "$FAKE_REPO23/target/release/chump" <<'EOF'
+#!/usr/bin/env bash
+echo "chump 0.1.2 (deadbeefcafe built 2026-08-22)"
+EOF
+chmod +x "$FAKE_REPO23/target/release/chump"
+AMB23="$TMP/ambient23.jsonl"
+: > "$AMB23"
+REPO_ROOT="$FAKE_REPO23" CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB23" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_NODE_REFRESH_SCRIPT="$NODE_REFRESH_STUB23" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_BINARY_HEAL=1 \
+    CHUMP_AMBIENT_LOG="$AMB23" "$WATCHDOG" >/dev/null 2>&1
+rc23=$?
+[[ "$rc23" -eq 0 ]] || fail "watchdog exited $rc23 on the failed-refresh-organ path"
+grep -q -- "--user reset-failed chump-node-refresh.service" "$CALL_LOG23" \
+    || fail "expected systemctl --user reset-failed chump-node-refresh.service; calls: $(cat "$CALL_LOG23")"
+grep -q -- "--user restart chump-node-refresh.service" "$CALL_LOG23" \
+    || fail "expected systemctl --user restart chump-node-refresh.service; calls: $(cat "$CALL_LOG23")"
+grep -q '"kind":"organ_self_healed"' "$AMB23" || fail "expected organ_self_healed emitted; ambient: $(cat "$AMB23")"
+grep -q '"unit":"chump-node-refresh.service"' "$AMB23" \
+    || fail "expected unit field naming chump-node-refresh.service; ambient: $(cat "$AMB23")"
+grep -q '"action":"reset-failed+restart--user"' "$AMB23" \
+    || fail "expected the --user heal action tagged in ambient; ambient: $(cat "$AMB23")"
+[[ ! -s "$NODE_REFRESH_CALL_LOG23" ]] \
+    || fail "systemd --user path succeeded — process-path fallback must NOT also fire; calls: $(cat "$NODE_REFRESH_CALL_LOG23")"
+pass "23: revives a failed chump-node-refresh.service (--user scope) — reset-failed+restart, one cycle, AC 4 regression proven"
+
+# ── 24. INFRA-3651: when systemd --user reset/restart itself fails, the
+#      process-path fallback must fire — direct re-run of node-refresh-chump.sh
+STUB24="$TMP/systemctl-user-failed24"
+CALL_LOG24="$TMP/calls24.log"
+cat > "$STUB24" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$CALL_LOG24"
+if [[ "\$1" == "--user" ]]; then
+    shift
+    if [[ "\$1" == "list-units" ]]; then
+        echo "chump-node-refresh.service loaded failed failed chump node binary refresh"
+        exit 0
+    fi
+    # reset-failed / restart --user both fail (simulates unreachable --user
+    # instance, e.g. no XDG_RUNTIME_DIR for a non-lingering user)
+    exit 1
+fi
+if [[ "\$1" == "list-units" || "\$1" == "list-unit-files" ]]; then
+    exit 0
+fi
+exit 0
+EOF
+chmod +x "$STUB24"
+NODE_REFRESH_CALL_LOG24="$TMP/node-refresh-calls24.log"
+NODE_REFRESH_STUB24="$TMP/node-refresh-stub24.sh"
+cat > "$NODE_REFRESH_STUB24" <<EOF
+#!/usr/bin/env bash
+echo "called" >> "$NODE_REFRESH_CALL_LOG24"
+exit 0
+EOF
+chmod +x "$NODE_REFRESH_STUB24"
+AMB24="$TMP/ambient24.jsonl"
+: > "$AMB24"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB24" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_NODE_REFRESH_SCRIPT="$NODE_REFRESH_STUB24" \
+    CHUMP_ORGAN_WATCHDOG_BINARY_HEAL=1 \
+    CHUMP_AMBIENT_LOG="$AMB24" "$WATCHDOG" >/dev/null 2>&1
+[[ -s "$NODE_REFRESH_CALL_LOG24" ]] \
+    || fail "expected process-path fallback (node-refresh-chump.sh) to run when systemd --user fails"
+grep -q '"action":"process-path-rerun"' "$AMB24" \
+    || fail "expected process-path-rerun heal action in ambient; ambient: $(cat "$AMB24")"
+pass "24: systemd --user unreachable — falls back to process-path re-run of the refresh wrapper (AC 2 adversarial path)"
+
+# ── 25. INFRA-3651 AC1: missing target/release/chump triggers node-refresh
+#      and emits organ_binary_healed (adversarial stale-binary path, AC 5)
+STUB25="$TMP/systemctl-healthy25"
+cat > "$STUB25" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$STUB25"
+FAKE_REPO25="$TMP/fake-repo25"
+mkdir -p "$FAKE_REPO25/target/release"
+NODE_REFRESH_CALL_LOG25="$TMP/node-refresh-calls25.log"
+NODE_REFRESH_STUB25="$TMP/node-refresh-stub25.sh"
+cat > "$NODE_REFRESH_STUB25" <<EOF
+#!/usr/bin/env bash
+echo "called" >> "$NODE_REFRESH_CALL_LOG25"
+exit 0
+EOF
+chmod +x "$NODE_REFRESH_STUB25"
+AMB25="$TMP/ambient25.jsonl"
+: > "$AMB25"
+REPO_ROOT="$FAKE_REPO25" CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB25" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_NODE_REFRESH_SCRIPT="$NODE_REFRESH_STUB25" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_BINARY_HEAL=1 \
+    CHUMP_AMBIENT_LOG="$AMB25" "$WATCHDOG" >/dev/null 2>&1
+[[ -s "$NODE_REFRESH_CALL_LOG25" ]] \
+    || fail "expected node-refresh-chump.sh to be invoked for a missing target/release/chump"
+grep -q '"kind":"organ_binary_healed"' "$AMB25" \
+    || fail "expected organ_binary_healed emitted; ambient: $(cat "$AMB25")"
+grep -q '"reason":"missing"' "$AMB25" \
+    || fail "expected reason=missing on the binary-healed event; ambient: $(cat "$AMB25")"
+pass "25: missing target/release/chump triggers node-refresh + organ_binary_healed (AC 1, AC 5 adversarial)"
+
 echo "ALL PASS"
