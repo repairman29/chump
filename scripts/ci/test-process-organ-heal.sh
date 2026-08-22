@@ -125,4 +125,27 @@ grep -q 'process-organ-heal' "$REPO_ROOT/scripts/setup/chump-node-install.sh" \
     || fail "process-organ-heal not wired into chump-node-install.sh (AC1)"
 pass "chump-node-install.sh installs process-organ-heal"
 
+# ── 7. check-process-organ-heal-live.sh default ambient.jsonl discovery ─────
+# Regression guard for the 2026-08-22 closetjunky finding: the script's old
+# hardcoded default ($HOME/.chumpnode/repo/.chump-locks/ambient.jsonl) does
+# not match how systemd actually deploys this repo (CHUMP_REPO_ROOT=
+# /home/jeff/Projects/chump on CJ) and silently produced a false NOT-LIVE
+# verdict even though the loop was genuinely live. The fixed script must
+# discover its OWN checkout's .chump-locks/ambient.jsonl by walking up from
+# its own script path, with no env override required. This test only checks
+# the discovery — not the full pgrep/systemctl liveness verdict, which is
+# environment-dependent and not worth faking here.
+LIVE_CHECK="$REPO_ROOT/scripts/ops/check-process-organ-heal-live.sh"
+FAKE_CHECKOUT="$TMP/fake-checkout"
+mkdir -p "$FAKE_CHECKOUT/scripts/ops" "$FAKE_CHECKOUT/.chump-locks"
+cp "$LIVE_CHECK" "$FAKE_CHECKOUT/scripts/ops/check-process-organ-heal-live.sh"
+printf '{"ts":"%s","kind":"organ_watchdog_tick","source":"process-organ-heal"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$FAKE_CHECKOUT/.chump-locks/ambient.jsonl"
+env -i HOME="$TMP/no-such-home" PATH="$PATH" \
+    bash "$FAKE_CHECKOUT/scripts/ops/check-process-organ-heal-live.sh" \
+    > "$TMP/out-live-check.log" 2>&1 || true
+grep -q 'organ_watchdog_tick fresh' "$TMP/out-live-check.log" \
+    || fail "check-process-organ-heal-live.sh default discovery did not find the fake checkout's own ambient.jsonl:\n$(cat "$TMP/out-live-check.log")"
+pass "check-process-organ-heal-live.sh default discovery finds its own checkout's ambient.jsonl (no manual override needed)"
+
 echo "=== all process-organ-heal tests passed ==="
