@@ -8,6 +8,7 @@ install-active-target-reaper-launchd.sh
 install-allowlist-audit-launchd.sh
 install-almanac-summarize-watchdog.sh
 install-ambient-hooks.sh
+install-gap-substrate.sh
 install-ambient-rotate-launchd.sh
 install-api-cost-digest-launchd.sh
 install-audit-bypass-launchd.sh
