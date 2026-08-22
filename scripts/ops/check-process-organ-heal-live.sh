@@ -16,6 +16,9 @@
 #      (CHUMP_PROCESS_ORGAN_HEAL_INTERVAL_S, default 300s) x 2 (grace).
 #   3. almanac-vision-keeper is running (pgrep on its script path).
 #
+# Full operator walkthrough (prerequisites, expected output, what to do if a
+# check is red): docs/process/PROCEDURES/verify-process-organ-heal-live.md
+#
 # Usage:
 #   scripts/ops/check-process-organ-heal-live.sh
 #
