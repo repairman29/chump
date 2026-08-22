@@ -2050,6 +2050,48 @@ events:
     consumers: [fleet-brief, operator-recall, watchdog]
     fields_required: [ts, kind, body]
 
+  - kind: outcome_verify_heal_consumer_tick
+    effect_metric: self
+    emitter: scripts/coord/outcome-verify-heal-consumer.sh (INFRA-3654)
+    trigger: standing sweep completed; records how many outcome_probe_failed /
+      ac_coverage_proof_miss events were examined, held/paged, and
+      dedup-skipped this pass.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, handled, held, dedup_skipped]
+    status: stable
+
+  - kind: outcome_verify_heal_consumer_held
+    effect_metric: pr_rescue_action_within_4h
+    emitter: scripts/coord/outcome-verify-heal-consumer.sh (INFRA-3654)
+    trigger: a new outcome_probe_failed or ac_coverage_proof_miss sighting for
+      a gap outside the dedup window; the named gap was reopened/held via
+      `chump gap set --status open --add-note` and the duty officer was paged
+      via notify-operator.
+    consumers: [fleet-brief, operator-recall, watchdog]
+    fields_required: [ts, kind, gap, source_kind, gap_set_rc, notify_rc]
+    status: stable
+
+  - kind: outcome_verify_heal_consumer_dedup_skip
+    effect_metric: self
+    emitter: scripts/coord/outcome-verify-heal-consumer.sh (INFRA-3654)
+    trigger: a repeat outcome_probe_failed / ac_coverage_proof_miss sighting
+      for a (kind, gap) pair already held+paged within
+      CHUMP_OUTCOME_VERIFY_DEDUP_WINDOW_S (default 3600s) — idempotency guard
+      so one flapping probe doesn't spam the duty officer.
+    consumers: [audit-log]
+    fields_required: [ts, kind, gap, source_kind]
+    status: stable
+
+  - kind: outcome_verify_heal_consumer_no_gap
+    effect_metric: self
+    emitter: scripts/coord/outcome-verify-heal-consumer.sh (INFRA-3654)
+    trigger: an outcome_probe_failed / ac_coverage_proof_miss event carried no
+      gap/gap_id field — nothing to hold; logged so the emitter-side gap can
+      be traced.
+    consumers: [audit-log]
+    fields_required: [ts, kind, source_kind]
+    status: stable
+
   - kind: pr_stuck_cycle_1_rebase_attempted
     effect_metric: pr_auto_closed_for_respawn_within_30m
     emitter: scripts/ops/stale-pr-reaper.sh (INFRA-1410)

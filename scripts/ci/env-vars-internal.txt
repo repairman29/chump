@@ -2195,3 +2195,12 @@ CHUMP_PROCESS_ORGAN_PGREP_BIN
 CHUMP_PROCESS_ORGAN_REGISTRY
 # detected in: (standard input)
 CHUMP_VISION_KEEPER_INTERVAL_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_OUTCOME_VERIFY_DEDUP_WINDOW_S
+# detected in: (standard input)
+CHUMP_OUTCOME_VERIFY_GAP_BIN
+# detected in: (standard input)
+CHUMP_OUTCOME_VERIFY_STATE_DIR

@@ -1,0 +1,15 @@
+# INFRA-3654 (PEER-VERI-07) — pairs with chump-outcome-verify-heal-consumer.service.
+# 10-minute cadence: a failed live-verification claim is exactly the kind of
+# signal that should not sit unpaged for an hour — tighter than the 5min
+# process-organ-heal.sh cadence would be overkill (this consumer's own work
+# is a cheap ambient-log tail), looser than 1min avoids needless churn.
+[Unit]
+Description=Run the Chump outcome-verify heal consumer every 10 minutes (INFRA-3654)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
