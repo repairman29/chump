@@ -12451,8 +12451,49 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
+                // INFRA-902: pillar-balance analyzer — starvation (<2 pickable)
+                // and overweight (>50% of pickable pool) alerts per pillar,
+                // surfaced alongside the per-gap registry checks above.
+                //
+                // The script lives in the source checkout, not CHUMP_REPO/
+                // CHUMP_HOME (which may point at an isolated fixture dir with
+                // no scripts/ tree in CI). Resolve via CHUMP_REPO_ROOT env
+                // override first, then the compile-time workspace root.
+                let pillar_script_candidates = [
+                    std::env::var("CHUMP_REPO_ROOT")
+                        .ok()
+                        .map(|r| std::path::PathBuf::from(r).join("scripts/ops/pillar-balance-check.sh")),
+                    Some(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/ops/pillar-balance-check.sh")),
+                    Some(repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh")),
+                ];
+                let pillar_script = pillar_script_candidates
+                    .into_iter()
+                    .flatten()
+                    .find(|p| p.is_file())
+                    .unwrap_or_else(|| repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh"));
+                let mut pb_cmd = std::process::Command::new("bash");
+                pb_cmd.arg(&pillar_script).arg("--json");
+                if let Ok(self_bin) = std::env::current_exe() {
+                    pb_cmd.env("CHUMP_BIN", self_bin);
+                }
+                let pillar_balance_output = pb_cmd.output();
+                let (pillar_balance_json, pillar_balance_alerts_fired) = match &pillar_balance_output {
+                    Ok(o) => {
+                        let stdout = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|_| {
+                            serde_json::json!({"total": 0, "pillars": [], "alerts_fired": false})
+                        });
+                        (parsed, !o.status.success())
+                    }
+                    Err(_) => (
+                        serde_json::json!({"total": 0, "pillars": [], "alerts_fired": false}),
+                        false,
+                    ),
+                };
+
                 if json_out {
                     let mut report = serde_json::json!({
+                        "pillar_balance": pillar_balance_json,
                         "p0_count": p0_count,
                         "p0_manual_count": p0_manual_count,
                         "p0_auto_filed_count": p0_auto_filed.len(),
@@ -12621,6 +12662,24 @@ async fn main() -> Result<()> {
                     for g in &race_pollution {
                         println!("  {} — {}", g.id, g.title);
                     }
+                    println!();
+                    println!("=== Pillar balance (INFRA-902) ===");
+                    println!(
+                        "Total pickable pool: {}",
+                        pillar_balance_json.get("total").and_then(|v| v.as_i64()).unwrap_or(0)
+                    );
+                    if let Some(pillars) = pillar_balance_json.get("pillars").and_then(|v| v.as_array()) {
+                        for p in pillars {
+                            println!(
+                                "  {}: {} pickable",
+                                p.get("pillar").and_then(|v| v.as_str()).unwrap_or("?"),
+                                p.get("count").and_then(|v| v.as_i64()).unwrap_or(0)
+                            );
+                        }
+                    }
+                    if pillar_balance_alerts_fired {
+                        println!("  *** pillar balance alert(s) fired — see ambient.jsonl for kind=pillar_balance_alert / pillar_balance_overweight");
+                    }
                     // CREDIBLE-107: --flag-empty-evidence section.
                     if flag_empty_evidence {
                         println!();
@@ -12734,6 +12793,11 @@ async fn main() -> Result<()> {
                         "{} done gap(s) with closed_pr set — review closure consistency",
                         done_with_closed_pr.len()
                     ));
+                }
+                if pillar_balance_alerts_fired {
+                    fail_reasons.push(
+                        "pillar balance alert(s) fired (starved <2 pickable or overweight >50% of pool) — see kind=pillar_balance_alert/pillar_balance_overweight in ambient.jsonl".to_string(),
+                    );
                 }
                 if fail_reasons.is_empty() {
                     return Ok(());
