@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+# install-almanac-organ.sh — INFRA-3657 (RIBBON-02, MISSION-010).
+#
+# The "eyes" phase: registers periodic supervision of
+# scripts/ops/almanac-liveness-refresh.sh (INFRA-3643/TREK-17) so a
+# freshly-installed node keeps its almanac fusion-search index alive without
+# a human ever running anything by hand. Before this gap, that liveness
+# script existed and was wired into the ROOT-only, helsinki-shaped
+# install-helsinki-atc.sh system-unit roster — but chump-node-install.sh (the
+# per-user, host-agnostic node installer) never called it, so an owned node
+# installed via node-install got every organ EXCEPT eyes.
+#
+# This script is deliberately independent of install-helsinki-atc.sh's
+# root/system-unit path: it runs as the invoking user, picks the lightest
+# supervisor available (systemd --user timer > launchd agent > cron
+# fallback), and is idempotent + safe to re-run.
+#
+# Usage:
+#   scripts/setup/install-almanac-organ.sh                # install + run once now
+#   scripts/setup/install-almanac-organ.sh --check         # verify only, exit non-zero if incomplete
+#   scripts/setup/install-almanac-organ.sh --dry-run
+#
+# Env (mirrors almanac-liveness-refresh.sh so both agree on the same paths):
+#   CHUMP_ALMANAC_BIN     — almanac binary (default: $HOME/Projects/almanac/target/release/almanac)
+#   CHUMP_ALMANAC_REPO    — almanac source checkout (default: $HOME/Projects/almanac)
+#   CHUMP_STATE_DIR       — chump state dir, for the ambient log (default: $HOME/.chump)
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LIVENESS_SCRIPT="$REPO_ROOT/scripts/ops/almanac-liveness-refresh.sh"
+STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"
+ALMANAC_REPO="${CHUMP_ALMANAC_REPO:-$HOME/Projects/almanac}"
+ALMANAC_BIN="${CHUMP_ALMANAC_BIN:-$ALMANAC_REPO/target/release/almanac}"
+
+MODE="install"; DRY=0
+for a in "$@"; do
+  case "$a" in
+    --check) MODE="check";;
+    --dry-run) DRY=1;;
+    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
+    *) echo "unknown arg: $a" >&2; exit 2;;
+  esac
+done
+
+ok(){ printf '  \033[32m✓\033[0m %s\n' "$*"; }
+no(){ printf '  \033[31m✗\033[0m %s\n' "$*"; }
+info(){ printf '\033[36m[EYES]\033[0m %s\n' "$*"; }
+run(){ [ "$DRY" = 1 ] && { echo "  DRY: $*"; return 0; }; eval "$*"; }
+
+if [ ! -x "$LIVENESS_SCRIPT" ]; then
+  no "liveness script missing or not executable: $LIVENESS_SCRIPT"
+  exit 1
+fi
+
+LABEL="com.chump.almanac-liveness"
+LOG_DIR="$STATE_DIR/logs"
+
+detect_supervisor() {
+  if command -v systemctl >/dev/null 2>&1 && systemctl --user status >/dev/null 2>&1; then
+    echo "systemd-user"
+  elif command -v launchctl >/dev/null 2>&1; then
+    echo "launchd"
+  elif command -v crontab >/dev/null 2>&1; then
+    echo "cron"
+  else
+    echo "none"
+  fi
+}
+
+install_systemd_user() {
+  local unit_dir="$HOME/.config/systemd/user"
+  run "mkdir -p '$unit_dir' '$LOG_DIR'"
+  run "cat > '$unit_dir/chump-almanac-liveness.service' <<EOF
+[Unit]
+Description=Chump almanac liveness/refresh — binary presence + index freshness (INFRA-3657/INFRA-3643)
+
+[Service]
+Type=oneshot
+Environment=CHUMP_STATE_DIR=$STATE_DIR
+Environment=CHUMP_ALMANAC_REPO=$ALMANAC_REPO
+Environment=CHUMP_ALMANAC_BIN=$ALMANAC_BIN
+ExecStart=$LIVENESS_SCRIPT
+EOF"
+  run "cat > '$unit_dir/chump-almanac-liveness.timer' <<EOF
+[Unit]
+Description=Chump almanac liveness/refresh beat (INFRA-3657/INFRA-3643)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF"
+  run "systemctl --user daemon-reload"
+  run "systemctl --user enable --now chump-almanac-liveness.timer"
+  ok "systemd --user timer installed: chump-almanac-liveness.timer (every 15min)"
+}
+
+install_launchd() {
+  local plist_dir="$HOME/Library/LaunchAgents"
+  local plist_path="$plist_dir/$LABEL.plist"
+  run "mkdir -p '$plist_dir' '$LOG_DIR'"
+  run "cat > '$plist_path' <<PLIST
+<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+<plist version=\"1.0\">
+<dict>
+    <key>Label</key><string>$LABEL</string>
+    <key>ProgramArguments</key>
+    <array><string>/bin/bash</string><string>-lc</string><string>$LIVENESS_SCRIPT</string></array>
+    <key>StartInterval</key><integer>900</integer>
+    <key>RunAtLoad</key><true/>
+    <key>StandardOutPath</key><string>$LOG_DIR/almanac-liveness.out.log</string>
+    <key>StandardErrorPath</key><string>$LOG_DIR/almanac-liveness.err.log</string>
+</dict>
+</plist>
+PLIST"
+  run "launchctl unload '$plist_path' 2>/dev/null || true"
+  run "launchctl load '$plist_path'"
+  ok "launchd agent installed: $plist_path (every 15min)"
+}
+
+install_cron() {
+  run "mkdir -p '$LOG_DIR'"
+  local marker="# chump-almanac-liveness (INFRA-3657)"
+  local line="*/15 * * * * $LIVENESS_SCRIPT >> $LOG_DIR/almanac-liveness.log 2>&1 $marker"
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: crontab -l | grep -v '$marker' ; append: $line"
+  else
+    ( crontab -l 2>/dev/null | grep -vF "$marker"; echo "$line" ) | crontab -
+  fi
+  ok "cron fallback installed: every 15min ($marker)"
+}
+
+do_install() {
+  local sup; sup="$(detect_supervisor)"
+  info "supervisor=$sup"
+  case "$sup" in
+    systemd-user) install_systemd_user;;
+    launchd) install_launchd;;
+    cron) install_cron;;
+    *) no "no supervisor available (systemd --user, launchd, cron) — organ not supervised; run $LIVENESS_SCRIPT by hand periodically"; return 1;;
+  esac
+  info "running liveness/refresh once now (immediate self-heal, no hand steps)"
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: $LIVENESS_SCRIPT"
+  else
+    CHUMP_STATE_DIR="$STATE_DIR" CHUMP_ALMANAC_REPO="$ALMANAC_REPO" CHUMP_ALMANAC_BIN="$ALMANAC_BIN" "$LIVENESS_SCRIPT" || true
+  fi
+}
+
+do_check() {
+  local fail=0
+  if [ -x "$ALMANAC_BIN" ]; then ok "almanac binary present: $ALMANAC_BIN"
+  else no "almanac binary missing: $ALMANAC_BIN"; fail=1; fi
+  local sup; sup="$(detect_supervisor)"
+  case "$sup" in
+    systemd-user)
+      if systemctl --user is-enabled chump-almanac-liveness.timer >/dev/null 2>&1; then
+        ok "systemd --user timer enabled: chump-almanac-liveness.timer"
+      else no "systemd --user timer NOT enabled"; fail=1; fi
+      ;;
+    launchd)
+      if launchctl list 2>/dev/null | grep -q "$LABEL"; then ok "launchd agent loaded: $LABEL"
+      else no "launchd agent NOT loaded: $LABEL"; fail=1; fi
+      ;;
+    cron)
+      if crontab -l 2>/dev/null | grep -q "chump-almanac-liveness"; then ok "cron entry present"
+      else no "cron entry missing"; fail=1; fi
+      ;;
+    *) no "no supervisor available"; fail=1;;
+  esac
+  # best-effort stats probe: at least one registered repo with a nonzero row
+  # count proves the index is actually populated, not just present-but-empty.
+  if [ -x "$ALMANAC_BIN" ] && command -v timeout >/dev/null 2>&1; then
+    local repos; repos="$(timeout 10 "$ALMANAC_BIN" repos 2>/dev/null | awk 'NR>1{print $1}')"
+    if [ -n "$repos" ]; then
+      ok "almanac has $(echo "$repos" | wc -l | tr -d ' ') registered repo(s)"
+    else
+      no "almanac stats probe inconclusive (no repos listed / binary slow) — not fatal, check by hand"
+    fi
+  fi
+  [ "$fail" = 0 ] && ok "EYES organ: installed + supervised" || no "EYES organ incomplete"
+  return "$fail"
+}
+
+if [ "$MODE" = "check" ]; then do_check; exit $?; fi
+do_install
+do_check
