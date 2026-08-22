@@ -44,19 +44,6 @@ is_exempt() {
   return 1
 }
 
-<<<<<<< HEAD
-# TREK-18 (INFRA-3644): the roster is no longer a static literal array — it's
-# derived at runtime from organ-manifest.txt. Ask the installer for its
-# actual computed roster via --print-roster (no root/systemctl needed) rather
-# than sed-parsing a literal block that no longer exists. (This also
-# supersedes INFRA-3646's originally-planned SYSTEM_UNITS/SYSTEM_TIMERS
-# array-name fix — TREK-18 removed both arrays entirely.)
-mapfile -t ROSTER_TIMERS < <(
-  CHUMP_INSTALL_ATC_ALLOW_NONROOT=1 bash "$INSTALLER" --print-roster \
-    | grep -oE 'chump-[A-Za-z0-9_@.-]+\.timer'
-)
-[ "${#ROSTER_TIMERS[@]}" -gt 0 ] || fail "no *.timer entries found in '$INSTALLER --print-roster' — derivation broke"
-=======
 # Extract every *.timer entry from install-helsinki-atc.sh's SYSTEM_TIMERS
 # array — the roster actually installed (systemctl enable --now'd) at
 # lines 160/268, not SYSTEM_UNITS (which is only a copy-into-place list that
@@ -90,7 +77,6 @@ if [ "${#unroostered[@]}" -gt 0 ]; then
   fail "${unroostered[*]} appears in SYSTEM_UNITS but not in SYSTEM_TIMERS — a timer can be installed without ever entering the roll-call roster this test parses (the INFRA-3645 array-mismatch class)"
 fi
 ok "every SYSTEM_UNITS *.timer entry is present in SYSTEM_TIMERS"
->>>>>>> 3fa2eadf (INFRA-3645: fix Roll-Call test to parse SYSTEM_TIMERS not SYSTEM_UNITS (TREK-19))
 
 missing=()
 for unit in "${ROSTER_TIMERS[@]}"; do
