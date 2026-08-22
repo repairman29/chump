@@ -1,0 +1,14 @@
+# INFRA-3650 (PEER-HEAL-03) — pairs with chump-process-organ-heal.service.
+# 5-minute cadence matches process-organ-heal.sh's own default respawn-loop
+# interval (CHUMP_PROCESS_ORGAN_HEAL_INTERVAL_S=300), so a dead
+# almanac-vision-keeper is caught within one cycle either way it's driven.
+[Unit]
+Description=Run the Chump process-organ heal loop every 5 minutes (INFRA-3650)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
