@@ -50,6 +50,18 @@ STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"
 STATE_DB="${CHUMP_STATE_DB:-$STATE_DIR/state.db}"
 export CHUMP_STATE_DB="$STATE_DB"
 CREDS="$STATE_DIR/providers.env"
+# INFRA-3634: pin the canonical *shared* gap store (PostgREST-fronted
+# Postgres, currently CJ per docs/strategy/DATA_HOME_PLAN.md's dated note)
+# the same way CHUMP_STATE_DB pins the local sqlite path above — one var,
+# read here on the connect side and by install-gap-substrate.sh on the
+# provision side, so the two never drift on which host is canonical.
+# Precedence: explicit env > providers.env pin > CJ default.
+GAP_STORE_URL="${CHUMP_GAP_STORE_URL:-}"
+if [ -z "$GAP_STORE_URL" ] && [ -f "$CREDS" ]; then
+  GAP_STORE_URL="$(grep -E '^CHUMP_GAP_STORE_URL=' "$CREDS" 2>/dev/null | tail -1 | cut -d= -f2-)"
+fi
+GAP_STORE_URL="${GAP_STORE_URL:-http://100.90.52.126:3000}"
+export CHUMP_GAP_STORE_URL="$GAP_STORE_URL"
 REPO_URL="${CHUMP_NODE_REPO_URL:-https://github.com/repairman29/chump.git}"
 LOG_DIR="$NODE_DIR/logs"
 ORGAN_DIR="$NODE_DIR/organs"
@@ -538,6 +550,7 @@ self_test() {
 
 # ---------- run ----------
 printf '\033[1m=== chump-node-install: role=%s home=%s ===\033[0m\n' "$ROLE" "$NODE_DIR"
+info GAP-STORE "canonical shared gap store pinned: CHUMP_GAP_STORE_URL=$CHUMP_GAP_STORE_URL"
 detect_host
 if [ "$SELF_TEST_ONLY" = 1 ]; then self_test; exit $?; fi
 toolchain_preflight
