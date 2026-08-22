@@ -33,7 +33,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --role) ROLE="$2"; shift 2;;
     --home) NODE_DIR="$2"; shift 2;;
-    --self-test-only) SELF_TEST_ONLY=1; shift;;
+    --self-test-only|--check) SELF_TEST_ONLY=1; shift;;
     --dry-run) DRY=1; shift;;
     --creds-file) CREDS_FILE="$2"; shift 2;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
@@ -215,6 +215,11 @@ ensure_home() {
 
 # ---------- 3. CREDS ----------
 REQUIRED_CRED_KEYS="CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN"
+# INFRA-3657: DISCORD_TOKEN is optional (not every node needs to page) but is
+# self-provisioned the same zero-touch way when supplied, so the walk-away
+# pager path (scripts/discord.sh) actually has a token to read once the
+# operator does wire one in — no separate manual step or editor.
+OPTIONAL_CRED_KEYS="DISCORD_TOKEN"
 
 # Zero-touch acquire (INFRA-3629): materialize $CREDS from --creds-file or
 # $CHUMP_BOOTSTRAP_CREDS. Never echoes secret VALUES — only which source was
@@ -243,7 +248,15 @@ check_creds() {
     grep -qE "^(export )?$k=" "$CREDS" || missing="$missing $k"
   done
   [ -n "$missing" ] && { no "creds present but missing keys:$missing — supply via --creds-file/\$CHUMP_BOOTSTRAP_CREDS and re-run"; return 1; }
-  ok "creds ok ($(grep -cE '^(export )?[A-Z_]+=' "$CREDS") keys, incl OAuth+GH)"
+  ok "creds ok ($(grep -cE '^(export )?[A-Z_]+=' "$CREDS") keys, incl OAuth+GH, mode $(stat -c %a "$CREDS" 2>/dev/null || stat -f %Lp "$CREDS" 2>/dev/null))"
+  local opt_missing=""
+  for k in $OPTIONAL_CRED_KEYS; do
+    grep -qE "^(export )?$k=" "$CREDS" || opt_missing="$opt_missing $k"
+  done
+  # INFRA-3657 AC2: DISCORD_TOKEN missing is a WARNING, not a failure — the
+  # node is fully installed either way, but the walk-away pager is dead
+  # until it's supplied. Surface loudly so that's not discovered at 3am.
+  [ -n "$opt_missing" ] && info CREDS "optional creds not set:$opt_missing (pager dead without DISCORD_TOKEN — supply via --creds-file/\$CHUMP_BOOTSTRAP_CREDS)"
 }
 
 # ---------- 4. BINARY ----------
@@ -389,6 +402,47 @@ HB"
   done
 }
 
+# ---------- 5b. SUBSTRATE (INFRA-3631, via INFRA-3657) ----------
+# Calls the checked-in substrate provisioner so a bare-box install ends with
+# a live, self-hosted Postgres+PostgREST gap store instead of the provisioner
+# sitting on disk unwired (the exact "designed but never called" gap this
+# ships closes). Non-fatal: a substrate failure must not block BINARY/ORGANS
+# from having already installed a usable node — self_test surfaces it.
+ensure_substrate() {
+  local script="$NODE_DIR/repo/scripts/setup/install-gap-substrate.sh"
+  [ -f "$script" ] || script="$(dirname "$0")/install-gap-substrate.sh"
+  if [ ! -x "$script" ]; then
+    info SUBSTRATE "install-gap-substrate.sh not found — skipping"
+    return 0
+  fi
+  if [ "$DRY" = 1 ]; then echo "  DRY: bash '$script'"; return 0; fi
+  info SUBSTRATE "provisioning gap store (postgres+postgrest)..."
+  if bash "$script" >"$LOG_DIR/substrate-install-$(date -u +%Y%m%dT%H%M%SZ).log" 2>&1; then
+    ok "substrate provisioned + self-tested (gap-store round-trip verified)"
+  else
+    no "substrate provisioning FAILED — see $LOG_DIR/substrate-install-*.log; node still usable, re-run to retry"
+  fi
+}
+
+# ---------- 5c. EYES (almanac liveness/refresh organ, INFRA-3657) ----------
+# Brings up the almanac fusion-search "eyes" so a fresh node isn't blind —
+# closes the "ZERO almanac/eyes phase" gap in this ship's description.
+ensure_eyes() {
+  local script="$NODE_DIR/repo/scripts/setup/install-almanac-organ.sh"
+  [ -f "$script" ] || script="$(dirname "$0")/install-almanac-organ.sh"
+  if [ ! -x "$script" ]; then
+    info EYES "install-almanac-organ.sh not found — skipping"
+    return 0
+  fi
+  if [ "$DRY" = 1 ]; then echo "  DRY: bash '$script'"; return 0; fi
+  info EYES "installing almanac liveness/refresh organ..."
+  if bash "$script" >"$LOG_DIR/eyes-install-$(date -u +%Y%m%dT%H%M%SZ).log" 2>&1; then
+    ok "eyes organ installed + supervised"
+  else
+    no "eyes organ install had issues — see $LOG_DIR/eyes-install-*.log; node still usable, re-run to retry"
+  fi
+}
+
 # ---------- 6. SUPERVISE (survive reboot) ----------
 install_supervise() {
   case "$HOST_KIND" in
@@ -460,6 +514,23 @@ self_test() {
   else no "no heartbeat yet (organ just started; re-run --self-test-only in ~70s)"; fi
   # aggregate organ-down check (subshell above can't set fail; re-check here)
   echo "$list" | while IFS='|' read -r name _; do [ -z "$name" ] && continue; [ "$(svc_status "$name")" = up ] || exit 1; done || fail=1
+  # INFRA-3657 AC3: SUBSTRATE + EYES are part of the FACTORY INSTALLED bar,
+  # not optional add-ons — a node without a gap store or almanac eyes is not
+  # "factory installed" per this gap's AC. Best-effort: --check reports the
+  # phase's own verdict rather than re-implementing its self-test.
+  local substrate_script="$NODE_DIR/repo/scripts/setup/install-gap-substrate.sh"
+  [ -f "$substrate_script" ] || substrate_script="$(dirname "$0")/install-gap-substrate.sh"
+  if [ -x "$substrate_script" ]; then
+    if command -v pgrep >/dev/null 2>&1 && pgrep -f postgrest >/dev/null 2>&1; then
+      ok "substrate: postgrest running"
+    else no "substrate: postgrest not running (re-run: bash $substrate_script)"; fail=1; fi
+  fi
+  local eyes_script="$NODE_DIR/repo/scripts/setup/install-almanac-organ.sh"
+  [ -f "$eyes_script" ] || eyes_script="$(dirname "$0")/install-almanac-organ.sh"
+  if [ -x "$eyes_script" ]; then
+    if bash "$eyes_script" --check >/dev/null 2>&1; then ok "eyes: almanac organ supervised"
+    else no "eyes: almanac organ incomplete (re-run: bash $eyes_script)"; fail=1; fi
+  fi
   echo
   if [ "$fail" = 0 ]; then printf '\033[42m INSTALLED ✓ \033[0m role=%s host=%s\n' "$ROLE" "$HOST_KIND"; return 0
   else printf '\033[41m NOT FULLY INSTALLED \033[0m — fix the ✗ above\n'; return 1; fi
@@ -475,6 +546,8 @@ check_creds || info CREDS "fix creds before organs will authenticate"
 ensure_binary || info BINARY "install a binary, then re-run"
 ensure_seed
 install_organs
+ensure_substrate
+ensure_eyes
 install_supervise
 # RESILIENT-318: install the self-management suite (orchestrator + reapers + disk-monitor)
 [ "$SELF_TEST_ONLY" = 1 ] || bash "$(dirname "$0")/install-node-housekeeping.sh" || info ORGANS "housekeeping install skipped"
