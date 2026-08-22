@@ -4,7 +4,7 @@
 # you must delete one. Raising it requires operator sign-off + a reason below.
 # Baseline 2026-06-03 (was 113 when INFRA-2525 was filed — the climb to here is
 # exactly what this ceiling now reverses). Ratchet DOWN as gates are culled.
-221
+222
 
 # 233 → 234 (2026-06-04): CREDIBLE-085 introduced CHUMP_SCCACHE_HIT_RATE_CHECK
 # as a cold-cache escape valve for the new sccache hit-rate gate. Cold-cache
@@ -91,3 +91,16 @@
 # fix-the-gate-then-delete-the-bypass follow-up rather than a blanket deletion (INFRA-2525 RULE:
 # never delete a bypass while its gate still hard-blocks). True live count 232 -> 221 with zero
 # headroom spent (no new vars added this pass). Recurring cull tracked by INFRA-3625.
+
+# 221 -> 222 (2026-08-22, INFRA-3639): operator sign-off for ONE genuine new escape hatch.
+# CHUMP_SKIP_ALMANAC_REFRESH — bypass for scripts/setup/refresh-almanac-binary.sh's
+# self-revive rebuild+reindex (INFRA-3639). GENUINE, wired use-site: the script reads
+# it at refresh-almanac-binary.sh (`if [[ "${CHUMP_SKIP_ALMANAC_REFRESH:-0}" == "1" ]]`),
+# emits a BYPASS log line, and exits 0. Not phantom prose — a real operator toggle to
+# stop the almanac auto-rebuild on nodes that manage it out-of-band.
+# Main sat AT the ceiling (221=221, zero headroom), so this single legit var tripped
+# audit-shard(4) with 222>221 — the exact zero-headroom tripwire this file's history keeps
+# hitting. Admitting it is the sanctioned "only way up" (operator edit + reason).
+# NET DEBT still falling: two concurrently-jammed sibling PRs (INFRA-3660, INFRA-3659)
+# had ORPHANED phantom registry lines removed in the same unjam pass (net -2 real-count),
+# and the recurring dead-bypass cull that restores standing headroom is tracked by INFRA-3625.

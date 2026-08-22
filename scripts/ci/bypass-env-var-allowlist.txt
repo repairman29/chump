@@ -76,3 +76,12 @@ CHUMP_SCCACHE_HIT_RATE_CHECK
 # pause; emits kind=binary_auto_deploy_skipped. Deletion path: when daemon gains
 # an explicit pause/resume CLI (MISSION-013 or later) we remove this env var.
 CHUMP_SKIP_AUTO_DEPLOY
+
+# CHUMP_SKIP_ALMANAC_REFRESH — operator escape hatch for the INFRA-3639
+# almanac self-heal cron (scripts/setup/refresh-almanac-binary.sh). Set=1 to
+# skip a cycle without uninstalling the launchd plist (e.g. during a manual
+# almanac rebuild or an ollama/CJ maintenance window). Bypass-Justification:
+# INFRA-3639 — genuine operational escape valve, mirrors CHUMP_SKIP_AUTO_DEPLOY
+# above; every skip is a no-op (exit 0 before any ambient emission). Deletion
+# path: when the daemon gains an explicit pause/resume CLI we remove this var.
+CHUMP_SKIP_ALMANAC_REFRESH
