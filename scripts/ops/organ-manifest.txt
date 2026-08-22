@@ -236,3 +236,4 @@ enabled     chump-postgrest.service  role=data requires=bin:postgrest
 # call.sh) that would otherwise fire the moment this timer was added to
 # install-helsinki-atc.sh's SYSTEM_UNITS without a matching manifest line.
 enabled     chump-almanac-liveness.timer  role=data requires=bin:git
+enabled     chump-faculty-collector.timer  role=data requires=bin:gh,bin:jq
