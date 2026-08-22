@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/repairman29/chump/blob/main/docs/ambient-schema.json",
   "title": "Chump ambient.jsonl event schema",
-  "description": "Schema for every line written to .chump-locks/ambient.jsonl. Validated at emit time by scripts/dev/ambient-emit.sh (INFRA-101). The 2026-04-26 audit found INTENT rows had reordered keys + a nonstandard shape \u2014 this schema is the canonical contract going forward. The five base fields (ts, session, worktree, harness, event) are required for every event; per-event-kind extensions are listed below in oneOf.",
+  "description": "Schema for every line written to .chump-locks/ambient.jsonl. Validated at emit time by scripts/dev/ambient-emit.sh (INFRA-101). The 2026-04-26 audit found INTENT rows had reordered keys + a nonstandard shape — this schema is the canonical contract going forward. The five base fields (ts, session, worktree, harness, event) are required for every event; per-event-kind extensions are listed below in oneOf.",
   "type": "object",
   "required": [
     "ts",
@@ -52,7 +52,8 @@
         "INTENT",
         "ALERT",
         "fleet_queue_depth",
-        "gen_smoke_results"
+        "gen_smoke_results",
+        "next_best_action"
       ],
       "description": "One of the well-known event kinds. Adding a new kind requires a new entry here AND a new branch in the oneOf below."
     },
@@ -238,6 +239,50 @@
         "pickable_count",
         "p0_count",
         "oldest_p0_age_days"
+      ]
+    },
+    {
+      "title": "next_best_action",
+      "description": "Emitted by scripts/coord/next-best-action.sh — the ADVISORY next-best-action router. Carries the single highest-EV recommended action (EV = value x P(success)). Advisory only: recommends + logs, never dispatches/merges/heals.",
+      "properties": {
+        "event": {
+          "const": "next_best_action"
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string"
+        },
+        "ev": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?$"
+        },
+        "p": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?$"
+        },
+        "who": {
+          "type": "string",
+          "enum": [
+            "worker",
+            "organ",
+            "swarm",
+            "human"
+          ]
+        },
+        "candidates": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "advisory": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "who"
       ]
     }
   ]
