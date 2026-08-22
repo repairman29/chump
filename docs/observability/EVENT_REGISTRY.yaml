@@ -1891,6 +1891,32 @@ events:
       PR stalls, and successfully posted the terse board report to operator Discord
       via scripts/coord/lib/notify-operator.sh.
     consumers: [ambient]
+  - kind: board_cycle_page_sent
+    effect_metric: self
+    emitter: scripts/coord/lib/board-cycle-escalate.sh (RESILIENT-373)
+    trigger: the board-cycle escalate organ found an actionable SLA breach whose
+      signature had not paged inside the dedup window, so it paged the operator
+      (kind=board_cycle_alert) and recorded the signature.
+    consumers: [ambient]
+  - kind: board_cycle_page_suppressed_clean
+    effect_metric: self
+    emitter: scripts/coord/lib/board-cycle-escalate.sh (RESILIENT-373)
+    trigger: the board cycle reported zero SLA breaches, so the escalate organ
+      logged the clean cycle and did NOT page the operator (routine != incident).
+    consumers: [ambient]
+  - kind: board_cycle_page_deduped
+    effect_metric: self
+    emitter: scripts/coord/lib/board-cycle-escalate.sh (RESILIENT-373)
+    trigger: a breach with the same signature already paged inside the dedup
+      window, so the organ suppressed the repeat page (persisting breach = one
+      page per window, not per cycle).
+    consumers: [ambient]
+  - kind: board_cycle_escalate_noop
+    effect_metric: self
+    emitter: scripts/coord/lib/board-cycle-escalate.sh (RESILIENT-373)
+    trigger: the escalate organ ran but found no structured board_cycle_report_posted
+      line and no escalated run-failure for this cycle — nothing to page.
+    consumers: [ambient]
     fields_required: [ts, kind, sla_breaches, stalls_classified]
 
   - kind: board_ceo_briefing_beat
