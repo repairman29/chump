@@ -1793,11 +1793,24 @@ fn synth_ac_for_pr(opts: &Opts) -> Option<Vec<String>> {
         .args(["pr", "diff", &pr, "--repo", &opts.repo])
         .output()
         .ok()?;
-    let diff_ctx: String = String::from_utf8_lossy(&diff.stdout)
-        .chars()
-        .take(40_000)
-        .collect();
-    crate::pr_ac_coverage::generate_ac(title, body, &diff_ctx)
+    let full_diff = String::from_utf8_lossy(&diff.stdout).into_owned();
+    let diff_ctx: String = full_diff.chars().take(40_000).collect();
+    let mut bullets =
+        crate::pr_ac_coverage::generate_ac(title, body, &diff_ctx).unwrap_or_default();
+    // PEER-VERI-08 (INFRA-3655) AC#1: a diff touching a systemd unit, install
+    // script, or deploy path gets a PROVEN-BY bullet injected even when the
+    // LLM writer didn't think to add one — liveness can't be skipped by
+    // omission. Scanned against the FULL diff (not the 40k-char-truncated
+    // LLM context) so a proof target beyond the truncation point is still
+    // found. Docs-only diffs (no service surface touched) get none.
+    if let Some(proof) = crate::pr_ac_coverage::maybe_inject_proof_ac(&full_diff, &bullets) {
+        bullets.push(proof);
+    }
+    if bullets.is_empty() {
+        None
+    } else {
+        Some(bullets)
+    }
 }
 
 // ── Post-merge LIVE outcome probe (CREDIBLE-COTG-3.1) ───────────────────────

@@ -100,6 +100,25 @@ else
     fail "later-poll resolution: got: $out"
 fi
 
+# ---- Test 6: RESILIENT-338 failure-then-success retry pair -> lane reads success ----
+# The retry (success) can report an EARLIER started_at than the failed attempt,
+# so sort_by(.started_at)|last would pick the failure. ANY completed success for
+# the SHA must win, else the sole-required `verified` aggregator blocks a
+# mergeable PR (10 armed PRs hang). Failure sorts LAST here on purpose.
+gh() {
+    echo '[
+      {"name":"audit","status":"completed","conclusion":"success","started_at":"2026-08-20T00:00:00Z"},
+      {"name":"audit","status":"completed","conclusion":"failure","started_at":"2026-08-20T00:05:00Z"}
+    ]'
+}
+export -f gh
+out="$("$POLL" --sha deadbeef --check "audit" --timeout-s 5 --interval-s 1)"
+if echo "$out" | grep -qx "audit=success"; then
+    ok "failure-then-success retry pair reads success (ANY success wins)"
+else
+    fail "retry-to-success: got: $out"
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]] || exit 1

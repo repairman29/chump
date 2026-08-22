@@ -6389,6 +6389,30 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, built, stale, dry_run]
 
+  - kind: vision_acuity
+    effect_metric: almanac_summary_coverage_pct
+    emitter: scripts/ops/almanac-vision-keeper.sh (INFRA-3637)
+    trigger: every vision-keeper pass, after it un-drifts the indexed chump
+      checkout onto origin/main and drives `almanac summarize` to completion.
+      Carries BOTH the symbol (embedding) percentage and the summary
+      percentage of the chump index, plus regressed=symbol|summary|both|none —
+      set when either leg dropped since the last pass (also a stderr WARN).
+      The observable that turns "the eyes silently went blurry" (summaries
+      stuck at ~25%, doc-level fusion search degraded to keyword) into a
+      signal a watcher can act on.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, symbol_pct, summary_pct, regressed]
+
+  - kind: vision_acuity_skip
+    effect_metric: self
+    emitter: scripts/ops/almanac-vision-keeper.sh (INFRA-3637)
+    trigger: a vision-keeper pass could not produce an acuity reading — the
+      almanac binary is absent on this node, or `almanac coverage` was
+      unparseable — so a dark/blind node is itself observable instead of
+      silently emitting nothing.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason]
+
   - kind: worker_spin_healed
     effect_metric: self
     emitter: scripts/ops/organ-watchdog.sh (RESILIENT-332)
