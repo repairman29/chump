@@ -61,6 +61,14 @@ chump gen "add a /health endpoint to my axum server"
 
 Reads the current repo, generates a patch, runs `cargo check`, opens a PR. Good for "I have one task, ship it" — no need to spin up the fleet.
 
+**Or auto-execute with confirmation** (INFRA-3656, RIBBON-01):
+
+```bash
+chump trek "add a /health endpoint to my axum server" --yes
+```
+
+Like `gen`, but classifies your ask and actually dispatches the routed engine: CREATE (bootstrap new project), IMPROVE (fix/enhance existing code), or INGEST (add external repo). Refuses ambiguous asks and diagnosis-only routes (Rescue/Comprehend) honestly rather than faking success. Without `--yes`, it confirms before executing.
+
 **4. Talk to the fleet** — conversational loop driving multiple agents in parallel.
 
 ```bash
@@ -262,6 +270,7 @@ Per-cell forensics, validated empirical results, and paper preprints are tracked
 
 | Script | What it does |
 |--------|-------------|
+| `chump trek "your task" --yes` | Auto-execute front-door entrypoint: classifies your ask (CREATE/IMPROVE/INGEST/RESCUE/COMPREHEND) and dispatches the routed engine in-process. Without `--yes`, confirms before executing. (INFRA-3656) |
 | `./run.sh web` | Start the web PWA (default: port 3000) |
 | `./run.sh local -- --chump "prompt"` | CLI one-shot |
 | `./scripts/setup/setup-local.sh` | Guided first-time setup |
