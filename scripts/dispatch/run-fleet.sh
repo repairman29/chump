@@ -40,6 +40,10 @@
 #                           claude -p. Use opus for harder gaps.
 #   CARGO_TARGET_DIR        recommended: shared target across worktrees
 #                           (see INFRA-210 — exported below if unset)
+#   CHUMP_CARGO_TARGET_GROUP_SIZE (default 2) workers per distinct
+#                           CARGO_TARGET_DIR — see INFRA-3662 below.
+#   CHUMP_CARGO_TARGET_ROOT override for the per-group target root (skips
+#                           USB/cjdata* autodetect — see INFRA-3662 below).
 #
 # Stop:
 #   FLEET_SIZE=0 scripts/dispatch/run-fleet.sh   ← preferred (cascade-kills orphans, INFRA-581)
@@ -382,6 +386,59 @@ if [ -z "${CARGO_TARGET_DIR:-}" ]; then
     export CARGO_TARGET_DIR="${CHUMP_SHARED_CARGO_TARGET:-$HOME/.cargo/chump-shared-target}"
 fi
 
+# INFRA-3662: one CARGO_TARGET_DIR shared by every worker means the cargo
+# fingerprint/incremental cache is also shared — worktree A's build of a file
+# that doesn't exist on worktree B's branch poisons B's fingerprint lookup
+# ("couldn't read tests/foo.rs: No such file or directory", INFRA-1138). The
+# per-worker-test-gate CARGO_TARGET_DIR override fixed `cargo test`, but the
+# fleet's persistent worker.sh loop (which does NOT go through that gate for
+# `cargo check`/`clippy`) still shares one target dir across every pane.
+# Fix: split workers into groups of CHUMP_CARGO_TARGET_GROUP_SIZE (default 2)
+# and give each group its own CARGO_TARGET_DIR — bounded fan-out (FLEET_SIZE/N
+# distinct dirs, not FLEET_SIZE) so disk footprint stays close to today's
+# single-dir baseline while isolating fingerprint state. sccache (rustc-wrapper
+# in .cargo/config.toml) still shares compiled object code across ALL groups,
+# so the hit-rate benefit is unaffected — only fingerprint/incremental state is
+# now group-local instead of fleet-global.
+CHUMP_CARGO_TARGET_GROUP_SIZE="${CHUMP_CARGO_TARGET_GROUP_SIZE:-2}"
+if ! [[ "$CHUMP_CARGO_TARGET_GROUP_SIZE" =~ ^[0-9]+$ ]] || [[ "$CHUMP_CARGO_TARGET_GROUP_SIZE" -lt 1 ]]; then
+    echo "[run-fleet] WARN: CHUMP_CARGO_TARGET_GROUP_SIZE='$CHUMP_CARGO_TARGET_GROUP_SIZE' invalid — defaulting to 2"
+    CHUMP_CARGO_TARGET_GROUP_SIZE=2
+fi
+
+# Root directory under which each group's target dir is created. Prefers a
+# mounted external/USB data disk (mirrors install-sccache.sh's cjdata3-first
+# autodetect, INFRA-3660) so N group dirs don't compete with the OS drive for
+# space; falls back to the existing single shared-target location so a
+# machine with no USB/cjdata mount keeps today's behavior when N==FLEET_SIZE
+# effectively collapses to group size 1 (see per-worker loop below).
+_detect_cargo_target_root() {
+    if [[ -n "${CHUMP_CARGO_TARGET_ROOT:-}" ]]; then
+        echo "$CHUMP_CARGO_TARGET_ROOT"
+        return
+    fi
+    if [[ -d /mnt/cjdata3 && -w /mnt/cjdata3 ]]; then
+        echo "/mnt/cjdata3/chump-cargo-targets"
+        return
+    fi
+    local root_fs best="" best_avail_kb=0
+    root_fs="$(df -P / 2>/dev/null | awk 'NR==2{print $1}')"
+    while read -r fs avail_kb mnt; do
+        [[ "$fs" == "$root_fs" ]] && continue
+        [[ -w "$mnt" ]] || continue
+        if (( avail_kb > best_avail_kb )); then
+            best_avail_kb=$avail_kb
+            best="$mnt"
+        fi
+    done < <(df -Pk /mnt/cjdata* 2>/dev/null | awk 'NR>1{print $1, $4, $6}')
+    if [[ -n "$best" ]]; then
+        echo "$best/chump-cargo-targets"
+        return
+    fi
+    echo "$(dirname "$CARGO_TARGET_DIR")/chump-cargo-target-groups"
+}
+CHUMP_CARGO_TARGET_ROOT="$(_detect_cargo_target_root)"
+
 # ── INFRA-844: --restart — tear down existing fleet then relaunch ─────────────
 if [[ "$_FLEET_RESTART" -eq 1 ]]; then
     _fleet_from_size=0
@@ -684,7 +741,7 @@ cat <<EOF
   effort        : $FLEET_EFFORT_FILTER
   log dir       : $FLEET_LOG_DIR
   backend       : $FLEET_BACKEND
-  CARGO_TARGET_DIR : $CARGO_TARGET_DIR
+  CARGO_TARGET_DIR : $CHUMP_CARGO_TARGET_ROOT/group-<N> (groups of $CHUMP_CARGO_TARGET_GROUP_SIZE, INFRA-3662)
 EOF
 
 if [ "$FLEET_DRY_RUN" = "1" ]; then
@@ -808,7 +865,12 @@ worker_env=(
     # INFRA-623: workers inherit launch epoch so fleet-restart --refresh-auth
     # can compare oauth-token.json mtime against fleet start time.
     "FLEET_START_EPOCH=$FLEET_START_EPOCH"
-    "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
+    # INFRA-3662: NOT setting CARGO_TARGET_DIR here on purpose — a single
+    # fleet-wide value here would apply to every worker regardless of the
+    # per-group override computed in the spawn loop below (last assignment
+    # on the command line wins, but omitting it entirely avoids relying on
+    # that ordering). Each worker gets CARGO_TARGET_DIR=<group dir> injected
+    # per-pane in the spawn loop instead.
     # INFRA-371 token-burn defaults
     "FLEET_INLINE_BRIEFING=$FLEET_INLINE_BRIEFING"
     "CHUMP_LESSONS_AT_SPAWN_N=$CHUMP_LESSONS_AT_SPAWN_N"
@@ -905,7 +967,15 @@ for i in $(seq 1 "$FLEET_SIZE"); do
          && "$i" -le "$CONTENT_BOT_LAST" ]]; then
         worker_skills_env="WORKER_SKILLS=content-bot,pmm,docubot,evangelist,copybot "
     fi
-    cmd="${env_prefix}${worker_skills_env}AGENT_ID=$i $SCRIPT_DIR/worker.sh 2>&1 | tee -a '$log'"
+    # INFRA-3662: group workers into CHUMP_CARGO_TARGET_GROUP_SIZE-sized
+    # cohorts, each with its own CARGO_TARGET_DIR under CHUMP_CARGO_TARGET_ROOT.
+    # Ends the fleet-wide shared-target fingerprint clobbering (INFRA-1138)
+    # while keeping the group count bounded (FLEET_SIZE/N dirs, not FLEET_SIZE)
+    # so combined disk footprint stays a small multiple of the old single dir.
+    _group_idx=$(( (i - 1) / CHUMP_CARGO_TARGET_GROUP_SIZE + 1 ))
+    _worker_target_dir="$CHUMP_CARGO_TARGET_ROOT/group-${_group_idx}"
+    mkdir -p "$_worker_target_dir" 2>/dev/null || true
+    cmd="${env_prefix}${worker_skills_env}CARGO_TARGET_DIR=$_worker_target_dir AGENT_ID=$i $SCRIPT_DIR/worker.sh 2>&1 | tee -a '$log'"
     tmux split-window -t "$FLEET_SESSION:fleet" -c "$REPO_ROOT" "$cmd"
     # INFRA-581: capture the newly-created pane's shell PID so teardown can
     # cascade-kill worker.sh → timeout → claude subtrees on FLEET_SIZE=0.
