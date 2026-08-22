@@ -158,6 +158,81 @@ else
 fi
 
 echo ""
+# ── Functional: union/stale conflict-drain (the durable drain2.sh, RESILIENT-301) ──
+# Source the consumer to get its resolution helpers, then drive _resolve_rebase
+# against real git conflicts. The consumer is sourceable: main() runs only when
+# executed directly ([ "${BASH_SOURCE[0]}" = "$0" ]), so `source` yields the
+# helpers with no side effects. Counters (ok/fail) update in THIS shell (no
+# subshell), so a drain regression fails the suite.
+# shellcheck disable=SC1090
+source "$SCRIPT"
+WT_BASE="$TMP"   # keep _union_merge_file scratch inside the test tmpdir
+
+_mkrepo() { mkdir -p "$1"; ( cd "$1" && git init -q -b main \
+    && git config user.email t@e && git config user.name t ); }
+# _resolve_rebase rebases onto origin/main; fake that ref from local main.
+_seal_origin() { ( cd "$1" && git update-ref refs/remotes/origin/main main && git checkout -q feature ); }
+
+# 1) UNION: append-only manifest — both sides' appended lines must survive.
+UDIR="$(mktemp -d "$TMP/union.XXXXXX")"; _mkrepo "$UDIR"
+( cd "$UDIR"
+  printf 'organ-a\norgan-b\n' > organ-manifest.txt; git add .; git commit -q -m base
+  git checkout -q -b feature
+  printf 'organ-a\norgan-b\norgan-FEATURE\n' > organ-manifest.txt; git commit -qam feat
+  git checkout -q main
+  printf 'organ-a\norgan-b\norgan-MAIN\n' > organ-manifest.txt; git commit -qam main )
+_seal_origin "$UDIR"
+UNION_FILES="organ-manifest.txt" STALE_MAIN_FILES="" via="$( cd "$UDIR" && _resolve_rebase )"; rc=$?
+if [ "$rc" -eq 0 ] && grep -q organ-MAIN "$UDIR/organ-manifest.txt" && grep -q organ-FEATURE "$UDIR/organ-manifest.txt"; then
+    ok "drain: union file keeps BOTH sides' appended lines (via=$via)"
+else
+    fail "drain: union merge lost a side or failed (rc=$rc via=$via): $(tr '\n' '|' < "$UDIR/organ-manifest.txt" 2>/dev/null)"
+fi
+
+# 2) STALE-MAIN: known-stale file must resolve to main's version.
+SDIR="$(mktemp -d "$TMP/stale.XXXXXX")"; _mkrepo "$SDIR"
+( cd "$SDIR"
+  echo base > stale.txt; git add .; git commit -q -m base
+  git checkout -q -b feature; echo FEATURE-VERSION > stale.txt; git commit -qam feat
+  git checkout -q main;       echo MAIN-VERSION > stale.txt; git commit -qam main )
+_seal_origin "$SDIR"
+UNION_FILES="" STALE_MAIN_FILES="stale.txt" via="$( cd "$SDIR" && _resolve_rebase )"; rc=$?
+if [ "$rc" -eq 0 ] && [ "$(cat "$SDIR/stale.txt")" = "MAIN-VERSION" ]; then
+    ok "drain: stale-main file resolves to main's side (via=$via)"
+else
+    fail "drain: stale-main resolution wrong (rc=$rc via=$via got=$(cat "$SDIR/stale.txt" 2>/dev/null))"
+fi
+
+# 3) REAL code conflict (unclassified) must NOT be guessed — return 1, worktree aborted clean.
+RDIR="$(mktemp -d "$TMP/real.XXXXXX")"; _mkrepo "$RDIR"
+( cd "$RDIR"
+  echo base > code.txt; git add .; git commit -q -m base
+  git checkout -q -b feature; echo feature-logic > code.txt; git commit -qam feat
+  git checkout -q main;       echo main-logic > code.txt; git commit -qam main )
+_seal_origin "$RDIR"
+UNION_FILES="organ-manifest.txt" STALE_MAIN_FILES="stale.txt" via="$( cd "$RDIR" && _resolve_rebase )"; rc=$?
+inprogress=no
+( cd "$RDIR" && { [ -d "$(git rev-parse --git-path rebase-merge 2>/dev/null)" ] || [ -d "$(git rev-parse --git-path rebase-apply 2>/dev/null)" ]; } ) && inprogress=yes
+if [ "$rc" -ne 0 ] && [ "$inprogress" = no ]; then
+    ok "drain: real code conflict is left for escalation (return 1, worktree aborted clean)"
+else
+    fail "drain: real conflict mishandled (rc=$rc inprogress=$inprogress) — must not guess on code"
+fi
+
+# 4) MIXED union+stale in one PR: both resolve.
+MDIR="$(mktemp -d "$TMP/mix.XXXXXX")"; _mkrepo "$MDIR"
+( cd "$MDIR"
+  printf 'x\n' > organ-manifest.txt; echo base > stale.txt; git add .; git commit -q -m base
+  git checkout -q -b feature; printf 'x\nfeat\n' > organ-manifest.txt; echo FEATURE > stale.txt; git commit -qam feat
+  git checkout -q main;       printf 'x\nmain\n' > organ-manifest.txt; echo MAIN > stale.txt; git commit -qam main )
+_seal_origin "$MDIR"
+UNION_FILES="organ-manifest.txt" STALE_MAIN_FILES="stale.txt" via="$( cd "$MDIR" && _resolve_rebase )"; rc=$?
+if [ "$rc" -eq 0 ] && grep -q feat "$MDIR/organ-manifest.txt" && grep -q main "$MDIR/organ-manifest.txt" && [ "$(cat "$MDIR/stale.txt")" = MAIN ]; then
+    ok "drain: mixed union+stale PR resolves both (via=$via)"
+else
+    fail "drain: mixed union+stale failed (rc=$rc via=$via)"
+fi
+
 echo "=== Summary: $PASS passed, $FAIL failed ==="
 if (( FAIL > 0 )); then
     for f in "${FAILS[@]}"; do printf '  - %s\n' "$f"; done
