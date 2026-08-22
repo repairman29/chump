@@ -252,9 +252,82 @@ ensure_binary() {
   for c in "$BIN" "$HOME/chump/chump" "$(command -v chump 2>/dev/null)"; do
     [ -n "$c" ] && [ -x "$c" ] && { found="$c"; break; }
   done
-  [ -z "$found" ] && { no "no chump binary found (build via deploy-pixel-node.sh / cargo)"; return 1; }
-  [ "$found" != "$BIN" ] && run "ln -sf '$found' '$BIN'"
-  ok "binary: $found -> $BIN"
+  if [ -n "$found" ]; then
+    [ "$found" != "$BIN" ] && run "ln -sf '$found' '$BIN'"
+    ok "binary: $found -> $BIN"
+    return 0
+  fi
+  build_binary_from_repo
+}
+
+# No binary found: build it from $NODE_DIR/repo. Reuses the resolve+build
+# logic already hardened in refresh-runner-binary.sh (linux/macos — worktree
+# @ origin/main, warm shared target dir, codesign) and build-android.sh
+# (termux cross-compile) instead of reimplementing cargo invocation here.
+# Gates the artifact behind a WARM smoke (mirrors deploy-pixel-node.sh) before
+# it is ever symlinked to $BIN.
+build_binary_from_repo() {
+  local repo="$NODE_DIR/repo"
+  if [ ! -d "$repo/.git" ]; then
+    no "no binary and no repo checkout at $repo — clone chump there first"
+    return 1
+  fi
+  local staged="$NODE_DIR/bin/chump.new"
+  run "mkdir -p '$LOG_DIR'"
+  local build_log="$LOG_DIR/binary-build-$(date -u +%Y%m%dT%H%M%SZ).log"
+
+  if [ "$DRY" = 1 ]; then
+    case "$HOST_KIND" in
+      termux) echo "  DRY: (cd '$repo' && bash scripts/setup/build-android.sh)  # then cp -> $staged";;
+      *) echo "  DRY: CHUMP_REPO_ROOT='$repo' CHUMP_RUNNER_BIN='$staged' bash '$repo/scripts/setup/refresh-runner-binary.sh'";;
+    esac
+    echo "  DRY: WARM smoke ('$staged' --version) before symlink -> $BIN"
+    return 0
+  fi
+
+  info BINARY "no binary found — building from $repo (log: $build_log)"
+  case "$HOST_KIND" in
+    termux)
+      if ! ( cd "$repo" && bash scripts/setup/build-android.sh ) >"$build_log" 2>&1; then
+        no "android cross-build failed — see $build_log"
+        return 1
+      fi
+      local built="$repo/target-android/aarch64-linux-android/release/chump"
+      [ -f "$built" ] || built="$repo/target/aarch64-linux-android/release/chump"
+      if [ ! -f "$built" ]; then
+        no "build reported success but no binary at $built — see $build_log"
+        return 1
+      fi
+      cp -f "$built" "$staged"
+      ;;
+    *)
+      if ! CHUMP_REPO_ROOT="$repo" CHUMP_RUNNER_BIN="$staged" \
+           bash "$repo/scripts/setup/refresh-runner-binary.sh" >"$build_log" 2>&1; then
+        no "cargo build failed — see $build_log"
+        return 1
+      fi
+      if [ ! -x "$staged" ]; then
+        no "build reported success but binary missing at $staged — see $build_log"
+        return 1
+      fi
+      ;;
+  esac
+  chmod +x "$staged"
+
+  # WARM: the built binary must answer a trivial prompt before it's trusted.
+  info BINARY "warming freshly built binary (WARM smoke)..."
+  local warm_out
+  warm_out="$("$staged" --version 2>&1)"
+  if [ -z "$warm_out" ]; then
+    no "WARM smoke failed — '$staged --version' produced no output; see $build_log"
+    rm -f "$staged"
+    return 1
+  fi
+  ok "WARM smoke ok: $warm_out"
+
+  mv -f "$staged" "$BIN"
+  chmod +x "$BIN"
+  ok "binary built + warm-verified: $BIN"
 }
 
 # ---------- 4b. SEED (INFRA-3633: first-boot canonical-store bootstrap) ----------

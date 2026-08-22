@@ -2145,6 +2145,7 @@ CHUMP_PATTERN_DETECTOR_STATE
 CHUMP_BOOTSTRAP_CREDS
 # detected in: (standard input)
 CHUMP_NODE_DIR
+CHUMP_RUNNER_BIN
 CHUMP_NODE_REPO_URL
 
 # AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
