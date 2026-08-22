@@ -205,21 +205,43 @@ _age_h() { # ISO8601 -> integer hours old
 
 # ── verified poll (bounded), NOT holding bot-merge.lock ─────────────────────────
 # stdout = waited-seconds (captured by caller); progress → stderr.
+#
+# Returns SUCCESS only when the `verified` aggregate is green. Returns FAIL as soon
+# as EITHER `verified` itself fails OR any BLOCKING sub-check fails — the aggregate
+# `verified` doesn't post FAILURE until every input job finishes, so a PR already
+# doomed by one failed required shard would otherwise hold the serializer for the
+# full slow-job duration (observed: audit-shard failed at minute 3 but fast-checks
+# didn't finish for ~18 more). An aging PR is a bullet — don't burn a whole CI
+# cycle on one that can't possibly go green. Blocking = `verified`, any `*-required`
+# aggregator, `fast-checks`, or any `audit-shard (N)`. Advisory checks (named
+# "(advisory)"/"(non-blocking)") never match, so a flaky advisory can't false-fail.
+_verified_state() { # <pr> -> echoes SUCCESS|FAIL|PENDING
+    gh pr view "$1" --repo "$REPO" --json statusCheckRollup --jq '
+      [.statusCheckRollup[]?] as $c
+      | (([$c[]|select(.name=="verified")|(.conclusion // .status)]|first) // "") as $v
+      | if $v=="SUCCESS" then "SUCCESS"
+        elif ($v|test("FAILURE|TIMED_OUT|CANCELLED|ERROR|ACTION_REQUIRED|STALE|STARTUP_FAILURE")) then "FAIL"
+        elif ([ $c[]
+                | select(.name|test("-required$|^audit-shard|^fast-checks$|^verified$"))
+                | (.conclusion // "")
+                | select(test("FAILURE|TIMED_OUT|CANCELLED|ERROR|ACTION_REQUIRED|STARTUP_FAILURE"))
+              ]|length > 0) then "FAIL"
+        else "PENDING" end' 2>/dev/null || echo "PENDING"
+}
 _wait_verified() { # <pr>  -> 0 green, 1 failed, 2 timeout
-    local pr="$1" start deadline concl ms waited
+    local pr="$1" start deadline st ms waited
     start="$(date +%s)"; deadline=$(( start + VERIFY_TIMEOUT_S ))
     while true; do
-        concl="$(gh pr view "$pr" --repo "$REPO" --json statusCheckRollup \
-            --jq '[.statusCheckRollup[]?|select(.name=="verified")|(.conclusion // .status)]|first // ""' 2>/dev/null || echo "")"
-        ms="$(gh pr view "$pr" --repo "$REPO" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "")"
+        st="$(_verified_state "$pr")"
         waited=$(( $(date +%s) - start ))
-        case "$concl" in
+        case "$st" in
             SUCCESS) echo "$waited"; return 0 ;;
-            FAILURE|TIMED_OUT|CANCELLED|ERROR|ACTION_REQUIRED|STALE) echo "$waited"; return 1 ;;
+            FAIL)    echo "$waited"; return 1 ;;
         esac
         if (( $(date +%s) >= deadline )); then echo "$waited"; return 2; fi
-        printf '[merge-serializer] #%s verified=%s ms=%s waited=%ds/%ds\n' \
-            "$pr" "${concl:-pending}" "$ms" "$waited" "$VERIFY_TIMEOUT_S" >&2
+        ms="$(gh pr view "$pr" --repo "$REPO" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "")"
+        printf '[merge-serializer] #%s verified=pending ms=%s waited=%ds/%ds\n' \
+            "$pr" "$ms" "$waited" "$VERIFY_TIMEOUT_S" >&2
         sleep "$POLL_S"
     done
 }
