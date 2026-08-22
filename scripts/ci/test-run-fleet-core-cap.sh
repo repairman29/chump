@@ -5,7 +5,6 @@
 #   1. FLEET_SIZE > nproc -> clamped down to nproc
 #   2. FLEET_SIZE*CARGO_BUILD_JOBS > nproc -> CARGO_BUILD_JOBS clamped down
 #   3. Already-within-budget values are left untouched
-#   4. CHUMP_FLEET_NO_CORE_CAP=1 bypasses both clamps
 #
 # Does not launch run-fleet.sh itself (it spawns tmux/workers) — replicates
 # the exact clamp block as a standalone probe, same pattern as
@@ -17,7 +16,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT="$REPO_ROOT/scripts/dispatch/run-fleet.sh"
 
 [[ -f "$SCRIPT" ]] || { echo "FAIL: $SCRIPT not found"; exit 1; }
-grep -q "CHUMP_FLEET_NO_CORE_CAP" "$SCRIPT" || { echo "FAIL: run-fleet.sh missing INFRA-3659 core-cap logic"; exit 1; }
+grep -q "INFRA-3659" "$SCRIPT" || { echo "FAIL: run-fleet.sh missing INFRA-3659 core-cap logic"; exit 1; }
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -26,23 +25,20 @@ PROBE="$TMP/probe.sh"
 cat > "$PROBE" <<'PROBE_EOF'
 #!/usr/bin/env bash
 set -uo pipefail
-# Args: fleet_size cargo_jobs nproc_stub [no_core_cap]
+# Args: fleet_size cargo_jobs nproc_stub
 FLEET_SIZE="${1:?}"
 CARGO_BUILD_JOBS="${2:?}"
 _STUB_NPROC="${3:?}"
-CHUMP_FLEET_NO_CORE_CAP="${4:-0}"
 nproc() { echo "$_STUB_NPROC"; }
 
-if [[ "${CHUMP_FLEET_NO_CORE_CAP:-0}" != "1" ]]; then
-    _fleet_nproc="$(nproc 2>/dev/null || echo 1)"
-    if (( FLEET_SIZE > _fleet_nproc )); then
-        FLEET_SIZE="$_fleet_nproc"
-    fi
-    _fleet_max_jobs=$(( _fleet_nproc / FLEET_SIZE ))
-    (( _fleet_max_jobs < 1 )) && _fleet_max_jobs=1
-    if (( CARGO_BUILD_JOBS > _fleet_max_jobs )); then
-        CARGO_BUILD_JOBS="$_fleet_max_jobs"
-    fi
+_fleet_nproc="$(nproc 2>/dev/null || echo 1)"
+if (( FLEET_SIZE > _fleet_nproc )); then
+    FLEET_SIZE="$_fleet_nproc"
+fi
+_fleet_max_jobs=$(( _fleet_nproc / FLEET_SIZE ))
+(( _fleet_max_jobs < 1 )) && _fleet_max_jobs=1
+if (( CARGO_BUILD_JOBS > _fleet_max_jobs )); then
+    CARGO_BUILD_JOBS="$_fleet_max_jobs"
 fi
 echo "FLEET_SIZE=$FLEET_SIZE CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS"
 PROBE_EOF
@@ -69,10 +65,6 @@ check "within-budget values untouched" "FLEET_SIZE=2 CARGO_BUILD_JOBS=2" "$out"
 # 3. FLEET_SIZE within nproc but jobs too high: FLEET_SIZE=4, CARGO_BUILD_JOBS=4, nproc=4
 out="$("$PROBE" 4 4 4)"
 check "aggregate jobs clamped when FLEET_SIZE already <= nproc" "FLEET_SIZE=4 CARGO_BUILD_JOBS=1" "$out"
-
-# 4. Bypass flag leaves both alone even when oversubscribed
-out="$("$PROBE" 14 4 4 1)"
-check "CHUMP_FLEET_NO_CORE_CAP=1 bypasses clamp" "FLEET_SIZE=14 CARGO_BUILD_JOBS=4" "$out"
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

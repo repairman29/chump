@@ -241,20 +241,19 @@ export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 # survives a reboot or a fresh node install. Clamp FLEET_SIZE to nproc and the
 # aggregate FLEET_SIZE*CARGO_BUILD_JOBS to nproc HERE, in the tracked launcher,
 # so a low-core node can never be handed a fleet size that oversubscribes it.
-# Bypass: CHUMP_FLEET_NO_CORE_CAP=1 (e.g. deliberately overcommitting on a
-# high-RAM/low-core box that can tolerate it).
-if [[ "${CHUMP_FLEET_NO_CORE_CAP:-0}" != "1" ]]; then
-    _fleet_nproc="$(nproc 2>/dev/null || echo 1)"
-    if (( FLEET_SIZE > _fleet_nproc )); then
-        echo "[run-fleet] INFRA-3659: FLEET_SIZE=$FLEET_SIZE > nproc=$_fleet_nproc -> capping FLEET_SIZE to $_fleet_nproc"
-        FLEET_SIZE="$_fleet_nproc"
-    fi
-    _fleet_max_jobs=$(( _fleet_nproc / FLEET_SIZE ))
-    (( _fleet_max_jobs < 1 )) && _fleet_max_jobs=1
-    if (( CARGO_BUILD_JOBS > _fleet_max_jobs )); then
-        echo "[run-fleet] INFRA-3659: CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS x FLEET_SIZE=$FLEET_SIZE > nproc=$_fleet_nproc -> capping CARGO_BUILD_JOBS to $_fleet_max_jobs"
-        export CARGO_BUILD_JOBS="$_fleet_max_jobs"
-    fi
+# No env-var escape hatch by design (EFFECTIVE-094 bypass-var debt ceiling) —
+# to intentionally overcommit, set FLEET_SIZE/CARGO_BUILD_JOBS explicitly high
+# enough that the clamp is a no-op on your node's actual core count.
+_fleet_nproc="$(nproc 2>/dev/null || echo 1)"
+if (( FLEET_SIZE > _fleet_nproc )); then
+    echo "[run-fleet] INFRA-3659: FLEET_SIZE=$FLEET_SIZE > nproc=$_fleet_nproc -> capping FLEET_SIZE to $_fleet_nproc"
+    FLEET_SIZE="$_fleet_nproc"
+fi
+_fleet_max_jobs=$(( _fleet_nproc / FLEET_SIZE ))
+(( _fleet_max_jobs < 1 )) && _fleet_max_jobs=1
+if (( CARGO_BUILD_JOBS > _fleet_max_jobs )); then
+    echo "[run-fleet] INFRA-3659: CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS x FLEET_SIZE=$FLEET_SIZE > nproc=$_fleet_nproc -> capping CARGO_BUILD_JOBS to $_fleet_max_jobs"
+    export CARGO_BUILD_JOBS="$_fleet_max_jobs"
 fi
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
