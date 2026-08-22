@@ -9,6 +9,18 @@
 #
 # Usage:
 #   chump-node-install.sh --role brain|muscle|all [--home DIR] [--self-test-only] [--dry-run]
+#                          [--creds-file PATH]
+#
+# Zero-touch creds (INFRA-3629, the "bot told to do it" path — no human ever
+# opens an editor): supply creds from exactly ONE source and the CREDS phase
+# materializes ~/.chump/providers.env itself:
+#   --creds-file PATH          path to a ready-made providers.env (KEY=VALUE lines)
+#   $CHUMP_BOOTSTRAP_CREDS     the same file body, inline, e.g.:
+#     CHUMP_BOOTSTRAP_CREDS="$(printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\nGH_TOKEN=%s\n' "$OAUTH" "$GH")" \
+#       curl -fsSL .../chump-node-install.sh | bash -s -- --role brain
+# Neither source's VALUES ever appear in `ps`, argv, or this script's logs —
+# only the source used and which required keys are present/missing are logged.
+# If ~/.chump/providers.env already exists it is left alone (idempotent).
 #
 # Phases: DETECT -> HOME -> CREDS -> BINARY -> ORGANS -> SUPERVISE -> SELF-TEST
 # Idempotent + non-destructive: installs into $NODE_DIR (default ~/.chumpnode) and
@@ -16,13 +28,14 @@
 set -uo pipefail
 
 # ---------- args ----------
-ROLE="brain"; NODE_DIR="${CHUMP_NODE_DIR:-$HOME/.chumpnode}"; SELF_TEST_ONLY=0; DRY=0
+ROLE="brain"; NODE_DIR="${CHUMP_NODE_DIR:-$HOME/.chumpnode}"; SELF_TEST_ONLY=0; DRY=0; CREDS_FILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --role) ROLE="$2"; shift 2;;
     --home) NODE_DIR="$2"; shift 2;;
     --self-test-only) SELF_TEST_ONLY=1; shift;;
     --dry-run) DRY=1; shift;;
+    --creds-file) CREDS_FILE="$2"; shift 2;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
@@ -201,13 +214,35 @@ ensure_home() {
 }
 
 # ---------- 3. CREDS ----------
+REQUIRED_CRED_KEYS="CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN"
+
+# Zero-touch acquire (INFRA-3629): materialize $CREDS from --creds-file or
+# $CHUMP_BOOTSTRAP_CREDS. Never echoes secret VALUES — only which source was
+# used. Leaves an existing file untouched (idempotent, no clobber).
+materialize_creds() {
+  [ -f "$CREDS" ] && return 0
+  if [ -n "$CREDS_FILE" ]; then
+    [ -f "$CREDS_FILE" ] || { no "--creds-file not found: $CREDS_FILE"; return 1; }
+    if [ "$DRY" = 1 ]; then echo "  DRY: install '$CREDS_FILE' -> '$CREDS' (mode 600)"; return 0; fi
+    mkdir -p "$STATE_DIR"
+    install -m 600 "$CREDS_FILE" "$CREDS"
+    ok "materialized creds from --creds-file (path only; values not logged)"
+  elif [ -n "${CHUMP_BOOTSTRAP_CREDS:-}" ]; then
+    if [ "$DRY" = 1 ]; then echo "  DRY: write \$CHUMP_BOOTSTRAP_CREDS -> '$CREDS' (mode 600)"; return 0; fi
+    mkdir -p "$STATE_DIR"
+    ( umask 077; printf '%s\n' "$CHUMP_BOOTSTRAP_CREDS" > "$CREDS" )
+    ok "materialized creds from \$CHUMP_BOOTSTRAP_CREDS (env var; values not logged)"
+  fi
+}
+
 check_creds() {
-  [ -f "$CREDS" ] || { no "creds missing: $CREDS"; return 1; }
+  materialize_creds
+  [ -f "$CREDS" ] || { no "creds missing: $CREDS (supply --creds-file PATH or \$CHUMP_BOOTSTRAP_CREDS)"; return 1; }
   local missing=""
-  for k in CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN; do
+  for k in $REQUIRED_CRED_KEYS; do
     grep -qE "^(export )?$k=" "$CREDS" || missing="$missing $k"
   done
-  [ -n "$missing" ] && { no "creds present but missing keys:$missing"; return 1; }
+  [ -n "$missing" ] && { no "creds present but missing keys:$missing — supply via --creds-file/\$CHUMP_BOOTSTRAP_CREDS and re-run"; return 1; }
   ok "creds ok ($(grep -cE '^(export )?[A-Z_]+=' "$CREDS") keys, incl OAuth+GH)"
 }
 
