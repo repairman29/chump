@@ -105,6 +105,7 @@ ac_coverage_no_gap_ref  # reason: INFRA-1541 pass-through marker for hotfix PRs 
 ac_coverage_proof_miss  # reason: CREDIBLE-281 proof-AC live-outcome check failed; same gate as ac_coverage_miss, outside PROD_PATHS
 ac_coverage_waived      # reason: INFRA-1541 waiver trailer audit emit from same gate; outside PROD_PATHS
 allowlist_stale_entry  # reason: INFRA-1868 — audit-allowlist-staleness.sh daily staleness detector; emitted via python3 heredoc, not grep-scannable as kind=X literal
+almanac_health  # reason: INFRA-3638 (TREK-13) — measurable eyes-alive probe emitted by scripts/ops/almanac-liveness-refresh.sh every liveness cycle ({indexed_files, last_index_age_s, binary_present, mcp_reachable}); reserved as first-class ambient event per AC
 ast_crawler_unsupported_language  # reason: INFRA-1719 emitted from crates/ast-crawler when an unsupported language is encountered; emit site uses struct-field syntax not grep-scannable as `kind=X` literal
 audit_allowlist_staleness_bypassed  # reason: INFRA-1868 — audit-allowlist-staleness.sh skip-emit when CHUMP_AUDIT_ALLOWLIST_STALENESS=0; printf form not grep-scannable
 audit_no_verify  # reason: INFRA-1834 emitted from chump-commit.sh + bot-merge.sh when --no-verify bypass used; reason field is operator-supplied, kind name stable for daily audit grep
