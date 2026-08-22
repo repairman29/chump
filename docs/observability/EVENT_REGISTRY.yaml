@@ -6461,6 +6461,18 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, faculties, avg_position, build_merges_24h, see_avg_pct, out]
 
+  - kind: faculty_journey
+    effect_metric: self
+    emitter: scripts/ops/journey-odds.sh (the Journey Odds Board data source)
+    trigger: every journey-odds pass, after it prices P(success) for the 8
+      ordered Trek checkpoints (BOOT INSTALL PROVISION POINT WORK GATE MERGE
+      LIVE) from real live signals and writes ~/.chump/journey-odds.json. A
+      faculty_status-style heartbeat so a dead board — and a frozen set of
+      journey odds the router reads — is itself observable from the ambient
+      stream instead of silently going stale.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, checkpoints, instrumented, total, p_full_trek, out]
+
   - kind: worker_spin_healed
     effect_metric: self
     emitter: scripts/ops/organ-watchdog.sh (RESILIENT-332)
