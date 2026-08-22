@@ -295,6 +295,25 @@ mod tests {
     }
 
     #[test]
+    fn strips_gemini_thinking_block_from_response() {
+        // Gemini 2.5-flash/pro "thinking" models emit a <think>...</think> block
+        // ahead of the answer when thinkingBudget > 0 (INFRA-790).
+        let s = "<think>\nUser wants X. Plan: do A, then B.\n</think>\n\nHere is the answer.";
+        let out = strip_for_public_reply(s);
+        assert!(!out.contains("<think"));
+        assert!(!out.contains("</think>"));
+        assert_eq!(out, "Here is the answer.");
+    }
+
+    #[test]
+    fn no_regression_on_plain_gemini_response_without_thinking() {
+        // Gemini 2.5-flash/pro responses with thinkingBudget=0 have no think
+        // blocks at all — stripping must be a no-op.
+        let s = "Here is the answer, no thinking block present.";
+        assert_eq!(strip_for_public_reply(s), s);
+    }
+
+    #[test]
     fn strips_qwen3_think_tag() {
         // Qwen3 emits <think>...</think> (5-char tag name, no "ing" suffix).
         let s = "<think>\nLet me reason about this...\n</think>\n\nHere is the answer.";

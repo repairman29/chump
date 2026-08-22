@@ -1,0 +1,17 @@
+# scripts/dispatch/chump-organ-deploy.timer — RESILIENT-374. Drives
+# chump-organ-deploy.service so the node's live systemd organ set converges to
+# the repo-declared manifest AS ROOT on boot and every few minutes — the
+# privileged half of self-deploy that chump-organ-reconcile/chump-organ-watchdog
+# cannot perform on an owned node. This is the "a merged organ actually starts
+# running" beat.
+[Unit]
+Description=Chump organ-deploy beat — root-privileged install+enable of every merged organ (RESILIENT-374)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

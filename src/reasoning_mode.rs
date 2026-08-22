@@ -197,6 +197,37 @@ fn build_gemini_reasoning_params() -> Value {
     })
 }
 
+/// `GEMINI_THINKING_BUDGET_TOKENS` — cap on Gemini "thinking" tokens allowed
+/// into the agent loop, independent of [`build_gemini_reasoning_params`] (which
+/// only fires when the operator opts *into* extra reasoning via
+/// `CHUMP_REASONING_MODE`). Default `0` — strip/disable thinking entirely,
+/// since the Gemini API treats `thinkingBudget: 0` as "no thinking" for
+/// `gemini-2.5-flash` / `gemini-2.5-pro`. Negative or unparsable values fall
+/// back to the default.
+pub fn gemini_thinking_budget_tokens() -> u32 {
+    std::env::var("GEMINI_THINKING_BUDGET_TOKENS")
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(0)
+}
+
+/// Build the `thinkingConfig` object to merge into a Gemini `generationConfig`
+/// for *any* Gemini model (not just the `-thinking` variants covered by
+/// [`build_gemini_reasoning_params`]), so runaway thinking-token cost is
+/// capped by default rather than only when the operator opts in. Returns
+/// `None` for non-Gemini models.
+pub fn gemini_thinking_budget_config(model_id: &str) -> Option<Value> {
+    let m = model_id.trim().to_ascii_lowercase();
+    if !m.contains("gemini") {
+        return None;
+    }
+    Some(json!({
+        "thinkingConfig": {
+            "thinkingBudget": gemini_thinking_budget_tokens()
+        }
+    }))
+}
+
 /// Lightweight task complexity probe for `auto` mode.
 ///
 /// Returns `true` when the task looks like it warrants extended reasoning.
@@ -393,6 +424,54 @@ mod tests {
         assert!(build_reasoning_params("gpt-4o").is_none());
         assert!(build_reasoning_params("llama-3-8b-instruct").is_none());
         assert!(build_reasoning_params("mistral-nemo").is_none());
+    }
+
+    // ── GEMINI_THINKING_BUDGET_TOKENS (INFRA-790) ────────────────────────────
+
+    #[test]
+    #[serial]
+    fn gemini_thinking_budget_tokens_default_is_zero() {
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+        assert_eq!(gemini_thinking_budget_tokens(), 0);
+    }
+
+    #[test]
+    #[serial]
+    fn gemini_thinking_budget_tokens_custom_value() {
+        std::env::set_var("GEMINI_THINKING_BUDGET_TOKENS", "2048");
+        assert_eq!(gemini_thinking_budget_tokens(), 2048);
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+    }
+
+    #[test]
+    #[serial]
+    fn gemini_thinking_budget_tokens_unparsable_falls_back_to_zero() {
+        std::env::set_var("GEMINI_THINKING_BUDGET_TOKENS", "not-a-number");
+        assert_eq!(gemini_thinking_budget_tokens(), 0);
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+    }
+
+    #[test]
+    #[serial]
+    fn gemini_thinking_budget_config_default_strips_all() {
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+        let p = gemini_thinking_budget_config("gemini-2.5-flash").unwrap();
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 0);
+    }
+
+    #[test]
+    #[serial]
+    fn gemini_thinking_budget_config_honors_custom_budget() {
+        std::env::set_var("GEMINI_THINKING_BUDGET_TOKENS", "4096");
+        let p = gemini_thinking_budget_config("gemini-2.5-pro").unwrap();
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 4096);
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+    }
+
+    #[test]
+    fn gemini_thinking_budget_config_none_for_non_gemini() {
+        assert!(gemini_thinking_budget_config("claude-opus-4-20251101").is_none());
+        assert!(gemini_thinking_budget_config("gpt-4o").is_none());
     }
 
     #[test]
