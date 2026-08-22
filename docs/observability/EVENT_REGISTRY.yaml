@@ -6234,6 +6234,17 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, unit]
 
+  - kind: organ_binary_healed
+    effect_metric: organ_self_heal_rate
+    emitter: scripts/ops/organ-watchdog.sh (INFRA-3651, opt-in via
+      CHUMP_ORGAN_WATCHDOG_BINARY_HEAL=1)
+    trigger: the watchdog found the release binary (target/release/chump)
+      missing or its build sha lagging origin/main HEAD, and successfully
+      triggered node-refresh-chump.sh to rebuild + reinstall it — the
+      PEER-HEAL-04 binary-currency half of the mission's self-heal loop.
+    consumers: [fleet-brief, ops-audit, curator]
+    fields_required: [ts, kind, reason, bin]
+
   - kind: organ_self_healed
     effect_metric: organ_self_heal_rate
     emitter: scripts/ops/organ-watchdog.sh (INFRA-3595)
