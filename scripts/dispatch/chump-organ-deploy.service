@@ -1,0 +1,26 @@
+# scripts/dispatch/chump-organ-deploy.service — RESILIENT-374 (anti-merged-not-
+# running). The root-privileged self-deploy organ. On owned nodes (CJ=jeff),
+# chump-organ-reconcile and chump-organ-watchdog run as the repo-owning user and
+# CANNOT write /etc/systemd/system, so every merged chump-*.service/.timer stayed
+# DARK (declared `enabled` in the manifest, never installed in systemd) — the
+# exact merged-not-running disease. This organ runs install-helsinki-atc.sh
+# --auto AS ROOT (install + enable --now + reconcile) so a merged organ actually
+# RUNS on the target. Paired with chump-organ-deploy.timer.
+#
+# Host convention: tracked helsinki-shaped (/root paths); install-helsinki-atc.sh
+# host-rewrites "/root/" -> the run-user's HOME per node. UNLIKE every other
+# organ it must stay User=root (its whole job is the privileged system-unit
+# write), so it is listed in that installer's _KEEP_ROOT_ORGANS set: the
+# User=root -> run-user rewrite is skipped for it while paths are still rewritten.
+[Unit]
+Description=Chump organ-deploy — root-privileged self-deploy: install+enable+reconcile every merged organ so merged==running (RESILIENT-374)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+Environment=CARGO_BIN_DIR=/root/.cargo/bin
+ExecStart=/bin/bash -lc 'exec /root/Projects/chump/scripts/ops/organ-deploy.sh'
