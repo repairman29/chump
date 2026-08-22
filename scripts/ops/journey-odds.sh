@@ -59,6 +59,20 @@ export HOME="$REAL_HOME"
 # in ~/.cargo/bin don't resolve and an unhardened run reads 0 and LIES.
 export PATH="$REAL_HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
+# REPO-ROOT HARDENING (honest-instrument fix, 2026-08-22): the SCRIPT_DIR-derived
+# or env-overridden REPO_ROOT can point at a torn-down worktree or a /root-mapped
+# path under an organ run, leaving the manifest / gap store / ambient log
+# UNREADABLE so the board reads spurious null/0 and LIES (this exact class wrote a
+# p_full_trek=0 board while the fleet was shipping 53 PRs/24h). If the manifest
+# isn't where we think it is, self-heal to the run-user's canonical checkout.
+if [[ ! -f "$REPO_ROOT/scripts/ops/organ-manifest.txt" ]]; then
+  for _cand in "$REAL_HOME/Projects/chump" "$SCRIPT_DIR/../.."; do
+    if [[ -f "$_cand/scripts/ops/organ-manifest.txt" ]]; then
+      REPO_ROOT="$(cd "$_cand" && pwd)"; break
+    fi
+  done
+fi
+
 OUT="${CHUMP_JOURNEY_OUT:-$REAL_HOME/.chump/journey-odds.json}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 GH_REPO="${CHUMP_GH_REPO:-repairman29/chump}"
@@ -147,36 +161,49 @@ CP+=("$(mkcp 2 "PROVISION" "manifest organs active" \
 # REAL signal: the gap store is reachable with an open backlog AND at least one
 # gap is currently in_progress (claimed). p = fraction of worker slots that are
 # actually pointing at work (in_progress / worker slots), gated by backlog>0.
-gaps_open="$( ( cd "$REPO_ROOT" 2>/dev/null && chump gap list --status open --json 2>/dev/null ) | grep -c '"id"' 2>/dev/null || echo 0)"
-gaps_ip="$( ( cd "$REPO_ROOT" 2>/dev/null && chump gap list --status in_progress --json 2>/dev/null ) | grep -c '"id"' 2>/dev/null || echo 0)"
-[[ "$gaps_open" =~ ^[0-9]+$ ]] || gaps_open=0
-[[ "$gaps_ip"   =~ ^[0-9]+$ ]] || gaps_ip=0
-# worker slots = enabled chump-worker@ units in the manifest (min 1)
-wslots="$(grep -cE '^enabled.*chump-worker@' "$MANIFEST" 2>/dev/null || echo 1)"
-[[ "$wslots" =~ ^[0-9]+$ && "$wslots" -gt 0 ]] || wslots=1
-point_p=""; point_basis=""
-if [[ "$gaps_open" -le 0 ]]; then
-  point_p="0.0000"
-  point_basis="gap store returned 0 open gaps — nothing to point at (unreachable or empty)"
-else
-  point_p="$(sat "$gaps_ip" "$wslots")"
-  point_basis="${gaps_ip} gap(s) in_progress across ${wslots} worker slot(s); ${gaps_open} open in backlog"
+# READABILITY GATE (honest-instrument fix): a gap store we CANNOT read must go
+# NULL (excluded from the product), never a hard 0 that collapses P(full Trek).
+# "0 open gaps" from a wrong cwd / missing store is INDISTINGUISHABLE from a
+# genuinely empty backlog, so we only score POINT when there is a readable,
+# NON-EMPTY backlog to point at; otherwise the signal is ambiguous -> null.
+point_p=""; point_val="0"
+point_basis="uninstrumented: no readable non-empty backlog (gap store unreadable or empty — ambiguous, excluded not zeroed)"
+if command -v chump >/dev/null 2>&1; then
+  open_json="$( cd "$REPO_ROOT" 2>/dev/null && chump gap list --status open --json 2>/dev/null )"
+  ip_json="$( cd "$REPO_ROOT" 2>/dev/null && chump gap list --status in_progress --json 2>/dev/null )"
+  gaps_open="$(printf '%s' "$open_json" | grep -c '"id"' 2>/dev/null || echo 0)"
+  gaps_ip="$(printf '%s' "$ip_json" | grep -c '"id"' 2>/dev/null || echo 0)"
+  [[ "$gaps_open" =~ ^[0-9]+$ ]] || gaps_open=0
+  [[ "$gaps_ip"   =~ ^[0-9]+$ ]] || gaps_ip=0
+  # worker slots = enabled chump-worker@ units in the manifest (min 1)
+  wslots="$(grep -cE '^enabled.*chump-worker@' "$MANIFEST" 2>/dev/null || echo 1)"
+  [[ "$wslots" =~ ^[0-9]+$ && "$wslots" -gt 0 ]] || wslots=1
+  if [[ "$gaps_open" -gt 0 ]]; then
+    point_p="$(sat "$gaps_ip" "$wslots")"
+    point_val="$gaps_ip"
+    point_basis="${gaps_ip} gap(s) in_progress across ${wslots} worker slot(s); ${gaps_open} open in backlog"
+  fi
 fi
 CP+=("$(mkcp 3 "POINT" "gaps in_progress vs worker slots (backlog>0)" \
-        "$gaps_ip" "$point_p" "$point_basis")")
+        "$point_val" "$point_p" "$point_basis")")
 
 # ── 4. WORK — a worker produces a PR ────────────────────────────────────────
 # REAL signal: PRs opened in the last 24h, saturating at a full factory day.
-prs_opened="$(gh pr list --repo "$GH_REPO" --state all --limit 300 --json createdAt \
-              --jq '[.[]|select(.createdAt > (now-86400|todate))]|length' 2>/dev/null)"
-[[ "$prs_opened" =~ ^[0-9]+$ ]] || prs_opened=0
-work_p=""; work_basis=""
-if [[ "$prs_opened" -gt 0 ]]; then
-  work_p="$(sat "$prs_opened" 60)"
-  work_basis="${prs_opened} PR(s) opened in 24h (saturates at 60/day)"
-else
-  work_p="0.0000"
-  work_basis="0 PRs opened in 24h — workers are not producing"
+# READABILITY GATE: an UNREACHABLE gh (auth/network) returns empty -> must go
+# NULL (excluded), never a hard 0 that collapses the Trek. Only a gh call that
+# SUCCEEDED and genuinely saw 0 PRs is a real 0 (workers truly not producing).
+prs_json="$(gh pr list --repo "$GH_REPO" --state all --limit 300 --json createdAt 2>/dev/null)"; pr_rc=$?
+work_p=""; work_basis="uninstrumented: gh unreachable (PR list read failed)"; prs_opened="0"
+if [[ "$pr_rc" -eq 0 && -n "$prs_json" ]]; then
+  prs_opened="$(printf '%s' "$prs_json" | jq '[.[]|select(.createdAt > (now-86400|todate))]|length' 2>/dev/null)"
+  [[ "$prs_opened" =~ ^[0-9]+$ ]] || prs_opened=0
+  if [[ "$prs_opened" -gt 0 ]]; then
+    work_p="$(sat "$prs_opened" 60)"
+    work_basis="${prs_opened} PR(s) opened in 24h (saturates at 60/day)"
+  else
+    work_p="0.0000"
+    work_basis="0 PRs opened in 24h (gh read ok) — workers are not producing"
+  fi
 fi
 CP+=("$(mkcp 4 "WORK" "PRs opened / 24h" \
         "$prs_opened" "$work_p" "$work_basis")")
