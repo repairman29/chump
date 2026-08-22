@@ -177,4 +177,29 @@ grep -q '/root' "$CJ_INSTALLED" \
     && fail "installed chump-organ-watchdog.service leaked an absolute /root path for a non-root run-user: $(cat "$CJ_INSTALLED")"
 ok "chump-organ-watchdog.service installs for a non-root run-user (CJ shape) with no /root path"
 
+# ── Guard: the "instruments lie" keystone (INFRA-3647) ─────────────────────
+# Every organ installed for a NON-ROOT run-user (CJ=jeff, from the CHUMP_RUN_USER
+# =jeff install above into $TMP/cj-dest) must resolve HOME to the run-user's home
+# (never /root) AND set cwd at the repo root. The blanket "/root/" prefix rewrite
+# silently missed `Environment=HOME=/root` (no trailing slash), so 16 organs kept
+# HOME=/root even with User=jeff: gh read /root/.config/gh (perm denied => 0
+# merges), almanac read /root/.almanac (0 repos => fake 100% coverage), chump gap
+# ran cwd=/ (0 gaps) — every tool failed CLOSED while reporting fake-perfect. This
+# guard fails if the generator ever regresses to leaking /root into an owned-node
+# unit, or drops the repo-root cwd.
+installed_svcs=0
+for u in "$TMP/cj-dest"/*.service; do
+  [ -f "$u" ] || continue
+  installed_svcs=$((installed_svcs+1))
+  b="$(basename "$u")"
+  grep -Eq '=/root([[:space:]]|$)' "$u" \
+    && fail "$b pins a bare =/root value (e.g. HOME=/root) for run-user jeff: $(grep -nE '=/root([[:space:]]|$)' "$u")"
+  grep -Eq '^Environment=HOME=.*/root' "$u" \
+    && fail "$b HOME still resolves under /root for run-user jeff: $(grep -n '^Environment=HOME=' "$u")"
+  grep -q '^WorkingDirectory=' "$u" \
+    || fail "$b has no WorkingDirectory= (systemd cwd defaults to /, breaking cwd-based chump gap / gh repo view)"
+done
+[ "$installed_svcs" -gt 0 ] || fail "no .service units were installed to the stubbed dest dir — roster/install path broke"
+ok "all $installed_svcs generated organs run with HOME off /root + cwd at the repo root (INFRA-3647 keystone)"
+
 echo "ALL PASS"
