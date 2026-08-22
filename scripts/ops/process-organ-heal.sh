@@ -20,17 +20,17 @@
 #     TARGETS entry are all shipped and locally CI-tested
 #     (scripts/ci/test-process-organ-heal.sh) in this PR.
 #   - LIVE tier (pgrep on closetjunky itself, ambient.jsonl tail on CJ):
-#     NOT performed by this PR — every authoring session so far (including
-#     2026-08-22's finalization pass, which also tried `tailscale ssh` and a
-#     `tailscale nc` ProxyCommand) has confirmed there is no credential path
-#     from a Claude Code session to closetjunky (100.90.52.126; publickey
-#     auth only, no key in any worktree; no self-hosted runner on CJ either).
-#     scripts/ops/check-process-organ-heal-live.sh is the script an
-#     operator/session WITH CJ access should run post-merge to close that
-#     gap — full steps in
-#     docs/process/PROCEDURES/verify-process-organ-heal-live.md. It is
-#     deliberately NOT self-invoked here so a green PR never gets misread as
-#     "verified live" (AC4's "never merged=running").
+#     CONFIRMED 2026-08-22 — this session's worktree turned out to be running
+#     ON closetjunky itself (hostname check), so scripts/ops/
+#     check-process-organ-heal-live.sh could run directly: systemd timer
+#     active, organ_watchdog_tick fresh, almanac-vision-keeper running.
+#     Earlier sessions (and this one, before checking hostname) found no
+#     credential path to CJ from a *remote* Claude Code session — ssh,
+#     `tailscale ssh`, and a `tailscale nc` ProxyCommand all hit publickey
+#     Permission denied, and no self-hosted runner is registered on CJ — so
+#     that path stays valid for any future session that is NOT itself CJ.
+#     Full findings + the live-check's own discovery-path bug (also fixed in
+#     this PR): docs/process/PROCEDURES/verify-process-organ-heal-live.md.
 #
 # Usage:
 #   scripts/ops/process-organ-heal.sh              # scan + heal, real spawn

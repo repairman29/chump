@@ -23,15 +23,31 @@
 #   scripts/ops/check-process-organ-heal-live.sh
 #
 # Env:
-#   CHUMP_STATE_DIR / NODE_DIR   — node home (default: $HOME/.chumpnode)
-#   CHUMP_AMBIENT_LOG            — override ambient.jsonl path
+#   CHUMP_AMBIENT_LOG            — override ambient.jsonl path (wins over discovery)
+#   CHUMP_NODE_DIR               — legacy override: $CHUMP_NODE_DIR/repo/.chump-locks/ambient.jsonl
 #   CHUMP_PROCESS_ORGAN_HEAL_INTERVAL_S — expected tick cadence (default 300)
 #
 # Exit codes: 0 = all live, 1 = one or more checks failed.
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Default discovery order: explicit override > this checkout's own repo root
+# (same trick process-organ-heal.sh uses — this script lives in a tracked
+# repo, so SCRIPT_DIR/../.. IS the repo root wherever it's checked out) >
+# legacy $CHUMP_NODE_DIR/repo shape, for back-compat with any install that
+# still uses that layout. Ground truth from a real closetjunky run
+# (2026-08-22): systemd's chump-process-organ-heal.service sets
+# CHUMP_REPO_ROOT=/home/jeff/Projects/chump, NOT $HOME/.chumpnode/repo — the
+# old hardcoded default silently produced a false NOT-LIVE verdict here.
+REPO_ROOT_GUESS="$(cd "$SCRIPT_DIR/../.." && pwd)"
 NODE_DIR="${CHUMP_NODE_DIR:-$HOME/.chumpnode}"
-AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$NODE_DIR/repo/.chump-locks/ambient.jsonl}"
+if [[ -n "${CHUMP_AMBIENT_LOG:-}" ]]; then
+    AMBIENT_LOG="$CHUMP_AMBIENT_LOG"
+elif [[ -f "$REPO_ROOT_GUESS/.chump-locks/ambient.jsonl" ]]; then
+    AMBIENT_LOG="$REPO_ROOT_GUESS/.chump-locks/ambient.jsonl"
+else
+    AMBIENT_LOG="$NODE_DIR/repo/.chump-locks/ambient.jsonl"
+fi
 INTERVAL="${CHUMP_PROCESS_ORGAN_HEAL_INTERVAL_S:-300}"
 GRACE=$(( INTERVAL * 2 ))
 
