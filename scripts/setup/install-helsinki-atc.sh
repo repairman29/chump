@@ -235,10 +235,32 @@ for unit in "${SYSTEM_UNITS[@]}"; do
     exit 1
   fi
   tmp="$(mktemp)"
-  sed -e "s#/root/#${RUN_HOME%/}/#g" -e "s#^User=root#User=${RUN_USER}#" "$src" > "$tmp"
-  # ensure a [Service] runs as the repo-owning user (git/ssh/cargo), not root
-  if grep -q "^\[Service\]" "$tmp" && ! grep -q "^User=" "$tmp"; then
-    sed -i "/^\[Service\]/a User=${RUN_USER}" "$tmp"
+  # RESILIENT-353 / INFRA-3647 host-rewrite. Tracked units are helsinki-shaped
+  # (User=root, HOME=/root, /root/... paths). Rewrite per host so the SAME
+  # manifest wires correctly on an owned node:
+  #   s#/root/#...#g  -> path PREFIXES (/root/Projects, /root/.chump, ...)
+  #   s#=/root$#...#  -> a BARE /root as the WHOLE value of an assignment, the
+  #                      class the prefix rule silently missed. Chiefly
+  #                      `Environment=HOME=/root` (no trailing slash): it
+  #                      survived the prefix sed, so on an owned node HOME
+  #                      stayed /root even as User= flipped to jeff, and every
+  #                      tool read /root/.config/gh, /root/.almanac, cwd=/ and
+  #                      failed CLOSED while reporting fake-perfect ("instruments
+  #                      lie" keystone). Also covers a bare WorkingDirectory=/root.
+  sed -e "s#/root/#${RUN_HOME%/}/#g" \
+      -e "s#=/root\$#=${RUN_HOME%/}#" \
+      -e "s#^User=root#User=${RUN_USER}#" "$src" > "$tmp"
+  # Host-agnostic runtime context for EVERY generated organ, applied uniformly
+  # (one pattern, not per-service): run as the repo-owning user (git/ssh/cargo),
+  # with that user's real HOME, ~/.cargo/bin on PATH, and cwd at the repo root,
+  # so cwd-based tools (chump gap, gh repo view) don't run from / and
+  # $HOME-based tools (gh, almanac) read the run-user's config, on any host.
+  if grep -q "^\[Service\]" "$tmp"; then
+    _repo_on_host="${RUN_HOME%/}/Projects/chump"
+    grep -q "^User=" "$tmp"             || sed -i "/^\[Service\]/a User=${RUN_USER}" "$tmp"
+    grep -q "^Environment=HOME=" "$tmp" || sed -i "/^\[Service\]/a Environment=HOME=${RUN_HOME%/}" "$tmp"
+    grep -q "^WorkingDirectory=" "$tmp" || sed -i "/^\[Service\]/a WorkingDirectory=${_repo_on_host}" "$tmp"
+    grep -q "^Environment=PATH=" "$tmp" || sed -i "/^\[Service\]/a Environment=PATH=${RUN_HOME%/}/.cargo/bin:/usr/local/bin:/usr/bin:/bin" "$tmp"
   fi
   if [[ ! -f "$dest" ]] || ! cmp -s "$tmp" "$dest"; then
     CHANGED_UNITS+=("$unit")
