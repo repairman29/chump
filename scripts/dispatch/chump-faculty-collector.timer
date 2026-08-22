@@ -1,0 +1,13 @@
+# Drives chump-faculty-collector.service every 15 minutes so the OS
+# self-portrait's data source stays fresh with no human step — the same cadence
+# and self-healing shape as every other organ in organ-manifest.txt.
+[Unit]
+Description=Chump faculty-collector beat — refresh faculty-status.json every 15m
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
