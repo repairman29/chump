@@ -52,6 +52,14 @@ AMBIENT_LOG="${NODE_AMBIENT:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 LIB_AMBIENT="$REPO_ROOT/scripts/coord/lib/ambient-write.sh"
 [[ -f "$LIB_AMBIENT" ]] && source "$LIB_AMBIENT"
 
+# TREK-18 (INFRA-3644): the manifest parser is shared with install-helsinki-atc.sh
+LIB_ORGAN_MANIFEST="$REPO_ROOT/scripts/ops/lib/organ-manifest-lib.sh"
+if [[ ! -f "$LIB_ORGAN_MANIFEST" ]]; then
+  echo "ERROR: missing $LIB_ORGAN_MANIFEST" >&2
+  exit 1
+fi
+source "$LIB_ORGAN_MANIFEST"
+
 emit() {  # kind, extra-json (no leading/trailing comma)
   local kind="$1" extra="${2:-}"
   local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -141,34 +149,12 @@ EOF
 }
 
 # ── read manifest into arrays (+ per-unit role/requires, RESILIENT-347) ─────
+# TREK-18: parsed by the shared organ_manifest_parse() helper (organ-manifest-lib.sh)
 PAGING_OFF=()
 ENABLED=()
 declare -A ORGAN_ROLE
 declare -A ORGAN_REQUIRES
-if [[ ! -f "$MANIFEST" ]]; then
-  echo "ERROR: manifest not found: $MANIFEST" >&2
-  exit 1
-fi
-while read -r state unit rest; do
-  [[ -z "${state:-}" ]] && continue
-  [[ "$state" == \#* ]] && continue
-  role="" requires=""
-  for tok in $rest; do
-    case "$tok" in
-      role=*)     role="${tok#role=}" ;;
-      requires=*) requires="${tok#requires=}" ;;
-    esac
-  done
-  case "$state" in
-    paging_off) PAGING_OFF+=("$unit") ;;
-    enabled)
-      ENABLED+=("$unit")
-      ORGAN_ROLE["$unit"]="${role:-brain}"
-      ORGAN_REQUIRES["$unit"]="$requires"
-      ;;
-    *) echo "WARN: unknown state '$state' for '$unit' in manifest; ignoring" >&2 ;;
-  esac
-done < "$MANIFEST"
+organ_manifest_parse "$MANIFEST" PAGING_OFF ENABLED ORGAN_ROLE ORGAN_REQUIRES || exit 1
 
 MODE="${1:---apply}"
 

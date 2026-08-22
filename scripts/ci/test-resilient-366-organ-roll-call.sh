@@ -44,12 +44,15 @@ is_exempt() {
   return 1
 }
 
-# Extract every *.timer entry from install-helsinki-atc.sh's SYSTEM_UNITS array.
+# TREK-18 (INFRA-3644): the roster is no longer a static literal array — it's
+# derived at runtime from organ-manifest.txt. Ask the installer for its
+# actual computed roster via --print-roster (no root/systemctl needed) rather
+# than sed-parsing a literal block that no longer exists.
 mapfile -t ROSTER_TIMERS < <(
-  sed -n '/^SYSTEM_UNITS=(/,/^)/p' "$INSTALLER" \
-    | grep -oE 'chump-[A-Za-z0-9_-]+\.timer'
+  CHUMP_INSTALL_ATC_ALLOW_NONROOT=1 bash "$INSTALLER" --print-roster \
+    | grep -oE 'chump-[A-Za-z0-9_@.-]+\.timer'
 )
-[ "${#ROSTER_TIMERS[@]}" -gt 0 ] || fail "no *.timer entries found in $INSTALLER SYSTEM_UNITS — parse broke"
+[ "${#ROSTER_TIMERS[@]}" -gt 0 ] || fail "no *.timer entries found in '$INSTALLER --print-roster' — derivation broke"
 
 missing=()
 for unit in "${ROSTER_TIMERS[@]}"; do
