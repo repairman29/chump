@@ -1,0 +1,26 @@
+# INFRA-375 / RESILIENT-306 — the CI-flake auto-rerun organ. Runs
+# scripts/ops/ci-flake-rerun.sh: for each open PR with a failed required check,
+# it matches the failure log against a TIGHT allowlist of transient-flake
+# fingerprints (runner cancel, DNS EAI_AGAIN, connect ETIMEDOUT, git-network,
+# OOM exit 137, cancelled/timed-out audit-shard) plus the known-flake test
+# catalog (docs/process/KNOWN_FLAKES.yaml), and reruns ONLY the matched jobs.
+# Bounded + idempotent: at most ONE rerun per run-id (cooldown record) and a
+# per-PR flake budget (CHUMP_FLAKE_BUDGET, default 3) so a real bug wearing a
+# flake's clothes stops being retried and gets a diagnostic PR comment instead.
+# Uncatalogued / unmatched failures never rerun — real reds are left for a human
+# / stuck-pr-filer. This keeps transient CI flake from aging otherwise-mergeable
+# PRs, so the merge GATE stays green (helps the CI pass-rate amber).
+#
+# Twin of chump-rot-reaper.service. Paths default to the primary node (helsinki,
+# root); install-helsinki-atc.sh host-rewrites User=/HOME=/paths per node so the
+# SAME manifest wires correctly on CJ/Termux/etc (RESILIENT-353).
+[Unit]
+Description=Chump CI flake auto-rerun — rerun known-flake CI reds on open PRs, bounded (INFRA-375)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; cd /root/Projects/chump; exec bash scripts/ops/ci-flake-rerun.sh'
