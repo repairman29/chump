@@ -1,0 +1,17 @@
+- id: RESILIENT-370
+  domain: RESILIENT
+  title: the Discord receive gateway (RESILIENT-266) never deploys on Linux nodes — tracked unit missing from scripts/dispatch/, so the manifest-derived ATC roster silently skips it; rebuild the two-way operator channel on an owned node (CJ)
+  status: in_progress
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "ROOT CAUSE: organ-manifest.txt has `enabled chump-discord-gateway.service role=brain`, but install-helsinki-atc.sh (TREK-18) derives its roster from the manifest INTERSECTED with unit files under scripts/dispatch/. The only unit lived in scripts/ops/, so `--print-roster` never listed discord-gateway and no Linux node ever installed it. This is the same declared-but-never-installed drift TREK-18 was built to kill, recurring for an organ TREK-18 did not migrate."
+    - "FIX: add scripts/dispatch/chump-discord-gateway.service (Type=simple, Restart=always) + scripts/dispatch/discord-gateway-beat.sh, a host-agnostic wrapper that self-locates the repo, fixes HOME from the run-user, re-resolves creds, and runs the serenity-free scripts/ops/discord-gateway.py. Verify `install-helsinki-atc.sh --print-roster` now lists chump-discord-gateway.service."
+    - "GRACEFUL DEGRADATION (no crash-loop): if DISCORD_TOKEN / CHUMP_READY_DM_USER_ID are absent on a node, the beat logs 'awaiting DISCORD token/intent', emits an ambient breadcrumb, and idles (sleep infinity) so is-active stays green and a later `systemctl restart` picks up creds — instead of Restart=always hot-looping on sys.exit(2)."
+    - "INTENT SAFETY: default intents = DIRECT_MESSAGES (4096, non-privileged). Do NOT force 36864 (MESSAGE CONTENT) unless the dev portal granted it — an ungranted privileged intent makes Discord close with 4014 and crash-loops. Buttons + status/ping/help work at 4096; free-text DMs get a nudge to enable the intent."
+    - "REUSE, don't rebuild: creds come from ~/.chump/providers.env (the same DISCORD_TOKEN + CHUMP_READY_DM_USER_ID notify-operator.sh uses for OUTBOUND). Inbound events land on the existing ambient sink (.chump-locks/ambient.jsonl) the board/duty-officer already consume — no new queue."
+    - "LIVE PROOF ON CJ (merged != running): install the host-rewritten unit, `systemctl enable --now chump-discord-gateway`, and assert `systemctl is-active` == active with the python gateway process connected (READY as <bot>). Fix discord-gateway-liveness.sh's pgrep pattern, which matched only the Rust `chump --discord` and never the python `discord-gateway.py`."
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: install-helsinki-atc.sh --print-roster | grep discord  (before fix) | OUTPUT: empty — discord-gateway absent from the roster despite `enabled` in organ-manifest.txt:87, because scripts/dispatch/chump-discord-gateway.service did not exist (only scripts/ops/chump-discord-gateway.service, which the roster never scans) | THEORY: RESILIENT-266 landed on helsinki via Mac launchd + a scripts/ops/ template; the Linux systemd deploy path (dispatch/ + manifest roster) was never wired, so decommissioning helsinki took the two-way channel dark with no revive path | ALT: rejected 'just re-run the launchd installer' — it is macOS-only (launchctl/plist) and points at a Rust --features discord binary; the serenity-free python gateway is the node-portable path and needs a systemd unit where the roster looks
+  closed_pr:

@@ -40,7 +40,7 @@ mkdir -p "$STATE_DIR" 2>/dev/null || true
 # Count real gateway processes. NOTE: macOS BSD pgrep has no -c, and piping to
 # `|| echo 0` turns an error into a FALSE ZERO — a mistake that caused two
 # misdiagnoses in one session. Count with wc -l and never trust a bare pgrep -c.
-running="$(pgrep -f 'chump.*--discord|chump-discord-gateway' 2>/dev/null | wc -l | tr -d ' ')"
+running="$(pgrep -f 'chump.*--discord|discord-gateway.py' 2>/dev/null | wc -l | tr -d ' ')"
 running="${running:-0}"
 
 if (( running > 0 )); then
