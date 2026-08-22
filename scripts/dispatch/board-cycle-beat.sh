@@ -40,6 +40,12 @@ cd "$REPO_ROOT" || { echo "[board-cycle] cannot cd repo root" >&2; exit 1; }
 
 TIMEOUT_S="${CHUMP_BOARD_CYCLE_TIMEOUT_S:-600}"
 
+# RESILIENT-373: the beat OWNS the paging decision now (deterministic,
+# severity-gated, deduped) via scripts/coord/lib/board-cycle-escalate.sh.
+# BEAT_START_EPOCH bounds which board_cycle_report_posted line that organ
+# reads, so a stale line from a prior cycle is never re-paged.
+BEAT_START_EPOCH="$(date -u +%s)"
+
 ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 log() { printf '[board-cycle %s] %s\n' "$(ts)" "$*"; }
 
@@ -59,15 +65,20 @@ it became mergeable. Flag any exceeding 30 minutes as an SLA BREACH.
 OPERATOR_AGENT.md's Queue-health step. Do not take remediation action \
 yourself in this MVP slice (no rebases, no reruns) — this cycle is \
 report-only.
-3. Compose a TERSE board report (a few lines: SLA breach count + oldest \
-breach age, stall classification counts, one-line fleet-health read) and \
-post it to the operator via Discord: \
-'source scripts/coord/lib/notify-operator.sh && notify_operator \"<report>\"'. \
-Set CHUMP_NOTIFY_KIND=board_cycle_report before calling notify_operator so \
-the escalation gate can classify it.
-4. Append one line to .chump-locks/ambient.jsonl:
-   {\"ts\":\"<utc>\",\"kind\":\"board_cycle_report_posted\",\"sla_breaches\":<n>,\"stalls_classified\":<n>}
-   (only after notify_operator returns 0; skip if it failed).
+3. DO NOT call notify_operator, source notify-operator.sh, or send any \
+Discord message. Paging is now owned DETERMINISTICALLY by the beat \
+(scripts/coord/lib/board-cycle-escalate.sh, RESILIENT-373): it pages the \
+operator ONLY on an actionable SLA breach and dedupes a persisting one, so a \
+clean cycle never touches the phone. Your job is to produce the honest \
+structured signal in step 4 and nothing else.
+4. Append EXACTLY ONE line to .chump-locks/ambient.jsonl capturing this \
+cycle's structured result — ALWAYS, whether clean or breached:
+   {\"ts\":\"<utc>\",\"kind\":\"board_cycle_report_posted\",\"sla_breaches\":<int>,\"oldest_breach_age_min\":<int>,\"stalls_classified\":<int>,\"root_cause\":\"<slug>\",\"summary\":\"<one terse line>\"}
+   sla_breaches MUST be an integer (0 when none). Include oldest_breach_age_min \
+only if there is a breach; include root_cause only when you can name the single \
+dominant cause (e.g. bot_merge_daemon_not_installed, ci_runners_blocked); omit \
+fields you cannot fill rather than guessing. This line IS the report — the beat \
+turns a breach into a phone page and a clean cycle into silence.
 
 Read-only + Discord-post only. Do not push code, do not merge, do not modify \
 gap state. If gh/cache access fails entirely, post that failure as the report \
@@ -86,6 +97,12 @@ rather than silently exiting."
 # agent, not a blanket root override.
 [[ "$(id -u)" == "0" ]] && export IS_SANDBOX=1
 
+# Belt-and-suspenders: if the agent ignores step 3 and still calls
+# notify_operator, this exported kind makes the registry SUPPRESS it
+# (operator-escalation-registry.txt: board_cycle_report suppress) instead
+# of paging as an unclassified novel caller.
+export CHUMP_NOTIFY_KIND=board_cycle_report
+
 log "beat start (timeout=${TIMEOUT_S}s)"
 cycle_output=""
 cycle_rc=0
@@ -103,6 +120,21 @@ mkdir -p "$log_dir" 2>/dev/null || true
 printf '{"ts":"%s","kind":"board_cycle_beat","exit_code":%s,"node":"%s"}\n' \
     "$(ts)" "$cycle_rc" "$(hostname -s 2>/dev/null || echo node)" \
     >> "$log_dir/ambient.jsonl" 2>/dev/null || true
+
+# RESILIENT-373: deterministic, severity-gated, deduped escalation. Reads the
+# structured board_cycle_report_posted line the agent just emitted and pages the
+# operator ONLY on an actionable breach (deduped per signature per window) — a
+# clean cycle is silent. This is what turns the 38-pages/24h firehose into
+# breach-only signal. Never breaks the beat (the organ always returns 0).
+ESCALATE_LIB="$REPO_ROOT/scripts/coord/lib/board-cycle-escalate.sh"
+if [[ -f "$ESCALATE_LIB" ]]; then
+    # shellcheck source=../coord/lib/board-cycle-escalate.sh
+    unset CHUMP_NOTIFY_KIND   # the organ sets kind=board_cycle_alert on its own page
+    source "$ESCALATE_LIB"
+    board_cycle_escalate "$BEAT_START_EPOCH" || true
+else
+    log "escalate organ missing ($ESCALATE_LIB) — no page path this cycle"
+fi
 
 log "beat done — exit_code=$cycle_rc"
 exit 0
