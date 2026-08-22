@@ -1,0 +1,102 @@
+{
+  "generated_at": "2026-08-22T18:40:00Z",
+  "p_full_trek": 0.45018582806249996,
+  "signs": [
+    {
+      "key": "merge_throughput",
+      "name": "Merge Throughput",
+      "group": "flow",
+      "lead_or_lag": "lagging",
+      "value": 52,
+      "unit": "merges/24h",
+      "status": "green",
+      "thresholds": { "green": ">30", "amber": "10-30", "red_desc": "<10" },
+      "treatable_action": "stall — check resolver/CI/queue",
+      "basis": "52 merged / 54 resolved in 24h (gh)"
+    },
+    {
+      "key": "oldest_pr_age",
+      "name": "Oldest PR Age",
+      "group": "flow",
+      "lead_or_lag": "leading",
+      "value": 88,
+      "unit": "min",
+      "status": "amber",
+      "thresholds": { "green": "<60", "amber": "60-240", "red_desc": ">240" },
+      "treatable_action": "clear/diagnose the oldest PR NOW (the clock)",
+      "basis": "oldest open PR opened 88 min ago (gh)"
+    },
+    {
+      "key": "ci_pass_rate",
+      "name": "CI Pass Rate",
+      "group": "quality",
+      "lead_or_lag": "leading",
+      "value": 75,
+      "unit": "%",
+      "status": "amber",
+      "thresholds": { "green": ">90", "amber": "75-90", "red_desc": "<75" },
+      "treatable_action": "find the flaky/failing gate",
+      "basis": "24/32 decided CI runs passed in 24h (gh run)"
+    },
+    {
+      "key": "merged_not_running",
+      "name": "Merged-Not-Running",
+      "group": "quality",
+      "lead_or_lag": "leading",
+      "value": 79,
+      "unit": "% organs active",
+      "status": "red",
+      "thresholds": { "green": ">95", "amber": "80-95", "red_desc": "<80" },
+      "treatable_action": "roll-call + revive the dead organ",
+      "basis": "15/19 manifest organs systemctl is-active"
+    },
+    {
+      "key": "conflict_churn",
+      "name": "Conflict Churn",
+      "group": "waste",
+      "lead_or_lag": "leading",
+      "value": 2,
+      "unit": "DIRTY PRs",
+      "status": "green",
+      "thresholds": { "green": "<3", "amber": "3-8", "red_desc": ">8" },
+      "treatable_action": "resolver drain / merge-queue",
+      "basis": "2 open PRs mergeable_state=DIRTY (gh)"
+    },
+    {
+      "key": "calibration_brier",
+      "name": "Calibration Brier",
+      "group": "trust",
+      "lead_or_lag": "leading",
+      "value": null,
+      "unit": "",
+      "status": "unknown",
+      "thresholds": { "green": "<0.1", "amber": "0.1-0.2", "red_desc": ">0.2" },
+      "treatable_action": "audit pricing model — the board may be lying",
+      "basis": "uninstrumented: ~/.chump/pr-book-calibration.log not present"
+    },
+    {
+      "key": "human_intervention",
+      "name": "Human Intervention",
+      "group": "autonomy",
+      "lead_or_lag": "lagging",
+      "value": null,
+      "unit": "pages/24h",
+      "status": "unknown",
+      "thresholds": { "green": "<5", "amber": "5-20", "red_desc": ">20" },
+      "treatable_action": "a missing organ — find what humans keep doing",
+      "basis": "uninstrumented: notify-operator/ambient page count not wired"
+    },
+    {
+      "key": "outcomes_delivered",
+      "name": "Outcomes Delivered",
+      "group": "mission",
+      "lead_or_lag": "lagging",
+      "value": null,
+      "unit": "reaching a person",
+      "status": "unknown",
+      "thresholds": { "green": "", "amber": "", "red_desc": "" },
+      "treatable_action": "the truest number — instrument it",
+      "basis": "uninstrumented: no source for things reaching a real person"
+    }
+  ]
+}
