@@ -11526,3 +11526,15 @@ events:
       merge resolves something the curator was tracking as stale.
     consumers: [chump curator status, ambient]
     fields_required: [ts, kind, role, gap_id, reason]
+
+  - kind: vital_signs
+    effect_metric: self
+    emitter: scripts/ops/vital-signs.sh (the 8-vital-signs journey board)
+    trigger: every vital-signs collector pass (chump-vital-signs.timer), after
+      it reads the 8 real endpoints (gh merges/oldest-PR/DIRTY/CI, systemd organ
+      roll-call, ambient operator pages, pr-book calibration log, journey-odds)
+      and writes ~/.chump/vital-signs.json. A heartbeat so a dead collector — and
+      a frozen vitals board — is itself observable from the ambient stream
+      instead of silently going stale.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, signs, green, amber, red, unknown, p_full_trek, out]
