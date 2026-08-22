@@ -86,14 +86,6 @@ AMBIENT_LOG="${NODE_AMBIENT:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 LIB_AMBIENT="$REPO_ROOT/scripts/coord/lib/ambient-write.sh"
 [[ -f "$LIB_AMBIENT" ]] && source "$LIB_AMBIENT"
 
-# TREK-18 (INFRA-3644): the manifest parser is shared with organ-reconcile.sh
-LIB_ORGAN_MANIFEST="$REPO_ROOT/scripts/ops/lib/organ-manifest-lib.sh"
-if [[ ! -f "$LIB_ORGAN_MANIFEST" ]]; then
-  echo "ERROR: missing $LIB_ORGAN_MANIFEST" >&2
-  exit 1
-fi
-source "$LIB_ORGAN_MANIFEST"
-
 emit() {  # kind, extra-json (no leading/trailing comma)
   local kind="$1" extra="${2:-}"
   local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -107,85 +99,76 @@ emit() {  # kind, extra-json (no leading/trailing comma)
   fi
 }
 
-# TREK-18 (INFRA-3644): the roster used to be a hand-maintained literal array
-# here — a second source of truth alongside scripts/ops/organ-manifest.txt.
-# That drift class bit twice: RESILIENT-366 caught organs in THIS array with
-# no manifest line (unrevivable), and the inverse also happened silently —
-# chump-conflict-resolution-consumer.timer and chump-gap-closure-reconcile.timer
-# were both `enabled` in the manifest but never installed here, because
-# adding a manifest line was never sufficient on its own.
-#
-# Now the roster is DERIVED from organ-manifest.txt (via the shared
-# organ_manifest_parse() helper, TREK-18) intersected with the tracked unit
-# files under scripts/dispatch/ — the only two facts that matter: "does the
-# manifest want this organ" and "do we have a unit file for it". A manifest
-# `enabled` OR `paging_off` line is enough to get an organ installed +
-# enabled here; `paging_off` organs still need their .timer enabled (only
-# their .service ExecStart gets neutered, by organ-reconcile below) so both
-# states contribute basenames to the roster.
-#
-# chump-organ-reconcile itself is the one deliberate exception (see the
-# manifest header): its own liveness is this installer's job, not something
-# the reconcile can bootstrap for itself, so it is always included.
-MANIFEST_FOR_ROSTER="$REPO_ROOT/scripts/ops/organ-manifest.txt"
-declare -a _M_PAGING_OFF=()
-declare -a _M_ENABLED=()
-declare -A _M_ROLE=()
-declare -A _M_REQUIRES=()
-organ_manifest_parse "$MANIFEST_FOR_ROSTER" _M_PAGING_OFF _M_ENABLED _M_ROLE _M_REQUIRES || exit 1
-
-declare -A _ORGAN_BASENAMES=()
-for _u in "${_M_ENABLED[@]}" "${_M_PAGING_OFF[@]}"; do
-  _base="${_u%.service}"; _base="${_base%.timer}"
-  _ORGAN_BASENAMES["$_base"]=1
-done
-_ORGAN_BASENAMES["chump-organ-reconcile"]=1   # self-exempt from the manifest, see above
-
-SYSTEM_UNITS=()
-while IFS= read -r _base; do
-  [[ -f "$REPO_ROOT/scripts/dispatch/${_base}.service" ]] && SYSTEM_UNITS+=("${_base}.service")
-  [[ -f "$REPO_ROOT/scripts/dispatch/${_base}.timer" ]] && SYSTEM_UNITS+=("${_base}.timer")
-done < <(printf '%s\n' "${!_ORGAN_BASENAMES[@]}" | sort)
-
-SYSTEM_TIMERS=()
-for _u in "${SYSTEM_UNITS[@]}"; do
-  [[ "$_u" == *.timer ]] && SYSTEM_TIMERS+=("$_u")
-done
-
-if [[ "${#SYSTEM_UNITS[@]}" -eq 0 ]]; then
-  echo "ERROR: manifest-derived roster is empty — organ-manifest.txt unreadable or no scripts/dispatch/ unit files matched" >&2
-  exit 1
-fi
-
-# ── --print-roster (debug/CI helper) ─────────────────────────────────────────
-# Prints the derived roster, one unit per line, and exits — no root, no
-# systemctl, no side effects. Lets CI assert "every manifest-declared organ
-# with a tracked unit file lands in the roster" without touching a real
-# systemd bus (used by scripts/ci/test-resilient-366-organ-roll-call.sh).
-if [[ "${1:-}" == "--print-roster" ]]; then
-  printf '%s\n' "${SYSTEM_UNITS[@]}"
-  exit 0
-fi
+SYSTEM_UNITS=(
+  chump-pr-lander.service
+  chump-pr-lander.timer
+  chump-armed-rebaser.service
+  chump-armed-rebaser.timer
+  chump-board-cycle.service
+  chump-board-cycle.timer
+  chump-sla-scorecard.service
+  chump-sla-scorecard.timer
+  chump-organ-watchdog.service
+  chump-organ-watchdog.timer
+  chump-board-ceo-briefing.service
+  chump-board-ceo-briefing.timer
+  chump-organ-reconcile.service
+  chump-organ-reconcile.timer
+  chump-pr-approval.service
+  chump-pr-approval.timer
+  # RESILIENT-313: the persistent farmer runner — keeps the worker-gate heartbeat
+  # fresh every 30s so the fleet never silently darks out. Retires the transient
+  # chump-farmer-bridge hack.
+  chump-farmer.service
+  chump-farmer.timer
+  # RESILIENT-324: the rot-reaper — drains CONFLICTING+old PRs the armed-rebaser
+  # can't rebase, so the back-pressure breaker never deadlocks in the 4–5
+  # hysteresis dead-zone. Shipped as part of the ATC roster so `run the install`
+  # boots a fresh node WITH auto-draining (RUN-INSTALL mission).
+  chump-rot-reaper.service
+  chump-rot-reaper.timer
+  # RESILIENT-318 / INFRA-2130: the Batched Merge Train (chump-integrator) — a
+  # Mac-launchd-only organ ported to systemd. Batches up to 5 ready_to_ship gaps
+  # through a preflight gate into ONE integration branch so CI runs once per
+  # batch instead of once per gap (~7 -> ~35 PRs/hr). Installed DRY-RUN
+  # (CHUMP_INTEGRATOR_LIVE=0 in the unit) — LIVE is an operator flip gated on
+  # trunk-GREEN (docs/process/SCALING.md). Shipped in the ATC roster so a fresh
+  # Linux node boots WITH the merge train (RUN-INSTALL mission). Requires the
+  # chump-integrator binary at ~/.cargo/bin (node-refresh builds+installs it, or
+  # install-integrator-daemon-systemd.sh does); the timer no-ops safely until then.
+  chump-integrator.service
+  chump-integrator.timer
+  # CREDIBLE-292: the backlog-sync single writer — publishes registry truth
+  # (.chump/state.sql) to origin/main so cluster-wide `chump gap reserve`
+  # collision avoidance (the origin-fetch git-history check) and every other
+  # node's --reader actually see current state. Designed (RESILIENT-194) but
+  # never installed on any node until this gap — that gap is what let the
+  # 2026-08-15 registry split-brain go undetected for 21 days.
+  chump-backlog-sync-writer.service
+  chump-backlog-sync-writer.timer
+  # INFRA-3643 (TREK-17): systemd complement to the macOS-only
+  # almanac-summarize-watchdog (RESILIENT-354) — binary presence + index
+  # freshness for the almanac fusion-search organ on the Linux factory.
+  chump-almanac-liveness.service
+  chump-almanac-liveness.timer
+  # RESILIENT-365: wires the INFRA-249 recurring-gap-pattern-detector as a
+  # live organ instead of a script only ever run by hand — was DARK/0 units,
+  # human-ALERT-only, while 44 symptom PRs shipped in one night with 0 root
+  # gaps filed. CHUMP_RCA_REFLEX_ENABLED defaults OFF (see the .service file);
+  # detection + ambient ALERT run regardless.
+  chump-rca-reflex.service
+  chump-rca-reflex.timer
+)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-almanac-liveness.timer chump-rca-reflex.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
-# TREK-18 (AC3): delegate to organ-reconcile.sh --check — the SAME
-# manifest-derived source of truth this installer's roster is built from —
-# instead of re-checking only the hardcoded roster subset. This makes --check
-# exit 0 iff every manifest-derived `enabled` organ (applicable to this node,
-# not in backoff) is active, and every `paging_off` organ is neutered.
 if [[ "${1:-}" == "--check" ]]; then
   fail=0
-  ORGAN_RECONCILE_FOR_CHECK="$REPO_ROOT/scripts/ops/organ-reconcile.sh"
-  if [[ -x "$ORGAN_RECONCILE_FOR_CHECK" ]]; then
-    bash "$ORGAN_RECONCILE_FOR_CHECK" --check || fail=1
-  else
-    echo "WARN: $ORGAN_RECONCILE_FOR_CHECK missing; falling back to roster-only check" >&2
-    for t in "${SYSTEM_TIMERS[@]}"; do
-      if ! systemctl is-active --quiet "$t" 2>/dev/null; then
-        echo "MISSING: $t not active"; fail=1
-      fi
-    done
-  fi
+  for t in "${SYSTEM_TIMERS[@]}"; do
+    if ! systemctl is-active --quiet "$t" 2>/dev/null; then
+      echo "MISSING: $t not active"; fail=1
+    fi
+  done
   if ! systemctl --user is-active --quiet chump-node-refresh.timer 2>/dev/null; then
     echo "MISSING: chump-node-refresh.timer (user) not active"; fail=1
   fi

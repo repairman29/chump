@@ -218,12 +218,18 @@ seed_gap "TEST-003" "$LAST_WEEK" "reconcile drift on cold boot"
 FAKE_BIN="$TMPDIR_BASE/fakebin"
 mkdir -p "$FAKE_BIN"
 RESERVE_LOG="$TMPDIR_BASE/reserve.log"
+SET_LOG="$TMPDIR_BASE/set.log"
 : > "$RESERVE_LOG"
+: > "$SET_LOG"
 cat > "$FAKE_BIN/chump" <<EOF
 #!/usr/bin/env bash
 if [ "\$1 \$2" = "gap reserve" ]; then
     echo "\$*" >> "$RESERVE_LOG"
     echo "META-9001"
+    exit 0
+fi
+if [ "\$1 \$2" = "gap set" ]; then
+    echo "\$*" >> "$SET_LOG"
     exit 0
 fi
 exit 1
@@ -235,12 +241,19 @@ state="$FAKE_REPO/.chump-locks/pattern-detector-state.json"
 hold="$FAKE_REPO/.chump-locks/pattern-detector-hold.json"
 out=$(cd "$FAKE_REPO" && PATH="$FAKE_BIN:$PATH" CHUMP_AMBIENT_LOG="$amb" \
     CHUMP_PATTERN_DETECTOR_STATE="$state" CHUMP_PATTERN_DETECTOR_HOLD="$hold" \
+    CHUMP_RCA_REFLEX_ENABLED=1 CHUMP_RCA_REFLEX_LLM_DISABLED=1 \
     "$DETECTOR" --days 7 --threshold 3 2>&1)
 
 if grep -q "gap reserve --domain META" "$RESERVE_LOG"; then
     ok "Test 8a: RCA reflex called 'chump gap reserve --domain META'"
 else
     fail "Test 8a: expected a META gap reserve call; log: $(cat "$RESERVE_LOG" 2>/dev/null)"
+fi
+
+if grep -q -- "--evidence" "$RESERVE_LOG" && grep -q "THEORY:" "$RESERVE_LOG" && grep -q "ALT:" "$RESERVE_LOG"; then
+    ok "Test 8a2: reserve call carries a COMMAND/OUTPUT/THEORY/ALT evidence blob"
+else
+    fail "Test 8a2: expected --evidence with THEORY/ALT; log: $(cat "$RESERVE_LOG" 2>/dev/null)"
 fi
 
 if [ -f "$state" ] && grep -q "META-9001" "$state" && grep -q "reconcile" "$state"; then
@@ -261,16 +274,31 @@ else
     fail "Test 8d: ambient missing recurring_gap_pattern_rca_filed event"
 fi
 
+if grep -q "TEST-001 --depends-on META-9001" "$SET_LOG" \
+    && grep -q "TEST-002 --depends-on META-9001" "$SET_LOG" \
+    && grep -q "TEST-003 --depends-on META-9001" "$SET_LOG"; then
+    ok "Test 8e: every symptom gap got 'gap set --depends-on' the root gap"
+else
+    fail "Test 8e: expected 3 depends-on set calls; log: $(cat "$SET_LOG" 2>/dev/null)"
+fi
+
 # ── Test 9: RCA reflex is idempotent — repeat run doesn't refile ─────────────
 echo "--- Test 9: repeat detection reuses existing RCA gap, no second reserve ---"
 : > "$RESERVE_LOG"
+: > "$SET_LOG"
 out2=$(cd "$FAKE_REPO" && PATH="$FAKE_BIN:$PATH" CHUMP_AMBIENT_LOG="$amb" \
     CHUMP_PATTERN_DETECTOR_STATE="$state" CHUMP_PATTERN_DETECTOR_HOLD="$hold" \
+    CHUMP_RCA_REFLEX_ENABLED=1 CHUMP_RCA_REFLEX_LLM_DISABLED=1 \
     "$DETECTOR" --days 7 --threshold 3 2>&1)
 if [ ! -s "$RESERVE_LOG" ]; then
     ok "Test 9: second sweep reused existing RCA gap (no new reserve call)"
 else
     fail "Test 9: expected no new reserve call; log: $(cat "$RESERVE_LOG")"
+fi
+if grep -q "TEST-001 --depends-on META-9001" "$SET_LOG"; then
+    ok "Test 9b: second sweep still refreshes depends_on on symptom gaps (harmless no-op update)"
+else
+    fail "Test 9b: expected depends-on refresh calls even on repeat run; log: $(cat "$SET_LOG" 2>/dev/null)"
 fi
 
 # ── Test 10: --no-rca skips the reflex entirely ───────────────────────────────
@@ -282,13 +310,45 @@ seed_gap "TEST-003" "$LAST_WEEK" "orphaned lease sweep third"
 state2="$FAKE_REPO/.chump-locks/pattern-detector-state2.json"
 hold2="$FAKE_REPO/.chump-locks/pattern-detector-hold2.json"
 : > "$RESERVE_LOG"
+: > "$SET_LOG"
 ( cd "$FAKE_REPO" && PATH="$FAKE_BIN:$PATH" CHUMP_AMBIENT_LOG="$amb" \
     CHUMP_PATTERN_DETECTOR_STATE="$state2" CHUMP_PATTERN_DETECTOR_HOLD="$hold2" \
+    CHUMP_RCA_REFLEX_ENABLED=1 CHUMP_RCA_REFLEX_LLM_DISABLED=1 \
     "$DETECTOR" --days 7 --threshold 3 --no-rca >/dev/null 2>&1 )
 if [ ! -s "$RESERVE_LOG" ] && [ ! -f "$state2" ] && [ ! -f "$hold2" ]; then
     ok "Test 10: --no-rca skipped gap-reserve + state/hold writes"
 else
     fail "Test 10: --no-rca should skip reflex entirely (reserve log: $(cat "$RESERVE_LOG" 2>/dev/null))"
+fi
+
+# ── Test 11: CHUMP_RCA_REFLEX_ENABLED defaults OFF — no auto-file/auto-block ──
+echo "--- Test 11: reflex is OFF by default (RESILIENT-365 AC6) ---"
+reset_repo
+seed_gap "TEST-001" "$TODAY"     "wedge detection restart first"
+seed_gap "TEST-002" "$YESTERDAY" "wedge detection restart second"
+seed_gap "TEST-003" "$LAST_WEEK" "wedge detection restart third"
+state3="$FAKE_REPO/.chump-locks/pattern-detector-state3.json"
+hold3="$FAKE_REPO/.chump-locks/pattern-detector-hold3.json"
+amb3="$FAKE_REPO/.chump-locks/ambient3.jsonl"
+: > "$RESERVE_LOG"
+: > "$SET_LOG"
+out3=$(cd "$FAKE_REPO" && PATH="$FAKE_BIN:$PATH" CHUMP_AMBIENT_LOG="$amb3" \
+    CHUMP_PATTERN_DETECTOR_STATE="$state3" CHUMP_PATTERN_DETECTOR_HOLD="$hold3" \
+    "$DETECTOR" --days 7 --threshold 3 2>&1)
+if echo "$out3" | grep -q "CLUSTER.*wedge"; then
+    ok "Test 11a: detection + ALERT still fire when reflex is OFF"
+else
+    fail "Test 11a: expected cluster detection to still run when reflex is OFF; output: $out3"
+fi
+if grep -q "recurring_gap_pattern" "$amb3"; then
+    ok "Test 11b: ambient ALERT still emitted when reflex is OFF"
+else
+    fail "Test 11b: expected ambient ALERT even with reflex OFF"
+fi
+if [ ! -s "$RESERVE_LOG" ] && [ ! -s "$SET_LOG" ] && [ ! -f "$state3" ] && [ ! -f "$hold3" ]; then
+    ok "Test 11c: no gap reserve/set calls and no state/hold files when CHUMP_RCA_REFLEX_ENABLED unset"
+else
+    fail "Test 11c: reflex should be a no-op by default; reserve=$(cat "$RESERVE_LOG" 2>/dev/null) set=$(cat "$SET_LOG" 2>/dev/null)"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
