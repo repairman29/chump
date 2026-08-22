@@ -2171,3 +2171,8 @@ CHUMP_ALMANAC_MARKER
 CHUMP_ALMANAC_REPO
 # detected in: (standard input)
 CHUMP_ALMANAC_STALE_FLOOR_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FLEET_NO_CORE_CAP
