@@ -1,0 +1,15 @@
+# Chump faculty-collector — the DATA SOURCE for the OS self-portrait. Reads the
+# 11 faculties' live endpoints and writes ~/.chump/faculty-status.json + a
+# faculty_status ambient heartbeat every 15m (paired with the .timer). Deployed
+# by scripts/setup/install-helsinki-atc.sh, which host-rewrites /root/ -> the
+# run-user's HOME and User=root -> the run-user per node (helsinki=root, CJ=jeff).
+[Unit]
+Description=Chump faculty-collector — writes faculty-status.json for the OS self-portrait
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/root
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/faculty-collector.sh'
