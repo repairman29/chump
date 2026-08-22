@@ -1,0 +1,14 @@
+# INFRA-3643 (TREK-17) — drives chump-almanac-liveness.service so a Linux
+# factory node self-heals a missing almanac binary and surfaces a stale index
+# marker with no human step, mirroring how every other organ in
+# organ-manifest.txt is kept alive by its own timer.
+[Unit]
+Description=Chump almanac liveness/refresh beat (INFRA-3643)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
