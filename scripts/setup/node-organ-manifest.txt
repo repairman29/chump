@@ -1,0 +1,39 @@
+# node-organ-manifest.txt — COTG generic host-agnostic organ roster (INFRA-3641).
+#
+# Sibling of scripts/ops/organ-manifest.txt (which declares helsinki's ATC
+# systemd-unit roster — units that already exist, installed by
+# install-helsinki-atc.sh). This file is the roster for
+# scripts/setup/chump-node-install.sh's own ORGANS phase: the small set of
+# organs a fresh Termux/systemd-Linux/macOS node installs itself through the
+# host-agnostic supervisor abstraction (svc_install/svc_up), from scripts
+# chump-node-install.sh writes into $NODE_DIR/organs/ — never hand-placed.
+#
+# Format mirrors scripts/ops/organ-manifest.txt: "<state> <name> [role=ROLE]
+# [requires=SPEC,...] [exec=FILENAME]". install_organs() reads this file,
+# keeps only 'enabled' entries whose role matches the requested --role
+# (brain organs install for --role brain|all, muscle for --role muscle|all),
+# gates each on requires= applicability (bin:/env:/dep: — same spec kinds and
+# semantics as scripts/ops/organ-reconcile.sh's organ_is_applicable, adapted
+# to this script's svc_status() supervisor abstraction for dep: instead of a
+# systemd-only check), and svc_install+svc_up's whatever remains — skipping
+# (never failing) organs that aren't applicable to this host. self_test()
+# reads the same applicable set, so "installed" always means "every organ
+# this manifest says belongs on this host is up" — never a hardcoded list.
+#
+#   role=brain|muscle    Which --role this organ belongs to. Defaults to
+#                         brain if omitted.
+#   requires=SPEC,...    Comma-separated preconditions (bin:<name>,
+#                         env:<VAR>, dep:<organ-name>) that must ALL hold on
+#                         THIS host before the organ is installed.
+#   exec=FILENAME        The script filename under $ORGAN_DIR this organ
+#                         runs. Defaults to "<name>.sh".
+
+# node-heartbeat: brain's proof-of-life (refreshes ~/.chump/node-heartbeat +
+# node profile every 60s). No preconditions — every node can heartbeat.
+enabled  node-heartbeat  role=brain
+
+# worker: muscle's fleet-work loop (INFRA-3641 — ported from
+# scripts/setup/pixel-worker.sh's loop, generalized off Termux + $HOME/chump
+# onto this node's canonical $NODE_DIR layout). Needs the BINARY phase to
+# have installed a chump binary first.
+enabled  worker          role=muscle  requires=bin:chump

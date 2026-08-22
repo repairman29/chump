@@ -207,11 +207,77 @@ ensure_seed() {
   fi
 }
 
-# ---------- 5. ORGANS (from manifest) ----------
-brain_organs() {  # name|exec
-  echo "node-heartbeat|$ORGAN_DIR/node-heartbeat.sh"
+# ---------- 5. ORGANS (from manifest, INFRA-3641) ----------
+NODE_ORGAN_MANIFEST="${CHUMP_NODE_ORGAN_MANIFEST:-$(cd "$(dirname "$0")" && pwd)/node-organ-manifest.txt}"
+
+# Mirrors scripts/ops/organ-reconcile.sh's organ_is_applicable: same bin:/
+# env:/dep: requires= spec kinds and skip-don't-fail semantics, adapted to
+# this script's generic svc_status() supervisor abstraction (organ-reconcile.sh's
+# dep: check is systemd-only via systemctl; there is no systemd-only assumption
+# here since this script also targets runit/launchd/nohup hosts).
+organ_is_applicable() {
+  local name="$1" requires="$2" reason_var="$3"
+  [ -z "$requires" ] && return 0
+  local tok
+  local IFS=','
+  for tok in $requires; do
+    case "$tok" in
+      bin:*)
+        local b="${tok#bin:}"
+        if [ "$b" = chump ] && [ -x "$BIN" ]; then continue; fi
+        command -v "$b" >/dev/null 2>&1 && continue
+        printf -v "$reason_var" 'missing_bin:%s' "$b"; return 1
+        ;;
+      env:*)
+        local v="${tok#env:}"
+        eval "[ -n \"\${$v:-}\" ]" && continue
+        printf -v "$reason_var" 'missing_env:%s' "$v"; return 1
+        ;;
+      dep:*)
+        local d="${tok#dep:}"
+        [ "$(svc_status "$d")" = up ] && continue
+        printf -v "$reason_var" 'missing_dep:%s' "$d"; return 1
+        ;;
+      *)
+        printf -v "$reason_var" 'unknown_requires_spec:%s' "$tok"; return 1
+        ;;
+    esac
+  done
+  return 0
 }
-muscle_organs() { echo "worker|$ORGAN_DIR/worker.sh"; }
+
+# Manifest-derived set of organs applicable to THIS host for role $1
+# (brain|muscle|all). Prints "name|exec-path" lines — the single source
+# install_organs() and self_test() both read (AC3: no hardcoded organ lists).
+# Skip reasons go to stderr so `list="$(applicable_organs ...)"` stays clean.
+applicable_organs() {
+  local want_role="$1"
+  [ -f "$NODE_ORGAN_MANIFEST" ] || return 0
+  local state name rest
+  while read -r state name rest; do
+    [ -z "${state:-}" ] && continue
+    case "$state" in \#*) continue;; esac
+    [ "$state" != enabled ] && continue
+    local role="" requires="" ex="" tok
+    for tok in $rest; do
+      case "$tok" in
+        role=*) role="${tok#role=}";;
+        requires=*) requires="${tok#requires=}";;
+        exec=*) ex="${tok#exec=}";;
+      esac
+    done
+    role="${role:-brain}"
+    [ -z "$ex" ] && ex="$name.sh"
+    [ "$want_role" != all ] && [ "$role" != "$want_role" ] && continue
+    local reason=""
+    if ! organ_is_applicable "$name" "$requires" reason; then
+      info ORGANS "skip $name (not applicable: $reason)" >&2
+      continue
+    fi
+    echo "$name|$ORGAN_DIR/$ex"
+  done < "$NODE_ORGAN_MANIFEST"
+}
+
 install_organs() {
   # write the heartbeat organ (brain's proof-of-life: refresh heartbeat + node profile)
   run "cat > '$ORGAN_DIR/node-heartbeat.sh' <<'HB'
@@ -223,7 +289,137 @@ while true; do
 done
 HB"
   run "chmod +x '$ORGAN_DIR/node-heartbeat.sh'"
-  local list; case "$ROLE" in brain) list="$(brain_organs)";; muscle) list="$(muscle_organs)";; all) list="$(brain_organs; muscle_organs)";; esac
+
+  # write the worker organ (muscle's fleet-work loop; INFRA-3641 — ported
+  # from scripts/setup/pixel-worker.sh's loop, generalized off Termux +
+  # $HOME/chump onto this node's own $NODE_DIR layout so a muscle install no
+  # longer has a dangling worker.sh referenced-but-never-written). The script
+  # self-computes NODE_DIR from its own location, so it stays correct even if
+  # $NODE_DIR moves.
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: write $ORGAN_DIR/worker.sh (COTG muscle loop, ported from pixel-worker.sh)"
+  else
+    cat > "$ORGAN_DIR/worker.sh" <<'WK'
+#!/usr/bin/env bash
+# worker.sh — COTG muscle organ: fleet worker loop (INFRA-3641; ported from
+# scripts/setup/pixel-worker.sh, generalized onto this node's own layout).
+set -uo pipefail
+
+NODE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CHUMP_STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"
+export CHUMP_STATE_DIR
+export CHUMP_STATE_DB="${CHUMP_STATE_DB:-$CHUMP_STATE_DIR/state.db}"
+BIN="$NODE_DIR/bin/chump"
+REPO="$NODE_DIR/repo"
+cd "$REPO" || { echo "[worker] no repo at $REPO" >&2; exit 1; }
+
+CREDS_FILE="$CHUMP_STATE_DIR/providers.env"
+[ -f "$CREDS_FILE" ] && { set -a; . "$CREDS_FILE"; set +a; }
+
+export WORKER_SKILLS="${WORKER_SKILLS:-docs,shell,scripts,md}"
+export WORKER_MACHINE="${WORKER_MACHINE:-$(hostname 2>/dev/null || echo node)}"
+export CHUMP_WORK_BACKEND="${CHUMP_WORK_BACKEND:-chump-local}"
+export FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P1,P2}"
+
+IDLE_S="${NODE_WORKER_IDLE_S:-60}"
+COOLDOWN_S="${NODE_WORKER_COOLDOWN_S:-3600}"
+REFRESH_S="${NODE_WORKER_REFRESH_S:-1800}"
+FAILED_FILE="$CHUMP_STATE_DIR/worker-failed.tsv"
+LAST_REFRESH=0
+
+[ -x "$BIN" ] || { echo "[worker] chump binary not found at $BIN" >&2; exit 1; }
+
+echo "[worker] up: skills=$WORKER_SKILLS machine=$WORKER_MACHINE backend=$CHUMP_WORK_BACKEND bin=$BIN cooldown=${COOLDOWN_S}s"
+
+while true; do
+  echo "[worker] $(date -u +%FT%TZ) tick"
+  NOW=$(date +%s)
+
+  # Periodic state refresh (mirrors pixel-worker.sh): the node's local
+  # registry drifts from origin/main. Reconcile every REFRESH_S by pulling
+  # fresh docs/gaps and syncing state.db from the per-file mirror.
+  if [ $(( NOW - LAST_REFRESH )) -ge "$REFRESH_S" ]; then
+    echo "[worker] refreshing state from origin/main..."
+    git -C "$REPO" fetch origin main --depth 1 >/dev/null 2>&1 \
+      && git -C "$REPO" reset --hard origin/main >/dev/null 2>&1
+    "$BIN" gap sync --pull >/dev/null 2>&1 || true
+    LAST_REFRESH="$NOW"
+    echo "[worker] state refreshed"
+  fi
+
+  # Prune expired cooldown entries (gap_id<TAB>epoch, keep only still-cooling).
+  if [ -f "$FAILED_FILE" ]; then
+    awk -v now="$NOW" -v cd="$COOLDOWN_S" 'now - $2 < cd {print}' "$FAILED_FILE" > "$FAILED_FILE.tmp" 2>/dev/null
+    mv "$FAILED_FILE.tmp" "$FAILED_FILE" 2>/dev/null || rm -f "$FAILED_FILE"
+  fi
+
+  GAP="$("$BIN" gap list --status open --json 2>/dev/null | COOLDOWN_FILE="$FAILED_FILE" python3 -c '
+import sys, json, os
+skills = {s.strip() for s in os.environ.get("WORKER_SKILLS", "").split(",") if s.strip()}
+prio = set(os.environ.get("FLEET_PRIORITY_FILTER", "P1,P2").split(","))
+cool = set()
+cf = os.environ.get("COOLDOWN_FILE", "")
+if cf and os.path.exists(cf):
+    for line in open(cf):
+        p = line.strip().split("\t")
+        if p:
+            cool.add(p[0])
+try:
+    rows = json.load(sys.stdin)
+except Exception:
+    rows = []
+for g in rows:
+    gid = g.get("id", "")
+    if gid in cool:
+        continue
+    req = {s.strip() for s in (g.get("skills_required") or "").split(",") if s.strip()}
+    if any(r.startswith("external_repo:") for r in req):
+        continue
+    if "workspace_scope" in req:
+        continue
+    if "rust" in req:
+        continue
+    if req and not (req & skills):
+        continue
+    if g.get("effort") not in ("xs", "s"):
+        continue
+    if prio and g.get("priority") not in prio:
+        continue
+    print(gid)
+    break
+')"
+
+  if [ -z "$GAP" ]; then
+    NCOOL=$(wc -l < "$FAILED_FILE" 2>/dev/null || echo 0)
+    echo "[worker] no pickable gap (${NCOOL} in cooldown); sleep ${IDLE_S}s"
+    sleep "$IDLE_S"
+    continue
+  fi
+
+  echo "[worker] executing gap=$GAP"
+  "$BIN" --execute-gap "$GAP" 2>&1 | tail -40
+  rc=${PIPESTATUS[0]}
+
+  if [ "$rc" -eq 0 ]; then
+    echo "[worker] gap=$GAP shipped (rc=0)"
+    if [ -f "$FAILED_FILE" ]; then
+      grep -v "^${GAP}	" "$FAILED_FILE" > "$FAILED_FILE.tmp" 2>/dev/null && mv "$FAILED_FILE.tmp" "$FAILED_FILE" 2>/dev/null || true
+    fi
+  else
+    echo "[worker] gap=$GAP failed rc=$rc; cooldown ${COOLDOWN_S}s"
+    printf "%s\t%s\n" "$GAP" "$(date +%s)" >> "$FAILED_FILE"
+  fi
+  sleep "$IDLE_S"
+done
+WK
+    chmod +x "$ORGAN_DIR/worker.sh"
+  fi
+
+  local list; list="$(applicable_organs "$ROLE")"
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: would supervise:"
+    echo "$list" | while IFS='|' read -r name _; do [ -z "$name" ] && continue; echo "    - $name"; done
+  fi
   echo "$list" | while IFS='|' read -r name exec; do
     [ -z "$name" ] && continue
     svc_install "$name" "$exec"; svc_up "$name"; ok "organ installed+up: $name"
@@ -288,8 +484,8 @@ self_test() {
       fail=1
     fi
   fi
-  # each role organ supervised & up
-  local list; case "$ROLE" in brain) list="$(brain_organs)";; muscle) list="$(muscle_organs)";; all) list="$(brain_organs; muscle_organs)";; esac
+  # each applicable organ (manifest-derived, INFRA-3641) supervised & up
+  local list; list="$(applicable_organs "$ROLE")"
   echo "$list" | while IFS='|' read -r name _; do [ -z "$name" ] && continue
     if [ "$(svc_status "$name")" = up ]; then ok "organ up: $name"; else no "organ DOWN: $name"; fi
   done
