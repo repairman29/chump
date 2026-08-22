@@ -9,14 +9,20 @@
 # capital-C and does not exist on case-sensitive Linux (see
 # docs/process/LINUX_NODE_ONBOARDING.md).
 #
-# INFRA-3647: host-agnostic via the systemd %h specifier (home dir of the
-# configured User=) instead of a hardcoded root home path. install-helsinki
-# -atc.sh (RESILIENT-353) inserts the per-node User= line at deploy time, so
-# %h resolves to the root account's home on helsinki and to jeff's home on
-# an owned node (CJ) from this SAME tracked unit — no per-host path-rewrite
-# needed. Absent an explicit User=, systemd defaults a system unit to root,
-# so %h still resolves to root's home (matching the prior hardcoded
-# behavior).
+# HOST-AGNOSTIC MECHANISM (RESILIENT-200): this tracked unit is helsinki-shaped
+# (User=root, /root/... paths) ON PURPOSE. install-helsinki-atc.sh rewrites
+# every "/root/" -> the run-user's $HOME and "User=root" -> "User=<run-user>"
+# at copy time, so the SAME tracked file wires correctly on root (helsinki) AND
+# on an owned node (CJ=jeff, /home/jeff). This matches all ~17 sibling dispatch
+# units and is the ONLY mechanism the installer host-adapts.
+#
+# DO NOT use the systemd %h specifier here (reverts INFRA-3647/TREK-21): for a
+# SYSTEM-scope unit, %h is NOT influenced by User= — it always resolves to the
+# system manager's home (/root). On CJ (User=jeff) %h still expanded to /root,
+# so ExecStart ran /root/Projects/chump/... as jeff -> "Permission denied"
+# (status 126) and the watchdog was FAILED, leaving every merged organ running
+# stale code (the merged!=running engine). %h also has no "/root/" literal for
+# the installer's rewrite to key off, so it silently survived install.
 [Unit]
 Description=Chump organ watchdog — self-heal failed chump-* organs (INFRA-3595)
 After=network-online.target
@@ -24,8 +30,9 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-Environment=HOME=%h
-Environment=CHUMP_REPO_ROOT=%h/Projects/chump
+User=root
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
 Environment=CHUMP_ORGAN_WATCHDOG_CLONE_REFRESH=1
 Environment=CHUMP_ORGAN_WATCHDOG_BINARY_HEAL=1
-ExecStart=/bin/bash -lc 'set -a; source %h/.chump/providers.env 2>/dev/null; set +a; exec %h/Projects/chump/scripts/ops/organ-watchdog.sh'
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/organ-watchdog.sh'
