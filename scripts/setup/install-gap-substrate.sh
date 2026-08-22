@@ -75,6 +75,19 @@ if [[ -f "$POSTGREST_CONF" ]]; then
 fi
 REST_PORT="${REST_PORT:-${CHUMP_SUBSTRATE_PORT:-3000}}"
 
+# ---------- canonical gap-store URL (INFRA-3634) ----------
+# Single var this script (provision side) and chump-node-install.sh's
+# env-pin (connect side, INFRA-3633's pin block) both read, so provisioner
+# and client can never drift on which host is the canonical shared gap
+# store. Canonical home resolved 2026-08-22: CJ (100.90.52.126) — where S0
+# was actually hand-cranked and this script's SERVICE phase installs to —
+# not the Pixel address docs/strategy/DATA_HOME_PLAN.md's Phase-0 plan
+# named; see that doc's dated note. CHUMP_GAP_STORE_TAILNET_HOST lets a
+# re-run on a different box (e.g. the eventual Pixel migration, INFRA-2092)
+# override without editing this script.
+GAP_STORE_TAILNET_HOST="${CHUMP_GAP_STORE_TAILNET_HOST:-100.90.52.126}"
+CHUMP_GAP_STORE_URL="${CHUMP_GAP_STORE_URL:-http://${GAP_STORE_TAILNET_HOST}:${REST_PORT}}"
+
 mkdir -p "$STATE_DIR" "$NODE_DIR/bin"
 
 # ---------- host detection + supervisor abstraction (mirrors chump-node-install.sh svc_install) ----------
@@ -395,6 +408,18 @@ self_test() {
   log "self-test PASSED: insert -> read -> delete round-trip verified against $base/shared_gaps"
 }
 
+# ---------- 7. PIN (persist CHUMP_GAP_STORE_URL for the connect side) ----------
+pin_gap_store_url() {
+  touch "$CREDS"; chmod 600 "$CREDS"
+  if grep -q '^CHUMP_GAP_STORE_URL=' "$CREDS" 2>/dev/null; then
+    log "CHUMP_GAP_STORE_URL already pinned in $CREDS (no-op)"
+    return 0
+  fi
+  run "printf 'CHUMP_GAP_STORE_URL=%s\n' '$CHUMP_GAP_STORE_URL' >> '$CREDS'"
+  chmod 600 "$CREDS"
+  log "CHUMP_GAP_STORE_URL pinned: $CHUMP_GAP_STORE_URL -> $CREDS"
+}
+
 # ---------- run ----------
 ensure_postgres
 ensure_db_and_roles
@@ -403,4 +428,5 @@ ensure_postgrest_binary
 write_postgrest_conf
 install_service
 self_test
-log "DONE. Substrate live: postgres db=$DB_NAME, PostgREST on 127.0.0.1:$REST_PORT (service via $SUPERVISOR)."
+pin_gap_store_url
+log "DONE. Substrate live: postgres db=$DB_NAME, PostgREST on 127.0.0.1:$REST_PORT (service via $SUPERVISOR). CHUMP_GAP_STORE_URL=$CHUMP_GAP_STORE_URL"
