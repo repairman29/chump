@@ -61,6 +61,13 @@ GH_REPO="${CHUMP_GH_REPO:-repairman29/chump}"
 JOURNEY_ODDS="${CHUMP_JOURNEY_ODDS:-$REAL_HOME/.chump/journey-odds.json}"
 PR_BOOK_CALIB="${CHUMP_PR_BOOK_CALIB:-$REAL_HOME/.chump/pr-book-calibration.log}"
 MANIFEST="$REPO_ROOT/scripts/ops/organ-manifest.txt"
+# ROBUSTNESS (2026-08-22): a stale or wrong REPO_ROOT / CHUMP_REPO_ROOT env once
+# made the collector PERSIST a false "uninstrumented" null for merged_not_running
+# (manifest not found at the env-derived path) even though the manifest sits
+# right next to this script in scripts/ops/. Fall back to the script-adjacent
+# copy so a bad caller env can never blind the gauge when a real manifest is on
+# disk. Honest-instrument rule: read the truth or say why, never fake-null.
+[[ -f "$MANIFEST" ]] || MANIFEST="$SCRIPT_DIR/organ-manifest.txt"
 
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
