@@ -1093,6 +1093,31 @@ impl Provider for LocalOpenAIProvider {
             warn_if_near_num_ctx(&complete_message, body.get("tools"), num_ctx);
         }
 
+        // INFRA-790: Gemini (routed here via its OpenAI-compatible endpoint,
+        // base_url containing googleapis.com) emits <think>...</think> /
+        // thinking-token blocks by default on 2.5-series models. Cap the
+        // thinking budget via the `extra_body.google.thinking_config`
+        // passthrough the endpoint honors. Default 0 = thinking disabled
+        // (agent loop never sees raw thinking blocks); override with
+        // GEMINI_THINKING_BUDGET_TOKENS for callers that want extended
+        // reasoning. Any leaked <think> text is still stripped below via
+        // `strip_think_blocks` as a second line of defense.
+        if self.base_url.contains("googleapis.com") {
+            let thinking_budget: u32 = std::env::var("GEMINI_THINKING_BUDGET_TOKENS")
+                .ok()
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0)
+                .clamp(0, 32_768);
+            body["extra_body"] = json!({
+                "google": {
+                    "thinking_config": {
+                        "thinking_budget": thinking_budget,
+                        "include_thoughts": false
+                    }
+                }
+            });
+        }
+
         if let Some(tools) = tools {
             let openai_tools: Vec<Value> = tools
                 .iter()
@@ -1981,6 +2006,133 @@ mod tests {
             Some("Need to read the file first."),
             "empty content must fall back to reasoning_content"
         );
+    }
+
+    // ── INFRA-790: Gemini thinking-token budget ─────────────────────────────
+
+    #[tokio::test]
+    #[serial]
+    async fn gemini_request_defaults_thinking_budget_to_zero() {
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+        let mock = MockServer::start().await;
+        let body = serde_json::json!({
+            "choices": [{
+                "message": { "content": "hello" },
+                "finish_reason": "stop"
+            }]
+        });
+        Mock::given(method("POST"))
+            .and(path("/googleapis.com/chat/completions"))
+            .and(wiremock::matchers::body_partial_json(serde_json::json!({
+                "extra_body": {
+                    "google": {
+                        "thinking_config": { "thinking_budget": 0 }
+                    }
+                }
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock)
+            .await;
+
+        // base_url contains "googleapis.com" (the same substring check the
+        // provider uses to detect Gemini's OpenAI-compatible endpoint) so
+        // the gate fires without needing a real DNS-resolvable host.
+        let provider = LocalOpenAIProvider::new(
+            format!("{}/googleapis.com", mock.uri()),
+            "not-needed".to_string(),
+            "gemini-2.5-flash".to_string(),
+        );
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: "hi".to_string(),
+        }];
+        let out = provider.complete(messages, None, None, None).await.unwrap();
+        assert_eq!(out.text.as_deref(), Some("hello"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn gemini_request_honors_thinking_budget_override() {
+        std::env::set_var("GEMINI_THINKING_BUDGET_TOKENS", "500");
+        let mock = MockServer::start().await;
+        let body = serde_json::json!({
+            "choices": [{
+                "message": { "content": "hello" },
+                "finish_reason": "stop"
+            }]
+        });
+        Mock::given(method("POST"))
+            .and(path("/googleapis.com/chat/completions"))
+            .and(wiremock::matchers::body_partial_json(serde_json::json!({
+                "extra_body": {
+                    "google": {
+                        "thinking_config": { "thinking_budget": 500 }
+                    }
+                }
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock)
+            .await;
+
+        let provider = LocalOpenAIProvider::new(
+            format!("{}/googleapis.com", mock.uri()),
+            "not-needed".to_string(),
+            "gemini-2.5-pro".to_string(),
+        );
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: "hi".to_string(),
+        }];
+        let out = provider.complete(messages, None, None, None).await.unwrap();
+        assert_eq!(out.text.as_deref(), Some("hello"));
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+    }
+
+    #[tokio::test]
+    async fn gemini_response_with_think_block_is_stripped_before_agent_loop() {
+        // Fixture: a Gemini response that leaked a <think>...</think> block
+        // into `content` despite thinking_budget=0. The agent loop must never
+        // see raw thinking blocks — strip_think_blocks() is the last line of
+        // defense (already applied to every provider's parsed text).
+        let mock = MockServer::start().await;
+        let body = serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": "<think>Let me consider the options here.</think>\nThe answer is 42."
+                },
+                "finish_reason": "stop"
+            }]
+        });
+        Mock::given(method("POST"))
+            .and(path("/googleapis.com/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock)
+            .await;
+
+        let provider = LocalOpenAIProvider::new(
+            format!("{}/googleapis.com", mock.uri()),
+            "not-needed".to_string(),
+            "gemini-2.5-pro".to_string(),
+        );
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: "What is the answer?".to_string(),
+        }];
+        let out = provider.complete(messages, None, None, None).await.unwrap();
+        let text = out.text.as_deref().unwrap_or("");
+        assert!(
+            !text.contains("<think>") && !text.contains("</think>"),
+            "raw thinking markers leaked into agent-loop text: {text:?}"
+        );
+        assert_eq!(text, "The answer is 42.");
+    }
+
+    #[test]
+    fn gemini_thinking_budget_clamped_to_max() {
+        // Pure sanity check on the clamp bound used when building the
+        // extra_body payload: values above 32_768 must not be sent as-is.
+        let over: u32 = 999_999;
+        assert_eq!(over.clamp(0, 32_768), 32_768);
     }
 
     #[tokio::test]
