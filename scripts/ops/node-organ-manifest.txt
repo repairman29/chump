@@ -1,0 +1,65 @@
+# ChumpOS node-organ manifest — process-organ registry (PEER-HEAL-01 / INFRA-3648).
+#
+# Sibling of organ-manifest.txt. That file declares systemd-unit state on the
+# PRIMARY node (helsinki) and is enforced by organ-reconcile.sh. THIS file
+# declares a different class of organ: plain background PROCESSES launched by
+# scripts/setup/install-node-housekeeping.sh's `nohup bash ~/.chump/organs/
+# <name>.sh &` fallback path (SUP=nohup — no systemd unit exists at all, e.g.
+# closetjunky/CJ before it had systemd housekeeping wired up). systemd's own
+# `systemctl is-active` has nothing to ask on that path, so heal-detection was
+# systemd-only and structurally blind to every organ installed this way — the
+# "extend heal detection beyond systemd" half of PEER-HEAL-01. This registry
+# plus scripts/ops/node-organ-check.sh close that blind spot with a pgrep-only
+# detector that needs no systemd dependency at all.
+#
+# Format: one directive per line, "<state>  <name>  launcher=<path>
+# detector=<pgrep -f PATTERN>  [heartbeat=<path> max_age=<secs>]". Blank lines
+# and lines beginning with '#' are ignored.
+#
+#   enabled    <name>  → this organ must have a live process matching
+#                        `detector`. scripts/ops/node-organ-check.sh --check
+#                        runs `pgrep -f "<detector>"` for every enabled line
+#                        and reports DETECTED-ALIVE / DEAD / UNKNOWN.
+#
+# Fields (space-separated, order-independent, after <name>):
+#
+#   launcher=<path>    Where the organ's wrapper script lives. Either a
+#                       ~/.chump/organs/<name>.sh loop-runner (written by
+#                       install-node-housekeeping.sh's write_runner()) or a
+#                       tracked scripts/... path for organs whose SUP=nohup
+#                       fallback execs the tracked script directly (e.g.
+#                       node-orchestrator, whose cadence=0 means write_runner
+#                       emits `exec bash "$REPO"/$script` — the wrapper
+#                       process image is REPLACED by the tracked script, so
+#                       its live argv shows the scripts/ops/ path, not the
+#                       organs/ wrapper path, even though the wrapper is what
+#                       launched it).
+#
+#   detector=<pattern> The `pgrep -f` substring/regex used to find the live
+#                       process. Deliberately matches on the SCRIPT BASENAME
+#                       only (e.g. `node-orchestrator\.sh`) so it hits BOTH
+#                       the organs/ wrapper form (pre-exec loop organs) and
+#                       the direct scripts/ops/ form (cadence=0 self-exec
+#                       organs) with one pattern.
+#
+#   heartbeat=<path> max_age=<secs>   OPTIONAL fallback liveness signal for an
+#                       organ whose detector can go quiet between polls even
+#                       while healthy (e.g. a run-then-sleep loop caught
+#                       between cycles). If the pgrep detector finds nothing
+#                       AND a heartbeat file is declared, node-organ-check.sh
+#                       treats the organ as alive when the file's mtime is
+#                       younger than max_age seconds. Not declared for any of
+#                       the 9 CJ organs below — none of them currently write a
+#                       heartbeat file. Reserved for a future organ that does.
+#
+# --- Process organs launched via ~/.chump/organs/<name>.sh (install-node-housekeeping.sh ORGANS table) ---
+enabled  node-orchestrator          launcher=~/.chump/organs/node-orchestrator.sh          detector=node-orchestrator\.sh
+enabled  rot-reaper                 launcher=~/.chump/organs/rot-reaper.sh                 detector=rot-reaper\.sh
+enabled  worktree-reaper            launcher=~/.chump/organs/worktree-reaper.sh            detector=worktree-reaper\.sh
+enabled  disk-monitor               launcher=~/.chump/organs/disk-monitor.sh               detector=disk-monitor\.sh
+enabled  main-health-watchdog       launcher=~/.chump/organs/main-health-watchdog.sh       detector=main-health-watchdog\.sh
+enabled  pr-lander                  launcher=~/.chump/organs/pr-lander.sh                  detector=pr-lander\.sh
+enabled  cargo-sweep-gc             launcher=~/.chump/organs/cargo-sweep-gc.sh             detector=cargo-sweep-gc\.sh
+enabled  reviver                    launcher=~/.chump/organs/reviver.sh                    detector=reviver\.sh
+enabled  pr-stuck-live-scan         launcher=~/.chump/organs/pr-stuck-live-scan.sh         detector=pr-stuck-live-scan\.sh
+enabled  pr-stuck-cluster-detector  launcher=~/.chump/organs/pr-stuck-cluster-detector.sh  detector=pr-stuck-cluster-detector\.sh
