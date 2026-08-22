@@ -65,7 +65,11 @@ done
 # procs (e.g. almanac-vision-keeper) that aren't systemd units, so nothing
 # else revives them if it dies — same "the healer can never stay dead"
 # closure RESILIENT-356 gave organ-watchdog.sh, one layer down the stack.
-[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog ci-flake pr-blocked distill curator-supervisor wip process-organ-heal)
+# INFRA-3654: added `outcome-verify-heal-consumer`. It is the consumer for
+# kind=outcome_probe_failed / kind=ac_coverage_proof_miss — both emitters
+# existed with no consumer before this gap, so a dead consumer here would
+# quietly reopen the same "proved-false live outcome, nobody told" hole.
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog ci-flake pr-blocked distill curator-supervisor wip process-organ-heal outcome-verify-heal-consumer)
 
 # Per-reaper alert thresholds (seconds since last heartbeat).
 threshold_secs() {
@@ -91,6 +95,10 @@ threshold_secs() {
         # bit doesn't cry wolf, tight enough to catch a genuinely dead loop
         # same-session.
         process-organ-heal) echo $((1 * 3600)) ;;
+        # INFRA-3654: this consumer's timer cadence is 10min (see its .timer
+        # unit) — 1h is 6 missed cycles, same "generous but catches a real
+        # death same-session" reasoning as process-organ-heal above.
+        outcome-verify-heal-consumer) echo $((1 * 3600)) ;;
         *)           echo $((4 * 3600)) ;;
     esac
 }
