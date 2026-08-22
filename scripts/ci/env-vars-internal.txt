@@ -2213,3 +2213,10 @@ CHUMP_ORGAN_WATCHDOG_USER_SYSTEMCTL_BIN
 CHUMP_CARGO_TARGET_GROUP_SIZE
 # detected in: (standard input)
 CHUMP_CARGO_TARGET_ROOT
+CHUMP_RACE_DATE
+# detected in: (standard input)
+CHUMP_RACE_FIXTURE
+# detected in: (standard input)
+CHUMP_RACE_WASTE_THRESHOLD
+# detected in: (standard input)
+CHUMP_RACE_WINDOW
