@@ -5,7 +5,7 @@
 
 ---
 
-## Status: LIVE ✓ confirmed on closetjunky (2026-08-22)
+## Status: LIVE ✓ confirmed on closetjunky (2026-08-22, re-confirmed same day closing INFRA-3650)
 
 INFRA-3650 shipped the process-organ heal loop (revives unsupervised bash
 procs like `almanac-vision-keeper.sh` that aren't wrapped as systemd units)
@@ -82,3 +82,35 @@ Exit 0 + `LIVE ✓` means:
 three checks is red — re-run step 1, then check
 `.chump-locks/process-organ-logs/process-organ-heal.log` (relative to the
 checkout root) for spawn errors.
+
+## Closing re-confirmation (2026-08-22, INFRA-3650 ship)
+
+Re-ran `scripts/ops/check-process-organ-heal-live.sh` on closetjunky at gap
+close time, from a fresh fleet worktree, with `CHUMP_REPO_ROOT` set the same
+way `chump-process-organ-heal.service`'s drop-in sets it:
+
+```
+=== check-process-organ-heal-live (INFRA-3650, AC4) ===
+  ✓ process-organ-heal: systemd timer chump-process-organ-heal.timer active (oneshot+timer shape)
+  ✓ organ_watchdog_tick fresh (223s ago, threshold 600s): 2026-08-22T13:57:48Z
+  ✓ almanac-vision-keeper: running (pgrep)
+
+ LIVE ✓  process-organ-heal + almanac-vision-keeper confirmed on this node
+```
+
+**DEPTH, stated explicitly (AC5):**
+- **WIRING tier** (install hook in `chump-node-install.sh`, the
+  `process-organ-heal` registry entry, the `reaper-heartbeat-watchdog.sh`
+  TARGETS entry that self-heals a dead heal loop, and CI coverage in
+  `scripts/ci/test-process-organ-heal.sh`) — shipped in #4115/#4116, green
+  since.
+- **LIVE tier** (AC1/AC3/AC4: proof the loop and `almanac-vision-keeper` are
+  actually running on closetjunky, not just merged) — confirmed in
+  #4118/#4120, and the false-negative in the checker itself fixed in #4123.
+  Re-confirmed clean above at close time.
+- **Named remaining gap** (not in this gap's scope, tracked separately): the
+  live check above can only be run *from a session physically on the target
+  node* — a session that is not on CJ still cannot SSH in to verify remotely
+  (see "Why earlier sessions believed this was blocked" above). Generalizing
+  live-tier verification so any session can prove liveness on any target
+  node is the PEER-VERI series (INFRA-3652 through INFRA-3655), not this gap.
