@@ -38,6 +38,11 @@
 #                                           between the repo and the node self-
 #                                           heals — including a pager this very
 #                                           installer just re-enabled.
+#   chump-almanac-liveness (INFRA-3643)  — systemd complement to the macOS-only
+#                                           almanac-summarize-watchdog
+#                                           (RESILIENT-354): binary presence +
+#                                           index freshness for the almanac
+#                                           fusion-search organ on Linux nodes.
 #
 # Before RESILIENT-300, these were live-hacked directly into /etc/systemd/system
 # and ~/.config/systemd/user — a node rebuild silently lost ATC. This script is
@@ -141,8 +146,13 @@ SYSTEM_UNITS=(
   # 2026-08-15 registry split-brain go undetected for 21 days.
   chump-backlog-sync-writer.service
   chump-backlog-sync-writer.timer
+  # INFRA-3643 (TREK-17): systemd complement to the macOS-only
+  # almanac-summarize-watchdog (RESILIENT-354) — binary presence + index
+  # freshness for the almanac fusion-search organ on the Linux factory.
+  chump-almanac-liveness.service
+  chump-almanac-liveness.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-almanac-liveness.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then

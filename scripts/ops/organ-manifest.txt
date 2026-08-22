@@ -216,3 +216,13 @@ enabled     chump-board-cycle.timer  role=brain
 enabled     chump-worker@1.service  role=muscle requires=bin:chump,bin:git
 enabled     chump-cj-sync.timer  role=data requires=bin:git
 enabled     chump-postgrest.service  role=data requires=bin:postgrest
+
+# chump-almanac-liveness.timer: systemd complement to the macOS-only
+# almanac-summarize-watchdog (RESILIENT-354/launchd) — covers almanac binary
+# presence + index freshness on the Linux owned-node factory (INFRA-3643 /
+# TREK-17). Declared here so organ-reconcile re-arms it if it drifts or fails,
+# the same peer-heartbeat mechanism every other organ in this manifest relies
+# on; also closes the Roll-Call gap (scripts/ci/test-resilient-366-organ-roll-
+# call.sh) that would otherwise fire the moment this timer was added to
+# install-helsinki-atc.sh's SYSTEM_UNITS without a matching manifest line.
+enabled     chump-almanac-liveness.timer  role=data requires=bin:git
