@@ -106,6 +106,19 @@ done
 cd "$ROOT" 2>/dev/null || { echo "[merge-serializer] repo root not found: $ROOT" >&2; exit 1; }
 command -v gh >/dev/null 2>&1 || { echo "[merge-serializer] gh not found" >&2; exit 0; }
 
+# Cache-first / throttle-aware GitHub access (INFRA-1081 / INFRA-1274).
+# Every GitHub call below is a LIVE, correctness-sensitive merge-queue read or
+# write (fresh check-run state on a just-rebased head; the squash/disable-auto
+# mutations). They can't be served from the webhook cache — cache_query_open_prs
+# lacks createdAt (this organ selects OLDEST-first) and cache_lookup_checks has
+# no REST fallback, so a stale/empty read would drive the wrong merge. So we
+# route them through chump_gh (scripts/coord/lib/github.sh): the sanctioned
+# throttle + secondary-rate-limit-backoff wrapper — NOT raw gh. Fallback to a
+# thin wrapper if the lib is unavailable (mirrors chump-pr-nudge.sh).
+# shellcheck source=lib/github.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/github.sh" 2>/dev/null || chump_gh() { gh "$@"; }
+command -v chump_gh >/dev/null 2>&1 || chump_gh() { gh "$@"; }
+
 # FLOCK_BIN discovery (INFRA-1600) — same helper bot-merge uses.
 # shellcheck source=../lib/discover-flock.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh" 2>/dev/null || {
@@ -163,7 +176,7 @@ _bm_lock_release() {
 _trunk_red() {
     [[ "$TRUNK_GATE" == "1" ]] || return 1
     local concl
-    concl="$(gh api "repos/$REPO/commits/main/check-runs" \
+    concl="$(chump_gh api "repos/$REPO/commits/main/check-runs" \
         --jq '[.check_runs[] | select(.name=="verified")] | sort_by(.started_at) | last | .conclusion // ""' 2>/dev/null || echo "")"
     if [[ "$concl" == "FAILURE" || "$concl" == "TIMED_OUT" || "$concl" == "CANCELLED" ]]; then
         _emit merge_serializer_trunk_red_skip '"reason":"verified_failure"'
@@ -187,7 +200,7 @@ _trunk_red() {
 # obvious non-starters (DRAFT). Real conflicts are discovered at rebase time and
 # skipped there.
 _candidates() {
-    gh pr list --repo "$REPO" --state open --limit "$PR_LIMIT" \
+    chump_gh pr list --repo "$REPO" --state open --limit "$PR_LIMIT" \
         --json number,createdAt,headRefName,mergeStateStatus,autoMergeRequest,isDraft \
         --jq '[ .[]
                 | select(.isDraft==false)
@@ -216,7 +229,7 @@ _age_h() { # ISO8601 -> integer hours old
 # aggregator, `fast-checks`, or any `audit-shard (N)`. Advisory checks (named
 # "(advisory)"/"(non-blocking)") never match, so a flaky advisory can't false-fail.
 _verified_state() { # <pr> -> echoes SUCCESS|FAIL|PENDING
-    gh pr view "$1" --repo "$REPO" --json statusCheckRollup --jq '
+    chump_gh pr view "$1" --repo "$REPO" --json statusCheckRollup --jq '
       [.statusCheckRollup[]?] as $c
       | (([$c[]|select(.name=="verified")|(.conclusion // .status)]|first) // "") as $v
       | if $v=="SUCCESS" then "SUCCESS"
@@ -239,7 +252,7 @@ _wait_verified() { # <pr>  -> 0 green, 1 failed, 2 timeout
             FAIL)    echo "$waited"; return 1 ;;
         esac
         if (( $(date +%s) >= deadline )); then echo "$waited"; return 2; fi
-        ms="$(gh pr view "$pr" --repo "$REPO" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "")"
+        ms="$(chump_gh pr view "$pr" --repo "$REPO" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "")"
         printf '[merge-serializer] #%s verified=pending ms=%s waited=%ds/%ds\n' \
             "$pr" "$ms" "$waited" "$VERIFY_TIMEOUT_S" >&2
         sleep "$POLL_S"
@@ -290,7 +303,7 @@ _drive_pr() {
     # Disable any armed auto-merge so GitHub can't race-merge this PR the instant
     # verified goes green mid-wait — the serializer is the deterministic merger, so
     # the landing is attributable to it and can't slip out from under the wait.
-    gh pr merge "$pr" --repo "$REPO" --disable-auto >/dev/null 2>&1 || true
+    chump_gh pr merge "$pr" --repo "$REPO" --disable-auto >/dev/null 2>&1 || true
     echo "[merge-serializer] #$pr: rebased clean onto latest origin/main + pushed — waiting for verified"
 
     # ---- WAIT: verified green on the rebased head (lock RELEASED) ----
@@ -307,12 +320,12 @@ _drive_pr() {
         return 2
     fi
     local merged=0
-    if gh pr merge "$pr" --repo "$REPO" --squash >/dev/null 2>&1; then
+    if chump_gh pr merge "$pr" --repo "$REPO" --squash >/dev/null 2>&1; then
         merged=1
     else
         # Merge call failed — check whether it already landed (auto-merge race).
         local state
-        state="$(gh pr view "$pr" --repo "$REPO" --json state --jq '.state' 2>/dev/null || echo "")"
+        state="$(chump_gh pr view "$pr" --repo "$REPO" --json state --jq '.state' 2>/dev/null || echo "")"
         [[ "$state" == "MERGED" ]] && merged=1
     fi
     _bm_lock_release
