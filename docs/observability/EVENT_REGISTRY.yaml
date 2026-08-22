@@ -10848,6 +10848,29 @@ events:
     consumers: [ops-audit]
     fields_required: [ts, kind, input_len, candidates]
 
+  - kind: trek_start
+    effect_metric: self
+    emitter: src/trek.rs (INFRA-3656, RIBBON-01)
+    trigger: >
+      `chump trek "<plain job>"` classified a job via the same front_door
+      classifier `chump start` uses, before deciding whether to land an
+      outcome. Always emitted, regardless of route or --yes.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, input_len, route]
+
+  - kind: trek_outcome
+    effect_metric: self
+    emitter: src/trek.rs (INFRA-3656, RIBBON-01)
+    trigger: >
+      Terminal result of a `chump trek` run: `landed` (the routed engine was
+      actually dispatched in-process, carrying its exit code),
+      `needs_confirmation` (Confident route without --yes), `ambiguous`
+      (front_door couldn't confidently separate the top mode), or
+      `diagnosis_only` (Rescue/Comprehend — no landing engine exists, exits
+      non-zero honestly rather than faking success).
+    consumers: [ops-audit]
+    fields_required: [ts, kind, status]
+
   - kind: inventory_rebuild_tick
     effect_metric: self
     emitter: scripts/coord/inventory-rebuild-cadence.sh (RESILIENT-220)

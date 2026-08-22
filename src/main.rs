@@ -278,6 +278,7 @@ mod tool_routing;
 mod toolkit_status_tool;
 mod tracing_init;
 mod trajectory_replay;
+mod trek; // INFRA-3656 (RIBBON-01): chump trek — auto-execute front-door entrypoint
 mod user_error_hints;
 pub mod user_profile;
 mod vector6_verify;
@@ -18307,6 +18308,52 @@ async fn main() -> Result<()> {
             }
         }
         return Ok(());
+    }
+
+    // `chump trek "<plain job>" [--yes] [--json]` (INFRA-3656, RIBBON-01)
+    //
+    // The auto-execute front-door entrypoint: classifies like `chump start`
+    // above, but under --yes ACTUALLY dispatches the routed engine in-process
+    // (CREATE -> bootstrap, IMPROVE -> swe, INGEST -> ingest) and emits
+    // trek_start + trek_outcome. Ambiguous asks; diagnosis-only routes
+    // (Rescue/Comprehend) exit non-zero honestly rather than faking success.
+    if args.get(1).map(String::as_str) == Some("trek") {
+        let repo_root = repo_path::repo_root();
+        let Some(job) = args.get(2).filter(|a| !a.starts_with("--")) else {
+            eprintln!("Usage: chump trek \"<what you're trying to do, in plain language>\" [--yes] [--json]");
+            std::process::exit(1);
+        };
+        let yes = args.iter().any(|a| a == "--yes");
+        let json = args.iter().any(|a| a == "--json");
+        let spawner = trek::RealEngineSpawner;
+        let outcome = trek::run_trek(&repo_root, job, yes, &spawner);
+        if json {
+            let j = match &outcome {
+                trek::TrekOutcome::Landed { mode, exit_code } => serde_json::json!({
+                    "status": "landed", "mode": mode, "engine_exit_code": exit_code,
+                }),
+                trek::TrekOutcome::NeedsConfirmation { question } => serde_json::json!({
+                    "status": "needs_confirmation", "question": question,
+                }),
+                trek::TrekOutcome::Ambiguous { question } => serde_json::json!({
+                    "status": "ambiguous", "question": question,
+                }),
+                trek::TrekOutcome::DiagnosisOnly { mode, message } => serde_json::json!({
+                    "status": "diagnosis_only", "mode": mode, "message": message,
+                }),
+            };
+            println!("{}", serde_json::to_string_pretty(&j).unwrap_or_default());
+        } else {
+            match &outcome {
+                trek::TrekOutcome::Landed { mode, exit_code } => {
+                    println!("trek: {mode} landed (engine exit {exit_code})");
+                }
+                trek::TrekOutcome::NeedsConfirmation { question } => println!("{question}"),
+                trek::TrekOutcome::Ambiguous { question } => println!("{question}"),
+                trek::TrekOutcome::DiagnosisOnly { message, .. } => eprintln!("{message}"),
+            }
+        }
+        std::process::exit(outcome.exit_code());
     }
 
     // `chump orchestrate [<intent>]` (INFRA-598 / INFRA-798)
