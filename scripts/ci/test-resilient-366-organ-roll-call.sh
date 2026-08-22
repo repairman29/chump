@@ -44,6 +44,7 @@ is_exempt() {
   return 1
 }
 
+<<<<<<< HEAD
 # TREK-18 (INFRA-3644): the roster is no longer a static literal array — it's
 # derived at runtime from organ-manifest.txt. Ask the installer for its
 # actual computed roster via --print-roster (no root/systemctl needed) rather
@@ -55,6 +56,41 @@ mapfile -t ROSTER_TIMERS < <(
     | grep -oE 'chump-[A-Za-z0-9_@.-]+\.timer'
 )
 [ "${#ROSTER_TIMERS[@]}" -gt 0 ] || fail "no *.timer entries found in '$INSTALLER --print-roster' — derivation broke"
+=======
+# Extract every *.timer entry from install-helsinki-atc.sh's SYSTEM_TIMERS
+# array — the roster actually installed (systemctl enable --now'd) at
+# lines 160/268, not SYSTEM_UNITS (which is only a copy-into-place list that
+# includes .service siblings never enabled as timers). SYSTEM_TIMERS is
+# declared as a single-line `SYSTEM_TIMERS=(...)` array, so grab that one
+# line rather than sed-ing a multi-line `(...)` block.
+mapfile -t ROSTER_TIMERS < <(
+  grep -oE 'chump-[A-Za-z0-9_-]+\.timer' \
+    < <(grep '^SYSTEM_TIMERS=(' "$INSTALLER")
+)
+[ "${#ROSTER_TIMERS[@]}" -gt 0 ] || fail "no *.timer entries found in $INSTALLER SYSTEM_TIMERS — parse broke"
+
+# Regression guard (INFRA-3645): every *.timer declared in SYSTEM_UNITS (the
+# copy-into-place list) must also appear in the parsed ROSTER_TIMERS above.
+# If a future rename splits the two arrays further apart, this catches a
+# timer that's installed via SYSTEM_UNITS but silently excluded from the
+# SYSTEM_TIMERS roll-call roster before it can reopen the silent-skip hole.
+mapfile -t UNITS_TIMERS < <(
+  sed -n '/^SYSTEM_UNITS=(/,/^)/p' "$INSTALLER" \
+    | grep -oE 'chump-[A-Za-z0-9_-]+\.timer'
+)
+unroostered=()
+for unit in "${UNITS_TIMERS[@]}"; do
+  found=0
+  for r in "${ROSTER_TIMERS[@]}"; do
+    [[ "$unit" == "$r" ]] && { found=1; break; }
+  done
+  [ "$found" -eq 0 ] && unroostered+=("$unit")
+done
+if [ "${#unroostered[@]}" -gt 0 ]; then
+  fail "${unroostered[*]} appears in SYSTEM_UNITS but not in SYSTEM_TIMERS — a timer can be installed without ever entering the roll-call roster this test parses (the INFRA-3645 array-mismatch class)"
+fi
+ok "every SYSTEM_UNITS *.timer entry is present in SYSTEM_TIMERS"
+>>>>>>> 3fa2eadf (INFRA-3645: fix Roll-Call test to parse SYSTEM_TIMERS not SYSTEM_UNITS (TREK-19))
 
 missing=()
 for unit in "${ROSTER_TIMERS[@]}"; do
@@ -76,7 +112,7 @@ done
 if [ "${#missing[@]}" -gt 0 ]; then
   fail "roll-call gap: ${missing[*]} installed by install-helsinki-atc.sh but absent from organ-manifest.txt (organ-reconcile can never revive them — the exact silent-disable class RESILIENT-366 closes)"
 fi
-ok "every install-helsinki-atc.sh SYSTEM_TIMERS entry is covered by organ-manifest.txt (enabled or paging_off)"
+ok "every install-helsinki-atc.sh SYSTEM_TIMERS entry (the installed roster) is covered by organ-manifest.txt (enabled or paging_off)"
 
 # Specifically pin the backlog-sync --writer, since it's the organ that caused
 # the 21-day undetected outage this gap traces to.
