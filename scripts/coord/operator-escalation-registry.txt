@@ -43,3 +43,9 @@ credential_rotation_needed	page	# T2 — only the operator can rotate a live sec
 fleet_stopped_unexpected	page	# halt-class — fleet down with no self-recovery
 security_incident	page	# always a human decision
 operator_decision_required	page	# explicit T3 hand-off
+
+# RESILIENT-373: board-cycle beat escalation is now severity-gated + deduped by
+# scripts/coord/lib/board-cycle-escalate.sh. The routine report NEVER pages; a
+# real breach pages under board_cycle_alert.
+board_cycle_alert	page	# actionable SLA breach found by the board cycle — reach the operator (deduped per signature/window in board-cycle-escalate.sh)
+board_cycle_report	suppress	# routine status report — NOT an incident; the beat's escalate organ owns paging. Belt-and-suspenders for any stray agent notify_operator call.

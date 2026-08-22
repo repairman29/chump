@@ -1891,6 +1891,32 @@ events:
       PR stalls, and successfully posted the terse board report to operator Discord
       via scripts/coord/lib/notify-operator.sh.
     consumers: [ambient]
+  - kind: board_cycle_page_sent
+    effect_metric: self
+    emitter: scripts/coord/lib/board-cycle-escalate.sh (RESILIENT-373)
+    trigger: the board-cycle escalate organ found an actionable SLA breach whose
+      signature had not paged inside the dedup window, so it paged the operator
+      (kind=board_cycle_alert) and recorded the signature.
+    consumers: [ambient]
+  - kind: board_cycle_page_suppressed_clean
+    effect_metric: self
+    emitter: scripts/coord/lib/board-cycle-escalate.sh (RESILIENT-373)
+    trigger: the board cycle reported zero SLA breaches, so the escalate organ
+      logged the clean cycle and did NOT page the operator (routine != incident).
+    consumers: [ambient]
+  - kind: board_cycle_page_deduped
+    effect_metric: self
+    emitter: scripts/coord/lib/board-cycle-escalate.sh (RESILIENT-373)
+    trigger: a breach with the same signature already paged inside the dedup
+      window, so the organ suppressed the repeat page (persisting breach = one
+      page per window, not per cycle).
+    consumers: [ambient]
+  - kind: board_cycle_escalate_noop
+    effect_metric: self
+    emitter: scripts/coord/lib/board-cycle-escalate.sh (RESILIENT-373)
+    trigger: the escalate organ ran but found no structured board_cycle_report_posted
+      line and no escalated run-failure for this cycle — nothing to page.
+    consumers: [ambient]
     fields_required: [ts, kind, sla_breaches, stalls_classified]
 
   - kind: board_ceo_briefing_beat
@@ -5313,6 +5339,16 @@ events:
       CHUMP_RACE_WINDOW merged PRs to main
     consumers: [fleet-brief, duty-officer, board]
     fields_required: [ts, kind, window, user_value_pct, self_maintenance_pct, reconcile_waste_pct]
+
+  - kind: pr_book_odds
+    effect_metric: self
+    emitter: scripts/coord/pr-book.sh (INFRA-1688) — sibling to race_control_mix on the same board
+    trigger: every board run of pr-book.sh (chump-pr-book-settle.timer drives --settle;
+      board mode prices open PRs) — reports portfolio EV and the lock/flip/long band
+      counts of the open PR book so the OS can consume its own P(merge) odds. A
+      faculty_status-style heartbeat so a frozen/silent book is observable from ambient.
+    consumers: [fleet-brief, ops-audit, board]
+    fields_required: [ts, kind, ev, open, bands]
 
   - kind: race_control_waste_alarm
     effect_metric: self

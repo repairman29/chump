@@ -55,12 +55,40 @@ export HOME="$REAL_HOME"
 # in ~/.cargo/bin. Prepend the run-user's bins so every endpoint resolves.
 export PATH="$REAL_HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
+# REPO-ROOT HARDENING (honest-instrument fix, 2026-08-22): the SCRIPT_DIR-derived
+# or env-overridden REPO_ROOT can point at a torn-down worktree or a /root-mapped
+# path under an organ run, leaving the manifest / gap store / ambient log
+# UNREADABLE so the board reads spurious null/0 and LIES (this exact class wrote a
+# p_full_trek=0 board while the fleet was shipping 53 PRs/24h). If the manifest
+# isn't where we think it is, self-heal to the run-user's canonical checkout.
+if [[ ! -f "$REPO_ROOT/scripts/ops/organ-manifest.txt" ]]; then
+  for _cand in "$REAL_HOME/Projects/chump" "$SCRIPT_DIR/../.."; do
+    if [[ -f "$_cand/scripts/ops/organ-manifest.txt" ]]; then
+      REPO_ROOT="$(cd "$_cand" && pwd)"; break
+    fi
+  done
+fi
+
 OUT="${CHUMP_VITALS_OUT:-$REAL_HOME/.chump/vital-signs.json}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 GH_REPO="${CHUMP_GH_REPO:-repairman29/chump}"
 JOURNEY_ODDS="${CHUMP_JOURNEY_ODDS:-$REAL_HOME/.chump/journey-odds.json}"
 PR_BOOK_CALIB="${CHUMP_PR_BOOK_CALIB:-$REAL_HOME/.chump/pr-book-calibration.log}"
 MANIFEST="$REPO_ROOT/scripts/ops/organ-manifest.txt"
+# ROBUSTNESS (2026-08-22): a stale or wrong REPO_ROOT / CHUMP_REPO_ROOT env once
+# made the collector PERSIST a false "uninstrumented" null for merged_not_running
+# (manifest not found at the env-derived path) even though the manifest sits
+# right next to this script in scripts/ops/. Fall back to the script-adjacent
+# copy so a bad caller env can never blind the gauge when a real manifest is on
+# disk. Honest-instrument rule: read the truth or say why, never fake-null.
+[[ -f "$MANIFEST" ]] || MANIFEST="$SCRIPT_DIR/organ-manifest.txt"
+
+# AMBIENT-LOG HARDENING (honest-instrument fix): if the resolved ambient log does
+# not exist (wrong root under an organ run -> human_intervention spuriously null),
+# fall back to the canonical checkout's stream so the sign reads the truth.
+if [[ ! -e "$AMBIENT_LOG" && -e "$REPO_ROOT/.chump-locks/ambient.jsonl" ]]; then
+  AMBIENT_LOG="$REPO_ROOT/.chump-locks/ambient.jsonl"
+fi
 
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
@@ -314,6 +342,9 @@ else
 fi
 
 # ── p_full_trek roll-up (read from journey-odds.json if present, else null) ──
+# init first: under set -u an absent journey-odds.json would leave p_full unbound
+# and crash the whole board (no write = the worst dishonesty). Default to null.
+p_full=""
 if [[ -s "$JOURNEY_ODDS" ]]; then
   p_full="$(jq -r '.p_full_trek // empty' "$JOURNEY_ODDS" 2>/dev/null)"
 fi

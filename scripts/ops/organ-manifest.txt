@@ -223,29 +223,32 @@ enabled     chump-board-cycle.timer  role=brain
 # Node-neutral naming (RESILIENT-347's requires= gate is what makes "one line
 # covers CJ and any future muscle node" true — a node without the dependency
 # binary is skipped, not force-installed):
-#   chump-worker@1.service  — the repo's ALREADY templated worker unit
-#     (scripts/dispatch/chump-worker@.service; the same %i-instance form
-#     organ-watchdog.sh and back-pressure-controller.sh already key off of).
-#     Any muscle node instantiates chump-worker@<N>.service the same way;
-#     this line guarantees the base @1 instance is never left fully dark.
-#     (node-orchestrator.sh's CHUMP_ORCH_WORKER_UNIT env var still defaults
-#     to the legacy CJ-only "chump-cj-worker" name for its own scale
-#     enforcement — that is a separate, pre-existing naming split this gap
-#     does not resolve, tracked informationally here so it isn't rediscovered
-#     as a mystery later.)
-#   chump-cj-sync.timer     — CJ's concrete name for the coherence-sync organ
-#     (keeps the node's repo checkout git-fetched so its coherence with main
-#     doesn't silently drift, per RESILIENT-345). No templated form exists yet;
-#     a future muscle node would install its own analogous
-#     chump-<host>-sync.timer until one is written — this comment IS that
-#     mapping documentation (organ-manifest.txt header's "requires=" gate
-#     means a node without this unit's dependencies is skipped, not churned).
+#   chump-cj-worker.service  — CJ's concrete worker (muscle) unit: the organ
+#     that actually claims and works gaps on this owned node (cj-worker-run.sh).
+#     node-orchestrator.sh auto-scales the cj-worker2/cj-worker3 peers off this
+#     base, and its CHUMP_ORCH_WORKER_UNIT env var defaults to this same name.
+#     The node-neutral chump-worker@<N>.service template
+#     (scripts/dispatch/chump-worker@.service) that organ-watchdog.sh keys off
+#     is NOT instantiated on CJ; unifying the two naming schemes (retire the
+#     cj-worker name for the @N template fleet-wide) is known follow-up debt,
+#     not resolved here. This row declares the unit that is GENUINELY running so the
+#     manifest matches node reality — it previously said chump-worker@1.service,
+#     a name never installed on CJ, so merged-not-running read a false red
+#     (corrected 2026-08-22).
+#   chump-cj-sync.service   — CJ's concrete name for the coherence-sync organ
+#     (cj-sync-run.sh keeps the node's state.db synced from origin/main so its
+#     coherence with main doesn't silently drift, per RESILIENT-345). It is a
+#     long-running Type=simple service, NOT a .timer: the manifest previously
+#     declared chump-cj-sync.timer — a unit that does not exist on CJ — so
+#     merged-not-running read a false red; corrected to the running unit name
+#     2026-08-22. A future muscle node installs its own analogous
+#     chump-<host>-sync.service until a templated form is written.
 #   chump-postgrest.service — the self-hosted gap-store's PostgREST facade,
 #     installed idempotently by scripts/setup/install-gap-substrate.sh
 #     (INFRA-3631). Node-neutral by construction (systemd unit name is fixed,
 #     not host-suffixed).
-enabled     chump-worker@1.service  role=muscle requires=bin:chump,bin:git
-enabled     chump-cj-sync.timer  role=data requires=bin:git
+enabled     chump-cj-worker.service  role=muscle requires=bin:chump,bin:git
+enabled     chump-cj-sync.service  role=data requires=bin:git
 enabled     chump-postgrest.service  role=data requires=bin:postgrest
 
 # chump-almanac-liveness.timer: systemd complement to the macOS-only
@@ -258,6 +261,7 @@ enabled     chump-postgrest.service  role=data requires=bin:postgrest
 # install-helsinki-atc.sh's SYSTEM_UNITS without a matching manifest line.
 enabled     chump-almanac-liveness.timer  role=data requires=bin:git
 enabled     chump-faculty-collector.timer  role=data requires=bin:gh,bin:jq
+enabled     chump-pr-book-settle.timer     role=trust requires=bin:gh,bin:jq
 # CREDIBLE-296: chump-race-control.timer — hourly merge-mix board (user-value%
 # / self-maintenance% / reconcile-waste%). Emits kind=race_control_mix every
 # tick and kind=race_control_waste_alarm (non-zero exit) when reconcile-waste%
