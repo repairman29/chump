@@ -142,11 +142,17 @@ ok "--auto with one unit's enable failure continues the roster loop AND still re
 # and (b) installing it for a non-root run-user still ends up correct (User=
 # inserted, no /root path leaked into the installed copy either).
 ORGAN_WATCHDOG_SRC="$REPO_ROOT/scripts/dispatch/chump-organ-watchdog.service"
-grep -q '/root' "$ORGAN_WATCHDOG_SRC" \
-    && fail "chump-organ-watchdog.service still pins an absolute /root path: $(grep -n '/root' "$ORGAN_WATCHDOG_SRC")"
-grep -q '%h' "$ORGAN_WATCHDOG_SRC" \
-    || fail "chump-organ-watchdog.service should resolve its home dir via the %h systemd specifier"
-ok "chump-organ-watchdog.service (tracked source) has no hardcoded /root path"
+# RESILIENT-200: the tracked unit is helsinki-shaped (/root/... + User=root) ON
+# PURPOSE; install-helsinki-atc.sh host-rewrites "/root/" -> $RUN_HOME per node.
+# It MUST NOT resolve its home via the systemd %h specifier in an active
+# directive: on a SYSTEM-scope unit %h ignores User= and always expands to
+# /root, so on an owned node (CJ=jeff) it exec'd /root/... as jeff and failed
+# with status 126 "Permission denied" (reverts INFRA-3647/TREK-21).
+grep -Eq '^(Environment|ExecStart)=.*%h' "$ORGAN_WATCHDOG_SRC" \
+    && fail "chump-organ-watchdog.service must not use %h in an active directive (system-unit %h -> /root regardless of User=; RESILIENT-200): $(grep -nE '^(Environment|ExecStart)=.*%h' "$ORGAN_WATCHDOG_SRC")"
+grep -q '/root/Projects/chump/scripts/ops/organ-watchdog.sh' "$ORGAN_WATCHDOG_SRC" \
+    || fail "chump-organ-watchdog.service should exec via the installer-rewritten /root/ path convention (RESILIENT-200), not %h"
+ok "chump-organ-watchdog.service (tracked source) uses the /root host-rewrite convention, not %h"
 
 mkdir -p "$TMP/cj-dest" "$TMP/cj-bins" "$TMP/cj-cargo-bin" "$TMP/cj-locks"
 cat > "$TMP/cj-bins/systemctl" <<'EOF'
@@ -173,8 +179,26 @@ CJ_INSTALLED="$TMP/cj-dest/chump-organ-watchdog.service"
 [ -f "$CJ_INSTALLED" ] || fail "chump-organ-watchdog.service was not installed to the stubbed dest dir"
 grep -q '^User=jeff' "$CJ_INSTALLED" \
     || fail "installed chump-organ-watchdog.service missing User=jeff (host-rewrite): $(cat "$CJ_INSTALLED")"
-grep -q '/root' "$CJ_INSTALLED" \
-    && fail "installed chump-organ-watchdog.service leaked an absolute /root path for a non-root run-user: $(cat "$CJ_INSTALLED")"
-ok "chump-organ-watchdog.service installs for a non-root run-user (CJ shape) with no /root path"
+# The exec path + repo root MUST be host-rewritten off /root -> the run-user
+# home, and NO %h may survive (a system-unit %h expands to /root at runtime and
+# crashes as the non-root user — RESILIENT-200). HOME=/root is the accepted
+# sibling convention (all dispatch units set it; overridden per-node) so we
+# assert the exec/repo path specifically, not a blanket /root.
+grep -Eq '^(Environment|ExecStart)=.*%h' "$CJ_INSTALLED" \
+    && fail "installed chump-organ-watchdog.service leaked a %h specifier (expands to /root at runtime): $(cat "$CJ_INSTALLED")"
+grep -q '/root/Projects/chump' "$CJ_INSTALLED" \
+    && fail "installed chump-organ-watchdog.service leaked an un-rewritten /root/Projects/chump path for a non-root run-user: $(cat "$CJ_INSTALLED")"
+grep -q '/home/jeff/Projects/chump/scripts/ops/organ-watchdog.sh' "$CJ_INSTALLED" \
+    || fail "installed chump-organ-watchdog.service ExecStart not host-rewritten to the run-user home: $(cat "$CJ_INSTALLED")"
+ok "chump-organ-watchdog.service installs for a non-root run-user (CJ shape): exec path host-rewritten, no /root/Projects path, no %h"
+
+# RESILIENT-200 class guard: NO dispatch *.service may resolve its home via %h
+# in an active directive — the installer host-rewrite keys off "/root/" literals
+# and cannot adapt %h, which a system-scope unit expands to /root regardless of
+# User=. This catches organ-watchdog + process-organ-heal + any future reintro.
+_pct_h_offenders="$(grep -lE '^(Environment|ExecStart)=.*%h' "$REPO_ROOT"/scripts/dispatch/*.service 2>/dev/null || true)"
+[ -z "$_pct_h_offenders" ] \
+    || fail "dispatch *.service units use the %h specifier in an active directive (breaks install-helsinki-atc.sh host-rewrite; RESILIENT-200): $_pct_h_offenders"
+ok "no dispatch *.service unit uses %h in an active directive (RESILIENT-200 class guard)"
 
 echo "ALL PASS"
