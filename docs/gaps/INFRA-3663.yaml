@@ -1,0 +1,14 @@
+- id: INFRA-3663
+  domain: INFRA
+  title: "Promotion-decider: recurrence-counted capability-promotion loop (advisory v0)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"recurrence-counted capability-promotion loop (advisory v0)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: MISSION-010
+  evidence: |
+    score-owners run wf_90a6ce9c proved the pattern by hand (6 owners each turned a recurring hand-crank into a durable organ, PRs #4156-4161); Jeff directive 2026-08-22 'transfer the score-owners pattern into the OS and climb off'; Almanac prior art below
+
