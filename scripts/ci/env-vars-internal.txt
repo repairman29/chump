@@ -2213,3 +2213,14 @@ CHUMP_ORGAN_WATCHDOG_USER_SYSTEMCTL_BIN
 CHUMP_CARGO_TARGET_GROUP_SIZE
 # detected in: (standard input)
 CHUMP_CARGO_TARGET_ROOT
+CHUMP_NETWORK_CHECK_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_NETWORK_CHECK_URL
+# detected in: (standard input)
+CHUMP_NETWORK_SYNC_CACHE
+# detected in: (standard input)
+CHUMP_NETWORK_SYNC_INTERVAL_S
+# detected in: (standard input)
+CHUMP_PENDING_PUSH_QUEUE
+# detected in: (standard input)
+CHUMP_PUSH_TIMEOUT_S

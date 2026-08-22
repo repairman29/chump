@@ -11077,6 +11077,49 @@ events:
     trigger: a queued merge request failed local CI, rebase, or the merge-lock could not be acquired within the retry budget — request remains pending for the next processing pass
     consumers: [fleet-brief, operator]
     fields_required: [ts, kind, gap, reason]
+
+  # ── Network sync daemon (INFRA-1324) ────────────────────────────────────────
+  - kind: network_sync_tick
+    effect_metric: self
+    emitter: scripts/coord/network-sync-daemon.sh
+    trigger: one full sync pass completed (network check + pending-push flush + cache refresh), fired every tick regardless of outcome so `chump waste-tally --kind network_sync` can attribute daemon wall-clock overhead
+    consumers: [fleet-brief, waste-tally, operator]
+    fields_required: [ts, kind, network_available, pushes_synced, pushes_retried, pushes_failed, cache_synced, duration_s, pending_depth]
+
+  - kind: pending_push_synced
+    effect_metric: self
+    emitter: scripts/coord/network-sync-daemon.sh
+    trigger: a queued branch from .chump-locks/pending-push.jsonl was successfully pushed to origin now that network is available
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, gap, branch, sha, duration_s]
+
+  - kind: pending_push_retry
+    effect_metric: self
+    emitter: scripts/coord/network-sync-daemon.sh
+    trigger: TRANSIENT push failure (timeout or rejected-but-retryable) — entry is requeued and retried on the next tick; reason distinguishes timeout vs push_rejected_transient
+    consumers: [fleet-brief, operator]
+    fields_required: [ts, kind, gap, branch, reason, duration_s]
+
+  - kind: pending_push_failed
+    effect_metric: self
+    emitter: scripts/coord/network-sync-daemon.sh
+    trigger: PERMANENT push failure (branch_missing or unparseable_entry) — entry is dropped from the queue rather than retried forever; operator action needed
+    consumers: [fleet-brief, operator]
+    fields_required: [ts, kind, gap, reason]
+
+  - kind: github_cache_synced
+    effect_metric: self
+    emitter: scripts/coord/network-sync-daemon.sh
+    trigger: .chump/github_cache.db was refreshed via cache_refresh_open_prs after a tick found network available
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, duration_s]
+
+  - kind: github_cache_sync_skipped
+    effect_metric: self
+    emitter: scripts/coord/network-sync-daemon.sh
+    trigger: DEGRADED — cache refresh half of the tick was skipped (gh missing, disabled via CHUMP_NETWORK_SYNC_CACHE=0, or the refresh call itself failed); pending-push flush still proceeds
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, reason]
     fields_required: [ts, kind, rule_id]
 
   - kind: installer_audit_finding
