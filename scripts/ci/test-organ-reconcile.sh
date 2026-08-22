@@ -66,6 +66,21 @@ echo "$crc_line" | grep -q 'requires=' || fail "real manifest line for chump-con
     || fail "manifest declares chump-conflict-resolution-consumer.timer but the tracked .timer unit is missing"
 pass "real organ-manifest.txt declares chump-conflict-resolution-consumer.timer as a peer-supervised organ (RESILIENT-360), tracked units present"
 
+# ── 2d. INFRA-3642 (TREK-16): owned-node factory organs (worker,
+# coherence-sync, self-hosted gap-store/postgrest) are peer-supervised ─────
+# These ran only as hand-installed units on CJ (chump-worker@1.service,
+# chump-cj-sync.timer, chump-postgrest.service) with no organ-manifest.txt
+# line — the same "designed/installed but never wired into the revivable
+# gate" blind spot RESILIENT-366 closed above; without a manifest line a dead
+# unit stays dead forever since organ-reconcile only acts on lines here.
+for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.service"; do
+    line="$(grep -E "^enabled +${unit//./\\.}" "$REAL_MANIFEST")"
+    [[ -n "$line" ]] || fail "real manifest missing enabled line for $unit (INFRA-3642)"
+    echo "$line" | grep -q 'role=' || fail "real manifest line for $unit has no role="
+    echo "$line" | grep -q 'requires=' || fail "real manifest line for $unit has no requires="
+done
+pass "real organ-manifest.txt declares worker/coherence-sync/gap-store as peer-supervised organs (INFRA-3642)"
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -249,5 +264,41 @@ grep -q "enable --now chump-recovered-organ.service" "$CALL_LOG" \
 grep -qxF "chump-recovered-organ.service" "$ACTIVE_FILE" \
     || fail "the retried organ should have started successfully this time"
 pass "7: expired backoff cooldown retries the organ (not a permanent disable)"
+
+# ── 8. INFRA-3642: kill-then-reconcile proof for the REAL manifest lines of
+#       the owned-node factory organs — extract the ACTUAL declared lines
+#       (not a hand-typed copy) so this proves organ-reconcile treats each as
+#       applicable on a node with their dependency binaries present, and
+#       re-enables each one when found inactive ("killed").
+MANIFEST="$TMP/manifest-owned-node.txt"
+: > "$MANIFEST"
+for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.service"; do
+    grep -E "^enabled +${unit//./\\.}" "$REAL_MANIFEST" >> "$MANIFEST"
+done
+[[ -s "$MANIFEST" ]] || fail "could not extract owned-node organ lines from real manifest for kill-then-reconcile"
+
+mkdir -p "$TMP/bins"
+for bin in chump git postgrest; do
+    cat > "$TMP/bins/$bin" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "$TMP/bins/$bin"
+done
+
+: > "$ACTIVE_FILE"; : > "$ENABLE_FAIL_FILE"; : > "$VERIFY_FAIL_FILE"   # all three start "killed" (inactive)
+rm -rf "$BACKOFF_DIR"
+: > "$AMBIENT"
+
+run_reconcile --apply >/dev/null
+for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.service"; do
+    grep -q "enable --now $unit" "$CALL_LOG" \
+        || fail "kill-then-reconcile: $unit's requires= are satisfied but reconcile never attempted to enable it"
+    grep -qxF "$unit" "$ACTIVE_FILE" \
+        || fail "kill-then-reconcile: $unit was killed (inactive) but reconcile did not re-enable it"
+    [[ -f "$BACKOFF_DIR/${unit}.json" ]] \
+        && fail "kill-then-reconcile: $unit should have started cleanly, not backed off"
+done
+pass "8: kill-then-reconcile — worker/coherence-sync/gap-store organs are applicable when their dependency binaries are present and get re-enabled when found inactive (INFRA-3642)"
 
 echo "ALL PASS"

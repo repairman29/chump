@@ -176,3 +176,43 @@ enabled     chump-gap-closure-reconcile.timer  role=janitor requires=bin:gh
 # here, so this class of drift cannot recur silently again.
 enabled     chump-armed-rebaser.timer  role=muscle requires=bin:gh
 enabled     chump-board-cycle.timer  role=brain
+
+# --- Owned-node factory organs (TREK-16 / INFRA-3642, install-a-Trek-from-0) -
+# CJ is the first owned MUSCLE+DATA node (COTG). Until this line, its worker,
+# coherence-sync, and self-hosted gap-store/postgrest organs ran only as
+# hand-installed units with no organ-manifest.txt entry — the exact
+# "designed/installed but never wired into the revivable gate" blind spot
+# RESILIENT-366 closed for armed-rebaser/board-cycle above (a dead unit stays
+# dead forever, since organ-reconcile only ever acts on lines in THIS file).
+# chump-farmer.timer above already covers the farmer organ folded in from
+# CJ's hand-placed /home/jeff/cj-farmer-run.sh — same repo-tracked unit name
+# (scripts/dispatch/chump-farmer.service + chump-farmer-run.sh), so no new
+# line is needed for it here.
+#
+# Node-neutral naming (RESILIENT-347's requires= gate is what makes "one line
+# covers CJ and any future muscle node" true — a node without the dependency
+# binary is skipped, not force-installed):
+#   chump-worker@1.service  — the repo's ALREADY templated worker unit
+#     (scripts/dispatch/chump-worker@.service; the same %i-instance form
+#     organ-watchdog.sh and back-pressure-controller.sh already key off of).
+#     Any muscle node instantiates chump-worker@<N>.service the same way;
+#     this line guarantees the base @1 instance is never left fully dark.
+#     (node-orchestrator.sh's CHUMP_ORCH_WORKER_UNIT env var still defaults
+#     to the legacy CJ-only "chump-cj-worker" name for its own scale
+#     enforcement — that is a separate, pre-existing naming split this gap
+#     does not resolve, tracked informationally here so it isn't rediscovered
+#     as a mystery later.)
+#   chump-cj-sync.timer     — CJ's concrete name for the coherence-sync organ
+#     (keeps the node's repo checkout git-fetched so its coherence with main
+#     doesn't silently drift, per RESILIENT-345). No templated form exists yet;
+#     a future muscle node would install its own analogous
+#     chump-<host>-sync.timer until one is written — this comment IS that
+#     mapping documentation (organ-manifest.txt header's "requires=" gate
+#     means a node without this unit's dependencies is skipped, not churned).
+#   chump-postgrest.service — the self-hosted gap-store's PostgREST facade,
+#     installed idempotently by scripts/setup/install-gap-substrate.sh
+#     (INFRA-3631). Node-neutral by construction (systemd unit name is fixed,
+#     not host-suffixed).
+enabled     chump-worker@1.service  role=muscle requires=bin:chump,bin:git
+enabled     chump-cj-sync.timer  role=data requires=bin:git
+enabled     chump-postgrest.service  role=data requires=bin:postgrest
