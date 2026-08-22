@@ -40,6 +40,15 @@
 #      (heartbeat, mirrors main-health-watchdog's success-path emit) so a
 #      dead watchdog is itself visible via the standard reaper-heartbeat
 #      pattern.
+#   5. (opt-in, CHUMP_ORGAN_WATCHDOG_BINARY_HEAL=1 — INFRA-3651, PEER-HEAL-04)
+#      detect a vanished/stale release binary (no target/release/chump, or
+#      its build sha older than origin/main HEAD) and trigger a rebuild via
+#      node-refresh-chump.sh, emitting kind=organ_binary_healed; separately,
+#      detect the binary-refresh organ itself (chump-node-refresh.service —
+#      a systemd --user unit, RESILIENT-200, invisible to section 1's
+#      system-scope scan) sitting failed, and revive it: systemd --user
+#      reset-failed+restart, falling back to a direct process-path re-run of
+#      the refresh wrapper if the --user instance can't be reached.
 #
 # Usage:
 #   scripts/ops/organ-watchdog.sh              # scan + heal, real systemctl
@@ -64,6 +73,22 @@
 #                                           1's failed-service heal instead of
 #                                           being resurrected every cycle
 #   CHUMP_AMBIENT_LOG                    — override ambient.jsonl path
+#   CHUMP_ORGAN_WATCHDOG_BINARY_HEAL     — INFRA-3651: 1 = enable section 5
+#                                           (binary + binary-refresh-organ
+#                                           heal). Default 0 — off in tests
+#                                           and dev boxes so a checkout with
+#                                           no target/release/chump doesn't
+#                                           trigger a real cargo build; the
+#                                           production unit sets this.
+#   CHUMP_ORGAN_WATCHDOG_NODE_REFRESH_SCRIPT — override for
+#                                           node-refresh-chump.sh (section 5)
+#   CHUMP_ORGAN_WATCHDOG_USER_SYSTEMCTL_BIN  — override for the `systemctl
+#                                           --user` caller (section 5b);
+#                                           defaults to
+#                                           CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN
+#   CHUMP_BINARY_REFRESH_UNIT            — unit name for the binary-refresh
+#                                           organ (default
+#                                           chump-node-refresh.service)
 #
 # Exit codes:
 #   0  normal (whether or not any organ needed healing)
@@ -463,6 +488,100 @@ PY
             emit worker_spin_healed "\"agent_id\":\"$_agent\",\"unit\":\"$_unit\",\"count\":$_count,\"gap_id\":\"${_gap}\",\"action\":\"restart+clear-claim\""
             healed=$((healed + 1))
         done <<< "$SPIN_REPORT"
+    fi
+fi
+
+# ── 5. Binary + binary-refresh-organ heal (INFRA-3651, PEER-HEAL-04) ───────
+# Two independent failure modes converge here, both traced to the mission's
+# binary-currency promise (RESILIENT-200 / node-refresh-chump.sh):
+#   (a) the release binary itself vanished or went stale — no
+#       target/release/chump, or its build sha lags origin/main HEAD
+#       (refresh-runner-binary.sh's own staleness rule, reused here so this
+#       watchdog agrees with the refresher on what "current" means).
+#   (b) the organ that's supposed to prevent (a), chump-node-refresh.service,
+#       is itself dead. It is a systemd --user unit (RESILIENT-200) —
+#       invisible to section 1's system-scope `systemctl list-units` scan.
+#       That blind spot is exactly how it sat `failed` for 11 days unnoticed.
+#
+# Known gap (AC 5): reviving the --user unit from a root watchdog needs a
+# resolvable XDG_RUNTIME_DIR for the unit's owning user. When systemd --user
+# can't be reached (non-lingering user, no active session), the systemd path
+# errors and this section falls through to the process path — a direct
+# re-run of the refresh wrapper that doesn't depend on systemd at all, so the
+# binary still gets current even when the unit itself can't be revived.
+if [[ "${CHUMP_ORGAN_WATCHDOG_BINARY_HEAL:-0}" == "1" ]]; then
+    NODE_REFRESH_SCRIPT="${CHUMP_ORGAN_WATCHDOG_NODE_REFRESH_SCRIPT:-$REPO_ROOT/scripts/ops/node-refresh-chump.sh}"
+
+    # 5a. missing/stale release binary
+    BUILT_BIN="$REPO_ROOT/target/release/chump"
+    BIN_STALE=0
+    BIN_STALE_REASON=""
+    if [[ ! -x "$BUILT_BIN" ]]; then
+        BIN_STALE=1
+        BIN_STALE_REASON="missing"
+    else
+        BUILT_SHA="$("$BUILT_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || echo unknown)"
+        MAIN_HEAD_SHA="$("$GIT_BIN" -C "$REPO_ROOT" rev-parse --short=12 origin/main 2>/dev/null || echo "")"
+        if [[ -z "$BUILT_SHA" || "$BUILT_SHA" == "unknown" ]]; then
+            BIN_STALE=1
+            BIN_STALE_REASON="unknown_version"
+        elif [[ -n "$MAIN_HEAD_SHA" && "$BUILT_SHA" != "$MAIN_HEAD_SHA"* && "$MAIN_HEAD_SHA" != "$BUILT_SHA"* ]]; then
+            BIN_STALE=1
+            BIN_STALE_REASON="stale"
+        fi
+    fi
+
+    if [[ "$BIN_STALE" == "1" ]]; then
+        echo "[organ-watchdog] BINARY: $BUILT_BIN is $BIN_STALE_REASON vs origin/main HEAD — triggering refresh"
+        if [[ "$DRY_RUN" == "1" ]]; then
+            echo "[organ-watchdog]   (dry-run) would run: $NODE_REFRESH_SCRIPT"
+        elif [[ -x "$NODE_REFRESH_SCRIPT" ]]; then
+            if NODE_AMBIENT="$AMBIENT_LOG" CHUMP_NODE_REPO="$REPO_ROOT" "$NODE_REFRESH_SCRIPT" >/dev/null 2>&1; then
+                echo "[organ-watchdog]   binary refresh triggered ($BIN_STALE_REASON)"
+                # scanner-anchor: "kind":"organ_binary_healed"  (INFRA-3651;
+                # fires when the watchdog detects a missing/stale release
+                # binary and successfully triggers node-refresh-chump.sh to
+                # rebuild + reinstall it)
+                emit organ_binary_healed "\"reason\":\"$BIN_STALE_REASON\",\"bin\":\"$BUILT_BIN\""
+                healed=$((healed + 1))
+            else
+                echo "[organ-watchdog]   WARN: $NODE_REFRESH_SCRIPT failed to refresh the binary" >&2
+                emit organ_self_heal_failed "\"unit\":\"binary\",\"step\":\"refresh\",\"reason\":\"$BIN_STALE_REASON\""
+                scan_fail=1
+            fi
+        else
+            echo "[organ-watchdog]   WARN: node-refresh script not found/executable: $NODE_REFRESH_SCRIPT" >&2
+        fi
+    fi
+
+    # 5b. binary-refresh organ (chump-node-refresh.service, --user scope) failed
+    REFRESH_UNIT="${CHUMP_BINARY_REFRESH_UNIT:-chump-node-refresh.service}"
+    USER_SYSTEMCTL_BIN="${CHUMP_ORGAN_WATCHDOG_USER_SYSTEMCTL_BIN:-$SYSTEMCTL_BIN}"
+    REFRESH_UNIT_FAILED="$("$USER_SYSTEMCTL_BIN" --user list-units --all --type=service --state=failed --plain --no-legend "$REFRESH_UNIT" 2>/dev/null | awk '{print $1}')"
+    if [[ -n "$REFRESH_UNIT_FAILED" ]]; then
+        echo "[organ-watchdog] FAILED (binary-refresh organ, --user scope): $REFRESH_UNIT"
+        if [[ "$DRY_RUN" == "1" ]]; then
+            echo "[organ-watchdog]   (dry-run) would reset-failed + restart --user $REFRESH_UNIT"
+        elif "$USER_SYSTEMCTL_BIN" --user reset-failed "$REFRESH_UNIT" 2>&1 \
+            && "$USER_SYSTEMCTL_BIN" --user restart "$REFRESH_UNIT" 2>&1; then
+            echo "[organ-watchdog]   healed $REFRESH_UNIT (systemd --user path)"
+            # scanner-anchor: "kind":"organ_self_healed"  (INFRA-3651 reuses
+            # the same event kind as section 1 — this IS the same organ-heal
+            # contract, just reached via the --user systemctl scope)
+            emit organ_self_healed "\"unit\":\"$REFRESH_UNIT\",\"action\":\"reset-failed+restart--user\""
+            healed=$((healed + 1))
+        else
+            echo "[organ-watchdog]   WARN: systemd --user reset/restart failed for $REFRESH_UNIT — falling back to process path" >&2
+            if [[ "$DRY_RUN" != "1" ]] && [[ -x "$NODE_REFRESH_SCRIPT" ]] \
+                && NODE_AMBIENT="$AMBIENT_LOG" CHUMP_NODE_REPO="$REPO_ROOT" "$NODE_REFRESH_SCRIPT" >/dev/null 2>&1; then
+                echo "[organ-watchdog]   healed via process-path re-run of $NODE_REFRESH_SCRIPT"
+                emit organ_self_healed "\"unit\":\"$REFRESH_UNIT\",\"action\":\"process-path-rerun\""
+                healed=$((healed + 1))
+            else
+                emit organ_self_heal_failed "\"unit\":\"$REFRESH_UNIT\",\"step\":\"user-systemd-and-process-path\""
+                scan_fail=1
+            fi
+        fi
     fi
 fi
 

@@ -1,0 +1,26 @@
+# INFRA-3650 (PEER-HEAL-03) — heal loop for raw background bash procs that
+# are NOT systemd units (e.g. almanac-vision-keeper). organ-watchdog.sh /
+# organ-reconcile.sh already self-heal chump-*.service/.timer units; nothing
+# revived an unsupervised bash proc started by hand. This unit runs one pass
+# of scripts/ops/process-organ-heal.sh, which pgreps every entry in
+# scripts/ops/process-organ-registry.txt and nohup-respawns anything missing
+# (almanac-vision-keeper is the first registry entry).
+#
+# CHUMP_REPO_ROOT is REQUIRED, same reasoning as chump-organ-watchdog.service:
+# the script's default $HOME/Projects/Chump is capital-C and does not exist on
+# case-sensitive Linux (docs/process/LINUX_NODE_ONBOARDING.md).
+#
+# Host-agnostic via the systemd %h specifier, same as chump-organ-watchdog.service
+# (INFRA-3647): install-helsinki-atc.sh inserts the per-node User= line at
+# deploy time, so %h resolves to root's home on helsinki and to jeff's home on
+# an owned node (CJ) from this SAME tracked unit.
+[Unit]
+Description=Chump process-organ heal loop — revive unsupervised bash procs (INFRA-3650)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=%h
+Environment=CHUMP_REPO_ROOT=%h/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source %h/.chump/providers.env 2>/dev/null; set +a; exec %h/Projects/chump/scripts/ops/process-organ-heal.sh'

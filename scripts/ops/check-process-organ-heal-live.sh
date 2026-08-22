@@ -40,12 +40,22 @@ fail=0
 echo "=== check-process-organ-heal-live (INFRA-3650, AC4) ==="
 
 # ── 1. the heal loop itself ─────────────────────────────────────────────────
+# Two valid supervision shapes, both installed by tracked repo mechanisms:
+#   (a) chump-node-install.sh's common_organs — a persistent while-true
+#       wrapper process (pgrep-visible the whole time).
+#   (b) organ-manifest.txt + install-helsinki-atc.sh's oneshot+timer pair
+#       (chump-process-organ-heal.service/.timer, INFRA-3650 live-tier fix)
+#       — same shape as chump-organ-watchdog.service itself: the .service
+#       is legitimately "inactive (dead)" BETWEEN timer fires, so liveness
+#       is proven by the TIMER being active, not the oneshot service.
 if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet chump-process-organ-heal 2>/dev/null; then
     ok "process-organ-heal: systemd unit chump-process-organ-heal active"
+elif command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet chump-process-organ-heal.timer 2>/dev/null; then
+    ok "process-organ-heal: systemd timer chump-process-organ-heal.timer active (oneshot+timer shape)"
 elif command -v pgrep >/dev/null 2>&1 && pgrep -f "scripts/ops/process-organ-heal.sh" >/dev/null 2>&1; then
     ok "process-organ-heal: wrapper process running (pgrep)"
 else
-    no "process-organ-heal: NOT running (no active systemd unit, no pgrep match)"
+    no "process-organ-heal: NOT running (no active systemd unit/timer, no pgrep match)"
     fail=1
 fi
 

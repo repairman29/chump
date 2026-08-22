@@ -27,4 +27,5 @@ Type=oneshot
 Environment=HOME=%h
 Environment=CHUMP_REPO_ROOT=%h/Projects/chump
 Environment=CHUMP_ORGAN_WATCHDOG_CLONE_REFRESH=1
+Environment=CHUMP_ORGAN_WATCHDOG_BINARY_HEAL=1
 ExecStart=/bin/bash -lc 'set -a; source %h/.chump/providers.env 2>/dev/null; set +a; exec %h/Projects/chump/scripts/ops/organ-watchdog.sh'

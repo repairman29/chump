@@ -150,6 +150,16 @@ enabled     chump-backlog-sync-writer.timer  role=data requires=bin:git,bin:chum
 # is supervised... so the healer can never stay dead" half of RESILIENT-356.
 enabled     chump-organ-watchdog.timer  role=brain
 
+# chump-process-organ-heal.timer: the process-level sibling of
+# chump-organ-watchdog.timer (INFRA-3650, PEER-HEAL-03). organ-watchdog heals
+# chump-*.service/.timer SYSTEMD units; nothing revived a raw background bash
+# proc that was never wrapped as a unit at all (almanac-vision-keeper, the
+# "eyes"). This organ pgreps scripts/ops/process-organ-registry.txt every 5
+# minutes and nohup-respawns anything missing. Declared here so
+# organ-reconcile re-arms it if it drifts or fails, same peer-heartbeat
+# mechanism every other organ in this manifest relies on.
+enabled     chump-process-organ-heal.timer  role=brain
+
 # chump-conflict-resolution-consumer.timer: drains REAL-conflict DIRTY PRs
 # (RESILIENT-360, Linux port of RESILIENT-301). armed_pr_needs_conflict_
 # resolution signals previously had NO consumer on CJ/Linux — the launchd
