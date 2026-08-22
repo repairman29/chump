@@ -4442,6 +4442,34 @@ except Exception:
             info "INFRA-526: auto-close targeting state.db at $_autoclose_main_repo/.chump/state.db (binary: $_autoclose_chump)"
             for _gid in "${GAP_IDS[@]}"; do
                 stage_start "auto-close gap $_gid via PR #$TARGET_PR (INFRA-154)"
+
+                # PEER-VERI-08 (INFRA-3655) AC#2: an unproven proof-AC live
+                # outcome BLOCKS the close outright when CHUMP_VERIFY_LIVE_BLOCKING=1
+                # (default off, ratchet on — see docs/process/CAPABILITY_DECISIONS.md),
+                # instead of being swallowed by the CREDIBLE-178 advisory note
+                # below. Checked BEFORE `chump gap ship` so a blocked gap never
+                # reaches status=done. Non-proof misses are unaffected — this
+                # only fires when `chump pr ac-coverage` itself decided to
+                # report "miss" under the live-blocking flag (AC#3 fail-open
+                # is unchanged for everything else).
+                if [[ "${CHUMP_VERIFY_LIVE_BLOCKING:-0}" == "1" ]] && command -v chump &>/dev/null; then
+                    _ac_pre="$(CHUMP_REPO="$_autoclose_main_repo" CHUMP_REAL_BINARY="$_autoclose_chump" \
+                        chump pr ac-coverage "$TARGET_PR" 2>&1 || true)"
+                    if grep -q '"status":"miss"' <<<"$_ac_pre"; then
+                        _ac_pre_misses="$(grep -oE '"misses":\[[0-9,]*\]' <<<"$_ac_pre")"
+                        red "[PEER-VERI-08] BLOCKING: $_gid PR #$TARGET_PR has an unproven proof-AC live outcome (${_ac_pre_misses:-misses}) and CHUMP_VERIFY_LIVE_BLOCKING=1 — refusing to auto-close. Verify the live outcome, then close manually: chump gap ship $_gid --closed-pr $TARGET_PR --update-yaml"
+                        CHUMP_REPO="$_autoclose_main_repo" CHUMP_REAL_BINARY="$_autoclose_chump" \
+                            chump gap set "$_gid" --add-note "PEER-VERI-08: auto-close BLOCKED — PR #$TARGET_PR merged but a proof AC's live outcome is unverified (${_ac_pre_misses:-}). CHUMP_VERIFY_LIVE_BLOCKING=1 held the close; verify manually then run chump gap ship." >/dev/null 2>&1 || true
+                        _bmu_amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                        printf '{"ts":"%s","kind":"ac_coverage_live_blocking_held_close","gap_id":"%s","pr":%s}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_gid" "$TARGET_PR" \
+                            >> "$_bmu_amb" 2>/dev/null || true
+                        unset _ac_pre _ac_pre_misses _bmu_amb
+                        continue
+                    fi
+                    unset _ac_pre _ac_pre_misses
+                fi
+
                 # INFRA-469 / INFRA-587: run_timed_hb captures output + has 60s timeout.
                 _tmpship=$(mktemp)
                 set +e
