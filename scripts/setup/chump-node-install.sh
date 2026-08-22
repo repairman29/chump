@@ -30,6 +30,12 @@ done
 case "$ROLE" in brain|muscle|all) ;; *) echo "role must be brain|muscle|all" >&2; exit 2;; esac
 
 STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"
+# INFRA-3633: pin the canonical gap store here, once, so every phase below
+# (and every organ this script launches) resolves the same state.db instead
+# of some falling back to a repo-local $NODE_DIR/repo/.chump/state.db that
+# would silently diverge from the machine's real gap backlog.
+STATE_DB="${CHUMP_STATE_DB:-$STATE_DIR/state.db}"
+export CHUMP_STATE_DB="$STATE_DB"
 CREDS="$STATE_DIR/providers.env"
 REPO_URL="${CHUMP_NODE_REPO_URL:-https://github.com/repairman29/chump.git}"
 LOG_DIR="$NODE_DIR/logs"
@@ -165,6 +171,42 @@ ensure_binary() {
   ok "binary: $found -> $BIN"
 }
 
+# ---------- 4b. SEED (INFRA-3633: first-boot canonical-store bootstrap) ----------
+# One-shot YAML -> DB sync so a freshly-cloned box boots with the real
+# backlog (docs/gaps/*.yaml) instead of an empty state.db. Reuses
+# `chump gap sync --pull`, which already respects the INFRA-3606
+# terminal-status guard (never reverts a done/superseded/etc row back to
+# open), so this is safe to re-run on every install.
+ensure_seed() {
+  local gaps_dir="$NODE_DIR/repo/docs/gaps"
+  local bin=""
+  for c in "$BIN" "$HOME/chump/chump" "$(command -v chump 2>/dev/null)"; do
+    [ -n "$c" ] && [ -x "$c" ] && { bin="$c"; break; }
+  done
+  if [ -z "$bin" ]; then
+    info SEED "no chump binary yet — skipping (BINARY phase hasn't installed one); re-run after it does"
+    return 0
+  fi
+  if [ ! -d "$gaps_dir" ]; then
+    info SEED "no $gaps_dir — skipping (repo clone missing docs/gaps?)"
+    return 0
+  fi
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: '$bin' gap sync --pull --state-db '$STATE_DB' --gaps-dir '$gaps_dir' --json"
+    return 0
+  fi
+  local out
+  if out="$("$bin" gap sync --pull --state-db "$STATE_DB" --gaps-dir "$gaps_dir" --json 2>&1)"; then
+    ok "seed: canonical store synced from docs/gaps ($out)"
+  else
+    # AC2: substrate-unreachable (missing state.db dir, locked db, etc.) is a
+    # clear warning, not a hard install failure — the node is still usable
+    # without a seeded backlog (organs/CREDS/BINARY phases already ran).
+    no "seed: gap sync --pull FAILED — substrate unreachable, continuing without seed"
+    info SEED "$out"
+  fi
+}
+
 # ---------- 5. ORGANS (from manifest) ----------
 brain_organs() {  # name|exec
   echo "node-heartbeat|$ORGAN_DIR/node-heartbeat.sh"
@@ -219,6 +261,33 @@ self_test() {
     else no "repo HEAD not at origin/main (HEAD=$head_sha origin/main=$origin_sha)"; fail=1; fi
   else no "repo missing: $NODE_DIR/repo/.git"; fail=1; fi
   if [ -x "$BIN" ]; then ok "binary linked: $BIN"; else no "binary"; fail=1; fi
+  # INFRA-3633: post-seed sanity — canonical store should have picked up the
+  # real backlog from docs/gaps/*.yaml, not sit empty. Compare PICKABLE
+  # (non-terminal) counts on both sides: sync_pull's insert path (a brand
+  # new DB row has nothing to guard) faithfully copies every YAML's status,
+  # terminal or not, so a fresh box's total row count equals yaml_total —
+  # but the number of rows a picker would ever see (status not in the
+  # terminal set — see is_terminal_status in chump-gap-store::sync) is the
+  # meaningful "did the real backlog show up" signal.
+  local terminal_status_re='^\s*status:\s*"?(done|superseded|wontfix|wont_fix|closed|closed_not_a_bug|already_satisfied|obsolete|duplicate)"?\s*$'
+  if command -v sqlite3 >/dev/null 2>&1 && [ -f "$STATE_DB" ] && [ -d "$NODE_DIR/repo/docs/gaps" ]; then
+    local db_total db_pickable yaml_total yaml_terminal yaml_pickable
+    db_total="$(sqlite3 "$STATE_DB" 'SELECT COUNT(*) FROM gaps;' 2>/dev/null || echo 0)"
+    db_pickable="$(sqlite3 "$STATE_DB" "SELECT COUNT(*) FROM gaps WHERE status NOT IN ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied','obsolete','duplicate');" 2>/dev/null || echo 0)"
+    yaml_total="$(find "$NODE_DIR/repo/docs/gaps" -maxdepth 1 -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')"
+    yaml_terminal="$(grep -lE "$terminal_status_re" "$NODE_DIR/repo/docs/gaps"/*.yaml 2>/dev/null | wc -l | tr -d ' ')"
+    yaml_pickable=$(( yaml_total - yaml_terminal ))
+    if [ "$db_total" -gt 0 ] 2>/dev/null; then
+      if [ "$db_pickable" -eq "$yaml_pickable" ] 2>/dev/null; then
+        ok "seed: canonical store has $db_total gaps, $db_pickable pickable (matches docs/gaps: $yaml_pickable non-terminal of $yaml_total)"
+      else
+        ok "seed: canonical store has $db_total gaps, $db_pickable pickable (docs/gaps: $yaml_pickable non-terminal of $yaml_total — drift expected if state.db has rows not sourced from this box's YAML)"
+      fi
+    else
+      no "seed: canonical store empty (0 gaps) — SEED phase may have failed; re-run chump-node-install.sh"
+      fail=1
+    fi
+  fi
   # each role organ supervised & up
   local list; case "$ROLE" in brain) list="$(brain_organs)";; muscle) list="$(muscle_organs)";; all) list="$(brain_organs; muscle_organs)";; esac
   echo "$list" | while IFS='|' read -r name _; do [ -z "$name" ] && continue
@@ -244,6 +313,7 @@ if [ "$SELF_TEST_ONLY" = 1 ]; then self_test; exit $?; fi
 ensure_home || { no "HOME phase failed (repo clone/fetch) — fix and re-run"; exit 1; }
 check_creds || info CREDS "fix creds before organs will authenticate"
 ensure_binary || info BINARY "install a binary, then re-run"
+ensure_seed
 install_organs
 install_supervise
 # RESILIENT-318: install the self-management suite (orchestrator + reapers + disk-monitor)

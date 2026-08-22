@@ -28,12 +28,19 @@ chump-node-install.sh --role brain|muscle|all [--home DIR] [--self-test-only]
 3. **CREDS** — `~/.chump/providers.env` must exist with the required keys (OAuth, GH). Fail loud.
 4. **BINARY** — a working `chump` binary at `$NODE_DIR/bin/chump` that passes a WARM smoke
    (answers a prompt). Termux builds on-device or via `deploy-pixel-node.sh` cross-compile.
+4b. **SEED** (INFRA-3633) — one-shot `chump gap sync --pull` loading the canonical
+   `$CHUMP_STATE_DB` (pinned at `$NODE_DIR`'s `$STATE_DIR/state.db`, never a repo-local
+   `.chump/state.db`) from the git-tracked `docs/gaps/*.yaml` backlog, so a fresh box boots
+   with the real gap queue instead of an empty store. Idempotent — respects the INFRA-3606
+   terminal-status guard on re-run; no-op with a warning if no binary is installed yet or the
+   store is unreachable.
 5. **ORGANS** — install the role's organ set under the host supervisor, from a manifest.
    *brain*: heartbeat, node-describe-register, discord-gateway, coordination.
    *muscle*: worker, build/CI. Reproducible — the organ list is data, not hand-`cp`.
 6. **SUPERVISE** — survive reboot: termux-boot hook (Termux) / systemd enable (Linux).
 7. **SELF-TEST** — the canary that defines "installed": host detected, creds valid, binary
-   answers, every role organ's supervisor entry is UP, heartbeat is fresh. GREEN → INSTALLED ✓.
+   answers, canonical store has a non-empty, docs/gaps-matching pickable gap count (INFRA-3633),
+   every role organ's supervisor entry is UP, heartbeat is fresh. GREEN → INSTALLED ✓.
 
 ## Role → node (settled architecture)
 - **Pixel = brain** (always-on, owned, in-pocket): coordination, registry, heartbeat,
