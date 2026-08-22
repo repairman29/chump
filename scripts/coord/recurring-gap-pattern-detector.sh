@@ -39,6 +39,18 @@
 # Env:
 #   CHUMP_PATTERN_DETECTOR_QUIET=1     # same as --quiet (suppresses stdout, only emits ALERTs)
 #   CHUMP_PATTERN_DETECTOR_ALERT_ONLY=1    # same as --no-rca (skip gap-filing + hold reflex; ALERT only)
+#   CHUMP_RCA_REFLEX_ENABLED=1         # RESILIENT-365: master kill-switch for the auto-file +
+#                                       # auto-block reflex (gap reserve + depends_on wiring).
+#                                       # Default OFF (0) for first ship — the organ/timer runs on
+#                                       # a cadence with no human in the loop, so misfire blast
+#                                       # radius (wrong root gap, wrongly-blocked symptoms) is
+#                                       # higher than the old manual/CLI-invoked path. Detection +
+#                                       # ambient ALERT always fire regardless of this flag; only
+#                                       # the auto-file/auto-block half is gated. Turning this on
+#                                       # is a tracked toggle — see
+#                                       # docs/process/CAPABILITY_DECISIONS.md.
+#   CHUMP_RCA_REFLEX_LLM_DISABLED=1        # skip the `claude -p` evidence call, use the deterministic
+#                                       # fallback evidence blob (tests / offline / no `claude` bin)
 #   CHUMP_AMBIENT_LOG=<path>           # override ambient.jsonl path (test fixture uses this)
 #   CHUMP_PATTERN_DETECTOR_STATE=<path> # override state file path (test fixture uses this)
 #   CHUMP_PATTERN_DETECTOR_HOLD=<path>  # override hold file path (test fixture uses this)
@@ -54,6 +66,15 @@ if [ "${CHUMP_PATTERN_DETECTOR_QUIET:-}" = "1" ]; then
 fi
 if [ "${CHUMP_PATTERN_DETECTOR_ALERT_ONLY:-}" = "1" ]; then
     NO_RCA=1
+fi
+
+# RESILIENT-365: the auto-file/auto-block reflex is gated behind an explicit
+# opt-in, independent of --no-rca (which is the CLI-caller's own choice).
+# Default OFF: detection + ambient ALERT still fire either way; only the
+# "reserve a gap + block symptoms" side effects require this flag.
+RCA_REFLEX_ENABLED=0
+if [ "${CHUMP_RCA_REFLEX_ENABLED:-0}" = "1" ]; then
+    RCA_REFLEX_ENABLED=1
 fi
 
 while [ $# -gt 0 ]; do
@@ -147,6 +168,38 @@ fi
 # record for a detected cluster. Dedup is keyed by keyword in STATE_FILE so
 # a keyword that's still clustering doesn't refile a new RCA gap every run —
 # the existing RCA gap's id + gap_ids list are just refreshed.
+# RESILIENT-365 AC3: root-cause hypothesis is an LLM pass producing a
+# COMMAND/OUTPUT/THEORY/ALT evidence blob (same shape the decompose/architect
+# engine and every hand-filed P0/P1 gap in this repo use — see AGENTS.md
+# evidence convention) so the reserved root gap passes the CREDIBLE-106/107
+# evidence+outcome gate. Reuses the fleet's standard `claude -p` invocation
+# (the same mechanism worker.sh/handoff dispatch use, per SUBAGENT_DISPATCH.md)
+# rather than re-implementing a bespoke LLM client in shell. Falls back to a
+# deterministic evidence blob when `claude` isn't on PATH (offline node, CI,
+# or CHUMP_RCA_REFLEX_LLM_DISABLED=1 for tests) so the reflex never hard-fails for
+# lack of an LLM.
+_generate_rca_evidence() {
+    keyword="$1"
+    cnt="$2"
+    id_list="$3"
+
+    if [ "${CHUMP_RCA_REFLEX_LLM_DISABLED:-0}" != "1" ] && command -v claude >/dev/null 2>&1; then
+        prompt="Recurring-gap-pattern detector found $cnt gaps opened in the last ${DAYS}d that share the title keyword \"$keyword\": $id_list. Produce a root-cause hypothesis for a fleet gap-tracking system in EXACTLY this 4-line format, one line each, no extra commentary: COMMAND: <the diagnostic command/grep an operator would run to confirm> / OUTPUT: <what that command would show, generically> / THEORY: <the suspected structural root cause explaining why this keyword keeps recurring> / ALT: <the rejected alternative (usually 'keep filing symptom gaps individually') and why it's rejected>."
+        resp="$(timeout 60 claude -p "$prompt" --model claude-sonnet-4-6 2>/dev/null || true)"
+        resp="$(printf '%s' "$resp" | grep -E '^(COMMAND|OUTPUT|THEORY|ALT):' || true)"
+        if [ -n "$resp" ]; then
+            printf '%s\n' "$resp"
+            return 0
+        fi
+    fi
+
+    # Deterministic fallback — still a valid COMMAND/OUTPUT/THEORY/ALT blob.
+    printf 'COMMAND: recurring-gap-pattern-detector.sh --days %s --threshold %s (keyword=%s)\n' "$DAYS" "$THRESHOLD" "$keyword"
+    printf 'OUTPUT: %s gaps opened in the last %sd share title keyword "%s": %s\n' "$cnt" "$DAYS" "$keyword" "$id_list"
+    printf 'THEORY: repeat symptom-filing under keyword "%s" with no shared root-cause fix — a structural bug or missing process step is producing the same class of incident each time.\n' "$keyword"
+    printf 'ALT: keep filing individual symptom gaps under "%s" — rejected, that is the exact reactive-filing SPOF this reflex exists to close (INFRA-249).\n' "$keyword"
+}
+
 _file_or_update_rca_gap() {
     keyword="$1"
     cnt="$2"
@@ -169,9 +222,11 @@ if k:
     gap_id="$existing_gap"
     if [ -z "$gap_id" ]; then
         title="RCA: recurring gap pattern \"$keyword\" — $cnt gaps in ${DAYS}d [$id_list]"
+        evidence="$(_generate_rca_evidence "$keyword" "$cnt" "$id_list")"
         gap_id="$(CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
             chump gap reserve --domain META \
                 --title "$title" --priority P1 --effort s \
+                --description "$evidence" --evidence "$evidence" \
                 --force-duplicate 2>/dev/null | tail -1)"
         gap_id="${gap_id:-UNFILED}"
         if [ "$QUIET" -eq 0 ]; then
@@ -182,6 +237,22 @@ if k:
             echo "[pattern-detector] RCA: keyword \"$keyword\" already has $gap_id — refreshing" >&2
         fi
     fi
+
+    # RESILIENT-365 AC4: block the symptom cluster — each symptom gap gets
+    # depends_on the root gap so the fleet's pickable-gap gate stops handing
+    # out the Nth symptom while the root is still open. Best-effort per-id;
+    # one bad id (already closed, already deleted) must not abort the sweep.
+    # Idempotent: `chump gap set --depends-on` overwrites the field with the
+    # same value on every re-run, which is a no-op update, not a duplicate.
+    old_ifs="$IFS"
+    IFS=','
+    for symptom_id in $id_list; do
+        IFS="$old_ifs"
+        [ -n "$symptom_id" ] || continue
+        chump gap set "$symptom_id" --depends-on "$gap_id" >/dev/null 2>&1 || true
+        IFS=','
+    done
+    IFS="$old_ifs"
 
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null || true
@@ -262,7 +333,10 @@ sort -u "$COUNTS_FILE" | awk -F'|' '
     # RESILIENT-365: turn the ALERT into a reflex — file the RCA gap and
     # write the symptom-cluster hold record. Best-effort: failures here
     # (chump binary unavailable, python3 missing) must not fail the sweep.
-    if [ "$NO_RCA" -eq 0 ]; then
+    # Gated behind CHUMP_RCA_REFLEX_ENABLED (default OFF) independently of
+    # --no-rca — detection/ALERT always run; auto-file/auto-block requires
+    # both "caller didn't pass --no-rca" AND "operator opted the reflex in".
+    if [ "$NO_RCA" -eq 0 ] && [ "$RCA_REFLEX_ENABLED" -eq 1 ]; then
         _file_or_update_rca_gap "$keyword" "$cnt" "$id_list" || true
     fi
 done
