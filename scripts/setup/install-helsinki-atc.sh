@@ -198,6 +198,18 @@ RUN_HOME="$(getent passwd "$RUN_USER" 2>/dev/null | cut -d: -f6)"; [[ -z "$RUN_H
 echo "  host-rewrite target: User=$RUN_USER HOME=$RUN_HOME"
 mkdir -p "$SYSTEMD_DEST_DIR"
 CHANGED_UNITS=()
+# RESILIENT-374: organs whose JOB is the privileged system-unit deploy itself
+# must stay User=root even on an owned node. The generic host-rewrite below
+# flips User=root -> the run-user for every unit — correct for organs that do
+# git/cargo/gh work in the owner's home, but FATAL for a deploy organ: a
+# de-privileged deployer cannot write /etc/systemd/system, which is exactly
+# what left CJ's merged organ units DARK (organ-reconcile/organ-watchdog both
+# log "needs root ... skipping" every cycle). Keep this narrow set root; paths
+# are still /root-rewritten so they find the repo on an owned node.
+declare -A _KEEP_ROOT_ORGANS=(
+  [chump-organ-deploy.service]=1
+  [chump-organ-deploy.timer]=1
+)
 for unit in "${SYSTEM_UNITS[@]}"; do
   src="$REPO_ROOT/scripts/dispatch/$unit"
   dest="$SYSTEMD_DEST_DIR/$unit"
@@ -232,6 +244,16 @@ for unit in "${SYSTEM_UNITS[@]}"; do
     grep -q "^Environment=HOME=" "$tmp" || sed -i "/^\[Service\]/a Environment=HOME=${RUN_HOME%/}" "$tmp"
     grep -q "^WorkingDirectory=" "$tmp" || sed -i "/^\[Service\]/a WorkingDirectory=${_repo_on_host}" "$tmp"
     grep -q "^Environment=PATH=" "$tmp" || sed -i "/^\[Service\]/a Environment=PATH=${RUN_HOME%/}/.cargo/bin:/usr/local/bin:/usr/bin:/bin" "$tmp"
+  fi
+  # RESILIENT-374: re-assert User=root for keep-root organs. The rewrite +
+  # injection above may have flipped/added User=<run-user>; a deploy organ must
+  # stay root. Narrow, explicit, and the ONLY place a unit is forced back to root.
+  if [[ -n "${_KEEP_ROOT_ORGANS[$unit]:-}" ]]; then
+    if grep -q "^User=" "$tmp"; then
+      sed -i "s#^User=.*#User=root#" "$tmp"
+    else
+      sed -i "/^\[Service\]/a User=root" "$tmp"
+    fi
   fi
   if [[ ! -f "$dest" ]] || ! cmp -s "$tmp" "$dest"; then
     CHANGED_UNITS+=("$unit")

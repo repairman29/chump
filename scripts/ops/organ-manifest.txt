@@ -256,3 +256,15 @@ enabled     chump-faculty-collector.timer  role=data requires=bin:gh,bin:jq
 # revives it and Roll-Call (scripts/ci/test-resilient-366-organ-roll-call.sh)
 # never lets it silently rot the way chump-backlog-sync-writer.timer did.
 enabled     chump-race-control.timer  role=data requires=bin:gh
+
+# chump-organ-deploy.timer: RESILIENT-374 — the root-privileged self-deploy
+# organ. On owned nodes (CJ=jeff) chump-organ-reconcile and chump-organ-watchdog
+# run as the repo-owning user and cannot write /etc/systemd/system, so merged
+# chump-*.service/.timer files stayed DARK (declared here, never installed in
+# systemd) — the merged-not-running disease. This organ runs install-helsinki-
+# atc.sh --auto AS ROOT so every merged organ actually gets installed + enabled.
+# It is User=root by design (install-helsinki-atc _KEEP_ROOT_ORGANS), the one
+# organ exempt from the host de-privilege rewrite. Declared here so Roll-Call
+# (scripts/ci/test-resilient-366-organ-roll-call.sh) sees a manifest line for
+# the tracked unit files and organ-watchdog re-arms it if it drifts.
+enabled     chump-organ-deploy.timer  role=janitor requires=bin:git
