@@ -151,8 +151,15 @@ SYSTEM_UNITS=(
   # freshness for the almanac fusion-search organ on the Linux factory.
   chump-almanac-liveness.service
   chump-almanac-liveness.timer
+  # RESILIENT-365: wires the INFRA-249 recurring-gap-pattern-detector as a
+  # live organ instead of a script only ever run by hand — was DARK/0 units,
+  # human-ALERT-only, while 44 symptom PRs shipped in one night with 0 root
+  # gaps filed. CHUMP_RCA_REFLEX_ENABLED defaults OFF (see the .service file);
+  # detection + ambient ALERT run regardless.
+  chump-rca-reflex.service
+  chump-rca-reflex.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-almanac-liveness.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-almanac-liveness.timer chump-rca-reflex.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then

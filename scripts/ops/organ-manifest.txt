@@ -226,3 +226,14 @@ enabled     chump-postgrest.service  role=data requires=bin:postgrest
 # call.sh) that would otherwise fire the moment this timer was added to
 # install-helsinki-atc.sh's SYSTEM_UNITS without a matching manifest line.
 enabled     chump-almanac-liveness.timer  role=data requires=bin:git
+
+# chump-rca-reflex.timer: the INFRA-249 recurring-gap-pattern-detector, wired
+# as a live organ (RESILIENT-365). Was DARK — 0 organ units, only a human-
+# facing ALERT line — while 44 symptom PRs shipped in one night against 0
+# root-cause gaps (the evidence for this gap). The detector itself still
+# gates its auto-file-a-root-gap + auto-block-symptoms half behind
+# CHUMP_RCA_REFLEX_ENABLED (default OFF, see chump-rca-reflex.service and
+# docs/process/CAPABILITY_DECISIONS.md) — this manifest line only guarantees
+# the detection + ambient ALERT sweep itself stays alive and self-heals like
+# every other organ here.
+enabled     chump-rca-reflex.timer  role=brain requires=bin:chump
