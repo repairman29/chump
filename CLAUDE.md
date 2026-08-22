@@ -10,6 +10,13 @@
 
 ## Mission
 
+> **RIBBON-ONLY FOCUS (operator decision, Jeff 2026-08-22):** the job is the
+> factory — all other products are **parked** until we cut the ribbon (a
+> clean-install, hands-off factory that lands a real outcome in a person's hands
+> on owned iron). Cutting the ribbon is the only thing that matters. This is the
+> **current singular focus of MISSION-010**, not a new mission — see
+> [`docs/MISSION.md` → Ribbon-only focus](./docs/MISSION.md#ribbon-only-focus-operator-decision-jeff-2026-08-22).
+
 > **The load-bearing mission of record lives in [`docs/MISSION.md`](./docs/MISSION.md)**
 > (MISSION-014). Canonical mission gap: **MISSION-010** (self-coordinating fleet, proof on
 > `repairman29/BEAST-MODE`). The Scoreboard in that doc is the one honest measure —
