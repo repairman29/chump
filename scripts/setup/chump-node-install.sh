@@ -396,6 +396,11 @@ brain_organs() {  # name|exec
   echo "node-heartbeat|$ORGAN_DIR/node-heartbeat.sh"
 }
 muscle_organs() { echo "worker|$ORGAN_DIR/worker.sh"; }
+# INFRA-3650 (PEER-HEAL-03): organs every role needs regardless of brain vs
+# muscle — currently just the process-organ heal loop (revives raw
+# background bash procs like almanac-vision-keeper that aren't systemd
+# units, so it must land on every owned node, not be a hand-op per role).
+common_organs() { echo "process-organ-heal|$ORGAN_DIR/process-organ-heal.sh"; }
 install_organs() {
   # write the heartbeat organ (brain's proof-of-life: refresh heartbeat + node profile)
   run "cat > '$ORGAN_DIR/node-heartbeat.sh' <<'HB'
@@ -407,7 +412,23 @@ while true; do
 done
 HB"
   run "chmod +x '$ORGAN_DIR/node-heartbeat.sh'"
-  local list; case "$ROLE" in brain) list="$(brain_organs)";; muscle) list="$(muscle_organs)";; all) list="$(brain_organs; muscle_organs)";; esac
+  # INFRA-3650: the process-organ heal loop itself — a plain while-true
+  # wrapper around the tracked scripts/ops/process-organ-heal.sh (one pass
+  # per invocation, testable in isolation), same shape as node-heartbeat.sh
+  # above so it installs identically across supervisors (systemd/runit/
+  # fallback).
+  run "cat > '$ORGAN_DIR/process-organ-heal.sh' <<'PH'
+#!/usr/bin/env bash
+STATE=\"\${CHUMP_STATE_DIR:-\$HOME/.chump}\"
+REPO=\"\${CHUMP_NODE_REPO:-$NODE_DIR/repo}\"
+while true; do
+  CHUMP_REPO_ROOT=\"\$REPO\" \\
+    bash \"\$REPO/scripts/ops/process-organ-heal.sh\" >> \"$LOG_DIR/process-organ-heal.log\" 2>&1 || true
+  sleep \"\${CHUMP_PROCESS_ORGAN_HEAL_INTERVAL_S:-300}\"
+done
+PH"
+  run "chmod +x '$ORGAN_DIR/process-organ-heal.sh'"
+  local list; case "$ROLE" in brain) list="$(brain_organs; common_organs)";; muscle) list="$(muscle_organs; common_organs)";; all) list="$(brain_organs; muscle_organs; common_organs)";; esac
   echo "$list" | while IFS='|' read -r name exec; do
     [ -z "$name" ] && continue
     svc_install "$name" "$exec"; svc_up "$name"; ok "organ installed+up: $name"
@@ -513,8 +534,9 @@ self_test() {
       fail=1
     fi
   fi
-  # each role organ supervised & up
-  local list; case "$ROLE" in brain) list="$(brain_organs)";; muscle) list="$(muscle_organs)";; all) list="$(brain_organs; muscle_organs)";; esac
+  # each role organ supervised & up (INFRA-3650: common_organs, e.g.
+  # process-organ-heal, must be part of the "installed" bar for every role)
+  local list; case "$ROLE" in brain) list="$(brain_organs; common_organs)";; muscle) list="$(muscle_organs; common_organs)";; all) list="$(brain_organs; muscle_organs; common_organs)";; esac
   echo "$list" | while IFS='|' read -r name _; do [ -z "$name" ] && continue
     if [ "$(svc_status "$name")" = up ]; then ok "organ up: $name"; else no "organ DOWN: $name"; fi
   done
