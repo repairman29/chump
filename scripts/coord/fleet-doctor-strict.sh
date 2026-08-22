@@ -27,6 +27,12 @@
 #                        scripts/coord/auth-status.sh, RESILIENT-086) — fails when
 #                        credential PRESENCE checks would report healthy but a
 #                        real authenticated call rejects both paths.
+#   14. organ-roll-call-live — INFRA-3646 (TREK-20): every applicable `enabled`
+#                        organ-manifest.txt line must be `systemctl is-active`
+#                        RIGHT NOW, not just declared. Non-applicable organs
+#                        (unmet requires=) skip; dead organs in an
+#                        organ-reconcile.sh backoff cooldown are distinguished
+#                        from dead-and-unowned ones in the failure detail.
 #
 # Thresholds (override via env)
 #   LEASE_STALE_HOURS         default 2    — leases older than N hours are flagged
@@ -660,6 +666,116 @@ check_backlog_sync_freshness() {
     register_check "backlog-sync-freshness" "pass" "origin/main .chump/state.sql ${age_h}h fresh (threshold ${max_h}h)" ""
 }
 
+#  14. organ-roll-call-live — INFRA-3646 (TREK-20): the static Roll-Call
+#      (test-resilient-366-organ-roll-call.sh) only proves every installed
+#      timer HAS a manifest line — it never asks "is the organ actually
+#      running RIGHT NOW". This check closes that gap: for every `enabled`
+#      organ-manifest.txt line whose `requires=` spec holds on THIS node,
+#      assert `systemctl is-active` — RED with the unit name otherwise.
+#      Non-applicable organs (unmet requires=) report skip, not fail. A dead
+#      organ still inside its organ-reconcile.sh backoff cooldown is reported
+#      distinctly from one that's dead with no backoff record at all — the
+#      difference between "the healer tried and gave up, will retry" and
+#      "nobody's watching this one."
+#
+# Applicability gate — mirrors organ-reconcile.sh's organ_is_applicable():
+# bin:/env:/dep: specs, ALL must hold or the organ is not-applicable on this
+# node. A separate function (rather than inline in check_organ_roll_call_live's
+# loop) so its `local IFS=','` is scoped to THIS call and never leaks into the
+# caller's `while read` manifest parser, which needs whitespace-splitting IFS.
+_organ_roll_call_is_applicable() {
+    local unit="$1" requires="$2" systemctl_bin="$3" reason_var="$4"
+    [[ -z "$requires" ]] && return 0
+    local rtok IFS=','
+    for rtok in $requires; do
+        case "$rtok" in
+            bin:*)
+                command -v "${rtok#bin:}" >/dev/null 2>&1 \
+                    || { printf -v "$reason_var" 'missing_bin:%s' "${rtok#bin:}"; return 1; }
+                ;;
+            env:*)
+                local var="${rtok#env:}"
+                [[ -n "${!var:-}" ]] \
+                    || { printf -v "$reason_var" 'missing_env:%s' "$var"; return 1; }
+                ;;
+            dep:*)
+                "$systemctl_bin" is-active --quiet "${rtok#dep:}" 2>/dev/null \
+                    || { printf -v "$reason_var" 'missing_dep:%s' "${rtok#dep:}"; return 1; }
+                ;;
+            *)
+                printf -v "$reason_var" 'unknown_requires_spec:%s' "$rtok"; return 1 ;;
+        esac
+    done
+    return 0
+}
+
+check_organ_roll_call_live() {
+    local manifest="${CHUMP_ORGAN_MANIFEST:-$REPO_ROOT/scripts/ops/organ-manifest.txt}"
+    local systemctl_bin="${CHUMP_ORGAN_RECONCILE_SYSTEMCTL_BIN:-systemctl}"
+    local backoff_dir="${CHUMP_ORGAN_RECONCILE_BACKOFF_DIR:-$REPO_ROOT/.chump-locks/organ-backoff}"
+    local backoff_cooldown_s="${CHUMP_ORGAN_RECONCILE_BACKOFF_COOLDOWN_S:-3600}"
+
+    if [[ ! -f "$manifest" ]]; then
+        register_check "organ-roll-call-live" "skip" "organ-manifest.txt not found at $manifest — skipping live check" ""
+        return
+    fi
+    if ! command -v "$systemctl_bin" >/dev/null 2>&1; then
+        register_check "organ-roll-call-live" "skip" "systemctl unavailable on this node — not a live systemd host" ""
+        return
+    fi
+
+    local state unit rest
+    while read -r state unit rest; do
+        [[ -z "${state:-}" ]] && continue
+        [[ "$state" == \#* ]] && continue
+        [[ "$state" != "enabled" ]] && continue
+
+        # role=/requires= parsing mirrors organ-reconcile.sh's manifest reader.
+        local role="brain" requires="" tok
+        for tok in $rest; do
+            case "$tok" in
+                role=*)     role="${tok#role=}" ;;
+                requires=*) requires="${tok#requires=}" ;;
+            esac
+        done
+
+        local reason=""
+        if ! _organ_roll_call_is_applicable "$unit" "$requires" "$systemctl_bin" reason; then
+            register_check "organ-live:$unit" "skip" "not applicable on this node ($reason, role=$role)" ""
+            continue
+        fi
+
+        if "$systemctl_bin" is-active --quiet "$unit" 2>/dev/null; then
+            register_check "organ-live:$unit" "pass" "active (role=$role)" ""
+            continue
+        fi
+
+        # Dead. Distinguish "in reconcile backoff cooldown" (the healer tried,
+        # gave up, and will retry once the cooldown expires) from "dead and
+        # unowned" (no backoff record at all — nobody is watching/retrying it).
+        local backoff_file="$backoff_dir/${unit}.json"
+        if [[ -f "$backoff_file" ]]; then
+            local since br_reason age_s remain_s
+            since="$(grep -o '"since":[0-9]*' "$backoff_file" 2>/dev/null | head -1 | cut -d: -f2)"
+            br_reason="$(grep -o '"reason":"[^"]*"' "$backoff_file" 2>/dev/null | head -1 | cut -d: -f2 | tr -d '"')"
+            if [[ "$since" =~ ^[0-9]+$ ]]; then
+                age_s=$(( $(date +%s) - since ))
+                if (( age_s < backoff_cooldown_s )); then
+                    remain_s=$(( backoff_cooldown_s - age_s ))
+                    register_check "organ-live:$unit" "fail" \
+                        "$unit is inactive, IN BACKOFF COOLDOWN (healer gave up: ${br_reason:-unknown}, retries in ${remain_s}s, role=$role)" \
+                        "wait for cooldown, or force a retry now: rm $backoff_file && sudo bash scripts/ops/organ-reconcile.sh --apply"
+                    continue
+                fi
+            fi
+        fi
+
+        register_check "organ-live:$unit" "fail" \
+            "$unit is inactive/failed and NOT in backoff — dead and unowned (role=$role)" \
+            "systemctl status $unit; sudo bash scripts/ops/organ-reconcile.sh --apply"
+    done < "$manifest"
+}
+
 check_a2a_consensus() {
     if ! command -v python3 &>/dev/null; then
         register_check "a2a-consensus" "skip" "python3 unavailable — skipping A2A outcome scan" ""
@@ -977,6 +1093,7 @@ check_silent_fleet_death
 check_a2a_consensus
 check_almanac_freshness
 check_backlog_sync_freshness
+check_organ_roll_call_live
 check_required_status_checks
 check_ops_defect_selfdiag
 check_auth_probe
