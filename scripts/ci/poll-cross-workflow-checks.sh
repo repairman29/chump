@@ -63,7 +63,10 @@ while true; do
     runs_json="$(fetch_check_runs)"
     all_terminal=1
     for c in "${CHECKS[@]}"; do
-        entry="$(echo "$runs_json" | jq -c --arg n "$c" '[.[] | select(.name == $n)] | sort_by(.started_at) | last // empty')"
+        # RESILIENT-338: a lane that failed then was retried to success must read
+        # success. started_at ordering is unreliable across reruns, so pick ANY
+        # completed run with conclusion=="success"; else fall back to the latest run.
+        entry="$(echo "$runs_json" | jq -c --arg n "$c" '[.[] | select(.name == $n)] as $runs | ([$runs[] | select(.conclusion == "success")] | last) // ($runs | sort_by(.started_at) | last) // empty')"
         if [[ -z "$entry" ]]; then
             all_terminal=0
             continue
