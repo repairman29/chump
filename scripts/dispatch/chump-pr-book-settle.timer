@@ -1,0 +1,14 @@
+# Drives chump-pr-book-settle.service every 15 minutes so the Brier calibration the
+# OS shows itself stays fresh with no human step — the same cadence and self-healing
+# shape as chump-faculty-collector (which consumes the log it writes). Offset from the
+# collector so the log is freshly settled shortly before the portrait reads it.
+[Unit]
+Description=Chump pr-book settle beat — refresh Brier calibration every 15m
+
+[Timer]
+OnBootSec=6min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

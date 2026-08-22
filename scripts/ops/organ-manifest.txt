@@ -251,6 +251,7 @@ enabled     chump-postgrest.service  role=data requires=bin:postgrest
 # install-helsinki-atc.sh's SYSTEM_UNITS without a matching manifest line.
 enabled     chump-almanac-liveness.timer  role=data requires=bin:git
 enabled     chump-faculty-collector.timer  role=data requires=bin:gh,bin:jq
+enabled     chump-pr-book-settle.timer     role=trust requires=bin:gh,bin:jq
 # CREDIBLE-296: chump-race-control.timer — hourly merge-mix board (user-value%
 # / self-maintenance% / reconcile-waste%). Emits kind=race_control_mix every
 # tick and kind=race_control_waste_alarm (non-zero exit) when reconcile-waste%
