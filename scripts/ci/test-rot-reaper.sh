@@ -51,6 +51,15 @@ FRESH="$(iso 1)"    # past arm gate only
 
 REQ='audit-required'   # pinned required-check set for the test
 
+# RESILIENT-339 resolve-first: the reaper reaps a CONFLICTING PR ONLY when the
+# conflict-resolution-consumer has already exhausted its attempts (state dir).
+# Point the reaper at an empty temp state dir so a CONFLICTING PR with NO state
+# is treated as still-savable (handed off + deferred), and seed one PR (#211)
+# whose state shows attempts>=MAX so it is genuinely-unresolvable → reaped.
+CSTATE="$TMP/conflict-state"; mkdir -p "$CSTATE"
+export CHUMP_ROT_REAPER_CONFLICT_STATE_DIR="$CSTATE"
+printf '{"pr":211,"attempts":3,"first_seen":"2026-08-20T00:00:00Z"}\n' > "$CSTATE/211.json"
+
 FIX="$TMP/prs.json"
 cat > "$FIX" <<EOF
 [
@@ -61,7 +70,8 @@ cat > "$FIX" <<EOF
   {"number":205,"title":"chore(gaps): file RESILIENT-904","mergeStateStatus":"DIRTY","mergeable":"CONFLICTING","createdAt":"$OLD","headRefName":"file-rs904","isDraft":false,"autoMergeRequest":null,"statusCheckRollup":[]},
   {"number":206,"title":"RESILIENT-905: mergeable but required check RED, old","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","createdAt":"$OLD","headRefName":"rs-905","isDraft":false,"autoMergeRequest":{"enabledAt":"x"},"statusCheckRollup":[{"name":"audit-required","conclusion":"FAILURE"}]},
   {"number":207,"title":"RESILIENT-906: mergeable but required check RED, still fresh","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","createdAt":"$MID","headRefName":"rs-906","isDraft":false,"autoMergeRequest":{"enabledAt":"x"},"statusCheckRollup":[{"name":"audit-required","conclusion":"FAILURE"}]},
-  {"number":208,"title":"RESILIENT-907: an ADVISORY (non-required) check is red — must NOT reap","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","createdAt":"$OLD","headRefName":"rs-907","isDraft":false,"autoMergeRequest":{"enabledAt":"x"},"statusCheckRollup":[{"name":"PWA visual diff (advisory)","conclusion":"FAILURE"},{"name":"audit-required","conclusion":"SUCCESS"}]}
+  {"number":208,"title":"RESILIENT-907: an ADVISORY (non-required) check is red — must NOT reap","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","createdAt":"$OLD","headRefName":"rs-907","isDraft":false,"autoMergeRequest":{"enabledAt":"x"},"statusCheckRollup":[{"name":"PWA visual diff (advisory)","conclusion":"FAILURE"},{"name":"audit-required","conclusion":"SUCCESS"}]},
+  {"number":211,"title":"RESILIENT-908: conflicting, old, resolution EXHAUSTED by consumer","mergeStateStatus":"DIRTY","mergeable":"CONFLICTING","createdAt":"$OLD","headRefName":"rs-911","isDraft":false,"autoMergeRequest":null,"statusCheckRollup":[]}
 ]
 EOF
 
@@ -73,8 +83,11 @@ pass=0; fail=0
 ok()  { echo "  ok: $1"; pass=$((pass+1)); }
 bad() { echo "  FAIL: $1"; fail=$((fail+1)); }
 
-# #201: old CONFLICTING non-filing → REAPED
-echo "$out" | grep -qE 'PR #201 — CONFLICTING, [0-9]+h old → REAP' && ok "#201 old-conflicting reaped" || bad "#201 not reaped"
+# #201: old CONFLICTING, resolution NOT yet exhausted → HANDED OFF + DEFERRED (RESILIENT-339), never reaped
+echo "$out" | grep -q 'PR #201 — CONFLICTING, .*conflict-resolution NOT yet exhausted' && ok "#201 savable-conflict handed off + deferred" || bad "#201 not deferred (resolve-first)"
+echo "$out" | grep -qE 'PR #201 .*→ REAP' && bad "#201 wrongly reaped while still savable" || ok "#201 not reaped (savable)"
+# #211: old CONFLICTING, resolution EXHAUSTED by the consumer → NOW reaped
+echo "$out" | grep -qE 'PR #211 — CONFLICTING, .*EXHAUSTED.*→ REAP' && ok "#211 exhausted-conflict reaped" || bad "#211 not reaped after resolution exhausted"
 # #202: fresh CONFLICTING → skipped by age gate
 echo "$out" | grep -q 'PR #202 — CONFLICTING but only' && ok "#202 fresh-conflict skipped" || bad "#202 not skipped by age"
 echo "$out" | grep -qE 'PR #202 .*→ REAP' && bad "#202 wrongly reaped" || ok "#202 not reaped"
@@ -91,8 +104,8 @@ echo "$out" | grep -q 'PR #207 — failing a required check but only' && ok "#20
 echo "$out" | grep -qE 'PR #207 .*→ REAP' && bad "#207 wrongly reaped" || ok "#207 not reaped"
 # #208: only an ADVISORY check red (required is green) → must NOT reap
 echo "$out" | grep -qE 'PR #208 .*→ REAP' && bad "#208 advisory-red wrongly reaped" || ok "#208 advisory-red left alone"
-# exactly two closes (#201 conflict + #206 required-red)
-echo "$out" | grep -q 'closed=2' && ok "exactly two PRs reaped (closed=2)" || bad "close count wrong (expected 2)"
+# exactly two closes (#211 exhausted-conflict + #206 required-red); #201 is DEFERRED, not closed
+echo "$out" | grep -q 'closed=2' && ok "exactly two PRs reaped (closed=2: exhausted-conflict + required-red)" || bad "close count wrong (expected 2)"
 # no-abandon backlog metric emitted (0 here — every past-deadline PR was driven)
 echo "$out" | grep -q 'NO-ABANDON BACKLOG: 0' && ok "no-abandon backlog is 0 (nothing rots)" || bad "backlog metric wrong/absent"
 

@@ -6,7 +6,10 @@
 # stays managed"): on every beat, each open fleet-authored PR is pushed toward a
 # terminal state (MERGED, or CLOSED+requeued) within a bounded time. No PR sits
 # abandoned. The classes this organ drives:
-#   • CONFLICTING beyond CONFLICT age      → close + requeue + label rot-reaped
+#   • CONFLICTING beyond CONFLICT age +
+#     conflict-resolution EXHAUSTED         → close + requeue + label rot-reaped
+#   • CONFLICTING but resolution NOT yet
+#     exhausted (savable)                   → hand off to consumer + DEFER [339]
 #   • MERGEABLE but a REQUIRED check has
 #     FAILED beyond REALFAIL age           → close + requeue + label rot-reaped
 #   • MERGEABLE + green + UNARMED beyond
@@ -92,6 +95,15 @@
 #   CHUMP_ROT_REAPER_REQUIRED_CHECKS  comma-separated override of the required-
 #                                   check set (default: fetched from branch
 #                                   protection, fallback to the known 4).
+#   CHUMP_ROT_REAPER_CONFLICT_STATE_DIR  RESILIENT-339 resolve-first: dir the
+#                                   conflict-resolution-consumer records per-PR
+#                                   attempt state in (default:
+#                                   <repo>/.chump-locks/conflict-resolution-attempts).
+#                                   A CONFLICTING PR is reaped ONLY once its state
+#                                   here shows attempts >= CHUMP_CONFLICT_CONSUMER_MAX_ATTEMPTS
+#                                   or an escalation — i.e. resolution was tried
+#                                   and genuinely failed. No state = still savable
+#                                   = handed off + deferred, never discarded.
 #   CHUMP_ROT_REAPER_PR_JSON        TEST HOOK: path to a JSON file used INSTEAD
 #                                   of `gh pr list`. Lets CI exercise the
 #                                   selection logic without a live GitHub. Each
@@ -208,7 +220,8 @@ for r in rows:
         if name in required and concl in FAIL:
             req_fail = "1"
             break
-    print(f"{num}\t{mrg}\t{made}\t{title}\t{mstate}\t{draft}\t{has_am}\t{req_fail}")
+    head = (r.get("headRefName") or "").replace("\t", " ").replace("\n", " ")
+    print(f"{num}\t{mrg}\t{made}\t{title}\t{mstate}\t{draft}\t{has_am}\t{req_fail}\t{head}")
 ' 2>/dev/null || true)"
 
 # age_hours ISO8601 — whole hours since createdAt (python, bash-free of `date -d`).
@@ -356,7 +369,45 @@ label_and_close() {  # <pr_num> <close_msg>
     return 1
 }
 
-while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQFAIL; do
+# ── RESILIENT-339 RESOLVE-FIRST: never discard a savable CONFLICTING PR ───────
+# A CONFLICTING PR is reaped ONLY after the standing conflict-resolution-consumer
+# (scripts/coord/conflict-resolution-consumer.sh, RESILIENT-301) has ALREADY
+# tried to rebase-resolve it onto the base (its union / append-only merge drivers
+# dissolve the hot-file collisions) AND declared the conflict genuinely
+# unresolvable — its per-PR attempt counter hit CHUMP_CONFLICT_CONSUMER_MAX_ATTEMPTS
+# or it escalated to the operator. Until then the PR is still savable, so the
+# reaper HANDS IT OFF (emits the armed_pr_needs_conflict_resolution signal the
+# consumer drains) and DEFERS the reap. Net: a PR is only ever MERGED (the
+# consumer's push lands it) or sent-to-rework — never discarded while resolution
+# is still possible.
+CONFLICT_ATTEMPT_DIR="${CHUMP_ROT_REAPER_CONFLICT_STATE_DIR:-$(dirname "$AMBIENT_LOG")/conflict-resolution-attempts}"
+CONFLICT_MAX_ATTEMPTS="${CHUMP_CONFLICT_CONSUMER_MAX_ATTEMPTS:-3}"
+
+# 0 = resolution EXHAUSTED (consumer already gave up → safe to reap);
+# 1 = not exhausted (savable → must hand off + defer, never reap).
+conflict_resolution_exhausted() {  # <pr_num>
+    local pr="$1"
+    local sf="$CONFLICT_ATTEMPT_DIR/$pr.json" a esc
+    [[ -f "$sf" ]] || return 1
+    esc="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("escalated_at",""))' "$sf" 2>/dev/null || echo '')"
+    [[ -n "$esc" ]] && return 0
+    a="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("attempts",0))' "$sf" 2>/dev/null || echo 0)"
+    [[ "${a:-0}" -ge "$CONFLICT_MAX_ATTEMPTS" ]] && return 0
+    return 1
+}
+
+# Hand a savable CONFLICTING PR to the standing conflict-resolution-consumer by
+# emitting the signal it drains (same kind armed-pr-rebaser emits). Idempotent;
+# the consumer dedups to the latest sighting per PR.
+hand_off_to_conflict_consumer() {  # <pr_num> <head_branch>
+    local pr="$1" head="$2"
+    printf '{"ts":"%s","kind":"armed_pr_needs_conflict_resolution","source":"rot-reaper","pr":%s,"branch":"%s","via":"rot-reaper-resolve-first"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "$head" >> "$AMBIENT_LOG" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"rot_reaper_resolve_first_deferred","source":"rot-reaper","pr":%s,"branch":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "$head" >> "$AMBIENT_LOG" 2>/dev/null || true
+}
+
+while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQFAIL HEAD; do
     [[ -z "$PR_NUM" ]] && continue
 
     # Never self-close a gap-filing PR (belt: also excluded from every class).
@@ -377,14 +428,28 @@ while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQF
             info "PR #$PR_NUM — CONFLICTING but only ${AGE}h old (< ${MIN_AGE_HOURS}h); leaving for the owner/rebaser."
             SKIPPED=$((SKIPPED + 1)); continue
         fi
+        # ── RESILIENT-339 RESOLVE-FIRST guard ────────────────────────────────
+        # NEVER discard a savable PR. Reap only once the conflict-resolution
+        # consumer has ALREADY tried and given up (attempts exhausted/escalated);
+        # otherwise hand it off and defer, so the union-driver rebase gets its
+        # shot and a resolvable PR is never closed.
+        if ! conflict_resolution_exhausted "$PR_NUM"; then
+            info "PR #$PR_NUM — CONFLICTING, ${AGE}h old, but conflict-resolution NOT yet exhausted → hand to conflict-resolution-consumer + DEFER reap (RESILIENT-339 resolve-first)."
+            if [[ $DRY_RUN -eq 1 ]]; then
+                dry "would hand PR #$PR_NUM ($HEAD) to conflict-resolution-consumer and defer reap"
+                SKIPPED=$((SKIPPED + 1)); continue
+            fi
+            hand_off_to_conflict_consumer "$PR_NUM" "$HEAD"
+            SKIPPED=$((SKIPPED + 1)); continue
+        fi
         if [[ "$CLOSED" -ge "$MAX_CLOSE" ]]; then
             warn "Reached MAX_CLOSE=$MAX_CLOSE this run; deferring the rest."
             BACKLOG=$((BACKLOG + 1)); BACKLOG_PRS+="${PR_NUM} "; continue
         fi
-        red "PR #$PR_NUM — CONFLICTING, ${AGE}h old → REAP"
+        red "PR #$PR_NUM — CONFLICTING, ${AGE}h old, conflict-resolution EXHAUSTED (consumer gave up) → REAP"
         info "  title: $TITLE"
         requeue_gaps "$PR_NUM" "$AGE" "CONFLICTING" "$TITLE"
-        MSG="Auto-closing (rot-reaper / RESILIENT-311 no-abandon janitor): this PR is **CONFLICTING** with \`${BASE}\` and is ${AGE}h old. The armed-rebaser only rebases *behind* PRs — it cannot resolve a real merge conflict — so this branch would sit unmerged indefinitely and keep the back-pressure breaker halted. The cited gap(s) have been re-queued to be re-done cleanly on fresh \`${BASE}\`. Nothing is lost: a conflicting branch must be redone anyway. Labeled \`${LABEL}\` so revivers won't fight this deliberate close. (RESILIENT-324/RESILIENT-311)"
+        MSG="Auto-closing (rot-reaper / RESILIENT-311 no-abandon janitor): this PR is **CONFLICTING** with \`${BASE}\` and is ${AGE}h old. The armed-rebaser only rebases *behind* PRs — it cannot resolve a real merge conflict — so this branch would sit unmerged indefinitely and keep the back-pressure breaker halted. The cited gap(s) have been re-queued to be re-done cleanly on fresh \`${BASE}\`. The conflict-resolution-consumer (RESILIENT-301) already tried to rebase-resolve this branch and could not (attempts exhausted / escalated) — resolution was attempted BEFORE this close, so nothing savable is being discarded. Labeled \`${LABEL}\` so revivers won't fight this deliberate close. (RESILIENT-339/RESILIENT-324/RESILIENT-311)"
         if [[ $DRY_RUN -eq 1 ]]; then dry "would label+close PR #$PR_NUM (CONFLICTING)"; CLOSED=$((CLOSED + 1)); continue; fi
         label_and_close "$PR_NUM" "$MSG"
         continue

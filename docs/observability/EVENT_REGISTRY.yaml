@@ -1247,6 +1247,13 @@ events:
     consumers: [reaper-watchdog]
     fields_required: [reaper_name, status]
 
+  - kind: rot_reaper_resolve_first_deferred
+    effect_metric: self
+    emitter: scripts/ops/rot-reaper.sh (RESILIENT-339)
+    trigger: the rot-reaper finds a CONFLICTING PR past its age gate whose conflict-resolution attempt state is not yet exhausted (RESILIENT-339 resolve-first) — instead of reaping, it hands the PR to the conflict-resolution-consumer (also emits armed_pr_needs_conflict_resolution) and defers the close so a still-savable PR is never discarded
+    consumers: [board-cycle, fleet-brief]
+    fields_required: [ts, kind, pr, branch]
+
   - kind: pr_reaped
     effect_metric: self
     emitter: scripts/ops/rot-reaper.sh (RESILIENT-311)
