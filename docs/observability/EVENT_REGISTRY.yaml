@@ -197,6 +197,12 @@ events:
     trigger: claude -p produced 0 stdout for full timeout window
     consumers: [waste-tally, watchdog]
 
+  - kind: fleet_concurrency_capped
+    effect_metric: self
+    emitter: scripts/dispatch/run-fleet.sh
+    trigger: FLEET_SIZE * CARGO_BUILD_JOBS exceeded nproc at launch; FLEET_SIZE and/or CARGO_BUILD_JOBS auto-trimmed to fit (INFRA-3659)
+    consumers: [waste-tally, fleet-brief]
+
   - kind: fleet_recovery_choir_kicked
     effect_metric: self
     emitter: scripts/coord/ci-health-gate.sh

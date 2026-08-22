@@ -10,7 +10,10 @@
 #            happened (hand-started extra worker, installer bug, etc) — RESILIENT-328. Also throttles
 #            scale-UP (never scale-down/heal/place) when the merge pipeline is CI-saturated: reads the
 #            most recent kind=merge_queue_health ambient event and honors backpressure_recommended so
-#            workers stop over-producing PRs the merge pipeline cannot drain.
+#            workers stop over-producing PRs the merge pipeline cannot drain. Also caps AGGREGATE cargo
+#            parallelism (worker_count * CARGO_BUILD_JOBS) to CORES by writing a managed [build] jobs
+#            block into ~/.cargo/config.toml — INFRA-3659, durable version of a hand-cap (see
+#            cargo_jobs_cap()/enforce_cargo_jobs()).
 #   PLACE  — under sustained disk pressure, relocate heavy churn (cargo) to the largest-free volume
 #            GRACEFULLY: background rsync (fleet stays up) -> atomic symlink swap -> validate.
 #            Foreground mv is BANNED (it wedged the fleet 50min on 2026-08-19, unkillable D-state).
@@ -77,6 +80,54 @@ enforce_cap() {
     fi
     WORKERS_UP=$((WORKERS_UP-1))
   done
+}
+
+# cargo_jobs_cap — INFRA-3659: the per-worker CARGO_BUILD_JOBS that keeps
+# AGGREGATE rustc parallelism (worker_count * jobs_per_worker) at/under
+# CORES. effective_max() already bounds worker COUNT to cores-1, but each
+# worker's own `cargo check`/`clippy` defaults to several parallel rustc
+# jobs — on CJ (4 cores) that was ~14 workers x CARGO_BUILD_JOBS=4 = ~56
+# rustc threads -> swap thrash, 30-45min/gap, unverified_ship (2026-08-22).
+cargo_jobs_cap() {
+  local max; max=$(effective_max)
+  local jobs=$(( CORES / max ))
+  [ "$jobs" -lt 1 ] && jobs=1
+  echo "$jobs"
+}
+
+# enforce_cargo_jobs — writes a CHUMP-managed [build] jobs block into
+# ~/.cargo/config.toml so the cap from cargo_jobs_cap() applies to every
+# cargo/rustc invocation on this host, regardless of which worker spawns it
+# (tonight's hand-fix: jobs=1 hand-edited into this same file). Idempotent —
+# only rewrites when the computed value changes, and refuses to touch a
+# file that already has an unmanaged [build] section (don't clobber a
+# hand-authored sccache/jobs config we don't understand).
+CARGO_CONFIG="${CHUMP_ORCH_CARGO_CONFIG:-$HOME/.cargo/config.toml}"
+enforce_cargo_jobs() {
+  local jobs; jobs=$(cargo_jobs_cap)
+  local cache="$STATE_DIR/.orch-cargo-jobs"
+  [ "$(cat "$cache" 2>/dev/null || echo '')" = "$jobs" ] && return 0
+  local begin='# BEGIN CHUMP-MANAGED cargo-jobs-cap (INFRA-3659, node-orchestrator.sh enforces this — do not hand-edit)'
+  local end='# END CHUMP-MANAGED cargo-jobs-cap'
+  mkdir -p "$(dirname "$CARGO_CONFIG")"
+  if [ -f "$CARGO_CONFIG" ] && grep -q '^\[build\]' "$CARGO_CONFIG" 2>/dev/null && ! grep -qF "$begin" "$CARGO_CONFIG" 2>/dev/null; then
+    log "CARGO-JOBS: $CARGO_CONFIG has an unmanaged [build] section -> not overwriting (leaving jobs cap unmanaged)"
+    return 0
+  fi
+  local block
+  block=$(printf '%s\n[build]\njobs = %d\n%s\n' "$begin" "$jobs" "$end")
+  if [ -f "$CARGO_CONFIG" ] && grep -qF "$begin" "$CARGO_CONFIG" 2>/dev/null; then
+    awk -v begin="$begin" -v end="$end" -v block="$block" '
+      $0==begin {print block; skip=1; next}
+      skip && $0==end {skip=0; next}
+      skip {next}
+      {print}
+    ' "$CARGO_CONFIG" > "$CARGO_CONFIG.tmp.$$" && mv "$CARGO_CONFIG.tmp.$$" "$CARGO_CONFIG"
+  else
+    printf '\n%s\n' "$block" >> "$CARGO_CONFIG"
+  fi
+  echo "$jobs" > "$cache"
+  log "CARGO-JOBS: capped aggregate rustc concurrency -> CARGO_BUILD_JOBS=$jobs per worker (cores=$CORES, max_workers=$(effective_max)) written to $CARGO_CONFIG"
 }
 
 sense() {
@@ -158,6 +209,7 @@ if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
     sense
     heal
     enforce_cap
+    enforce_cargo_jobs
     scale
     place
     sleep "$INTERVAL"
