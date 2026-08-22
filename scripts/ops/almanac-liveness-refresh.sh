@@ -38,6 +38,12 @@
 #                                   (default: $HOME/Projects/almanac.last-indexed-commit)
 #   CHUMP_ALMANAC_STALE_FLOOR_S  — max marker age in seconds before flagged
 #                                   stale (default 86400 = 24h)
+#   CHUMP_ALMANAC_HEALTH_REPO    — repo slug/path passed to `almanac stats` for
+#                                   the almanac_health probe's indexed_files
+#                                   count (default: chump)
+#   CHUMP_ALMANAC_MCP_BIN        — path to the almanac-mcp binary probed for
+#                                   mcp_reachable (default: sibling of
+#                                   CHUMP_ALMANAC_BIN, almanac-mcp)
 #   CHUMP_AMBIENT_LOG            — override ambient.jsonl path
 #
 # Exit codes:
@@ -58,6 +64,8 @@ ALMANAC_REPO="${CHUMP_ALMANAC_REPO:-$HOME/Projects/almanac}"
 ALMANAC_BIN="${CHUMP_ALMANAC_BIN:-$ALMANAC_REPO/target/release/almanac}"
 MARKER="${CHUMP_ALMANAC_MARKER:-${ALMANAC_REPO}.last-indexed-commit}"
 STALE_FLOOR_S="${CHUMP_ALMANAC_STALE_FLOOR_S:-86400}"
+HEALTH_REPO="${CHUMP_ALMANAC_HEALTH_REPO:-chump}"
+MCP_BIN="${CHUMP_ALMANAC_MCP_BIN:-$(dirname "$ALMANAC_BIN")/almanac-mcp}"
 
 mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null || true
 
@@ -117,6 +125,32 @@ if [[ -f "$MARKER" ]]; then
 else
     echo "[almanac-liveness-refresh] no marker at $MARKER — nothing indexed yet on this node (skip)"
 fi
+
+# ── 3. almanac_health probe (INFRA-3638/TREK-13) ────────────────────────────
+# Measurable "eyes-alive" signal: is the binary present, is the index
+# populated, and is the index fresh — every liveness cycle, not just on
+# binary-missing / marker-stale transitions (those two conditions above are
+# edge-triggered; this is the level-triggered heartbeat a dashboard can plot).
+binary_present=0
+[[ -x "$ALMANAC_BIN" ]] && binary_present=1
+
+indexed_files=0
+if [[ "$binary_present" == "1" ]] && command -v timeout >/dev/null 2>&1; then
+    stats_out="$(timeout 10 "$ALMANAC_BIN" stats "$HEALTH_REPO" 2>/dev/null || true)"
+    files_line="$(printf '%s\n' "$stats_out" | awk '/^files:/{print $2}')"
+    [[ "$files_line" =~ ^[0-9]+$ ]] && indexed_files="$files_line"
+fi
+
+last_index_age_s="${marker_age:-null}"
+
+mcp_reachable=0
+[[ -x "$MCP_BIN" ]] && mcp_reachable=1
+
+echo "[almanac-liveness-refresh] health: binary_present=$binary_present indexed_files=$indexed_files last_index_age_s=$last_index_age_s mcp_reachable=$mcp_reachable"
+# scanner-anchor: "kind":"almanac_health"  (INFRA-3638/TREK-13; measurable
+# eyes-alive probe emitted every liveness cycle — binary presence, indexed
+# file count, index freshness, and almanac-mcp binary reachability)
+emit almanac_health "\"indexed_files\":$indexed_files,\"last_index_age_s\":$last_index_age_s,\"binary_present\":$([[ $binary_present == 1 ]] && echo true || echo false),\"mcp_reachable\":$([[ $mcp_reachable == 1 ]] && echo true || echo false)"
 
 # Heartbeat — always emit so a dead unit is itself observable via ambient.jsonl.
 # scanner-anchor: "kind":"almanac_liveness_refresh_tick"  (INFRA-3643; emitted
