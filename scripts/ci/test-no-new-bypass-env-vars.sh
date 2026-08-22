@@ -316,7 +316,7 @@ extract_bypass_varnames() {
   # bare pattern-description text like "CHUMP_IGNORE_*" in comments.
   # Then filter out _DISABLED (Category B exempt).
   local raw_hits
-  raw_hits="$(grep -oE 'CHUMP_[A-Z0-9_]*(BYPASS|SKIP)|CHUMP_IGNORE_[A-Z0-9][A-Z0-9_]*' \
+  raw_hits="$(grep -oE 'CHUMP_[A-Z0-9_]*(BYPASS|SKIP)[A-Z0-9_]*|CHUMP_IGNORE_[A-Z0-9][A-Z0-9_]*' \
     "$code_only_file" 2>/dev/null || true)"
   rm -f "$code_only_file"
 
