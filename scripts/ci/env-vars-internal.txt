@@ -2221,3 +2221,10 @@ CHUMP_OUTCOME_VERIFY_DEDUP_WINDOW_S
 CHUMP_OUTCOME_VERIFY_GAP_BIN
 # detected in: (standard input)
 CHUMP_OUTCOME_VERIFY_STATE_DIR
+CHUMP_RACE_DATE
+# detected in: (standard input)
+CHUMP_RACE_FIXTURE
+# detected in: (standard input)
+CHUMP_RACE_WASTE_THRESHOLD
+# detected in: (standard input)
+CHUMP_RACE_WINDOW

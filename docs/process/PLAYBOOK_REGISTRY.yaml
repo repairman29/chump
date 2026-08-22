@@ -104,6 +104,14 @@ signals:
     verify: "PRs resume merging after the gate is allowlisted/mirrored"
     false_positive_class: none
 
+  - signal: race_control_waste_alarm
+    tier: 2
+    detect: "ambient kind=race_control_waste_alarm (scripts/coord/race-control.sh CREDIBLE-296 — reconcile-waste% of last-window merged PRs exceeds CHUMP_RACE_WASTE_THRESHOLD, default 30%)"
+    reality_check: "bash scripts/coord/race-control.sh --json — rerun live and confirm the mix hasn't already recovered before acting on a stale hourly-timer snapshot"
+    action: "read the flagged window's merged-PR titles (gh pr list --state merged) and identify the dominant reconcile-waste driver (stale gap YAML, duplicate re-dispositions, roll-call gaps); file ONE follow-up gap for the root cause per CLAUDE.md's anti-bloat balance-lever rule, not a gap per PR"
+    verify: "next chump-race-control.timer tick shows reconcile-waste% back under threshold, or the root-cause gap is filed and referenced"
+    false_positive_class: "single bad hour — a small window (CHUMP_RACE_WINDOW) can catch one batch of legitimate stale-gap cleanup PRs merging back-to-back"
+
   # ── T3: escalate (novel or halt-class ONLY, per the 4 triggers in AGENTS.md) ──
   - signal: farmer_auth_dead
     tier: 3

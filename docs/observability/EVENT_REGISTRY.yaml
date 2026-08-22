@@ -5304,6 +5304,24 @@ events:
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, reconcile_waste_pct, threshold_pct, total_prs]
 
+  # ── CREDIBLE-296: Race Control live merge-mix board (chump-race-control.timer) ──
+  - kind: race_control_mix
+    effect_metric: self
+    emitter: scripts/coord/race-control.sh (CREDIBLE-296)
+    trigger: every run (hourly via chump-race-control.timer) — reports the
+      user-value / self-maintenance / reconcile-waste mix of the last
+      CHUMP_RACE_WINDOW merged PRs to main
+    consumers: [fleet-brief, duty-officer, board]
+    fields_required: [ts, kind, window, user_value_pct, self_maintenance_pct, reconcile_waste_pct]
+
+  - kind: race_control_waste_alarm
+    effect_metric: self
+    emitter: scripts/coord/race-control.sh (CREDIBLE-296)
+    trigger: reconcile-waste% of the last CHUMP_RACE_WINDOW merged PRs exceeds
+      CHUMP_RACE_WASTE_THRESHOLD (default 30%); script also exits non-zero
+    consumers: [duty-officer (PLAYBOOK_REGISTRY.yaml race_control_waste_alarm signal), fleet-brief, board]
+    fields_required: [ts, kind, reconcile_waste_pct, threshold_pct, window]
+
   # ── CREDIBLE-052: cross-session gap-ID collision prevention ───────────────
   - kind: gap_id_allocator_offline
     effect_metric: self
