@@ -171,6 +171,17 @@ enabled     chump-process-organ-heal.timer  role=brain
 # same peer-heartbeat mechanism every other organ in this manifest relies on.
 enabled     chump-conflict-resolution-consumer.timer  role=muscle requires=bin:gh
 
+# chump-outcome-verify-heal-consumer.timer: the standing consumer for
+# kind=outcome_probe_failed (external_verify_merge.rs) and
+# kind=ac_coverage_proof_miss (pr_ac_coverage.rs) (INFRA-3654, PEER-VERI-07).
+# Both had emitters and no consumer — a PR's claimed live outcome could be
+# mechanically proven false post-merge with nothing holding the gap open or
+# telling anyone. This organ holds/reopens the named gap and pages the duty
+# officer via notify-operator, deduped per (kind, gap) within a 1h window.
+# Declared here so organ-reconcile re-arms it if it drifts or fails — the
+# same peer-heartbeat mechanism every other organ in this manifest relies on.
+enabled     chump-outcome-verify-heal-consumer.timer  role=muscle requires=bin:chump,bin:git
+
 # chump-gap-closure-reconcile.timer: close open-but-merged gaps from GitHub truth (INFRA-303).
 # Backstop for the fragile bot-merge auto-close; without it the gap store drifts from GitHub.
 enabled     chump-gap-closure-reconcile.timer  role=janitor requires=bin:gh
