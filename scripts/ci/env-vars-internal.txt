@@ -2178,6 +2178,9 @@ CHUMP_ALMANAC_STALE_FLOOR_S
 CHUMP_GAP_STORE_TAILNET_HOST
 # detected in: (standard input)
 CHUMP_GAP_STORE_URL
+CHUMP_RCA_REFLEX_ENABLED
+# detected in: (standard input)
+CHUMP_RCA_REFLEX_SKIP_LLM
 
 # AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
 # Replace the AUTO marker with a real description on the next commit.
@@ -2213,3 +2216,4 @@ CHUMP_ORGAN_WATCHDOG_USER_SYSTEMCTL_BIN
 CHUMP_CARGO_TARGET_GROUP_SIZE
 # detected in: (standard input)
 CHUMP_CARGO_TARGET_ROOT
+CHUMP_RCA_REFLEX_LLM_DISABLED
