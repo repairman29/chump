@@ -449,10 +449,13 @@ pub fn parse_text_tool_calls(text: &str, tools: &[Tool]) -> Option<Vec<ToolCall>
 }
 
 fn strip_prefix_caseless<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
-    if s.len() >= prefix.len() && s[..prefix.len()].eq_ignore_ascii_case(prefix) {
-        Some(&s[prefix.len()..])
-    } else {
-        None
+    // Char-boundary-safe: `s.get(..n)` returns None when `n` lands inside a
+    // multibyte UTF-8 char (or past the end) instead of panicking like a raw
+    // `s[..n]` slice would (INFRA-3678: a multibyte char at the boundary -- e.g.
+    // a greek alpha in model/file text -- crashed the whole execute-gap, exit 101).
+    match s.get(..prefix.len()) {
+        Some(head) if head.eq_ignore_ascii_case(prefix) => Some(&s[prefix.len()..]),
+        _ => None,
     }
 }
 
@@ -682,6 +685,19 @@ mod parse_text_tool_call_tests {
             calls[0].input.get("action").and_then(|v| v.as_str()),
             Some("create")
         );
+    }
+
+    #[test]
+    fn multibyte_char_at_prefix_boundary_does_not_panic() {
+        // INFRA-3678 regression: a line whose bytes put a multibyte UTF-8 char
+        // straddling a candidate prefix's byte length used to panic in
+        // `strip_prefix_caseless` (`s[..prefix.len()]` sliced mid-char, exit 101).
+        // Here the greek alpha (2 bytes) sits across the "call " (len 5) boundary.
+        let tools = tools_task_only();
+        let text = "callα task";
+        // Must return cleanly (no panic); a garbled line yields no tool call.
+        let calls = parse_text_tool_calls(text, &tools);
+        assert!(calls.is_none(), "garbled multibyte line should not parse a call");
     }
 }
 
