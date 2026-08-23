@@ -6962,6 +6962,19 @@ events:
     consumers: [fleet-brief, cos-weekly-digest, ops-audit]
     fields_required: [ts, kind, pr, handler, outcome]
 
+  - kind: pr_terminal_alert_not_reaped
+    emitter: scripts/coord/pr-failure-auto-rescue.sh (RESILIENT-379)
+    effect_metric: self
+    trigger: >
+      An auto-merge-ARMED PR hit the terminal-disposition age with a real
+      required-check red that no handler could clear and that was NOT shared
+      fleet-wide (systemic guard did not fire). Instead of CLOSING the
+      vouched-for PR (the #4173/#4175 reap incident, 2026-08-23), the daemon
+      leaves it OPEN and escalates to the operator. Close is opt-in only via
+      PR_TERMINAL_CLOSE_ARMED=1.
+    consumers: [fleet-brief, cos-weekly-digest, ops-audit]
+    fields_required: [ts, kind, pr, red, age_h, branch]
+
   # ── INFRA-1490: ci.yml merge driver mid-file fallback ────────────────────
   - kind: ci_yml_row_add_merged
     emitter: scripts/git/merge-driver-ci-yml-add-row.sh (INFRA-1490)
