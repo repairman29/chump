@@ -111,7 +111,7 @@ ok "chump-backlog-sync-writer.timer is declared 'enabled' in organ-manifest.txt"
 # hand-installed units on CJ with no organ-manifest.txt line until this gap.
 # Without these, organ-reconcile can never revive them, the same class of
 # silent-disable this whole roll-call test exists to catch.
-for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.service"; do
+for unit in "chump-cj-worker.service" "chump-cj-sync.service" "chump-postgrest.service"; do
   line="$(grep -E "^enabled +${unit//./\\.}" "$MANIFEST")"
   [ -n "$line" ] || fail "$unit must be an 'enabled' line in organ-manifest.txt (INFRA-3642 owned-node factory organ)"
   echo "$line" | grep -q 'role=' || fail "organ-manifest.txt line for $unit has no role="

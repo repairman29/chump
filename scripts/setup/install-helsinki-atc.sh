@@ -146,8 +146,22 @@ SYSTEM_UNITS=(
   # Nobody was watching the tape; this organ is the tape.
   chump-race-control.service
   chump-race-control.timer
+  # RESILIENT-376: the two merge-flow organs were declared `enabled` in
+  # scripts/ops/organ-manifest.txt but NEVER added to this installer roster (nor
+  # given any Linux systemd installer), so on an owned node the unit files were
+  # never copied into /etc/systemd/system and organ-reconcile's `enable --now`
+  # failed on a missing unit -> backoff -> DARK (the merged-not-running class).
+  # The Roll-Call test only guarded installer->manifest, so the manifest->installer
+  # gap went unseen. conflict-resolution-consumer (RESILIENT-360): drains
+  # real-conflict DIRTY PRs (Linux port of the Mac-only launchd installer).
+  # merge-serializer (RESILIENT-372): native-merge-queue substitute that
+  # serializes the final merge so each PR gets a clean `verified` pass.
+  chump-conflict-resolution-consumer.service
+  chump-conflict-resolution-consumer.timer
+  chump-merge-serializer.service
+  chump-merge-serializer.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
