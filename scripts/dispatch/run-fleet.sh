@@ -238,6 +238,45 @@ FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-1800}"
 # Memory guard (2026-07-19): cap per-worker cargo parallelism — concurrent
 # rustc jobs (~1.2GB each) are the top RAM consumers during fleet build storms.
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
+
+# INFRA-3659: cap AGGREGATE cargo concurrency (FLEET_SIZE * CARGO_BUILD_JOBS)
+# to this host's core count — durable version of the 2026-08-22 CJ hand-cap
+# (jobs=1 in ~/.cargo/config.toml + manually stopping cj-worker2/3). CJ is
+# 4-core but ran ~14 workers x CARGO_BUILD_JOBS=4 = ~56 rustc threads ->
+# swap thrash, 30-45min/gap, unverified_ship. Every launch now self-caps
+# instead of relying on a human noticing and hand-editing config. No bypass
+# knob on purpose (INFRA-2429 zero-bypass thesis) — a host that genuinely
+# has spare headroom should raise CARGO_BUILD_JOBS/FLEET_SIZE explicitly
+# rather than opt out of the safety net wholesale.
+if [[ "$FLEET_SIZE" != "0" ]]; then
+    _fleet_nproc="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+    if [[ "$_fleet_nproc" =~ ^[0-9]+$ ]] && (( _fleet_nproc > 0 )) && (( FLEET_SIZE * CARGO_BUILD_JOBS > _fleet_nproc )); then
+        _fleet_size_before=$FLEET_SIZE
+        _cargo_jobs_before=$CARGO_BUILD_JOBS
+        # Prefer trimming FLEET_SIZE first (worker count is the cheaper knob
+        # to give back — CARGO_BUILD_JOBS>1 still helps a single build finish
+        # faster), then fall back to shrinking CARGO_BUILD_JOBS if one worker
+        # alone still oversubscribes the box.
+        if (( FLEET_SIZE > _fleet_nproc )); then
+            FLEET_SIZE=$_fleet_nproc
+        fi
+        while (( FLEET_SIZE * CARGO_BUILD_JOBS > _fleet_nproc && FLEET_SIZE > 1 )); do
+            FLEET_SIZE=$(( FLEET_SIZE - 1 ))
+        done
+        if (( FLEET_SIZE * CARGO_BUILD_JOBS > _fleet_nproc )); then
+            CARGO_BUILD_JOBS=$(( _fleet_nproc / FLEET_SIZE ))
+            (( CARGO_BUILD_JOBS < 1 )) && CARGO_BUILD_JOBS=1
+            export CARGO_BUILD_JOBS
+        fi
+        echo "[run-fleet] INFRA-3659: capped concurrency to nproc=$_fleet_nproc -> FLEET_SIZE $_fleet_size_before->$FLEET_SIZE, CARGO_BUILD_JOBS $_cargo_jobs_before->$CARGO_BUILD_JOBS"
+        _amb_cap_log="${CHUMP_AMBIENT_LOG:-$FLEET_LOCKS_DIR/ambient.jsonl}"
+        mkdir -p "$(dirname "$_amb_cap_log")" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"fleet_concurrency_capped","nproc":%d,"fleet_size_before":%d,"fleet_size_after":%d,"cargo_jobs_before":%d,"cargo_jobs_after":%d}\n' \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_fleet_nproc" "$_fleet_size_before" "$FLEET_SIZE" "$_cargo_jobs_before" "$CARGO_BUILD_JOBS" \
+          >> "$_amb_cap_log" 2>/dev/null || true
+    fi
+fi
+
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
