@@ -354,7 +354,10 @@ impl<'a> IterationController<'a> {
                     if require_edit
                         && edits_applied == 0
                         && edit_nudges_fired < max_edit_nudges
-                        && !payload.trim_start().to_uppercase().starts_with("NO_EDIT_POSSIBLE")
+                        && !payload
+                            .trim_start()
+                            .to_uppercase()
+                            .starts_with("NO_EDIT_POSSIBLE")
                     {
                         edit_nudges_fired += 1;
                         tracing::info!(
@@ -1060,7 +1063,6 @@ mod cancellation_tests {
         );
     }
 
-
     // ── EFFECTIVE-448: force-edit nudge integration tests ──────────────────
     //
     // These exercise the real `IterationController::execute` loop with scripted
@@ -1325,5 +1327,4 @@ mod cancellation_tests {
         std::env::remove_var("CHUMP_REQUIRE_EDIT");
         std::env::remove_var("CHUMP_MAX_EDIT_NUDGES");
     }
-
 }
