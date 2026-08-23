@@ -463,10 +463,11 @@ jobs:
           # Structured summary (visible in GHA step log + step summary).
           echo ""
           echo "=== INFRA-1002 shard classification ==="
-          echo "  real_failures:    [${real_failures:-none}]"
-          echo "  cascade_cancels:  [${cascade_cancels:-none}]"
-          echo "  passed:           [${passed:-none}]"
-          echo "  skipped:          [${skipped_list:-none}]"
+          echo "  real_failures:       [${real_failures:-none}]"
+          echo "  cascade_cancels:     [${cascade_cancels:-none}]"
+          echo "  supersedure_cancels: [${supersedure_cancels:-none}]"
+          echo "  passed:              [${passed:-none}]"
+          echo "  skipped:             [${skipped_list:-none}]"
           echo "========================================"
 
           # Append to GitHub step summary (shows in PR checks UI).
@@ -475,9 +476,11 @@ jobs:
             printf '| Category | Shards |\n|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
             printf '| Real failures | `%s` |\n' "${real_failures:-none}" >> "$GITHUB_STEP_SUMMARY"
             printf '| Cascade cancels | `%s` |\n' "${cascade_cancels:-none}" >> "$GITHUB_STEP_SUMMARY"
+            printf '| Supercedure cancels | `%s` |\n' "${supersedure_cancels:-none}" >> "$GITHUB_STEP_SUMMARY"
             printf '| Passed | `%s` |\n' "${passed:-none}" >> "$GITHUB_STEP_SUMMARY"
             printf '| Skipped | `%s` |\n\n' "${skipped_list:-none}" >> "$GITHUB_STEP_SUMMARY"
             printf 'Cascade cancels are caused by the failing shard(s) — not independent bugs.\n' >> "$GITHUB_STEP_SUMMARY"
+            printf 'Supersedure cancels are caused by a newer workflow run on the same SHA.\n' >> "$GITHUB_STEP_SUMMARY"
             printf 'Fix the real failure(s) and push to re-run.\n' >> "$GITHUB_STEP_SUMMARY"
           fi
 
