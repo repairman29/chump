@@ -405,6 +405,11 @@ jobs:
           # Rule: result == 'cancelled' AND at least one peer == 'failure'
           #       ⟹ cascade_cancel (benign for retry — root cause is the failure)
           #       result == 'cancelled' AND no peer == 'failure'
+          #         AND all shards are cancelled (no success/skipped)
+          #       ⟹ ci_supersedure_cancel (benign — newer run on same SHA
+          #          cancelled this one; see INFRA-1527)
+          #       result == 'cancelled' AND no peer == 'failure'
+          #         AND not all shards cancelled
           #       ⟹ real_failure (unexpected cancel — surface to operator)
           fast="${{ needs.fast-checks.result }}"
           clippy="${{ needs.clippy.result }}"
@@ -418,8 +423,20 @@ jobs:
             [ "$r" = "failure" ] && any_real_failure=1
           done
 
+          # Pass 1.5: detect workflow supersedure (INFRA-1527).
+          # When a NEW workflow run starts on the same SHA, GH Actions
+          # cancels ALL in-flight shards.  If every shard is cancelled
+          # and none failed, this is a supersedure — not a real failure.
+          total_shards=4
+          cancelled_count=0
+          for r in "$fast" "$clippy" "$test" "$hygiene"; do
+            [ "$r" = "cancelled" ] && cancelled_count=$((cancelled_count + 1))
+          done
+          supersedure=0
+          [ "$any_real_failure" = "0" ] && [ "$cancelled_count" = "$total_shards" ] && supersedure=1
+
           # Pass 2: classify each shard.
-          real_failures="" cascade_cancels="" passed="" skipped_list=""
+          real_failures="" cascade_cancels="" supersedure_cancels="" passed="" skipped_list=""
           classify() {
             local name="$1" result="$2"
             case "$result" in
@@ -429,6 +446,8 @@ jobs:
               cancelled)
                 if [ "$any_real_failure" = "1" ]; then
                   cascade_cancels="${cascade_cancels:+$cascade_cancels,}$name"
+                elif [ "$supersedure" = "1" ]; then
+                  supersedure_cancels="${supersedure_cancels:+$supersedure_cancels,}$name"
                 else
                   real_failures="${real_failures:+$real_failures,}$name"
                 fi
