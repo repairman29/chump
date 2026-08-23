@@ -74,6 +74,72 @@ if [[ -z "$_oauth_tok" && -f "$HOME/.chump/oauth-token.json" ]]; then
     _oauth_tok="$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.chump/oauth-token.json'))).get('token',''))" 2>/dev/null || true)"
 fi
 
+# ── free-tier provider path (RESILIENT-376) ──────────────────────────────────
+# A node configured for a $0 / free-tier OpenAI-compatible provider needs NO
+# Anthropic credential to transact: `chump --execute-gap` drives the in-process
+# cascade (OPENAI_API_BASE/OPENAI_API_KEY/OPENAI_MODEL), never `claude`. On such
+# a node the `claude -p` probe below is a false BROKEN — the Android Pixel node
+# has no `claude` native binary at all, so it RED-locks a $0 worker that needs
+# zero Anthropic creds. Treat a LIVE free-tier provider as a usable auth path.
+#
+# BLAST-RADIUS GUARD (non-negotiable): this block is ENTIRELY skipped when
+# CHUMP_FREE_TIER_PROVIDERS is empty/unset — i.e. on every Claude node (CJ, the
+# Mac, helsinki). Their verdict, cache, and exit code are byte-for-byte
+# unchanged. A live provider only ever ADDS a usable path; a dead/misconfigured
+# one FALLS THROUGH to the unchanged Anthropic probe below (never a wrong-GREEN).
+#
+# Entry format matches src/execute_gap.rs::parse_free_tier_providers:
+#   model@base_url:KEY_ENV   (comma-separated). We resolve KEY_ENV indirectly and
+# probe ${base_url}/models with a Bearer key; first HTTP 200 → usable → exit 0.
+# We iterate the whole list so an OpenAI-compatible entry (Groq/Cerebras/…)
+# satisfies the gate even when another entry's base (e.g. Gemini's
+# generativelanguage) won't answer a Bearer /models probe.
+_ft_providers="${CHUMP_FREE_TIER_PROVIDERS:-}"
+if [[ -n "${_ft_providers//[[:space:]]/}" ]]; then
+    _ft_ok=0; _ft_model=""; _ft_host=""
+    _ft_oldifs="$IFS"; IFS=','
+    for _ft_entry in $_ft_providers; do
+        IFS="$_ft_oldifs"
+        _ft_entry="${_ft_entry#"${_ft_entry%%[![:space:]]*}"}"   # ltrim
+        _ft_entry="${_ft_entry%"${_ft_entry##*[![:space:]]}"}"   # rtrim
+        [ -z "$_ft_entry" ] && { IFS=','; continue; }
+        # split on LAST ':' → KEY_ENV, then '@' → model / base_url
+        _ft_key_env="${_ft_entry##*:}"
+        _ft_model_base="${_ft_entry%:*}"
+        _ft_model="${_ft_model_base%@*}"
+        _ft_base="${_ft_model_base#*@}"
+        if [[ -z "$_ft_model" || -z "$_ft_base" || -z "$_ft_key_env" || "$_ft_model_base" != *@* ]]; then
+            IFS=','; continue
+        fi
+        _ft_key_val="${!_ft_key_env:-}"           # indirect: value of the named env var
+        [ -z "$_ft_key_val" ] && { IFS=','; continue; }   # empty key (e.g. NVIDIA) → skip, never false-GREEN
+        if [[ -n "${CHUMP_AUTH_STATUS_FAKE_FREETIER_HTTP:-}" ]]; then
+            _ft_code="$CHUMP_AUTH_STATUS_FAKE_FREETIER_HTTP"   # CI seam: hermetic, no network
+        else
+            _ft_code="$(curl -s -o /dev/null -w '%{http_code}' \
+                --max-time "${CHUMP_AUTH_FREETIER_PROBE_TIMEOUT_S:-10}" \
+                -H "Authorization: Bearer $_ft_key_val" \
+                "${_ft_base%/}/models" 2>/dev/null || echo 000)"
+        fi
+        if [[ "$_ft_code" == "200" ]]; then
+            _ft_ok=1; _ft_model="$_ft_model"
+            _ft_host="${_ft_base#*://}"; _ft_host="${_ft_host%%/*}"
+            break
+        fi
+        IFS=','
+    done
+    IFS="$_ft_oldifs"
+    if [[ "$_ft_ok" -eq 1 ]]; then
+        RC=0
+        MSG="AUTH ✓ OK — free-tier provider live ($_ft_model @ $_ft_host); no Anthropic token needed (chump --execute-gap cascade)."
+        mkdir -p "$(dirname "$CACHE")" 2>/dev/null || true
+        { _now; printf '%s\n' "$RC"; printf '%s\n' "$MSG"; } > "$CACHE" 2>/dev/null || true
+        printf '%s\n' "$MSG"
+        exit "$RC"
+    fi
+    # No live free-tier provider — fall through to the Anthropic probe (unchanged).
+fi
+
 # ── probe oauth (real claude -p call) ────────────────────────────────────────
 # valid | invalid | absent
 _oauth_state="absent"
