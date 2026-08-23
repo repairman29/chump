@@ -71,6 +71,24 @@ fi
 # only reach for a mounted USB/external data disk when $HOME is tight.
 SCCACHE_HOME_FREE_THRESHOLD_KB=$((25 * 1024 * 1024))  # 25G, matches AC
 
+# _sccache_dir_writable — REAL write probe, not a permission-bit check.
+# A mount can be `-w` (mounted rw, perms fine) yet fail *every* write with
+# EBADMSG when the underlying ext4 metadata is corrupt. CJ 2026-08-22:
+# /mnt/cjdata3's root inode (#2) failed its directory-block checksum, so
+# `touch /mnt/cjdata3/sccache/x` returned "Bad message" and sccache logged
+# 100% cache write errors (0% hit rate) — while `-d && -w` still passed.
+# Probe with an actual create+unlink so a dead/corrupt disk is skipped.
+_sccache_dir_writable() {
+    local d="$1" probe
+    mkdir -p "$d" 2>/dev/null || return 1
+    probe="$d/.sccache-write-probe.$$"
+    if ( : > "$probe" ) 2>/dev/null; then
+        rm -f "$probe" 2>/dev/null
+        return 0
+    fi
+    return 1
+}
+
 detect_sccache_dir() {
     if [[ -n "${SCCACHE_DIR:-}" ]]; then
         echo "$SCCACHE_DIR"
@@ -78,34 +96,41 @@ detect_sccache_dir() {
     fi
     local home_avail_kb
     home_avail_kb="$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"
-    if [[ -n "$home_avail_kb" ]] && (( home_avail_kb >= SCCACHE_HOME_FREE_THRESHOLD_KB )); then
+    if [[ -n "$home_avail_kb" ]] && (( home_avail_kb >= SCCACHE_HOME_FREE_THRESHOLD_KB )) \
+       && _sccache_dir_writable "$HOME/.cache/sccache"; then
         echo "$HOME/.cache/sccache"
         return
     fi
-    # /home free < 25G (or undeterminable) — fall back to a mounted USB/data
-    # disk. INFRA-3660: /mnt/cjdata3 is the named target on Ubuntu CJ (13G
-    # free) — cjdata1 was already full at its own 13G target when that gap
-    # was filed, so "most free space" alone would wrongly re-pick it. Prefer
-    # cjdata3 explicitly; otherwise pick whichever mounted /mnt or /media
-    # path (excluding the root fs) has the most free space.
-    if [[ -d /mnt/cjdata3 && -w /mnt/cjdata3 ]]; then
-        echo "/mnt/cjdata3/sccache"
-        return
-    fi
+    # /home tight (< 25G), undeterminable, or unwritable — fall back to a
+    # mounted USB/data disk. Pick the /mnt|/media filesystem (excluding root)
+    # with the most free space THAT PASSES A REAL WRITE PROBE.
+    #
+    # INFRA-3660 originally hard-pinned /mnt/cjdata3 by name and only tested
+    # `-d && -w`. That was fragile: when cjdata3's ext4 went corrupt
+    # (2026-08-22) the name-pin kept selecting the dead drive and `-w` never
+    # noticed, so the cache silently 100%-write-errored for the whole fleet.
+    # Never name-pin a device — health-probe every candidate and skip the
+    # dead ones, so a disk failure self-heals to the next good drive.
+    # Restrict to real data filesystems (ext*/xfs/btrfs): a bare "most free
+    # /mnt path" would happily pick a printer/thumb-drive vfat mount like
+    # /mnt/print1, which has no unix perms and bad filename semantics for a
+    # compile cache.
     local root_fs
     root_fs="$(df -P / 2>/dev/null | awk 'NR==2{print $1}')"
     local best="" best_avail_kb=0
-    while read -r fs avail_kb mnt; do
+    while read -r fs fstype avail_kb mnt; do
         [[ "$fs" == "$root_fs" ]] && continue
-        [[ -w "$mnt" ]] || continue
+        case "$fstype" in ext4|ext3|ext2|xfs|btrfs) ;; *) continue ;; esac
+        _sccache_dir_writable "$mnt/sccache" || continue
         if (( avail_kb > best_avail_kb )); then
             best_avail_kb=$avail_kb
             best="$mnt"
         fi
-    done < <(df -Pk /mnt/* /media/*/* 2>/dev/null | awk 'NR>1{print $1, $4, $6}')
+    done < <(df -PkT /mnt/* /media/*/* 2>/dev/null | awk 'NR>1{print $1, $2, $5, $7}')
     if [[ -n "$best" ]]; then
         echo "$best/sccache"
     else
+        # Last resort: $HOME even if tight — a working cache beats none.
         echo "$HOME/.cache/sccache"
     fi
 }
