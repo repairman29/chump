@@ -4,7 +4,7 @@
 # you must delete one. Raising it requires operator sign-off + a reason below.
 # Baseline 2026-06-03 (was 113 when INFRA-2525 was filed — the climb to here is
 # exactly what this ceiling now reverses). Ratchet DOWN as gates are culled.
-222
+223
 
 # 233 → 234 (2026-06-04): CREDIBLE-085 introduced CHUMP_SCCACHE_HIT_RATE_CHECK
 # as a cold-cache escape valve for the new sccache hit-rate gate. Cold-cache
@@ -104,3 +104,12 @@
 # NET DEBT still falling: two concurrently-jammed sibling PRs (INFRA-3660, INFRA-3659)
 # had ORPHANED phantom registry lines removed in the same unjam pass (net -2 real-count),
 # and the recurring dead-bypass cull that restores standing headroom is tracked by INFRA-3625.
+
+# 222 → 223 (2026-08-23): INFRA-3677 introduces CHUMP_NODE_SKIP_ARTIFACT_PULL as a
+# legit operator toggle in scripts/ops/node-refresh-chump.sh — forces the local
+# cargo-build path (skips pulling the prebuilt GH-CI artifact) on nodes that manage
+# their binary out-of-band. Main sat AT the ceiling (222=222, zero headroom), so this
+# single legit var tripped audit-shard bypass-lint with 223>222 — the recurring
+# zero-headroom tripwire. Operator sign-off (incident revival 2026-08-23; the PR was
+# false-closed by pr-failure-auto-rescue on this real red). Standing-headroom cull is
+# tracked by INFRA-3625.
