@@ -130,10 +130,15 @@ echo "[install-paramedic]   chump binary: ${CHUMP_BIN}"
 
 mkdir -p "$LAUNCH_AGENTS_DIR" "$LOG_DIR"
 
+# Resolve CHUMP_HOME (default to repo root).
+CHUMP_HOME="${CHUMP_HOME:-$REPO_ROOT}"
+
 # Substitute placeholders in plist template.
 sed \
     -e "s|CHUMP_BIN_PLACEHOLDER|${CHUMP_BIN}|g" \
     -e "s|CHUMP_LOG_DIR_PLACEHOLDER|${LOG_DIR}|g" \
+    -e "s|CHUMP_HOME_PLACEHOLDER|${CHUMP_HOME}|g" \
+    -e "s|HOME_PLACEHOLDER|${HOME}|g" \
     "$PLIST_TEMPLATE" > "$INSTALLED_PLIST"
 
 echo "[install-paramedic]   plist: ${INSTALLED_PLIST}"
