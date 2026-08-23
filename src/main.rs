@@ -198,6 +198,7 @@ mod pr_fix_clippy;
 mod pr_rescue; // INFRA-1714: closed-loop PR rescue (chump pr-rescue)
 mod pr_triage;
 mod precision_controller;
+mod promotion_decider; // INFRA-3663: recurrence-counted capability-promotion loop (advisory v0)
 pub use chump_preflight::preflight; // INFRA-1670: local CI mirror — chump preflight subcommand (extracted to crates/chump-preflight, EFFECTIVE-400)
 mod provider_bandit;
 mod provider_cascade;
@@ -2326,6 +2327,17 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("voice") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(commands::voice::run(&sub_args));
+    }
+
+    // `chump promotion-decider [--gaps-dir <path>] [--ambient <path>]
+    // [--window-days N] [--threshold N] [--json] [--no-emit]` (INFRA-3663) —
+    // recurrence-counted capability-promotion loop (advisory v0): implements
+    // the VOICE_OF_AGENT.md "auto-promote rule" (>= 3 VOA gaps sharing a
+    // wedge_class within 30d flags that wedge_class for promotion). Advisory
+    // only — emits kind=voice_of_agent_promoted, never mutates gap priority.
+    if args.get(1).map(String::as_str) == Some("promotion-decider") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(promotion_decider::run(&sub_args));
     }
 
     // `chump source-resolve "<capability keyword>"` (INFRA-3508, COTG-S.1) —

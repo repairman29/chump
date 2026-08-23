@@ -9833,6 +9833,23 @@ events:
       CHUMP_SESSION_ID.
     consumers: [ops-audit, kpi-report, fleet-brief]
     fields_required: [ts, kind, voa_id, wedge_class, minutes_lost, fix_shape, target_repo, session]
+  # ── INFRA-3663: promotion-decider — recurrence-counted capability-promotion loop (advisory v0) ──
+  - kind: voice_of_agent_promoted
+    effect_metric: effective
+    emitter: src/promotion_decider.rs (INFRA-3663 — chump promotion-decider)
+    trigger: >
+      Emitted by `chump promotion-decider` when a wedge_class recurs across
+      >= threshold (default 3) filed VOA gaps within the last window_days
+      (default 30) — implementing the auto-promote rule documented in
+      docs/process/VOICE_OF_AGENT.md but never wired up. Advisory v0: this
+      event is a recommendation signal only; it does not mutate gap
+      priority or state.db. Carries wedge_class, count, and gap_ids (the
+      VOA-NNNN ids that recurred).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, wedge_class, count, gap_ids]
+    expected_volume: "0-2 per day (only fires when a wedge_class genuinely recurs)"
+    status: stable
+    # payload: {wedge_class: string, count: int, gap_ids: [string], ts: string}
     # payload: {voa_id: str, wedge_class: str, minutes_lost: int, fix_shape: str, target_repo: str, session: str}
 
   - kind: tech_debt_finding
