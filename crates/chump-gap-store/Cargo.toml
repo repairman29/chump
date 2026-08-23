@@ -58,6 +58,10 @@ name = "chump-gap-architect"
 path = "src/bin/chump-gap-architect.rs"
 
 [[bin]]
+name = "chump-gap-enricher"
+path = "src/bin/chump-gap-enricher.rs"
+
+[[bin]]
 name = "chump-check-gaps-integrity"
 path = "src/bin/chump-check-gaps-integrity.rs"
 
