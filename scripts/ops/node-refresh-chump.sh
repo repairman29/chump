@@ -64,7 +64,30 @@ if [[ -z "$REPO_ROOT" ]]; then
         if [[ -d "$candidate/.git" ]]; then REPO_ROOT="$candidate"; break; fi
     done
 fi
-TARGET_BIN="${CHUMP_NODE_BIN:-$HOME/.local/bin/chump}"
+# --- resolve the install destination (RESILIENT-378) -------------------------
+# CRITICAL: install where the FLEET's PATH actually resolves `chump`, not a
+# fixed ~/.local/bin that the PATH may shadow. The original RESILIENT-200
+# default (~/.local/bin/chump) silently rotted the fleet on closetjunky: the
+# organ rebuilt a CURRENT binary into ~/.local/bin every cycle, but the
+# workers (cj-worker-run.sh) run PATH=~/.cargo/bin:...:target/release, so they
+# executed a STALE ~/.cargo/bin/chump — 5 days behind origin/main — and drained
+# the gap queue on old code. The refresh "ran" but did not do its job.
+# Resolution order:
+#   1. explicit CHUMP_NODE_BIN override (operator / unit Environment)
+#   2. the chump already on PATH — the exact binary the fleet runs — unless it
+#      is the repo's own target/release build (never install onto the build out)
+#   3. ~/.cargo/bin/chump if it exists (cargo-install canonical on Linux nodes)
+#   4. ~/.local/bin/chump (last resort, original default)
+_resolve_target_bin() {
+    if [[ -n "${CHUMP_NODE_BIN:-}" ]]; then printf '%s' "$CHUMP_NODE_BIN"; return; fi
+    local onpath; onpath="$(command -v chump 2>/dev/null || true)"
+    if [[ -n "$onpath" && "$onpath" != *"/target/release/chump" && "$onpath" != *"/target/debug/chump" ]]; then
+        printf '%s' "$onpath"; return
+    fi
+    if [[ -x "$HOME/.cargo/bin/chump" ]]; then printf '%s' "$HOME/.cargo/bin/chump"; return; fi
+    printf '%s' "$HOME/.local/bin/chump"
+}
+TARGET_BIN="$(_resolve_target_bin)"
 NODE_AMBIENT="${NODE_AMBIENT:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 
 LOG_DIR="${CHUMP_NODE_REFRESH_LOGDIR:-$HOME/.chump/node-refresh-logs}"

@@ -42,6 +42,24 @@ fi
 chmod +x "$SCRIPT_SRC" 2>/dev/null || true
 echo "refresh script: $SCRIPT_SRC"
 
+# --- resolve the install destination (RESILIENT-378) -------------------------
+# Bake CHUMP_NODE_BIN into the unit so the refresh installs where the FLEET's
+# PATH actually resolves `chump`, not a fixed ~/.local/bin the PATH shadows
+# (the RESILIENT-200 install-path bug that rotted closetjunky's fleet binary).
+# Same precedence as node-refresh-chump.sh: explicit override → on-PATH chump
+# (not the repo's own target build) → ~/.cargo/bin/chump → ~/.local/bin/chump.
+if [[ -z "${CHUMP_NODE_BIN:-}" ]]; then
+    _onpath="$(command -v chump 2>/dev/null || true)"
+    if [[ -n "$_onpath" && "$_onpath" != *"/target/release/chump" && "$_onpath" != *"/target/debug/chump" ]]; then
+        CHUMP_NODE_BIN="$_onpath"
+    elif [[ -x "$HOME/.cargo/bin/chump" ]]; then
+        CHUMP_NODE_BIN="$HOME/.cargo/bin/chump"
+    else
+        CHUMP_NODE_BIN="$HOME/.local/bin/chump"
+    fi
+fi
+echo "install target: $CHUMP_NODE_BIN"
+
 mkdir -p "$UNIT_DIR"
 
 # --- service (oneshot) -------------------------------------------------------
