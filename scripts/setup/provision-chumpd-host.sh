@@ -467,11 +467,16 @@ CHUMPD_FLEET_BACKEND=claude
 #
 # --- If backend=chump-local: open-model routing (EFFECTIVE-314 cost ladder) ---
 # OPENAI_API_BASE=https://openrouter.ai/api/v1
-# OPENAI_MODEL=minimax/minimax-m3
+# OPENAI_MODEL=deepseek/deepseek-v4-flash
 # OPENAI_API_KEY=TODO_openrouter_key
 # OPENROUTER_API_KEY=TODO_openrouter_key
-# CHUMP_FREE_TIER_PROVIDERS=minimax/minimax-m3@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,z-ai/glm-5.2@https://openrouter.ai/api/v1:OPENROUTER_API_KEY
-# CHUMP_MODEL_ESCALATION_LADDER=minimax/minimax-m3,z-ai/glm-5.2
+# EFFECTIVE-445: DeepSeek V4 primary, funded via OpenRouter. Free front-slots
+# first (spend $0), then paid DeepSeek as the on-429 failover. The escalation
+# ladder is BARE model IDs only (worker.sh borrows the @base:KEY suffix from the
+# FIRST free-tier entry, which MUST be OpenRouter for the DeepSeek rungs to route).
+# CHUMP_FREE_TIER_PROVIDERS=nvidia/nemotron-3-super-120b-a12b:free@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,openai/gpt-oss-20b@https://api.groq.com/openai/v1:GROQ_API_KEY,deepseek/deepseek-v4-flash@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,deepseek/deepseek-v4-pro@https://openrouter.ai/api/v1:OPENROUTER_API_KEY
+# CHUMP_MODEL_ESCALATION_LADDER=deepseek/deepseek-v4-flash,deepseek/deepseek-v4-pro
+# CHUMP_COMPLETION_MAX_TOKENS=8192  # DeepSeek V4 are reasoning models; need headroom
 # CHUMP_DECOMPOSE_STRIKE_THRESHOLD=2
 ENVEOF
       # Substitute the real checkout path (heredoc is quoted, so do it here).
