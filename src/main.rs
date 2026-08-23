@@ -11517,6 +11517,79 @@ async fn main() -> Result<()> {
                                 }
                             }
                         }
+                        // ZERO-WASTE-059: run dedup + AC-hygiene checks in the SAME
+                        // op as the ship, atomically, so a stale-gap reconcile never
+                        // needs its own follow-up PR (CREDIBLE-291 / RESILIENT-337
+                        // precedent: a sibling worktree's ship left this worktree's
+                        // state.db/YAML pointing at an already-merged gap, and a
+                        // human had to notice + hand-edit the YAML later).
+                        let gaps_dir = repo_root.join("docs/gaps");
+                        if std::env::var("CHUMP_GAP_SHIP_SKIP_RECONCILE").as_deref() != Ok("1") {
+                            match store.reconcile_shipped_dupes(&repo_root, &gap_id) {
+                                Ok(dupes) => {
+                                    let ts =
+                                        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                                    let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                                    for (dupe_id, dupe_pr) in &dupes {
+                                        let pr_str = dupe_pr
+                                            .map(|n| n.to_string())
+                                            .unwrap_or_else(|| "null".to_string());
+                                        let event = format!(
+                                            "{{\"ts\":\"{ts}\",\"kind\":\"gap_auto_reconciled_at_ship\",\
+                                             \"gap\":\"{dupe_id}\",\"closed_pr\":{pr_str},\
+                                             \"reconciled_by\":\"{gap_id}\"}}\n"
+                                        );
+                                        let _ = std::fs::OpenOptions::new()
+                                            .append(true)
+                                            .create(true)
+                                            .open(&ambient_log)
+                                            .and_then(|mut f| {
+                                                use std::io::Write;
+                                                f.write_all(event.as_bytes())
+                                            });
+                                        let _ = store.dump_per_file_single(dupe_id, &gaps_dir);
+                                        println!(
+                                            "  auto-reconciled stale gap {dupe_id} (already shipped, closed_pr={pr_str})"
+                                        );
+                                    }
+                                }
+                                Err(e) => eprintln!(
+                                    "chump gap ship: warning — dedup reconcile pass failed: {e:#}"
+                                ),
+                            }
+                        }
+                        if let Ok(vague) = store.vague_ac_open_gaps() {
+                            if !vague.is_empty() {
+                                let ts =
+                                    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                                let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                                let ids_json = vague
+                                    .iter()
+                                    .map(|id| format!("\"{id}\""))
+                                    .collect::<Vec<_>>()
+                                    .join(",");
+                                let event = format!(
+                                    "{{\"ts\":\"{ts}\",\"kind\":\"ac_hygiene_flagged_at_ship\",\
+                                     \"count\":{},\"gap_ids\":[{ids_json}]}}\n",
+                                    vague.len()
+                                );
+                                let _ = std::fs::OpenOptions::new()
+                                    .append(true)
+                                    .create(true)
+                                    .open(&ambient_log)
+                                    .and_then(|mut f| {
+                                        use std::io::Write;
+                                        f.write_all(event.as_bytes())
+                                    });
+                                if why {
+                                    eprintln!(
+                                        "  AC-hygiene: {} open gap(s) with vague acceptance criteria: {}",
+                                        vague.len(),
+                                        vague.join(", ")
+                                    );
+                                }
+                            }
+                        }
                         // INFRA-1200: write-ahead log cleanup. On ship, stamp
                         // .chump-plans/<gap-id>/SHIPPED_AT so the 7-day GC pass
                         // can find and remove stale patch directories. Also sweep

@@ -2544,6 +2544,112 @@ impl GapStore {
         Ok(closed)
     }
 
+    /// ZERO-WASTE-059: run in the SAME operation as `ship()` so a stale-gap
+    /// reconcile never needs its own follow-up PR. Scans every currently
+    /// non-terminal gap (excluding `exclude_gap_id`, the one just shipped)
+    /// for proof-of-merge on local main (reusing [`verify_proof_of_merge`]
+    /// with `closed_pr=None`, i.e. gap-ID-in-subject/body match only). A hit
+    /// means some OTHER worktree/session already shipped that gap's work and
+    /// this row is simply stale — the exact class fixed by hand in the
+    /// CREDIBLE-291 / RESILIENT-337 reconcile PRs. When a hit is found, the
+    /// matching commit's PR number is extracted from a `(#N)` marker in the
+    /// subject (GitHub squash-merge convention) and the row is flipped to
+    /// done + closed_pr atomically, right here, instead of waiting for a
+    /// human/curator to notice and hand-edit the YAML later.
+    ///
+    /// Returns `(gap_id, closed_pr)` pairs for every gap reconciled this way.
+    /// Best-effort: a gap whose commit carries no `(#N)` marker is still
+    /// flipped to done with `closed_pr=None` — its ID alone is proof enough.
+    pub fn reconcile_shipped_dupes(
+        &self,
+        repo_root: &Path,
+        exclude_gap_id: &str,
+    ) -> Result<Vec<(String, Option<i64>)>> {
+        if !repo_root.join(".git").exists() {
+            return Ok(Vec::new());
+        }
+        const NON_TERMINAL: &[&str] = &[
+            "done",
+            "superseded",
+            "wontfix",
+            "wont_fix",
+            "closed",
+            "closed_not_a_bug",
+            "already_satisfied",
+            "obsolete",
+            "duplicate",
+        ];
+        let mut reconciled = Vec::new();
+        let now = unix_now();
+        let iso = unix_to_iso_date(now);
+        for gap in self.list(None)? {
+            if gap.id == exclude_gap_id || NON_TERMINAL.contains(&gap.status.as_str()) {
+                continue;
+            }
+            if !verify_proof_of_merge(repo_root, &gap.id, None) {
+                continue;
+            }
+            // Extract the PR number (if any) from the matching commit subject.
+            let subject = std::process::Command::new("git")
+                .args([
+                    "log",
+                    "main",
+                    "-i",
+                    "-F",
+                    "-n",
+                    "1",
+                    "--format=%s",
+                    &format!("--grep={}", gap.id),
+                ])
+                .current_dir(repo_root)
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default();
+            let pr_number: Option<i64> = subject
+                .rfind("(#")
+                .and_then(|start| subject[start + 2..].find(')').map(|end| (start, end)))
+                .and_then(|(start, end)| subject[start + 2..start + 2 + end].parse::<i64>().ok());
+
+            let changed = if let Some(pr) = pr_number {
+                self.conn.execute(
+                    "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2, closed_pr=?3
+                     WHERE id=?4 AND status NOT IN
+                       ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied','obsolete','duplicate')",
+                    params![now, iso, pr, gap.id],
+                )?
+            } else {
+                self.conn.execute(
+                    "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2
+                     WHERE id=?3 AND status NOT IN
+                       ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied','obsolete','duplicate')",
+                    params![now, iso, gap.id],
+                )?
+            };
+            if changed > 0 {
+                let _ = self
+                    .conn
+                    .execute("DELETE FROM leases WHERE gap_id=?1", params![gap.id]);
+                reconciled.push((gap.id, pr_number));
+            }
+        }
+        Ok(reconciled)
+    }
+
+    /// ZERO-WASTE-059: AC-hygiene companion to [`Self::reconcile_shipped_dupes`].
+    /// Returns the IDs of every open gap whose acceptance_criteria is vague
+    /// (empty or all-placeholder, per [`acceptance_criteria_is_vague`]) so the
+    /// ship path can surface them instead of letting them silently accumulate.
+    pub fn vague_ac_open_gaps(&self) -> Result<Vec<String>> {
+        Ok(self
+            .list(Some("open"))?
+            .into_iter()
+            .filter(|g| acceptance_criteria_is_vague(&g.acceptance_criteria))
+            .map(|g| g.id)
+            .collect())
+    }
+
     /// Helper: resolve GitHub repo from git remote origin
     fn get_repo_from_git(&self, repo_root: &Path) -> Result<String> {
         let output = std::process::Command::new("git")
@@ -5687,6 +5793,137 @@ mod proof_of_merge_tests {
             "INFRA-NO-MATCH",
             Some(9999)
         ));
+    }
+
+    // ── ZERO-WASTE-059: dedup + AC-hygiene on ship ─────────────────────
+
+    #[test]
+    fn reconcile_shipped_dupes_flips_stale_gap_already_merged_on_main() {
+        let dir = tempdir().unwrap();
+        let init = std::process::Command::new("git")
+            .args(["init", "--initial-branch=main", "--quiet"])
+            .current_dir(dir.path())
+            .status();
+        if init.is_err() || !init.unwrap().success() {
+            return; // older git without --initial-branch
+        }
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.local"])
+            .current_dir(dir.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.name", "test"])
+            .current_dir(dir.path())
+            .status();
+
+        let store = GapStore::open(dir.path()).unwrap();
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+        }
+        let stale_id = store
+            .reserve("ZERO-WASTE", "already shipped elsewhere", "P2", "s")
+            .unwrap();
+        let real_ship_id = store
+            .reserve(
+                "ZERO-WASTE",
+                "the gap actually being shipped now",
+                "P2",
+                "s",
+            )
+            .unwrap();
+
+        // Simulate a SIBLING worktree having already merged `stale_id`'s work
+        // to main (squash-merge convention: gap ID + `(#N)` in the subject),
+        // while THIS worktree's state.db still thinks it's open.
+        let _ = std::process::Command::new("git")
+            .args([
+                "commit",
+                "--allow-empty",
+                "-m",
+                &format!("{stale_id}: fix the thing (#7777)"),
+            ])
+            .current_dir(dir.path())
+            .status();
+
+        let reconciled = store
+            .reconcile_shipped_dupes(dir.path(), &real_ship_id)
+            .unwrap();
+        assert_eq!(reconciled, vec![(stale_id.clone(), Some(7777))]);
+
+        let row = store.get(&stale_id).unwrap().unwrap();
+        assert_eq!(row.status, "done");
+        assert_eq!(row.closed_pr, Some(7777));
+
+        // The gap actually being shipped (excluded) and any gap with no
+        // matching commit are left untouched.
+        let untouched = store.get(&real_ship_id).unwrap().unwrap();
+        assert_eq!(untouched.status, "open");
+    }
+
+    #[test]
+    fn reconcile_shipped_dupes_ignores_gaps_with_no_matching_commit() {
+        let dir = tempdir().unwrap();
+        let init = std::process::Command::new("git")
+            .args(["init", "--initial-branch=main", "--quiet"])
+            .current_dir(dir.path())
+            .status();
+        if init.is_err() || !init.unwrap().success() {
+            return;
+        }
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.local"])
+            .current_dir(dir.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.name", "test"])
+            .current_dir(dir.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args(["commit", "--allow-empty", "-m", "unrelated commit"])
+            .current_dir(dir.path())
+            .status();
+
+        let store = GapStore::open(dir.path()).unwrap();
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+        }
+        let still_open = store
+            .reserve("ZERO-WASTE", "genuinely still open work", "P2", "s")
+            .unwrap();
+
+        let reconciled = store
+            .reconcile_shipped_dupes(dir.path(), "ZERO-WASTE-000")
+            .unwrap();
+        assert!(reconciled.is_empty());
+        assert_eq!(store.get(&still_open).unwrap().unwrap().status, "open");
+    }
+
+    #[test]
+    fn vague_ac_open_gaps_finds_only_placeholder_or_empty_ac() {
+        let dir = tempdir().unwrap();
+        let store = GapStore::open(dir.path()).unwrap();
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+        }
+        let vague_id = store
+            .reserve("ZERO-WASTE", "gap with no AC filled in yet", "P2", "s")
+            .unwrap();
+        let concrete_id = store
+            .reserve("ZERO-WASTE", "gap with real AC", "P2", "s")
+            .unwrap();
+        store
+            .set_fields(
+                &concrete_id,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(r#"["a real, concrete, testable criterion"]"#.into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let vague = store.vague_ac_open_gaps().unwrap();
+        assert!(vague.contains(&vague_id));
+        assert!(!vague.contains(&concrete_id));
     }
 }
 
