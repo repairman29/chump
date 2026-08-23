@@ -22,6 +22,14 @@
 # green-main pointer, skips the rebuild entirely (fast no-op, no cargo
 # invocation).
 #
+# BUILD-SPEED (INFRA-3677): when the binary IS out of date, this script first
+# tries to PULL the prebuilt binary that free GH-hosted CI already built for the
+# green-main commit (.github/workflows/build-fleet-binaries.yml → per-SHA
+# artifact), installing it in seconds instead of a ~30-min local cargo build. It
+# falls back to a local `cargo build --release --bin chump` only when no artifact
+# exists for the SHA (gh unavailable, unknown arch, integrity/version mismatch),
+# so a node is never worse off — just faster when the artifact is there.
+#
 # Emits (appended to $NODE_AMBIENT if it exists, else logfile only):
 #   node_binary_refreshed         — successful rebuild + install
 #   node_binary_refresh_skipped   — binary already current (no-op)
@@ -104,6 +112,117 @@ emit() {
     printf '[%s] %s\n' "$ts" "$kind" >> "$LOG"
 }
 log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG"; }
+
+# --- atomic install helper (INFRA-3677) --------------------------------------
+# Install the binary at $1 to $TARGET_BIN via tempfile + rename. No codesign on
+# Linux. Returns non-zero on failure. Shared by the artifact-pull path and the
+# local-build path so the two never diverge.
+_install_binary() {
+    local src="$1"
+    mkdir -p "$(dirname "$TARGET_BIN")" 2>/dev/null || true
+    cp -f "$src" "$TARGET_BIN.new" 2>>"$LOG" || return 1
+    chmod +x "$TARGET_BIN.new"
+    mv -f "$TARGET_BIN.new" "$TARGET_BIN" || return 1
+}
+
+# --- INFRA-3677: prebuilt-artifact pull --------------------------------------
+# The build-speed payoff: instead of a ~30-min local `cargo build --release`,
+# fetch the binary the free GH-hosted CI already built for this exact commit
+# (.github/workflows/build-fleet-binaries.yml → per-SHA Actions artifact named
+# chump-<target>-<full-sha>) and install it. Falls back to a local build (the
+# code after this in main flow) when no artifact exists for the SHA, gh is
+# unavailable, the arch is unknown, or any integrity/version check fails — so a
+# node is never worse off than before, only faster when the artifact is there.
+#
+# Env overrides:
+#   CHUMP_NODE_ARTIFACT_WORKFLOW    workflow file to query (default build-fleet-binaries.yml)
+#   CHUMP_NODE_TARGET               force the rust target triple (default: uname -m mapping)
+#   CHUMP_NODE_SKIP_ARTIFACT_PULL=1 force the local-build path (skip the pull)
+CHUMP_NODE_ARTIFACT_WORKFLOW="${CHUMP_NODE_ARTIFACT_WORKFLOW:-build-fleet-binaries.yml}"
+
+_resolve_rust_target() {
+    if [[ -n "${CHUMP_NODE_TARGET:-}" ]]; then printf '%s' "$CHUMP_NODE_TARGET"; return; fi
+    case "$(uname -m)" in
+        x86_64|amd64)  printf 'x86_64-unknown-linux-gnu' ;;
+        aarch64|arm64) printf 'aarch64-unknown-linux-gnu' ;;
+        *)             printf '' ;;
+    esac
+}
+
+# Try to fetch + install the prebuilt binary for $1 (full sha), verified against
+# $2 (short green sha the --version must embed). Returns 0 on success (installed),
+# non-zero to fall through to the local build. Consumes globals: TARGET_BIN, LOG,
+# INSTALLED_SHA (for the emit), plus emit()/log().
+_try_artifact_pull() {
+    local full_sha="$1" green_short="$2"
+    [[ "${CHUMP_NODE_SKIP_ARTIFACT_PULL:-0}" == "1" ]] && { log "artifact-pull: disabled (CHUMP_NODE_SKIP_ARTIFACT_PULL=1)"; return 1; }
+    command -v gh >/dev/null 2>&1 || { log "artifact-pull: gh unavailable → local build"; return 1; }
+    local target; target="$(_resolve_rust_target)"
+    [[ -z "$target" ]] && { log "artifact-pull: unknown arch $(uname -m) → local build"; return 1; }
+    [[ -z "$full_sha" || "$full_sha" == "unknown" ]] && { log "artifact-pull: no full sha → local build"; return 1; }
+
+    local _gh_cmd="gh"; command -v chump_gh >/dev/null 2>&1 && _gh_cmd="chump_gh"
+    local run_id
+    run_id="$(CHUMP_GH_CALL_CRITICALITY=background "$_gh_cmd" api \
+        "repos/{owner}/{repo}/actions/workflows/${CHUMP_NODE_ARTIFACT_WORKFLOW}/runs?head_sha=${full_sha}&status=success&per_page=1" \
+        --jq '.workflow_runs[0].id' 2>>"$LOG" | grep -vE '^(null)?$' || true)"
+    if [[ -z "$run_id" ]]; then
+        log "artifact-pull: no successful $CHUMP_NODE_ARTIFACT_WORKFLOW run for $full_sha → local build"
+        emit node_binary_artifact_miss "\"sha\":\"$full_sha\",\"target\":\"$target\",\"reason\":\"no_run\""
+        return 1
+    fi
+
+    local dl aname pulled
+    dl="$(mktemp -d)"
+    aname="chump-${target}-${full_sha}"
+    if ! CHUMP_GH_CALL_CRITICALITY=background "$_gh_cmd" run download "$run_id" -n "$aname" --dir "$dl" >>"$LOG" 2>&1; then
+        log "artifact-pull: download $aname (run $run_id) failed → local build"
+        emit node_binary_artifact_miss "\"sha\":\"$full_sha\",\"target\":\"$target\",\"reason\":\"download_failed\",\"run_id\":\"$run_id\""
+        rm -rf "$dl"; return 1
+    fi
+    pulled="$dl/chump"
+    if [[ ! -f "$pulled" ]]; then
+        log "artifact-pull: $aname held no chump binary → local build"
+        emit node_binary_artifact_miss "\"sha\":\"$full_sha\",\"target\":\"$target\",\"reason\":\"no_binary_in_artifact\""
+        rm -rf "$dl"; return 1
+    fi
+    chmod +x "$pulled" 2>/dev/null || true
+
+    # Integrity: verify sha256 if the artifact shipped one.
+    if [[ -f "$dl/chump.sha256" ]] && command -v sha256sum >/dev/null 2>&1; then
+        local want got
+        want="$(awk '{print $1}' "$dl/chump.sha256" 2>/dev/null)"
+        got="$(sha256sum "$pulled" 2>/dev/null | awk '{print $1}')"
+        if [[ -n "$want" && "$want" != "$got" ]]; then
+            log "artifact-pull: sha256 mismatch (want $want got $got) → local build"
+            emit node_binary_artifact_miss "\"sha\":\"$full_sha\",\"target\":\"$target\",\"reason\":\"sha256_mismatch\""
+            rm -rf "$dl"; return 1
+        fi
+    fi
+
+    # Verify the pulled binary runs on THIS host and its version SHA matches the
+    # green pointer. A cross-arch or corrupt binary fails here → local build.
+    local pulled_ver
+    pulled_ver="$("$pulled" --version 2>/dev/null || echo unrunnable)"
+    if [[ "$pulled_ver" != *"$green_short"* ]]; then
+        log "artifact-pull: version '$pulled_ver' != green $green_short → local build"
+        emit node_binary_artifact_miss "\"sha\":\"$full_sha\",\"target\":\"$target\",\"reason\":\"version_mismatch\",\"got\":\"$pulled_ver\""
+        rm -rf "$dl"; return 1
+    fi
+
+    if ! _install_binary "$pulled"; then
+        log "artifact-pull: install to $TARGET_BIN failed → local build"
+        emit node_binary_artifact_miss "\"sha\":\"$full_sha\",\"target\":\"$target\",\"reason\":\"install_failed\""
+        rm -rf "$dl"; return 1
+    fi
+    rm -rf "$dl"
+
+    local new_sha
+    new_sha="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || echo unknown)"
+    log "OK: pulled prebuilt $target artifact for $green_short → $TARGET_BIN (skipped local cargo build)"
+    emit node_binary_refreshed "\"prev_sha\":\"$INSTALLED_SHA\",\"new_sha\":\"$new_sha\",\"main_sha\":\"$green_short\",\"method\":\"artifact_pull\",\"target\":\"$target\",\"run_id\":\"$run_id\""
+    return 0
+}
 
 # --- RESILIENT-327: last-GREEN main pointer, not raw HEAD --------------------
 # Returns the full sha of the most-recent SUCCESS run of the required-gate
@@ -202,6 +321,18 @@ else
     log "WARN: $DEPLOY_ORGANS not found; skipping organ-unit auto-deploy"
 fi
 
+# --- INFRA-3677: prebuilt-artifact pull (the build-speed payoff) -------------
+# The mirror is now reset to the green sha. Before spending ~30 min on a local
+# cargo build, try to install the binary CI already built for this exact commit.
+# On success we're done — no cargo invoked at all. On any miss/failure we fall
+# through to the local build below (identical to pre-INFRA-3677 behavior).
+FULL_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+if _try_artifact_pull "$FULL_SHA" "$MAIN_SHA"; then
+    ls -t "$LOG_DIR"/refresh-*.log 2>/dev/null | tail -n +25 | xargs -r rm -f 2>/dev/null || true
+    exit 0
+fi
+log "artifact-pull unavailable or missed for $MAIN_SHA — building locally"
+
 # --- resolve cargo -----------------------------------------------------------
 CARGO=""
 for candidate in "$HOME/.cargo/bin/cargo" "$(command -v cargo 2>/dev/null)" "/usr/local/bin/cargo"; do
@@ -229,15 +360,12 @@ if [[ ! -x "$BUILT_BIN" ]]; then
 fi
 
 # --- atomic install (tempfile + rename); no codesign on Linux ----------------
-mkdir -p "$(dirname "$TARGET_BIN")" 2>/dev/null || true
 log "install $BUILT_BIN → $TARGET_BIN"
-if ! cp -f "$BUILT_BIN" "$TARGET_BIN.new" 2>>"$LOG"; then
-    log "FATAL: cp to $TARGET_BIN.new failed"
+if ! _install_binary "$BUILT_BIN"; then
+    log "FATAL: install of $BUILT_BIN → $TARGET_BIN failed"
     emit node_binary_refresh_failed "\"reason\":\"cp_failed\""
     exit 1
 fi
-chmod +x "$TARGET_BIN.new"
-mv -f "$TARGET_BIN.new" "$TARGET_BIN"
 
 NEW_SHA="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || echo unknown)"
 log "OK: $TARGET_BIN now at sha $NEW_SHA (green-main = $MAIN_SHA)"

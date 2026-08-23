@@ -663,6 +663,10 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-auth-status.sh
 
+      - name: chump-farmer-run host-aware PATH — Termux $PREFIX/bin reachable, Helsinki unchanged (RESILIENT-376)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-chump-farmer-run-path.sh
+
       - name: chump fleet bootstrap orchestrator (META-066)
         if: matrix.shard == 3
         run: bash scripts/ci/test-fleet-bootstrap.sh
