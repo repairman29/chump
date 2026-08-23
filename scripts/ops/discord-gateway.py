@@ -34,6 +34,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -72,6 +73,46 @@ def _open_dispatch_log(tag: str):
 # DIRECT_MESSAGES (1<<12). Interactions are delivered regardless of intents.
 # MESSAGE_CONTENT (1<<15) is privileged; enable it in the dev portal to read DM text.
 INTENTS = int(os.environ.get("CHUMP_DISCORD_GW_INTENTS", str(1 << 12)))
+
+# ── CROSS-NODE SINGLETON (RESILIENT-370) ─────────────────────────────────────
+# The operator channel must have ONE voice. Two nodes connecting the SAME bot
+# token each receive every operator DM and each fire their own reply, so the
+# operator gets DOUBLE messages from competing responders — the exact CJ+Pixel
+# "hot mess" this guard exists to kill. The beat wrapper (scripts/dispatch/
+# discord-gateway-beat.sh) already dedups WITHIN a node via a pidfile, but a
+# pidfile cannot see a second node. This .py is the ONE chokepoint every install
+# path funnels through (systemd unit, Termux runit organ, or a manual run), so
+# the cross-node guard lives here.
+#
+#   CHUMP_DISCORD_GATEWAY_NODE unset      -> run (backward-compatible; the
+#                                            single-node / dev case)
+#   set and matches this host             -> run (I am the canonical voice)
+#   set and does NOT match this host      -> stand by: never connect, idle
+#                                            quietly so no duplicate reply is
+#                                            ever sent from this node
+#
+# The value is a hostname (short or FQDN) or a CHUMP_NODE_ID; it lives per-node
+# in ~/.chump/providers.env, the same place the creds already live. Promoting a
+# different node to canonical is a one-line config change + restart — no code.
+CANONICAL_NODE = os.environ.get("CHUMP_DISCORD_GATEWAY_NODE", "").strip()
+
+
+def _this_host() -> str:
+    """This node's identity for the singleton check — CHUMP_NODE_ID wins, else
+    the OS hostname."""
+    return (os.environ.get("CHUMP_NODE_ID", "").strip()
+            or socket.gethostname().strip())
+
+
+def is_canonical_node() -> bool:
+    """True if this node may run the gateway. Unset marker => always true
+    (backward-compatible). Otherwise the marker must match this host's full or
+    short hostname (or CHUMP_NODE_ID), so `closetjunky` matches a box whose FQDN
+    is `closetjunky.local`."""
+    if not CANONICAL_NODE:
+        return True
+    host = _this_host()
+    return CANONICAL_NODE in (host, host.split(".")[0])
 
 # Opcodes
 OP_DISPATCH, OP_HEARTBEAT, OP_IDENTIFY = 0, 1, 2
@@ -718,6 +759,20 @@ async def main() -> None:
     if not TOKEN or not OPERATOR:
         sys.stderr.write("discord-gateway: DISCORD_TOKEN and CHUMP_READY_DM_USER_ID required\n")
         sys.exit(2)
+    # CROSS-NODE SINGLETON (RESILIENT-370): if a canonical node is declared and
+    # this is NOT it, stand by forever instead of connecting — never open a
+    # second WebSocket on the same token (which would double every operator
+    # reply). Idle (not exit) so neither systemd Restart=always nor runit
+    # hot-loops, and is-active stays green: the organ is installed-and-standing-
+    # by, not failed. Promoting this node (config + restart) flips it on.
+    if not is_canonical_node():
+        emit("discord_gateway_standby", canonical=CANONICAL_NODE, host=_this_host())
+        print(f"[discord-gateway] standby: canonical node is '{CANONICAL_NODE}', "
+              f"this is '{_this_host()}' — not connecting (cross-node singleton). "
+              f"Set CHUMP_DISCORD_GATEWAY_NODE to this host + restart to take over.",
+              flush=True)
+        while True:
+            await asyncio.sleep(3600)
     backoff = 2
     while True:
         try:
