@@ -225,10 +225,12 @@ carries 4096 for headroom; the proof wrapper used 8192.
 
 ### The enricher surfaced its own antagonist (unexpected, load-bearing finding)
 
-After `--apply`, INFRA-1636 and INFRA-2227 kept their concrete specs, but
-INFRA-1660 and INFRA-2170 **reverted to the TODO template within ~2 minutes** — a
-rogue fleet process is actively rewriting gap AC back to the boilerplate. That is
-exactly the bug INFRA-2227's *own* enrichment fingered
+Every `--apply` succeeded at write-time (verified: `applied=true` and an
+immediate re-read showing the concrete, file-pointed spec in the store). But on a
+re-check minutes later, **all four enriched gaps had reverted to the identical
+TODO template** — a periodic rogue fleet process is actively rewriting gap AC back
+to the boilerplate faster than enrichment can stick. That is exactly the bug
+INFRA-2227's *own* enrichment fingered
 (`scripts/dev/heartbeat-self-improve.sh` writing `TODO: what events emitted…`),
 and it is the systemic reason ~74 gaps carry the identical template AC
 (EFFECTIVE-407). The permanent fix for the enricher's durability is to disable
@@ -260,5 +262,6 @@ is spent once, upstream, where it multiplies.
 
 **Status.** v1 shipped as a proven pass + the durable bin/module. Standing-organ
 wiring (periodic `--scan --apply` over the thinnest open gaps, host-agnostic) is
-the follow-up — blocked in practice until the AC-reverter (INFRA-2227) is killed,
-or its writes will be clobbered.
+the follow-up — blocked in practice until the AC-reverter (INFRA-2227) is killed — while it runs,
+it sweeps every enriched gap back to the template within minutes (observed on all
+four proof gaps), so killing it is the true prerequisite for durable enrichment.
