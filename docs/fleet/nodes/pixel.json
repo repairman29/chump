@@ -1,0 +1,21 @@
+{
+  "node_id": "pixel-8-pro",
+  "tailnet_ip": "100.84.132.93",
+  "os": "Android",
+  "hardware": {
+    "cpu_cores": 9,
+    "ram_gb": 12,
+    "disk_free_gb": 0,
+    "disk_total_gb": 128,
+    "gpu_present": false,
+    "gpu_name": "none",
+    "gpu_vram_mb": 0,
+    "always_on": true
+  },
+  "roles_fit": ["atc-heartbeat", "broker"],
+  "services_running": ["chumpnode-heartbeat", "postgres", "discord-gateway"],
+  "capability": {
+    "vram_gb": 0,
+    "supported_task_classes": ["coord"]
+  }
+}
