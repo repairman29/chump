@@ -95,6 +95,11 @@ pub struct SyncReport {
     pub inserted: usize,
     pub updated: usize,
     pub skipped: usize,
+    /// INFRA-2227: count of rows where a concrete, enricher/human-authored
+    /// `acceptance_criteria` in state.db was preserved instead of being
+    /// clobbered by a vague/template (`TODO:`/`TBD:`/empty) YAML mirror during
+    /// `sync_pull`. A non-zero value here means the anti-revert guard fired.
+    pub ac_preserved: usize,
     pub changed_ids: Vec<String>,
 }
 
@@ -190,12 +195,43 @@ pub fn sync_pull(store: &GapStore, gaps_dir: &Path, dry_run: bool) -> Result<Syn
                 if diff_fields.is_empty() {
                     report.skipped += 1;
                 } else {
-                    if !dry_run {
-                        update_gap_row(conn, yaml_row)
-                            .with_context(|| format!("updating {id} from YAML during sync_pull"))?;
+                    // INFRA-2227: anti-revert guard. The gap-enricher
+                    // (EFFECTIVE-446) writes concrete acceptance_criteria to
+                    // the canonical state.db but does NOT rewrite the
+                    // docs/gaps/<ID>.yaml mirror. A YAML-authoritative pull
+                    // would then overwrite that concrete AC with the stale
+                    // `TODO:`/`TBD:` template on its very next cycle — the CJ
+                    // coherence-sync loop ran this every 5 min, silently
+                    // reverting every enriched gap (~100 of them). The pull's
+                    // legitimate job is to reconcile *status* and other fields
+                    // from the mirror; it must never downgrade a concrete spec
+                    // back to boilerplate. When the YAML AC is vague but the DB
+                    // AC is concrete, keep the DB AC and pull every other field.
+                    let preserve_db_ac =
+                        crate::acceptance_criteria_is_vague(&yaml_row.acceptance_criteria)
+                            && !crate::acceptance_criteria_is_vague(&db_row.acceptance_criteria);
+                    let effective_row = if preserve_db_ac {
+                        let mut merged = yaml_row.clone();
+                        merged.acceptance_criteria = db_row.acceptance_criteria.clone();
+                        report.ac_preserved += 1;
+                        merged
+                    } else {
+                        yaml_row.clone()
+                    };
+                    // Re-diff against the (possibly AC-preserved) row: if the
+                    // only divergence was the AC we just protected, there is
+                    // nothing left to write — skip instead of a no-op UPDATE.
+                    if compare_fields(db_row, &effective_row).is_empty() {
+                        report.skipped += 1;
+                    } else {
+                        if !dry_run {
+                            update_gap_row(conn, &effective_row).with_context(|| {
+                                format!("updating {id} from YAML during sync_pull")
+                            })?;
+                        }
+                        report.updated += 1;
+                        report.changed_ids.push(id.clone());
                     }
-                    report.updated += 1;
-                    report.changed_ids.push(id.clone());
                 }
             }
         }
@@ -788,6 +824,86 @@ mod tests {
         // Re-check should be clean.
         let recheck = sync_check(&store, &gaps_dir).unwrap();
         assert!(recheck.is_clean(), "post-pull drift: {:?}", recheck.entries);
+    }
+
+    #[test]
+    fn pull_preserves_concrete_db_ac_over_template_yaml() {
+        // INFRA-2227: the exact incident. state.db holds the concrete AC the
+        // gap-enricher wrote (db-only); the docs/gaps/<ID>.yaml mirror still
+        // holds the `TODO:` observability boilerplate. A YAML-authoritative
+        // pull must NOT downgrade the concrete spec back to the template.
+        // This was reverting ~100 enriched gaps every 5 min via the CJ
+        // coherence-sync loop.
+        let root = tempdir().unwrap();
+        let store = fresh_store(root.path());
+        insert_minimal(
+            &store,
+            "INFRA-9020",
+            "Enriched gap",
+            "[\"scripts/ci/test-x.sh passes (3 assertions)\",\"ambient event kind=x_done registered\"]",
+        );
+        let gaps_dir = root.path().join("docs/gaps");
+        // YAML mirror is the stale template — identical everywhere except the
+        // AC, which is the TODO boilerplate.
+        write_yaml(
+            &gaps_dir,
+            "INFRA-9020",
+            "- id: INFRA-9020\n  domain: INFRA\n  title: Enriched gap\n  status: open\n  priority: P1\n  effort: s\n  acceptance_criteria:\n    - 'TODO: what events emitted on success/failure/timeout'\n    - 'TODO: smoke test command to verify observability'\n",
+        );
+
+        let report = sync_pull(&store, &gaps_dir, false).unwrap();
+        assert_eq!(report.ac_preserved, 1, "guard should have fired once");
+        assert_eq!(
+            report.updated, 0,
+            "AC was the only divergence and it was preserved — nothing to write"
+        );
+        let after = store.get("INFRA-9020").unwrap().unwrap();
+        let acs = parse_json_ac_list(&after.acceptance_criteria);
+        assert_eq!(
+            acs,
+            vec![
+                "scripts/ci/test-x.sh passes (3 assertions)".to_string(),
+                "ambient event kind=x_done registered".to_string(),
+            ],
+            "concrete DB acceptance_criteria was reverted to the YAML template"
+        );
+    }
+
+    #[test]
+    fn pull_preserves_concrete_ac_but_still_pulls_other_fields() {
+        // The guard must be surgical: preserve the concrete AC AND still
+        // reconcile the other fields (e.g. title) from the YAML mirror. Only
+        // the AC is protected, not the whole row.
+        let root = tempdir().unwrap();
+        let store = fresh_store(root.path());
+        insert_minimal(
+            &store,
+            "INFRA-9021",
+            "Old DB title",
+            "[\"concrete: run scripts/ci/test-y.sh and assert exit 0\"]",
+        );
+        let gaps_dir = root.path().join("docs/gaps");
+        // YAML has a newer title but only template AC.
+        write_yaml(
+            &gaps_dir,
+            "INFRA-9021",
+            "- id: INFRA-9021\n  domain: INFRA\n  title: New YAML title\n  status: open\n  priority: P1\n  effort: s\n  acceptance_criteria:\n    - 'TBD: figure out the approach'\n",
+        );
+
+        let report = sync_pull(&store, &gaps_dir, false).unwrap();
+        assert_eq!(report.ac_preserved, 1);
+        assert_eq!(report.updated, 1, "title divergence should still be pulled");
+        let after = store.get("INFRA-9021").unwrap().unwrap();
+        assert_eq!(
+            after.title, "New YAML title",
+            "non-AC field should reconcile"
+        );
+        let acs = parse_json_ac_list(&after.acceptance_criteria);
+        assert_eq!(
+            acs,
+            vec!["concrete: run scripts/ci/test-y.sh and assert exit 0".to_string()],
+            "concrete AC must survive even when other fields are pulled"
+        );
     }
 
     #[test]
