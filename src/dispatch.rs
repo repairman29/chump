@@ -902,6 +902,35 @@ fn claim(ws: &Workspace) -> Result<()> {
     Ok(())
 }
 
+/// CREDIBLE-297: decide the [`ShipResult`] from bot-merge.sh's own exit
+/// status PLUS the ground truth of whether a PR actually exists for this
+/// branch — never from the exit status alone.
+///
+/// bot-merge.sh's exit code is not reliable evidence that nothing landed: a
+/// late local-only stage (e.g. inline `cargo clippy --workspace` tripping on
+/// pre-existing repo-wide lint noise unrelated to the change, or a
+/// wait-for-checks timeout) can fail well after the script has already
+/// pushed the branch and opened a PR. That PR is real and can still merge
+/// via CI + already-armed auto-merge regardless of what the script reports.
+/// So: if a PR exists, trust it (`Shipped`) even when the script exited
+/// non-zero; only report `Aborted` when the script failed AND no PR was
+/// ever created.
+fn classify_ship_result(
+    script_success: bool,
+    script_exit_code: Option<i32>,
+    pr_lookup: Result<u64, String>,
+) -> ShipResult {
+    match (script_success, pr_lookup) {
+        (_, Ok(pr)) => ShipResult::Shipped { pr_number: pr },
+        (true, Err(e)) => ShipResult::Blocked {
+            reason: format!("ship succeeded but PR# unresolvable: {e}"),
+        },
+        (false, Err(_)) => ShipResult::Aborted {
+            error: format!("bot-merge.sh exited {}", script_exit_code.unwrap_or(-1)),
+        },
+    }
+}
+
 fn ship(ws: &Workspace) -> Result<ShipResult> {
     let opts = ws.opts();
     let script = opts.repo_root.join("scripts/coord/bot-merge.sh");
@@ -924,22 +953,18 @@ fn ship(ws: &Workspace) -> Result<ShipResult> {
         .current_dir(ws.working_dir())
         .status()
         .context("invoke bot-merge.sh")?;
-    if !status.success() {
-        return Ok(ShipResult::Aborted {
-            error: format!("bot-merge.sh exited {}", status.code().unwrap_or(-1)),
-        });
-    }
 
-    // bot-merge.sh has already opened/updated the PR. Read the PR number off
+    // bot-merge.sh may have already opened/updated the PR regardless of its
+    // own exit code (see classify_ship_result doc). Read the PR number off
     // the current branch via gh — also from the worktree, since we want the
     // PR that bot-merge.sh just opened (which corresponds to the worktree's
     // branch, not main).
-    match current_pr_number(ws.working_dir()) {
-        Ok(pr) => Ok(ShipResult::Shipped { pr_number: pr }),
-        Err(e) => Ok(ShipResult::Blocked {
-            reason: format!("ship succeeded but PR# unresolvable: {e:#}"),
-        }),
-    }
+    let pr_lookup = current_pr_number(ws.working_dir()).map_err(|e| format!("{e:#}"));
+    Ok(classify_ship_result(
+        status.success(),
+        status.code(),
+        pr_lookup,
+    ))
 }
 
 fn current_pr_number(repo_root: &Path) -> Result<u64> {
@@ -1091,6 +1116,43 @@ mod tests {
         match opts.work {
             WorkBackend::Interactive => {}
             _ => panic!("expected Interactive"),
+        }
+    }
+
+    // CREDIBLE-297: bot-merge.sh exiting non-zero (e.g. inline clippy tripping
+    // on pre-existing repo-wide lint noise, exit 13) must NOT be reported as
+    // Aborted when a PR actually exists for the branch — that PR is real and
+    // can still land via CI + armed auto-merge. Without the fix, this asserts
+    // Shipped but the old code path would have returned Aborted.
+    #[test]
+    fn classify_ship_result_trusts_pr_existence_over_script_failure() {
+        let result = classify_ship_result(false, Some(13), Ok(4157));
+        assert_eq!(result, ShipResult::Shipped { pr_number: 4157 });
+    }
+
+    #[test]
+    fn classify_ship_result_aborts_when_script_fails_and_no_pr_exists() {
+        let result = classify_ship_result(false, Some(13), Err("gh pr view failed".into()));
+        match result {
+            ShipResult::Aborted { ref error } => {
+                assert!(error.contains("13"), "expected exit code in error: {error}")
+            }
+            other => panic!("expected Aborted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_ship_result_shipped_when_script_succeeds_and_pr_exists() {
+        let result = classify_ship_result(true, Some(0), Ok(42));
+        assert_eq!(result, ShipResult::Shipped { pr_number: 42 });
+    }
+
+    #[test]
+    fn classify_ship_result_blocked_when_script_succeeds_but_pr_unresolvable() {
+        let result = classify_ship_result(true, Some(0), Err("no PR found".into()));
+        match result {
+            ShipResult::Blocked { ref reason } => assert!(reason.contains("no PR found")),
+            other => panic!("expected Blocked, got {other:?}"),
         }
     }
 
