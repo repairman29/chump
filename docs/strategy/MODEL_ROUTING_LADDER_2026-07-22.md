@@ -265,3 +265,51 @@ wiring (periodic `--scan --apply` over the thinnest open gaps, host-agnostic) is
 the follow-up — blocked in practice until the AC-reverter (INFRA-2227) is killed — while it runs,
 it sweeps every enriched gap back to the template within minutes (observed on all
 four proof gaps), so killing it is the true prerequisite for durable enrichment.
+
+
+## In-path wiring -- configured != used (2026-08-23)
+
+**The gap EFFECTIVE-445 nearly missed.** The DeepSeek ladder was fully present
+in `~/.chump/providers.env` on both CJ and Pixel
+(`CHUMP_MODEL_ESCALATION_LADDER=deepseek/deepseek-v4-flash,deepseek/deepseek-v4-pro`),
+and PR #4180 proved a hand `chump --execute-gap` routed through it. But the
+**fleet worker path** -- the loop that actually claims and builds gaps -- was
+**not on it**. Two independent breaks, one per node:
+
+- **CJ:** `cj-worker-run.sh` / `cj-worker2-run.sh` / `cj-worker3-run.sh` pinned
+  `FLEET_BACKEND=claude` and never sourced `providers.env`. `worker.sh` only
+  reads the escalation ladder inside its `chump-local)` branch; the `claude)`
+  branch spawns `claude -p` (Anthropic OAuth). So every claimed-gap build ran on
+  the paid Claude subscription while the "$0 floor" sat unused. Live proof of the
+  pre-fix state: worker env `FLEET_BACKEND=claude` + a `claude -p` stream-json
+  cycle log (agent-1 INFRA-1496).
+- **Pixel:** `pixel-worker.sh` set `CHUMP_WORK_BACKEND=chump-local` but sourced
+  only `chump/.env` (a stale `devstral-medium,mistral-large` ladder on an
+  unfunded key), never `providers.env`. Its log showed `status=402 Payment
+  Required` interleaved with 4-5 **minute** Mistral completions, stalled since
+  2026-08-17.
+
+**Third wiring gotcha (add to the two in EFFECTIVE-445).** A node reading
+`backend=chump-local` in one config file proves nothing. The *worker process
+env* must SOURCE the ladder, and any `FLEET_BACKEND`/`CHUMP_WORK_BACKEND`
+selector the worker honors must resolve to `chump-local`. `FLEET_BACKEND` beats
+`CHUMP_WORK_BACKEND` in `worker.sh` (EFFECTIVE-325 precedence), so a wrapper that
+hardcodes `FLEET_BACKEND=claude` silently wins over an intended floor. **Verify
+only by a live build receipt**, never by config inspection.
+
+**Fix + live receipts (2026-08-23).**
+
+- CJ wrappers now `source ~/.chump/providers.env` and set
+  `FLEET_BACKEND=chump-local`; `chump-cj-worker{,2}.service` restarted. Post-fix
+  journal receipts:
+  `[worker:1] spawning chump --execute-gap INFRA-1497 ... backend=chump-local, model=deepseek/deepseek-v4-flash`
+  and `[worker:2] ... INFRA-3663 ... backend=chump-local, model=deepseek/deepseek-v4-flash`,
+  with cycle-log `[timing] api_request_ms=2688 status=200 OK` completions from
+  deepseek-v4-flash (~2.6s vs Pixel's stalled 4-5 min Mistral).
+- Pixel `pixel-worker.sh` (this PR) now sources `providers.env` last so the
+  funded DeepSeek ladder wins over the stale Mistral one.
+
+**The Claude ceiling is preserved,** not removed: the `chump-local` branch keeps
+`CLAUDE_CODE_OAUTH_TOKEN` in env (still sourced from `cj.env`), so the INFRA-267
+P0-fallback-to-Claude and EFFECTIVE-310 decompose paths still provide the rare
+frontier ceiling above the DeepSeek floor.

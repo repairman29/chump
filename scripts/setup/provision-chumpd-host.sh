@@ -448,6 +448,12 @@ else
 CHUMP_REPO=__CHUMP_REPO__
 #
 # Backend: "claude" (Claude subscription/API) or "chump-local" (open models via OpenRouter)
+# EFFECTIVE-445 lesson: with backend=chump-local, config presence is NOT enough.
+# The worker process env must actually SOURCE the ladder (this file / providers.env)
+# so CHUMP_MODEL_ESCALATION_LADDER + OPENROUTER_API_KEY are in-path. Verify with a
+# live 'chump --execute-gap' receipt showing 'free-tier: trying provider ... deepseek',
+# never by config inspection alone (a fleet can read backend=chump-local yet still
+# spawn 'claude -p' if the wrapper pins FLEET_BACKEND=claude -- the CJ divergence 2026-08-23).
 CHUMPD_FLEET_BACKEND=claude
 #
 # --- GitHub access for PR ops (set ONE) ---

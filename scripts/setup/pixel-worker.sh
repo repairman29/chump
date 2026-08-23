@@ -13,6 +13,18 @@ if [ -f "$CHUMP_HOME/.env" ]; then
   set -a; . "$CHUMP_HOME/.env"; set +a
 fi
 
+# EFFECTIVE-445 in-path fix: layer the funded DeepSeek cost floor ON TOP of
+# chump/.env so the worker build routes deepseek-v4-flash->pro (OpenRouter),
+# not the stale/unfunded Mistral ladder that shipped in older chump/.env files.
+# Sourced LAST so CHUMP_MODEL_ESCALATION_LADDER + CHUMP_FREE_TIER_PROVIDERS +
+# OPENROUTER_API_KEY from providers.env win. Config presence alone is not
+# enough: the worker env must actually SOURCE the ladder to be in-path.
+if [ -f "$CHUMP_STATE_DIR/providers.env" ]; then
+  set -a; . "$CHUMP_STATE_DIR/providers.env"; set +a
+elif [ -f "$HOME/.chump/providers.env" ]; then
+  set -a; . "$HOME/.chump/providers.env"; set +a
+fi
+
 export WORKER_SKILLS="${WORKER_SKILLS:-docs,shell,scripts,md}"
 export WORKER_MACHINE="${WORKER_MACHINE:-pixel-8-pro}"
 export CHUMP_WORK_BACKEND="${CHUMP_WORK_BACKEND:-chump-local}"
