@@ -4,6 +4,44 @@ owner_gap: INFRA-201
 last_audited: 2026-05-01
 ---
 
+## Update 2026-08-22 (RESILIENT-372): native queue confirmed unavailable — merge-serializer is the substitute
+
+**Native GitHub merge queue is still NOT available on this plan.** Re-confirmed
+2026-08-22: `repairman29/chump` is a personal-account repo; the merge-queue feature
+is Team/Enterprise-only and the REST/GraphQL attempts recorded below still fail. The
+"GitHub UI fallback (REQUIRED)" section is therefore **not actionable** — the toggle
+does not exist in this account's Settings. Do not keep chasing it.
+
+**What replaced it:** `scripts/coord/merge-serializer.sh` — a fleet-side substitute
+that reproduces the one property we actually needed from the queue (build
+concurrency 1, no cross-PR invalidation).
+
+Root cause it fixes: the sole required check on `main` is now `verified` (a slow
+aggregator). Every time `main` moves under an open PR, `armed-pr-rebaser.sh`
+(INFRA-3473) rebases that PR and force-pushes, which **restarts `verified` from
+scratch**. With many open PRs and frequent merges, `main` moves constantly, so an
+individual PR almost never holds one uninterrupted `verified` pass and ages 10-20h.
+
+How the serializer fixes it: it processes ONE PR at a time — rebases the **oldest**
+viable armed PR onto the very latest `origin/main`, waits for *its* `verified` to go
+green undisturbed, squash-merges, then loops. Because it rebases only the ONE PR it
+is driving (never the whole armed set), the other open PRs are left untouched and
+their `verified` is not reset. Each PR gets a clean pass.
+
+- **Organ:** `scripts/coord/merge-serializer.sh` (+ `scripts/dispatch/chump-merge-serializer.{service,timer}`, manifest row `chump-merge-serializer.timer role=muscle`).
+- **Lock:** single-instance via `merge-serializer.lock`; reuses the INFRA-860
+  `bot-merge.lock` briefly around each mutating step (rebase+push, merge), released
+  during the `verified` poll so it never starves fleet bot-merge shipping.
+- **Companion change (required):** where the serializer runs, **disable
+  `chump-armed-rebaser.timer`** — the parallel rebase-everyone organ is exactly what
+  was resetting `verified` on every main move. Real-conflict PRs are still emitted
+  as `merge_serializer_rebase_conflict` for the conflict-resolution consumer.
+- **Trunk-RED gate:** skips when `main`'s own `verified` is failing or a
+  systemic-red shared-gate wedge is active (serializing can't help a broken gate).
+- **CI gate:** `scripts/ci/test-merge-serializer.sh`.
+
+---
+
 # GitHub merge queue — setup guide (INFRA-MERGE-QUEUE → superseded by INFRA-201)
 
 **Status as of 2026-05-01:** **No real merge queue exists on this repo.** The

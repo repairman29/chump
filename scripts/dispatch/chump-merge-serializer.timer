@@ -1,0 +1,15 @@
+# RESILIENT-372 — pairs with chump-merge-serializer.service. Fires every 5 min.
+# Short cadence because the point is to keep exactly one PR moving through a clean
+# `verified` pass at a time; a merged PR frees the next candidate on the following
+# tick. The single-instance flock (merge-serializer.lock) makes overlapping fires
+# a no-op, so a still-running drive is never double-driven.
+[Unit]
+Description=Run the Chump merge-serializer every 5 minutes (RESILIENT-372)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

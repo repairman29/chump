@@ -1,0 +1,24 @@
+# RESILIENT-372 — native-merge-queue substitute. Serializes the final merge step:
+# rebase the OLDEST viable armed PR onto latest origin/main, wait for ITS `verified`
+# to go green undisturbed, squash-merge, loop. Because it rebases only the ONE PR it
+# is driving (never the whole armed set), other PRs' `verified` is not reset — each
+# PR gets a clean pass, exactly like a native merge queue with build concurrency 1.
+# GitHub's native merge queue is a paid-plan feature not available on this account
+# (docs/process/MERGE_QUEUE_SETUP.md); this is the chosen substitute.
+#
+# Companion: where this runs, disable chump-armed-rebaser.timer (the parallel
+# rebase-everyone organ that was resetting `verified` on every main move).
+#
+# Written in the helsinki (/root) convention; install-helsinki-atc.sh host-rewrites
+# /root -> the run-user's HOME (User=, Environment=HOME=, WorkingDirectory=, PATH)
+# so the SAME unit works on any owned node (CJ: User=jeff, HOME=/home/jeff).
+[Unit]
+Description=Chump merge-serializer — serialize the final merge step so each PR gets a clean `verified` pass (RESILIENT-372)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/coord/merge-serializer.sh'
