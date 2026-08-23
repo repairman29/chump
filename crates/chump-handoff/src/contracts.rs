@@ -1996,18 +1996,34 @@ pub struct VisionIntakeInput {
 }
 
 /// Output from vision-intake: a plain-language restatement of the problem,
-/// 1-3 clarifying questions, and a plain-language proposed definition-of-done.
+/// a JTBD-sharpened `who` + `struggling_moment` pair, 1-3 clarifying
+/// questions, and a plain-language proposed definition-of-done (the
+/// "done-signal").
 ///
-/// None of the three fields may contain software-vocabulary terms — see
+/// None of the five fields may contain software-vocabulary terms — see
 /// [`JARGON_BANLIST`]. This is the load-bearing guarantee of INFRA-3480: a
 /// non-technical founder never sees "PR", "branch", "CI", etc. in this flow.
+///
+/// EFFECTIVE-443: `who` and `struggling_moment` sharpen the intake into a
+/// Jobs-To-Be-Done shape — who is asking, and what moment are they stuck in
+/// — instead of jumping straight from a raw problem statement to a
+/// definition-of-done. Without a named `who` and `struggling_moment`, the
+/// resulting outcome/gap tends to describe a feature rather than a job.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct VisionIntakeOutput {
     /// Plain-language restatement of the user's problem, proving it was understood.
     pub restatement: String,
+    /// Plain-language description of who is affected — the person or role
+    /// living the problem (e.g. "a solo dog-walker juggling five clients"),
+    /// not a generic "the user".
+    pub who: String,
+    /// Plain-language description of the specific moment the `who` is
+    /// struggling — what they're doing, and where it breaks down.
+    pub struggling_moment: String,
     /// 1-3 plain-language clarifying questions.
     pub clarifying_questions: Vec<String>,
-    /// Plain-language proposed definition-of-done for the resulting outcome.
+    /// Plain-language proposed definition-of-done for the resulting outcome
+    /// — the observable "done" signal from the `who`'s point of view.
     pub proposed_dod: String,
 }
 
@@ -2015,6 +2031,12 @@ impl Validate for VisionIntakeOutput {
     fn validate(&self) -> Result<(), ValidationError> {
         if self.restatement.trim().is_empty() {
             return Err(ValidationError::new("restatement cannot be empty"));
+        }
+        if self.who.trim().is_empty() {
+            return Err(ValidationError::new("who cannot be empty"));
+        }
+        if self.struggling_moment.trim().is_empty() {
+            return Err(ValidationError::new("struggling_moment cannot be empty"));
         }
         if self.clarifying_questions.is_empty() || self.clarifying_questions.len() > 3 {
             return Err(ValidationError::new(format!(
@@ -2036,6 +2058,16 @@ impl Validate for VisionIntakeOutput {
         if let Some(term) = first_jargon_hit(&self.restatement) {
             return Err(ValidationError::new(format!(
                 "restatement leaks software jargon term {term:?} — vision intake must stay in plain language"
+            )));
+        }
+        if let Some(term) = first_jargon_hit(&self.who) {
+            return Err(ValidationError::new(format!(
+                "who leaks software jargon term {term:?} — vision intake must stay in plain language"
+            )));
+        }
+        if let Some(term) = first_jargon_hit(&self.struggling_moment) {
+            return Err(ValidationError::new(format!(
+                "struggling_moment leaks software jargon term {term:?} — vision intake must stay in plain language"
             )));
         }
         for (i, q) in self.clarifying_questions.iter().enumerate() {
@@ -2095,12 +2127,18 @@ Prior answers already gathered:
 Instructions:
 1. Write a `restatement` — 1-3 sentences reflecting their problem back in
    plain language, proving you understood it.
-2. Write 1 to 3 `clarifying_questions` — plain-language questions that would
+2. Write a `who` — plain language naming the specific person or role living
+   this problem (e.g. "a solo dog-walker juggling five clients"). Never say
+   just "the user" or "the customer" with no further detail.
+3. Write a `struggling_moment` — the specific moment `who` gets stuck: what
+   they're doing right before it breaks down, and what goes wrong.
+4. Write 1 to 3 `clarifying_questions` — plain-language questions that would
    help scope the work. Ask about outcomes and constraints, not implementation.
-3. Write a `proposed_dod` — a plain-language description of what "done" would
-   look like to the person asking, from their point of view.
+5. Write a `proposed_dod` — a plain-language description of the observable
+   "done" signal: how `who` would know, from their point of view, that the
+   struggling moment is over.
 
-HARD RULE: none of the three fields may use software-engineering vocabulary.
+HARD RULE: none of the five fields may use software-engineering vocabulary.
 Never write any of these words or phrases, in any form: "PR" / "pull request",
 "branch", "CI", "test", "deploy", "commit", "merge", "repo" / "repository",
 "gap". Describe outcomes the way you'd explain them to a friend, not a
@@ -2111,8 +2149,10 @@ Emit a SINGLE fenced JSON block (no other JSON, no commentary outside the block)
 ```json
 {{
   "restatement": "<1-3 plain-language sentences>",
+  "who": "<the specific person or role living this problem>",
+  "struggling_moment": "<the specific moment they get stuck, and what goes wrong>",
   "clarifying_questions": ["<question 1>", "<question 2 (optional)>", "<question 3 (optional)>"],
-  "proposed_dod": "<plain-language description of done>"
+  "proposed_dod": "<plain-language description of the done-signal>"
 }}
 ```
 "#,
@@ -2131,6 +2171,10 @@ mod tests_vision_intake {
         VisionIntakeOutput {
             restatement: "You want a simple way for customers to book a time slot online \
                           without calling your office."
+                .into(),
+            who: "A front-desk receptionist juggling phone calls all day.".into(),
+            struggling_moment: "The phone rings mid-conversation with another customer and \
+                                 she has to put someone on hold just to check the calendar."
                 .into(),
             clarifying_questions: vec![
                 "How many time slots do you usually offer in a day?".into(),
@@ -2153,6 +2197,26 @@ mod tests_vision_intake {
         o.restatement = "   ".into();
         let err = o.validate().unwrap_err();
         assert!(err.message().contains("restatement cannot be empty"));
+    }
+
+    /// EFFECTIVE-443: the JTBD-sharpening guarantee — a missing `who` is a
+    /// hard rejection, not a silently-blank field.
+    #[test]
+    fn rejects_empty_who() {
+        let mut o = good_output();
+        o.who = "  ".into();
+        let err = o.validate().unwrap_err();
+        assert!(err.message().contains("who cannot be empty"));
+    }
+
+    /// EFFECTIVE-443: same guarantee for `struggling_moment` — intake must
+    /// name the moment the `who` gets stuck, not just restate the ask.
+    #[test]
+    fn rejects_empty_struggling_moment() {
+        let mut o = good_output();
+        o.struggling_moment = "".into();
+        let err = o.validate().unwrap_err();
+        assert!(err.message().contains("struggling_moment cannot be empty"));
     }
 
     #[test]
@@ -2194,6 +2258,22 @@ mod tests_vision_intake {
     }
 
     #[test]
+    fn rejects_jargon_in_who() {
+        let mut o = good_output();
+        o.who = "The engineer who reviews every pull request.".into();
+        let err = o.validate().unwrap_err();
+        assert!(err.message().contains("who leaks"));
+    }
+
+    #[test]
+    fn rejects_jargon_in_struggling_moment() {
+        let mut o = good_output();
+        o.struggling_moment = "They can't tell whether the branch is ready to merge.".into();
+        let err = o.validate().unwrap_err();
+        assert!(err.message().contains("struggling_moment leaks"));
+    }
+
+    #[test]
     fn rejects_jargon_in_clarifying_question() {
         let mut o = good_output();
         o.clarifying_questions = vec!["Should we run the test suite before we merge?".into()];
@@ -2228,6 +2308,8 @@ mod tests_vision_intake {
 ```json
 {
   "restatement": "You want your regular customers to get a friendly reminder before their membership runs out.",
+  "who": "A gym owner who tracks memberships by hand.",
+  "struggling_moment": "She only notices a membership has lapsed after the customer stops showing up.",
   "clarifying_questions": ["How many days before it runs out should the reminder go out?", "Should the reminder go by text, email, or both?"],
   "proposed_dod": "Every customer gets a heads-up message a few days before their membership ends, automatically."
 }
@@ -2253,6 +2335,14 @@ mod tests_vision_intake {
                 assert!(
                     !contains_banned_term(&output.restatement, term),
                     "restatement leaked jargon {term:?} for vision {vision:?}"
+                );
+                assert!(
+                    !contains_banned_term(&output.who, term),
+                    "who leaked jargon {term:?} for vision {vision:?}"
+                );
+                assert!(
+                    !contains_banned_term(&output.struggling_moment, term),
+                    "struggling_moment leaked jargon {term:?} for vision {vision:?}"
                 );
                 for q in &output.clarifying_questions {
                     assert!(

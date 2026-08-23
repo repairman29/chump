@@ -101,6 +101,8 @@ fn emit_ambient_event(repo_root: &Path) {
 #[derive(serde::Serialize)]
 struct IntakeJson<'a> {
     restatement: &'a str,
+    who: &'a str,
+    struggling_moment: &'a str,
     clarifying_questions: &'a [String],
     proposed_dod: &'a str,
     ambiguity_level: f32,
@@ -172,6 +174,8 @@ pub async fn run(text: &str, json: bool, create: bool) -> Result<()> {
     if json {
         let j = IntakeJson {
             restatement: &output.restatement,
+            who: &output.who,
+            struggling_moment: &output.struggling_moment,
             clarifying_questions: &output.clarifying_questions,
             proposed_dod: &output.proposed_dod,
             ambiguity_level: perceived.ambiguity_level,
@@ -182,6 +186,9 @@ pub async fn run(text: &str, json: bool, create: bool) -> Result<()> {
         println!("{}", serde_json::to_string(&j)?);
     } else {
         println!("{}", output.restatement);
+        println!();
+        println!("Who this is for: {}", output.who);
+        println!("Where it breaks down: {}", output.struggling_moment);
         println!();
         if perceived.ambiguity_level >= AMBIGUITY_GAP_THRESHOLD {
             println!(
@@ -233,7 +240,12 @@ async fn structure_and_file_gap(
          'Rough shape:' line giving a rough decomposition per the two-phase decomposition \
          doctrine — name pieces, do not file them as separate gaps now."
             .to_string(),
-        format!("Proposed definition of done: {}", output.proposed_dod),
+        format!("Who this is for: {}", output.who),
+        format!("Struggling moment: {}", output.struggling_moment),
+        format!(
+            "Proposed definition of done (done-signal): {}",
+            output.proposed_dod
+        ),
     ];
     if !perceived.detected_entities.is_empty() {
         context.push(format!(
@@ -377,6 +389,8 @@ mod tests {
     fn intake_json_omits_gap_fields_when_not_filed() {
         let j = IntakeJson {
             restatement: "restated",
+            who: "a solo dog-walker",
+            struggling_moment: "she loses track of which client is next",
             clarifying_questions: &["q1".to_string()],
             proposed_dod: "done means x",
             ambiguity_level: 0.8,
@@ -389,5 +403,29 @@ mod tests {
         assert!(v.get("acceptance_criteria").is_none());
         assert_eq!(v["outcome_id"], "VISION-abcd1234");
         assert!((v["ambiguity_level"].as_f64().unwrap() - 0.8).abs() < 1e-6);
+    }
+
+    /// EFFECTIVE-443: the JTBD-sharpened `who` + `struggling_moment` fields
+    /// must reach the JSON surface — proves the CLI layer actually threads
+    /// them through instead of only the contract carrying them.
+    #[test]
+    fn intake_json_carries_who_and_struggling_moment() {
+        let j = IntakeJson {
+            restatement: "restated",
+            who: "a solo dog-walker juggling five clients",
+            struggling_moment: "she loses track of which client is next before 8am",
+            clarifying_questions: &["q1".to_string()],
+            proposed_dod: "done means x",
+            ambiguity_level: 0.2,
+            outcome_id: None,
+            gap_id: None,
+            acceptance_criteria: Vec::new(),
+        };
+        let v: serde_json::Value = serde_json::to_value(&j).unwrap();
+        assert_eq!(v["who"], "a solo dog-walker juggling five clients");
+        assert_eq!(
+            v["struggling_moment"],
+            "she loses track of which client is next before 8am"
+        );
     }
 }
