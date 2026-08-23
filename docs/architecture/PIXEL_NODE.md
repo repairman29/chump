@@ -105,3 +105,97 @@ is never swapped in blind:
    Abort on failure — the old binary keeps running.
 4. **Hot:** `mv chump.new chump` + bounce the worker; the supervisor respawns
    it on the new binary next cycle.
+
+## Free model backends — no metered API key required (2026-08-22)
+
+> The standing worker's documented "arm it" step (`claude setup-token` on the
+> phone) is **not** the only way, and on a phone it is the *hardest* way: the
+> `@anthropic-ai/claude-code` npm package has **no `linux-arm64-android` native
+> binary** (postinstall ships darwin-arm64, linux-x64/arm64 glibc,
+> linux-*-musl, win32 — no Android), so the bare `claude` command on Termux is
+> an install-error stub. Two FREE backends were proven end-to-end on this node
+> and route around that. FREE = flat-rate subscription or a $0 provider free
+> tier; **not** a metered `ANTHROPIC_API_KEY`.
+
+### The real wall: the farmer gate assumes Claude is the only backend
+
+The worker never reaches an LLM on a token-less phone — it idles at
+`chump farmer status` = RED (`oauth_fresh: FAIL`). Root cause is a **host
+assumption**, not a missing model: `scripts/coord/auth-status.sh` probes the
+auth path by running a real `claude -p` call. On the Pixel the broken `claude`
+stub returns no `PONG`, so auth-status writes `rc=1` (BROKEN) to
+`~/.chump/auth-status-cache`; `farmer_status.rs::check_oauth_fresh` reads that
+cached BROKEN and fails the gate *before* its no-signal fail-open branch. A node
+configured for a $0 backend needs **zero** Anthropic credentials, yet the gate
+RED-locks it anyway.
+
+**Permanent fix (specified):** teach `auth-status.sh` that a *live free-tier
+provider* is a usable auth path. Guard it on `CHUMP_FREE_TIER_PROVIDERS` being
+non-empty (empty on Claude nodes → their verdict is unchanged): probe each
+`model@base_url:KEY_ENV` entry's `${base}/models` with its key; first `200`
+→ print `AUTH ✓ OK — free-tier <provider> live` and `exit 0`. That writes
+`rc=0` to the cache and the farmer goes GREEN with no Anthropic token. (Gemini's
+`generativelanguage` base won't answer `/models` with a Bearer probe — iterate
+the list so an OpenAI-compatible entry like Groq/Cerebras satisfies it.)
+
+### Backend A — proot + claude-code on the subscription (proven)
+
+`claude-code` has no Android binary, but its **linux-arm64 glibc** binary runs
+fine inside a proot distro:
+
+```bash
+pkg install -y proot-distro
+proot-distro install ubuntu
+proot-distro login ubuntu -- bash -lc '
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs
+  npm i -g @anthropic-ai/claude-code'      # postinstall fetches linux-arm64 glibc native
+```
+
+Verified 2026-08-22: `claude --version` → `2.1.241 (Claude Code)` inside proot,
+and `claude -p` returned a real completion using the subscription token
+(`CLAUDE_CODE_OAUTH_TOKEN`, already synced in `~/.chump/providers.env`). To wire
+it as the worker's Headless backend, put a `claude` shim early on the Termux PATH
+that forwards into proot:
+
+```sh
+#!/data/data/com.termux/files/usr/bin/sh
+exec proot-distro login ubuntu --termux-home -- \
+  env CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" claude "$@"
+```
+
+The shim also fixes the farmer gate for free — `auth-status.sh`'s `claude -p`
+probe now succeeds on the subscription. **Operator step (one, minimal):** mint a
+subscription token on the Mac (`claude setup-token`) and sync it into
+`~/.chump/providers.env` as `CLAUDE_CODE_OAUTH_TOKEN=` on the Pixel — the same
+secret already present today; never commit it.
+
+### Backend B — Groq `gpt-oss-120b`, $0, plugs into the existing worker (proven)
+
+`chump --execute-gap` (the chump-local backend the worker already runs) never
+shells to `claude`; it drives `ChumpAgent::run` in-process against the
+OpenAI-compatible cascade (`OPENAI_API_BASE`/`OPENAI_API_KEY`/`OPENAI_MODEL`),
+so **no `claude` binary is needed for gap-building at all.** The
+`free-tier-dispatch-testing-2026-05-08` saga (0/6 commits) had two root causes:
+tight rate limits (INFRA-784) and Llama-3.3-70B's malformed `patch_file` diffs
+(INFRA-785). The model-quality cause is now beaten — Groq serves
+`openai/gpt-oss-120b` (a 120B agentic model) on its free tier.
+
+Verified 2026-08-22 on the Pixel (`GROQ_API_KEY` in `~/.chump/providers.env`,
+live `HTTP 200`): with `gpt-oss-120b` as cascade slot 1, `chump gen` drove the
+real agent loop — called `patch_file`/`read_file`, edited the target file
+exactly as asked, and committed. Cost ~$0.00. The only friction was Groq
+per-minute rate limits (`429`) mid-loop; the cascade self-recovered via backoff
+(the INFRA-784 inter-request-delay fix would smooth it).
+
+Config (already staged in `~/.chump/providers.env` / `~/chump/.env`, needs the
+slot-order fix): put a $0 OpenAI-compatible provider at cascade priority 1 —
+`openai/gpt-oss-120b @ https://api.groq.com/openai/v1 : GROQ_API_KEY` — and drop
+the metered `codestral` (returns `402 Payment Required`) and empty-key `nvidia`
+slots. No operator credential step: the Groq free key is already synced.
+
+### Recommended posture
+
+Backend B is the true $0 path and requires no Anthropic account; Backend A gives
+Claude-grade quality on the flat-rate subscription and is the robust fallback.
+Either one, plus the `auth-status.sh` free-tier fix above, lets this node claim
+and ship fleet gaps for free — deleting the `claude setup-token`-only assumption.
