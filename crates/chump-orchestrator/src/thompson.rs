@@ -1,5 +1,23 @@
 //! COG-037 — Thompson-sampling self-learning router.
 //!
+//! ## Redundancy note (INFRA-1573)
+//!
+//! This file and [`src/provider_bandit.rs`](../../src/provider_bandit.rs) both
+//! implement Thompson sampling with Beta(α, β) posteriors. The algorithms are
+//! identical but the vocabularies differ:
+//!
+//! - **This file** routes [`crate::routing::Candidate`] values
+//!   `(backend, model, provider_pfx)` for cross-backend dispatch (COG-037).
+//! - **`src/provider_bandit.rs`** routes `ProviderSlot` names for in-cascade
+//!   slot selection (BanditRouter).
+//!
+//! They are kept separate because they live in different release cadences
+//! (orchestrator crate vs. root crate) and have different thread-safety
+//! requirements (this file is pure-function + `&mut Rng`; provider_bandit
+//! uses `Mutex` for shared state). Consolidating into a generic
+//! `BanditRouter<Arm>` would couple the two crates' release schedules.
+//! See `AGENTS.md` § Redundancy prevention for the META-063 exception.
+//!
 //! Each routing arm — a [`crate::routing::Candidate`] identified by
 //! `(backend, model, provider_pfx)` — has an unknown success probability θ.
 //! We maintain a Beta(α, β) posterior per arm with a uniform Beta(1,1) prior:

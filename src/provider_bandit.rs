@@ -1,5 +1,24 @@
 //! Multi-armed bandit for provider slot selection.
 //!
+//! ## Redundancy note (INFRA-1573)
+//!
+//! This file and [`crates/chump-orchestrator/src/thompson.rs`](crates/chump-orchestrator/src/thompson.rs)
+//! both implement Thompson sampling with Beta(α, β) posteriors. The algorithms are
+//! identical but the vocabularies differ:
+//!
+//! - **This file** routes `ProviderSlot` names for in-cascade slot selection
+//!   (BanditRouter).
+//! - **`crates/chump-orchestrator/src/thompson.rs`** routes
+//!   [`crate::routing::Candidate`] values `(backend, model, provider_pfx)` for
+//!   cross-backend dispatch (COG-037).
+//!
+//! They are kept separate because they live in different release cadences
+//! (root crate vs. orchestrator crate) and have different thread-safety
+//! requirements (this file uses `Mutex` for shared state; thompson.rs is
+//! pure-function + `&mut Rng`). Consolidating into a generic
+//! `BanditRouter<Arm>` would couple the two crates' release schedules.
+//! See `AGENTS.md` § Redundancy prevention for the META-063 exception.
+//!
 //! Chump's [`provider_cascade`] has long used a hand-configured priority
 //! order over provider slots (local → cloud-A → cloud-B → …). That order
 //! assumes the operator knows which model is best for which query type.
