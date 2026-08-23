@@ -34,8 +34,9 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || \
 
 # ── 1. Extract commit subject ─────────────────────────────────────────────────
 # Use COMMIT_EDITMSG if available (during git commit), else read stdin.
-if [[ -f "$REPO_ROOT/.git/COMMIT_EDITMSG" ]]; then
-    SUBJECT=$(head -1 "$REPO_ROOT/.git/COMMIT_EDITMSG")
+_GIT_DIR="$(git rev-parse --git-dir 2>/dev/null)"
+if [[ -f "${_GIT_DIR}/COMMIT_EDITMSG" ]]; then
+    SUBJECT=$(head -1 "${_GIT_DIR}/COMMIT_EDITMSG")
 elif [[ -n "${GIT_EDITOR:-}" ]]; then
     SUBJECT=""
 else
@@ -55,8 +56,8 @@ if [[ -z "$GAP_IDS" ]]; then
 fi
 
 # ── 3. Check for bypass trailer in commit message ─────────────────────────────
-if [[ -f "$REPO_ROOT/.git/COMMIT_EDITMSG" ]]; then
-    if grep -qE '^AC-Backfill-Reason:' "$REPO_ROOT/.git/COMMIT_EDITMSG"; then
+if [[ -f "${_GIT_DIR}/COMMIT_EDITMSG" ]]; then
+    if grep -qE '^AC-Backfill-Reason:' "${_GIT_DIR}/COMMIT_EDITMSG"; then
         exit 0
     fi
 fi
