@@ -105,6 +105,7 @@ precommit-strict-replay.sh
 test-agent-throughput.sh
 test-alert-classifier.sh
 test-almanac-summarize-watchdog.sh  # reason: RESILIENT-354 — launchd-supervisor test spawning stub pgrep/coverage/recall binaries via env-var hooks (same shape as test-stale-process-watchdog.sh above); mirroring in preflight would just duplicate the stub harness with no additional coverage since the watchdog itself is a macOS launchd organ, not a preflight-relevant gate
+test-almanac-vision-keeper-floor.sh  # reason: CREDIBLE-300 — process-organ coverage-floor test spawning stub almanac/recall binaries via env-var hooks (same shape as test-almanac-summarize-watchdog.sh above); the keeper is a long-running systemd/process-organ, not a preflight-relevant gate
 test-auto-arm-sweeper.sh
 test-autonomous-ship-rate.sh
 test-autoscale-decisions.sh

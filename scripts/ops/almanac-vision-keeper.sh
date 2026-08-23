@@ -60,6 +60,17 @@
 #                                    for regression detection
 #                                    (default $HOME/.almanac/vision-acuity.state)
 #   CHUMP_AMBIENT_LOG              — override ambient.jsonl path
+#   CHUMP_VISION_KEEPER_SUMMARY_FLOOR_PCT — summary-coverage floor (default 95;
+#                                    CREDIBLE-300). A pass whose summary_pct
+#                                    is below this floor pages the operator via
+#                                    operator-recall.sh --condition
+#                                    ALMANAC_VISION_ACUITY_FLOOR — regression
+#                                    detection (above) only fires on a DROP
+#                                    since the last pass, so a coverage number
+#                                    that is simply STUCK below floor (e.g.
+#                                    68.6% for 10 days, never dropping further)
+#                                    would otherwise never page anyone.
+#   CHUMP_VISION_KEEPER_RECALL_SCRIPT — override for operator-recall.sh
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -73,6 +84,8 @@ INDEX_REPO="${CHUMP_ALMANAC_INDEX_REPO:-$HOME/Projects/chump}"
 MAX_SUMMARIZE_ROUNDS="${CHUMP_VISION_KEEPER_MAX_SUMMARIZE_ROUNDS:-40}"
 SUMMARIZE_ROUND_TIMEOUT_S="${CHUMP_VISION_KEEPER_SUMMARIZE_ROUND_TIMEOUT_S:-1800}"
 STATE_FILE="${CHUMP_VISION_ACUITY_STATE:-$HOME/.almanac/vision-acuity.state}"
+SUMMARY_FLOOR_PCT="${CHUMP_VISION_KEEPER_SUMMARY_FLOOR_PCT:-95}"
+RECALL_SCRIPT="${CHUMP_VISION_KEEPER_RECALL_SCRIPT:-$REPO_ROOT/scripts/dispatch/operator-recall.sh}"
 
 ONCE=0
 DRY_RUN="${CHUMP_VISION_KEEPER_DRY_RUN:-0}"
@@ -256,6 +269,31 @@ vision_pass() {
     # same way any organ-degradation signal does. Registered in
     # docs/observability/EVENT_REGISTRY.yaml.)
     emit vision_acuity "\"symbol_pct\":$SYMBOL_PCT,\"summary_pct\":$SUMMARY_PCT,\"symbol_count\":$SYMBOL_COUNT,\"symbol_total\":$SYMBOL_TOTAL,\"summary_count\":$SUMMARY_COUNT,\"summary_total\":$SUMMARY_TOTAL,\"summarize_rounds\":$SUMMARIZE_ROUNDS,\"reset\":\"$RESET_STATUS\",\"regressed\":\"$regressed\",\"dry_run\":$DRY_RUN"
+
+    # 4. floor breach — page (CREDIBLE-300). Regression detection above only
+    # fires on a DROP since the last pass; a coverage number that is simply
+    # STUCK below the floor (68.6% for 10 days, never dropping further) would
+    # never trip that check, so this is a separate absolute-floor comparison
+    # every pass, independent of the previous reading.
+    if [[ "$SUMMARY_PCT" =~ ^[0-9]+$ ]] && (( SUMMARY_PCT < SUMMARY_FLOOR_PCT )); then
+        echo "[almanac-vision-keeper] FLOOR-BREACH: summary coverage ${SUMMARY_PCT}% < floor ${SUMMARY_FLOOR_PCT}%" >&2
+        if [[ "$DRY_RUN" == "1" ]]; then
+            echo "[almanac-vision-keeper]   (dry-run) would page operator: ALMANAC_VISION_ACUITY_FLOOR"
+        elif [[ -x "$RECALL_SCRIPT" ]]; then
+            CHUMP_AMBIENT_LOG="$AMBIENT_LOG" "$RECALL_SCRIPT" --condition ALMANAC_VISION_ACUITY_FLOOR \
+                --reason "chump almanac summary coverage ${SUMMARY_PCT}% (${SUMMARY_COUNT}/${SUMMARY_TOTAL}) is below the ${SUMMARY_FLOOR_PCT}% floor — doc-level fusion search degrades to keyword-only, and ORDER 2 (consult Almanac before any build) runs on a partially-blind index" \
+                >/dev/null 2>&1 || echo "[almanac-vision-keeper]   WARN: operator-recall.sh call failed" >&2
+        else
+            echo "[almanac-vision-keeper]   WARN: recall script not found/executable at $RECALL_SCRIPT" >&2
+        fi
+        # scanner-anchor: "kind":"vision_acuity_floor_breach"  (CREDIBLE-300;
+        # fires every pass where summary_pct is below the coverage floor —
+        # complements vision_acuity's drop-only regression flag with an
+        # absolute-floor page so a number that is merely STUCK below floor,
+        # never dropping further, still pages like any other organ failure.
+        # Registered in docs/observability/EVENT_REGISTRY.yaml.)
+        emit vision_acuity_floor_breach "\"summary_pct\":$SUMMARY_PCT,\"floor\":$SUMMARY_FLOOR_PCT,\"summary_count\":$SUMMARY_COUNT,\"summary_total\":$SUMMARY_TOTAL,\"dry_run\":$DRY_RUN"
+    fi
 }
 
 # ── main loop ───────────────────────────────────────────────────────────────

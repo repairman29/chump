@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# vital-signs.sh — the 8 VITAL SIGNS of ChumpOS's journey to the ribbon.
+# vital-signs.sh — the VITAL SIGNS of ChumpOS's journey to the ribbon.
 #
-# Reads eight real endpoints (gh, ~/.chump ledgers, the ambient stream, the
-# systemd organ roll-call, journey-odds.json) and writes ~/.chump/vital-signs.json
+# Reads nine real endpoints (gh, ~/.chump ledgers, the ambient stream, the
+# systemd organ roll-call, journey-odds.json, almanac-vision-keeper's
+# coverage state) and writes ~/.chump/vital-signs.json
 # in the SHARED CONTRACT shape, plus a `vital_signs` ambient heartbeat to
 # .chump-locks/ambient.jsonl so a dead collector — and a frozen vitals board —
 # is itself observable from the stream instead of silently going stale.
 #
-# THE 8 SIGNS (group / lead_or_lag):
+# THE 9 SIGNS (group / lead_or_lag):
 #   1 merge_throughput    flow/lagging     merges/24h
 #   2 oldest_pr_age       flow/leading     oldest open PR age (minutes)
 #   3 ci_pass_rate        quality/leading  CI pass-rate % (success/decided)
@@ -16,6 +17,7 @@
 #   6 calibration_brier   trust/meta       Brier from pr-book-calibration.log (else null)
 #   7 human_intervention  autonomy/lagging operator pages / 24h
 #   8 outcomes_delivered  mission/lagging  things reaching a person (best real proxy)
+#   9 almanac_coverage    quality/leading  almanac summary coverage % (CREDIBLE-300)
 #
 # HONESTY RULE: a sign with no real source is status "unknown", basis
 # "uninstrumented" — never a fabricated number. calibration_brier and
@@ -120,6 +122,9 @@ CFG_BRIER_GREEN=0.1;  CFG_BRIER_AMBER=0.2
 CFG_PAGES_GREEN=5;    CFG_PAGES_AMBER=20
 # outcomes_delivered things/24h           hi   green>=3  amber>=1   red<1
 CFG_OUT_GREEN=3;      CFG_OUT_AMBER=1
+# almanac_coverage  summary-coverage %    hi   green>95  amber>=80  red<80
+CFG_ALMCOV_GREEN=95;  CFG_ALMCOV_AMBER=80
+CFG_ALMCOV_STALE_S=3600   # vision-acuity.state older than this reads "unknown", not a stale number
 
 # ── status helpers ──────────────────────────────────────────────────────────
 # status_hi VALUE GREEN AMBER  -> green|amber|red  (higher is better)
@@ -339,6 +344,47 @@ else
     "the truest number — instrument it" \
     "uninstrumented: no delivery-to-a-person signal exists yet. Internal merges are NOT outcomes; a real proxy needs a deploy-to-user / giveaway-told / tool-shipped ambient event keyed to an external human. HONEST-unknown until then." \
     "{\"green\":\">=$CFG_OUT_GREEN\",\"amber\":\"$CFG_OUT_AMBER-$CFG_OUT_GREEN\",\"red_desc\":\"<$CFG_OUT_AMBER/24h\"}")")
+fi
+
+# ════════════════════════════════════════════════════════════════════════════
+# 9 · almanac_coverage  (quality / leading)  — the eyes must not go blind
+#     (CREDIBLE-300). summary_pct from almanac-vision-keeper.sh's
+#     vision-acuity.state (written every keeper pass). A missing or stale
+#     state file reads "unknown" (uninstrumented / stale), never a fabricated
+#     number — the keeper being dead is itself observable via this sign.
+# ════════════════════════════════════════════════════════════════════════════
+VISION_ACUITY_STATE="${CHUMP_VISION_ACUITY_STATE:-$REAL_HOME/.almanac/vision-acuity.state}"
+almcov_pct="" almcov_basis=""
+if [[ -f "$VISION_ACUITY_STATE" ]]; then
+  state_mtime="$(stat -c %Y "$VISION_ACUITY_STATE" 2>/dev/null || stat -f %m "$VISION_ACUITY_STATE" 2>/dev/null || echo 0)"
+  state_age=$(( NOW_EPOCH - state_mtime ))
+  if (( state_age > CFG_ALMCOV_STALE_S )); then
+    almcov_basis="uninstrumented: $VISION_ACUITY_STATE is ${state_age}s old (floor ${CFG_ALMCOV_STALE_S}s) — the vision-keeper organ has stopped moving"
+  else
+    almcov_pct_raw="$(awk '{print $2}' "$VISION_ACUITY_STATE" 2>/dev/null)"
+    if [[ "$almcov_pct_raw" =~ ^[0-9]+$ ]]; then
+      almcov_pct="$almcov_pct_raw"
+      almcov_basis="summary_pct=$almcov_pct from $VISION_ACUITY_STATE (${state_age}s old, almanac-vision-keeper.sh)"
+    else
+      almcov_basis="uninstrumented: $VISION_ACUITY_STATE unparseable"
+    fi
+  fi
+else
+  almcov_basis="uninstrumented: no vision-acuity state at $VISION_ACUITY_STATE — almanac-vision-keeper.sh has not run on this node"
+fi
+if [[ -n "$almcov_pct" ]]; then
+  s="$(status_hi "$almcov_pct" "$CFG_ALMCOV_GREEN" "$CFG_ALMCOV_AMBER")"
+  SIGNS+=("$(mksign almanac_coverage "Almanac Summary Coverage" quality leading \
+    "$(jnum "$almcov_pct")" "percent-summarized" "$s" \
+    "revive almanac-vision-keeper.sh / drive almanac summarize" \
+    "$almcov_basis" \
+    "{\"green\":\">$CFG_ALMCOV_GREEN\",\"amber\":\"$CFG_ALMCOV_AMBER-$CFG_ALMCOV_GREEN\",\"red_desc\":\"<$CFG_ALMCOV_AMBER% summarized\"}")")
+else
+  SIGNS+=("$(mksign almanac_coverage "Almanac Summary Coverage" quality leading \
+    null "percent-summarized" "unknown" \
+    "revive almanac-vision-keeper.sh / drive almanac summarize" \
+    "$almcov_basis" \
+    "{\"green\":\">$CFG_ALMCOV_GREEN\",\"amber\":\"$CFG_ALMCOV_AMBER-$CFG_ALMCOV_GREEN\",\"red_desc\":\"<$CFG_ALMCOV_AMBER% summarized\"}")")
 fi
 
 # ── p_full_trek roll-up (read from journey-odds.json if present, else null) ──

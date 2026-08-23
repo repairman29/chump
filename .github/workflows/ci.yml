@@ -1075,6 +1075,9 @@ jobs:
       - name: almanac summarize watchdog (RESILIENT-354)
         run: bash scripts/ci/test-almanac-summarize-watchdog.sh
 
+      - name: almanac vision-keeper coverage floor (CREDIBLE-300)
+        run: bash scripts/ci/test-almanac-vision-keeper-floor.sh
+
       - name: default-flip advisory guard (INFRA-762)
         run: bash scripts/ci/test-default-flip-guard.sh
 

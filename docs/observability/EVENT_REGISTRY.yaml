@@ -6510,6 +6510,20 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason]
 
+  - kind: vision_acuity_floor_breach
+    effect_metric: almanac_summary_coverage_pct
+    emitter: scripts/ops/almanac-vision-keeper.sh (CREDIBLE-300)
+    trigger: every vision-keeper pass where summary_pct is below
+      CHUMP_VISION_KEEPER_SUMMARY_FLOOR_PCT (default 95%). Escalates to
+      operator-recall.sh --condition ALMANAC_VISION_ACUITY_FLOOR. Complements
+      vision_acuity's drop-only regression flag: that flag only fires when
+      coverage falls further since the last pass, so a number that is simply
+      STUCK below the floor (68.6% for 10+ days, never dropping further)
+      would otherwise never page anyone — the exact "eyes must not go blind"
+      gap this closes.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, summary_pct, floor, dry_run]
+
   - kind: faculty_status
     effect_metric: self
     emitter: scripts/ops/faculty-collector.sh (OS self-portrait data source)
