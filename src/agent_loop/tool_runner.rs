@@ -59,6 +59,11 @@ impl<'a> ToolRunner<'a> {
             } else {
                 outcome.success_count += 1;
             }
+            // EFFECTIVE-448: count real edits so the controller knows whether
+            // the run has changed any file yet.
+            if crate::agent_loop::edit_was_applied(&tr.tool_name, &tr.result) {
+                outcome.edits_applied += 1;
+            }
             ctx.send(AgentEvent::ToolCallResult {
                 call_id: tr.tool_call_id.clone(),
                 tool_name: tr.tool_name.clone(),
@@ -126,6 +131,7 @@ impl<'a> ToolRunner<'a> {
                 success_count: 0,
                 fail_count: n_failed,
                 last_failed_tool,
+                edits_applied: 0,
             });
         }
 
@@ -263,10 +269,19 @@ impl<'a> ToolRunner<'a> {
             .find(|tr| is_failed_tool_result(&tr.result))
             .map(|tr| tr.tool_name.clone());
 
+        // EFFECTIVE-448: count tool calls that applied a real edit (successful
+        // str_replace/write_file/patch_file) so the controller can detect a
+        // run that investigated but never changed a file.
+        let edits_applied = tool_results
+            .iter()
+            .filter(|tr| crate::agent_loop::edit_was_applied(&tr.tool_name, &tr.result))
+            .count();
+
         Ok(BatchOutcome {
             success_count: tool_results.len() - strict_fail_count,
             fail_count: strict_fail_count,
             last_failed_tool,
+            edits_applied,
         })
     }
 

@@ -29,6 +29,34 @@ fn max_consecutive_tool_fails() -> u32 {
         .unwrap_or(DEFAULT_MAX_CONSECUTIVE_TOOL_FAILS)
 }
 
+/// EFFECTIVE-448: max force-edit nudges before the loop is allowed to Complete
+/// with zero edits (a legit rung-failure — the model genuinely couldn't do it).
+/// Bounded so a gap that truly needs no edit doesn't spin forever. Override via
+/// `CHUMP_MAX_EDIT_NUDGES`.
+const DEFAULT_MAX_EDIT_NUDGES: u32 = 3;
+
+fn max_edit_nudges() -> u32 {
+    std::env::var("CHUMP_MAX_EDIT_NUDGES")
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(DEFAULT_MAX_EDIT_NUDGES)
+}
+
+/// EFFECTIVE-448: only fire the force-edit nudge for runs EXPECTED to produce an
+/// edit (gap execution / implementation). Interactive chat and read-only queries
+/// must still Complete with a prose answer. `execute_gap()` sets
+/// `CHUMP_REQUIRE_EDIT=1` for both the free-tier and paid paths.
+fn require_edit_mode() -> bool {
+    std::env::var("CHUMP_REQUIRE_EDIT").as_deref() == Ok("1")
+}
+
+/// EFFECTIVE-448: the firm message injected when the model narrates a fix but
+/// never applies one. A weak model (DeepSeek flash/pro) investigates for many
+/// read-only turns, then emits an EndTurn prose summary — the FSM would Complete
+/// with zero edits and `free_tier_ship` aborts on "empty diff". Kept as a const
+/// so the unit test can assert the exact wording is what gets injected.
+pub(crate) const EDIT_NUDGE_MESSAGE: &str = "You have investigated enough. You have NOT edited any file yet — you only described the change. STOP investigating and APPLY the edit NOW using the `str_replace` tool: copy the EXACT existing snippet you want to change into `old_string` (include enough surrounding lines to be unique) and the replacement text into `new_string`. Do NOT rewrite a whole file with write_file. Make the smallest edit that satisfies the task, then stop. If — and only if — no edit is genuinely possible, reply with a single line beginning `NO_EDIT_POSSIBLE:` followed by the concrete reason.";
+
 /// Decide whether a tool batch outcome should trip the fail-storm breaker.
 ///
 /// Returns `Some(error_msg)` when `counter` has reached `max_consecutive_fails`
@@ -99,6 +127,16 @@ impl<'a> IterationController<'a> {
         let max_consecutive_fails = max_consecutive_tool_fails();
         let mut thinking_segments: Vec<String> = Vec::new();
         let completion_cap = crate::env_flags::agent_completion_max_tokens();
+
+        // EFFECTIVE-448: track applied edits + how many force-edit nudges we've
+        // fired. A run expected to produce an edit (`require_edit`) that reaches
+        // an EndTurn having changed no file gets a firm "stop investigating,
+        // str_replace now" message and loops again — bounded by `max_edit_nudges`
+        // — instead of Completing into the empty diff that aborts the ship.
+        let mut edits_applied: usize = 0;
+        let mut edit_nudges_fired: u32 = 0;
+        let require_edit = require_edit_mode();
+        let max_edit_nudges = max_edit_nudges();
 
         // Helper: build the standard cancelled outcome and return early.
         // Defined as a named macro so it can capture `_iter`, `thinking_segments`,
@@ -270,6 +308,7 @@ impl<'a> IterationController<'a> {
                                 ctx.phase_timings.tools_ms += t.elapsed().as_millis();
                             }
                             last_failed_tool = outcome.last_failed_tool.clone();
+                            edits_applied += outcome.edits_applied;
                             if let Some(err) =
                                 track_outcome(outcome, &mut consecutive_failed_batches)
                             {
@@ -297,6 +336,43 @@ impl<'a> IterationController<'a> {
 
                     if model_calls_count <= 2 && response_wanted_tools(payload) {
                         tracing::info!("narration detected: retrying with tools");
+                        continue;
+                    }
+
+                    // EFFECTIVE-448: force-edit nudge. Past model_calls_count<=2 the
+                    // narration-retry above no longer fires, so a weak model (DeepSeek
+                    // flash/pro) that investigates for many read-only turns then emits an
+                    // EndTurn prose summary would Complete having applied ZERO edits — and
+                    // free_tier_ship then aborts on "empty diff — changed nothing". When
+                    // this run is expected to produce an edit (CHUMP_REQUIRE_EDIT=1) and
+                    // none has landed, inject a firm "stop investigating, str_replace now"
+                    // message and loop again — bounded by max_edit_nudges so a gap that
+                    // genuinely needs no edit (or that the model truly can't do) still
+                    // terminates. A model that ALREADY edited (edits_applied>0) Completes
+                    // normally; one that explicitly declares no edit is possible
+                    // (NO_EDIT_POSSIBLE:) is allowed to Complete without burning the cap.
+                    if require_edit
+                        && edits_applied == 0
+                        && edit_nudges_fired < max_edit_nudges
+                        && !payload.trim_start().to_uppercase().starts_with("NO_EDIT_POSSIBLE")
+                    {
+                        edit_nudges_fired += 1;
+                        tracing::info!(
+                            edit_nudges_fired,
+                            model_calls_count,
+                            "EFFECTIVE-448: EndTurn with zero edits — injecting force-edit nudge"
+                        );
+                        // Preserve the prose the model just produced for context, then
+                        // append the nudge as the next user turn and loop.
+                        let content_for_history = thinking_strip::strip_for_public_reply(&text);
+                        ctx.session.add_message(axonerai::provider::Message {
+                            role: "assistant".to_string(),
+                            content: content_for_history,
+                        });
+                        ctx.session.add_message(axonerai::provider::Message {
+                            role: "user".to_string(),
+                            content: EDIT_NUDGE_MESSAGE.to_string(),
+                        });
                         continue;
                     }
 
@@ -383,6 +459,7 @@ impl<'a> IterationController<'a> {
                                     ctx.phase_timings.tools_ms += t.elapsed().as_millis();
                                 }
                                 last_failed_tool = outcome.last_failed_tool.clone();
+                                edits_applied += outcome.edits_applied;
                                 if let Some(err) =
                                     track_outcome(outcome, &mut consecutive_failed_batches)
                                 {
@@ -436,6 +513,7 @@ impl<'a> IterationController<'a> {
                                 ctx.phase_timings.tools_ms += t.elapsed().as_millis();
                             }
                             last_failed_tool = outcome.last_failed_tool.clone();
+                            edits_applied += outcome.edits_applied;
                             if let Some(err) =
                                 track_outcome(outcome, &mut consecutive_failed_batches)
                             {
@@ -508,6 +586,7 @@ impl<'a> IterationController<'a> {
                         ctx.phase_timings.tools_ms += t.elapsed().as_millis();
                     }
                     last_failed_tool = outcome.last_failed_tool.clone();
+                    edits_applied += outcome.edits_applied;
                     if let Some(err) = track_outcome(outcome, &mut consecutive_failed_batches) {
                         // FSM: → Interrupted (storm breaker)
                         let interrupted = AgentState::Interrupted {
@@ -590,6 +669,7 @@ mod tests {
             success_count: n,
             fail_count: 0,
             last_failed_tool: None,
+            edits_applied: 0,
         }
     }
     fn fail_batch(n: usize) -> BatchOutcome {
@@ -597,6 +677,7 @@ mod tests {
             success_count: 0,
             fail_count: n,
             last_failed_tool: None,
+            edits_applied: 0,
         }
     }
     fn mixed_batch(ok: usize, fail: usize) -> BatchOutcome {
@@ -604,6 +685,7 @@ mod tests {
             success_count: ok,
             fail_count: fail,
             last_failed_tool: None,
+            edits_applied: 0,
         }
     }
 
@@ -977,4 +1059,271 @@ mod cancellation_tests {
             outcome.reply
         );
     }
+
+
+    // ── EFFECTIVE-448: force-edit nudge integration tests ──────────────────
+    //
+    // These exercise the real `IterationController::execute` loop with scripted
+    // provider + task-executor mocks to prove the DeepSeek cheap-floor fix: a
+    // model that investigates for >2 read-only turns then emits EndTurn prose
+    // must be NUDGED to apply an edit (not Complete into an empty diff), while a
+    // model that DID edit must still Complete cleanly with no nudge.
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Scripted provider. `edit_at` = the 1-based call index on which it returns
+    /// a `str_replace` ToolUse; all other early calls return a read_only ToolUse,
+    /// and once past `investigate_calls` it returns EndTurn prose. Counts calls.
+    struct ScriptedProvider {
+        calls: Arc<AtomicUsize>,
+        investigate_calls: usize,
+        edit_at: Option<usize>,
+    }
+
+    #[async_trait]
+    impl axonerai::provider::Provider for ScriptedProvider {
+        async fn complete(
+            &self,
+            _messages: Vec<Message>,
+            _tools: Option<Vec<axonerai::provider::Tool>>,
+            _max_tokens: Option<u32>,
+            _system: Option<String>,
+        ) -> Result<CompletionResponse> {
+            let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1; // 1-based
+            if Some(n) == self.edit_at {
+                return Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: format!("edit_{n}"),
+                        name: "str_replace".to_string(),
+                        input: serde_json::json!({
+                            "path": "src/foo.rs",
+                            "old_string": "a",
+                            "new_string": "b"
+                        }),
+                    }],
+                    stop_reason: StopReason::ToolUse,
+                });
+            }
+            if n <= self.investigate_calls {
+                return Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: format!("read_{n}"),
+                        name: "read_file".to_string(),
+                        input: serde_json::json!({ "path": "src/foo.rs" }),
+                    }],
+                    stop_reason: StopReason::ToolUse,
+                });
+            }
+            // Past the investigation phase: narrate a fix in prose, no tool call.
+            Ok(CompletionResponse {
+                text: Some(
+                    "I have finished investigating. The fix is to change `a` to `b` \
+                     in src/foo.rs so the guard fires correctly."
+                        .to_string(),
+                ),
+                tool_calls: vec![],
+                stop_reason: StopReason::EndTurn,
+            })
+        }
+    }
+
+    /// Task executor that returns a realistic SUCCESS string per tool: a
+    /// read_file result (not an edit) or a `str_replace: edited ...` result
+    /// (a real edit, which `edit_was_applied` must count).
+    struct ScriptedExecutor;
+
+    #[async_trait]
+    impl TaskExecutor for ScriptedExecutor {
+        async fn execute_all<'a>(
+            &self,
+            _event_tx: Option<&crate::stream_events::EventSender>,
+            _tool_executor: &ToolExecutor<'a>,
+            tool_calls: &[ToolCall],
+        ) -> Result<Vec<ToolResult>> {
+            Ok(tool_calls
+                .iter()
+                .map(|tc| {
+                    let result = if tc.name == "str_replace" {
+                        "str_replace: edited src/foo.rs (1 replacement, 1 → 1 bytes)".to_string()
+                    } else {
+                        "fn foo() {}\n".to_string()
+                    };
+                    ToolResult {
+                        tool_call_id: tc.id.clone(),
+                        tool_name: tc.name.clone(),
+                        result,
+                    }
+                })
+                .collect())
+        }
+    }
+
+    /// A registered tool with a permissive schema so schema-validation passes
+    /// (the ScriptedExecutor is what actually produces results; the registry is
+    /// only consulted for tool-name + input-schema validation).
+    struct PermissiveTool(&'static str);
+
+    #[async_trait]
+    impl axonerai::tool::Tool for PermissiveTool {
+        fn name(&self) -> String {
+            self.0.to_string()
+        }
+        fn description(&self) -> String {
+            "permissive test tool".to_string()
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({ "type": "object", "additionalProperties": true })
+        }
+        async fn execute(&self, _input: serde_json::Value) -> Result<String> {
+            Ok(String::new())
+        }
+    }
+
+    fn count_nudge_messages(ctx: &AgentLoopContext) -> usize {
+        ctx.session
+            .get_messages()
+            .iter()
+            .filter(|m| m.content == EDIT_NUDGE_MESSAGE)
+            .count()
+    }
+
+    /// Investigate for 3 read-only turns then narrate prose forever, with the
+    /// run marked as edit-required. The controller must NOT Complete at the
+    /// first EndTurn; it must inject the force-edit nudge up to the cap, then
+    /// terminate. Without the fix it would Complete at the first EndTurn.
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn effective_448_nudges_when_investigating_but_never_editing() {
+        std::env::set_var("CHUMP_REQUIRE_EDIT", "1");
+        std::env::set_var("CHUMP_MAX_EDIT_NUDGES", "2");
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = ScriptedProvider {
+            calls: Arc::clone(&calls),
+            investigate_calls: 3,
+            edit_at: None,
+        };
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(PermissiveTool("read_file")));
+        registry.register(Box::new(PermissiveTool("str_replace")));
+        let executor = ToolExecutor::new(&registry);
+        let task_exec: Arc<dyn TaskExecutor + Send + Sync> = Arc::new(ScriptedExecutor);
+        let tool_runner = ToolRunner {
+            executor: &executor,
+            registry: &registry,
+            task_executor: task_exec,
+        };
+        let mut controller = IterationController {
+            max_iterations: 20,
+            provider: &provider,
+            state: AgentState::Idle,
+        };
+        let mut ctx = make_ctx();
+        let prompt_assembler = make_prompt_assembler();
+        let perception = make_perception();
+
+        let outcome = controller
+            .execute(
+                &mut ctx,
+                vec![],
+                None,
+                false,
+                &tool_runner,
+                &prompt_assembler,
+                &perception,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("execute must return Ok");
+
+        let total_calls = calls.load(Ordering::SeqCst);
+        // 3 read turns + 1st EndTurn (nudge #1) + 2nd EndTurn (nudge #2) + 3rd
+        // EndTurn (cap reached → Complete) = 6 provider calls.
+        assert_eq!(
+            total_calls, 6,
+            "expected 3 reads + 3 EndTurns (2 nudged), got {total_calls}"
+        );
+        assert_eq!(
+            count_nudge_messages(&ctx),
+            2,
+            "expected exactly 2 force-edit nudge messages injected"
+        );
+        assert!(
+            total_calls > 4,
+            "regression: loop Completed at first EndTurn instead of nudging"
+        );
+        // It still terminates (does not hang / exhaust iterations).
+        assert!(!outcome.reply.starts_with("Exceeded max iterations"));
+
+        std::env::remove_var("CHUMP_REQUIRE_EDIT");
+        std::env::remove_var("CHUMP_MAX_EDIT_NUDGES");
+    }
+
+    /// A model that investigates, THEN applies a str_replace, THEN narrates must
+    /// Complete cleanly on the next EndTurn — no nudge — because an edit landed.
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn effective_448_completes_normally_when_edit_was_applied() {
+        std::env::set_var("CHUMP_REQUIRE_EDIT", "1");
+        std::env::set_var("CHUMP_MAX_EDIT_NUDGES", "3");
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        // calls: 1,2 = reads; 3 = str_replace (edit); 4+ = EndTurn prose.
+        let provider = ScriptedProvider {
+            calls: Arc::clone(&calls),
+            investigate_calls: 3,
+            edit_at: Some(3),
+        };
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(PermissiveTool("read_file")));
+        registry.register(Box::new(PermissiveTool("str_replace")));
+        let executor = ToolExecutor::new(&registry);
+        let task_exec: Arc<dyn TaskExecutor + Send + Sync> = Arc::new(ScriptedExecutor);
+        let tool_runner = ToolRunner {
+            executor: &executor,
+            registry: &registry,
+            task_executor: task_exec,
+        };
+        let mut controller = IterationController {
+            max_iterations: 20,
+            provider: &provider,
+            state: AgentState::Idle,
+        };
+        let mut ctx = make_ctx();
+        let prompt_assembler = make_prompt_assembler();
+        let perception = make_perception();
+
+        let outcome = controller
+            .execute(
+                &mut ctx,
+                vec![],
+                None,
+                false,
+                &tool_runner,
+                &prompt_assembler,
+                &perception,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("execute must return Ok");
+
+        let total_calls = calls.load(Ordering::SeqCst);
+        // 1,2 reads + 3 str_replace + 4th EndTurn → Complete (no nudge).
+        assert_eq!(
+            total_calls, 4,
+            "edited run must Complete at first EndTurn, got {total_calls} calls"
+        );
+        assert_eq!(
+            count_nudge_messages(&ctx),
+            0,
+            "no nudge must fire once a real edit has been applied"
+        );
+        assert!(!outcome.reply.starts_with("Exceeded max iterations"));
+
+        std::env::remove_var("CHUMP_REQUIRE_EDIT");
+        std::env::remove_var("CHUMP_MAX_EDIT_NUDGES");
+    }
+
 }
