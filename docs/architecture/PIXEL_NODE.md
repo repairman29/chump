@@ -105,3 +105,35 @@ is never swapped in blind:
    Abort on failure — the old binary keeps running.
 4. **Hot:** `mv chump.new chump` + bounce the worker; the supervisor respawns
    it on the new binary next cycle.
+
+## Durable standing worker (RESILIENT-376)
+
+The one-shot proof (PR #4167: the Pixel claimed `DOC-098` off CJ's NATS-KV
+queue and opened a PR) is made permanent by two **runit** organs — the same
+supervisor primitive as `node-heartbeat` / `postgres`, installed with the exact
+service shape from `chump-node-install.sh`. runit is preferred over the older
+`pixel-node-supervisor.sh` nohup loop because `runsvdir` is already the boot
+supervisor here and restarts a crashed organ in seconds.
+
+Install (idempotent, on the Pixel):
+
+```bash
+bash ~/.chumpnode/repo/scripts/setup/install-pixel-standing-worker.sh
+```
+
+| Organ | Service dir | Job | Restart |
+|---|---|---|---|
+| `nats-bridge` | `$PREFIX/var/service/nats-bridge` | holds `ssh -N -L 4222:127.0.0.1:4222 jeff@closetjunky` so the node reaches CJ's localhost-only nats-server | `ssh` exits on drop (`ServerAliveInterval`/`ExitOnForwardFailure`) → `runsv` respawns; `runsvdir` restarts it after reboot |
+| `pixel-worker` | `$PREFIX/var/service/pixel-worker` | pull→claim→build→ship loop; sets `CHUMP_NATS_URL=nats://127.0.0.1:4222` so `chump claim` leases via the **shared** NATS-KV coordinator, not just local state.db | `runsv` respawns the loop; per-gap failures cooldown 1h |
+
+**Why it's fleet-safe without the token:** `chump claim` is farmer-gated, and
+the worker also checks `chump farmer status` at the top of each tick. While
+`oauth_fresh` is RED the worker idles (never strands a gap it can't finish). The
+sole manual step to arm the agent is operator-only:
+
+```bash
+claude setup-token        # ON the Pixel → writes ~/.chump/oauth-token.json
+```
+
+The moment that token is fresh the farmer gate opens and the worker begins
+shipping automatically — no restart, no redeploy.

@@ -18,6 +18,22 @@ export WORKER_MACHINE="${WORKER_MACHINE:-pixel-8-pro}"
 export CHUMP_WORK_BACKEND="${CHUMP_WORK_BACKEND:-chump-local}"
 export FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P1,P2}"
 
+# RESILIENT-376: join the SHARED NATS-KV claim queue so this node coordinates
+# leases with the rest of the fleet (CoordClient::try_claim_gap), instead of
+# claiming only against its local state.db. The queue lives on CJ's
+# localhost-only nats-server; the `nats-bridge` runit organ holds a durable
+# ssh port-forward to it at 127.0.0.1:4222. If the bridge is momentarily down
+# the atomic `chump claim` below simply fails that tick and we retry — no
+# double-claim, no strand.
+export CHUMP_NATS_URL="${CHUMP_NATS_URL:-nats://127.0.0.1:4222}"
+export CHUMP_NATS_TIMEOUT_MS="${CHUMP_NATS_TIMEOUT_MS:-8000}"
+
+# Capability tags (arm64 / phone-class). Advertised so the fleet's push tier
+# (chump.work.<priority>.<class>.<machine>) can route appropriately-sized work
+# here; the pull-side filter below is the authoritative guard regardless.
+export WORKER_ARCH="${WORKER_ARCH:-$(uname -m)}"
+export WORKER_BACKEND="${WORKER_BACKEND:-claude}"
+
 BIN="${CHUMP_BIN:-$CHUMP_HOME/chump}"
 IDLE_S="${PIXEL_WORKER_IDLE_S:-60}"
 COOLDOWN_S="${PIXEL_WORKER_COOLDOWN_S:-3600}"
@@ -38,6 +54,18 @@ echo "[pixel-worker] up: skills=$WORKER_SKILLS machine=$WORKER_MACHINE backend=$
 while true; do
   echo "[pixel-worker] $(date -u +%FT%TZ) tick"
   NOW=$(date +%s)
+
+  # Farmer gate (RESILIENT-069 / RESILIENT-376): `chump claim` is farmer-gated
+  # and refuses while oauth is stale — so a token-less node can never strand a
+  # real fleet gap it can't finish. Check it up front to skip the whole
+  # claim/execute cycle and log the one honest blocker clearly. The moment Jeff
+  # runs `claude setup-token` on this node (writing ~/.chump/oauth-token.json),
+  # farmer goes GREEN and this gate opens automatically — no restart needed.
+  if ! "$BIN" farmer status >/dev/null 2>&1; then
+    echo "[pixel-worker] farmer RED (oauth not fresh) — idle; run 'claude setup-token' on this node to arm the agent. sleep ${IDLE_S}s"
+    sleep "$IDLE_S"
+    continue
+  fi
 
   # Periodic state refresh (INFRA-3628): the node's local registry drifts from
   # origin/main. Reconcile every REFRESH_S by pulling fresh docs/gaps and syncing
