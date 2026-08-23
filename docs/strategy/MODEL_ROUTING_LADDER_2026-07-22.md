@@ -162,3 +162,106 @@ investigate-heavy gaps solo. Keep the flash → pro strike escalation and the Cl
 decompose/ceiling — they exist for exactly the class DeepSeek misses. The higher-
 leverage fix is upstream: **concrete gap specs with file pointers** convert far more
 of the backlog into DeepSeek-shippable work than any model swap.
+
+---
+
+## 2026-08-23: the upstream fix — a proactive gap-spec **enricher** (EFFECTIVE-446)
+
+EFFECTIVE-445 ended on the real lever: *"The higher-leverage fix is upstream:
+concrete gap specs with file pointers convert far more of the backlog into
+DeepSeek-shippable work than any model swap."* This is that fix, built.
+
+**What it is.** `chump-gap-enricher` (a standalone bin, sibling of
+`chump-gap-architect`; module `crates/chump-gap-store/src/maintenance/enricher.rs`)
+runs one proactive pass over a THIN open gap and rewrites it **in place** into a
+CONCRETE, file-pointed spec the cheap DeepSeek-v4-flash floor can ship. It never
+manufactures new gaps (anti-bloat) — it enriches the existing one.
+
+**Mechanism (detect → locate → rewrite → write-back):**
+
+1. **Detect** thin-spec gaps by reusing the crate's own signals, not a new
+   heuristic: `acceptance_criteria_is_vague` (empty / TODO / TBD AC), a
+   thin-description check, and a `has_file_pointer` scan (no path in the
+   description or AC). All three are the exact shapes flash spins on.
+2. **Locate** where the change lives via Almanac (`almanac search <query> --json`)
+   — the KEY new input. The `citation` (`path:line`) hits are the file pointer
+   thin gaps lack, and they ground the model so it names REAL files, not
+   hallucinated ones.
+3. **Rewrite** with ONE capable-model call (deepseek-v4-pro via the funded
+   OpenRouter ladder; Claude reserved for the genuinely hard ones) into:
+   named `target_files`, a specific `change_intent`, and concrete, testable
+   `acceptance_criteria`.
+4. **Write back** to the SAME gap via `GapStore::set_fields` (the original filer
+   context is preserved as trailing description).
+
+Both the LLM and Almanac boundaries are traits (mockable) so the pipeline is
+unit-tested with no live calls in CI. Modes: `--dry-run` (prompt only),
+`--preview` (call model, no write), `--apply` (write in place); `--scan --limit N`
+enriches the thinnest open gaps first.
+
+### Live proof (2026-08-23, CJ, real gaps + real Almanac + real deepseek-v4-pro)
+
+Five real thin open gaps (empty description, TODO-template AC, no file pointer —
+the same generic template EFFECTIVE-407 found on ~74 gaps) were run through the
+enricher. Before → after, in place:
+
+| Gap | Before (thin) | After enrichment (concrete) |
+|---|---|---|
+| INFRA-1660 | desc 0 chars, AC = `["TODO: what events emitted…"]`, no pointer | target `docs/process/CLAUDE_GOTCHAS.md`; 4 AC each a `grep -c 'git reset --soft' …` style check |
+| INFRA-2170 | same TODO template | targets `src/improve.rs`, `src/main.rs`, `scripts/ci/test-gap-backfill-external-repo.sh`; intent names `fix_pr_dispatch` (**grounded on the Almanac hit `src/improve.rs:2690`**); 3 `cargo test` / grep AC |
+| INFRA-2227 | same TODO template | target `scripts/dev/heartbeat-self-improve.sh`; AC = `grep` asserting the TODO-boilerplate writer is disabled |
+| INFRA-1636 | same TODO template | target `crates/chump-atomic-claim/src/atomic_claim.rs`; AC = a unit test mocking an open PR so `run_claim` refuses |
+
+The `change_intent` is grounded on Almanac citations (e.g. INFRA-2170 names the
+exact `fix_pr_dispatch` symbol from the returned `src/improve.rs:2690` hit) — the
+model is pointed at real code, not guessing.
+
+**Cost.** 12 deepseek-v4-pro enrichment calls (preview + apply), funded key
+(`is_byok:false`): **total $0.042, avg $0.0035/gap** (min $0.0009, max $0.0082).
+DeepSeek-v4 are reasoning models — a low `max_tokens` cap burns the whole budget
+on `reasoning_tokens` and returns empty `content` (2/5 came back empty at
+`max_tokens=4096`; all recovered at 8192). The enricher's default LLM command
+carries 4096 for headroom; the proof wrapper used 8192.
+
+### The enricher surfaced its own antagonist (unexpected, load-bearing finding)
+
+Every `--apply` succeeded at write-time (verified: `applied=true` and an
+immediate re-read showing the concrete, file-pointed spec in the store). But on a
+re-check minutes later, **all four enriched gaps had reverted to the identical
+TODO template** — a periodic rogue fleet process is actively rewriting gap AC back
+to the boilerplate faster than enrichment can stick. That is exactly the bug
+INFRA-2227's *own* enrichment fingered
+(`scripts/dev/heartbeat-self-improve.sh` writing `TODO: what events emitted…`),
+and it is the systemic reason ~74 gaps carry the identical template AC
+(EFFECTIVE-407). The permanent fix for the enricher's durability is to disable
+that reverter — which is now a concrete, file-pointed, flash-shippable gap
+(INFRA-2227), courtesy of the enricher itself.
+
+### Landing lift — before/after against the flash floor
+
+The flash-behavior ground truth is the live EFFECTIVE-445 receipts on this exact
+ladder:
+
+- **CREDIBLE-111** — xs, CONCRETE, single named-`.md` doc edit → flash LANDED
+  (str_replace, real diff, PR #4180, ~$0.01).
+- **CREDIBLE-120** — xs, thin-spec, **no file pointer** → flash SPUN (30 iters,
+  ~25 `grep_repo` + ~12 `read_file`, **0 edits**), ~$0.05.
+
+The enricher provably converts a gap from the **CREDIBLE-120 shape** (INFRA-1660
+as filed: empty description, TODO AC, no pointer) into the **CREDIBLE-111 shape**
+(named `docs/process/CLAUDE_GOTCHAS.md` + `grep`-verifiable AC) — the shape flash
+lands. That is the throughput unlock: the same cheap floor eats far more of the
+backlog once the spec, not the model, carries the file pointer.
+
+**The economics.** Enriching once at **~$0.0035** to turn a spin into a flash land
+(~$0.01–0.02) avoids: the ~$0.05 flash spin, the deepseek-pro escalation
+(~$0.01 give-up), and the Claude decompose/ceiling above it (dollars). A single
+prevented spin pays for ~15 enrichments; a single prevented Claude escalation pays
+for hundreds. The enrichment pass is the cheapest rung on the whole ladder and it
+is spent once, upstream, where it multiplies.
+
+**Status.** v1 shipped as a proven pass + the durable bin/module. Standing-organ
+wiring (periodic `--scan --apply` over the thinnest open gaps, host-agnostic) is
+the follow-up — blocked in practice until the AC-reverter (INFRA-2227) is killed — while it runs,
+it sweeps every enriched gap back to the template within minutes (observed on all
+four proof gaps), so killing it is the true prerequisite for durable enrichment.
