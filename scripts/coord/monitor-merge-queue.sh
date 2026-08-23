@@ -59,17 +59,27 @@ emit() {
 }
 
 _timeout_cmd() {
-    # Use GNU timeout / gtimeout / perl fallback on macOS.
+    # Job-control-based timeout, not GNU timeout(1)/gtimeout(1) — this
+    # helper's callers (gh_query_queued_workflows / gh_query_auto_merge_prs)
+    # pass `chump_gh`, a bash *function* sourced from lib/github.sh. GNU
+    # `timeout` execs a new process image and can't resolve a function name
+    # on PATH, so `timeout 8 chump_gh ...` fails immediately with rc=127
+    # ("No such file or directory") — silently turning every poll into
+    # queue_health_check_failed even though nothing actually timed out or
+    # errored. Backgrounding the call and racing a sleep-then-kill watcher
+    # against it works for both functions and binaries since it stays in
+    # the same shell (no exec).
     local secs="$1"
     shift
-    if command -v timeout &>/dev/null; then
-        timeout "$secs" "$@"
-    elif command -v gtimeout &>/dev/null; then
-        gtimeout "$secs" "$@"
-    else
-        # No timeout available — run directly (best-effort).
-        "$@"
-    fi
+    "$@" &
+    local target_pid=$!
+    ( sleep "$secs"; kill -TERM "$target_pid" 2>/dev/null ) &
+    local watcher_pid=$!
+    local rc=0
+    wait "$target_pid" 2>/dev/null || rc=$?
+    kill "$watcher_pid" 2>/dev/null
+    wait "$watcher_pid" 2>/dev/null
+    return "$rc"
 }
 
 gh_query_queued_workflows() {
