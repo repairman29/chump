@@ -1,7 +1,7 @@
 - id: RESILIENT-178
   domain: RESILIENT
   title: "CREDIBLE: workers inherit the operator's FULL file authority — iCloud/TCC prompt 2026-07-19 proves strays past repo; chumpd must constrain the worker file view (deny-by-default outside repo + worktrees)"
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -13,5 +13,7 @@
     - "regression test: fixture worker attempting a deny-listed read fails without prompting"
   notes: |
     Outcome: MISSION-010. Depends_on MISSION-051 cutover. Born from operator TCC prompt report.
+  closed_date: '2026-08-23'
+  closed_pr: 3726
   outcome_id: MISSION-010
 
