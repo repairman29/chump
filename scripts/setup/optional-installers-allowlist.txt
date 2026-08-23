@@ -121,6 +121,13 @@ install-ghost-gap-reaper-launchd.sh
 install-auto-deploy-launchd.sh
 install-checkout-sync-launchd.sh
 install-node-refresh-systemd.sh
+
+# reason: CREDIBLE-185 — node-specific free-tier cascade refresh installers
+# (systemd --user timer on closetjunky, runit service on the Pixel). They keep
+# CHUMP_FREE_TIER_PROVIDERS validated + $0 in ~/.chump/providers.env. Node
+# bring-up, not a fresh-bootstrap requirement; run manually per node.
+install-free-tier-refresh-systemd.sh
+install-free-tier-refresh-runit.sh
 install-opencode-harness.sh
 install-armed-pr-rebaser-launchd.sh
 install-keep-mergeable-organ-launchd.sh
