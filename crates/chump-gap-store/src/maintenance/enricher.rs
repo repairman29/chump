@@ -302,12 +302,21 @@ fn strip_fences(text: &str) -> String {
     body
 }
 
-/// Parse the capable model's reply into an [`EnrichedSpec`]. Accepts YAML or
-/// JSON (YAML is a JSON superset for `serde_yaml`), fenced or bare.
+/// Parse the capable model's reply into an [`EnrichedSpec`]. JSON-first, YAML
+/// fallback (EFFECTIVE-447): we now ask the model for a JSON object, whose
+/// double-quoted strings make colons/brackets in `change_intent` safe —
+/// serde_yaml choked on the model's `>-` folded scalar with unquoted colons
+/// (~33% of enrichments lost). JSON is tried first because serde_yaml parses
+/// JSON too but the reverse is not true; YAML fallback keeps older/looser
+/// replies working.
 pub fn parse_enriched_spec(text: &str) -> Result<EnrichedSpec, ArchitectError> {
     let body = strip_fences(text);
-    let v: serde_yaml::Value = serde_yaml::from_str(&body)
-        .map_err(|e| ArchitectError::Parse(format!("enriched-spec yaml: {e}")))?;
+    let v: serde_yaml::Value = match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(j) => serde_yaml::to_value(j)
+            .map_err(|e| ArchitectError::Parse(format!("enriched-spec json->value: {e}")))?,
+        Err(_) => serde_yaml::from_str(&body)
+            .map_err(|e| ArchitectError::Parse(format!("enriched-spec parse: {e}")))?,
+    };
     Ok(EnrichedSpec {
         target_files: coerce_str_list(v.get("target_files")),
         change_intent: v
@@ -408,11 +417,12 @@ prefer these; do NOT invent paths):\n\
 {hits}\n\
 \n\
 TASK\n\
-  Emit a YAML mapping (no prose, no code fence) with EXACTLY these keys:\n\
-    target_files: [list of 1-3 real repo-relative file paths this change touches]\n\
-    change_intent: >-\n\
-      One paragraph naming the specific edit: which function/section changes and how.\n\
-    acceptance_criteria: [list of 2-4 CONCRETE, individually-testable bullets]\n\
+  Emit ONE JSON object (no prose, no markdown fence) with EXACTLY these keys:\n\
+    \"target_files\": array of 1-3 real repo-relative file-path strings this change touches\n\
+    \"change_intent\": one-paragraph string naming the specific edit: which function/section changes and how\n\
+    \"acceptance_criteria\": array of 2-4 CONCRETE, individually-testable bullet strings\n\
+  Output valid JSON only — every string double-quoted, so colons, brackets and\n\
+  other punctuation inside a value can never break parsing.\n\
 \n\
 RULES\n\
   - target_files MUST be real paths — use the Almanac hits above when relevant.\n\
@@ -766,6 +776,30 @@ mod tests {
         let spec = parse_enriched_spec(raw).unwrap();
         assert_eq!(spec.target_files, vec!["src/foo.rs"]);
         assert_eq!(spec.acceptance_criteria.len(), 2);
+        assert!(spec.is_usable());
+    }
+
+    #[test]
+    fn parse_spec_json_with_colons_and_brackets() {
+        // EFFECTIVE-447 regression: the model now returns a JSON object. Its
+        // double-quoted change_intent contains colons and brackets that would
+        // break serde_yaml tokenization ("found character that cannot start any
+        // token"), but parse cleanly as JSON via the JSON-first path.
+        let raw = "{\"target_files\": [\"src/foo.rs\"], \"change_intent\": \"In fn bar: replace s[..n] with s.get(..n); note the [dep] block\", \"acceptance_criteria\": [\"cargo test bar_boundary passes\", \"no panic on multibyte input\"]}";
+        let spec = parse_enriched_spec(raw).unwrap();
+        assert_eq!(spec.target_files, vec!["src/foo.rs"]);
+        assert!(spec.change_intent.contains("s.get(..n)"));
+        assert_eq!(spec.acceptance_criteria.len(), 2);
+        assert!(spec.is_usable());
+    }
+
+    #[test]
+    fn parse_spec_fenced_json() {
+        // The model may still wrap the JSON in a ```json fence; strip_fences
+        // handles it and JSON-first parses the body.
+        let raw = "```json\n{\"target_files\": [\"a.rs\"], \"change_intent\": \"do: it\", \"acceptance_criteria\": [\"x works\"]}\n```";
+        let spec = parse_enriched_spec(raw).unwrap();
+        assert_eq!(spec.target_files, vec!["a.rs"]);
         assert!(spec.is_usable());
     }
 
