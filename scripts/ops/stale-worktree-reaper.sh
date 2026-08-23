@@ -511,20 +511,32 @@ process_worktree() {
     # own. `branch_has_own_commits` looks for that, and the grace window below
     # is the belt to its braces — either one alone would have prevented this.
     if [[ -n "$wt_branch" ]] && git merge-base --is-ancestor "$wt_branch" "$REMOTE/$BASE" 2>/dev/null; then
-        if ! branch_has_own_commits "$wt_branch"; then
-            info "  SKIP: $wt_branch is an ancestor of $REMOTE/$BASE but has NO commits of its own —"
-            info "        never merged, just never started. Reaping this deletes live work."
-            reaper_ambient_event "worktree_reap_skipped_empty_branch" \
-                "\"worktree\":\"$wt_path\",\"branch\":\"$wt_branch\"" 2>/dev/null || true
-            SKIPPED=$((SKIPPED+1)); return 0
-        fi
+        # RESILIENT-267 protected freshly-created, never-started worktrees from
+        # being misread as "merged" and reaped ~35 min after creation. The GRACE
+        # window is the correct guard for that risk: a worktree whose `.git` file
+        # is younger than NEW_WORKTREE_GRACE_MIN is too new to judge — empty
+        # branch or not — so check grace FIRST and let it cover both cases.
         if worktree_within_grace "$wt_path"; then
-            info "  SKIP: $wt_path is younger than ${NEW_WORKTREE_GRACE_MIN}min — too new to call merged"
+            info "  SKIP: $wt_path is younger than ${NEW_WORKTREE_GRACE_MIN}min — too new to judge"
             reaper_ambient_event "worktree_reap_skipped_too_new" \
                 "\"worktree\":\"$wt_path\",\"branch\":\"$wt_branch\",\"grace_min\":${NEW_WORKTREE_GRACE_MIN}" 2>/dev/null || true
             SKIPPED=$((SKIPPED+1)); return 0
         fi
-        reapable=1; reason="branch merged into $REMOTE/$BASE"
+        # RESILIENT-380: past the grace window, an empty branch (ancestor of the
+        # base with NO commits of its own) is NOT in-flight work — it is an
+        # abandoned, never-started worktree. The prior code skipped it
+        # UNCONDITIONALLY as "empty_branch" with no age ceiling, so hundreds of
+        # such worktrees piled up under .claude/worktrees/ (677 / 52G on
+        # closetjunky, /home at 88%) while the reaper only ever emitted
+        # worktree_reap_skipped_empty_branch, never reclaiming. The freshness
+        # gates above (fresh .git/index, lsof holders, recent logs/) already
+        # protect any worktree with a live writer, so a past-grace empty branch
+        # that reaches here is dead weight — reap it.
+        if ! branch_has_own_commits "$wt_branch"; then
+            reapable=1; reason="empty branch abandoned (no own commits, past ${NEW_WORKTREE_GRACE_MIN}min grace, no live writer)"
+        else
+            reapable=1; reason="branch merged into $REMOTE/$BASE"
+        fi
     elif [[ $remote_exists -eq 0 ]]; then
         reapable=1; reason="origin branch deleted"
     fi
