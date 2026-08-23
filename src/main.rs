@@ -198,6 +198,7 @@ mod pr_fix_clippy;
 mod pr_rescue; // INFRA-1714: closed-loop PR rescue (chump pr-rescue)
 mod pr_triage;
 mod precision_controller;
+mod promotion_decider; // INFRA-3663: recurrence-counted capability-promotion loop (advisory v0)
 pub use chump_preflight::preflight; // INFRA-1670: local CI mirror — chump preflight subcommand (extracted to crates/chump-preflight, EFFECTIVE-400)
 mod provider_bandit;
 mod provider_cascade;
@@ -1620,6 +1621,61 @@ async fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
+    }
+
+    // `chump promotion-decider run` (INFRA-3663) — recurrence-counted
+    // capability-promotion loop, advisory v0. Reads newline-delimited
+    // `{"candidate_id":"...","success":true|false}` recurrence observations
+    // (via `--input <file>` or stdin), decides an advisory verdict per
+    // candidate, and prints the report. Advisory only: no promotion is
+    // enacted here — a future v1 wires this into durable storage.
+    if args.get(1).map(String::as_str) == Some("promotion-decider")
+        && args.get(2).map(String::as_str) == Some("run")
+    {
+        let get_flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+        };
+        let text = match get_flag("--input") {
+            Some(path) => std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                eprintln!("promotion-decider run: could not read {path}: {e}");
+                std::process::exit(1);
+            }),
+            None => {
+                use std::io::Read;
+                let mut buf = String::new();
+                let _ = std::io::stdin().read_to_string(&mut buf);
+                buf
+            }
+        };
+        let observations = promotion_decider::parse_jsonl(&text);
+        let advisories = promotion_decider::decide(
+            &observations,
+            &promotion_decider::PromotionThresholds::default(),
+        );
+        if advisories.is_empty() {
+            println!("promotion-decider: no recurrence observations found");
+        } else {
+            for a in &advisories {
+                let verdict = if a.recommend_promote {
+                    "PROMOTE"
+                } else {
+                    "hold"
+                };
+                println!(
+                    "{:<24} {:<8} occurrences={} success={} ratio={:.0}% — {}",
+                    a.candidate_id,
+                    verdict,
+                    a.occurrences,
+                    a.success_count,
+                    a.success_ratio * 100.0,
+                    a.reason
+                );
+            }
+        }
+        return Ok(());
     }
 
     // `chump llm-complete` (INFRA-3461) — the SANCTIONED shell gateway to the
