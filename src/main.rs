@@ -15827,6 +15827,7 @@ async fn main() -> Result<()> {
                                     "inserted": report.inserted,
                                     "updated": report.updated,
                                     "skipped": report.skipped,
+                                    "ac_preserved": report.ac_preserved,
                                     "changed_ids": report.changed_ids,
                                 });
                                 println!("{}", summary);
@@ -15836,6 +15837,12 @@ async fn main() -> Result<()> {
                                     "{}chump gap sync --pull: {} inserted, {} updated, {} unchanged",
                                     prefix, report.inserted, report.updated, report.skipped
                                 );
+                                if report.ac_preserved > 0 {
+                                    println!(
+                                        "  INFRA-2227: preserved concrete acceptance_criteria on {} gap(s) (not reverted to YAML template)",
+                                        report.ac_preserved
+                                    );
+                                }
                                 if !report.changed_ids.is_empty() {
                                     println!("  changed: {}", report.changed_ids.join(", "));
                                 }
