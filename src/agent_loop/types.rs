@@ -697,7 +697,10 @@ mod parse_text_tool_call_tests {
         let text = "callα task";
         // Must return cleanly (no panic); a garbled line yields no tool call.
         let calls = parse_text_tool_calls(text, &tools);
-        assert!(calls.is_none(), "garbled multibyte line should not parse a call");
+        assert!(
+            calls.is_none(),
+            "garbled multibyte line should not parse a call"
+        );
     }
 }
 
