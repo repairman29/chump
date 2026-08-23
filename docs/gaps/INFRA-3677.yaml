@@ -1,13 +1,13 @@
 - id: INFRA-3677
   domain: INFRA
   title: "EFFECTIVE: build-speed — build chump release binary on free GH CI, nodes pull artifact instead of 30-min local cargo"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "A GitHub Actions workflow (.github/workflows/build-fleet-binaries.yml) builds `cargo build --release --bin chump` on free GH-hosted ubuntu-latest runners on every push to main, for x86_64-unknown-linux-gnu (CJ) and aarch64-unknown-linux-gnu (Oracle Ampere A1 / general ARM glibc), using GITHUB_TOKEN only (no external secrets) and Swatinem/rust-cache for warm builds."
-    - "Each target's binary is published as a per-SHA Actions artifact named chump-<target>-<full-sha>, addressable by head_sha so a node can fetch the binary for origin/main@<sha>. Native-target build verifies `chump --version` embeds the commit SHA; a sha256 accompanies each binary."
-    - "scripts/ops/node-refresh-chump.sh (RESILIENT-200/378 organ) fetches the prebuilt artifact for the current green-main SHA and installs it to the on-PATH location (~/.cargo/bin/chump), skipping the local cargo build entirely. Falls back to the local build when no artifact exists for the SHA (gh unavailable, unknown arch, integrity/version mismatch) — a node is never worse off."
+    - A GitHub Actions workflow (.github/workflows/build-fleet-binaries.yml) builds `cargo build --release --bin chump` on free GH-hosted ubuntu-latest runners on every push to main, for x86_64-unknown-linux-gnu (CJ) and aarch64-unknown-linux-gnu (Oracle Ampere A1 / general ARM glibc), using GITHUB_TOKEN only (no external secrets) and Swatinem/rust-cache for warm builds.
+    - Each target's binary is published as a per-SHA Actions artifact named chump-<target>-<full-sha>, addressable by head_sha so a node can fetch the binary for origin/main@<sha>. Native-target build verifies `chump --version` embeds the commit SHA; a sha256 accompanies each binary.
+    - scripts/ops/node-refresh-chump.sh (RESILIENT-200/378 organ) fetches the prebuilt artifact for the current green-main SHA and installs it to the on-PATH location (~/.cargo/bin/chump), skipping the local cargo build entirely. Falls back to the local build when no artifact exists for the SHA (gh unavailable, unknown arch, integrity/version mismatch) — a node is never worse off.
     - "scripts/ci/test-node-refresh-artifact-pull.sh proves: (a) artifact present → installed via pull with cargo NOT called + emits node_binary_refreshed method=artifact_pull; (b) artifact miss → falls back to local cargo build + emits node_binary_artifact_miss; (c) CHUMP_NODE_SKIP_ARTIFACT_PULL=1 forces the local build. Existing test-node-refresh-{install-path,green-main}.sh still pass."
     - "Does not break existing CI (verified aggregator + branch protection stay green): the new workflow is a separate file, the sudo apt-get step is guarded on runner.os == 'Linux' (test-workflow-linux-guard), and no new registry/parity gates are tripped."
   notes: |
@@ -20,4 +20,7 @@
     the chump-<target>-<sha> artifact, verifies --version + sha256, atomic-installs.
     Not a dup of INFRA-1741 (wontfix, end-user homebrew/cargo-install distribution) —
     this is per-SHA fleet-node binaries for our own nodes.
+  closed_date: '2026-08-23'
+  closed_pr: 4175
   outcome_id: MISSION-010
+
