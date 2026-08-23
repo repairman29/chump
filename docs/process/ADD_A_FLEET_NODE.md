@@ -47,6 +47,116 @@ On the **new box** (fresh Ubuntu Server 22.04/24.04/26.04, ≥4 GB RAM, ≥30 GB
 
 ---
 
+## 0.5 Get the box on the network — Ethernet vs Wi-Fi (🧑 + 🤖)
+
+> **Provenance:** DOC-098 / RESILIENT. Real incident 2026-08-09 — `closetjunky`
+> moved to a new location and had to be recovered by hand at the console because
+> this runbook assumed Ethernet. The operator hand-wrote a netplan file with five
+> independent defects (`wlan0` instead of the real `wlp4s0`, `version:2` with no
+> space, wrong indentation, an empty `renderer:`, and a lowercase SSID). The path
+> that finally worked: USB-tether from a Pixel for temporary uplink, SSH in, fix it
+> properly. This section exists so none of that has to be re-derived live again.
+
+**Branch by link class first.** Before you provision, know how the box gets its
+uplink and record it as `link_class` — an unstated Ethernet assumption is exactly
+what forced the console session above:
+
+| `link_class`  | Path |
+|---|---|
+| `ethernet`    | Plug in; DHCP just works. Skip to §1. |
+| `wifi`        | Do the Wi-Fi bringup below, **then** §1. |
+| `off-network` | Use the USB phone-tether recovery below to get temporary uplink, then treat it as `wifi`. |
+
+### Wi-Fi bringup (Ubuntu Server / netplan)
+
+1. **Find the *real* interface — never assume `wlan0`.** Predictable names
+   (`wlp4s0`, `wlo1`, …) are the norm on server images:
+   ```bash
+   ls /sys/class/net        # the wireless NIC is the wl* entry (wlp4s0, wlo1, …)
+   ```
+   Using `wlan0` when the kernel named it `wlp4s0` was defect #1 in the incident —
+   netplan silently configures a device that does not exist and the link never comes up.
+
+2. **Write the `wifis` stanza with correct nesting.** YAML indentation is
+   load-bearing here; every level below reproduces a real defect from the incident:
+   ```yaml
+   # /etc/netplan/60-wifi.yaml   (chmod 600 — netplan warns on a world-readable file)
+   network:
+     version: 2                 # "version: 2" needs the space after the colon
+     renderer: networkd         # never leave renderer empty
+     wifis:
+       wlp4s0:                  # the REAL interface name from step 1, not wlan0
+         dhcp4: true
+         access-points:
+           "MyNetwork-5G":      # SSID is CASE-SENSITIVE — match it byte-for-byte
+             password: "…"      # entered by the operator on the box, never in chat
+   ```
+
+3. **Validate before you apply.** `netplan generate` parses the file and renders the
+   backend config *without touching the live link* — it catches the nesting,
+   missing-space, and empty-`renderer` defects before they can strand you:
+   ```bash
+   sudo netplan generate     # exits non-zero on a malformed file; fix and re-run
+   ```
+
+### Failure signatures — what the logs actually say
+
+- **`4-Way Handshake failed ... reason=WRONG_KEY`** (in `journalctl -u
+  wpa_supplicant` or `dmesg`) means the **PSK is wrong** — a bad password or a
+  case-mismatched SSID, *not* a driver or hardware problem. Re-check the password and
+  the exact SSID casing before you touch anything else.
+- **An empty `iw dev <if> scan`** almost always means **`iw` is not installed** on the
+  server image (`sudo apt-get install -y iw`) — it does **NOT** mean the radio is dead.
+  Don't go chasing a phantom hardware fault on the strength of an empty scan.
+- **cloud-init will overwrite your hand-edits.** On cloud/preinstalled images cloud-init
+  regenerates `/etc/netplan/50-cloud-init.yaml` on every boot, silently reverting a file
+  you edited. Put your config in a **separately named** file (`60-wifi.yaml` — the higher
+  number merges later and wins) or disable the writer with
+  `/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg` containing
+  `network: {config: disabled}`.
+
+### Apply it without locking yourself out (headless-safe)
+
+You are almost always reconfiguring the **same link you are connected over**, so a bad
+`netplan apply` drops your SSH session with no way back in. Apply detached, with an
+auto-rollback timer that restores the last-known-good config if you don't confirm in time:
+
+```bash
+sudo cp /etc/netplan/60-wifi.yaml /root/60-wifi.yaml.bak
+# detach so a dropped SSH session can't kill the apply mid-flight
+sudo setsid bash -c 'netplan apply' &
+# safety net: if you can't SSH back in and drop the sentinel within 120s, the old
+# config is restored and the link returns on the path you already know works
+sudo bash -c '(sleep 120; [ -f /run/netplan-ok ] || { cp /root/60-wifi.yaml.bak /etc/netplan/60-wifi.yaml; netplan apply; }) &'
+# ...once you have reconnected on the new link, cancel the rollback:
+sudo touch /run/netplan-ok
+```
+
+`netplan try` gives the same auto-revert idea interactively (reverts after 120 s unless
+you press Enter), but it needs a live TTY — the detached pattern above is the headless
+equivalent for an SSH-only box.
+
+### Off-network recovery — USB phone tether (zero typing)
+
+When the box has **no** working uplink (bad Wi-Fi config, moved location, dead switch
+port) and you cannot SSH in at all, the fastest recovery needs no console typing at all —
+tether an Android phone over USB:
+
+1. Plug the phone into the box with a **data** cable and enable **USB tethering**
+   (Settings → Network & internet → Hotspot & tethering → USB tethering).
+2. The box comes up with a `usb0` interface and DHCP from the phone — it is back online
+   immediately, no netplan edits required.
+3. SSH in over the tether (or over the tailnet once §3 is up) and fix the Wi-Fi config
+   properly using the steps above.
+
+> **Gotcha — charge-only cables silently fail to tether.** A power-only USB cable brings
+> up nothing and gives no error: the phone simply never activates the tethering toggle.
+> Confirm you are using a known **data** cable before concluding the tether is broken.
+
+Once the box has any uplink, continue to §1.
+
+---
+
 ## 1. Provision the box (🤖, ~15–40 min)
 
 ```bash
