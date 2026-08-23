@@ -8,9 +8,13 @@ cd "$HOME/Projects/chump" 2>/dev/null || exit 1
 echo "═══════════ BOARD TICK  $(date -u +%FT%TZ) ═══════════"
 echo "ORDER 0 · RIBBON IS THE ONLY BAR. Everything else parked. For every action ask:"
 echo "         'does this move the factory toward a HANDS-OFF Trek from a CLEAN install?' — if NO → PARK IT."
-# --- read the board (regenerate the collector from its branch) ---
-git fetch origin infra-vital-signs-collector -q 2>/dev/null || true
-git show origin/infra-vital-signs-collector:scripts/ops/vital-signs.sh > /home/jeff/.chump/_vs.sh 2>/dev/null && chmod +x /home/jeff/.chump/_vs.sh && bash /home/jeff/.chump/_vs.sh >/dev/null 2>&1 || true
+# --- read the board (regenerate the collector from MAIN, where the fixes are merged) ---
+# was: origin/infra-vital-signs-collector (a STALE feature branch) — sourcing the
+# collector from there REGENERATED the board with the OLD collector every tick and
+# clobbered merged_not_running true value (95.8) to spurious null. main is the source
+# of truth after merge; read it so the board reads TRUE. (honest-instrument fix)
+git fetch origin main -q 2>/dev/null || true
+git show origin/main:scripts/ops/vital-signs.sh > /home/jeff/.chump/_vs.sh 2>/dev/null && chmod +x /home/jeff/.chump/_vs.sh && bash /home/jeff/.chump/_vs.sh >/dev/null 2>&1 || true
 echo "ORDER 1 · READ THE BOARD (measure to treat, not admire):"
 jq -r '.signs[]|select(.status=="red" or .status=="unknown")|"         [\(.status|ascii_upcase)] \(.name) = \(.value) \(.unit)"' /home/jeff/.chump/vital-signs.json 2>/dev/null || echo "         (board unreadable — instrument-repair owner must fix)"
 OLD=$(gh pr list --state open --json createdAt --jq 'sort_by(.createdAt)|.[0].createdAt|((now-(fromdate))/60)|floor' 2>/dev/null)
