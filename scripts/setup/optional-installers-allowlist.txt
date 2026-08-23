@@ -161,3 +161,10 @@ install-installer-audit-launchd.sh
 install-integrator-daemon-systemd.sh
 install-ceo-shadow-launchd.sh
 install-node-housekeeping.sh
+
+# reason: RESILIENT-376 — Termux/runit installer that wires the Pixel 8 Pro's
+# durable standing fleet worker (nats-bridge + pixel-worker runit organs).
+# Node-specific, opt-in: only an aarch64 Termux node joining the shared queue
+# runs it; not a fresh-bootstrap requirement for the primary fleet. Run
+# manually per docs/architecture/PIXEL_NODE.md.
+install-pixel-standing-worker.sh
