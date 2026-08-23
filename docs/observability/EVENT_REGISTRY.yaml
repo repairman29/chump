@@ -3339,6 +3339,22 @@ events:
     fields_required: [ts, kind, pr, gap, ship_pr]
     notes: structural orphan closing at write time; complements orphan-pr-closer.sh sweeper (INFRA-1139)
 
+  - kind: stale_yaml_reconciled_at_ship
+    effect_metric: self
+    emitter: src/main.rs (ZERO-WASTE-059, chump gap ship)
+    trigger: other recently-done gaps whose docs/gaps/<ID>.yaml was missing or non-done reconciled in the same ship op as ship_gap
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, ship_gap, count, ids]
+    notes: eliminates standalone "reconcile stale gap" PRs by self-healing the queue on every ship instead of accumulating drift
+
+  - kind: ac_hygiene_checked_at_ship
+    effect_metric: self
+    emitter: src/main.rs (ZERO-WASTE-059, chump gap ship)
+    trigger: non-blocking scan of open pickable gaps for vague/missing acceptance_criteria, run on every ship
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, ship_gap, vague_count]
+    notes: advisory surface only; chump gap audit-priorities remains the enforcement point
+
   - kind: orphan_pr_close_failed
     effect_metric: self
     emitter: scripts/coord/orphan-pr-closer.sh --apply

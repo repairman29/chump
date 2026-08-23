@@ -11602,6 +11602,91 @@ async fn main() -> Result<()> {
                                 gap_id
                             ),
                         }
+                        // ZERO-WASTE-059: fully manage the queue in the SAME ship
+                        // op — reconcile any other recently-done gap whose
+                        // per-file YAML drifted out of sync (missing or
+                        // non-`done`), instead of letting it accumulate into a
+                        // standalone "reconcile stale gap" PR later. Bounded scan
+                        // keeps this cheap; override via
+                        // CHUMP_GAP_SHIP_RECONCILE_SCAN_LIMIT (0 disables).
+                        let reconcile_limit: i64 = std::env::var("CHUMP_GAP_SHIP_RECONCILE_SCAN_LIMIT")
+                            .ok()
+                            .and_then(|s| s.trim().parse().ok())
+                            .unwrap_or(20);
+                        if reconcile_limit > 0 {
+                            match store.reconcile_stale_done_yaml(
+                                &repo_root,
+                                &gap_id,
+                                reconcile_limit,
+                            ) {
+                                Ok(reconciled) if !reconciled.is_empty() => {
+                                    println!(
+                                        "  reconciled {} stale per-file gap YAML(s): {}",
+                                        reconciled.len(),
+                                        reconciled.join(", ")
+                                    );
+                                    let ts =
+                                        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                                    let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                                    let ids_json = serde_json::to_string(&reconciled)
+                                        .unwrap_or_else(|_| "[]".to_string());
+                                    let event = format!(
+                                        "{{\"ts\":\"{ts}\",\"kind\":\"stale_yaml_reconciled_at_ship\",\
+                                         \"ship_gap\":\"{gap_id}\",\"count\":{},\"ids\":{ids_json}}}\n",
+                                        reconciled.len()
+                                    );
+                                    let _ = std::fs::OpenOptions::new()
+                                        .append(true)
+                                        .create(true)
+                                        .open(&ambient_log)
+                                        .and_then(|mut f| {
+                                            use std::io::Write;
+                                            f.write_all(event.as_bytes())
+                                        });
+                                }
+                                Ok(_) => {}
+                                Err(e) => eprintln!(
+                                    "chump gap ship: warning — stale-YAML reconcile scan failed: {e:#}"
+                                ),
+                            }
+                        }
+                        // ZERO-WASTE-059: AC-hygiene check runs on every ship —
+                        // surface (non-blocking) any currently-pickable open gap
+                        // with vague/missing acceptance_criteria, so hygiene is a
+                        // continuous side-effect of shipping rather than a
+                        // separate audit-priorities pass someone has to remember
+                        // to run.
+                        if let Ok(open_gaps) = store.list(Some("open")) {
+                            let vague: Vec<&str> = open_gaps
+                                .iter()
+                                .filter(|g| {
+                                    gap_store::acceptance_criteria_is_vague(&g.acceptance_criteria)
+                                })
+                                .map(|g| g.id.as_str())
+                                .collect();
+                            if !vague.is_empty() {
+                                eprintln!(
+                                    "  AC-hygiene: {} open gap(s) have vague/missing acceptance_criteria \
+                                     (see: chump gap audit-priorities)",
+                                    vague.len()
+                                );
+                                let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                                let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                                let event = format!(
+                                    "{{\"ts\":\"{ts}\",\"kind\":\"ac_hygiene_checked_at_ship\",\
+                                     \"ship_gap\":\"{gap_id}\",\"vague_count\":{}}}\n",
+                                    vague.len()
+                                );
+                                let _ = std::fs::OpenOptions::new()
+                                    .append(true)
+                                    .create(true)
+                                    .open(&ambient_log)
+                                    .and_then(|mut f| {
+                                        use std::io::Write;
+                                        f.write_all(event.as_bytes())
+                                    });
+                            }
+                        }
                         return Ok(());
                     }
                     Err(e) => {

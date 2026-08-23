@@ -2842,6 +2842,52 @@ impl GapStore {
             }
         }
     }
+
+    /// ZERO-WASTE-059: sweep the most-recently-shipped gaps for a state.db
+    /// vs. per-file-YAML mismatch (state.db says `done`, `docs/gaps/<ID>.yaml`
+    /// is missing or still shows a non-`done` status) and reconcile every hit
+    /// with `dump_per_file_single`, IN THE SAME `chump gap ship` op that just
+    /// closed `exclude_id`.
+    ///
+    /// This exists because `dump_per_file_single` (ZERO-WASTE-056) only ever
+    /// wrote the YAML for the *one* gap being shipped — any other gap that
+    /// went stale (race, pre-056 ship, hand-edit) stayed stale until someone
+    /// noticed and opened a standalone "reconcile stale gap" PR. Folding the
+    /// sweep into every ship call means the queue self-heals continuously
+    /// instead of accumulating drift that needs its own PR to fix.
+    ///
+    /// Bounded by `scan_limit` (most-recently-closed first) so ship stays
+    /// fast even on a large `done` backlog. Returns the IDs actually
+    /// rewritten (skips already-consistent gaps and `exclude_id` itself).
+    pub fn reconcile_stale_done_yaml(
+        &self,
+        repo_root: &std::path::Path,
+        exclude_id: &str,
+        scan_limit: i64,
+    ) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id FROM gaps WHERE status='done' AND id != ?1
+             ORDER BY CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE 0 END DESC
+             LIMIT ?2",
+        )?;
+        let ids: Vec<String> = stmt
+            .query_map(params![exclude_id, scan_limit], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let out_dir = repo_root.join("docs/gaps");
+        let mut reconciled = Vec::new();
+        for id in ids {
+            let stale = match load_gap_from_yaml(repo_root, &id) {
+                Ok(Some(yg)) => yg.status != "done",
+                Ok(None) => true,
+                Err(_) => true,
+            };
+            if stale && self.dump_per_file_single(&id, &out_dir).unwrap_or(false) {
+                reconciled.push(id);
+            }
+        }
+        Ok(reconciled)
+    }
 }
 
 /// Mutable-field bundle for `chump gap set`. None means "leave unchanged".
