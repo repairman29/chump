@@ -4208,6 +4208,23 @@ async fn handle_chat(
                         .map(|_| format!("Added to watchlist \"{}\": {}", list, item))
                 }
             }
+        } else if let Some(pr_str) = message.strip_prefix("/explain ").map(|s| s.trim()) {
+            if pr_str.is_empty() {
+                None
+            } else {
+                let pr_number: u64 = match pr_str.trim_start_matches('#').parse() {
+                    Ok(n) => n,
+                    Err(_) => Some(format!(
+                        "Could not parse PR number from \"{pr_str}\". Usage: /explain #123"
+                    )),
+                };
+                // If parse failed we already returned Some above.
+                // Otherwise call pr_explain::run_to_string.
+                match pr_explain::run_to_string(pr_number) {
+                    Ok(text) => Some(text),
+                    Err(e) => Some(format!("explain-block failed: {e}")),
+                }
+            }
         } else {
             None
         };

@@ -300,6 +300,21 @@ pub fn run(pr_number: u64, json_out: bool) -> Result<()> {
     Ok(())
 }
 
+/// Same as [`run`] but returns the rendered text as a String instead of printing.
+/// Used by the web server quick-reply belt-and-suspenders.
+pub fn run_to_string(pr_number: u64) -> Result<String> {
+    let rollup_provider = gh_rollup_provider();
+    let fleet_provider = gh_fleet_failing_provider();
+    let rollup = rollup_provider(pr_number);
+    if rollup.is_empty() {
+        return Err(anyhow!(
+            "no statusCheckRollup for PR #{pr_number} — does it exist? are you authenticated?"
+        ));
+    }
+    let report = build_report(pr_number, rollup, &fleet_provider);
+    Ok(render_text(&report))
+}
+
 pub fn render_text(r: &ExplainReport) -> String {
     let mut s = String::new();
     s.push_str(&format!(
