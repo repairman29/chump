@@ -30,7 +30,14 @@ set -uo pipefail
 
 export HOME="${HOME:-/root}"
 export USER="${USER:-root}"
-export PATH="/root/.local/bin:/root/.cargo/bin:/root/bin:/usr/local/bin:/usr/bin:/bin"
+# RESILIENT-376: host-aware PATH. systemd's minimal env lacks PATH, so we set a
+# sane default — but a hardcoded /usr/bin:/bin has NO Termux binaries (curl,
+# python3, git, even bash live under $PREFIX/bin on Android/Termux), which broke
+# the auth-status.sh free-tier probe (curl -> 000 -> false RED) and every other
+# coreutils call on the Pixel node. Lead with $PREFIX/bin + $HOME/.cargo/bin when
+# present, keep the Linux-root defaults as fallback, and preserve any inherited
+# PATH. On Helsinki (PREFIX unset) the root paths still win first — unchanged.
+export PATH="${PREFIX:+$PREFIX/bin:}$HOME/.cargo/bin:$HOME/.local/bin:/root/.local/bin:/root/.cargo/bin:/root/bin:/usr/local/bin:/usr/bin:/bin${PATH:+:$PATH}"
 
 REPO_ROOT="${CHUMP_REPO:-/root/Projects/chump}"
 LOCK_DIR="$REPO_ROOT/.chump-locks"
