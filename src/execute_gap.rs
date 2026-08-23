@@ -338,12 +338,24 @@ struct FreeTierProviderSpec {
 }
 
 /// Parse `CHUMP_FREE_TIER_PROVIDERS` (format: `model@base_url:KEY_ENV,...`)
-/// or return the built-in Groq → Cerebras → NVIDIA default order.
+/// or return the built-in default rotation.
+///
+/// Default order is cross-provider on purpose so a Groq 429/exhaustion fails
+/// over to a *different* provider (OpenRouter) rather than a second Groq model
+/// that shares the same daily quota. Live-verified 2026-08-22:
+///   * `openai/gpt-oss-120b` @ Groq                  → 200, real content
+///   * `nvidia/nemotron-3-super-120b-a12b:free` @ OpenRouter → 200, real content
+///   * `openai/gpt-oss-20b`  @ Groq                  → 200, real content (fast)
+/// The previous defaults (Groq `llama-3.3-70b-versatile`, Cerebras
+/// `llama-3.3-70b`, NVIDIA `meta/llama-3.3-70b-instruct`) were all dead:
+/// Groq returned 404 model_not_found (decommissioned), Cerebras 402
+/// payment_required, NVIDIA unusable latency — a fresh checkout with no
+/// `.env` override got a 100%-dead free-tier rotation.
 fn parse_free_tier_providers() -> Vec<FreeTierProviderSpec> {
     const DEFAULTS: &str = concat!(
-        "llama-3.3-70b-versatile@https://api.groq.com/openai/v1:GROQ_API_KEY,",
-        "llama-3.3-70b@https://api.cerebras.ai/v1:CEREBRAS_API_KEY,",
-        "meta/llama-3.3-70b-instruct@https://integrate.api.nvidia.com/v1:NVIDIA_API_KEY"
+        "openai/gpt-oss-120b@https://api.groq.com/openai/v1:GROQ_API_KEY,",
+        "nvidia/nemotron-3-super-120b-a12b:free@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
+        "openai/gpt-oss-20b@https://api.groq.com/openai/v1:GROQ_API_KEY"
     );
     let raw = std::env::var("CHUMP_FREE_TIER_PROVIDERS").unwrap_or_else(|_| DEFAULTS.to_string());
     raw.split(',')
@@ -2098,13 +2110,14 @@ mod tests {
             specs[0].base_url.contains("groq.com"),
             "first default must be Groq"
         );
+        assert_eq!(specs[0].model, "openai/gpt-oss-120b");
         assert!(
-            specs[1].base_url.contains("cerebras.ai"),
-            "second default must be Cerebras"
+            specs[1].base_url.contains("openrouter.ai"),
+            "second default must be OpenRouter (cross-provider failover)"
         );
         assert!(
-            specs[2].base_url.contains("nvidia.com"),
-            "third default must be NVIDIA"
+            specs[2].base_url.contains("groq.com"),
+            "third default must be Groq (fast within-provider fallback)"
         );
     }
 
