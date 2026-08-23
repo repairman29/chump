@@ -181,6 +181,51 @@ for the regression guard.
 
 ---
 
+## Case study: the AUTH_DEAD-spam sequence (RESILIENT-113)
+
+The 2026-06-05 AUTH_DEAD-spam incident is a sharper teaching example of the
+same lesson as the sccache case study: **agents stop at the first plausible
+theory and run with it.** The session shipped three wrong theories before
+finding the durable fix — each one a band-aid that would have unblocked *this*
+session while leaving the real breakage for the next agent.
+
+**Theory 1 (band-aid, filed as RESILIENT-115 #3089):** "farmer.sh should do a
+shallow auth check and tell the operator to work around it." Filed from 4 lines
+of source — a surface-level patch that routes *around* the failure instead of
+fixing it. The DURABLE_FIX_DOCTRINE.md self-check would have caught this at
+theory 1 if the session had actually run it.
+
+**Theory 2 (wrong diagnosis):** "Keychain has no Claude entry." Refuted by
+running `security dump-keychain | grep -i claude` — the entries were present
+and valid. The session jumped to a Keychain theory without verifying the
+premise.
+
+**Theory 3 (wrong diagnosis):** "Rename Keychain service from `Claude
+Code-credentials` to `Claude Safe Storage`." Refuted by reading the 24-char
+base64 blob — it was Electron's `safeStorage` encryption key, not OAuth tokens.
+The session was about to mutate Keychain state based on a misread of the data.
+
+**Theory 4 (the durable fix, RESILIENT-113 #3090):** "`farmer.sh check_auth`
+doesn't know about the `api-key` fallback path." Empirically verified: the
+check only probed OAuth, so a valid `ANTHROPIC_API_KEY` in `.env` was ignored
+and the script reported auth dead. The durable fix taught `check_auth` to try
+the API-key path when OAuth is absent, closing the gap at the source instead of
+patching around it.
+
+**The lesson:** All four theories were *plausible*. The first three were wrong.
+The session shipped each one as a fix without verifying the causal chain — the
+same pattern as `RUSTC_WRAPPER=` in the sccache incident. A pre-workaround
+self-check at Theory 1 would have forced the session to ask "does this fix the
+cause, or hide it?" and "who inherits the breakage?" — and the answer would
+have been "every other agent whose auth check silently ignores the API-key
+fallback."
+
+**Cross-ref:** Durable fix — [RESILIENT-113 #3090](https://github.com/example/resilient-113/pull/3090).
+Band-aid (closed, superseded) — [RESILIENT-115 #3089](https://github.com/example/resilient-115/pull/3089).
+Regression guard: `scripts/ci/test-farmer-check-auth.sh`.
+
+---
+
 ## See also
 
 - [`REALITY_CHECK.md`](./REALITY_CHECK.md) (CREDIBLE-090) — signal ≠ outcome; the
