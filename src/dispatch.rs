@@ -508,9 +508,35 @@ fn spawn_local(ws: &Workspace, prompt: &str) -> Result<()> {
     Ok(())
 }
 
+/// Builds the argv/stdio skeleton for a `claude -p` headless invocation,
+/// with no prompt, cwd, or credential env attached yet — split out from
+/// [`spawn_headless`] purely so the arg-construction is unit-testable
+/// without actually spawning a process (INFRA-3675).
+///
+/// INFRA-3675: the prompt is deliberately NEVER passed as a `-p <value>`
+/// argv token here. Every dispatched prompt is prefixed with the
+/// DISPATCH_RULES doc, whose YAML frontmatter starts with `---`; the claude
+/// CLI's arg parser rejects a `-p` value beginning with `-` as an
+/// unrecognized option ("error: unknown option '---...'"), which failed
+/// 100% of headless dispatches in production. Reproduced + fixed by testing
+/// directly against the claude binary: passing the same content via stdin
+/// (with `-p` given no value) clears arg parsing cleanly — this is the
+/// documented `cat file | claude -p` pattern. Callers must write the prompt
+/// to `child.stdin` after spawning and close it (EOF) to signal completion.
+fn headless_command_skeleton(model: &str) -> Command {
+    let mut cmd = Command::new("claude");
+    cmd.arg("-p").arg("--dangerously-skip-permissions");
+    cmd.stdin(std::process::Stdio::piped());
+    if !model.is_empty() {
+        cmd.args(["--model", model]);
+    }
+    cmd
+}
+
 /// Phase 2 — `WorkBackend::Headless`. Spawns
-/// `claude -p <prompt> --dangerously-skip-permissions [--model <model>]`,
-/// inherits stdio so the operator sees progress inline, and waits for exit.
+/// `claude -p --dangerously-skip-permissions [--model <model>]` with the
+/// prompt written to stdin (see [`headless_command_skeleton`]), inherits
+/// stdout/stderr so the operator sees progress inline, and waits for exit.
 fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     let opts = ws.opts();
     if prompt.trim().is_empty() {
@@ -519,18 +545,12 @@ fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
             opts.gap_id
         );
     }
-    let mut cmd = Command::new("claude");
-    cmd.arg("-p")
-        .arg(prompt)
-        .arg("--dangerously-skip-permissions");
+    let mut cmd = headless_command_skeleton(model);
     // RESILIENT-362: the claude CLI refuses `--dangerously-skip-permissions`
     // under root ("cannot be used with root/sudo privileges") unless IS_SANDBOX=1
     // marks an intentional sandboxed root env. Fleet root nodes (helsinki runs as
     // root) need this or EVERY headless dispatch aborts with claude -p exit 1.
     cmd.env("IS_SANDBOX", "1");
-    if !model.is_empty() {
-        cmd.args(["--model", model]);
-    }
     // Inherit env so spawned process sees CLAUDE_SESSION_ID / CHUMP_SESSION_ID
     // / lease metadata. Inherit stdio so the operator can see progress.
     // INFRA-302 blocker (3): cwd is the FRESH WORKTREE, NOT opts.repo_root —
@@ -544,9 +564,21 @@ fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     for (k, v) in active_auth.env_pairs() {
         cmd.env(k, v);
     }
-    let child = cmd
+    let mut child = cmd
         .spawn()
         .context("spawn `claude -p` (is the claude CLI on PATH?)")?;
+    {
+        use std::io::Write as _;
+        let mut stdin = child
+            .stdin
+            .take()
+            .context("claude -p stdin was not piped")?;
+        stdin
+            .write_all(prompt.as_bytes())
+            .context("writing prompt to claude -p stdin")?;
+        // Dropping `stdin` here closes the pipe (EOF), which is how `claude
+        // -p` knows the prompt is complete and starts working.
+    }
     let status = wait_with_hang_detection(child, "claude -p", opts.gap_id)
         .context("waiting for claude -p to complete")?;
     if !status.success() {
@@ -1178,6 +1210,37 @@ mod tests {
             }
             _ => panic!("expected Headless"),
         }
+    }
+
+    /// INFRA-3675 regression guard: the prompt must never become a `-p
+    /// <value>` argv token, because the DISPATCH_RULES doc it's built from
+    /// starts with YAML frontmatter (`---`), which the claude CLI's arg
+    /// parser rejects as an unrecognized option. `headless_command_skeleton`
+    /// takes no `prompt` parameter at all, so this asserts the built
+    /// command's args are exactly the fixed flag set — structurally
+    /// impossible for a prompt string to leak into argv this way.
+    #[test]
+    fn headless_command_skeleton_never_puts_prompt_in_argv() {
+        let cmd = headless_command_skeleton("claude-sonnet-4-6");
+        let args: Vec<&str> = cmd.get_args().map(|a| a.to_str().unwrap()).collect();
+        assert_eq!(
+            args,
+            vec![
+                "-p",
+                "--dangerously-skip-permissions",
+                "--model",
+                "claude-sonnet-4-6"
+            ],
+            "headless command args changed shape — verify no caller reintroduces \
+             `.arg(prompt)` after `-p`, which broke 100% of dispatches (INFRA-3675)"
+        );
+        // No model → still exactly the fixed two flags, no trailing empty arg.
+        let cmd_no_model = headless_command_skeleton("");
+        let args_no_model: Vec<&str> = cmd_no_model
+            .get_args()
+            .map(|a| a.to_str().unwrap())
+            .collect();
+        assert_eq!(args_no_model, vec!["-p", "--dangerously-skip-permissions"]);
     }
 
     #[test]
