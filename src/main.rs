@@ -11602,6 +11602,58 @@ async fn main() -> Result<()> {
                                 gap_id
                             ),
                         }
+                        // ZERO-WASTE-059: manage the queue in the SAME ship op —
+                        // dedup-check (auto-close near-duplicate open gaps this
+                        // PR also resolved) + AC-hygiene (advisory scan) — so a
+                        // separate "reconcile stale gap record" PR is never
+                        // needed later.
+                        {
+                            if let Ok(Some(shipped)) = store.get(&gap_id) {
+                                let dedup_threshold: f64 =
+                                    std::env::var("CHUMP_GAP_SHIP_DEDUP_THRESHOLD")
+                                        .ok()
+                                        .and_then(|v| v.parse().ok())
+                                        .unwrap_or(0.85);
+                                match store.dedup_autoclose_at_ship(
+                                    &gap_id,
+                                    &shipped.title,
+                                    closed_pr,
+                                    dedup_threshold,
+                                ) {
+                                    Ok(dupes) if !dupes.is_empty() => {
+                                        for (dup_id, dup_title, score) in &dupes {
+                                            println!(
+                                                "  dedup-closed {dup_id} (score {score:.2}) — \"{dup_title}\""
+                                            );
+                                            if let Ok(true) =
+                                                store.dump_per_file_single(dup_id, &gaps_dir)
+                                            {
+                                                println!(
+                                                    "    synced docs/gaps/{}.yaml (status=done)",
+                                                    dup_id
+                                                );
+                                            }
+                                        }
+                                    }
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        eprintln!("chump gap ship: dedup-check warning: {e:#}")
+                                    }
+                                }
+                            }
+                            match store.ac_hygiene_scan() {
+                                Ok(vague) if !vague.is_empty() => {
+                                    println!(
+                                        "  AC-hygiene: {} open gap(s) with vague acceptance criteria",
+                                        vague.len()
+                                    );
+                                }
+                                Ok(_) => {}
+                                Err(e) => {
+                                    eprintln!("chump gap ship: AC-hygiene check warning: {e:#}")
+                                }
+                            }
+                        }
                         return Ok(());
                     }
                     Err(e) => {

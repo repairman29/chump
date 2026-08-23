@@ -2330,6 +2330,112 @@ impl GapStore {
         Ok(())
     }
 
+    /// ZERO-WASTE-059: run in the SAME operation as `ship()` — auto-closes
+    /// other OPEN gaps whose title is a near-duplicate of the gap just
+    /// shipped (title_jaccard >= `threshold`). This is the exact class of
+    /// waste behind the standalone "reconcile stale gap record — already
+    /// shipped via #N" PRs: a gap's underlying work lands via a DIFFERENT
+    /// gap's PR, and nobody notices until a later session runs
+    /// `gap audit-priorities`'s `open_with_closed_pr` check by hand and
+    /// files a whole PR just to flip status. Folding the check into every
+    /// ship means the same PR that resolved the work also closes every
+    /// gap it satisfied.
+    ///
+    /// Deliberately skips `ship()`'s proof-of-merge / git-fetch machinery:
+    /// the PR that resolves these duplicates is the SAME PR that just
+    /// shipped `shipped_gap_id`, already verified by that call. Requires
+    /// `closed_pr` to be `Some` — without a concrete PR number there is
+    /// nothing to attribute the closure to, so no gap is touched.
+    ///
+    /// Returns `(id, title, score)` for every gap auto-closed.
+    pub fn dedup_autoclose_at_ship(
+        &self,
+        shipped_gap_id: &str,
+        shipped_title: &str,
+        closed_pr: Option<i64>,
+        threshold: f64,
+    ) -> Result<Vec<(String, String, f64)>> {
+        let Some(pr) = closed_pr else {
+            return Ok(Vec::new());
+        };
+
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title FROM gaps WHERE status = 'open' AND id != ?1")?;
+        let candidates: Vec<(String, String)> = stmt
+            .query_map(params![shipped_gap_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        drop(stmt);
+
+        let mut closed = Vec::new();
+        for (id, title) in candidates {
+            let score = Self::title_jaccard(shipped_title, &title);
+            if score < threshold {
+                continue;
+            }
+            self.set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("done".to_string()),
+                    closed_pr: Some(pr),
+                    closed_date: Some(unix_to_iso_date(unix_now())),
+                    ..Default::default()
+                },
+            )?;
+            let _ = self.append_notes_for_gap(
+                &id,
+                &format!(
+                    "ZERO-WASTE-059: auto-closed at ship time as a near-duplicate of \
+                     {shipped_gap_id} (title similarity {score:.2}) — PR #{pr} resolved both; \
+                     no standalone reconcile PR needed."
+                ),
+            );
+            {
+                use std::io::Write as _;
+                let ts = unix_to_iso_full(unix_now());
+                let line = format!(
+                    "{{\"ts\":\"{ts}\",\"kind\":\"gap_dedup_autoclosed_at_ship\",\
+                     \"gap_id\":\"{id}\",\"shipped_gap_id\":\"{shipped_gap_id}\",\
+                     \"closed_pr\":{pr},\"score\":{score:.3}}}\n"
+                );
+                let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+                let _ = std::fs::create_dir_all(amb.parent().unwrap_or(&self.repo_root));
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&amb)
+                {
+                    let _ = f.write_all(line.as_bytes());
+                }
+            }
+            closed.push((id, title, score));
+        }
+        Ok(closed)
+    }
+
+    /// ZERO-WASTE-059: advisory AC-hygiene sweep run in the SAME operation
+    /// as `ship()` — counts/returns open gaps whose acceptance_criteria is
+    /// vague (empty / all-TODO placeholder), so queue AC quality is visible
+    /// on every ship instead of only when `chump gap audit-priorities`
+    /// happens to be run by hand. Read-only: never mutates gaps.
+    pub fn ac_hygiene_scan(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, CAST(acceptance_criteria AS TEXT) FROM gaps WHERE status='open'",
+        )?;
+        let vague: Vec<String> = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .filter(|(_, ac)| acceptance_criteria_is_vague(ac))
+            .map(|(id, _)| id)
+            .collect();
+        Ok(vague)
+    }
+
     /// RESILIENT-119: first-class triage-close for gaps that will never ship
     /// a PR (superseded / wontfix / obsolete / duplicate). Deliberately does
     /// NOT run the `ship()` guards — INFRA-2423 (clean/current worktree) and
@@ -8318,6 +8424,106 @@ meta:
         assert!(
             msg.contains("hijack") || msg.contains("title"),
             "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn dedup_autoclose_at_ship_closes_near_duplicate_open_gap() {
+        let (store, _dir) = test_store();
+        let shipped = store
+            .reserve(
+                "RESILIENT",
+                "REVIVER must be a COTG organ on every node: install it",
+                "P1",
+                "m",
+            )
+            .unwrap();
+        let stale = store
+            .reserve(
+                "RESILIENT",
+                "REVIVER must be a COTG organ on every node: install it now",
+                "P1",
+                "m",
+            )
+            .unwrap();
+        let unrelated = store
+            .reserve("RESILIENT", "totally unrelated gap title", "P1", "m")
+            .unwrap();
+
+        store.ship(&shipped, "session-x", Some(4039)).unwrap();
+        let shipped_row = store.get(&shipped).unwrap().unwrap();
+
+        let closed = store
+            .dedup_autoclose_at_ship(&shipped, &shipped_row.title, Some(4039), 0.6)
+            .unwrap();
+        assert_eq!(
+            closed.len(),
+            1,
+            "expected exactly one near-duplicate closed"
+        );
+        assert_eq!(closed[0].0, stale);
+
+        let stale_row = store.get(&stale).unwrap().unwrap();
+        assert_eq!(stale_row.status, "done");
+        assert_eq!(stale_row.closed_pr, Some(4039));
+        assert!(
+            stale_row.notes.contains("ZERO-WASTE-059"),
+            "expected auto-close note, got: {}",
+            stale_row.notes
+        );
+
+        // The unrelated gap must remain untouched.
+        let unrelated_row = store.get(&unrelated).unwrap().unwrap();
+        assert_eq!(unrelated_row.status, "open");
+    }
+
+    #[test]
+    fn dedup_autoclose_at_ship_noop_without_closed_pr() {
+        let (store, _dir) = test_store();
+        let shipped = store
+            .reserve("RESILIENT", "duplicate title check", "P1", "m")
+            .unwrap();
+        let stale = store
+            .reserve("RESILIENT", "duplicate title check", "P1", "m")
+            .unwrap();
+        store.ship(&shipped, "session-x", None).unwrap();
+
+        let closed = store
+            .dedup_autoclose_at_ship(&shipped, "duplicate title check", None, 0.6)
+            .unwrap();
+        assert!(
+            closed.is_empty(),
+            "without a closed_pr, dedup-autoclose must not touch any gap"
+        );
+        let stale_row = store.get(&stale).unwrap().unwrap();
+        assert_eq!(stale_row.status, "open");
+    }
+
+    #[test]
+    fn ac_hygiene_scan_flags_vague_open_gaps() {
+        let (store, _dir) = test_store();
+        let vague = store.reserve("INFRA", "vague gap", "P2", "s").unwrap();
+        let real = store.reserve("INFRA", "real gap", "P2", "s").unwrap();
+        store
+            .set_fields(
+                &real,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(
+                        serde_json::to_string(&vec!["cargo test proves the fix"]).unwrap(),
+                    ),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let flagged = store.ac_hygiene_scan().unwrap();
+        assert!(
+            flagged.contains(&vague),
+            "gap with no acceptance criteria should be flagged vague"
+        );
+        assert!(
+            !flagged.contains(&real),
+            "gap with real acceptance criteria should not be flagged"
         );
     }
 
