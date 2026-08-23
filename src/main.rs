@@ -669,6 +669,29 @@ fn is_acceptance_criteria_vague(ac: &str) -> bool {
     upper == "TODO" || upper == "TBD"
 }
 
+/// ZERO-WASTE-059: token-overlap (Jaccard) similarity (0-100) between two
+/// gap titles. Used by `chump gap ship`'s dedup-check pass to flag open
+/// gaps that look like near-duplicates of the one just shipped, so a
+/// human can close them in the same review instead of a later one-off
+/// dedup PR.
+fn title_token_similarity(a: &str, b: &str) -> u32 {
+    fn tokens(s: &str) -> std::collections::HashSet<String> {
+        s.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|t| t.len() >= 3)
+            .map(String::from)
+            .collect()
+    }
+    let ta = tokens(a);
+    let tb = tokens(b);
+    if ta.is_empty() || tb.is_empty() {
+        return 0;
+    }
+    let intersection = ta.intersection(&tb).count();
+    let union = ta.union(&tb).count();
+    ((intersection as f64 / union as f64) * 100.0) as u32
+}
+
 /// INFRA-094: write a marker recording that the chump CLI just modified
 /// docs/gaps.yaml via a canonical operation (`gap dump --out` /
 /// `gap ship --update-yaml`). The pre-commit hook reads this marker — if
@@ -11601,6 +11624,102 @@ async fn main() -> Result<()> {
                                 "chump gap ship: warning — could not sync docs/gaps/{}.yaml: {e:#}",
                                 gap_id
                             ),
+                        }
+                        // ZERO-WASTE-059: fully manage the queue in the SAME
+                        // ship op — sweep for OTHER gaps whose per-file YAML
+                        // still says non-done while state.db already has them
+                        // done (the drift that produced the standalone
+                        // RESILIENT-328/341/356/361 "reconcile stale gap" PRs),
+                        // then run a dedup-check + AC-hygiene pass over the
+                        // remaining open queue. All advisory/self-healing —
+                        // never blocks the ship.
+                        let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        match store.sync_stale_done_yaml(&gaps_dir, &gap_id) {
+                            Ok(reconciled) if !reconciled.is_empty() => {
+                                println!(
+                                    "  reconciled {} other stale gap YAML(s) in the same op: {}",
+                                    reconciled.len(),
+                                    reconciled.join(", ")
+                                );
+                                for rid in &reconciled {
+                                    let event = format!(
+                                        "{{\"ts\":\"{ts}\",\"kind\":\"stale_gap_yaml_reconciled_at_ship\",\
+                                         \"gap\":\"{rid}\",\"ship_gap\":\"{gap_id}\"}}\n"
+                                    );
+                                    let _ = std::fs::OpenOptions::new()
+                                        .append(true)
+                                        .create(true)
+                                        .open(&ambient_log)
+                                        .and_then(|mut f| {
+                                            use std::io::Write;
+                                            f.write_all(event.as_bytes())
+                                        });
+                                }
+                            }
+                            Ok(_) => {}
+                            Err(e) => eprintln!(
+                                "chump gap ship: warning — stale-YAML sweep failed: {e:#}"
+                            ),
+                        }
+                        if let Ok(open_gaps) = store.list(Some("open")) {
+                            let shipped_title = store
+                                .get(&gap_id)
+                                .ok()
+                                .flatten()
+                                .map(|g| g.title)
+                                .unwrap_or_default();
+                            let dup_ids: Vec<&str> = open_gaps
+                                .iter()
+                                .filter(|g| {
+                                    title_token_similarity(&g.title, &shipped_title) >= 65
+                                })
+                                .map(|g| g.id.as_str())
+                                .collect();
+                            if !dup_ids.is_empty() {
+                                println!(
+                                    "  dedup-check: {} open gap(s) look like near-duplicates of the shipped title — review: {}",
+                                    dup_ids.len(),
+                                    dup_ids.join(", ")
+                                );
+                                let event = format!(
+                                    "{{\"ts\":\"{ts}\",\"kind\":\"dedup_candidate_at_ship\",\
+                                     \"ship_gap\":\"{gap_id}\",\"candidates\":{}}}\n",
+                                    serde_json::to_string(&dup_ids).unwrap_or_default()
+                                );
+                                let _ = std::fs::OpenOptions::new()
+                                    .append(true)
+                                    .create(true)
+                                    .open(&ambient_log)
+                                    .and_then(|mut f| {
+                                        use std::io::Write;
+                                        f.write_all(event.as_bytes())
+                                    });
+                            }
+                            let vague_ids: Vec<&str> = open_gaps
+                                .iter()
+                                .filter(|g| is_acceptance_criteria_vague(&g.acceptance_criteria))
+                                .map(|g| g.id.as_str())
+                                .collect();
+                            if !vague_ids.is_empty() {
+                                println!(
+                                    "  AC-hygiene: {} open gap(s) have vague/missing acceptance criteria",
+                                    vague_ids.len()
+                                );
+                                let event = format!(
+                                    "{{\"ts\":\"{ts}\",\"kind\":\"ac_hygiene_at_ship\",\
+                                     \"ship_gap\":\"{gap_id}\",\"vague_count\":{}}}\n",
+                                    vague_ids.len()
+                                );
+                                let _ = std::fs::OpenOptions::new()
+                                    .append(true)
+                                    .create(true)
+                                    .open(&ambient_log)
+                                    .and_then(|mut f| {
+                                        use std::io::Write;
+                                        f.write_all(event.as_bytes())
+                                    });
+                            }
                         }
                         return Ok(());
                     }

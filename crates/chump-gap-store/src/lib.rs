@@ -2842,6 +2842,44 @@ impl GapStore {
             }
         }
     }
+
+    /// ZERO-WASTE-059: sweep for per-file YAML mirrors that still say
+    /// `status: open` (or any non-`done` status) while state.db — the
+    /// canonical store — already has the gap flipped to `done`. Runs as
+    /// part of every `chump gap ship`, so drift discovered along the way
+    /// gets repaired in the SAME op instead of spawning a standalone
+    /// "reconcile stale gap" PR later (precedent: RESILIENT-328/341/356/361,
+    /// each a one-line status flip shipped as its own PR).
+    ///
+    /// `skip_id` excludes the gap currently being shipped (its own YAML is
+    /// already synced by the caller via `dump_per_file_single`). Returns the
+    /// ids of gaps whose YAML was rewritten.
+    pub fn sync_stale_done_yaml(
+        &self,
+        out_dir: &std::path::Path,
+        skip_id: &str,
+    ) -> Result<Vec<String>> {
+        let mut reconciled = Vec::new();
+        for g in self.list(Some("done"))? {
+            if g.id == skip_id {
+                continue;
+            }
+            let path = out_dir.join(format!("{}.yaml", g.id));
+            let is_stale = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|existing| {
+                    existing
+                        .lines()
+                        .find(|l| l.trim_start().starts_with("status:"))
+                        .map(|l| l.trim() != "status: done")
+                })
+                .unwrap_or(false);
+            if is_stale && self.dump_per_file_single(&g.id, out_dir)? {
+                reconciled.push(g.id);
+            }
+        }
+        Ok(reconciled)
+    }
 }
 
 /// Mutable-field bundle for `chump gap set`. None means "leave unchanged".
@@ -6934,6 +6972,62 @@ meta:
         assert!(
             err.to_string().contains("not found"),
             "expected 'not found' error, got: {err}"
+        );
+    }
+
+    /// ZERO-WASTE-059: `sync_stale_done_yaml` must find and rewrite a
+    /// per-file YAML mirror that still says `status: open` even though
+    /// state.db (canonical) already has the gap shipped to `done` — the
+    /// exact drift class that produced the RESILIENT-328/341/356/361
+    /// standalone "reconcile stale gap" PRs. Without the sweep, only the
+    /// gap being actively shipped gets its YAML synced; every OTHER
+    /// already-done-but-still-open-on-disk gap is left stale.
+    #[test]
+    fn test_sync_stale_done_yaml_reconciles_other_gaps() {
+        let (store, dir) = test_store();
+        let out_dir = dir.path().join("docs/gaps");
+
+        let stale_id = store.reserve("RESILIENT", "already shipped elsewhere", "P1", "s").unwrap();
+        let shipping_id = store.reserve("ZERO-WASTE", "the gap being shipped now", "P1", "s").unwrap();
+
+        // Simulate the real-world drift: `stale_id` was flipped to done in
+        // state.db by some other ship (e.g. a sibling worktree / prior
+        // session), but its per-file YAML was written back when it was
+        // still open and never refreshed.
+        store.dump_per_file_single(&stale_id, &out_dir).unwrap();
+        store.ship(&stale_id, "other-session", Some(1)).unwrap();
+        let stale_path = out_dir.join(format!("{}.yaml", stale_id));
+        let stale_before = std::fs::read_to_string(&stale_path).unwrap();
+        assert!(
+            stale_before.contains("status: open"),
+            "fixture setup: yaml should still say open before the sweep"
+        );
+
+        // The gap actually being shipped in this op — its own yaml is
+        // synced by the caller (dump_per_file_single), not by the sweep,
+        // so it must be excluded via skip_id.
+        store.dump_per_file_single(&shipping_id, &out_dir).unwrap();
+        store.ship(&shipping_id, "this-session", Some(2)).unwrap();
+        store.dump_per_file_single(&shipping_id, &out_dir).unwrap();
+
+        let reconciled = store.sync_stale_done_yaml(&out_dir, &shipping_id).unwrap();
+        assert_eq!(
+            reconciled,
+            vec![stale_id.clone()],
+            "sweep must reconcile the stale done gap and skip the one already handled by the caller"
+        );
+
+        let stale_after = std::fs::read_to_string(&stale_path).unwrap();
+        assert!(
+            stale_after.contains("status: done"),
+            "sweep must rewrite the stale yaml to status: done; got: {stale_after}"
+        );
+
+        // Idempotency: a second sweep with no further drift finds nothing.
+        let reconciled_again = store.sync_stale_done_yaml(&out_dir, &shipping_id).unwrap();
+        assert!(
+            reconciled_again.is_empty(),
+            "second sweep should find no remaining drift"
         );
     }
 
