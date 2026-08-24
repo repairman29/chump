@@ -818,9 +818,10 @@ impl GapStore {
         }
     }
 
-    /// INFRA-3495: list gaps with a specific status, ordered by closed_at DESC
-    /// (most recently closed first). Used by the done-gap over-claim auditor
-    /// to sweep recently-closed gaps efficiently.
+    /// CREDIBLE-339: list gaps with a specific status, ordered by closed_at ASC
+    /// (oldest closed first). Used by the done-gap over-claim auditor
+    /// so each run processes the oldest closed gaps and subsequent runs
+    /// naturally pick up newer gaps without re-auditing.
     pub fn list_by_status_ordered(&self, status: &str) -> Result<Vec<GapRow>> {
         let make_row = |row: &rusqlite::Row<'_>| {
             Ok(GapRow {
@@ -855,7 +856,7 @@ impl GapStore {
                     CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                     opened_date,closed_date,closed_pr,skills_required,preferred_backend,
                     preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id,evidence
-             FROM gaps WHERE status=?1 ORDER BY closed_at DESC",
+             FROM gaps WHERE status=?1 ORDER BY closed_at ASC",
         )?;
         let rows = stmt.query_map(params![status], make_row)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
