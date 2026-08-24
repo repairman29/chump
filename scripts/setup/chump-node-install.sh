@@ -365,7 +365,7 @@ check_creds() {
 write_node_env() {
   local node_env="$STATE_DIR/node.env"
   local team_url="${CHUMP_TEAM_URL:-}"
-  local team_api_key="${CHUMP_TEAM_API_KEY:-}"
+  local team_api_key="${CHUMP_TEAM_API_KEY:-}""${CHUMP_TEAM_API_KEY:-}""${CHUMP_TEAM_API_KEY:-}"
   if [ -z "$team_url" ] && [ -f "$CREDS" ]; then
     team_url="$(grep -E '^(export )?CHUMP_TEAM_URL=' "$CREDS" 2>/dev/null | tail -1 | sed -E 's/^(export )?CHUMP_TEAM_URL=//; s/^"(.*)"$/\1/')"
   fi
