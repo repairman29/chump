@@ -49,6 +49,15 @@ fn almanac_mcp_bin() -> Option<String> {
             return Some(b);
         }
     }
+    // Fallback: if CHUMP_ALMANAC_BIN is set, look for almanac-mcp alongside it.
+    if let Ok(b) = std::env::var("CHUMP_ALMANAC_BIN") {
+        if let Some(parent) = std::path::Path::new(&b).parent() {
+            let mcp = parent.join("almanac-mcp");
+            if mcp.is_file() {
+                return Some(mcp.to_string_lossy().to_string());
+            }
+        }
+    }
     let home = std::env::var("HOME").unwrap_or_default();
     [
         format!("{home}/Projects/almanac/target/release/almanac-mcp"),
