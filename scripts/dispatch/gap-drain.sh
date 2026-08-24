@@ -55,7 +55,11 @@ ENRICHER="${CHUMP_ENRICHER_BIN:-chump-gap-enricher}"
 
 # ── budget knobs ─────────────────────────────────────────────────────────────
 ENRICH_LIMIT="${CHUMP_DRAIN_ENRICH_LIMIT:-6}"      # thin gaps enriched per tick
-DECOMPOSE_LIMIT="${CHUMP_DRAIN_DECOMPOSE_LIMIT:-2}" # broad (m/l) gaps decomposed per tick
+# Decompose defaults to 1/tick: it is the slow lever (~2-3 min/gap incl. the
+# 8192-token retry) and EACH decomposition already yields ~9 surgical sub-gaps,
+# so 1 keeps the whole tick comfortably under the unit's TimeoutStartSec while
+# still flooding the floor with landable work. Bump via env on a fast/idle node.
+DECOMPOSE_LIMIT="${CHUMP_DRAIN_DECOMPOSE_LIMIT:-1}" # broad (m/l) gaps decomposed per tick
 LEDGER="${CHUMP_DRAIN_LEDGER:-$HOME/.chump/gap-drain.ledger}"
 STAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
