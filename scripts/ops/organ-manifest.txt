@@ -282,3 +282,18 @@ enabled     chump-race-control.timer  role=data requires=bin:gh
 # (scripts/ci/test-resilient-366-organ-roll-call.sh) sees a manifest line for
 # the tracked unit files and organ-watchdog re-arms it if it drifts.
 enabled     chump-organ-deploy.timer  role=janitor requires=bin:git
+
+# chump-gap-drain.timer: EFFECTIVE-464 — the DRAIN LOOP. GATE 2 toward the
+# ribbon. The cheap DeepSeek floor (EFFECTIVE-445) lands SURGICAL single-change
+# gaps first-try but SPINS on vague gaps and FAILS verify on broad/multi-file
+# ones — so this organ continuously converts the OPEN backlog into landable
+# surgical gaps: thin gaps get ENRICHED in place (Almanac file:line +
+# deepseek-v4-pro concrete spec, anti-bloat — never manufactures gaps), and
+# broad (effort m/l or AC-heavy) gaps get DECOMPOSED into xs/s sub-gaps (one
+# file, one edit, one testable AC each). Both LLM calls route to deepseek-v4-pro
+# (~$0.0035/enrich) via OPENAI_API_BASE=openrouter, NOT the contended local
+# ollama that owns the cascade's slot 0 on CJ. requires the enricher binary +
+# almanac; a node without them is skipped, not force-installed. Declared here so
+# organ-reconcile re-arms it if it drifts and Roll-Call
+# (scripts/ci/test-resilient-366-organ-roll-call.sh) never lets it rot silently.
+enabled     chump-gap-drain.timer  role=brain requires=bin:chump-gap-enricher,bin:almanac
