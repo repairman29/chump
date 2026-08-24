@@ -77,7 +77,8 @@ if [[ "${1:-}" == "--almanac" ]]; then
     # Check installed binary build SHA
     INSTALLED_ALMANAC_SHA="none"
     if [[ -x "$ALMANAC_BIN" ]]; then
-        INSTALLED_ALMANAC_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{7,12}' | head -1 || echo unknown)"
+        INSTALLED_ALMANAC_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{7,12}' | head -1)"
+        [[ -n "$INSTALLED_ALMANAC_SHA" ]] || INSTALLED_ALMANAC_SHA="unknown"
         log "installed almanac sha = $INSTALLED_ALMANAC_SHA"
     fi
 
