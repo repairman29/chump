@@ -50,12 +50,81 @@ fn require_edit_mode() -> bool {
     std::env::var("CHUMP_REQUIRE_EDIT").as_deref() == Ok("1")
 }
 
+/// EFFECTIVE-465: after how many iterations of read-only investigation (zero
+/// edits applied, on a require_edit run) we start shoving the model to edit —
+/// even while it is still emitting tool calls (never reaching EndTurn). The
+/// EFFECTIVE-448 nudge only fires on `StopReason::EndTurn`, so a model like
+/// DeepSeek that read-loops (`read_file`/`grep`) for the whole 30-iteration
+/// budget never triggers it and the run exhausts `max_iterations` straight into
+/// an empty diff (proven: gap INFRA-3679, 24+ read turns, zero str_replace).
+/// This budget catches that path. Default 8; override `CHUMP_INVESTIGATE_BUDGET`.
+const DEFAULT_INVESTIGATE_BUDGET: usize = 8;
+
+fn investigate_budget() -> usize {
+    std::env::var("CHUMP_INVESTIGATE_BUDGET")
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(DEFAULT_INVESTIGATE_BUDGET)
+}
+
+/// EFFECTIVE-465: minimum iterations between two investigation-path nudges, so
+/// the model gets a fresh turn (or two) to actually act on the shove before the
+/// next one lands — rather than burning the whole `max_edit_nudges` cap on
+/// three back-to-back iterations. Default 2; override `CHUMP_INVESTIGATE_NUDGE_SPACING`.
+const DEFAULT_INVESTIGATE_NUDGE_SPACING: usize = 2;
+
+fn investigate_nudge_spacing() -> usize {
+    std::env::var("CHUMP_INVESTIGATE_NUDGE_SPACING")
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(DEFAULT_INVESTIGATE_NUDGE_SPACING)
+}
+
+/// EFFECTIVE-465: the edit tools a require_edit run is FORCED down to once the
+/// text nudges are exhausted with zero edits. Removing the read-only tools
+/// (`read_file`/`grep_repo`/`list_dir`/`almanac_search`) physically stops a
+/// model that structurally avoids editing (DeepSeek's real M1 tool-selection
+/// wall — it read-loops past every text nudge) from investigating forever: its
+/// only actions become "apply the change" or "answer in prose". `str_replace`
+/// edits an existing file; `write_file` CREATES a new one (many decomposed
+/// sub-gaps target a file that doesn't exist yet — read-only tools can never
+/// satisfy those). Overridable via `CHUMP_EDIT_ONLY_TOOLS` (comma-separated).
+fn edit_only_tool_names() -> Vec<String> {
+    match std::env::var("CHUMP_EDIT_ONLY_TOOLS") {
+        Ok(s) if !s.trim().is_empty() => s
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect(),
+        _ => vec!["str_replace".to_string(), "write_file".to_string()],
+    }
+}
+
+/// Filter `tools` down to the edit-only set. If NONE of the edit tools are
+/// present in the registry (unusual), returns the original list unchanged so we
+/// never hand the model an empty tool set (which some providers reject).
+fn restrict_to_edit_tools(tools: &[Tool]) -> Vec<Tool> {
+    let want = edit_only_tool_names();
+    let filtered: Vec<Tool> = tools
+        .iter()
+        .filter(|t| want.iter().any(|w| w == &t.name))
+        .cloned()
+        .collect();
+    if filtered.is_empty() {
+        tools.to_vec()
+    } else {
+        filtered
+    }
+}
+
 /// EFFECTIVE-448: the firm message injected when the model narrates a fix but
 /// never applies one. A weak model (DeepSeek flash/pro) investigates for many
 /// read-only turns, then emits an EndTurn prose summary — the FSM would Complete
 /// with zero edits and `free_tier_ship` aborts on "empty diff". Kept as a const
 /// so the unit test can assert the exact wording is what gets injected.
-pub(crate) const EDIT_NUDGE_MESSAGE: &str = "You have investigated enough. You have NOT edited any file yet — you only described the change. STOP investigating and APPLY the edit NOW using the `str_replace` tool: copy the EXACT existing snippet you want to change into `old_string` (include enough surrounding lines to be unique) and the replacement text into `new_string`. Do NOT rewrite a whole file with write_file. Make the smallest edit that satisfies the task, then stop. If — and only if — no edit is genuinely possible, reply with a single line beginning `NO_EDIT_POSSIBLE:` followed by the concrete reason.";
+pub(crate) const EDIT_NUDGE_MESSAGE: &str = "You have investigated enough. You have NOT written any file yet — you only described the change. STOP investigating and APPLY the change NOW. To EDIT an existing file, use `str_replace`: copy the EXACT existing snippet into `old_string` (enough surrounding lines to be unique) and the replacement into `new_string`. If the target file DOES NOT EXIST YET (a new file), use `write_file` to CREATE it with the full contents. Make the smallest change that satisfies the task, then stop. If — and only if — no change is genuinely possible, reply with a single line beginning `NO_EDIT_POSSIBLE:` followed by the concrete reason.";
 
 /// Decide whether a tool batch outcome should trip the fail-storm breaker.
 ///
@@ -137,6 +206,13 @@ impl<'a> IterationController<'a> {
         let mut edit_nudges_fired: u32 = 0;
         let require_edit = require_edit_mode();
         let max_edit_nudges = max_edit_nudges();
+        // EFFECTIVE-465: investigation-path force-edit nudge state. Shares the
+        // `edit_nudges_fired`/`max_edit_nudges` cap with the EndTurn nudge so the
+        // TOTAL number of shoves is bounded across both paths.
+        let investigate_budget = investigate_budget();
+        let investigate_nudge_spacing = investigate_nudge_spacing();
+        let mut last_investigate_nudge_iter: usize = 0;
+        let mut edit_only_forced_logged = false;
 
         // Helper: build the standard cancelled outcome and return early.
         // Defined as a named macro so it can capture `_iter`, `thinking_segments`,
@@ -213,8 +289,62 @@ impl<'a> IterationController<'a> {
 
             crate::belief_state::decay_turn();
 
+            // EFFECTIVE-465: investigation-path force-edit nudge. The EFFECTIVE-448
+            // nudge below only fires on `StopReason::EndTurn`; a model that keeps
+            // emitting read-only tool calls (never EndTurn) sails past it and
+            // exhausts `max_iterations` straight into an empty diff. Here — at the
+            // top of a turn, BEFORE the model call — if this run must produce an
+            // edit, none has landed, and the model has been investigating past the
+            // budget, inject the SAME firm "stop investigating, str_replace now"
+            // message so the model edits (or declares NO_EDIT_POSSIBLE) instead of
+            // read-looping. Spaced by `investigate_nudge_spacing` and bounded by the
+            // shared `max_edit_nudges` cap so it can't spin; on cap exhaustion the
+            // run still terminates and the caller escalates up the model ladder.
+            if require_edit
+                && edits_applied == 0
+                && _iter > investigate_budget
+                && edit_nudges_fired < max_edit_nudges
+                && _iter.saturating_sub(last_investigate_nudge_iter) >= investigate_nudge_spacing
+            {
+                edit_nudges_fired += 1;
+                last_investigate_nudge_iter = _iter;
+                // eprintln (not just tracing) so the shove is VISIBLE in the
+                // worker's per-cycle log — the receipt that the floor was forced
+                // to edit rather than silently read-looping into an empty diff.
+                eprintln!(
+                    "[agent-loop] EFFECTIVE-465: iter {_iter} investigating with zero edits past \
+                     budget — injecting force-edit nudge (#{edit_nudges_fired})"
+                );
+                tracing::info!(
+                    edit_nudges_fired,
+                    iter = _iter,
+                    "EFFECTIVE-465: investigating with zero edits past budget — injecting force-edit nudge"
+                );
+                ctx.session.add_message(axonerai::provider::Message {
+                    role: "user".to_string(),
+                    content: EDIT_NUDGE_MESSAGE.to_string(),
+                });
+            }
+
+            // EFFECTIVE-465: once the text nudges are exhausted on a require_edit
+            // run that STILL has zero edits, force the model down to edit-only
+            // tools so it physically cannot keep read-looping (DeepSeek ignores
+            // every text nudge). Its only moves become str_replace/write_file or
+            // a prose answer.
+            let force_edit_only =
+                require_edit && edits_applied == 0 && edit_nudges_fired >= max_edit_nudges;
             let tools_for_call = if skip_tools_first_call && model_calls_count == 0 {
                 None
+            } else if force_edit_only {
+                if !edit_only_forced_logged {
+                    edit_only_forced_logged = true;
+                    eprintln!(
+                        "[agent-loop] EFFECTIVE-465: text nudges exhausted with zero edits — \
+                         restricting tools to edit-only (str_replace/write_file) to force an edit \
+                         or NO_EDIT_POSSIBLE"
+                    );
+                }
+                Some(restrict_to_edit_tools(&tools))
             } else {
                 Some(tools.clone())
             };
@@ -360,6 +490,14 @@ impl<'a> IterationController<'a> {
                             .starts_with("NO_EDIT_POSSIBLE")
                     {
                         edit_nudges_fired += 1;
+                        // EFFECTIVE-465: share the spacing tracker so the loop-top
+                        // investigation nudge doesn't immediately stack a second
+                        // identical shove on the very next iteration.
+                        last_investigate_nudge_iter = _iter;
+                        eprintln!(
+                            "[agent-loop] EFFECTIVE-448: EndTurn with zero edits — injecting \
+                             force-edit nudge (#{edit_nudges_fired})"
+                        );
                         tracing::info!(
                             edit_nudges_fired,
                             model_calls_count,
@@ -1325,6 +1463,238 @@ mod cancellation_tests {
         assert!(!outcome.reply.starts_with("Exceeded max iterations"));
 
         std::env::remove_var("CHUMP_REQUIRE_EDIT");
+        std::env::remove_var("CHUMP_MAX_EDIT_NUDGES");
+    }
+
+    // ── EFFECTIVE-465: investigation-path force-edit nudge tests ────────────
+    //
+    // The EFFECTIVE-448 nudge only fires on `StopReason::EndTurn`. DeepSeek's
+    // real failure mode (proven live on gap INFRA-3679) is different: it keeps
+    // emitting read-only `read_file`/`grep` ToolUse calls, NEVER reaches EndTurn,
+    // and exhausts `max_iterations` straight into an empty diff — the nudge never
+    // fires. These tests exercise the loop-top investigation nudge that catches
+    // that path.
+
+    /// Provider that ALWAYS returns a read-only `read_file` ToolUse — it never
+    /// edits and never EndTurns (the DeepSeek read-loop death spiral).
+    struct AlwaysInvestigateProvider {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl axonerai::provider::Provider for AlwaysInvestigateProvider {
+        async fn complete(
+            &self,
+            _messages: Vec<Message>,
+            _tools: Option<Vec<axonerai::provider::Tool>>,
+            _max_tokens: Option<u32>,
+            _system: Option<String>,
+        ) -> Result<CompletionResponse> {
+            let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            Ok(CompletionResponse {
+                text: None,
+                tool_calls: vec![ToolCall {
+                    id: format!("read_{n}"),
+                    name: "read_file".to_string(),
+                    input: serde_json::json!({ "path": "src/foo.rs" }),
+                }],
+                stop_reason: StopReason::ToolUse,
+            })
+        }
+    }
+
+    /// A model that read-loops forever (never EndTurns) on an edit-required run
+    /// must be force-edit-nudged from the loop top — bounded by `max_edit_nudges`
+    /// — and still terminate (max iterations) rather than silently exhausting the
+    /// budget with the nudge never firing. Without the EFFECTIVE-465 fix the nudge
+    /// (EndTurn-only) never fires and `count_nudge_messages` is 0.
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn effective_465_nudges_on_pure_investigation_never_endturn() {
+        std::env::set_var("CHUMP_REQUIRE_EDIT", "1");
+        std::env::set_var("CHUMP_INVESTIGATE_BUDGET", "2");
+        std::env::set_var("CHUMP_INVESTIGATE_NUDGE_SPACING", "1");
+        std::env::set_var("CHUMP_MAX_EDIT_NUDGES", "2");
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = AlwaysInvestigateProvider {
+            calls: Arc::clone(&calls),
+        };
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(PermissiveTool("read_file")));
+        registry.register(Box::new(PermissiveTool("str_replace")));
+        let executor = ToolExecutor::new(&registry);
+        let task_exec: Arc<dyn TaskExecutor + Send + Sync> = Arc::new(ScriptedExecutor);
+        let tool_runner = ToolRunner {
+            executor: &executor,
+            registry: &registry,
+            task_executor: task_exec,
+        };
+        let mut controller = IterationController {
+            max_iterations: 8,
+            provider: &provider,
+            state: AgentState::Idle,
+        };
+        let mut ctx = make_ctx();
+        let prompt_assembler = make_prompt_assembler();
+        let perception = make_perception();
+
+        let outcome = controller
+            .execute(
+                &mut ctx,
+                vec![],
+                None,
+                false,
+                &tool_runner,
+                &prompt_assembler,
+                &perception,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("execute must return Ok");
+
+        // budget=2 → nudges eligible from iter 3; spacing=1, cap=2 → nudges at
+        // iters 3 and 4, then the cap stops further shoves. The read-loop never
+        // edits, so the run terminates at max_iterations.
+        assert_eq!(
+            count_nudge_messages(&ctx),
+            2,
+            "expected exactly 2 investigation-path nudges (bounded by cap)"
+        );
+        assert!(
+            outcome.reply.starts_with("Exceeded max iterations"),
+            "a never-editing read-loop must still terminate, got: {:?}",
+            outcome.reply
+        );
+
+        std::env::remove_var("CHUMP_REQUIRE_EDIT");
+        std::env::remove_var("CHUMP_INVESTIGATE_BUDGET");
+        std::env::remove_var("CHUMP_INVESTIGATE_NUDGE_SPACING");
+        std::env::remove_var("CHUMP_MAX_EDIT_NUDGES");
+    }
+
+    /// Provider that read-loops UNTIL it sees the force-edit nudge in the
+    /// conversation, then applies a `str_replace` (the intended effect: the nudge
+    /// flips the model from investigating to editing), then EndTurns to Complete.
+    struct InvestigateUntilNudgedProvider {
+        calls: Arc<AtomicUsize>,
+        edited: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    #[async_trait]
+    impl axonerai::provider::Provider for InvestigateUntilNudgedProvider {
+        async fn complete(
+            &self,
+            messages: Vec<Message>,
+            _tools: Option<Vec<axonerai::provider::Tool>>,
+            _max_tokens: Option<u32>,
+            _system: Option<String>,
+        ) -> Result<CompletionResponse> {
+            let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            if self.edited.load(Ordering::SeqCst) {
+                // Already edited — narrate and Complete.
+                return Ok(CompletionResponse {
+                    text: Some("Applied the edit. Done.".to_string()),
+                    tool_calls: vec![],
+                    stop_reason: StopReason::EndTurn,
+                });
+            }
+            let saw_nudge = messages.iter().any(|m| m.content == EDIT_NUDGE_MESSAGE);
+            if saw_nudge {
+                self.edited.store(true, Ordering::SeqCst);
+                return Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: format!("edit_{n}"),
+                        name: "str_replace".to_string(),
+                        input: serde_json::json!({
+                            "path": "src/foo.rs",
+                            "old_string": "a",
+                            "new_string": "b"
+                        }),
+                    }],
+                    stop_reason: StopReason::ToolUse,
+                });
+            }
+            // No nudge yet — keep investigating.
+            Ok(CompletionResponse {
+                text: None,
+                tool_calls: vec![ToolCall {
+                    id: format!("read_{n}"),
+                    name: "read_file".to_string(),
+                    input: serde_json::json!({ "path": "src/foo.rs" }),
+                }],
+                stop_reason: StopReason::ToolUse,
+            })
+        }
+    }
+
+    /// The point of the fix: the investigation nudge must actually FLIP a
+    /// read-looping model into applying an edit — not just fire and terminate.
+    /// The model reads until nudged, then str_replaces, then Completes cleanly.
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn effective_465_investigation_nudge_flips_model_to_edit() {
+        std::env::set_var("CHUMP_REQUIRE_EDIT", "1");
+        std::env::set_var("CHUMP_INVESTIGATE_BUDGET", "2");
+        std::env::set_var("CHUMP_INVESTIGATE_NUDGE_SPACING", "1");
+        std::env::set_var("CHUMP_MAX_EDIT_NUDGES", "3");
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = InvestigateUntilNudgedProvider {
+            calls: Arc::clone(&calls),
+            edited: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        };
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(PermissiveTool("read_file")));
+        registry.register(Box::new(PermissiveTool("str_replace")));
+        let executor = ToolExecutor::new(&registry);
+        let task_exec: Arc<dyn TaskExecutor + Send + Sync> = Arc::new(ScriptedExecutor);
+        let tool_runner = ToolRunner {
+            executor: &executor,
+            registry: &registry,
+            task_executor: task_exec,
+        };
+        let mut controller = IterationController {
+            max_iterations: 12,
+            provider: &provider,
+            state: AgentState::Idle,
+        };
+        let mut ctx = make_ctx();
+        let prompt_assembler = make_prompt_assembler();
+        let perception = make_perception();
+
+        let outcome = controller
+            .execute(
+                &mut ctx,
+                vec![],
+                None,
+                false,
+                &tool_runner,
+                &prompt_assembler,
+                &perception,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("execute must return Ok");
+
+        // Exactly ONE nudge should have fired (at iter 3, budget=2) — it flipped
+        // the model to editing, so no further shoves were needed.
+        assert_eq!(
+            count_nudge_messages(&ctx),
+            1,
+            "one investigation nudge should have flipped the model to edit"
+        );
+        // The run must NOT have exhausted iterations — it Completed after editing.
+        assert!(
+            !outcome.reply.starts_with("Exceeded max iterations"),
+            "the nudged edit must let the run Complete, not exhaust iterations: {:?}",
+            outcome.reply
+        );
+
+        std::env::remove_var("CHUMP_REQUIRE_EDIT");
+        std::env::remove_var("CHUMP_INVESTIGATE_BUDGET");
+        std::env::remove_var("CHUMP_INVESTIGATE_NUDGE_SPACING");
         std::env::remove_var("CHUMP_MAX_EDIT_NUDGES");
     }
 }
