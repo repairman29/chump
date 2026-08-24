@@ -96,22 +96,15 @@ probe_health() {
     INDEX_AGE_S="unknown"
     if [[ -f "$ALMANAC_INDEX_DB" ]]; then
         if command -v sqlite3 >/dev/null 2>&1; then
-            # Row count across every table isn't well-defined generically, so
-            # probe the conventional "files"/"symbols" table names honestly;
-            # fall back to "unknown" rather than guessing a schema.
+            # INFRA-3699: count ONLY the symbols table directly.
+            # Prior logic looped over every table, which for a 2026-08-08
+            # vintage index meant the largest was chunks (fragments table,
+            # ~50k rows) and a reindex could silently drop all 29k symbols
+            # while chunks grew — the old formula reported a healthy row
+            # count from a table that is a cache, not the authoritative
+            # signal.  Counting symbols directly closes that blind spot.
             INDEX_ROWS="$(sqlite3 "$ALMANAC_INDEX_DB" \
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table';" 2>/dev/null || echo unknown)"
-            if [[ "$INDEX_ROWS" != "unknown" ]]; then
-                # tables exist; count rows in the largest one as a coarse
-                # "is this index non-empty" signal
-                local biggest=0
-                for t in $(sqlite3 "$ALMANAC_INDEX_DB" "SELECT name FROM sqlite_master WHERE type='table';" 2>/dev/null); do
-                    local c
-                    c="$(sqlite3 "$ALMANAC_INDEX_DB" "SELECT COUNT(*) FROM \"$t\";" 2>/dev/null || echo 0)"
-                    [[ "$c" =~ ^[0-9]+$ ]] && [[ "$c" -gt "$biggest" ]] && biggest="$c"
-                done
-                INDEX_ROWS="$biggest"
-            fi
+                "SELECT COUNT(*) FROM symbols;" 2>/dev/null || echo unknown)"
         fi
         local mtime now
         mtime="$(stat -c %Y "$ALMANAC_INDEX_DB" 2>/dev/null || stat -f %m "$ALMANAC_INDEX_DB" 2>/dev/null || echo 0)"
