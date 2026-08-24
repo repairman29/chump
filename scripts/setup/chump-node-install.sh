@@ -372,7 +372,7 @@ write_node_env() {
   if [ -z "$team_api_key" ] && [ -f "$CREDS" ]; then
     team_api_key="$(grep -E '^(export )?CHUMP_TEAM_API_KEY=' "$CREDS" 2>/dev/null | tail -1 | sed -E 's/^(export )?CHUMP_TEAM_API_KEY=//; s/^"(.*)"$/\1/')"
   fi
-  team_url="${team_url:-$GAP_STORE_URL}"
+  team_url="${team_url:-http://[::1]:3000}"
   local store_backend="${CHUMP_STORE_BACKEND:-postgrest}"
   mkdir -p "$STATE_DIR"
   ( umask 077
