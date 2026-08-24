@@ -231,7 +231,7 @@ REQUIRED_CRED_KEYS="CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN"
 # self-provisioned the same zero-touch way when supplied, so the walk-away
 # pager path (scripts/discord.sh) actually has a token to read once the
 # operator does wire one in — no separate manual step or editor.
-OPTIONAL_CRED_KEYS="DISCORD_TOKEN"
+OPTIONAL_CRED_KEYS="DISCORD_TOKEN CHUMP_TEAM_URL CHUMP_TEAM_API_KEY"
 
 # Zero-touch acquire (INFRA-3629): materialize $CREDS from --creds-file or
 # $CHUMP_BOOTSTRAP_CREDS. Never echoes secret VALUES — only which source was
