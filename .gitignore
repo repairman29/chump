@@ -59,6 +59,9 @@ ChumpMenu/ChumpMenu.app/
 .chump/state.db.bak
 .chump/state.sql
 
+# --- false-done-sweep cache ---
+~/.cache/chump/false-done-pr-files.json
+
 # GitHub webhook cache (INFRA-3460) — regenerable binary cache written constantly by
 # the webhook receiver (CREATE TABLE IF NOT EXISTS on start); reader falls back to REST
 # on miss. Tracking it made the working tree perpetually dirty, which bailed the
