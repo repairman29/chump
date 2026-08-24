@@ -2088,7 +2088,7 @@ pub fn run(argv: &[String]) -> i32 {
         ));
         steps.push(step(
             "merge-driver-ci-yml",
-            &["bash", "scripts/ci/test-merge-driver-ci-yml.sh"],
+            &["bash", "scripts/ci/test-ci-yml-merge-driver.sh"],
             GateKind::Scripts,
         ));
         steps.push(step(
