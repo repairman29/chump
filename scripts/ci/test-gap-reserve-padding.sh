@@ -71,10 +71,43 @@ FLOCK_EOF
     chump gap import --yaml "$sandbox/docs/gaps.yaml" >/dev/null 2>&1 || true
 }
 
+# EFFECTIVE-466: predicate that checks whether a gap is skippable based on its
+# associated PR state. Returns 0 (skippable) when the gap has an associated PR
+# in "done" or any open/in-flight state. Returns 1 (not skippable) for "closed"
+# PRs or gaps with no PR at all.
+is_skippable_gap() {
+    local gap_id="$1"
+    local sandbox="$2"
+
+    # Look up the gap in the sandbox state.db to find its PR number.
+    local pr_number
+    pr_number=$(
+        CHUMP_HOME="$sandbox" \
+        CHUMP_REPO="$sandbox" \
+        chump gap show "$gap_id" --field pr_number 2>/dev/null || true
+    )
+
+    # No PR → not skippable.
+    if [[ -z "$pr_number" ]] || [[ "$pr_number" == "null" ]]; then
+        return 1
+    fi
+
+    # Query the PR state via gh.
+    local pr_state
+    pr_state=$(gh pr view "$pr_number" --json state --jq '.state' 2>/dev/null || true)
+
+    case "$pr_state" in
+        OPEN|MERGED) return 0 ;;   # open or done → skippable
+        CLOSED)      return 1 ;;   # closed without merge → not skippable
+        *)           return 1 ;;   # unknown / no PR → not skippable
+    esac
+}
+
 reserve_in_sandbox() {
     local sandbox="$1"
     local domain="$2"
     local title="$3"
+    local max_skips="${4:-10}"
     (
         cd "$sandbox"
         export PATH="$sandbox/bin:$PATH"
@@ -89,6 +122,7 @@ reserve_in_sandbox() {
         CHUMP_ALLOW_MAIN_WORKTREE=1 \
         CHUMP_LOCK_DIR="$sandbox/.chump-locks" \
         FLEET_029_AMBIENT_GLANCE_SKIP=1 \
+        CHUMP_GAP_RESERVE_MAX_SKIPS="$max_skips" \
         scripts/coord/gap-reserve.sh "$domain" "$title" 2>/dev/null
     )
 }
