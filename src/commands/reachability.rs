@@ -645,6 +645,9 @@ mod tests {
         let changed = vec!["tests/test_foo.rs".to_string()];
         let r = classify("tests/test_bar.rs", &changed, &impact(&[], &[], 100, 200));
         assert_ne!(r.verdict, Verdict::TestOnly);
+        // When target itself is test-shaped, the gap plausibly asked only for
+        // tests, so we fall through to UNRELATED (no import edges here).
+        assert_eq!(r.verdict, Verdict::Unrelated);
     }
 
     #[test]
