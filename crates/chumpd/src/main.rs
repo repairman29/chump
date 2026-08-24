@@ -20,6 +20,153 @@
 
 mod file_sandbox;
 
+// ── MISSION-068: Hetzner substrate configuration ─────────────────────────
+mod substrate {
+    //! chumpd was born on macOS (Homebrew paths, sandbox-exec, launchd).
+    //! Running on a Hetzner Linux host requires different paths, no
+    //! sandbox-exec, and systemd-friendly signal handling. This module
+    //! provides a single substrate-detection point so the rest of chumpd
+    //! stays OS-agnostic.
+    //!
+    //! AC #1: Hetzner-specific infrastructure constants and config structures.
+    //! AC #2: Substrate provider logic integrated into the MISSION init path.
+    //! AC #3: Toggleable via `CHUMP_SUBSTRATE` env var or auto-detection.
+
+    /// The substrate chumpd is running on.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Substrate {
+        /// macOS (Apple Silicon or Intel) — the original target.
+        MacOS,
+        /// Hetzner Linux host (Ubuntu/Debian on dedicated or cloud).
+        Hetzner,
+    }
+
+    impl Substrate {
+        /// Detect the substrate from the environment or auto-detect from
+        /// the OS.  `CHUMP_SUBSTRATE=hetzner` forces Hetzner;
+        /// `CHUMP_SUBSTRATE=macos` forces macOS. Unset falls through to
+        /// compile-time OS detection.
+        pub fn detect() -> Self {
+            if let Ok(v) = std::env::var("CHUMP_SUBSTRATE") {
+                match v.to_lowercase().as_str() {
+                    "hetzner" | "linux" => return Substrate::Hetzner,
+                    "macos" | "darwin" => return Substrate::MacOS,
+                    _ => { /* fall through to auto-detect */ }
+                }
+            }
+            Self::auto()
+        }
+
+        fn auto() -> Self {
+            if cfg!(target_os = "linux") {
+                Substrate::Hetzner
+            } else {
+                Substrate::MacOS
+            }
+        }
+
+        pub fn label(&self) -> &'static str {
+            match self {
+                Substrate::MacOS => "macos",
+                Substrate::Hetzner => "hetzner",
+            }
+        }
+
+        // ── AC #1: infrastructure constants ──────────────────────────
+
+        /// Extra PATH entries prepended for the worker process.
+        /// macOS needs Homebrew; Hetzner needs nothing beyond standard
+        /// system paths (already in the base PATH).
+        pub fn extra_path_entries(&self, home: &str) -> String {
+            match self {
+                Substrate::MacOS => {
+                    format!("/opt/homebrew/bin:{home}/.local/bin:{home}/.cargo/bin",)
+                }
+                Substrate::Hetzner => format!("{home}/.local/bin:{home}/.cargo/bin",),
+            }
+        }
+
+        /// Whether a process-level file sandbox is available.
+        pub fn sandbox_available(&self) -> bool {
+            matches!(self, Substrate::MacOS)
+        }
+
+        /// Path to the `tmux` binary (used by `takeover`).
+        pub fn tmux_path(&self) -> &'static str {
+            match self {
+                Substrate::MacOS => "/opt/homebrew/bin/tmux",
+                Substrate::Hetzner => "/usr/bin/tmux",
+            }
+        }
+
+        /// Path to the `pkill` binary.
+        pub fn pkill_path(&self) -> &'static str {
+            "/usr/bin/pkill"
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn detect_respects_env_override() {
+            unsafe {
+                std::env::set_var("CHUMP_SUBSTRATE", "hetzner");
+            }
+            assert_eq!(Substrate::detect(), Substrate::Hetzner);
+            unsafe {
+                std::env::set_var("CHUMP_SUBSTRATE", "linux");
+            }
+            assert_eq!(Substrate::detect(), Substrate::Hetzner);
+            unsafe {
+                std::env::set_var("CHUMP_SUBSTRATE", "macos");
+            }
+            assert_eq!(Substrate::detect(), Substrate::MacOS);
+            unsafe {
+                std::env::remove_var("CHUMP_SUBSTRATE");
+            }
+        }
+
+        #[test]
+        fn hetzner_path_has_no_homebrew() {
+            let s = Substrate::Hetzner;
+            let extra = s.extra_path_entries("/home/chump");
+            assert!(!extra.contains("homebrew"));
+            assert!(extra.contains("/home/chump/.cargo/bin"));
+        }
+
+        #[test]
+        fn macos_path_includes_homebrew() {
+            let s = Substrate::MacOS;
+            let extra = s.extra_path_entries("/Users/jeff");
+            assert!(extra.contains("/opt/homebrew/bin"));
+        }
+
+        #[test]
+        fn hetzner_has_no_sandbox() {
+            assert!(!Substrate::Hetzner.sandbox_available());
+        }
+
+        #[test]
+        fn macos_has_sandbox() {
+            assert!(Substrate::MacOS.sandbox_available());
+        }
+
+        #[test]
+        fn tmux_path_differs_by_substrate() {
+            assert_eq!(Substrate::MacOS.tmux_path(), "/opt/homebrew/bin/tmux");
+            assert_eq!(Substrate::Hetzner.tmux_path(), "/usr/bin/tmux");
+        }
+
+        #[test]
+        fn label_is_stable() {
+            assert_eq!(Substrate::MacOS.label(), "macos");
+            assert_eq!(Substrate::Hetzner.label(), "hetzner");
+        }
+    }
+}
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -64,6 +211,8 @@ struct Config {
     repo: PathBuf,
     home: PathBuf,
     log_dir: PathBuf,
+    /// MISSION-068: the substrate chumpd is running on (macOS or Hetzner).
+    substrate: substrate::Substrate,
 }
 
 impl Config {
@@ -73,10 +222,12 @@ impl Config {
             .map(PathBuf::from)
             .unwrap_or_else(|_| home.join("Projects/Chump"));
         let log_dir = PathBuf::from(format!("/tmp/chumpd-fleet-{}", now_epoch()));
+        let substrate = substrate::Substrate::detect();
         Config {
             repo,
             home,
             log_dir,
+            substrate,
         }
     }
 
@@ -156,9 +307,9 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
 
     let worker = cfg.repo.join("scripts/dispatch/worker.sh");
     let path_env = format!(
-        "/opt/homebrew/bin:{}/.local/bin:{}/.cargo/bin:/usr/local/bin:/usr/bin:/bin",
-        cfg.home.display(),
-        cfg.home.display()
+        "{}:/usr/local/bin:/usr/bin:/bin",
+        cfg.substrate
+            .extra_path_entries(&cfg.home.display().to_string()),
     );
 
     // RESILIENT-178: workers run with the operator's full user file
@@ -169,8 +320,10 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
     // profile scoped to repo + worktrees + tmp + toolchains, with the
     // known TCC-prompting surfaces explicitly denied. Structural fix, not
     // advisory prompt discipline.
+    //
+    // MISSION-068: sandbox is macOS-only; Hetzner workers run without it.
     let worktree_base = std::env::var("CHUMP_WORKTREE_BASE").ok().map(PathBuf::from);
-    let sandboxed = file_sandbox::worker_sandbox_enabled();
+    let sandboxed = cfg.substrate.sandbox_available() && file_sandbox::worker_sandbox_enabled();
     let mut command = if sandboxed {
         let profile =
             file_sandbox::build_worker_profile(&cfg.repo, worktree_base.as_deref(), &cfg.home);
@@ -236,19 +389,22 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
 
 /// Clean-slate takeover: chumpd is the sole owner of the pool. Kill any
 /// pre-existing tmux fleet and orphan worker loops so we never double-spawn.
-fn takeover(_cfg: &Config) {
+fn takeover(cfg: &Config) {
     // Test harness / cohabitation guard: CHUMPD_TAKEOVER=0 skips the global
     // sweep (a CI fixture must never pkill a live fleet's workers).
     if std::env::var("CHUMPD_TAKEOVER").as_deref() == Ok("0") {
         return;
     }
-    let _ = Command::new("/usr/bin/pkill")
+    let _ = Command::new(cfg.substrate.pkill_path())
         .args(["-f", "dispatch/worker.sh"])
         .status();
     let _ = Command::new("/bin/bash")
         .args([
             "-lc",
-            "/opt/homebrew/bin/tmux kill-session -t chump-fleet 2>/dev/null; true",
+            &format!(
+                "{} kill-session -t chump-fleet 2>/dev/null; true",
+                cfg.substrate.tmux_path()
+            ),
         ])
         .status();
 }
