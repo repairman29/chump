@@ -17,6 +17,26 @@ trap 'rm -rf "$TMPROOT"' EXIT
 pass() { echo "[PASS] $1"; PASS=$((PASS+1)); }
 fail() { echo "[FAIL] $1"; FAIL=$((FAIL+1)); }
 
+# ── is_skippable_gap: check if a gap has an active PR (skippable) ────────────
+# Returns 0 (skippable) if the gap has a PR in "OPEN" or "MERGED" (done) state.
+# Returns 1 (not skippable) if the PR is "CLOSED" or no PR exists.
+is_skippable_gap() {
+    local gap="$1"
+    if [[ -z "$gap" ]]; then
+        return 1
+    fi
+    local pr_num pr_state
+    pr_num=$(gh pr list --head "gap/${gap}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+    if [[ -z "$pr_num" ]]; then
+        return 1
+    fi
+    pr_state=$(gh pr view "$pr_num" --json state --jq '.state' 2>/dev/null || echo "UNKNOWN")
+    case "$pr_state" in
+        OPEN|MERGED) return 0 ;;
+        *)           return 1 ;;
+    esac
+}
+
 # Build a sandbox repo so we don't touch the real lease dir or gaps.yaml.
 sandbox_setup() {
     local sandbox="$1"
@@ -75,6 +95,8 @@ reserve_in_sandbox() {
     local sandbox="$1"
     local domain="$2"
     local title="$3"
+    local max_skips="${4:-10}"
+    local skip_count=0
     (
         cd "$sandbox"
         export PATH="$sandbox/bin:$PATH"
@@ -91,6 +113,17 @@ reserve_in_sandbox() {
         FLEET_029_AMBIENT_GLANCE_SKIP=1 \
         scripts/coord/gap-reserve.sh "$domain" "$title" 2>/dev/null
     )
+    local rc=$?
+    if [[ $rc -eq 2 ]]; then
+        skip_count=$((skip_count + 1))
+        if [[ "$skip_count" -ge "$max_skips" ]]; then
+            echo "[ABORT] max_skips=$max_skips reached — stopped skipping consecutive skippable gaps" >&2
+            return 2
+        fi
+        # Re-run after skip — the caller may retry; here we just return the skip status
+        return 2
+    fi
+    return $rc
 }
 
 # ── case 1: 3-digit prevailing → next ID is 3-digit padded ───────────────────
