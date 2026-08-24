@@ -2,22 +2,22 @@
 #
 # Raw background bash processes that are NOT systemd units (or any other
 # host-native supervisor) and therefore need their own revive muscle:
-# scripts/ops/process-organ-heal.sh reads this file every cycle, pgreps for
-# each entry, and respawns anything missing. This is the process-level
-# sibling of scripts/ops/organ-manifest.txt (which organ-reconcile.sh reads
-# for chump-*.service/.timer units) — same "declare desired state in the
-# repo, let a heal loop enforce it" shape, one level below systemd.
+# scripts/ops/process-organ-heal.sh reads this file every cycle, checks
+# liveness via svc_is_alive (pgrep -f "organs/<name>.sh"), and respawns
+# anything missing via svc_revive (launches ~/.chump/organs/<name>.sh).
+# This is the process-level sibling of scripts/ops/organ-manifest.txt (which
+# organ-reconcile.sh reads for chump-*.service/.timer units) — same "declare
+# desired state in the repo, let a heal loop enforce it" shape, one level
+# below systemd.
 #
 # Format: one organ per line, "<name>|<script-path-relative-to-repo-root>[|<args>]".
 # Blank lines and lines starting with '#' are ignored.
 #
-#   name          short identifier — used for the per-organ log file name
-#                 ($LOG_DIR/<name>.log) and the process_organ_revived event
-#   script-path   path relative to REPO_ROOT. This is ALSO the `pgrep -f`
-#                 match pattern (a substring of the full command line), so it
-#                 must be specific enough not to collide with another organ
-#                 and must be an exact relative path chump-node-install.sh's
-#                 clone actually has on disk.
+#   name          short identifier — used as the organ name for svc_is_alive /
+#                 svc_revive (INFRA-3723). The organ script must be installed
+#                 at ~/.chump/organs/<name>.sh (done by chump-node-install.sh).
+#   script-path   path relative to REPO_ROOT (informational; the heal loop
+#                 delegates to svc_* which uses the ~/.chump/organs convention).
 #   args          optional, appended to the respawn command verbatim
 
 # almanac-vision-keeper: the "eyes" (INFRA-3650) — a standing loop around

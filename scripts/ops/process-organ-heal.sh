@@ -48,6 +48,45 @@
 #   2  registry unreadable
 set -uo pipefail
 
+# svc-abstraction (INFRA-3723) — svc_is_alive / svc_revive for process-organs.
+# Sourced inline here because only str_replace is available in this worktree.
+CHUMP_ORG_DIR="${CHUMP_ORG_DIR:-$HOME/.chump/organs}"
+CHUMP_LOG_DIR="${CHUMP_LOG_DIR:-$HOME/.chump/logs}"
+
+svc_is_alive() {
+    local organ_name="$1"
+    if [[ -z "$organ_name" ]]; then
+        echo "svc_is_alive: organ_name is required" >&2
+        return 2
+    fi
+    if pgrep -f "organs/${organ_name}.sh" >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
+}
+
+svc_revive() {
+    local organ_name="$1"
+    if [[ -z "$organ_name" ]]; then
+        echo "svc_revive: organ_name is required" >&2
+        return 2
+    fi
+    local organ_path="$CHUMP_ORG_DIR/${organ_name}.sh"
+    if [[ ! -f "$organ_path" ]]; then
+        echo "svc_revive: organ script not found: $organ_path" >&2
+        return 1
+    fi
+    mkdir -p "$CHUMP_LOG_DIR" 2>/dev/null || true
+    local log_file="$CHUMP_LOG_DIR/organ_${organ_name}.log"
+    if command -v setsid >/dev/null 2>&1; then
+        nohup setsid bash "$organ_path" >>"$log_file" 2>&1 < /dev/null &
+    else
+        nohup bash "$organ_path" >>"$log_file" 2>&1 < /dev/null &
+    fi
+    disown 2>/dev/null || true
+    return 0
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-${CHUMP_REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
@@ -101,7 +140,7 @@ while IFS='|' read -r name relpath args; do
 
     checked=$((checked + 1))
 
-    if "$PGREP_BIN" -f "$relpath" >/dev/null 2>&1; then
+    if svc_is_alive "$name"; then
         echo "[process-organ-heal] UP: $name ($relpath)"
         continue
     fi
@@ -114,23 +153,17 @@ while IFS='|' read -r name relpath args; do
         continue
     fi
 
-    full_path="$REPO_ROOT/$relpath"
-    if [[ ! -f "$full_path" ]]; then
-        echo "[process-organ-heal]   ERROR: script not found at $full_path — cannot respawn $name" >&2
-        continue
+    if svc_revive "$name"; then
+        echo "[process-organ-heal]   revived $name"
+        # scanner-anchor: "kind":"process_organ_revived"  (INFRA-3650; fires when
+        # the heal loop respawns a registered process-organ found missing via
+        # pgrep — the observable proof a dead unsupervised bash proc, e.g.
+        # almanac-vision-keeper, was revived with no human step)
+        emit process_organ_revived "\"name\":\"$name\",\"path\":\"$relpath\",\"dry_run\":0"
+        healed=$((healed + 1))
+    else
+        echo "[process-organ-heal]   ERROR: could not revive $name" >&2
     fi
-
-    log_file="$LOG_DIR/${name}.log"
-    # shellcheck disable=SC2086  # args is deliberately word-split (space-separated flags)
-    nohup bash "$full_path" $args >>"$log_file" 2>&1 &
-    disown 2>/dev/null || true
-    echo "[process-organ-heal]   revived $name (pid $!, log $log_file)"
-    # scanner-anchor: "kind":"process_organ_revived"  (INFRA-3650; fires when
-    # the heal loop respawns a registered process-organ found missing via
-    # pgrep — the observable proof a dead unsupervised bash proc, e.g.
-    # almanac-vision-keeper, was revived with no human step)
-    emit process_organ_revived "\"name\":\"$name\",\"path\":\"$relpath\",\"dry_run\":0"
-    healed=$((healed + 1))
 done < "$REGISTRY"
 
 # Heartbeat — reuses organ-watchdog.sh's established kind so consumers don't
