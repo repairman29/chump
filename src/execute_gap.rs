@@ -1125,10 +1125,40 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
                 Ok(outcome) => {
                     ft_hb_cancel.cancel();
                     let _ = ft_hb_handle.await;
-                    free_tier_ship(gap_id, &repo_root)
-                        .await
-                        .with_context(|| format!("free-tier ship step failed for gap {gap_id}"))?;
-                    return Ok(outcome.reply);
+                    match free_tier_ship(gap_id, &repo_root).await {
+                        Ok(()) => return Ok(outcome.reply),
+                        Err(ship_err) => {
+                            let se = format!("{ship_err:#}");
+                            // EFFECTIVE-465: the agent "ran" but shipped nothing —
+                            // the verify gate rejected an EMPTY DIFF (the model
+                            // investigated and never applied a str_replace). Do NOT
+                            // abort here: ESCALATE up the free-tier ladder (this list
+                            // IS the escalation ladder — deepseek-v4-flash →
+                            // deepseek-v4-pro → …). A stronger rung may make the edit
+                            // the current one wouldn't. Only when the whole ladder has
+                            // empty-diffed do we surface the failure (a real finding:
+                            // "even flash+pro couldn't edit this"). Non-empty-diff ship
+                            // failures (verify-FAIL, push error) are NOT escalated —
+                            // those are genuine rejections, not "wrong model".
+                            let is_empty_diff =
+                                se.contains("empty diff") || se.contains("changed nothing");
+                            if is_empty_diff && offset + 1 < total {
+                                eprintln!(
+                                    "[execute-gap] EFFECTIVE-465: {} produced an EMPTY DIFF \
+                                     for {gap_id} (agent never edited) — escalating to next \
+                                     model rung",
+                                    spec.model
+                                );
+                                last_err = Some(ship_err.context(format!(
+                                    "free-tier ship step failed for gap {gap_id}"
+                                )));
+                                continue;
+                            }
+                            return Err(ship_err).with_context(|| {
+                                format!("free-tier ship step failed for gap {gap_id}")
+                            });
+                        }
+                    }
                 }
                 Err(e) => {
                     ft_hb_cancel.cancel();
