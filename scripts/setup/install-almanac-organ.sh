@@ -67,8 +67,13 @@ info "detected host=$HOST_KIND arch=$ARCH"
 info "ALMANAC_DIR=$ALMANAC_REPO"
 
 if [ ! -d "$ALMANAC_REPO" ]; then
-  info "almanac repo not found at $ALMANAC_REPO — install-almanac-organ.sh does not clone; run install-almanac.sh first or clone manually"
-  exit 0
+  info "almanac repo not found at $ALMANAC_REPO — attempting auto-clone via install-almanac.sh"
+  if [ -x "$SCRIPT_DIR/install-almanac.sh" ]; then
+    "$SCRIPT_DIR/install-almanac.sh" || { no "install-almanac.sh failed"; exit 1; }
+  else
+    no "install-almanac.sh not found — clone almanac manually to $ALMANAC_REPO"
+    exit 1
+  fi
 fi
 
 toolchain_preflight
