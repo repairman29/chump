@@ -2256,3 +2256,8 @@ CHUMP_LIFECYCLE_WINDOW_H
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_ALMANAC_SEARCH_TIMEOUT_MS
+
+# EFFECTIVE-465: force-edit nudge + tool-restriction tuning (iteration_controller.rs)
+CHUMP_INVESTIGATE_BUDGET
+CHUMP_INVESTIGATE_NUDGE_SPACING
+CHUMP_EDIT_ONLY_TOOLS
