@@ -55,26 +55,14 @@ pass "override_env_recognized (src/version.rs unit test)"
 #    destructive path ──────────────────────────────────────────────────────
 # Grep is sufficient (the binary's behavior on a fresh build can't be a stale
 # fixture — the binary's baked SHA IS HEAD by construction in CI).
-if ! grep -q "fail_if_stale_for_destructive" "$REPO_ROOT/src/main.rs"; then
-    fail "src/main.rs does not call fail_if_stale_for_destructive — INFRA-825 wiring missing"
+# Test 2 and Test 3 were vacuous greps (CREDIBLE-237): they grepped src/main.rs
+# for symbols that had moved to src/commands/gap.rs. The dead-grep-detector
+# (scripts/ci/dead-grep-detector.sh) now catches this class of vacuous gate.
+# These tests are replaced by a direct assertion on the gap binary's behaviour.
+if ! cargo test --bin chump -- gap::tests::stale_binary_ship_blocked 2>&1 | tail -3 | grep -q "test result: ok"; then
+    fail "gap::tests::stale_binary_ship_blocked failed — INFRA-825 wiring broken"
 fi
-gap_dump_count=$(grep -c 'fail_if_stale_for_destructive(&repo_root, "gap dump --per-file")' "$REPO_ROOT/src/main.rs" || true)
-if [[ "$gap_dump_count" -lt 1 ]]; then
-    fail "src/main.rs: gap dump --per-file is not guarded by fail_if_stale_for_destructive"
-fi
-pass "main.rs wires the hard-fail into the remaining destructive path (gap dump --per-file)"
-
-# ── Test 3 (ZERO-WASTE-020): gap ship --update-yaml is a documented no-op,
-#    not a guarded destructive path — the guard call was removed along with
-#    the write it used to protect. Assert it's NOT wired to the staleness
-#    check, so a future re-introduction of a real write there without the
-#    guard gets caught by Test 2's positive-wiring pattern above instead of
-#    silently reusing this no-op's text.
-if grep -q 'fail_if_stale_for_destructive(&repo_root,$' "$REPO_ROOT/src/main.rs" \
-    && grep -A1 'fail_if_stale_for_destructive(&repo_root,$' "$REPO_ROOT/src/main.rs" | grep -q '"gap ship --update-yaml"'; then
-    fail "src/main.rs: gap ship --update-yaml is still wired to fail_if_stale_for_destructive — ZERO-WASTE-020 removed the write this guarded; if a real write came back, it needs the guard back too"
-fi
-pass "gap ship --update-yaml is a documented no-op (ZERO-WASTE-020), correctly unguarded"
+pass "gap binary staleness guard verified via unit test (replaces vacuous src/main.rs greps)"
 
 echo
 pass "INFRA-825 CI gate — the remaining destructive bulk-YAML op is gated by staleness check"
