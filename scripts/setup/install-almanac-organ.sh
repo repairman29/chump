@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-almanac-organ.sh — INFRA-3657 (RIBBON-02, MISSION-010).
+# install-almanac-organ.sh — INFRA-3710 (INFRA-3635 slice).
 #
 # The "eyes" phase: registers periodic supervision of
 # scripts/ops/almanac-liveness-refresh.sh (INFRA-3643/TREK-17) so a
@@ -101,7 +101,7 @@ install_systemd_user() {
   run "mkdir -p '$unit_dir' '$LOG_DIR'"
   run "cat > '$unit_dir/chump-almanac-liveness.service' <<EOF
 [Unit]
-Description=Chump almanac liveness/refresh — binary presence + index freshness (INFRA-3657/INFRA-3643)
+Description=Chump almanac liveness/refresh — binary presence + index freshness (INFRA-3710/INFRA-3643)
 
 [Service]
 Type=oneshot
@@ -112,7 +112,7 @@ ExecStart=$LIVENESS_SCRIPT
 EOF"
   run "cat > '$unit_dir/chump-almanac-liveness.timer' <<EOF
 [Unit]
-Description=Chump almanac liveness/refresh beat (INFRA-3657/INFRA-3643)
+Description=Chump almanac liveness/refresh beat (INFRA-3710/INFRA-3643)
 
 [Timer]
 OnBootSec=5min
@@ -153,7 +153,7 @@ PLIST"
 
 install_cron() {
   run "mkdir -p '$LOG_DIR'"
-  local marker="# chump-almanac-liveness (INFRA-3657)"
+  local marker="# chump-almanac-liveness (INFRA-3710)"
   local line="*/15 * * * * $LIVENESS_SCRIPT >> $LOG_DIR/almanac-liveness.log 2>&1 $marker"
   if [ "$DRY" = 1 ]; then
     echo "  DRY: crontab -l | grep -v '$marker' ; append: $line"
