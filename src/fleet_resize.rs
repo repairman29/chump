@@ -29,6 +29,31 @@ pub struct ResizeDecision {
     pub recommended_size: u32,
 }
 
+/// MISSION-070: pure worker-scaling formula.
+///
+/// Given the current load and the capacity of a single worker, return the
+/// target number of workers needed, clamped to `[min_workers, max_workers]`.
+///
+/// target = ceil(load / per_worker_capacity), clamped to bounds.
+///
+/// Edge cases:
+///   - zero load      → `min_workers` (no work means no scale-up)
+///   - zero capacity  → `min_workers` (avoid divide-by-zero)
+///   - excessive load → `max_workers` (never exceed fleet ceiling)
+pub fn target_worker_count(
+    load: f64,
+    per_worker_capacity: f64,
+    min_workers: u32,
+    max_workers: u32,
+) -> u32 {
+    if per_worker_capacity <= 0.0 || load <= 0.0 {
+        return min_workers;
+    }
+
+    let raw = (load / per_worker_capacity).ceil() as u32;
+    raw.clamp(min_workers, max_workers)
+}
+
 /// Check condition A: queue empty for > 30 min.
 /// Returns `Some(decision)` if the fleet should shrink.
 pub fn check_queue_empty(repo_root: &Path, current_size: u32) -> Option<ResizeDecision> {
@@ -360,5 +385,26 @@ mod tests {
         let d = evaluate(tmp.path(), 3).unwrap();
         assert_eq!(d.trigger, ResizeTrigger::QueueEmpty);
         assert_eq!(d.recommended_size, 0);
+    }
+
+    #[test]
+    fn test_target_worker_count_normal() {
+        assert_eq!(target_worker_count(10.0, 5.0, 1, 10), 2);
+        assert_eq!(target_worker_count(11.0, 5.0, 1, 10), 3); // ceil(2.2) = 3
+    }
+
+    #[test]
+    fn test_target_worker_count_zero_load() {
+        assert_eq!(target_worker_count(0.0, 5.0, 2, 10), 2);
+    }
+
+    #[test]
+    fn test_target_worker_count_max_capacity() {
+        assert_eq!(target_worker_count(1000.0, 5.0, 1, 4), 4);
+    }
+
+    #[test]
+    fn test_target_worker_count_zero_capacity() {
+        assert_eq!(target_worker_count(10.0, 0.0, 2, 10), 2);
     }
 }
