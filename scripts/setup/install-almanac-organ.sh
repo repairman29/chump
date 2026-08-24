@@ -57,7 +57,9 @@ LABEL="com.chump.almanac-liveness"
 LOG_DIR="$STATE_DIR/logs"
 
 detect_supervisor() {
-  if command -v systemctl >/dev/null 2>&1 && systemctl --user status >/dev/null 2>&1; then
+  if [ -n "${PREFIX:-}" ] && printf '%s' "$PREFIX" | grep -q 'com.termux'; then
+    echo "runit"
+  elif command -v systemctl >/dev/null 2>&1 && systemctl --user status >/dev/null 2>&1; then
     echo "systemd-user"
   elif command -v launchctl >/dev/null 2>&1; then
     echo "launchd"
@@ -135,6 +137,29 @@ install_cron() {
   ok "cron fallback installed: every 15min ($marker)"
 }
 
+install_runit() {
+  local svc_dir="$PREFIX/var/service/chump-almanac-liveness"
+  run "mkdir -p '$svc_dir/log' '$LOG_DIR'"
+  run "cat > '$svc_dir/run' <<'RUNEOF'
+#!/data/data/com.termux/files/usr/bin/sh
+exec 2>&1
+CHUMP_STATE_DIR=${CHUMP_STATE_DIR:-$HOME/.chump}
+CHUMP_ALMANAC_REPO=${CHUMP_ALMANAC_REPO:-$HOME/Projects/almanac}
+CHUMP_ALMANAC_BIN=${CHUMP_ALMANAC_BIN:-$CHUMP_ALMANAC_REPO/target/release/almanac}
+while true; do
+  $LIVENESS_SCRIPT
+  sleep 900
+done
+RUNEOF"
+  run "chmod +x '$svc_dir/run'"
+  run "cat > '$svc_dir/log/run' <<'LOGEOF'
+#!/data/data/com.termux/files/usr/bin/sh
+exec svlogd -tt '$LOG_DIR'
+LOGEOF"
+  run "chmod +x '$svc_dir/log/run'"
+  ok "runit service installed: $svc_dir (every 15min loop)"
+}
+
 do_install() {
   local sup; sup="$(detect_supervisor)"
   info "supervisor=$sup"
@@ -142,7 +167,8 @@ do_install() {
     systemd-user) install_systemd_user;;
     launchd) install_launchd;;
     cron) install_cron;;
-    *) no "no supervisor available (systemd --user, launchd, cron) — organ not supervised; run $LIVENESS_SCRIPT by hand periodically"; return 1;;
+    runit) install_runit;;
+    *) no "no supervisor available (systemd --user, launchd, cron, runit) — organ not supervised; run $LIVENESS_SCRIPT by hand periodically"; return 1;;
   esac
   info "running liveness/refresh once now (immediate self-heal, no hand steps)"
   if [ "$DRY" = 1 ]; then
@@ -171,7 +197,10 @@ do_check() {
       if crontab -l 2>/dev/null | grep -q "chump-almanac-liveness"; then ok "cron entry present"
       else no "cron entry missing"; fail=1; fi
       ;;
-    *) no "no supervisor available"; fail=1;;
+    runit)
+      if [ -d "$PREFIX/var/service/chump-almanac-liveness" ]; then ok "runit service present: chump-almanac-liveness"
+      else no "runit service NOT present: chump-almanac-liveness"; fail=1; fi
+      ;;
   esac
   # best-effort stats probe: at least one registered repo with a nonzero row
   # count proves the index is actually populated, not just present-but-empty.
