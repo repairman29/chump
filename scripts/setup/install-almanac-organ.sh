@@ -67,7 +67,19 @@ info "detected host=$HOST_KIND arch=$ARCH"
 info "ALMANAC_DIR=$ALMANAC_REPO"
 
 if [ ! -d "$ALMANAC_REPO" ]; then
-  info "almanac repo not found at $ALMANAC_REPO — install-almanac-organ.sh does not clone; run install-almanac.sh first or clone manually"
+  # INFRA-3710: if the repo is missing, install it via install-almanac.sh first
+  installer="$(dirname "$0")/install-almanac.sh"
+  if [ -f "$installer" ]; then
+    info "almanac repo not found — running install-almanac.sh to clone + build it"
+    if [ "$DRY" = 1 ]; then
+      echo "  DRY: bash $installer"
+    else
+      bash "$installer" || { no "install-almanac.sh failed — cannot proceed"; exit 1; }
+    fi
+  else
+    info "almanac repo not found at $ALMANAC_REPO — install-almanac-organ.sh does not clone; run install-almanac.sh first or clone manually"
+    exit 0
+  fi
   exit 0
 fi
 
