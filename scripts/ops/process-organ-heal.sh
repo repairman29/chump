@@ -49,6 +49,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=svc-abstraction.sh
+source "$SCRIPT_DIR/svc-abstraction.sh"
 REPO_ROOT="${REPO_ROOT:-${CHUMP_REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 REGISTRY="${CHUMP_PROCESS_ORGAN_REGISTRY:-$REPO_ROOT/scripts/ops/process-organ-registry.txt}"
