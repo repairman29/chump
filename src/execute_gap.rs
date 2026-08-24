@@ -1149,11 +1149,9 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
                                      model rung",
                                     spec.model
                                 );
-                                last_err = Some(
-                                    ship_err.context(format!(
-                                        "free-tier ship step failed for gap {gap_id}"
-                                    )),
-                                );
+                                last_err = Some(ship_err.context(format!(
+                                    "free-tier ship step failed for gap {gap_id}"
+                                )));
                                 continue;
                             }
                             return Err(ship_err).with_context(|| {
