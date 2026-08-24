@@ -148,6 +148,17 @@ pub fn classify(target: &str, changed_files: &[String], impact: &ImpactData) -> 
         resolution_rate * 100.0
     );
 
+    if target.trim().is_empty() {
+        return ClassifyResult {
+            verdict: Verdict::Unrelated,
+            citations: Vec::new(),
+            edges_resolved: impact.edges_resolved,
+            edges_total: impact.edges_total,
+            resolution_rate,
+            note: format!("no target supplied; cannot classify reachability. {caveat}"),
+        };
+    }
+
     if changed_files.is_empty() {
         return ClassifyResult {
             verdict: Verdict::Unrelated,
@@ -679,6 +690,14 @@ mod tests {
     fn empty_changed_files_is_unrelated() {
         let r = classify("src/foo.rs", &[], &impact(&[], &[], 10, 20));
         assert_eq!(r.verdict, Verdict::Unrelated);
+    }
+
+    #[test]
+    fn empty_target_is_unrelated() {
+        let changed = vec!["src/foo.rs".to_string()];
+        let r = classify("", &changed, &impact(&[], &[], 10, 20));
+        assert_eq!(r.verdict, Verdict::Unrelated);
+        assert!(r.note.contains("no target supplied"));
     }
 
     #[test]
