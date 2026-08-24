@@ -17,6 +17,32 @@ trap 'rm -rf "$TMPROOT"' EXIT
 pass() { echo "[PASS] $1"; PASS=$((PASS+1)); }
 fail() { echo "[FAIL] $1"; FAIL=$((FAIL+1)); }
 
+# ── is_skippable_gap predicate ─────────────────────────────────────────────
+# Returns exit code 0 if the given gap has an associated PR in "done" or any
+# open/in-flight state (open, in-flight), and exit code 1 for "closed" or no PR.
+# Usage: is_skippable_gap <gap-id>
+is_skippable_gap() {
+    local gap_id="$1"
+    # Query the PR state for this gap.  If no PR found, exit 1.
+    # gh pr list uses label matching — gaps are labelled by their gap ID.
+    local pr_state
+    pr_state=$(gh pr list --label "$gap_id" --json state --jq '.[0].state' 2>/dev/null || true)
+    if [[ -z "$pr_state" ]]; then
+        return 1
+    fi
+    case "$pr_state" in
+        DONE|OPEN|IN_PROGRESS|MERGED)
+            return 0
+            ;;
+        CLOSED)
+            return 1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 # Build a sandbox repo so we don't touch the real lease dir or gaps.yaml.
 sandbox_setup() {
     local sandbox="$1"
@@ -75,6 +101,7 @@ reserve_in_sandbox() {
     local sandbox="$1"
     local domain="$2"
     local title="$3"
+    local max_skips="${4:-10}"
     (
         cd "$sandbox"
         export PATH="$sandbox/bin:$PATH"
