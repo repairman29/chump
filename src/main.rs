@@ -1040,6 +1040,143 @@ fn print_help() {
     println!("  scripts/README.md  script taxonomy and entry points");
 }
 
+/// Structured claim types extracted from commit messages or natural-language input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Claim {
+    SymbolClaim {
+        symbol: String,
+        path: String,
+        line: u32,
+    },
+    TestClaim {
+        test_name: String,
+    },
+    FileTouchClaim {
+        file_path: String,
+    },
+}
+
+/// Parse input text into a vector of typed `Claim` objects.
+///
+/// First pass: scan for structured trailers of the form
+///   `Claim: symbol <name> <path>:<line>`
+///   `Claim: test <name>`
+///   `Claim: file_touch <path>`
+/// Second pass (fallback): if no structured claims were found, attempt
+/// natural-language extraction for symbol/path:line, test names, and file paths.
+fn extract_claims(input: &str) -> Vec<Claim> {
+    let mut claims: Vec<Claim> = Vec::new();
+
+    // --- structured trailer pass ---
+    for line in input.lines() {
+        let trimmed = line.trim();
+
+        // Claim: symbol my_func src/foo.rs:12
+        if let Some(rest) = trimmed.strip_prefix("Claim: symbol ") {
+            let parts: Vec<&str> = rest.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let symbol = parts[0].to_string();
+                let path_line: Vec<&str> = parts[1].rsplitn(2, ':').collect();
+                if path_line.len() == 2 {
+                    if let Ok(line_num) = path_line[0].parse::<u32>() {
+                        claims.push(Claim::SymbolClaim {
+                            symbol,
+                            path: path_line[1].to_string(),
+                            line: line_num,
+                        });
+                        continue;
+                    }
+                }
+                // fallback: treat as path without line number
+                claims.push(Claim::SymbolClaim {
+                    symbol,
+                    path: parts[1].to_string(),
+                    line: 0,
+                });
+            }
+            continue;
+        }
+
+        // Claim: test test_login
+        if let Some(rest) = trimmed.strip_prefix("Claim: test ") {
+            let test_name = rest.trim().to_string();
+            if !test_name.is_empty() {
+                claims.push(Claim::TestClaim { test_name });
+            }
+            continue;
+        }
+
+        // Claim: file_touch README.md
+        if let Some(rest) = trimmed.strip_prefix("Claim: file_touch ") {
+            let file_path = rest.trim().to_string();
+            if !file_path.is_empty() {
+                claims.push(Claim::FileTouchClaim { file_path });
+            }
+            continue;
+        }
+    }
+
+    // --- natural-language fallback pass ---
+    if claims.is_empty() {
+        // Look for "adds unit test <name>" pattern
+        for line in input.lines() {
+            let lower = line.to_lowercase();
+            if let Some(pos) = lower.find("adds unit test ") {
+                let rest = &line[pos + "adds unit test ".len()..];
+                let test_name = rest.trim().to_string();
+                if !test_name.is_empty() {
+                    claims.push(Claim::TestClaim { test_name });
+                }
+            }
+            if let Some(pos) = lower.find("adds test ") {
+                let rest = &line[pos + "adds test ".len()..];
+                let test_name = rest.trim().to_string();
+                if !test_name.is_empty() {
+                    claims.push(Claim::TestClaim { test_name });
+                }
+            }
+        }
+
+        // Look for symbol + path:line patterns like "symbol my_func src/foo.rs:12"
+        for line in input.lines() {
+            let lower = line.to_lowercase();
+            if let Some(pos) = lower.find("symbol ") {
+                let rest = &line[pos + "symbol ".len()..];
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let symbol = parts[0].to_string();
+                    let path_line: Vec<&str> = parts[1].rsplitn(2, ':').collect();
+                    if path_line.len() == 2 {
+                        if let Ok(line_num) = path_line[0].parse::<u32>() {
+                            claims.push(Claim::SymbolClaim {
+                                symbol,
+                                path: path_line[1].to_string(),
+                                line: line_num,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Look for file path patterns (e.g. "touches README.md" or bare paths)
+        for line in input.lines() {
+            let lower = line.to_lowercase();
+            for prefix in &["touches ", "file_touch ", "modifies "] {
+                if let Some(pos) = lower.find(prefix) {
+                    let rest = &line[pos + prefix.len()..];
+                    let file_path = rest.trim().to_string();
+                    if !file_path.is_empty() && file_path.contains('.') {
+                        claims.push(Claim::FileTouchClaim { file_path });
+                    }
+                }
+            }
+        }
+    }
+
+    claims
+}
+
 /// `chump plan` subcommand (INFRA-1021).
 ///
 /// Thin wrapper around chump-planner library — keeps main.rs free of the
