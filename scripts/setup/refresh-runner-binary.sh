@@ -51,6 +51,72 @@ if [[ "${CHUMP_SKIP_BINARY_REFRESH:-0}" == "1" ]]; then
     exit 0
 fi
 
+# ── INFRA-3716: --almanac mode ──────────────────────────────────────────────
+# When invoked with --almanac, this script handles the almanac binary instead
+# of the chump binary.  SHA-idempotent: if the installed almanac binary's
+# build SHA matches almanac origin/main HEAD, it logs "almanac binary healthy"
+# and exits 0 (no-op).  If the binary is missing or the SHA mismatches, it
+# delegates to install-almanac-organ.sh for the rebuild.
+# ────────────────────────────────────────────────────────────────────────────
+if [[ "${1:-}" == "--almanac" ]]; then
+    shift
+    ALMANAC_REPO="${ALMANAC_REPO:-$HOME/Projects/almanac}"
+    ALMANAC_BIN="${ALMANAC_BIN:-$ALMANAC_REPO/target/release/almanac}"
+
+    log "INFRA-3716: almanac mode — checking $ALMANAC_BIN"
+
+    # Determine known-good SHA from almanac repo origin/main
+    if [[ -d "$ALMANAC_REPO/.git" ]]; then
+        git -C "$ALMANAC_REPO" fetch origin main --quiet 2>/dev/null || true
+        ALMANAC_MAIN_SHA="$(git -C "$ALMANAC_REPO" rev-parse --short=12 origin/main 2>/dev/null || git -C "$ALMANAC_REPO" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
+    else
+        ALMANAC_MAIN_SHA="unknown"
+    fi
+    log "almanac origin/main = $ALMANAC_MAIN_SHA"
+
+    # Check installed binary build SHA
+    INSTALLED_ALMANAC_SHA="none"
+    if [[ -x "$ALMANAC_BIN" ]]; then
+        INSTALLED_ALMANAC_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{7,12}' | head -1 || echo unknown)"
+        log "installed almanac sha = $INSTALLED_ALMANAC_SHA"
+    fi
+
+    # Idempotency: if binary present and SHA matches, no-op
+    if [[ "$INSTALLED_ALMANAC_SHA" != "none" && "$INSTALLED_ALMANAC_SHA" != "unknown" ]] && \
+       [[ "$INSTALLED_ALMANAC_SHA" == "$ALMANAC_MAIN_SHA"* || "$ALMANAC_MAIN_SHA" == "$INSTALLED_ALMANAC_SHA"* ]]; then
+        log "almanac binary healthy ($INSTALLED_ALMANAC_SHA matches main $ALMANAC_MAIN_SHA)"
+        emit almanac_binary_healthy "\"sha\":\"$INSTALLED_ALMANAC_SHA\",\"main_sha\":\"$ALMANAC_MAIN_SHA\""
+        exit 0
+    fi
+
+    # Binary missing or SHA mismatch — rebuild via install-almanac-organ.sh
+    log "almanac binary needs rebuild (installed=$INSTALLED_ALMANAC_SHA, main=$ALMANAC_MAIN_SHA)"
+
+    if [[ ! -d "$ALMANAC_REPO/.git" ]]; then
+        log "FATAL: almanac repo not found at $ALMANAC_REPO"
+        emit almanac_binary_refresh_failed "\"reason\":\"almanac_repo_absent\""
+        exit 1
+    fi
+
+    if [[ -x "$ALMANAC_REPO/scripts/install-almanac-organ.sh" ]]; then
+        log "running install-almanac-organ.sh …"
+        if ! "$ALMANAC_REPO/scripts/install-almanac-organ.sh" >>"$LOG" 2>&1; then
+            log "FATAL: install-almanac-organ.sh failed"
+            emit almanac_binary_refresh_failed "\"reason\":\"install_almanac_organ_failed\""
+            exit 1
+        fi
+    else
+        log "FATAL: install-almanac-organ.sh not found at $ALMANAC_REPO/scripts/install-almanac-organ.sh"
+        emit almanac_binary_refresh_failed "\"reason\":\"install_script_missing\""
+        exit 1
+    fi
+
+    NEW_ALMANAC_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{7,12}' | head -1 || echo unknown)"
+    log "OK: almanac binary refreshed ($INSTALLED_ALMANAC_SHA -> $NEW_ALMANAC_SHA)"
+    emit almanac_binary_refreshed "\"prev_sha\":\"$INSTALLED_ALMANAC_SHA\",\"new_sha\":\"$NEW_ALMANAC_SHA\",\"main_sha\":\"$ALMANAC_MAIN_SHA\""
+    exit 0
+fi
+
 cd "$REPO_ROOT" || { log "FATAL: cannot cd to $REPO_ROOT"; emit runner_binary_refresh_failed "\"reason\":\"cwd_failed\""; exit 1; }
 
 # Fetch latest main without disturbing the working tree
