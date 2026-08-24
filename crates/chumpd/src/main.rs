@@ -592,7 +592,46 @@ async fn main() {
         std::thread::sleep(Duration::from_secs(TICK_SECS));
     }
 
-    // Graceful shutdown: take the children with us (launchd owns OUR restart).
+    // Graceful shutdown: send SIGTERM to all children, wait for drain, then SIGKILL survivors.
+    const GRACE_SECS: u64 = 10;
+    for slot in slots.values_mut() {
+        if let Some(child) = slot.child.as_mut() {
+            // Send SIGTERM via the `kill` command (child.kill() is SIGKILL only).
+            let _ = Command::new("kill")
+                .arg(format!("{}", child.id()))
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+    }
+    // Wait grace period for workers to drain.
+    let deadline = SystemTime::now() + Duration::from_secs(GRACE_SECS);
+    loop {
+        let mut all_done = true;
+        for slot in slots.values_mut() {
+            if let Some(child) = slot.child.as_mut() {
+                match child.try_wait() {
+                    Ok(Some(_)) => {
+                        slot.child = None; // reaped
+                    }
+                    Ok(None) => {
+                        all_done = false;
+                    }
+                    Err(_) => {
+                        slot.child = None;
+                    }
+                }
+            }
+        }
+        if all_done {
+            break;
+        }
+        if SystemTime::now() >= deadline {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    // SIGKILL any survivors.
     for slot in slots.values_mut() {
         if let Some(child) = slot.child.as_mut() {
             let _ = child.kill();
@@ -607,4 +646,6 @@ async fn main() {
             iso_now()
         ),
     );
+    // Exit with status 0 on graceful shutdown.
+    std::process::exit(0);
 }
