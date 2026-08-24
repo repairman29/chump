@@ -65,26 +65,26 @@ if [[ "${1:-}" == "--almanac" ]]; then
 
     log "INFRA-3716: almanac mode — checking $ALMANAC_BIN"
 
-    # Determine known-good SHA from almanac repo origin/main
+    # Determine known-good SHA256 from almanac repo origin/main
     if [[ -d "$ALMANAC_REPO/.git" ]]; then
         git -C "$ALMANAC_REPO" fetch origin main --quiet 2>/dev/null || true
-        ALMANAC_MAIN_SHA="$(git -C "$ALMANAC_REPO" rev-parse --short=12 origin/main 2>/dev/null || git -C "$ALMANAC_REPO" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
+        ALMANAC_MAIN_SHA="$(git -C "$ALMANAC_REPO" rev-parse origin/main 2>/dev/null || git -C "$ALMANAC_REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
     else
         ALMANAC_MAIN_SHA="unknown"
     fi
     log "almanac origin/main = $ALMANAC_MAIN_SHA"
 
-    # Check installed binary build SHA
+    # Check installed binary build SHA256
     INSTALLED_ALMANAC_SHA="none"
     if [[ -x "$ALMANAC_BIN" ]]; then
-        INSTALLED_ALMANAC_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{7,12}' | head -1)"
+        INSTALLED_ALMANAC_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{40}' | head -1)"
         [[ -n "$INSTALLED_ALMANAC_SHA" ]] || INSTALLED_ALMANAC_SHA="unknown"
         log "installed almanac sha = $INSTALLED_ALMANAC_SHA"
     fi
 
-    # Idempotency: if binary present and SHA matches, no-op
+    # Idempotency: if binary present and full SHA256 matches, no-op
     if [[ "$INSTALLED_ALMANAC_SHA" != "none" && "$INSTALLED_ALMANAC_SHA" != "unknown" ]] && \
-       [[ "$INSTALLED_ALMANAC_SHA" == "$ALMANAC_MAIN_SHA"* || "$ALMANAC_MAIN_SHA" == "$INSTALLED_ALMANAC_SHA"* ]]; then
+       [[ "$INSTALLED_ALMANAC_SHA" == "$ALMANAC_MAIN_SHA" ]]; then
         log "almanac binary healthy ($INSTALLED_ALMANAC_SHA matches main $ALMANAC_MAIN_SHA)"
         emit almanac_binary_healthy "\"sha\":\"$INSTALLED_ALMANAC_SHA\",\"main_sha\":\"$ALMANAC_MAIN_SHA\""
         exit 0
@@ -112,7 +112,7 @@ if [[ "${1:-}" == "--almanac" ]]; then
         exit 1
     fi
 
-    NEW_ALMANAC_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{7,12}' | head -1 || echo unknown)"
+    NEW_ALMANAC_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{40}' | head -1 || echo unknown)"
     log "OK: almanac binary refreshed ($INSTALLED_ALMANAC_SHA -> $NEW_ALMANAC_SHA)"
     emit almanac_binary_refreshed "\"prev_sha\":\"$INSTALLED_ALMANAC_SHA\",\"new_sha\":\"$NEW_ALMANAC_SHA\",\"main_sha\":\"$ALMANAC_MAIN_SHA\""
     exit 0
@@ -125,7 +125,7 @@ git fetch origin main --quiet 2>/dev/null || {
     log "WARN: git fetch failed (offline?); proceeding with local main"
 }
 
-MAIN_SHA="$(git rev-parse --short=12 origin/main 2>/dev/null || git rev-parse --short=12 HEAD)"
+MAIN_SHA="$(git rev-parse origin/main 2>/dev/null || git rev-parse HEAD)"
 log "origin/main = $MAIN_SHA"
 
 # Check installed binary build SHA (chump prints 'chump 0.1.2 (<sha> built <date>)')

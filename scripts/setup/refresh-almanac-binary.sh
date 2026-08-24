@@ -155,10 +155,10 @@ if [[ "$VERDICT" == "binary_missing" ]]; then
         exit 1
     fi
 
-    MAIN_SHA="$(git -C "$ALMANAC_REPO" rev-parse --short=12 origin/main 2>/dev/null || git -C "$ALMANAC_REPO" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
+    MAIN_SHA="$(git -C "$ALMANAC_REPO" rev-parse origin/main 2>/dev/null || git -C "$ALMANAC_REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
     INSTALLED_SHA="none"
     if [[ -x "$ALMANAC_BIN" ]]; then
-        INSTALLED_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{7,12}' | head -1 || echo unknown)"
+        INSTALLED_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{40}' | head -1 || echo unknown)"
     fi
 
     # VERDICT=="binary_missing" only fires when $ALMANAC_BIN is absent/not
@@ -194,7 +194,7 @@ if [[ "$VERDICT" == "binary_missing" ]]; then
             codesign --force --sign - "$ALMANAC_BIN" 2>/dev/null || true
         fi
     fi
-    NEW_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{7,12}' | head -1 || echo unknown)"
+    NEW_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{40}' | head -1 || echo unknown)"
     emit almanac_binary_refreshed "\"prev_sha\":\"$INSTALLED_SHA\",\"new_sha\":\"$NEW_SHA\",\"main_sha\":\"$MAIN_SHA\""
     echo "OK: almanac binary refreshed ($INSTALLED_SHA -> $NEW_SHA)"
 fi
