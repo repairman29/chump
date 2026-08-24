@@ -169,7 +169,8 @@ acp_sessions/
 .chump/.last-yaml-op
 
 # INFRA-202: per-machine sccache config (created by scripts/setup/install-sccache.sh)
-.cargo/config.toml
+# Now written to $HOME/.cargo/config.toml (outside the repo) — no repo-level
+# .gitignore entry needed.
 
 # Runtime/operational state (local only — not committed)
 .chump/activation/

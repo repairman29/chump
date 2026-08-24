@@ -15,7 +15,7 @@
 # What this script does:
 #   1. Install sccache — `cargo install sccache` on Linux (Ubuntu CJ has no
 #      brew), `brew install sccache` on macOS. Idempotent — skips if present.
-#   2. Write .cargo/config.toml with rustc-wrapper=sccache + a LOCAL cache
+#   2. Write $HOME/.cargo/config.toml with rustc-wrapper=sccache + a LOCAL cache
 #      dir (prefers a mounted external/USB data disk over the root disk so
 #      the cache doesn't compete with the OS drive for space — INFRA-3660
 #      found cjdata1 full at its 13G target while cjdata3 had 13G free).
@@ -180,8 +180,9 @@ else
     log "cranelift component not installed — omitting codegen-backend section"
 fi
 
-log "writing .cargo/config.toml"
-mkdir -p .cargo
+CARGO_CONFIG_DIR="${CARGO_CONFIG_DIR:-$HOME/.cargo}"
+log "writing $CARGO_CONFIG_DIR/config.toml"
+mkdir -p "$CARGO_CONFIG_DIR"
 {
 cat <<EOF
 # INFRA-202: sccache as rustc wrapper for fleet worktrees.
@@ -217,7 +218,7 @@ SCCACHE_CACHE_SIZE = "$SCCACHE_CACHE_SIZE_RESOLVED"
 # and re-run this script if you want a different location.
 SCCACHE_DIR = "$SCCACHE_DIR_RESOLVED"
 EOF
-} > .cargo/config.toml
+} > "$CARGO_CONFIG_DIR/config.toml"
 
 # ── 3. verify (best-effort) ──────────────────────────────────────────────
 # Not a hard gate: on a live multi-worker fleet host, concurrent builds in
@@ -241,4 +242,4 @@ else
 fi
 
 log "done. Future cargo invocations in any worktree will use sccache."
-log "To opt out on this machine: rm .cargo/config.toml"
+log "To opt out on this machine: rm $CARGO_CONFIG_DIR/config.toml"
