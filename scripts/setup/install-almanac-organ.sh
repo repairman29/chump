@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-almanac-organ.sh — INFRA-3657 (RIBBON-02, MISSION-010).
+# install-almanac-organ.sh — INFRA-3710 (INFRA-3635 slice), INFRA-3657 (RIBBON-02, MISSION-010).
 #
 # The "eyes" phase: registers periodic supervision of
 # scripts/ops/almanac-liveness-refresh.sh (INFRA-3643/TREK-17) so a
