@@ -137,7 +137,16 @@ pub fn is_test_like(path: &str) -> bool {
 /// (already resolved to a repo-relative path); `changed_files` are the PR's
 /// diff `--name-only` entries; `impact` is almanac's import-graph data for
 /// `target` (and, best-effort, for each changed file).
-pub fn classify(target: &str, changed_files: &[String], impact: &ImpactData) -> ClassifyResult {
+/// `gap_is_test_only` should be true when the gap's own acceptance criteria
+/// explicitly ask only for tests — when true, TEST-ONLY will not fire even
+/// if every changed file is test-shaped (AC: "correctly does NOT fire when
+/// the gap's own acceptance criteria asked only for tests").
+pub fn classify(
+    target: &str,
+    changed_files: &[String],
+    impact: &ImpactData,
+    gap_is_test_only: bool,
+) -> ClassifyResult {
     let resolution_rate = impact.resolution_rate();
     let caveat = format!(
         "edge-resolution lower bound: {}/{} import edges resolved ({:.0}%) — unresolved edges \
@@ -211,7 +220,13 @@ pub fn classify(target: &str, changed_files: &[String], impact: &ImpactData) -> 
     // the target itself is a non-test file — i.e. the gap asked for a source
     // change and got only tests. If the target is itself test-shaped, the
     // gap plausibly asked only for tests, so this must NOT fire (AC3).
-    if changed_files.iter().all(|f| is_test_like(f)) && !is_test_like(target) {
+    // Additionally, if the caller explicitly signals that the gap's own
+    // acceptance criteria asked only for tests (gap_is_test_only), we also
+    // suppress TEST-ONLY — the diff is exactly what was asked for.
+    if changed_files.iter().all(|f| is_test_like(f))
+        && !is_test_like(target)
+        && !gap_is_test_only
+    {
         return ClassifyResult {
             verdict: Verdict::TestOnly,
             citations: changed_files.to_vec(),
@@ -541,7 +556,7 @@ pub fn run(args: &[String]) -> i32 {
     };
 
     let impact = fetch_impact_data(&target, &changed_files);
-    let result = classify(&target, &changed_files, &impact);
+    let result = classify(&target, &changed_files, &impact, false);
 
     if want_json {
         println!(
