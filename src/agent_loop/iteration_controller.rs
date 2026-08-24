@@ -82,12 +82,49 @@ fn investigate_nudge_spacing() -> usize {
         .unwrap_or(DEFAULT_INVESTIGATE_NUDGE_SPACING)
 }
 
+/// EFFECTIVE-465: the edit tools a require_edit run is FORCED down to once the
+/// text nudges are exhausted with zero edits. Removing the read-only tools
+/// (`read_file`/`grep_repo`/`list_dir`/`almanac_search`) physically stops a
+/// model that structurally avoids editing (DeepSeek's real M1 tool-selection
+/// wall — it read-loops past every text nudge) from investigating forever: its
+/// only actions become "apply the change" or "answer in prose". `str_replace`
+/// edits an existing file; `write_file` CREATES a new one (many decomposed
+/// sub-gaps target a file that doesn't exist yet — read-only tools can never
+/// satisfy those). Overridable via `CHUMP_EDIT_ONLY_TOOLS` (comma-separated).
+fn edit_only_tool_names() -> Vec<String> {
+    match std::env::var("CHUMP_EDIT_ONLY_TOOLS") {
+        Ok(s) if !s.trim().is_empty() => s
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect(),
+        _ => vec!["str_replace".to_string(), "write_file".to_string()],
+    }
+}
+
+/// Filter `tools` down to the edit-only set. If NONE of the edit tools are
+/// present in the registry (unusual), returns the original list unchanged so we
+/// never hand the model an empty tool set (which some providers reject).
+fn restrict_to_edit_tools(tools: &[Tool]) -> Vec<Tool> {
+    let want = edit_only_tool_names();
+    let filtered: Vec<Tool> = tools
+        .iter()
+        .filter(|t| want.iter().any(|w| w == &t.name))
+        .cloned()
+        .collect();
+    if filtered.is_empty() {
+        tools.to_vec()
+    } else {
+        filtered
+    }
+}
+
 /// EFFECTIVE-448: the firm message injected when the model narrates a fix but
 /// never applies one. A weak model (DeepSeek flash/pro) investigates for many
 /// read-only turns, then emits an EndTurn prose summary — the FSM would Complete
 /// with zero edits and `free_tier_ship` aborts on "empty diff". Kept as a const
 /// so the unit test can assert the exact wording is what gets injected.
-pub(crate) const EDIT_NUDGE_MESSAGE: &str = "You have investigated enough. You have NOT edited any file yet — you only described the change. STOP investigating and APPLY the edit NOW using the `str_replace` tool: copy the EXACT existing snippet you want to change into `old_string` (include enough surrounding lines to be unique) and the replacement text into `new_string`. Do NOT rewrite a whole file with write_file. Make the smallest edit that satisfies the task, then stop. If — and only if — no edit is genuinely possible, reply with a single line beginning `NO_EDIT_POSSIBLE:` followed by the concrete reason.";
+pub(crate) const EDIT_NUDGE_MESSAGE: &str = "You have investigated enough. You have NOT written any file yet — you only described the change. STOP investigating and APPLY the change NOW. To EDIT an existing file, use `str_replace`: copy the EXACT existing snippet into `old_string` (enough surrounding lines to be unique) and the replacement into `new_string`. If the target file DOES NOT EXIST YET (a new file), use `write_file` to CREATE it with the full contents. Make the smallest change that satisfies the task, then stop. If — and only if — no change is genuinely possible, reply with a single line beginning `NO_EDIT_POSSIBLE:` followed by the concrete reason.";
 
 /// Decide whether a tool batch outcome should trip the fail-storm breaker.
 ///
@@ -175,6 +212,7 @@ impl<'a> IterationController<'a> {
         let investigate_budget = investigate_budget();
         let investigate_nudge_spacing = investigate_nudge_spacing();
         let mut last_investigate_nudge_iter: usize = 0;
+        let mut edit_only_forced_logged = false;
 
         // Helper: build the standard cancelled outcome and return early.
         // Defined as a named macro so it can capture `_iter`, `thinking_segments`,
@@ -288,8 +326,25 @@ impl<'a> IterationController<'a> {
                 });
             }
 
+            // EFFECTIVE-465: once the text nudges are exhausted on a require_edit
+            // run that STILL has zero edits, force the model down to edit-only
+            // tools so it physically cannot keep read-looping (DeepSeek ignores
+            // every text nudge). Its only moves become str_replace/write_file or
+            // a prose answer.
+            let force_edit_only =
+                require_edit && edits_applied == 0 && edit_nudges_fired >= max_edit_nudges;
             let tools_for_call = if skip_tools_first_call && model_calls_count == 0 {
                 None
+            } else if force_edit_only {
+                if !edit_only_forced_logged {
+                    edit_only_forced_logged = true;
+                    eprintln!(
+                        "[agent-loop] EFFECTIVE-465: text nudges exhausted with zero edits — \
+                         restricting tools to edit-only (str_replace/write_file) to force an edit \
+                         or NO_EDIT_POSSIBLE"
+                    );
+                }
+                Some(restrict_to_edit_tools(&tools))
             } else {
                 Some(tools.clone())
             };
