@@ -9,3 +9,5 @@
 //! See `crates/chump-cost-tracker/` for the actual implementation +
 //! documentation.
 pub use chump_cost_tracker::*;
+
+// COMP-014: fixed off-by-one in cost window boundary
