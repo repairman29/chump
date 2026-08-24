@@ -270,6 +270,13 @@ impl<'a> IterationController<'a> {
             {
                 edit_nudges_fired += 1;
                 last_investigate_nudge_iter = _iter;
+                // eprintln (not just tracing) so the shove is VISIBLE in the
+                // worker's per-cycle log — the receipt that the floor was forced
+                // to edit rather than silently read-looping into an empty diff.
+                eprintln!(
+                    "[agent-loop] EFFECTIVE-465: iter {_iter} investigating with zero edits past \
+                     budget — injecting force-edit nudge (#{edit_nudges_fired})"
+                );
                 tracing::info!(
                     edit_nudges_fired,
                     iter = _iter,
@@ -432,6 +439,10 @@ impl<'a> IterationController<'a> {
                         // investigation nudge doesn't immediately stack a second
                         // identical shove on the very next iteration.
                         last_investigate_nudge_iter = _iter;
+                        eprintln!(
+                            "[agent-loop] EFFECTIVE-448: EndTurn with zero edits — injecting \
+                             force-edit nudge (#{edit_nudges_fired})"
+                        );
                         tracing::info!(
                             edit_nudges_fired,
                             model_calls_count,
