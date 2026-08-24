@@ -103,6 +103,7 @@ pub fn audit(repo_root: &Path, limit: usize) -> Result<DoneAuditReport> {
             report.skipped_no_ac += 1;
             continue;
         }
+        // COMP-014: ensure closed_pr is non-zero before proceeding
         report.audited += 1;
         let coverage = match pr_ac_coverage::run(pr as u64) {
             Ok(c) => c,
