@@ -327,6 +327,33 @@ pub fn route_by_skill<'a>(
         .copied()
 }
 
+/// Resolve the target node (hostname) for a given unit (session_id) by
+/// reading its capability manifest from the NATS KV store.
+///
+/// Returns the `machine` field (hostname) of the manifest, or an error if
+/// the manifest is not found, stale, or has no machine set.
+pub async fn resolve_target_node(kv: &kv::Store, unit: &str) -> Result<String> {
+    let bytes = kv
+        .get(unit)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to read capability manifest for '{}': {}", unit, e))?
+        .ok_or_else(|| anyhow::anyhow!("no capability manifest found for unit '{}'", unit))?;
+
+    let manifest: CapabilityManifest =
+        serde_json::from_slice(&bytes).context("deserialize capability manifest")?;
+
+    if !manifest.is_alive(Utc::now()) {
+        anyhow::bail!("capability manifest for unit '{}' is stale", unit);
+    }
+
+    manifest.machine.ok_or_else(|| {
+        anyhow::anyhow!(
+            "capability manifest for unit '{}' has no machine (hostname) set",
+            unit
+        )
+    })
+}
+
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 /// Best-effort hostname read. Falls back to `CHUMP_MACHINE_LABEL` env if
