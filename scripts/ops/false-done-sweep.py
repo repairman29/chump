@@ -164,8 +164,8 @@ class PrFiles:
 
 # A closing PR made only of these paths shipped no code. Registry bookkeeping,
 # roadmap edits and audit write-ups are not implementations of anything.
-BOOKKEEPING_PREFIXES = ("docs/gaps/", "docs/audits/", "docs/archive/")
-BOOKKEEPING_EXACT = {"docs/ROADMAP.md", ".chump/state.sql"}
+BOOKKEEPING_PREFIXES = ("docs/gaps/", "docs/audits/", "docs/archive/", ".chump/")
+BOOKKEEPING_EXACT = {"docs/ROADMAP.md"}
 
 
 def is_implementation(path):
