@@ -57,7 +57,6 @@ if [ -f "$INSTALL_SCRIPT" ]; then
   eval "$(sed -n '/^install_hint()/,/^}/p' "$INSTALL_SCRIPT")"
   eval "$(sed -n '/^ensure_rust()/,/^}/p' "$INSTALL_SCRIPT")"
   eval "$(sed -n '/^toolchain_preflight()/,/^}/p' "$INSTALL_SCRIPT")"
-  
 else
   echo "ERROR: $INSTALL_SCRIPT not found — cannot proceed" >&2
   exit 1
