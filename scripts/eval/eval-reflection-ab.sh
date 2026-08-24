@@ -13,7 +13,7 @@
 #                  branch inside chump.
 #
 # --episodes <path>  Override the episode JSON path
-#                    (default: scripts/eval-reflection-ab/episodes.json).
+#                    (default: scripts/eval/fixtures/reflection-episodes.json).
 #
 # --chump-bin <path>  Path to the chump binary
 #                    (default: ./target/release/chump).
@@ -34,7 +34,7 @@ set -euo pipefail
 
 WITH_LLM=0
 CHUMP_BIN="./target/release/chump"
-EPISODES_PATH=""
+EPISODES_PATH="scripts/eval/fixtures/reflection-episodes.json"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

@@ -229,6 +229,5 @@ Research and measurement infrastructure.
 
 | Script | Purpose |
 |---|---|
-| `research-lane-a-smoke.sh` | RESEARCH-018: smoke test for lane A harness (no API) |
 | `run-eval-batch.sh` | Run a batch of gap evaluations |
 | `score-eval.sh` | Score model output against expected |
