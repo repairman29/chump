@@ -773,7 +773,7 @@ fn ambient_event_summary(line: &str, kind: &str) -> String {
         "fleet_wedge" | "fleet_scale_change" => &["rationale", "from", "to"],
         "pr_stuck" | "bot_merge_phase_failure" => &["pr", "phase", "error"],
         "alert" | "slo_breach" => &["slo", "detail", "current"],
-        "gap_store_curated" => &["rebalanced", "consolidated", "errors"],
+        "gap_store_curated" => &["rebalanced", "consolidated", "retained", "errors"],
         _ => &["gap", "worker", "error"],
     };
     let mut parts: Vec<String> = Vec::new();
