@@ -188,7 +188,7 @@ pub fn check_operator_absent(repo_root: &Path, current_size: u32) -> Option<Resi
             absent_secs as f64 / 3600.0
         ),
         current_size,
-        recommended_size: 1,
+        recommended_size: 0,
     })
 }
 
