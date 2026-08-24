@@ -130,6 +130,9 @@ wasm/text-wasm/target/
 **/__pycache__/
 *.pyc
 
+# ops scripts — per-run artifacts, never commit
+scripts/ops/false-done-sweep.py
+
 # macOS
 .DS_Store
 
