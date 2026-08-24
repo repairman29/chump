@@ -327,20 +327,33 @@ pub fn route_by_skill<'a>(
         .copied()
 }
 
+/// Read the most recent manifest snapshot for `unit` from the local file
+/// audit cache (`.chump-locks/capabilities/<session-id>.jsonl`). Returns
+/// `None` when no cache entry exists or it cannot be parsed.
+fn manifest_from_local_cache(unit: &str) -> Option<CapabilityManifest> {
+    let path = chump_locks_capabilities_dir().join(format!("{}.jsonl", sanitise_session_id(unit)));
+    let content = fs::read_to_string(path).ok()?;
+    let last_line = content.lines().filter(|l| !l.trim().is_empty()).last()?;
+    serde_json::from_str::<CapabilityManifest>(last_line).ok()
+}
+
 /// Resolve the target node (hostname) for a given unit (session_id) by
-/// reading its capability manifest from the NATS KV store.
+/// reading its capability manifest from the NATS KV store, falling back to
+/// the local file audit cache when NATS is unavailable or has no entry.
 ///
 /// Returns the `machine` field (hostname) of the manifest, or an error if
 /// the manifest is not found, stale, or has no machine set.
 pub async fn resolve_target_node(kv: &kv::Store, unit: &str) -> Result<String> {
-    let bytes = kv
-        .get(unit)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to read capability manifest for '{}': {}", unit, e))?
-        .ok_or_else(|| anyhow::anyhow!("no capability manifest found for unit '{}'", unit))?;
-
-    let manifest: CapabilityManifest =
-        serde_json::from_slice(&bytes).context("deserialize capability manifest")?;
+    let manifest: CapabilityManifest = match kv.get(unit).await {
+        Ok(Some(bytes)) => {
+            serde_json::from_slice(&bytes).context("deserialize capability manifest")?
+        }
+        Ok(None) => manifest_from_local_cache(unit)
+            .ok_or_else(|| anyhow::anyhow!("no capability manifest found for unit '{}'", unit))?,
+        Err(_) => manifest_from_local_cache(unit).ok_or_else(|| {
+            anyhow::anyhow!("failed to read capability manifest for unit '{}'", unit)
+        })?,
+    };
 
     if !manifest.is_alive(Utc::now()) {
         anyhow::bail!("capability manifest for unit '{}' is stale", unit);
