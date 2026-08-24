@@ -215,9 +215,14 @@ pub fn classify(target: &str, changed_files: &[String], impact: &ImpactData) -> 
         };
     }
 
+    let unrelated_citations: Vec<String> = changed_files
+        .iter()
+        .map(|f| format!("{f} has no resolved import path to {target}"))
+        .collect();
+
     ClassifyResult {
         verdict: Verdict::Unrelated,
-        citations: Vec::new(),
+        citations: unrelated_citations,
         edges_resolved: impact.edges_resolved,
         edges_total: impact.edges_total,
         resolution_rate,
