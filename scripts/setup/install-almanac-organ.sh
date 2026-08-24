@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-almanac-organ.sh — INFRA-3657 (RIBBON-02, MISSION-010).
+# install-almanac-organ.sh — INFRA-3710 (INFRA-3635 slice).
 #
 # The "eyes" phase: registers periodic supervision of
 # scripts/ops/almanac-liveness-refresh.sh (INFRA-3643/TREK-17) so a
@@ -53,11 +53,10 @@ run(){ [ "$DRY" = 1 ] && { echo "  DRY: $*"; return 0; }; eval "$*"; }
 INSTALL_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/chump-node-install.sh"
 if [ -f "$INSTALL_SCRIPT" ]; then
   eval "$(sed -n '/^detect_host()/,/^}/p' "$INSTALL_SCRIPT")"
-  eval "$(sed -n '/^ensure_home()/,/^}/p' "$INSTALL_SCRIPT")"
   eval "$(sed -n '/^install_hint()/,/^}/p' "$INSTALL_SCRIPT")"
   eval "$(sed -n '/^ensure_rust()/,/^}/p' "$INSTALL_SCRIPT")"
   eval "$(sed -n '/^toolchain_preflight()/,/^}/p' "$INSTALL_SCRIPT")"
-  
+  eval "$(sed -n '/^ensure_home()/,/^}/p' "$INSTALL_SCRIPT")"
 else
   echo "ERROR: $INSTALL_SCRIPT not found — cannot proceed" >&2
   exit 1
@@ -68,8 +67,13 @@ info "detected host=$HOST_KIND arch=$ARCH"
 info "ALMANAC_DIR=$ALMANAC_REPO"
 
 if [ ! -d "$ALMANAC_REPO" ]; then
-  info "almanac repo not found at $ALMANAC_REPO — install-almanac-organ.sh does not clone; run install-almanac.sh first or clone manually"
-  exit 0
+  info "almanac repo not found at $ALMANAC_REPO — attempting auto-clone via install-almanac.sh"
+  if [ -x "$SCRIPT_DIR/install-almanac.sh" ]; then
+    "$SCRIPT_DIR/install-almanac.sh" || { no "install-almanac.sh failed"; exit 1; }
+  else
+    no "install-almanac.sh not found — clone almanac manually to $ALMANAC_REPO"
+    exit 1
+  fi
 fi
 
 toolchain_preflight
@@ -101,7 +105,7 @@ install_systemd_user() {
   run "mkdir -p '$unit_dir' '$LOG_DIR'"
   run "cat > '$unit_dir/chump-almanac-liveness.service' <<EOF
 [Unit]
-Description=Chump almanac liveness/refresh — binary presence + index freshness (INFRA-3657/INFRA-3643)
+Description=Chump almanac liveness/refresh — binary presence + index freshness (INFRA-3710/INFRA-3643)
 
 [Service]
 Type=oneshot
@@ -112,7 +116,7 @@ ExecStart=$LIVENESS_SCRIPT
 EOF"
   run "cat > '$unit_dir/chump-almanac-liveness.timer' <<EOF
 [Unit]
-Description=Chump almanac liveness/refresh beat (INFRA-3657/INFRA-3643)
+Description=Chump almanac liveness/refresh beat (INFRA-3710/INFRA-3643)
 
 [Timer]
 OnBootSec=5min
@@ -153,7 +157,7 @@ PLIST"
 
 install_cron() {
   run "mkdir -p '$LOG_DIR'"
-  local marker="# chump-almanac-liveness (INFRA-3657)"
+  local marker="# chump-almanac-liveness (INFRA-3710)"
   local line="*/15 * * * * $LIVENESS_SCRIPT >> $LOG_DIR/almanac-liveness.log 2>&1 $marker"
   if [ "$DRY" = 1 ]; then
     echo "  DRY: crontab -l | grep -v '$marker' ; append: $line"

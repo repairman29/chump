@@ -148,6 +148,17 @@ pub fn classify(target: &str, changed_files: &[String], impact: &ImpactData) -> 
         resolution_rate * 100.0
     );
 
+    if target.trim().is_empty() {
+        return ClassifyResult {
+            verdict: Verdict::Unrelated,
+            citations: Vec::new(),
+            edges_resolved: impact.edges_resolved,
+            edges_total: impact.edges_total,
+            resolution_rate,
+            note: format!("no target supplied; cannot classify reachability. {caveat}"),
+        };
+    }
+
     if changed_files.is_empty() {
         return ClassifyResult {
             verdict: Verdict::Unrelated,
@@ -215,9 +226,14 @@ pub fn classify(target: &str, changed_files: &[String], impact: &ImpactData) -> 
         };
     }
 
+    let unrelated_citations: Vec<String> = changed_files
+        .iter()
+        .map(|f| format!("{f} has no resolved import path to {target}"))
+        .collect();
+
     ClassifyResult {
         verdict: Verdict::Unrelated,
-        citations: Vec::new(),
+        citations: unrelated_citations,
         edges_resolved: impact.edges_resolved,
         edges_total: impact.edges_total,
         resolution_rate,
@@ -640,6 +656,9 @@ mod tests {
         let changed = vec!["tests/test_foo.rs".to_string()];
         let r = classify("tests/test_bar.rs", &changed, &impact(&[], &[], 100, 200));
         assert_ne!(r.verdict, Verdict::TestOnly);
+        // When target itself is test-shaped, the gap plausibly asked only for
+        // tests, so we fall through to UNRELATED (no import edges here).
+        assert_eq!(r.verdict, Verdict::Unrelated);
     }
 
     #[test]
@@ -671,6 +690,14 @@ mod tests {
     fn empty_changed_files_is_unrelated() {
         let r = classify("src/foo.rs", &[], &impact(&[], &[], 10, 20));
         assert_eq!(r.verdict, Verdict::Unrelated);
+    }
+
+    #[test]
+    fn empty_target_is_unrelated() {
+        let changed = vec!["src/foo.rs".to_string()];
+        let r = classify("", &changed, &impact(&[], &[], 10, 20));
+        assert_eq!(r.verdict, Verdict::Unrelated);
+        assert!(r.note.contains("no target supplied"));
     }
 
     #[test]

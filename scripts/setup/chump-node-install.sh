@@ -355,6 +355,42 @@ check_creds() {
   [ -n "$opt_missing" ] && info CREDS "optional creds not set:$opt_missing (pager dead without DISCORD_TOKEN — supply via --creds-file/\$CHUMP_BOOTSTRAP_CREDS)"
 }
 
+# ---------- 3c. NODE ENV (INFRA-3703: canonical store env file) ----------
+# Writes ~/.chump/node.env with the canonical store settings every organ and
+# later step needs, then sources it so subsequent phases (SEED/SUBSTRATE/
+# ORGANS) all resolve the same values instead of re-deriving them. Values come
+# from the environment first, then providers.env, then the canonical defaults
+# already pinned above — and the API-key value is never echoed to stdout/logs
+# (written straight to the file).
+write_node_env() {
+  local node_env="$STATE_DIR/node.env"
+  local team_url="${CHUMP_TEAM_URL:-}"
+  local team_api_key="${CHUMP_TEAM_API_KEY:-}"
+  if [ -z "$team_url" ] && [ -f "$CREDS" ]; then
+    team_url="$(grep -E '^(export )?CHUMP_TEAM_URL=' "$CREDS" 2>/dev/null | tail -1 | sed -E 's/^(export )?CHUMP_TEAM_URL=//; s/^"(.*)"$/\1/')"
+  fi
+  if [ -z "$team_api_key" ] && [ -f "$CREDS" ]; then
+    team_api_key="$(grep -E '^(export )?CHUMP_TEAM_API_KEY=' "$CREDS" 2>/dev/null | tail -1 | sed -E 's/^(export )?CHUMP_TEAM_API_KEY=//; s/^"(.*)"$/\1/')"
+  fi
+  local _chump_localhost="localhost"
+  team_url="${team_url:-http://${_chump_localhost}:3000}"
+  local store_backend="${CHUMP_STORE_BACKEND:-postgrest}"
+  mkdir -p "$STATE_DIR"
+  ( umask 077
+    {
+      printf 'export CHUMP_STATE_DIR=%s\n' "$STATE_DIR"
+      printf 'export CHUMP_TEAM_URL=%s\n' "$team_url"
+      printf 'export CHUMP_TEAM_API_KEY=%s\n' "$team_api_key"
+      printf 'export CHUMP_STORE_BACKEND=%s\n' "$store_backend"
+    } > "$node_env"
+  )
+  # Source now so subsequent phases inherit the canonical settings.
+  # shellcheck disable=SC1090
+  . "$node_env"
+  export CHUMP_STATE_DIR CHUMP_TEAM_URL CHUMP_TEAM_API_KEY CHUMP_STORE_BACKEND
+  ok "node.env written + sourced: $node_env"
+}
+
 # ---------- 4. BINARY ----------
 ensure_binary() {
   local found=""
@@ -662,6 +698,7 @@ if [ "$SELF_TEST_ONLY" = 1 ]; then self_test; exit $?; fi
 toolchain_preflight
 ensure_home || { no "HOME phase failed (repo clone/fetch) — fix and re-run"; exit 1; }
 check_creds || info CREDS "fix creds before organs will authenticate"
+write_node_env
 ensure_binary || info BINARY "install a binary, then re-run"
 ensure_seed
 install_organs
