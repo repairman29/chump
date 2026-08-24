@@ -252,6 +252,90 @@ materialize_creds() {
   fi
 }
 
+# Interactive acquire (INFRA-3688): prompt user for GitHub auth method and
+# run claude setup-token to obtain CLAUDE_CODE_OAUTH_TOKEN. Writes
+# ~/.chump/providers.env with CHUMP_AUTH_MODE=oauth and the acquired tokens.
+# Never echoes secret values to stdout or logs. File created with mode 0600.
+# Returns 0 on success, non-zero on failure.
+acquire_creds() {
+  [ -f "$CREDS" ] && { ok "creds already exist at $CREDS — skipping acquire"; return 0; }
+  echo
+  printf '\033[1m=== Interactive Credential Acquisition ===\033[0m\n'
+  printf 'No pre-supplied creds found. Two ways to authenticate:\n'
+  printf '  1) GitHub Device Flow (gh auth login) — recommended\n'
+  printf '  2) Paste a GH_TOKEN directly\n'
+  printf '\n'
+  local choice=""
+  while [ -z "$choice" ]; do
+    printf 'Choose method [1/2]: '
+    read -r choice
+    case "$choice" in
+      1|2) ;;
+      *) choice="";;
+    esac
+  done
+
+  local gh_token=""
+  if [ "$choice" = 1 ]; then
+    info ACQUIRE "running gh auth login --hostname github.com --git-protocol https --web"
+    if command -v gh >/dev/null 2>&1; then
+      gh auth login --hostname github.com --git-protocol https --web || {
+        no "gh auth login failed"
+        return 1
+      }
+      gh_token="$(gh auth token 2>/dev/null)" || {
+        no "failed to retrieve GH_TOKEN from gh"
+        return 1
+      }
+    else
+      no "gh CLI not found — install GitHub CLI first, then re-run"
+      return 1
+    fi
+  else
+    printf 'Paste your GitHub personal access token (will not echo): '
+    stty -echo 2>/dev/null
+    read -r gh_token
+    stty echo 2>/dev/null
+    printf '\n'
+    if [ -z "$gh_token" ]; then
+      no "empty token — aborting"
+      return 1
+    fi
+  fi
+
+  info ACQUIRE "running claude setup-token to obtain CLAUDE_CODE_OAUTH_TOKEN..."
+  local oauth_token=""
+  if command -v claude >/dev/null 2>&1; then
+    oauth_token="$(claude setup-token 2>/dev/null)" || {
+      no "claude setup-token failed"
+      return 1
+    }
+  else
+    no "claude CLI not found — install Claude Code CLI first, then re-run"
+    return 1
+  fi
+
+  if [ -z "$oauth_token" ]; then
+    no "claude setup-token returned empty token"
+    return 1
+  fi
+
+  # Write providers.env with mode 0600, never echoing values
+  mkdir -p "$STATE_DIR"
+  (
+    umask 077
+    cat > "$CREDS" <<EOF
+CHUMP_AUTH_MODE=oauth
+GH_TOKEN=$gh_token
+CLAUDE_CODE_OAUTH_TOKEN=$oauth_token
+EOF
+  )
+  chmod 600 "$CREDS" 2>/dev/null || true
+  ok "creds written to $CREDS (mode 600; values not logged)"
+  return 0
+}
+
+# ---------- 3b. CREDS CHECK ----------
 check_creds() {
   materialize_creds
   [ -f "$CREDS" ] || { no "creds missing: $CREDS (supply --creds-file PATH or \$CHUMP_BOOTSTRAP_CREDS)"; return 1; }
