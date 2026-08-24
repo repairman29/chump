@@ -435,6 +435,29 @@ fn systemctl_bin() -> String {
     std::env::var("CHUMP_AC_GATE_SYSTEMCTL_BIN").unwrap_or_else(|_| "systemctl".to_string())
 }
 
+/// INFRA-3728: run `ssh <node> systemctl is-active <unit>` against a remote
+/// node and return the trimmed stdout. The ssh binary can be stubbed via
+/// `CHUMP_AC_GATE_SYSTEMCTL_BIN`.
+fn run_remote_systemctl(node: &str, unit: &str) -> Result<String, String> {
+    let ssh_bin =
+        std::env::var("CHUMP_AC_GATE_SYSTEMCTL_BIN").unwrap_or_else(|_| "ssh".to_string());
+    let output = Command::new(&ssh_bin)
+        .arg(node)
+        .arg("systemctl")
+        .arg("is-active")
+        .arg(unit)
+        .output()
+        .map_err(|e| format!("failed to spawn `{ssh_bin}` for {node}: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!(
+            "`{ssh_bin} {node} systemctl is-active {unit}` exited with {}: {stderr}",
+            output.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 fn ambient_log_path() -> String {
     std::env::var("CHUMP_AMBIENT_LOG").unwrap_or_else(|_| ".chump-locks/ambient.jsonl".to_string())
 }
