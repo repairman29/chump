@@ -62,6 +62,7 @@ if [[ "${1:-}" == "--almanac" ]]; then
     shift
     ALMANAC_REPO="${ALMANAC_REPO:-$HOME/Projects/almanac}"
     ALMANAC_BIN="${ALMANAC_BIN:-$ALMANAC_REPO/target/release/almanac}"
+    ALMANAC_KNOWN_GOOD_HASH_FILE="${ALMANAC_KNOWN_GOOD_HASH_FILE:-$ALMANAC_REPO/.chump-locks/almanac-known-good.sha256}"
 
     log "INFRA-3716: almanac mode — checking $ALMANAC_BIN"
 
@@ -74,24 +75,46 @@ if [[ "${1:-}" == "--almanac" ]]; then
     fi
     log "almanac origin/main = $ALMANAC_MAIN_SHA"
 
-    # Check installed binary build SHA
+    # Check installed binary build SHA (git) + SHA256 (file integrity)
     INSTALLED_ALMANAC_SHA="none"
+    INSTALLED_ALMANAC_SHA256="none"
     if [[ -x "$ALMANAC_BIN" ]]; then
         INSTALLED_ALMANAC_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{7,12}' | head -1)"
         [[ -n "$INSTALLED_ALMANAC_SHA" ]] || INSTALLED_ALMANAC_SHA="unknown"
-        log "installed almanac sha = $INSTALLED_ALMANAC_SHA"
+        if command -v shasum >/dev/null 2>&1; then
+            INSTALLED_ALMANAC_SHA256="$(shasum -a 256 "$ALMANAC_BIN" 2>/dev/null | awk '{print $1}')"
+            [[ -n "$INSTALLED_ALMANAC_SHA256" ]] || INSTALLED_ALMANAC_SHA256="unknown"
+        else
+            INSTALLED_ALMANAC_SHA256="unavailable"
+        fi
+        log "installed almanac sha = $INSTALLED_ALMANAC_SHA  sha256 = $INSTALLED_ALMANAC_SHA256"
     fi
 
-    # Idempotency: if binary present and SHA matches, no-op
+    # Idempotency: if binary present and SHA matches, no-op.
+    # Also check SHA256 against the known-good hash file (INFRA-3716).
     if [[ "$INSTALLED_ALMANAC_SHA" != "none" && "$INSTALLED_ALMANAC_SHA" != "unknown" ]] && \
        [[ "$INSTALLED_ALMANAC_SHA" == "$ALMANAC_MAIN_SHA"* || "$ALMANAC_MAIN_SHA" == "$INSTALLED_ALMANAC_SHA"* ]]; then
-        log "almanac binary healthy ($INSTALLED_ALMANAC_SHA matches main $ALMANAC_MAIN_SHA)"
-        emit almanac_binary_healthy "\"sha\":\"$INSTALLED_ALMANAC_SHA\",\"main_sha\":\"$ALMANAC_MAIN_SHA\""
-        exit 0
+        # SHA256 known-good check: if the hash file exists and the binary's
+        # SHA256 matches it, we are truly idempotent. If the hash file is
+        # missing or mismatched, force a rebuild (binary may be corrupt).
+        if [[ -f "$ALMANAC_KNOWN_GOOD_HASH_FILE" && "$INSTALLED_ALMANAC_SHA256" != "unavailable" ]]; then
+            KNOWN_GOOD="$(head -1 "$ALMANAC_KNOWN_GOOD_HASH_FILE" | awk '{print $1}')"
+            if [[ "$INSTALLED_ALMANAC_SHA256" == "$KNOWN_GOOD" ]]; then
+                log "almanac binary healthy ($INSTALLED_ALMANAC_SHA matches main $ALMANAC_MAIN_SHA, sha256=$INSTALLED_ALMANAC_SHA256 matches known-good)"
+                emit almanac_binary_healthy "\"sha\":\"$INSTALLED_ALMANAC_SHA\",\"main_sha\":\"$ALMANAC_MAIN_SHA\",\"sha256\":\"$INSTALLED_ALMANAC_SHA256\""
+                exit 0
+            else
+                log "almanac SHA256 mismatch (installed=$INSTALLED_ALMANAC_SHA256, known-good=$KNOWN_GOOD) — forcing rebuild"
+            fi
+        else
+            log "almanac binary healthy ($INSTALLED_ALMANAC_SHA matches main $ALMANAC_MAIN_SHA, sha256=$INSTALLED_ALMANAC_SHA256)"
+            emit almanac_binary_healthy "\"sha\":\"$INSTALLED_ALMANAC_SHA\",\"main_sha\":\"$ALMANAC_MAIN_SHA\",\"sha256\":\"$INSTALLED_ALMANAC_SHA256\""
+            exit 0
+        fi
     fi
 
     # Binary missing or SHA mismatch — rebuild via install-almanac-organ.sh
-    log "almanac binary needs rebuild (installed=$INSTALLED_ALMANAC_SHA, main=$ALMANAC_MAIN_SHA)"
+    log "almanac binary needs rebuild (installed=$INSTALLED_ALMANAC_SHA sha256=$INSTALLED_ALMANAC_SHA256, main=$ALMANAC_MAIN_SHA)"
 
     if [[ ! -d "$ALMANAC_REPO/.git" ]]; then
         log "FATAL: almanac repo not found at $ALMANAC_REPO"
@@ -113,8 +136,16 @@ if [[ "${1:-}" == "--almanac" ]]; then
     fi
 
     NEW_ALMANAC_SHA="$("$ALMANAC_BIN" --version 2>/dev/null | grep -oE '[a-f0-9]{7,12}' | head -1 || echo unknown)"
-    log "OK: almanac binary refreshed ($INSTALLED_ALMANAC_SHA -> $NEW_ALMANAC_SHA)"
-    emit almanac_binary_refreshed "\"prev_sha\":\"$INSTALLED_ALMANAC_SHA\",\"new_sha\":\"$NEW_ALMANAC_SHA\",\"main_sha\":\"$ALMANAC_MAIN_SHA\""
+    # Record the fresh SHA256 as the known-good value for future idempotency checks.
+    if command -v shasum >/dev/null 2>&1 && [[ -x "$ALMANAC_BIN" ]]; then
+        NEW_ALMANAC_SHA256="$(shasum -a 256 "$ALMANAC_BIN" 2>/dev/null | awk '{print $1}')"
+        mkdir -p "$(dirname "$ALMANAC_KNOWN_GOOD_HASH_FILE")" 2>/dev/null || true
+        printf '%s  %s\n' "$NEW_ALMANAC_SHA256" "$ALMANAC_BIN" > "$ALMANAC_KNOWN_GOOD_HASH_FILE" 2>/dev/null || true
+    else
+        NEW_ALMANAC_SHA256="unavailable"
+    fi
+    log "OK: almanac binary refreshed ($INSTALLED_ALMANAC_SHA -> $NEW_ALMANAC_SHA, sha256=$NEW_ALMANAC_SHA256)"
+    emit almanac_binary_refreshed "\"prev_sha\":\"$INSTALLED_ALMANAC_SHA\",\"new_sha\":\"$NEW_ALMANAC_SHA\",\"main_sha\":\"$ALMANAC_MAIN_SHA\",\"sha256\":\"$NEW_ALMANAC_SHA256\""
     exit 0
 fi
 
