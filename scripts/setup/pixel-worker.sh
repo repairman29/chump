@@ -41,7 +41,11 @@ LAST_REFRESH=0
 # transaction) instead of executing straight off a `gap list` pick. Without
 # this, a second worker picking the same gap in the same window races the
 # first and produces a silent_agent event (fleet-scaling-2026-05-06.md).
-WORKTREE_BASE="${CHUMP_WORKTREE_BASE:-/tmp}"
+# Termux ($PREFIX/tmp via TMPDIR) is app-writable; bare /tmp is NOT on
+# Android, so a node-setup regeneration would wipe the live hand-crank and
+# break `chump claim` with "Permission denied". Prefer $CHUMP_WORKTREE_BASE,
+# then $TMPDIR (Termux sets it), then /tmp (datacenter Linux — unchanged).
+WORKTREE_BASE="${CHUMP_WORKTREE_BASE:-${TMPDIR:-/tmp}}"
 
 [ -x "$BIN" ] || { echo "[pixel-worker] chump binary not found at $BIN" >&2; exit 1; }
 
