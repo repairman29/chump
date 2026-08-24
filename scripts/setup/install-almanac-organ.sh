@@ -53,7 +53,6 @@ run(){ [ "$DRY" = 1 ] && { echo "  DRY: $*"; return 0; }; eval "$*"; }
 INSTALL_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/chump-node-install.sh"
 if [ -f "$INSTALL_SCRIPT" ]; then
   eval "$(sed -n '/^detect_host()/,/^}/p' "$INSTALL_SCRIPT")"
-  eval "$(sed -n '/^ensure_home()/,/^}/p' "$INSTALL_SCRIPT")"
   eval "$(sed -n '/^install_hint()/,/^}/p' "$INSTALL_SCRIPT")"
   eval "$(sed -n '/^ensure_rust()/,/^}/p' "$INSTALL_SCRIPT")"
   eval "$(sed -n '/^toolchain_preflight()/,/^}/p' "$INSTALL_SCRIPT")"
