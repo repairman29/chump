@@ -10174,24 +10174,29 @@ async fn main() -> Result<()> {
                 // to stdout so operator scripts can parse without grep.
                 let json_out = args.iter().any(|a| a == "--json");
                 let why = args.iter().any(|a| a == "--why");
-                let skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
+                let _skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
                 let custom_acceptance_criteria = flag("--acceptance-criteria");
+                let no_ac_required = args.iter().any(|a| a == "--no-ac-required");
 
-                // INFRA-756: compute acceptance_criteria. Default to 4 obs-AC templates
-                // unless --skip-obs-acs is set or --acceptance-criteria is provided.
+                // CREDIBLE-343: P0/P1 require --acceptance-criteria or --no-ac-required.
+                if (priority == "P0" || priority == "P1")
+                    && custom_acceptance_criteria.is_none()
+                    && !no_ac_required
+                {
+                    eprintln!(
+                        "chump gap reserve: --priority {} requires --acceptance-criteria \"<text>\" or --no-ac-required",
+                        priority
+                    );
+                    std::process::exit(2);
+                }
+
+                // CREDIBLE-343: compute acceptance_criteria. When --acceptance-criteria is
+                // provided, store it verbatim. Otherwise store an empty string (no
+                // auto-generated placeholder text).
                 let acceptance_criteria_json = match custom_acceptance_criteria {
                     Some(raw) => {
                         let parts: Vec<&str> = raw.split('|').collect();
                         serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
-                    }
-                    None if !skip_obs_acs => {
-                        // EFFECTIVE-294: concrete, claimable default AC (no TODO
-                        // placeholders) so a reserved gap is immediately pickable.
-                        // The old obs-AC TODO template left ~32% of the open queue
-                        // unclaimable. The title carries the *what*; these carry the
-                        // *done-bar*. For gap-specific AC, run `chump gap decompose`.
-                        let acs = default_acceptance_criteria(&title, &domain);
-                        serde_json::to_string(&acs).unwrap_or_else(|_| "[]".into())
                     }
                     _ => "[]".into(),
                 };
