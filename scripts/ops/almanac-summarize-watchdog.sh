@@ -128,7 +128,7 @@ repos = data.get("repos", data if isinstance(data, list) else [])
 floor = float(sys.argv[1])
 below = []
 for r in repos:
-    pct = r.get("pct", r.get("summarized_pct", 100))
+    pct = r.get("pct", r.get("summarized_pct", r.get("almanac_coverage_summarized_pct", 100)))
     try:
         pct = float(pct)
     except Exception:
