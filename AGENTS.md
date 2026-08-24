@@ -196,6 +196,13 @@ Logged to ambient as `kind=redundancy_bypass_used`.
 
 Sibling rules: META-064 (Rust-first), META-065 (auto-prioritization).
 
+**Known exception (INFRA-1573):** `crates/chump-orchestrator/src/thompson.rs`
+and `src/provider_bandit.rs` both implement Thompson sampling with Beta(α,β)
+posteriors. They are intentionally kept separate — different release cadences
+(orchestrator crate vs. root crate) and different thread-safety models
+(`Mutex` for shared state vs. pure-function `&mut Rng`). See the cross-link
+comments at the top of each file and `docs/design/ADAPTIVE_ROUTING.md`.
+
 ## Prefer shared services over silos (INFRA-3463)
 
 When a capability already has a **canonical shared service** in this codebase,
