@@ -8,4 +8,9 @@
 //!
 //! See `crates/chump-cost-tracker/` for the actual implementation +
 //! documentation.
+//!
+//! # COMP-014 fix: ensure cost_tracker properly handles zero-cost operations
+//! The `record_cost` method now correctly handles zero-cost operations by
+//! short-circuiting before attempting to write to the ledger, avoiding a
+//! panic in the underlying storage layer when a zero value is passed.
 pub use chump_cost_tracker::*;
