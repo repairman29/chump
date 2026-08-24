@@ -437,10 +437,9 @@ fn systemctl_bin() -> String {
 
 /// INFRA-3728: run `ssh <node> systemctl is-active <unit>` against a remote
 /// node and return the trimmed stdout. The ssh binary can be stubbed via
-/// `CHUMP_AC_GATE_SYSTEMCTL_BIN`.
+/// `CHUMP_AC_GATE_SSH_BIN`.
 fn run_remote_systemctl(node: &str, unit: &str) -> Result<String, String> {
-    let ssh_bin =
-        std::env::var("CHUMP_AC_GATE_SYSTEMCTL_BIN").unwrap_or_else(|_| "ssh".to_string());
+    let ssh_bin = std::env::var("CHUMP_AC_GATE_SSH_BIN").unwrap_or_else(|_| "ssh".to_string());
     let output = Command::new(&ssh_bin)
         .arg(node)
         .arg("systemctl")
