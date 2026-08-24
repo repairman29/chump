@@ -372,6 +372,60 @@ fn gap_ship_reserved_gap_marks_done() {
     );
 }
 
+/// ZERO-WASTE-062: Regression test — gap-ship atomically updates BOTH state.db
+/// AND docs/gaps/<ID>.yaml (status=done, closed_pr=N). Without this atomic
+/// write, every shipped gap leaves state.db==done / yaml==open drift, requiring
+/// a separate per-gap reconcile PR.
+#[test]
+fn gap_ship_updates_state_db_and_yaml_atomically() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_isolated_repo(dir.path());
+    let id = reserve_gap(dir.path(), "INFRA", "test-ship-yaml-atomic");
+
+    // Ship the gap with a known closed_pr.
+    let out = run(dir.path(), &["gap", "ship", &id, "--closed-pr", "4242"]);
+    assert!(
+        out.status.success(),
+        "gap ship failed: {}\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
+
+    // 1. Assert state.db shows status=done and closed_pr=4242.
+    let show = run(dir.path(), &["gap", "show", &id, "--json"]);
+    assert!(show.status.success(), "gap show after ship failed");
+    let json: serde_json::Value = serde_json::from_str(stdout(&show).trim()).unwrap();
+    assert_eq!(
+        json["status"].as_str(),
+        Some("done"),
+        "state.db: gap status must be 'done' after ship"
+    );
+    assert_eq!(
+        json["closed_pr"].as_i64(),
+        Some(4242),
+        "state.db: closed_pr must be 4242 after --closed-pr 4242"
+    );
+
+    // 2. Assert docs/gaps/<ID>.yaml exists with status=done and closed_pr=4242.
+    let yaml_path = dir.path().join("docs/gaps").join(format!("{id}.yaml"));
+    assert!(
+        yaml_path.exists(),
+        "docs/gaps/{id}.yaml must exist after gap ship (ZERO-WASTE-056)"
+    );
+    let yaml_content = std::fs::read_to_string(&yaml_path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", yaml_path.display()));
+    assert!(
+        yaml_content.contains("status: done"),
+        "docs/gaps/{id}.yaml must contain 'status: done', got:\n{yaml_content}"
+    );
+    assert!(
+        yaml_content.contains("closed_pr: 4242"),
+        "docs/gaps/{id}.yaml must contain 'closed_pr: 4242', got:\n{yaml_content}"
+    );
+
+    // 3. No test pollution — tempdir is cleaned up by tempfile::tempdir() Drop.
+}
+
 // ── 6. claim (top-level) ─────────────────────────────────────────────────────
 
 #[test]

@@ -56,7 +56,7 @@ if [ -f "$INSTALL_SCRIPT" ]; then
   eval "$(sed -n '/^install_hint()/,/^}/p' "$INSTALL_SCRIPT")"
   eval "$(sed -n '/^ensure_rust()/,/^}/p' "$INSTALL_SCRIPT")"
   eval "$(sed -n '/^toolchain_preflight()/,/^}/p' "$INSTALL_SCRIPT")"
-  
+  eval "$(sed -n '/^ensure_home()/,/^}/p' "$INSTALL_SCRIPT")"
 else
   echo "ERROR: $INSTALL_SCRIPT not found — cannot proceed" >&2
   exit 1
@@ -67,8 +67,13 @@ info "detected host=$HOST_KIND arch=$ARCH"
 info "ALMANAC_DIR=$ALMANAC_REPO"
 
 if [ ! -d "$ALMANAC_REPO" ]; then
-  info "almanac repo not found at $ALMANAC_REPO — install-almanac-organ.sh does not clone; run install-almanac.sh first or clone manually"
-  exit 0
+  info "almanac repo not found at $ALMANAC_REPO — attempting auto-clone via install-almanac.sh"
+  if [ -x "$SCRIPT_DIR/install-almanac.sh" ]; then
+    "$SCRIPT_DIR/install-almanac.sh" || { no "install-almanac.sh failed"; exit 1; }
+  else
+    no "install-almanac.sh not found — clone almanac manually to $ALMANAC_REPO"
+    exit 1
+  fi
 fi
 
 toolchain_preflight
