@@ -6,9 +6,10 @@
 #
 # AC:
 #   1. Status flips from open to done in state.db
-#   2. (ZERO-WASTE-020, 2026-07-19: retired — `--update-yaml` no longer
-#      writes docs/gaps/<ID>.yaml; state.db is canonical. Assertions below
-#      read state via `chump gap show` instead of the deleted YAML file.)
+#   2. (ZERO-WASTE-056, 2026-07-19: `--update-yaml` is now the default —
+#      every `chump gap ship` writes docs/gaps/<ID>.yaml atomically via
+#      dump_per_file_single. Assertions below verify both state.db AND the
+#      on-disk YAML file.)
 #   3. .chump-plans/<ID>/ directory created with SHIPPED_AT marker
 #   4. kind=gap_shipped ambient event emitted
 #   5. kind=chump_plans_gc not yet emitted (within 7d grace period)
@@ -70,6 +71,18 @@ show_out=$($CHUMP_BIN gap show "$TEST_GAP")
 echo "$show_out" | grep -q "^  closed_pr: 9999" || \
   fail "closed_pr: 9999 not in state.db"
 pass "state.db updated with closed_pr"
+
+# ─ Assert docs/gaps/<ID>.yaml written with status=done (ZERO-WASTE-056) ────────
+YAML_FILE="$REPO_ROOT/docs/gaps/$TEST_GAP.yaml"
+if [ -f "$YAML_FILE" ]; then
+  grep -q "^status: done" "$YAML_FILE" || \
+    fail "docs/gaps/$TEST_GAP.yaml does not have status: done"
+  grep -q "^closed_pr: 9999" "$YAML_FILE" || \
+    fail "docs/gaps/$TEST_GAP.yaml does not have closed_pr: 9999"
+  pass "docs/gaps/<ID>.yaml written with status=done and closed_pr"
+else
+  fail "docs/gaps/$TEST_GAP.yaml not found after ship"
+fi
 
 # ─ Assert .chump-plans marker created (optional in current implementation) ──────
 if [ -d "$REPO_ROOT/.chump-plans/$TEST_GAP" ]; then
