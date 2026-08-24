@@ -86,9 +86,10 @@ pub fn summary() -> String {
     let requests = MODEL_REQUESTS.load(Ordering::Relaxed);
     let inp = MODEL_INPUT_TOKENS.load(Ordering::Relaxed);
     let out = MODEL_OUTPUT_TOKENS.load(Ordering::Relaxed);
+    let cost = session_cost_usd();
     format!(
-        "this session: {} model requests ({} in / {} out tokens), {} Tavily calls ({} credits)",
-        requests, inp, out, tavily, credits
+        "this session: {} model requests ({} in / {} out tokens), {} Tavily calls ({} credits), ${:.4} spent",
+        requests, inp, out, tavily, credits, cost
     )
 }
 
