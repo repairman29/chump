@@ -51,6 +51,11 @@ pub enum DecomposeMode {
 
 /// One decomposed sub-gap candidate. Matches the field set the Python
 /// tool emits when it writes to `docs/gaps.yaml`.
+///
+/// CREDIBLE-344: `acceptance_criteria` is explicitly NOT a field here —
+/// decomposition produces implementation sub-steps (the HOW) and must
+/// never touch the parent's authored criteria. If the LLM returns an
+/// `acceptance_criteria` key the YAML parser will silently drop it.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct SubGap {
     /// Candidate ID. `ClaudeBinaryClient` returns these unassigned; the
