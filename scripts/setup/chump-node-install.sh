@@ -71,6 +71,14 @@ no(){ printf '  \033[31m✗\033[0m %s\n' "$*"; }
 info(){ printf '\033[36m[%s]\033[0m %s\n' "$1" "$2"; }
 run(){ [ "$DRY" = 1 ] && { echo "  DRY: $*"; return 0; }; eval "$*"; }
 
+# Per-node env overrides (node.env) — sourced before any phase so a node can
+# pin CHUMP_STATE_DB, CHUMP_GAP_STORE_URL, etc. without touching the script.
+NODE_ENV="$NODE_DIR/node.env"
+if [ -f "$NODE_ENV" ]; then
+  set -a; . "$NODE_ENV"; set +a
+  ok "node.env sourced ($NODE_ENV)"
+fi
+
 # ---------- 1. DETECT ----------
 detect_host() {
   ARCH="$(uname -m)"; OS="$(uname -s)"
