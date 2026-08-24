@@ -818,6 +818,50 @@ impl GapStore {
         }
     }
 
+    /// CREDIBLE-339: list gaps with a specific status, ordered by closed_at ASC
+    /// (oldest closed first). Used by the done-gap over-claim auditor
+    /// so each run processes the oldest closed gaps and subsequent runs
+    /// naturally pick up newer gaps without re-auditing.
+    pub fn list_by_status_ordered(&self, status: &str) -> Result<Vec<GapRow>> {
+        let make_row = |row: &rusqlite::Row<'_>| {
+            Ok(GapRow {
+                id: row.get(0)?,
+                domain: row.get(1)?,
+                title: row.get(2)?,
+                description: row.get(3)?,
+                priority: row.get(4)?,
+                effort: row.get(5)?,
+                status: row.get(6)?,
+                acceptance_criteria: row.get(7)?,
+                depends_on: row.get(8)?,
+                notes: row.get(9)?,
+                source_doc: row.get(10)?,
+                created_at: row.get(11)?,
+                closed_at: row.get(12)?,
+                opened_date: row.get(13)?,
+                closed_date: row.get(14)?,
+                closed_pr: row.get(15)?,
+                skills_required: row.get(16)?,
+                preferred_backend: row.get(17)?,
+                preferred_machine: row.get(18)?,
+                estimated_minutes: row.get(19)?,
+                required_model: row.get(20)?,
+                shipped_in: row.get(21)?,
+                outcome_id: row.get(22)?,
+                evidence: row.get(23)?,
+            })
+        };
+        let mut stmt = self.conn.prepare(
+            "SELECT id,domain,title,description,priority,effort,status,
+                    CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
+                    opened_date,closed_date,closed_pr,skills_required,preferred_backend,
+                    preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id,evidence
+             FROM gaps WHERE status=?1 ORDER BY closed_at ASC",
+        )?;
+        let rows = stmt.query_map(params![status], make_row)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     // ── INFRA-1149: reserve-time title similarity ─────────────────────────────
     //
     // Computes token-set Jaccard similarity between two gap titles.

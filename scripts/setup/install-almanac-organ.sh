@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-almanac-organ.sh — INFRA-3657 (RIBBON-02, MISSION-010).
+# install-almanac-organ.sh — INFRA-3710 (INFRA-3635 slice).
 #
 # The "eyes" phase: registers periodic supervision of
 # scripts/ops/almanac-liveness-refresh.sh (INFRA-3643/TREK-17) so a
@@ -48,6 +48,36 @@ no(){ printf '  \033[31m✗\033[0m %s\n' "$*"; }
 info(){ printf '\033[36m[EYES]\033[0m %s\n' "$*"; }
 run(){ [ "$DRY" = 1 ] && { echo "  DRY: $*"; return 0; }; eval "$*"; }
 
+# ---------- PREFLIGHT (INFRA-3710) ----------
+# Source host-agnostic helpers from chump-node-install.sh
+INSTALL_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/chump-node-install.sh"
+if [ -f "$INSTALL_SCRIPT" ]; then
+  eval "$(sed -n '/^detect_host()/,/^}/p' "$INSTALL_SCRIPT")"
+  eval "$(sed -n '/^install_hint()/,/^}/p' "$INSTALL_SCRIPT")"
+  eval "$(sed -n '/^ensure_rust()/,/^}/p' "$INSTALL_SCRIPT")"
+  eval "$(sed -n '/^toolchain_preflight()/,/^}/p' "$INSTALL_SCRIPT")"
+  eval "$(sed -n '/^ensure_home()/,/^}/p' "$INSTALL_SCRIPT")"
+else
+  echo "ERROR: $INSTALL_SCRIPT not found — cannot proceed" >&2
+  exit 1
+fi
+
+detect_host
+info "detected host=$HOST_KIND arch=$ARCH"
+info "ALMANAC_DIR=$ALMANAC_REPO"
+
+if [ ! -d "$ALMANAC_REPO" ]; then
+  info "almanac repo not found at $ALMANAC_REPO — attempting auto-clone via install-almanac.sh"
+  if [ -x "$SCRIPT_DIR/install-almanac.sh" ]; then
+    "$SCRIPT_DIR/install-almanac.sh" || { no "install-almanac.sh failed"; exit 1; }
+  else
+    no "install-almanac.sh not found — clone almanac manually to $ALMANAC_REPO"
+    exit 1
+  fi
+fi
+
+toolchain_preflight
+
 if [ ! -x "$LIVENESS_SCRIPT" ]; then
   no "liveness script missing or not executable: $LIVENESS_SCRIPT"
   exit 1
@@ -57,7 +87,9 @@ LABEL="com.chump.almanac-liveness"
 LOG_DIR="$STATE_DIR/logs"
 
 detect_supervisor() {
-  if command -v systemctl >/dev/null 2>&1 && systemctl --user status >/dev/null 2>&1; then
+  if [ -n "${PREFIX:-}" ] && printf '%s' "$PREFIX" | grep -q 'com.termux'; then
+    echo "runit"
+  elif command -v systemctl >/dev/null 2>&1 && systemctl --user status >/dev/null 2>&1; then
     echo "systemd-user"
   elif command -v launchctl >/dev/null 2>&1; then
     echo "launchd"
@@ -73,7 +105,7 @@ install_systemd_user() {
   run "mkdir -p '$unit_dir' '$LOG_DIR'"
   run "cat > '$unit_dir/chump-almanac-liveness.service' <<EOF
 [Unit]
-Description=Chump almanac liveness/refresh — binary presence + index freshness (INFRA-3657/INFRA-3643)
+Description=Chump almanac liveness/refresh — binary presence + index freshness (INFRA-3710/INFRA-3643)
 
 [Service]
 Type=oneshot
@@ -84,7 +116,7 @@ ExecStart=$LIVENESS_SCRIPT
 EOF"
   run "cat > '$unit_dir/chump-almanac-liveness.timer' <<EOF
 [Unit]
-Description=Chump almanac liveness/refresh beat (INFRA-3657/INFRA-3643)
+Description=Chump almanac liveness/refresh beat (INFRA-3710/INFRA-3643)
 
 [Timer]
 OnBootSec=5min
@@ -125,7 +157,7 @@ PLIST"
 
 install_cron() {
   run "mkdir -p '$LOG_DIR'"
-  local marker="# chump-almanac-liveness (INFRA-3657)"
+  local marker="# chump-almanac-liveness (INFRA-3710)"
   local line="*/15 * * * * $LIVENESS_SCRIPT >> $LOG_DIR/almanac-liveness.log 2>&1 $marker"
   if [ "$DRY" = 1 ]; then
     echo "  DRY: crontab -l | grep -v '$marker' ; append: $line"
@@ -135,6 +167,29 @@ install_cron() {
   ok "cron fallback installed: every 15min ($marker)"
 }
 
+install_runit() {
+  local svc_dir="$PREFIX/var/service/chump-almanac-liveness"
+  run "mkdir -p '$svc_dir/log' '$LOG_DIR'"
+  run "cat > '$svc_dir/run' <<'RUNEOF'
+#!/data/data/com.termux/files/usr/bin/sh
+exec 2>&1
+CHUMP_STATE_DIR=${CHUMP_STATE_DIR:-$HOME/.chump}
+CHUMP_ALMANAC_REPO=${CHUMP_ALMANAC_REPO:-$HOME/Projects/almanac}
+CHUMP_ALMANAC_BIN=${CHUMP_ALMANAC_BIN:-$CHUMP_ALMANAC_REPO/target/release/almanac}
+while true; do
+  $LIVENESS_SCRIPT
+  sleep 900
+done
+RUNEOF"
+  run "chmod +x '$svc_dir/run'"
+  run "cat > '$svc_dir/log/run' <<'LOGEOF'
+#!/data/data/com.termux/files/usr/bin/sh
+exec svlogd -tt '$LOG_DIR'
+LOGEOF"
+  run "chmod +x '$svc_dir/log/run'"
+  ok "runit service installed: $svc_dir (every 15min loop)"
+}
+
 do_install() {
   local sup; sup="$(detect_supervisor)"
   info "supervisor=$sup"
@@ -142,7 +197,8 @@ do_install() {
     systemd-user) install_systemd_user;;
     launchd) install_launchd;;
     cron) install_cron;;
-    *) no "no supervisor available (systemd --user, launchd, cron) — organ not supervised; run $LIVENESS_SCRIPT by hand periodically"; return 1;;
+    runit) install_runit;;
+    *) no "no supervisor available (systemd --user, launchd, cron, runit) — organ not supervised; run $LIVENESS_SCRIPT by hand periodically"; return 1;;
   esac
   info "running liveness/refresh once now (immediate self-heal, no hand steps)"
   if [ "$DRY" = 1 ]; then
@@ -171,7 +227,10 @@ do_check() {
       if crontab -l 2>/dev/null | grep -q "chump-almanac-liveness"; then ok "cron entry present"
       else no "cron entry missing"; fail=1; fi
       ;;
-    *) no "no supervisor available"; fail=1;;
+    runit)
+      if [ -d "$PREFIX/var/service/chump-almanac-liveness" ]; then ok "runit service present: chump-almanac-liveness"
+      else no "runit service NOT present: chump-almanac-liveness"; fail=1; fi
+      ;;
   esac
   # best-effort stats probe: at least one registered repo with a nonzero row
   # count proves the index is actually populated, not just present-but-empty.
