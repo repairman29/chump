@@ -1347,6 +1347,14 @@ CHUMP_IMPROVE_RG_BIN
 # a described-but-unapplied edit via str_replace (default 2; 0 disables).
 CHUMP_IMPLEMENT_FORCE_EDIT_TRIES
 
+# ── Tier 2/3: in-loop force-edit nudge (EFFECTIVE-448) ─────────────────────
+# CHUMP_REQUIRE_EDIT=1 marks a run as expected to produce an edit (set by
+# execute_gap); when set, the agent loop nudges the model to apply a str_replace
+# if it reaches EndTurn having changed no file. CHUMP_MAX_EDIT_NUDGES caps how
+# many such nudges fire before the run is allowed to Complete (default 3).
+CHUMP_REQUIRE_EDIT
+CHUMP_MAX_EDIT_NUDGES
+
 # ── Tier 2: COTG AC-judge (EFFECTIVE-373) ─────────────────────────────────
 # CHUMP_AC_JUDGE_LLM=1 turns the LLM per-bullet AC judge on in run_with_ac (default
 # off; heuristic first-pass only). CHUMP_AC_JUDGE_MODEL picks the judge model

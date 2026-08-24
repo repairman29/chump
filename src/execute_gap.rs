@@ -964,6 +964,12 @@ fn emit_subagent_heartbeat(gap_id: &str, pid: u32, last_action: &str, iter_count
 pub async fn execute_gap(gap_id: &str) -> Result<String> {
     validate_gap_id(gap_id).with_context(|| format!("validating gap id {gap_id:?}"))?;
 
+    // EFFECTIVE-448: this command is expected to PRODUCE an edit. Signal the
+    // agent loop (iteration_controller) to fire the force-edit nudge when a
+    // (weak) model investigates but never applies a str_replace, instead of
+    // Completing into an empty diff that free_tier_ship then rejects.
+    std::env::set_var("CHUMP_REQUIRE_EDIT", "1");
+
     // Mirror the contract in dispatch.rs: subagents must not recursively
     // dispatch. The orchestrator sets CHUMP_DISPATCH_DEPTH=1 in the env;
     // we honor it as a tripwire here too (defensive — if a chump-local
