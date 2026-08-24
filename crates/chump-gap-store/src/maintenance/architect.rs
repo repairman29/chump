@@ -70,6 +70,11 @@ pub struct SubGap {
     /// `open`/`done`. New decomposition output is always `open`.
     #[serde(default)]
     pub status: String,
+    /// MISSION-045 / EFFECTIVE-322: inherited from the parent gap so the
+    /// close-gate never bounces decompose output.  Optional — set by
+    /// [`parse_yaml_from_response_with_outcome`]; ignored when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome_id: Option<String>,
 }
 
 /// Failure modes for [`GapArchitect::decompose`].
@@ -276,9 +281,21 @@ Each sub-gap must be picked + shipped independently of the others.\n",
     }
 }
 
-/// Parse the LLM response as YAML and validate the required fields.
-/// Mirrors `gap-architect.py::parse_yaml_from_response + validate_gap`.
+/// Parse the LLM response as YAML, validate required fields, and
+/// inherit the parent gap's `outcome_id` (when provided) into every
+/// candidate sub-gap.  Mirrors `gap-architect.py::parse_yaml_from_response
+/// + validate_gap`.
 pub fn parse_yaml_from_response(text: &str) -> Result<Vec<SubGap>, ArchitectError> {
+    parse_yaml_from_response_with_outcome(text, None)
+}
+
+/// Same as [`parse_yaml_from_response`] but optionally attaches a parent
+/// `outcome_id` to each parsed sub-gap so the MISSION-045 close-gate
+/// never bounces decompose output (EFFECTIVE-322).
+pub fn parse_yaml_from_response_with_outcome(
+    text: &str,
+    outcome_id: Option<&str>,
+) -> Result<Vec<SubGap>, ArchitectError> {
     // Strip code fences if present (LLMs love to add ```yaml).
     let trimmed = text.trim();
     let mut body = trimmed.to_string();
@@ -307,6 +324,9 @@ pub fn parse_yaml_from_response(text: &str) -> Result<Vec<SubGap>, ArchitectErro
         if gap.status.is_empty() {
             gap.status = "open".to_string();
         }
+        // EFFECTIVE-322: propagate parent outcome_id so the close-gate
+        // never bounces decompose output.
+        gap.outcome_id = outcome_id.map(|s| s.to_string());
         if validate_required_fields(&gap) {
             out.push(gap);
         }
@@ -358,5 +378,23 @@ mod tests {
             "id: x\ntitle: t\ndomain: D\npriority: P1\neffort: s\ndescription: d\nstatus: open\n";
         let gaps = parse_yaml_from_response(raw).unwrap();
         assert_eq!(gaps.len(), 1);
+    }
+
+    #[test]
+    fn parse_propagates_outcome_id() {
+        let raw =
+            "id: x\ntitle: t\ndomain: D\npriority: P1\neffort: s\ndescription: d\nstatus: open\n";
+        let gaps = parse_yaml_from_response_with_outcome(raw, Some("OUTCOME-001")).unwrap();
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].outcome_id.as_deref(), Some("OUTCOME-001"));
+    }
+
+    #[test]
+    fn parse_no_outcome_when_none() {
+        let raw =
+            "id: x\ntitle: t\ndomain: D\npriority: P1\neffort: s\ndescription: d\nstatus: open\n";
+        let gaps = parse_yaml_from_response_with_outcome(raw, None).unwrap();
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].outcome_id, None);
     }
 }
