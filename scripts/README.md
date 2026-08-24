@@ -26,6 +26,7 @@ Less-used directories (small scope):
 |---|---|
 | `ab-harness/` | A/B test scaffold for model comparisons |
 | `audit/` | Spot-audit scripts for PR diff, gap, and lesson quality |
+| `eval-reflection-ab/` | EVAL-008: ground-truth episodes for reflect_heuristic vs reflect_via_provider A/B eval |
 | `demo/` | Demo scripts for showing Chump to new users |
 | `discord/` | Discord bot helper scripts |
 | `git/` | Low-level git utilities |
