@@ -338,12 +338,20 @@ struct FreeTierProviderSpec {
 }
 
 /// Parse `CHUMP_FREE_TIER_PROVIDERS` (format: `model@base_url:KEY_ENV,...`)
-/// or return the built-in Groq → Cerebras → NVIDIA default order.
+/// or return the built-in worker-floor default order.
+///
+/// EFFECTIVE-445: the worker FLOOR is DeepSeek-primary, not free-first. Free
+/// tiers (nemotron:free / groq gpt-oss) 429 under sustained worker load, so a
+/// free-first floor STALLS. The funded OpenRouter DeepSeek paid rungs
+/// (deepseek-v4-flash → -pro, ~$0.01/gap, no rate cap) lead; the free tiers
+/// stay ONLY as a last cheap escalation BEHIND DeepSeek. This default is the
+/// fresh-checkout fallback; each node's providers.env sets the same order.
 fn parse_free_tier_providers() -> Vec<FreeTierProviderSpec> {
     const DEFAULTS: &str = concat!(
-        "llama-3.3-70b-versatile@https://api.groq.com/openai/v1:GROQ_API_KEY,",
-        "llama-3.3-70b@https://api.cerebras.ai/v1:CEREBRAS_API_KEY,",
-        "meta/llama-3.3-70b-instruct@https://integrate.api.nvidia.com/v1:NVIDIA_API_KEY"
+        "deepseek/deepseek-v4-flash@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
+        "deepseek/deepseek-v4-pro@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
+        "nvidia/nemotron-3-super-120b-a12b:free@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
+        "openai/gpt-oss-20b@https://api.groq.com/openai/v1:GROQ_API_KEY"
     );
     let raw = std::env::var("CHUMP_FREE_TIER_PROVIDERS").unwrap_or_else(|_| DEFAULTS.to_string());
     raw.split(',')
@@ -2095,22 +2103,25 @@ mod tests {
 
     #[test]
     #[serial(free_tier_env)]
-    fn effective002_parse_defaults_returns_three_providers() {
-        // Without CHUMP_FREE_TIER_PROVIDERS set the default list has 3 entries.
+    fn effective445_parse_defaults_deepseek_primary() {
+        // EFFECTIVE-445: the worker FLOOR default must be DeepSeek-primary
+        // (funded OpenRouter paid rungs first), NOT free-first — free tiers 429
+        // under sustained worker load and stall the floor.
         std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
         let specs = parse_free_tier_providers();
-        assert_eq!(specs.len(), 3, "default rotation must have 3 providers");
-        assert!(
-            specs[0].base_url.contains("groq.com"),
-            "first default must be Groq"
+        assert_eq!(specs.len(), 4, "default rotation must have 4 providers");
+        assert_eq!(
+            specs[0].model, "deepseek/deepseek-v4-flash",
+            "slot 1 must be deepseek-v4-flash (the DeepSeek floor)"
         );
-        assert!(
-            specs[1].base_url.contains("cerebras.ai"),
-            "second default must be Cerebras"
+        assert_eq!(
+            specs[1].model, "deepseek/deepseek-v4-pro",
+            "slot 2 must be deepseek-v4-pro"
         );
+        // Free tiers only AFTER DeepSeek — never ahead of it.
         assert!(
-            specs[2].base_url.contains("nvidia.com"),
-            "third default must be NVIDIA"
+            specs[2].model.contains(":free"),
+            "free tiers must sit behind the DeepSeek rungs"
         );
     }
 
