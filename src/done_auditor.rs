@@ -89,7 +89,7 @@ impl DoneAuditReport {
 /// that gap rather than failing the whole sweep.
 pub fn audit(repo_root: &Path, limit: usize) -> Result<DoneAuditReport> {
     let store = chump_gap_store::GapStore::open(repo_root)?;
-    let done = store.list(Some("done"))?;
+    let done = store.list_by_status_ordered("done")?;
     let mut report = DoneAuditReport::default();
     for g in done.iter().take(limit) {
         let pr = match g.closed_pr {
