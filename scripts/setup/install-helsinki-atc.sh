@@ -160,8 +160,14 @@ SYSTEM_UNITS=(
   chump-conflict-resolution-consumer.timer
   chump-merge-serializer.service
   chump-merge-serializer.timer
+  # gap-drain (EFFECTIVE-464): the DRAIN LOOP — enriches thin gaps + decomposes
+  # broad ones into surgical, flash-landable specs so the cheap DeepSeek floor
+  # (EFFECTIVE-445) always has landable work. Both LLM calls route to
+  # deepseek-v4-pro, not the contended local ollama.
+  chump-gap-drain.service
+  chump-gap-drain.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
