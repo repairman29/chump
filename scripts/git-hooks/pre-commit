@@ -475,9 +475,9 @@ if [ "${CHUMP_STOMP_WARN:-1}" != "0" ]; then
             # Only check files that still exist in the working tree.
             # Deletions and renames-to-nonexistent are out of scope.
             [ -f "$f" ] || continue
-            # stat flags differ macOS vs Linux. Try macOS first; fall back to
-            # Linux on failure.
-            mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)
+            # stat flags differ macOS vs Linux. Try GNU/Linux form first (it
+            # fails cleanly on macOS); fall back to BSD/macOS form.
+            mtime=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
             [ "$mtime" -gt 0 ] || continue
             age=$((now_epoch - mtime))
             if [ "$age" -gt "$threshold" ]; then
