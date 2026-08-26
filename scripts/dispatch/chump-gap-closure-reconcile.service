@@ -1,17 +1,28 @@
 # INFRA-303 / drift-fix — periodic GitHub-truth gap-closure reconciler.
-# Runs gap-doctor-reconcile.py --check-closure-drift: any gap still `open` whose
-# PR has MERGED on GitHub is closed (status=done + closed_pr) in the canonical
-# state.db. This is the backstop for the fragile bot-merge auto-close (CREDIBLE-295,
-# which silently skips and leaves OPEN-BUT-LANDED ghosts). Without this organ the
-# gap store drifts from GitHub reality permanently (found 2026-08-21: the checker's
-# jq expression was broken so it reported 0 drift while gaps sat landed-but-open).
+# Runs gap-doctor-reconcile.py in TWO complementary modes each tick:
+#   --check-closure-drift     : gaps still `open` whose closed_pr PR has MERGED
+#                               on GitHub → close (status=done + closed_pr).
+#   --check-already-satisfied : gaps still `open` with NO closed_pr whose latest
+#                               worker cycle log shows the work already shipped in
+#                               a merged PR → close already_satisfied (INFRA-3826).
+#                               Low-confidence matches are FLAGGED, never closed.
+# Together they are the durable backstop for the fragile bot-merge auto-close
+# (CREDIBLE-295, which silently skips and leaves OPEN-BUT-LANDED ghosts) AND the
+# live-only INFRA-3808 worker close (which misses gaps whose cycle it wasn't
+# watching). Without this organ the gap store drifts from GitHub reality
+# permanently: covered gaps sit `open` and get re-picked forever (found
+# 2026-08-21: this timer went dead; re-armed under INFRA-3826).
 [Unit]
-Description=Chump gap-closure reconciler — close open-but-merged gaps from GitHub truth (INFRA-303)
+Description=Chump gap-closure reconciler — close open-but-merged & already-satisfied gaps from GitHub truth (INFRA-303 / INFRA-3826)
 After=network-online.target
 Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=HOME=/root
 Environment=CHUMP_REPO_ROOT=/root/Projects/chump
-ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; cd /root/Projects/chump; exec python3 scripts/coord/gap-doctor-reconcile.py --check-closure-drift'
+# The drift pass exits 3 when it FINDS+resolves drift (an alert contract for the
+# CI/cron callers). For this self-healing oneshot that healthy outcome must NOT
+# leave the unit `failed`, so we swallow its rc (|| true) and let the
+# already-satisfied pass (exit 0 on any clean run) set the service's exit code.
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; cd /root/Projects/chump; python3 scripts/coord/gap-doctor-reconcile.py --check-closure-drift || true; exec python3 scripts/coord/gap-doctor-reconcile.py --check-already-satisfied'
 TimeoutStartSec=300

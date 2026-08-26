@@ -2,8 +2,18 @@
 [Unit]
 Description=Run the Chump gap-closure reconciler every 15 minutes (INFRA-303)
 [Timer]
+# INFRA-3826: use a WALL-CLOCK anchor (OnCalendar), not monotonic-only. The old
+# OnBootSec+OnUnitActiveSec pair could wedge at `Trigger: n/a` (observed dead
+# 2026-08-21): once OnBootSec has elapsed, OnUnitActiveSec has no anchor until
+# the service next runs — but the service only runs when the timer fires, so a
+# timer restarted long after boot without a prior activation sits `active` with
+# NO next elapse and never fires. organ-reconcile then sees it as `active` and
+# never re-arms it. OnCalendar always computes a next elapse, so the timer
+# cannot wedge; Persistent=true (now meaningful, paired with OnCalendar) catches
+# up a run missed while the node was down.
 OnBootSec=6min
-OnUnitActiveSec=15min
+OnCalendar=*:0/15
 Persistent=true
+AccuracySec=30s
 [Install]
 WantedBy=timers.target

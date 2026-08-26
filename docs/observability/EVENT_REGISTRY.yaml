@@ -4293,6 +4293,28 @@ events:
       catch on its own. Surfaces silent auto-close failures.
     consumers: [fleet-brief, operator-recall, audit-priorities]
     fields_required: [ts, kind, gap_id, pr_number, merged_at, source]
+
+  # ── INFRA-3826: already-satisfied backstop (closed_pr NULL class) ──────────
+  - kind: gap_already_satisfied_closed
+    effect_metric: self
+    emitter: scripts/coord/gap-doctor-reconcile.py --check-already-satisfied (INFRA-3826)
+    trigger: open gap with NO closed_pr whose latest worker cycle log fires the
+      3-factor already-satisfied signal (already-done + no-op + covering PR) AND
+      that PR is verified MERGED on GitHub. The periodic backstop for the
+      live-only INFRA-3808 worker close — durably closes covered gaps the worker
+      missed (dirty worktree at the time, CLI close failed, or pre-3808 backlog)
+      so they stop being re-picked forever.
+    consumers: [fleet-brief, operator-recall, audit-priorities]
+    fields_required: [ts, kind, gap_id, pr_number, merged_at, source]
+  - kind: gap_already_satisfied_flagged
+    effect_metric: self
+    emitter: scripts/coord/gap-doctor-reconcile.py --check-already-satisfied (INFRA-3826)
+    trigger: open gap looks already-satisfied (detector fired, names a covering
+      PR) but the backstop will NOT auto-close it — the PR is not merged /
+      unresolvable, or gh is unavailable to verify. Flagged for human/operator
+      adjudication; a wrong auto-close would discard real work.
+    consumers: [fleet-brief, operator-recall, audit-priorities]
+    fields_required: [ts, kind, gap_id, pr_number, reason, source]
   # ── INFRA-1040: graphql exhaustion fleet-wide signal ──────────────────────
   - kind: graphql_exhausted
     effect_metric: self
