@@ -2263,3 +2263,10 @@ CHUMP_ALMANAC_SEARCH_TIMEOUT_MS
 CHUMP_INVESTIGATE_BUDGET
 CHUMP_INVESTIGATE_NUDGE_SPACING
 CHUMP_EDIT_ONLY_TOOLS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_AUTODEPLOY_SMOKE
+# detected in: (standard input)
+CHUMP_REFRESH_RUNNER_SCRIPT
