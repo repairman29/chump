@@ -2070,12 +2070,58 @@ Operator or sibling worker can rescue this branch via:
             # "hard gap it cannot crack" vs "not tried yet" instead of looping. Longer
             # window than preflight_fail (a real work attempt failed, not a stale
             # claim). Tunable via CHUMP_UNVERIFIED_SHIP_COOLDOWN_S.
+            # ── INFRA-3808 Layer 2: durable auto-close of already-satisfied gaps ──
+            # Before cooling down, check whether the agent EXPLICITLY concluded the
+            # gap's work is already on main, naming the covering PR (the strongest,
+            # safest signal — the fact lives only in this cycle's final assistant
+            # message). If so, and the worktree carries no uncommitted work, close the
+            # gap `already_satisfied` (bypasses the P0/P1 outcome-link close gate) so
+            # the picker never re-selects it — instead of merely deferring via
+            # cooldown. The reconciler's --check-closure-drift cannot catch this class:
+            # it only scans gaps that already have closed_pr set, and here it is NULL.
+            _autoclose_done=0
+            if [ "${CHUMP_AUTOCLOSE_SATISFIED:-1}" != "0" ] && [ -f "$cycle_log" ]; then
+                _cov_pr="$(python3 "$REPO_ROOT/scripts/dispatch/detect_already_satisfied.py" "$cycle_log" "$GAP_ID" 2>/dev/null || true)"
+                if [ -n "$_cov_pr" ]; then
+                    # Only close when the worktree has NO uncommitted diff — never
+                    # discard real work the agent may have staged but not shipped.
+                    _wt_dirty="$(git -C "$wt_path" status --porcelain 2>/dev/null | head -1)"
+                    if [ -z "$_wt_dirty" ]; then
+                        if CHUMP_REPO="$REPO_ROOT" chump gap set "$GAP_ID" \
+                                --status already_satisfied --closed-pr "$_cov_pr" \
+                                >/dev/null 2>&1; then
+                            _autoclose_done=1
+                            log "INFRA-3808: auto-closed $GAP_ID as already_satisfied (covered by PR #$_cov_pr; agent reported already-shipped, worktree clean)"
+                            printf '{"event":"gap_auto_satisfied","ts":"%s","agent":"%s","gap_id":"%s","covered_by_pr":"%s","source":"worker.sh:detect_already_satisfied"}\n' \
+                                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$GAP_ID" "$_cov_pr" \
+                                >> "${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" 2>/dev/null || true
+                        else
+                            log "INFRA-3808: WARN could not auto-close $GAP_ID (chump gap set failed); falling back to cooldown"
+                        fi
+                    else
+                        log "INFRA-3808: $GAP_ID looks already-satisfied (PR #$_cov_pr) but worktree is DIRTY — NOT closing; cooling down instead"
+                    fi
+                fi
+            fi
+
+            # ── INFRA-3808 Layer 1: FIX the unverified_ship cooldown write ──────────
+            # EFFECTIVE-441 added this cooldown, but its printf used the
+            # '"'"'…'"'"' shell-quote-nesting idiom, which COLLAPSED the inner JSON
+            # quotes and emitted invalid JSON ({gap_id:… with unquoted keys). The
+            # picker's cooled_down_gaps() runs json.load() on each file and silently
+            # `continue`s on a parse error — so EVERY unverified_ship cooldown was a
+            # silent NO-OP and the gap was re-picked within minutes (live: EFFECTIVE-478
+            # re-picked ~every 5min for 2h). Use the same clean single-quoted printf as
+            # the preflight_fail (~line 907) and rc-fail (~line 1892) paths, which DO
+            # produce valid JSON. Skip the cooldown when we just closed the gap.
             _cd_dir="$REPO_ROOT/.chump-locks/cooldown"
             mkdir -p "$_cd_dir" 2>/dev/null || true
             _cd_until=$(( $(date +%s) + ${CHUMP_UNVERIFIED_SHIP_COOLDOWN_S:-1800} ))
-            printf '"'"'{"gap_id":"%s","until":%d,"agent":"%s","ts":"%s","reason":"unverified_ship"}\n'"'"' \
-                "$GAP_ID" "$_cd_until" "$AGENT_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-                > "$_cd_dir/${AGENT_ID}-${GAP_ID}.json" 2>/dev/null || true
+            if [ "$_autoclose_done" -eq 0 ]; then
+                printf '{"gap_id":"%s","until":%d,"agent":"%s","ts":"%s","reason":"unverified_ship"}\n' \
+                    "$GAP_ID" "$_cd_until" "$AGENT_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                    > "$_cd_dir/${AGENT_ID}-${GAP_ID}.json" 2>/dev/null || true
+            fi
         fi
     elif [ "${_is_wedge:-0}" -eq 1 ]; then
         _cycle_kind="wedge"
