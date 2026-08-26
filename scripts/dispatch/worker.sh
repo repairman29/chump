@@ -1611,16 +1611,19 @@ Operator or sibling worker can rescue this branch via:
         log "INFRA-666: pre-ship-clippy-fix phase starting"
         (
             cd "$wt_path" || exit 0
-            # Apply clippy fixes (allow-dirty for staged changes, allow-staged for both).
-            cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged 2>/dev/null || {
-                log "WARN INFRA-666: cargo clippy --fix failed (continuing)"
-                exit 0
-            }
-            # Format code.
-            cargo fmt --all 2>/dev/null || {
-                log "WARN INFRA-666: cargo fmt failed (continuing)"
-                exit 0
-            }
+            # EFFECTIVE-507: format FIRST, and never let a clippy-fix failure skip fmt.
+            # The old order ran `cargo clippy --fix` before `cargo fmt`, and its
+            # failure path did `exit 0` — so whenever `cargo clippy --fix` failed (it
+            # fails every cycle on the shared sccache target), the subshell exited and
+            # `cargo fmt` NEVER ran. Agent edits then shipped unformatted and every PR
+            # bounced on the REQUIRED `fast-checks` cargo-fmt gate. Run fmt first (it is
+            # the required CI gate); clippy autofix is best-effort and must not abort
+            # the fmt+commit below.
+            # Format code (the required CI gate) — non-fatal, but must always run.
+            cargo fmt --all 2>/dev/null || log "WARN INFRA-666: cargo fmt failed (continuing)"
+            # Best-effort clippy autofix — non-fatal; must NOT skip the commit below.
+            cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged 2>/dev/null \
+                || log "WARN INFRA-666: cargo clippy --fix failed (continuing)"
             # If there are new changes, amend the last commit and push.
             if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
                 git add -A 2>/dev/null || true
