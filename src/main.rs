@@ -256,6 +256,7 @@ mod standard_missions; // EFFECTIVE-199: L1 foundation queue for 0→1 onboard �
 mod state_db;
 mod stream_events;
 mod streaming_provider;
+mod style_loader; // EFFECTIVE-484 (EFFECTIVE-365 slice): loads content/STYLE.md and applies Jeff's voice to draft text
 mod system_prompt;
 mod systematizer; // INFRA-1783: chump systematize <repo-path> — CAPABILITIES_REGISTRY.json generation (INFRA-1746 phase 4)
 mod task_contract;
