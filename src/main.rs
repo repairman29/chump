@@ -192,6 +192,7 @@ mod plan_mode;
 mod platform_router;
 mod plugin;
 mod policy_override;
+mod pr_blame_file; // INFRA-1445: chump pr blame-file <path>
 mod pr_coupling_cost;
 mod pr_explain; // INFRA-1416: chump pr explain-block <PR>
 mod pr_fix_clippy;
@@ -5257,6 +5258,30 @@ async fn main() -> Result<()> {
             Ok(()) => std::process::exit(0),
             Err(e) => {
                 eprintln!("chump pr explain-block: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // `chump pr blame-file <path> [--json]` (INFRA-1445) — surfaces
+    // squash-merged + cherry-picked history that plain `git log -- <path>`
+    // misses, by cross-referencing `.chump/github_cache.db` pr_state
+    // (raw_payload_json) for merged PRs that touched the path.
+    if args.get(1).map(String::as_str) == Some("pr")
+        && args.get(2).map(String::as_str) == Some("blame-file")
+    {
+        let path = match args.get(3) {
+            Some(p) => p.clone(),
+            None => {
+                eprintln!("Usage: chump pr blame-file <path> [--json]");
+                std::process::exit(2);
+            }
+        };
+        let json_out = args.iter().any(|a| a == "--json");
+        match pr_blame_file::run(&path, json_out) {
+            Ok(()) => std::process::exit(0),
+            Err(e) => {
+                eprintln!("chump pr blame-file: {e}");
                 std::process::exit(1);
             }
         }
