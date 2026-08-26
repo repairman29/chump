@@ -230,8 +230,14 @@ trap 'git -C "$REPO_ROOT" worktree remove --force "$BUILD_WORKTREE" >>"$LOG" 2>&
 # auto-deploy dead + disabled. Reusing the warm target makes this an incremental
 # ~1-2 min build. The auto-deploy is serialized (one launchd job), so sharing
 # the target with the main checkout is safe here.
-SHARED_TARGET="$REPO_ROOT/target"
-log "cargo build --release --bin chump (worktree $BUILD_WORKTREE, warm target $SHARED_TARGET) …"
+# RESILIENT-408: honor an externally-provided CARGO_TARGET_DIR instead of
+# hard-overriding to REPO_ROOT/target unconditionally. Building the deploy
+# binary into the same warm target dir that workers build into invites lock
+# contention; a caller that needs isolation (e.g. auto-deploy.sh running
+# concurrently with worker cargo builds) can now opt out by pre-setting
+# CARGO_TARGET_DIR before invoking this script.
+SHARED_TARGET="${CARGO_TARGET_DIR:-$REPO_ROOT/target}"
+log "cargo build --release --bin chump (worktree $BUILD_WORKTREE, target dir $SHARED_TARGET) …"
 if ! PATH="$(dirname "$CARGO"):$PATH" CARGO_TARGET_DIR="$SHARED_TARGET" \
      "$CARGO" build --release --bin chump --manifest-path "$BUILD_WORKTREE/Cargo.toml" >>"$LOG" 2>&1; then
     log "FATAL: cargo build failed; see $LOG"

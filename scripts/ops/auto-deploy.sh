@@ -9,8 +9,11 @@
 #   (a) git fetch origin main                             — get latest remote state
 #   (b) compare origin/main HEAD SHA to stored last-deployed SHA
 #   (c) if advanced → delegate to refresh-runner-binary.sh (isolated build)
-#   (d) on success → record new deployed SHA
-#   (e) emit ambient kind=binary_auto_deployed
+#   (d) verify the PATH-resolved worker binary (not TARGET_BIN) matches
+#       origin/main HEAD — on mismatch, emit binary_auto_deploy_failed
+#       reason=worker_binary_sha_mismatch and exit non-zero (RESILIENT-408)
+#   (e) on success → record new deployed SHA
+#   (f) emit ambient kind=binary_auto_deployed
 #
 # Build isolation guarantee: this script NEVER checks out main or modifies the
 # main worktree.  All building is delegated to refresh-runner-binary.sh which
@@ -51,6 +54,19 @@
 #                                   deploy step (local shell command, no ssh).
 #                                   Used by tests to assert propagation
 #                                   happened/didn't without real network I/O.
+#   CHUMP_WORKER_BIN              — RESILIENT-408: override for the
+#                                   PATH-resolved binary workers actually
+#                                   exec (test hook). Default resolution:
+#                                   ~/.cargo/bin/chump if present, else
+#                                   `command -v chump`, else TARGET_BIN.
+#
+# RESILIENT-211/RESILIENT-408 note: TARGET_BIN (CHUMP_RUNNER_BIN) is the
+# install target this script *writes*. It is not necessarily the binary the
+# fleet workers *execute* — workers resolve `chump` off PATH, and
+# ~/.cargo/bin comes first there. Gating deploy success on TARGET_BIN alone
+# let auto-deploy report success while the running worker kept executing a
+# stale ~/.cargo/bin/chump (observed 2026-08-24, RESILIENT-408). Deploy
+# success is therefore gated on the PATH-resolved binary, verified below.
 
 set -uo pipefail
 
@@ -81,6 +97,35 @@ emit_ambient() {
 }
 
 log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG"; }
+
+# resolve_worker_bin — RESILIENT-408. Returns the binary path the fleet
+# workers' PATH will actually resolve `chump` to, which is NOT necessarily
+# TARGET_BIN. Preference order mirrors a worker's own PATH resolution:
+#   1. CHUMP_WORKER_BIN override (test hook)
+#   2. ~/.cargo/bin/chump if present (first in worker PATH on Linux nodes)
+#   3. whatever `chump` resolves to on this script's own PATH
+#   4. TARGET_BIN as a last resort (keeps single-binary/dev hosts working)
+resolve_worker_bin() {
+    if [[ -n "${CHUMP_WORKER_BIN:-}" ]]; then
+        printf '%s' "$CHUMP_WORKER_BIN"
+        return 0
+    fi
+    if [[ -x "$HOME/.cargo/bin/chump" ]]; then
+        printf '%s' "$HOME/.cargo/bin/chump"
+        return 0
+    fi
+    local on_path
+    on_path="$(command -v chump 2>/dev/null || true)"
+    if [[ -n "$on_path" ]]; then
+        printf '%s' "$on_path"
+        return 0
+    fi
+    printf '%s' "$TARGET_BIN"
+}
+
+extract_build_sha() {
+    "$1" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//'
+}
 
 # run_canary_health_check — RESILIENT-211 gate. Runs AFTER this node's own
 # rebuild+install has already succeeded; decides whether the second fleet
@@ -176,21 +221,40 @@ log "DEPLOY: origin/main advanced (last_deployed=${LAST_SHA:-none}, current=$MAI
 # (c) Delegate to refresh-runner-binary.sh (isolated worktree build)
 # That script handles: create detached worktree → cargo build --release → hardcopy → teardown
 TARGET_BIN="${CHUMP_RUNNER_BIN:-/opt/homebrew/bin/chump}"
-PREV_SHA="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || echo unknown)"
+PREV_SHA="$(extract_build_sha "$TARGET_BIN" || echo unknown)"
+[[ -n "$PREV_SHA" ]] || PREV_SHA="unknown"
 
 log "calling refresh-runner-binary.sh (prev_installed_sha=$PREV_SHA)"
 if CHUMP_REPO_ROOT="$REPO_ROOT" bash "$REFRESH_SCRIPT" >>"$LOG" 2>&1; then
-    NEW_SHA="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || echo unknown)"
+    NEW_SHA="$(extract_build_sha "$TARGET_BIN" || echo unknown)"
+    [[ -n "$NEW_SHA" ]] || NEW_SHA="unknown"
     log "OK: rebuild complete — prev=$PREV_SHA new=$NEW_SHA main=$MAIN_SHA_SHORT"
 
-    # (d) Record deployed SHA
+    # (d) RESILIENT-408: verify the binary the fleet PATH actually resolves
+    # `chump` to — NOT TARGET_BIN, which can be a different file/inode (the
+    # merged-not-running disease: auto-deploy reports success while the
+    # worker keeps executing a stale binary). Gate everything below
+    # (sha-file write + binary_auto_deployed emission) on this check.
+    WORKER_BIN="$(resolve_worker_bin)"
+    WORKER_SHA="$(extract_build_sha "$WORKER_BIN" || echo unknown)"
+    [[ -n "$WORKER_SHA" ]] || WORKER_SHA="unknown"
+    if [[ -z "$WORKER_SHA" || "$WORKER_SHA" == "unknown" ]] \
+        || { [[ "$WORKER_SHA" != "$MAIN_SHA_SHORT"* ]] && [[ "$MAIN_SHA_SHORT" != "$WORKER_SHA"* ]]; }; then
+        log "FAIL: PATH-resolved worker binary ($WORKER_BIN, sha=$WORKER_SHA) does not match origin/main ($MAIN_SHA_SHORT) — merged-not-running"
+        emit_ambient "binary_auto_deploy_failed" \
+            "\"reason\":\"worker_binary_sha_mismatch\",\"worker_bin\":\"$WORKER_BIN\",\"worker_sha\":\"$WORKER_SHA\",\"main_sha\":\"$MAIN_SHA_SHORT\",\"target_bin\":\"$TARGET_BIN\",\"target_sha\":\"$NEW_SHA\""
+        exit 1
+    fi
+    log "OK: PATH-resolved worker binary ($WORKER_BIN) verified at main sha $MAIN_SHA_SHORT"
+
+    # (e) Record deployed SHA — only after worker-binary verification passes
     printf '%s\n' "$MAIN_SHA" > "$DEPLOYED_SHA_FILE"
 
-    # (e) Emit binary_auto_deployed
+    # (f) Emit binary_auto_deployed — only after worker-binary verification passes
     emit_ambient "binary_auto_deployed" \
-        "\"prev_sha\":\"$PREV_SHA\",\"new_sha\":\"$NEW_SHA\",\"main_sha\":\"$MAIN_SHA_SHORT\""
+        "\"prev_sha\":\"$PREV_SHA\",\"new_sha\":\"$NEW_SHA\",\"main_sha\":\"$MAIN_SHA_SHORT\",\"worker_bin\":\"$WORKER_BIN\",\"worker_sha\":\"$WORKER_SHA\""
 
-    # (f) INFRA-3453: post-deploy tool-invocation smoke — the loop tests itself.
+    # (g) INFRA-3453: post-deploy tool-invocation smoke — the loop tests itself.
     # ADVISORY: never blocks or reverts the deploy. It drives the freshly-installed
     # agent through a real turn and confirms a critical tool is actually CALLABLE,
     # not merely present — catching the deploy->unreachable-tool class (the
@@ -217,7 +281,7 @@ if CHUMP_REPO_ROOT="$REPO_ROOT" bash "$REFRESH_SCRIPT" >>"$LOG" 2>&1; then
         fi
     fi
 
-    # (g) RESILIENT-211: canary rollout gate. This node's rebuild+install just
+    # (h) RESILIENT-211: canary rollout gate. This node's rebuild+install just
     # succeeded — it is the canary / first node of the two-node fleet. Only
     # propagate to the second node if the health-check gate actually passes;
     # a failed gate blocks propagation and is reported, never swallowed.

@@ -72,14 +72,22 @@ chmod +x "$FAKE_REFRESH"
 FAKE_BIN="$TMP/fake-chump"
 cat >"$FAKE_BIN" <<'EOF'
 #!/usr/bin/env bash
-# Stands in for the installed `chump` binary. Supports the two things
-# auto-deploy.sh calls it for: `--version` (SHA extraction) and
-# `health --slo-check` (the fallback health-check gate, exit code driven
-# by FAKE_BIN_SLO_EXIT so tests can force pass/fail).
+# Stands in for the installed `chump` binary. Supports the three things
+# auto-deploy.sh calls it for: `--version` (SHA extraction — RESILIENT-408:
+# reports origin/main's actual HEAD sha via $CHUMP_REPO_ROOT so the new
+# worker-binary-sha-verification gate passes for these canary-rollout
+# scenarios, which are only exercising the health-check gate downstream of
+# it) and `health --slo-check` (the fallback health-check gate, exit code
+# driven by FAKE_BIN_SLO_EXIT so tests can force pass/fail).
 if [[ "${1:-}" == "health" && "${2:-}" == "--slo-check" ]]; then
     exit "${FAKE_BIN_SLO_EXIT:-0}"
 fi
-echo "chump 0.0.0 (deadbeef1234 built 2026-01-01)"
+SHA="deadbeef1234"
+if [[ -n "${CHUMP_REPO_ROOT:-}" ]]; then
+    real_sha="$(git -C "$CHUMP_REPO_ROOT" rev-parse --short=12 origin/main 2>/dev/null || true)"
+    [[ -n "$real_sha" ]] && SHA="$real_sha"
+fi
+echo "chump 0.0.0 ($SHA built 2026-01-01)"
 EOF
 chmod +x "$FAKE_BIN"
 
@@ -118,6 +126,7 @@ rm -f "$MARKER_A"
 CHUMP_REPO_ROOT="$REPO_A" \
     CHUMP_REFRESH_RUNNER_SCRIPT="$FAKE_REFRESH" \
     CHUMP_RUNNER_BIN="$FAKE_BIN" \
+    CHUMP_WORKER_BIN="$FAKE_BIN" \
     CHUMP_AUTODEPLOY_SMOKE=0 \
     CHUMP_SECOND_NODE_DEPLOY_CMD="touch $MARKER_A" \
     bash "$AUTO_DEPLOY" >"$TMP/out-a.log" 2>&1
@@ -142,6 +151,7 @@ rm -f "$MARKER_B"
 CHUMP_REPO_ROOT="$REPO_B" \
     CHUMP_REFRESH_RUNNER_SCRIPT="$FAKE_REFRESH" \
     CHUMP_RUNNER_BIN="$FAKE_BIN" \
+    CHUMP_WORKER_BIN="$FAKE_BIN" \
     CHUMP_AUTODEPLOY_SMOKE=0 \
     CHUMP_SECOND_NODE_DEPLOY_CMD="touch $MARKER_B" \
     bash "$AUTO_DEPLOY" >"$TMP/out-b.log" 2>&1
@@ -165,6 +175,7 @@ chmod +x "$REPO_C/scripts/dev/mission-scoreboard.sh"
 CHUMP_REPO_ROOT="$REPO_C" \
     CHUMP_REFRESH_RUNNER_SCRIPT="$FAKE_REFRESH" \
     CHUMP_RUNNER_BIN="$FAKE_BIN" \
+    CHUMP_WORKER_BIN="$FAKE_BIN" \
     CHUMP_AUTODEPLOY_SMOKE=0 \
     bash "$AUTO_DEPLOY" >"$TMP/out-c.log" 2>&1
 RC=$?
@@ -183,6 +194,7 @@ rm -f "$MARKER_D"
 CHUMP_REPO_ROOT="$REPO_D" \
     CHUMP_REFRESH_RUNNER_SCRIPT="$FAKE_REFRESH" \
     CHUMP_RUNNER_BIN="$FAKE_BIN" \
+    CHUMP_WORKER_BIN="$FAKE_BIN" \
     CHUMP_AUTODEPLOY_SMOKE=0 \
     FAKE_BIN_SLO_EXIT=1 \
     CHUMP_SECOND_NODE_DEPLOY_CMD="touch $MARKER_D" \
