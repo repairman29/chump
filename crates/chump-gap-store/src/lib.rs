@@ -11,6 +11,7 @@
 
 pub mod backend;
 pub mod maintenance;
+pub mod publication_resolver;
 pub mod sync;
 
 use anyhow::{bail, Context, Result};
@@ -2371,6 +2372,26 @@ impl GapStore {
             "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
             params![session_id, gap_id],
         );
+        // EFFECTIVE-478 (EFFECTIVE-364 slice): fire the publication resolver
+        // asynchronously now that the ship transition has committed. Best
+        // effort — a resolver failure is logged, never propagated, so a
+        // publication-routing bug can't block a real ship. `ship()` is also
+        // called from sync test contexts with no tokio runtime; skip the
+        // spawn there instead of panicking.
+        if let Ok(artifact_type) = self.get_artifact_type(gap_id) {
+            let event = publication_resolver::PublicationEvent {
+                artifact_type,
+                source_gap_id: gap_id.to_string(),
+            };
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                handle.spawn(async move {
+                    let gap_id = event.source_gap_id.clone();
+                    if let Err(e) = publication_resolver::resolve_publication(event).await {
+                        tracing::error!(gap_id = %gap_id, error = %e, "publication resolver failed");
+                    }
+                });
+            }
+        }
         Ok(())
     }
 

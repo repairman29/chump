@@ -25,6 +25,8 @@ postgres = { version = "0.19", optional = true }
 # (async fn complete) plus the chump-gap-architect bin's tokio runtime.
 tokio = { version = "1", features = ["rt", "macros", "process"] }
 thiserror = "2"
+# EFFECTIVE-478: tracing::error for best-effort publication-resolver failures.
+tracing = "0.1"
 
 [features]
 # Opt-in test helpers (`conn_for_test`) for downstream crates that want to
