@@ -722,6 +722,34 @@ impl GapStore {
 
 // ────────────────────────── gap commands ──────────────────────────
 
+/// EFFECTIVE-364 slice (EFFECTIVE-478): the event handed to the publication
+/// resolver when a gap ships — enough for the resolver to decide whether
+/// (and where) "ship -> told" work should be reserved.
+#[derive(Debug, Clone, Serialize)]
+struct PublicationEvent {
+    source_gap_id: String,
+    artifact_type: String,
+}
+
+/// EFFECTIVE-364 slice (EFFECTIVE-478): resolves a shipped gap into
+/// publication work. This slice's resolver body is a placeholder — it
+/// records the event so a later EFFECTIVE-364 slice can turn it into
+/// reserved publish-target gaps (per docs/strategy/ARTIFACT_ORGANIZATION_2026-08-05.md).
+async fn resolve_publication(event: PublicationEvent, repo_root: PathBuf) -> Result<()> {
+    use std::io::Write as _;
+    let line = serde_json::to_string(&event)? + "\n";
+    let path = repo_root
+        .join(".chump-locks")
+        .join("publication_events.jsonl");
+    std::fs::create_dir_all(path.parent().unwrap_or(&repo_root))?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    f.write_all(line.as_bytes())?;
+    Ok(())
+}
+
 impl GapStore {
     /// Total row count across all statuses. Used to detect an empty-on-clone DB.
     pub fn gap_count(&self) -> Result<i64> {
@@ -2371,6 +2399,52 @@ impl GapStore {
             "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
             params![session_id, gap_id],
         );
+
+        // EFFECTIVE-478 (EFFECTIVE-364 slice): trigger the publication
+        // resolver asynchronously so "ship -> told" work gets queued
+        // without blocking this transition. `ship()` is called from a sync
+        // context with no ambient tokio runtime, so we spin up a
+        // lightweight current-thread runtime on a background OS thread
+        // rather than calling `tokio::spawn` directly (which panics
+        // outside a runtime). Any failure is logged and never propagated —
+        // publication is best-effort and must not turn a successful ship
+        // into an error.
+        {
+            let artifact_type = self
+                .get_artifact_type(gap_id)
+                .unwrap_or_else(|_| "code".to_string());
+            let event = PublicationEvent {
+                source_gap_id: gap_id.to_string(),
+                artifact_type,
+            };
+            let repo_root = self.repo_root.clone();
+            std::thread::spawn(move || {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(e) => {
+                        eprintln!(
+                            "WARN: EFFECTIVE-478: publication resolver runtime init failed: {e:#}"
+                        );
+                        return;
+                    }
+                };
+                let _guard = rt.enter();
+                let handle = tokio::spawn(resolve_publication(event, repo_root));
+                match rt.block_on(handle) {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        eprintln!("WARN: EFFECTIVE-478: publication resolver failed: {e:#}")
+                    }
+                    Err(e) => {
+                        eprintln!("WARN: EFFECTIVE-478: publication resolver task panicked: {e:#}")
+                    }
+                }
+            });
+        }
+
         Ok(())
     }
 
