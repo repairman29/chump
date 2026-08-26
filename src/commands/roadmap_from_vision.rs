@@ -23,7 +23,9 @@ fn print_usage() {
         "Usage: chump roadmap-from-vision --vision <STRING> --domain <DOMAIN> [--outcome <ID>] \
          [--max-gaps N] [--apply]"
     );
-    eprintln!("  --vision     Vision/intent string to derive a roadmap from (or first positional arg)");
+    eprintln!(
+        "  --vision     Vision/intent string to derive a roadmap from (or first positional arg)"
+    );
     eprintln!("  --domain     Domain prefix for proposed gaps (e.g. INFRA, EFFECTIVE)");
     eprintln!("  --outcome    Existing outcome id — required when --apply is set (MISSION-045)");
     eprintln!("  --max-gaps   Hard cap on total gaps in the roadmap (default 5, clamped 1..=20)");
@@ -38,12 +40,9 @@ pub async fn run(args: &[String]) -> i32 {
     // positional after it.
     // AC1: `--vision <string>` is the canonical form; a bare positional
     // (pre-existing EFFECTIVE-425 UX) is still accepted for backward compat.
-    let vision = match flag(args, "--vision").or_else(|| {
-        args[1..]
-            .iter()
-            .find(|a| !a.starts_with("--"))
-            .cloned()
-    }) {
+    let vision = match flag(args, "--vision")
+        .or_else(|| args[1..].iter().find(|a| !a.starts_with("--")).cloned())
+    {
         Some(v) => v,
         None => {
             eprintln!("roadmap-from-vision: --vision <string> is required");
