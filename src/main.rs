@@ -1341,7 +1341,92 @@ async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     // EFFECTIVE-011: expand short aliases (g, c, s, f, d, h, cs) before routing.
     let args = expand_aliases(args);
+    run_with_startup_budget(args).await
+}
 
+/// INFRA-3784 (INFRA-1809 slice): wraps the entire startup sequence (post
+/// arg-parsing) in a wallclock budget so a wedged subsystem init (tokio
+/// runtime, memory_db pool, LLM-provider handshake) can never hang a CLI
+/// invocation indefinitely — the root symptom that made INFRA-1809's
+/// "chump --version hung for 9 minutes" possible. Default 5000ms mirrors
+/// the META-115 freshness-preamble budget; override with
+/// CHUMP_STARTUP_TIMEOUT_MS for tests or slow-disk environments.
+async fn run_with_startup_budget(args: Vec<String>) -> Result<()> {
+    let budget_ms: u64 = env::var("CHUMP_STARTUP_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5000);
+    let start = std::time::Instant::now();
+    let diag_args = args.clone();
+
+    // main_inner()'s future is not Send (rusqlite connections, `&dyn Trait`
+    // params held across .await points deep in the dispatch tree), so it
+    // can't go through tokio::spawn. Instead run it on its own OS thread with
+    // its own lightweight current-thread runtime — that gives the timeout
+    // race a real concurrent opponent (thread + runtime construction) rather
+    // than a single-threaded future that can only ever finish-before-timeout
+    // once it's polled, no matter how small the budget.
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let result = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt.block_on(main_inner(args)),
+            Err(e) => Err(anyhow::anyhow!("failed to build startup runtime: {e}")),
+        };
+        let _ = tx.send(result);
+    });
+
+    match tokio::time::timeout(std::time::Duration::from_millis(budget_ms), rx).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(_recv_error)) => Err(anyhow::anyhow!(
+            "startup task ended without sending a result"
+        )),
+        Err(_elapsed) => {
+            let elapsed_ms = start.elapsed().as_millis() as u64;
+            dump_startup_timeout_diagnostics(&diag_args, elapsed_ms);
+            std::process::exit(4);
+        }
+    }
+}
+
+/// Best-effort diagnostic dump on startup timeout (INFRA-1809 AC3/AC4). Kept
+/// deliberately cheap/non-blocking — this runs on the fast path of a fleet
+/// that's already stuck, so it must not itself risk hanging.
+fn dump_startup_timeout_diagnostics(args: &[String], elapsed_ms: u64) {
+    let cmd = args.first().cloned().unwrap_or_default();
+    let arg_tail = args.get(1..).map(|s| s.join(" ")).unwrap_or_default();
+    let suspected_subsystem = args
+        .get(1)
+        .map(|s| format!("dispatch:{s}"))
+        .unwrap_or_else(|| "arg_parsing_or_early_init".to_string());
+
+    eprintln!("[chump_startup_timeout] wallclock budget exceeded after {elapsed_ms}ms");
+    eprintln!("[chump_startup_timeout] cmd={cmd} args=[{arg_tail}]");
+    eprintln!(
+        "[chump_startup_timeout] tokio runtime status: alive=true worker_threads~={:?} (approx, via std::thread::available_parallelism; tokio::runtime::Handle::metrics() requires tokio_unstable)",
+        std::thread::available_parallelism().map(|n| n.get())
+    );
+    eprintln!(
+        "[chump_startup_timeout] memory_db connection state: not probed (probing a wedged pool could itself hang; see r2d2 lock-contention theory in INFRA-1809)"
+    );
+    eprintln!("[chump_startup_timeout] suspected_subsystem: {suspected_subsystem}");
+
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "chump_startup_timeout".to_string(),
+        source: Some("main::run_with_startup_budget".to_string()),
+        fields: vec![
+            ("cmd".to_string(), cmd),
+            ("args".to_string(), arg_tail),
+            ("elapsed_ms".to_string(), elapsed_ms.to_string()),
+            ("suspected_subsystem".to_string(), suspected_subsystem),
+        ],
+        ..Default::default()
+    });
+}
+
+async fn main_inner(args: Vec<String>) -> Result<()> {
     // SIGPIPE handling for CLI tools (Broken Pipe panics).
     #[cfg(unix)]
     unsafe {

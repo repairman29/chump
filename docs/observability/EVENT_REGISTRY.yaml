@@ -151,6 +151,13 @@ events:
     trigger: periodic worker liveness signal
     consumers: [fleet-brief, kpi-report]
 
+  - kind: chump_startup_timeout
+    effect_metric: self
+    emitter: src/main.rs (run_with_startup_budget, INFRA-3784 / INFRA-1809 slice)
+    trigger: the CHUMP_STARTUP_TIMEOUT_MS wallclock budget (default 5000ms) elapses before the post-arg-parsing startup sequence completes
+    consumers: [observability, infra-watcher]
+    fields_required: [ts, kind, cmd, args, elapsed_ms, suspected_subsystem]
+
   - kind: farmer_drain_guard
     effect_metric: self
     emitter: scripts/dev/farmer-drain-guard.sh (via farmer-brown tick, RESILIENT-076)
