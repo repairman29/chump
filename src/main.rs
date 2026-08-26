@@ -1336,12 +1336,123 @@ mod llm_complete_tests {
     }
 }
 
+/// INFRA-3784: wallclock elapsed since the OS actually started this process
+/// (kernel-recorded `/proc/self/stat` starttime vs. `/proc/uptime`), NOT
+/// since `main()` began running. Most of a cold `chump` invocation's cost is
+/// paid before `main()` is ever reached (exec, dynamic linking, static
+/// initializers for a large binary) — a budget measured only from inside
+/// `main()` would never see that cost and could never fire for a razor-thin
+/// budget. Linux-only; other platforms fall back to `None` (best-effort — the
+/// `Instant`-based measurement in `main` still covers real in-process hangs).
+fn process_wallclock_ms() -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+        // comm (field 2) may itself contain spaces/parens, so split after
+        // the LAST ')' rather than assuming fixed field positions.
+        let after = stat.rsplit_once(')')?.1;
+        let fields: Vec<&str> = after.split_whitespace().collect();
+        // `after` starts at field 3 (state); starttime is field 22 overall,
+        // so index 22 - 3 = 19 in this slice.
+        let starttime_ticks: f64 = fields.get(19)?.parse().ok()?;
+        let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+        if hz <= 0 {
+            return None;
+        }
+        let uptime_str = std::fs::read_to_string("/proc/uptime").ok()?;
+        let uptime_secs: f64 = uptime_str.split_whitespace().next()?.parse().ok()?;
+        let start_secs = starttime_ticks / hz as f64;
+        if uptime_secs < start_secs {
+            return None;
+        }
+        Some(((uptime_secs - start_secs) * 1000.0) as u64)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
+// INFRA-3784 (INFRA-1809 slice): startup wallclock budget. `main` only does
+// arg parsing, then hands off to `run` under a `tokio::time::timeout` so a
+// hung startup (dead subsystem init, blocked DB connect, etc.) fails loudly
+// with diagnostics instead of hanging the process forever.
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     // EFFECTIVE-011: expand short aliases (g, c, s, f, d, h, cs) before routing.
     let args = expand_aliases(args);
 
+    let timeout_ms: u64 = env::var("CHUMP_STARTUP_TIMEOUT_MS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5000);
+    let started = std::time::Instant::now();
+    let pre_main_elapsed_ms = process_wallclock_ms().unwrap_or(0);
+    let cmd = args.first().cloned().unwrap_or_else(|| "chump".to_string());
+    let dump_args = args.clone();
+
+    let timeout_result = if pre_main_elapsed_ms >= timeout_ms {
+        // The budget was already blown before `main()` even started doing
+        // work (e.g. CHUMP_STARTUP_TIMEOUT_MS=1) — no need to race a timer
+        // against a startup sequence that may complete in microseconds.
+        None
+    } else {
+        let remaining = std::time::Duration::from_millis(timeout_ms - pre_main_elapsed_ms);
+        tokio::time::timeout(remaining, run(dump_args.clone()))
+            .await
+            .ok()
+    };
+
+    match timeout_result {
+        Some(result) => result,
+        None => {
+            let elapsed_ms = pre_main_elapsed_ms + started.elapsed().as_millis() as u64;
+            let suspected_subsystem = if !chump_memory_db::memory_db::db_available() {
+                "memory_db"
+            } else {
+                "unknown"
+            };
+            eprintln!(
+                "chump: startup exceeded CHUMP_STARTUP_TIMEOUT_MS budget ({elapsed_ms}ms elapsed, {timeout_ms}ms budget)"
+            );
+            eprintln!("  cmd={cmd} args={:?}", &dump_args.get(1..).unwrap_or(&[]));
+            eprintln!(
+                "  tokio runtime: worker_threads={}",
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(0)
+            );
+            eprintln!(
+                "  memory_db: available={}",
+                chump_memory_db::memory_db::db_available()
+            );
+            eprintln!("  suspected_subsystem={suspected_subsystem}");
+
+            let mut emit_args = chump_ambient_cli::ambient_emit::EmitArgs {
+                kind: "chump_startup_timeout".to_string(),
+                ..Default::default()
+            };
+            emit_args.fields.push(("cmd".to_string(), cmd.clone()));
+            emit_args.fields.push((
+                "args".to_string(),
+                dump_args.get(1..).unwrap_or(&[]).join(" "),
+            ));
+            emit_args
+                .fields
+                .push(("elapsed_ms".to_string(), elapsed_ms.to_string()));
+            emit_args.fields.push((
+                "suspected_subsystem".to_string(),
+                suspected_subsystem.to_string(),
+            ));
+            let _ = chump_ambient_cli::ambient_emit::emit(&emit_args);
+
+            std::process::exit(4);
+        }
+    }
+}
+
+async fn run(args: Vec<String>) -> Result<()> {
     // SIGPIPE handling for CLI tools (Broken Pipe panics).
     #[cfg(unix)]
     unsafe {

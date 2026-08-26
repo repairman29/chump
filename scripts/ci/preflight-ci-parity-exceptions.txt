@@ -108,6 +108,7 @@ test-almanac-summarize-watchdog.sh  # reason: RESILIENT-354 — launchd-supervis
 test-auto-arm-sweeper.sh
 test-autonomous-ship-rate.sh
 test-autoscale-decisions.sh
+test-bot-merge-conflict-integration.sh  # reason: INFRA-3767 — same shape as test-bot-merge-conflict-wiring.sh/test-conflict-resolver.sh below (runtime git-conflict fixture harness, not preflight-relevant)
 test-bot-merge-conflict-wiring.sh
 test-bot-merge-exit-codes.sh
 test-bot-merge-exit-phases.sh
