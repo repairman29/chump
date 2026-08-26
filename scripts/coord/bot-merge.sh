@@ -2510,12 +2510,16 @@ if [[ "$BEHIND" -gt 0 ]]; then
         red "git rebase failed or timed out — resolve conflicts or retry."
         _grade_rebase_clean="false"
 
-        # ── INFRA-1657: dispatch conflict-resolver-agent (closes INFRA-1488 loop) ──
+        # ── INFRA-1657/INFRA-3767: dispatch conflict-resolver-agent (closes INFRA-1488 loop) ──
         # If we detect conflict markers in the worktree (i.e. rebase failed because
         # of a true merge conflict, not a timeout / fetch error), invoke the
-        # opt-in conflict-resolver-agent. Default OFF: the agent script self-skips
-        # with exit 0 when CHUMP_CONFLICT_RESOLVER_ENABLED!=1, in which case we
-        # fall through to the original `_bm_fail "rebase"` handoff path below.
+        # conflict-resolver-agent unconditionally — no --opt-in flag required here.
+        # The agent self-gates on confidence (INFRA-3767 AC #3): it only follows
+        # through unattended on textual/AST scenarios it has a confidence pattern
+        # for, and skips (exit 0, rebase still mid-flight) otherwise, in which case
+        # we fall through to the original `_bm_fail "rebase"` handoff path below.
+        # CHUMP_CONFLICT_RESOLVER_ENABLED=0 remains a hard operator override to
+        # disable the agent entirely; =1 forces it past the confidence gate.
         #
         # Exit-code contract from conflict-resolver-agent.sh:
         #   0 — resolved + `git rebase --continue` already ran; resume normal flow
@@ -2525,14 +2529,15 @@ if [[ "$BEHIND" -gt 0 ]]; then
         _cr_gap="${GAP_IDS[0]:-${GAP_ID:-}}"
         _cr_conflicted_count="$(git diff --name-only --diff-filter=U 2>/dev/null | wc -l | tr -d ' ')"
         if [[ -x "$_cr_agent" && -n "$_cr_gap" && "$_cr_conflicted_count" -gt 0 ]]; then
-            info "Dispatching conflict-resolver-agent (gap=$_cr_gap, files=$_cr_conflicted_count) — CHUMP_CONFLICT_RESOLVER_ENABLED=${CHUMP_CONFLICT_RESOLVER_ENABLED:-0}"
+            info "Dispatching conflict-resolver-agent (gap=$_cr_gap, files=$_cr_conflicted_count) — CHUMP_CONFLICT_RESOLVER_ENABLED=${CHUMP_CONFLICT_RESOLVER_ENABLED:-auto}"
             if "$_cr_agent" "$_cr_gap"; then
-                # Agent returned 0: either feature-flag-off (rebase still mid-flight,
-                # fall through to _bm_fail) or resolved-and-continued (rebase done,
-                # carry on with the rest of bot-merge). Distinguish via .git/rebase-*
+                # Agent returned 0: either skipped (no conflicts / disabled /
+                # low-confidence scenario — rebase still mid-flight, fall through
+                # to _bm_fail) or resolved-and-continued (rebase done, carry on
+                # with the rest of bot-merge). Distinguish via .git/rebase-*
                 # state directories.
                 if [[ -d "$REPO_ROOT/.git/rebase-merge" || -d "$REPO_ROOT/.git/rebase-apply" ]]; then
-                    info "conflict-resolver-agent skipped (disabled) — falling through to existing handoff."
+                    info "conflict-resolver-agent skipped (disabled or low-confidence) — falling through to existing handoff."
                 else
                     info "conflict-resolver-agent resolved + continued rebase — resuming bot-merge flow."
                     # Fall through to the existing post-rebase success block
