@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
-# CI test: docs-delta pre-commit gate correctly reads COMMIT_EDITMSG in linked worktrees.
-# Covers INFRA-1474: $REPO_ROOT/.git/COMMIT_EDITMSG doesn't exist in a linked worktree
-# because .git is a gitdir pointer file, not a directory. Fix: git rev-parse --git-dir.
+# CI test: docs-delta trailer check correctly reads the commit message in
+# linked worktrees.
+#
+# Covers INFRA-1474: $REPO_ROOT/.git/COMMIT_EDITMSG doesn't exist in a linked
+# worktree because .git is a gitdir pointer file, not a directory.
+#
+# Superseded architecture (INFRA-1969, PR #2574): the trailer check no
+# longer lives at pre-commit stage — it moved to a commit-msg hook, which
+# git invokes with $1 = the real path to the message file, sidestepping the
+# COMMIT_EDITMSG lookup entirely. This test was written against the old
+# pre-commit-stage implementation and went stale (and unnoticed, since it
+# was never wired into ci.yml) when that move landed. Updated under
+# INFRA-1521 to assert against current reality; see
+# scripts/ci/test-docs-delta-linked-worktree.sh for the full end-to-end
+# smoke test added alongside this fix.
 set -euo pipefail
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
-HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit"
+HOOK="$REPO_ROOT/scripts/git-hooks/commit-msg"
 PASS=0
 FAIL=0
 
@@ -42,39 +54,41 @@ else
     fail "git rev-parse --git-dir ($WT_GIT_DIR) is not a directory"
 fi
 
-# ── Verify the hook uses git rev-parse --git-dir ───────────────────────────
-if grep -qF '$(git rev-parse --git-dir)/COMMIT_EDITMSG' "$HOOK"; then
-    pass "hook uses git rev-parse --git-dir for MSG_FILE"
+# ── Verify the commit-msg hook reads the message via $1, not a
+#    hardcoded/derived COMMIT_EDITMSG path ─────────────────────────────────
+if grep -qF '\${1:?commit-msg hook expects \$1' "$HOOK" || grep -qF 'MSG_FILE="${1:?' "$HOOK"; then
+    pass "commit-msg hook reads the message via \$1 (git-supplied real path)"
 else
-    fail "hook still uses \$REPO_ROOT/.git/COMMIT_EDITMSG (fix not applied)"
+    fail "commit-msg hook no longer reads the message via \$1 (regression)"
 fi
 
 if grep -qF '$REPO_ROOT/.git/COMMIT_EDITMSG' "$HOOK"; then
-    fail "hook still contains the broken \$REPO_ROOT/.git/COMMIT_EDITMSG path"
+    fail "commit-msg hook contains the broken \$REPO_ROOT/.git/COMMIT_EDITMSG path"
 else
-    pass "hook does not contain the broken \$REPO_ROOT/.git/COMMIT_EDITMSG path"
+    pass "commit-msg hook does not contain the broken \$REPO_ROOT/.git/COMMIT_EDITMSG path"
 fi
 
-# ── Simulate: write COMMIT_EDITMSG to the real worktree git-dir ─────────────
-REAL_EDITMSG="$WT_GIT_DIR/COMMIT_EDITMSG"
-echo "fix: add something
+# ── End-to-end: a real `git commit` in the linked worktree, driving the
+#    commit-msg hook exactly as git would ──────────────────────────────────
+DOC_FILE="docs/TEST_INFRA_1474_$$.md"
+COMMIT_RC=0
+(
+    cd "$WT_DIR"
+    echo "# smoke test doc" > "$DOC_FILE"
+    git add "$DOC_FILE"
+    unset CHUMP_DOCS_DELTA_CHECK
+    git -c core.hooksPath="$REPO_ROOT/scripts/git-hooks" commit -m "docs: INFRA-1474 worktree regression test
 
-Net-new-docs: +1" > "$REAL_EDITMSG"
+Net-new-docs: +1"
+) >/tmp/test-docs-delta-worktree.$$.out 2>&1 || COMMIT_RC=$?
 
-# Confirm git rev-parse path resolves to the file we wrote
-if [ -f "$REAL_EDITMSG" ]; then
-    pass "COMMIT_EDITMSG written to real git-dir is readable at expected path"
+if [ "$COMMIT_RC" -eq 0 ]; then
+    pass "real git commit in linked worktree succeeded without CHUMP_DOCS_DELTA_CHECK=0"
 else
-    fail "COMMIT_EDITMSG not found at $REAL_EDITMSG"
+    fail "real git commit in linked worktree failed (rc=$COMMIT_RC):"
+    sed 's/^/    /' /tmp/test-docs-delta-worktree.$$.out
 fi
-
-TRAILER_VAL=$(grep -iE '^Net-new-docs:[[:space:]]*\+?[0-9]+' "$REAL_EDITMSG" | head -1 \
-              | sed -E 's/^[Nn]et-new-docs:[[:space:]]*\+?([0-9]+).*/\1/')
-if [ "$TRAILER_VAL" = "1" ]; then
-    pass "Net-new-docs trailer parsed correctly from real git-dir COMMIT_EDITMSG"
-else
-    fail "Net-new-docs trailer not parsed (got: '$TRAILER_VAL')"
-fi
+rm -f /tmp/test-docs-delta-worktree.$$.out
 
 # ── Summary ─────────────────────────────────────────────────────────────────
 echo ""

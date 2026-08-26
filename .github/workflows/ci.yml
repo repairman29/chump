@@ -979,6 +979,12 @@ jobs:
       - name: docs-delta trailer validation (INFRA-124)
         run: bash scripts/ci/test-infra-124-docs-delta-trailer.sh
 
+      - name: docs-delta linked worktree regression (INFRA-1474)
+        run: bash scripts/ci/test-docs-delta-worktree.sh
+
+      - name: docs-delta linked worktree smoke test (INFRA-1521)
+        run: bash scripts/ci/test-docs-delta-linked-worktree.sh
+
       - name: state.sql merge driver smoke (INFRA-310)
         run: bash scripts/ci/test-merge-driver-state-sql.sh
 
