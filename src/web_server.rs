@@ -5585,9 +5585,12 @@ async fn handle_pr_diff(
         })
         .unwrap_or(2000);
 
-    let out = std::process::Command::new("gh")
+    // INFRA-1497: tokio::process::Command so this gh call doesn't block a
+    // worker thread (follow-up to INFRA-1485's handle_pr_detail fix).
+    let out = tokio::process::Command::new("gh")
         .args(["pr", "diff", &number.to_string()])
         .output()
+        .await
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
     if !out.status.success() {
@@ -5648,7 +5651,9 @@ async fn handle_pr_ac_fit(
     }
 
     // 1. Fetch PR title from gh.
-    let title_out = std::process::Command::new("gh")
+    // INFRA-1497: tokio::process::Command (background-tier; follow-up to
+    // INFRA-1485's handle_pr_detail fix).
+    let title_out = tokio::process::Command::new("gh")
         .args([
             "pr",
             "view",
@@ -5659,6 +5664,7 @@ async fn handle_pr_ac_fit(
             ".title",
         ])
         .output()
+        .await
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     let pr_title = String::from_utf8_lossy(&title_out.stdout)
         .trim()
@@ -5720,9 +5726,11 @@ async fn handle_pr_ac_fit(
     }
 
     // 3. Fetch diff text for keyword matching.
-    let diff_out = std::process::Command::new("gh")
+    // INFRA-1497: tokio::process::Command (background-tier).
+    let diff_out = tokio::process::Command::new("gh")
         .args(["pr", "diff", &number.to_string()])
         .output()
+        .await
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     let diff_text = String::from_utf8_lossy(&diff_out.stdout).to_lowercase();
 

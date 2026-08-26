@@ -185,6 +185,7 @@ test-pillar-balance.sh
 test-pr-auto-rebase.sh
 test-pr-blocked-watch.sh
 test-pr-explain-block.sh
+test-pr-explain-concurrent.sh       # reason: source-level assertion mirroring test-pr-explain-block.sh, no state.db/hot-path mutation (INFRA-1497)
 test-pr-failure-auto-rescue.sh
 test-pr-rescue-audit-handler.sh
 test-pr-triage-bot.sh
