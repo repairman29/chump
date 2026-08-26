@@ -395,3 +395,6 @@ self-hosted-runner-stats emit smoke (CREDIBLE-069)   # reason: CI-only smoke inv
 
 # ── EFFECTIVE-483: PUBLISHER_PLATFORMS typed config (TypeScript, not Rust) ─
 test-publisher-platforms.sh   # reason: EFFECTIVE-483 — type-checks + unit-tests web/v2/lib/publisher/platforms.ts via a scoped npm toolchain (tsx/typescript); requires `npm ci` (network on cold cache), so it is intentionally excluded from chump preflight's pure-local/no-network whitelist (discover_test_scripts doc comment). CI-only gate; run manually with `bash scripts/ci/test-publisher-platforms.sh` when touching this config.
+
+# ── EFFECTIVE-484: STYLE.md loader (TypeScript, not Rust) ─
+test-style-loader.sh   # reason: EFFECTIVE-484 — type-checks + unit-tests web/v2/lib/style/loader.ts via a scoped npm toolchain (tsx/typescript); requires `npm ci` (network on cold cache), so it is intentionally excluded from chump preflight's pure-local/no-network whitelist (discover_test_scripts doc comment). CI-only gate; run manually with `bash scripts/ci/test-style-loader.sh` when touching this config.
