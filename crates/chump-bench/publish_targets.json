@@ -1,0 +1,9 @@
+{
+  "blog-post": [
+    {
+      "target_type": "docs-site",
+      "platform_id": "github-pages",
+      "requires_approval": true
+    }
+  ]
+}
