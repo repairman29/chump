@@ -392,3 +392,6 @@ test-chump-farmer-run-path.sh   # reason: RESILIENT-376 — host-aware PATH prob
 # ── CREDIBLE-069: self_hosted_runner_run telemetry emit steps (INFRA-1534 AC#6) ─
 Record job start (CREDIBLE-069)   # reason: CI-orchestration step capturing job-start epoch for self_hosted_runner_run duration_s telemetry; no preflight-shaped code path [gap: CREDIBLE-069]
 self-hosted-runner-stats emit smoke (CREDIBLE-069)   # reason: CI-only smoke invoking scripts/ci/test-self-hosted-run-stats-emit.sh; the standalone test script is the mirror [gap: CREDIBLE-069]
+
+# ── EFFECTIVE-483: PUBLISHER_PLATFORMS typed config (TypeScript, not Rust) ─
+test-publisher-platforms.sh   # reason: EFFECTIVE-483 — type-checks + unit-tests web/v2/lib/publisher/platforms.ts via a scoped npm toolchain (tsx/typescript); requires `npm ci` (network on cold cache), so it is intentionally excluded from chump preflight's pure-local/no-network whitelist (discover_test_scripts doc comment). CI-only gate; run manually with `bash scripts/ci/test-publisher-platforms.sh` when touching this config.
