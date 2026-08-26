@@ -1,0 +1,17 @@
+- id: INFRA-3792
+  domain: INFRA
+  title: "INFRA: Create preflight-vs-CI parity audit script (INFRA-2084 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Script emits list of CI gates from .github/workflows/ci.yml fast-checks, audit, and cargo-test shards
+    - Script emits list of gates currently in chump preflight
+    - "Script emits DELTA: gates in CI but not in preflight"
+    - Delta is approximately 30% as stated
+  notes: |
+    Duplicate of already-shipped work: scripts/ci/preflight-vs-ci-parity-audit.sh (PR #3945, INFRA-2084 AC1) already satisfies all 3 acceptance criteria — emits CI gate inventory from ci.yml + sibling workflows, emits gates mirrored in chump preflight, and emits the unmirrored DELTA. Verified by running the script: current DELTA is 0 (full parity), better than the ~30% baseline cited in AC4 at filing time. Closing as duplicate rather than re-implementing.
+  closed_date: '2026-08-26'
+  closed_pr: 3945
+  outcome_id: MISSION-010
+

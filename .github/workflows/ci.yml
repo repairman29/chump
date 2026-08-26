@@ -1105,6 +1105,9 @@ jobs:
       - name: bot-merge conflict-resolver wiring (INFRA-1657)
         run: bash scripts/ci/test-bot-merge-conflict-wiring.sh
 
+      - name: bot-merge conflict-resolver runtime integration (INFRA-3767)
+        run: bash scripts/ci/test-bot-merge-conflict-integration.sh
+
       - name: pipefail race sweep (INFRA-1658)
         run: bash scripts/ci/test-pipefail-race-sweep.sh
 
