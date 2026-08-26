@@ -165,3 +165,8 @@ install-node-housekeeping.sh
 # RESILIENT-410 (AC-C): Linux-node OAuth token freshness refresher (systemd user timer).
 # Opt-in per Linux node (e.g. CJ) so the fleet survives the Mac powering off.
 install-oauth-refresh-systemd.sh
+# reason: RESILIENT-403 — situational almanac clone/build/install; called
+# on-demand by install-almanac-organ.sh when a node has no checkout yet, not
+# a universal fresh-bootstrap requirement (a node without almanac still
+# functions, gap-reserve dedupe just degrades gracefully).
+install-almanac.sh

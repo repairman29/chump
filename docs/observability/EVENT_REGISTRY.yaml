@@ -6486,6 +6486,25 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, built, stale, dry_run]
 
+  - kind: almanac_install_completed
+    effect_metric: self
+    emitter: scripts/setup/install-almanac.sh (RESILIENT-403)
+    trigger: install-almanac.sh finished cloning/updating the almanac
+      checkout, building it, installing the almanac + almanac-mcp binaries,
+      and wiring CHUMP_ALMANAC_MCP_BIN into the chump config env file so the
+      gap-reserve dedupe path (ZERO-WASTE-045) stops degrading to
+      almanac-unavailable.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, repo, almanac_bin, almanac_mcp_bin]
+
+  - kind: almanac_install_failed
+    effect_metric: self
+    emitter: scripts/setup/install-almanac.sh (RESILIENT-403)
+    trigger: install-almanac.sh failed at clone/update, build, or binary
+      install — reason field names the failing stage.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason]
+
   - kind: vision_acuity
     effect_metric: almanac_summary_coverage_pct
     emitter: scripts/ops/almanac-vision-keeper.sh (INFRA-3637)
