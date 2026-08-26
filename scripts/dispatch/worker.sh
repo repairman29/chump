@@ -217,6 +217,36 @@ mkdir -p "$FLEET_LOG_DIR"
 
 log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; }
 
+# ── INFRA-3832: reap a hung cycle's WHOLE process tree ─────────────────────────
+# The first-output watchdog and stall detector used to `kill $_claude_pid`, but
+# $_claude_pid is the wrapper subshell `( cd …; timeout … claude … ) &`. Killing
+# it leaves the `timeout`→`claude`→(node/MCP) grandchildren orphaned and still
+# running until the OUTER FLEET_TIMEOUT_S expires — which for an xl-effort gap is
+# ~66min. That is why INFRA-1497 wedged for 66min despite a 120s watchdog. This
+# helper walks the descendant tree (breadth-first, like _has_build_descendant)
+# and TERM-then-KILLs every pid, so a hung claude is actually caught in minutes.
+_kill_cycle_tree() {
+    local _root="$1"
+    [ -n "$_root" ] || return 0
+    # Collect the root + all descendants (deepest supported nesting: 8).
+    local _all="$_root" _frontier="$_root" _next _p _kid
+    local -i _d=0
+    while [ -n "${_frontier// /}" ] && [ "$_d" -lt 8 ]; do
+        _next=""
+        for _p in $_frontier; do
+            for _kid in $(pgrep -P "$_p" 2>/dev/null); do
+                _all="$_all $_kid"
+                _next="$_next $_kid"
+            done
+        done
+        _frontier="$_next"
+        _d=$((_d + 1))
+    done
+    for _p in $_all; do kill -TERM "$_p" 2>/dev/null || true; done
+    sleep 2
+    for _p in $_all; do kill -KILL "$_p" 2>/dev/null || true; done
+}
+
 # INFRA-2029: emit kind=worker_stuck to ambient.jsonl whenever this worker
 # exits a cycle without shipping (claim failed, preflight fail, no pickable
 # gap, lease collision, worktree create fail, stand-down, etc.).
@@ -1364,9 +1394,10 @@ Operator or sibling worker can rescue this branch via:
                     (
                         sleep "$_first_output_timeout"
                         if [ -f "$cycle_log" ] && [ "$(wc -c < "$cycle_log" 2>/dev/null || echo 0)" -lt 10 ]; then
-                            kill "-TERM" "$_claude_pid" 2>/dev/null || true
-                            sleep 2
-                            kill "-KILL" "$_claude_pid" 2>/dev/null || true
+                            # INFRA-3832: reap the whole tree, not just the wrapper
+                            # subshell — else the orphaned claude survives to
+                            # FLEET_TIMEOUT_S (the 66min-wedge bug).
+                            _kill_cycle_tree "$_claude_pid"
                         fi
                     ) &
                     _fo_watchdog_pid=$!
@@ -1434,9 +1465,10 @@ Operator or sibling worker can rescue this branch via:
                                 "$_sd_idle" \
                                 >> "${CHUMP_LOCKS_DIR:-.chump-locks}/ambient.jsonl" 2>/dev/null || true
                             log "INFRA-705: stall-detector firing (no output for ${_sd_idle}s ≥ threshold ${_stall_threshold}s) — killing cycle"
-                            kill "-TERM" "$_claude_pid" 2>/dev/null || true
-                            sleep 2
-                            kill "-KILL" "$_claude_pid" 2>/dev/null || true
+                            # INFRA-3832: reap the whole tree (see _kill_cycle_tree)
+                            # so the hung claude grandchild dies now, not at
+                            # FLEET_TIMEOUT_S.
+                            _kill_cycle_tree "$_claude_pid"
                             break
                         fi
                     done
@@ -1785,17 +1817,29 @@ Operator or sibling worker can rescue this branch via:
         _dispatch_fail_count=0
         # EFFECTIVE-310: clean cycle wipes the strike slate for this gap.
         chump gap strike "$GAP_ID" --reset >/dev/null 2>&1 || true
-    elif [ "$rc" -eq 124 ]; then
-        _dispatch_fail_count=$((_dispatch_fail_count + 1))
-        if [ "$_is_wedge" -eq 1 ]; then
-            log "WARN: $FLEET_BACKEND exited TIMEOUT/WEDGED (rc=124, cycle_log=${_cycle_log_size}B) on $GAP_ID — applying extended cooldown"
-        else
-            log "WARN: $FLEET_BACKEND exited TIMEOUT (rc=124, ${FLEET_TIMEOUT_S}s, cycle_log=${_cycle_log_size}B) on $GAP_ID"
-        fi
-        _effective_003_reflex
+        # INFRA-3832: a clean cycle also wipes the chronic-offender ledger so a
+        # gap that once wedged/timed-out but now runs clean is not auto-blocked
+        # on stale strikes.
+        rm -f "$REPO_ROOT/.chump-locks/offense/${GAP_ID}.count" 2>/dev/null || true
     else
-        log "WARN: $FLEET_BACKEND exited $exit_class (rc=$rc) on $GAP_ID"
+        # ── INFRA-3832: ONE non-ship branch so cooldown fires uniformly ──────
+        # Pre-fix, rc==124 (timeout / wedge) had its own `elif` branch that ran
+        # _effective_003_reflex and then STOPPED — it never reached the INFRA-361
+        # cooldown block (which lived only in this `else`). Result: a timed-out or
+        # wedged gap wrote no cooldown file and the picker re-selected it next
+        # cycle, forever (board hand-blocked INFRA-3798 timeout-loop + INFRA-1497
+        # 0B-log wedge for exactly this). Now every non-zero rc flows here, so the
+        # cooldown + chronic-offender auto-block below cover timeout and wedge too.
         _dispatch_fail_count=$((_dispatch_fail_count + 1))
+        if [ "$rc" -eq 124 ]; then
+            if [ "$_is_wedge" -eq 1 ]; then
+                log "WARN: $FLEET_BACKEND exited TIMEOUT/WEDGED (rc=124, cycle_log=${_cycle_log_size}B) on $GAP_ID — applying extended cooldown"
+            else
+                log "WARN: $FLEET_BACKEND exited TIMEOUT (rc=124, ${FLEET_TIMEOUT_S}s, cycle_log=${_cycle_log_size}B) on $GAP_ID"
+            fi
+        else
+            log "WARN: $FLEET_BACKEND exited $exit_class (rc=$rc) on $GAP_ID"
+        fi
 
         # EFFECTIVE-310: strike + possible frontier decompose (see above).
         _effective_003_reflex
@@ -1816,6 +1860,7 @@ Operator or sibling worker can rescue this branch via:
         # we re-invoke claude here with a minimal prompt rather than
         # duplicating that whole block.
         if [[ "$FLEET_BACKEND" == "chump-local" ]] \
+           && [[ "$rc" -ne 124 ]] \
            && [[ "${CHUMP_P0_FALLBACK:-1}" != "0" ]] \
            && [[ "$_decomposed_this_cycle" -eq 0 ]] \
            && command -v claude >/dev/null 2>&1; then
@@ -1883,6 +1928,24 @@ Operator or sibling worker can rescue this branch via:
                 cooldown_s="${FLEET_RC1_COOLDOWN_S:-1800}"
                 _cooldown_kind="rc=$rc"
             fi
+
+            # ── INFRA-3832: chronic-offender ledger + escalating backoff ────────
+            # Count consecutive non-ship cycles for THIS gap in a durable file
+            # (survives the cooldown-dir GC, which deletes expired records). Each
+            # repeat multiplies the cooldown (bounded by CHUMP_MAX_COOLDOWN_S) so a
+            # gap that keeps failing backs off harder instead of re-looping at a
+            # fixed interval. Reset to 0 on any clean cycle (see the rc==0 branch).
+            _offense_dir="$REPO_ROOT/.chump-locks/offense"
+            mkdir -p "$_offense_dir" 2>/dev/null || true
+            _offense_file="$_offense_dir/${GAP_ID}.count"
+            _offense_n=0
+            [ -f "$_offense_file" ] && _offense_n=$(tr -cd '0-9' < "$_offense_file" 2>/dev/null || echo 0)
+            _offense_n=$(( ${_offense_n:-0} + 1 ))
+            printf '%d\n' "$_offense_n" > "$_offense_file" 2>/dev/null || true
+            _max_cooldown_s="${CHUMP_MAX_COOLDOWN_S:-14400}"  # hard ceiling, 4h
+            cooldown_s=$(( cooldown_s * _offense_n ))
+            [ "$cooldown_s" -gt "$_max_cooldown_s" ] && cooldown_s="$_max_cooldown_s"
+
             # FLEET-051: per-worker cooldown — file keyed ${AGENT_ID}-${GAP_ID}.json
             # so sibling workers are not blocked by this worker's failure.
             cooldown_dir="$REPO_ROOT/.chump-locks/cooldown"
@@ -1917,6 +1980,30 @@ Operator or sibling worker can rescue this branch via:
                 printf '{"ts":"%s","session":"%s","kind":"worker_cooldown","gap_id":"%s","worker_id":"%s","until":%d,"cooldown_kind":"%s"}\n' \
                     "$_ts_now" "${CHUMP_SESSION_ID:-fleet}" "$GAP_ID" "$_safe_agent" "$cooldown_until" "$_cooldown_kind" \
                     >> "$_amb" 2>/dev/null || true
+            fi
+
+            # ── INFRA-3832: auto-block chronic offenders ────────────────────────
+            # A gap that has failed (wedge / timeout / rc) CHUMP_AUTO_BLOCK_THRESHOLD
+            # times in a row is almost certainly un-shippable as specified. Set it
+            # status=blocked (with a note naming the reason) so NO worker re-picks
+            # it — the automated version of the board hand-blocking INFRA-1497 after
+            # it wedged all night. Guard: CHUMP_AUTO_BLOCK_OFFENDERS=0 restores the
+            # old cooldown-only behavior. Best-effort: a failed `gap set` leaves the
+            # cooldown in place, so the loop is still broken for the backoff window.
+            _auto_block_threshold="${CHUMP_AUTO_BLOCK_THRESHOLD:-3}"
+            if [ "${CHUMP_AUTO_BLOCK_OFFENDERS:-1}" != "0" ] \
+               && [ "${_offense_n:-0}" -ge "$_auto_block_threshold" ]; then
+                _blk_note="INFRA-3832 auto-block: ${_offense_n} consecutive non-ship cycles (last kind=${_cooldown_kind}, rc=${rc}, cycle_log=${_cycle_log_size}B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing."
+                if CHUMP_REPO="$REPO_ROOT" chump gap set "$GAP_ID" \
+                        --status blocked --add-note "$_blk_note" >/dev/null 2>&1; then
+                    log "INFRA-3832: auto-blocked $GAP_ID after ${_offense_n} non-ship cycles (kind=${_cooldown_kind})"
+                    printf '{"event":"ALERT","kind":"gap_auto_blocked","ts":"%s","session":"%s","agent":"%s","gap_id":"%s","offenses":%d,"last_kind":"%s","rc":%d}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet}" "$AGENT_ID" "$GAP_ID" "$_offense_n" "$_cooldown_kind" "$rc" \
+                        >> "$_amb" 2>/dev/null || true
+                    rm -f "$_offense_file" 2>/dev/null || true
+                else
+                    log "INFRA-3832: WARN could not auto-block $GAP_ID (chump gap set failed); cooldown still applied"
+                fi
             fi
 
             # INFRA-826 / FLEET-043: circuit breaker on consecutive non-ship cycles.
