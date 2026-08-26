@@ -3667,6 +3667,47 @@ mod tests {
         assert_eq!(changed_crate_names(root, &paths), None);
     }
 
+    /// EFFECTIVE-498: standalone fixture whose package name is literally
+    /// `foo` (not `chump-foo` like `make_fixture_workspace`'s member) —
+    /// proves the mapping reads the real Cargo.toml `[package] name` via
+    /// workspace-member resolution rather than deriving it from the
+    /// directory name or any hardcoded prefix.
+    fn make_single_crate_fixture(pkg_name: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::write(
+            root.join("Cargo.toml"),
+            format!("[workspace]\nmembers = [\"crates/{pkg_name}\"]\n"),
+        )
+        .unwrap();
+        let crate_dir = root.join("crates").join(pkg_name);
+        std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+        std::fs::write(
+            crate_dir.join("Cargo.toml"),
+            format!("[package]\nname = \"{pkg_name}\"\nversion = \"0.1.0\"\n"),
+        )
+        .unwrap();
+        std::fs::write(crate_dir.join("src/lib.rs"), "").unwrap();
+        dir
+    }
+
+    #[test]
+    fn changed_crate_names_returns_package_name_for_single_changed_crate() {
+        let fixture = make_single_crate_fixture("foo");
+        let root = fixture.path();
+        let paths = vec!["crates/foo/src/lib.rs".to_string()];
+        let names = changed_crate_names(root, &paths).expect("should scope");
+        assert_eq!(names, vec!["foo".to_string()]);
+    }
+
+    #[test]
+    fn changed_crate_names_none_when_no_rust_source_under_a_crate_changed() {
+        let fixture = make_single_crate_fixture("foo");
+        let root = fixture.path();
+        let paths = vec!["crates/foo/README.md".to_string()];
+        assert_eq!(changed_crate_names(root, &paths), None);
+    }
+
     #[test]
     fn compute_check_jobs_caps_at_six() {
         assert_eq!(compute_check_jobs(16, 0.0), 6);
