@@ -156,18 +156,49 @@ fn check_oauth_fresh(repo_root: &Path, reasons: &mut Vec<String>) -> bool {
     let token_path = PathBuf::from(&home).join(".chump/oauth-token.json");
     if token_path.exists() {
         match mtime_age_s(&token_path) {
-            Some(age) if age > OAUTH_TOKEN_MAX_AGE_S => {
-                reasons.push(format!(
-                    "oauth-token.json stale: age={age}s > {OAUTH_TOKEN_MAX_AGE_S}s, no api-key fallback, no fresh cache"
-                ));
-                return false;
-            }
-            _ => return true,
+            Some(age) => return oauth_token_verdict(age, free_tier_cascade_active(), reasons),
+            None => return true,
         }
     }
 
     // No signal at all — fail-open.
     true
+}
+
+/// RESILIENT-409: true when a free-tier / execute-gap provider cascade (the
+/// DeepSeek floor) is configured. In this mode the Anthropic oauth token is
+/// never used, so its staleness must not gate claims. Reads one env var only
+/// -- no network, keeps `farmer status` local-only and <100ms.
+fn free_tier_cascade_active() -> bool {
+    std::env::var("CHUMP_FREE_TIER_PROVIDERS")
+        .ok()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+}
+
+/// RESILIENT-409: pure verdict for the oauth-token.json freshness fallback.
+/// A fresh token is always GREEN. A stale token is RED -- EXCEPT when a
+/// free-tier cascade is active, because the DeepSeek floor never touches the
+/// Anthropic oauth token, so RED-blocking on its (perpetually stale on Linux,
+/// where the macOS-launchd refresher never runs) mtime self-strangles the
+/// whole fleet every OAUTH_TOKEN_MAX_AGE_S with zero benefit. The
+/// auth-status-cache BROKEN branch in `check_oauth_fresh` still forces RED on
+/// real auth failure even in free-tier mode. Pure (no env/fs) so it is
+/// deterministically unit-testable.
+fn oauth_token_verdict(age_s: u64, free_tier: bool, reasons: &mut Vec<String>) -> bool {
+    if age_s <= OAUTH_TOKEN_MAX_AGE_S {
+        return true;
+    }
+    if free_tier {
+        reasons.push(format!(
+            "oauth-token.json stale (age={age_s}s > {OAUTH_TOKEN_MAX_AGE_S}s) but free-tier cascade active -- decoupled from Anthropic-oauth (RESILIENT-409)"
+        ));
+        return true;
+    }
+    reasons.push(format!(
+        "oauth-token.json stale: age={age_s}s > {OAUTH_TOKEN_MAX_AGE_S}s, no api-key fallback, no fresh cache"
+    ));
+    false
 }
 
 /// heartbeat-fresh check: `.chump/farmer-heartbeat` — vacuous pass if the
@@ -346,5 +377,37 @@ mod tests {
         assert!(
             !(red.sentinel_absent && red.exit78_free && red.oauth_fresh && red.heartbeat_fresh)
         );
+    }
+
+    #[test]
+    fn stale_token_reds_by_default() {
+        // AC3 regression: without a free-tier cascade, a stale token stays RED.
+        let mut r = Vec::new();
+        assert!(!oauth_token_verdict(
+            OAUTH_TOKEN_MAX_AGE_S + 1,
+            false,
+            &mut r
+        ));
+        assert_eq!(r.len(), 1);
+        assert!(r[0].contains("stale"));
+    }
+
+    #[test]
+    fn stale_token_decoupled_under_free_tier() {
+        // AC2 (RESILIENT-409): DeepSeek floor never uses the Anthropic oauth
+        // token, so a 33-day-stale token must NOT RED-block claims when a
+        // free-tier cascade is active.
+        let mut r = Vec::new();
+        assert!(oauth_token_verdict(33 * 24 * 3600, true, &mut r));
+        assert!(r[0].contains("free-tier"));
+        assert!(r[0].contains("RESILIENT-409"));
+    }
+
+    #[test]
+    fn fresh_token_green_regardless_of_free_tier() {
+        let mut r = Vec::new();
+        assert!(oauth_token_verdict(10, false, &mut r));
+        assert!(oauth_token_verdict(10, true, &mut r));
+        assert!(r.is_empty());
     }
 }
