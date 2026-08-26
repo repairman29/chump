@@ -20,9 +20,10 @@ fn flag(args: &[String], name: &str) -> Option<String> {
 
 fn print_usage() {
     eprintln!(
-        "Usage: chump roadmap-from-vision <vision string> --domain <DOMAIN> [--outcome <ID>] \
+        "Usage: chump roadmap-from-vision --vision <STRING> --domain <DOMAIN> [--outcome <ID>] \
          [--max-gaps N] [--apply]"
     );
+    eprintln!("  --vision     Vision/intent string to derive a roadmap from (or first positional arg)");
     eprintln!("  --domain     Domain prefix for proposed gaps (e.g. INFRA, EFFECTIVE)");
     eprintln!("  --outcome    Existing outcome id — required when --apply is set (MISSION-045)");
     eprintln!("  --max-gaps   Hard cap on total gaps in the roadmap (default 5, clamped 1..=20)");
@@ -35,9 +36,17 @@ fn print_usage() {
 pub async fn run(args: &[String]) -> i32 {
     // args[0] == "roadmap-from-vision"; vision string is the first non-flag
     // positional after it.
-    let vision = match args[1..].iter().find(|a| !a.starts_with("--")) {
-        Some(v) => v.clone(),
+    // AC1: `--vision <string>` is the canonical form; a bare positional
+    // (pre-existing EFFECTIVE-425 UX) is still accepted for backward compat.
+    let vision = match flag(args, "--vision").or_else(|| {
+        args[1..]
+            .iter()
+            .find(|a| !a.starts_with("--"))
+            .cloned()
+    }) {
+        Some(v) => v,
         None => {
+            eprintln!("roadmap-from-vision: --vision <string> is required");
             print_usage();
             return 2;
         }
@@ -316,6 +325,19 @@ mod tests {
         assert_eq!(flag(&args, "--domain"), Some("INFRA".to_string()));
         assert_eq!(flag(&args, "--outcome"), Some("COTG".to_string()));
         assert_eq!(flag(&args, "--max-gaps"), None);
+    }
+
+    #[test]
+    fn vision_flag_takes_precedence_over_positional() {
+        // AC1: `--vision <string>` is the canonical form.
+        let args = vec![
+            "roadmap-from-vision".to_string(),
+            "--vision".to_string(),
+            "build a CLI".to_string(),
+            "--domain".to_string(),
+            "INFRA".to_string(),
+        ];
+        assert_eq!(flag(&args, "--vision"), Some("build a CLI".to_string()));
     }
 
     #[test]
