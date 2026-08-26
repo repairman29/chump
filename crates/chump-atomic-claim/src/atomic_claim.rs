@@ -1150,10 +1150,19 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                 );
 
                 if !args.force_overlap {
-                    eprintln!(
-                        "[claim]   Re-run with --force-overlap to proceed anyway (event still emitted)."
-                    );
-                    std::process::exit(15);
+                    match overlap_action_for_mode(&claim_mode()) {
+                        OverlapAction::Block => {
+                            eprintln!(
+                                "[claim]   Re-run with --force-overlap to proceed anyway (event still emitted)."
+                            );
+                            std::process::exit(15);
+                        }
+                        OverlapAction::WarnAndProceed => {
+                            eprintln!(
+                                "[claim]   CHUMP_CLAIM_MODE=advisory (INFRA-3765): structured warning emitted, proceeding despite hot-file collision."
+                            );
+                        }
+                    }
                 } else {
                     eprintln!(
                         "[claim]   --force-overlap set; proceeding despite hot-file collision."
@@ -3708,6 +3717,36 @@ fn read_gap_ac_from_db(repo_root: &Path, gap_id: &str) -> String {
     .unwrap_or_default()
 }
 
+/// INFRA-3765 (INFRA-1688 slice): what to do when a hot-file path overlap is
+/// detected and the caller didn't pass `--force-overlap`.
+#[derive(Debug, PartialEq, Eq)]
+enum OverlapAction {
+    /// Preserve legacy behavior: refuse the claim (non-zero exit).
+    Block,
+    /// Advisory mode: the structured warning/ambient event is enough — let
+    /// the claim proceed.
+    WarnAndProceed,
+}
+
+/// Reads `CHUMP_CLAIM_MODE`, defaulting to `"blocking"` when unset or empty.
+fn claim_mode() -> String {
+    std::env::var("CHUMP_CLAIM_MODE")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "blocking".to_string())
+}
+
+/// Pure decision function (INFRA-3765): maps a `CHUMP_CLAIM_MODE` value to
+/// the action a path-overlap collision should take. Only `"advisory"`
+/// (case-insensitive) opts out of the default blocking behavior.
+fn overlap_action_for_mode(mode: &str) -> OverlapAction {
+    if mode.eq_ignore_ascii_case("advisory") {
+        OverlapAction::WarnAndProceed
+    } else {
+        OverlapAction::Block
+    }
+}
+
 /// INFRA-1394: Check whether any sibling lease's paths[] overlaps with the
 /// hot files referenced in this gap's AC text. Returns the first overlap found,
 /// or None if all clear.
@@ -5382,6 +5421,43 @@ mod fuzzy_match_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // INFRA-3765 (INFRA-1688 slice): CHUMP_CLAIM_MODE default + semantics.
+    #[test]
+    fn overlap_action_defaults_to_blocking() {
+        // Unset / empty / unrecognized values all preserve legacy behavior.
+        assert_eq!(overlap_action_for_mode("blocking"), OverlapAction::Block);
+        assert_eq!(overlap_action_for_mode(""), OverlapAction::Block);
+        assert_eq!(overlap_action_for_mode("bogus"), OverlapAction::Block);
+    }
+
+    #[test]
+    fn overlap_action_advisory_warns_and_proceeds() {
+        assert_eq!(
+            overlap_action_for_mode("advisory"),
+            OverlapAction::WarnAndProceed
+        );
+        // Case-insensitive.
+        assert_eq!(
+            overlap_action_for_mode("ADVISORY"),
+            OverlapAction::WarnAndProceed
+        );
+    }
+
+    #[test]
+    fn claim_mode_reads_env_default_blocking() {
+        std::env::remove_var("CHUMP_CLAIM_MODE");
+        assert_eq!(claim_mode(), "blocking");
+
+        std::env::set_var("CHUMP_CLAIM_MODE", "advisory");
+        assert_eq!(claim_mode(), "advisory");
+        assert_eq!(
+            overlap_action_for_mode(&claim_mode()),
+            OverlapAction::WarnAndProceed
+        );
+
+        std::env::remove_var("CHUMP_CLAIM_MODE");
+    }
 
     #[test]
     fn derive_session_id_shape() {
