@@ -83,6 +83,11 @@ pub struct ClaimArgs {
     /// when `--resume` is also passed (`--resume` wins: same branch, reset
     /// to remote tip).
     pub rename: bool,
+    /// INFRA-3798: override the claim-time file-level path overlap block
+    /// (this gap's `--paths` intersects an open PR's changed-file list).
+    /// Mirrors `CHUMP_CLAIM_ALLOW_OVERLAP=1`. The overlap is still audit
+    /// logged via `kind=claim_path_overlap_blocked` regardless.
+    pub allow_overlap: bool,
 }
 
 impl ClaimArgs {
@@ -105,6 +110,7 @@ impl ClaimArgs {
                                         auto-rename to <branch>-N and continue instead of aborting\n  \
                        --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
+                       --allow-overlap  Proceed despite --paths overlapping an open PR's files (INFRA-3798; audit-logged)\n  \
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
                        --json        Output JSON format (use with --check-only)"
@@ -152,6 +158,7 @@ impl ClaimArgs {
         let mut json = false;
         let mut discard_wip = false;
         let mut rename = false;
+        let mut allow_overlap = false;
 
         let mut i = 2;
         while i < args.len() {
@@ -216,6 +223,10 @@ impl ClaimArgs {
                     rename = true;
                     i += 1;
                 }
+                "--allow-overlap" => {
+                    allow_overlap = true;
+                    i += 1;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -245,6 +256,7 @@ impl ClaimArgs {
             json,
             discard_wip,
             rename,
+            allow_overlap,
         })
     }
 }
@@ -1107,6 +1119,55 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                 e
             );
             eprintln!("[intent-gate] Set CHUMP_ENFORCE_INTENT_GATE=1 to enforce blocking.");
+        }
+    }
+
+    // 5.58. INFRA-3798: claim-time path overlap check (file-level) against
+    // every OTHER open PR's changed-file list. Distinct from the 5.6
+    // hot-file check below (AC *text* vs sibling lease paths[]) — this is
+    // the simplest, most direct signal: "does a file I'm about to touch
+    // right now already have an open PR touching it?" Best-effort: any
+    // `gh` failure yields no overlap (fail-open, matching 5b/5.6/5.65).
+    if let Some(paths_csv) = args.paths.as_deref() {
+        let claim_path_list: Vec<String> = paths_csv
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if let Some(overlap) =
+            check_open_pr_path_overlap(&args.repo_root, &args.gap_id, &claim_path_list)
+        {
+            emit_claim_path_overlap_blocked_event(
+                &ambient_log,
+                &args.gap_id,
+                overlap.pr_number,
+                &overlap.blocking_gap,
+                &overlap.overlapping_paths,
+            );
+
+            let allow_overlap_bypass = args.allow_overlap
+                || std::env::var("CHUMP_CLAIM_ALLOW_OVERLAP")
+                    .map(|v| !v.trim().is_empty() && v.trim() != "0")
+                    .unwrap_or(false);
+
+            if !allow_overlap_bypass {
+                bail!(
+                    "[claim] paths overlap with open PR #{} (gap {}, paths: {}). Options: \
+                     (a) coordinate with #{} author and merge into that PR, \
+                     (b) wait for #{} to land then rebase, \
+                     (c) --allow-overlap to proceed anyway (audit-logged).",
+                    overlap.pr_number,
+                    overlap.blocking_gap,
+                    overlap.overlapping_paths.join(", "),
+                    overlap.pr_number,
+                    overlap.pr_number,
+                );
+            } else {
+                eprintln!(
+                    "[claim] INFRA-3798: --allow-overlap set; proceeding despite path overlap with open PR #{}.",
+                    overlap.pr_number
+                );
+            }
         }
     }
 
@@ -3659,6 +3720,190 @@ struct HotFileOverlapResult {
 /// Load the hot-files list from `scripts/coord/lib/hot-files.yaml`.
 /// Returns an empty vec on any parse/IO error (best-effort; don't block claim
 /// if the yaml is missing or malformed).
+/// INFRA-3798: result of a claim-time path overlap check against another
+/// open PR's changed-file list.
+struct PathOverlapResult {
+    pr_number: u64,
+    blocking_gap: String,
+    overlapping_paths: Vec<String>,
+}
+
+/// INFRA-3798: list `(number, title)` for every open PR on the repo
+/// (best-effort; returns empty on any `gh` failure).
+fn list_open_prs(repo_root: &Path, owner_repo: &str) -> Vec<(u64, String)> {
+    let out = Command::new("gh")
+        .args([
+            "api",
+            "-H",
+            "Accept: application/vnd.github+json",
+            &format!("repos/{}/pulls?state=open&per_page=100", owner_repo),
+            "--jq",
+            r#".[] | "\(.number)\t\(.title)""#,
+        ])
+        .current_dir(repo_root)
+        .output();
+    let Ok(out) = out else {
+        return vec![];
+    };
+    if !out.status.success() {
+        return vec![];
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(2, '\t');
+            let num = parts.next()?.parse::<u64>().ok()?;
+            let title = parts.next().unwrap_or("").to_string();
+            Some((num, title))
+        })
+        .collect()
+}
+
+/// INFRA-3798: list changed-file paths for a given open PR (best-effort;
+/// returns empty on any `gh` failure).
+fn pr_file_list(repo_root: &Path, owner_repo: &str, pr_number: u64) -> Vec<String> {
+    let out = Command::new("gh")
+        .args([
+            "api",
+            "-H",
+            "Accept: application/vnd.github+json",
+            &format!(
+                "repos/{}/pulls/{}/files?per_page=100",
+                owner_repo, pr_number
+            ),
+            "--jq",
+            ".[].filename",
+        ])
+        .current_dir(repo_root)
+        .output();
+    let Ok(out) = out else {
+        return vec![];
+    };
+    if !out.status.success() {
+        return vec![];
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// INFRA-3798: extract a gap-id like `INFRA-1234` from PR title text.
+/// Cheap scan for an uppercase run + '-' + digits — deliberately duplicated
+/// from `fleet_self_doctor::extract_gap_id` (bin crate) rather than shared,
+/// since this library crate must not depend on the 190k-line binary crate
+/// (EFFECTIVE-399 build-speed split).
+fn extract_gap_id_from_title(title: &str) -> Option<String> {
+    let bytes = title.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if !bytes[i].is_ascii_uppercase() {
+            i += 1;
+            continue;
+        }
+        let alpha_start = i;
+        while i < bytes.len() && bytes[i].is_ascii_uppercase() {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'-' {
+            continue;
+        }
+        let dash = i;
+        i += 1;
+        let digit_start = i;
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i > digit_start && (dash - alpha_start) >= 3 {
+            return Some(title[alpha_start..i].to_string());
+        }
+    }
+    None
+}
+
+/// INFRA-3798: does `claim_paths` intersect the changed-file list of any
+/// OTHER open PR? Returns the first match found. Best-effort: any `gh`
+/// failure (no auth, no network, gh missing) yields `None` (fail-open,
+/// matching the existing open-PR / hot-file checks in this module).
+fn check_open_pr_path_overlap(
+    repo_root: &Path,
+    claiming_gap_id: &str,
+    claim_paths: &[String],
+) -> Option<PathOverlapResult> {
+    if claim_paths.is_empty() {
+        return None;
+    }
+    let owner_repo = gh_owner_repo(repo_root)?;
+    for (pr_number, title) in list_open_prs(repo_root, &owner_repo) {
+        let blocking_gap =
+            extract_gap_id_from_title(&title).unwrap_or_else(|| "unknown".to_string());
+        // Skip PRs that are already for this same gap (resume/rescue scenarios
+        // are handled by the 5b open-PR-in-flight check above).
+        if blocking_gap == claiming_gap_id {
+            continue;
+        }
+        let files = pr_file_list(repo_root, &owner_repo, pr_number);
+        if files.is_empty() {
+            continue;
+        }
+        let mut overlap: Vec<String> = claim_paths
+            .iter()
+            .filter(|p| files.iter().any(|f| f == *p))
+            .cloned()
+            .collect();
+        if !overlap.is_empty() {
+            overlap.sort();
+            overlap.dedup();
+            return Some(PathOverlapResult {
+                pr_number,
+                blocking_gap,
+                overlapping_paths: overlap,
+            });
+        }
+    }
+    None
+}
+
+/// INFRA-3798: Emit kind=claim_path_overlap_blocked to ambient.jsonl.
+/// Best-effort — never blocks the claim flow.
+// scanner-anchor: "kind":"claim_path_overlap_blocked"
+fn emit_claim_path_overlap_blocked_event(
+    ambient_log: &Path,
+    claimed_gap: &str,
+    blocking_pr: u64,
+    blocking_gap: &str,
+    overlapping_paths: &[String],
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ts = iso8601_from_unix(now);
+    let paths_json = serde_json::to_string(overlapping_paths).unwrap_or_else(|_| "[]".to_string());
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_path_overlap_blocked\",\
+         \"claimed_gap\":\"{cg}\",\"blocking_pr\":{bp},\"blocking_gap\":\"{bg}\",\
+         \"overlapping_paths\":{op}}}\n",
+        ts = ts,
+        cg = json_escape(claimed_gap),
+        bp = blocking_pr,
+        bg = json_escape(blocking_gap),
+        op = paths_json,
+    );
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
 fn load_hot_files(yaml_path: &Path) -> Vec<String> {
     let Ok(body) = std::fs::read_to_string(yaml_path) else {
         return vec![];

@@ -7076,6 +7076,19 @@ events:
       app.js, main.rs. The list is tunable in scripts/coord/lib/hot-files.yaml.
       Pairs with INFRA-1389 merge drivers (same region → no conflict) but the
       proactive block here saves the rebase cycle entirely for non-merge-driver paths.
+  # ── INFRA-3798: claim-time path overlap check vs open PR file lists ──────
+  - kind: claim_path_overlap_blocked
+    effect_metric: waste_prevented
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs emit_claim_path_overlap_blocked_event (INFRA-3798)
+    trigger: >
+      chump claim was invoked with --paths containing a file that already
+      appears in another OPEN PR's changed-file list. Fires before the
+      worktree is created — claim is blocked unless --allow-overlap (or
+      CHUMP_CLAIM_ALLOW_OVERLAP=1) is set. Distinct from claim_hot_file_overlap
+      (AC-text vs sibling lease paths[]): this is a direct file-level check
+      against real open-PR diffs.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, claimed_gap, blocking_pr, blocking_gap, overlapping_paths]
   # ── INFRA-1763: lease-time predictive diff-collision detection ────────────
   - kind: collision_predicted
     effect_metric: self
