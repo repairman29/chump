@@ -7034,6 +7034,22 @@ events:
     consumers: [fleet-brief, ops-audit]
     effect_metric: self
     fields_required: [ts, kind, reason, host]
+  # ── CREDIBLE-069: self-hosted runner run telemetry (INFRA-1534 AC #6) ─────
+  - kind: self_hosted_runner_run
+    emitter: .github/actions/emit-self-hosted-run-stats/action.yml (CREDIBLE-069)
+    trigger: >
+      A self-hosted-leg CI job (changes, fast-checks, clippy, cargo-test-shard)
+      completes on a self-hosted runner (runner.os != 'Linux'). Fires on
+      success or failure (if: always()) so utilization is visible either way.
+      cache_hit is derived by comparing the job's CARGO_TARGET_DIR mtime
+      against job_start_ts — an older mtime means the target dir was reused
+      from a prior run. Delivers the telemetry INFRA-1534 AC #6 promised but
+      never shipped; without it, fleet visibility into whether the 5-10x
+      self-hosted cache speedup is landing was zero. INFRA-1535
+      (RUNNER_AUTOSCALE) consumes this signal.
+    consumers: [chump fleet doctor, INFRA-1535 RUNNER_AUTOSCALE]
+    effect_metric: ci_throughput_runs_per_hour
+    fields_required: [ts, kind, runner_label, workflow, duration_s, cache_hit]
   # ── INFRA-1535: self-hosted runner migration pipeline ─────────────────────
   - kind: runner_migration_step
     emitter: scripts/coord/chump-runner-migration-pipeline.sh (INFRA-1535)
