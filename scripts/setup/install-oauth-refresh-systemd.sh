@@ -39,6 +39,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 Environment=HOME=%h
+Environment=CHUMP_AUTH_MODE=oauth
 Environment=CHUMP_PROVIDERS_ENV=%h/.chump/providers.env
 Environment=PATH=$_PATH
 WorkingDirectory=$REPO_ROOT

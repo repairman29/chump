@@ -161,3 +161,7 @@ install-installer-audit-launchd.sh
 install-integrator-daemon-systemd.sh
 install-ceo-shadow-launchd.sh
 install-node-housekeeping.sh
+
+# RESILIENT-410 (AC-C): Linux-node OAuth token freshness refresher (systemd user timer).
+# Opt-in per Linux node (e.g. CJ) so the fleet survives the Mac powering off.
+install-oauth-refresh-systemd.sh
