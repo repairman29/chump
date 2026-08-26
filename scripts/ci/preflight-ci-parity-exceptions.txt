@@ -124,6 +124,7 @@ test-ci-flake-rerun.sh
 test-claude-reaper.sh
 test-cockpit-wake-fleet.sh
 test-conflict-resolver.sh
+test-conflict-resolver-scenarios.sh  # reason: INFRA-3768 — synthetic git-conflict fixture harness, same shape as test-conflict-resolver.sh above (not preflight-relevant)
 test-cost-enforcement.sh
 test-credential-lifecycle.sh
 test-curator-auto-decompose.sh
