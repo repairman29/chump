@@ -11628,3 +11628,15 @@ events:
       instead of silently going stale.
     consumers: [fleet-brief, ops-audit, operator-recall]
     fields_required: [ts, kind, signs, green, amber, red, unknown, p_full_trek, out]
+
+  - kind: chump_startup_timeout
+    effect_metric: self
+    emitter: src/main.rs (INFRA-3784, INFRA-1809 slice)
+    trigger: the startup sequence (everything after arg parsing/alias
+      expansion) fails to complete within CHUMP_STARTUP_TIMEOUT_MS
+      (default 5000ms) — a wedged store open, blocking init call, or
+      poisoned lock acquired during startup. Diagnostics (tokio runtime
+      status, memory_db connection state, active subsystems) are dumped to
+      stderr and the process exits 4 so a supervisor can detect + restart.
+    consumers: [operator, fleet farmer, ambient]
+    fields_required: [ts, kind, cmd, args, elapsed_ms, suspected_subsystem]

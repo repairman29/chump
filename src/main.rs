@@ -1336,12 +1336,129 @@ mod llm_complete_tests {
     }
 }
 
+// INFRA-3784 (INFRA-1809 slice): startup wallclock budget.
+//
+// `CHUMP_STARTUP_TIMEOUT_MS` (default 5000) bounds the entire startup
+// sequence (everything after arg parsing/alias expansion) in a
+// `tokio::time::timeout`. A hang here — a wedged store open, a blocking DNS
+// lookup, a poisoned lock acquired during init — previously meant the
+// process sat silently forever with no operator-visible signal. On timeout
+// we dump best-effort diagnostics to stderr, emit
+// `kind=chump_startup_timeout` to ambient.jsonl, and exit(4) so a supervisor
+// (launchd, the fleet farmer, a CI harness) can detect and restart rather
+// than waiting on a process that will never finish.
+fn startup_timeout_ms() -> u64 {
+    env::var("CHUMP_STARTUP_TIMEOUT_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|ms| *ms > 0)
+        .unwrap_or(5000)
+}
+
+/// Best-effort diagnostic dump on startup timeout. No fine-grained
+/// per-subsystem progress tracking exists yet (that's a larger slice of
+/// INFRA-1809), so `suspected_subsystem` is derived from the first
+/// non-flag argument (the subcommand) as the best available signal.
+fn dump_startup_timeout_diagnostics(args: &[String], elapsed_ms: u128) -> String {
+    let cmd = args.first().map(String::as_str).unwrap_or("chump");
+    let rest = if args.len() > 1 { &args[1..] } else { &[] };
+    let suspected_subsystem = rest
+        .iter()
+        .find(|a| !a.starts_with('-'))
+        .cloned()
+        .unwrap_or_else(|| "unknown".to_string());
+
+    eprintln!("chump: STARTUP TIMEOUT after {elapsed_ms}ms (CHUMP_STARTUP_TIMEOUT_MS)");
+    eprintln!("  cmd: {cmd}");
+    eprintln!("  args: {:?}", rest);
+    eprintln!("  suspected_subsystem: {suspected_subsystem}");
+
+    let runtime_status = match tokio::runtime::Handle::try_current() {
+        Ok(h) => format!("alive, flavor={:?}", h.runtime_flavor()),
+        Err(_) => "no runtime handle".to_string(),
+    };
+    eprintln!("  tokio runtime status: {runtime_status}");
+
+    let memory_db_status = if memory_db::db_available() {
+        "available"
+    } else {
+        "unavailable"
+    };
+    eprintln!("  memory_db connection state: {memory_db_status}");
+    eprintln!("  active subsystems: arg-parse -> startup-timeout-wrapper (no finer-grained per-subsystem progress tracking yet)");
+
+    suspected_subsystem
+}
+
+/// Fires the timeout side-effects (stderr dump + ambient emit + exit(4)).
+/// Called from whichever mechanism detects the budget was blown first —
+/// the cooperative `tokio::time::timeout` (startup yielded and ran long) or
+/// the hard-backstop watchdog thread (startup blocked its OS thread without
+/// ever yielding back to the executor, which a purely async timeout can
+/// never preempt).
+fn fire_startup_timeout(args: &[String], elapsed_ms: u128) -> ! {
+    let suspected_subsystem = dump_startup_timeout_diagnostics(args, elapsed_ms);
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "chump_startup_timeout".to_string(),
+        source: Some("main".to_string()),
+        fields: vec![
+            ("cmd".to_string(), args.first().cloned().unwrap_or_default()),
+            ("args".to_string(), format!("{:?}", &args[1..])),
+            ("elapsed_ms".to_string(), elapsed_ms.to_string()),
+            ("suspected_subsystem".to_string(), suspected_subsystem),
+        ],
+        ..Default::default()
+    });
+    std::process::exit(4);
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     // EFFECTIVE-011: expand short aliases (g, c, s, f, d, h, cs) before routing.
     let args = expand_aliases(args);
 
+    let timeout_ms = startup_timeout_ms();
+    let start = std::time::Instant::now();
+
+    // Hard backstop: a std::thread watchdog racing the async startup on the
+    // real OS clock. `tokio::time::timeout` below is purely cooperative — it
+    // only gets a chance to fire between `.await` points, so a startup path
+    // that blocks its executor thread without yielding (a synchronous DB
+    // open, a blocking lock) would hang forever undetected by the async
+    // timeout alone. The watchdog thread has no such blind spot: it sleeps
+    // on a real timer independent of the tokio executor and force-exits if
+    // `done_rx` hasn't heard back by the deadline.
+    let watchdog_args = args.clone();
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let watchdog = std::thread::spawn(move || {
+        if done_rx
+            .recv_timeout(std::time::Duration::from_millis(timeout_ms))
+            .is_err()
+        {
+            let elapsed_ms = start.elapsed().as_millis();
+            fire_startup_timeout(&watchdog_args, elapsed_ms);
+        }
+    });
+
+    let result = match tokio::time::timeout(
+        std::time::Duration::from_millis(timeout_ms),
+        run_startup(args.clone()),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => {
+            let elapsed_ms = start.elapsed().as_millis();
+            fire_startup_timeout(&args, elapsed_ms);
+        }
+    };
+    let _ = done_tx.send(());
+    let _ = watchdog.join();
+    result
+}
+
+async fn run_startup(args: Vec<String>) -> Result<()> {
     // SIGPIPE handling for CLI tools (Broken Pipe panics).
     #[cfg(unix)]
     unsafe {
