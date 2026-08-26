@@ -8,6 +8,7 @@ owns: launch-post
 gate: captain-approved-and-posted
 driven_by: [EFFECTIVE-364, EFFECTIVE-365]
 mines: beast-mode/PRODUCT_HUNT_POST.md + LAUNCH_CHECKLIST.md ; herald agent ; PUBLISHER.md
+platform_rules: ../platform-rules/platforms.ts (EFFECTIVE-483 — typed PUBLISHER_PLATFORMS + assertPlatformAction)
 staffed_by: nobody (the #1 open chair)
 last_verified: 2026-08-11
 ---
