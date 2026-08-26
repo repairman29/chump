@@ -2172,6 +2172,17 @@ events:
     trigger: pr_stuck variant for very long blocks
     consumers: [operator-recall]
 
+  - kind: stale_conflicting_pr_retired
+    effect_metric: self
+    emitter: scripts/ops/stale-pr-reaper.sh (INFRA-3803)
+    trigger: open PR has mergeStateStatus=DIRTY (real merge conflict) AND no
+      activity in ≥ CHUMP_REAPER_STALE_CONFLICT_DAYS (default 7d); reaper
+      closes the PR and adds the `retired` label, regardless of whether its
+      linked gap was ever demoted. demoted_gaps is non-empty when a linked
+      gap's priority was lowered between the PR's merge-base and current main.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, pr, branch, age_days, demoted_gaps]
+
   - kind: pr_resolved
     effect_metric: self
     emitter: scripts/ops/queue-health-monitor.sh

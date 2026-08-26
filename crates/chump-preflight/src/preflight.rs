@@ -2143,6 +2143,14 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "infra-3803-stale-conflict-retirement",
+            &[
+                "bash",
+                "scripts/ci/test-infra-3803-stale-conflict-retirement.sh",
+            ],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "attribution-portable",
             &["bash", "scripts/ci/test-attribution-portable.sh"],
             GateKind::Scripts,

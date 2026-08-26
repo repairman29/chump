@@ -1012,6 +1012,9 @@ jobs:
       - name: stale-pr-reaper file-parity check (INFRA-258)
         run: bash scripts/ci/test-infra-258-reaper-partial-delivery.sh
 
+      - name: stale-pr-reaper stale+conflicting retirement (INFRA-3803)
+        run: bash scripts/ci/test-infra-3803-stale-conflict-retirement.sh
+
       - name: cargo-target-reaper — dry-run, --execute, safety guards, ambient event (INFRA-1250)
         run: bash scripts/ci/test-cargo-target-reaper.sh
 
@@ -1101,6 +1104,9 @@ jobs:
 
       - name: conflict-resolver-agent (INFRA-1488 Marcus M-C)
         run: bash scripts/ci/test-conflict-resolver.sh
+
+      - name: conflict-resolver synthetic scenario suite (INFRA-3768)
+        run: bash scripts/ci/test-conflict-resolver-scenarios.sh
 
       - name: bot-merge conflict-resolver wiring (INFRA-1657)
         run: bash scripts/ci/test-bot-merge-conflict-wiring.sh
