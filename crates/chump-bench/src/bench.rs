@@ -1310,6 +1310,41 @@ fn rescue_ship_and_score(
     Ok(last)
 }
 
+/// A single publish destination for an artifact type — EFFECTIVE-477 (EFFECTIVE-364 slice).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PublishTarget {
+    pub target_type: String,
+    pub platform_id: String,
+    pub requires_approval: bool,
+}
+
+/// Path to the publish-target registry config. Honors `CHUMP_PUBLISH_TARGETS_PATH`,
+/// else falls back to `publish_targets.json` next to this crate's manifest — reading
+/// at runtime (not `include_str!`) so editing the file + restarting the binary picks
+/// up new targets with no code changes (AC 3).
+fn publish_targets_path() -> PathBuf {
+    if let Ok(p) = std::env::var("CHUMP_PUBLISH_TARGETS_PATH") {
+        return PathBuf::from(p);
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("publish_targets.json")
+}
+
+/// Look up the publish targets registered for `artifact_type` in `publish_targets.json`.
+/// Returns an empty list for an unregistered artifact type or missing/malformed config —
+/// callers (e.g. `drive_engine`) can call this unconditionally without a panic risk.
+pub fn get_publish_targets(artifact_type: &str) -> Vec<PublishTarget> {
+    let path = publish_targets_path();
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let Ok(registry) =
+        serde_json::from_str::<std::collections::HashMap<String, Vec<PublishTarget>>>(&raw)
+    else {
+        return Vec::new();
+    };
+    registry.get(artifact_type).cloned().unwrap_or_default()
+}
+
 /// Drive the track's mode engine (only on `--apply`). Wires RESCUE/IMPROVE/FINISH →
 /// `chump improve` (or, on `--implement`, task-directed `agent-run`, EFFECTIVE-345),
 /// CREATE → `chump bootstrap`, COMPREHEND → the `comprehend` engine (or task-directed
