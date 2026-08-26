@@ -1,0 +1,14 @@
+- id: EFFECTIVE-507
+  domain: EFFECTIVE
+  title: "worker.sh INFRA-666: run cargo fmt before clippy --fix so a clippy failure never skips fmt (Sonnet PRs bounce on fast-checks fmt)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"run cargo fmt before clippy --fix so a clippy failure never skips fmt (Sonnet PRs bounce on fast-checks fmt)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-26'
+  closed_pr: 4243
+  outcome_id: MISSION-010
+

@@ -1,0 +1,67 @@
+name: 'Emit self-hosted runner run stats'
+description: >
+  Emits kind=self_hosted_runner_run telemetry (runner_label, workflow,
+  duration_s, cache_hit) on self-hosted-leg job completion. Delivers
+  INFRA-1534 AC #6 (CREDIBLE-069) — without this, fleet visibility into
+  self-hosted runner performance/utilization is zero.
+inputs:
+  job_start_ts:
+    description: 'Unix timestamp (seconds) captured at job start, used to compute duration_s'
+    required: true
+  workflow_name:
+    description: 'Workflow/job name this run belongs to'
+    required: false
+    default: ${{ github.workflow }}
+  cargo_target_dir:
+    description: >
+      Path to the CARGO_TARGET_DIR used by this job. If its mtime predates
+      job_start_ts, the run is classified as a cache hit (the dir was reused,
+      not freshly created). Leave empty to skip cache-hit detection.
+    required: false
+    default: ''
+runs:
+  using: 'composite'
+  steps:
+    - name: Emit self_hosted_runner_run telemetry
+      shell: bash
+      env:
+        JOB_START_TS: ${{ inputs.job_start_ts }}
+        WORKFLOW_NAME: ${{ inputs.workflow_name }}
+        TARGET_DIR: ${{ inputs.cargo_target_dir }}
+        RUNNER_NAME_ENV: ${{ runner.name }}
+        RUNNER_OS_ENV: ${{ runner.os }}
+        CHUMP_AMBIENT_INGEST_URL: ${{ env.CHUMP_AMBIENT_INGEST_URL }}
+      run: |
+        set -euo pipefail
+
+        NOW=$(date -u +%s)
+        DURATION_S=$(( NOW - JOB_START_TS ))
+        if [ "$DURATION_S" -lt 0 ]; then
+          DURATION_S=0
+        fi
+
+        CACHE_HIT="false"
+        if [ -n "$TARGET_DIR" ] && [ -d "$TARGET_DIR" ]; then
+          DIR_MTIME=$(stat -c %Y "$TARGET_DIR" 2>/dev/null || stat -f %m "$TARGET_DIR" 2>/dev/null || echo "$NOW")
+          if [ "$DIR_MTIME" -lt "$JOB_START_TS" ]; then
+            CACHE_HIT="true"
+          fi
+        fi
+
+        RUNNER_LABEL="${RUNNER_NAME_ENV:-unknown}"
+        TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+        LINE=$(printf '{"ts":"%s","kind":"self_hosted_runner_run","runner_label":"%s","workflow":"%s","duration_s":%s,"cache_hit":%s}' \
+          "$TS" "$RUNNER_LABEL" "$WORKFLOW_NAME" "$DURATION_S" "$CACHE_HIT")
+
+        echo "$LINE"
+
+        if [ -n "${CHUMP_AMBIENT_INGEST_URL:-}" ]; then
+          curl -fsS -X POST -H 'Content-Type: application/json' -d "$LINE" "$CHUMP_AMBIENT_INGEST_URL" \
+            || echo "warning: failed to POST self_hosted_runner_run to $CHUMP_AMBIENT_INGEST_URL" >&2
+        else
+          STATS_DIR="/var/cache/chump-runner/stats"
+          mkdir -p "$STATS_DIR" 2>/dev/null || STATS_DIR="${RUNNER_TEMP:-/tmp}/chump-runner-stats"
+          mkdir -p "$STATS_DIR"
+          echo "$LINE" >> "$STATS_DIR/${WORKFLOW_NAME}.jsonl"
+        fi
