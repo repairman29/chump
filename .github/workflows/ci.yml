@@ -691,6 +691,12 @@ jobs:
       - name: Publisher-platforms typecheck + unit tests (EFFECTIVE-483)
         run: bash scripts/ci/test-publisher-platforms.sh
 
+      # EFFECTIVE-484: type-checks + unit-tests the content/STYLE.md loader
+      # (web/v2/lib/style/loader.ts) that applies Jeff's voice rules
+      # (first person, honest receipts, no growth-hack tone) to draft text.
+      - name: Style loader typecheck + unit tests (EFFECTIVE-484)
+        run: bash scripts/ci/test-style-loader.sh
+
       # INFRA-1621: PWA JavaScript parse gate (advisory initially).
       # Runs `node --check` on every web/v2/*.js file. Catches truncation /
       # syntax errors like the 2026-05-14 commit c64ddd676 that lopped off
