@@ -43,40 +43,49 @@ for a in "$@"; do
   esac
 done
 
+# ---------- PREFLIGHT (INFRA-3710) ----------
+# Reuse detect_host()/ensure_home()/toolchain_preflight()/ensure_rust() from
+# chump-node-install.sh instead of re-deriving OS branches here. That file
+# guards its own top-level "run" body behind a `BASH_SOURCE == $0` check
+# (INFRA-3710) specifically so it can be sourced for its functions without
+# also triggering a full node install as a side effect.
+INSTALL_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/chump-node-install.sh"
+if [ ! -f "$INSTALL_SCRIPT" ]; then
+  echo "ERROR: $INSTALL_SCRIPT not found — cannot proceed" >&2
+  exit 1
+fi
+# Preserve our own --dry-run choice and clear our own args before sourcing
+# so (a) chump-node-install.sh's arg parser (which reads "$@") doesn't choke
+# on this script's --check/--dry-run, and (b) its unconditional "DRY=0"
+# doesn't silently clobber ours.
+_ORGAN_DRY="$DRY"
+set --
+# shellcheck disable=SC1091
+source "$INSTALL_SCRIPT"
+DRY="$_ORGAN_DRY"
+
+# Local helpers redefined AFTER sourcing so they take precedence over
+# chump-node-install.sh's same-named ok/no/info/run (its info() takes a
+# separate tag arg; this script's callers pass one combined message).
 ok(){ printf '  \033[32m✓\033[0m %s\n' "$*"; }
 no(){ printf '  \033[31m✗\033[0m %s\n' "$*"; }
 info(){ printf '\033[36m[EYES]\033[0m %s\n' "$*"; }
 run(){ [ "$DRY" = 1 ] && { echo "  DRY: $*"; return 0; }; eval "$*"; }
 
-# ---------- PREFLIGHT (INFRA-3710) ----------
-# Source host-agnostic helpers from chump-node-install.sh
-INSTALL_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/chump-node-install.sh"
-if [ -f "$INSTALL_SCRIPT" ]; then
-  eval "$(sed -n '/^detect_host()/,/^}/p' "$INSTALL_SCRIPT")"
-  eval "$(sed -n '/^install_hint()/,/^}/p' "$INSTALL_SCRIPT")"
-  eval "$(sed -n '/^ensure_rust()/,/^}/p' "$INSTALL_SCRIPT")"
-  eval "$(sed -n '/^toolchain_preflight()/,/^}/p' "$INSTALL_SCRIPT")"
-  eval "$(sed -n '/^ensure_home()/,/^}/p' "$INSTALL_SCRIPT")"
-else
-  echo "ERROR: $INSTALL_SCRIPT not found — cannot proceed" >&2
-  exit 1
-fi
-
 detect_host
 info "detected host=$HOST_KIND arch=$ARCH"
 info "ALMANAC_DIR=$ALMANAC_REPO"
 
-if [ ! -d "$ALMANAC_REPO" ]; then
-  info "almanac repo not found at $ALMANAC_REPO — attempting auto-clone via install-almanac.sh"
-  if [ -x "$SCRIPT_DIR/install-almanac.sh" ]; then
-    "$SCRIPT_DIR/install-almanac.sh" || { no "install-almanac.sh failed"; exit 1; }
-  else
-    no "install-almanac.sh not found — clone almanac manually to $ALMANAC_REPO"
-    exit 1
-  fi
-fi
-
+# AC4: provision the Rust toolchain via the existing host-agnostic path
+# before any cargo build could happen below.
 toolchain_preflight
+
+# AC3: this slice stops here on a clean host — clone/build is a later
+# INFRA-3635 slice, not this skeleton.
+if [ ! -d "$ALMANAC_REPO" ]; then
+  info "no almanac checkout at $ALMANAC_REPO — stopping before clone/build (skeleton phase, INFRA-3635 slice)"
+  exit 0
+fi
 
 if [ ! -x "$LIVENESS_SCRIPT" ]; then
   no "liveness script missing or not executable: $LIVENESS_SCRIPT"

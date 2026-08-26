@@ -691,6 +691,11 @@ self_test() {
 }
 
 # ---------- run ----------
+# INFRA-3710: guard the top-level install run so sibling organ-install
+# scripts (e.g. install-almanac-organ.sh) can `source` this file to reuse
+# detect_host()/ensure_home()/toolchain_preflight()/ensure_rust() without
+# also triggering a full node install as a side effect of sourcing.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
 printf '\033[1m=== chump-node-install: role=%s home=%s ===\033[0m\n' "$ROLE" "$NODE_DIR"
 info GAP-STORE "canonical shared gap store pinned: CHUMP_GAP_STORE_URL=$CHUMP_GAP_STORE_URL"
 detect_host
@@ -709,3 +714,4 @@ install_supervise
 [ "$SELF_TEST_ONLY" = 1 ] || bash "$(dirname "$0")/install-node-housekeeping.sh" || info ORGANS "housekeeping install skipped"
 echo
 self_test
+fi
