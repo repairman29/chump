@@ -121,6 +121,9 @@ jobs:
       docs_only: ${{ steps.lanes.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v7
+      - name: Record job start (CREDIBLE-069)
+        id: job-start
+        run: echo "ts=$(date -u +%s)" >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -268,6 +271,13 @@ jobs:
           else
             echo "ci_config_only=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Emit self-hosted runner stats (CREDIBLE-069)
+        if: always() && runner.os != 'Linux'
+        uses: ./.github/actions/emit-self-hosted-run-stats
+        with:
+          job_start_ts: ${{ steps.job-start.outputs.ts }}
+          workflow_name: changes
 
   # ── Tauri Cowork E2E ───────────────────────────────────────────────────────
   # Only runs when desktop / src / e2e-tauri files change. Skipped on
@@ -760,6 +770,10 @@ jobs:
       CARGO_TARGET_DIR: ${{ vars.CHUMP_SELF_HOSTED_FAST_CHECKS == 'true' && format('/tmp/cargo-target-{0}-{1}', github.run_id, github.run_attempt) || format('{0}/target', github.workspace) }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Record job start (CREDIBLE-069)
+        id: job-start
+        run: echo "ts=$(date -u +%s)" >> "$GITHUB_OUTPUT"
 
       # INFRA-1556: when this job lands on a self-hosted macOS runner, verify
       # the runner's plist PATH resolves every CLI the workflow needs. Skips
@@ -1364,6 +1378,17 @@ jobs:
       - name: grep -c || echo 0 idiom guard smoke (RESILIENT-281)
         run: bash scripts/ci/test-grep-c-echo0-guard.sh
 
+      - name: self-hosted-runner-stats emit smoke (CREDIBLE-069)
+        run: bash scripts/ci/test-self-hosted-run-stats-emit.sh
+
+      - name: Emit self-hosted runner stats (CREDIBLE-069)
+        if: always() && runner.os != 'Linux'
+        uses: ./.github/actions/emit-self-hosted-run-stats
+        with:
+          job_start_ts: ${{ steps.job-start.outputs.ts }}
+          workflow_name: fast-checks
+          cargo_target_dir: ${{ env.CARGO_TARGET_DIR }}
+
   # ── Shard 2: clippy ───────────────────────────────────────────────────────
   # Workspace-wide clippy with -D warnings. Runs in parallel with cargo-test
   # and fast-checks. Target wall-clock: 3-5 min.
@@ -1379,6 +1404,10 @@ jobs:
       CARGO_TARGET_DIR: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && format('/tmp/cargo-target-{0}-{1}', github.run_id, github.run_attempt) || format('{0}/target', github.workspace) }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Record job start (CREDIBLE-069)
+        id: job-start
+        run: echo "ts=$(date -u +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Free disk space
         if: runner.os == 'Linux'  # INFRA-1535: macOS self-hosted has no /opt/hostedtoolcache
@@ -1442,6 +1471,14 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Emit self-hosted runner stats (CREDIBLE-069)
+        if: always() && runner.os != 'Linux'
+        uses: ./.github/actions/emit-self-hosted-run-stats
+        with:
+          job_start_ts: ${{ steps.job-start.outputs.ts }}
+          workflow_name: clippy
+          cargo_target_dir: ${{ env.CARGO_TARGET_DIR }}
+
   # ── Shard 3: cargo test (4-way nextest partition matrix) ──────────────────
   # INFRA-2243: split from one serial `cargo-test` job into 4 parallel
   # `cargo-test-shard` matrix runners (cargo-nextest --partition count:i/4)
@@ -1480,6 +1517,10 @@ jobs:
       CARGO_TARGET_DIR: ${{ vars.CHUMP_SELF_HOSTED_CARGO_TEST == 'true' && format('/tmp/cargo-target-{0}-{1}', github.run_id, github.run_attempt) || format('{0}/target', github.workspace) }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Record job start (CREDIBLE-069)
+        id: job-start
+        run: echo "ts=$(date -u +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Free disk space
         if: runner.os == 'Linux'  # INFRA-1535: macOS self-hosted has no /opt/hostedtoolcache
@@ -1660,6 +1701,14 @@ jobs:
       - name: sccache hit-rate gate (CREDIBLE-085)
         if: always() && steps.r2detect.outputs.configured == 'true'
         run: bash scripts/ci/check-sccache-hit-rate.sh
+
+      - name: Emit self-hosted runner stats (CREDIBLE-069)
+        if: always() && runner.os != 'Linux'
+        uses: ./.github/actions/emit-self-hosted-run-stats
+        with:
+          job_start_ts: ${{ steps.job-start.outputs.ts }}
+          workflow_name: cargo-test-shard-${{ matrix.shard }}
+          cargo_target_dir: ${{ env.CARGO_TARGET_DIR }}
 
   # ── cargo-test: aggregate rollup ───────────────────────────────────────────
   # CRITICAL: this job name is `cargo-test` — branch protection's `test` rollup,
