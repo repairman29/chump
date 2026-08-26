@@ -29,6 +29,20 @@ export WORKER_SKILLS="${WORKER_SKILLS:-docs,shell,scripts,md}"
 export WORKER_MACHINE="${WORKER_MACHINE:-pixel-8-pro}"
 export CHUMP_WORK_BACKEND="${CHUMP_WORK_BACKEND:-chump-local}"
 export FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P1,P2}"
+# RESILIENT-411: backend selector for the execute step. FLEET_BACKEND=claude
+# routes inference through the Anthropic subscription (OAuth), which chump-local
+# can only reach by shelling out to `claude -p` (there is NO CLI-free OAuth path
+# in chump-local). On Termux the npm `claude` has no aarch64-Android binary, so
+# the wrapper runs the linux-arm64 (glibc) claude build inside proot-distro and
+# injects the OAuth token + ship toolchain env. Default stays chump-local so
+# non-Pixel nodes are unaffected; the Pixel node sets FLEET_BACKEND=claude in
+# ~/chump/.env (via setup-pixel-node.sh set_env).
+export FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
+export FLEET_MODEL="${FLEET_MODEL:-sonnet}"
+# Node-local (survives the periodic `git reset --hard origin/main` below).
+# setup-pixel-node.sh installs both from scripts/setup/ into ~/.chumpnode/bin/.
+CLAUDE_PROOT_WRAPPER="${CLAUDE_PROOT_WRAPPER:-$HOME/.chumpnode/bin/claude-proot}"
+PIXEL_SHIP="${PIXEL_SHIP:-$HOME/.chumpnode/bin/pixel-ship.sh}"
 
 BIN="${CHUMP_BIN:-$CHUMP_HOME/chump}"
 IDLE_S="${PIXEL_WORKER_IDLE_S:-60}"
@@ -137,10 +151,34 @@ for g in rows:
     continue
   fi
 
-  echo "[pixel-worker] executing gap=$GAP in $wt_path"
+  echo "[pixel-worker] executing gap=$GAP in $wt_path (backend=$FLEET_BACKEND model=$FLEET_MODEL)"
   cd "$wt_path" || { echo "[pixel-worker] cannot cd to $wt_path" >&2; sleep "$IDLE_S"; continue; }
-  "$BIN" --execute-gap "$GAP" 2>&1 | tail -40
-  rc=${PIPESTATUS[0]}
+  if [ "$FLEET_BACKEND" = "claude" ] && [ -x "$CLAUDE_PROOT_WRAPPER" ]; then
+    # RESILIENT-411: subscription/OAuth ship on Sonnet. chump-local has no
+    # CLI-free OAuth path; the Termux npm claude has no aarch64-Android binary;
+    # so run the linux-arm64 (glibc) claude build inside proot-distro. Split of
+    # duties: claude-in-proot IMPLEMENTS + COMMITS only; the SHIP (push + PR +
+    # auto-merge) runs on the Termux side via pixel-ship.sh — because the
+    # bot-merge local `cargo clippy --fix` cold-compiles the whole workspace and
+    # is prohibitively slow on the Pixel. The worker only picks non-rust gaps, so
+    # GitHub CI (audit/test + clippy) is authoritative and skips the heavy lanes.
+    impl_prompt="Implement gap $GAP in this repository. First run: chump gap show $GAP  to read the full spec. The gap is already claimed for this session; the lease is in .chump-locks/. Implement it per its acceptance criteria, then commit with: bash scripts/coord/chump-commit.sh <changed-files> -m \"$GAP: <subject>\". Do NOT push, do NOT open a PR, do NOT run bot-merge — the node ships separately. Reply DONE once the commit exists."
+    printf "%s" "$impl_prompt" | "$CLAUDE_PROOT_WRAPPER" -p --dangerously-skip-permissions --model "$FLEET_MODEL" 2>&1 | tail -60
+    impl_rc=${PIPESTATUS[1]}
+    if [ "$impl_rc" -eq 0 ] && [ -n "$(git -C "$wt_path" log --oneline origin/main..HEAD 2>/dev/null)" ]; then
+      bash "$PIXEL_SHIP" "$GAP" "$wt_path" 2>&1 | tail -30
+      rc=${PIPESTATUS[0]}
+    else
+      echo "[pixel-worker] claude produced no commit for $GAP (impl_rc=$impl_rc)" >&2
+      rc=1
+    fi
+  else
+    if [ "$FLEET_BACKEND" = "claude" ]; then
+      echo "[pixel-worker] WARN: FLEET_BACKEND=claude but wrapper missing at $CLAUDE_PROOT_WRAPPER; falling back to chump-local" >&2
+    fi
+    "$BIN" --execute-gap "$GAP" 2>&1 | tail -40
+    rc=${PIPESTATUS[0]}
+  fi
   cd "$CHUMP_REPO" || exit 1
 
   if [ "$rc" -eq 0 ]; then
