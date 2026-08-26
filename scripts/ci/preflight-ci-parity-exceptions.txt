@@ -123,6 +123,7 @@ test-ci-flake-rerun.sh
 test-claude-reaper.sh
 test-cockpit-wake-fleet.sh
 test-conflict-resolver.sh
+test-conflict-resolver-scenarios.sh
 test-cost-enforcement.sh
 test-credential-lifecycle.sh
 test-curator-auto-decompose.sh
