@@ -183,6 +183,7 @@ test-pillar-balance.sh
 # always-on gate ("pipefail-race-sweep" in preflight.rs).
 # (entry removed)
 test-pr-auto-rebase.sh
+test-pr-blame-file.sh
 test-pr-blocked-watch.sh
 test-pr-explain-block.sh
 test-pr-failure-auto-rescue.sh
