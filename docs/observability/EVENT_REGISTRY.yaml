@@ -2158,6 +2158,16 @@ events:
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, pr, reason]
 
+  - kind: pr_retired_stale_conflicting
+    effect_metric: self
+    emitter: scripts/ops/stale-pr-reaper.sh (INFRA-3803)
+    trigger: open PR has mergeable=CONFLICTING and has stayed that way for ≥
+      CHUMP_RETIRE_STALE_DAYS (default 7d) — applies whether or not the cited
+      gap's priority was demoted. Reaper closes the PR, adds the `retired`
+      label, and leaves the gap open for a clean re-pick.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, pr, branch, gap_ids, age_days, label]
+
   - kind: stuck_pr_filing_dedup_hit
     effect_metric: self
     emitter: scripts/ops/stuck-pr-filer.sh (INFRA-855)
