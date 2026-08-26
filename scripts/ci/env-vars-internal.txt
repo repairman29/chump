@@ -2275,3 +2275,6 @@ CHUMP_REFRESH_RUNNER_SCRIPT
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_REPO_SLUG
+# RESILIENT-403: scripts/setup/install-almanac.sh
+CHUMP_ALMANAC_RC_FILES
+CHUMP_ENV_FILE
