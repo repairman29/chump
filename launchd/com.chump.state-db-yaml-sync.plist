@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.state-db-yaml-sync — LaunchAgent for INFRA-1495 hourly
+  state.db <-> docs/gaps YAML orphan sweep.
+
+  Runs scripts/coord/state-db-yaml-sync.sh --dry-run every hour. Reports
+  the orphan count + emits kind=state_db_yaml_orphan per missing mirror so
+  fleet-brief can surface the trend. Defaults to --dry-run (no writes);
+  bump the ProgramArguments to --apply once the sweep has been observed
+  stable per the gap's AC #5.
+
+  INSTALLATION (manual):
+    1. Replace /path/to/Chump with your repo path
+    2. cp launchd/com.chump.state-db-yaml-sync.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.state-db-yaml-sync.plist
+    4. launchctl list | grep chump.state-db-yaml-sync
+
+  LOGS:
+    stdout: /path/to/Chump/logs/state-db-yaml-sync.out.log
+    stderr: /path/to/Chump/logs/state-db-yaml-sync.err.log
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.state-db-yaml-sync</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/coord/state-db-yaml-sync.sh --dry-run</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Hourly cadence (AC #5). -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ThrottleInterval</key>
+  <integer>300</integer>
+
+  <key>StandardOutPath</key>
+  <string>/path/to/Chump/logs/state-db-yaml-sync.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/path/to/Chump/logs/state-db-yaml-sync.err.log</string>
+</dict>
+</plist>
