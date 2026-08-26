@@ -166,8 +166,18 @@ SYSTEM_UNITS=(
   # deepseek-v4-pro, not the contended local ollama.
   chump-gap-drain.service
   chump-gap-drain.timer
+  # gap-closure-reconcile (INFRA-303 / INFRA-3826): the durable GitHub-truth
+  # backstop that closes open-but-landed gaps (closed_pr merged) AND
+  # already-satisfied gaps (closed_pr NULL, work already on main). Declared
+  # `enabled` in organ-manifest.txt since INFRA-303 but MISSING from this roster
+  # — so the deploy never cp'd/enabled it and organ-reconcile could not revive a
+  # wedged timer (it sees the wedged unit as `active` and skips). Dead on the
+  # node 2026-08-21 → 2026-08-26; re-rostered here so every deploy re-arms it.
+  # Same silent-disable class RESILIENT-376 fixed for the merge-flow organs.
+  chump-gap-closure-reconcile.service
+  chump-gap-closure-reconcile.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then

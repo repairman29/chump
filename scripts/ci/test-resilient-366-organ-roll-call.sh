@@ -119,4 +119,24 @@ for unit in "chump-cj-worker.service" "chump-cj-sync.service" "chump-postgrest.s
 done
 ok "worker/coherence-sync/gap-store organs are declared 'enabled' with role+requires in organ-manifest.txt (INFRA-3642)"
 
+# INFRA-3826: the REVERSE roll-call. The checks above prove installer-roster ⊆
+# manifest (a timer that's installed can always be revived). The OTHER direction
+# had no guard, and that is exactly how chump-gap-closure-reconcile.timer sat
+# dead 2026-08-21 → 2026-08-26: declared `enabled` in the manifest but ABSENT
+# from install-helsinki-atc.sh's SYSTEM_TIMERS, so the deploy never cp'd/enabled
+# it and organ-reconcile (which sees the wedged timer as `active`) never re-armed
+# it. A fully general "every enabled *.timer must be in THIS installer" invariant
+# would false-positive on organs installed by a dedicated installer (e.g.
+# chump-almanac-liveness.timer ← install-almanac-organ.sh), so we pin the
+# specific organ this gap traces to rather than encoding an over-broad rule.
+# (Suspected same-class organs with no dedicated installer found —
+# ci-flake-rerun, process-organ-heal, outcome-verify-heal-consumer,
+# faculty-collector, pr-book-settle, organ-deploy — are filed as a follow-up for
+# node verification, not asserted broken here.)
+grep -qE '^enabled +chump-gap-closure-reconcile\.timer' "$MANIFEST" \
+  || fail "chump-gap-closure-reconcile.timer must be an 'enabled' line in organ-manifest.txt (organ-reconcile revive gate)"
+grep -qE 'chump-gap-closure-reconcile\.timer' <<<"${ROSTER_TIMERS[*]}" \
+  || fail "chump-gap-closure-reconcile.timer must be in install-helsinki-atc.sh SYSTEM_TIMERS so the deploy installs + enables it (INFRA-3826: it was dead 2026-08-21 precisely because it was manifest-enabled but un-rostered)"
+ok "chump-gap-closure-reconcile.timer is both manifest-'enabled' and installer-rostered (INFRA-3826)"
+
 echo "ALL PASS"
