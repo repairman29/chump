@@ -508,6 +508,15 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [gap_id, worker_count, until]
 
+  - kind: gap_auto_blocked
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (INFRA-3832)
+    trigger: a gap accrued CHUMP_AUTO_BLOCK_THRESHOLD consecutive non-ship cycles
+      (timeout / wedge / rc-fail); auto-set status=blocked so no worker re-picks it
+      (automated form of the board hand-block)
+    consumers: [fleet-brief, watchdog]
+    fields_required: [gap_id, offenses, last_kind, rc]
+
   - kind: worker_circuit_open
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (FLEET-043)
