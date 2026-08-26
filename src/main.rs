@@ -2455,7 +2455,7 @@ async fn main() -> Result<()> {
         std::process::exit(commands::swe::run(&sub_args));
     }
 
-    // `chump roadmap-from-vision <vision> --domain D [--outcome ID] [--max-gaps N] [--apply]`
+    // `chump roadmap-from-vision --vision <STR> --domain D [--outcome ID] [--max-gaps N] [--apply]`
     // (EFFECTIVE-425, COTG spine slice 1) — vision string -> validated Roadmap JSON;
     // with --apply, files each GapDraft via `chump gap reserve --outcome <id>` so
     // MISSION-045 / pillar / similarity gates apply. See commands::roadmap_from_vision.

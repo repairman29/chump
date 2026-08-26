@@ -108,23 +108,103 @@ _validate_token() {
 # scanner-anchor: "kind":"oauth_refresh_not_applicable"
 # scanner-anchor: "kind":"oauth_token_invalid"
 # scanner-anchor: "kind":"oauth_refresh_unsupported_platform"
+# RESILIENT-410 (AC-C): Linux-native OAuth freshness (INFRA-1865 resolved).
+#
+# CRUX (verified 2026-08-25): the subscription token here is a LONG-LIVED
+# `claude setup-token` OAuth token (sk-ant-oat01-..., ~1yr TTL), NOT the macOS
+# keychain's short-lived rotating access token. A 32-day-old token authenticated
+# live (`claude -p` -> PONG). So there is nothing to re-extract on Linux — the
+# ONLY failure this closes is oauth-token.json's *mtime* going stale (farmer
+# OAUTH_TOKEN_MAX_AGE_S=3600) + workers re-reading a stale file. Fix = re-publish
+# the current token every cycle to refresh mtime. This fully decouples a Linux
+# node (CJ) from the Mac keychain refresher.
+#
+# DELIBERATE difference from the macOS path: we DO NOT hash-skip the rewrite when
+# the token is unchanged. The token never changes, so a skip would let mtime go
+# stale and trip farmer RED — the exact 788h-stale bug this fix closes. We only
+# use the hash to decide whether to burn a `claude -p` validation call.
+cmd_refresh_once_linux() {
+    local prev_age
+    prev_age="$(_age_seconds "$TOKEN_FILE")"
+
+    # api-key mode: OAuth freshness irrelevant (mirrors macOS path + farmer.sh).
+    if [[ -z "${ANTHROPIC_API_KEY:-}" && -f "$REPO_ROOT/.env" ]]; then
+        local _ak
+        _ak="$(grep -E '^ANTHROPIC_API_KEY=' "$REPO_ROOT/.env" 2>/dev/null | head -1 | cut -d= -f2- | sed 's/^"//;s/"$//;s/^'"'"'//;s/'"'"'$//')" || true
+        [[ -n "${_ak:-}" ]] && export ANTHROPIC_API_KEY="$_ak"
+    fi
+    local auth_mode="${CHUMP_AUTH_MODE:-auto}"
+    if [[ "${CHUMP_OAUTH_FORCE_REFRESH:-0}" != "1" ]]; then
+        if [[ "$auth_mode" == "api-key" ]]; then
+            _emit_ambient "oauth_refresh_not_applicable" \
+                ",\"reason\":\"auth_mode_api_key\",\"platform\":\"linux\",\"prev_age_seconds\":${prev_age}"
+            return 0
+        fi
+        if [[ "$auth_mode" == "auto" && -n "${ANTHROPIC_API_KEY:-}" ]]; then
+            _emit_ambient "oauth_refresh_not_applicable" \
+                ",\"reason\":\"auto_mode_with_api_key_present\",\"platform\":\"linux\",\"prev_age_seconds\":${prev_age}"
+            return 0
+        fi
+    fi
+
+    # Source the token: prefer the exported env, else providers.env, else .env.
+    local token="${CLAUDE_CODE_OAUTH_TOKEN:-}"
+    if [[ -z "$token" ]]; then
+        local f
+        for f in "${CHUMP_PROVIDERS_ENV:-$HOME/.chump/providers.env}" "$REPO_ROOT/.env"; do
+            [[ -f "$f" ]] || continue
+            token="$(grep -E '^CLAUDE_CODE_OAUTH_TOKEN=' "$f" 2>/dev/null | head -1 | cut -d= -f2- | sed 's/^"//;s/"$//;s/^'"'"'//;s/'"'"'$//')" || true
+            [[ -n "$token" ]] && break
+        done
+    fi
+    if [[ -z "$token" ]]; then
+        _emit_ambient "oauth_token_refresh_failed" \
+            ",\"reason\":\"no_oauth_token_in_env_or_providers\",\"platform\":\"linux\",\"prev_age_seconds\":${prev_age}"
+        echo "[oauth-refresh] FAIL(linux): no CLAUDE_CODE_OAUTH_TOKEN in env, providers.env, or .env" >&2
+        return 1
+    fi
+
+    # Validate ONLY when the value changed vs disk — a long-lived token that
+    # hasn't changed was already good; skip the per-cycle claude -p cost.
+    local _new_hash _cur_hash
+    _new_hash="$(_token_hash "$token")"
+    _cur_hash="$(_token_hash "$(_current_token)")"
+    if [[ "$_new_hash" != "$_cur_hash" ]]; then
+        if ! _validate_token "$token"; then
+            _emit_ambient "oauth_token_invalid" \
+                ",\"reason\":\"validation_failed\",\"platform\":\"linux\",\"prev_age_seconds\":${prev_age}"
+            echo "[oauth-refresh] WARN(linux): new token failed validation; keeping existing $TOKEN_FILE" >&2
+            return 1
+        fi
+    fi
+
+    # Always rewrite to refresh mtime (the freshness heuristic) even when unchanged.
+    mkdir -p "$(dirname "$TOKEN_FILE")"
+    chmod 700 "$(dirname "$TOKEN_FILE")" 2>/dev/null || true
+    local tmp="${TOKEN_FILE}.tmp.$$"
+    printf '{"token":"%s","written_at":"%s","source":"systemd-refresher-linux"}\n' \
+        "$token" "$(_ts)" > "$tmp"
+    chmod 600 "$tmp"
+    mv "$tmp" "$TOKEN_FILE"
+
+    _emit_ambient "oauth_token_refreshed" \
+        ",\"source\":\"systemd-refresher-linux\",\"prev_age_seconds\":${prev_age},\"new_age_seconds\":0,\"token_len\":${#token}"
+    echo "[oauth-refresh] OK(linux): refreshed $TOKEN_FILE mtime (prev_age=${prev_age}s, token_len=${#token})"
+}
+
 cmd_refresh_once() {
     local prev_age
     prev_age="$(_age_seconds "$TOKEN_FILE")"
 
-    # AC5: macOS-only (keychain-backed). Fail loudly + clearly on Linux
-    # rather than silently no-op'ing — the operator decision on a
-    # Linux-native keystore/env-fallback substrate is still open (INFRA-1865).
+    # RESILIENT-410 (AC-C): platform dispatch. macOS re-extracts the rotating
+    # keychain access token below; Linux has no keychain, so it re-publishes the
+    # LONG-LIVED setup-token from the launch env / providers.env to keep the
+    # freshness heuristic (mtime) green and workers re-reading a fresh file.
     local _plat
     _plat="${CHUMP_OAUTH_PLATFORM_OVERRIDE:-$(uname -s)}"
     if [[ "$_plat" != "Darwin" ]]; then
-        _emit_ambient "oauth_refresh_unsupported_platform" \
-            ",\"platform\":\"${_plat}\",\"reason\":\"macos_keychain_only\""
-        echo "[oauth-refresh] SKIP: this daemon is macOS-only (keychain-backed)." >&2
-        echo "[oauth-refresh]      platform=${_plat} has no supported keystore path yet (INFRA-1865)." >&2
-        echo "[oauth-refresh]      set CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY directly, or write" >&2
-        echo "[oauth-refresh]      ${TOKEN_FILE} by hand until a Linux keystore path lands." >&2
-        return 1
+        cmd_refresh_once_linux
+        return $?
     fi
 
     # RESILIENT-115 (2026-06-05): if operator is on api-key auth, OAuth refresh
