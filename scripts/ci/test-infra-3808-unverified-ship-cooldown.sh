@@ -80,7 +80,21 @@ else
     ok "Layer 2: already-done WITHOUT a PR reference is NOT auto-closed"
 fi
 
-rm -f "$t_pos" "$t_work" "$t_nopr"
+t_bare="$(mktemp)"; mk "EFFECTIVE-483 was already shipped as **#4250** (merged). Nothing further to ship." > "$t_bare"
+if [ "$(python3 "$DETECT" "$t_bare" G 2>/dev/null)" = "4250" ]; then
+    ok "Layer 2: bare #NNNN + already-shipped + nothing-further  → closes on PR 4250"
+else
+    fail "Layer 2: missed already-done citing a bare #4250 (EFFECTIVE-483 regression)"
+fi
+
+t_wtclean="$(mktemp)"; mk "This work already shipped in PR #4248. Working tree clean; nothing left to commit or ship." > "$t_wtclean"
+if [ "$(python3 "$DETECT" "$t_wtclean" G 2>/dev/null)" = "4248" ]; then
+    ok "Layer 2: working-tree-clean no-op phrasing recognized  → closes on PR 4248"
+else
+    fail "Layer 2: missed already-done with working-tree-clean phrasing (CREDIBLE-336 regression)"
+fi
+
+rm -f "$t_pos" "$t_work" "$t_nopr" "$t_bare" "$t_wtclean"
 
 echo ""
 echo "=== INFRA-3808: $PASS passed, $FAIL failed ==="

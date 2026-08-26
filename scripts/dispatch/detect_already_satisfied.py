@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""detect_already_satisfied.py — INFRA-3808
+"""detect_already_satisfied.py — INFRA-3768
 
 Layer 2 of the "done-doesn't-stick" fix. Reads a worker cycle log (streaming
 claude JSONL) for a gap that ended `kind=unverified_ship` (rc=0, zero edits, no
@@ -51,9 +51,11 @@ ALREADY_IMPLEMENTS = re.compile(r"already\s+implement", re.IGNORECASE)
 
 NOOP = re.compile(
     r"(?:no\s*[- ]?\s*(?:diff|pr\b|changes?|work)"
-    r"|nothing\s+to\s+(?:ship|implement|commit|do|change)"
-    r"|worktree.{0,20}clean"
-    r"|clean.{0,20}worktree"
+    r"|no\s+(?:remaining|further)\s+diff"
+    r"|nothing\s+(?:further\s+|left\s+)?to\s+(?:ship|implement|commit|do|change)"
+    r"|nothing\s+(?:further|left)\b"
+    r"|(?:work(?:ing)?\s+)?(?:tree|worktree).{0,20}clean"
+    r"|clean.{0,20}(?:work(?:ing)?\s+)?(?:tree|worktree)"
     r"|up[- ]to[- ]date\s+with\s+(?:origin/)?main"
     r"|empty(?:/|\s+or\s+)?duplicate\s+pr"
     r"|no\s+pr\b"
@@ -61,9 +63,19 @@ NOOP = re.compile(
     re.IGNORECASE,
 )
 
-# Covering PR: "PR #4251", "(PR #4251)", "in #4251". Grab the last one in the
-# conclusion (the agent typically states the covering PR near its final line).
-PR_REF = re.compile(r"\bPR\s*#?\s*(\d{2,7})\b|\(#(\d{2,7})\)|\bin\s+#(\d{2,7})\b", re.IGNORECASE)
+# Covering PR reference. The agent cites the PR that already carries the work in
+# several shapes: "PR #4251", "(PR #4251)", "in #4251", "shipped as #4250", or a
+# bare "#4250" (often the final line). The three-factor gate (already-done + no-op
+# + this) keeps precision high even for the bare form; we take the LAST match,
+# since conclusions restate the covering PR at the end ("…was already shipped in
+# PR #N" / a trailing "#N").
+PR_REF = re.compile(
+    r"\bPR\s*#?\s*(\d{2,7})\b"
+    r"|\(#(\d{2,7})\)"
+    r"|\b(?:in|as|via|under)\s+#(\d{2,7})\b"
+    r"|(?<![\w/])#(\d{2,7})\b",
+    re.IGNORECASE,
+)
 
 
 def final_assistant_text(path: str) -> str:
