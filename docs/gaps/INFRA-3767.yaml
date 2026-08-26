@@ -1,0 +1,30 @@
+- id: INFRA-3767
+  domain: INFRA
+  title: "INFRA: Wire auto-resolver invocation into bot-merge.sh on merge-conflict (INFRA-1688 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - bot-merge.sh detects git merge-conflict return code or conflict markers
+    - On conflict, bot-merge.sh invokes INFRA-1488 conflict-resolver-agent without requiring --opt-in flag
+    - Resolver runs unattended only for textual/AST scenarios it has a confidence pattern for
+    - "Integration test: simulate merge-conflict, verify resolver agent is called"
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+  closed_date: '2026-08-26'
+  closed_pr: 4256
+
