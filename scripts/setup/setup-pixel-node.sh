@@ -36,6 +36,20 @@ cp -f "$HERE/pixel-worker.sh" "$HOME_DIR/pixel-worker.sh"
 cp -f "$HERE/pixel-node-supervisor.sh" "$HOME_DIR/pixel-node-supervisor.sh"
 chmod +x "$HOME_DIR/pixel-worker.sh" "$HOME_DIR/pixel-node-supervisor.sh"
 
+# RESILIENT-411: node-local claude-in-proot ship toolchain. Installed under
+# ~/.chumpnode/bin so it survives the worker's periodic `git reset --hard
+# origin/main`. The Pixel ships on the Anthropic subscription (Sonnet) via
+# the linux-arm64 (glibc) claude build inside proot-distro debian; claude
+# implements+commits in the worktree and pixel-ship.sh does the push+PR+
+# auto-merge on the Termux side (bypassing bot-merge's slow cargo clippy
+# --fix workspace compile). Requires a one-time proot provisioning:
+#   proot-distro install debian && \
+#   proot-distro login debian -- bash -lc "curl -fsSL https://claude.ai/install.sh | bash"
+mkdir -p "$HOME_DIR/.chumpnode/bin"
+for _s in claude-proot claude-proot-guest.sh pixel-ship.sh; do
+    [ -f "$HERE/$_s" ] && cp -f "$HERE/$_s" "$HOME_DIR/.chumpnode/bin/$_s" && chmod +x "$HOME_DIR/.chumpnode/bin/$_s"
+done
+
 # witness probe (creds live in ~/.witness-env — never committed; the probe
 # reads DISCORD_TOKEN + CHUMP_READY_DM_USER_ID from there at runtime)
 mkdir -p "$HOME_DIR/witness"
@@ -71,6 +85,11 @@ set_env() {
 set_env WORKER_SKILLS "docs,shell,scripts,md"
 set_env WORKER_MACHINE "pixel-8-pro"
 set_env CHUMP_WORK_BACKEND "chump-local"
+# RESILIENT-411: Pixel ships on the Anthropic subscription (Sonnet) via the
+# proot-distro glibc claude build. FLEET_BACKEND=claude flips the pixel-worker
+# execute step from the chump-local cascade to claude-in-proot (pixel-worker.sh).
+set_env FLEET_BACKEND "claude"
+set_env FLEET_MODEL "sonnet"
 set_env CHUMP_NATS_URL "nats://100.101.188.30:4222"
 
 # ── 4. start the supervisor (idempotent) ───────────────────────────────────
