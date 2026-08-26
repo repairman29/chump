@@ -1449,6 +1449,13 @@ events:
     consumers: [audit-log]
     fields_required: [gap_id, pr_number]
 
+  - kind: pr_retired
+    effect_metric: self
+    emitter: scripts/ops/stale-pr-reaper.sh (INFRA-3803)
+    trigger: stale-pr-reaper closes an open PR that is stale (no update in STALE_PR_DAYS days, default 7) AND merge-conflicting (mergeStateStatus DIRTY or mergeable CONFLICTING) — commonly a demoted gap's abandoned branch — and stamps it with the retired label so the PR-reopener (INFRA-3604) does not resurrect the close
+    consumers: [board-cycle, fleet-brief]
+    fields_required: [ts, kind, pr, label, stale_days, gap_ids]
+
   - kind: curator_skip_active_rebase
     effect_metric: self
     emitter: scripts/ops/stale-pr-reaper.sh (INFRA-1195)

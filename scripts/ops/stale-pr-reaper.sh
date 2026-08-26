@@ -737,10 +737,156 @@ next picker. To exempt a PR from this loop permanently, run:
     fi
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+# INFRA-3803 (INFRA-3604 slice): retire stale + conflicting PRs, incl. on gap
+# demotion
+#
+# A gap that gets demoted (priority lowered) commonly leaves its in-flight PR
+# to rot: main advances past it, the branch goes CONFLICTING, and nothing
+# closes it — the reopener (INFRA-3604) resurrects a bare `gh pr close` within
+# ~25s because it reads "closed PR + open gap" as lost work. This pass closes
+# any open PR that is BOTH:
+#   (a) stale — no update in STALE_PR_DAYS days (default 7), and
+#   (b) conflicting — mergeStateStatus DIRTY or mergeable CONFLICTING,
+# and stamps a `retired` label before closing so the reopener (and any other
+# reviver) skips it — same terminal-label pattern as rot-reaper's
+# `rot-reaped` (scripts/ops/rot-reaper.sh, RESILIENT-311).
+#
+# Per AC #3: this check is unconditional on gap priority — a demotion is the
+# common CAUSE of a PR going stale+conflicting, not a precondition the reaper
+# checks for. Any PR meeting (a)+(b) is retired, demoted gap or not.
+#
+# Environment:
+#   STALE_PR_DAYS         days of inactivity before a conflicting PR is
+#                          eligible for retirement (default 7)
+#   CHUMP_RETIRE_LABEL     terminal label (default: retired)
+#   CHUMP_RETIRE_MAX       safety cap on retirements per run (default 10)
+#   CHUMP_RETIRE_STALE_CONFLICTING  set to 0 to disable this pass
+# ─────────────────────────────────────────────────────────────────────────────
+RETIRED=0
+if [[ "${CHUMP_RETIRE_STALE_CONFLICTING:-1}" != "0" ]]; then
+    green "=== retire stale+conflicting PRs (INFRA-3803 / INFRA-3604 slice) ==="
+
+    STALE_PR_DAYS="${STALE_PR_DAYS:-7}"
+    RETIRE_LABEL="${CHUMP_RETIRE_LABEL:-retired}"
+    RETIRE_MAX="${CHUMP_RETIRE_MAX:-10}"
+    RETIRE_LOCK_DIR="${REAPER_LOCK_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.chump-locks}"
+    RETIRE_AMBIENT="$RETIRE_LOCK_DIR/ambient.jsonl"
+
+    RETIRE_JSON=""
+    if [[ -n "${CHUMP_RETIRE_PR_JSON:-}" ]]; then
+        # TEST HOOK: exercise the selection logic without a live GitHub.
+        RETIRE_JSON=$(cat "$CHUMP_RETIRE_PR_JSON" 2>/dev/null || echo '[]')
+    else
+        RETIRE_JSON=$(gh pr list --state open --limit 100 \
+            --json number,title,headRefName,mergeStateStatus,mergeable,updatedAt,labels \
+            2>/dev/null || echo '[]')
+    fi
+
+    RETIRE_LABEL_ENSURED=0
+    ensure_retire_label() {
+        [[ "$RETIRE_LABEL_ENSURED" == 1 ]] && return 0
+        RETIRE_LABEL_ENSURED=1
+        if gh label list --limit 300 2>/dev/null | grep -qE "^${RETIRE_LABEL}([[:space:]]|$)"; then return 0; fi
+        gh label create "$RETIRE_LABEL" --color 6A737D \
+            --description "Auto-closed by stale-pr-reaper (INFRA-3803): stale + merge-conflicting, often after gap demotion; gap stays open for a clean re-pick. Do not reopen." \
+            >/dev/null 2>&1 || true
+    }
+
+    RETIRE_ROWS=$(printf '%s' "$RETIRE_JSON" | python3 -c '
+import json, sys
+try:
+    rows = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for r in rows:
+    num = r.get("number", "")
+    title = (r.get("title") or "").replace("\t", " ").replace("\n", " ")
+    head = r.get("headRefName", "") or ""
+    mstate = r.get("mergeStateStatus", "") or ""
+    mergeable = r.get("mergeable", "") or ""
+    updated = r.get("updatedAt", "") or ""
+    labels = ",".join((l.get("name") or "") for l in (r.get("labels") or []))
+    print("\t".join([str(num), title, head, mstate, mergeable, updated, labels]))
+' 2>/dev/null || true)
+
+    if [[ -z "$RETIRE_ROWS" ]]; then
+        info "No open PRs to evaluate for retirement."
+    fi
+
+    while IFS=$'\t' read -r R_NUM R_TITLE R_HEAD R_MSTATE R_MERGEABLE R_UPDATED R_LABELS; do
+        [[ -z "$R_NUM" ]] && continue
+
+        is_filing_pr_title "$R_TITLE" && continue
+
+        [[ ",$R_LABELS," == *",$RETIRE_LABEL,"* ]] && continue
+        [[ ",$R_LABELS," == *",do-not-respawn,"* ]] && continue
+        [[ ",$R_LABELS," == *",rot-reaped,"* ]] && continue
+
+        # Conflicting check: either signal is sufficient — gh surfaces one or
+        # the other depending on when the merge computation last ran.
+        if [[ "$R_MSTATE" != "DIRTY" && "$R_MERGEABLE" != "CONFLICTING" ]]; then
+            continue
+        fi
+
+        R_AGE_DAYS=$(python3 -c "
+from datetime import datetime, timezone
+try:
+    t = datetime.fromisoformat('${R_UPDATED}'.replace('Z','+00:00'))
+    print(int((datetime.now(timezone.utc) - t).total_seconds() / 86400))
+except Exception:
+    print(-1)
+" 2>/dev/null || echo -1)
+
+        if [[ "$R_AGE_DAYS" -lt 0 ]]; then
+            warn "PR #$R_NUM — could not parse updatedAt ($R_UPDATED); skipping (fail-safe)."
+            continue
+        fi
+
+        if [[ "$R_AGE_DAYS" -lt "$STALE_PR_DAYS" ]]; then
+            info "PR #$R_NUM — CONFLICTING but only ${R_AGE_DAYS}d stale (< ${STALE_PR_DAYS}d); leaving."
+            continue
+        fi
+
+        if [[ "$RETIRED" -ge "$RETIRE_MAX" ]]; then
+            warn "Reached CHUMP_RETIRE_MAX=$RETIRE_MAX this run; deferring the rest."
+            continue
+        fi
+
+        R_GAP_IDS=$(printf '%s\n' "$R_TITLE" | grep -oE '\b[A-Z]+-[0-9]+\b' | sort -u | tr '\n' ' ')
+        R_GAP_IDS="${R_GAP_IDS% }"
+        red "PR #$R_NUM — stale (${R_AGE_DAYS}d) + CONFLICTING → retiring"
+        info "  title: $R_TITLE"
+        R_MSG="Auto-closing (stale-pr-reaper / INFRA-3803): this PR has had no activity in ${R_AGE_DAYS} day(s) and is currently **merge-conflicting** with \`${BASE}\`. Whatever gap this branch was working on (${R_GAP_IDS:-unrecognized gap}) is left \`open\` for a clean re-pick on fresh \`${BASE}\` — this branch is not mergeable without a rebase anyway, so closing loses no landable work. Labeled \`${RETIRE_LABEL}\` so the PR-reopener (INFRA-3604) does not resurrect this deliberate close."
+
+        if [[ $DRY_RUN -eq 1 ]]; then
+            dry "would label '$RETIRE_LABEL' + close PR #$R_NUM (stale=${R_AGE_DAYS}d, conflicting)"
+            RETIRED=$((RETIRED + 1))
+            continue
+        fi
+
+        ensure_retire_label
+        if ! gh pr edit "$R_NUM" --add-label "$RETIRE_LABEL" >/dev/null 2>&1; then
+            warn "could not add label '$RETIRE_LABEL' to PR #$R_NUM (continuing to close)"
+        fi
+        if gh pr close "$R_NUM" --comment "$R_MSG" 2>/dev/null; then
+            green "  Retired PR #$R_NUM (labeled $RETIRE_LABEL)."
+            printf '{"ts":"%s","kind":"pr_retired","source":"stale-pr-reaper","pr":%s,"label":"%s","stale_days":%s,"gap_ids":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$R_NUM" "$RETIRE_LABEL" "$R_AGE_DAYS" "$R_GAP_IDS" \
+                >> "$RETIRE_AMBIENT" 2>/dev/null || true
+            RETIRED=$((RETIRED + 1))
+        else
+            warn "gh pr close $R_NUM failed."
+        fi
+    done <<< "$RETIRE_ROWS"
+
+    green "  retire summary: retired=$RETIRED"
+fi
+
 echo ""
-green "=== reaper done: $CLOSED closed, $WARNED warnings, $GHOST_CLOSED ghost gaps closed, $RESPAWN_REBASED respawn-rebased, $RESPAWN_CLOSED respawn-closed ==="
+green "=== reaper done: $CLOSED closed, $WARNED warnings, $GHOST_CLOSED ghost gaps closed, $RESPAWN_REBASED respawn-rebased, $RESPAWN_CLOSED respawn-closed, $RETIRED retired ==="
 
 # INFRA-120: stamp heartbeat + emit reaper_run event. Disarm trap first so we
 # don't double-emit on the EXIT trap.
 trap - EXIT
-reaper_finish ok "{\"closed\":$CLOSED,\"warned\":$WARNED,\"ghost_closed\":$GHOST_CLOSED,\"respawn_rebased\":$RESPAWN_REBASED,\"respawn_closed\":$RESPAWN_CLOSED}"
+reaper_finish ok "{\"closed\":$CLOSED,\"warned\":$WARNED,\"ghost_closed\":$GHOST_CLOSED,\"respawn_rebased\":$RESPAWN_REBASED,\"respawn_closed\":$RESPAWN_CLOSED,\"retired\":$RETIRED}"
