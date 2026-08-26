@@ -161,3 +161,8 @@ install-installer-audit-launchd.sh
 install-integrator-daemon-systemd.sh
 install-ceo-shadow-launchd.sh
 install-node-housekeeping.sh
+# reason: RESILIENT-403 — situational almanac clone/build/install; called
+# on-demand by install-almanac-organ.sh when a node has no checkout yet, not
+# a universal fresh-bootstrap requirement (a node without almanac still
+# functions, gap-reserve dedupe just degrades gracefully).
+install-almanac.sh
