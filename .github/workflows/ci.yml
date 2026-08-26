@@ -997,6 +997,9 @@ jobs:
       - name: commit-msg docs-delta trailer check (INFRA-1969)
         run: bash scripts/ci/test-docs-delta-commit-msg.sh
 
+      - name: docs-delta linked-worktree COMMIT_EDITMSG path (INFRA-1521)
+        run: bash scripts/ci/test-docs-delta-linked-worktree.sh
+
       - name: subagent-shipping-epilogue reference guard (INFRA-332)
         run: bash scripts/ci/test-subagent-epilogue-ref.sh
 

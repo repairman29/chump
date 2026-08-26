@@ -75,8 +75,9 @@ if [[ "${CHUMP_SHARED_SERVICE_BLOCK:-0}" != "1" ]]; then
 fi
 
 # Block mode: allow only with an audited bypass trailer (recorded in git history).
-# INFRA-1309: use --git-common-dir so COMMIT_EDITMSG is found in linked worktrees.
-MSG_FILE="$(git rev-parse --git-common-dir 2>/dev/null)/COMMIT_EDITMSG"
+# INFRA-1521: --git-dir, not --git-common-dir — COMMIT_EDITMSG lives in the
+# per-worktree gitdir; --git-common-dir reads the main checkout's stale file.
+MSG_FILE="$(git rev-parse --git-dir 2>/dev/null)/COMMIT_EDITMSG"
 if [[ -f "$MSG_FILE" ]] && grep -qE '^Shared-Service-Bypass:' "$MSG_FILE" 2>/dev/null; then
     echo "[shared-service] Shared-Service-Bypass trailer present — allowing (audited in the commit message)." >&2
     exit 0

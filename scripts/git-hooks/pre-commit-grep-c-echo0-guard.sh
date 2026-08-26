@@ -37,7 +37,9 @@ fi
 echo "[grep-c-echo0-guard] found 'grep -c ... || echo 0' in staged scripts/:" >&2
 echo "$VIOLATIONS" >&2
 
-MSG_FILE="$(git rev-parse --git-common-dir)/COMMIT_EDITMSG"
+# INFRA-1521: --git-dir, not --git-common-dir — COMMIT_EDITMSG lives in the
+# per-worktree gitdir; --git-common-dir reads the main checkout's stale file.
+MSG_FILE="$(git rev-parse --git-dir)/COMMIT_EDITMSG"
 if [[ -f "$MSG_FILE" ]] && grep -qE '^Grep-C-Echo0-Bypass:' "$MSG_FILE" 2>/dev/null; then
     reason="$(grep -E '^Grep-C-Echo0-Bypass:' "$MSG_FILE" | head -1 | sed 's/^Grep-C-Echo0-Bypass:[[:space:]]*//')"
     echo "[grep-c-echo0-guard] Bypassed: $reason" >&2

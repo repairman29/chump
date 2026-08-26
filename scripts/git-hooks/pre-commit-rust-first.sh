@@ -91,12 +91,12 @@ fi
 # Check for Rust-First-Bypass trailer in the staged commit message.
 # When the hook runs from `git commit`, COMMIT_EDITMSG is the source.
 #
-# INFRA-1309: use --git-common-dir (not --git-dir) so the bypass trailer is
-# found in linked worktrees (/tmp/chump-<GAP>). In a linked worktree,
-# git writes COMMIT_EDITMSG to the common gitdir (.git/), not the per-worktree
-# gitdir (.git/worktrees/<name>/). --git-dir returns the per-worktree path and
-# the file is never found, silently failing every bypass attempt.
-MSG_FILE="$(git rev-parse --git-common-dir)/COMMIT_EDITMSG"
+# INFRA-1521: use --git-dir (not --git-common-dir). git writes COMMIT_EDITMSG
+# to the per-worktree gitdir (.git/worktrees/<name>/), not the common gitdir
+# (.git/) — INFRA-1309's premise was backwards. --git-common-dir resolves to
+# the main checkout's stale COMMIT_EDITMSG in a linked worktree, silently
+# reading the wrong commit's message and missing every bypass trailer.
+MSG_FILE="$(git rev-parse --git-dir)/COMMIT_EDITMSG"
 HAS_BYPASS=0
 if [[ -f "$MSG_FILE" ]] && grep -qE '^Rust-First-Bypass:' "$MSG_FILE" 2>/dev/null; then
     HAS_BYPASS=1
