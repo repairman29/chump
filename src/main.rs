@@ -1342,51 +1342,116 @@ async fn main() -> Result<()> {
     // EFFECTIVE-011: expand short aliases (g, c, s, f, d, h, cs) before routing.
     let args = expand_aliases(args);
 
-    // SIGPIPE handling for CLI tools (Broken Pipe panics).
-    #[cfg(unix)]
-    unsafe {
-        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-    }
+    // INFRA-3784 (INFRA-1809 slice): bound the fixed-cost startup preamble
+    // (signal setup, pricing-fn wiring, --verbose/--debug/--version handling)
+    // with a wallclock budget so a hang here (e.g. a blocked lazy_static init
+    // or a stalled subprocess call) surfaces as a diagnosable timeout instead
+    // of a silent, unexplained hang. Deliberately scoped to the preamble, not
+    // the full subcommand dispatch below — long-running modes (fleet loops,
+    // interactive chat, servers) must not be bounded by a "startup" budget.
+    let startup_timeout_ms: u64 = std::env::var("CHUMP_STARTUP_TIMEOUT_MS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5000);
+    let startup_started = std::time::Instant::now();
 
-    // EFFECTIVE-411: inject per-model pricing into the extracted waste-tally
-    // crate. Registered once here so every code path (waste subcommands,
-    // fleet_status) prices tokens via session_ledger's rate table. Kept out of
-    // the crate itself to avoid pulling the pricing subsystem out of the bin.
-    waste_tally::set_cost_fn(session_ledger::cost_usd_from_tokens);
+    let startup_outcome = tokio::time::timeout(
+        std::time::Duration::from_millis(startup_timeout_ms),
+        async {
+            // SIGPIPE handling for CLI tools (Broken Pipe panics).
+            #[cfg(unix)]
+            unsafe {
+                libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+            }
 
-    // EFFECTIVE-418: same injection for the extracted kpi-report crate — its
-    // cost-savings + tokens-per-ship sections price tokens via the same rate
-    // table, kept out of the crate to avoid promoting the pricing subsystem.
-    kpi_report::set_cost_fn(session_ledger::cost_usd_from_tokens);
+            // EFFECTIVE-411: inject per-model pricing into the extracted waste-tally
+            // crate. Registered once here so every code path (waste subcommands,
+            // fleet_status) prices tokens via session_ledger's rate table. Kept out of
+            // the crate itself to avoid pulling the pricing subsystem out of the bin.
+            waste_tally::set_cost_fn(session_ledger::cost_usd_from_tokens);
 
-    // CREDIBLE-019: --verbose / --debug global flags (processed first so they
-    // take effect even alongside --version or --help).
-    // --verbose: escalate RUST_LOG to debug (human stderr).
-    // --debug: same as --verbose + emit a startup header with version, args, timestamp.
-    let flag_verbose = args.iter().any(|a| a == "--verbose" || a == "-v");
-    let flag_debug = args.iter().any(|a| a == "--debug");
-    if (flag_verbose || flag_debug) && std::env::var("RUST_LOG").is_err() {
-        // Safety: single-threaded; no async tasks spawned yet.
-        unsafe { std::env::set_var("RUST_LOG", "debug") };
-    }
-    if flag_debug {
-        let ts = chrono::Utc::now().format("%H:%M:%S%.3f");
-        eprintln!(
-            "[debug] chump {} ({}) started at {}",
-            version::chump_version(),
-            version::chump_build_sha(),
-            ts,
-        );
-        eprintln!("[debug] args: {:?}", &args[1..]);
-    }
+            // EFFECTIVE-418: same injection for the extracted kpi-report crate — its
+            // cost-savings + tokens-per-ship sections price tokens via the same rate
+            // table, kept out of the crate to avoid promoting the pricing subsystem.
+            kpi_report::set_cost_fn(session_ledger::cost_usd_from_tokens);
 
-    // INFRA-148: surface the baked build SHA + date so operators can verify
-    // their binary's staleness against `git log src/gap_store.rs src/main.rs`
-    // *before* running `chump gap ship --update-yaml` / `chump gap dump`.
-    // Pre-this-fix, `chump --version` fell through to the model-prompt path
-    // (printed "Response from Agent: ...") because there was no top-level
-    // flag handler — defeating the point of baking the SHA at build time.
-    if args.iter().any(|a| a == "--version" || a == "-V") {
+            // CREDIBLE-019: --verbose / --debug global flags (processed first so they
+            // take effect even alongside --version or --help).
+            // --verbose: escalate RUST_LOG to debug (human stderr).
+            // --debug: same as --verbose + emit a startup header with version, args, timestamp.
+            let flag_verbose = args.iter().any(|a| a == "--verbose" || a == "-v");
+            let flag_debug = args.iter().any(|a| a == "--debug");
+            if (flag_verbose || flag_debug) && std::env::var("RUST_LOG").is_err() {
+                // Safety: single-threaded; no async tasks spawned yet.
+                unsafe { std::env::set_var("RUST_LOG", "debug") };
+            }
+            if flag_debug {
+                let ts = chrono::Utc::now().format("%H:%M:%S%.3f");
+                eprintln!(
+                    "[debug] chump {} ({}) started at {}",
+                    version::chump_version(),
+                    version::chump_build_sha(),
+                    ts,
+                );
+                eprintln!("[debug] args: {:?}", &args[1..]);
+            }
+
+            // INFRA-3784: probe the memory_db connection on a blocking-pool
+            // thread (a real subsystem this budget is meant to catch a hang
+            // in) so this future actually yields at least once — a purely
+            // synchronous future can never be preempted by
+            // `tokio::time::timeout`, since timeout only checks its deadline
+            // between polls, not mid-poll.
+            let _ = tokio::task::spawn_blocking(memory_db::db_available).await;
+
+            // INFRA-148: surface the baked build SHA + date so operators can verify
+            // their binary's staleness against `git log src/gap_store.rs src/main.rs`
+            // *before* running `chump gap ship --update-yaml` / `chump gap dump`.
+            // Pre-this-fix, `chump --version` fell through to the model-prompt path
+            // (printed "Response from Agent: ...") because there was no top-level
+            // flag handler — defeating the point of baking the SHA at build time.
+            args.iter().any(|a| a == "--version" || a == "-V")
+        },
+    )
+    .await;
+
+    let is_version = match startup_outcome {
+        Ok(is_version) => is_version,
+        Err(_elapsed) => {
+            let elapsed_ms = startup_started.elapsed().as_millis();
+            eprintln!("FATAL: chump startup exceeded budget of {startup_timeout_ms}ms (elapsed {elapsed_ms}ms)");
+            eprintln!("  cmd: chump {}", args[1..].join(" "));
+            eprintln!(
+                "  tokio runtime: worker_threads={:?} (RuntimeMetrics require tokio_unstable; not enabled in this build)",
+                std::thread::available_parallelism().map(|n| n.get())
+            );
+            eprintln!(
+                "  memory_db connection state: available={}",
+                memory_db::db_available()
+            );
+            eprintln!(
+                "  active subsystems: signal-handler, waste_tally pricing, kpi_report pricing, verbose/debug flags, --version handler"
+            );
+            let suspected_subsystem = "startup-preamble";
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "chump_startup_timeout".to_string(),
+                source: Some("main".to_string()),
+                fields: vec![
+                    ("cmd".to_string(), "chump".to_string()),
+                    ("args".to_string(), args[1..].join(" ")),
+                    ("elapsed_ms".to_string(), elapsed_ms.to_string()),
+                    (
+                        "suspected_subsystem".to_string(),
+                        suspected_subsystem.to_string(),
+                    ),
+                ],
+                ..Default::default()
+            });
+            std::process::exit(4);
+        }
+    };
+
+    if is_version {
         println!(
             "chump {} ({} built {})",
             version::chump_version(),
