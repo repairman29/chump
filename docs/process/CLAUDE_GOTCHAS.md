@@ -764,6 +764,44 @@ scripts/coord/gap-claim.sh <GAP-ID>
 CHUMP_ALLOW_MAIN_WORKTREE=1 scripts/coord/gap-claim.sh <GAP-ID>
 ```
 
+<a id="atomic-claim-collision"></a>
+### atomic-claim-collision — two live leases on the same gap_id (INFRA-1608)
+
+**Symptom:** `.chump-locks/*.json` (or `chump gap show <GAP-ID>`) shows two
+different sessions both holding a live lease for the same gap_id at once —
+e.g. the INFRA-1602 case that motivated this gap: `claim-infra-1602-26392-…`
+and `claim-infra-1602-47300-…` both within TTL simultaneously. No
+`kind=lease_overlap` event in `ambient.jsonl` despite the visible collision.
+
+**Root cause:** `check_gap_id_uniqueness` (in
+`crates/chump-atomic-claim/src/atomic_claim.rs`) was a scan-then-decide
+read, not a lock — two sessions could both pass it before either's
+per-session lease file was written, because the durable write happens only
+after several seconds of `git worktree add` / gitdir-repair setup. Classic
+TOCTOU. Full forensic writeup: `docs/audits/lease-collision-2026-05-17.md`.
+
+**Fix (shipped, INFRA-1608):** `reserve_gap_claim_marker()` reserves a
+gap-keyed marker file via `create_new` (O_EXCL) — a kernel-atomic operation
+— BEFORE worktree setup runs, closing the race window. The loser emits
+`kind=lease_overlap` with `{gap_id, winner_session, loser_session,
+paths_attempted}`.
+
+**Diagnosis steps if you suspect a relapse:**
+```bash
+# Confirm exactly one live lease per gap_id:
+for f in .chump-locks/claim-*.json .chump-locks/*.json; do
+  jq -r 'select(.gap_id) | "\(.gap_id) \(.session_id) \(.expires_at)"' "$f" 2>/dev/null
+done | sort | awk '{print $1}' | uniq -d
+# Any gap_id printed above has >1 live lease — a relapse.
+grep '"kind":"lease_overlap"' .chump-locks/ambient.jsonl | tail -5
+```
+
+**Test command:**
+```bash
+cargo test -p chump-atomic-claim gap_claim_marker_tests   # unit + 50-thread race
+bash scripts/ci/test-atomic-claim-collision.sh            # full regression script
+```
+
 ---
 
 <a id="worktree-path-confusion"></a>

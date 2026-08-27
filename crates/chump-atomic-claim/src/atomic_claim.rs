@@ -827,6 +827,55 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     }
 
+    // INFRA-1608: atomically reserve the gap_id BEFORE the expensive worktree
+    // setup below runs. `check_gap_id_uniqueness` just above is a scan, not a
+    // lock — two sessions can both pass it and then both proceed through
+    // `git worktree add` before either writes its real lease file. This
+    // marker closes that window: only one `create_new` can win per gap_id.
+    // Held via `marker_guard` for the rest of `run_claim`; disarmed once the
+    // real lease file is written (step 7b below), or auto-removed by Drop on
+    // any earlier `bail!`/`?` return.
+    let marker_guard = {
+        let early_session = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        let lock_dir_early = args.repo_root.join(".chump-locks");
+        let allow_dup_gap = std::env::var("CHUMP_CLAIM_ALLOW_DUPLICATE_GAP")
+            .map(|v| !v.trim().is_empty() && v.trim() != "0")
+            .unwrap_or(false);
+        let mut guard: Option<GapClaimMarkerGuard> = None;
+        if !allow_dup_gap {
+            match reserve_gap_claim_marker(&lock_dir_early, &args.gap_id, &early_session, 900)? {
+                GapClaimMarkerOutcome::Won(path) => {
+                    guard = Some(GapClaimMarkerGuard { path: Some(path) });
+                }
+                GapClaimMarkerOutcome::Lost { winner_session } => {
+                    let ambient_path = lock_dir_early.join("ambient.jsonl");
+                    emit_lease_overlap_event(
+                        &ambient_path,
+                        &args.gap_id,
+                        &winner_session,
+                        &early_session,
+                        args.paths.as_deref().unwrap_or(""),
+                    );
+                    bail!(
+                        "INFRA-1608: gap {} lost the atomic claim race to session {} \
+                         (kind=lease_overlap emitted).\n  \
+                         Options:\n  \
+                         1. Pick a different gap.\n  \
+                         2. Wait for session {} to ship or release its lease.\n  \
+                         3. Override: CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1 (audit event emitted).",
+                        args.gap_id,
+                        winner_session,
+                        winner_session,
+                    );
+                }
+            }
+        }
+        guard
+    };
+
     // INFRA-1646 (re-do of INFRA-1412): refuse the claim when this session
     // already holds a live lease for a DIFFERENT gap — see
     // check_no_active_lease_for_other_gap for why the silent-merge
@@ -1439,6 +1488,16 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
             return Err(e.context("writing JSON lease file (.chump-locks/)"));
         }
     };
+
+    // INFRA-1608: the real per-session lease file above now carries gap_id
+    // and is itself visible to `check_gap_id_uniqueness`'s scan, so the
+    // short-lived marker has done its job of closing the worktree-setup race
+    // window. Disarm it (skip the Drop-triggered remove_file) — no further
+    // cleanup needed; the marker's own TTL means an un-disarmed one from an
+    // earlier abort simply expires and is ignored.
+    if let Some(guard) = marker_guard {
+        guard.disarm();
+    }
 
     // 7c. Write state.db leases row.
     if let Err(e) = write_db_claim(
@@ -3216,6 +3275,223 @@ fn emit_claim_duplicate_gap_event(
         json_escape(gap_id),
         json_escape(this_session),
         json_escape(detail),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+// ── INFRA-1608: atomic gap-claim marker (closes the TOCTOU race) ────────────
+//
+// `check_gap_id_uniqueness` above is a plain scan-then-decide check: it reads
+// the lock dir, sees no live competitor, and returns Ok. But the caller does
+// NOT write anything durable at that point — `run_claim` goes on to run `git
+// worktree add`, gitdir repair, and other multi-second setup before the
+// per-session lease file is finally written (`write_or_merge_lease`, step 7b).
+// Two sessions can both pass the scan in that window, both proceed through
+// worktree setup, and both end up with a live lease on the same gap_id — the
+// exact INFRA-1602 double-claim (two leases, claim-infra-1602-26392 and
+// claim-infra-1602-47300, both live in TTL). This was root cause (a) in
+// INFRA-1608: "the CAS check has a race window" — see
+// docs/audits/lease-collision-2026-05-17.md.
+//
+// The fix: reserve a gap-keyed marker file via `create_new` (O_EXCL) — an
+// OS-atomic operation — BEFORE the expensive worktree setup runs. Unlike the
+// scan, two concurrent `create_new` calls on the same path cannot both
+// succeed; the loser gets `ErrorKind::AlreadyExists` immediately and can back
+// off instead of racing all the way through worktree creation.
+//
+// The marker carries the same {gap_id, session_id, expires_at} shape as a
+// normal lease, so it is *also* visible to `check_gap_id_uniqueness`'s scan —
+// no separate reaper wiring needed; a crashed process's orphaned marker
+// expires and is skipped exactly like any other stale lease.
+
+/// Sanitize a gap_id into a filesystem-safe marker filename component.
+fn sanitize_marker_component(gap_id: &str) -> String {
+    gap_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn gap_claim_marker_path(lock_dir: &Path, gap_id: &str) -> PathBuf {
+    lock_dir.join(format!(
+        "gap-claim-{}.json",
+        sanitize_marker_component(gap_id)
+    ))
+}
+
+/// Outcome of a `reserve_gap_claim_marker` attempt.
+pub(crate) enum GapClaimMarkerOutcome {
+    /// We won the race; holds the marker path so the caller's guard can
+    /// clean it up on abort or disarm it on success.
+    Won(PathBuf),
+    /// Another live session already holds the marker.
+    Lost { winner_session: String },
+}
+
+/// RAII guard: removes the reserved marker file on drop unless `disarm()` was
+/// called. Ensures every early `bail!`/`?` return path in `run_claim` after
+/// reservation still releases the marker for the next claimant.
+pub(crate) struct GapClaimMarkerGuard {
+    path: Option<PathBuf>,
+}
+
+impl GapClaimMarkerGuard {
+    fn disarm(mut self) {
+        self.path = None;
+    }
+}
+
+impl Drop for GapClaimMarkerGuard {
+    fn drop(&mut self) {
+        if let Some(p) = self.path.take() {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+}
+
+/// Atomically reserve the gap-claim marker for `gap_id`. Uses `create_new`
+/// (O_EXCL) so concurrent callers racing on the same `gap_id` cannot both
+/// win: the filesystem itself is the CAS primitive, not an application-level
+/// read-then-write scan.
+///
+/// A pre-existing, expired marker is treated as an orphan and reclaimed
+/// (single retry after removing it) — this covers case (d) from INFRA-1608's
+/// root-cause list ("a session died mid-claim, leaving an orphaned lease").
+// scanner-anchor: "kind":"lease_overlap"
+pub(crate) fn reserve_gap_claim_marker(
+    lock_dir: &Path,
+    gap_id: &str,
+    session_id: &str,
+    ttl_secs: i64,
+) -> Result<GapClaimMarkerOutcome> {
+    std::fs::create_dir_all(lock_dir)
+        .with_context(|| format!("creating lock dir {}", lock_dir.display()))?;
+    let marker_path = gap_claim_marker_path(lock_dir, gap_id);
+
+    for attempt in 0..2 {
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let expires_at = now_secs as i64 + ttl_secs;
+        let body = format!(
+            "{{\"gap_id\":\"{}\",\"session_id\":\"{}\",\"taken_at\":\"{}\",\"expires_at\":\"{}\"}}\n",
+            json_escape(gap_id),
+            json_escape(session_id),
+            unix_to_iso8601(now_secs),
+            unix_to_iso8601(expires_at.max(0) as u64),
+        );
+
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&marker_path)
+        {
+            Ok(mut f) => {
+                use std::io::Write;
+                f.write_all(body.as_bytes())
+                    .with_context(|| format!("writing marker {}", marker_path.display()))?;
+                return Ok(GapClaimMarkerOutcome::Won(marker_path));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                // Inspect the existing holder.
+                let existing = std::fs::read_to_string(&marker_path).unwrap_or_default();
+                let val: serde_json::Value =
+                    serde_json::from_str(&existing).unwrap_or(serde_json::Value::Null);
+                let holder_session = val
+                    .get("session_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                if holder_session == session_id {
+                    // Re-entrant reservation by the same session (retry path) —
+                    // treat as won without touching the existing marker.
+                    return Ok(GapClaimMarkerOutcome::Won(marker_path));
+                }
+                // Conservative default, matching `check_gap_id_uniqueness`:
+                // an unreadable/unparseable marker is treated as LIVE, not
+                // expired. This matters because a marker file that was just
+                // `create_new`'d by a concurrent winner but hasn't had its
+                // body `write_all`'d yet is transiently empty — a racing
+                // reader hitting that window must NOT mistake "empty" for
+                // "orphaned", or two callers can both reclaim and both win
+                // (observed as a flaky double-winner in the 50-thread test
+                // before this fix).
+                let holder_expired = val
+                    .get("expires_at")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| parse_iso8601(s).ok())
+                    .map(|exp| exp <= now_secs)
+                    .unwrap_or(false);
+
+                if holder_expired && attempt == 0 {
+                    // Orphan resurrection (root cause d): the prior holder's
+                    // marker outlived its TTL. Reclaim it and retry once.
+                    let _ = std::fs::remove_file(&marker_path);
+                    continue;
+                }
+
+                return Ok(GapClaimMarkerOutcome::Lost {
+                    winner_session: holder_session,
+                });
+            }
+            Err(e) => return Err(e).context("reserving gap-claim marker"),
+        }
+    }
+
+    // Both attempts hit AlreadyExists with a live holder — surface the
+    // holder from a fresh read for the error message.
+    let existing = std::fs::read_to_string(&marker_path).unwrap_or_default();
+    let val: serde_json::Value = serde_json::from_str(&existing).unwrap_or(serde_json::Value::Null);
+    let winner_session = val
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    Ok(GapClaimMarkerOutcome::Lost { winner_session })
+}
+
+/// Emit `kind=lease_overlap` — the loser of a `reserve_gap_claim_marker` race
+/// records {gap_id, winner_session, loser_session, paths_attempted}. This is
+/// the detection-path AC from INFRA-1608: the event kind existed in
+/// EVENT_REGISTRY.yaml but nothing emitted it on an actual CAS-loss.
+// scanner-anchor: "kind":"lease_overlap"
+pub(crate) fn emit_lease_overlap_event(
+    ambient_path: &Path,
+    gap_id: &str,
+    winner_session: &str,
+    loser_session: &str,
+    paths_attempted: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"lease_overlap\",\
+         \"gap_id\":\"{}\",\"winner_session\":\"{}\",\"loser_session\":\"{}\",\"paths_attempted\":\"{}\"}}\n",
+        json_escape(gap_id),
+        json_escape(winner_session),
+        json_escape(loser_session),
+        json_escape(paths_attempted),
     );
     if let Some(parent) = ambient_path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -7342,5 +7618,142 @@ mod release_lease_tests {
             .query_row("SELECT gap_id FROM leases", [], |r| r.get(0))
             .unwrap();
         assert_eq!(surviving, "EFFECTIVE-216");
+    }
+}
+
+// INFRA-1608: the atomic gap-claim marker is the structural fix for the
+// TOCTOU race behind the INFRA-1602 double-claim (two live leases on the
+// same gap). These tests exercise `reserve_gap_claim_marker` directly, plus
+// a real multi-thread race to prove the filesystem-level CAS actually holds
+// under concurrency (not just single-threaded logic).
+#[cfg(test)]
+mod gap_claim_marker_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn first_reservation_wins() {
+        let dir = tempdir().unwrap();
+        let outcome = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-a", 900).unwrap();
+        assert!(matches!(outcome, GapClaimMarkerOutcome::Won(_)));
+    }
+
+    #[test]
+    fn second_reservation_loses_to_live_holder() {
+        let dir = tempdir().unwrap();
+        let first = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-a", 900).unwrap();
+        assert!(matches!(first, GapClaimMarkerOutcome::Won(_)));
+
+        let second = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-b", 900).unwrap();
+        match second {
+            GapClaimMarkerOutcome::Lost { winner_session } => {
+                assert_eq!(winner_session, "sess-a");
+            }
+            GapClaimMarkerOutcome::Won(_) => panic!("second claimant must not win"),
+        }
+    }
+
+    #[test]
+    fn same_session_reservation_is_reentrant() {
+        let dir = tempdir().unwrap();
+        let first = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-a", 900).unwrap();
+        assert!(matches!(first, GapClaimMarkerOutcome::Won(_)));
+        // A retry by the SAME session (e.g. a resumed claim attempt) must not
+        // treat itself as a stranger.
+        let retry = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-a", 900).unwrap();
+        assert!(matches!(retry, GapClaimMarkerOutcome::Won(_)));
+    }
+
+    #[test]
+    fn expired_marker_is_reclaimed_as_orphan() {
+        let dir = tempdir().unwrap();
+        // TTL of -10s: the marker we write is already expired the instant
+        // it's written — simulates a session that died mid-claim (root
+        // cause (d) from INFRA-1608's classification list).
+        let first = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "dead-sess", -10).unwrap();
+        assert!(matches!(first, GapClaimMarkerOutcome::Won(_)));
+
+        let second = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-b", 900).unwrap();
+        assert!(
+            matches!(second, GapClaimMarkerOutcome::Won(_)),
+            "an orphaned/expired marker must be reclaimable, got {second:?}",
+        );
+    }
+
+    impl std::fmt::Debug for GapClaimMarkerOutcome {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                GapClaimMarkerOutcome::Won(p) => write!(f, "Won({})", p.display()),
+                GapClaimMarkerOutcome::Lost { winner_session } => {
+                    write!(f, "Lost{{winner_session: {winner_session}}}")
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn guard_drop_releases_marker_on_abort() {
+        let dir = tempdir().unwrap();
+        let path = gap_claim_marker_path(dir.path(), "INFRA-1608");
+        {
+            let outcome =
+                reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-a", 900).unwrap();
+            let GapClaimMarkerOutcome::Won(p) = outcome else {
+                panic!("expected Won");
+            };
+            let _guard = GapClaimMarkerGuard { path: Some(p) };
+            assert!(path.exists());
+            // guard drops here without disarm() — simulates an early bail!
+        }
+        assert!(
+            !path.exists(),
+            "Drop must remove the marker when the claim aborts before disarm()"
+        );
+    }
+
+    #[test]
+    fn guard_disarm_leaves_marker_in_place() {
+        let dir = tempdir().unwrap();
+        let path = gap_claim_marker_path(dir.path(), "INFRA-1608");
+        let outcome = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-a", 900).unwrap();
+        let GapClaimMarkerOutcome::Won(p) = outcome else {
+            panic!("expected Won");
+        };
+        let guard = GapClaimMarkerGuard { path: Some(p) };
+        guard.disarm();
+        assert!(path.exists(), "disarm() must NOT remove the marker");
+    }
+
+    // The load-bearing regression: N threads race `reserve_gap_claim_marker`
+    // for the SAME gap_id concurrently. Exactly one must win. This is a real
+    // OS-level filesystem race (not simulated), so it directly exercises the
+    // `create_new` CAS primitive that replaces the old scan-then-write TOCTOU
+    // window. AC6 of INFRA-1608 asks for 50 concurrent attempts.
+    #[test]
+    fn concurrent_reservations_exactly_one_winner() {
+        let dir = tempdir().unwrap();
+        let lock_dir = dir.path().to_path_buf();
+        const N: usize = 50;
+
+        let handles: Vec<_> = (0..N)
+            .map(|i| {
+                let lock_dir = lock_dir.clone();
+                std::thread::spawn(move || {
+                    reserve_gap_claim_marker(&lock_dir, "INFRA-1608", &format!("racer-{i}"), 900)
+                })
+            })
+            .collect();
+
+        let mut winners = 0;
+        let mut losers = 0;
+        for h in handles {
+            match h.join().unwrap().unwrap() {
+                GapClaimMarkerOutcome::Won(_) => winners += 1,
+                GapClaimMarkerOutcome::Lost { .. } => losers += 1,
+            }
+        }
+
+        assert_eq!(winners, 1, "exactly one racer must win the CAS");
+        assert_eq!(losers, N - 1, "every other racer must lose cleanly");
     }
 }

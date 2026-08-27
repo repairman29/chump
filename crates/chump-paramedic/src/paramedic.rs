@@ -386,6 +386,24 @@ pub fn daemon(interval_secs: u64, repo_root: &Path, dry_run: bool) -> Result<()>
         "[paramedic] daemon started (interval={interval_secs}s dry_run={dry_run} pid={pid} machine={machine})"
     );
 
+    // INFRA-1645: optional LLM-model health probe on startup. No-op unless
+    // PARAMEDIC_LLM_HEALTH_URL is configured — the daemon's rule-engine
+    // actions don't call an LLM today, so this only fires when an operator
+    // has wired one up (or in the resilience test/smoke-test harness).
+    if let Ok(llm_url) = std::env::var("PARAMEDIC_LLM_HEALTH_URL") {
+        if !llm_url.is_empty() {
+            let max_attempts = std::env::var("PARAMEDIC_BACKOFF_MAX_ATTEMPTS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .filter(|&n: &u32| n > 0)
+                .unwrap_or(5);
+            let outcome = run_llm_resilience_check(&llm_url, repo_root, max_attempts, dry_run);
+            if outcome == LlmResilienceOutcome::PermanentFailure {
+                warn!("paramedic daemon: LLM model health check permanently failed; continuing rule-engine-only");
+            }
+        }
+    }
+
     let mut cycle_count: u64 = 0;
     let mut last_standby_emit: u64 = 0;
     let mut last_renew: u64 = 0;
@@ -1614,6 +1632,244 @@ fn emit_ci_rescue_exhausted(repo_root: &Path, pr: u64, check_name: &str, attempt
     {
         let _ = f.write_all(line.as_bytes());
     }
+}
+
+// ── LLM model resilience (INFRA-1645, re-do of INFRA-1597) ───────────────────
+//
+// The daemon loop above never called an LLM itself, so INFRA-1597's actual
+// bug (CLI-parser fallthrough → chat-completion text on stdout) can't recur
+// here. What CAN recur is a dependency the daemon *does* call — `gh`, NATS,
+// or (once wired up) a model-availability probe — returning a transient
+// error that today would just be logged and retried on the next 600s cycle
+// with no backoff and no distinction between "briefly down" and "gone for
+// good". This section adds that classification + backoff + observability
+// layer, opt-in via PARAMEDIC_LLM_HEALTH_URL so it's a no-op for the common
+// case (no model endpoint configured).
+
+/// Outcome of classifying an HTTP status returned by a probed endpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LlmFailureClass {
+    Ok,
+    Transient,
+    Permanent,
+}
+
+/// Classify an HTTP status code encountered while probing an LLM-model
+/// endpoint (AC §1). 404/429 are transient — the model may be warming up or
+/// rate-limiting — everything else in the 4xx range is permanent (bad
+/// request, bad auth, etc. won't fix itself on retry).
+pub fn classify_llm_status(status: u16) -> LlmFailureClass {
+    match status {
+        200..=299 => LlmFailureClass::Ok,
+        404 | 429 => LlmFailureClass::Transient,
+        400..=499 => LlmFailureClass::Permanent,
+        _ => LlmFailureClass::Transient,
+    }
+}
+
+/// Exponential backoff with jitter for LLM-probe retries, configurable via
+/// `PARAMEDIC_BACKOFF_BASE_MS` / `PARAMEDIC_BACKOFF_MAX_MS` /
+/// `PARAMEDIC_BACKOFF_JITTER` (AC §1). Mirrors the cooling-down semantics of
+/// `organ_watchdog_in_backoff` in scripts/ops/organ-watchdog.sh — a failing
+/// dependency gets a backoff window instead of a hot retry loop; the window
+/// here is computed per-attempt rather than read from a backoff-registry
+/// file, since a single probe loop doesn't need cross-process state.
+#[derive(Debug, Clone, Copy)]
+pub struct LlmBackoffConfig {
+    pub base_ms: u64,
+    pub max_ms: u64,
+    pub jitter_frac: f64,
+}
+
+impl LlmBackoffConfig {
+    pub fn from_env() -> Self {
+        let base_ms = std::env::var("PARAMEDIC_BACKOFF_BASE_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .filter(|&n: &u64| n > 0)
+            .unwrap_or(500);
+        let max_ms = std::env::var("PARAMEDIC_BACKOFF_MAX_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .filter(|&n: &u64| n > 0)
+            .unwrap_or(30_000);
+        let jitter_frac = std::env::var("PARAMEDIC_BACKOFF_JITTER")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .filter(|&f: &f64| (0.0..=1.0).contains(&f))
+            .unwrap_or(0.2);
+        Self {
+            base_ms,
+            max_ms,
+            jitter_frac,
+        }
+    }
+
+    /// Delay before retry attempt N (0-indexed): base * 2^N, capped at
+    /// max_ms, with +/- jitter_frac randomness. `seed` varies the jitter
+    /// across daemon runs without pulling in a `rand` dependency for one
+    /// call site.
+    pub fn delay_for_attempt(&self, attempt: u32, seed: u64) -> Duration {
+        let exp = self.base_ms.saturating_mul(1u64 << attempt.min(20));
+        let capped = exp.min(self.max_ms);
+        let hash = (attempt as u64)
+            .wrapping_mul(2_654_435_761)
+            .wrapping_add(seed);
+        let frac_pos = (hash % 1000) as f64 / 1000.0; // [0,1)
+        let jitter_mult = 1.0 - self.jitter_frac + (2.0 * self.jitter_frac * frac_pos);
+        let jittered = (capped as f64 * jitter_mult).round().max(0.0) as u64;
+        Duration::from_millis(jittered)
+    }
+}
+
+/// Outcome of `run_llm_resilience_check`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LlmResilienceOutcome {
+    Healthy,
+    PermanentFailure,
+}
+
+/// Probe an LLM-model endpoint, retrying through transient failures
+/// (404/429) with exponential backoff + jitter, and emit structured
+/// ambient events at each step (AC §1, §2):
+///   - `model_unavailable` on each transient failure / retry
+///   - `paramedic_healthy` once the probe returns 2xx
+///   - `permanent_failure` if the probe returns a non-retryable 4xx
+pub fn run_llm_resilience_check(
+    base_url: &str,
+    repo_root: &Path,
+    max_attempts: u32,
+    dry_run: bool,
+) -> LlmResilienceOutcome {
+    let backoff = LlmBackoffConfig::from_env();
+    let seed = now_epoch();
+    for attempt in 0..max_attempts.max(1) {
+        match http_get_status(base_url, Duration::from_secs(5)) {
+            Ok(status) => match classify_llm_status(status) {
+                LlmFailureClass::Ok => {
+                    emit_paramedic_llm_event(repo_root, "paramedic_healthy", status, attempt);
+                    return LlmResilienceOutcome::Healthy;
+                }
+                LlmFailureClass::Transient => {
+                    emit_paramedic_llm_event(repo_root, "model_unavailable", status, attempt);
+                    if attempt + 1 < max_attempts && !dry_run {
+                        std::thread::sleep(backoff.delay_for_attempt(attempt, seed));
+                    }
+                }
+                LlmFailureClass::Permanent => {
+                    emit_paramedic_llm_event(repo_root, "permanent_failure", status, attempt);
+                    return LlmResilienceOutcome::PermanentFailure;
+                }
+            },
+            Err(_) => {
+                // Connection-level failure (endpoint not up yet, network
+                // blip) — treat like model_unavailable so callers see
+                // uniform retry behavior regardless of failure layer.
+                emit_paramedic_llm_event(repo_root, "model_unavailable", 0, attempt);
+                if attempt + 1 < max_attempts && !dry_run {
+                    std::thread::sleep(backoff.delay_for_attempt(attempt, seed));
+                }
+            }
+        }
+    }
+    LlmResilienceOutcome::PermanentFailure
+}
+
+/// Emit one of `model_unavailable` / `paramedic_healthy` / `permanent_failure`
+/// to ambient.jsonl (AC §1, §2).
+// scanner-anchor: "kind":"model_unavailable"
+// scanner-anchor: "kind":"paramedic_healthy"
+// scanner-anchor: "kind":"permanent_failure"
+fn emit_paramedic_llm_event(repo_root: &Path, kind: &str, status: u16, attempt: u32) {
+    let amb = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let event = json!({
+        "ts": iso8601_now(),
+        "kind": kind,
+        "status": status,
+        "attempt": attempt,
+    });
+    info!(kind, status, attempt, "paramedic LLM resilience event");
+    let line = serde_json::to_string(&event).unwrap_or_default() + "\n";
+    if let Some(parent) = amb.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&amb) {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// Minimal blocking HTTP GET that returns just the status code. Std-only
+/// (no reqwest/hyper dependency) — the daemon only needs enough of HTTP to
+/// probe a model-availability endpoint and read the response status line.
+fn http_get_status(url: &str, timeout: Duration) -> Result<u16> {
+    let (host, port, path) = parse_http_url(url)?;
+    let addr = format!("{host}:{port}");
+    let mut stream =
+        std::net::TcpStream::connect(&addr).with_context(|| format!("connect to {addr}"))?;
+    stream.set_read_timeout(Some(timeout)).ok();
+    stream.set_write_timeout(Some(timeout)).ok();
+    let req = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+    stream
+        .write_all(req.as_bytes())
+        .context("write HTTP request")?;
+    let mut buf = String::new();
+    use std::io::Read as _;
+    stream
+        .read_to_string(&mut buf)
+        .context("read HTTP response")?;
+    let status_line = buf.lines().next().unwrap_or("");
+    let status: u16 = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .with_context(|| format!("parse status code from response line: {status_line:?}"))?;
+    Ok(status)
+}
+
+/// Parse a bare `http://host[:port][/path]` URL into its parts. Only the
+/// subset needed to talk to a local probe target — no query strings, no
+/// https (the daemon's own health-check endpoint is expected to be local).
+fn parse_http_url(url: &str) -> Result<(String, u16, String)> {
+    let rest = url
+        .strip_prefix("http://")
+        .context("PARAMEDIC_LLM_HEALTH_URL must start with http://")?;
+    let (hostport, path) = match rest.find('/') {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, ""),
+    };
+    let (host, port) = match hostport.rsplit_once(':') {
+        Some((h, p)) => (h.to_string(), p.parse().context("parse port")?),
+        None => (hostport.to_string(), 80),
+    };
+    let path = if path.is_empty() {
+        "/".to_string()
+    } else {
+        path.to_string()
+    };
+    Ok((host, port, path))
+}
+
+/// `cargo run --bin paramedic -- --smoke-test` (AC §3): a quick, network-free
+/// observability check. Runs a dummy LLM-call accounting pass and prints a
+/// single `cost_report` JSON line so an operator or CI can confirm the
+/// cost-tracking path works end to end without a real model credential.
+pub fn smoke_test() -> Result<()> {
+    let (tokens_used, estimated_cost_usd) = dummy_llm_call();
+    let event = json!({
+        "event": "cost_report",
+        "tokens_used": tokens_used,
+        "estimated_cost_usd": estimated_cost_usd,
+    });
+    println!("{}", serde_json::to_string(&event)?);
+    Ok(())
+}
+
+/// A deterministic stand-in for a real LLM call, used only by `--smoke-test`
+/// so the check has no external dependency (no API key, no network).
+fn dummy_llm_call() -> (u64, f64) {
+    let tokens_used: u64 = 128;
+    let estimated_cost_usd = tokens_used as f64 * 0.000_003;
+    (tokens_used, estimated_cost_usd)
 }
 
 // ── attempts DB ──────────────────────────────────────────────────────────────

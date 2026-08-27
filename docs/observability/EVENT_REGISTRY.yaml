@@ -1518,9 +1518,17 @@ events:
 
   - kind: lease_overlap
     effect_metric: self
-    emitter: chump-coord
-    trigger: two sessions claim same files
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs::reserve_gap_claim_marker
+    emitter_paths: [crates/chump-atomic-claim/src/atomic_claim.rs]
+    trigger: a `chump claim` loses the atomic gap-claim marker race (INFRA-1608)
+      — `reserve_gap_claim_marker`'s `create_new` (O_EXCL) fails against a
+      live marker held by a different session, closing the TOCTOU window
+      between `check_gap_id_uniqueness`'s scan and the real lease-file write
     consumers: [fleet-brief]
+    fields_required: [ts, kind, gap_id, winner_session, loser_session, paths_attempted]
+    docs: |
+      Root cause + investigation: docs/audits/lease-collision-2026-05-17.md.
+      Regression test: scripts/ci/test-atomic-claim-collision.sh.
 
   - kind: fixture_commit_dropped
     effect_metric: self
@@ -3643,6 +3651,37 @@ events:
       Signals the operator that the PR needs human attention.
     consumers: [fleet-brief, kpi-report, operator-recall]
     fields_required: [ts, kind, pr, check_name, attempt_count]
+
+  # ── INFRA-1645 (re-do of INFRA-1597): LLM-model resilience probe ──────────
+  - kind: model_unavailable
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: >
+      run_llm_resilience_check probed PARAMEDIC_LLM_HEALTH_URL and got a
+      transient failure (HTTP 404/429, or a connection-level error); emitted
+      once per retry attempt before the backoff sleep.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, status, attempt]
+
+  - kind: paramedic_healthy
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: >
+      run_llm_resilience_check's probe of PARAMEDIC_LLM_HEALTH_URL returned
+      2xx, ending the retry loop.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, status, attempt]
+
+  - kind: permanent_failure
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: >
+      run_llm_resilience_check's probe of PARAMEDIC_LLM_HEALTH_URL returned a
+      non-retryable 4xx (anything but 404/429); the retry loop stops
+      immediately rather than burning attempts on an error that won't
+      resolve itself.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, status, attempt]
 
   # ── Centralized auto-merge armer (INFRA-1113) ─────────────────────────────
   - kind: auto_merge_armed

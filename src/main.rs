@@ -5385,6 +5385,14 @@ async fn main() -> Result<()> {
         let repo_root = repo_path::repo_root();
         let dry_run = args.iter().any(|a| a == "--dry-run");
 
+        if args.iter().any(|a| a == "--smoke-test") {
+            if let Err(e) = paramedic::smoke_test() {
+                eprintln!("chump paramedic --smoke-test: {e}");
+                std::process::exit(1);
+            }
+            return Ok(());
+        }
+
         if subcmd == "help" || args.iter().any(|a| a == "--help") {
             println!("Usage: chump paramedic <subcommand> [options]");
             println!();
