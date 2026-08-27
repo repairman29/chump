@@ -20,8 +20,23 @@ GUARD="$REPO_ROOT/scripts/git-hooks/pre-push-actionlint-guard.sh"
 
 PASS=0
 FAIL=0
+FAIL_CLASS=""
 ok()   { printf '  \033[0;32mPASS\033[0m %s\n' "$*"; PASS=$((PASS+1)); }
-fail() { printf '  \033[0;31mFAIL\033[0m %s\n' "$*"; FAIL=$((FAIL+1)); }
+fail() {
+    printf '  \033[0;31mFAIL\033[0m %s\n' "$*"
+    FAIL=$((FAIL+1))
+    # INFRA-1649: classify so the final `guard: fail class=...` line tells the
+    # caller whether a re-run is worth it. Setup/tooling failures (missing
+    # guard script, guard not wired into pre-push) are environment problems —
+    # transient. Guard *behavior* failures (wrong exit code, missing ambient
+    # event) are logic bugs in the guard itself — permanent.
+    case "$*" in
+        *"guard script missing"*|*"not wired into"*|*"bypass variable missing"*)
+            FAIL_CLASS="transient" ;;
+        *)
+            FAIL_CLASS="permanent" ;;
+    esac
+}
 
 echo "=== INFRA-2322 pre-push actionlint gate test ==="
 echo
@@ -54,8 +69,29 @@ git -C "$TMP" update-ref refs/remotes/origin/main main
 
 AMB="$TMP/.chump-locks/ambient.jsonl"
 
+# run_guard — INFRA-1649 hardened: runs the guard, captures its rc + combined
+# output, and classifies any non-zero rc as transient (tooling/environment —
+# e.g. actionlint binary absent, base ref unresolvable — see the guard's own
+# "(transient class)"/"skipping" markers) or permanent (an actual blocking
+# finding against a workflow file). Classification is exposed via
+# LAST_GUARD_RC / LAST_GUARD_CLASS for callers that want to assert on it;
+# existing callers keep using the function's exit code unchanged.
+LAST_GUARD_RC=0
+LAST_GUARD_CLASS=""
 run_guard() {
-    ( cd "$TMP" && bash "$GUARD" )
+    local out rc
+    out="$( cd "$TMP" && bash "$GUARD" 2>&1 )"
+    rc=$?
+    LAST_GUARD_RC=$rc
+    if [[ $rc -eq 0 ]]; then
+        LAST_GUARD_CLASS=""
+    elif echo "$out" | grep -qiE 'transient class|skipping|not found|no-base-ref'; then
+        LAST_GUARD_CLASS="transient"
+    else
+        LAST_GUARD_CLASS="permanent"
+    fi
+    echo "$out"
+    return "$rc"
 }
 
 # ── 2. No changed workflow files → no-op ─────────────────────────────────────
@@ -171,4 +207,15 @@ done
 
 echo
 echo "=== $PASS passed, $FAIL failed ==="
-[[ "$FAIL" -eq 0 ]]
+
+# INFRA-1649: single-line machine-checkable summary. `guard: ok` on success;
+# on any failure, `guard: fail class=<transient|permanent>` to stderr so a
+# calling curator/CI step can tell "environment flake, re-run" from "the
+# guard is actually broken" without parsing the PASS/FAIL log above.
+if [[ "$FAIL" -eq 0 ]]; then
+    echo "guard: ok"
+    exit 0
+else
+    echo "guard: fail class=${FAIL_CLASS:-permanent}" >&2
+    exit 1
+fi

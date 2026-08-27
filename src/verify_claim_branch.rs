@@ -32,8 +32,10 @@
 //! the underlying mechanism that produces the INFRA-1427 failure mode above.
 
 use chump_agent_lease::{current_session_id, list_active, Lease};
+use chump_verify::observability::{emit_event, FailureClass, Status};
 use std::path::Path;
 use std::process::Command;
+use std::time::Instant;
 
 fn expected_branch(gap_id: &str) -> String {
     format!("chump/{}-claim", gap_id.to_lowercase())
@@ -159,11 +161,23 @@ pub fn verify(current_branch: &str, session_id: &str, leases: &[Lease]) -> Verdi
 }
 
 pub fn run_cli(args: &[String]) -> i32 {
+    let started_at = Instant::now();
     let want_json = args.iter().any(|a| a == "--json");
+    // --branch <name>: override branch detection (tests, non-git callers).
+    let branch_override = args
+        .iter()
+        .position(|a| a == "--branch")
+        .and_then(|i| args.get(i + 1))
+        .cloned();
     let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
-    let Some(branch) = current_branch(&repo_root) else {
+    let Some(branch) = branch_override.or_else(|| current_branch(&repo_root)) else {
         eprintln!("chump verify-claim-branch: could not resolve current git branch");
+        emit_event(
+            Status::Failure,
+            started_at.elapsed(),
+            FailureClass::Transient,
+        );
         return 1;
     };
 
@@ -198,7 +212,7 @@ pub fn run_cli(args: &[String]) -> i32 {
     let leases = list_active();
     let verdict = verify(&branch, &session_id, &leases);
 
-    match verdict {
+    let rc = match verdict {
         Verdict::NoLeases => {
             if want_json {
                 println!("{{\"verdict\":\"no_leases\",\"branch\":\"{branch}\"}}");
@@ -257,7 +271,24 @@ pub fn run_cli(args: &[String]) -> i32 {
             }
             1
         }
-    }
+    };
+
+    // INFRA-1649: structured event (status/duration_ms/cost_estimate/failure_class)
+    // on every exit path, so callers get a uniform observability shape regardless
+    // of --json (which controls the verdict-specific line above).
+    let status = if rc == 0 {
+        Status::Success
+    } else {
+        Status::Failure
+    };
+    let failure_class = if rc == 0 {
+        FailureClass::None
+    } else {
+        FailureClass::Permanent
+    };
+    emit_event(status, started_at.elapsed(), failure_class);
+
+    rc
 }
 
 #[cfg(test)]
