@@ -249,6 +249,7 @@ gaps:
     - "CI gate: this test target is required for any PR modifying src/main.rs's gap-family dispatch"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-035
@@ -900,6 +901,7 @@ gaps:
     - "Register the kind in docs/observability/EVENT_REGISTRY.yaml with effect_metric: ci_throughput_runs_per_hour."
     - "Smoke test scripts/ci/test-self-hosted-run-stats-emit.sh: drive the action via act or a synthetic env, assert JSONL line is well-formed."
     - "After: chump fleet doctor surfaces runner hit-rate, average duration, idle vs busy split. INFRA-1535 (RUNNER_AUTOSCALE) consumes this signal."
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-070
@@ -917,6 +919,7 @@ gaps:
     - Smoke test scripts/ci/test-launchd-status-and-bypass-audit.sh — mock launchctl output + git log, assert table rendered + bypass count >= 0.
     - Telemetry — emit kind=fleet_launchd_status_run + kind=fleet_bypass_audit_run on each invocation.
     - Out of scope — launchd plist editor (drag-and-drop GUI). Per-bypass appeals system.
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-071
@@ -930,6 +933,7 @@ gaps:
     - "--since YYYY-MM-DD"
     - "--json"
     - "--publish PATH]. Computes Mission Yield = (marcus + fleet_quality + dev_tool - reverts_7d) / (tokens_spent / 1M). Reads .chump/state.db for chip-tags, cost_tracker.db for token spend, git log for revert detection.\",\"Schema addition: .chump/state.db gets table `pr_chip_tag(pr_number INTEGER PRIMARY KEY, tag TEXT CHECK(tag IN (marcus,fleet-quality,dev-tool,noise)), set_by TEXT, set_at INTEGER NOT NULL, behavior_delta TEXT)`. Population: cockpit chip-tag UI writes here (sibling gap PRODUCT-NEW). Backfill from GitHub labels prefixed `mission-yield/`.\",\"Output format matches docs/syntheses/cos-weekly-2026-05-17.md hand-written template: headline number, composition table, top contributors, top noise, pillar mix, reverts, overrides, calibration drift, pain log entries.\",\"--publish PATH writes Sunday-named markdown to docs/syntheses/cos-weekly-YYYY-MM-DD.md.\",\"Smoke test scripts/ci/test-cos-digest.sh: seed synthetic state.db with 10 PRs tagged variously, assert digest computes expected Mission Yield + composition + named contributors.\",\"Telemetry: emit kind=cos_digest_computed {window, yield, marcus, fleet_quality, dev_tool, noise, reverts, tokens}.\",\"Wave-3-or-4 work — file now, claim only after Wave 0+1 complete. See docs/strategy/ROADMAP_WAVES.md.\",\"Out of scope: chip-tag UI (separate gap PRODUCT-NEW), dispute resolution UI (separate).\"]"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-072
@@ -947,6 +951,7 @@ gaps:
     - "Smoke test scripts/ci/test-pillar-cap-auto-demote.sh: seed state.db with synthetic merges putting RESILIENT at 50%, file a new RESILIENT P1 gap, assert auto-demoted to P2 + ambient event present."
     - Wave-3-or-4 work; file now, claim after Wave 0+1.
     - "Out of scope: time-window tuning (7d hardcoded for now), cross-week smoothing (rolling 14d as parameter for later)."
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-073
@@ -960,6 +965,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-074
@@ -973,6 +979,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-075
@@ -1083,6 +1090,7 @@ gaps:
     - Smoke test seeds ambient.jsonl with mock broadcasts + acks, asserts leaderboard renders correct counts
     - chump preflight green
   depends_on: [META-155]
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-082
@@ -1117,6 +1125,7 @@ gaps:
     - "docs/process/IDLENESS_TAXONOMY.md defines 4 classes: TRUE-IDLE (no tick action), CARGO-CULT (vague gap filing), THEATRE (synthesis when fleet has P0 unclaimed), HEALTHY-PICKED (real next-best work)"
     - "chump gap audit-tick-outcomes <window>: tail tick_outcome events (CREDIBLE-084) + classify each against the taxonomy + emit ambient kind=idleness_class_audit with per-role count of each class over window"
     - "Operator surface: chump fleet idleness-report (one row per role / last 24h / class breakdown)"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-084
@@ -1184,6 +1193,7 @@ gaps:
     - every ambient/mesh event carries a schema_version tag (e.g. chump-v1)
     - a receiver on a mismatched or unknown schema_version emits kind=schema_mismatch instead of silently misinterpreting the event
     - a test sends an event with an unknown schema_version and asserts schema_mismatch is emitted, not a wrong action
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-088
@@ -1305,6 +1315,7 @@ gaps:
     - chump gap audit-priorities reports 0 phantom doc refs after fix when RESEARCH_INTEGRITY.md frontmatter declares allowlist
     - test-gap-audit-priorities.sh exercises both allowlist hit + miss
     - "doc updated with 'phantom_ref_allowlist: [EVAL-*, RESEARCH-*]' under existing doc_tag/owner_gap/last_audited frontmatter"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-096
@@ -1332,6 +1343,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-098
@@ -1426,6 +1438,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-104
@@ -1502,6 +1515,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-109
@@ -1515,6 +1529,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-110
@@ -1528,6 +1543,7 @@ gaps:
     - hallucinated CLI output is a CREDIBLE-105 credibility failure — makes a non-existent command look real
     - audit which subcommands fall through to the LLM brain + gate behind an explicit flag
     - "regression test: unknown subcommand -> nonzero, no prose"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-111
@@ -1541,6 +1557,7 @@ gaps:
   acceptance_criteria:
     - docs/process/DURABLE_FIX_DOCTRINE.md gains a §case-studies (or §examples) section with the AUTH_DEAD-spam sequence
     - "Cross-ref to RESILIENT-113 #3090 (durable fix), RESILIENT-115 #3089 (band-aid, closed)"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-112
@@ -1571,6 +1588,7 @@ gaps:
     - the bypass-trailer validator fires ONLY when an actual bypass is used (a malformed Bypass-* trailer present, OR --no-verify / a CHUMP_*_SKIP env was actually set), NOT when bypass keywords appear in the commit body prose
     - "regression test: a commit message containing 'bypass', '--no-verify', and 'BYPASS_TRAILER_SCHEMA.md' in PROSE (with no actual bypass) is NOT rejected"
     - the validator still rejects a genuinely malformed Bypass-Reason/Bypass-Followup trailer (no regression in the real check)
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-114
@@ -1608,6 +1626,7 @@ gaps:
     - "Verify: 5 consecutive `cargo test --workspace --no-fail-fast` runs all green."
   notes: |
     First observed 2026-06-05T23:50Z during RESILIENT-118 preflight. crates/chump-reviewer-routing/src/lib.rs:601. Blocked RESILIENT-118 ship; bypassed via CHUMP_PREFLIGHT_SKIP=1 with trailer per CREDIBLE-105.
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-116
@@ -1638,6 +1657,7 @@ gaps:
   acceptance_criteria:
     - Case added to DURABLE_FIX_DOCTRINE.md §case-studies (alongside CREDIBLE-111)
     - Updates to CREDIBLE-106 umbrella note that Gate 4 'workaround-application audit' is missing from the original 3-gate proposal
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-118
@@ -1686,6 +1706,7 @@ gaps:
     - "Fix: scripts/dispatch/fleet-brief.sh calls chump health --slo-check (or reads its cached state file) BEFORE deciding banner text. If exit != 0, banner reads '⚠ SLO BREACH: <N> breached — chump health --slo-check for detail' (red), not '✓ healthy' (green)"
     - "Test scripts/ci/test-fleet-brief-slo-honesty.sh: synthesize a fake SLO breach (CHUMP_FAKE_SLO_BREACH=1 or write to a fixture state file), run fleet-brief, assert output contains 'SLO BREACH' not 'healthy'"
     - "Doctrine cross-ref: this is a CREDIBLE-105 case study — the brief making something LOOK fixed when it isn't, fix-class meta-clause violation. Fresh-eyes (META-132) repeatedly surfaces this as rank-1 disagreement; root fix is integrating the surfaces"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-121
@@ -1700,6 +1721,7 @@ gaps:
     - "Fix: brief's Alerts(30m) counter is derived from a documented source (the alerts file OR the live ambient stream); if it's from a file, the file must be re-derived from ambient on each brief invocation (or the brief must say e.g. 'Alerts(file-last-rotated 4h ago): 8')"
     - "Test scripts/ci/test-fleet-brief-alerts-window-honesty.sh: synthesize 3 fake alert events in last 30m, ensure brief reports >= 3; clear ambient of 30m alerts, ensure brief reports 0"
     - "Doctrine cross-ref: a self-reported counter that diverges from ground truth is meta-clause violation ('do not report a mechanism as active until you have verified it is active' — counts are 'active mechanism' too)"
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-122
@@ -1833,6 +1855,7 @@ gaps:
     Observed 2026-06-08: fleet-brief banner (SessionStart hook) showed 'Ships: 0 (24h) | last 1h: 0' + '✓ fleet looks healthy', but ground truth at the same moment was: git log origin/main = 2 merges last 1h / 7 last 6h; 24 worker.sh procs, 42 claude -p procs, 13 bot-merge procs in-flight, 2 active leases. ~30 min earlier the SAME script reported 'Ships: 43 | last 1h: 9' (correct). The ship-count intermittently collapses to 0 — likely a transient failure inside fleet-brief.sh (git fetch timeout / swallowed subshell error -> empty -> 0). This is the ROOT of the #1 operator false-positive ('fleet is dead', mis-called 4x per CLAUDE.md): the brief is the first thing every SessionStart shows, so a false 0 makes every fresh agent misdiagnose fleet-death. Sibling of CREDIBLE-086 (merge-queue lie) + META-287 fresh-eyes comparator_6 (brief-says-healthy-but-not-shipping).
   acceptance_criteria:
     - "1. fleet-brief ship-count NEVER silently returns 0 on a transient error — it retries, reports the real count, or prints an explicit 'ship-count unavailable (<reason>)' instead of a misleading 0. 2. Root-cause the intermittent-0 (candidate: git fetch failure / swallowed subshell error inside the script). 3. The 'looks healthy' verdict incorporates ship-rate — a 0-ship state with live workers is NOT 'healthy', it is 'measurement failed / investigate'. 4. Regression test: synthetic scenario where the count query fails -> brief shows 'unavailable', not '0 + healthy'."
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-130
@@ -1845,6 +1868,7 @@ gaps:
     2026-06-08: fleet down because the Anthropic API account hit 'Credit balance is too low' (key VALID, authenticates fine, len 108; CHUMP_AUTH_MODE=api-key forces the empty account). But run-fleet.sh INFRA-621 probe reports 'ERROR: auth probe failed / ANTHROPIC_API_KEY authentication failed' — a BILLING failure mislabeled as an AUTH failure. This is the #1 false-positive class (auth-dead, mis-called 4x): the mislabel sent diagnosis through auth/flag/lease theories before a direct probe revealed the real cause (credit). Fix: classify the failure.
   acceptance_criteria:
     - "1. INFRA-621 probe parses the error and reports the ACTUAL class (auth-invalid vs credit-exhausted vs rate-limit vs network), not a blanket 'authentication failed'. 2. On credit-exhaustion: actionable message (top up / switch CHUMP_AUTH_MODE=oauth). 3. Emits a distinct ambient kind (e.g. fleet_credit_exhausted) so operator-recall routes it correctly."
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-131
@@ -1877,6 +1901,7 @@ gaps:
     - Add a CI lint + mirror it in 'chump preflight' (INFRA-1867 parity) that flags NEW Bash-4-only constructs in scripts/, with a documented bypass trailer for scripts that legitimately need Bash 4+ AND self-guard with a loud version check.
     - "Hot-path scripts must be Bash-3.2 clean OR self-guard: e.g. 'if ((BASH_VERSINFO[0]<4)); then echo needs-bash4 >&2; exit 3; fi' so failure is loud not silent."
     - "Smoke test: lint flags a known-bad fixture (script with 'declare -A') and passes a clean one."
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-133
@@ -1985,6 +2010,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. test-no-new-bypass-env-vars.sh counts the ceiling via 'git grep -rhoE <same pattern> -- scripts src crates' (tracked-only), NOT 'grep -rhoE ... <abs paths>' (filesystem scan). 2. The count is deterministic: a regression test creates an untracked file under scripts/ containing a CHUMP_FOO_SKIP token + a .bak file, and asserts the counted total is UNCHANGED (untracked/build/temp files do not inflate it). 3. Re-baseline scripts/ci/bypass-var-ceiling.txt if the tracked-only count differs from the current 236. 4. Self-test (--self-test) cases still pass."
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
   evidence: |
     test-no-new-bypass-env-vars.sh line 55 counts distinct bypass vars via 'grep -rhoE ... $REPO_ROOT/scripts /src /crates' — a FILESYSTEM scan that includes untracked files, .bak backups, build artifacts under target/, and sibling-process temp files. Observed live 2026-06-21: the count flip-flopped 236<->237 in one worktree depending on transient files (a sed -i.bak dry-run added +1; a sibling fleet process added +1), while 'git grep' (tracked-only) was a stable 236. This made RESILIENT-152's audit-shard(4) appear to fail the ceiling locally when the tracked count was actually at-ceiling. A security/debt gate that is non-deterministic on worktree cruft can produce flaky CI failures for any audit-triggering PR and wastes investigation time. Fix: count tracked files only via 'git grep -rhoE <pattern> -- scripts src crates' (deterministic, ignores untracked/build/temp), keeping the same pattern + sort -u + ceiling compare.
@@ -1997,6 +2023,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. repo_failing_checks/green-first excludes check failures on PRs whose head doesn't contain origin/main HEAD (stale branch). 2. OR additionally reads main's own commit status — if main is green, don't force a green-first pick from PR-only failures. 3. Test: a stale PR failing a main-fixed check does NOT trigger green-first; a check red on main DOES."
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
   evidence: |
     2026-06-22 BEAST run: reopening stale PR #4 (branch predates the #7 Code Quality fix) made its Code Quality check fail on the OLD workflow, even though main is green. chump improve's green-first (repo_failing_checks/green_first_gap_from_failures in src/improve.rs) counted that as 'Code Quality failing across open PRs' and forced a 'fix Code Quality' pick → spawned a no-op implement of an already-fixed gate. ROOT CAUSE: green-first keys on open-PR statusCheckRollup without distinguishing a real main-level breakage from a PR whose branch is simply behind main (lacking a fix already merged). FIX SHAPE: (a) exclude check failures on PRs whose head doesn't contain main's HEAD (stale branch), OR (b) also read main's own commit status — if main is green, don't force a green-first pick from PR-only failures, OR (c) weight by PR freshness. Without this, any stale open PR can send the autonomous loop chasing already-fixed gates.
@@ -2009,6 +2036,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. verify-merge arms 'gh pr merge --auto --squash' (merge when green) instead of an immediate merge. 2. Remove/repair the file-overlay step that throws the pathspec error. 3. On CONFLICTING/DIRTY, surface clearly and skip the merge. 4. Test: a verdict-verified PR with pending CI gets auto-merge armed, not a failed immediate merge."
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
   evidence: |
     2026-06-22 BEAST PR #11: verify-merge reached verdict=verified (fix judged sound) but the MERGE failed: 'warning: could not overlay tests/test-rls-recursion-fix.js from head (skipping)' + 'error: pathspec tests/rls-recursion-fix.test.js did not match any file(s)' + 'not mergeable: the merge commit cannot be cleanly created. To have the pull request merged after all the requirements have been met, add the --auto flag.' ROOT CAUSES: (a) it issues an immediate merge instead of arming --auto, so it fails while CI is still pending; (b) a buggy git file-overlay step references a renamed/nonexistent test path. AC: verify-merge arms gh pr merge --auto --squash (let GitHub merge when green) rather than an immediate merge; remove/repair the file-overlay logic; on CONFLICTING/DIRTY, surface that clearly. Verdict-verified PRs should actually land.
@@ -2035,6 +2063,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. chump gap set --domain <D> actually persists the domain to state.db (currently prints 'updated' but gap list --json still shows empty — a silent no-op). 2. A chump gap delete/purge command exists to remove test-pollution + abandoned gaps from state.db + docs/gaps (currently none). 3. A test that creates EVAL-NNN/race-* fixture gaps cleans them up (or uses a throwaway DB) so they don't leak into the canonical registry. 4. The 4 currently-malformed gaps (EVAL-085/086/087 missing domain, INFRA-1076 fixed) are repaired or removed; CREDIBLE-061 gap-schema audit passes. 5. Test: a freshly-leaked malformed gap is caught + fixable via the tooling."
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
   evidence: |
     2026-06-22: chump #3167 (EFFECTIVE-294 fix) blocked because the CREDIBLE-061 gap-schema audit (audit-shard 1) failed — 4 gaps in state.db missing required fields: EVAL-085/086/087 (status=done, title='test eval 0XX', EMPTY domain — test-pickle pollution) and INFRA-1076 (done, empty title + missing effort). #3166 passed the same shard, so these surfaced via sharding/recent corruption. Attempted repair via 'chump gap set --domain META' → printed 'updated' but gap list --json STILL shows domain empty (the set is a silent no-op for --domain). No 'chump gap delete' subcommand exists to purge the test pollution. INFRA-1076 was repairable (--effort + --title took). This is a concrete instance of the work-generation/data-quality gap: the registry accumulates malformed + test-leaked gaps that the canonical tooling can't clean, and they fail the schema gate intermittently (sharding), blocking unrelated PRs.
@@ -2062,6 +2091,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - 1. scripts/coord/trunk-sentinel-daemon.sh requires either N>=2 CONSECUTIVE red main ci.yml runs OR the SAME failing-job fingerprint seen twice before filing a P0 — a single flaky red (different failing jobs each time, green runs interspersed) does NOT file a P0. 2. The degenerate 'failing jobs=unknown / fp=nofail' case (sentinel cannot identify the failing job — usually a cancelled/transient run) NEVER files a P0. 3. A non-persistent red files at most a P2 advisory or increments a flake-tally, not a P0 page. 4. Existing false-positives INFRA-3011 (fp=nofail) and INFRA-3027 (clippy,test — self-resolved on later runs) are closed as flake-noise. 5. A test (scripts/ci/test-*.sh) feeds the daemon a flapping fail/success/fail sequence and asserts no P0 is filed until persistence is met.
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
   evidence: |
     2026-06-22: main ci.yml flaps fail/success/success/fail/success with DIFFERENT failing-job sets each red — INFRA-3011=[unknown]/fp=nofail (degenerate), INFRA-3027=[clippy,clippy-required,test] at d4ad5fac5 (later runs passed clippy+test = stale), latest b3b39f0ec=[pr-hygiene,test]. Three reds, three different patterns, green between, and PRs #3169/#3168 both merged with ALL checks green = trunk is FLAKY not broken. The sentinel filed 2 P0s (and will file more) off single flaky reds, inflating the P0 set (META-046 P0-budget=5) and paging the operator. Reality-check (CREDIBLE-090): detector firing != trunk blocked.
@@ -2108,6 +2138,7 @@ gaps:
     - when ground truth CONFIRMS the belief, verdict is CONFIRMED (or CONFIRMED+noisy-detector note), never REFUTED
     - REFUTED is reserved for cases where ground truth actually contradicts the belief
     - regression test in scripts/ci covering 'belief true + matching false-positive gap' → asserts non-REFUTED
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-149
@@ -2399,6 +2430,7 @@ gaps:
     - "The change described by \"32 of 50 commits this cycle (64%) are automated coherence syncs; no metric exists for sync overhead ceiling or when it crowds out real work\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-17'
   outcome_id: RESILIENT-000
 
 - id: CREDIBLE-168
@@ -2609,6 +2641,7 @@ gaps:
     STILL REPRODUCIBLE on latest main fbb60a1c, both runners on the SAME commit in a clean detached worktree: cargo test --bin chump -> FAILED 2384 passed / 21 failed / exit 101; cargo nextest run --bin chump -> 2405 passed / 0 failed / exit 0. Main is NOT red. cargo test threads tests in one process and they race on process-global env (CHUMP_REPO); nextest gives each test its own process. CI already uses nextest (.github/workflows/ci.yml:1429, installed :1375 per INFRA-2094). scripts/git-hooks/pre-push has 16 'cargo test' references and ZERO 'nextest'.
     
     ACTIVE WORK ITEM: CREDIBLE-278 (P1, open) holds the full evidence and the precise fix shape. This gap stays open as the parent so its false-done is visible in the registry rather than buried; close it when 278 lands.
+  opened_date: '2026-08-19'
   closed_date: '2026-07-30'
   closed_pr: 3552
   outcome_id: COTG
@@ -2688,6 +2721,7 @@ gaps:
     - Check whether curator loop scripts (ci-audit-loop.sh, handoff-loop.sh, deliberator-loop.sh, etc.) have a concrete 'cast a vote' step wired in, or whether the mandate exists only in CLAUDE.md prose with no code enforcement
     - Propose + ship at least one concrete fix (e.g. a lane-scoped auto-vote step in one curator loop, or a fleet-doctor check that flags proposals with total=0 votes past N hours) that gets real votes flowing, and verify via a real (not fabricated) proposal reaching quorum
     - "Test: after the fix, a newly-broadcast FEEDBACK proposal accumulates >=1 real vote within one curator-loop cycle, observable via scripts/coord/deliberator-loop.sh audit --corr-id <new-corr-id>"
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-180
   domain: CREDIBLE
@@ -2769,6 +2803,7 @@ gaps:
     - "The change described by \"opus/sonnet/haiku slot tags live only in gitignored/drifted .env — need a tracked provider manifest (or fix apply-mabel-badass-env.sh drift) so routing config survives a fresh checkout\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-186
   domain: CREDIBLE
@@ -3042,6 +3077,7 @@ gaps:
     - slidemate >= 90 percent summarized
     - jeffadkins-dev search returns no minified-bundle hits
     - search-fleet output flags hits from repos under a coverage threshold
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
 
@@ -3057,6 +3093,7 @@ gaps:
     - auto-close failure root-caused with the two receipts
     - a merged PR with a registered auto-close cannot stay open past one daemon cycle
     - mission-ship ratio unaffected by bookkeeping lag in the next scoreboard
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-205
@@ -3090,6 +3127,7 @@ gaps:
     - no secret values in the doc, key names and owners only
     - release-auditor checklist gains a bucket-GO line reading this ledger
     - shared-mega-DB blast radius for the arcade explicitly quantified
+  opened_date: '2026-08-19'
   outcome_id: READY-GATE
   evidence: |
     COMMAND: browser pass on beast-mode.dev (2026-08-04, in TODO.md) + almanac dependency probes of upshift and games (2026-08-06). OUTPUT: beast-mode.dev's both primary CTAs 307-redirect to a DEAD Supabase hostname (fsmibduqvwnfyvypuaie.supabase.co) — invited strangers hit a corpse; the arcade's only backend touches are shared-mega-DB Supabase (games:shared/feedback-widget.js:25, shared/leaderboard.js:21) so one popular game browns out the tier everything else lives on; upshift's AI layer is metered in code (upshift:skills/upshiftai/index.js loadPricingTierCredits/trackAIUsage) but the underlying buckets are free/trial per the operator; olive stacks Kroger OAuth + AI + Supabase. THEORY: no single truth doc lists per-surface external dependencies with tier/quota/key-owner/cost-at-N-users/at-limit behavior, so readiness is a feeling and dead-bucket rot is discovered by strangers. ALT: SITES.md/DOMAINS.md already cover this — refuted: they cover domains and hosting, not service tiers, quotas, or degradation behavior.
@@ -3106,6 +3144,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     STRONGER SIGNAL 2026-08-07 (PR #3495 EFFECTIVE-373): reviewer raised CONCERN listing 'new unwrap()/expect() in production' + 'new external dependencies added' — BOTH demonstrably FALSE in the diff (0 bare unwrap/expect, no Cargo.toml change). It dumped its entire boilerplate concern-reason list rather than specific verified findings. So the reviewer doesn't just flip-flop (non-determinism) — it HALLUCINATES concerns that don't apply. Fix must make the reviewer cite SPECIFIC evidence per concern (file:line) or it's noise that blocks clean changes; ties to the COTG judge's 'reasoning must be grounded' requirement.
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-208
   domain: CREDIBLE
@@ -3123,6 +3162,7 @@ gaps:
     - fixture PRs for both paths in scripts/ci
   notes: |
     SEAM with the COTG AC-judge family (discovered at filing time — the fleet is building the other half concurrently): EFFECTIVE-367 (full-AC review gate + send-back loop, slice 1 #3492 merged 2026-08-06 feeding the judge REAL ACs), EFFECTIVE-373 (LLM per-bullet MET/UNMET/PARTIAL over the diff), EFFECTIVE-372 (local-first blocking gate hosting it), CREDIBLE-207 (reviewer determinism). Division of labor: 373 judges SATISFACTION (semantic, LLM — did the diff meet the AC); this gap judges GROUNDING (mechanical, index — do the agent's claims correspond to reality: symbols exist, tests ran, files touched). Run grounding FIRST as the cheap deterministic pre-check — ungrounded claims short-circuit before burning judge tokens — and reuse 367's send-back loop as the bounce path, NOT a second one. Do not build parallel gate plumbing; land inside 372's gate host.
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: registry + git history review 2026-08-06. OUTPUT: the describe-vs-do disease is measured and recurring — fleet ship-count once reported 78 vs 2 real merges (CREDIBLE-146/149); the ChumpBench judge had to be hardened so a do-nothing PR scores STUB not verify (CREDIBLE-192/194/195); EFFECTIVE-361 merged 2026-08-06 (#3487) re-prompting agents that only DESCRIBED a change instead of applying it; this session's own v1 fleet survey claimed 'publishing: nothing built' and was refuted by deeper almanac passes (DOC-084 record). THEORY: agent claims are structured text (commit subject, PR body, AC checkboxes) and almanac can ground each one in milliseconds — symbol exists at path:line, test file present in diff and executed, touched files actually in diff; ungrounded claims bounce like force-edit does, and bust-rate per model becomes a KPI. ALT: human review catches fluff — refuted by the 39x ship-count lie surviving weeks and the 0-byte README shipping to npm.
@@ -3143,6 +3183,7 @@ gaps:
     - DEPTH.md updated same commit
   notes: |
     Bumped P2->P1 2026-08-07: MOP-BUCKET is 0% (both children parked below the picker's P1 threshold), so the portfolio de-bullshitting campaign had a design and no motion. Outcome linkage to MOP-BUCKET pre-existed this bump — not a MISSION-045 side-door promotion (cf CREDIBLE-213). EFFECTIVE-374 (the sweep) deliberately STAYS P2 until this instrument exists: a sweep with no audit tool is just scheduling.
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: MOP-BUCKET
 
@@ -3162,6 +3203,7 @@ gaps:
   depends_on: [CREDIBLE-214]
   notes: |
     CORRECTION 2026-08-08: my earlier note on this gap said pixel-edge holds '835 Kotlin files' that are language-blind. WRONG — extrapolated from 851 total files minus 16 indexed, which is not how you count a language. Actual: 13 .kt. The other 838 are Android build output (150 xml, 133 json, 122 .flat, 87 .dex, 82 .class). The blind spot is real but far smaller there. The ACTUAL biggest unreadable source in the fleet, measured by 'almanac discover' built the same day: Maclawd at 692 files (575 .swift, 113 .kt, 4 .kts) — an entire Swift application invisible to the index. SQL is second at ~350 fleet-wide but is DELIBERATELY deferred (INFRA-3530). Fleet total of unparseable real source: 1,065 files across 8 top-level repos, no double-counting.
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-211
   domain: CREDIBLE
@@ -3178,6 +3220,7 @@ gaps:
     - "Backfill scan: run the new check over the last 200 closed gaps and report how many other 'done' gaps have unmet numeric claims; that count is the receipt for whether this is a one-off or a class"
     - INFRA-3287 is reopened or explicitly superseded by the re-scoped INFRA-1965 — it does not stay 'done' while its stated work is undone
     - "No new false positives: the check does not flag closed gaps whose numeric claim was about a target that legitimately moved (verify against 20 hand-checked samples)"
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-212
   domain: CREDIBLE
@@ -3215,6 +3258,7 @@ gaps:
     - an audit pass reports any EXISTING P0/P1 gaps carrying no outcome so the backlog created by this hole is visible rather than silently grandfathered (chump gap audit-priorities is the natural home)
   notes: |
     Demoted P1->P2 2026-08-07 during queue alignment: I filed ~14 P1s in one session into a pool of 61 (a 23% inflation of the P1 signal). This one is real but is an enhancement, not a blocker — it returns to P1 when a force-multiplier ahead of it lands or when someone needs it.
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: (1) chump gap reserve --domain PRODUCT --title '...' --priority P1   (2) chump gap reserve --domain PRODUCT --title '...' --priority P2 && chump gap set <ID> --priority P1  |  OUTPUT: path (1) is refused without --outcome per MISSION-045. Path (2) succeeds end to end: reserve at P2 prints 'Bypass: --no-outcome-required (audited). P2/P3 need no outcome.' and the subsequent set --priority P1 attaches no outcome and prints no warning. Verified live: PRODUCT-185 was reserved P2 then bumped to P1 on 2026-08-06 and carried NO outcome until hand-linked with chump outcome link on 2026-08-07; PRODUCT-182 the same. Both sat in the P1 pickable pool untraceable to any mission outcome.  |  THEORY: the outcome requirement is enforced at the reserve entry point only, but priority is mutable afterward, so every gap has a two-step path to P1 that bypasses the gate. The failure mode is ACCIDENTAL, not adversarial — I took it twice in one session without noticing, which is exactly why a gate that only guards one door is not a gate.  |  ALT: considered leaving it since the picker does not read outcomes — rejected: MISSION-045 exists so P1 work traces to a mission outcome, and an untraceable P1 pool is the precise drift it was built to prevent. Considered blocking set --priority outright — rejected as too blunt; the fix is to run the same check on the P0/P1 transition. Considered folding this into EFFECTIVE-322 — rejected: that gap is the decompose-inherits-outcome path (slices minted at P1 by the decomposer) and is a different code path with a different fix; they are siblings, not duplicates.
@@ -3234,6 +3278,7 @@ gaps:
     - a test proves a crawl that drops a repo's PRIMARY language cannot emit an unqualified success line, and fails without the change
     - "CREDIBLE-210 is explicitly resolved one way or the other in the same PR: shipped as the first instance, or closed with a pointer to this gap — never left open alongside a fix that covers it"
     - DEPTH.md updated in the same commit naming the depth tier and the remaining gaps
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
   evidence: |
@@ -3257,6 +3302,7 @@ gaps:
   notes: |
     [2026-08-07T20:50:05Z] Integration target of record: src/improve.rs — the external improve/ship path where verify-reaches runs (AC4). First slice: src/commands/reachability.rs (pure classifier + chump verify-reaches --gap <ID> --diff <name-only-file>), wired via src/commands/dispatch_external.rs, NOT src/main.rs.
     [2026-08-09T17:14:18Z] CREDIBLE-233 shipped the CLOSE-time mis-attribution check (verify_pr_touched_gap in crates/chump-gap-store/src/lib.rs, wired into ship() and set_fields()) — mechanical file-touch check (own YAML or any non-doc file), not the import-graph REACHES/TEST-ONLY/UNRELATED semantic classifier this gap still owns. CREDIBLE-233 catches mis-attribution at CLOSE time; this gap still catches the stub shape at SHIP/pre-review time. Not yet built as of this note.
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: chump gap list --status open | grep -E 'EFFECTIVE-354|CREDIBLE-200'  |  OUTPUT: two open P1 gaps say the same thing in the fleet's own words — EFFECTIVE-354 'cascade implement stubs real external bugs (no diagnosis, no source fix) — worker competence is the core can-chump-do-the-jobs blocker'; CREDIBLE-200 'cascade implement can ship a stub test (assert 1==1) with no source fix; organ only catches it on green CI'. Both describe the same undetected shape: a PR that is green and empty.  |  THEORY: nothing mechanically relates a PR's DIFF to the gap's stated TARGET. Almanac already computes exactly that relation — almanac_impact walks transitive importers, almanac_neighbors gives per-file import edges — so 'did this diff touch anything with a path to the thing the gap named' is a graph query the fleet already owns and never asks. A stub is cheap to write and currently costs a full CI round plus a human read to detect; making it fail before review inverts that economics.  |  ALT: considered relying on the judgment panel (CREDIBLE-191) — rejected as complementary, not a substitute: a panel is an LLM read that costs tokens and can be fooled by plausible prose, while this is a deterministic graph check that cannot be talked out of a verdict. Considered requiring a source-file change by file-extension heuristic (touched a non-test .rs) — rejected as too weak: it passes any unrelated source edit, and fails legitimately test-only fixes. The import-path relation is the honest version.
@@ -3275,6 +3321,7 @@ gaps:
     - the requirement names the cheap path (almanac add-ref <url> --rev <tag>, measured at ~14s for a 182MB repo) so it is never skipped on effort grounds
     - the release-auditor agent checks for the section and flags its absence
     - at least one existing verdict is retrofitted or explicitly marked provisional, proving the rule is applyable to what already exists
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-217
   domain: CREDIBLE
@@ -3323,6 +3370,7 @@ gaps:
     - almanac index prints the file_summaries / embeddings counts BEFORE and AFTER (a delta), not just the restored-from-cache line, so a drop is visible at the console
     - "Rationale with receipt: on 2026-08-07 opportunity-library went 193 -> 0 summaries and workspace-docs 26 -> 0 after an INFRA-3529 reindex. That was EXPECTED markdown-cache invalidation, but nothing in the output distinguished it from data loss, and it was misdiagnosed as a regression and wrongly filed before the language-split check corrected it"
     - A large expected drop should be self-labelling (e.g. name the markdown share) so the next reader does not have to re-derive the distinction
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
 
@@ -3337,6 +3385,7 @@ gaps:
     - "Receipt: ai-gm-service red since 2026-01-21 and jarvis-rog-ed red since 2026-01-31 — both discovered only incidentally on 2026-08-07 while assessing unrelated PRs, roughly six months later"
     - Distinguish 'red because broken workflow config' from 'red because tests fail' where cheaply possible — both examples were the former (missing lint script; setup-node cache with no lockfile), which is a different and much cheaper fix class
     - "Pairs with EFFECTIVE-389 (code-posse sweep): same pattern, different instrument — this one reads CI state rather than code"
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-221
@@ -3349,6 +3398,7 @@ gaps:
     - "All 6 organ binaries (comprehend, flagmap, gatemap, livemap, tracemap, whymap) append to ~/.almanac/usage.jsonl the same way MCP tools and CLI search/api already do — measured 2026-08-07: 0 of 6 log anything"
     - "Why this is CREDIBLE-class not nice-to-have: RELEASE_CHECKLIST.md item 1e REQUIRES 'flagmap --repo <path> --top' for credential-shaped defaults (it caught olive's real TEST_USER_PASSWORD), and 1.5 requires comprehend. Today an auditor could skip both entirely and nothing anywhere would show it. A gate whose execution cannot be observed is a signal, not an outcome — the fleet's own rule"
     - almanac usage then distinguishes retrieval calls from inspection calls, so 'are we actually inspecting or only searching' is answerable from data rather than argued
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
 
@@ -3366,6 +3416,7 @@ gaps:
     - " unknown'; CHUMP_AMBIENT_LOG with 44 variants that are nearly all the same path via different local variable names (307 reads); CARGO_TARGET_DIR 15 variants of $X/target"
     - "REAL examples that must survive triage: BEAST_MODE_API localhost:3000 vs https://beast-mode.com across 270 reads; BEAST_MODE_API_URL with 5 values including the typo domain beastmode.dev vs beast-mode.dev; BASE_URL 3000 vs 7777; BEAST_MODE_CLOUD_MODEL llama-3.3-70b vs gpt-4o-mini; CHUMPBAR_SSH_TIMEOUT 15 vs 6"
     - "Normalize before comparing: empty/unset spellings collapse to one value, and $VAR-interpolated paths compare by resolved shape not literal text. Then re-report the real count — ROADMAP O2 calls drift the organ's flagship claim and says it is unverified at scale; this is that verification"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
 
@@ -3377,6 +3428,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "almanac impact/neighbors resolve inline Rust crate::/super:: path references as graph edges so a file coupled only via an inline path appears in its blast radius; a Rust fixture with an inline crate:: reference returns the coupled file in impact output."
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: validating the EFFECTIVE-394 crate extraction, ran almanac_impact on src/pr_ac_coverage.rs and almanac_neighbors on the 3 files being extracted, cross-checked against grep 'crate::pr_ac_coverage' over src/ plus the cargo compiler.
@@ -3397,6 +3449,7 @@ gaps:
     - "THREE ACCEPTABLE ENDINGS, any is fine, silence is not: (a) wire roadmap_refs from docs/ROADMAP.md at plan time — smallest change, needs no telemetry pipeline, and makes editing ROADMAP a real prioritization act which everyone already assumes it is; (b) additionally wire outcome priority, deciding how it composes with gap priority; (c) accept tactical-only scheduling and DOCUMENT it, so no future reader believes either lever works"
     - "NOTE THE ASYMMETRY when deciding: roadmap_refs is a mechanical input (is this ID named in a file — cheap, auditable, no telemetry). pillar_share and waste_rate_7d are genuinely telemetry-derived and carry real distortion risk. They were zeroed as one class in v0.1 and may not deserve the same treatment now"
     - "WHATEVER IS CHOSEN, remove the misleading surface: a live 100.0 constant named roadmap_alignment that can never fire reads to every future reader as a working lever. Either connect it or delete it"
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-225
@@ -3409,6 +3462,7 @@ gaps:
     - "The change described by \"tmp\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-226
   domain: CREDIBLE
@@ -3425,6 +3479,7 @@ gaps:
     - the mechanism chosen is stated with its reasoning (coverage normalization vs span cap vs heading-text-only), so the next person knows what was traded
     - "a test covers the pathological shape directly: one heading whose section contains many unrelated technical terms must not outrank an exact code match"
     - DEPTH.md retrieve.rs and parse.rs rows updated in the same commit
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
   evidence: |
@@ -3443,6 +3498,7 @@ gaps:
     - "4 OF 13 SLOTS CANNOT BE RATE-LIMITED AT ALL: CHUMP_PROVIDER_12/13/14/15 declare only BASE/KEY/MODEL/MODEL_CLASS — no RPM, TIER, PRIORITY or CONTEXT_K. Either backfill their metadata or make the loader refuse/warn on an incomplete slot, so a half-declared slot is visible instead of silently unlimited"
     - "provider_quality.rs already records success/failure/latency/tool-call outcomes and drives demotion, but NOTHING compares observation back to the configured ceiling. Close that loop: a slot repeatedly 429ing well under its declared RPD is evidence the declared number is wrong, and that signal is already being collected and thrown away"
     - "HONEST CONSEQUENCE TO RECORD: a same-session capacity claim ('100K+ free requests/day idle') was made from the 86400 figure and had to be retracted. Config read as measurement is exactly the signal-vs-outcome error this fleet keeps making"
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-228
@@ -3467,6 +3523,7 @@ gaps:
     - Set ollama_url (almanac init --ollama-url already persists it machine-wide) so summarization resolves to helsinki like embeddings do
     - "Make the fallback LOUD: summarize states which host it resolved and why, so a silent downgrade to a flaky local box is never mistaken for normal operation"
     - "'ollama list' on this Mac shows exactly one model (llama3.2:3b) — nomic-embed-text is NOT pulled locally, so embeddings have no local fallback if helsinki is unreachable. Either pull it or record the hard dependency in DEPTH.md"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
   evidence: |
@@ -3485,6 +3542,7 @@ gaps:
     - "REPORT PER TIER, per stage: where does each tier fail? Tool-call refusal, wrong edit, broken build, failed CI, or ship-wall? A per-stage failure map is the useful artifact; a single pass/fail rate is not. Reuse eval_harness.rs and the existing 7-type round taxonomy rather than inventing a parallel harness"
     - "OUTCOME IS A ROUTING POLICY, not a leaderboard: the deliverable is 'tier X is sufficient for effort<=s in language Y' — a rule the cascade and EFFECTIVE-409's tender can consume. Today's policy (Claude last rung) is a reasonable default derived from one negative result, and it may be leaving both money and throughput on the table in BOTH directions"
     - "COST THE ANSWER: record tokens and dollars per successful merge per tier. 'Cheaper model succeeded' is only a win if the retries, failed CI runs and escalations do not exceed the price of doing it right the first time"
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: CREDIBLE-231
@@ -3501,6 +3559,7 @@ gaps:
     - "ALSO ALREADY EXISTS OUTSIDE THE MAP: LICENSING.md, RELEASE_CHECKLIST.md's revoke-before-publish gate, GIVEAWAY_SOP Phase E, and the cost governor / waste taxonomy in L6. The business functions are partly PRESENT as artifacts and gates while being ABSENT as roles — which is the same built-not-wired shape as ZERO-WASTE-036, one level up"
     - "DELIVERABLE: extend the matrix (or add a companion) with the business layers, each audited the same honest way — what exists, status, receipt — so 'autonomous software COMPANY' (essay phase 6, currently marked ❌ overall) is scored against the full org rather than the delivery half"
     - "GRAIN NOTE WORTH PRESERVING from DOC-079: stage-specialization wins where the artifact is a DIFF; job-title specialization matters at the boundaries where the artifact is a DECISION. Every missing business chair is a decision-artifact chair, which predicts they will need role shape, not stage shape"
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: CREDIBLE-232
@@ -3530,6 +3589,7 @@ gaps:
     - an audit pass reports EXISTING done gaps whose closed_pr touched neither their YAML nor any source file, so the backlog this hole created becomes visible rather than grandfathered
     - a test proves a gap cannot be closed against a PR that only edited unrelated docs, and fails without the change
     - "the relationship to CREDIBLE-215 is stated: that gap catches the stub at SHIP time, this one catches the mis-attribution at CLOSE time — whichever lands first records what it did not cover"
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: chump gap show RESILIENT-048 ; gh pr view 3165 --json title,files ; grep -rli fafo --include='*.rs' --include='*.sh' --include='*.py' .  |  OUTPUT: RESILIENT-048 (P1/s, 'auto-FAFO-check — surface prior closed gaps + merged PRs + abandoned branches matching new gap scope BEFORE filer commits to it') reads status=done, closed_pr=3165, closed_date=2026-07-21. PR #3165 is titled 'chore(cold-water): Red Letter issue #17' and changes exactly four files: docs/audits/RED_LETTER.md plus the YAMLs for CREDIBLE-125, MISSION-043 and RESILIENT-160 — it does not touch RESILIENT-048.yaml and implements nothing from its ACs. The string 'fafo' appears in NO source file in the repo.  |  THEORY: the gap was closed against an unrelated PR. Its ACs (Jaccard>=0.5 similarity over closed gaps, git log --all --grep, gh pr list --state all --search, ambient.jsonl grep, BLOCK at >=0.85 with --force-fafo-bypass) were never built. A PARTIAL substitute exists under a different ID — INFRA-1149 'reserve-time title similarity' with title_jaccard() in crates/chump-gap-store/src/lib.rs:766-774 — but it is LEXICAL, so it cannot catch semantically-identical titles. Demonstrated live 2026-08-07: 'CREDIBLE: run the CONFIG organ fleet-wide on cadence' vs the pre-existing 'code-posse: schedule almanac organs across the fleet and file what they find' share ~2 tokens, Jaccard far below any usable threshold, and it did not fire. Three duplicate filings that day went unwarned.  |  ALT: considered reopening RESILIENT-048 rather than filing fresh — rejected: the honest record is that a P1 was closed against the wrong PR, and reopening would hide that. Considered treating ZERO-WASTE-045 as the duplicate — rejected: 045 is the SEMANTIC upgrade of INFRA-1149's lexical check, a genuinely different mechanism, and the demonstration above is its justification.
@@ -3549,6 +3609,7 @@ gaps:
     - ~/Projects/.claude/README.md is created stating the same adapter law chump's own README states, so the workspace level stops being the unaudited exception
     - a test or documented receipt proves one carved-out agent runs headless with no harness present
     - the 89 opportunity dossiers are traceable to a capability that can regenerate them, or explicitly marked as a one-time human-triggered artifact
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: ls ~/Projects/.claude/agents/ ; cat ~/Projects/chump/.claude/README.md ; ls ~/Projects/almanac/.claude/  |  OUTPUT: eight agents (chief-engineer, market-scout, frontier-correspondent, infra-cartographer, quartermaster, release-auditor, herald, vercel-bosun) exist ONLY as .md prompt files in ~/Projects/.claude/agents/ with no harness-neutral capability behind any of them. Chump's own .claude/README.md states the law verbatim: 'This directory is NOT where Chump capabilities live... Every file under .claude/skills/ and .claude/agents/ MUST be a thin wrapper. The capability itself MUST live somewhere harness-neutral so any agent (Claude Code, opencode-bigpickle, codex, Aider, goose, manual operator) can use it.' Confirmed reachability failure live 2026-08-08: a session rooted at ~/Projects/almanac cannot dispatch market-scout at all — the agent roster does not include it, and ~/Projects/almanac/.claude/ has no agents dir to bridge from.  |  THEORY: the law was written for and enforced INSIDE chump — INFRA-1918/1922/1923/1924/1925 each productized a curator role as script PLUS thin adapter, correctly. The workspace level was never audited, so the portfolio's entire advisory crew is invisible to cron, to every non-Claude harness, and to any session opened in the wrong directory. The 89 opportunity dossiers are that crew's output; nothing can regenerate or refresh them without a human opening Claude Code in one specific folder. This is why market-scout and frontier-correspondent have no cadence, no inbox, and no destination.  |  ALT: considered leaving them as prompts since they are advisory and a human triggers them anyway — rejected: 'a human must be in the right directory' is exactly the single point of failure the RESILIENT pillar names, and it is the mechanism by which the outward-facing chairs stayed empty. Considered moving them into chump/.claude/agents/ — rejected: that relocates the violation without fixing it. The proven pattern is posse, and now repairman29/privateer built 2026-08-08: a real repo, executable plain-Node entry points, config as data, the AI tier as a DOCUMENT, artifacts committed.
@@ -3586,6 +3647,7 @@ gaps:
     - every consumer is inventoried and verified to both PUBLISH and RECEIVE after the rotation; a consumer that cannot be updated is named rather than left broken
     - "the new secret never appears in a transcript, a commit, or argv — it goes only into the 600 root:root config and whatever env the consumers already read"
     - the ambient.jsonl file-based fallback is confirmed still working, so an auth mismatch degrades to file-based events instead of a silent fleet
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: ssh helsinki 'sudo cat /etc/nats/nats.conf'  |  OUTPUT: the file contents, including authorization{user: chump, password: <64-hex>} for both the main listener and leafnodes, were printed into a Claude Code session transcript on 2026-08-08 while auditing the box. File perms on disk are correct (600 root:root) — the exposure is entirely the transcript.  |  THEORY: same class as the tvly-dev key pasted earlier the same day. A credential that has appeared in a transcript, session export, or log must be treated as compromised regardless of how well-permissioned the file is, because transcripts persist in storage nobody audits. The password is shared between the main listener and the leafnode listener, so one rotation covers both — and every consumer that authenticates with it must be updated in the same pass or it goes silent, which in this fleet is indistinguishable from healthy (cf the curator dead 12 days).  |  ALT: considered treating it as low-risk because the bus is now firewalled and tailnet-only — rejected: shop rule 4 is revoke-before-publish and the fleet has a documented history of exactly this reasoning going wrong. Considered rotating it myself — refused: I do not handle credentials, and generating plus distributing this one is the operator's action.
@@ -3604,6 +3666,7 @@ gaps:
     - "FIX PATTERN, already applied to the four in PR #3499: resolve the dispatch source at runtime (new home first, old path as fallback) so the gate passes either side of a move. Better where practical: assert against the built binary's behaviour (chump gap <sub> --help) instead of grepping source at all — a grep for a symbol name cannot distinguish 'wired' from 'mentioned in a comment'"
     - "GUARD AGAINST THE VACUOUS-PASS CLASS SPECIFICALLY: any negative assertion (grep -q ... && fail) must first prove its search target EXISTS somewhere, else the test is asserting nothing. That precondition is what would have caught INFRA-825 Test 3 automatically"
     - "Filed from the fix session, not speculative: all four repairs and the vacuous-pass analysis are in PR #3499's commit 'unpin four CI gates from src/main.rs'"
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
 
 - id: CREDIBLE-238
@@ -3620,6 +3683,7 @@ gaps:
     - the scoreboard's gate-2 line states that R&D is excluded, so a reader is not left inferring it from code
     - a comment at the exclusion site says WHY, citing the gameable-gate reasoning — an unexplained exclusion gets 'cleaned up' by a future refactor
   depends_on: [META-329]
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: scripts/dev/mission-scoreboard.sh ; head -22 src/mission_grade.rs  |  OUTPUT: gate 2 reads 'Mission-ship ratio (24h): 15/28 (target >= 2/3 — mission-linked merges / total)', up from 5/18 on 2026-08-05. mission_grade.rs (INFRA-599) computes per-pillar counts by gap-title prefix and emits kind=mission_grade every 30 min via launchd.  |  THEORY: R&D's output is frequently a NO-GO — a kill counts as a successful run under the pillar's inverted success axis. If R&D merges count as mission-linked ships, the fleet can clear the 2/3 scaling gate by running experiments instead of shipping mission work, and gate 2 is the single number that says whether the factory has earned the right to point outward. That number is currently the operator's stated exit condition for factory-first sequencing, so corrupting it would remove the only objective brake on going outward too early. The six existing NO-GOs prove the volume is real, not hypothetical.  |  ALT: considered handling it inside META-329's refactor — rejected and deliberately split out: a broad mechanical 37-file change is exactly where a one-line metric semantic gets lost, and the failure is SILENT (the ratio just reads higher). Considered excluding R&D from all metrics — rejected: it must still count for balance and restock, or the curator cannot detect a starving pillar.
@@ -3637,6 +3701,7 @@ gaps:
     - "WIDEN THE SCAN to crates/**/src/ as well as src/, then expect a backlog: run it once and record how many vars surface, because that count is the real size of the debt and it should be triaged, not bulk-allowlisted"
     - SAME FAILURE CLASS AS CREDIBLE-237 (CI gates pinned to src/main.rs) and EFFECTIVE-407 (audit-ac blind to template ACs). A detector whose scope does not follow the code reads as evidence of health. Consider whether these three warrant one sweep for scope-blind gates rather than three separate fixes
     - DO NOT bulk-add everything found to env-vars-internal.txt. Tier-1 operator-tunable vars belong in .env.example where operators can discover them; dumping them all in the internal list would preserve the green check and keep the actual documentation gap
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
 
 - id: CREDIBLE-240
@@ -3673,6 +3738,7 @@ gaps:
     - "a test covers the exact live shape: a non-git directory nested inside a git repo must NOT report the parent's commit and must NOT report 'fresh' after its files change"
     - the three currently-registered non-git sources re-index correctly after an edit, proven by editing one and running plain refresh
     - almanac repos or status shows which sources use which staleness mechanism, so 'this one cannot detect changes' is visible rather than inferred
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: CREDIBLE-242
@@ -3689,6 +3755,7 @@ gaps:
     - almanac_api specifically flags external results, since it is the surface whose whole purpose is 'copy this verbatim'
     - the registry records which entries came from add-ref versus local registration, so the distinction survives a re-index
     - a test asserts an external hit cannot render identically to a first-party hit
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
 
@@ -3700,6 +3767,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "The PRESENCE record structure is defined with the required fields: worker_id, backend, machine, skills, harness, started_at, current_gap"
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-244
   domain: CREDIBLE
@@ -3709,6 +3777,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - A NATS-KV bucket is created with the correct subject prefix (chump.workers.*)
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-245
   domain: CREDIBLE
@@ -3719,6 +3788,7 @@ gaps:
   acceptance_criteria:
     - The register_worker_rpc_handlers function is implemented to register a worker session
     - The function returns a success response when a worker is registered
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-246
   domain: CREDIBLE
@@ -3729,6 +3799,7 @@ gaps:
   acceptance_criteria:
     - A worker presence record is stored in the NATS-KV bucket when a worker registers
     - The record is updated when a worker's presence changes (e.g. when a worker ships or exits)
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-247
   domain: CREDIBLE
@@ -3739,6 +3810,7 @@ gaps:
   acceptance_criteria:
     - A worker is deregistered when it exits or is marked as terminal
     - The worker's presence record is removed from the NATS-KV bucket
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-248
   domain: CREDIBLE
@@ -3748,6 +3820,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "PRESENCE record has the required fields: worker_id, backend, machine, skills, harness, started_at, current_gap"
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-249
   domain: CREDIBLE
@@ -3757,6 +3830,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - NATS-KV bucket is created with the correct subject prefix
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-250
   domain: CREDIBLE
@@ -3767,6 +3841,7 @@ gaps:
   acceptance_criteria:
     - Worker registration RPC handler is implemented and returns a success response
     - Handler stores the worker presence record in the NATS-KV bucket
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-251
   domain: CREDIBLE
@@ -3795,6 +3870,7 @@ gaps:
   acceptance_criteria:
     - register_worker_rpc_handlers function is no longer a stub
     - register_worker_rpc_handlers function returns a valid response
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-253
   domain: CREDIBLE
@@ -3805,6 +3881,7 @@ gaps:
   acceptance_criteria:
     - NATS-KV bucket is created with the correct prefix (chump.workers.*)
     - Bucket is accessible for writing and reading
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-254
   domain: CREDIBLE
@@ -3815,6 +3892,7 @@ gaps:
   acceptance_criteria:
     - Worker presence record is written to the NATS-KV bucket on claim
     - Record contains the required fields (worker_id, backend, machine, skills, started_at, current_gap)
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-255
   domain: CREDIBLE
@@ -3825,6 +3903,7 @@ gaps:
   acceptance_criteria:
     - Heartbeat file is written to the correct location (/tmp/chump-fleet-worker-<id>.heartbeat)
     - File contains the required information (worker_id, backend, machine, skills, started_at, current_gap)
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-256
   domain: CREDIBLE
@@ -3835,6 +3914,7 @@ gaps:
   acceptance_criteria:
     - Worker presence record is removed from the NATS-KV bucket on ship/exit
     - Heartbeat file is removed on ship/exit
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-257
   domain: CREDIBLE
@@ -3845,6 +3925,7 @@ gaps:
   acceptance_criteria:
     - Verb lists registered workers with their live state
     - Verb returns the required information (worker_id, backend, machine, skills, current_gap, heartbeat_age, ships_today)
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-258
   domain: CREDIBLE
@@ -3854,6 +3935,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "The PRESENCE record structure is defined with the required fields: worker_id, backend, machine, skills, harness, started_at, current_gap"
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-259
   domain: CREDIBLE
@@ -3863,6 +3945,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - A NATS-KV bucket is created with the correct prefix (chump.workers.*)
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-260
   domain: CREDIBLE
@@ -3873,6 +3956,7 @@ gaps:
   acceptance_criteria:
     - The register_worker_rpc_handlers function is implemented to handle worker registration RPC requests
     - The handler stores the worker presence record in the NATS-KV bucket
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-261
   domain: CREDIBLE
@@ -3883,6 +3967,7 @@ gaps:
   acceptance_criteria:
     - The register_worker_rpc_handlers function is updated to handle worker deregistration RPC requests
     - The handler removes the worker presence record from the NATS-KV bucket
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-262
   domain: CREDIBLE
@@ -3892,6 +3977,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - The worker presence record is refreshed with the correct heartbeat information
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-263
   domain: CREDIBLE
@@ -3902,6 +3988,7 @@ gaps:
   acceptance_criteria:
     - A harness-neutral verb is implemented to list registered workers
     - "The verb returns the required information: worker_id, backend, machine, skills, current_gap, heartbeat_age, ships_today"
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-264
   domain: CREDIBLE
@@ -3915,6 +4002,7 @@ gaps:
     - "WHAT REMAINS GENUINELY OPEN, and it is small: almanac_search_fleet returns bare citation/kind/name/path/repo/score, while almanac_search on a single repo returns a grounding block (indexed_commit, head_commit, stale) plus a coverage verdict. A caller who tries to open a fleet citation for a remote-cached repo finds no file and no explanation. Adding 'remote-cached — re-clone to read' (or the same grounding block) would remove the confusion entirely"
     - "SCOPE HONESTLY: this is a UX/disclosure nicety, NOT a correctness or trust defect. The citation is valid, the content is indexed, and the source is re-materializable on demand. P3, not P1"
     - "PROCESS LESSON WORTH MORE THAN THE FIX, and the reason this gap is kept rather than deleted: this is the SECOND P1 filed against designed behaviour in one session (the first was the markdown summary drop, which was documented INFRA-3529 behaviour). Both had the same cause — reaching for grep and ad-hoc queries instead of reading the tool's own docs and running its own health command first. The fleet-survey skill exists precisely to prevent this and was not invoked until the operator asked why not"
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
   evidence: |
     COMMAND: almanac_search_fleet 'game bot discord player notification webhook' then attempting to open the top hit | OUTPUT: returned derelict:packages/backend/lambda/discord/interactions.ts:48 with score 3030 and no caveat of any kind. /Users/jeffadkins/.almanac/repos-cache/derelict does not exist; the whole repos-cache directory is EMPTY (0 entries). Registry audit: 110 registered repos, 39 paths exist, 71 MISSING — every one of them under repos-cache | THEORY: RESILIENT-255 taught the SINGLE-repo answer to disclose staleness (almanac_search on chump returned a grounding block with indexed_commit, head_commit and stale:true, plus a coverage verdict). almanac_search_fleet returns bare objects — citation/kind/name/path/repo/score — with no grounding, no staleness, no note. So the fix landed on one path and not the other | ALT: rejected 'the index is simply stale' — the index CONTENT is fine and the hits are real; what is missing is any signal that the cited file can no longer be opened. That is a disclosure defect, not an indexing one
@@ -3933,6 +4021,7 @@ gaps:
     - "PRIORITISE BY SYMPTOM, they are not equally dangerous: a script that FAILS LOUDLY (installer, daemon) costs minutes. A script that SILENTLY SKIPS (notify-operator) costs an incident, because everything downstream reads as healthy. Fix the silent ones first and state which is which"
     - VERIFY FROM A WORKTREE, never from the main checkout — the bug is invisible from the main checkout by construction, which is why it survived. Claim any gap and run the script from the resulting worktree
     - "SAME FAMILY as CREDIBLE-237 (tests pinned to src/main.rs, broken by a refactor) and CREDIBLE-239 (env-var gate scanning only src/ while code moved to crates/): all three are the code moved and the tooling assumed it did not"
+  opened_date: '2026-08-19'
   closed_pr: 3551
   outcome_id: MISSION-010
 
@@ -4000,6 +4089,7 @@ gaps:
     - "FIX 3 — MINE BEFORE BUILD, and I failed to do this when first filing: scripts/ci/test-gap-closure-consistency.sh ALREADY exists (CREDIBLE-028/039/031) with forward mode (done gaps whose closed_pr PR actually merged) and reverse mode (open gaps with closed_pr -> stale_post_merge_gap). It would NOT have caught tonight (the PRs did merge), but the repair belongs as an EXTENSION of that gate, not a new detector. Add a file-overlap check: a gap closed by a PR that touched none of the files its ACs name"
     - "REPAIR PATH IS ALSO BROKEN AND NOW URGENT — see INFRA-3580, escalated to P1: the three gaps reopened tonight sit as status=open with a stale closed_pr, which is precisely the stale_post_merge_gap shape. Wiring a consumer for that event (as CREDIBLE-275 asks) BEFORE fixing INFRA-3580 could re-close the work we just recovered"
     - "INTERIM LEVER, documented in the code itself: there is deliberately no env escape hatch — stopping the local receiver process is the intended off switch"
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
   evidence: |
     COMMAND: chump gap show on RESILIENT-262, RESILIENT-265, RESILIENT-266 after PR #3544 merged 2026-08-09T20:15:42Z | OUTPUT: all three report status: done with closed_pr: 3544. PR #3544 is RESILIENT-263 (outbound Discord DM + chunking) and did NONE of their work — 262 is triage-vs-escalate, 265 is the approve/deny loop, 266 is the gateway daemon whose actual work is in PR #3551 and was still OPEN when they flipped. Two of the three had zero commits of any kind | THEORY: unconfirmed. auto-flip-on-merge.yml extracts a SINGLE gap id from the PR TITLE, and that title named only RESILIENT-263, so the title path alone does not explain it. The three closed gaps are all referenced in RESILIENT-263 ACs and in the #3544 body under a LINK line, so a body scan or an AC-link cascade in chump gap ship are the leading suspects — NEITHER IS PROVEN. Do not fix on this theory without confirming it | ALT: rejected the fleet did the work — RESILIENT-265 and 262 have no branch, no PR and no commits; RESILIENT-266 has real work but it lives in PR #3551, which was open at the time and is still not merged
@@ -4087,6 +4177,7 @@ gaps:
     - "The change described by \"gate false-positive audit — every gate a real signal or DELETED (farmer_auth_dead, phantom required checks, reapers freeing 0 bytes, grace-guards that don't guard); measure per-gate FP rate\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: SHIP-INFRA
 
 - id: CREDIBLE-272
@@ -4099,6 +4190,7 @@ gaps:
     - "The change described by \"ship-pipeline scoreboard — green-first-try%, time-to-land, admin-merge count, gate FP rate; published so we lead on measured quality+speed\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: SHIP-INFRA
 
 - id: CREDIBLE-273
@@ -4133,6 +4225,7 @@ gaps:
     - RUN IT ON A SCHEDULE, not once. A one-time sweep finds today instruments; the class regenerates every time code moves. Per ZERO-WASTE-036 an unscheduled instrument does not count as shipped — and the irony of an unscheduled rot-detector should not be lost on the implementer
     - REPORT AS FINDINGS, NOT FAILURES. These are not CI failures and must not block PRs; they are a queue of suspected-dead instruments for a human or a triage agent to confirm. False positives are expected — a gate can legitimately assert something absent
     - "VERIFY BY REPLAY: run the sweep against the tree as of 2026-08-08 and assert it independently finds operator-recall dead and the vacuous stale-binary assertion. A rot-detector that cannot rediscover known rot is itself rot"
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: incidental discovery across one session 2026-08-09, not a search | OUTPUT: four instruments were silently not doing their job, each found only because something else was being worked on. (1) mold was apt-installed by INFRA-2242 and never wired to RUSTFLAGS — a fast linker sitting unused for weeks, found while reading a CI failure. (2) operator-recall has sat enabled=true in ~/.chump/operator-recall.toml with ZERO processes since 2026-05-08 against a stale pidfile — three months dead, found while looking for an escalation channel. (3) CI gates pinned to src/main.rs paths silently passed VACUOUSLY after a refactor moved the code (CREDIBLE-237). (4) the 15-slot provider cascade logs provider_ms but never which slot answered (CREDIBLE-266), found by asking a simple question about model usage | THEORY: every one of these is a ZERO-DEFECT state by any process metric — nothing fails, nothing alarms, CI is green. The fleet has no detector for the class "an instrument that stopped reporting", so discovery is entirely incidental | ALT: rejected "first-pass-yield or CI metrics would catch these" — CREDIBLE-273 measures rework and by construction can only see things that FAIL. All four were invisible to it, and that limitation is written into that script own header
@@ -4196,6 +4289,7 @@ gaps:
     - "5. STALE ARTIFACTS: DISCORD_HANDOFF.md still says RESILIENT-266 is \"in progress\" and that nothing is linked with depends_on — both false since 2026-08-09T21:18Z. Almanac chump index sits at a7b79c63 while head is aa5652e2"
     - "6. YIELD SAMPLE IS HALF-CLASSIFIED: CREDIBLE-273 reports 14 PRs but only 7 had their failures classified into real-defect / late-obligation / false-signal / scope-blind. The headline claim that under 5% of failures were real defects rests on those 7. Classify the other 7 before that number is quoted as fleet-wide"
     - "7. THE DISCORD GATEWAY IS STILL RUNNING AND STILL BROKEN (RESILIENT-277): it will keep producing dead approval cards on any tool-gated request. Either land 277 or stop the daemon — launchctl bootout gui/$(id -u)/ai.chump.discord-gateway. Leaving a known-broken user-facing surface running is its own small defect"
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
 
 - id: CREDIBLE-277
@@ -4210,6 +4304,7 @@ gaps:
     - The registry gate either parses the YAML or the gap records explicitly why grepping is sufficient — a contract its own enforcement cannot parse is the defect, not the syntax error
     - A CI check fails if the file ever stops parsing, so this cannot silently regress
     - "Fix the class, not the instance: any other unquoted scalar starting with a YAML indicator character is corrected in the same pass"
+  opened_date: '2026-08-19'
   evidence: |
     COMMAND: git show origin/main:docs/observability/EVENT_REGISTRY.yaml | python3 -c 'import yaml,sys; yaml.safe_load(sys.stdin)'  |  OUTPUT: yaml.scanner.ScannerError: found character '`' that cannot start any token, in "<stdin>", line 110, column 14. Line 110 is an unquoted trigger value beginning with a backtick: 'trigger: `chump gap audit-done` finds a DONE gap...'. Pre-existing on origin/main (f60ac216), not introduced by any recent branch.  |  THEORY: the file header declares itself a GROUND-TRUTH CONTRACT that fleet-brief, waste-tally, kpi-report and every ambient consumer reads to know which kind=X values to expect, and INFRA-1237 hardened a gate around it. But any consumer using a real YAML parser cannot load it at all — which means either no consumer actually parses it (the contract is documentation, not machinery) or those that do are silently falling back. Both possibilities are worth knowing, and the gate passing while the file is unparseable means the gate is grepping, not parsing. A contract that its own enforcement cannot parse is the same shape as a supervisor that reports health it never measured.  |  ALT: considered just quoting line 110 as a drive-by inside PR 3562 — rejected: the one-line fix is trivial but the question it raises (does anything actually parse this file?) is the real work, and burying it in a curator-supervisor diff would lose it. Considered treating it as cosmetic — rejected: INFRA-754/1237/1287 all cite consumers reading this file, so either those citations are wrong or the consumers are broken.
 
@@ -4275,6 +4370,7 @@ gaps:
     - audit-done is actually SCHEDULED (launchd or CI) and its findings reach a surface an operator already reads — today nothing invokes it, which is why a working watchdog produced zero operator signal
     - "Boilerplate acceptance criteria stop being generated, or audit-done ignores them: 'The change described by <title> is implemented in the relevant code path(s)' cannot be covered or failed by any diff, and it is why AC-coverage scoring missed all 79. Either chump gap reserve demands real criteria or the auditor excludes the three known boilerplate lines from its denominator and says so"
     - "Regression: a test proves a bookkeeping-only PR closing a gap is FLAGGED, and that the flag survives the gap text naming the same files the PR touched (the CREDIBLE-175 false-negative that path-overlap alone could not catch)"
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
   evidence: |
     COMMAND: scripts/ops/false-done-sweep.py --multi-close-only ; chump gap audit-done ; sed -n '90,95p' src/done_auditor.rs ; grep -n 'ORDER BY id' crates/chump-gap-store/src/lib.rs  |  OUTPUT: (1) Of 239 done gaps closed by the 47 PRs that each closed 3+ gaps, 79 were closed by SIX PRs whose diffs contain NO implementation file at all — only docs/gaps/*.yaml, docs/audits/RED_LETTER.md, docs/ROADMAP.md, docs/archive/*. Priority split 3 P0 / 23 P1 / 52 P2 / 1 P3. This is set membership, not a heuristic: PR #3199 closed CREDIBLE-151, RESILIENT-151 and RESILIENT-172 while touching exactly one file, docs/gaps/CREDIBLE-151.yaml. PR #3165 closed 18 gaps touching 4 bookkeeping files. Spot check of CREDIBLE-151 (scoreboard must verify build SHA is ancestor-of-origin/main): the only commit ever touching auto-deploy in scripts/dev/mission-scoreboard.sh is #3038, which PREDATES the closing PR. (2) chump gap audit-done exists for exactly this job (INFRA-3495) but reports '88 audited, 20 flagged' out of 1,608 done-with-PR gaps, because GapStore::list is 'ORDER BY id' and done_auditor::audit does .take(limit) with limit=100 hardcoded at src/main.rs:10706. It re-audits the same COG/CREDIBLE-0xx prefix on every run and has NEVER examined 1,520 gaps (94.5%). Nothing schedules it — no cron, no launchd, no CI reference.  |  THEORY: the closing mechanism is auto-flip-on-merge marking done every gap a PR merely CITES (CREDIBLE-268, open P0). A registry-bookkeeping PR that mentions many gap IDs therefore closes all of them. What is PROVEN here is that the closed_pr attribution is false — the receipt points at a diff that does not contain the work; whether each gap's work landed in some other PR needs the per-gap check. Either way the registry cannot answer 'where did this ship', which is the one question a closed_pr exists to answer. audit-done cannot find these because it scores acceptance-bullet coverage, and chump gap reserve auto-generates boilerplate AC ('The change described by <title> is implemented in the relevant code path(s)') that no diff can meaningfully cover or fail.  |  ALT: considered path-overlap between the gap's named files and the PR's diff as the detector — MEASURED AND REJECTED as the primary signal: it does not catch CREDIBLE-175, the case that motivated the whole sweep, because that gap's text names the exact files its false-closing PR touched. Kept as a lower-confidence SUSPECT tier (70 more) with the false-negative rate documented in the script. Considered widening audit-done's limit from 100 — insufficient on its own: order it by closed_at and make it resumable, or it will still only ever see one end of the alphabet.
@@ -4289,6 +4385,7 @@ gaps:
     - "The change described by \"de-flake chump-gap-store proof_of_merge test — passes locally 6/6, intermittently FAILs in CI, blocks unrelated PRs\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-284
   domain: CREDIBLE
@@ -4301,6 +4398,7 @@ gaps:
     - reserve NO LONGER auto-fills the tautological placeholder - an unauthored gap has EMPTY AC (which audit-ac flags), not a fake-pass placeholder that reads as covered
     - chump gap decompose PRESERVES author-provided acceptance_criteria as the fixed done-definition (the WHAT) and only generates the implementation sub-steps (the HOW); never overwrites authored AC
     - "CI smoke test proves: (a) reserve P1 without AC is refused, (b) with it the AC is stored verbatim, (c) decompose leaves authored AC unchanged"
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: chump gap reserve --help + sqlite3 .chump/state.db SELECT acceptance_criteria FROM gaps. OUTPUT: reserve has NO --acceptance-criteria flag; every reserved gap gets the tautological placeholder AC The change described by [title] is implemented in the relevant code paths. THEORY: the done-definition (WHAT done means) is intent and does NOT rot; only the decomposition (HOW / which files) ages. Deferring the done-definition to claim-time chump gap decompose (an LLM call) removes the external anchor - the same model family writes the AC, does the work, and the AC-gate judges the work against that self-authored AC, a closed loop grading its own homework. Structural driver of the unverified_ship class (37 of 70 cycles on CJ 2026-08-17). audit-ac already flags weak AC but reserve keeps minting placeholders. ALT rejected: keep placeholder + claim-time decompose (the current failure); pre-file sub-gaps at file time (those rot - why two-phase exists). Fix separates them: author WHAT at file time, generate HOW at claim time.
@@ -4316,6 +4414,7 @@ gaps:
     - "almanac_architecture edges_resolved/edges_total rises materially above the current ~20% (target: >70% for Rust) — measured on chump"
     - almanac_impact returns a real transitive blast radius for a hub file (repo_path.rs, imported_by 27) instead of a near-empty walk
     - Also resolve shell source and python import edges where cheap; the note keeps stating the resolved fraction so degradation stays loud
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: mcp almanac_architecture(chump) + almanac_neighbors(front_door.rs). OUTPUT: note says LOWER BOUND 540 of 2765 import edges resolved (~20 pct); front_door.rs returns imported_by:[] imports:[] though it is clearly wired into main.rs. THEORY: almanac does not resolve Rust mod/use/crate:: (and likely shell source, python import) edges, so almanac_impact/neighbors return a near-empty graph — unusable for dependency-ordering / CI-batching / blast-radius, and silently wrong (returns [] not error). Clustering (architecture modules+hubs) and fusion search WORK; only the edge graph is broken. ALT rejected: keep using it for deps (gives false 80-pct-blind DAG). Siblings: INFRA-3529 (fusion favors code over docs), INFRA-3530 (SQL unindexed).
@@ -4330,6 +4429,7 @@ gaps:
     - "The change described by \"the claim bad-GAP-ID CLI test (fast-checks CREDIBLE-018) hits the farmer-RED refusal BEFORE gap-ID format validation, so a transient farmer-RED fails fast-checks -> test -> fast-checks-required -> verified on EVERY code PR and jams the whole merge pipeline. Fix: validate gap-ID format before the farmer-status gate (or make the test robust to farmer-RED). Env-race false-red gate site.\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-293
   domain: CREDIBLE
@@ -4341,6 +4441,7 @@ gaps:
     - "The change described by \"it compares running-binary SHA to origin/main SHA at the INSTANT, so any moment main is ahead of the last 20-min auto-deploy cycle (i.e. most of the time — main moves ~q10-20min, deploy runs q20min) reads as \"NO auto-deploy — MISSION-012 open — THE MULTIPLIER\" and flips the verdict off ON-TRACK on timing luck. Auto-deploy is actually healthy (SKIP-when-current, deploys on main-move). Fix: ③ should be a FRESHNESS SLA — pass if the binary is within N minutes / M commits of the latest main-move (e.g. deployed within 30min), fail only if deploy-lag persists beyond the auto-deploy cadence+build-time. A flickering ③ erodes the scoreboard as the one honest measure + risks alarm-fatigue masking a REAL deploy regression.\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-20'
 
 - id: DOC-031
   domain: DOC
@@ -4353,6 +4454,7 @@ gaps:
     - CLAUDE.md references AGENTS.md for coordination rules instead of duplicating; retains only Claude-Code-specific overlay
     - docs/process/CHUMP_DISPATCH_RULES.md is generated from / references AGENTS.md so chump-local agents get same doctrine
     - No coordination rule exists in only one of the three files — verified by CI lint
+  opened_date: '2026-07-26'
 
 - id: DOC-035
   domain: DOC
@@ -4387,6 +4489,7 @@ gaps:
     - " README includes a troubleshooting section for common install/init issues "
     - " yes "
     - ""
+  opened_date: '2026-07-26'
 
 - id: DOC-048
   domain: DOC
@@ -4901,6 +5004,7 @@ gaps:
     - Goal 1 multiplier framing updated — next lever re-derived from the current scoreboard, not left as self-deploy
     - REALITY_MAP par.5 notes INFRA-3287 done with date
     - no new claims without receipts
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
 
 - id: DOC-081
@@ -4915,6 +5019,7 @@ gaps:
     - audit-priorities phantom-ref count for RESEARCH_INTEGRITY.md is 0
     - each ref resolved to proprietary-tracked annotation or corrected citation — none silently deleted
     - no proprietary content copied into the public doc
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
 
 - id: DOC-082
@@ -4963,6 +5068,7 @@ gaps:
     - "upshift/oracle/slidemate/olive/echeo-web additions landed with repo:path:line receipts"
     - method v2 section records denominator, passes, verify grading, and CREDIBLE-203
     - "ships after PR #3485 merges, no conflict"
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: DOC-085
@@ -4995,6 +5101,7 @@ gaps:
     - three patterns added to SHIP_ASSIST_PLAYBOOK with receipts
     - cancelled-required diagnosis includes the exact gh commands
     - re-mint pattern cross-references INFRA-3532's gate message
+  opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
 
 - id: DOC-087
@@ -5062,6 +5169,7 @@ gaps:
     - THEN DROP WARN-ONLY for canonical docs specifically. The gate has been warn-only since DOC-041 'until the long-tail cleanup happens' — slice 1 IS that cleanup, so the justification is now spent. Do not make it fail for log docs
     - SCHEDULE IT via the existing curator-loop pattern (ci-audit / md-links / decompose). A one-time cleanup that is not scheduled is stale again within a quarter, which is precisely how the corpus reached 61% untagged. Per ZERO-WASTE-036 an unscheduled instrument does not count as shipped
     - "VERIFY AS SLICE 1 DID: run the gate before and after and record scanned/fresh/stale counts in the PR body. Slice 1 baseline to compare against: 208 scanned, 0 stale, exit 0"
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
 
 - id: DOC-091
@@ -5132,6 +5240,7 @@ gaps:
     - "THE SHIPPED FIX ALREADY EXISTS FOR TWO OF THEM: scripts/setup/install-discord-gateway.sh verifies the feature is compiled in before installing, and both it and discord-gateway-run.sh set CHUMP_DISCORD_ENABLED explicitly. Document that the supported path is the installer, not four hand-set variables"
     - "DO NOT COLLAPSE THE GATES. It is tempting to fold them into one flag. Resist: they gate different things (build size, product opt-in, and an unpatched CVE) and a single switch would let someone accept a HIGH security advisory while thinking they were only enabling a feature"
     - ALSO NOTE the r2d2 database is locked ERROR lines emitted twice at every gateway startup. They are non-fatal (startup continues) but they are logged at ERROR, so anyone reading the log while debugging will chase them first
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: DOC-095
@@ -5143,6 +5252,7 @@ gaps:
   acceptance_criteria:
     - "Create docs/strategy/FLEET_BUILD_SPEED_2026-08-09.md as plan-of-record. MUST capture: (a) ROOT CAUSE = target-dir precedence bug — INFRA-2183 per-worktree isolation (crates/chump-atomic-claim/src/worktree_build_cache.rs) is silently overridden because worker.sh:171-180 exports CARGO_TARGET_DIR and cargo reads env-var before .cargo/config.toml target-dir; (b) DISK REALITY — Mac /System/Volumes/Data is 96%% full, 20GB free, shared target already 72GB, so per-worker dirs would BLOW the Mac disk => per-worker only viable on hosts WITH headroom; Mac levers = free-disk + linker + offload; (c) sccache OFF for measured 0%% hit (ZERO-WASTE-021: worktree paths poison rustc arg hashes) not just the RESILIENT-112 wedge; needs --remap-path-prefix first; (d) TIERS: 1 reconcile target-dir per-host-disk, 2 linker (lld Mac needs brew install, mold Linux — currently MISSING), 3 cargo-hakari, 4 sccache-after-remap, 5 revive helsinki(online,0/10 on junk gaps)+closetjunky(prep-only); (e) DISPATCH is built-not-wired: preferred_machine field + chump-coord assign daemon exist but assign daemon not running. "
     - " Cross-link + update docs/strategy/DISK_AWARE_FLEET_2026-05-29.md and docs/ROADMAP.md to point at this plan."
+  opened_date: '2026-08-19'
   outcome_id: FLEET-BUILD-SPEED
 
 - id: DOC-096
@@ -5177,6 +5287,7 @@ gaps:
     - "FIX THE STALE REFERENCES IN THE SAME PASS: the 8 /dashboard/next mentions in ROADMAP.md, MASTER_MANUAL section 0, and REDESIGN-PLAN section 1 sign-off request. Otherwise any agent reading them builds in a retired route"
     - "TRUST BOUNDARY IN THE MCP CONTEXT: olive promise is \"Olive fills the cart; the user taps Buy. Olive never touches money.\" add_to_cart writes a real Kroger cart from inside a THIRD-PARTY assistant — a materially different consent surface from a click in olive own UI. Document how consent is obtained and what the key gates"
     - DO NOT ADD AN 18TH ROADMAP — same lesson as DOC-089. One track in the existing roadmap plus a README line
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: DOC-098
@@ -5193,6 +5304,7 @@ gaps:
     - Doc gives the headless-safe apply pattern (detached setsid netplan apply plus an auto-rollback timer) because the operator is usually changing the same link they are connected over
     - Doc records the USB phone-tether fallback as the zero-typing recovery path for an off-network box, including that charge-only cables silently fail to tether
     - Runbook branches by declared link_class so an Ethernet assumption never again forces a console session
+  opened_date: '2026-08-19'
 
 - id: DOCS-001
   domain: DOCS
@@ -5217,6 +5329,7 @@ gaps:
     - "The change described by \"Run-the-Business roadmap track — the RUN half of COTG (customer 0)\" is implemented in the relevant DOCS code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: EFFECTIVE-001
   domain: EFFECTIVE
@@ -5346,6 +5459,7 @@ gaps:
     - Sister gap to EFFECTIVE-017 (src/dispatch.rs Rust side) — together they cover the worker abstraction in both Rust binary and shell coord layer
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-020
@@ -5407,6 +5521,7 @@ gaps:
     - Ships in the chump binary tarball (operators get this for free when they clone).
     - Wave-3-or-4 work + DEPENDS ON Phase 1 (chump cos digest producing yield numbers). File now, claim after the digest CLI ships.
     - "Out of scope: per-agent prompt customization (Phase 3, after critique-pass exists)."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-023
@@ -5556,6 +5671,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference chump-slo.sh (shipped in INFRA-2424) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'chump-slo.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-032
@@ -5578,6 +5694,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference daemon-exit-loop-watcher-daemon.sh (shipped in INFRA-2424) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'daemon-exit-loop-watcher-daemon.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-034
@@ -5588,6 +5705,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference main-preflight-watchdog-daemon.sh (shipped in INFRA-2424) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'main-preflight-watchdog-daemon.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-035
@@ -5610,6 +5728,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-gap-quality-gate.sh (shipped in INFRA-2475) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-gap-quality-gate.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-037
@@ -5627,6 +5746,7 @@ gaps:
     - a subscribed reaction is demonstrated firing end-to-end with no polling loop
   notes: |
     [2026-06-08T01:09:35Z] CUTTING-EDGE (research 2026-06): event-sourcing proven (Temporal $5B Feb-2026). ADD: each agent = named CONSUMER GROUP with committed read OFFSET (crashed agent replays from last offset = no msg loss); at-least-once + IDEMPOTENCY KEYS (no double-process on replay); DEAD-LETTER topic after N retries + alert. The bus-consuming deliberator must be a DURABLE consumer + DETERMINISTIC FOLD over the log (not an LLM snapshot — recoverable mid-tally). Refs: arXiv 2602.08009 (RAPS), Temporal.
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-038
@@ -5674,6 +5794,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2534.yaml (shipped in INFRA-2534) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2534.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-041
@@ -5720,6 +5841,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-md-links to reference COMMIT_MERGE_AUDIT_2026-06-03.md (shipped in INFRA-2521) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'COMMIT_MERGE_AUDIT_2026-06-03.md' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-045
@@ -5730,6 +5852,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-worktree-build-cache.sh (shipped in INFRA-2453) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-worktree-build-cache.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-046
@@ -5776,6 +5899,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2458.yaml (shipped in INFRA-2458) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2458.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-050
@@ -5798,6 +5922,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-main-preflight-watchdog-parser.sh (shipped in INFRA-2458) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-main-preflight-watchdog-parser.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-052
@@ -5832,6 +5957,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-infra-watcher to reference com.chump.mesh-worker.plist (shipped in INFRA-2545) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'com.chump.mesh-worker.plist' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-055
@@ -5842,6 +5968,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-decompose to reference mesh-worker-loop.sh (shipped in INFRA-2545) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'mesh-worker-loop.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-056
@@ -5852,6 +5979,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-mesh-worker.sh (shipped in INFRA-2545) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-mesh-worker.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-057
@@ -5862,6 +5990,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-deliberator-tick-emits.sh (shipped in RESILIENT-061) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-deliberator-tick-emits.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-058
@@ -5920,6 +6049,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-audit-shard-coverage.sh (shipped in INFRA-2565) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-audit-shard-coverage.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-063
@@ -5930,6 +6060,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-058.yaml (shipped in RESILIENT-058) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-058.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-064
@@ -5952,6 +6083,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference fleet-supervisor.sh (shipped in RESILIENT-058) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'fleet-supervisor.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-066
@@ -5962,6 +6094,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference gap-supervisor.sh (shipped in RESILIENT-058) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'gap-supervisor.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-067
@@ -5984,6 +6117,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-stale-main-guards.sh (shipped in INFRA-2628) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-stale-main-guards.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-069
@@ -5994,6 +6128,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-065.yaml (shipped in RESILIENT-065) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-065.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-070
@@ -6004,6 +6139,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-chump-commit-completes.sh (shipped in RESILIENT-065) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-chump-commit-completes.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-071
@@ -6014,6 +6150,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference assign.rs (shipped in INFRA-2476) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'assign.rs' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-072
@@ -6024,6 +6161,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference assign.rs (shipped in commit 47b9acb0a147) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'assign.rs' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-073
@@ -6034,6 +6172,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference capability.rs (shipped in commit 47b9acb0a147) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'capability.rs' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-074
@@ -6044,6 +6183,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference sync.rs (shipped in commit 47b9acb0a147) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'sync.rs' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-075
@@ -6054,6 +6194,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-gap-outcome-migration.sh (shipped in commit 47b9acb0a147) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-gap-outcome-migration.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-076
@@ -6064,6 +6205,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference CREDIBLE-080.yaml (shipped in CREDIBLE-080) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'CREDIBLE-080.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-077
@@ -6074,6 +6216,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference blame-bot.sh (shipped in CREDIBLE-080) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'blame-bot.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-078
@@ -6084,6 +6227,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-blame-bot.sh (shipped in CREDIBLE-080) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-blame-bot.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-079
@@ -6094,6 +6238,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference bypass-env-var-allowlist.txt (shipped in INFRA-2422) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'bypass-env-var-allowlist.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-080
@@ -6104,6 +6249,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-gap-id-lease-uniqueness.sh (shipped in INFRA-2422) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-gap-id-lease-uniqueness.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-081
@@ -6114,6 +6260,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2629.yaml (shipped in INFRA-2629) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2629.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-082
@@ -6124,6 +6271,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference last-mile-rescuer.sh (shipped in INFRA-2629) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'last-mile-rescuer.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-083
@@ -6134,6 +6282,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-last-mile-rescuer.sh (shipped in INFRA-2629) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-last-mile-rescuer.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-084
@@ -6144,6 +6293,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-infra-watcher to reference install-ghost-gap-reaper-launchd.sh (shipped in RESILIENT-066) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'install-ghost-gap-reaper-launchd.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-085
@@ -6154,6 +6304,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-fleet-pause-autolift.sh (shipped in RESILIENT-066) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-fleet-pause-autolift.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-086
@@ -6169,6 +6320,7 @@ gaps:
     - auto-merge behavior is bound to the level via the existing chump-policy chain (no parallel mechanism)
     - worker concurrency is bound to the level via the existing fleet scaling gate
     - a test exercises each level and asserts the allowed/forbidden action set
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-087
@@ -6229,6 +6381,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference ZERO-WASTE-004.yaml (shipped in commit 49189a24f287) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'ZERO-WASTE-004.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-091
@@ -6239,6 +6392,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference blame-bot.sh (shipped in commit 49189a24f287) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'blame-bot.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-092
@@ -6249,6 +6403,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference gap-gardener.py (shipped in commit 49189a24f287) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'gap-gardener.py' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-093
@@ -6259,6 +6414,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-gh-run-list-rest.sh (shipped in commit 49189a24f287) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-gh-run-list-rest.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-094
@@ -6283,6 +6439,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference EFFECTIVE-089.yaml (shipped in EFFECTIVE-089) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'EFFECTIVE-089.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-096
@@ -6319,6 +6476,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference EFFECTIVE-094.yaml (shipped in EFFECTIVE-094) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'EFFECTIVE-094.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-099
@@ -6329,6 +6487,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference bypass-var-ceiling.txt (shipped in EFFECTIVE-094) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'bypass-var-ceiling.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-100
@@ -6351,6 +6510,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference EFFECTIVE-097.yaml (shipped in EFFECTIVE-097) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'EFFECTIVE-097.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-102
@@ -6361,6 +6521,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-prepush-sccache-probe.sh (shipped in EFFECTIVE-097) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-prepush-sccache-probe.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-103
@@ -6371,6 +6532,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-rustfmt-parity.sh (shipped in INFRA-2672) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-rustfmt-parity.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-104
@@ -6381,6 +6543,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-075.yaml (shipped in RESILIENT-075) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-075.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-105
@@ -6391,6 +6554,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-install-hooks-stable-target.sh (shipped in RESILIENT-075) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-install-hooks-stable-target.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-106
@@ -6401,6 +6565,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-bot-merge-progress-file.sh (shipped in INFRA-472) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-bot-merge-progress-file.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-107
@@ -6411,6 +6576,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference DOC-065.yaml (shipped in DOC-065) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'DOC-065.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-108
@@ -6421,6 +6587,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2662.yaml (shipped in DOC-065) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2662.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-109
@@ -6431,6 +6598,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2663.yaml (shipped in DOC-065) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2663.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-110
@@ -6441,6 +6609,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2664.yaml (shipped in DOC-065) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2664.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-111
@@ -6451,6 +6620,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2665.yaml (shipped in DOC-065) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2665.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-112
@@ -6477,6 +6647,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2436.yaml (shipped in INFRA-2720) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2436.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-114
@@ -6487,6 +6658,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2437.yaml (shipped in INFRA-2720) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2437.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-115
@@ -6497,6 +6669,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2436.yaml (shipped in RESILIENT-085) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2436.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-116
@@ -6507,6 +6680,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-system-integration.sh (shipped in RESILIENT-085) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-system-integration.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-117
@@ -6517,6 +6691,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference reality-check.sh (shipped in CREDIBLE-090) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'reality-check.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-118
@@ -6539,6 +6714,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference _pick_gap.py (shipped in commit edd23caf0e24) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l '_pick_gap.py' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-120
@@ -6549,6 +6725,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-mission-picker.sh (shipped in commit edd23caf0e24) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-mission-picker.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-121
@@ -6559,6 +6736,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference EFFECTIVE-112.yaml (shipped in EFFECTIVE-112) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'EFFECTIVE-112.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-122
@@ -6597,6 +6775,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference scrub-git-env.sh (shipped in RESILIENT-090) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'scrub-git-env.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-125
@@ -6631,6 +6810,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference _pick_gap.py (shipped in INFRA-2741) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l '_pick_gap.py' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-128
@@ -6641,6 +6821,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-agent-dispatch-guardrail.sh (shipped in RESILIENT-093) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-agent-dispatch-guardrail.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-129
@@ -6651,6 +6832,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-bot-merge-gap-fatal.sh (shipped in RESILIENT-093) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-bot-merge-gap-fatal.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-130
@@ -6661,6 +6843,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-chump-upgrade-detection.sh (shipped in RESILIENT-093) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-chump-upgrade-detection.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-131
@@ -6671,6 +6854,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-inventory.sh (shipped in RESILIENT-093) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-inventory.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-132
@@ -6681,6 +6865,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-rust-first-worktree-bypass.sh (shipped in RESILIENT-093) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-rust-first-worktree-bypass.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-133
@@ -6708,6 +6893,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-onboard-clone-auth.sh (shipped in EFFECTIVE-123) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-onboard-clone-auth.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-135
@@ -6730,6 +6916,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.VXMw46xG7y has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-137
@@ -6740,6 +6927,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-md-links to reference MISSION.md (shipped in commit b70f46cfe2eb) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION.md' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-138
@@ -6750,6 +6938,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference MISSION.md: (shipped in commit b70f46cfe2eb) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION.md:' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-139
@@ -6760,6 +6949,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference mission-scoreboard.sh (shipped in commit b70f46cfe2eb) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'mission-scoreboard.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-140
@@ -6770,6 +6960,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference mission-scoreboard.sh: (shipped in commit b70f46cfe2eb) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'mission-scoreboard.sh:' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-141
@@ -6814,6 +7005,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-worktree-reaper-safety.sh (shipped in INFRA-1074) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-worktree-reaper-safety.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-144
@@ -6836,6 +7028,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2265.yaml (shipped in INFRA-2265) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2265.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-146
@@ -6846,6 +7039,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-bootstrap-smoke.sh (shipped in INFRA-2265) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-bootstrap-smoke.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-147
@@ -6873,6 +7067,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference bypass-env-var-allowlist.txt (shipped in CREDIBLE-085) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'bypass-env-var-allowlist.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-149
@@ -6883,6 +7078,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference bypass-var-ceiling.txt (shipped in CREDIBLE-085) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'bypass-var-ceiling.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-150
@@ -6893,6 +7089,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference check-sccache-hit-rate.sh (shipped in CREDIBLE-085) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'check-sccache-hit-rate.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-151
@@ -6939,6 +7136,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference bypass-env-var-allowlist.txt (shipped in commit 3e871d9f0b2c) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'bypass-env-var-allowlist.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-155
@@ -6949,6 +7147,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference bypass-var-ceiling.txt (shipped in commit 3e871d9f0b2c) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'bypass-var-ceiling.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-156
@@ -6959,6 +7158,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-infra-watcher to reference install-auto-deploy-launchd.sh (shipped in commit 3e871d9f0b2c) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'install-auto-deploy-launchd.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-157
@@ -6969,6 +7169,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference com.chump.external-repo-loop.plist.template (shipped in INFRA-2275) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'com.chump.external-repo-loop.plist.template' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-158
@@ -6979,6 +7180,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference com.chump.external-repo-loop.plist.template, (shipped in INFRA-2275) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'com.chump.external-repo-loop.plist.template,' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-159
@@ -6989,6 +7191,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-external-repo-plist-installer.sh (shipped in INFRA-2275) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-external-repo-plist-installer.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-160
@@ -7023,6 +7226,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-broadcast-reply-to.sh (shipped in EFFECTIVE-028) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-broadcast-reply-to.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-163
@@ -7033,6 +7237,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference _pick_gap.py (shipped in commit 831979a5cb13) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l '_pick_gap.py' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-164
@@ -7043,6 +7248,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-mission-picker.sh (shipped in commit 831979a5cb13) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-mission-picker.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-165
@@ -7119,6 +7325,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-disk-health-fixture.sh (shipped in RESILIENT-096) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-disk-health-fixture.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-171
@@ -7129,6 +7336,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference CREDIBLE-095.yaml (shipped in RESILIENT-097) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'CREDIBLE-095.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-172
@@ -7139,6 +7347,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2265.yaml (shipped in RESILIENT-097) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2265.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-173
@@ -7149,6 +7358,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-onboard-agentic-scout.sh (shipped in EFFECTIVE-166) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-onboard-agentic-scout.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-174
@@ -7159,6 +7369,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference MISSION-029.yaml (shipped in commit a18fe1c25f53) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION-029.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-175
@@ -7169,6 +7380,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference MISSION-030.yaml (shipped in commit a18fe1c25f53) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION-030.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-176
@@ -7179,6 +7391,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-md-links to reference MISSION.md (shipped in commit a18fe1c25f53) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION.md' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-177
@@ -7219,6 +7432,7 @@ gaps:
   notes: |
     Grounded in this session's transcript: shipping INFRA-2744 required ~5 manual rescues, each of which is a missing verb above. Recovery faces cross-ref RESILIENT-099 (reaper), RESILIENT-100 (bot-merge wedge), RESILIENT-103 (triple-store lease). The loop/wait/daemons verbs are net-new. Each verb must work harness-neutral (callable from worker.sh / chump --rpc / a cron, not just Claude Code) per AGENTS.md + docs/process/AGENT_API.md. Decompose into per-verb sub-gaps; claim-recover + lease-reconcile are highest leverage (turn a human rescue back into a 2-min self-heal).
     MISSION-010 Gate0 cluster — co-prioritized 2026-06-05; mission-linked for the MISSION-011 picker boost (mission_rank=0 → sorts ahead of non-mission gaps within its priority band).
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-179
@@ -7229,6 +7443,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-external-verify-merge.sh (shipped in CREDIBLE-096) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-external-verify-merge.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-180
@@ -7251,6 +7466,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-infra-watcher to reference com.chump.mesh-worker.plist (shipped in commit e15ca1bc239a) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'com.chump.mesh-worker.plist' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-182
@@ -7261,6 +7477,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-decompose to reference mesh-worker-loop.sh (shipped in commit e15ca1bc239a) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'mesh-worker-loop.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-183
@@ -7271,6 +7488,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2744.yaml (shipped in INFRA-2744) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2744.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-184
@@ -7293,6 +7511,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference MISSION-032.yaml (shipped in commit d4a140982eeb) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION-032.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-032
 
 - id: EFFECTIVE-186
@@ -7303,6 +7522,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference MISSION-033.yaml (shipped in commit d4a140982eeb) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION-033.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-187
@@ -7313,6 +7533,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference MISSION-034.yaml (shipped in commit d4a140982eeb) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION-034.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-188
@@ -7323,6 +7544,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference MISSION-035.yaml (shipped in commit d4a140982eeb) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION-035.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-189
@@ -7333,6 +7555,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-infra-watcher to reference com.chump.external-scan-reaper.plist (shipped in commit 272626256f00) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'com.chump.external-scan-reaper.plist' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-190
@@ -7343,6 +7566,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference external-scan-reaper.sh (shipped in commit 272626256f00) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'external-scan-reaper.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-191
@@ -7353,6 +7577,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-external-scan-reaper.sh (shipped in commit 272626256f00) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-external-scan-reaper.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-192
@@ -7363,6 +7588,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-md-links to reference AUTONOMOUS_IMPROVE_LOOP.md (shipped in EFFECTIVE-177) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'AUTONOMOUS_IMPROVE_LOOP.md' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-193
@@ -7373,6 +7599,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-chump-improve.sh (shipped in EFFECTIVE-177) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-chump-improve.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-194
@@ -7383,6 +7610,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference external-clone-reaper.sh (shipped in commit 537335f581f2) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'external-clone-reaper.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-195
@@ -7393,6 +7621,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-external-clone-reaper.sh (shipped in commit 537335f581f2) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-external-clone-reaper.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-196
@@ -7403,6 +7632,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-chump-outcome.sh (shipped in commit 84706518a443) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-chump-outcome.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-197
@@ -7413,6 +7643,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-chump-improve.sh (shipped in CREDIBLE-100) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-chump-improve.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-198
@@ -7423,6 +7654,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-chump-repos.sh (shipped in commit 1bed59bd3a9c) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-chump-repos.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-199
@@ -7446,6 +7678,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-deliberator-tick-emits.sh (shipped in RESILIENT-062) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-deliberator-tick-emits.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-201
@@ -7482,6 +7715,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-md-links to reference ONBOARD_0TO1_DOCTRINE.md (shipped in EFFECTIVE-199) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'ONBOARD_0TO1_DOCTRINE.md' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-204
@@ -7492,6 +7726,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-cargo-target-reaper.sh (shipped in commit 926e032d517e) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-cargo-target-reaper.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-205
@@ -7502,6 +7737,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference MISSION-041.yaml (shipped in commit a4855d8306d3) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION-041.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-206
@@ -7512,6 +7748,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-gap-backfill-external-repo.sh (shipped in commit a4855d8306d3) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-gap-backfill-external-repo.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-207
@@ -7522,6 +7759,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-mission-scoreboard-modes.sh (shipped in commit c82650e6f9ee) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-mission-scoreboard-modes.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-208
@@ -7532,6 +7770,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference external_repo_schema.rs (shipped in EFFECTIVE-201) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'external_repo_schema.rs' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-209
@@ -7542,6 +7781,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference active-target-reaper.sh:97 (shipped in RESILIENT-107) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'active-target-reaper.sh:97' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-210
@@ -7552,6 +7792,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference onboard-scout-scheduler.sh (shipped in commit e4875e16d52e) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'onboard-scout-scheduler.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-211
@@ -7562,6 +7803,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-onboard-scout-scheduler.sh (shipped in commit e4875e16d52e) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-onboard-scout-scheduler.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-212
@@ -7572,6 +7814,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-108.yaml (shipped in RESILIENT-108) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-108.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-213
@@ -7582,6 +7825,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-chump-outcome.sh (shipped in commit 155b66a83e11) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-chump-outcome.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-214
@@ -7592,6 +7836,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-chump-outcome.sh (shipped in commit d6cdd4d425e8) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-chump-outcome.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-215
@@ -7634,6 +7879,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference CREDIBLE-104.yaml (shipped in CREDIBLE-104) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'CREDIBLE-104.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-218
@@ -7648,6 +7894,7 @@ gaps:
     - "Test scripts/ci/test-chump-commit-argv-scope.sh: create untracked .chump-no-reap; run chump-commit foo.rs -m '...' with cargo fmt touching foo.rs; verify commit contains foo.rs ONLY (not .chump-no-reap)"
     - If cargo fmt touches a file OUTSIDE the declared argv (e.g. an unrelated .rs file in workspace), chump-commit FAILS LOUD with a diagnostic rather than silently re-staging it
     - "Doctrine cross-ref: this gap is a CASE STUDY referenced in docs/process/DURABLE_FIX_DOCTRINE.md (CREDIBLE-105) — the 2026-06-05 RESILIENT-110 ship attempt was forced into a soft-reset cycle by this bug"
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-219
@@ -7663,6 +7910,7 @@ gaps:
     - "Add audit emit: kind=yaml_orphan_pruned with gap_id, file_path, reason, daemon_name (so the source-of-deletion is identifiable next time)"
     - "Test scripts/ci/test-yaml-orphan-prune-state-aware.sh: state.db row X-NNN exists, X-NNN.yaml exists → daemon does NOT delete. state.db row absent, YAML present → daemon deletes WITH the audit emit."
     - "Doctrine cross-ref: CASE STUDY referenced in docs/process/DURABLE_FIX_DOCTRINE.md (CREDIBLE-105) — the 2026-06-05 RESILIENT-110 ship attempt was forced into a YAML-rewrite cycle by this bug"
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-220
@@ -7677,6 +7925,7 @@ gaps:
     - "Regression repro: artificially produce a 30k-byte cargo error stream and verify the user-visible truncated output contains the LAST 5 lines (the conclusion + \"error: could not compile\" lines), not just the middle."
   notes: |
     Empirical evidence 2026-06-05: 4 preflight retries today (EFFECTIVE-216, RESILIENT-118) each showed truncated cargo output ending mid-"Checking" line, no error visible. Had to re-run cargo clippy --workspace directly to see the actual diagnostic (turned out clippy was fine; failures were sccache/reaper races). Truncation made root-cause diagnosis 10× slower than necessary.
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-221
@@ -7692,6 +7941,7 @@ gaps:
     - "if not auto-injecting, chump-commit.sh exits NON-ZERO and prints a clear 'COMMIT REJECTED — add Net-new-docs: +N trailer' as its LAST output line (survives a '"
     - " tail' pipe)"
     - "regression test: committing a new docs/foo.md via chump-commit.sh either succeeds without the caller manually adding the trailer, or fails non-zero with the clear message"
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-222
@@ -7708,6 +7958,7 @@ gaps:
     - "Smoke test: broadcast.sh --to all-opus from session A with NO other live sessions; spawn fresh session B; assert SessionStart digest contains the message; assert second start of session B does NOT re-present it."
   notes: |
     ROOT-CAUSE evidence (2026-06-05): broadcast.sh FEEDBACK fan-out checks .chump-locks/.curator-opus-*.lock and silently no-ops if 0 found. Today even the operator's 23:14:33Z broadcast to all-opus only landed in ambient — no inbox writes because no curator-opus locks were live. ~/.chump/inbox/ doesn't exist; ~/.chump/comms/ doesn't exist. This is the missing 'subscribe-side' from A2A_MASTER_PLAN_2026-06-03.md L1/L5. Without this, every broadcast is a coin-toss based on who happens to be running at fan-out time. Pairs with: CREDIBLE-114 (enforcement hook), INFRA-1944 (delivery receipts), INFRA-1862 (umbrella).
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-223
@@ -7718,6 +7969,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-farmer-check-auth.sh (shipped in RESILIENT-113) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-farmer-check-auth.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-224
@@ -7728,6 +7980,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-infra-watcher to reference install-wizard-daemon-launchd.sh (shipped in RESILIENT-120) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'install-wizard-daemon-launchd.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-225
@@ -7738,6 +7991,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-118.yaml (shipped in RESILIENT-118) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-118.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-226
@@ -7748,6 +8002,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference EFFECTIVE-216.yaml (shipped in EFFECTIVE-216) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'EFFECTIVE-216.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-227
@@ -7758,6 +8013,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference CREDIBLE-122.yaml (shipped in CREDIBLE-122) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'CREDIBLE-122.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-228
@@ -7768,6 +8024,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-a2a-consensus-e2e.sh (shipped in CREDIBLE-122) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-a2a-consensus-e2e.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-229
@@ -7796,6 +8053,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference DOC-067.yaml (shipped in DOC-067) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'DOC-067.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-231
@@ -7806,6 +8064,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference assign.rs (shipped in CREDIBLE-107) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'assign.rs' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-232
@@ -7816,6 +8075,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference bypass-var-ceiling.txt (shipped in CREDIBLE-107) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'bypass-var-ceiling.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-233
@@ -7826,6 +8086,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference capability.rs (shipped in CREDIBLE-107) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'capability.rs' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-234
@@ -7836,6 +8097,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference sync.rs (shipped in CREDIBLE-107) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'sync.rs' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-235
@@ -7846,6 +8108,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-chump-gap-reserve-evidence.sh (shipped in CREDIBLE-107) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-chump-gap-reserve-evidence.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-236
@@ -7856,6 +8119,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-058.yaml (shipped in RESILIENT-131) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-058.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-237
@@ -7866,6 +8130,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-059.yaml (shipped in RESILIENT-131) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-059.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-238
@@ -7876,6 +8141,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-060.yaml (shipped in RESILIENT-131) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-060.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-239
@@ -7886,6 +8152,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-131.yaml (shipped in RESILIENT-131) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-131.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-240
@@ -7896,6 +8163,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2224.yaml (shipped in INFRA-2224) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2224.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-241
@@ -7906,6 +8174,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-1612.yaml (shipped in INFRA-1612) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-1612.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-242
@@ -7916,6 +8185,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-force-stale-base-guard.sh (shipped in INFRA-2005) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-force-stale-base-guard.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-243
@@ -7926,6 +8196,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-no-manual-ship-bypass.sh (shipped in INFRA-2827) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-no-manual-ship-bypass.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-244
@@ -7936,6 +8207,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-797.yaml (shipped in INFRA-797) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-797.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-245
@@ -7946,6 +8218,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-135.yaml (shipped in RESILIENT-135) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-135.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-246
@@ -7956,6 +8229,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-worker-timeout-scale.sh (shipped in RESILIENT-135) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-worker-timeout-scale.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-247
@@ -7966,6 +8240,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference worker-timeout.sh (shipped in RESILIENT-135) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'worker-timeout.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-248
@@ -7976,6 +8251,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-fleet-auth-check.sh (shipped in RESILIENT-143) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-fleet-auth-check.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-249
@@ -7986,6 +8262,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference CREDIBLE-123.yaml (shipped in commit 807aa753b417) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'CREDIBLE-123.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-250
@@ -7996,6 +8273,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference EVAL-125.yaml (shipped in commit 807aa753b417) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'EVAL-125.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-251
@@ -8006,6 +8284,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference META-273.yaml (shipped in commit 807aa753b417) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'META-273.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-252
@@ -8016,6 +8295,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-135.yaml (shipped in RESILIENT-135) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-135.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-253
@@ -8026,6 +8306,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-worker-timeout-scale.sh (shipped in RESILIENT-135) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-worker-timeout-scale.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-254
@@ -8036,6 +8317,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference worker-timeout.sh (shipped in RESILIENT-135) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'worker-timeout.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-255
@@ -8046,6 +8328,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-fleet-auth-check.sh (shipped in RESILIENT-143) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-fleet-auth-check.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-256
@@ -8056,6 +8339,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference CREDIBLE-123.yaml (shipped in commit 807aa753b417) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'CREDIBLE-123.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-257
@@ -8066,6 +8350,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-797.yaml (shipped in INFRA-797) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-797.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-258
@@ -8076,6 +8361,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-review-handoff-smoke.sh (shipped in INFRA-774) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-review-handoff-smoke.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-259
@@ -8086,6 +8372,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference CREDIBLE-124.yaml (shipped in commit 1a5a08253108) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'CREDIBLE-124.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-260
@@ -8108,6 +8395,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference MISSION-042.yaml (shipped in commit 1a5a08253108) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION-042.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-262
@@ -8118,6 +8406,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-ci-health-gate.sh (shipped in RESILIENT-146) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-ci-health-gate.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-263
@@ -8128,6 +8417,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-bypass-trailer-validator.sh (shipped in RESILIENT-150) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-bypass-trailer-validator.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-264
@@ -8153,6 +8443,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.sesaNzYOfT has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"A CLI tool that tracks daily habits\"\n3. Sub-gaps filed for core feature areas"
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-266
@@ -8163,6 +8454,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.R5UhOPohfj has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-267
@@ -8185,6 +8477,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-269
@@ -8195,6 +8488,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-infra-watcher to reference install-conductor-launchd.sh (shipped in EFFECTIVE-264) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'install-conductor-launchd.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-270
@@ -8205,6 +8499,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-pwa-prefs.sh (shipped in CREDIBLE-135) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-pwa-prefs.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-271
@@ -8215,6 +8510,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-unknown-subcommand-guard.sh (shipped in CREDIBLE-134) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-unknown-subcommand-guard.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-272
@@ -8225,6 +8521,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-worker-oauth-unset.sh (shipped in CREDIBLE-137) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-worker-oauth-unset.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-273
@@ -8259,6 +8556,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-picker-p0-mission-effort-bypass.sh (shipped in commit 220d4ec7ed25) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-picker-p0-mission-effort-bypass.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-276
@@ -8269,6 +8567,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-execute-gap-external-routing.sh (shipped in commit 082edc263428) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-execute-gap-external-routing.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-277
@@ -8279,6 +8578,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference routing.yaml) (shipped in RESILIENT-152) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'routing.yaml)' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-278
@@ -8289,6 +8589,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-self-sync-fleet.sh (shipped in RESILIENT-152) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-self-sync-fleet.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-279
@@ -8299,6 +8600,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference routing.yaml (shipped in RESILIENT-154) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'routing.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-280
@@ -8309,6 +8611,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-routing-no-haiku.sh (shipped in RESILIENT-154) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-routing-no-haiku.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-281
@@ -8319,6 +8622,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference fleet-autorestart-daemon.sh (shipped in RESILIENT-155) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'fleet-autorestart-daemon.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-282
@@ -8329,6 +8633,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference fleet-version-skew-detect.sh (shipped in RESILIENT-155) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'fleet-version-skew-detect.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-283
@@ -8339,6 +8644,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-fleet-skew-detect.sh (shipped in RESILIENT-155) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-fleet-skew-detect.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-284
@@ -8349,6 +8655,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-stall-detector-build-aware.sh (shipped in RESILIENT-157) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-stall-detector-build-aware.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-285
@@ -8359,6 +8666,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference fleet-keeper-ctl.sh (shipped in RESILIENT-158) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'fleet-keeper-ctl.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-286
@@ -8369,6 +8677,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-fleet-autopilot-worker-pool.sh (shipped in RESILIENT-158) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-fleet-autopilot-worker-pool.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-287
@@ -8405,6 +8714,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. When the top-ranked scan gap is dedup-skipped (done or in-flight PR), pick_gap advances to the next implementable gap instead of exiting. 2. Bounded by a max-skips guard. 3. Test: a scan whose top gap is covered by an open PR → improve implements the next undone gap, not exit."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
   evidence: |
     2026-06-22 BEAST run: improve picked the top scan gap (ML-pipeline path fix), DEDUP correctly found an open PR (#4) already covers it, then EXITED — it did NOT advance to the next-ranked undone gap. For sustained unattended autonomy (MISSION-010), a single improve invocation must iterate: when the top gap is dedup-skipped (done or in-flight), advance to the next implementable gap and land a real PR. AC: pick stage loops through doctrine-ordered gaps until it finds one that passes dedup, implements THAT; add a bounded max-skips. Test: a scan whose top gap is covered by an open PR → improve implements the next undone gap, not exit. Pairs with the stale-scan problem (onboard refresh) — together they're what gate sustained autonomy.
@@ -8487,6 +8797,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference CREDIBLE-125.yaml (shipped in commit 5660fd6d7b1a) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'CREDIBLE-125.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-296
@@ -8497,6 +8808,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference MISSION-043.yaml (shipped in commit 5660fd6d7b1a) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION-043.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-297
@@ -8507,6 +8819,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-160.yaml (shipped in commit 5660fd6d7b1a) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-160.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-298
@@ -8531,6 +8844,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-md-links to reference OUTWARD_FLYWHEEL_2026-06-22.md (shipped in META-298) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'OUTWARD_FLYWHEEL_2026-06-22.md' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-300
@@ -8541,6 +8855,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-gap-list-since-json-schema.sh (shipped in CREDIBLE-144) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-gap-list-since-json-schema.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-301
@@ -8551,6 +8866,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference CREDIBLE-126.yaml (shipped in commit 7dfefdbff5a9) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'CREDIBLE-126.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-302
@@ -8561,6 +8877,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference EFFECTIVE-293.yaml (shipped in commit 7dfefdbff5a9) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'EFFECTIVE-293.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-303
@@ -8571,6 +8888,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-167.yaml (shipped in commit 7dfefdbff5a9) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-167.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-304
@@ -8584,6 +8902,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-305
@@ -8618,6 +8937,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-auth-status.sh (shipped in CREDIBLE-146) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-auth-status.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-307
@@ -8669,6 +8989,7 @@ gaps:
     - chumpd children see OPENROUTER_API_KEY from providers.env, and ps -ef shows NO key material in argv
     - one real xs gap ships end-to-end via the OpenRouter tier (PR merged, cycle_end model=kimi)
     - tier-scorecard.sh prints ships/attempts/rc-classes per model for the last N days
+  opened_date: '2026-07-26'
 
 - id: EFFECTIVE-310
   domain: EFFECTIVE
@@ -8760,6 +9081,7 @@ gaps:
   acceptance_criteria:
     - "AC1: a free-tier execute_gap on a gap with empty acceptance_criteria returns before dispatching the model (no model call, no bot-merge). AC2: the early-return message is distinct (e.g. 'skipping AC-less gap') so worker.sh can cool it. AC3: capable (non-free-tier) path unchanged. AC4: rebased on post-#3265 execute_gap.rs (write_file branch present)."
   depends_on: [RESILIENT-187]
+  opened_date: '2026-07-26'
 
 - id: EFFECTIVE-317
   domain: EFFECTIVE
@@ -8799,6 +9121,7 @@ gaps:
     - "The change described by \"enumerate which gates/tests a diff exercises (blast-radius preview before push)\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
     MISSION-045 session 2026-07-27: landing one anti-bloat gate took 3 full CI rounds (~20min each) because failures surfaced serially, not up front. The outcome gate (one behavior change) broke ~6 tests across 4 files; none were knowable before CI. An impact analyzer mapping enforcement-path edits -> exercising tests would enumerate the blast radius pre-push.
@@ -8845,6 +9168,7 @@ gaps:
     - "The change described by \"gap slices auto-trace to the parent gap's outcome (affordance for MISSION-045 close-gate)\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
     2026-07-27: decomposing MISSION-065 into slices 068-074 produced 6 UNTRACED P1 gaps (no outcome_id). The MISSION-045 close-gate then requires outcome_id at ship, so those slices — the entire Phase-0 pickable lane — would bounce the fleet at ship time. Manually linked all 6 to CHUMPOS as the fix, but the durable fix is an AFFORDANCE: 'chump gap decompose' (and any slice-creating path) must propagate the parent's outcome_id to each slice, so the close-gate never bounces decompose output. First concrete instance of EFFECTIVE-321 (affordances over gates): the gate is fine; it was missing the affordance that keeps its precondition satisfied by default.
@@ -8905,6 +9229,7 @@ gaps:
     - "The change described by \"Flow-style typed state machine for multi-step gap execution (CrewAI borrow → ChumpOS kernel ABI)\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: MISSION-032
 
 - id: EFFECTIVE-327
@@ -8917,6 +9242,7 @@ gaps:
     - "The change described by \"[COTG] chump bench runner — score a track lap (schema + ci-green grading + scorecard)\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: EFFECTIVE-328
@@ -8929,6 +9255,7 @@ gaps:
     - "The change described by \"[COTG] complete the ChumpBench first heat — 4 remaining tracks + command acceptance grader + scorecards\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: EFFECTIVE-329
@@ -8947,6 +9274,7 @@ gaps:
     - npm run build succeeds
   notes: |
     2026-07-29: chump improve --gap ran the FULL rails on coloringbook (clone->worktree->chump-local[Principle-0]->provenance-stamp->deterministic PR #1->verify->remediate) but the implement stage produced a NON-FUNCTIONAL 4-line stub test (assert someFunction()) — ZERO real work. PR closed. Proves: (a) rails production-grade, (b) implement-stage real-build-quality NOT there even opus-class, (c) NO gate caught the stub because outcome-verification (COTG-3.1/INFRA-3494) is unbuilt + verify_staged_edit only catches clobbers/invalid-files not do-nothing stubs. This is the load-bearing delivery gap.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: EFFECTIVE-330
@@ -9306,6 +9634,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     EVIDENCE PRESERVED AND NOW INDEXED 2026-08-08. The artifact is still on disk at ~/.chump/external/bootstrap_photo-renamer/clone/rename_photos.py and still broken: python3 -c 'ast.parse(...)' returns SyntaxError: '(' was never closed. Registered in almanac as slug 'bootstrap_photo-renamer', so the failure is now citable at path:line rather than described from memory. Its README is the original bootstrap PROMPT verbatim ('Build a command-line tool in a file named rename_photos.py, using the Pillow (PIL) library, that renames every JPEG... read the date from EXIF DateTimeOriginal'), which makes this a complete specimen: the instruction given, the code produced, and the exact way it failed — useful for the syntax-pre-check AC this gap asks for, and as a fixture for testing it.
+  opened_date: '2026-08-19'
 
 - id: EFFECTIVE-352
   domain: EFFECTIVE
@@ -9408,6 +9737,7 @@ gaps:
   acceptance_criteria:
     - After intake produces requirements, a design pass emits a UI/brand/interaction spec so the shipped artifact is USABLE not just functional
     - "Proven: for a product gap the design chair emits an interaction+visual spec the implement stage consumes; the shipped artifact has coherent UI, not a raw CLI dump"
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: EFFECTIVE-359
@@ -9498,6 +9828,7 @@ gaps:
     - "After merge, the publication stage puts the artifact in the persons hands: deploy/package/link per artifact_type — merged code becomes a usable, reachable thing"
     - "Proven: a merged product gap yields a live URL / installable / delivered artifact the operator can actually use, not just a green PR"
   depends_on: [EFFECTIVE-363]
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: EFFECTIVE-365
@@ -9513,6 +9844,7 @@ gaps:
     - "Proven: a shipped giveaway/product gets approval-ready launch drafts (Show HN / Reddit / LinkedIn) in-voice, gated on Jeffs explicit send"
   notes: |
     2026-08-05 v2 survey (hardened, multi-pass): primary prior art is richer than first found — postsub (SubstackIntegrationService 449 LOC, ContentScheduler, rssGenerator, templateService: the Substack/newsletter lane nearly whole), echeovid SmartPublishingHub (433 LOC), jarvis skills/video-creation (recordDemo + per-product templates incl. recordOliveDemo — demo video/screenshot artifacts, already pointed at olive). beast-mode launch scripts remain secondary. All claimed capability: real code by line count, integrations unverified (Substack has no official API).
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: EFFECTIVE-366
@@ -9556,6 +9888,7 @@ gaps:
     - release-auditor checklist consumes a stranger-GO
     - bridge --apply run clean
     - outward NO-GO boundary stated in posse README and enforced by allowlist
+  opened_date: '2026-08-19'
   outcome_id: STRANGER-GATE
 
 - id: EFFECTIVE-369
@@ -9572,6 +9905,7 @@ gaps:
     - script names concrete receipts (counts, gap IDs), no vibes
     - on-demand invocation under 10s to first word
     - Pixel node path documented even if deferred
+  opened_date: '2026-08-19'
   outcome_id: FLEET-RADIO
 
 - id: EFFECTIVE-370
@@ -9588,6 +9922,7 @@ gaps:
     - degraded states copy-reviewed (write-as-jeff register)
     - stranger run against degraded mode files zero got-stuck findings
   depends_on: [CREDIBLE-206]
+  opened_date: '2026-08-19'
   outcome_id: READY-GATE
 
 - id: EFFECTIVE-371
@@ -9604,6 +9939,7 @@ gaps:
     - zero announcements before green
     - readiness receipt doc consumable by release-auditor
     - template written down so upshift/olive reruns are mechanical
+  opened_date: '2026-08-19'
   outcome_id: LIGHTHOUSE-ARCADE
 
 - id: EFFECTIVE-372
@@ -9616,6 +9952,7 @@ gaps:
     - Scope the preflight BLOCKING gate (src/preflight.rs, currently 'cargo check --workspace' ~line 1081) to 'cargo check -p <changed-crate>' + capped jobs (~6) + nice + load-aware-defer.
     - A test in src/preflight.rs proves the scoped gate runs the changed crate's check and skips the full workspace; fails without the change.
     - "NOTE: earlier auto-generated AC (EFFECTIVE-386 write-ac) hallucinated file paths (src/lib/gate.rs, src/tests/*) — those do NOT exist; real path is src/preflight.rs. Blocked on EFFECTIVE-388 (AC-writer repo grounding) for trustworthy auto-AC."
+  opened_date: '2026-08-19'
 
 - id: EFFECTIVE-373
   domain: EFFECTIVE
@@ -9644,6 +9981,7 @@ gaps:
     - repeat sweep is one command plus a launchd entry
     - bust findings counted per repo so the mop-and-bucket trend is measurable
   depends_on: [CREDIBLE-209]
+  opened_date: '2026-08-19'
   outcome_id: MOP-BUCKET
 
 - id: EFFECTIVE-375
@@ -9675,6 +10013,7 @@ gaps:
     - "attribution recorded at borrow time (not publish time): a THIRD_PARTY-style note crediting DeusData/codebase-memory-mcp (MIT) for the idea, following their own THIRD_PARTY.md table shape"
   notes: |
     Demoted P1->P2 2026-08-07 during queue alignment: I filed ~14 P1s in one session into a pool of 61 (a 23% inflation of the P1 signal). This one is real but is an enhancement, not a blocker — it returns to P1 when a force-multiplier ahead of it lands or when someone needs it.
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: EFFECTIVE-000
 
@@ -9695,6 +10034,7 @@ gaps:
     - DEPTH.md updated in the same commit; attribution note for the borrowed idea (DeusData/codebase-memory-mcp, MIT) recorded at borrow time
   notes: |
     Demoted P1->P2 2026-08-07 during queue alignment: I filed ~14 P1s in one session into a pool of 61 (a 23% inflation of the P1 signal). This one is real but is an enhancement, not a blocker — it returns to P1 when a force-multiplier ahead of it lands or when someone needs it.
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: EFFECTIVE-000
 
@@ -9708,6 +10048,7 @@ gaps:
     - "scripts/arsenal/harvest.sh gains an external mode using 'gh search repos --sort stars' (verified 2026-08-07: unsorted best-match returned three 0-star repos and MISSED chatwoot at 35,579 stars, so sorting is required not optional)"
     - "AGENT_OPERATING_MODEL.md:44 calls the harvester the 'prior-art check before building' while harvest.sh:67 runs 'gh repo list' over our own repos only — reconcile the claim with the behavior"
     - Results carry license (via 'gh api repos/O/R/license'; note licenseInfo.spdxId returns null for non-standard licenses and NOASSERTION means read LICENSE by hand)
+  opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
 - id: EFFECTIVE-379
@@ -9757,6 +10098,7 @@ gaps:
     - "injected signatures carry their path:line citation and the index's grounding commit, so a stale signature is detectable rather than silently trusted"
     - "kill switch honored: CHUMP_ALMANAC_DISPATCH_GROUNDING=0 disables this along with the existing grounding"
     - a test proves a gap naming a real fleet symbol gets that symbol's true signature in the prompt, and fails without the change
+  opened_date: '2026-08-19'
 
 - id: EFFECTIVE-382
   domain: EFFECTIVE
@@ -9773,6 +10115,7 @@ gaps:
     - the output names what it could not see — unsupported languages per CREDIBLE-214, unindexed SQL per INFRA-3530 — so an agent knows the shape of its blind spot before it starts
     - "dogfood receipt: run against one real external repo (codebase-memory-mcp is already indexed) and record the packet in the gap notes"
     - DEPTH.md updated same commit
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: EFFECTIVE-383
@@ -9882,6 +10225,7 @@ gaps:
     - "FROM CREDIBLE-217: the CONFIG organ's proven finding classes are the acceptance bar for signal quality — the sweep must be able to surface incoherences of the kind already found by hand (CARGO_TARGET_DIR resolved 14 ways across 171 sites in chump; three conflicting BEAST_MODE endpoint flags across 356 reads including a beast-mode.dev vs beastmode.dev typo-domain; OPENAI_API_KEY with 4 defaults over 49 reads in Maclawd)"
   notes: |
     Bumped P2->P1 2026-08-07: operator asked for this capability directly ('can we build tech debt agents with/on posse using almanac'), and it is the trunk of a four-gap cluster all parked at P2 — CREDIBLE-217 (folded in, superseded), ZERO-WASTE-036 (the ACT-on-detection loop, now depends on this), EFFECTIVE-374 (posse + fluff-audit sweep, depends on CREDIBLE-209). Detection must land before the act layer has anything to act on. Outcome linked at bump time, not via the set --priority side door (cf CREDIBLE-213).
+  opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
 - id: EFFECTIVE-390
@@ -9896,6 +10240,7 @@ gaps:
     - "Deterministic intake enrichment: the holler->chump bridge (games/shared/playtest/holler-to-chump.mjs) attaches candidate almanac hits for the TARGET repo into the gap at reserve time, so the grounding is visible to the picker and any human triager rather than only to the one dispatched agent. Bridged gaps currently land with generic template ACs and no location at all"
     - Candidates must be labelled candidates. Carry the same discipline Phase D already uses — a map, not an answer — plus the indexed commit, so a stale hit is detectable. Dispatch-time grounding still runs and refreshes it
     - "Zero-LLM: the enrichment is a search call, not a judgment. The bridge's deterministic spine (HOLLER_CHUMP_BRIDGE.md) must stay LLM-free — deciding whether a hit is RELEVANT stays with the agent"
+  opened_date: '2026-08-19'
 
 - id: EFFECTIVE-391
   domain: EFFECTIVE
@@ -9996,6 +10341,7 @@ gaps:
     - "dogfood receipt: at least one real idea goes drop -> digest -> filed gap end to end, recorded in the notes"
     - blocked until RESILIENT-246 restores the curator
   depends_on: [RESILIENT-246]
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: EFFECTIVE-393
@@ -10038,6 +10384,7 @@ gaps:
     - "ROADMAP.md gains an explicit O6 phase for continuous fleet-wide organ sweeping, so it lives in the plan rather than only in a gap. Verified 2026-08-07: O1-O5 cover ecosystem parity, claim correctness, convergence/release-gate and agent surface — none covers running the organs on a schedule across repos"
     - O6 references EFFECTIVE-389 (the code-posse sweep implementation) as its delivery vehicle, and states the exit condition
     - "Rationale to record: organs ARE proactively used today, but only at RELEASE time (RELEASE_CHECKLIST 1e flagmap + 1.5 comprehend). That catches a problem the moment something ships public; nothing catches it in the weeks between. olive's committed TEST_USER_PASSWORD sat until a release audit happened to look"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: EFFECTIVE-396
@@ -10065,6 +10412,7 @@ gaps:
     - "The top unread kinds are the fleet's real operational signal and each answers a question nobody is asking today: farmer_auth_dead 769, farmer_heartbeat 769, github_api_call 561, operator_recall_suppressed 522, operator_recall 247, farmer_drain_guard 198, cache_miss 138, queue_health_check_failed 133"
     - Extend TRACES beyond gap-run grouping to summarize operational event classes over a window (rates, spikes, ratios) — e.g. 769 farmer_auth_dead is either a real recurring outage or a known false-positive class (INFRA-2031 precedent), and today nothing tells you which
     - "Keep the organ's coverage-honesty rule: state what share of the stream was interpreted, never imply a full read"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: ZERO-WASTE-000
 
@@ -10082,6 +10430,7 @@ gaps:
     - "Coverage honesty travels with every finding: a partial/none organ result must say so in the row, so a thin scan can never be read as a clean bill of health (RELEASE_CHECKLIST 1.5c already requires this for humans — the machine path needs it too)"
     - context.repo uses a BARE slug, not owner/repo — the bridge prefixes the owner and double-prefixed tags route to a repo that does not exist (fixed at source 2026-08-07, do not reintroduce)
     - "Unblocks three things that are all currently manual or impossible: EFFECTIVE-389 (scheduled code-posse sweep), the RELEASE_CHECKLIST 1e/1.5 auditor filing what it finds instead of only printing it, and CREDIBLE-221 (organ usage telemetry)"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CHUMPOS
 
@@ -10203,6 +10552,7 @@ gaps:
     - "Ordering matters for cost: run highest-value first (P0/P1, then unblocking-bonus per chump-planner scoring) rather than newest-first, so the LLM spend lands where a claimable gap actually moves the fleet"
     - "MEASURE THE OUTCOME, not the run: report the template-AC count before and after, and re-run audit-ac to prove the number moved. 'the pass ran' is a signal, not an outcome"
     - "WORKED EXAMPLE from tonight: ZERO-WASTE-036 — the systematic fix for the built-not-wired pattern itself — sat at P2 with pure template ACs and was effectively unclaimable until they were hand-written. The most important gap in the queue was invisible because of this exact problem"
+  opened_date: '2026-08-19'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-408
@@ -10269,6 +10619,7 @@ gaps:
     READY CONSUMERS, all already filed and all starving on attention rather than capability: almanac's markdown summarize backfill (currently a local 3B at ~20s/file), organ sweeps across ~95 repos (EFFECTIVE-389), the 211-flag drift triage (CREDIBLE-222), 74 template ACs (EFFECTIVE-407, currently specced at opus), fleet CI watching (CREDIBLE-220), PR-rot detection (RESILIENT-247), holler triage/consolidate (ZERO-WASTE-049), and tracemap over 4,394 unread ambient events incl. 769 unclassified farmer_auth_dead (EFFECTIVE-397).
     
     QUALITY MECHANISM IS REDUNDANCY, NOT PROMPTING: N independent models; unanimous = accept as candidate, split = escalate to Claude or a human. Disagreement is the signal and must not be averaged away. Mirrors the Chatwoot lesson already recorded in SHAPE_SCAN_support.md — count observable acts, never a model's self-reported confidence.
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: EFFECTIVE-410
@@ -10325,6 +10676,7 @@ gaps:
     - "WIRE THE 25 FREE ZEN MODELS, all tool_call=true. Highest value: longcat-2.0-free and mimo-v2-pro-free (~1M context, free), grok-code (free, 256K in/out, purpose-built coder), and deepseek-v4-flash-free — the FREE sibling of the uncapped paid slot 14, which should absorb most of its traffic at zero cost"
     - "ALSO WIRE the three providers holding live keys with no slot: xai (a ready template already sits unused in .env.example:430-433), openai-direct, deepseek-direct. And decide on the two disabled slots: together (3) and github-models (7), the latter of which has a literal unexpanded '' as its key"
     - "DEDUPE slot 4 vs slot 8: both declare model=gemini-2.5-flash on the same base at the SAME priority=12, so ordering between them is arbitrary. Slot 4 claims RPD 86400 (~36x the real free quota) and CONTEXT_K=128 for a 1M-context model, and carries no privacy tier while its twin is marked trains. Slot 4 is a stale hand-entry"
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: EFFECTIVE-414
@@ -10337,6 +10689,7 @@ gaps:
     - "The change described by \"flag new large src/*.rs files landing in the bin (enforce crate-first, WHEN_TO_CRATE.md)\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: EFFECTIVE-415
@@ -10351,6 +10704,7 @@ gaps:
     - "THE DOMINANT LATENCY IS NOT CI: PR #3489 opened 21:47Z and its FIRST CI run started 00:22Z — 2h35m with zero runs — then merged 9 minutes later. The pipeline only fired after the PR was closed and reopened by hand. So end-to-end was 2h44m of which ~9m was actual pipeline"
     - "FIX THE TRIGGER, it is worth more than any check tuning: detect a PR with zero workflow runs N minutes after open and re-fire (or alert). Pairs with RESILIENT-247 (pr-rescue.sh exists, is unscheduled) — a rescue loop that also watched for never-triggered CI would have caught this in minutes instead of hours"
     - "Note the side effect for whoever implements the re-fire: close/reopen DROPS auto-merge, so it must be re-armed (gh pr merge <N> --auto --squash) or the PR silently stops merging itself"
+  opened_date: '2026-08-19'
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-416
@@ -10363,6 +10717,7 @@ gaps:
     - "The change described by \"'no readable intent documents' on repos that HAVE them (olive has CLAUDE.md/MANIFESTO.md/README.md/docs/*.md) — blocks autonomous scout\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: EFFECTIVE-417
@@ -10419,6 +10774,7 @@ gaps:
   depends_on: [CREDIBLE-240]
   notes: |
     Description note: one word was eaten by shell backtick expansion at filing time — the sentence reads "so  symbols are halved" and should read "so KEY-kind symbols are halved". The mechanism is the h.kind == "key" branch in crates/almanac-core/src/retrieve.rs, which halves the score of every JSON key symbol.
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: EFFECTIVE-000
 
@@ -10590,6 +10946,7 @@ gaps:
     - "The change described by \"chump integrator on|off|status wrapper — batching toggle must never be an env-var fumble (COTG new-user safety)\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: EFFECTIVE-425
   domain: EFFECTIVE
@@ -10601,6 +10958,7 @@ gaps:
     - "Running 'chump roadmap-from-vision \"<vision>\" --domain INFRA --outcome <existing-id> --max-gaps 3 --apply' (a) calls provider_cascade::build_provider() with RoadmapFromVisionContract::prompt() [contracts.rs:753-1081, ALREADY BUILT+tested], (b) extracts+parses+validates a Roadmap via existing chump_handoff::extract_json_block + Roadmap::validate(), (c) shells out to 'chump gap reserve --outcome ...' for >=1 GapDraft (NOT GapStore::reserve_verified direct — must inherit MISSION-045/pillar/similarity gates, mirror bootstrap.rs:871-931 reserve_umbrella_gap), (d) chump gap show <filed-id> confirms outcome_id set. No dry-run/truncation/bootstrap-wiring in this slice — follow-ons."
     - "--apply is opt-in; bare invocation only prints the validated Roadmap JSON."
     - max_gaps clamped client-side (never trust model compliance).
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: EFFECTIVE-426
@@ -10627,6 +10985,7 @@ gaps:
     - "The change described by \"batched integrator healthy + default — conflict-skip (RESILIENT-269) proven to land N green PRs in ONE CI run\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: SHIP-INFRA
 
 - id: EFFECTIVE-434
@@ -10653,6 +11012,7 @@ gaps:
     - "The change described by \"architect emits a MERGED skeleton (traits + todo!() holes + failing tests) as ONE stable PR, then N leaf fill-this-hole gaps each pointing at one todo!()+its test — makes agent diffs tiny+disjoint+mechanically-verifiable (structural fix for merge-race + definition-of-ready). Measure CI-time + collision-rate vs open-ended gaps\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: EVAL-085
   title: test eval 085
@@ -11089,6 +11449,7 @@ gaps:
   notes: |
     INVESTIGATED 2026-08-04 (Claude, live Scout repeat.mjs sweeps on canonical ~/Projects/games/realm-of-shadows). Built an aggressive early-area lethality fix (intro-trek areas: enemy damage x0.5 floored-at-1, aggro range x0.5 [a lever Easy lacks], speed x0.75). Measured cavern_entrance = 1/3 then 0/5 (deaths [1,0,1,1,1], maxProgress [5,6,7,5,4]) — the 1/3 was navigation NOISE. NOT lethality-blocked: deep milestones are COLD-TRAVERSE NAVIGATION blocked. Confirms realm DEPTH.md (Easy 0.7x -> deep still 0/3; warm-start adjacent -> 3/3). Fix REVERTED (unproven balance change, not shipped). GAME-004 AC not genuinely met. REFRAME: deep-traverse legibility / bot pathing, NOT difficulty. Lethality lever exhausted.
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/realm-of-shadows"
 
 - id: GAME-005
@@ -11110,6 +11471,7 @@ gaps:
   notes: |
     INVESTIGATED 2026-08-04 (same sweep). forest_west = 0/3, bot reaches depth 5-6 (maxProgress [5,5,6]) and gets STUCK (only 2 deaths in 3 runs) — navigation/progression blocked, not lethality. Same conclusion as GAME-004: cold-traverse navigation is the blocker; difficulty reduction does not move it (DEPTH.md Easy 0/3, warm-start 3/3). Also gated by switch/torch puzzles + root_cellar mini-boss key. REFRAME to deep-traverse legibility + puzzle/key reachability, not lethality. Stays OPEN.
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/realm-of-shadows"
 
 - id: GAME-006
@@ -11129,6 +11491,7 @@ gaps:
     - space-shooter test suite stays green
     - FINDINGS.md / DEPTH.md in repairman29/space-shooter updated in the same commit
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/space-shooter"
 
 - id: GAME-007
@@ -11148,6 +11511,7 @@ gaps:
     - grave-dancer test suite stays green
     - FINDINGS.md / DEPTH.md in repairman29/grave-dancer updated in the same commit
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/grave-dancer"
 
 - id: GAME-008
@@ -11167,6 +11531,7 @@ gaps:
     - grave-dancer test suite stays green
     - FINDINGS.md / DEPTH.md in repairman29/grave-dancer updated in the same commit
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/grave-dancer"
 
 - id: GAME-009
@@ -11188,6 +11553,7 @@ gaps:
     - crystal-rush test suite stays green
     - FINDINGS.md / DEPTH.md in repairman29/crystal-rush updated in the same commit
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/crystal-rush"
 
 - id: GAME-010
@@ -11209,6 +11575,7 @@ gaps:
     - crystal-rush test suite stays green
     - FINDINGS.md / DEPTH.md in repairman29/crystal-rush updated in the same commit
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/crystal-rush"
 
 - id: INFRA-001
@@ -12145,6 +12512,7 @@ gaps:
     - "Release gate: 7-day fleet run with > 5 deliberations resolved (verified via `kind=deliberation_resolved` events in ambient.jsonl), zero operator-interventions for overlap conflicts"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1123
@@ -12166,6 +12534,7 @@ gaps:
     - "Release gate: all six A2A layers running under signed-event mode for 7 days with `CHUMP_A2A_LAYER=4`; one chaos test for key revocation; < 0.5 CPU overhead at 32 workers × 100 events/min"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1124
@@ -12641,6 +13010,7 @@ gaps:
     - "1. scripts/ops/cargo-target-reaper.sh (INFRA-1250) extended to also reap /tmp/chump-infra-*/target/ dirs where the originating git worktree no longer exists (git worktree list --porcelain shows no matching path)\n2. Emit kind=cargo_target_reaped per reaped /tmp worktree target dir with {ts, kind, path, bytes_freed, age_days, worktree_gone=true}\n3. scripts/ci/test-cargo-target-reaper.sh updated with a synthetic /tmp/chump-<gap>-<id>/target/ fixture that verifies the /tmp reap path\n4. Failure taxonomy: transient=cargo lock active; permanent=path not found; log both via ambient event with error field\n5. Cost: bytes_freed reported in cargo_target_reaper_summary ambient event alongside main-repo metrics"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1171
@@ -12984,6 +13354,7 @@ gaps:
     - "Add #[serial_test::serial] to skill_hub::tests::default_registries_reads_env so env-var mutations don't race with parallel tests"
     - "cargo test skill_hub::tests::default_registries_reads_env passes 5 consecutive runs under cargo test --tests (full parallel suite)"
     - Remove INFRA-1192 entry from docs/process/KNOWN_FLAKES.yaml once fixed
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1193
@@ -13712,6 +14083,7 @@ gaps:
     - Test emits `kind=fleet034_cross_machine_pass` or `kind=fleet034_cross_machine_fail` to ambient.jsonl so the release gate is machine-readable
     - "This test is the final AC (#8) from FLEET-034 (NATS push routing); FLEET-034 remains open until this test passes in CI and the result is confirmed via ambient event"
     - "Test duration: < 60s in CI; if longer, extract the chaos-NATS portion into a separate nightly fixture"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1268
@@ -13728,6 +14100,7 @@ gaps:
     - "Test verifies: claim owner is Host B worker (not Host A), claim lease TTL is set, ack-timeout redelivers on ack loss"
     - Integration test lives in crates/chump-coord/tests/cross_machine.rs (or integration/ dir)
     - "CI gate: cargo test --test cross_machine (or similar) runs in CI after NATS broker available"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1269
@@ -14049,6 +14422,7 @@ gaps:
     - Emit `kind=roadmap_drift_detected` to ambient.jsonl on threshold cross; include `unanchored_count` and `starving_milestones[]` fields; registered in EVENT_REGISTRY.yaml before code ships
     - "Escape hatch: `CHUMP_CURATOR_ROADMAP_CHECK=0` disables the arm entirely; documented in `.env.example`"
     - "Test `scripts/ci/test-curator-roadmap-drift.sh`: synthesize a ROADMAP.md with 2 milestones (one with owning gaps, one empty) + state.db with 4 unanchored P0 gaps; assert drift detection fires, auto-files gap, dedup works on second run, escape hatch suppresses"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1287
@@ -14202,6 +14576,7 @@ gaps:
     - "TODO: smoke test command to verify observability"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1319
@@ -14221,6 +14596,7 @@ gaps:
     - "Events: github_mutation_queued, github_mutation_sent, github_mutation_failed, github_liaison_fallback registered in EVENT_REGISTRY.yaml before code ships"
   notes: |
     [2026-05-30T04:21:08Z] [2026-05-29 offline-first classification] Public-side, Phase 6 (longer-term) of INFRA-2246 offline-first roadmap. Workers never call GitHub directly; all mutations via NATS request/reply to a Liaison node. Depends on Phase 1-5 being stable.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1322
@@ -14265,6 +14641,7 @@ gaps:
     - "Documentation: docs/design/OFFLINE_FIRST.md §2 updated with the ACTUAL implementation (CAS specifics, env vars, exact command surface). Operator runbook in docs/process/ for 'when to use --local-merge' and 'how to diagnose a stuck local-merge-queue.sh'."
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1324
@@ -14278,6 +14655,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1325
@@ -14296,6 +14674,7 @@ gaps:
     - "chump health output includes GitHub mode line: github: online | offline (queue: N items) so operator can see current state at a glance"
   notes: |
     [2026-05-30T04:21:09Z] [2026-05-29 offline-first classification] Public-side, Phase 5 of INFRA-2246 offline-first roadmap. Operator-controllable + auto-detect via reachability probe; chump fleet doctor reports current mode.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1326
@@ -14486,6 +14865,7 @@ gaps:
     - "TODO: smoke test command to verify observability"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1337
@@ -14533,6 +14913,7 @@ gaps:
     - "TODO: smoke test command to verify observability"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1340
@@ -14565,6 +14946,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1342
@@ -14628,6 +15010,7 @@ gaps:
     - "The AC for INFRA-1329 covers: (a) detection criterion for 'stuck' (PR open > 2h with no CI progress), (b) specific recovery actions attempted (retrigger, rebase, force-reassign), (c) escalation path when auto-recovery fails (operator notification), (d) idempotency guarantee (running recovery twice on same PR is safe)"
     - "Smoke test for INFRA-1329: `scripts/ci/test-stuck-pr-recovery.sh` exists and covers the detection + recovery + escalation paths against a mock PR fixture"
     - INFRA-1345 closes when INFRA-1329's AC is finalized (this gap is a meta-AC-fix, not an implementation gap)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1346
@@ -15430,6 +15813,7 @@ gaps:
     - "Follow-up: if pillar starvation recurs within 7 days, a MISSION-PM maintenance gap is filed to add a `chump gap audit-priorities` CI gate that blocks ships when pickable-per-pillar < 2"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1383
@@ -15472,6 +15856,7 @@ gaps:
     - "If KEEP-ADVISORY: docs/process/CI_GATES.md has a row for tauri-cowork-e2e with rationale (e.g., flake rate too high for required, environment setup too fragile, low value signal) and a review-by date"
     - "Flake rate data: scripts/ci/check-gate-fire-rate.sh --gate tauri-cowork-e2e --window 30d run and result cited in decision rationale"
     - Done = disposition decision in docs/process/CI_GATES.md; no code changes if KEEP-ADVISORY
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1386
@@ -15486,6 +15871,7 @@ gaps:
     - "If KEEP-ADVISORY: docs/process/CI_GATES.md has a row for e2e-battle-sim with rationale (flake rate, infrastructure cost, signal value) and a review-by date"
     - "Flake rate data: scripts/ci/check-gate-fire-rate.sh --gate e2e-battle-sim --window 30d run and result cited"
     - Done = disposition decision in docs/process/CI_GATES.md
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1387
@@ -15500,6 +15886,7 @@ gaps:
     - "If KEEP-ADVISORY: docs/process/CI_GATES.md has a row for e2e-golden-path with rationale (flake rate, infrastructure cost, signal value) and a review-by date"
     - "Flake rate data: scripts/ci/check-gate-fire-rate.sh --gate e2e-golden-path --window 30d run and result cited"
     - Done = disposition decision in docs/process/CI_GATES.md
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1388
@@ -15813,6 +16200,7 @@ gaps:
     - Pairs with INFRA-1323 (local merge queue) — both consume the same TRIGGER_LOCAL signal. Pairs with INFRA-1392 (proof-of-merge) — rebase success doesn't flip gap status; the eventual merge does.
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1406
@@ -15947,6 +16335,7 @@ gaps:
     - Threshold ALERT_DOMAIN_SKEW_FATAL_PCT (default unset = warn-only) controls when it escalates to exit 1; today 80% should be the fatal threshold not 50%
     - Add a fleet-state metric kind=domain_skew_observed emitted at ambient with {ts, kind, domain, pct, total} so the operator dashboard can render the skew without it blocking CI
     - CI test scripts/ci/test-no-anthropic-smoke-skew.sh fabricates 100 gaps with 60% INFRA + asserts the script exits 0 but emits the warn-tier event
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1415
@@ -15996,6 +16385,7 @@ gaps:
     - Existing scripts/coord/_bounced_pr_classifier.py also reports cycle time per PR-rejection; this is the rolled-up fleet metric
     - Launchd job runs hourly
     - CI test scripts/ci/test-pr-cycle-slo.sh fabricates a github_cache.db with synthetic merged PRs + asserts the sparkline computation
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1418
@@ -16035,6 +16425,7 @@ gaps:
     - Re-run on existing DIRTY PRs after install proves they auto-resolve
   notes: |
     [2026-05-16T02:39:41Z] 2026-05-16T02:39:41Z: SUPERSEDED BY INFRA-1389 (broader scope). Demoted P0->P3; close when 1389 lands.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1420
@@ -16133,6 +16524,7 @@ gaps:
     - Document root cause + fix in docs/process/CLAUDE_GOTCHAS.md under 'CI pipeline'
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1426
@@ -16150,6 +16542,7 @@ gaps:
     - Smoke test scripts/ci/test-chump-pr-dryrun.sh
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1427
@@ -16265,6 +16658,7 @@ gaps:
   depends_on: [INFRA-1425]
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1434
@@ -16322,6 +16716,7 @@ gaps:
     - "Pairs with INFRA-1418 (offline-check linter): both run at chump gap reserve. Order: offline-check first (cheap regex), semantic check second (slower embeddings). Both must pass for reserve to proceed."
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1437
@@ -16485,6 +16880,7 @@ gaps:
     - "Output: per-line table (or --json) showing landed_commit / landed_pr / landed_gap_id / landed_at"
     - Used by INFRA-1416 chump pr explain-block to find sibling-fixes for the same file
     - CI test scripts/ci/test-pr-blame-file.sh fabricates a github_cache.db with a squash-merge that touched a path + asserts blame-file finds it
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1446
@@ -16754,6 +17150,7 @@ gaps:
     - "Performance: import-graph cached, expansion adds < 200ms to chump claim latency on a 100kLOC repo"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1458
@@ -16789,6 +17186,7 @@ gaps:
     - Smoke test scripts/ci/test-rearm-detector.sh stubbing gh — fixture PR with auto=null but prior arm in event log gets re-armed call
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1460
@@ -16806,6 +17204,7 @@ gaps:
     - Depends on INFRA-1420 keystone cascade (which already detects the merge) — this is the measurement leg
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1461
@@ -16820,6 +17219,7 @@ gaps:
     - Smoke test scripts/ci/test-worktree-path-standard.sh asserts naming is canonical and prune --orphaned correctly removes stale ones without losing uncommitted work
     - "Today's friction: multiple times had to git worktree remove --force collisions between INFRA-1336/infra-1336/chump-infra-1336/chump-INFRA-1336 etc."
     - "Bonus: prune emits kind=worktree_orphan_reaped {path, size_mb} so target-dir-reaper (INFRA-1349) and disk-health-monitor (INFRA-1437) see compatible signals"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1462
@@ -16855,6 +17255,7 @@ gaps:
     - "Bonus: chump-paramedic dry-run mode prints the proposed file-list-change before any push, so operator can intercept"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1464
@@ -16892,6 +17293,7 @@ gaps:
     - "Out of scope: cross-machine resume (NATS-backed checkpoints) — single-machine is enough"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1466
@@ -16973,6 +17375,7 @@ gaps:
     - Update web/v2/*.js callers to consistent state
     - "Add scripts/ci/test-no-404-callers-pwa.sh: for each fetch('/api/...') in web/v2/, assert the endpoint exists in src/web_server.rs's route table"
     - Run on every web/v2/ + src/web_server.rs commit
+  opened_date: '2026-07-26'
   skills_required: pwa,ci
   outcome_id: MISSION-010
 
@@ -17088,6 +17491,7 @@ gaps:
     - Operator can also chump nudge --abort <gap-id> to scrap without correction
     - Cockpit (chump --web) shows soft-paused agents with a one-line input field for the nudge
     - "CI test: agent intentionally enters soft-pause; chump nudge with a correction resumes execution with the hint applied; verify hint appears in the agent's LLM call history"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1477
@@ -17106,6 +17510,7 @@ gaps:
     - Sort/filter by state, resource, gap-id
     - Works with both pull-mode and NATS push-mode fleets
     - "CI test: start a 5-agent fleet, verify all 5 rows render with correct state transitions in under 5 seconds; intentionally wedge one, verify color flips to red and inspect button appears"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1478
@@ -17124,6 +17529,7 @@ gaps:
     - Operator can disconnect laptop and remote workers continue running; reconnect resumes view of in-flight work
     - "Documented runbook for common topologies: solo with dedicated workstation, team with shared neural-farm Linux box, remote workers in different geo"
     - "CI test: simulate the 2-machine topology in CI (two containers); verify cross-machine fleet operates end-to-end"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1479
@@ -17169,6 +17575,7 @@ gaps:
     - Hard-fail worktree on any hallucinated-dep check failure; emit ambient event kind=agent_hallucinated_dep with package name + which check failed
     - "Mitigates the AI Hallucination Poisoning attack vector (Marcus's SecOps concern): agent invents nonexistent package, attacker pre-registers it as malicious"
     - "CI test: agent introduces a dep named e.g. lodash-helper-2025 (nonexistent); verify check fires, worktree fails, ambient event emitted with correct payload"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1481
@@ -17188,6 +17595,7 @@ gaps:
     - "Audit log: every governance check (allow/deny) writes to a tamper-resistant ambient event with operator + resource + decision"
     - "CI test: 3-operator simulation with different roles, verify role-gated claim succeeds for admin, fails for observer; spend cap exhaustion stops next call cleanly"
     - "Documented for procurement reviewers: SOC 2-aligned audit log claims; role hierarchy; spend-cap arithmetic"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1482
@@ -17204,6 +17612,7 @@ gaps:
     - Add CI test scripts/ci/test-ci-yml-merge-driver.sh with N synthetic cases (additive-only, interleaved adds, both modify same step → keep conflict, both rename → keep conflict)
     - Emit kind=merge_driver_fallback to ambient.jsonl when the driver gives up (rc=1) so we can measure how often manual resolution is still needed
     - Pairs with INFRA-1389 (broad merge-driver coverage) — that gap added the registration; this gap improves the resolution algorithm itself
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1483
@@ -17429,6 +17838,7 @@ gaps:
     - Eliminates the recurring 'audit-cluster blocks 20+ PRs' pattern that's now happened 3x in <24h
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1494
@@ -17446,6 +17856,7 @@ gaps:
     - "Smoke test scripts/ci/test-zombie-lease-reap.sh: fixture lockfile with PID=99999 (definitely dead) + 24h mtime, assert reaped + ambient emit; fixture lockfile with live PID assert not touched"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1495
@@ -17464,6 +17875,7 @@ gaps:
     - Hourly launchd entry runs in --dry-run mode by default; bump to --apply once stable
     - CI test scripts/ci/test-state-db-yaml-sync.sh seeds state.db with N gaps, removes M YAML files, asserts sweep finds exactly M orphans and applies them
     - "Hygiene rule: never write YAML for done/superseded gaps (per CREDIBLE-012); only OPEN status"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1496
@@ -17479,6 +17891,7 @@ gaps:
     - "Manual repro: artificially slow broadcast.sh (sleep 5), confirm /api/health latency does NOT regress on the patched build"
     - No new clippy warnings; existing tests around this region still pass
     - "Cross-link: INFRA-1485 audited the pattern; this is one of the named residual sites"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1497
@@ -17494,6 +17907,7 @@ gaps:
     - Use chump_gh wrapper if present (per CLAUDE.md cache-first reads + criticality tags); pr-explain calls are background-tier
     - No new clippy warnings; existing pr-explain tests still pass
     - "Cross-link: INFRA-1485 #2211 — these are the named residual gh callsites that audit found"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1498
@@ -17511,6 +17925,7 @@ gaps:
     - "Manual repro: with `sleep 1; pgrep` injected (slow), /api/health latency does NOT regress on patched build"
     - No new clippy warnings; existing dashboard tests still pass
     - "Cross-link: INFRA-1485 — this is the most complex of the named residual sites because the fn is called from multiple handlers"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1499
@@ -17525,6 +17940,7 @@ gaps:
     - Smallest of the INFRA-1485 follow-ups (xs effort) — single line change + handler signature confirmation
     - "Smoke check: existing scripts/ci/test-server-survives-slow-endpoint.sh covers the pattern; verify it still passes; add a one-line case targeting this endpoint if it's not already covered"
     - No new clippy warnings
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1500
@@ -17580,6 +17996,7 @@ gaps:
     - Operator action items (legal / commercial / outreach decisions) flagged to chump-proprietary/OPERATOR_ACTIONS.md per the existing reference; NOT tracked in this gap registry
     - Done = PRs opened (regardless of merge outcome). Merge-acceptance lives in a follow-up gap if PRs sit > 2 weeks.
     - "Cross-link: complements the README + landing-page work; placement on these lists is the standard discovery surface for OSS dev tools"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1503
@@ -17634,6 +18051,7 @@ gaps:
     - "Doc: docs/process/TELEMETRY_PRIVACY.md commits to: never persist on server > 90 days, never sell/share, GDPR-style deletion-on-request via opt_in_session_uuid lookup"
     - "Smoke test scripts/ci/test-telemetry-opt-in.sh: (a) fresh install → status disabled, (b) emit attempt while disabled → no network call (mock server sees nothing), (c) enable without flag → refused, (d) enable + emit → exactly one POST with allowlisted fields only"
     - "Cross-link: per project_offline_local_llm_mission memory — Chump's pitch is offline-first; telemetry MUST never violate that. This gap codifies the privacy contract."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1506
@@ -17670,6 +18088,7 @@ gaps:
     - Founding-customer mechanic spec'd separately in INFRA-1511
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1508
@@ -17687,6 +18106,7 @@ gaps:
     - "Class-aware: only fires on cargo fmt diffs, not on clippy errors or test failures (those need real code work)"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1509
@@ -17723,6 +18143,7 @@ gaps:
     - Operator-action items flagged to chump-proprietary/OPERATOR_ACTIONS.md per existing reference (signing up, providing legal info) — NOT tracked in this gap registry
     - Done = doc committed + Jeff has reviewed; no provider chosen in this gap
     - "Cross-link: prerequisite to any monetization. Connects to MEMORY: exec_summary_hardware_economics (cost model) and project_offline_local_llm_mission (revenue must support free-offline-tier)"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1511
@@ -17758,6 +18179,7 @@ gaps:
     - "Quarterly bus-factor drill: co-operator runs the fleet for 48h while SPOF is unreachable"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1513
@@ -17773,6 +18195,7 @@ gaps:
     - Check added to .github/workflows/ci.yml in the audit or fast-checks shard; PR that removes a rule from .gitignore without also removing it from GITIGNORE_IP_RULES.yaml fails CI
     - "Escape hatch: a rule in GITIGNORE_IP_RULES.yaml can be marked optional: true; optional rules that are absent from .gitignore produce WARN, not FAIL"
     - Done = check green on main; docs/infra/GITIGNORE_IP_RULES.yaml committed with the initial rule set
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1514
@@ -17789,6 +18212,7 @@ gaps:
     - chump fleet doctor reports any worktree with a mismatched/stale remote
     - "Smoke test: claim a gap, cd into worktree, run `git push -u origin <branch>` — should succeed without operator having to discover the real remote name"
     - If the stray placeholder is intentional (e.g. for some upstream-isolation reason), document why; otherwise remove the placeholder-set step from worktree creation
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1515
@@ -17805,6 +18229,7 @@ gaps:
     - Exit 0 on --help/-h (not error path)
     - Audit pass over other scripts/coord/*.sh entry points for the same --help-exits-1 anti-pattern; file follow-up if widespread
     - "CI test: scripts/ci/test-bot-merge-help.sh asserts --help exits 0 and prints --gap somewhere in output"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1516
@@ -17821,6 +18246,7 @@ gaps:
     - "Bonus: emit kind=worktree_orphan_process_killed {pid, cmd, worktree_path, age_seconds}"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1517
@@ -17849,6 +18275,7 @@ gaps:
     - Eliminates the operator-flip-the-switch step from INFRA-1377 — once merged, every fleet up call ensures Merge Queue stays on. CONVOY pattern from today's session becomes structurally impossible.
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1519
@@ -17865,6 +18292,7 @@ gaps:
     - Smoke test scripts/ci/test-convoy-detection.sh stubs gh run list output, asserts kind emitted and threshold logic correct
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1520
@@ -17882,6 +18310,7 @@ gaps:
     - "Smoke test scripts/ci/test-pwa-proposed-action-approval.sh: stub paramedic emit, click Approve in headless PWA, assert command ran + kind emitted"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1521
@@ -17909,6 +18338,7 @@ gaps:
     - "Smoke test scripts/ci/test-docs-delta-linked-worktree.sh: creates temp linked worktree, makes a commit that triggers docs-delta logic, asserts hook exits 0 AND that the message file was actually read (verify via debug log or stdout marker)"
     - Existing pre-commit tests in scripts/ci/ still pass
     - "Cross-link: workaround was CHUMP_DOCS_DELTA_CHECK=0 on every commit during 2026-05-16 session — landing this kills the workaround"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1522
@@ -17946,6 +18376,7 @@ gaps:
     - "Today's signal: INFRA-1447 gate landed mid-fleet-cycle, now ~10 PRs failing audit on state-mutating shell additions. Each needs human judgment unless paramedic handles the easy cases."
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1524
@@ -17963,6 +18394,7 @@ gaps:
     - "Today's signal: #2184/#2183 had bypass intent expressed as markdown bullets, gate regex required bare-line, manual rewrite unblocked them"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1525
@@ -17981,6 +18413,7 @@ gaps:
     - "Today's signal: #2069/#2068/#2109/#2100/#2161 all 15-21h old, multiple persistent fails, INFRA-1406 daemon keeps rebasing them every cycle → ~5 hours/day CI burn for no convergence"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1526
@@ -18020,6 +18453,7 @@ gaps:
     - When the supersedure case is detected, the aggregator should still surface a warning (not error) and emit ambient kind=ci_supersedure_cancel for observability
     - "CI test fixture: simulate a supersedure event in a test repo, verify aggregator classifies correctly and exits 0"
     - Document the rule in .github/workflows/ci.yml inline comment so the next maintainer doesn't reintroduce the regression
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1528
@@ -18036,6 +18470,7 @@ gaps:
     - "Note: the autoMergeRequest object IS armed; the underlying GitHub auto-merge service appears to be eventually-consistent. Paramedic provides liveness guarantee"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1529
@@ -18066,6 +18501,7 @@ gaps:
     - "Already validated locally: 41/41 atomic_claim tests pass including the previously-flaking one."
     - "#2173 merged 2026-05-16T18:24 with the flake unfixed (coverage is not a required check), so no PR-blocking urgency, but the flake will recur. Picker for this gap: cherry-pick from the deleted chump/infra-1434-claim re-push (commit f85c10f5 if recoverable) or rewrite from this AC."
     - "Out of scope: changing how nats_dual_write_with_bin spawns (production path is fine, only the test helper is flaky)"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1531
@@ -18083,6 +18519,7 @@ gaps:
     - Pair with INFRA-1516 (orphan-process reaper) — both address dead-process-leaves-state-behind class
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1532
@@ -18129,6 +18566,7 @@ gaps:
     - "Today's signal: 7 subagents dispatched without affinity tracking; any follow-up on their PRs went to a fresh subagent with no memory of prior attempt — wasteful re-work, sometimes regressed prior progress. Workers vs. subagents have fundamentally different lifecycle: workers stay alive across many gaps (paged via NATS), subagents are one-shot (only handoff-brief possible)"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1534
@@ -18190,6 +18628,7 @@ gaps:
     - Pairs with INFRA-1535 (autoscale) — autoscale will need this fix to provision 2+ runners on the same host
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1537
@@ -18333,6 +18772,7 @@ gaps:
     - Add to chump fleet doctor --strict gate (INFRA-1427) so fleet up refuses to start if no runners online.
     - "Smoke test scripts/ci/test-fleet-doctor-self-hosted-check.sh: mock gh api response with 0 runners, assert non-zero exit; with 1+ runners, assert clean exit."
     - "Telemetry: emit kind=fleet_doctor_runner_count {online, offline, busy, total} once per check run."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1545
@@ -18356,6 +18796,7 @@ gaps:
     - docs/design/ADAPTIVE_ROUTING.md describes how reasoning_mode + counterfactual + bandit-replay compose into live dispatch including the chosen trait-extension approach
   notes: |
     wave: 4+ (routing brain wire-up; agent quality, post Wave 0-3 plumbing)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1546
@@ -18439,6 +18880,7 @@ gaps:
     - "Migration note in docs/process/CLAUDE_GOTCHAS.md explains the layering: gap-level lease (.chump-locks/<session>.json) for coarse-grained worker coordination, path-level lease (crates/chump-agent-lease) for in-session Edit/Write coordination"
   notes: |
     wave: 0b (path-level lease via PreToolUse hook — prevents the stomp class self-doctor cannot recover from)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1550
@@ -18460,6 +18902,7 @@ gaps:
     - "Post-merge: chump-ambient-glance.sh shows no widgets for permanently-zero kinds"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1551
@@ -18480,6 +18923,7 @@ gaps:
     - scripts/ci/test-schema-truth.sh asserts no production-read table has been INSERT-empty for >30 days, surfacing future corpses
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1552
@@ -18499,6 +18943,7 @@ gaps:
     - docs/process/FAILURE_MODES.yaml gains a 'last_matched_at' optional field updated by the runtime so unused rules can be culled later
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1553
@@ -18519,6 +18964,7 @@ gaps:
     - docs/observability/EVENT_REGISTRY.yaml entries for mcp_server_spawned and mcp_server_reaped with emitter_paths set
   notes: |
     wave: 4 (chump-mcp-lifecycle in ACP — agent tool surface, customer-facing)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1554
@@ -18604,6 +19050,7 @@ gaps:
     - "[\"Backlog-promoted 2026-05-16: lessons in agent memory tier (CLAUDE.md persistent files, docs/process/CLAUDE_GOTCHAS.md, gap notes) decay in relevance as the codebase moves. After a fix lands the lesson is fresh; 30 days later it may be stale. Need decay + re-rate so retrieval surfaces actionable lessons, not historic ones.\",\"Each lesson record carries TWO scores side-by-side (Wilson-twin pattern): (a) RAW = Wilson lower bound on positive-vote rate across all evidence ever, (b) DECAYED = same but with exponential half-life (default 30d, tunable via CHUMP_LESSON_HALF_LIFE_DAYS).\",\"Divergence between RAW and DECAYED IS the staleness signal. UI/logs surface both; agents prefer DECAYED for retrieval ranking.\",\"Decay function: exp(-ln(2) * age_days / half_life). Each new evidence event resets the decay clock for that lesson. No evidence for half_life days → DECAYED halves vs RAW.\",\"Re-rate trigger: every time an agent retrieves a lesson from memory, the agent emits kind=lesson_outcome {lesson_id, gap_id, outcome:applied"
     - stale
     - "harmful} after gap close. That event becomes a vote on the lesson.\",\"Schema: lessons table in .chump/state.db with (id, kind, text, raw_score, decayed_score, last_evidence_at, votes_count). Wilson formula: lower = (p + z²/2n - z·sqrt(p(1-p)/n + z²/4n²)) / (1 + z²/n), z=1.96 for 95% CI.\",\"CLI: chump lessons --show-stale [--min-age 30d] surfaces lessons where divergence > threshold so operator can review/prune.\",\"CI test scripts/ci/test-lesson-decay-twin.sh: seed lesson with 10 positive votes, age it 60 days with no new votes, assert DECAYED < RAW/4 and surfaced by --show-stale.\",\"DEPENDENCY: blocks on routing brain gap (TBD-INFRA-1545 placeholder) shipping first, because routing IS the consumer that uses DECAYED score for selection. File-and-park P2 until that lands.\",\"Out of scope: cross-team lesson sharing (Marcus M-D team-vector-space, INFRA-1473 handles).\"]"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1558
@@ -18622,6 +19069,7 @@ gaps:
     - "Smoke test scripts/ci/test-brain-graph-renderer.sh: spin up dev server, hit /brain, assert HTTP 200 + DOM contains #cy-container + Cytoscape script loaded."
     - DEFER until after Marcus M-B canonical demo (INFRA-1483 + INFRA-1484) lands. Brain graph is dev-tool, not customer-facing — Marcus does not need this in v1.
     - "Out of scope: brain editor (drag-and-drop reshape), brain-as-source-of-truth (still derived view), historical replay."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1559
@@ -18638,6 +19086,7 @@ gaps:
     - "Smoke test scripts/ci/test-sse-filter-and-regret.sh: dev server, inject synthetic routing_decision + routing_outcome events, assert filter pills appear + regret line renders monotonically non-decreasing."
     - "Telemetry: emit kind=sse_filter_applied {filter_spec, results_count} so we can see which filters operators actually use."
     - "Out of scope: server-side filtering (today client-side is fine for fleet < 100 active gaps; revisit at 1000+). Regret-prediction (forecasting) is separate gap if ever wanted."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1560
@@ -18674,6 +19123,7 @@ gaps:
     - "Cross-link: today (2026-05-16) 8 of 10 open PRs blocked by this — emergency rollback to var=false was the unblock. This gap is the durable fix."
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1562
@@ -18696,6 +19146,7 @@ gaps:
     - docs/eval/preregistered/README.md updated to document the status mechanism and the abandoned-vs-pending distinction
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1563
@@ -18717,6 +19168,7 @@ gaps:
     - docs/process/CLAUDE_GOTCHAS.md gains a Decisions queue subsection documenting the contract
   notes: |
     wave: 0b (/api/decisions endpoint — operator-decision queue is the human-in-loop for self-doctor)
+  opened_date: '2026-07-26'
   skills_required: pwa,backend,rust
   outcome_id: MISSION-010
 
@@ -18737,6 +19189,7 @@ gaps:
     - scripts/dev/refresh-model-prices.sh INFRA-739 TODO marker is resolved (the automated fetch is wired) since the launchd schedule is now real
   notes: |
     wave: 0b (3 dev-script launchd plists — auto-recovery cadence)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1565
@@ -18755,6 +19208,7 @@ gaps:
     - docs/operations/INFERENCE_PROFILES.md gains a section on XML-tool-tag-emitting models with sample config
   notes: |
     wave: 4 (chump-xml-adapter wire-up — agent inference quality, customer-facing)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1566
@@ -18767,6 +19221,7 @@ gaps:
     - "[\"Surfaced 2026-05-16: 4 macOS-ARM64 actions-runner instances are co-located with operator daily-driver (jeffs-macbook-air). When CI is hot (4 parallel cargo build --workspace, 156MB debug binary each), all 10 performance cores saturate and operator interactive work degrades. Path to 50 PRs/hr requires more runners, which is impossible without leaving the laptop.\",\"Option A (preferred if hardware available): migrate the 4 actions-runner instances to a dedicated host (M1+ Mac mini, retired MacBook, or M-series desktop). Single-afternoon migration script: detach runners from current host via gh api repos/.../actions/runners/{id}, re-register on new host with same labels, preserve cache mount.\",\"Option B: rack first Raspberry Pi for linux-arm64 lane (INFRA-1543) — does NOT replace macOS runners but adds capacity in different lane.\",\"Option C: cloud runner (Lambda Labs / Hetzner ARM / GitHub larger tier) — recurring cost, compromises infra"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1567
@@ -18831,6 +19286,7 @@ gaps:
     - Re-running the audit script after the cleanup produces zero genuinely-dead routes
   notes: |
     wave: noise (dead-route triage — noise tag per MISSION_YIELD; fold pieces into Wave 4 if features get wired)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1570
@@ -18848,6 +19304,7 @@ gaps:
     - Operator can override the settings via chump init or a future chump config repo subcommand (follow-up gap if relevant)
   notes: |
     wave: 4 (/api/settings/repo backend — Marcus-shaped PWA welcome flow)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1571
@@ -18867,6 +19324,7 @@ gaps:
     - docs/operations/DESKTOP_APP.md documents the native-feature surface for operators
   notes: |
     wave: 4 (Tauri native features — Marcus-arc polish; defer until Wave 3 stable)
+  opened_date: '2026-07-26'
   skills_required: pwa,frontend
   outcome_id: MISSION-010
 
@@ -18888,6 +19346,7 @@ gaps:
     - scripts/ci/test-reaper-engine.sh exercises the generic engine against a synthetic fixture and verifies each engine-consuming reaper still produces its canonical ambient event
   notes: |
     wave: noise (scripts/ops sprawl — noise tag per MISSION_YIELD; do not block ship)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1573
@@ -18907,6 +19366,7 @@ gaps:
     - docs/design/ADAPTIVE_ROUTING.md (the INFRA-1545 doc) explains the bandit layering once the decision is made
   notes: |
     wave: noise (thompson dedup — noise tag; only act if INFRA-1583 forces the decision)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1574
@@ -18925,6 +19385,7 @@ gaps:
     - No CI references to the old binary path remain
   notes: |
     wave: noise (fleet_ws_echo retire — noise; trivially fold into INFRA-1577)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1575
@@ -18984,6 +19445,7 @@ gaps:
     - Update scripts/README.md taxonomy table to reflect the new layout
   notes: |
     wave: noise (scripts cleanup — noise; do not block ship)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1578
@@ -19003,6 +19465,7 @@ gaps:
     - "Re-running cargo tree --prefix none after the cleanup shows a measurable transitive-count drop (target: >=5%)"
   notes: |
     wave: noise (Cargo.lock audit — noise; only act if dep-graph triggers an alert)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1579
@@ -19024,6 +19487,7 @@ gaps:
     - "Cross-link: today's INFRA-1538 (gate query bug) shipped because the shell version had no test suite — its bypass rationale skipped the regression-test maintenance bullet. The Rust port closes that hole."
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1580
@@ -19092,6 +19556,7 @@ gaps:
     - " grep <ID> before assuming the gap never existed\""
   notes: |
     wave: 0b (chump gap show reaped-distinction — operator observability for the self-doctor loop)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1583
@@ -19150,6 +19615,7 @@ gaps:
   depends_on: [INFRA-1582]
   notes: |
     wave: 4+ (chump-mcp-code; depends on Wave 0/0b/1/2 stability)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1584
@@ -19304,6 +19770,7 @@ gaps:
     - No regression in DevTools Computed Styles for any chump-* element at 375/768/1440px
     - Migration shipped in 3-4 PRs (not one mega-PR), each ≤800 LOC of CSS moved
   depends_on: [INFRA-1591]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1588
@@ -19499,6 +19966,7 @@ gaps:
     - "Smoke verification: /v2/ renders cockpit; /v2/?view=cockpit also renders cockpit AND prints deprecation warning to console"
     - Visual snapshot baselines updated to reflect cockpit-as-NOW (using INFRA-1591 infrastructure)
   depends_on: [INFRA-1591]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1593
@@ -19548,6 +20016,7 @@ gaps:
     - Linked from CLAUDE.md 'On-demand docs' section
     - "PR template addition: 'Touched web/v2/**? Style guide checked?'"
     - Tech-writer agent prompt updated to maintain inventory section (per memory project_doc_infrastructure)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1594
@@ -19819,6 +20288,7 @@ gaps:
     - docs/process/PWA_HOT_RELOAD.md documents pipeline + reload-safe opt-in + debug
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1604
@@ -19861,6 +20331,7 @@ gaps:
     - docs/process/CLAUDE_GOTCHAS.md updated to describe the deep collision check
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1605
@@ -19946,6 +20417,7 @@ gaps:
     - Visual snapshot baseline added to INFRA-1591 suite
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1607
@@ -19993,6 +20465,7 @@ gaps:
     - docs/process/CLAUDE_GOTCHAS.md gains a known-error-class entry for atomic-claim-collision with diagnosis steps and the test command
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1609
@@ -20151,6 +20624,7 @@ gaps:
     - EVENT_REGISTRY.yaml updated for the new pr_chip_tagged.skills_invoked field
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1615
@@ -20170,6 +20644,7 @@ gaps:
     - Additional seed skills (4th, 5th, etc.) can be added to skills-bundle/ via normal PRs; bundle install picks them up
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1616
@@ -20192,6 +20667,7 @@ gaps:
     - Operator can disable any subsection via env var (e.g., CHUMP_COS_HIDE_CURRICULUM_ANOMALIES=1)
   notes: |
     wave: 0b (operator weekly visibility into curriculum health; depends on INFRA-1614 correlation data); chip-prediction: fleet-quality
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1617
@@ -20212,6 +20688,7 @@ gaps:
     - chump gap decompose INFRA-1617 at claim time produces 3 sub-gaps for parallel implementation
   notes: |
     wave: 1+ (advanced learning mechanisms; chump gap decompose at claim time into 3 sub-gaps); chip-prediction: fleet-quality
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1618
@@ -20311,6 +20788,7 @@ gaps:
     - "Done test: a reader who has not seen the codebase before can read this section and (a) file a correctly-named PWA gap, (b) know how it'll decompose, (c) know which gates will run."
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   skills_required: pwa,docs
   outcome_id: MISSION-010
 
@@ -20383,6 +20861,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1629
@@ -20395,6 +20874,7 @@ gaps:
     - "Resolve PR cluster: check 'cargo-test-required' failing on 7 PRs: [2288, 2283, 2276, 2275, 2270]"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1630
@@ -20600,6 +21080,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1637
@@ -20873,6 +21354,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1646
@@ -20886,6 +21368,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1647
@@ -20899,6 +21382,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1648
@@ -20912,6 +21396,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1649
@@ -20925,6 +21410,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1650
@@ -20938,6 +21424,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1651
@@ -20951,6 +21438,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1652
@@ -20964,6 +21452,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1653
@@ -20977,6 +21466,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1654
@@ -21029,6 +21519,7 @@ gaps:
     - Emit ambient kind=runner_health_restored on success
   notes: |
     FOLLOW-UP from 2026-05-20 Marcus cron-loop session. Discovery: 0-step CANCELLED failures recurring on jeffs-macbook-air-10-* runners specifically at actions/checkout@v6 step. Worked around by flipping all toggles off; that's a degraded mode (free M4 capacity idle). Per CLAUDE.md memory hardware-economics: hardware is paid; idle == waste.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1656
@@ -21128,6 +21619,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1661
@@ -21287,6 +21779,7 @@ gaps:
     - "Fix shape B: gate emit on CHUMP_GH_LEGACY_AUTH_OK=1 env so operators on legacy path silence the notice via env, not code change"
     - CI test scripts/ci/test-github-fallback-noise-budget.sh runs 5 distinct fleet scripts in a row and asserts at most 1 github_app_fallback emit total (vs. current 5+)
     - "docs/process/OPERATOR_RUNBOOK.md adds a paragraph: 'the fallback notice is informational; provision lane tokens (Steps 1-6) only when seeing graphql_exhausted under sustained load — proven by PR #2310 merging cleanly on legacy path 2026-05-22'"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1669
@@ -21424,6 +21917,7 @@ gaps:
     - "when new module/service introduced AND no corresponding docs/process/ entry exists, gate fails with explicit error: 'PR adds <file> — update docs/process/ or docs/observability/EVENT_REGISTRY.yaml'"
     - "bypass via Architectural-Drift-Bypass: <reason> commit trailer (audit-logged)"
     - "smoke test: a PR adding scripts/coord/foo.sh without docs entry fails the gate; same PR with the trailer or with a docs/process/foo.md entry passes"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1676
@@ -21440,6 +21934,7 @@ gaps:
     - when drift detected, posts a single review comment with a 5-line draft of the suggested documentation (filename to create, one-paragraph description, suggested location)
     - "dedup: comment is updated in place on PR sync, not re-posted"
     - "smoke test: PR adding scripts/coord/widget.sh without docs receives a single review comment within 60s of opening, suggesting docs/process/widget.md"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1677
@@ -21456,6 +21951,7 @@ gaps:
     - implementation uses gh api orgs/<org>/repos to enumerate sibling repos, then per-repo greps for Chump-style markers (AGENTS.md presence, docs/process/ structure, chump-style gap registry)
     - smoke test scripts/ci/test-federate-scan.sh runs the command against repairman29 org (mocked) and asserts manifest validates
     - docs/process/CUSTODIAN_BLUEPRINT.md Phase 6.1 section references the manifest schema
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1678
@@ -21472,6 +21968,7 @@ gaps:
     - static site generator config (mdBook or similar) updated to consume docs/federation/topology.json from INFRA-1677
     - deploy via existing GitHub Pages workflow .github/workflows/docs.yml
     - "smoke test: curl https://repairman29.github.io/chump returns 200 with all 3 repos listed in DOM"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1679
@@ -21489,6 +21986,7 @@ gaps:
     - optional --with-fleet flag adds .chump/ skeleton for full Chump-style coordination
     - "smoke test: chump repo-init test-proj && ls test-proj/ produces all Phase 1-3 artifact checklist files"
     - docs/process/CUSTODIAN_BLUEPRINT.md Phase 6.3 section documents the command
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1680
@@ -21504,6 +22002,7 @@ gaps:
     - Step name references INFRA-1662 (claude-reaper orphan claude subprocess sweeper).
     - "Local: 'bash scripts/ci/test-claude-reaper.sh' must still PASS (7/7)."
     - CI run on the PR shows the new step is green.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1681
@@ -21644,6 +22143,7 @@ gaps:
     agent-velocity tax from collision rebases. Pairs with INFRA-1688
     (lease-as-advisory) and INFRA-1689 (AST-region claims, contingent).
     Top pick by ROI from 2026-05-22 architectural review with operator.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1688
@@ -21674,6 +22174,7 @@ gaps:
     contention class first) and INFRA-1689 (sub-file claims as hedge).
     Pillar RESILIENT — embraces concurrent edits as a budgeted failure
     class rather than rationing the resource.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1689
@@ -21703,6 +22204,7 @@ gaps:
     Hedge tier from 2026-05-22 architectural review. Real engineering
     (~1 week per language parser) — do NOT pick up until INFRA-1687
     metrics are in. Pillar EFFECTIVE.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1690
@@ -21960,6 +22462,7 @@ gaps:
     - "docs/observability/EVENT_REGISTRY.yaml gains content_bot_pipeline_aborted entry: emitter=scripts/content-bots/orchestrate-pipeline.sh (INFRA-1698), trigger=any stage failure that prevents the pipeline from reaching CopyBot, fields_required=[ts,kind,run_id,reason]"
     - consumers=[content-bots-pipeline-orchestrator, fleet-brief, ops-audit]
     - the existing CHUMP_EVENT_REGISTRY_CHECK CI gate would have caught this had INFRA-1698's claim included EVENT_REGISTRY.yaml — this is the cleanup PR
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1703
@@ -22025,6 +22528,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1707
@@ -22038,6 +22542,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1708
@@ -22051,6 +22556,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1709
@@ -22064,6 +22570,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1710
@@ -22077,6 +22584,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1711
@@ -22090,6 +22598,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1712
@@ -22103,6 +22612,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1713
@@ -22276,6 +22786,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1724
@@ -22289,6 +22800,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1725
@@ -22302,6 +22814,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1726
@@ -22435,6 +22948,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1734
@@ -22448,6 +22962,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1735
@@ -22461,6 +22976,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1736
@@ -22474,6 +22990,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1737
@@ -22487,6 +23004,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1738
@@ -22500,6 +23018,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1739
@@ -22513,6 +23032,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1740
@@ -22526,6 +23046,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1741
@@ -22539,6 +23060,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1742
@@ -22601,6 +23123,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1746
@@ -22652,6 +23175,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1748
@@ -22662,6 +23186,7 @@ gaps:
   effort: l
   acceptance_criteria:
     - chump fanout and chump rollup are moved out of src/main.rs into self-registering modules via the inventory pattern; main.rs no longer holds their command bodies; both run with identical output before/after; editing one no longer forces recompile of the other.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1749
@@ -22686,6 +23211,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1751
@@ -22714,6 +23240,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1753
@@ -22724,6 +23251,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - opus-curator.sh line 475 (AC drafting call) wrapped with timeout; 60s is reasonable for draft-only context
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1754
@@ -22734,6 +23262,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - worker.sh (line 10-11, claude -p spawn) captures subprocess PID; lease written by chump claim includes 'pid' field; subagent-budget-reaper.sh can kill -15/-9 the process when budget exceeded
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1755
@@ -22744,6 +23273,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - New daemon (scripts/ops/claude-process-watchdog.sh) that every 10s polls active leases, checks if their claude subprocess is silent (no stderr/stdout) for > WATCHDOG_STALL_THRESHOLD (default 120s), emits kind=claude_process_stalled to ambient.jsonl; on second silent period, escalates to kill -15; on third, kill -9. Runs via launchd, exits gracefully if NATS unavailable.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1756
@@ -22927,6 +23457,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1767
@@ -22954,6 +23485,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1769
@@ -22967,6 +23499,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1770
@@ -22994,6 +23527,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1772
@@ -23007,6 +23541,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1773
@@ -23049,6 +23584,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1776
@@ -23171,6 +23707,7 @@ gaps:
   notes: |
     [2026-08-17T21:59:29Z] Implementation already shipped under INFRA-1746 (closed 2026-05-23, PR #2390) as src/evangelist.rs + src/systematizer.rs. This gaps AC were left as unfilled TODO placeholders from the decompose template; filled in with the actual observability behavior confirmed present in the code and its smoke tests.
     [2026-08-19T00:00:00Z] Re-verified all 4 AC directly against src/evangelist.rs, src/systematizer.rs, docs/observability/EVENT_REGISTRY.yaml, and ran scripts/ci/test-evangelist-smoke.sh + scripts/ci/test-systematizer-smoke.sh (both PASS, all 4 sub-checks each). No code changes needed; syncing stale status to done.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1784
@@ -23181,6 +23718,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - Running the takeover orchestration on a target repo emits a takeover certificate, auto-creates gaps from the HIDDEN_GEMS/CAPABILITIES findings, and opens at least one PR; each stage emits start/complete/fail events.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1785
@@ -23194,6 +23732,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1786
@@ -23251,6 +23790,7 @@ gaps:
   status: open
   priority: P2
   effort: s
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1790
@@ -23293,6 +23833,7 @@ gaps:
     - "Bypass: CHUMP_PREFLIGHT_SKIP_PRSCOPE=1 + emit preflight_prscope_bypassed"
     - "Smoke test scripts/ci/test-preflight-prscope-gate.sh: stub a staged set touching 6 top-level dirs, assert gate fires"
     - Soft-warn at N-1, fail at N — give operator a heads-up before the hard fail
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1793
@@ -23308,6 +23849,7 @@ gaps:
     - "Bypass: CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1 + emit preflight_claudeleak_bypassed; or per-line opt-out '# chump-harness-ok: claude-mention'"
     - "Smoke test scripts/ci/test-preflight-claudeleak-gate.sh: synthetic src/foo.rs with new 'claude -p' invocation, assert gate catches it"
     - Today CI runs this warn-only; the preflight version should also warn-only until INFRA-1053 backfill closes the long-tail; then flip both to strict
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1794
@@ -23323,6 +23865,7 @@ gaps:
     - "Bypass: CHUMP_PREFLIGHT_SKIP_CANARY=1 + emit preflight_canary_bypassed"
     - "Smoke test scripts/ci/test-preflight-canary-gate.sh: stub touch of a canary file without doc update, assert gate fires"
     - Soft P3 because operator-discipline beats automation here — most touches of canary files are legitimate without doc update
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1795
@@ -23416,6 +23959,7 @@ gaps:
     - Each drained cycle emits kind=inbox_advance with the count of items processed, so the outcome is measurable (the master-plan load-bearing gate is inbox_advance > 0 fleet-wide).
     - "OUTCOME verification (not signal): over a soak window with >=1 open proposal and >=2 live agents, consensus_result events fire and at least one proposal reaches quorum (>1 distinct voter). consensus_result count must climb from its current floor."
     - "Smoke test: a single loop cycle with 1 unread proposal in the inbox results in (a) the proposal read, (b) a chump vote emitted for it, (c) an inbox_advance event — asserted by a scripts/ci/test-*.sh that drives the real loop, not a hand-written fixture."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1799
@@ -23526,6 +24070,7 @@ gaps:
     - Pairs with INFRA-1802 (mesh foundation) + INFRA-1040 (GraphQL exhaustion handling)
   notes: |
     [2026-05-30T04:21:09Z] [2026-05-29 offline-first classification] Public-side derived from internal sibling repo, Phase 2 of INFRA-2246. BandwidthBudget + MessageQueue lift; on INFRA-2248 ship this gap can be closed (subsumed).
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1805
@@ -23542,6 +24087,7 @@ gaps:
     - Patterns sourced from chump-proprietary RobotState (battery + compute_available + bandwidth_bps + healthy fields); adapted to LLM-agent semantics (battery → token_budget_remaining, compute_pct → compute_available_pct)
     - Cite chump-proprietary attribution in the v2 doc block
     - "Pairs with INFRA-1760 (#2405); ships when v1 schema lands"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1806
@@ -23590,6 +24136,7 @@ gaps:
     - Event kind=pty_reaper_swept registered in docs/observability/EVENT_REGISTRY.yaml
     - Smoke test scripts/ci/test-pty-doctor.sh exercises diagnostic path against a synthetic pty hog and verifies the reaper kills it
     - Root-cause note in docs/process/CLAUDE_GOTCHAS.md describing the leak pattern + manual recovery command, even if upstream fix is out of Chump scope
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1808
@@ -23612,6 +24159,7 @@ gaps:
     - CI test scripts/ci/test-bootstrap-auto-install.sh asserts the launchd job loads cleanly and emits the expected ambient kind on a synthetic invocation
   notes: |
     Pillar: RESILIENT. Discovered 2026-05-23 by curator-opus-shepherd during investigation of stale PR queue. INFRA-1777 (pr-auto-rebase daemon shipped 2026-05-22 23:36Z) and INFRA-1779 (its launchd plist installer shipped 23:48Z) were never installed on this host until manual run today. Same pattern as INFRA-1662 reaper from prior day. This gap closes the structural pattern: code shipped to repo != code running on host. Effort=s because each individual fix is a few lines; the wiring is the work.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1809
@@ -23634,6 +24182,7 @@ gaps:
   notes: |
     Pillar: RESILIENT. Discovered during PR shepherd work — chump CLI hangs were the root cause of cascade pre-push hook hangs (every hook invokes chump preflight or chump --version). Blocks INFRA-1808 trust (auto-install can not be reliable if installer scripts call chump and chump hangs). Pairs with INFRA-1597/1645 (paramedic daemon broken — likely related r2d2 lock issue). Effort=m because bisect + lazy-init refactor is non-trivial.
     [2026-05-24T09:01:11Z] stuck cycle 1 → re-attempt 2026-05-24 (PR #2447 auto-closed) respawn-handled:2447
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1810
@@ -23723,6 +24272,7 @@ gaps:
     - "Verdict declared in the brief: (a) harvest-without-lineage → add Vendored-from header to Chump file with echeo commit SHA, (b) reinvention → file consolidation gap to merge implementations, (c) genuinely different → close as no-action with rationale"
     - Update docs/arsenal/HARVEST_ROADMAP.md DRY-catch section with the final verdict
     - "If verdict is (b) reinvention: file follow-up INFRA-NEW-CONSOLIDATE-TREESITTER and link from this gap's notes"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1813
@@ -23798,6 +24348,7 @@ gaps:
     - Vendoring lineage comment in src/gap_scoring.rs cites repairman29/echeo at commit SHA original src/matchmaker.rs calculate_ship_velocity_score (CP-005)
     - Cross-pollination brief CP-005-echeo-ship-velocity-score.md documents harvest and gap-vs-need mapping
     - Coordinate with INFRA-1764 — routing layer reads this score, does not compute its own competing one
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1817
@@ -23817,6 +24368,7 @@ gaps:
     - Vendoring lineage comment in src/memory_db.rs cites repairman29/openclaw at commit SHA original src/memory/memory-schema.ts (CP-006)
     - Cross-pollination brief CP-006-openclaw-memory-pattern.md
     - Coordinate with INFRA-1765 (cross-agent lesson propagation) — lesson_db reads from the new memory layer rather than rolling its own
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1818
@@ -23834,6 +24386,7 @@ gaps:
     - "After archive: re-run python3 scripts/arsenal/build.py and confirm GLOBAL_ARSENAL.json shows isArchived true for each archived repo"
     - Update docs/arsenal/HARVEST_ROADMAP.md skip-list and Wave 3 addendum to point at the archive log after execution
     - Coordinate with duplication-finder in scripts/arsenal/build.py — archived repos still appear in duplication groups but flagged resolved
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1819
@@ -23851,6 +24404,7 @@ gaps:
     - Subcommand registered in --help (regression-protected by INFRA-1789 once that lands)
     - "Use case — operator picks a Column-A candidate repo and runs `chump ast-shape ~/code/somerepo` to confirm shape before claiming; replaces the current `crawl-cli` dance Opus #1 did manually for echeo"
     - "Pattern reference — Opus #1 echeo Phase-2 work (PR #2412), where crawl-cli vs tokei delta surfaced as ad-hoc CLI need"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1820
@@ -23868,6 +24422,7 @@ gaps:
     - "Lease note — src/main.rs:8010 is the decompose handler; coordinate with active INFRA-1799 (parser fix) lease and any future src/main.rs editors via .chump-locks"
     - Pattern reference — INFRA-1720 (HandoffContract README) shipped DecomposeContract; this gap is the first consumer migration
     - "Scope note from Opus #2 — bigger than 'mechanical swap' because SubGap design choice is real architectural work; not safe to delegate to a Sonnet without operator sign-off on the field-map decision"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1821
@@ -23884,6 +24439,7 @@ gaps:
     - Regression test scripts/ci/test-ast-crawler-bash.sh — runs crawl-cli against scripts/ directory, asserts symbol count > 100 (Chump has hundreds of bash fns in scripts/)
     - "Side-effect check — Opus #1's PR #2412 finding 'Bash dominates source file count but produces 0 symbols' should reverse to 'Bash is among the top-3 symbol producers' after fix"
     - "Pattern reference — INFRA-1722 (Cartographer) consumes this data via chump_ast_crawler::crawl_repo; downstream ARCHITECTURE.md auto-gen will show empty 'bash' section until this lands"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1822
@@ -23902,6 +24458,7 @@ gaps:
     - Coordinate with active sibling leases on crates/chump-coord (INFRA-1758/1759/1802/1803) — alignment work will rebase or supersede some of their output
   notes: |
     2026-05-23 verdict: (c) IGNORE — Chump coord and ACP solve different problems (N:M workers over NATS vs 1:1 editor-agent over stdio). Investigation doc shipped at docs/arsenal/cross-pollination/CP-007-acp-alignment.md. **Correction:** the original 'fork is 276 commits ahead' claim was inverted — repairman29/registry is 0 ahead, 276 BEHIND upstream (stale fork, not divergent). Gap stays open until the CP-007 doc commits to main; then close via chump gap ship --update-yaml. Two narrow follow-ups documented in CP-007 for if/when ACP-side demand appears: INFRA-NEW-ACP-INBOUND-SHIM and INFRA-NEW-CHUMP-IN-ACP-REGISTRY (don't file preemptively).
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1823
@@ -23920,6 +24477,7 @@ gaps:
     - "Coverage push: deep-scan remaining 45 of 76 fleet repos via a one-time parallel-explorer pass; update GLOBAL_ARSENAL.json with extracted_primitives per repo"
     - Smoke test scripts/ci/test-harvester-cli.sh exercises scan, check, brief, deep-scan; each subcommand exits 0 on synthetic happy path and exit 2 on bad input
     - "Documentation: chump harvest --help, docs/arsenal/HARVESTER.md updated with CLI surface, CLAUDE.md references the CLI in addition to the slash command and agent"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1824
@@ -24050,6 +24608,7 @@ gaps:
     - "Bypass: CHUMP_SKILL_ROUTING=0 reverts to old round-robin"
     - "Smoke test scripts/ci/test-picker-skill-routing.sh: synthesize 2 manifests (one with rust, one with shell), 1 gap with skills_required=[rust], assert rust-session wins"
     - Depends on INFRA-1825 (manifest publish loop)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1830
@@ -24252,6 +24811,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1841
@@ -24293,6 +24853,7 @@ gaps:
     - "Vendoring lineage comment in src/audit_log.rs: 'Vendored pattern from repairman29/BEAST-MODE at commit SHA, original lib/enterprise/auditLogger.js (CP-010)'"
     - Cross-pollination brief CP-010-beast-mode-audit-logger.md documents the harvest
     - Coordinate with INFRA-1703 compliance gating and INFRA-1813 HITL approval — the audit log is the substrate for both
+  opened_date: '2026-07-26'
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -24333,6 +24894,7 @@ gaps:
     - "Vendoring lineage comment in src/inference_provider.rs: 'Vendored from repairman29/ai-gm-service at commit SHA, original aiGMMultiModelEnsembleService.js (CP-012)'"
     - Cross-pollination brief CP-012-ai-gm-ensemble.md
     - Coordinate with INFRA-622 Auth modes (provider chain extends auth-fallback pattern) and CP-001 neural-farm (neural-farm becomes a provider option in the chain)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1845
@@ -24350,6 +24912,7 @@ gaps:
     - Coordinate with INFRA-518 fleet scaling gate — synthetic load is the substrate that lets us test scale-up thresholds without real load
     - "Vendoring lineage comment in chosen target file: 'Vendored from repairman29/bot-simulation-service at commit SHA (CP-013)'"
     - Cross-pollination brief CP-013-bot-simulation.md
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1846
@@ -24368,6 +24931,7 @@ gaps:
     - Coordinate with INFRA-721 fleet-brief.sh — extends the 24h brief with predictive churn signal
     - "Vendoring lineage comment in src/fleet_health_model.rs: 'Vendored from repairman29/analytics-platform-service at commit SHA, original aiInsightsEngine.js (CP-014)'"
     - Cross-pollination brief CP-014-analytics-retention.md
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1847
@@ -24387,6 +24951,7 @@ gaps:
     - "Vendoring lineage comment: 'Microservice integration with repairman29/auth-platform-service at commit SHA (CP-015)'"
     - Cross-pollination brief CP-015-auth-platform.md
     - Defer implementation until INFRA-1486 Marcus trust gate ships — SaaS productization is the wave after Marcus
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1848
@@ -24405,6 +24970,7 @@ gaps:
     - Coordinate with INFRA-1816 echeo Ship Velocity Score harvest — score and hierarchy are complementary substrate
     - "Vendoring lineage if any code ports: 'Vendored from repairman29/project-forge at commit SHA (CP-016)'"
     - Cross-pollination brief CP-016-project-forge-okr.md
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1849
@@ -24424,6 +24990,7 @@ gaps:
     - "Vendoring lineage comment in src/decompose_choreographer.rs: 'Vendored pattern from repairman29/mission-engine-service at commit SHA (CP-017)'"
     - Cross-pollination brief CP-017-mission-engine-choreographer.md
     - Coordinate with INFRA-1719 tree-sitter AST crawler — the AST signal is one of the inputs that should feed the decompose prompt cache key
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1850
@@ -24442,6 +25009,7 @@ gaps:
     - Defer implementation until content-bots-suite is an active workstream — this gap parks the harvest target so when the productization moment comes, the prior art is referenced
     - "Vendoring lineage comment in chump-billing-feecalc/src/lib.rs: 'Vendored from repairman29/postsub at commit SHA, original server.js fee logic (CP-018)'"
     - Cross-pollination brief CP-018-postsub-stripe.md
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1851
@@ -24698,6 +25266,7 @@ gaps:
     to know whether peer agents succeeded. False CI = false coordination.
     Suggested owner role: curator-opus-ci-audit (already exists per
     today's session).
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1862
@@ -24752,6 +25321,7 @@ gaps:
       - INFRA-1947 slice D: opt-in NATS transport with file-fallback (P2/m)
       - INFRA-1948 slice E: schema validation + 4 ambient kinds (P1/xs, ships last)
     Recommended ship order: E (gates) → A → B → C → D. Slices A-C usable independently for single-machine fleet; D enables Pi-mesh.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1863
@@ -24806,6 +25376,7 @@ gaps:
     to trust conflict-resolver outputs) AND child B (A2A spine to
     coordinate the conflict-resolver across agents). Suggested owner
     role: curator-opus-fleet (new role).
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1864
@@ -25173,6 +25744,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "1. New `chump scan <repo-path> [--max-gaps N]` CLI subcommand under crates/chump-cli/src/cmd/scan.rs (default --max-gaps 5)\n2. Heuristics it runs against the target repo (none require GH access — all local file reads):\n   - TODO/FIXME/XXX comment grep across {src,lib,scripts,docs} → file 1 gap per unique top-level file with count >= 3\n   - Missing top-level files: LICENSE, README.md, CI workflow yml under .github/workflows/ → 1 gap each\n   - cargo test or npm test invocation: if it fails, 1 gap \"fix N failing tests in <repo>\"\n   - .git/info/exclude or .gitignore missing entries for common patterns (target/, node_modules/, .DS_Store) → 1 gap\n3. Each filed gap has crisp AC (not \"fix TODOs\" but \"remove the 7 TODOs in src/foo.rs by either resolving or filing tracking gaps\")\n4. Each filed gap goes into the TARGET repo's .chump/state.db (not ours) — chump scan honors --target-state-db\n5. Emits kind=chump_scan_complete {target_path, gaps_filed, total_findings}\n6. Smoke test scripts/ci/test-chump-scan.sh: synthetic /tmp repo with known-shape findings, assert correct gap count + IDs are filed\n7. Operator-facing: this is the 2026 outcome demo #2 (repo takeover opener). Pair with chump fleet-mode --takeover to run takeover end-to-end."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1883
@@ -25201,6 +25773,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1885
@@ -25288,6 +25861,7 @@ gaps:
     - "5. Backfill report: scripts/dev/ambient-kind-audit.sh scans last 30d of ambient.jsonl, prints count of distinct kinds NOT in registry — used to size the migration before turning on enforcement"
     - "6. Unit test scripts/ci/test-ambient-kind-schema.sh: emit one valid kind + one free-text-sentence kind, assert valid passes through to ambient.jsonl, invalid is quarantined + replacement event fires with bad_kind field intact"
     - "7. Real-world trigger: 2026-05-23 curator-opus-handoff session emitted a 25-word English sentence as the kind field (full event preserved in ambient.jsonl ~19:01:06Z)"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1890
@@ -25342,6 +25916,7 @@ gaps:
     - 9. Emit kind=log_triage_finding_high_signal per candidate finding (so other detectors / PWA can react)
     - "10. Unit test scripts/ci/test-log-triage.sh: seed fixture .chump-locks/ambient.jsonl with known signatures + fixture state.db, run log-triage --window-h 1 --json, assert JSON contains exactly the expected findings + correct dedup status"
     - "11. Operator workflow: morning ritual — read .chump/triage/today.md (symlink to today's report), decide which 0-5 candidates to file via chump gap reserve"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1892
@@ -25724,6 +26299,7 @@ gaps:
     - "6. Cadence: weekly cron OR run-on-demand from chump health; not blocking"
     - "7. Baseline 2026-05-24 evidence: 4 instances detected in single session — INFRA-1412 closed_pr=2283, INFRA-1458 closed_pr=2292, INFRA-1597 closed_pr=2268, INFRA-1598 closed_pr=2276 — all 4 PRs are CLOSED not MERGED"
     - 8. Pairs with INFRA-1909 (ghost-gap reaper for the merged case); this gap handles the NOT-merged closed_pr drift class (different remediation path)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1912
@@ -25891,6 +26467,7 @@ gaps:
     - "Smoke test scripts/ci/test-curator-agent-productization.sh: spawning Agent(subagent_type=<role>) returns role-appropriate response; /<role> slash command invokes underlying script and surfaces stdout to user"
   notes: |
     2026-05-24T15:30Z consolidation: operator called the 7-day silent-curator wait early. 3 of 6 curators delivered concrete AC (target, handoff, shepherd — each 5 items). target also self-shipped .claude/skills/target/SKILL.md at 09:18Z proving the contribution→self-implement loop works. Silent 3 (ci-audit, decompose, md-links) got INFERRED AC drafted by opus-curator-overnight from session-name semantics + observed behavior + playbook docs; clearly marked _INFERRED in the source doc. Orchestrator-opus retired per operator 2026-05-24 — out of scope. Full role-by-role AC at docs/process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md. Implementation order recommendation in that doc: wave 1 (already done) = target; wave 2 = shepherd + handoff (curator-contributed AC); wave 3 = ci-audit + decompose + md-links (inferred AC, curator-confirm before implement). Each role ships as separate PR per CLAUDE.md one-gap-per-PR; can be stacked via bot-merge.sh --stack-on if deps emerge.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1918
@@ -26128,6 +26705,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Every Agent-dispatched subagent removes its /tmp/chump-<GAPID> worktree on exit (success, failure, or kill); a post-run sweep finds zero orphaned chump worktrees in /tmp.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1932
@@ -26245,6 +26823,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1939
@@ -26299,6 +26878,7 @@ gaps:
     - Registered in .claude/settings.json (or whatever hook config) as a SessionStart phase-2 hook (runs after digest, before first user prompt)
   notes: |
     Filed by curator-opus-target-2026-05-23 after observing my own Monitor bo2mnd8z0 was killed at session-restart boundary; operator had to remind me to re-arm. The session-start nag closes that loop.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1942
@@ -26315,6 +26895,7 @@ gaps:
     - Cross-reference INFRA-1941 (the session-start sibling) — INFRA-1942 covers mid-session resilience; together they bracket the watcher lifecycle (start + middle)
   notes: |
     Filed by curator-opus-target-2026-05-23 after Monitor bo2mnd8z0 was killed across a session boundary today (2026-05-24). Without explicit re-arm discipline, the operator-as-messenger antipattern silently returns mid-session. Pairs with INFRA-1941 (start-time nag) and INFRA-1936 (the original pattern doc + agent-body instruction).
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1943
@@ -26328,6 +26909,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1944
@@ -26347,6 +26929,7 @@ gaps:
     - Done definition — broadcast.sh has --await flag working; wizard can know within N seconds whether dispatch was read, not just whether sent
   notes: |
     filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1945
@@ -26366,6 +26949,7 @@ gaps:
     - "Done definition — wizard sends 'broadcast.sh --to role:shepherd' and it lands in the alive shepherd's inbox without needing the wizard to know which date-variant or session-id to address"
   notes: |
     filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1946
@@ -26386,6 +26970,7 @@ gaps:
     - Done definition — msgs to dormant inboxes never disappear silently; either delivered, dead-lettered, or flooded-paged
   notes: |
     filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1947
@@ -26404,6 +26989,7 @@ gaps:
     - Done definition — broadcast.sh works identically whether NATS is up or down; cross-machine delivery via NATS works when available; offline-first fallback preserves single-machine reliability
   notes: |
     filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1948
@@ -26422,6 +27008,7 @@ gaps:
     - Done definition — all 4 new A2A kinds in EVENT_REGISTRY.yaml; audit-required passes; schema validation rejects malformed msgs at both endpoints
   notes: |
     filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1949
@@ -26435,6 +27022,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1950
@@ -26460,6 +27048,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1952
@@ -26573,6 +27162,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1957
@@ -26688,6 +27278,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1963
@@ -26709,6 +27300,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Failure: Chump positions as local-LLM agent but fleet workers default to WorkBackend::Headless at src/dispatch.rs:355-470 which calls `claude -p --dangerously-skip-permissions`. No mlx crate exists in workspace (Cargo.toml). The Ollama path at src/main.rs is interactive-only."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1965
@@ -26719,6 +27311,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Failure: src/main.rs is 14,450 LOC with 231 `mod` declarations (verified via wc -l + grep -c '^mod '). Every code change triggers full-binary recompile. INFRA-825 staleness gate then blocks destructive ops until rebuild."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1966
@@ -26729,6 +27322,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Failure: 33,730 LOC of bash in scripts/coord/ + scripts/dispatch/ does the orchestration-critical work (bot-merge, queue-driver, pr-rescue, pr-auto-rearm, pr-auto-rebase, worker.sh). Bash + concurrent subshells + git lock contention = unprovable race conditions."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1967
@@ -26835,6 +27429,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Failure: scripts/ci/test-voice-banlist.sh is wired into CI; emits FAILURE on banned words; but is NOT in branch-protection required-checks. PRs merge with banned terms. Today's PR #2561 merged with 2 instances of 'leverage' on main; my fix on a later commit got squashed out."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1976
@@ -26893,6 +27488,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Failure: stale-worktree-reaper daemon (per scripts/setup allowlist) exists but missed 20GB of stale worktrees that I personally cleared on 2026-05-24. Either runs too infrequently or skips done-but-uncommitted state."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1981
@@ -26927,6 +27523,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Failure: crates/mcp-servers/{github,tavily,adb,gaps,eval,coord,memory} are 7 separate MCP processes. chump-mcp-lifecycle crate exists but each server's actual registration with it is unverified."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1984
@@ -26937,6 +27534,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Failure: no shared situational model. Every agent rebuilds its world-view from JSONL grep at session start (saw this in my own re-arm cycles after every context compact today)."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1985
@@ -27145,6 +27743,7 @@ gaps:
     - "Cancellation: if cluster_id resolves before the 30min timer expires (kind=ci_failure_cluster_resolved), cancel the rollback proposal + emit kind=auto_revert_cancelled"
     - "Smoke test scripts/ci/test-cluster-auto-rollback.sh: synthetic cluster + attribution events, fast-forward time → assert auto_revert_proposed fires; then inject cluster_resolved → assert cancellation"
     - "Audit: every proposal writes one entry to .chump-locks/auto-revert-proposals.log with full context (suspect commit, PRs affected, decision)"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1992
@@ -28081,6 +28680,7 @@ gaps:
     - Smoke test scripts/ci/test-rca-ack.sh — fresh session opens; assert nag appears in digest; run chump ack-rca 2026-05-24; open new turn; assert nag absent.
     - Pairs with — COLLISION_RCA_2026-05-24.md (inaugural use-case), INFRA-1940 orchestrator productization (done), the role-card schema gap (independent; uses session_id as fallback identity if role-card not yet shipped).
     - Done definition — chump ack-rca subcommand ships + SessionStart hook reads ack state + smoke test green.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2019
@@ -28280,6 +28880,7 @@ gaps:
     - "Impact: every chump gap reserve since this regression has had silent 401 + the visible WARN; every chump gap ship close-superseded-prs cleanup also 401s (saw it on 5 ghost-gap ships today); collision-detection against in-flight PRs is currently disabled fleet-wide on this machine."
     - Pairs with — INFRA-1893 (original fix, partial — diagnosed gap), INFRA-1998 (Rust messaging absorption, sibling pattern), curator-opus-shepherd-generalist lane.
     - Done definition — chump gap reserve with valid gh auth + unset GH_TOKEN produces no operator-visible 401 warning + collision-detection against in-flight PRs works.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2029
@@ -28351,6 +28952,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2033
@@ -28379,6 +28981,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2035
@@ -28392,6 +28995,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2036
@@ -28420,6 +29024,7 @@ gaps:
     - Smoke test scripts/ci/test-chump-commit-set-u.sh — run chump-commit.sh against (a) single-file change, (b) multi-file change, (c) commit message referencing gap-IDs (triggers auto-lease path); assert no unbound-variable warnings on stderr.
     - Pairs with — INFRA-1715 (worker.sh similar pattern, line 1481 _pre_cycle_sha unbound), INFRA-1853 (chump-commit.sh CHUMP_ env auto-append), INFRA-1902 (chump-commit.sh auto-lease side-effect, same area).
     - Done definition — no unbound-variable warnings on stderr across single/multi/zero-file invocations including gap-ID-mention commit messages; smoke test green.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2038
@@ -28437,6 +29042,7 @@ gaps:
     - "Smoke test scripts/ci/test-gap-ship-metadata-only-no-stale.sh — checkout 30 commits behind main; create gap with status:open + closed_pr=12345; run chump gap ship GAP-ID --closed-pr 12345 WITHOUT bypass env; assert exit 0."
     - Pairs with — META-046 (ghost-gap class, five today triggered this), INFRA-825 (closed_pr integrity guard), L2-SLO-5 ghost-gap target.
     - Done definition — chump gap ship on metadata-only flip succeeds without CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1; smoke test green; ghost-gap cleanup is friction-free.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2039
@@ -28453,6 +29059,7 @@ gaps:
     - "Smoke test scripts/ci/test-broadcast-gap-vs-message.sh — broadcast.sh DONE INFRA-1234 → assert gap=INFRA-1234 + no body field. broadcast.sh DONE \"free-form prose message\" → assert body=free-form prose message + no gap field."
     - Pairs with — docs/process/OPUS_MESSAGE_PROTOCOL.md (event-type doctrine), INFRA-1998 (chump-messaging Rust absorption — benefits from clean typed message body before absorption).
     - Done definition — free-form messages stored in body field; gap field reserved for valid gap-IDs; smoke test green.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2040
@@ -28577,6 +29184,7 @@ gaps:
     - "Smoke test scripts/ci/test-chump-cron-health.sh: synth a plist with missing StartInterval, assert health detects + names it; synth a plist with stale last-fire, assert health flags it; synth a healthy plist, assert exit 0"
     - "Documentation: docs/process/SCHEDULING_LAYERS.md references chump cron list / health as the visibility surface; CLAUDE.md mandatory preflight section adds chump cron health to the check sequence"
   depends_on: [INFRA-2057]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2047
@@ -28681,6 +29289,7 @@ gaps:
     - "Smoke test scripts/ci/test-operator-recovery-schema.sh: emit one event in each shape (chump ambient emit form + recovery-queue-emit.sh form); start a recovery-queue-service.sh in mock-mode (no actual admin-merge); assert BOTH events get processed (i.e. each one results in the mock executing-cycle log entry). Currently expected to fail until reconciliation lands"
     - Pairs with INFRA-1993 (the emit producer) and recovery-queue-service.sh (the consumer); this gap is the contract / schema reconciliation between them
     - "Documentation: docs/process/RECOVERY_QUEUE_PROTOCOL.md if it exists OR add to docs/process/THE_FLOOR_PRIMITIVES.md describing the dual-shape acceptance rule; cross-link from chump ambient emit --help"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2053
@@ -28814,6 +29423,7 @@ gaps:
     - "Backward-compat: ALL existing scripts/setup/install-NAME-launchd.sh scripts continue to work; chump cron is a NEW surface, not a replacement. Migration of existing 20+ launchd installers to chump-cron management is a SEPARATE follow-up sub-gap"
     - "Capability lives in NEW Rust crate crates/chump-cron/ per META-064 Rust-first criteria (mutates canonical state under ~/Library/LaunchAgents or /Library/LaunchDaemons; durable beyond 3mo; will exceed 200 LOC at first commit). NOT bash. Wizard-confirmed 2026-05-27 13:27Z. chump cron CLI is the harness-neutral surface per OPERATOR_PLAYBOOK Section 5"
     - "Documentation: chump cron --help shows full CLI; docs/process/SCHEDULING_LAYERS.md (DOC-058 sibling) references chump cron as the durable layer; CLAUDE.md adds a Scheduling discipline section linking to it"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2058
@@ -28877,6 +29487,7 @@ gaps:
     - "Backward-compat: CLI argument parity — broadcast.sh --to / --kind / --level flags + chump-inbox.sh read|read-no-advance|tail subcommands all still accepted by the shim path (verified by smoke test scripts/ci/test-messaging-shim-compat.sh, added in this same PR)"
   notes: |
     Phase 2 cutover of META-107 sub-gap INFRA-1998 (chump-messaging). Sibling cutovers: INFRA-2060/2062/2063/2064/2065.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2062
@@ -28894,6 +29505,7 @@ gaps:
     - "Rollback plan documented: if Rust receiver regression detected, DNS / proxy flip back to Python; Python receiver is restored from git (PR was atomic delete); 24h hot-rollback window"
   notes: |
     Phase 2 cutover of META-107 sub-gap INFRA-1999 (chump-github-cache). LONGER parallel-run window (14 days vs 7) because webhook receivers are externally-driven and miss-the-event divergence is silent. Sibling cutovers: INFRA-2060/2061/2063/2064/2065.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2063
@@ -28930,6 +29542,7 @@ gaps:
     - "Rollback plan documented: if Rust binary regression detected, revert PR restores bash body + shim feature flag in one commit; 24h hot-rollback window; cutover MUST NOT happen during fleet-busy window (>3 PRs in flight)"
   notes: |
     Phase 2 cutover of META-107 sub-gap INFRA-2001 (chump-ship). HIGHEST-RISK cutover of the six (3044 LOC + ship-path is critical-path). Sibling cutovers: INFRA-2060/2061/2062/2063/2065. Recommend cutting over LAST or second-to-last in the sequence after the smaller cutovers prove the pattern.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2065
@@ -28947,6 +29560,7 @@ gaps:
     - CRITICAL — this is the FINAL cutover of the META-107 arc; PR body includes (a) full LOC-out summary across all 6 cutover gaps, (b) reference to META-107 umbrella, (c) emit kind=meta_107_complete (already-registered) as the final closing event
   notes: |
     Phase 2 cutover of META-107 sub-gap INFRA-2002 (chump-worker + chump-fleet). FINAL cutover in the META-107 arc. Sibling cutovers: INFRA-2060/2061/2062/2063/2064. Recommend cutting over LAST in the sequence — chump-worker hot-path depends on the github-cache cutover (INFRA-2062) being complete first since worker reads PR state every cycle.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2066
@@ -29003,6 +29617,7 @@ gaps:
     - EVENT_REGISTRY.yaml entry kind=wedge_auto_filed; allowlist entry in scripts/ci/event-registry-reserved.txt
   notes: |
     Sub-gap 2 of META-118. Depends on INFRA-2067 (classifier emits wedge_class_detected). Feeds sub-gap 3 (wedge-fixer dispatch consumes auto-filed gaps).
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2069
@@ -29282,6 +29897,7 @@ gaps:
     - "Smoke test: synth a fresh CI gate that always fails; assert chump preflight catches it; assert preflight-ci-parity-audit reports 0 delta"
   notes: |
     Filed 2026-05-27 by curator-opus-shepherd after today's CI-rot saga: 4 independent wedges all surfacing post-push because preflight didn't mirror CI. Today's 4-PR cascade (#2672/#2674/#2677/#2678) would have been visible at commit time with parity coverage. ESTIMATED IMPACT: 80% reduction in 'PR fails CI' round-trips.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2085
@@ -29359,6 +29975,7 @@ gaps:
     - "Trunk-RED elimination: after migration, INFRA-2080 class (sandbox bleeds through to real state.db) impossible by construction — tests that try to set up sandboxes manually fail the lint gate"
   notes: |
     Filed 2026-05-27 by curator-opus-shepherd after INFRA-2080 surfaced + had a HIDDEN SIBLING (test-bot-merge-auto-close.sh) that Sonnet missed. The cluster was supposed to be 0 but was 1+. With chump_test_sandbox_setup primitive, the cluster impossible by construction. Today's saga's INFRA-2080 class (broken sandbox) would be 0% likely instead of being a recurring class.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2089
@@ -29369,6 +29986,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Implement chump swe <prompt> as a new chump CLI subcommand wrapping the existing per-gap claim->worktree->subagent-dispatch pipeline as a one-shot SWE-agent product surface. CLI: chump swe '<prompt>' [--budget-secs N] [--budget-tokens N] [--budget-dollars N] [--paths CSV] [--dry-run-diff]. On invocation: reserve+claim a synthetic INFRA-NEW gap with the prompt as title, dispatch a Sonnet sub-agent into a /tmp worktree under the declared budget, ARM auto-merge on success, emit kind=swe_invocation_complete (success/failed/killed_at_budget) ambient event."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2090
@@ -29379,6 +29997,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Extend src/dispatch.rs wait_with_hang_detection (shipped INFRA-1972) to enforce two NEW budgets alongside the existing CHUMP_SUBAGENT_BUDGET_S wall-clock kill: (a) CHUMP_SUBAGENT_TOKEN_BUDGET — kill on streaming-token-counter exceed; (b) CHUMP_SUBAGENT_DOLLAR_BUDGET — kill on per-model-rate-card cost exceed."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2091
@@ -29389,6 +30008,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - Publish docs/specs/CHUMP_AGENT_EVENTS_V1.md — a public cross-framework observability schema for multi-agent coordination events. First-mover moat play per MARKET_POSITIONING_2026-05-27.md Bet 3 (the OpenTelemetry-for-multi-agent gap).
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2092
@@ -29399,6 +30019,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Implement Postgres backend behind the existing chump-gap-store crate interface — smallest credible slice of INFRA-1967 (C4 architectural critique: single-node SQLite ceiling breaks fleet scale). Same schema, swap storage; SQLite remains the local-dev default."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2093
@@ -29537,6 +30158,7 @@ gaps:
     RECOMMENDATION: Fix A is the cheapest + most surgical. File as INFRA-2101 sub-gap if INFRA-2100 stays open for the runner-side hygiene.
     
     NEXT: PR #2693 INFRA-2098 CI is rerunning right now (no failures yet) — should clear with the one-time tauri-2.11.2 extraction in place.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2101
@@ -29571,6 +30193,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. `scripts/coord/shepherd-loop.sh tick` emits kind=opus_shepherd_triage and kind=shepherd_heartbeat; wraps existing `opus-shepherd-triage.sh` + adds heartbeat subcommand\n2. `scripts/coord/target-loop.sh tick` implements the 5-step work-your-lane protocol from `.claude/skills/target/SKILL.md`; adds heartbeat subcommand\n3. Both scripts match the CLI contract of existing loop scripts: subcommands tick/heartbeat/help, exit codes 0/1/2/3\n4. fleet-autopilot.sh CURATOR_ROLES updated to reference the new scripts (replacing empty loop_script entries)\n5. CI: `scripts/ci/test-fleet-autopilot.sh` updated to assert shepherd-loop.sh and target-loop.sh are referenced\n6. Both scripts have scanner-anchor comments for their ambient event kinds\n\n## Context\n\nFiled as a META-122 follow-up. META-122 (PR #2695) shipped `chump fleet autopilot start` auto-launching 6 curator tmux sessions. Four roles (handoff, ci-audit, decompose, md-links) have productized `scripts/coord/*-loop.sh tick` scripts. Two roles use a stub heartbeat-only loop:\n\n- **shepherd**: uses `scripts/coord/opus-shepherd-triage.sh` (not a full tick/heartbeat CLI)\n- **target**: has no loop script at all (per `.claude/skills/target/SKILL.md`, originally filed as INFRA-1917 follow-up; this gap is the productization closure)\n\nClosing this gap eliminates the autopilot stub-loop pattern entirely — all 6 curator sessions then run on real, role-specific loops."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2104
@@ -29639,6 +30262,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "- Repro:\n    $ chump-coord work-board post some-gap class \"title\"\n    SUBTASK-abc12345\n    $ chump-coord work-board complete SUBTASK-abc12345\n    [chump-coord] cannot complete SUBTASK-abc12345: subtask is in state Open, not the expected state\n- Root cause: the work-board state machine requires Open → Claimed → Complete. `complete` rejects subtasks in `Open` because it expects them to have been claimed first. Discovered while closing the derelict demo loop on 2026-05-28.\n- Why this hurts: a single-agent flow (or operator running the demo solo) wants to mark \"I did the work\" without first claiming. The current message names the *state* but not the *missing transition*, so the next thing the user tries is usually `claim` then re-`complete` after squinting.\n- Fix options (pick one):\n    (a) Allow `work-board complete` from `Open` directly when there's no other claimant; emit a one-line note that the implicit claim was performed.\n    (b) Improve the error message to be remedy-shaped: `cannot complete SUBTASK-abc12345 from state Open: run \\`chump-coord work-board claim SUBTASK-abc12345\\` first`.\n- Verify: after fix, the demo loop (post → complete on a single agent) works without a manual claim step. Or, the error message names the exact next command to run.\n- Cross-references: discovered during INFRA-2102 Phase 2 / derelict end-to-end demo. See docs/strategy/NATS_A2A_DEMO_2026-05-28.md."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2108
@@ -29899,6 +30523,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "1. New ambient listener: scripts/ops/oracle-event-trigger.sh tails ambient.jsonl, counts kind=gap_reserved events since last oracle_refresh_succeeded event, triggers `scripts/coord/oracle-refresh.sh --force` when count >= ORACLE_GAP_THRESHOLD (default 5).\n2. Wire as a launchd plist OR as a hook called from scripts/coord/system-gap-tick.sh on each system_gap_tick (which already fires regularly).\n3. The threshold (5) is configurable via CHUMP_ORACLE_GAP_THRESHOLD env var.\n4. Coalesces with the existing 4h cadence — if event-driven fires within last 1h of cadence, dedup (don't double-burst).\n5. After this ships: when operator/curators file a burst of gaps (e.g. the 5 CI-review levers we just filed), Oracle re-ranks within minutes instead of waiting 4h. Strategic priority converges with tactical gap activity.\n6. Depends-on: INFRA-2122 (Oracle silent-staleness fix MUST land first — otherwise this just amplifies the silent failures).\n7. Pairs with: scripts/coord/system-gap-tick.sh, scripts/coord/oracle-refresh.sh, dispatch-flatline-detector pattern."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2124
@@ -30082,6 +30707,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "- New scripts/dev/integration-bisect-step.sh — single-step bisect oracle. Returns 0 if commit is \"good\" (preflight passes), 1 if \"bad\" (preflight fails), 125 if untestable.\n- Script body (~30 LOC):\n    1. cd to the integration worktree\n    2. Run chump preflight (INFRA-1670) — bash scripts/dev/cross-build-linux.sh + cargo fmt + clippy + relevant test-*.sh\n    3. Exit 0 / 1 / 125 per bisect protocol\n    4. Emits ambient kind=bisect_step_evaluated with {commit, outcome, duration_s}\n- Integrator daemon (INFRA-2130) extension: on preflight RED:\n    1. git bisect start\n    2. git bisect bad HEAD\n    3. git bisect good origin/main\n    4. git bisect run scripts/dev/integration-bisect-step.sh\n    5. Parse output for \"first bad commit is <sha>\"\n    6. Look up gap_id from \"Batched: <gap-id>\" in commit message\n    7. Emit ambient kind=ship_bisect_root_cause with {cycle_id, offending_gap_id, failure_signature: <last 5 preflight log lines>, bisect_steps_taken: <count>}\n    8. Hand off to INFRA-2137 quarantine flow\n- Test: scripts/ci/test-integration-bisect.sh — fixture: 5-commit integration branch with #3 deliberately bad; bisect-step.sh correctly identifies #3.\n- Cross-references INFRA-2130 (daemon wires bisect), INFRA-2137 (quarantine consumes offending_gap_id)."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2137
@@ -30133,6 +30759,7 @@ gaps:
     - "- Update CLAUDE.md §Ship pipeline section:\n    BEFORE: \"Default: scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge\"\n    AFTER: describes Mode A (batched default), Mode B (REVIEW: prefix), Mode C (hot-fix); same bot-merge.sh entry point, smarter routing.\n- Update CLAUDE.md §Hard rules:\n    NEW RULE: \"Per-PR mode is opt-in via REVIEW: title prefix. Default is batched integration.\"\n    NEW RULE: \"Hot-fixes: title prefix HOTFIX: or P0 + TRUNK-RED. These skip the integration queue.\"\n- Update AGENTS.md §Naming conventions section: add §\"Operating modes (A/B/C/D)\" with one-paragraph each.\n- Update docs/process/OPERATOR_PLAYBOOK.md §4 Ship pipeline:\n    BEFORE: 6-step per-gap flow\n    AFTER: default 3-step flow (claim → work → push); explicit override path for Mode B; hot-fix command surface\n    Add §4a \"When to override (Mode B opt-in)\" with examples.\n- Flag flip: chump gap reserve recognizes REVIEW: title prefix and sets a metadata flag mode_b_required=true so bot-merge.sh routing later honors it.\n- chump gap reserve also recognizes HOTFIX: prefix for Mode C.\n- Backwards compat: existing gaps without prefix default to Mode A; chump gap migrate-mode <ID> --to A"
     - B
     - "C for retrofitting.\n- Test: scripts/ci/test-mode-prefix-recognition.sh — 4 cases (REVIEW:, HOTFIX:, no prefix, mixed-case).\n- Voice-lint clean across all updated docs (no banned words introduced).\n- Cross-references INFRA-2133 (the routing consumer), INFRA-2129 (strategy doc)."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2141
@@ -30155,6 +30782,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "- Add L2-SLO-6 to docs/process/FLEET_SLOS.md:\n    L2-SLO-6: bisect_quarantine_rate < 5%\n    Definition: (count of bisect_quarantine ambient events in last 7d) / (count of integration_cycle_started events in last 7d) × 100\n    Window: 7 days rolling\n    Breach: >= 5% triggers L2-SLO-6 in chump health --slo-check non-zero exit\n    Rationale: high quarantine rate means batched-mode is producing too many failed cycles → either thresholds too aggressive (cycles too big) OR upstream gap quality dropped → operator should investigate\n- Implement check in chump health --slo-check command (Rust, src/health.rs):\n    1. Read ambient.jsonl for last 7d\n    2. Count integration_cycle_started + bisect_quarantine events\n    3. Compute rate; compare to threshold (5%)\n    4. Pretty-print: \"✗ BREACH  L2-SLO-6  [N.N%]  bisect-quarantine rate < 5%  └─ N quarantines / M cycles in 7d\"\n    5. Exit non-zero on breach\n- Add to chump health JSON output (--json) under slos.L2_SLO_6 with full breakdown.\n- 4+ unit tests: 0/0 cycles (no breach, log inconclusive), 1/20 = 5% (breach exactly at threshold), 1/30 (no breach), 5/50 = 10% (breach).\n- Cross-references INFRA-2137 (the quarantine emitter), INFRA-2132 (event kinds), docs/process/FLEET_SLOS.md (parent SLO doc)."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2143
@@ -30167,6 +30795,7 @@ gaps:
     - "- New chump kpi report --integration subcommand. Reads ambient.jsonl + state.db + GitHub Actions API for the last 7d. Produces dashboard:\n\n    ═══ Integration Cycle Dashboard (last 7d) ═══\n    \n    SHIP VELOCITY\n      Cycles shipped:        N\n      Gaps shipped:          M\n      Mean gaps per cycle:   M/N\n      P50 cycle wall time:   X min\n      P95 cycle wall time:   Y min\n    \n    EFFICIENCY VS PER-PR BASELINE\n      CI runs / shipped gap: 0.XX  (target: < 0.15)\n      Runner peak util:      ZZ%   (target: < 50%)\n      Wall time saved est:   Q hours (vs hypothetical per-PR baseline)\n    \n    QUALITY\n      Bisect-quarantine rate: A.A%  (target: < 5%)\n      Cycles with 0 fails:    B/N (BB%)\n      Rerun cycles:           C\n    \n    EXTERNAL COSTS\n      GraphQL exhaustion / day:  D.D  (target: < 0.5)\n      Operator flake-rerun interventions / day: E.E (target: < 1)\n\n- Reads metrics from:\n    - state.db gap_state for shipped + bisect_quarantined counts\n    - ambient.jsonl filtered to last 7d for cycle events\n    - gh api repos/.../actions/runs for runner job count\n    - GraphQL exhaustion counts from existing api-cost-leaderboard.sh data\n- Supports --json (machine-readable), --window 24h"
     - 7d
     - "30d (window override).\n- Add this to chump session-summary tail section (\"Integration cycle health (7d): cycles=N, P50=X, quarantine=A.A%\").\n- 8+ unit tests: empty dataset, 1-cycle 0-quarantine, multi-cycle mixed quality, --json output shape.\n- Cross-references INFRA-2132 (events read), INFRA-2137 (quarantine count), INFRA-2142 (SLO threshold), DOC-063 (the CI bottleneck review this measures success against)."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2144
@@ -30177,6 +30806,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "Add --help / -h to broadcast.sh; print usage with valid event types (INTENT HANDOFF STUCK DONE WARN ALERT FEEDBACK) + FEEDBACK kinds (defect/proposal/preference/retro) + flag options (--to, --reply-to once INFRA-2148 lands, etc). Test: bash scripts/coord/broadcast.sh --help exits 0 with usage printed. Currently exits 1 with 'Unknown event type: --help'."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2145
@@ -30188,6 +30818,7 @@ gaps:
   acceptance_criteria:
     - "Embed FEEDBACK kind enum (defect/proposal/preference/retro) in broadcast.sh inline help block (above the usage examples). Cross-reference docs/process/OPUS_MESSAGE_PROTOCOL.md for full semantics. Test: grep 'defect"
     - proposal' in broadcast.sh comment header succeeds.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2146
@@ -30198,6 +30829,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "broadcast.sh accepts arbitrary user content as positional args; zsh interprets $0.32 as parameter expansion = '/bin/zsh.32'. Fix: wrap shell-out invocations in single quotes; OR detect unquoted-shell-special-chars in input and warn-with-suggestion. Test: bash scripts/coord/broadcast.sh FEEDBACK proposal 'cost: $0.32 vs $2.20' produces a logged message with intact dollar amounts."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2147
@@ -30208,6 +30840,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "broadcast.sh --to glob expansion currently only matches active .chump-locks/*.json leases (INFRA-1115 design). Extend to also expand against .chump-locks/inbox/*.jsonl (known canonical inboxes) so dormant curators can be addressed via --to curator-opus-* glob. Test: bash scripts/coord/broadcast.sh --to 'curator-opus-*' WARN 'test' delivers to >= 9 known curator inboxes even when no curators have active leases."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2148
@@ -30218,6 +30851,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Add --reply-to <message-id> flag to broadcast.sh. Each emitted event gets a stable msg_id field (uuid). When --reply-to is set, the new event's payload includes reply_to=<original-msg-id>. Enables FEEDBACK chain reconstruction. Test: send FEEDBACK A, send FEEDBACK B --reply-to A; verify A and B linked in ambient stream + a query like 'chump-coord watch --thread <msg-id>' shows both."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2149
@@ -30228,6 +30862,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "Add --dry-run flag to broadcast.sh. With --dry-run: prints what would be emitted (target list expansion, event payload, inbox writes) and exits 0 without actual side effects. Test: bash scripts/coord/broadcast.sh --dry-run --to 'curator-opus-*' WARN 'test' prints target list + payload but does not append to ambient.jsonl or any inbox."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2150
@@ -30266,6 +30901,7 @@ gaps:
     - 3. Both tests must pass 10/10 reruns locally before re-enabling; if flaky-only (not 100% repro), demote with test.skip + file follow-up; if real bug, fix the underlying race
     - "4. Once green: trigger re-run on PR #2700 to confirm cargo-test gate passes with sccache R2 enabled"
     - 5. Document failure pattern in CLAUDE_GOTCHAS.md under 'Rust test flakes'
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2153
@@ -30291,6 +30927,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - A persistent Rust NATS subscriber binary per curator role starts, subscribes to its role subject, and processes at least one consensus event end-to-end in an integration test.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2155
@@ -30319,6 +30956,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "`chump consensus ask` publishes a question to NATS, returns a consensus_id, and optionally blocks until quorum; verified by a round-trip test."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2157
@@ -30329,6 +30967,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "`chump consensus vote` publishes a curator vote with confidence and rationale against a consensus_id; the vote appears in the aggregator tally."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2158
@@ -30339,6 +30978,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "`chump consensus resolve` aggregates votes to a decision and `status` returns current queryable state for a consensus_id."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2159
@@ -30349,6 +30989,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - Aggregator daemon computes a confidence-weighted decision at quorum and publishes a consensus.resolved event; unit-tested on a sample vote set.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2160
@@ -30359,6 +31000,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - install-launchd script installs the consensus aggregator with RunAtLoad; `launchctl print` shows it loaded and running.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2161
@@ -30369,6 +31011,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "`chump consensus roadmap-pivot` applies a resolved decision to gap-store priorities with recorded rationale; a test shows target gaps re-prioritized."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2162
@@ -30379,6 +31022,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - 9 consensus event kinds are registered in the event registry and recognized by the scanner without unknown-kind warnings.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2163
@@ -30389,6 +31033,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - NATS subject taxonomy for consensus is documented and subscribers/publishers use the agreed subjects in an end-to-end test.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2164
@@ -30519,6 +31164,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2171
@@ -30665,6 +31311,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "- chump gap reserve obtains the next INFRA-NNNN id via NATS KV CAS on bucket chump_meta key gap_counter_<domain> (e.g. gap_counter_INFRA).\n- Lifecycle: nats kv update chump_meta gap_counter_INFRA <new_value> with --revision <previous_revision>. Atomic; multi-machine safe.\n- Behavior: NATS available → KV CAS path; NATS unavailable → fall back to state.db SELECT MAX (existing logic from INFRA-2177).\n- Env knob: CHUMP_GAP_RESERVE_NATS_COUNTER=1 (default 0 until validated, then flip).\n- On NATS-unavailable fallback, emit kind=gap_counter_fallback_to_db to ambient.jsonl.\n- 3+ unit tests: NATS-available happy path, NATS-down fallback, concurrent reserve race (two reserves at same revision → one wins).\n- Cross-references INFRA-2102 (NATS substrate live), INFRA-2177 (the state.db simplification)."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2179
@@ -30679,6 +31326,7 @@ gaps:
     - "3. Add advisory soft-skip: when picker is evaluating a gap, if its depends_on entries are themselves open AND unclaimed, prefer claiming the upstream gap instead. Only proceed with the downstream if upstream is either done OR claimed by a sibling (so downstream worker can ride the cascade)."
     - 4. Emit kind=picker_dep_chain_violation when a gap is claimed whose unclaimed deps are still open (audit signal — not blocking).
     - 5. Add scripts/ci/test-picker-respects-depends-on.sh — fixture state.db with 3 chained gaps, run picker N=3 times, assert claims happen in dependency order (not all 3 in parallel).
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2180
@@ -30760,6 +31408,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Per operator framing 2026-05-29: 'when new code lands on main, how do agents ring the bell and alert each other to update themselves?' Today's evidence the gap is biting us:\n- Handoff curator INFRA-2167 false-positive: didn't know ExternalRepoContract had merged via INFRA-2111\n- Target curator: 12-day-stale ROADMAP_MARCUS.md view\n- TODO ACs persisting because curators didn't see their own gaps merged with stub AC\n- 348-disk-yaml drift class: curators working from stale view of state.db vs disk YAMLs\n- META-123 fully merged this session but curators have NOT been notified — internal memory is stale\n\n## What today's mechanisms DO and DON'T cover\n\nEXISTS (partial):\n- Session-start hook digest — fires only when curator session STARTS, not when something merges\n- ambient.jsonl event stream — live but requires active reader (no curator runs tail -F)\n- NATS CHUMP_EVENTS jetstream — live but zero curator-opus-* subscribers (META-125 C4 productizes)\n- Inbox files (27 inboxes) — async; messages decay until next session-start\n\nMISSING:\n- Per-lane post-merge filter (PR merges to main, no per-curator notification)\n- Stale-context detection (curators don't know their internal memory is out of date)\n- Catchup-on-relevant-merges (no 'here is what landed in your lane since X')\n- Operator surface: chump curator status (no per-role refresh-timestamp visibility)\n\n## The ring-the-bell pattern (this gap)\n\n### Substrate (depends on META-125 C4 — curator-as-NATS-subscriber daemon)\n\n1. EMIT — on every PR merge to main, fire ambient kind=pr_merged_to_main with payload {pr_url, gap_ids_closed, files_changed[], commit_sha, ts, lane_tags[]}. Lane tags derive from file globs: crates/chump-handoff/* → handoff lane; .github/workflows/* → ci-audit lane; docs/strategy/* → external-collab lane; etc.\n\n2. FILTER — each curator subscriber has a lane glob pattern (existing in role doc). Subscriber matches incoming pr_merged_to_main events against its lane pattern.\n\n3. REFRESH ACTION (on lane match):\n   - Update curator's persistent memory at .chump-locks/curator-memory/<role>.json with seen-merges list\n   - Check curator's open gaps for staleness markers: did this merge close/supersede any of MY gaps? Any TODO AC in my gap that the merge might have addressed?\n   - Emit ambient kind=curator_refreshed with {role, pr_url, gaps_checked, staleness_findings[]}\n   - If operator-actionable surfaces (e.g. open gap is now stale, false-positive in prior review, etc.), broadcast FEEDBACK proposal\n\n4. OPERATOR SURFACE — new CLI: chump curator status [--role ROLE]\n   - Shows each curator's last-refresh timestamp\n   - Highlights curators that are >24h stale on their lane\n   - Lists open staleness_findings per curator\n   - chump curator refresh <role> — manual ring-the-bell for one curator (forces re-eval against current main)\n\n### Lane glob examples (initial mapping)\n\n- handoff: crates/chump-handoff/**, src/dispatch*.rs\n- ci-audit: .github/workflows/**, scripts/ci/**\n- decompose: src/main.rs (gap-decompose handler), src/gap_decompose*.rs\n- external-collab: docs/PITCH.md, docs/DEMO_5MIN.md, docs/HIDDEN_GEMS.md, docs/strategy/ROADMAP_MARCUS.md\n- harvester: docs/arsenal/**, cross-pollination/**\n- infra-watcher: scripts/setup/install-*-launchd.sh, ~/Library/LaunchAgents/com.chump.*.plist (out-of-tree)\n- md-links: docs/**/*.md (link-graph)\n- observability: scripts/ci/event-registry-reserved.txt, docs/observability/EVENT_REGISTRY.yaml\n- target: docs/gaps/INFRA-2108-*.yaml, META-123-* children, .claude/agents/target.md\n\n### Implementation surface\n\nNew script: scripts/coord/post-merge-bell.sh (or in chump-curator-subscriber daemon)\n- Subscribes to chump.events.pr_merged_to_main NATS subject\n- For each event, fan out to matching curator subscribers via lane-glob filter\n- Each curator subscriber: read its memory file, compute staleness findings, emit kind=curator_refreshed\n- Subscriber state stored at .chump-locks/curator-memory/<role>.json\n\nNew ambient event kinds (4 new, register per INFRA-754):\n- pr_merged_to_main (emitter: bot-merge.sh post-merge hook OR scripts/coord/main-merge-listener.sh polling GH events)\n- curator_lane_match (emitter: bell-fanout — debug surface)\n- curator_refreshed (emitter: each curator subscriber on refresh)\n- curator_staleness_finding (emitter: subscriber when it detects an open gap is now stale)\n\n### Success criteria\n\n- Time from main merge to curator memory updated: <60s\n- Per-lane filter precision: zero false-fires (handoff doesn't process docs-only merges)\n- Operator surface complete: chump curator status shows all 9 curators with last-refresh timestamp\n- Today's evidence reversed: a curator that issues a FEEDBACK like handoff's INFRA-2167 false-positive would catch it before broadcasting (refresh would surface ExternalRepoContract as just-landed)\n\n### Cross-references\n\n- META-125 (curator-as-NATS-subscriber daemon C4 is the substrate)\n- META-127 (curator suite productization — this is the live-refresh standardization)\n- META-126 (event-sourced gap mutations — pr_merged_to_main is the gap-shipped event)\n- INFRA-2167 (handoff false-positive) — concrete evidence\n- INFRA-2111 (ExternalRepoContract) — what handoff missed\n- INFRA-2185 — depends on META-125 C4 + C8 (aggregator daemon, for fanout)\n\n### Effort breakdown\n\n- pr_merged_to_main event emit (bot-merge.sh hook): xs\n- Lane glob filter + fanout logic: s\n- Per-curator memory file format + diff logic: m\n- chump curator status CLI: s\n- Initial lane glob mapping doc: s\n- 4 ambient event kinds + EVENT_REGISTRY entries: xs\n\nTotal: m. Depends on META-125 C4 landing first."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2186
@@ -30894,6 +31543,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "- New crate crates/chump-disk-inventory/ with bin target chump-disk-inventory-daemon.\n- Polls every 30s (CHUMP_DISK_POLL_S configurable): df for /tmp + ~/.chump + main checkout disk; du for known consumer paths (/tmp/chump-*, ~/.cache/chump-runner, ~/.chump/nats, /tmp/chump-coord-linux-build*, ~/.cargo/registry).\n- Writes atomic-rename snapshot to ~/.chump/disk-inventory.json with schema: {ts, node_id, total_gb, free_gb, used_gb, threshold_gb (default 5), top_consumers: [{path, size_gb, mtime}], headroom_gb: free_gb - threshold_gb}.\n- Publishes to NATS subject chump.disk.inventory.<node-id> on each poll (when CHUMP_NATS_URL set; file-fallback otherwise).\n- node_id from ~/.chump/node-id.txt OR hostname fallback.\n- Emits ambient kind=disk_inventory_updated on each poll AND kind=disk_critical when free_gb < threshold_gb.\n- 6+ unit tests: snapshot schema, top-consumer selection, node_id resolution, headroom computation, NATS-down fallback, threshold breach detection.\n- cargo fmt + clippy + check GREEN (warm cache during impl per today's hung-clippy lesson).\n- Cross-references META-128 (umbrella), INFRA-2125 (cargo-target-reaper sibling), INFRA-2181 (reaper post-ship trigger this complements), INFRA-2188 (cargo-runner cache leak that this catches structurally)."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2194
@@ -30904,6 +31554,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - install-launchd script for the disk-inventory daemon installs a KeepAlive plist; `launchctl print` shows it active.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2195
@@ -30940,6 +31591,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "- Modify chump claim CLI handler (src/main.rs or src/claim.rs — grep for 'fn claim' or 'chump claim' subcommand) to call chump disk plan BEFORE atomic-CAS claim.\n- Pre-claim flow: parse action class from gap.skills_required (default = sonnet_dispatch_with_worktree); call chump disk plan <class> --count 1; if exit code 1 (REFUSE) → print helpful error + exit 1 (operator must reap or override); if exit code 2 (WAIT) → print warning + offer auto-reap hint; if 0 (OK) → proceed with existing claim flow.\n- Override: CHUMP_DISK_PLAN_BYPASS=1 with reason emitted as ambient kind=disk_plan_bypassed.\n- Emit ambient kind=disk_plan_checked on every claim with {gap_id, action_class, projection, decision}.\n- Register kind=disk_plan_bypassed AND kind=disk_plan_checked in EVENT_REGISTRY.yaml + event-registry-reserved.txt.\n- 4+ unit tests: REFUSE blocks claim, WAIT warns but proceeds, OK proceeds silently, CHUMP_DISK_PLAN_BYPASS=1 emits ambient + proceeds.\n- Backwards compat: when ~/.chump/disk-inventory.json missing (daemon not installed), fall through with WARN log; never block.\n- Cross-references META-128 (umbrella), INFRA-2193 daemon, INFRA-2195 cost model, INFRA-2196 CLI (the chump disk plan subcommand this calls)."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2198
@@ -30961,6 +31613,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - chump-coord assign daemon routes work to nodes by available disk headroom; a test with two mock nodes routes to the higher-headroom node.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2200
@@ -31159,6 +31812,7 @@ gaps:
     - 4. New ambient kind=curator_no_op_avoided fires whenever a loop would have idled but instead took action. Watchdog alerts when ratio of no_op_avoided / heartbeats < 0.5 over 1h (curator went lazy)
     - "5. Update .claude/agents/*.md role specs: replace any 'emit heartbeat and exit' guidance with 'always take an action — HANDOFF if your lane is empty'"
     - 6. Apply same anti-idle pattern to scripts/coord/decompose-loop.sh + md-links-loop.sh + external-collab-loop.sh + target-loop.sh + shepherd-loop.sh if they exist
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2211
@@ -31215,6 +31869,7 @@ gaps:
     - Localhost-only (no auth needed; same as other /api/autopilot/* endpoints)
     - "Smoke test extends EFFECTIVE-026 test: hit endpoint with a known daemon label, assert 200 + non-empty lines array; hit with bogus label, assert 404"
     - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2214
@@ -31246,6 +31901,7 @@ gaps:
     - No tile mutates state — read-only surface (operator clicks gap_id to navigate, not to edit)
   notes: |
     Filed by curator-opus-shepherd-2026-05-29 as the UI follow-up to INFRA-1883 (the API surface, PR #2777). Sub-agent shipping INFRA-1883 (PR #2777) explicitly noted to file this. Marcus-arc 2026 outcome demo #3.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2216
@@ -31345,6 +32001,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - voice-lint (scripts/ci/test-voice-lint.sh) passes on the new doc with zero violations
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2223
@@ -31421,6 +32078,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2227
@@ -31434,6 +32092,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2228
@@ -31487,6 +32146,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - The 4 named DIRTY PRs from overlapping EVENT_REGISTRY/.claude/agents edits are rebased/merged or closed; no lingering DIRTY state remains for them.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2232
@@ -31528,6 +32188,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2234
@@ -31717,6 +32378,7 @@ gaps:
     - 4. Coverage job stays single-runner (llvm-cov harder to merge across shards; can re-fan-out later if needed)
     - "5. Measurement: median cargo-test wall-clock before vs after — target 60-75% reduction (limited by longest shard's tests)"
     - "6. Test: scripts/ci/test-nextest-sharding.sh — assert matrix syntax, all 4 shards have stubs, required-check name aggregates"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2244
@@ -31747,6 +32409,7 @@ gaps:
     - "2. Docs in docs/process/LOCAL_DEV.md explaining: install via cargo binstall bacon; run via 'bacon' in repo root; switch jobs with // keys"
     - 3. CLAUDE.md / AGENTS.md gain a 'Local dev hot-reload' section pointing to bacon (alongside existing cargo-watch alternative)
     - "4. Test: scripts/ci/test-bacon-config.sh — assert bacon.toml syntax valid + has the 3 jobs"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2246
@@ -31819,6 +32482,7 @@ gaps:
     - "6. RBE preview: enable BuildBuddy RBE for ONE crate (chump-tool-macro, smallest) to validate remote-execution latency vs local. Document in doc."
     - "7. Doc: docs/process/BUILDBUDDY.md — operator setup (5min), fallback behavior, cost monitoring (free tier limits ~5000 builds/mo)"
     - "8. Test: scripts/ci/test-buildbuddy-fallback.sh — assert sccache config has both BuildBuddy URL AND R2 fallback URL"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2250
@@ -31837,6 +32501,7 @@ gaps:
     - "7. Validate: at 50 concurrent agents, runner queue drains in <2min steady-state (current: 17 queued for ~60min)."
     - "8. Doc: docs/process/ARC_DEPLOYMENT.md — Helm install, label selectors, cost monitoring, rollback path back to fixed Mac runners."
     - "9. Operator action: provide K8s cluster + cloud account; ARC needs cluster-admin Helm install"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2251
@@ -31872,6 +32537,7 @@ gaps:
     - Emit kind=local_merge_queued / kind=local_merge_landed / kind=local_merge_blocked ambient events
   notes: |
     [2026-05-30T04:21:56Z] Filed by curator-opus-shepherd-2026-05-29 — operator question surfaced that OFFLINE_FIRST.md references INFRA-1321 as the gap ID for this work but the gap was never filed. This is the previously-mythical INFRA-1321. Phase 3 of INFRA-2246 offline-first roadmap. Depends on INFRA-2247 (mission types) shipping first.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2253
@@ -31889,6 +32555,7 @@ gaps:
     - "Module attribution: internal sibling repo crates/behavior/ is named as source in each file's header comment with 2026-05-29 vendor date"
   notes: |
     [2026-05-30T04:31:38Z] Filed by curator-opus-shepherd-2026-05-29 after operator clarified that vendoring internal code is FINE if fit-for-purpose. Originally listed as 'out of scope' in INFRA-2246 roadmap; the relaxation moves it back on the table as a P2 experiment. Curator loops (Pattern 15 'no idle curators') are natural BT consumers — the always-pick-something invariant maps onto Selector/Fallback root. Not blocking the offline-first ship; complements it.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2254
@@ -31906,6 +32573,7 @@ gaps:
     - Emits ambient kind=shepherd_warn_suppressed when cooldown triggers (so the supervisor and observability can see we're correctly deduping not silently stalling)
     - "Smoke test scripts/ci/test-opus-shepherd-triage.sh extends with: run twice in a row with identical inputs, assert second run does NOT call broadcast.sh"
     - chump preflight green before push
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2255
@@ -31957,6 +32625,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2258
@@ -31989,6 +32658,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2260
@@ -32023,6 +32693,7 @@ gaps:
     - "Verify: curl -sI http://localhost:7070/scrubber/ returns 200"
     - "Verify: target/release/chump-fleet-server --help exits 0 with usage text (does NOT bind port)"
     - "Verify: live scrubber renders with correct duration + events list (INFRA-2204 fixes active)"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2262
@@ -32079,6 +32750,7 @@ gaps:
     Consumption mechanism decision is already recorded in CP-008: git dep with SHA pin.
     Internal sibling repo path: /Users/jeffadkins/Projects/chump-proprietary (local clone exists).
     Do NOT push internal repo changes to public Chump remote.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2265
@@ -32190,6 +32862,7 @@ gaps:
     - chump preflight runs smoke when crates/chump-keys/* OR src/web_server.rs SECRET_KEYS list touched
     - README + CLAUDE.md Auth modes section updated with vault path; cross-link to existing CHUMP_AUTH_MODE knob
   source_doc: docs/gaps/META-067.yaml
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2270
@@ -32211,6 +32884,7 @@ gaps:
     - chump preflight runs codegen smoke when crates/chump-handoff/src/contracts.rs OR src/sdk.rs touched
     - README + CLAUDE.md updated with 3-line example invocation; cross-link to crates/chump-handoff/src/contracts.rs as source-of-truth for contract surface
   source_doc: docs/gaps/META-067.yaml
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2271
@@ -32263,6 +32937,7 @@ gaps:
     INFRA-2272 (PR #2836) added kind=bot_merge_step_stalled to bot-merge.sh using a scanner-anchor comment to avoid touching EVENT_REGISTRY.yaml (held by INFRA-2067) and event-registry-reserved.txt (held by INFRA-2271). Now that those siblings have cleared, register the event kind properly. depends_on: INFRA-2272.
   acceptance_criteria:
     - "1. Add kind=bot_merge_step_stalled to docs/observability/EVENT_REGISTRY.yaml (scanner-anchor placeholder is in scripts/coord/bot-merge.sh from PR #2836). 2. Add bot_merge_step_stalled to scripts/ci/event-registry-reserved.txt. 3. Run scripts/ci/test-event-registry.sh and test-event-registry-reserved.sh — both pass."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2274
@@ -32449,6 +33124,7 @@ gaps:
     - File a follow-up gap to TRACK the upstream resolution and un-pin once Rust v1.97.0 ships with a clean manifest
   notes: |
     [2026-05-30T08:26:20Z] Filed 2026-05-30T08:30Z by curator-opus-shepherd. Pattern-14 evidence: PR #2848 (INFRA-2068) fast-checks job 78635935578 step 'Install Rust toolchain' fails with: error: component 'rustc-codegen-cranelift' for target 'x86_64-unknown-linux-gnu' is unavailable for download for channel 'stable'. Confirmed cross-PR: same failure shape on PR #2844, #2838, #2837, #2819. This is the queue-wide wedge stalling tonight's full Rust ship batch (6+ ARMED PRs with FAIL=5-10 each blocked on this one step). Same incident class as today's earlier sccache R2 (cross-PR same failure → root-cause to one config line).
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2284
@@ -32518,6 +33194,7 @@ gaps:
     - Cross-reference INFRA-2093 (original wiring) + docs/process/SCCACHE_R2_CACHE.md
   notes: |
     CLOSED-MISDIAGNOSIS 2026-05-30T08:55Z: secrets ARE configured (gh secret list --repo repairman29/chump shows all 3 R2_*). My initial check used gh secret list without --repo flag and hit wrong scope. The 15% sccache hit rate I cited was local laptop sccache, not CI runners. Real CI cache rate from R2 is unknown without GH Actions log inspection. Demoting to P3, will reopen if CI logs show R2 not actually being hit.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2287
@@ -32536,6 +33213,7 @@ gaps:
     - "Existing self-hosted-runner override paths preserved: the container is added only when runs-on is ubuntu-latest, not the self-hosted variant"
     - "Smoke test scripts/ci/test-rust-builder-image.sh: pulls the image, runs cargo fmt + cargo clippy --workspace -- -D warnings + cargo test --bin chump --quiet, asserts exit 0"
     - Cross-reference Lever 1 in docs/strategy/CI_REVIEW_2026-05-29.md
+  opened_date: '2026-07-26'
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -32682,6 +33360,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2294
@@ -32723,6 +33402,7 @@ gaps:
     - "1. Consensus tallied: \\`scripts/coord/feedback-report.sh --corr-id cockpit-scrubber-unification\\` shows vote distribution A/B/C; deliberator emits kind=consensus_resolved with winning option\n2. Winning option's design doc written under docs/design/COCKPIT_SCRUBBER_UNIFIED.md including: chosen architecture, deprecation/migration plan for the losing artifact, data-shape changes required (role, parent_session, gap_id), routing/URL strategy\n3. Three sub-gaps filed:\n   (a) fleet-sidebar role-grouping (4-tier hierarchy, if sub-question carried)\n   (b) HUD metric strip (7 tiles per design)\n   (c) recorder segments enrichment (role + parent_session + gap_id columns)\n4. Decision doc reviewed by external-collab curator for Marcus-facing impact\n5. Operator sign-off on the design doc before any code lands"
   notes: |
     [2026-05-30T16:04Z] Amendment broadcast cockpit-mission-lens-amendment sent. Mission-layer framing surfaced: my original A/B/C asked the wrong question first. Should be: vote M/G/S on primary organizing lens (Mission / Gap / Session) BEFORE voting A/B/C on tool unification. Reasoning: if Mission lens wins, scrubber becomes a drill-down tool under Mission-first cockpit (favors A or C); if Gap or Session lens wins, scrubber's flat-gantt becomes a peer (favors B). INFRA-2247 (Mission types) + CREDIBLE-071 (Mission Yield digest) added as blockers — design doc cannot lock in until Mission becomes a queryable primitive, not just a title-prefix convention.
+  opened_date: '2026-07-26'
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -32756,6 +33436,7 @@ gaps:
     - gap-store gains a kind column and parent_mission FK, and ObjectiveState maps bidirectionally to gap status; a mission with child gaps round-trips through the mapping in a test.
   notes: |
     [2026-05-30T18:30Z] INFRA-2247 (Mission types vendoring) shipped via #2831 at 18:18Z. This gap now claimable — gap-store schema bridge (kind enum + parent_mission FK) can proceed against the chump-coord::mission types now live in main.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2297
@@ -32796,6 +33477,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - voice-lint, repo-health, test-bot-autonomous and 5 named satellite workflows are folded into a single consolidated workflow with no loss of checks; CI still runs each check.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2300
@@ -32985,6 +33667,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2307
@@ -33071,6 +33754,7 @@ gaps:
   acceptance_criteria:
     - install-curator-supervisor.sh either creates the plist inline (like install-stale-pr-rebase-bot.sh pattern) or checks for the template and exits 0 with WARN
     - install-integrator.sh runs cargo build --release -p chump-integrator if binary missing OR exits 0 with skip message (not exit 1 which trips daemon-activator FAIL log)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2313
@@ -33087,6 +33771,7 @@ gaps:
     - scripts/ci/test-quartermaster-auto-fixers.sh gains a new assertion (g) — synthetic main with fresh install + bot script, only installer on local disk, asserts cascade succeeds via extraction
     - "Doctrine: docs/process/SHEPHERD_AUTONOMY_LADDER.md gains note about this discovery + the dirty-main-worktree fallback being recursive (installer fallback PLUS bot-script fallback)"
     - On ship, run cascade locally and verify both ghost-pr-closer + main-worktree-drift-detector activate without manual git-show extraction
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2314
@@ -33195,6 +33880,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - All ~47 bogus/typo action versions across ci-advisory, ci-nightly, audit-weekly and experimental workflows are corrected to valid published versions; actionlint passes on those files.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2322
@@ -33205,6 +33891,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - A pre-push hook runs actionlint and rejects matrix-in-if and invalid-version workflow errors before they reach main; a crafted bad workflow is blocked locally.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2323
@@ -33341,6 +34028,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "Dockerfile.ci builds successfully on a rust:1-bookworm base with edition2024 support and the clippy container image-exists preflight passes."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2332
@@ -33436,6 +34124,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - install-trunk-sentinel.sh also installs the fix-trunk-dispatcher plist with REPO_ROOT substituted; both daemons show loaded after install.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2339
@@ -33503,6 +34192,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - Running Claude Code sessions poll URGENT-INBOX mid-session and act on fix_trunk signals within a bounded interval; a test signal is picked up without a session restart.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2343
@@ -33665,6 +34355,7 @@ gaps:
     META-269 sub-2: cross-platform lint for bash subprocess calls. Catches non-portable patterns before CI.
   acceptance_criteria:
     - "- New script scripts/ci/test-bash-portability-lint.sh\n- Lints shell scripts for non-portable patterns (GNU-only sed flags, bashism in sh, non-portable date)\n- Wired into chump preflight on scripts/**.sh changes\n- Smoke test verifies lint catches at least 2 known anti-patterns"
+  opened_date: '2026-07-26'
   skills_required: bash,fleet
   outcome_id: MISSION-010
 
@@ -33693,6 +34384,7 @@ gaps:
     META-269 sub-4: queue-stagnation alarm. Detects when pickable-gap queue is 24h+ idle and bells operator.
   acceptance_criteria:
     - "- Emit kind=queue_stagnant when chump gap list --status open shows N>10 pickable but no claim_acquired events in last 24h\n- Integration with operator-recall.sh for QUEUE_STARVE class\n- Smoke test simulates 24h-idle queue + verifies bell fired"
+  opened_date: '2026-07-26'
   skills_required: fix_trunk
   outcome_id: MISSION-010
 
@@ -33706,6 +34398,7 @@ gaps:
     META-269 sub-5: subprocess-auth smoke. Verifies claude -p subprocess auth path before dispatching fix-trunk Sonnet.
   acceptance_criteria:
     - "- New script scripts/coord/subprocess-auth-smoke.sh runs hello-world claude -p with timeout\n- Emits kind=subprocess_auth_ok / kind=subprocess_auth_dead with claude_p_exit_code\n- Wired into fix-trunk-dispatcher pre-check\n- Smoke test passes when local claude auth works, gracefully degrades otherwise"
+  opened_date: '2026-07-26'
   skills_required: fix_trunk
   outcome_id: MISSION-010
 
@@ -33719,6 +34412,7 @@ gaps:
     META-269 sub-6: pattern-fix dispatcher. Matches known-failure-patterns (e.g. heavy_jobs out-of-date) and dispatches automated fix without Sonnet hop.
   acceptance_criteria:
     - "- New script scripts/coord/pattern-fix-dispatcher.sh\n- Reads scripts/coord/known-failure-patterns.yaml (failure-regex -> fix-script)\n- When CI failure matches a known pattern, runs the fix-script directly + opens PR\n- Integration test validates one synthetic known-pattern triggers the auto-fix path"
+  opened_date: '2026-07-26'
   skills_required: fix_trunk
   outcome_id: MISSION-010
 
@@ -33732,6 +34426,7 @@ gaps:
     META-269 sub-7: cross-daemon contract test. Verifies sentinel-emitted ambient kinds match dispatcher-expected kinds.
   acceptance_criteria:
     - "- New CI test scripts/ci/test-daemon-contract.sh\n- Scans launchd daemons + their expected ambient event kinds\n- Verifies emitter scripts actually emit those kinds (grep for kind=X literal in source)\n- Fails on contract drift"
+  opened_date: '2026-07-26'
   skills_required: fix_trunk
   outcome_id: MISSION-010
 
@@ -33758,6 +34453,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - A2A typed RPC v1 defines the message schema and a round-trip call between two agents succeeds in an integration test.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2359
@@ -33768,6 +34464,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - disk-inventory daemon is refiled against current META-128 substrate and builds/runs against it.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2360
@@ -33778,6 +34475,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - pre-claim disk-plan check is refiled against the post-META-128 claim path and gates a claim in a test.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2361
@@ -33788,6 +34486,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - Flaky tests are detected across reruns and auto-quarantined into a BLOCKED_FLAKE state so they stop reddening unrelated PRs; a known flaky test is quarantined automatically.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2362
@@ -33798,6 +34497,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - queue-tender is productized from the auto-processor into a maintained component with defined behavior; it runs against the live queue without manual intervention.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2363
@@ -33823,6 +34523,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "`chump fleet doctor` default mode invokes fleet-doctor-strict.sh (currently only a placeholder is wired) and returns the strict diagnostic output."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2365
@@ -33833,6 +34534,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - The 21 dead daemons (exit=78 config errors and exit=1 script errors) are diagnosed and either fixed to run or removed; `launchctl` shows no lingering failed instances from this cluster.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2366
@@ -33862,6 +34564,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "SessionStart hook adds INVENTORY HEALTH section: tier-0 surface count, top-3 high-volume finding classes, count of unreviewed findings >30d old, current class-stats summary (any class eligible for promotion?); shown only when DB age <24h to avoid stale digest noise; toggleable via CHUMP_SESSION_INVENTORY_DIGEST=0"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2368
@@ -33884,6 +34587,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Tier-2 auto-file machinery — only activates for finding_class with current_tier=2 in finding_class_tiers; when a new finding is inserted in such a class, file a gap via chump gap reserve with title prefix derived from finding_class; write the new gap_id into tech_debt_findings.auto_fix_filed_gap_id; rate-limit: max 5 auto-files per finding_class per day; bypass: CHUMP_INVENTORY_AUTO_FILE=0; integration test verifies auto-file happens for tier=2 class and is skipped for tier=0 class"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2370
@@ -33894,6 +34598,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "Quote the colon-containing 'Overrides logged separately: --allow-duplicate-pr / CHUMP_CLAIM_ALLOW_OPEN_PR' line on EVENT_REGISTRY.yaml line 341 so strict YAML parsers (python yaml.safe_load) succeed; verify with python3 -c 'import yaml; yaml.safe_load(open(\"docs/observability/EVENT_REGISTRY.yaml\"))'; one-line fix"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2371
@@ -33923,6 +34628,7 @@ gaps:
     - "src/provider_cascade.rs: opt-in CHUMP_CASCADE_PRECHECK=1 environment flag runs a 1s-budget health check per cloud slot at startup (default OFF for performance); warnings emitted to stderr; malformed slots are NOT permanently removed but are skipped on first call until next process boot."
     - "scripts/ci/test-cascade-graceful-skip.sh: unit test that simulates the function_declarations 400 string via should_cascade_on_error_string() and asserts it returns true; runs in <5s."
     - "bare `chump <text>` invocation: no longer hard-aborts on a single malformed slot — falls through to next slot or returns a useful error rather than 400-from-Gemini."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2373
@@ -33936,6 +34642,7 @@ gaps:
     - "src/commands/config.rs: same hint appears at the top of `chump config` output when config.toml absent."
     - Graceful when HOME unset — no panic, no banner, just omit the nudge.
     - Banner does not abort or block any command; it is purely informational.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2374
@@ -34342,6 +35049,7 @@ gaps:
     - Audit emits kind=installer_audit_finding to ambient.jsonl per UNWIRED installer with fields {path, introducing_pr, introducing_gap, ref_count_by_class}
     - No deletions in this PR — only audit + report; deletion is a follow-up gap per-installer or batched
     - Audit can be re-run as a launchd daemon (scripts/setup/install-installer-audit-launchd.sh, weekly cadence) — file as INFRA-2394-followup if scope balloons
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2395
@@ -34356,6 +35064,7 @@ gaps:
     - Emit kind=ghost_gap_audit_finding to ambient.jsonl per ghost gap with fields {gap_id, pr_numbers_referencing, classification}
     - Decision matrix doc at docs/audit/GHOST-GAP-AUDIT-2026-06-01.md
     - Not destructive — no PR retitling, no DB mutations beyond status updates; operator reviews report
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2396
@@ -34438,6 +35147,7 @@ gaps:
     - "For each: write proper EVENT_REGISTRY.yaml entry (with effect_metric, description, scanner-anchor) OR confirm dead-and-remove from emit site"
     - "After backfill: remove the INFRA-2396 reservations from scripts/ci/event-registry-reserved.txt"
     - Smoke test the new EVENT_REGISTRY entries via existing scripts/ci/test-event-registry-coverage.sh
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2401
@@ -34450,6 +35160,7 @@ gaps:
     - "For each of the 5 INFRA-2396 register-without-emit kinds (auto_merge_arm_dropped/restored/skipped, gh_token_rotate_noop/rotated): either re-add the emit site (if the kind is still semantically valid) OR remove from EVENT_REGISTRY.yaml"
     - "After cleanup: remove the INFRA-2396 reservations from scripts/ci/event-registry-reserved.txt"
     - "Smoke test: bash scripts/ci/test-event-registry-coverage.sh with CHUMP_REGISTRY_GATE_MODE=strict exits 0"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2402
@@ -34607,6 +35318,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - AC TBD when claimed — see docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md for layer details and dependencies
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2409
@@ -34617,6 +35329,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - AC TBD when claimed — see docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md for layer details and dependencies
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2410
@@ -34629,6 +35342,7 @@ gaps:
     - AC TBD when claimed — see docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md for layer details and dependencies
   notes: |
     SUPERSEDED by zero-bypass thesis 2026-06-02 (operator decision). Original premise was bypass-MANAGEMENT (counters, SLAs, peer-vouch, auto-rollback). New premise: DELETE bypass paths entirely + fix the underlying gate. Keep this filed at P3 for historical reference; do not implement unless thesis flips back. See docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md §updates 2026-06-02.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2411
@@ -34641,6 +35355,7 @@ gaps:
     - AC TBD when claimed — see docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md for layer details and dependencies
   notes: |
     SUPERSEDED by zero-bypass thesis 2026-06-02 (operator decision). Original premise was bypass-MANAGEMENT (counters, SLAs, peer-vouch, auto-rollback). New premise: DELETE bypass paths entirely + fix the underlying gate. Keep this filed at P3 for historical reference; do not implement unless thesis flips back. See docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md §updates 2026-06-02.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2412
@@ -34653,6 +35368,7 @@ gaps:
     - AC TBD when claimed — see docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md for layer details and dependencies
   notes: |
     SUPERSEDED by zero-bypass thesis 2026-06-02 (operator decision). Original premise was bypass-MANAGEMENT (counters, SLAs, peer-vouch, auto-rollback). New premise: DELETE bypass paths entirely + fix the underlying gate. Keep this filed at P3 for historical reference; do not implement unless thesis flips back. See docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md §updates 2026-06-02.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2413
@@ -34665,6 +35381,7 @@ gaps:
     - AC TBD when claimed — see docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md for layer details and dependencies
   notes: |
     SUPERSEDED by zero-bypass thesis 2026-06-02 (operator decision). Original premise was bypass-MANAGEMENT (counters, SLAs, peer-vouch, auto-rollback). New premise: DELETE bypass paths entirely + fix the underlying gate. Keep this filed at P3 for historical reference; do not implement unless thesis flips back. See docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md §updates 2026-06-02.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2414
@@ -34677,6 +35394,7 @@ gaps:
     - AC TBD when claimed — see docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md for layer details and dependencies
   notes: |
     SUPERSEDED by zero-bypass thesis 2026-06-02 (operator decision). Original premise was bypass-MANAGEMENT (counters, SLAs, peer-vouch, auto-rollback). New premise: DELETE bypass paths entirely + fix the underlying gate. Keep this filed at P3 for historical reference; do not implement unless thesis flips back. See docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md §updates 2026-06-02.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2415
@@ -34687,6 +35405,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - AC TBD when claimed — see docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md for layer details and dependencies
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2416
@@ -34697,6 +35416,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - AC TBD when claimed — see docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md for layer details and dependencies
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2417
@@ -34878,6 +35598,7 @@ gaps:
   acceptance_criteria:
     - "[\"Delete CHUMP_PREFLIGHT_SKIP_PIPEFAIL from scripts/ci/env-vars-internal.txt\",\"Remove its read site from src/preflight.rs\",\"The pipefail-race-sweep gate catches real silent-false-negative bugs; no legitimate reason to skip\",\"If a script genuinely needs printf"
     - "grep -q (rare — doc examples), add line-level # pipefail-sweep-allowed marker, not a global bypass\",\"Smoke test: preflight runs pipefail-race-sweep unconditionally; only line-level marker exempts\"]"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2428
@@ -34969,6 +35690,7 @@ gaps:
     - "Update pre-push hook to be more precise: compare HEAD SHA before test vs after, but only abort if the commit count on the branch actually changed (not if mtime/index changed). This is likely the real fix that makes the false-positive disappear without any skip path."
     - "CI test: scripts/ci/test-pre-push-head-drift.sh verifies aligned fixture does not false-positive (today INFRA-2418 hit this — cargo test stage tripped the guard with no actual HEAD change)"
     - "NO new CHUMP_*_SKIP env var (zero-bypass thesis): fix the gate, do not add an escape hatch"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2432
@@ -35017,6 +35739,7 @@ gaps:
     - per-PR CI runs nextest -p <selected crates> instead of --workspace; the full --workspace run is retained on the merge_group/main path
     - a leaf-crate-only PR demonstrably tests fewer than all 35 crates
     - "safety: under-selection cannot let a break reach main because the merge/main path still runs --workspace"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2434
@@ -35028,6 +35751,7 @@ gaps:
   acceptance_criteria:
     - "[\"chump claim INFRA-X --paths foo.sh,bar.rs scans every currently-open PR (gh pr list --json files) for path overlap\",\"On any overlap with an open PR: refuse claim with clear message: [claim] paths overlap with open PR #N (gap INFRA-Y, paths: foo.sh). Options: (a) coordinate with #N author and merge into that PR, (b) wait for #N to land then rebase, (c) --allow-overlap to proceed anyway (audit-logged via kind=claim_path_overlap_allowed).\",\"Auto-detection of same-region work (not just same-file): when same file overlaps, run git diff to extract modified line-ranges; only flag as collision if the proposed claim would touch the same line-range. Single-file with disjoint line-ranges still allowed.\",\"Operator-mode: when CHUMP_CLAIM_PATH_OVERLAP_OPERATOR=1 (operator-only env, source-controlled), claim proceeds without check (operator may know they want to ship 2 PRs touching same file)\",\"Emit kind=claim_path_overlap_blocked (and recovered) to ambient.jsonl with {claimed_gap, blocking_pr, blocking_gap, overlapping_paths}\",\"Smoke test scripts/ci/test-claim-path-overlap.sh: mock 1 open PR with file [a.sh]; claim with --paths a.sh exits non-zero with redirect message; claim with --paths b.sh succeeds\",\"Today trigger 2026-06-02: INFRA-2343 (PR #2924, 37h old) and INFRA-2347 both fixed the same 3 printf"
     - "grep -q patterns in scripts/coord/trunk-sentinel-daemon.sh. Different gap IDs, different titles, same code. Bypassed every existing dedup gate.\",\"Filing-time companion follow-up (separate gap if scope grows): chump gap reserve also checks title-similarity against OPEN PR titles (not just other gaps). Catches the case where 2 authors independently file 2 gaps for the same problem.\"]"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2435
@@ -35043,6 +35767,7 @@ gaps:
     - "Bypass: --force-duplicate flag (audit-logged via kind=gap_reserve_pr_similarity_bypassed)"
     - "Smoke test: mock open PR titled \"fix pipefail-race patterns\"; chump gap reserve --title \"replace pipefail-race printf grep patterns\" → blocked with PR # cited"
     - Companion to INFRA-1149 (gap-vs-gap similarity); together they close the 2 holes that let INFRA-2343 + INFRA-2347 ship the same fix
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2436
@@ -35134,6 +35859,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2442
@@ -35147,6 +35873,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2443
@@ -35160,6 +35887,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2444
@@ -35173,6 +35901,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2445
@@ -35526,6 +36255,7 @@ gaps:
     - chump-fleet-bootstrap.sh --check verifies ~/.cargo/bin/chump-integrator exists + matches the integrator-daemon.plist ProgramArguments path, and installs via cargo install --path crates/chump-integrator if missing
     - infra-watcher detects launchd daemons whose last exit status != 0 (e.g. 127) and emits kind=daemon_exit_nonzero with label+code — today only daemon_silent fires, which missed the exit-127 root cause for an unknown duration
     - "repro: 2026-06-02 chump-integrator was exit-127 fleet-wide (binary never built), so the batched ship path (bot-merge Mode A / INFRA-2133) silently never drained"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2460
@@ -35538,6 +36268,7 @@ gaps:
     - "a gap merged via PR (closed_pr set or squash commit on main) but still status=ready_to_ship is reconciled to done — current stale examples: INFRA-1120 (#2821), INFRA-2188 (#2963)"
     - chump-integrator skips (warn+continue) a ready_to_ship gap whose origin branch no longer exists instead of failing the whole batch with git fetch exit 128
     - the dual ship-path split (bot-merge Mode A -> integrator queue vs direct PR auto-merge) is documented so an operator knows which path a gap is on and why Mode-A can leave a gap status=open in limbo
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2461
@@ -35633,6 +36364,7 @@ gaps:
     - "Audit pass: catalog all existing substrate layers (INFRA-1081 cache-first, INFRA-2399 author-time helpers, INFRA-2406 cross-PR contract, INFRA-2407 bypass-trailer, INFRA-2417 daemon-exit-loop, INFRA-2429 no-new-bypass lint) and file follow-up gaps for any that DO NOT have all 3 companions; this gap stays open until all existing layers are retrofitted"
     - "Specific application to INFRA-1081 (the trigger): scripts/ci/raw-gh-allowlist.txt entries gain Expires: 2026-07-01 fields; CI gate fails on past-expiration entries; scripts/coord/lib/github_cache.sh wrapper emits kind=raw_gh_directive_violated when raw gh is invoked from a script not in the unexpired allowlist"
     - "Quartermaster role (existing) gets a new tick: weekly migration-leaderboard digest emitted as kind=substrate_layer_migration_status with {layer, old_callers_count, new_callers_count, week_over_week_delta, flatlined_count}; flatlined >= 14d auto-files P1 cleanup gap"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2466
@@ -35643,6 +36375,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m EFFECTIVE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2467
@@ -35653,6 +36386,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m CREDIBLE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2468
@@ -35663,6 +36397,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m RESILIENT-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2469
@@ -35673,6 +36408,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m ZERO-WASTE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2470
@@ -35703,6 +36439,7 @@ gaps:
     - a checked-in com.chump.fleet-setenv.plist template under scripts/setup/ so reboot-persistence is reproducible on any install
     - "chump-worker.rs + jetstream_consumer.rs default to nats://127.0.0.1:4222 and fall back to pull only on actual connect failure, instead of gating on whether CHUMP_NATS_URL happens to be set (root cause: server up 2 days, push-tier never connected because the env var was unset)"
     - chump-fleet-bootstrap.sh --check verifies the broker is reachable via chump-coord ping and warns kind=nats_mesh_dark when the server is up but no client traffic is flowing
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2472
@@ -35718,6 +36455,7 @@ gaps:
     - All pre-push hooks + atomic_claim path-overlap checks (INFRA-2434 in flight) MUST consult the shared registry, not just local .chump-locks/
     - "Smoke test scripts/ci/test-multi-machine-lease.sh: simulate 2 sessions on different machines claiming same gap; second one refuses; first ones lease visible to second"
     - Companion to INFRA-2446 (lease-selection by branch) — that gap fixes the local-pick logic; this gap fixes the visibility scope
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2473
@@ -35876,6 +36614,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2480
@@ -36009,6 +36748,7 @@ gaps:
       4. Once root cause resolved, re-arm affected PRs via bot-merge.sh.
   acceptance_criteria:
     - audit-required passes on all currently-open PRs; no open PR is blocked by an audit-required failure.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2488
@@ -36203,6 +36943,7 @@ gaps:
     - "New script scripts/coord/orchestrator-bootstrap.sh that idempotently: (a) exports CHUMP_SESSION_ID=orchestrator-opus-resume-{ts}, (b) runs chump-inbox.sh read --no-advance and surfaces pending broadcasts, (c) emits kind=orchestrator_resumed with reason, (d) confirms NATS reachability via chump-coord ping"
     - Documented in CLAUDE.md MANDATORY pre-flight as the first step for any session inheriting orchestrator-opus role
     - "Regression test scripts/ci/test-orchestrator-bootstrap.sh: run it in a clean env, assert session_id is set + ambient has one orchestrator_resumed event"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2498
@@ -36504,6 +37245,7 @@ gaps:
     - "audit.yml concurrency uses cancel-in-progress:true so a newer push cancels the superseded audit run instead of piling up"
     - under N-simultaneous-PR load the audit queue stays drained (no >Krunner backlog)
     - "evidence 2026-06-03: 13 audit runs in_progress / 4 runners stalled #2981 + 3 PRs + fleet merges ~30min until the backlog drained"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2517
@@ -36644,6 +37386,7 @@ gaps:
     - DEAD = referenced only at its def-site or for a removed gate — delete
     - "RULE: never delete a bypass while its gate still hard-blocks (breaks legit work); soften/remove the gate first, confirm the var is unused via grep, then delete from code + bypass-env-var-allowlist.txt"
     - this is a dedicated effort, NOT a marathon-tail rush — decompose per-bucket at claim time
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2526
@@ -38560,6 +39303,7 @@ gaps:
     - All preflight gates pass on origin/main
     - chump preflight exits 0 on a fresh worktree
     - main-preflight-watchdog emits main_preflight_recovered and closes this gap
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2642
@@ -38885,6 +39629,7 @@ gaps:
     - "This gap wires the CLI: src/main.rs dispatch match adds the durable-resume subcommand and chump --execute-gap uses DurableExecutor at the top of the per-gap dispatch loop."
     - "Verify: chump durable-resume --help works after build; chump --execute-gap on a synthetic gap calls journal start_step + complete_step for each major activity."
     - "Regression test: scripts/ci/test-durable-resume-cli.sh — chump durable-resume on a synthetic gap with journaled steps replays them and emits kind=durable_journal_resumed."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2663
@@ -38897,6 +39642,7 @@ gaps:
     - INFRA-2629 last-mile-rescuer.sh uses gh pr list --head + gh pr create directly (allowlist exception added). The exception was justified as bootstrap because chump_gh depends on stable runtime that the rescuer is fallback for.
     - This gap revisits that decision. If chump_gh is robust enough on cold start, migrate the 2 raw calls and remove the allowlist exception.
     - "Verify: scripts/ci/test-raw-gh-allowlist.sh shows last-mile-rescuer.sh NOT in the allowlist; rescuer functional test still passes."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2664
@@ -38911,6 +39657,7 @@ gaps:
     - Add an emit at orchestrator dispatch wrapper (likely scripts/coord/chump-commit.sh has hooks; or new scripts/coord/agent-dispatch-emit.sh helper that orchestrator-opus sessions call before Agent tool invocations).
     - "Field shape per EVENT_REGISTRY entry filed by INFRA-2629: {ts, kind, agent_id, gap_id, dispatched_by_session, prompt_summary}."
     - Verify by replaying todays 3 Sonnet drops (RESILIENT-058 / INFRA-2628 / RESILIENT-059) as synthetic events; last-mile-rescuer.sh Trigger 3 fires kind=last_mile_agent_stall_detected within 30 min.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2665
@@ -38927,6 +39674,7 @@ gaps:
     - "  2. EVENT_REGISTRY.yaml edits collide with sibling Sonnets — coordinate via scanner-anchor in reserved.txt OR own EVENT_REGISTRY for your gap explicitly"
     - "  3. Worktree is provisioned from cached origin/main — fetch before commit to avoid stale-base diffs (INFRA-2628 guard added today)"
     - "Optional: scripts/ci/test-dispatch-template-current.sh asserts dispatch-template doc references the binary-crate pitfall."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2666
@@ -39048,6 +39796,7 @@ gaps:
     - "Phases to mark: phase=init, phase=fetch_main, phase=preflight, phase=push, phase=arm_auto_merge, phase=wait_for_ci, phase=post_merge_clean, phase=done, phase=aborted_*."
     - "Verify: scripts/ci/test-bot-merge-progress-file.sh — invoke bot-merge.sh --dry-run --progress-file /tmp/test.log, assert lines appear in order with monotonic timestamps and the expected phase= prefix."
     - "Backwards-compat: when --progress-file is absent, behavior unchanged (no file writes)."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2674
@@ -39270,6 +40019,7 @@ gaps:
     - 144 is non-standard — bot-merge.sh has no `exit 144` literal (only `exit 4` for the wedge guard per INFRA-2426). The 144 must come from a child process kill signal (likely SIGURG = 128+16).
     - "Find the source of the 144 exit. Likely candidates: a launchd watchdog, a cargo timeout, or signal propagation from a stalled subprocess."
     - "Pair with INFRA-2673 progress-file work (filed today, queued local): once that lands, the 144-cause is observable via tail -f."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2689
@@ -39281,6 +40031,7 @@ gaps:
   acceptance_criteria:
     - chump claim during bot-merge.sh preflight ran gap import which hit 2 title-similarity blocks, exited 1 even though the gap-id being shipped IS already in state.db
     - Make import-on-claim opt-in or skip-if-gap-exists
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2690
@@ -39844,6 +40595,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m EFFECTIVE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2725
@@ -39854,6 +40606,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m CREDIBLE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2726
@@ -39864,6 +40617,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m RESILIENT-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2727
@@ -39874,6 +40628,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m ZERO-WASTE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2728
@@ -40232,6 +40987,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m EFFECTIVE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2751
@@ -40242,6 +40998,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m CREDIBLE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2752
@@ -40252,6 +41009,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m RESILIENT-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2753
@@ -40262,6 +41020,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m ZERO-WASTE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2754
@@ -40861,6 +41620,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m EFFECTIVE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2787
@@ -40871,6 +41631,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m CREDIBLE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2788
@@ -40881,6 +41642,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m RESILIENT-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2789
@@ -40891,6 +41653,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m ZERO-WASTE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2790
@@ -40935,6 +41698,7 @@ gaps:
     - "scripts/ci/test-a2a-always-on.sh runs in CI: an explicit `run: bash scripts/ci/test-a2a-always-on.sh` step added to a .github/workflows/ job (e.g. ci.yml audit or the deliberator test cluster near test-deliberator-tick-emits.sh)"
     - the new ci.yml step satisfies the INFRA-1867 preflight-CI parity gate by mirroring it in src/preflight.rs (preferred, per CLAUDE.md §parity allowlist) rather than parking it in preflight-ci-parity-exceptions.txt
     - bash scripts/ci/test-preflight-ci-parity.sh exits 0 with the new gate counted as Mirrored
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2792
@@ -41100,6 +41864,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m EFFECTIVE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2801
@@ -41110,6 +41875,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m CREDIBLE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2802
@@ -41120,6 +41886,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m RESILIENT-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2803
@@ -41130,6 +41897,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m ZERO-WASTE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2804
@@ -41143,6 +41911,7 @@ gaps:
     - docs/observability/EVENT_REGISTRY.yaml documents gap_reserve_calls as the cost-tracking field and how waste-tally/fleet-brief report it to the operator
     - docs/observability/EVENT_REGISTRY.yaml classifies each failure outcome as transient (safe to retry, e.g. gap_id_extract_failed) or permanent (do not blindly retry, e.g. gap_reserve_failed)
     - docs/observability/EVENT_REGISTRY.yaml points at scripts/ci/test-pr-stuck-cluster-observability.sh as the runnable smoke test command verifying this observability
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2805
@@ -41231,6 +42000,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m EFFECTIVE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2810
@@ -41241,6 +42011,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m CREDIBLE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2811
@@ -41251,6 +42022,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m RESILIENT-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2812
@@ -41261,6 +42033,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m ZERO-WASTE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2813
@@ -41558,6 +42331,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m EFFECTIVE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2832
@@ -41568,6 +42342,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m CREDIBLE-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2833
@@ -41578,6 +42353,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - Picker reports >=3 pickable xs/s/m RESILIENT-pillar gaps; starvation signal clears.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2834
@@ -43286,6 +44062,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler/balance test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2963
@@ -43308,6 +44085,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler/balance test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2965
@@ -43330,6 +44108,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler/balance test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2967
@@ -43484,6 +44263,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler picker test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2980
@@ -43503,6 +44283,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler picker test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2982
@@ -43513,6 +44294,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler picker test noise.
+  opened_date: '2026-07-24'
   outcome_id: MISSION-010
 
 - id: INFRA-2983
@@ -43523,6 +44305,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - verify it works
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2984
@@ -43533,6 +44316,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler picker test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2985
@@ -43543,6 +44327,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler picker test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2986
@@ -43565,6 +44350,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler picker test noise.
+  opened_date: '2026-07-24'
   outcome_id: MISSION-010
 
 - id: INFRA-2988
@@ -43599,6 +44385,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler picker test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2991
@@ -43609,6 +44396,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler picker test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2992
@@ -43619,6 +44407,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2993
@@ -43629,6 +44418,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2994
@@ -43683,6 +44473,7 @@ gaps:
     Stuck class: CI-RED — ci-flake-rerun or human investigation required
   acceptance_criteria:
     - "PR #3144 either merges green or is closed with a root-cause note; no auto-filed stuck-PR gap remains open for an already-resolved PR."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2997
@@ -43781,6 +44572,7 @@ gaps:
     Shipping a gap you claimed INTERACTIVELY (chump claim -> edit -> manual ship, not the fleet's bot-merge-claims-fresh path) trips a cascade of guard FALSE-POSITIVES that assume the fleet-worker path. Evidence: 2026-06-21 a 1-line test-only change (INFRA-2999, PR #3149) took ~2h. Each guard is individually correct for real collisions/dupes/races; the bug is they mis-fire on the legitimate interactive path. GOAL (operator 2026-06-21): reduce friction + increase manual-ship speed, but NOT by weakening any gate and NOT by letting broken/half-shipped things through — every fix must be session/scope-AWARE so the gate still catches the genuine bad case. Related: INFRA-2744 (state.db-vs-JSON lease split — the orphan-kill-drops-JSON-lease half). Full field notes in operator memory project_interactive_ship_friction.md. Rough shape (decompose at claim against current code): (a) ambient-glance INFRA-083 (bot-merge.sh ~L2563) excludes the INVOKING session's own ambient events before counting overlap — today it flags your own retries/commits as a sibling collision -> exit 2; (b) chump gap import / chump claim must NOT fatal-exit when the only title-similarity blocks are PRE-EXISTING dupes unrelated to the claimed gap (e.g. INFRA-1268 dup of 1267, INFRA-002 dup of 001) — warn+proceed, keep reporting the dupes; (c) chump claim <ID> ensures the claimed gap row is present in the WORKTREE state.db (worktree is rebuilt from origin/main state.sql; an interactively-reserved gap's yaml lives only in the main checkout) so bot-merge's claim doesn't say 'gap not found'; (d) recovery-mode gh pr create must DETECT failure instead of '|| true' swallowing it (today it prints 'pr create/update done' with NO PR created -> a silent non-ship); fail loudly or retry + emit audit; (e) bot-merge detects/cleans its own stale same-gap orphan processes (or takes a per-gap lock) so a harness-killed prior run can't race the next -> exit 2; (f) OPTIONAL: wire gap-ship-fatal (INFRA-678) + auto-close (INFRA-154) into recovery mode so CHUMP_OPERATOR_RECOVERY=1 isn't needed and gap auto-closes on merge. Also clean up the pre-existing dup gaps (INFRA-1268, INFRA-002) as fleet hygiene since they're what trips (b).
   acceptance_criteria:
     - Interactive-claim ships pass the same guard cascade as autonomous ships; ambient-glance excludes the invoking session's own events and a regression test proves an interactive claim is not false-flagged by glance self-collision.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3003
@@ -44020,6 +44812,7 @@ gaps:
     Stuck class: CI-RED — ci-flake-rerun or human investigation required
   acceptance_criteria:
     - "PR #3156 either merges green or is closed with a root-cause note; no auto-filed stuck-PR gap remains open for an already-resolved PR."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3017
@@ -44047,6 +44840,7 @@ gaps:
     Stuck class: CI-RED — ci-flake-rerun or human investigation required
   acceptance_criteria:
     - "PR #3155 either merges green or is closed with a root-cause note; no auto-filed stuck-PR gap remains open for an already-resolved PR."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3018
@@ -44074,6 +44868,7 @@ gaps:
     Stuck class: CI-RED — ci-flake-rerun or human investigation required
   acceptance_criteria:
     - "PR #3157 either merges green or is closed with a root-cause note; no auto-filed stuck-PR gap remains open for an already-resolved PR."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3019
@@ -44146,6 +44941,7 @@ gaps:
     Stuck class: CI-RED — ci-flake-rerun or human investigation required
   acceptance_criteria:
     - "PR #3160 either merges green or is closed with a root-cause note; no auto-filed stuck-PR gap remains open for an already-resolved PR."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3023
@@ -44203,6 +44999,7 @@ gaps:
     Stuck class: CI-RED — ci-flake-rerun or human investigation required
   acceptance_criteria:
     - "PR #3163 either merges green or is closed with a root-cause note; no auto-filed stuck-PR gap remains open for an already-resolved PR."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3026
@@ -44323,6 +45120,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler balance test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3033
@@ -44333,6 +45131,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler balance test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3034
@@ -44355,6 +45154,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler balance test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3036
@@ -44377,6 +45177,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler balance test noise.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3038
@@ -44715,6 +45516,7 @@ gaps:
     Stuck class: CI-RED — ci-flake-rerun or human investigation required
   acceptance_criteria:
     - "Stale CI-red PR incident (#3167); either the PR's CI is green/merged or the PR is closed — incident gap resolved."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3060
@@ -45077,6 +45879,7 @@ gaps:
     Stuck class: CI-RED — ci-flake-rerun or human investigation required
   acceptance_criteria:
     - "Stale CI-red PR incident (#3173, red 2804m); PR is green/merged or closed — incident resolved."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3083
@@ -46220,6 +47023,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic test-fixture gap (under-floor-a); purge or close.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3161
@@ -46377,6 +47181,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic test-fixture gap (exit-code-test); purge or close.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3172
@@ -46441,6 +47246,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic test-fixture gap (ap-test-a); purge or close.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3177
@@ -46493,6 +47299,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic test-fixture gap (ap-test-a); purge or close.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3181
@@ -47244,6 +48051,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic test-fixture gap (balanced-1); purge or close.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3235
@@ -47266,6 +48074,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic test-fixture gap (balanced-1); purge or close.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3237
@@ -47288,6 +48097,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic test-fixture gap (balanced-1); purge or close.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3239
@@ -47310,6 +48120,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic test-fixture gap (balanced-1); purge or close.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3241
@@ -47332,6 +48143,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic test-fixture gap (underfed-1); purge or close.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3243
@@ -47366,6 +48178,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic test-fixture gap (underfed-2); purge or close.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3246
@@ -47376,6 +48189,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture (no real deliverable); close as non-actionable or confirm the bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3247
@@ -47398,6 +48212,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3249
@@ -47456,6 +48271,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3254
@@ -47466,6 +48282,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3255
@@ -47476,6 +48293,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3256
@@ -47498,6 +48316,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3258
@@ -47520,6 +48339,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3260
@@ -47530,6 +48350,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3261
@@ -47540,6 +48361,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3262
@@ -47658,6 +48480,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3272
@@ -47668,6 +48491,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3273
@@ -47988,6 +48812,7 @@ gaps:
     Stuck class: CI-RED — ci-flake-rerun or human investigation required
   acceptance_criteria:
     - "Stale dated stuck-PR alarm for PR #3183; confirm the PR is merged/closed and close this alarm."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3294
@@ -48221,6 +49046,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3310
@@ -48243,6 +49069,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3312
@@ -48265,6 +49092,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-3314
@@ -48732,6 +49560,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. scripts/ci/test-reaper-pty-pressure.sh cases 2 and 5 use FAKE_PTMX_MAX=150 and assume the host's real /dev/ttys??? count is ~100-200 (comment: \"127/150 = 84% IS pressure\"); on hosts with few real ptys open (observed: 18) the computed pct falls below the 80% threshold and the test fails.\n2. Fix: stub `ls`/the tty-count probe (not just sysctl) so the test controls both numerator and denominator deterministically, instead of relying on ambient real pty count.\n3. Verify: bash scripts/ci/test-reaper-pty-pressure.sh passes on a host with a low real pty count (e.g. a fresh shell with <20 ttys open)."
+  opened_date: '2026-07-26'
 
 - id: INFRA-3346
   domain: INFRA
@@ -48826,6 +49655,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - 1. scripts/ci/test-worker-prelude-floor-signals.sh added to src/preflight.rs whitelist (scripts scope) so it runs under 'chump preflight --with-tests' when worker.sh or floor-readers.sh changes. 2. scripts/ci/test-worker-prelude-reads-floor.sh (INFRA-2008) added likewise. 3. Both scripts referenced in a CI workflow step (.github/workflows/ci.yml) OR added to docs/process/CI_GATES_INVENTORY.md Tier D with reason if they cannot run in CI. 4. chump preflight run locally confirms both tests execute on a worker.sh diff.
+  opened_date: '2026-07-26'
 
 - id: INFRA-3354
   domain: INFRA
@@ -48837,6 +49667,7 @@ gaps:
     Cluster A from META-086 survey (docs/process/AUDIT_JOB_DECOMPOSITION.md): mirror the gap-CLI-subcommand consistency test scripts run in .github/workflows/audit.yml's audit job into src/preflight.rs so they run locally via 'chump preflight', not just in CI. 19 scripts: test-gap-ac-requirement.sh, test-gap-add-note.sh, test-gap-audit-ac-open.sh, test-gap-closure-consistency-fixture.sh, test-gap-consolidate.sh, test-gap-impact-rating.sh, test-gap-lifecycle-manager.sh, test-gap-list-domain-summary.sh, test-gap-list-done-format.sh, test-gap-list-since-json-schema.sh, test-gap-list-since.sh, test-gap-profiling.sh, test-gap-quality-gate.sh, test-gap-rebalance.sh, test-gap-run-now.sh, test-gap-show-ac-render.sh, test-gap-templates.sh, test-gap-workflow-status.sh, test-release-lease-flag.sh. (Corrects earlier draft: the audit job lives in audit.yml, not ci.yml — see survey doc revision.)
   acceptance_criteria:
     - 1. All 19 cluster-A scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md are invoked from src/preflight.rs. 2. scripts/ci/test-preflight-ci-parity.sh passes for this cluster (no unmirrored-gate drift). 3. chump preflight run locally exercises all 19 scripts and exits non-zero if any fails. 4. docs/process/AUDIT_JOB_DECOMPOSITION.md 'Filed sub-gaps' table updated to mark cluster A shipped. Splitting into 2 PRs is acceptable if each is intent-atomic.
+  opened_date: '2026-07-26'
 
 - id: INFRA-3355
   domain: INFRA
@@ -48848,6 +49679,7 @@ gaps:
     Cluster B from META-086 survey (docs/process/AUDIT_JOB_DECOMPOSITION.md): mirror the bot-merge/PR-lifecycle test scripts run in .github/workflows/audit.yml's audit job into src/preflight.rs. 16 scripts: test-bot-merge-arm-ship-order.sh, test-bot-merge-exit-codes.sh, test-bot-merge-exit-phases.sh, test-bot-merge-graphql-preflight.sh, test-bot-merge-stacked-rebase.sh, test-bot-merge-watchdog.sh, test-bounced-pr-detector.sh, test-cache-mergestatestatus.sh, test-merge-driver-ci-yml-add-row.sh, test-pr-failure-auto-rescue.sh, test-pr-rescue-audit-handler.sh, test-pr-scope-title-fallback.sh, test-review-handoff-reengage.sh, test-rollup-cascade-cancel.sh, test-stale-binary-ship-blocked.sh, test-stale-worktree-reaper-tmp.sh. (Corrects earlier draft: the audit job lives in audit.yml, not ci.yml.)
   acceptance_criteria:
     - 1. All 16 cluster-B scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md are invoked from src/preflight.rs. 2. scripts/ci/test-preflight-ci-parity.sh passes for this cluster. 3. chump preflight run locally exercises all 16 scripts and exits non-zero if any fails. 4. docs/process/AUDIT_JOB_DECOMPOSITION.md 'Filed sub-gaps' table updated to mark cluster B shipped.
+  opened_date: '2026-07-26'
 
 - id: INFRA-3356
   domain: INFRA
@@ -48859,6 +49691,7 @@ gaps:
     Cluster C from META-086 survey (docs/process/AUDIT_JOB_DECOMPOSITION.md): mirror the fleet-coordination, curator, pillar-balance, and observability/cost/credential test scripts run in .github/workflows/audit.yml's audit job into src/preflight.rs. 41 scripts, see cluster C list in the survey doc (curators, pillar-balance/dashboard, fleet-metrics/bootstrap/state-mutex, gh-api-probe, graphql-debounce, cost-enforcement, credential-lifecycle, velocity-trending, waste-tally, known-flake gates). (Corrects earlier draft: the audit job lives in audit.yml, not ci.yml; cluster scope widened accordingly.)
   acceptance_criteria:
     - 1. All 41 cluster-C scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md are invoked from src/preflight.rs. 2. scripts/ci/test-preflight-ci-parity.sh passes for this cluster. 3. chump preflight run locally exercises all 41 scripts and exits non-zero if any fails. 4. docs/process/AUDIT_JOB_DECOMPOSITION.md 'Filed sub-gaps' table updated to mark cluster C shipped. Given the size (41 scripts), splitting into 2-3 intent-atomic PRs (e.g. curator gates / fleet-metrics gates / cost-credential gates) is acceptable.
+  opened_date: '2026-07-26'
 
 - id: INFRA-3357
   domain: INFRA
@@ -48870,6 +49703,7 @@ gaps:
     Cluster D from META-086 survey (docs/process/AUDIT_JOB_DECOMPOSITION.md): mirror the worker-substrate, git-worktree-safety, precommit/prepush, and PWA e2e/security test scripts run in .github/workflows/audit.yml's audit job into src/preflight.rs. 35 scripts, see cluster D list in the survey doc (worktree contamination/prune/gitdir-repair, precommit/prepush guards, pwa-security/e2e/version-compat, cli-output-format/version-debug, cargo-mutex-isolation). (Corrects earlier draft: the audit job lives in audit.yml, not ci.yml; cluster scope replaced accordingly.)
   acceptance_criteria:
     - 1. All 35 cluster-D scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md are invoked from src/preflight.rs. 2. scripts/ci/test-preflight-ci-parity.sh passes for this cluster. 3. chump preflight run locally exercises all 35 scripts and exits non-zero if any fails. 4. docs/process/AUDIT_JOB_DECOMPOSITION.md 'Filed sub-gaps' table updated to mark cluster D shipped, and META-086 self-closes on this being the last sub-gap shipped. Given the size (35 scripts), splitting into 2 intent-atomic PRs (worktree/git-plumbing vs PWA/CLI) is acceptable.
+  opened_date: '2026-07-26'
 
 - id: INFRA-3358
   domain: INFRA
@@ -48890,6 +49724,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. src/preflight.rs audit-gate discovery list (fn near line 581) extended with the 21 unmirrored C1 doc/commit-hygiene scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md C1 table\n2. Gated behind CHUMP_PREFLIGHT_SKIP_DOCHYGIENE env var per existing CHUMP_PREFLIGHT_SKIP_REGISTRY pattern\n3. scripts/ci/test-preflight-audit-c1-dochygiene.sh smoke test asserts the cluster's scripts run by default and skip cleanly via the env var\n4. chump preflight wall-clock stays under the documented target (<60s warm) — measure before/after"
+  opened_date: '2026-07-26'
 
 - id: INFRA-3360
   domain: INFRA
@@ -48899,6 +49734,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. src/preflight.rs audit-gate discovery list extended with the 12 unmirrored C2 gap-state/claim-consistency scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md C2 table\n2. Gated behind CHUMP_PREFLIGHT_SKIP_GAPSTATE env var\n3. scripts/ci/test-preflight-audit-c2-gapstate.sh smoke test asserts default-run + env-var skip\n4. chump preflight wall-clock stays under target"
+  opened_date: '2026-07-26'
 
 - id: INFRA-3361
   domain: INFRA
@@ -48908,6 +49744,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. src/preflight.rs audit-gate discovery list extended with the unmirrored C3 PR/worker-lifecycle scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md C3 table\n2. Gated behind CHUMP_PREFLIGHT_SKIP_PRLIFECYCLE env var\n3. scripts/ci/test-preflight-audit-c3-prlifecycle.sh smoke test asserts default-run + env-var skip\n4. chump preflight wall-clock stays under target"
+  opened_date: '2026-07-26'
 
 - id: INFRA-3362
   domain: INFRA
@@ -48917,6 +49754,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Run chump gap decompose INFRA-3362 to split the 42-script C4 fleet-daemon/resilience cluster (docs/process/AUDIT_JOB_DECOMPOSITION.md C4 table) into ship-sized sub-slices — do not mirror all 42 in one PR\n2. Each sub-slice extends src/preflight.rs audit-gate discovery list, gated behind its own CHUMP_PREFLIGHT_SKIP_* env var\n3. Each sub-slice ships its own scripts/ci/test-preflight-audit-c4-<slice>.sh smoke test\n4. This gap self-closes when all C4 sub-slices have shipped"
+  opened_date: '2026-07-26'
 
 - id: INFRA-3363
   domain: INFRA
@@ -48926,6 +49764,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"cargo-gates (shard 1)\" for the current unmirrored-script list (29 at filing time; re-check for drift since META-086 shipped, list may have grown/shrunk).\n2. For each unmirrored script in that cluster, add an entry to src/preflight.rs (the DEFAULT_TEST_SCRIPTS whitelist / relevant Step) so `chump preflight --with-tests` runs it, mirroring the invocation exactly as it appears in .github/workflows/audit.yml (same env vars, same CHUMP_BIN setup).\n3. Scripts requiring `cargo build --bin chump` first must reuse the existing cargo-build step in preflight.rs rather than re-invoking cargo per script.\n4. bash scripts/ci/test-audit-job-decomposition.sh still passes (doc stays in sync); update the doc's \"mirrored: yes/no\" column for this cluster's rows in the same PR.\n5. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+  opened_date: '2026-07-26'
 
 - id: INFRA-3364
   domain: INFRA
@@ -48935,6 +49774,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"event-registry-observability (shard 2)\" for the current unmirrored-script list (27 at filing time; re-check for drift).\n2. For each unmirrored script, add a preflight.rs entry that mirrors its .github/workflows/audit.yml invocation exactly (env vars like CHUMP_REGISTRY_GATE_MODE=strict, BASE_REF=origin/main, etc).\n3. Group event-registry-coverage-family scripts under one preflight scope tag so `chump preflight --scope registry` can run just this cluster.\n4. bash scripts/ci/test-audit-job-decomposition.sh still passes; update the doc's mirrored column for this cluster in the same PR.\n5. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+  opened_date: '2026-07-26'
 
 - id: INFRA-3365
   domain: INFRA
@@ -48944,6 +49784,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"bash-script-gates (shard 3)\" for the current unmirrored-script list (33 at filing time, the largest cluster; re-check for drift).\n2. Split into at most 2 sibling PRs if the diff exceeds ~400 LOC (coordinator/worker/bot-merge gates vs PWA/precommit gates) — note the split explicitly in the PR description; do not silently drop scripts.\n3. For each unmirrored script, add a preflight.rs entry mirroring its .github/workflows/audit.yml invocation exactly (including any CHUMP_BIN cargo-build prerequisite).\n4. bash scripts/ci/test-audit-job-decomposition.sh still passes; update the doc's mirrored column for this cluster in the same PR(s).\n5. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+  opened_date: '2026-07-26'
 
 - id: INFRA-3366
   domain: INFRA
@@ -48953,6 +49794,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"cross-pr-security (shard 4)\" for the current unmirrored-script list (12 at filing time; re-check for drift).\n2. For each unmirrored script, add a preflight.rs entry mirroring its .github/workflows/audit.yml invocation exactly.\n3. Cross-PR-contract gate (test-cross-pr-contract.sh) and security guards must be flagged as \"requires network/GH context\" in preflight.rs comments if they cannot run fully offline — document any script that can only partially mirror (e.g. runs a local-only subset).\n4. bash scripts/ci/test-audit-job-decomposition.sh still passes; update the doc's mirrored column for this cluster in the same PR.\n5. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+  opened_date: '2026-07-26'
 
 - id: INFRA-3367
   domain: INFRA
@@ -48962,6 +49804,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"audit-required-tail\" — 12 scripts bolted onto the audit-required job outside the INFRA-2565 shard matrix, running serially and un-parallelized.\n2. Move these 12 steps into the audit-shard matrix (assign each to whichever of shard 1-4 fits its theme, per the existing shard comments in .github/workflows/audit.yml) so they benefit from the 4-way parallelism; audit-required goes back to being a thin aggregate-only job.\n3. For each of the 12 scripts, also add a preflight.rs mirror entry (same standard as the other 4 clusters).\n4. Verify CI wall-clock for the audit workflow does not regress (shard max-time should not exceed pre-change audit-shard max, since these were previously serial add-ons).\n5. bash scripts/ci/test-audit-job-decomposition.sh still passes; update the doc's mirrored column for this cluster in the same PR.\n6. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+  opened_date: '2026-07-26'
 
 - id: INFRA-3368
   domain: INFRA
@@ -48973,6 +49816,7 @@ gaps:
     - "The change described by \"gap-state-consistency gates (META-086 cluster 1)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-07-26'
 
 - id: INFRA-3369
   domain: INFRA
@@ -48984,6 +49828,7 @@ gaps:
     Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster gap-registry-claim-lifecycle).
   acceptance_criteria:
     - "1. src/preflight.rs gains a gap_registry_claim_lifecycle gate covering the 10 unmirrored scripts: test-claim-fuzzy-match.sh, test-gap-divergence-guard.sh, test-gap-doctor-safe-sweep.sh, test-gap-id-cross-session.sh, test-gap-id-lease-uniqueness.sh, test-gap-reserve-concurrency.sh, test-gap-reserve-padding.sh, test-gap-status-flip.sh, test-infra-1025-atomic-claim.sh, test-pick-and-claim-lockdir.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_GAP_LIFECYCLE=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-gap-lifecycle.sh smoke asserts the gate runs all 10 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
+  opened_date: '2026-07-26'
 
 - id: INFRA-3370
   domain: INFRA
@@ -48995,6 +49840,7 @@ gaps:
     Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster pr-merge-lifecycle).
   acceptance_criteria:
     - "1. src/preflight.rs gains a pr_merge_lifecycle gate covering the 18 unmirrored scripts: test-bot-merge-auto-close.sh, test-bot-merge-conflict-wiring.sh, test-ci-flake-rerun.sh, test-conflict-resolver.sh, test-flake-autorerun.sh, test-install-pr-auto-rebase.sh, test-open-pr-dup-detection.sh, test-pr-auto-rebase.sh, test-pr-blocked-watch.sh, test-pr-explain-block.sh, test-pr-terminal-state.sh, test-pr-triage-bot.sh, test-pr-watch-auto-resolve.sh, test-pr-watch-shepherd-smoke.sh, test-rebase-coordination.sh, test-speculative-on-speculative-guard.sh, test-stale-branch-rebase.sh, test-status-flip-proof-of-merge.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_PR_LIFECYCLE=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-pr-lifecycle.sh smoke asserts the gate runs all 18 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
+  opened_date: '2026-07-26'
 
 - id: INFRA-3371
   domain: INFRA
@@ -49006,6 +49852,7 @@ gaps:
     Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster fleet-daemon-reaper).
   acceptance_criteria:
     - "1. src/preflight.rs gains a fleet_daemon_reaper gate covering the 14 unmirrored scripts: test-auto-arm-sweeper.sh, test-autoscale-decisions.sh, test-cargo-target-reaper.sh, test-claude-reaper.sh, test-fleet-brief.sh, test-fleet-fanout.sh, test-fleet-kill-switch.sh, test-fleet-spec.sh, test-fleet-starve-auto-action.sh, test-infra-258-reaper-partial-delivery.sh, test-stale-process-watchdog.sh, test-subagent-budget-kill.sh, test-supervision-trees.sh, test-worktree-reaper-safety.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_FLEET_DAEMON=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-fleet-daemon.sh smoke asserts the gate runs all 14 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
+  opened_date: '2026-07-26'
 
 - id: INFRA-3372
   domain: INFRA
@@ -49017,6 +49864,7 @@ gaps:
     Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster docs-hygiene-guard).
   acceptance_criteria:
     - "1. src/preflight.rs gains a docs_hygiene_guard gate covering the 21 unmirrored scripts: test-credential-pattern-guard.sh, test-cross-judge-guard.sh, test-css-token-discipline.sh, test-default-flip-guard.sh, test-doc-freshness.sh, test-docs-delta-commit-msg.sh, test-docs-delta-guard.sh, test-gate-promotion-no-regression.sh, test-git-identity-guard.sh, test-hardcoded-date-guard.sh, test-md-links-loop.sh, test-merge-driver-ci-yml.sh, test-merge-driver-pre-commit.sh, test-merge-driver-state-sql.sh, test-no-claude-leak.sh, test-no-verify-audit.sh, test-preflight-ci-parity.sh, test-prereg-content-guard.sh, test-raw-yaml-guard.sh, test-schema-version-assert.sh, test-submodule-guard.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_DOCS_HYGIENE=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-docs-hygiene.sh smoke asserts the gate runs all 21 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
+  opened_date: '2026-07-26'
 
 - id: INFRA-3373
   domain: INFRA
@@ -49028,6 +49876,7 @@ gaps:
     Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster cli-observability-misc). Largest/lowest-priority cluster — grab-bag of one-off smoke tests, lowest cascade risk per script but highest count.
   acceptance_criteria:
     - "1. src/preflight.rs gains a cli_observability_misc gate covering the 41 remaining unmirrored scripts enumerated in docs/process/AUDIT_JOB_DECOMPOSITION.md cluster cli-observability-misc\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_CLI_MISC=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-cli-misc.sh smoke asserts the gate runs all 41 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored\n5. Last of the 5 META-086 sub-gaps to ship self-closes META-086 per its AC 4"
+  opened_date: '2026-07-26'
 
 - id: INFRA-3374
   domain: INFRA
@@ -49037,6 +49886,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. For each of the 15 gap-state-consistency scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#gap-state-consistency-infra-3374, add a mirror gate in src/preflight.rs (GateKind::Scripts) following the established pattern (conditional CHUMP_PREFLIGHT_SKIP_<NAME> guard, audit-trail emit on bypass, steps.push).\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md's already-mirrored table with the new gates.\n3. Smoke test scripts/ci/test-preflight-gap-state-mirrors.sh asserts all 15 gates are reachable from the preflight binary.\n4. chump preflight still completes within the documented speed-target budget for Scripts scope after the additions."
+  opened_date: '2026-07-26'
 
 - id: INFRA-3375
   domain: INFRA
@@ -49046,6 +49896,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. For each of the 26 pr-lifecycle-bot-merge scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#pr-lifecycle-bot-merge-infra-3375, add a mirror gate in src/preflight.rs (GateKind::Scripts) following the established pattern (conditional CHUMP_PREFLIGHT_SKIP_<NAME> guard, audit-trail emit on bypass, steps.push).\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md's already-mirrored table with the new gates.\n3. Smoke test scripts/ci/test-preflight-pr-lifecycle-mirrors.sh asserts all 26 gates are reachable from the preflight binary.\n4. chump preflight still completes within the documented speed-target budget for Scripts scope after the additions."
+  opened_date: '2026-07-26'
 
 - id: INFRA-3376
   domain: INFRA
@@ -49055,6 +49906,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. For each of the 20 observability-fleet-signals scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#observability-fleet-signals-infra-3376, add a mirror gate in src/preflight.rs (GateKind::Scripts) following the established pattern (conditional CHUMP_PREFLIGHT_SKIP_<NAME> guard, audit-trail emit on bypass, steps.push).\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md's already-mirrored table with the new gates.\n3. Smoke test scripts/ci/test-preflight-observability-mirrors.sh asserts all 20 gates are reachable from the preflight binary.\n4. chump preflight still completes within the documented speed-target budget for Scripts scope after the additions."
+  opened_date: '2026-07-26'
 
 - id: INFRA-3377
   domain: INFRA
@@ -49064,6 +49916,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. For each of the 22 commit-content-guards scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#commit-content-guards-infra-3377, add a mirror gate in src/preflight.rs (GateKind::Scripts, or --pre-commit only where the check is inherently commit-scoped like docs-delta-trailer) following the established pattern.\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md's already-mirrored table with the new gates.\n3. Smoke test scripts/ci/test-preflight-content-guard-mirrors.sh asserts all 22 gates are reachable from the preflight binary.\n4. chump preflight still completes within the documented speed-target budget for Scripts scope after the additions."
+  opened_date: '2026-07-26'
 
 - id: INFRA-3378
   domain: INFRA
@@ -49073,6 +49926,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. For each of the 23 cli-product-acceptance scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#cli-product-acceptance-infra-3378, classify as Mirror (add to src/preflight.rs), Tier-D (add to docs/process/CI_GATES_INVENTORY.md, e.g. self-hosted-runner-only checks), or Allowlist (add to scripts/ci/preflight-ci-parity-exceptions.txt with reason) — most in this cluster are slow feature-acceptance tests, so Tier-D/Allowlist is expected to dominate over Mirror.\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md accordingly for every script in this cluster.\n3. Smoke test scripts/ci/test-preflight-cli-acceptance-classification.sh asserts every script in the cluster has a classification (mirrored, Tier-D, or allowlisted) — none left unclassified."
+  opened_date: '2026-07-26'
 
 - id: INFRA-3379
   domain: INFRA
@@ -49087,6 +49941,7 @@ gaps:
     - chump preflight exits non-zero when any of these gates would fail, matching CI behavior
     - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
     - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
+  opened_date: '2026-07-26'
 
 - id: INFRA-3380
   domain: INFRA
@@ -49101,6 +49956,7 @@ gaps:
     - chump preflight exits non-zero when any of these gates would fail, matching CI behavior
     - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
     - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
+  opened_date: '2026-07-26'
 
 - id: INFRA-3381
   domain: INFRA
@@ -49115,6 +49971,7 @@ gaps:
     - chump preflight exits non-zero when any of these gates would fail, matching CI behavior
     - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
     - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
+  opened_date: '2026-07-26'
 
 - id: INFRA-3382
   domain: INFRA
@@ -49129,6 +49986,7 @@ gaps:
     - chump preflight exits non-zero when any of these gates would fail, matching CI behavior
     - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
     - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
+  opened_date: '2026-07-26'
 
 - id: INFRA-3383
   domain: INFRA
@@ -49144,6 +50002,7 @@ gaps:
     - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
     - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
     - META-086 is closed after this gap ships (last of the 5 cluster sub-gaps)
+  opened_date: '2026-07-26'
 
 - id: INFRA-3384
   domain: INFRA
@@ -49162,6 +50021,7 @@ gaps:
     - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 14 rows flip from mirrored=no to mirrored=yes"
     - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
     - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+  opened_date: '2026-07-26'
 
 - id: INFRA-3385
   domain: INFRA
@@ -49180,6 +50040,7 @@ gaps:
     - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 23 rows flip from mirrored=no to mirrored=yes"
     - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
     - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+  opened_date: '2026-07-26'
 
 - id: INFRA-3386
   domain: INFRA
@@ -49198,6 +50059,7 @@ gaps:
     - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 23 rows flip from mirrored=no to mirrored=yes"
     - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
     - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+  opened_date: '2026-07-26'
 
 - id: INFRA-3387
   domain: INFRA
@@ -49216,6 +50078,7 @@ gaps:
     - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 30 rows flip from mirrored=no to mirrored=yes"
     - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
     - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+  opened_date: '2026-07-26'
 
 - id: INFRA-3388
   domain: INFRA
@@ -49234,6 +50097,7 @@ gaps:
     - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 14 rows flip from mirrored=no to mirrored=yes"
     - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
     - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+  opened_date: '2026-07-26'
 
 - id: INFRA-3389
   domain: INFRA
@@ -49250,6 +50114,7 @@ gaps:
     - known-prefixes lookup resolves against the canonical MAIN_REPO/.chump/state.db (via the same git-common-dir resolution repo-paths.sh already uses), not the worktree-local path
     - regression test proves a fresh worktree with an empty state.db can still commit via chump-commit.sh
     - RESILIENT-065 exit trap coverage extended (or the known-prefixes block moved after it arms) so no future pre-trap block can reproduce this silent-abort class
+  opened_date: '2026-07-26'
 
 - id: INFRA-3390
   domain: INFRA
@@ -49441,6 +50306,7 @@ gaps:
     Do not batch — if one lane flakes, you need to know which.
   acceptance_criteria:
     - "1. Confirm RUNNER_E2E_PWA canary has run clean (no CANCELLED/checkout-fail) across >=3 PR cycles\n2. Restore RUNNER_AUDIT, wait one clean PR cycle\n3. Restore RUNNER_COVERAGE, wait one clean PR cycle\n4. Restore RUNNER_E2E_GOLDEN_PATH and RUNNER_TAURI_COWORK_E2E, wait one clean PR cycle\n5. Update docs/process/SELF_HOSTED_RUNNERS.md \"Repo variable state\" table to reflect final state\n6. Emit ambient kind=runner_health_restored on full restoration"
+  opened_date: '2026-07-26'
 
 - id: INFRA-3404
   domain: INFRA
@@ -49676,6 +50542,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "STRUCTURAL win (do after INFRA-3420/3421): the chump dep-graph compiles 3x/PR across clippy (x86), cargo-test (aarch64), fast-checks (x86) sharing nothing = ~10-15 machine-min/PR waste (58% of ~44 machine-min/PR total). Collapse the x86 compiles into ONE ubuntu job, one CARGO_TARGET_DIR: cargo clippy --workspace --all-targets (compiles everything incl test targets) -> cargo nextest run --workspace (reuses clippy's objects, only links+runs) -> bash guards reuse target/debug/chump. Keep e2e-pwa separate (macOS-only) and optionally a smaller aarch64 cargo-test leg for arch coverage. The clippy/cargo-test/fast-checks '-required' aggregator stubs (L1608-1668) already exist to keep required-check names green post-merge. Verify: workspace compiles ONCE/PR (warm), required checks still all present."
+  opened_date: '2026-07-26'
 
 - id: INFRA-3423
   domain: INFRA
@@ -49750,6 +50617,7 @@ gaps:
     - Subcommand logic is moved to dedicated modules in src/
     - Codebase compiles and all tests pass after decomposition
     - No regression in CLI behavior
+  opened_date: '2026-07-26'
 
 - id: INFRA-3429
   domain: INFRA
@@ -49778,6 +50646,7 @@ gaps:
     - All scripts/tools consistently use .chump/worktrees/
     - Legacy .claude/worktrees/ paths are reaped or moved
     - Documentation is updated to strictly reflect the new convention
+  opened_date: '2026-07-26'
 
 - id: INFRA-3431
   domain: INFRA
@@ -49803,6 +50672,7 @@ gaps:
     - "The change described by \"integration-test-pipeline-1784995019-33277\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3433
   domain: INFRA
@@ -49960,6 +50830,7 @@ gaps:
     - "The change described by \"docs-delta-guard self-test fails on clean main — CHUMP_DOCS_DELTA_CHECK=0 bypass case rejected\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3445
   domain: INFRA
@@ -50023,6 +50894,7 @@ gaps:
     - "The change described by \"wire worker.sh + gap-strike to INVOKE 'chump gap route' — replace blanket escalate (EFFECTIVE-314) / blanket decompose (EFFECTIVE-310) with the router's per-gap discipline\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
 
 - id: INFRA-3450
@@ -50127,6 +50999,7 @@ gaps:
     - "The change described by \"bot-merge code-reviewer hard-requires ANTHROPIC_API_KEY — falls over (auto-merge NOT armed) in OAuth-only envs\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3458
   domain: INFRA
@@ -50195,6 +51068,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 5 slices: INFRA-3568, INFRA-3569, INFRA-3570, INFRA-3571, INFRA-3572
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
 
 - id: INFRA-3463
@@ -50221,6 +51095,7 @@ gaps:
     - "The change described by \"migrate gap-decompose-verify to the shared cascade — drop the bespoke LocalOpenAIProvider@api.anthropic.com (OAuth-incompatible) for provider_cascade::build_provider()\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3465
   domain: INFRA
@@ -50232,6 +51107,7 @@ gaps:
     - "The change described by \"formally allowlist adversary_llm + screen_vision as audited intentional-direct LLM calls\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3466
   domain: INFRA
@@ -50243,6 +51119,7 @@ gaps:
     - "The change described by \"migrate code-reviewer Tier-1 to the shared LLM service (chump llm-complete) — kill the CHUMP_PROVIDER_1..10 slot-duplication\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3467
   domain: INFRA
@@ -50254,6 +51131,7 @@ gaps:
     - "The change described by \"add multimodal (image) content to ProviderCascade/Provider so screen_vision can migrate off bespoke /chat/completions\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3468
   domain: INFRA
@@ -50265,6 +51143,7 @@ gaps:
     - "The change described by \"CONFIG organ — add JS/TS + Python env adapters (comprehend UAT pilot-1 B1/B2)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: INFRA-3469
@@ -50277,6 +51156,7 @@ gaps:
     - "The change described by \"WIRING organ — add ecosystem adapters beyond Rust (comprehend UAT pilot-1 B3, the #1 coverage gap)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: INFRA-3470
@@ -50289,6 +51169,7 @@ gaps:
     - "The change described by \"comprehension->work engine — organs emit STRUCTURED findings + wire verifier to --apply (external_repo gaps)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3472
   domain: INFRA
@@ -50300,6 +51181,7 @@ gaps:
     - "The change described by \"CONFIG organ over-claims DRIFT — normalize placeholders + collapse equivalent expressions + fix multi-value parse before counting\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: INFRA-3473
@@ -50445,6 +51327,7 @@ gaps:
   notes: |
     [2026-07-29T03:21:22Z] DISCOVERY NOT-STARTED -> BUILD. venture-go-no-go skill exists but unwired; wire it as the engine + gate ahead of bootstrap.
     [2026-08-19T13:52:04Z] Jeff 2026-08-19: pivot to factory-forward — go/no-go pairs with INFRA-3480 intake front door.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3482
@@ -50459,6 +51342,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:22Z] DISCOVERY PARTIAL ~20% -> FINISH. layer phase/deferral persistence onto src/decompose_task_tool.rs + depends_on + the outcome ladder (plan_mode.rs is collision-gate, not scope).
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3483
@@ -50534,6 +51418,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~50% -> FINISH. unify neuromod pause (autonomy_loop.rs:1133) + src/hitl_escalation.rs + tool-storm exit 76 (execute_gap.rs:1339) into one restart-intensity policy that marks blocked+escalates after N no-progress cycles.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3488
@@ -50596,6 +51481,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~30% -> FINISH. collision_prediction.rs is a mock; better neighbor = contract-scan --in-flight (+ scripts/ci/test-cross-pr-contract.sh) which detects writer/reader key-mismatch across open PRs. Add a numeric double-bump detector there.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3492
@@ -50610,6 +51496,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY transport COMPLETE, reactions BUILT-NOT-WIRED -> FINISH. crates/chump-coord/src/{events,nats_primary,jetstream_consumer}.rs (flag + offline-degrade real). Add pr.merged->ship and test.failed->pr-rescue reaction handlers (wiring, not plumbing).
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3493
@@ -50624,6 +51511,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY NOT-STARTED (small) -> BUILD. add a 5th src/inventory.rs detector: launchctl list vs git ls-files (detect_stale_plists at inventory.rs:1395 is the reverse check).
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3494
@@ -50684,6 +51572,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY NOT-STARTED ~10% -> BUILD from scratch. e2e/DEPTH.md is ABSENT; nearest is src/pr_ac_coverage.rs.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3498
@@ -50698,6 +51587,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY NOT-STARTED ~15% -> BUILD. building blocks only: src/adversary_llm.rs (reuse as judge), src/speculative_execution.rs. Add generate-N/synthesize.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3499
@@ -50712,6 +51602,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~50% -> FINISH. reflect hook is WIRED (autonomy_loop.rs:1352 reflect_heuristic->reflection_db). Compose reality-check+durable-fix+anti-over-claim at the hook, route findings to gap_store (src/reflection.rs:34 lists feed-back-as-gaps as future).
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3500
@@ -50726,6 +51617,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:24Z] DISCOVERY PARTIAL ~55% -> FINISH. src/briefing.rs:29-36 reads strategy docs PER-GAP after pick; add a PRE-selection pass over mission_grade/roadmap_status so the picker biases to highest-leverage mission moves.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3501
@@ -50740,6 +51632,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:24Z] DISCOVERY EXISTS-COMPLETE (richer than described) -> DONE, verify only. capture+inject + per-directive adoption grading (src/lesson_action.rs) + A/B semantic-vs-recency (EVAL-099). Confirm META-040 aggregation runs, then close.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3502
@@ -50773,6 +51666,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:24Z] DISCOVERY NOT-STARTED ~15% -> BUILD from scratch. src/notify_tool.rs REQUIRES jargon tags, user_error_hints.rs ADDS jargon - the opposite of what we need. Build a fleet-state->user-language translation layer + a no-jargon guard.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3504
@@ -50787,6 +51681,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:24Z] DISCOVERY NOT-STARTED ~15% -> BUILD. depends on 3.1 (INFRA-3494) verification gate to hang off. (name collision: review_handoff.rs + chump-handoff are unrelated.)
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3505
@@ -50801,6 +51696,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:24Z] DISCOVERY PARTIAL ~35% -> FINISH. project a plain-language USER view over existing operator telemetry (src/dashboard.rs, fleet_status.rs, kpi_report.rs); add honest test-depth.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3506
@@ -50815,6 +51711,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:24Z] DISCOVERY PARTIAL ~30% WRONG-TARGET -> BUILD external. src/fleet_self_doctor.rs + paramedic.rs heal the INTERNAL fleet only. Build delivered-tool monitoring; reuse the circuit-breaker scaffolding.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3507
@@ -50831,6 +51728,7 @@ gaps:
     - "test: a delivered tool with a known-CVE dependency or an injectable SAST finding is blocked from promote; a clean one passes"
   notes: |
     [2026-07-29T03:21:24Z] DISCOVERY PARTIAL ~30% -> FINISH. LICENSE-AGPL/NOTICE present; security-sweep skill unwired; secret-scan is advisory (src/standard_missions.rs:94). Wire security-sweep into an ENFORCED pre-publish gate + license injection per delivered tool.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3508
@@ -50841,6 +51739,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "A sourcing resolver, given a capability need, checks in order: existing repo -> internal arsenal -> world prior-art, and returns the first viable source before triggering a from-scratch build."
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3509
@@ -50853,6 +51752,7 @@ gaps:
     - "The change described by \"[COTG-S.2] stall diagnosis (detect half-done AND why it stalled)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3510
@@ -50865,6 +51765,7 @@ gaps:
     - "The change described by \"[COTG-S.3] the build-vs-source decision (own-vs-rent, logged)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3511
@@ -50877,6 +51778,7 @@ gaps:
     - "The change described by \"[COTG-S.4] wire the organs into dedup (structural completeness, not keyword match)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3512
@@ -51000,6 +51902,7 @@ gaps:
     - "The change described by \"cold-water proposed gaps from Issues #22-24 never reach canonical registry (3rd cycle unfiled); gap-reserve sandbox fails; no automated filing mechanism\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-17'
 
 - id: INFRA-3521
   domain: INFRA
@@ -51098,6 +52001,7 @@ gaps:
     - tested end-to-end against at least one real existing repo (retrofit case), not just net-new bootstrap
     - a human reviews the generated roadmap's phases and done-when criteria for actual usefulness before this ships as done
   source_doc: session 2026-08-02, first-mate portfolio audit; follows INFRA-2267
+  opened_date: '2026-08-19'
 
 - id: INFRA-3528
   domain: INFRA
@@ -51111,6 +52015,7 @@ gaps:
     - chump gap ship succeeds for an external_repo gap whose fix commit (subject carrying the gap ID) is on the registered repo's main
     - no bypass env vars required
     - GAME-001 shippable as the worked example
+  opened_date: '2026-08-19'
 
 - id: INFRA-3529
   domain: INFRA
@@ -51141,6 +52046,7 @@ gaps:
     - "The change described by \"almanac never indexes SQL — blind to migrations/RLS/schema, directly relevant to this fleet's recurring Supabase questions\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3531
   domain: INFRA
@@ -51188,6 +52094,7 @@ gaps:
     - "Re-measure the deep milestones after the nav fix: cavern_entrance and forest_west sweeps reflect real reachability, not nav-limit noise"
   notes: |
     The Scout stranger-agent navigates by sweeping SCREEN EDGES to find area exits (adapters/realm-of-shadows.mjs edge-sweep). When an exit requires routing AROUND an interior obstacle, the bot gets stuck. MEASURED 2026-08-04 (live repeat.mjs on canonical ~/Projects/games/realm-of-shadows): realm forest_east (depth 1, human-trivial — a large central WATER POOL with the east exit a narrow strip reached by pathing around the pool) = 0/5 completed, ALL 'stuck' at maxProgress 3, deaths ~0. Pure navigation failure, NOT lethality. This is the ACTUAL blocker behind the deep milestones (cavern_entrance 0/5, forest_west 0/3) — it produced false GAME-004/005 gaps blaming lethality (a lethality/aggro/difficulty fix was built + measured + REVERTED: cavern still 0/5; DEPTH.md corroborates: Easy 0.7x -> deep 0/3, warm-start adjacent -> 3/3). Fix direction: obstacle-aware pathing for the stranger bot — detect the walkable corridor / route around water+walls toward a candidate exit, instead of pure edge-sweep. A human reads these rooms instantly; the bot shouldn't score 0/5 on them. Blocks GAME-004/005 (realm deep milestones). Evidence run dirs: scout/runs/repeat-realm-of-shadows-2026-08-04T15-37-51* (forest_east 0/5).
+  opened_date: '2026-08-19'
 
 - id: INFRA-3534
   domain: INFRA
@@ -51201,6 +52108,7 @@ gaps:
     - "The 2026-08-06 failure shape is documented in the fix: nextest (process-per-test) green 2734/2734 while pre-push cargo test failed 17 repo_path/repo_tools tests, because an unset-env window during api_battle_tests let a live chumpd's answer freeze into the cache"
   notes: |
     [2026-08-06T22:05:52Z] A/B receipt (2026-08-06): full cargo test --bin chump from a bare shell (no CHUMP_REPO), chumpd live (up since Jul 31): BASE d8287752 = 27 FAILED; PRODUCT-176 branch = 21 FAILED — same repo_path/repo_tools/tool_middleware/diff_review shape on both, so the branch is not the cause. Same subset passes standalone (repo_path::tests 5/5) because the first repo_root() call then happens with env set. Fleet tmux workers pass pre-push only because their env carries CHUMP_REPO from process start. Workaround for bare-shell ships: export CHUMP_REPO before bot-merge. Real fix per AC: re-check env on every chumpd_repo_root call, cache only the socket lookup.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3535
   domain: INFRA
@@ -51212,6 +52120,7 @@ gaps:
     - The pre-push hook's INFRA-761 test gate prefers cargo nextest run --bin chump (process-isolated) when nextest is installed, falling back to cargo test only when absent — the same CREDIBLE-175 fix bot-merge's own test stage already made
     - The known false-red set (repo_path/repo_tools/tool_middleware CHUMP_REPO env races, INFRA-3534) passes the gate from a bare shell with a live chumpd daemon
     - The hook source of truth is updated wherever hooks are installed from, not just .git/hooks on one machine
+  opened_date: '2026-08-19'
 
 - id: INFRA-3536
   domain: INFRA
@@ -51224,6 +52133,7 @@ gaps:
     - "A recovery-mode ship of a first-push gap branch goes through without manually exporting the flag (reproduced live 2026-08-06 shipping PRODUCT-176: recovery push blocked by the hook's own INFRA-719 guard while inside bot-merge)"
   notes: |
     [2026-08-07T00:12:28Z] Second recovery-mode bug found same ship: the fast-path's 'gh pr create --json number' uses a flag gh pr create does not support, so PR creation always fails in recovery mode even after a successful push (fix: parse the URL from stdout, or gh pr view --json after create). Reproduced 2026-08-06; PRODUCT-176 finished via the documented manual fallback (gh pr create + gh pr merge --auto --squash = PR #3490).
+  opened_date: '2026-08-19'
 
 - id: INFRA-3537
   domain: INFRA
@@ -51277,6 +52187,7 @@ gaps:
     - "SAFETY IS NON-NEGOTIABLE AND THE PATTERN ALREADY EXISTS: audit is branch-protection required, so skipping must use the needs + if:always() aggregator so 'audit' and 'audit-required' still report SUCCESS on a skipped lane. This is proven in-repo — clippy-required and cargo-test-required did exactly this on PR #3489 while their lanes skipped. Do not invent a new mechanism"
     - "SCOPE THE LANE NARROWLY: Chump gaps are YAML, so 'documentation' is NOT the test — gap-integrity and gap-status gates MUST still run whenever any gap YAML changes. Gate on 'touched only docs/**/*.md and no .rs/.toml/.sh/gap YAML', and prove it with a fixture PR that touches a gap YAML and confirms the cargo gates still fire"
     - "SEPARATE, SMALLER LEVER (file as follow-up if it does not fit here): sccache hit rate is 31% on that run — 901 compile requests, 714 executed, only 281 hits. Improving it cuts BOTH build shards on every PR, including the Rust PRs a docs-only lane can never help. Record the hit rate in the run so it is trendable rather than rediscovered"
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
 
 - id: INFRA-3541
@@ -51292,6 +52203,7 @@ gaps:
     - DECIDE FAIL-OPEN VS FAIL-CLOSED DELIBERATELY and write the choice into the script as a comment. A guard that cannot run should probably block the push and say so, but that is a judgement call about developer friction — the current behaviour is not a choice, it is an accident
     - "VERIFY on both bash 3.2 (macOS default, /bin/bash) and bash 5.x: push a ci.yml change with no CI-Regression-Guard trailer and assert the guard actually evaluates rather than crashing. A regression test belongs in scripts/ci/ alongside the other hook tests"
     - "Found while unblocking PR #3509 (EFFECTIVE-396). Not filed as part of that PR because it is an unrelated pre-existing defect in a different script"
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
 
 - id: INFRA-3542
@@ -51317,6 +52229,7 @@ gaps:
     - "The change described by \"audit shard rebalance by MEASURED duration + per-shard timing record + no-checkout audit-required (real EFFECTIVE-420 AC; #3532/#3534 shipped only the cache-key/cold-build fixes)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3544
   domain: INFRA
@@ -51327,6 +52240,7 @@ gaps:
   acceptance_criteria:
     - Failure is reproduced within 30 seconds
     - Failure is specific to jeffs-macbook-air-10-X runners
+  opened_date: '2026-08-19'
 
 - id: INFRA-3545
   domain: INFRA
@@ -51338,6 +52252,7 @@ gaps:
     - Disk usage is recorded
     - Network configuration is recorded
     - Runner registration status is recorded
+  opened_date: '2026-08-19'
 
 - id: INFRA-3546
   domain: INFRA
@@ -51349,6 +52264,7 @@ gaps:
     - Disk full condition is identified or ruled out
     - Stale runner registration is identified or ruled out
     - Network issues are identified or ruled out
+  opened_date: '2026-08-19'
 
 - id: INFRA-3547
   domain: INFRA
@@ -51359,6 +52275,7 @@ gaps:
   acceptance_criteria:
     - Queue contention is identified or ruled out as a root cause
     - Recommendations for queue configuration adjustments are provided
+  opened_date: '2026-08-19'
 
 - id: INFRA-3548
   domain: INFRA
@@ -51369,6 +52286,7 @@ gaps:
   acceptance_criteria:
     - Workarounds are documented in the correct file
     - Workarounds are clear and actionable
+  opened_date: '2026-08-19'
 
 - id: INFRA-3549
   domain: INFRA
@@ -51379,6 +52297,7 @@ gaps:
   acceptance_criteria:
     - Fix or workaround is implemented and tested
     - Fix or workaround resolves the actions/checkout@v6 failure
+  opened_date: '2026-08-19'
 
 - id: INFRA-3550
   domain: INFRA
@@ -51401,6 +52320,7 @@ gaps:
   acceptance_criteria:
     - Disk usage on jeffs-macbook-air-10-X is checked
     - Disk full is identified as a potential root cause or ruled out
+  opened_date: '2026-08-19'
 
 - id: INFRA-3552
   domain: INFRA
@@ -51411,6 +52331,7 @@ gaps:
   acceptance_criteria:
     - Runner registration on jeffs-macbook-air-10-X is checked
     - Stale runner registration is identified as a potential root cause or ruled out
+  opened_date: '2026-08-19'
 
 - id: INFRA-3553
   domain: INFRA
@@ -51421,6 +52342,7 @@ gaps:
   acceptance_criteria:
     - Network connectivity on jeffs-macbook-air-10-X is checked
     - Network issues are identified as a potential root cause or ruled out
+  opened_date: '2026-08-19'
 
 - id: INFRA-3554
   domain: INFRA
@@ -51443,6 +52365,7 @@ gaps:
   acceptance_criteria:
     - Workaround is documented in docs/process/SELF_HOSTED_RUNNERS.md
     - Workaround is clear and easy to follow
+  opened_date: '2026-08-19'
 
 - id: INFRA-3556
   domain: INFRA
@@ -51503,6 +52426,7 @@ gaps:
   acceptance_criteria:
     - Findings are clearly documented
     - Proposed fix is outlined
+  opened_date: '2026-08-19'
 
 - id: INFRA-3561
   domain: INFRA
@@ -51513,6 +52437,7 @@ gaps:
   acceptance_criteria:
     - Fix is implemented and tested
     - Fix does not introduce new issues
+  opened_date: '2026-08-19'
 
 - id: INFRA-3562
   domain: INFRA
@@ -51584,6 +52509,7 @@ gaps:
     - "The change described by \"reconcile ROADMAP.md — add the Run-the-Business track (RUN_THE_BUSINESS_2026-08-09) as a co-equal arm so the fleet gets pointed at run-the-business work, not only build\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3568
   domain: INFRA
@@ -51594,6 +52520,7 @@ gaps:
   acceptance_criteria:
     - A design document outlining the shared LLM service integration is created
     - The design document is reviewed and approved by the team
+  opened_date: '2026-08-19'
 
 - id: INFRA-3569
   domain: INFRA
@@ -51605,6 +52532,7 @@ gaps:
     - The shared LLM service gateway is implemented in the relevant INFRA code path
     - The gateway is tested with a mock LLM service
   depends_on: [INFRA-3568]
+  opened_date: '2026-08-19'
 
 - id: INFRA-3570
   domain: INFRA
@@ -51616,6 +52544,7 @@ gaps:
     - The chump LLM-complete model is integrated with the reviewer
     - The integration is tested with a sample code review
   depends_on: [INFRA-3569]
+  opened_date: '2026-08-19'
 
 - id: INFRA-3571
   domain: INFRA
@@ -51627,6 +52556,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior
     - The test fails without the change
   depends_on: [INFRA-3570]
+  opened_date: '2026-08-19'
 
 - id: INFRA-3572
   domain: INFRA
@@ -51638,6 +52568,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass
     - No regression to existing tests
   depends_on: [INFRA-3571]
+  opened_date: '2026-08-19'
 
 - id: INFRA-3573
   domain: INFRA
@@ -51724,6 +52655,7 @@ gaps:
   acceptance_criteria:
     - Fix is implemented
     - Fix is reviewed and approved
+  opened_date: '2026-08-19'
 
 - id: INFRA-3580
   domain: INFRA
@@ -51753,6 +52685,7 @@ gaps:
     - "The change described by \"bot-merge.sh gh_api_probe hangs 10s when stdin not redirected from /dev/null (--silent reads stdin)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3583
   domain: INFRA
@@ -51858,6 +52791,7 @@ gaps:
     instead of crashing the whole script with a misleading exit code.
   acceptance_criteria:
     - "1. scripts/coord/code-reviewer-agent.sh's VERDICT_LINE grep no longer aborts\n   the script under set -euo pipefail when the LLM response doesn't contain\n   an APPROVE:/CONCERN:/ESCALATE: prefixed line.\n2. A malformed/non-matching LLM response reaches the existing \"ESCALATE:\n   code-reviewer response did not match expected format\" fallback (exit 2),\n   not a silent crash reported upstream as CONCERN (exit 1).\n3. Regression test in scripts/ci/test-code-reviewer-agent.sh covering a\n   RESPONSE value with no colon-suffixed verdict line on its own."
+  opened_date: '2026-08-19'
 
 - id: INFRA-3594
   domain: INFRA
@@ -51891,6 +52825,7 @@ gaps:
     - "receipt 2026-08-19: closed #3919(INFRA-1784)/#3910(META-193) 03:14:1x, reopened by repairman29 at 03:14:4x (~25s); both DIRTY+P2 → un-retireable, re-jam"
   notes: |
     [2026-08-19T03:47:05Z] Relates stale-pr-reaper, pr-shepherd reopener, pr-auto-rebase (no content-conflict resolution). Hit while unjamming queue 2026-08-19.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3606
   domain: INFRA
@@ -51918,6 +52853,7 @@ gaps:
     - "regression test (extend picker_priority_infra3616.rs): a P3 gap that a P0 depends_on is picked before unrelated P1/P2 gaps; no deadlock where a blocked P0 waits behind all P1s while its own P2 prereq sits unworked"
   notes: |
     [2026-08-19T13:15:24Z] Jeff 2026-08-19: if P2/P3 items required for something to ship in P0, they are also P0 work. Correct. Machinery exists (unblocks() = transitive dependents); wire it into effective priority. Immediate instance fixed by hand: CREDIBLE-266 P2->P1 (blocks RESILIENT-262/276).
+  opened_date: '2026-08-19'
 
 - id: INFRA-3614
   domain: INFRA
@@ -51933,6 +52869,7 @@ gaps:
   notes: |
     [2026-08-19T13:19:59Z] Jeff 2026-08-19: fleet not picking up 100% of GitHub PRs — this is why. COTG keystone: a human-facing factory cannot silently strand PRs. Prioritized AHEAD of INFRA-3612 (effective-priority, P1). Relates INFRA-3604 (reopener revives closes), the ZERO-WASTE-020 yaml/state.db split, and the CLEAN-only merge-train.
     [2026-08-19T13:33:57Z] RECONCILE 2026-08-19: the CONFLICTING-PR-drain half is ALREADY the rot-reaper organ (RESILIENT-324) — now ported+running on CJ as chump-rot-reaper.timer. Do NOT rebuild it (that IS the duplicate-work waste). Remaining UNIQUE scope here = WASTE-PREVENTION: stop the fleet opening pointless gap-YAML-sync PRs (post-ZERO-WASTE-020 YAML is non-canonical). Demoted P0->P2; the reaping side is covered by RESILIENT-324 + porting under RESILIENT-318.
+  opened_date: '2026-08-19'
 
 - id: INFRA-362
   domain: INFRA
@@ -52126,6 +53063,7 @@ gaps:
     - scripts/setup/install-gap-curate-launchd.sh installs the launchd job
     - scripts/ci/test-nightly-gap-curate.sh passes (8 tests)
     - gap_store_curated registered in EVENT_REGISTRY.yaml
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-650
@@ -52200,6 +53138,7 @@ gaps:
   status: open
   priority: P2
   effort: m
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-721
@@ -52228,6 +53167,7 @@ gaps:
     - main.rs no longer contains these module definitions — only a pub mod providers; or use declaration
     - "cargo test passes: no test regressions from the move"
     - "No behavioral change: provider selection, cascade routing, and streaming behave identically before and after"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-724
@@ -52242,6 +53182,7 @@ gaps:
     - main.rs no longer contains these module definitions
     - "cargo test passes: no regressions"
     - Fleet health checks and status commands behave identically before and after the move
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-725
@@ -52256,6 +53197,7 @@ gaps:
     - main.rs no longer contains these module definitions
     - "cargo test passes: no regressions"
     - Memory graph queries and episode extraction behave identically before and after
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-726
@@ -52270,6 +53212,7 @@ gaps:
     - cargo build --quiet exits 0 with no warnings
     - "cargo test passes: no regressions"
     - LOC in main.rs reduced by at least 60% from pre-phase-1 baseline
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-739
@@ -52359,6 +53302,7 @@ gaps:
     - MCP tools from IDE-configured servers appear in the agent tool registry alongside inline tools
     - Server lifecycle (spawn, health, reap) follows the same rules as chump-native MCP servers
     - Hard cap of 16 servers per session is enforced across both native and IDE-configured servers
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-748
@@ -52373,6 +53317,7 @@ gaps:
     - Remote MCP servers reachable from other machines in the NATS mesh (FLEET-006)
     - chump-mcp-lifecycle manages HTTP-transport servers with the same spawn/health/reap lifecycle as stdio
     - DNS-rebinding mitigations verified by security audit before merge
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-759
@@ -52447,6 +53392,7 @@ gaps:
     - "scripts/ci/test-review-handoff-serve.sh passes: daemon starts, event received, comment posted"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-773
@@ -52554,6 +53500,7 @@ gaps:
     - Agent loop never sees raw thinking blocks — they are either stripped or summarized before injection into context
     - "scripts/ci/test-gemini-thinking-budget.sh passes: fixture response with think blocks → assert output contains no <think> markers"
     - No regression on normal Gemini 2.5-flash / 2.5-pro responses without thinking blocks
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-792
@@ -52675,6 +53622,7 @@ gaps:
     - ""
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-817
@@ -52719,6 +53667,7 @@ gaps:
     - ""
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-818
@@ -52751,6 +53700,7 @@ gaps:
     - " Recommendations documented in a tuning guide or config template "
     - " yes "
     - ""
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-819
@@ -53202,6 +54152,7 @@ gaps:
     - "ZERO-WASTE). 2. When any pillar count < 2, emits kind=pillar_balance_alert to ambient.jsonl with fields: pillar, count, floor=2. 3. When any pillar count > 50% of total pickable pool, emits kind=pillar_balance_overweight with pillar, count, pct. 4. Script exits non-zero if any alert fired. 5. 'chump gap audit-priorities' calls pillar-balance-check.sh and includes result in output. 6. scripts/ci/test-pillar-balance-alerts.sh: 8+ tests verifying alert schema, thresholds, exit codes."
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-904
@@ -53288,6 +54239,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-924
@@ -53715,6 +54667,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - 1. ACP_CAPABILITY_COMPARISON.md last_audited updated to within 7 days of 2026-08-13\n2. All ⚠️ verify cells checked against live registry and agent docs; cells updated or confirmed\n3. New agents added to registry since 2026-05-13 added to table\n4. re_audit_due bumped to 2026-11-13\n5. PR merged to main
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-063
@@ -53982,6 +54935,7 @@ gaps:
     - "TODO: smoke test command to verify observability"
   notes: |
     Decomposed into 10 slices: META-075, META-076, META-077, META-078, META-079, META-080, META-081, META-082, META-083, META-084
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-074
@@ -54058,6 +55012,7 @@ gaps:
     - System emits 'collision_prediction' event when trajectory overlap is detected
     - Uses mock agent position/velocity data as input
     - Confidence threshold is configurable
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-077
@@ -54109,6 +55064,7 @@ gaps:
     - Agents can POST lessons to shared endpoint
     - Agents can GET relevant lessons by task tag
     - Lessons expire after 24 hours by default
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-081
@@ -54122,6 +55078,7 @@ gaps:
     - Emits 'route_adjusted' event when collision avoidance triggered
     - Preserves skill-aware routing priority
   depends_on: [META-076, META-078]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-082
@@ -54134,6 +55091,7 @@ gaps:
     - Each coordination action (route change, lesson fetch, etc.) logs CPU/time/cost metrics
     - Metrics include agent ID, action type, duration, estimated resource cost
     - Data available via /metrics endpoint
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-083
@@ -54161,6 +55119,7 @@ gaps:
     - Test generates mock agents and validates end-to-end flow
     - Returns 0 on success, logs detailed failure otherwise
   depends_on: [META-076, META-078, META-080]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-085
@@ -54201,6 +55160,7 @@ gaps:
   depends_on: [INFRA-3384, INFRA-3385, INFRA-3386, INFRA-3387, INFRA-3388]
   notes: |
     Pillar: META. Replaces INFRA-1856 after scope discovery. Demonstrates honest curator practice: when AC at filing turns out wrong on inspection, document the discovery + file a properly-scoped follow-up rather than ship a slim slice that misses the actual scope.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-087
@@ -54641,6 +55601,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-109
@@ -54676,6 +55637,7 @@ gaps:
     - "Non-goals for umbrella: full migration of all 20+ existing plists to chump-cron management (Phase 1 ships the surface + a representative 5); session-scoped Claude Code Cron/Monitor are NOT replaced (they remain the right tool for session-bounded work like operator-driven /loop windows)."
     - "Pillar mapping: EFFECTIVE (operator no longer sees Claude Code scheduling errors for fleet-durable work; clear surface for what runs and when) + RESILIENT (INFRA-1929-class plist-bugs detected systemically via chump cron health) + ZERO-WASTE (eliminates the bespoke install-*-launchd.sh script class entirely)."
   depends_on: [INFRA-2057, INFRA-2046]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-111
@@ -54725,6 +55687,7 @@ gaps:
     - AGENTS.md mirrors the same discipline section
     - SUBAGENT_DISPATCH.md adds a 'before filing a missing-primitive gap, verify against origin/main' default step
     - scripts/dev/verify-existence.sh --explicit-source-check option that errors if anything other than origin/main is the source (catches accidental local checks)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-114
@@ -54900,6 +55863,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "INTEGRATING UMBRELLA for Bet 5 per MARKET_POSITIONING_2026-05-27.md + MARKET_POSITIONING_BOUNCEOFF_2026-05-28.md. Goal: close the C1 mission-reality gap (no MLX wired in production today) + stand up a two-node multi-machine NATS mesh with capability-aware routing."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-122
@@ -55058,6 +56022,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "CHILD OF META-125 — full event-sourcing pivot for gap mutations. Defer until META-124 + META-125 land (they share the NATS substrate; don't pivot 3 substrates at once).\n\nVision: chump gap reserve / update / ship / close publishes to chump.gap.* subjects. Single consumer (chump-gap-materializer-daemon) reads the stream and writes to state.db + individual docs/gaps/*.yaml. Eliminates concurrent-write races entirely (single-writer pattern). Becomes Kafka-style: ordered, replayable, audit-grade.\n\nChildren to file when picked:\n- C1 Subject taxonomy: chump.gap.reserved, chump.gap.updated, chump.gap.shipped, chump.gap.closed\n- C2 chump-gap-materializer-daemon (Rust, single consumer of chump.gap.>)\n- C3 chump gap reserve/update/ship/close switch from direct state.db write to NATS publish\n- C4 Replay-from-history mode: rebuild state.db from chump.gap.> jetstream replay\n- C5 Audit dashboard: kpi report --gap-mutations shows reserve/update/ship/close rate per day\n- C6 Migration plan: dry-run mode where both paths run side-by-side and reconcile\n\nSuccess criteria:\n- Zero concurrent-write corruptions (today's failure class becomes structurally impossible)\n- Replayable: chump gap restore --from-jetstream rebuilds state.db cleanly\n- Sub-100ms reserve latency under typical fleet load\n\nCross-references INFRA-2102 (substrate), META-125 (consensus pipeline — same NATS bus), META-124 (integration cycles — same substrate), INFRA-2177 (state.db simplification first), INFRA-2178 (KV counter is a partial-credit step toward this)."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-127
@@ -55105,6 +56070,7 @@ gaps:
     - "Multi-machine consolidation decision: option A (per-machine sqlite + server joins) or B (single shared sqlite via NATS replication) — pick one with rationale"
     - "UI correctness: segment duration computed from start_ts_ms/end_ts_ms (currently shows 0s after the INFRA-2189 normalization); panel surfaces last 3 events on either side of the segment window even when zero events fall inside (so it never says 'No events' for a real segment)"
     - "Marcus review: external-collab curator loops Marcus on the proposal doc and captures his design feedback before ship"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-130
@@ -55123,6 +56089,7 @@ gaps:
     - "Smoke test: dispatch a fixture event sequence with parent=A spawning sub=B; assert recorder stores B's events under B not A; assert scrubber renders A with B nested below"
     - Cross-references META-129 (scrubber design collab — sub-agent attribution is one of its open questions); resolves the open question in META-129 (b)
   depends_on: [META-129]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-131
@@ -55222,6 +56189,7 @@ gaps:
     - The `fast-checks` CI job successfully reports its status to the new 'Verified' aggregator service.
     - The `fast-checks` CI job continues to report its status as before (existing required status is unaffected).
   depends_on: [META-135]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-137
@@ -55234,6 +56202,7 @@ gaps:
     - All specified lane checks (audit, test, ACP, clippy, cargo-test, e2e-pwa) successfully report their statuses to the new 'Verified' aggregator service.
     - All lane checks continue to report their statuses as before (existing required statuses are unaffected).
   depends_on: [META-136]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-138
@@ -55247,6 +56216,7 @@ gaps:
     - The aggregator can determine when a lane check *should* be skipped due to path filters.
     - The aggregator logs its path-filtering decisions for auditing.
   depends_on: [META-135]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-139
@@ -55259,6 +56229,7 @@ gaps:
     - All lane checks (audit, test, ACP, fast-checks, clippy, cargo-test, e2e-pwa) are modified.
     - When an individual lane check's underlying job is skipped due to path filters, it emits a 'success' status (stub-pass) to the aggregator.
   depends_on: [META-138]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-140
@@ -55286,6 +56257,7 @@ gaps:
     - The aggregator service can detect when a test fails 3+ times consecutively across PRs with the same error fingerprint.
     - Detected flakes are tagged as 'flake' and stored persistently (e.g., in a database).
     - An API endpoint or mechanism exists to query currently tagged flakes.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-142
@@ -55312,6 +56284,7 @@ gaps:
     - When a new test is automatically quarantined, a new follow-up gap (e.g., JIRA ticket) is automatically filed.
     - The filed gap includes relevant details such as test name, error fingerprint, and links to failing runs.
   depends_on: [META-141]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-144
@@ -55349,6 +56322,7 @@ gaps:
     (INFRA-2232, INFRA-1310). bot-merge.sh mirrors the same trigger-path
     config. All 3 AC are met by existing code; this PR only syncs the
     stale YAML status to match state.db.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-146
@@ -55371,6 +56345,7 @@ gaps:
     - The aggregator's calculated status is visible (e.g., as a non-required GitHub status check).
     - The aggregator's status is *not* yet configured as a required branch protection check for `main`.
   depends_on: [META-137, META-139, META-142]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-148
@@ -55384,6 +56359,7 @@ gaps:
     - Any discrepancies or unexpected statuses from the aggregator are identified and investigated.
     - A report summarizing shadow mode observations and confidence in the aggregator's correctness is produced.
   depends_on: [META-147]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-149
@@ -55396,6 +56372,7 @@ gaps:
     - Branch protection rules for the `main` branch are updated to require only the single 'Verified' aggregator check.
     - All previously required individual lane checks are removed from `main` branch protection rules.
   depends_on: [META-148]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-150
@@ -55408,6 +56385,7 @@ gaps:
     - All configurations making individual lane checks required are removed from the CI system.
     - Relevant documentation is updated to reflect the new single-aggregator policy for required checks.
   depends_on: [META-149]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-151
@@ -55420,6 +56398,7 @@ gaps:
     - A dashboard or report exists to track the admin-merge ratio for the `main` branch.
     - Alerts are configured to trigger if the admin-merge ratio exceeds 10% for a sustained period post-rollout.
   depends_on: [META-149]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-152
@@ -55439,6 +56418,7 @@ gaps:
     - Emit kind=lane_recommended {top_lane, score, runner_up, reason} to ambient on each invocation; register in EVENT_REGISTRY.yaml
     - "Score explainability: --explain flag shows per-lane breakdown of the 6 inputs"
     - scripts/ci/test-fleet-lane-recommend.sh exercises a synthetic state (dark target, idle ci-audit, busy shepherd) and asserts target ranks highest
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-153
@@ -55856,6 +56836,7 @@ gaps:
     - "Smoke test scripts/ci/test-chump-playbook-freshness-smoke.sh: <60s, creates a synthetic divergence (rename a referenced script), runs the freshness gate, asserts non-zero exit + correct error message + correct kind=playbook_drift_detected event emitted"
     - "Pillar tag: RESILIENT (reduces operator-overhead by catching doc rot before it misleads readers); META-domain because it is fleet-discipline doctrine, not feature work"
   source_doc: docs/process/CHUMP_PLAYBOOK.md
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-173
@@ -56176,6 +57157,7 @@ gaps:
   acceptance_criteria:
     - PRs classified as `MERGEABLE` trigger broadcast of `FEEDBACK kind=vote-request` with `corr_id=pr-N`.
     - Consensus votes are tracked per PR, keyed by `corr_id`.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-190
@@ -56197,6 +57179,7 @@ gaps:
     - PRs classified as `BLOCKED + all checks green` trigger an `admin-merge bypass` via `CHUMP_OPERATOR_CONSENSUS_BYPASS`.
     - An audit trail is emitted for this action.
     - "`pr_action_taken` event is emitted."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-192
@@ -56222,6 +57205,7 @@ gaps:
   acceptance_criteria:
     - Daemon outcomes for `UNKNOWN`, `DIRTY`, and `real-fail` cases are surfaced to the PWA cockpit operator-attention queue.
     - Outcomes for `MERGEABLE` and `auto-rebased` cases are explicitly *not* escalated to the operator queue.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-194
@@ -56234,6 +57218,7 @@ gaps:
     - "`scripts/ci/test-pr-shepherd-daemon.sh` is implemented."
     - The test suite uses a synthetic 6-PR fixture.
     - The test suite covers and validates each classification path and corresponding action.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-195
@@ -56274,6 +57259,7 @@ gaps:
     OPERATOR TRIGGER: file 2026-05-30, action after current PR queue clears. NOT urgent — observation is the precursor.
   acceptance_criteria:
     - INFRA-2274 consensus flag flipped shadow->enforce in config; an AdminMergeProposal decision type is registered and emitted; a synthetic BLOCKED+green PR is merged via consensus tally end-to-end.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-196
@@ -56284,6 +57270,7 @@ gaps:
   effort: xl
   acceptance_criteria:
     - bot-merge.sh per-PR path is replaced by GitHub native merge_group; main branch protection routes merges through the merge queue; a batched set of PRs lands through the queue in a single CI run.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-197
@@ -56294,6 +57281,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - actionlint runs as a CI check on every PR touching .github/workflows/**; a workflow with a broken rustup-component/apt-get step fails the check.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-198
@@ -56361,6 +57349,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - the ~30 fast-checks test-*.sh run as a CI matrix rather than sequentially; total fast-checks wall-clock drops measurably; all checks still report to the aggregator.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-203
@@ -56374,6 +57363,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-204
@@ -56387,6 +57377,7 @@ gaps:
     - The fast-checks-stub, clippy-stub, and cargo-test-stub jobs fire on ci_config_only PRs so branch protection required checks still pass
     - A PR touching only .github/workflows/ci.yml completes required checks via stub path in under 2 minutes rather than running the full Rust suite
     - The changes job ci_config_only output (already present at line 112) is already wired; this gap only adds the if-condition consumers
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-205
@@ -56439,6 +57430,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-207
@@ -56494,6 +57486,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-209
@@ -56565,6 +57558,7 @@ gaps:
     - File `scripts/coord/auto-admin-merge-daemon.sh` is created and is executable.
     - The script contains a basic infinite loop that fetches open PRs (e.g., using `gh pr list --state open`).
     - "The script includes basic logging for its operational status (e.g., 'Daemon started', 'Checking PR #X')."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-213
@@ -56577,6 +57571,7 @@ gaps:
     - "The `auto-admin-merge-daemon.sh` script includes logic to classify a PR's `fix_class` based on its title prefix (e.g., 'feat:', 'fix:', 'chore:') and/or analysis of the diff scope."
     - The classification logic can correctly identify if a PR's `fix_class` is within a predefined allowlist.
   depends_on: [META-212]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-214
@@ -56589,6 +57584,7 @@ gaps:
     - The `auto-admin-merge-daemon.sh` script includes logic to query ambient events for T1-T4 triggers.
     - The script can determine if any T1-T4 trigger events have fired in the last 30 minutes relevant to the current PR or system-wide.
   depends_on: [META-212]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-215
@@ -56601,6 +57597,7 @@ gaps:
     - The `auto-admin-merge-daemon.sh` script can execute `chump consensus-tally <PR_NUMBER>`.
     - The script can parse the output of `chump consensus-tally` to determine if `consensus_resolved` is true and `quorum>=3` is met for a given PR.
   depends_on: [META-212]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-216
@@ -56613,6 +57610,7 @@ gaps:
     - The `auto-admin-merge-daemon.sh` script can detect if a PR has a `DIRTY` conflict status (e.g., via `gh pr status` or similar API).
     - The script can detect if a PR has an `operator HOLD` label applied.
   depends_on: [META-212]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-217
@@ -56625,6 +57623,7 @@ gaps:
     - The `auto-admin-merge-daemon.sh` script can successfully execute `gh pr merge --admin --squash <PR_NUMBER>`.
     - The merge operation is performed using the `chump-fleet-bot`'s PAT, ensuring the bot is the actor.
   depends_on: [META-211, META-212]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-218
@@ -56638,6 +57637,7 @@ gaps:
     - The daemon only attempts an admin-merge if ALL policy conditions defined in `AUTO_ADMIN_MERGE_POLICY.md` are met.
     - The daemon logs the outcome of each policy check for every PR evaluated.
   depends_on: [META-213, META-214, META-215, META-216, META-217]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-219
@@ -56650,6 +57650,7 @@ gaps:
     - A new ambient event `kind=agent_admin_merge` is registered in the system's event schema.
     - "Upon a successful admin-merge, `auto-admin-merge-daemon.sh` emits an `agent_admin_merge` event with fields: `role`, `pr_number`, `fix_class`, `consensus_corr_id`, and `trigger_check_results`."
   depends_on: [META-218]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-220
@@ -56662,6 +57663,7 @@ gaps:
     - The PR-shepherd daemon (from META-180) is modified to identify `MERGEABLE` PRs that also meet consensus quorum.
     - For such eligible PRs, the PR-shepherd daemon's action dispatcher hands off the merge decision to the `auto-admin-merge-daemon.sh`.
   depends_on: [META-218]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-221
@@ -56700,6 +57702,7 @@ gaps:
     NO new daemon, no new event stream. Pure extension to existing INFRA-1149 path.
   acceptance_criteria:
     - Daemon matches active INTENT broadcasts by topic plus overlapping file paths; emits a WARN event on a detected duplicate; verified with two overlapping synthetic intents.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-222
@@ -56712,6 +57715,7 @@ gaps:
     - File `scripts/ci/test-auto-admin-merge-policy.sh` is created and is executable.
     - "A synthetic fixture of 5 GitHub PRs is created: one PR that passes all auto-admin-merge policy criteria, and four PRs each failing one distinct criterion (quorum, fix-class, conflict, T-trigger)."
   depends_on: [META-218]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-223
@@ -56725,6 +57729,7 @@ gaps:
     - The script asserts that the single policy-passing PR is successfully admin-merged by the daemon.
     - The script asserts that the four policy-failing PRs are *not* admin-merged by the daemon, and logs the specific reason for each failure.
   depends_on: [META-222, META-219]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-224
@@ -56738,6 +57743,7 @@ gaps:
     - The script queries ambient events (specifically `kind=agent_admin_merge`) to display per-day counts of agent admin-merges.
     - The script provides a breakdown of admin-merges by relevant fields (e.g., `fix_class`, `consensus_corr_id`, `trigger_check_results`) to show reasons for merges.
   depends_on: [META-219]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-225
@@ -56789,6 +57795,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "docs/process/AUTO_ADMIN_MERGE_POLICY.md is created and defines the policy: agent may admin-merge IF (consensus_resolved with quorum>=3) AND (fix_class in allowlist) AND (no DIRTY conflict) AND (no T1-T4 trigger fired in last 30m) AND (no operator HOLD label on the PR)."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-228
@@ -56801,6 +57808,7 @@ gaps:
     - chump-fleet-bot GitHub account is created.
     - "A Personal Access Token (PAT) with 'admin:repo' scope for 'repairman29/chump' is generated."
     - The PAT is securely stored in the 'chump-fleet-bot-pat' secret (e.g., GitHub Secrets, Vault).
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-229
@@ -56827,6 +57835,7 @@ gaps:
     - auto-admin-merge-daemon.sh uses 'gh pr list --state open' to retrieve all open PRs in 'repairman29/chump'.
     - For each retrieved PR, its number and title are logged.
   depends_on: [META-229]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-231
@@ -56840,6 +57849,7 @@ gaps:
     - A configurable allowlist for 'fix_class' (e.g., 'bugfix', 'refactor') is defined and used by the classification logic.
     - The daemon logs the classified 'fix_class' for each PR.
   depends_on: [META-229, META-230]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-232
@@ -56853,6 +57863,7 @@ gaps:
     - The script parses the output of 'chump consensus-tally' to determine if 'consensus_resolved' is true and 'quorum>=3'.
     - Logging indicates the consensus status (resolved/not resolved, quorum met/not met) for each PR.
   depends_on: [META-229, META-230]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-233
@@ -56866,6 +57877,7 @@ gaps:
     - The daemon determines if any T1-T4 trigger events fired globally or for the specific PR within the last 30 minutes.
     - Logging indicates the T1-T4 trigger status (active/inactive) for each PR.
   depends_on: [META-229, META-230]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-234
@@ -56879,6 +57891,7 @@ gaps:
     - The script checks for the presence of a specific 'HOLD' label on the PR.
     - Logging indicates the conflict status and 'HOLD' label status for each PR.
   depends_on: [META-229, META-230]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-235
@@ -56892,6 +57905,7 @@ gaps:
     - The daemon executes 'gh pr merge --admin --squash <PR_NUMBER>' using the bot's PAT ONLY if all policy conditions (consensus, fix-class, no conflict, no T-trigger, no HOLD label) are met for a PR.
     - Logging confirms each merge attempt (success or failure) and the reason for policy failure if not merged.
   depends_on: [META-228, META-229, META-231, META-232, META-233, META-234]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-236
@@ -56903,6 +57917,7 @@ gaps:
   acceptance_criteria:
     - A new event type 'kind=agent_admin_merge' is defined in the project's event schema (e.g., events.proto, JSON schema).
     - "The event schema includes fields: 'role', 'pr_number', 'fix_class', 'consensus_corr_id', 'trigger_check_results'."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-237
@@ -56916,6 +57931,7 @@ gaps:
     - All required fields ('role', 'pr_number', 'fix_class', 'consensus_corr_id', 'trigger_check_results') are populated correctly in the emitted event.
     - Logging confirms the emission of the 'agent_admin_merge' event.
   depends_on: [META-235, META-236]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-238
@@ -56928,6 +57944,7 @@ gaps:
     - The PR-shepherd daemon (from META-180) is modified to include the auto-admin-merge capability.
     - When the PR-shepherd identifies a MERGEABLE PR with consensus quorum, its action dispatcher triggers or hands off the PR to the auto-admin-merge-daemon for policy evaluation and potential merge.
   depends_on: [META-235]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-239
@@ -56942,6 +57959,7 @@ gaps:
     - The script runs the auto-admin-merge-daemon against this fixture.
     - Assertions verify that the passing PR is admin-merged and the failing PRs are not merged, with correct reasons logged/emitted.
   depends_on: [META-235, META-237]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-240
@@ -56955,6 +57973,7 @@ gaps:
     - The script queries 'kind=agent_admin_merge' events (or relevant logs) to generate a per-day count of successful admin-merges.
     - The script provides a breakdown of reasons for PRs that were eligible but *not* merged (e.g., 'failed consensus', 'T-trigger active', 'fix-class not allowed').
   depends_on: [META-237]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-241
@@ -56967,6 +57986,7 @@ gaps:
     - Monitoring is configured to track the percentage of policy-eligible PRs that are admin-merged by the daemon within 5 minutes of becoming eligible.
     - A dashboard or alert is set up to report on this SLO, aiming for > 80%.
   depends_on: [META-237]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-242
@@ -56989,6 +58009,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. scripts/coord/queue-tender-loop.sh exists and is executable with tick/heartbeat/help subcommands; 2. .chump/launchd/com.chump.queue-tender.plist exists with StartInterval=300; 3. scripts/setup/install-queue-tender.sh install/uninstall/status/check subcommands work idempotently; 4. scripts/ci/test-queue-tender.sh runs 7 tests and all pass; 5. .claude/agents/curator-opus-queue-tender.md and .claude/skills/queue-tender/SKILL.md exist; 6. docs/process/QUEUE_TENDER_DOCTRINE.md exists; 7. kind=queue_tend_tick emitted on each tick cycle; 8. CHUMP_SKIP_QUEUE_TENDER=1 exits 0 immediately; 9. hysteresis prevents re-rebase within 5 min; 10. lane discipline: no gh pr merge --admin in source"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-244
@@ -57085,6 +58106,7 @@ gaps:
     - Integrate the script into the main CI workflow (e.g., `.github/workflows/ci.yml`).
     - Test with a rescue-class PR that includes '§5' and '§6' (CI should pass).
     - Test with a rescue-class PR that omits '§5' or '§6' (CI should fail with the expected message).
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-250
@@ -57097,6 +58119,7 @@ gaps:
     - Update `PR_RESCUE_PROCEDURE.md` §5 to include synthesized content from `SHIP_ASSIST_PLAYBOOK.md`.
     - The synthesized content summarizes the 7 wedge classes concisely and actionably.
     - The updated §5 maintains a coherent and readable flow.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-251
@@ -57110,6 +58133,7 @@ gaps:
     - The synthesized content summarizes key failure-mode rules concisely and actionably.
     - The updated §5 integrates smoothly with existing and newly added content (from slice 2).
   depends_on: [META-250]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-252
@@ -57135,6 +58159,7 @@ gaps:
     - The new §14 lists and briefly describes the integrated wisdom sources (SHIP_ASSIST_PLAYBOOK, FAILURE_MODES) and cross-linked documents (CLAUDE_GOTCHAS, MISSION_YIELD, FLEET_SLOS).
     - The index provides clear pointers to where the wisdom is integrated or referenced within the document.
   depends_on: [META-250, META-251]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-254
@@ -57151,6 +58176,7 @@ gaps:
     - Script prints the top-5 most recurring fingerprints.
     - Script exits non-zero if any single fingerprint appears 3 or more times within a 24-hour period.
     - Test the script with sample `ambient.jsonl` data to verify correct grouping, top-5 output, and non-zero exit condition.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-255
@@ -57164,6 +58190,7 @@ gaps:
     - Execute `bash scripts/dev/pr-rescue-leaderboard.sh` and verify it passes (with expected output for current data).
     - "Append a TL;DR note to `PR_RESCUE_PROCEDURE.md` stating: 'measurement + adherence + integration shipped via META-247'."
   depends_on: [META-249, META-253, META-254]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-256
@@ -57217,6 +58244,7 @@ gaps:
     - "1. Sub-gaps filed via chump gap decompose covering: scanner, graph-builder, asymmetry-detector, frayed-edge-detector, conflict-warning, INDEX-generator, GRAPH-generator, launchd installer, ambient event registration, SUBAGENT_DISPATCH integration, tests\n2. scripts/coord/doctrine-loom-daemon.sh — every 30 min, scans the playbook set, builds graph, runs 4 detectors, emits ambient events, regenerates INDEX.md + GRAPH.md\n3. docs/process/DOCTRINE_INDEX.md — auto-generated canonical entry point listing every playbook (path, topics, last-modified, weave-score, inbound-reference-count)\n4. docs/process/DOCTRINE_GRAPH.md — auto-generated Mermaid diagram of cross-reference graph\n5. 6 new ambient kinds registered in EVENT_REGISTRY.yaml: doctrine_weave_tick, doctrine_weave_orphan, doctrine_weave_asymmetry, doctrine_weave_frayed_edge, doctrine_weave_conflict_warning, doctrine_weave_score\n6. SUBAGENT_DISPATCH.md updated: every dispatch's 'Read first' section auto-includes the doctrine-graph subset for the gap's topic vector\n7. scripts/dev/doctrine-weave-leaderboard.sh — daily roll-up showing weave-score trend + top-5 frayed edges\n8. docs/process/DOCTRINE_INDEX.md is itself self-referential (lists itself + the loom daemon as governing primitives)\n9. Smoke test scripts/ci/test-doctrine-loom-emission.sh asserts daemon tick exits 0 + emits expected kinds\n10. The Loom daemon respects the no-escalation doctrine (META-207): files gaps for issues but never pages operator unless T4 trigger"
   notes: |
     Filed under operator's seamstress directive 2026-05-31T17:15Z. Pairs with META-247 (PR_RESCUE_PROCEDURE operationalization). Both are doctrine-level measurement + maintenance. Together they make the entire procedure ecosystem load-bearing.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-257
@@ -57227,6 +58255,7 @@ gaps:
   effort: l
   acceptance_criteria:
     - When N PRs fail the same fingerprint within K hours, the daemon spawns a chump --execute run targeting the shared cause; the dispatch and its outcome are emitted as events.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-258
@@ -57415,6 +58444,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - ".claude/agents/orchestrator.md role spec exists in Linux Foundation AGENTS.md format with WHEN_ACTIVE, CURRENT_OBJECTIVE_PROTOCOL, DISPATCH_POLICY, CHECKPOINT_DISCIPLINE, KPI_REPORTING sections;chump objective subcommand (set/show/progress/done) is callable and writes to .chump-locks/current-objective.json with required JSON schema fields {objective_id, set_by, set_at, text, success_criteria, expected_completion, status};scripts/coord/iter-agenda.sh reads current-objective.json + chump gap list + ambient.jsonl + queue size and produces ranked top-5 actions to .chump-locks/iter-agenda.jsonl;SessionStart hook (via scripts/coord/inbox-check-urgent.sh extension or equivalent) emits sections in order: CURRENT OBJECTIVE / ITER AGENDA top-3 / URGENT alarms / ambient digest, and emits ambient kind=orchestrator_session_active;launchd plist com.chump.iter-agenda.plist exists at 30-min cadence with RunAtLoad=true;integration test scripts/ci/test-iter-agenda.sh asserts deterministic agenda output on synthetic inputs;four follow-up gaps INFRA-2363/2364/2365/2366 are filed with concrete AC and skills_required including fleet"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-271
@@ -57601,6 +58631,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-284
@@ -57611,6 +58642,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-285
@@ -57636,6 +58668,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-287
@@ -57663,6 +58696,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-289
@@ -57692,6 +58726,7 @@ gaps:
   depends_on: [META-291, META-292]
   notes: |
     Origin: operator 2026-06-09T04:30Z "we never seem to get to this work". Inventory shows 20+ open umbrellas (MISSION-009 A2A, CREDIBLE-106 enforcement, EFFECTIVE-222 ignition, CREDIBLE-114 oxygen-hook, INFRA-2465 substrate-deprecation, META-033 invariants-cron, META-038 coord-tax, META-039 learning-loop, META-042 coord-cull, META-051 fix-one-wave) — most untouched for >7d while fleet ships 24 features/day. The gaps are not missing; the forcing function is missing. Closing this without changing the rate = not closed.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-291
@@ -57709,6 +58744,7 @@ gaps:
     - "Test fixture: scripts/ci/test-umbrella-progress-audit.sh seeds 3 fake umbrella gaps with synthetic git history (one fresh, one 5d idle, one 30d idle); asserts only the 30d one triggers kind=umbrella_decompose_needed."
   notes: |
     Pairs with META-290 (umbrella). Without this audit, "we never get to this work" recurs every cycle. The decompose-cascade is the unblock — turns L into xs/s slices the picker actually pulls.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-292
@@ -57725,6 +58761,7 @@ gaps:
     - "Smoke test scripts/ci/test-doctrine-delta-inject.sh: seed a fake last-doctrine-commit pointing at 2 commits ago; run inject; assert digest contains the 2 doctrine commits in human-readable form."
   notes: |
     Origin: operator 2026-06-09 framing #8 "doctrine ships faster than CLAUDE.md updates". Real example: CREDIBLE-105 (no-band-aids) was filed AND shipped during my Jun 5 session. Jun 6 agents had no copy; Jun 7 agents only saw it because I had MEMORY.md context. Without this, every doctrine change has a multi-day visibility lag. Paired with META-290 + META-291 to close the discoverability cliff named in operator framing #3.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-293
@@ -57747,6 +58784,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-295
@@ -57757,6 +58795,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-296
@@ -57803,6 +58842,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-300
@@ -57813,6 +58853,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-301
@@ -57895,6 +58936,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-308
@@ -57929,6 +58971,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-311
@@ -57951,6 +58994,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-313
@@ -57961,6 +59005,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-314
@@ -57971,6 +59016,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-315
@@ -58010,6 +59056,7 @@ gaps:
     - docs/process/AUDIT_JOB_DECOMPOSITION.md 'Mirrored?' column updated to yes for every mirrored script in this cluster
     - scripts/ci/test-preflight-ci-parity.sh passes for the newly-mirrored scripts
   depends_on: [META-086]
+  opened_date: '2026-07-26'
 
 - id: META-318
   domain: META
@@ -58024,6 +59071,7 @@ gaps:
     - docs/process/AUDIT_JOB_DECOMPOSITION.md 'Mirrored?' column updated to yes for every mirrored script in this cluster
     - scripts/ci/test-preflight-ci-parity.sh passes for the newly-mirrored scripts
   depends_on: [META-086]
+  opened_date: '2026-07-26'
 
 - id: META-319
   domain: META
@@ -58038,6 +59086,7 @@ gaps:
     - docs/process/AUDIT_JOB_DECOMPOSITION.md 'Mirrored?' column updated to yes for every mirrored script in this cluster
     - scripts/ci/test-preflight-ci-parity.sh passes for the newly-mirrored scripts
   depends_on: [META-086]
+  opened_date: '2026-07-26'
 
 - id: META-320
   domain: META
@@ -58052,6 +59101,7 @@ gaps:
     - docs/process/AUDIT_JOB_DECOMPOSITION.md 'Mirrored?' column updated to yes for every mirrored script in this cluster
     - scripts/ci/test-preflight-ci-parity.sh passes for the newly-mirrored scripts
   depends_on: [META-086]
+  opened_date: '2026-07-26'
 
 - id: META-321
   domain: META
@@ -58066,6 +59116,7 @@ gaps:
     - docs/process/AUDIT_JOB_DECOMPOSITION.md 'Mirrored?' column updated to yes for every mirrored script in this cluster
     - scripts/ci/test-preflight-ci-parity.sh passes for the newly-mirrored scripts
   depends_on: [META-086]
+  opened_date: '2026-07-26'
 
 - id: META-322
   domain: META
@@ -58090,6 +59141,7 @@ gaps:
     Cluster 2 of the META-086 fast-checks audit-job decomposition survey. Ship target: chump preflight covers all cluster-2 gates locally so they no longer require a CI round-trip.
   acceptance_criteria:
     - "1. Add preflight gates in src/preflight.rs (GateKind::Scripts) for the 29 scripts in cluster-2-pr-lifecycle listed in docs/process/AUDIT_JOB_DECOMPOSITION.md (bot-merge-auto-close through infra-119-bot-merge-hang). 2. Each gate gets a CHUMP_PREFLIGHT_SKIP_<NAME> bypass env var emitting a preflight_<gate>_bypassed ambient event. 3. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md mirrored table + docs/process/AUDIT_JOB_DECOMPOSITION.md Mirrored? column. 4. scripts/ci/test-audit-job-decomposition.sh still passes."
+  opened_date: '2026-07-26'
 
 - id: META-324
   domain: META
@@ -58101,6 +59153,7 @@ gaps:
     Cluster 3 of the META-086 fast-checks audit-job decomposition survey. Ship target: chump preflight covers all cluster-3 gates locally so they no longer require a CI round-trip.
   acceptance_criteria:
     - "1. Add preflight gates in src/preflight.rs (GateKind::Scripts) for the 24 scripts in cluster-3-daemon-observability listed in docs/process/AUDIT_JOB_DECOMPOSITION.md (cargo-target-reaper through install-ambient-hooks). 2. Each gate gets a CHUMP_PREFLIGHT_SKIP_<NAME> bypass env var emitting a preflight_<gate>_bypassed ambient event. 3. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md mirrored table + docs/process/AUDIT_JOB_DECOMPOSITION.md Mirrored? column. 4. scripts/ci/test-audit-job-decomposition.sh still passes."
+  opened_date: '2026-07-26'
 
 - id: META-325
   domain: META
@@ -58112,6 +59165,7 @@ gaps:
     Cluster 4 of the META-086 fast-checks audit-job decomposition survey. Ship target: chump preflight covers all cluster-4 gates locally so they no longer require a CI round-trip.
   acceptance_criteria:
     - "1. Add preflight gates in src/preflight.rs (GateKind::Scripts) for the 22 scripts in cluster-4-cli-doc-quality listed in docs/process/AUDIT_JOB_DECOMPOSITION.md (cli-fleet-coord through research-026-preflight). 2. Each gate gets a CHUMP_PREFLIGHT_SKIP_<NAME> bypass env var emitting a preflight_<gate>_bypassed ambient event. 3. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md mirrored table + docs/process/AUDIT_JOB_DECOMPOSITION.md Mirrored? column. 4. scripts/ci/test-audit-job-decomposition.sh still passes."
+  opened_date: '2026-07-26'
 
 - id: META-326
   domain: META
@@ -58123,6 +59177,7 @@ gaps:
     Cluster 5 of the META-086 fast-checks audit-job decomposition survey. Ship target: chump preflight covers all cluster-5 gates locally so they no longer require a CI round-trip.
   acceptance_criteria:
     - "1. Add preflight gates in src/preflight.rs (GateKind::Scripts) for the 12 scripts in cluster-5-merge-driver-safety listed in docs/process/AUDIT_JOB_DECOMPOSITION.md (keystone-cascade through merge-driver-state-sql). 2. Each gate gets a CHUMP_PREFLIGHT_SKIP_<NAME> bypass env var emitting a preflight_<gate>_bypassed ambient event. 3. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md mirrored table + docs/process/AUDIT_JOB_DECOMPOSITION.md Mirrored? column. 4. scripts/ci/test-audit-job-decomposition.sh still passes. 5. This is the last META-086 sub-gap to ship — on close, META-086 self-closes per its AC #4."
+  opened_date: '2026-07-26'
 
 - id: META-327
   domain: META
@@ -58136,6 +59191,7 @@ gaps:
     - Redundant roadmap files are archived or deleted
     - A single canonical ROADMAP.md (or similar) is established
     - All active mission and wave definitions are unified in the canonical doc
+  opened_date: '2026-07-26'
 
 - id: META-328
   domain: META
@@ -58156,6 +59212,7 @@ gaps:
   depends_on: [INFRA-3499]
   notes: |
     Over-scoped on first filing because I skipped the DOC-082 dedupe check — I specified mechanical checks that already ship and run every 30 minutes. Third such miss this session: CREDIBLE-217 superseded into EFFECTIVE-389 for the same reason, and EFFECTIVE-383 was saved only because EFFECTIVE-386 happened to ship mid-session. Caught by the operator asking 'did you look first'. Effort m->s: composition plus one extension, not a build.
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: META-329
@@ -58174,6 +59231,7 @@ gaps:
     - R&D's inverted success axis is documented where mission_grade computes pillar health, so nobody later sums learning-per-spend into delivered-value metrics
     - "blocked until RESILIENT-246 restores the curator: without balance_restock a fifth pillar starves silently"
   depends_on: [RESILIENT-246]
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: META-330
@@ -58191,6 +59249,7 @@ gaps:
     - "the embedder A/B (a wash) and the rerank measurement (negative, left off) are included: a null result is the pillar's product"
     - no verdict is re-opened or re-argued; this is bookkeeping
   depends_on: [META-329]
+  opened_date: '2026-08-19'
 
 - id: META-331
   domain: META
@@ -58211,6 +59270,7 @@ gaps:
     - Every node is in scope including the Mac (operator decision 2026-08-09)
     - "Verification cadence is aggressive: on-change plus a short periodic floor, per operator decision 2026-08-09 to be as aggressive as needed to keep things running"
     - Node liveness is tracked independently of fleet ship-rate, because closetjunky was offline 5 days while the fleet shipped from other nodes and nothing paged
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
 
 - id: META-333
@@ -58225,6 +59285,7 @@ gaps:
     - Enumerate the 19 scripts referenced by audit.yml lacking [PASS]/[FAIL] markers
     - Add pass()/fail() style output to each, or a documented rationale for exemption
     - "scripts/ci/test-audit-step-isolation.sh (from RESILIENT-044/#3733) continues to pass"
+  opened_date: '2026-08-19'
   outcome_id: RESILIENT-000
 
 - id: MISSION-001
@@ -58240,6 +59301,7 @@ gaps:
     - "TODO: smoke test command to verify observability"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: MISSION-002
@@ -58548,6 +59610,7 @@ gaps:
     - "Each new `Gap` record has the `external_repo:repairman29/BEAST-MODE` tag."
     - The new gaps are visible in the admin dashboard with the correct external repo tag.
   depends_on: [MISSION-016]
+  opened_date: '2026-07-26'
   outcome_id: MISSION-032
 
 - id: MISSION-018
@@ -58575,6 +59638,7 @@ gaps:
     - Fleet logs show the gap being picked and the associated `external_repo` metadata.
     - The picked gap's status is updated in the system (e.g., 'In Progress').
   depends_on: [MISSION-017, MISSION-018]
+  opened_date: '2026-07-26'
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
   evidence: |
@@ -58608,6 +59672,7 @@ gaps:
     - The commit message adheres to expected conventions.
     - Fleet logs confirm successful commit creation.
   depends_on: [MISSION-020]
+  opened_date: '2026-07-26'
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
   evidence: |
@@ -58625,6 +59690,7 @@ gaps:
     - The new branch is visible on GitHub in the `repairman29/BEAST-MODE` repository.
     - Fleet logs confirm successful push.
   depends_on: [MISSION-021]
+  opened_date: '2026-07-26'
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
   evidence: |
@@ -58643,6 +59709,7 @@ gaps:
     - Fleet logs confirm successful PR creation.
     - The internal system tracks the external PR link.
   depends_on: [MISSION-022]
+  opened_date: '2026-07-26'
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
   evidence: |
@@ -58659,6 +59726,7 @@ gaps:
     - When a PR opened by the fleet is merged, the internal system detects this status change.
     - The internal gap associated with the PR is marked as 'Completed' or 'Merged'.
   depends_on: [MISSION-023]
+  opened_date: '2026-07-26'
   skills_required: "external_repo:repairman29/BEAST-MODE"
   outcome_id: MISSION-010
 
@@ -58998,6 +60066,7 @@ gaps:
     - a legitimate small (1-file/docs) change lands in ONE commit attempt + one ship
     - RESILIENT-132/133/134/137/138/139 tracked under this umbrella; new friction filed here
     - a friction metric (attempts-per-ship or turns-to-first-ship) is surfaced so the trend is visible
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: MISSION-045
@@ -59015,6 +60084,7 @@ gaps:
     - "CLAUDE.md gains a Mission-Tracing section: \"Every P0/P1 gap belongs to an outcome. Filed without one → blocked at reserve. Closed without one → blocked at ship.\""
   notes: |
     Origin: operator 2026-06-09T04:45Z "WTF I thought all gaps belong to missions and we worked them top to bottom?" Diagnosis: MISSION-008 shipped the SCHEMA but HARD CONSTRAINT explicitly forbade enforcement until follow-up. Current state: 1159 open gaps, 232 untraced (20%), 5 untraced open P0s. The hook tells us; nothing acts. This gap closes that loop. The CREDIBLE-107 pattern (--evidence gate just shipped) is the template. Untraced gaps that pre-date this enforcement: backfilled via heuristic + operator review (no migration retroactive ban).
+  opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: MISSION-046
@@ -59076,6 +60146,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: MISSION-032
   evidence: |
     Operator strategic direction 2026-06-22: point the fleet outward IN ORDER — own repos first (auth solved, throughput OK), then 3rd-party. STEP 2 (own-repo/BEAST) is proven: chump improve repairman29/BEAST-MODE dry-run scouted + picked a real bug (ml-pipeline.yml path refs), --apply ship in flight. STEP 3 = the genuinely-NEW build: chump improve today is THROUGHPUT-only — it implements → opens PR → SELF-verify-merges on merit (EFFECTIVE-177). That is CORRECT for the operator's own repos (BEAST = repairman29, can self-merge, many PRs fine) but HOSTILE on a 3rd-party repo (a maintainer who gets a flood of self-merged PRs blocks you). Guest-mode is the inverse: optimize ACCEPTANCE PROBABILITY not throughput. CURE — add a mode to chump improve: (1) MODE auto-detect: target owner == our GH identity → own-repo/throughput (current behavior); else → GUEST. (2) GUEST flow: fork upstream → branch on the fork → implement → open ONE PR to upstream → STOP. NO self-merge (the maintainer decides). (3) PR-cap: refuse to open a new PR if >= CHUMP_GUEST_PR_CAP (default 1) open PRs already exist on that upstream — batch related work into one PR, wait for maintainer response before more. (4) Respect the target's CONTRIBUTING.md / PR template; issue-first gate (configurable) for non-trivial work. (5) Done-definition: own-repo = continuous; guest = bounded contribution submitted → STOP, don't churn the maintainer. GATED ON: step 2 (>=1 BEAST PR via chump improve --apply merged) proven first. Pairs with EFFECTIVE-165 (external-repo capability) + MISSION-010 (BEAST proof) + the conductor (step 4, drives targets-in-modes) + autonomous target-selection (step 5, hard-gated, last).
@@ -59149,6 +60220,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - NATS carries every gap lifecycle transition (reserve/claim/close); a node subscriber applies each event to its local state.db within one tick; two nodes' backlogs match after a burst of transitions.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: MISSION-055
@@ -59159,6 +60231,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "`chump ingest <repo>` reads a repo's defined backlog (.beast-mode-tasks.json/beads/TODO) and creates one fleet gap per item, tagged to that repo; re-running is idempotent (no duplicates)."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-032
 
 - id: MISSION-056
@@ -59243,6 +60316,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "scripts/setup/provision-chumpd-host.sh sets CHUMP_MISSION_IMPROVE_INTERVAL_MIN default to 10 (was 30) so new fleet nodes inherit the faster mission cadence; update docs/process/ADD_A_FLEET_NODE.md 'every ~30 min' references to 10. Rationale: operator decision 2026-07-23 — 30min between converging mission cycles leaks throughput. Live closetjunky already dropped to 10min this session; this makes it the productized default. Land AFTER MISSION-058 #3293 merges (the block lives in that branch). Verify: fresh provision yields a 10min OnUnitActiveSec timer."
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: MISSION-063
@@ -59293,6 +60367,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - Each of MISSION-019 through MISSION-024 has at least one implementation commit landed; the BEAST-MODE external-repo prerequisite chain is claimable end-to-end with no prereq blocking on 0-commit status.
+  opened_date: '2026-08-17'
   outcome_id: CHUMPOS
   evidence: |
     Mission scoreboard 2026-07-27: THE BINARY shows YES (2 BEAST merges/7d) but flagged 'verify zero-touch + repeatable until instrumented' — the core mission proof is unverified/uninstrumented.
@@ -59321,6 +60396,7 @@ gaps:
     - Hetzner-specific infrastructure constants and config structures are defined
     - Substrate provider logic is integrated into the MISSION initialization path
     - Configuration can be toggled via environment variable or config file
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: MISSION-069
@@ -59344,6 +60420,7 @@ gaps:
     - Mathematical formula for worker scaling is implemented as a pure function
     - Formula correctly calculates target worker count based on input metrics
     - Unit tests cover edge cases (zero load, maximum capacity)
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: MISSION-071
@@ -59357,6 +60434,7 @@ gaps:
     - System triggers scale-up/down actions based on formula output
     - Scaling actions are logged for observability
   depends_on: [MISSION-070]
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: MISSION-072
@@ -59382,6 +60460,7 @@ gaps:
     - Daemon correctly handles SIGTERM and SIGINT for graceful shutdown
     - Shutdown sequence ensures disk-floor gates are closed and workers drained
     - Process exits with correct status codes
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: MISSION-074
@@ -59395,6 +60474,7 @@ gaps:
     - Test fails if any of the three components are disabled or malfunctioning
     - cargo test and clippy pass with no warnings
   depends_on: [MISSION-068, MISSION-069, MISSION-071, MISSION-073]
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: MISSION-075
@@ -59424,6 +60504,7 @@ gaps:
     - "RUN: many repos concurrently + autonomous merge. Gate on proven walk, a per-repo merge policy (which repos may auto-merge vs require a human), and a GLOBAL governor — the real parallelism limits are machine resources (145 live worktrees today; ~60-94 ptys per Agent-tool dispatch per SUBAGENT_DISPATCH), GitHub API rate (there is already a gh-throttle window + _chump_gh_classify_call), and inference capacity (Ollama contention observed 2026-08-06). NOT merge conflicts"
     - "WHY CROSS-REPO IS SAFER THAN TODAY: every collision hit on 2026-08-06/07 was WITHIN chump — main.rs +6081/-6089 conflict (PR #3499), a shared dirty checkout between sibling sessions, a DEPTH.md test-count race, an ALMANAC_HOME env race. Different repos touch different files; fanning out REDUCES contention on the one hot repo"
     - "OBSERVATION BEFORE ACTION: do not run autonomous agents across 90 repos while CREDIBLE-220 (nothing watches non-chump CI — two repos sat red ~6 months) and RESILIENT-247 (pr-rescue.sh exists but is unscheduled) are open. You cannot supervise what you cannot see"
+  opened_date: '2026-08-19'
   outcome_id: MISSION-032
 
 - id: MISSION-077
@@ -59455,6 +60536,7 @@ gaps:
     CONSEQUENCE FOR PRODUCT TEAMS (operator question, same day): teams are ALREADY the data model — chump-team carries team_id and OperatorQuota. And a worker can ALREADY declare a specialty at launch via WORKER_SKILLS / WORKER_MACHINE / WORKER_BACKEND. What is missing is only the honoring: nothing reads the declaration when picking. So 'product team per repo' is a launch-flag + picker-filter change, not new architecture.
     
     This is the fifth instance today of the same fleet pattern: instrument built, never run (cf. pr-rescue.sh unscheduled RESILIENT-247, non-chump CI unwatched CREDIBLE-220, organs never swept EFFECTIVE-389, tracemap never pointed at its own example input EFFECTIVE-397).
+  opened_date: '2026-08-19'
   outcome_id: MISSION-032
 
 - id: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA-001
@@ -59468,6 +60550,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
 
 - id: PRODUCT-026
   domain: PRODUCT
@@ -59682,6 +60765,7 @@ gaps:
     - Human response routed back to agent via .chump-locks/<session>/decision-response.json
   notes: |
     [2026-05-15T04:28:26Z] PWA phase: 3 (Fleet Grading) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+  opened_date: '2026-07-26'
 
 - id: PRODUCT-062
   domain: PRODUCT
@@ -59963,6 +61047,7 @@ gaps:
     - Pairs with EFFECTIVE-017/018 (WorkBackend + pluggable auth) — onboarding is the UI; those are the runtime. Cannot meaningfully ship this until they ship.
   notes: |
     [2026-05-15T04:28:26Z] PWA phase: 4 (Demo Mode) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+  opened_date: '2026-07-26'
 
 - id: PRODUCT-090
   domain: PRODUCT
@@ -60252,6 +61337,7 @@ gaps:
     - "Cost target: <$20/mo on free-tier hosting"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
 
 - id: PRODUCT-135
   domain: PRODUCT
@@ -60283,6 +61369,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
 
 - id: PRODUCT-137
   domain: PRODUCT
@@ -60295,6 +61382,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
 
 - id: PRODUCT-138
   domain: PRODUCT
@@ -60312,6 +61400,7 @@ gaps:
     - "Smoke test scripts/ci/test-pwa-offline.sh: dev server up, fetch /api/gaps then take network down (mock), assert subsequent /api/gaps from PWA returns cached + stale flag."
     - "DEPENDENCY: Marcus M-B canonical demo + 50/hr plan must be done first. This is post-Q2 work."
     - "Out of scope: full P2P sync between operators offline (separate gap if ever wanted)."
+  opened_date: '2026-07-26'
 
 - id: PRODUCT-139
   domain: PRODUCT
@@ -60331,6 +61420,7 @@ gaps:
     - "Out of scope: full marketing-site polish, demo-data sandbox mode."
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
 
 - id: PRODUCT-140
   domain: PRODUCT
@@ -60348,6 +61438,7 @@ gaps:
     - "Telemetry: emit kind=pr_chip_tag_set {pr, tag, operator, behavior_delta_chars}."
     - Wave-3-or-4 work; file now, claim after Wave 0+1.
     - "Out of scope: chip-tag DISPUTE flow (operator changes a chip after-the-fact), critique-pass auto-tag (Phase 3 work)."
+  opened_date: '2026-07-26'
 
 - id: PRODUCT-141
   domain: PRODUCT
@@ -60374,6 +61465,7 @@ gaps:
     - tested against at least 2 real repos in this portfolio with different roadmap formats, not just synthetic fixtures
   depends_on: [INFRA-3527]
   source_doc: session 2026-08-02, the full roadmap/%-to-goal investigation
+  opened_date: '2026-08-19'
   outcome_id: META-067
 
 - id: PRODUCT-142
@@ -60395,6 +61487,7 @@ gaps:
     - False-negative risk on the harmful axis is explicitly documented (what this catches vs. what it doesn't), not silently assumed complete
   notes: |
     Filed 2026-08-02 from a first-mate session scaling holler to olive + designing this feed at the operator's explicit direction: 'it's a chump thing not a holler thing... I think chump can actually do the spiritual heavy lifting of is this feedback even valid.' Higher scrutiny than typical P2 work given the harm-axis false-negative stakes -- do not treat this as routine triage tooling.
+  opened_date: '2026-08-19'
 
 - id: PRODUCT-143
   domain: PRODUCT
@@ -60470,6 +61563,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/pvc"
 
 - id: PRODUCT-146
@@ -60490,6 +61584,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-147
@@ -60510,6 +61605,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-148
@@ -60530,6 +61626,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/trove-web"
 
 - id: PRODUCT-149
@@ -60552,6 +61649,7 @@ gaps:
   notes: |
     [2026-08-05T05:02:56Z] Before writing a new fix: repairman29/trove-web PR #5 ('Fix broken blog links and api errors', https://github.com/repairman29/trove-web/pull/5) already implements a dynamic blog route (src/app/blog/[slug]/page.tsx, 536 lines) + a public collections API endpoint, opened over a year ago by a Cursor background agent, never merged, never reviewed. Directly on-topic for this gap -- check whether it still applies cleanly against current master before writing a fresh fix from scratch. Found 2026-08-05 checking open-PR state across repos with active gaps; the holler->chump pipeline has no PR-awareness of its own (see HOLLER_CHUMP_BRIDGE.md).
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/trove-web"
 
 - id: PRODUCT-150
@@ -60575,6 +61673,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-151
@@ -60598,6 +61697,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-152
@@ -60621,6 +61721,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/smuggler"
 
 - id: PRODUCT-153
@@ -60644,6 +61745,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/smuggler"
 
 - id: PRODUCT-154
@@ -60667,6 +61769,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/BEAST-MODE"
 
 - id: PRODUCT-155
@@ -60690,6 +61793,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/BEAST-MODE"
 
 - id: PRODUCT-156
@@ -60710,6 +61814,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/trove-web"
 
 - id: PRODUCT-157
@@ -60728,6 +61833,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/trove-web"
 
 - id: PRODUCT-158
@@ -60751,6 +61857,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-159
@@ -60774,6 +61881,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-160
@@ -60797,6 +61905,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-161
@@ -60820,6 +61929,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-162
@@ -60843,6 +61953,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-163
@@ -60866,6 +61977,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-164
@@ -60889,6 +62001,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-165
@@ -60912,6 +62025,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-166
@@ -60935,6 +62049,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-167
@@ -60958,6 +62073,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-168
@@ -60981,6 +62097,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
 
 - id: PRODUCT-169
@@ -60999,6 +62116,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/chump"
 
 - id: PRODUCT-170
@@ -61017,6 +62135,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/chump"
 
 - id: PRODUCT-171
@@ -61035,6 +62154,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/upshift"
 
 - id: PRODUCT-172
@@ -61053,6 +62173,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/upshift"
 
 - id: PRODUCT-173
@@ -61071,6 +62192,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/upshift"
 
 - id: PRODUCT-174
@@ -61089,6 +62211,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/jeffadkins-dev"
 
 - id: PRODUCT-175
@@ -61107,6 +62230,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: PRODUCT-176
@@ -61141,6 +62265,7 @@ gaps:
   notes: |
     Decomposed into 7 slices: PRODUCT-178, PRODUCT-179, PRODUCT-180, PRODUCT-181, PRODUCT-182, PRODUCT-183, PRODUCT-184
   source_doc: docs/ALMANAC.md
+  opened_date: '2026-08-19'
 
 - id: PRODUCT-178
   domain: PRODUCT
@@ -61153,6 +62278,7 @@ gaps:
     - Request is rejected if key is revoked or unknown
     - Fallback to environment-key is implemented with an orphan-account existence check
     - Invalid keys return a specific error payload for 'spoken reconnect hint'
+  opened_date: '2026-08-19'
   outcome_id: EFFECTIVE-000
 
 - id: PRODUCT-179
@@ -61167,6 +62293,7 @@ gaps:
     - Response contains a 'spoken' field for Siri to read
     - Response time for simple queries is < 5 seconds
   depends_on: [PRODUCT-178]
+  opened_date: '2026-08-19'
   outcome_id: EFFECTIVE-000
 
 - id: PRODUCT-180
@@ -61180,6 +62307,7 @@ gaps:
     - Follow-up queries (e.g., 'what repo was that in?') resolve against the previous turn's context
     - State is cleared or rotated based on session timeout patterns
   depends_on: [PRODUCT-179]
+  opened_date: '2026-08-19'
   outcome_id: EFFECTIVE-000
 
 - id: PRODUCT-181
@@ -61194,6 +62322,7 @@ gaps:
     - Replies are limited to 1-3 plain sentences
     - Repo names and counts are preserved as per VOICE_ADDENDUM
   depends_on: [PRODUCT-179]
+  opened_date: '2026-08-19'
   outcome_id: EFFECTIVE-000
 
 - id: PRODUCT-182
@@ -61208,6 +62337,7 @@ gaps:
   depends_on: [PRODUCT-179]
   notes: |
     bumped P2->P1: turn logging is the receipts leg of the voice contract (shop rule 1) — parent AC requires a queryable turn log
+  opened_date: '2026-08-19'
   outcome_id: EFFECTIVE-000
 
 - id: PRODUCT-183
@@ -61221,6 +62351,7 @@ gaps:
     - Server-side process continues to run after the initial response is sent
     - Result of the background task is cached and delivered on the subsequent user ask
   depends_on: [PRODUCT-180]
+  opened_date: '2026-08-19'
   outcome_id: EFFECTIVE-000
 
 - id: PRODUCT-184
@@ -61233,6 +62364,7 @@ gaps:
     - Endpoint implements rate limiting per voice key to prevent abuse
     - Exceeding limit returns a spoken 'too many requests' hint
   depends_on: [PRODUCT-178]
+  opened_date: '2026-08-19'
 
 - id: PRODUCT-185
   domain: PRODUCT
@@ -61247,6 +62379,7 @@ gaps:
     - key mint + paste-once setup documented; revoking the key makes the next invocation return the spoken reconnect hint
     - works from iPhone/Watch invocation surfaces, not just Mac
   depends_on: [PRODUCT-178, PRODUCT-179]
+  opened_date: '2026-08-19'
   outcome_id: EFFECTIVE-000
 
 - id: PRODUCT-186
@@ -61264,6 +62397,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: PRODUCT-187
@@ -61284,6 +62418,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/smuggler"
 
 - id: PRODUCT-188
@@ -61304,6 +62439,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/slidemate"
 
 - id: PRODUCT-189
@@ -61324,6 +62460,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/maclawd"
 
 - id: PRODUCT-190
@@ -61344,6 +62481,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/chump"
 
 - id: PRODUCT-191
@@ -61370,6 +62508,7 @@ gaps:
       #3 Bump @types/node from 20.19.30 to 26.0.0 -- https://github.com/repairman29/olive/pull/3
       #2 Bump the weekly-batch group across 1 directory with 11 updates -- https://github.com/repairman29/olive/pull/2
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/olive"
 
 - id: PRODUCT-192
@@ -61390,6 +62529,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/chump"
 
 - id: PRODUCT-193
@@ -61420,6 +62560,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: PRODUCT-194
@@ -61448,6 +62589,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: PRODUCT-195
@@ -61476,6 +62618,7 @@ gaps:
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: PRODUCT-196
@@ -61489,6 +62632,7 @@ gaps:
     - PHP follows by the same pattern; both appear in detect_language + is_supported
     - Re-indexing the chatwoot ref (already at ~/.almanac/refs-cache/chatwoot, v4.16.2) yields non-zero Ruby symbols, and a fleet search for 'conversation handoff bot assignee' returns chatwoot hits — measured 2026-08-07 as 0 Ruby files indexed out of 1527, so app/models/conversation.rb and db/schema.rb were invisible
     - DEPTH.md updated in the same commit
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: MISSION-032
 
@@ -61503,6 +62647,7 @@ gaps:
     - "A sync command restores the whole reference library on any machine from the manifest, so refs stop being accidental local artifacts (only 3 exist today: anyhow, codebase-memory-mcp, chatwoot)"
     - Adding a ref is a reviewable diff rather than an untracked local act
     - Because refs register as ordinary repos, indexed refs surface in normal search-fleet results — document that this is the compounding property, and that it only holds for parsed languages (see the Ruby/PHP adapter gap)
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: EFFECTIVE-000
 
@@ -61615,6 +62760,7 @@ gaps:
     - "The change described by \"Handoff Debt paper (arxiv 2606.02875) quantifies rediscovery cost when agents take over interrupted tasks — directly relevant to wip/ branch rescue and RESILIENT-029 WIP stash pattern\" is implemented in the relevant RESEARCH code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-17'
 
 - id: RESILIENT-006
   domain: RESILIENT
@@ -61692,6 +62838,7 @@ gaps:
     - Documented in docs/process/CLAUDE_GOTCHAS.md INFRA-779 section as the followup closing the during-add window
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-010
@@ -61787,6 +62934,7 @@ gaps:
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
   source_doc: docs/process/CHUMP_PLAYBOOK.md
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-016
@@ -61820,6 +62968,7 @@ gaps:
     - "Before/after PR-time-to-merge measurement: median time for a code-only PR drops by at least 10 min after this ships (verified by comparing last 10 PRs before vs first 10 PRs after)"
     - "Smoke test: push a test PR that triggers all checks; assert tauri-cowork-e2e and e2e-battle-sim are NOT in the blocking check list (they may still run as advisory)"
     - "Cross-link: INFRA-1385/1386/1387 (disposition decision) should complete before this gap to avoid moving a check that was going to be promoted anyway"
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-018
@@ -61837,6 +62986,7 @@ gaps:
     - "Smoke test scripts/ci/test-gh-token-guard.sh: run guard with GH_TOKEN unset (asserts skip + emit), run with GH_TOKEN set (asserts no-skip)"
     - "Retroactive: grep scripts/ci/test-NAME.sh for raw gh-api or gh-pr calls; 5+ scripts likely need migration; file follow-up gaps per script"
     - Pairs with INFRA-1846 (e2e-pwa advisory-promotion analysis) but addresses class-of-failure not single-job; allows e2e-pwa to be made required-without-flake
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-019
@@ -61895,6 +63045,7 @@ gaps:
     - After install, run scripts/coord/wedge-watch.sh — daemon_silent + reaper_silent ALERTs should not fire for these 3 daemons in subsequent 30min window
     - Add the 3 install scripts to AUTOPILOT_LAYERS in scripts/coord/fleet-autopilot.sh so the autopilot start covers them too (CREDIBLE substrate completeness)
     - Pairs with META-090 (autopilot orchestrator), MISSION-006 (wedge-watch detection)
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-023
@@ -62136,6 +63287,7 @@ gaps:
     - First-react per corr_id is fine; second-react within cooldown gets suppressed silently
     - "Parent_corr_id chains: cooldown applies to root corr_id (chase parent links) so reacting to a reply to your own broadcast also dedupes"
     - "Smoke test: synth FEEDBACK with corr_id X; tick preamble for role A; assert digest contains X; second tick within 30min asserts digest does NOT contain X"
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-037
@@ -62150,6 +63302,7 @@ gaps:
     - "AGENTS.md no-idle section gets a NOT-list explicit subsection: 'filing a vague gap (AC contains TODO/TBD or description <200 chars) is NOT a valid tick outcome'; 'dispatching a Sonnet without a concrete AC the operator could verify is NOT valid'; 'writing meta-synthesis when fleet has 0 urgent items IS valid; writing it when there are P0 unclaimed is NOT'"
     - "Pre-commit gap-quality hook scripts/git-hooks/pre-commit-gap-quality.sh: rejects yaml files in docs/gaps/ with AC containing TODO/TBD or description shorter than 200 chars; bypass via Vague-AC-Bypass: <reason> trailer"
     - chump preflight green
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-038
@@ -62165,6 +63318,7 @@ gaps:
     - "If substrate-cause detected: supervisor files single 'substrate: X impacting curators' gap (NOT per-curator gaps); broadcasts WARN to operator; DOES NOT spawn per-curator Sonnets"
     - Substrate check results cached for 5min (avoid hammering APIs)
     - "Smoke test: mock disk-full state, synth 3 failing curators, assert single substrate gap filed + zero Sonnet spawns"
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-039
@@ -62275,6 +63429,7 @@ gaps:
     - "If the wrapper swallows the error: add explicit [FAIL: <reason>] output so future failures are debuggable"
     - Required CI gate audit passes on a fresh PR against main containing this fix
     - "If the issue is the audit aggregator wrapper hiding failure details: file a follow-up gap to instrument all audit sub-test runners with consistent [PASS]/[FAIL] output (META-quality)"
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-045
@@ -62296,6 +63451,7 @@ gaps:
   notes: |
     [2026-05-30T10:10:30Z] [2026-05-30T10:13Z] Demoted P0→P1 after honest review: this gap is still valid (ci-health cluster detection IS a real missing capability), but P0 promotion was based on emotional reaction to having JUST missed a 10h trunk-RED. The actual incident's failure mode was 'r2detect accepts garbage input' which is being fixed in PR #2858 — orthogonal to the cluster-detector this gap proposes. Filing this at P1 is enough; it doesn't compete with the existing 5 P0s for picker attention.
     [2026-05-30T10:11:08Z] [2026-05-30T10:15Z] SUPERSEDED. Discovered post-filing that META-179 (trunk-red-detector daemon, 5-min poll WARN broadcast, META-177 Lane C sub-gap) + INFRA-2066 (pr_stuck_cluster auto-mitigation, today's top waste class) + INFRA-2288 (sccache CI health probe with no-cache fallback) + INFRA-2012 (cluster-v2 detection, already v2) collectively cover this gap's scope. Filing this was the EXACT FAFO failure pattern that RESILIENT-048 is designed to prevent. Demoting to P3; operator/curator can close as superseded or fold any unique-aspect AC into META-179.
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-046
@@ -62386,6 +63542,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-050
@@ -62516,6 +63673,7 @@ gaps:
     - oauth-token-refresh.sh persists expires_at and a freshness watchdog emits a loud signal WEEKS before a long-lived token lapses, independent of worker usage
     - operator-recall AUTH_DEAD fires on repeated oauth_token_refresh_failed or token-staleness, not only worker_exit storms
     - a regression test simulates an expired/invalid primary token (API key present) and asserts the fleet stays up via the floor AND an alarm fires (extends src/auth.rs tests + a scripts/ci/test-*.sh)
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-055
@@ -62542,6 +63700,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. oauth-token-refresh.sh writes expires_at field from claudeAiOauth.expiresAt into token JSON\n2. infra-watcher emits kind=auth_token_stale within <=15min of token going stale/expired (mtime > 900s OR expires_at within 10min)\n3. operator-recall AUTH_DEAD fires on repeated oauth_token_refresh_failed or auth_token_stale, not only fleet_auth_storm+worker_exit\n4. scripts/ci/test-auth-freshness-watchdog.sh passes: stale token file => auth_token_stale event; AUTH_DEAD trigger fires\n5. all existing auth.rs and oauth refresh tests continue to pass"
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-057
@@ -62666,6 +63825,7 @@ gaps:
     - after merge, a representative audit run completes in well under timeout-minutes (target <8min warm) — capture the before/after wall-clock in the PR
     - change is scoped to the audit job's env + cache step (+ optional modest timeout headroom to let the cold fix-PR run land); does not weaken what audit actually checks (no bypass, still required)
     - "scripts that read CARGO_TARGET_DIR still resolve (they use ${CARGO_TARGET_DIR:-$(pwd)/target} fallback)"
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-064
@@ -62763,6 +63923,7 @@ gaps:
   acceptance_criteria:
     - chump farmer status exits 0 when lights-on / 1 when not, reading only local state in <100ms
     - every work entry-point (session-start, claim, reserve guard, worker tick) gates on it
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-070
@@ -62776,6 +63937,7 @@ gaps:
   acceptance_criteria:
     - ghost-gap-reaper closes every status=open gap with a numeric closed_pr (verified on a synthetic fixture)
     - runs on a launchd StartInterval so ghost-gap count stays under the SLO threshold
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-071
@@ -62788,6 +63950,7 @@ gaps:
     Per docs/design/FARMER_2026-06-03.md section 1. A scheduled-task (~30min) that pages the operator if the Farmer's own ambient.jsonl heartbeat goes stale — the second independent restart authority (launchd KeepAlive is the first). Substitutes for PID-1 reset authority on a single Mac.
   acceptance_criteria:
     - a scheduled routine emits kind=operator_recall if no farmer heartbeat appears in ambient.jsonl for >30min
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-072
@@ -62801,6 +63964,7 @@ gaps:
   acceptance_criteria:
     - "chump preflight cargo-test step actually runs the test suite (no 'usage:' error); a green run shows real test counts"
     - a regression test asserts the wrapper is invoked with its required -- <cmd> args
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-073
@@ -62836,6 +64000,7 @@ gaps:
     - preflight warns when a touched test uses macOS-only commands (launchctl/plutil/BSD-stat) that the Mac preflight cannot validate against Linux CI
     - a documented platform-guard convention exists for fleet/launchd tests so this class stops recurring
     - test-farmer.sh (RESILIENT-068) and the farmer-status test (RESILIENT-069) pass in CI under the chosen approach
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-075
@@ -62900,6 +64065,7 @@ gaps:
     - farmer detects a ghost-online self-hosted runner (online but idle while jobs are queued) and restarts it within a tick
     - farmer detects sustained CI saturation (queued > runner_count for > N min) and emits kind=ci_saturation_throttle so the conductor/operator can dial back
     - all three checks are skipped when AUTONOMY_LEVEL=0
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-078
@@ -62915,6 +64081,7 @@ gaps:
     - farmer detects stale github_cache.db (no update in > N min while PRs are open) and restarts the webhook path
     - farmer detects the deliberator down or stuck heartbeat-only (not emitting consensus_result) and restarts it so consensus can decide
     - all checks are skipped when AUTONOMY_LEVEL=0
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-079
@@ -62930,6 +64097,7 @@ gaps:
     - PRs merge via the queue (batched); a PR no longer accumulates merge-main commits / full-CI re-runs when another PR merges (the reset signature is gone)
     - the up-to-date guarantee is preserved by the queue testing the combined state, so the per-PR strict can stay false without semantic-conflict risk
     - CHUMP_MERGE_QUEUE_ENABLED=1 + MERGE_QUEUE.md reflect live state; the farmer (RESILIENT-076) reconciles the merge-queue config to baseline
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-080
@@ -62945,6 +64113,7 @@ gaps:
     - on re-dispatch/recovery the agent resumes from the WIP branch and finishes, rather than restarting from zero
     - a kill-mid-work-then-recover cycle is tested and completes without re-doing the already-finished steps
     - integrates with RESILIENT-059 durable execution (shared journal), no parallel checkpoint mechanism
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-081
@@ -63001,6 +64170,7 @@ gaps:
     - the keystone-reset signature (a BEHIND PR re-committed by a *-bot right after an unrelated merge) does not recur under strict=false
     - RESILIENT-081 (pr-shepherd strict-awareness) is folded into / consistent with this shared path
     - the farmer (RESILIENT-076) audits loaded rebaser daemons vs the strict flag each tick and re-reconciles drift
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-084
@@ -63088,6 +64258,7 @@ gaps:
     - a halted worker fleet is auto-relaunched by the autopilot/a daemon without human intervention
     - "`chump fleet up/restart` no longer requires a tty (no 'fork failed: Device not configured')"
     - MISSION-010 unattended operation is possible (fleet survives + self-recovers a halt overnight, no human terminal)
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: RESILIENT-088
@@ -63179,6 +64350,7 @@ gaps:
   acceptance_criteria:
     - write_ambient (and sibling unguarded fs unwraps in kpi_report test helpers) either retry-on-transient or surface a clear message instead of bare unwrap; OR the test is classified in docs/process/KNOWN_FLAKES.yaml per INFRA-764
     - "kpi_report::tests::infra617_cost_savings_computes_baseline no longer intermittently EINVAL-panics in a full parallel cargo test run"
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-092
@@ -63255,6 +64427,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-096
@@ -63524,6 +64697,7 @@ gaps:
     - cargo check --workspace --all-targets passes clean
     - bash scripts/ci/test-preflight-ci-parity.sh exits 0 (Mirrored count up by 2)
     - Both scripts are pure-local (tmp dir + ambient fixture / sqlite + chump-stub on PATH) — no network, no GitHub API
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-111
@@ -63542,6 +64716,7 @@ gaps:
   depends_on: [RESILIENT-119]
   notes: |
     [2026-06-05T23:17:42Z] CORRECT PATTERN (exemplar ~/.chump/beast-0to1-loop.sh, found via a2a 2026-06-05): launchd plist + shell script calling the chump binary; NO Opus in the loop; flock single-instance; state in jsonl; self-stop at target; install via scripts/setup/install-*-launchd.sh. MUST use 'chump gap close --reason' (RESILIENT-119), NOT the reset-hard/edit-status band-aid. This is the durable replacement for the session-only CronCreate /loop, which dies on restart (CREDIBLE-105 band-aid class).
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-112
@@ -63628,6 +64803,7 @@ gaps:
     - Reaper emits kind=target_reap_skipped to ambient with reason field (active_build|no_reap_marker) when bypassing
     - .chump-no-reap marker is documented in docs/process/CLAUDE_GOTCHAS.md as the standard escape hatch with the audit emit invariant
     - RESILIENT-107 commit is referenced as precedent (refresh-runner-binary worktree fix introduced the marker)
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-117
@@ -63642,6 +64818,7 @@ gaps:
     - "Fix: chump-commit's flock target uses repo-absolute git-dir path resolved via git rev-parse --git-dir without /tmp symlink interference; OR moves the mutex to a repo-rooted .chump-locks/index-mutex-<worktree>.lock"
     - "Validation test scripts/ci/test-chump-commit-cross-worktree-mutex.sh: 3 concurrent claims each running cargo build do NOT contend on each other's mutex (parallel commits succeed within 30s)"
     - CHUMP_INDEX_LOCK=0 escape hatch documented in CLAUDE.md as expressly conditional on this gap being open (advisory only, NOT a permanent license)
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-118
@@ -63683,6 +64860,7 @@ gaps:
     - emits kind=gap_triage_closed audit event with reason
     - regression test
     - "per CREDIBLE-105: fix the cause (no triage-close path), not the path around it"
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-120
@@ -63831,6 +65009,7 @@ gaps:
     - "Fix: reaper must call git worktree list --porcelain, parse for 'prunable' flag, and git worktree remove --force the prunable entries. Today's reaper checks mtime or active-lock, not git's own prunable signal"
     - "Test scripts/ci/test-worktree-reaper-prunable.sh: create a worktree, mark it prunable (e.g. git worktree remove + leave the dir), run the reaper, verify the dir is cleaned and the registration removed"
     - Emit ambient kind=worktree_reaped_prunable on each successful prune with path + prior_branch + age — operator audit trail
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-129
@@ -63847,6 +65026,7 @@ gaps:
     - Add scripts/ci/test-credible-061-seed-consistency.sh that runs the seed and asserts the gap count matches the threshold, so a future drift fails the seed test directly rather than the schema test downstream
     - "Validation: re-run audit-shard (1) on PR #3095 — passes. Re-run on a fresh PR — passes. Failing pattern in audit logs disappears"
     - "Doctrine cross-ref: CREDIBLE-105 — a test that fails for environmental reasons (seed drift) rather than the code under test wedges every PR. Same family as the wedged-on-cargo-test-OOM pattern from RESILIENT-110 attempts"
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-130
@@ -63862,6 +65042,7 @@ gaps:
     - "Add audit emit in the reaper script: every successful + failed run emits kind=cargo_target_reaper_run with rc, target_paths_scanned, paths_reaped, error_msg fields to ambient.jsonl. Then the silent-failure class becomes silent_failure_visible"
     - "Test scripts/ci/test-cargo-target-reaper-honesty.sh: simulate a fail (e.g. mock a worktree that triggers the bug), assert ambient gets the cargo_target_reaper_run kind=fail event"
     - "Doctrine cross-ref: CREDIBLE-105 — a daemon failing silently is the meta-clause violation in the substrate layer (we report 'fleet healthy' while one of its reapers is dead). Same family as CREDIBLE-120/121/123 (measurement lies) and RESILIENT-127 (ambient parser silently drops malformed)"
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-131
@@ -63938,6 +65119,7 @@ gaps:
     required.
     
     [2026-08-19T05:46:54Z] Crew-chief 2026-08-19: WORK IS DONE (dup of shipped RESILIENT-143 #3119). Demoted P0->P3 to break a hard P0-picker WASTE LOOP (worker re-picked it every cycle since closer cant mark it done — split-brain INFRA-3606). NOT real P3 work; parked out of picker range until INFRA-3606 lets it close properly.
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-135
@@ -63987,6 +65169,7 @@ gaps:
     - a non-bypass commit never triggers the bypass-trailer 4-field validator
     - index-mutex contention degrades gracefully (clear retry, not hard 30s fail)
     - a 60-line docs change commits in ONE attempt
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-138
@@ -64039,6 +65222,7 @@ gaps:
     - fleet launch detects PTY exhaustion (allocated near ptmx_max) and emits a clear diagnostic + remediation
     - OR falls back to non-tmux standalone-worker launch
     - run-fleet never silently dies with create-window fork-failed
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-140
@@ -64051,6 +65235,7 @@ gaps:
     Diagnosed 2026-06-08 during META-287 manual ship (wedged 3x). In bot-merge.sh, AFTER rebase (31s with 1200s budget — validates RESILIENT-133: the 300s default was strangling rebase) + fmt (15s) + skip-tests/clippy (DOC_ONLY diff), the push / gh-pr-create stage HANGS >210s and NEVER creates a PR. During the hang the per-stage heartbeat still prints 'step=cargo fmt' (stale step label) — so it looks like fmt is hanging when the real stall is push/pr-create. Manual ships have no farmer-retry, so one hang = permanent wedge; the fleet survives only because the farmer re-runs the worker. Part of MISSION-044 (Cut the Friction). Two distinct bugs to fix.
   acceptance_criteria:
     - "1. bot-merge heartbeat prints the ACTUAL current stage (push / pr-create / merge), never a stale prior label like 'cargo fmt'. 2. The push/pr-create stall is root-caused (candidate: pre-push hook, gh pr create GraphQL, force-with-lease) and either fixed or fail-fast with a clear error + tight budget — no silent 210s+ hang. 3. A clean doc-only branch ships through to PR-create + auto-merge-arm within stage budget on the first attempt."
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-141
@@ -64063,6 +65248,7 @@ gaps:
     Observed 2026-06-08 shipping INFRA-2826 (audit-unjam keystone). 'CHUMP_BOT_MERGE_RECOVERY_MODE=1 bash scripts/coord/bot-merge.sh --gap INFRA-2826 --auto-merge' does fast-path push+PR+auto-merge but its push does NOT set the bot-merge-initiated signal (CHUMP_BOT_MERGE_IN_PROGRESS=1) that pre-push Guard 4 (INFRA-719) requires. The pre-push hook BLOCKED bot-merge's OWN push as a manual direct push ('BLOCKED (INFRA-719): direct push of gap branch ... to a new PR', hook aborted line 1047, exit 1). So the documented recovery path for a wedged bot-merge is itself broken — cannot ship a new gap branch without a forbidden bypass. Part of MISSION-044; reinforces RESILIENT-140.
   acceptance_criteria:
     - 1. bot-merge RECOVERY_MODE push sets the bot-merge-initiated signal so pre-push Guard 4 (INFRA-719) allows it. 2. A recovery-mode ship of a NEW gap branch reaches PR-create + auto-merge-arm with no INFRA-719 block. 3. Regression test asserts the signal is exported on the recovery push path.
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-142
@@ -64124,6 +65310,7 @@ gaps:
     - Rebuilding a PR branch on current origin/main and force-pushing does NOT trip INFRA-2407 on merged commits.
     - A genuinely-new commit carrying a bypass token WITHOUT the 4 trailers is still blocked.
     - "Smoke test covers: rebuilt-branch force-push (pass) + new-commit-with-bare-bypass-token (block)."
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-146
@@ -64166,6 +65353,7 @@ gaps:
     - The keep-shipping/unwedge conductor driver runs as a launchd daemon, not a session-bound /loop, so the fleet recovers when the operator session is away.
     - "Recovery actions include: clear stale fleet-paused, drive open PRs toward merge, relaunch dead workers."
     - Emits a heartbeat; fleet-doctor flags if the durable conductor is dead.
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-149
@@ -64179,6 +65367,7 @@ gaps:
     - "After a fix merges to origin/main, the running daemon picks it up within N minutes with NO human 'git show origin/main:script > file' + kickstart."
     - The main checkout cannot silently drift >K commits behind origin/main (auto-reconcile or alert).
     - "Precedent: the 2026-06-15..20 outage required manually deploying ci-health-gate.sh + farmer.sh + auth-status.sh to the main checkout because the daemons ran stale code."
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-150
@@ -64285,6 +65474,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - "1. The (( )) arithmetic at scripts/dispatch/run-fleet.sh:556 receives a single integer — normalize the offending variable (head -1 / tr -d newlines / first token) before the arithmetic context. 2. No '((: ... syntax error in expression' line appears in the fleet launch log on startup. 3. The underlying counting bug is fixed: the variable holds the correct single count, not a multi-line '0\\n0' value. 4. A guard (bash -n is insufficient — runtime) or a comment documents the expected single-int invariant."
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
   evidence: |
     Observed in /tmp/chump-fleet-launch.log on 2026-06-21 fleet launch: 'scripts/dispatch/run-fleet.sh: line 556: ((: 0\n0: syntax error in expression (error token is "0")'. A var that should hold a single integer is getting a two-line '0\n0' value (likely a grep -c that matched two files, or a command-substitution returning multiple lines) fed into an (( )) arithmetic context. Non-fatal (fleet still launches) but pollutes logs + indicates a latent counting bug. Fix: quote/normalize the var to a single integer before the (( )) at line 556 (e.g. | head -1, or tr -d newlines, or use the first token).
@@ -64379,6 +65569,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Worktree builds use a CARGO_TARGET_DIR on a stable, non-/tmp path (e.g. ~/.cache/chump-targets/<worktree> or the worktree's own target) so macOS /tmp purges don't corrupt artifacts mid-build. 2. A build no longer fails with 'could not parse/generate dep info at .../wasmtime_wasi-*.d' from a partially-purged /tmp target. 3. Cold-rebuild frequency drops (warm incremental builds survive across a session). 4. Pairs with RESILIENT-161 (the package-cache lock) as the Phase-3 substrate fix. Test/proof: a worktree build + a simulated /tmp prune does not corrupt the target."
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
   evidence: |
     2026-06-22: claimed worktrees (e.g. chump-effective-291/294) had CARGO_TARGET_DIR resolve to /tmp/chump-<gap>/target. macOS periodically purges /tmp, corrupting dep-info (.d) files mid-session → 'could not parse/generate dep info at /tmp/.../wasmtime_wasi-*.d' (exit 101) and forced full cold rebuilds (~15-20 min each, the wasmtime/cranelift chain). Hit repeatedly this session; a velocity killer. Phase 3 of the Outward Flywheel (docs/strategy/OUTWARD_FLYWHEEL_2026-06-22.md).
@@ -64391,6 +65582,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. A periodic reaper keeps the main + worktree cargo target/ dirs under a size cap (e.g. cargo-sweep --time 7 or a GB cap), run from infra-watcher / the disk-aware-fleet (META-128). 2. ~/.cargo registry+cache is pruned of stale crate versions. 3. disk free stays >5% (the disk_critical threshold) under normal fleet operation. 4. A disk_critical ambient alert triggers an automatic reap, not just a page. 5. Verify: after a reap cycle, target/ + ~/.cargo are bounded and disk free recovers above threshold. Phase-3 substrate (docs/strategy/OUTWARD_FLYWHEEL_2026-06-22.md); root cause of RESILIENT-163's /tmp-target corruption (low disk → partial writes)."
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
   evidence: |
     2026-06-22 17:45Z disk_critical alert: /System/Volumes/Data at 3% free (<5%). Bulk: $HOME/Projects/Chump/target = 44G, $HOME/.cargo = 21G (65G combined) — unbounded cargo build artifacts + registry cache, never reaped. /tmp worktree targets were minor (~3G, cleaned this session). The disk-aware-fleet (META-128) + infra-watcher own disk health but the target/ isn't being reaped. Low disk is also the mechanism behind RESILIENT-163 (/tmp partial-write corruption). Phase-3 substrate priority.
@@ -64484,6 +65676,7 @@ gaps:
     - cargo deny check advisories passes locally
     - the required 'audit' check goes green on the PR
     - no other deny.toml advisory is silently added or removed
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-171
@@ -64497,6 +65690,7 @@ gaps:
   acceptance_criteria:
     - durable_resume json_mode test no longer fails on transient disk I/O — either classified in KNOWN_FLAKES.yaml or hardened with retry/isolated tmpdir
     - test passes reliably under concurrent load
+  opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-172
@@ -64562,6 +65756,7 @@ gaps:
     - integrator performs merges in a dedicated linked worktree OR restores the pre-cycle branch via trap on all exit paths
     - "regression test: simulated wedged cycle (fetch failure) leaves the canonical checkout branch untouched"
     - ambient event on any branch-restore so occurrences are auditable
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-176
   domain: RESILIENT
@@ -64613,6 +65808,7 @@ gaps:
     - "regression test: fixture worker attempting a deny-listed read fails without prompting"
   notes: |
     Outcome: MISSION-010. Depends_on MISSION-051 cutover. Born from operator TCC prompt report.
+  opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: RESILIENT-179
@@ -64629,6 +65825,7 @@ gaps:
     - de-scaled slots removed from chumpd-status.json workers array
   notes: |
     Promoted P0 2026-07-22: confirmed #1 yield ceiling (2 real ships/day at 2 workers); wedge-kill tax measured across two nights.
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-180
   domain: RESILIENT
@@ -64668,6 +65865,7 @@ gaps:
     When a dispatch dies after 'chump claim' created /tmp/chump-<gap> (worktree + branch), the corpse persists: the next claim of the same gap fails 'worktree path already exists' and bot-merge exits with META-156 AC#2 session-unknown (observed repeatedly on chumpd-eu cycles 14-17). The INFRA-919 trap removes the lease but never the claim worktree/branch. Fix: when claim hits worktree-exists AND no live lease exists for the gap in state.db (and no sidecar), treat it as an orphan: git worktree remove --force + branch -D + proceed with a fresh claim, emitting kind=orphan_claim_worktree_recovered. INFRA-2744's committed-work concern doesn't apply when NO lease exists — but preserve safety by refusing if the orphan branch has commits ahead of main (rename to <branch>-orphan-<ts> instead of deleting).
   acceptance_criteria:
     - chump claim detects orphan claim-worktrees (worktree present, no live lease) and recovers/recycles them before allocating a new one; a poisoned prior run no longer blocks retrying the same gap.
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-183
   domain: RESILIENT
@@ -64808,6 +66006,7 @@ gaps:
     - "The change described by \"fleet-join-nats.sh + fleet-tailscale-up.sh node helpers (RESILIENT-191 follow-up)\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-193
   domain: RESILIENT
@@ -64819,6 +66018,7 @@ gaps:
     - "The change described by \"chump restore --from-sql must not require a reachable LLM (blocks fresh-node state.db materialize)\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-194
   domain: RESILIENT
@@ -64841,6 +66041,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - ci-audit, shepherd, and orchestrator curators run as standing daemons on the hub (unit present + is-active), each writing a heartbeat, closing the ops loops without manual kicks.
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-196
   domain: RESILIENT
@@ -64850,6 +66051,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - "CORRECTION (profiled 2026-07-24): the dev-Mac disk filler is NOT the self-hosted CI runner (heavy CI already routes to GH-hosted Linux via CHUMP_SELF_HOSTED_* repo vars; only e2e-pwa runs on the Mac, debug-only). The 21G target is mostly LOCAL: target/release 12G (local chump installs/rebuilds) + target/debug 9.7G (local dev + some e2e-pwa). Root cause = local dev-build accretion with ZERO GC + the macOS self-hosted runner never cleans (all disk-reclaim steps are 'if runner.os == Linux'). Fix: (1) a target-GC reaper trimming target/ when >20G (prune target/release + target/debug/incremental, keep deps), (2) a macOS-gated cleanup step for the e2e-pwa job (counterpart to the Linux INFRA-CI-DISKSPACE strip), (3) a preflight disk-FLOOR guard that refuses to start a cargo build below CHUMP_DISK_FLOOR_GB (default 15) + emits kind=disk_floor_breach instead of ENOSPC-crashing (the 2026-07-24 deadlock where even the shell couldn't write). Verify: with free space below floor, a build refuses+emits instead of crashing; target/ auto-trims above 20G."
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-197
   domain: RESILIENT
@@ -64915,6 +66117,7 @@ gaps:
     - "The change described by \":/repo_path::/tool_middleware:: tests fail only inside linked git worktrees (20 tests) — forces test-gate bypass on every worktree push\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
     MISSION-045 session 2026-07-27: landing one anti-bloat gate took 3 full CI rounds (~20min each) because failures surfaced serially, not up front. cargo test --bin chump from /private/tmp/wt-backlog: 2568 pass, 20 fail — all repo_tools::/repo_path::/diff_review_tool::/tool_middleware:: (git-fixture setup, e.g. missing __tests__/add.test.js). Pass in CI clean checkout (cargo-test=success). Every worktree push needs a Test-Gate-Bypass trailer as a result.
@@ -64929,6 +66132,7 @@ gaps:
     - "The change described by \"/bin in PATH — breaks any script using core tools (12 plists incl. farmer)\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
     2026-07-27: dev.chump.farmer-brown.plist (and 11 others) set EnvironmentVariables:PATH to '/usr/local/bin:/opt/homebrew/bin:~/.local/bin' with NO /usr/bin:/bin. auth-status.sh (python3/date/stat/grep/sqlite3) then can't find its tools — exit 127 — so the farmer read it as validity_probe_broken and emitted false farmer_auth_dead every cycle, threatening to block the fleet. Reproduced: 'env -i PATH=<farmer-path> bash auth-status.sh' -> 'env: bash: No such file or directory'. Hot-fixed 6 running plists via PlistBuddy (append :/usr/bin:/bin); 6 more (closed-pr-watchdog, distill-pr-skills, gap-doctor-cron, pr-watch-shepherd, stale-branch-reaper, syspolicyd-doctor) failed PlistBuddy on an ampersand-escape and still need fixing. DURABLE FIX: the installer/plist template must always include /usr/bin:/bin; audit + repair all ~90 plists; add a fleet-doctor check for daemon PATH sanity. Sibling to the farmer false-positive (CREDIBLE-090 class).
@@ -64945,6 +66149,7 @@ gaps:
     - "Proven: across >=3 runs in the full repo, the worker reaches its first real work step or errors clearly within a bounded time - no indefinite init hang"
   notes: |
     SOLVED (architecture) 2026-07-27: the cheap fleet = Chump-NATIVE execute-gap loop + provider cascade, NOT opencode. Proven: 'chump --execute-gap' on Groq free-tier runs the native ChumpAgent loop, executes read_file/list_dir tools scoped to the worktree — NO large-repo hang (native tools, not opencode's repo-wide scan), NO rate-limit death (free-tier rotation), FREE. This clears all 3 walls opencode hit. ONE remaining variable = MODEL tool-call quality: free 70B llama (Groq) works mechanically but 'storms on bad tool inputs' and aborts (too weak); DeepSeek strong+cheap but account out-of-balance; mistral/codestral proven clean tool-calls + funded but MISTRAL_API_KEY only in opencode auth (add to .env). WINNING CONFIG: CHUMP_WORK_BACKEND=chump-local + CHUMP_FREE_TIER_PROVIDERS pinned to a competent cheap coder (codestral-latest@api.mistral.ai or topped-up deepseek). (b) = ~$5-10 for a good cheap model, NOT a big paid tier. Validated Jeff's 'a then b': (a) uses infra he already built; (b) is a small model-budget, not architecture.
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
     2026-07-27 field-clearing: after fixing every opencode WIRING bug (farmer PATH RESILIENT-202, CHUMP_WORK_BACKEND, worker.sh $_TO #3337 + missing 'run' #3338 + build_harness_cmd #3339), a live worker still fails every cycle. Isolation: opencode 'run' WORKS for (a) simple prompts in the full repo ('2+2'->'4'), (b) the actual gap briefing in a TEMP repo (implemented the worker-scaling formula), (c) agentic edits in a temp repo. It HANGS at 'init' (loads config -> 'all LSPs disabled' -> 'all formatters disabled' -> init -> blocks, 0 further output, timeout 124) for the AGENTIC briefing in the full Chump repo/worktree — reproduced with BOTH opencode-go/kimi-k2.7-code AND opencode-go/deepseek-v4-pro, so it is NOT the model. The fleet's own runs instead got instant 'UnknownError: Unexpected server error' (fleet-env variant of the same wall). Root shape: opencode's project init/context-load does not scale to 746k LOC. First things to try: opencode.json settings to cap/disable context indexing at init; scope opencode to a subtree; or a --format json non-TTY path. Decision needed (Jeff): tune opencode for large repos, scope it down, or reconsider the worker harness. Blocks the opencode fleet flip; wiring is otherwise fully cleared.
@@ -64959,6 +66164,7 @@ gaps:
     - "The change described by \"per-turn context assembly is ~2min/turn in the 746k-LOC repo — the native-loop throughput wall\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
     2026-07-27: execute_gap native loop got only 6 tool-call turns in 700s (~2min/turn) in the full Chump repo — the model call is fast (devstral), so the cost is Chump's per-turn context assembly at 746k-LOC scale. This is the throughput/cost wall for self-hosting the fleet on its own giant repo (small/external repos assemble fast → fine). Profile + cap per-turn context (slim profile exists but still slow); grounded-search (EFFECTIVE-324 almanac-in-loop) also reduces turns.
@@ -64973,6 +66179,7 @@ gaps:
     - "The change described by \"dead-session leases in state.db block re-work — preflight sees stale claim, no prompt reaper\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
     2026-07-27: bot-merge preflight repeatedly aborted CREDIBLE-169 with 'live-claimed by session ...47431' even after removing all .chump-locks/*.json files — because the claim lives in the state.db 'leases' table (session_id, gap_id, worktree, expires_at), which file cleanup does not touch. 3 orphaned rows from dead test sessions persisted with future expires_at (hours out), so preflight treated them as active and blocked ALL re-work on the gap. A worker that dies (or a claim not cleanly released via 'chump --release') leaves a DB lease that blocks the gap until expiry. Need a reaper that deletes leases whose session is provably dead (no process / heartbeat) rather than waiting for expires_at, and 'chump --release' should clear DB rows not just files.
@@ -65016,6 +66223,7 @@ gaps:
     - "The change described by \"agent-fix janitor arm — dispatch chump agent-run to FIX stuck PRs (never close real work)\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: RESILIENT-209
@@ -65175,6 +66383,7 @@ gaps:
     - "If a bug: add the event:FEEDBACK field so deliberator-loop.sh tallies these proposals (with an appropriate quorum/veto rule matching the existing 300s veto-window semantics, since the deliberator's yes>=3/no>=2 quorum rule may not fit a fast self-rescue veto)"
     - "If intentional: add a code comment at the emission site + a one-line note in docs/design/A2A_MASTER_PLAN_2026-06-03.md documenting the two parallel proposal lanes so this isn't re-flagged as a mystery bug"
     - "Test: scripts/ci/test-deliberator-loop.sh (or a new sibling) proves conductor-style proposals are either tallied or explicitly excluded on purpose"
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-216
   domain: RESILIENT
@@ -65189,6 +66398,7 @@ gaps:
     - "If harness bug: fix test isolation (e.g. unique CHUMP_AMBIENT_LOG/CHUMP_FEEDBACK_LOG tmp paths per scenario) so the test is deterministic"
     - "If real bug: fix scripts/coord/deliberator-loop.sh so voters_list is always populated and a second tick never re-processes/changes an already-idempotent count"
     - "Test: scripts/ci/test-deliberator-loop.sh passes 3/3 consecutive runs with no flake"
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-217
   domain: RESILIENT
@@ -65350,6 +66560,7 @@ gaps:
     - "The change described by \"#[serial] env-race on CHUMP_AUTONOMY_LEVEL_FILE (got Proposed, expected Halted) — false-red in full-suite cargo-test\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-222
   domain: RESILIENT
@@ -65363,6 +66574,7 @@ gaps:
     - "The change described by \"bot-merge integrator health check treats not-running daemon as healthy (PID=- last-exit=0) → gaps stuck in batched dead-queue limbo\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-223
   domain: RESILIENT
@@ -65374,6 +66586,7 @@ gaps:
     - "The change described by \"INFRA-3455 reconciles CHUMP_SESSION_ID to an EXPIRED lease row (ignores expires_at), and the lease-reaper leaves expired rows in state.db — a stale ~20h lease made bot-merge preflight-FAIL a self-owned gap. Fix: INFRA-3455 must skip expired leases; reap expired lease rows\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-224
   domain: RESILIENT
@@ -65385,6 +66598,7 @@ gaps:
     - "The change described by \"make pre-push/cargo-test-with-rerun use nextest, or #[serial]+env-guard the repo-path tests\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-225
   domain: RESILIENT
@@ -65396,6 +66610,7 @@ gaps:
     - "The change described by \"test-bot-merge-gap-fatal.sh + test-bot-merge-rebase-before-test.sh Test 7\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-226
@@ -65408,6 +66623,7 @@ gaps:
     - "The change described by \"swept .chump-locks/ambient.jsonl + sessions/chump_memory.db* (the bench binary's own artifacts in the clone dir) into BEAST-MODE PR #37. Scope the add to the agent's real edits, or gitignore/clean runtime state before commit\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-227
   domain: RESILIENT
@@ -65421,6 +66637,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Second live occurrence, same session, different stage pair: this time cargo-test (budget correctly 1200s per RESILIENT-133) was killed reporting 'budget 300s' after ALL 2699 tests passed and stage_done() successfully logged completion (542s elapsed). Confirms this isn't specific to the fmt->clippy transition -- it's a general race in the watchdog kill/rearm chain that can surface on any stage boundary. Both occurrences: the CURRENT stage's own watchdog was correctly armed with the right value (confirmed via its own 'starting ... (budget Ns)' log line matching RESILIENT-133's fix), work completed successfully within that budget, yet the process was still SIGTERM'd reporting a stale 300s figure -- meaning some EARLIER stage's un-killed watchdog is the actual culprit, not the current stage's own timer. Raises confidence this is systemic (global __STAGE_BUDGET_PID single-slot tracking losing track of an earlier watchdog under a kill race) rather than a one-off fluke.
+  opened_date: '2026-08-19'
   outcome_id: RESILIENT-000
   evidence: |
     COMMAND: shipped CREDIBLE-182 immediately after RESILIENT-133 merged (the
@@ -65491,6 +66708,7 @@ gaps:
     - "The change described by \"improve remediation (fix_pr) defaults to claude-sonnet-4-5, violating Principle 0 (cascade-only)\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-231
   domain: RESILIENT
@@ -65502,6 +66720,7 @@ gaps:
     - "The change described by \"bot-merge 300s stage budget (INFRA-1422) too tight for warm clippy --workspace --all-targets on this host — wedges legit ships\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-232
   domain: RESILIENT
@@ -65513,6 +66732,7 @@ gaps:
     - "The change described by \"improve RESUME (COTG-1.4) resumes a CLOSED/unmerged prior PR — blocks re-running a gap after its stub PR is closed\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-233
   domain: RESILIENT
@@ -65526,6 +66746,7 @@ gaps:
     - "Proven: a forced 402/429 from provider N triggers a cascade transition to N+1 in the log; the run completes or exhausts the cascade gracefully, never exit 101 on 402/429"
   notes: |
     DROPPED (not shipped) 2026-08-05: redundant. The real fleet cascade already has 9 configured slots (Cerebras/Groq/Nvidia/Hyperbolic-Qwen-Coder-480B/Gemini/OpenRouter/...) and cascades across them on provider failure. My 'default fallback to local Ollama' duplicated that. Root cause of the exit-101s I saw was NOT missing fallback — it was running 'chump improve' ad-hoc WITHOUT sourcing the fleet .env (so only 1 broke provider was visible). The real path sources ~/Projects/chump/.env (run-fleet.sh:172, set -a). Kill the WIP branch, keep the gap open only if a SINGLE-slot-config hardening is later wanted.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-234
   domain: RESILIENT
@@ -65540,6 +66761,7 @@ gaps:
     - dormant layers restored or probes corrected — no blanket bypass
     - freshness-preamble reports bootstrap=OK and cron-health present
     - write-up notes which of META-063/064/065 + INFRA-1257 were actually dormant vs falsely flagged
+  opened_date: '2026-08-19'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-235
@@ -65566,6 +66788,7 @@ gaps:
     - respawn never leaves the primary checkout off main after its PR resolves
     - respawn branches self-delete on merge/close
     - regression test covers the parked-checkout case
+  opened_date: '2026-08-19'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-237
@@ -65580,6 +66803,7 @@ gaps:
     - bot-merge from a claim worktree recognizes the claiming session's own lease with no CHUMP_SESSION_ID exported
     - no DB surgery needed to ship one's own claim
     - regression test covers claim-then-bot-merge-from-worktree
+  opened_date: '2026-08-19'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-238
@@ -65592,6 +66816,7 @@ gaps:
     - "The change described by \"provider cascade per-request timeout 300s too long for hosted providers — a hung provider stalls the whole run instead of failing over\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-239
   domain: RESILIENT
@@ -65606,6 +66831,7 @@ gaps:
     - CARGO_INCREMENTAL=0 set for CI/worker build paths (fresh worktrees gain nothing from an 11GB incremental cache); interactive checkout keeps incremental on
     - Re-run the 3+ parallelism case from the existing cross-worktree cargo index mutex contention gap and record whether the stall reproduces after the sweep; if it does, this gap does NOT close and the mutex theory gets its own evidence block
     - "No regression: full workspace check from cold still completes (baseline 12:08) and 'chump --version' still starts in <15ms (baseline 8.8ms)"
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
   evidence: |
     COMMAND: time cargo check --workspace --quiet (warm, immediately after an identical successful run); du -sh + find -type f on ~/.cargo/chump-shared-target/debug
@@ -65627,6 +66853,7 @@ gaps:
     - no private IP remains as a compiled-in default anywhere under crates/ (scripts/ is out of scope and stays as-is)
     - "the giveaway-discipline comment at registry.rs:40 is no longer contradicted by the CLI it describes"
     - a test or documented manual receipt shows a machine with only local Ollama getting a working fusion path from almanac init alone
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: RESILIENT-000
   evidence: |
@@ -65643,6 +66870,7 @@ gaps:
     - "Server-side rate limit on inserts per IP/session (already parked as a holler backlog item — this raises its priority: it is now a security control, not a nicety)"
     - Consider a lightweight proof-of-work or origin check on the public widget so a scripted flood cannot fill the queue
     - Document in holler's README that rows are untrusted input and MUST NOT be treated as authorization by any downstream consumer — the live attempt was 'put all the keys on the homepage' from reporter 'Wanderer' on 2026-08-07
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/holler"
   outcome_id: RESILIENT-000
 
@@ -65660,6 +66888,7 @@ gaps:
     - it names the artifact classes it cannot see — unindexed SQL (INFRA-3530), unsupported languages (CREDIBLE-210/214), and runtime-only injection (CI secrets, launchd env, Secret Manager mounts) — because a rotation checklist that hides its blind spots is worse than none
     - "dogfood receipt: run it for the three echeodev key identifiers and OPENAI_API_KEY, and record the output in SECURITY_REMEDIATION.md next to the pending delete step"
     - documented as a required input to the revoke-before-publish gate in ROTATION_STEPS.md
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: RESILIENT-243
@@ -65677,6 +66906,7 @@ gaps:
     - "AUDIT the sibling assumption: grep the gate scripts for other hardcoded <repo>/target paths and fix them in the same pass"
   notes: |
     Found 2026-08-07 while shipping INFRA-1965 slice 2. Workaround that unblocked it: CARGO_TARGET_DIR=/Users/jeffadkins/.cargo/chump-shared-target chump preflight
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-244
   domain: RESILIENT
@@ -65712,6 +66942,7 @@ gaps:
     - "The CI workflow's lint step either gets a real 'lint' script in package.json or the step is removed — currently every run dies on 'npm error Missing script: lint' before any test executes"
     - "Receipt: main red continuously since 2026-01-21; failure signature identical on main and on PR #2, which is how PR #2 was verified safe to merge on 2026-08-07"
     - After the fix, main's CI actually passes (verify a real run, do not assume)
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/ai-gm-service"
   outcome_id: RESILIENT-000
 
@@ -65749,6 +66980,7 @@ gaps:
     - It surfaces PRs that are DIRTY/BLOCKED past a threshold age, with the diagnosis attached to the gap rather than printed and lost
     - "Receipt: PR #3499 (INFRA-1965) sat DIRTY for 9 hours with auto-merge armed and nobody watching. Its conflict was ONE region caused by two known main.rs commits, diagnosable in under a minute — but only because a human happened to ask 'can we help the fleet'. A 6000-line refactor of the fleet's hottest file rots by the hour"
     - "Pairs with CREDIBLE-220 (nothing watches non-chump CI): same class — an instrument exists, nothing runs it on a clock"
+  opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-248
@@ -65785,6 +67017,7 @@ gaps:
     - The auto-merge re-arm in that same run was a no-op ('already armed'), so the observable harm was limited to the false count — but a rescue loop that reports success on a failed rebase will mask real stuck PRs indefinitely
     - "FIX BOTH: make the rebase failure propagate to the RESCUED/FAILED tally rather than being swallowed, and make the script runnable from a worktree (or fail loudly with a clear message naming the reason instead of a bare exit 2)"
     - VERIFY by running from a worktree AND from the main checkout, and by forcing a rebase failure and asserting the tally reports failed=1
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
 
 - id: RESILIENT-250
@@ -65841,6 +67074,7 @@ gaps:
     - the chosen mitigation is documented where a future container gets run (helsinki runbook or chump docs), not only in this gap
     - the SearXNG container is confirmed to still answer over Tailscale after whatever mitigation lands
     - "ufw status and reality agree: if a port is open, the firewall says so"
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-253
   domain: RESILIENT
@@ -65875,6 +67109,7 @@ gaps:
     - escalation for each new SLO is written in the escalation column and is proportionate — a breach that pages for a parked-on-purpose outcome would train the operator to ignore the layer, so deliberate parking must be expressible (see META-328) and must not breach
     - no per-gap due dates are introduced; the unit is the class
     - the fleet-brief surfaces breaches, since a check nobody reads is the failure mode being fixed
+  opened_date: '2026-08-19'
   outcome_id: RESILIENT-000
   evidence: |
     COMMAND: grep -E '^## Layer' docs/process/FLEET_SLOS.md ; grep -icE 'age|stale|unclaimed|parked' docs/process/FLEET_SLOS.md ; sqlite3 .chump/state.db 'SELECT priority, COUNT(*) FROM gaps WHERE status=open GROUP BY priority'  |  OUTPUT: four SLO layers exist — Fleet Stability, Fleet Productivity, Operator Experience, Pipeline Health — each with targets, measurement sources and an escalation column, enforced by 'chump health --slo-check' which exits non-zero on breach. NOT ONE measures the age of committed work: 2 keyword matches for age/stale/unclaimed/parked, both incidental. Registry: 237 open gaps, of which 153 are P2 (65%) with no promotion path.  |  THEORY: every existing SLO measures FLOW (ship-time P50, waste percentage, restart success, silent-agent events) or CAPACITY (P0 budget). None measures whether a PROMISE is rotting. Four instances found in one session on 2026-08-08, none caught by any SLO: the curator dead 12 days with no alert (RESILIENT-246); MOP-BUCKET at 0% with both children parked below the picker threshold; the factory matrix's three missing chairs parked since 2026-08-05; and 153 P2 gaps where P2 functionally means never rather than later. The fleet ships 16-28 PRs a day and cannot tell you that a load-bearing organ stopped or that a stated campaign has not moved in a fortnight — which is the actual blocker on scaling the fleet, because more workers on an unmeasured backlog just rots more work in parallel.  |  ALT: considered adding gap-level SLA fields (due dates per gap) — rejected as too granular and it invites theatre: every gap acquires a fake deadline. The honest unit is the CLASS: an outcome with children showing no movement, an organ that stopped acting, a priority tier with no exit. Considered folding this into META-328 (the coherence advisor) — rejected: 328 SYNTHESISES mechanical checks and this gap BUILDS one of them; 328 should consume it, not contain it.
@@ -65995,6 +67230,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - fleet-doctor detects ops defects (broken daemon exit codes, false-positive stuck signals) and auto-files a VOA gap for each, with a machine-readable defect record.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: RESILIENT-258
@@ -66007,6 +67243,7 @@ gaps:
     The gap + chump --briefing ARE the agent's context at work-time; CLAUDE.md is read-once and skipped. So the practices we WANT (mine almanac before build/holler, holler friction via chump voice, use the comprehend organs) must be ADVERTISED where the agent actually is. Rough shape: (a) chump --briefing <gap> prints a per-gap 'how we work here' block: the exact almanac command WITH the repo arg pre-filled, the chump voice one-liner, the relevant organs — 0 almanac mentions in briefing today; (b) worker.sh first step on claim = almanac_comprehend the gap's area (0 almanac refs in worker.sh today); (c) chump voice runs almanac_search_fleet dedup before filing (no dup VOAs); (d) optional gap-template field 'suggested_tools/practices' surfaced in list+briefing. Root insight (Jeff 2026-08-09): we over-invested almanac's ENGINE and never wired its DEMAND — same supply-rich/demand-poor trap as the portfolio, applied to our own tool. Advertise at point-of-work > document in a manual nobody re-reads.
   acceptance_criteria:
     - chump --briefing and the gap template surface the mine-almanac-before-build and holler operating practices at the point of work (visible in briefing output and template).
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: RESILIENT-259
@@ -66019,6 +67256,7 @@ gaps:
     RECEIPTS (2026-08-09): AGENTS.md mentions almanac x1, holler/voice x0 — the canonical harness-agnostic file the non-Claude fleet reads is nearly practice-free. The practices live in CLAUDE.md, which its OWN header calls the 'Claude-Code-specific overlay' — so mistral/codex/opencode fleet workers never see them. worker.sh injects a mix of AGENTS.md + CLAUDE.md + briefing (lines 335/945/1011/1045). Rough shape: (a) move the WHAT-every-agent-does content (mine almanac before build/holler, chump voice friction, the 4 pillars, ship discipline, reality-check) from CLAUDE.md into AGENTS.md; (b) thin CLAUDE.md to Claude-Code-ONLY mechanics (Agent-tool dispatch, OAUTH paths, .claude/ conventions); (c) worker.sh injects AGENTS.md (not CLAUDE.md) for non-Claude harnesses; (d) pairs with RESILIENT-258 (briefing advertises per-gap). Root: agents don't use our tools because the how-we-work manual is in the wrong file for them (Jeff 2026-08-09).
   acceptance_criteria:
     - agent operating practices live in AGENTS.md (harness-agnostic canonical source) and CLAUDE.md points to it rather than duplicating, so fleet/mistral agents read the same doctrine.
+  opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: RESILIENT-260
@@ -66027,6 +67265,7 @@ gaps:
   status: open
   priority: P2
   effort: s
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-261
   domain: RESILIENT
@@ -66034,6 +67273,7 @@ gaps:
   status: open
   priority: P2
   effort: s
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-262
   domain: RESILIENT
@@ -66052,6 +67292,7 @@ gaps:
     - RATE-LIMIT AND SEVERITY-GATE THE PHONE CHANNEL. Only 'a production line is stopped' reaches the phone. Everything else goes to ambient/holler. An escalation channel that cries wolf gets muted, and a muted channel is the dead handler all over again
     - "VERIFY ON THE REAL INCIDENT: replay #3510's final state (armed PR, one red required check, that check green on main, check outside the flake wrapper) and assert triage classifies it as suspected-flake, retries, and does NOT close. That is the regression test for this whole gap"
   depends_on: [RESILIENT-266, CREDIBLE-266]
+  opened_date: '2026-08-19'
   closed_pr: 3544
   outcome_id: CHUMPOS
   evidence: |
@@ -66110,6 +67351,7 @@ gaps:
     - "AND ANSWER UNRECOGNISED REPLIES: an unparsed DM must get 'I did not understand that — here is what I accept', never silence. Silent drops are how an operator learns the channel is one-way at the worst possible moment"
     - "VERIFY END TO END ON A REAL DEVICE: fixture PR, real DM, tap deny on the phone, assert the PR is NOT closed and the decision is recorded in ambient. A test that asserts request_approval() was called is exactly the mock-shaped green that let the operator-recall handler sit dead for three months"
   depends_on: [RESILIENT-266, RESILIENT-277]
+  opened_date: '2026-08-19'
   closed_pr: 3544
   outcome_id: CHUMPOS
   evidence: |
@@ -66185,6 +67427,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - 1. Identify what's consuming disk on /System/Volumes/Data (likely cargo target dirs, worktrees, or claude/docker caches). 2. Free space back above 15% (69GB) via targeted cleanup (cargo-target-reaper, worktree reaper, docker prune) not blind deletion. 3. If a specific runaway consumer is found, file a follow-up to cap/rotate it so this doesn't recur.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-269
   domain: RESILIENT
@@ -66217,6 +67460,7 @@ gaps:
     - "FAILURE OF THE TRANSPORT MUST ITSELF BE DETECTABLE: if the primary send fails, fall through to the next rung AND record the failure. A notifier that silently fails over is only marginally better than one that silently dies — the operator must be able to see that Discord was down at 3am"
     - "SCOPE NOTE: this is a DEFAULT-SELECTION and FALLBACK gap. It does not block RESILIENT-266 (gateway daemon) or RESILIENT-265 (approval loop); both proceed on Discord. Do not let this become a blocker for work that is already moving"
   depends_on: [CREDIBLE-266]
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: RESILIENT-271
@@ -66227,6 +67471,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - the chump-coord assign daemon is wired and running so preferred_machine/host-targeted gaps route to the named host; a machine-tagged gap is dispatched there, verified by an assignment log entry.
+  opened_date: '2026-08-19'
   outcome_id: FLEET-BUILD-SPEED
   evidence: |
     chump-coord assign daemon is BUILT (crates/chump-coord/src/assign.rs — publishes WorkEnvelopes to chump.work.<pri>.<class>.<machine>) and preferred_machine is a wired gap field (web_server.rs:7223, --preferred-machine CLI main.rs:10221), but 'launchctl list' shows NO assign/coord daemon running on the Mac. Host-targeted push dispatch is dormant; fleet is pull-only, cannot steer a gap to a chosen runner.
@@ -66239,6 +67484,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - the helsinki picker filters out pillar-starvation/junk gaps and selects real work; a measured run ships >0 real gaps where it previously shipped 0/10.
+  opened_date: '2026-08-19'
   outcome_id: FLEET-BUILD-SPEED
   evidence: |
     ~/.chump/chumpbar-helsinki.json: helsinki 2 workers, grind mode, last10=0/10, both grinding manufactured pillar-starved gaps (INFRA-2789 'MISSION-ZERO-WASTE: pillar starved', INFRA-2802 'MISSION-RESILIENT: pillar starved') — the exact junk-gap class CLAUDE.md Mission-Driver §2 warns against. Helsinki is online, NATS-coordinated, own filesystem (no shared-lock) = free 2nd shipping host, but failing everything.
@@ -66270,6 +67516,7 @@ gaps:
     What is genuinely NOT wired yet (owned, in-order): RECEIVE/replies+buttons — the gateway was compiled out; RESILIENT-266 compiles --features discord + runs it under launchd (THE unlock). Then RESILIENT-265 routes PR auto-close through request_approval() (approve/deny buttons; src/discord.rs:1210 + approval_resolver.rs, built+unit-tested) and RESILIENT-262 does retry-vs-escalate triage. The approve/deny loop has NEVER been exercised end-to-end on a real phone (RESILIENT-265 acceptance test). DOC-093 = comms-on-Discord decision; openclaw code may be PORTED (MIT) but its system NOT run.
     
     So RESILIENT-274 (duty-officer router) is a CONSUMER of: discord_dm (send, works) + RESILIENT-266 (receive) + RESILIENT-265 (approval routing) + RESILIENT-262 (triage). Its only new surface remains the registry + standing loop + 'is my notify channel live' self-check. ALSO: the disk/target work I filed (RESILIENT-273 self-heal + FLEET-BUILD-SPEED) OVERLAPS the pre-existing RESILIENT-275 (P0: target is a symlink to the shared dir, so a worktree release build deletes the fleet binary mid-build). Reconcile with RESILIENT-275, do not fight it; per handoff do NOT revert ZERO-WASTE-029.
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
     2026-08-09 session: 4 incidents (shared-target disk bloat->deadlock, run-fleet gh-probe brittleness, integrator aborts-whole-batch-on-first-conflict, can't-ship-when-fleet-down) EACH required the operator to notice + route. Fixes were not hard; the SPOF was that nobody was on duty. 7 playbook docs exist (OPERATOR_PLAYBOOK, SHIP_ASSIST_PLAYBOOK, SHEPHERD_LOOP_PLAYBOOK, REALITY_CHECK, ROLLBACK_RUNBOOK...) + an incident-commander ROLE doc (.claude/agents/curator-opus-incident-commander.md) — but all inert: docs a human reads + a role definition, not a standing process. Detectors fire into ambient.jsonl and wait for the operator.
@@ -66308,6 +67555,7 @@ gaps:
     - "VERIFY BY REPRODUCTION, not inspection: point a slot at an endpoint that accepts the connection and never responds, send a DM, and assert three things — the call is cut at the configured timeout, the cascade advances to the next slot and answers, and the ambient event names the timed-out slot"
     - "BASELINE FOR COMPARISON, measured on the same gateway the same evening: two tool-free turns returned in provider_ms 309 and 503 (total 321 and 521), and this one took 289417. Sub-second is the norm; four minutes is the anomaly"
   depends_on: [CREDIBLE-266]
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: operator DM to the live Discord gateway asking what the fleet is up to, 2026-08-09T20:24:12Z, then read ~/.chump/logs/discord-gateway.err | OUTPUT: INFRA-185 phase timings request_id=d2c55a47-e749-4cd0-9923-67724e201513 compaction_ms=0 provider_ms=289417 tools_ms=53 other_ms=10 rounds=3 total_ms=289480. The stall is visible between two consecutive log lines: iter=2 called the LLM at 20:24:15.890999Z and the next event is at 20:29:01.378160Z — 4m45s inside ONE provider call. Tools took 53ms total, so the fleet lookup itself was fast | THEORY: there is no bounded timeout on the agent loop LLM call, so a slow or hung slot stalls the whole turn instead of failing over. Searched src/agent_loop/ for timeout and Duration::from_secs and found NONE; other subsystems do set them (src/memory_tool.rs:67/95/541 use 10s, src/telegram.rs:78 sets one). No CHUMP_*TIMEOUT* env var is set either | ALT: rejected the model was simply thinking — rounds=3 with tools_ms=53 means the work was trivial; and two earlier turns the same evening on the same gateway returned in provider_ms 309 and 503. Also rejected network-wide failure — the turn eventually COMPLETED, so the connection was alive the whole time
@@ -66344,6 +67592,7 @@ gaps:
     - "The change described by \"green-means-landed — guarantee auto-merge fires on green; admin-merge becomes an alerting INCIDENT (tracked, trends to 0), not a routine tool\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: SHIP-INFRA
 
 - id: RESILIENT-279
@@ -66356,6 +67605,7 @@ gaps:
     - "The change described by \"duty-officer owns ship-pipeline health (extends RESILIENT-274) — catches a broken gate in minutes not hours, drives admin-merge count to 0\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: SHIP-INFRA
 
 - id: RESILIENT-280
@@ -66403,6 +67653,7 @@ gaps:
     - A pre-commit or CI guard rejects new instances of the idiom, and that guard has its own test that fails without it
     - Full scripts/ci suite run shows ZERO 'syntax error in expression' lines in output — a suite that prints a bash syntax error and then PASS is the bug, so absence of that string is the regression check
     - Per-site workarounds already patched around the symptom (e.g. fleet-brief.sh's '[[ -z $_subjects_24h ]] && ships_24h=0') are removed or justified, so the root fix is not layered on top of the band-aid
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
   evidence: |
     COMMAND: X=$(grep -c pat empty_file 2>/dev/null || echo 0); printf 'value=%q\n' "$X"; if [[ "$X" -gt 0 ]]; then echo FIRED; fi  |  OUTPUT: value=$'0\n0' and bash prints '[[: 0\n0: syntax error in expression (error token is "0")' then SKIPS the conditional. grep -c always prints its count AND exits 1 on no-match, so '|| echo 0' appends a SECOND line rather than substituting one. Static sweep of scripts/: 102 files, 103 occurrences, 74 of which feed a numeric comparison ([[ -gt/-lt/-eq/-ge/-le ]] or (( ))). Confirmed live in scripts/ci/test-curator-supervisor.sh, where the assertion that the RESILIENT-035 circuit breaker suppresses sonnet spawns could never fail — the test printed a bash syntax error and then 'PASS'. Fixed there in PR 3562; the other 101 files are untouched.  |  THEORY: the failure direction depends on the comparison, which is why it has survived. Where the test expects a nonzero count (-gt 0, -ge 1) the syntax error skips the assertion and the suite reports a false PASS. Where it expects zero (-eq 0) the error takes the else branch and reports a false FAIL. Both are silent: bash writes the syntax error to stderr and continues, so a green suite and a red suite can both be lying. scripts/dispatch/fleet-brief.sh already carries a per-site workaround ([[ -z "$_subjects_24h" ]] && ships_24h=0), which is evidence the bug has been hit and patched symptom-by-symptom rather than at the root.  |  ALT: considered a blanket sed across all 102 files in PR 3562 — rejected as unreviewable and out of scope for a curator fix; a 100-file mechanical sweep deserves its own diff and its own test. Considered adding a shellcheck rule — SC2126 is adjacent but does not cover this; a targeted pre-commit grep for 'grep -c.*|| echo' is the cheaper durable guard and should ship WITH the sweep so the pattern cannot return.
@@ -66421,6 +67672,7 @@ gaps:
     - Public-address exposure is probed FROM ANOTHER NODE, not locally, since a local bind check cannot prove external reachability
     - Failure emits an ambient event and exits non-zero; the check runs on a schedule and is referenced from a curator role doc so it does not become shelf-ware
     - Baseline covers every node including the Mac, per operator decision 2026-08-09
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-283
   domain: RESILIENT
@@ -66430,6 +67682,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - run-fleet/control.sh can spawn workers headlessly with no tmux/dashboard dependency; a worker starts and heartbeats on a node with no tmux server.
+  opened_date: '2026-08-19'
   outcome_id: MISSION-010
   evidence: |
     COMMAND: on helsinki (chumpd-eu, headless): chump fleet up --size 2, then bash scripts/dispatch/control.sh directly | OUTPUT: 'can't find session: chump-fleet'; control.sh renders a curses dashboard then 'TERM environment variable not set'; rc=1; pgrep worker.sh = 0 (no workers spawned) | THEORY: run-fleet.sh:812 creates a tmux session running control.sh, but control.sh is the INTERACTIVE tmux DASHBOARD (needs TERM/tty), not a headless worker spawner; the launcher is Mac-interactive-tmux-centric so the session dies immediately on a headless node and no workers spawn. Need a headless worker-runner (systemd-per-worker or plain supervised loops) with the dashboard as optional attach. | ALT: rejected 'disk-budget REFUSE is the blocker' — 71G free, the guard downsized to 2 and proceeded PAST it (auth probe ran after); the tmux/TERM failure is the real cause. Proven interim: chump dispatch --backend headless works headless (shipped DOC-042/#3563).
@@ -66444,6 +67697,7 @@ gaps:
     - "The change described by \"chump dispatch --backend headless aborts under load — r2d2 database is locked + an interactive Confirm? [y/N] release prompt with no stdin (blocks ATC from jumping the queue on a hot node)\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-10'
 
 - id: RESILIENT-295
   domain: RESILIENT
@@ -66453,6 +67707,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - the self-rescue conductor evaluates a recent window (<=30min) and reports UNHEALTHY when 0 merges plus armed-but-stuck PRs are present, instead of reporting HEALTHY off a stale 3h window.
+  opened_date: '2026-08-10'
 
 - id: RESILIENT-296
   domain: RESILIENT
@@ -66475,6 +67730,7 @@ gaps:
     - The Pixel chump execute-gap cascade is configured via CHUMP_CUSTOM_BASE_URL + CHUMP_CUSTOM_API_KEY to route strong work to the CJ proxy as the PRIMARY provider at a sonnet-class model
     - "PROOF: a Pixel worker picks a gap, routes to the CJ proxy, and ships ONE real merged PR whose work was done by a sonnet-class model (NOT the free-tier cascade) - verified in the worker log (backend=claude/model=sonnet via the custom endpoint) AND the merged PR"
     - "Dev/test only: no prod dependency on OAuth; the same CHUMP_CUSTOM_BASE_URL slot must accept an api-key or local-ollama-on-CJ backend later with ZERO Pixel-side change"
+  opened_date: '2026-08-19'
   outcome_id: RESILIENT-000
   evidence: |
     COMMAND: ssh termux claude --version + curl api.anthropic.com/v1/messages. OUTPUT: claude native binary not installed (no Android build); HTTP 401 (no ANTHROPIC_API_KEY, on flat OAuth sub). THEORY: Pixel factory cannot run strong claude -p so it is stuck on weak free-tier cascade; openclaw docs/providers/claude-max-api-proxy.md exposes the OAuth sub as an OpenAI-compatible endpoint by wrapping the Claude Code CLI, and chump src/provider_cascade.rs already speaks custom OpenAI endpoints (is_local_endpoint, resolve_model_for_endpoint, CHUMP_CUSTOM_BASE_URL in auth.rs) — so run the proxy on CJ (CLI works there, x86_64) and point the Pixel cascade at it over tailnet. ALT rejected: metered ANTHROPIC_API_KEY (costs per-token, dev-only should be flat sub); native OAuth provider in chump (big build, duplicates openclaw). Dev/test only, never prod; end-state is api-key or local ollama on CJ — same endpoint abstraction, only the backend swaps.
@@ -66490,6 +67746,7 @@ gaps:
     - A non-prod test app authenticates via GoTrue, reads/writes a table via PostgREST (from + rpc), and uploads/retrieves a file via Storage against CJ - parity proven for the pillars we ACTUALLY use (auth, storage, postgrest, RLS)
     - RLS policies are migrated + re-audited on CJ Postgres (no OR auth.uid() IS NULL anon-read holes) - proven with a live anon-key probe returning 0 unauthorized rows
     - "SCOPE: fleet/dev/staging ONLY. Production cutover for real Olive/Upshift user data is OUT (separate Jeff decision: availability + backups + exposure)"
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-317
   domain: RESILIENT
@@ -66500,6 +67757,7 @@ gaps:
   acceptance_criteria:
     - a Linux variant reaps orphaned claude subprocesses on systemd nodes (parent reparented to pid 1, or not under the live worker process tree) older than REAP_AGE (default 1h), while PROTECTING active leased worker claude -p procs — the macOS version keys off the Claude.app PID which does not exist on Linux
     - installed via the COTG housekeeping suite (RESILIENT-318 sibling); guards against the hung-child wedge class (a no-timeout child froze both workers 4h40m on 2026-08-17)
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-319
   domain: RESILIENT
@@ -66513,6 +67771,7 @@ gaps:
     - both flow through the role-aware installer; --role data on a fresh box yields a reachable Postgres, --role factory yields the integrator timer
   notes: |
     [2026-08-19T20:16:14Z] Both hand-installed tonight (Pixel Postgres, CJ integrator). Depends on the role model (sibling gap ).
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-320
   domain: RESILIENT
@@ -66527,6 +67786,7 @@ gaps:
   notes: |
     [2026-08-19T20:20:31Z] RESILIENT-318/COTG. Installer is ROLE-BLIND today (would put pr-lander on Pixel data node). docs/strategy/DATA_HOME_PLAN.md
     [2026-08-19T20:29:24Z] Jeff 2026-08-19 do-all-we-can: bumped P1->P0 — the COTG role-aware installer is the foundation for tuning bring-up to tonights reality; get it worked next.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-322
   domain: RESILIENT
@@ -66541,6 +67801,7 @@ gaps:
   notes: |
     [2026-08-19T20:20:31Z] Code EXISTS (node-orchestrator.sh place()) but OFF. Tonight foreground-mv of 23G cargo=50-min outage; /tmp-quota broke builds. Highest-value COTG gap. storage-relocation-lesson.
     [2026-08-19T20:31:33Z] 2026-08-19: GRACEFUL CARGO AUTO-PLACEMENT ARMED + PROVEN — rsync+atomic-swap+validate tested on scratch (canary intact, zero disruption); AUTOPLACE=1 live on CJ (no-op, cargo already on USB; fires on future root>90%). REMAINING SLICE: extend place() to worktrees + auto-route TMPDIR on tmpfs pressure, + a real forced->90% integration test.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-323
   domain: RESILIENT
@@ -66554,6 +67815,7 @@ gaps:
     - "verified: a node runs for DAYS with cargo/target/logs on a bounded plateau (not monotonic growth); disk never approaches the reaper-emergency threshold on its own"
   notes: |
     [2026-08-19T20:36:17Z] Jeff 2026-08-19: they need to LEARN to reap/cut storage + optimize — is it in our DNA? Honest audit: REACTIVE reaping = deep DNA (22 reapers). FOOTPRINT-CAPPING = designed (ZERO-WASTE-053 cargo-sweep-gc, shared-target) but was on the shelf (not installed, cargo-sweep not even present) — now wired. LEARNING/adaptive optimization = NOT in the DNA. This gap adds the minimize+learn layer to the ZERO-WASTE domain.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-328
   domain: RESILIENT
@@ -66578,6 +67840,7 @@ gaps:
     - "The change described by \"keep the node repo checkout ON main (drifted to a stale integration branch tonight, hand-restored) — COTG self-heal\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-337
   domain: RESILIENT
@@ -66589,6 +67852,7 @@ gaps:
     - "The change described by \"detect + page when N>=3 open code PRs fail the IDENTICAL required check (shared broken gate) — distinct from main-health-watchdog (which only sees red MAIN). Tonight 14 PRs stacked on a farmer-flap false-red for hours with ZERO alarm; the board eyeballed it only after operator prodding. Detector = group open-PR failing-check names, alarm on any check failing >=3 PRs, name the shared check + suspected root cause.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-338
   domain: RESILIENT
@@ -66601,6 +67865,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   depends_on: [RESILIENT-328, RESILIENT-337, RESILIENT-339, RESILIENT-341]
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-339
   domain: RESILIENT
@@ -66612,6 +67877,7 @@ gaps:
     - "The change described by \"NEVER REALFAIL-close a PR that is failing ONLY a KNOWN shared/systemic-red gate (farmer-flap cascade, or the RESILIENT-337 >=3-PRs-same-check signal). Tonight PRs false-red on fast-checks/test/verified (not their own fault) were eligible for REALFAIL-close at 8h — closing good code. Before closing, cross-check: are the PRs failing checks the SAME ones failing fleet-wide? If yes = false-red, SKIP close, alert instead. Only close on a failure UNIQUE to this PR. COTG: guard ships in rot-reaper, verified by self-test.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-341
   domain: RESILIENT
@@ -66637,6 +67903,7 @@ gaps:
     - "The change described by \"rebuild+restart running organs when main moves. CJ organs were running a 3-day/114-commit-STALE binary (built 08-17, main today) — PROVEN missing tonights CREDIBLE-291 cure (farmer forced RED, stale binary still returned farmer-RED not the format error). chump-cj-sync only git-fetches, never rebuilds. This is merged!=running at NODE scale: every fix on main never reaches the organs that actually run. Organ: on main-move → pull → cargo build --release → atomic binary swap → restart organs → self-test. COTG: installs via housekeeping ORGANS table; self-test must verify binary FRESHNESS (commit vs origin/main), not just binary-linked.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-346
   domain: RESILIENT
@@ -66648,6 +67915,7 @@ gaps:
     - "The change described by \"it closed #3958(P0,5 commits) + #3963(P1,5 commits) as CONFLICTING, but both rebase CLEAN onto current main (transient jam conflict). Root cause: the armed-pr-rebaser (the SALVAGE organ that rebases CONFLICTING PRs before the reaper closes them) was DARK — not wired on owned nodes. Fixes: (1) WIRE armed-pr-rebaser as a COTG organ [done on CJ 2026-08-20] + fold into install-node-housekeeping.sh ORGANS; (2) rot-reaper GUARD — before closing a CONFLICTING PR, attempt a rebase onto main; only close if it genuinely does NOT resolve. Never discard 5 commits over a transient conflict. Merge-race causes the transient conflicts (main churns under PRs) so this compounds the jam waste.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-347
   domain: RESILIENT
@@ -66659,6 +67927,7 @@ gaps:
     - "The change described by \"per-node-applicable organ reconcile (end shipped-but-dark for good). The loop EXISTS (organ-watchdog + 29 tracked chump-*.service|.timer + install-helsinki-atc reconciler) + keystone host-rewrite landed (RESILIENT-353). REMAINING: reconciling the WHOLE helsinki roster onto CJ failed 4 units (integrator/sla-scorecard/backlog-sync-writer/farmer) that need more than a path-rewrite (binary/role/deps). Add: (1) each organ declares ROLE (brain|muscle|data) + REQUIRES (binary/dep/env) in the manifest; (2) reconciler installs ONLY organs applicable to THIS node + VERIFIES start, backing off (disable, dont churn) any that fail instead of the current install-all; (3) THEN wire organ-watchdog to run it. Until (1)-(2), do NOT enable organ-watchdog auto-reconcile (it re-installs the 4 failing units every cycle). This is the durable answer to \"agents that wire what is built\" — curated per-node, not blast-all.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-20'
 
 - id: RESILIENT-348
   domain: RESILIENT
@@ -66670,6 +67939,7 @@ gaps:
     - "The change described by \"refresh-runner-binary.sh hardcodes its build worktree to /tmp/chump-binary-refresh-$$, but git worktree add checks out the full 8425-file tree — on CJ /tmp is a 3.6G tmpfs (753M free) so it fails \"unable to write file / Could not reset index\", auto-deploy fails every cycle, binary froze >1h (MISSION-012 THE MULTIPLIER silently down; ③ scoreboard even showed FALSE ✅ because binary==deployed but both stale — see CREDIBLE-293). Immediate fix on CJ: CHUMP_BINARY_REFRESH_WORKTREE=/mnt/cjdata2/chump-refresh/wt drop-in (USB, 5.7G). DURABLE: refresh-runner-binary.sh must default the worktree to a roomy path (CHUMP_STATE_DIR-relative or auto-pick largest volume), NOT /tmp; + the auto-deploy installer sets it per-node. Same host-assumption disease as helsinki units. COTG.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-20'
 
 - id: RESILIENT-349
   domain: RESILIENT
@@ -66681,6 +67951,7 @@ gaps:
     - "The change described by \"pr-stuck-cluster-detector.sh (INFRA-1133, 6h chronic-stuck threshold) aggregates ambient stuck-EVENTS, but nothing EMITS them from live GitHub state, so it finds nothing while real PRs sit (today #4008 6h+3-fails, #4012 5h DIRTY-not-armed — OS did not notice). FIX (COTG, installer-wired, works OOTB): (1) a LIVE-scan emitter — periodically gh-pr-list open PRs, emit kind=pr_stuck for any open >6h that is failing / DIRTY-unsalvaged / green-armed-not-merging (age from createdAt); (2) pr-stuck-cluster-detector consumes it (wired on CJ 2026-08-20, scaffold); (3) duty-officer routes pr_stuck_cluster/chronic → T1 heal (re-arm / trigger armed-rebaser for DIRTY / requeue abandoned-red) or T2 runbook; (4) all in install-node-housekeeping.sh ORGANS so every node sees sitting PRs. This is the OS understanding its own GitHub PR plane (pairs with RESILIENT-338).\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-20'
 
 - id: RESILIENT-356
   domain: RESILIENT
@@ -66695,6 +67966,28 @@ gaps:
   closed_date: '2026-08-21'
   closed_pr: 4052
   outcome_id: RESILIENT-000
+
+- id: RESILIENT-361
+  domain: RESILIENT
+  title: Bound _parse_token_usage FIFO read with a timeout — dead-writer wedge froze both CJ workers ~5h (silent fleet drought). SIGALRM cap; token accounting best-effort never worth a wedged worker.
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"Bound _parse_token_usage FIFO read with a timeout — dead-writer wedge froze both CJ workers ~5h (silent fleet drought). SIGALRM cap; token accounting best-effort never worth a wedged worker.\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    reconciled: gap dispatched to this session but was never present in
+    state.db/state.sql. scripts/dispatch/_parse_token_usage.py already
+    implements the SIGALRM-bounded FIFO read (CHUMP_TOKEN_PARSE_TIMEOUT_S,
+    default 3000s) exactly as described, shipped via PR #4051 (commit
+    87473ccb) before this session started work. Same stale-record class as
+    RESILIENT-328/RESILIENT-341/CREDIBLE-291 — no new implementation
+    needed, just closing the gap record.
+  opened_date: '2026-08-21'
+  closed_date: '2026-08-21'
+  closed_pr: 4051
 
 - id: SMOKE-001
   domain: SMOKE
@@ -66760,6 +68053,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
 
 - id: TEST-002
   domain: TEST
@@ -66889,6 +68183,7 @@ gaps:
     Evidence:
     - "auth-status.sh output 'AUTH OK'; ambient farmer_auth_dead event 2026-08-09 while valid"
     See docs/voice/VOA-003-FULL.yaml for full report.
+  opened_date: '2026-08-14'
 
 - id: VOA-004
   domain: VOA
@@ -66906,6 +68201,7 @@ gaps:
     Evidence:
     - "run-fleet.sh:607 'syntax error ... token is 0'; FLEET_SIZE=3 shows size:1"
     See docs/voice/VOA-004-FULL.yaml for full report.
+  opened_date: '2026-08-14'
 
 - id: VOA-005
   domain: VOA
@@ -66923,6 +68219,7 @@ gaps:
     Evidence:
     - "launchctl list: com.chump.oauth-refresh exit=1"
     See docs/voice/VOA-005-FULL.yaml for full report.
+  opened_date: '2026-08-14'
 
 - id: VOA-006
   domain: VOA
@@ -66940,6 +68237,7 @@ gaps:
     Evidence:
     - "chump gap import: gaps[2750]: duplicate field evidence line 44856"
     See docs/voice/VOA-006-FULL.yaml for full report.
+  opened_date: '2026-08-14'
 
 - id: VOA-007
   domain: VOA
@@ -66957,6 +68255,7 @@ gaps:
     Evidence:
     - "almanac_status: indexed=false files=0 repo_root=''; almanac_search returned 0 for a real known issue"
     See docs/voice/VOA-007-FULL.yaml for full report.
+  opened_date: '2026-08-14'
 
 - id: VOA-008
   domain: VOA
@@ -66976,6 +68275,7 @@ gaps:
     - "no cargo-sweep installed; helsinki has the GC (ZERO-WASTE-053)"
     - "closetjunky does not; both nodes ran an idle ollama holding 2.2-2.8G"
     See docs/voice/VOA-008-FULL.yaml for full report.
+  opened_date: '2026-08-10'
 
 - id: VOA-009
   domain: VOA
@@ -66993,6 +68293,7 @@ gaps:
     Evidence:
     - "fleet-doctor-strict.sh"
     See docs/voice/VOA-009-FULL.yaml for full report.
+  opened_date: '2026-08-15'
 
 - id: ZERO-001
   domain: ZERO
@@ -67007,6 +68308,7 @@ gaps:
     - a decomposition that would exceed the parent budget is BLOCKED at decompose time (not detected post-hoc)
     - unused child budget returns to a shared pool so efficient children subsidize slower ones
     - a test asserts an over-budget decomposition is rejected and an in-budget one passes
+  opened_date: '2026-07-26'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-001
@@ -67053,6 +68355,7 @@ gaps:
     - "broker-down path unchanged: assign logs the condition and exits 0 (existing FLEET-034 fail-open preserved); a test asserts exit 0 against a dead CHUMP_NATS_URL."
     - "unit test in assign.rs: fixed gap set across two cycles -> cycle 2 publishes 0; adding one open gap -> publishes exactly 1; claiming one -> publishes 0 (or 1 tombstone)."
     - delta-publish semantics documented in scripts/coord/README.md or A2A_ROADMAP.md so future consumer authors know the bus is no longer a full-backlog firehose.
+  opened_date: '2026-07-26'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-004
@@ -67079,6 +68382,7 @@ gaps:
     - "Root cause: release.yml triggers on pull_request and pr_run_mode=='upload', so build-local-artifacts + build-global-artifacts run a full cross-platform Rust release build on EVERY PR. NOT required checks (only audit/test/ACP-smoke block merge) — pure runner waste + red-X noise on the 4 saturated runners."
     - "Fix: set pr-run-mode=\"plan\" in dist-workspace.toml, regenerate release.yml via `dist generate-ci` with the cargo-dist version matching the generator header (do not regen with a mismatched version). release.yml is generated + has no drift gate (hand-edit if-guard is a stopgap, overwritten on next regen — prefer the config fix)."
     - "Verify: on a PR only `plan` runs (artifacts SKIP); tag-push release unchanged. Top runner-saturation lever for queue-not-draining; pairs with INFRA-1379 + INFRA-1378."
+  opened_date: '2026-07-26'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-006
@@ -67107,6 +68411,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-008
@@ -67200,6 +68505,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-014
@@ -67213,6 +68519,7 @@ gaps:
     - files_24h drops from ~180 toward <40 (measure created_at epoch on state.db, 24h post-merge)
     - live signal preserved as ambient (shepherd/ci-audit still consume it) — only gap-accumulation stops
     - "context: ~35% of the backlog is auto-filed make-work with no off-ramp = root of unbounded growth blocking drain-to-complete"
+  opened_date: '2026-07-26'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-015
@@ -67241,6 +68548,7 @@ gaps:
     - "PR #3128 (dependabot cargo-patch-and-minor bump) reaches terminal: either merged green or closed."
     - "If merged: clippy + clippy-required + the ACP protocol smoke tests pass against the bumped deps."
     - "If the bump is bad: closed with a note, and the offending dep(s) pinned/excluded."
+  opened_date: '2026-07-26'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-017
@@ -67254,6 +68562,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-018
@@ -67267,6 +68576,7 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-07-26'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-019
@@ -67282,6 +68592,7 @@ gaps:
     - if relocated, opus-curator.sh + ambient-context-inject.sh + the CI test read from the new location
     - pruning keeps the current-day guard so curator dedup still works
     - .chump-locks/ top level contains only actual lease/state files after the change
+  opened_date: '2026-07-26'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-020
@@ -67328,6 +68639,7 @@ gaps:
   effort: xs
   acceptance_criteria:
     - ghost-gap-reaper flips merged-but-open gaps to closed after YAML retirement with no 'failed to ship' residue; a merged gap with retired YAML is reaped to closed in one pass.
+  opened_date: '2026-07-26'
 
 - id: ZERO-WASTE-023
   domain: ZERO-WASTE
@@ -67354,6 +68666,7 @@ gaps:
     - "The change described by \"bot-merge --fast pre-flight compiles the ENTIRE workspace (90+ crates incl. Tauri desktop) for every single ship regardless of gap scope\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-07-26'
 
 - id: ZERO-WASTE-025
   domain: ZERO-WASTE
@@ -67381,6 +68694,7 @@ gaps:
     - "The change described by \"headless fleet worker shares a cargo workspace with the Tauri desktop GUI — pulls GTK/webkit into every server build\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-07-26'
 
 - id: ZERO-WASTE-027
   domain: ZERO-WASTE
@@ -67433,6 +68747,7 @@ gaps:
     - "The change described by \"wip/ remote branches accumulate unbounded (484+, 6th consecutive cycle); stale-branch-reaper skips no-PR branches by design\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-17'
 
 - id: ZERO-WASTE-031
   domain: ZERO-WASTE
@@ -67442,6 +68757,7 @@ gaps:
   effort: s
   acceptance_criteria:
     - the 143 identified pillar-starvation zombie gaps are bulk-closed with reason=pillar-starvation; open-gap count drops by ~143.
+  opened_date: '2026-08-17'
 
 - id: ZERO-WASTE-032
   domain: ZERO-WASTE
@@ -67468,6 +68784,7 @@ gaps:
     - "The change described by \"fleet leaves dead local branches (2289 accrued; no post-merge prune + wip-snapshot spam)\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-034
@@ -67482,6 +68799,7 @@ gaps:
     - "The change described by \"cargo-target-reaper blind to ~/.cargo/chump-shared-target (the fleet's real CARGO_TARGET_DIR) — 109GB unbounded growth → 97% disk → build thrashing\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: ZERO-WASTE-035
   domain: ZERO-WASTE
@@ -67493,6 +68811,7 @@ gaps:
     - "The change described by \"drive_task_directed has NO dedup (unlike chump improve's dedup_check). Before running the agent, scan the target's open PRs + recent commits; for a CI-rescue, defer if any open PR already makes required_check green (reuse grade_checks_strict on PR heads — semantic, not keyword-fuzzy). Emit redundant_work_skipped\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: ZERO-WASTE-036
   domain: ZERO-WASTE
@@ -67513,6 +68832,7 @@ gaps:
     - "HONESTY: state the detector's false-positive floor in its own output, same rule as ZERO-WASTE-044. Almanac resolves only ~20-40 percent of import edges, so 'no caller' is weak evidence; D1/D2/D4 (no scheduler / never-invoked-on-documented-input / no execution telemetry) are far stronger than D3/D5 and should be ranked above them"
     - "EVIDENCE THIS IS THE FLEET'S MOST RECURRING FAILURE: the originating session hand-wired 6 instances; the 2026-08-07 session independently found 6 more (D1-D6 above) plus this gap itself sitting unbuilt. That is 13 known instances across two sessions"
   depends_on: [EFFECTIVE-389]
+  opened_date: '2026-08-19'
 
 - id: ZERO-WASTE-037
   domain: ZERO-WASTE
@@ -67539,6 +68859,7 @@ gaps:
     - capability-drift-scan.py reports zero unattributed clusters
     - each new bucket entry names the capability in REALITY_MAP terms
     - anything judged dead or vendored gets a note, not a silent exclusion
+  opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-039
@@ -67576,6 +68897,7 @@ gaps:
     - no third grounding path can be added without hitting the shared module
   notes: |
     DISPOSITION: the two grounding pre-steps are on DIFFERENT paths — EFFECTIVE-354 grounds the EXTERNAL improve agent (crates/chump-handoff contract via improve.rs implement_gap); Phase D build_prompt_grounded grounds the INTERNAL gap-dispatch (chump-orchestrator/dispatch.rs). Complementary (external-repo vs internal-fleet), not a merge candidate. Downgrade: no dedupe needed; optionally extract a shared keyword-extractor later.
+  opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-041
@@ -67608,6 +68930,7 @@ gaps:
     - either mirrors stop changing on an idle checkout or their updates land as commits through the pipeline
     - decision recorded on whether docs/gaps/*.yaml stay in the tree at all
     - idle git status stays clean for a full fleet cycle
+  opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-043
@@ -67620,6 +68943,7 @@ gaps:
     - "The change described by \"a 1-file PR triggers ~37 checks across many workflows — waste + fragility to any GH-infra blip\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: ZERO-WASTE-044
   domain: ZERO-WASTE
@@ -67636,6 +68960,7 @@ gaps:
     - never deletes, never rewrites, never auto-files — the archive-only rule holds; output is a list a human or a curator gap acts on
     - at least one test with a fixture where a symbol is imported only via an UNRESOLVED edge, proving that symbol is NOT reported as dead (the false-positive case that matters)
     - attribution note for the borrowed idea (DeusData/codebase-memory-mcp, MIT) recorded at borrow time
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: ZERO-WASTE-045
@@ -67654,6 +68979,7 @@ gaps:
     - a test proves that reserving a title near-identical to an existing gap surfaces that gap, and fails without the change
   notes: |
     THREE live receipts from the 2026-08-07 session, all by the agent that filed this gap, all AFTER filing it: (1) CREDIBLE-217 filed as a CONFIG-organ cadence sweep, already covered by EFFECTIVE-389 code-posse — superseded; (2) META-328 filed as a from-scratch coherence advisor specifying mechanical checks that ALREADY SHIP and run every 30 minutes (chump mission-grade INFRA-599, chump roadmap-status INFRA-606/1145 with starved_outcomes + untraced_p0 + --exit-on-drift) — re-scoped down to composition; (3) EFFECTIVE-383 avoided the same fate only by luck, because EFFECTIVE-386 shipped mid-session and someone noticed. All three were caught by a human asking, not by any check. The doctrine does not survive contact with an agent in flow — which is the argument FOR this automation, not against the rule. Note the dedupe must search CODE and SHIPPED COMMANDS too, not just gap titles: META-328's duplicate was a built CLI subcommand, invisible to any title-similarity search.
+  opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-046
@@ -67670,6 +68996,7 @@ gaps:
     - "degradation is loud: if almanac is unreachable or coverage for a repo is keyword-only, the output says which repos were searched shallowly (cf CREDIBLE-214)"
     - non-blocking by design — preflight reports, the human or agent decides; the result is recorded on the gap so a later reviewer can see what prior art was known at claim time
     - a test proves a gap whose title matches existing fleet code surfaces that code
+  opened_date: '2026-08-19'
 
 - id: ZERO-WASTE-047
   domain: ZERO-WASTE
@@ -67685,6 +69012,7 @@ gaps:
     - an already-filed gap that receives a new matching report gets the report appended to its notes instead of a new gap being minted
     - the existing exact-hash path still short-circuits identical resubmissions with no extra cost
     - a test proves two differently-worded reports of the same issue produce one gap with two receipts, and two genuinely distinct reports still produce two gaps
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/games-workspace"
 
 - id: ZERO-WASTE-048
@@ -67704,6 +69032,7 @@ gaps:
   depends_on: [CREDIBLE-209]
   notes: |
     GRADE RUN 2026-08-07, CORRECTED. My first pass reported four repos LOST (akamod8-local, fucked-local, jarvis-android, twenty1-local). That was WRONG and the operator caught it by asking 'are you sure'. All four exist. Three compounding errors, all mine: case-sensitive globs (the dirs are AKAMOD8, Twenty1, Fucked), depth-1 search only (jarvis-android is nested INSIDE pixel-edge), and misreading the '-local' dossier suffix as evidence of loss when it just means local-only-never-pushed. This violated almanac's own trust rule #1 — 'a zero-hit is a claim, not a fact' — hours after I wrote that line into docs/ALMANAC.md. CORRECTED NUMBERS: 89 dossiers, 83 repos were registered, 6 were not, and 3 of those 6 are now registered (fucked 64f/606s, twenty1 13f/91s, house-sit-form-helper 10f/22s — fleet 103 -> 107). Of 28 cited gem files: 27 present, ZERO vanished. COMBO C keystone FULLY VERIFIED and now searchable: fucked holds scripts/openfec_http.py, scripts/mlx_extract_entities.py, scripts/money_map_review_alerts.py, all cited by name in COMBINATIONS.md. COMBO A keystone EXISTS on disk (pixel-edge/jarvis-android/app/src/main/java/com/d6/jarvis/HttpApiServer.kt + LlmEngine.kt) and is already inside pixel-edge's crawl, but its 835 Kotlin files are LANGUAGE-BLIND — pixel-edge's index holds zero Kotlin rows. That is CREDIBLE-210 with a real cost now attached: the portfolio's strongest combination play has an unreadable keystone. Only genuinely ungroundable dossier: AKAMOD8, whose directory now holds 2 files (an index.html prototype and a cursor hook json) — thin, not lost.
+  opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
 - id: ZERO-WASTE-049
@@ -67720,6 +69049,7 @@ gaps:
     - "RETIREMENT IS PROPOSED, NEVER EXECUTED, and carries its reason. Auto-closing real work is strictly worse than carrying a vague gap. Reuse the existing statuses rather than inventing one: superseded when consolidate finds it is a duplicate/subset, wontfix when it is no longer true or never was actionable. Record who/what decided and why, so a re-detected gap is not re-proposed forever (same allowlist discipline as ZERO-WASTE-036)"
     - "UPSTREAM FIX IS THE REAL LEVERAGE — without it this loop runs forever: 74 template ACs exist because default_acceptance_criteria (src/main.rs:18442) fires whenever 'chump gap reserve' omits --acceptance-criteria. Either reserve calls write-ac inline, or it refuses to create a P0/P1 without real criteria (the same shape as the MISSION-045 outcome gate and the CREDIBLE-107 evidence gate that already work). Stop producing them, do not just sweep them"
     - "SELF-CHECK — the loop must be honest about its own author: triage today flags MISSION-076, MISSION-077 and ZERO-WASTE-036 as too-large/decompose. Two of those were filed hours earlier in this same session. A curation loop that exempts recent or self-filed gaps is not a curation loop"
+  opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-050
@@ -67734,6 +69064,7 @@ gaps:
     - "Scarce high-value slots are reserved by SHAPE not by arrival order: free models exist at 262K and 1M context, and gemini-2.5-pro carries ~2M at roughly 50 requests/day. Whole-repo reads should get those; a triage classification must not consume one"
     - "MEASURE THE OUTCOME, not the run: report quota consumed vs available per slot per day, and what work it bought. 'The allocator ran' is a signal; 'the summarize backlog dropped by N and the organ sweep covered M repos' is an outcome"
     - Depends on EFFECTIVE-409 (inference tender) for live per-slot capacity, and on real-traffic failure classification rather than synthetic probes — the operator has ruled probing out because it spends the budget being measured
+  opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
 - id: ZERO-WASTE-051
@@ -67753,6 +69084,7 @@ gaps:
     (c) TENDER-OF-TENDERS HEALTH — revive/fix curator-supervisor (found broken today) so a dead tender/daemon SURFACES (ambient alert) instead of rotting. The reapers exist; nobody watches whether they're alive.
     
     Rough shape (decompose at claim): registry doc → health-probe per tender → outcome-owner map → wire the alert. Precondition for trusting the batched integrator lane. Related: ZERO-WASTE-039 (stranded-work detector), EFFECTIVE-417 (integrator revival), the 69-daemon audit ([[chump-mac-daemon-fleet]]).
+  opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
 - id: ZERO-WASTE-052
@@ -67763,6 +69095,7 @@ gaps:
   effort: m
   acceptance_criteria:
     - Mac /System/Volumes/Data is 96%% full (20GB free); ~/.cargo/chump-shared-target is 72GB. Run scripts/ops/cargo-target-reaper.sh (aggressive mode) + prune orphaned /tmp/chump-*/target from dead worktrees; reclaim to <85%% used. Wire the reaper to run on a schedule so it stays bounded. Report GB reclaimed.
+  opened_date: '2026-08-19'
   outcome_id: FLEET-BUILD-SPEED
 
 - id: ZERO-WASTE-053
@@ -67797,6 +69130,7 @@ gaps:
     - "The change described by \"chump gap set must auto-persist durably (state.db to yaml to PR) so board/operator edits never need pause-sync+sync--push+commit+PR by hand and never revert (relates INFRA-3606 split-brain)\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: ZERO-WASTE-056
   domain: ZERO-WASTE
@@ -67808,6 +69142,7 @@ gaps:
     - "The change described by \"chump gap ship flips state.db status=done + closed_pr but does NOT write docs/gaps/<ID>.yaml (ZERO-WASTE-020 made gap ship --update-yaml a no-op, but the yaml is git-tracked + gap sync treats it canonical). So EVERY shipped gap leaves state.db==done / yaml==open drift → a SEPARATE per-gap reconcile PR (repairman29 bot, one full agent+CI+merge pipeline each) is filed just to sync the yaml. Over time that is ~half of all merges = pure motion, zero mission progress, huge token+CI waste. FIX (COTG, ships to every node via the binary+auto-deploy, works OOTB): make  write docs/gaps/<ID>.yaml ATOMICALLY (status: done, closed_pr: N) via format_gap_yaml() [crates/chump-gap-store/src/lib.rs:2893] in the SAME op, so the yaml change lands in the WORK PR itself and no reconcile is ever needed. Reconcile with ZERO-WASTE-020 (make yaml-write the default, or fully retire git-tracked yaml status). REGRESSION TEST REQUIRED:  updates BOTH state.db AND docs/gaps/<ID>.yaml in one op; assert no post-ship drift. Files: src/main.rs gap-ship handler (~2038), chump-gap-store format_gap_yaml. Critical hot path — needs the test, do not break shipping. Immediate stopgap done: bulk sync --push (#4018) batches the current drip.\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-20'
 
 - id: ZERO-WASTE-060
   domain: ZERO-WASTE
@@ -67833,24 +69168,3 @@ gaps:
   closed_date: '2026-08-21'
   closed_pr: 4046
 
-- id: RESILIENT-361
-  domain: RESILIENT
-  title: "Bound _parse_token_usage FIFO read with a timeout — dead-writer wedge froze both CJ workers ~5h (silent fleet drought). SIGALRM cap; token accounting best-effort never worth a wedged worker."
-  status: done
-  priority: P0
-  effort: m
-  acceptance_criteria:
-    - "The change described by \"Bound _parse_token_usage FIFO read with a timeout — dead-writer wedge froze both CJ workers ~5h (silent fleet drought). SIGALRM cap; token accounting best-effort never worth a wedged worker.\" is implemented in the relevant RESILIENT code path(s)."
-    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
-  notes: |
-    reconciled: gap dispatched to this session but was never present in
-    state.db/state.sql. scripts/dispatch/_parse_token_usage.py already
-    implements the SIGALRM-bounded FIFO read (CHUMP_TOKEN_PARSE_TIMEOUT_S,
-    default 3000s) exactly as described, shipped via PR #4051 (commit
-    87473ccb) before this session started work. Same stale-record class as
-    RESILIENT-328/RESILIENT-341/CREDIBLE-291 — no new implementation
-    needed, just closing the gap record.
-  opened_date: '2026-08-21'
-  closed_date: '2026-08-21'
-  closed_pr: 4051
