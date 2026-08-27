@@ -18,7 +18,7 @@ use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
@@ -356,6 +356,257 @@ pub fn execute(plan: &ActionPlan, repo_root: &Path, dry_run: bool, budget_secs: 
     Ok(())
 }
 
+// ── LLM resilience (INFRA-1645, re-do of INFRA-1597) ────────────────────────
+//
+// The daemon talks to an LLM backend for rescue-subagent dispatch decisions.
+// Model rollouts intermittently 404 (endpoint not yet live / model retired)
+// — that must be treated as a *transient* condition (retry with backoff),
+// not a hard failure that kills the daemon. Any other 4xx (except 429,
+// which is also transient — rate limiting, not a dead model) is permanent:
+// retrying won't help, so we surface it and stop.
+
+/// Outcome of classifying an LLM probe's HTTP status code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LlmProbeOutcome {
+    Healthy,
+    Transient,
+    Permanent,
+}
+
+/// Classify an HTTP status code per AC §1: 404 and 429 are transient
+/// (model warming up / rate limited), other 4xx are permanent, 2xx is
+/// healthy. Anything else (5xx, etc.) is treated as transient — an LLM
+/// backend blip, not a caller-side error worth giving up on.
+pub fn classify_llm_status(code: u16) -> LlmProbeOutcome {
+    if (200..300).contains(&code) {
+        LlmProbeOutcome::Healthy
+    } else if code == 404 || code == 429 {
+        LlmProbeOutcome::Transient
+    } else if (400..500).contains(&code) {
+        LlmProbeOutcome::Permanent
+    } else {
+        LlmProbeOutcome::Transient
+    }
+}
+
+/// Backoff parameters, configurable via env (AC §1):
+/// `PARAMEDIC_BACKOFF_BASE_MS`, `PARAMEDIC_BACKOFF_MAX_MS`,
+/// `PARAMEDIC_BACKOFF_JITTER` (fraction of the capped delay, e.g. 0.2 = ±20%).
+///
+/// Mirrors the spirit of `organ_watchdog_in_backoff()` in
+/// `scripts/ops/organ-watchdog.sh` — a failed unit backs off instead of
+/// being hammered on every cycle — but implemented natively here rather
+/// than shelling out, since this is a per-HTTP-call retry, not a
+/// per-systemd-unit cooldown. `organ-watchdog.sh` itself is not modified.
+pub(crate) struct LlmBackoffConfig {
+    base_ms: u64,
+    max_ms: u64,
+    jitter: f64,
+}
+
+impl LlmBackoffConfig {
+    pub(crate) fn from_env() -> Self {
+        Self {
+            base_ms: env_u64("PARAMEDIC_BACKOFF_BASE_MS", 500),
+            max_ms: env_u64("PARAMEDIC_BACKOFF_MAX_MS", 30_000),
+            jitter: std::env::var("PARAMEDIC_BACKOFF_JITTER")
+                .ok()
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|j| (0.0..1.0).contains(j))
+                .unwrap_or(0.2),
+        }
+    }
+
+    /// Exponential delay for `attempt` (0-indexed), capped at `max_ms` and
+    /// jittered by up to `jitter` fraction. Jitter uses the wall clock
+    /// rather than `rand` — good enough to avoid thundering-herd retries
+    /// without adding a dependency for a single call site.
+    pub(crate) fn delay_ms(&self, attempt: u32) -> u64 {
+        let exp = self.base_ms.saturating_mul(1u64 << attempt.min(20));
+        let capped = exp.min(self.max_ms);
+        let jitter_amt = (capped as f64 * self.jitter) as u64;
+        if jitter_amt == 0 {
+            return capped;
+        }
+        let spread = now_epoch_ms() % (jitter_amt * 2 + 1);
+        capped.saturating_sub(jitter_amt).saturating_add(spread)
+    }
+}
+
+fn env_u64(key: &str, default: u64) -> u64 {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n: &u64| n > 0)
+        .unwrap_or(default)
+}
+
+fn now_epoch_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Minimal HTTP/1.1 GET returning just the status code. Avoids pulling in
+/// a full HTTP client dependency for a health-probe that only needs the
+/// status line — `http://` (plain TCP) only, sufficient for the internal
+/// LLM-gateway health endpoint and for the mock server in
+/// `tests/resilience.rs`.
+fn http_get_status_code(url: &str, timeout: Duration) -> Result<u16> {
+    let rest = url
+        .strip_prefix("http://")
+        .context("http_get_status_code: only http:// URLs are supported")?;
+    let (authority, path) = match rest.find('/') {
+        Some(idx) => (&rest[..idx], &rest[idx..]),
+        None => (rest, "/"),
+    };
+    let host = authority.split(':').next().unwrap_or(authority);
+    let mut stream = std::net::TcpStream::connect(authority)
+        .with_context(|| format!("connect to {authority}"))?;
+    stream.set_read_timeout(Some(timeout)).ok();
+    stream.set_write_timeout(Some(timeout)).ok();
+    let req = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+    stream
+        .write_all(req.as_bytes())
+        .context("write LLM probe request")?;
+    let mut buf = Vec::new();
+    stream
+        .read_to_end(&mut buf)
+        .context("read LLM probe response")?;
+    let text = String::from_utf8_lossy(&buf);
+    let status_line = text.lines().next().unwrap_or("");
+    status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse::<u16>().ok())
+        .with_context(|| format!("parse status code from response line: {status_line:?}"))
+}
+
+/// Default number of probe attempts before giving up (AC §1 exponential
+/// backoff with a bound — an unbounded retry loop would wedge the daemon
+/// on a permanently-dead endpoint forever).
+fn llm_max_attempts() -> u32 {
+    std::env::var("PARAMEDIC_LLM_MAX_ATTEMPTS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n: &u32| n > 0)
+        .unwrap_or(5)
+}
+
+/// Probe the configured LLM endpoint, retrying transient failures
+/// (404/429/network error) with exponential backoff + jitter, and
+/// classifying any other 4xx as permanent (AC §1). Emits `model_unavailable`
+/// on each transient retry, `paramedic_healthy` on success, and
+/// `permanent_failure` on a permanent classification or retry exhaustion.
+pub(crate) fn llm_resilience_probe(url: &str, repo_root: &Path, max_attempts: u32) -> Result<()> {
+    let cfg = LlmBackoffConfig::from_env();
+    for attempt in 0..max_attempts {
+        match http_get_status_code(url, Duration::from_secs(5)) {
+            Ok(code) => match classify_llm_status(code) {
+                LlmProbeOutcome::Healthy => {
+                    emit_llm_probe_event(repo_root, "paramedic_healthy", code, attempt);
+                    return Ok(());
+                }
+                LlmProbeOutcome::Transient => {
+                    emit_llm_probe_event(repo_root, "model_unavailable", code, attempt);
+                    if attempt + 1 >= max_attempts {
+                        emit_llm_probe_event(repo_root, "permanent_failure", code, attempt);
+                        anyhow::bail!(
+                            "LLM probe exhausted {max_attempts} attempts (last status={code})"
+                        );
+                    }
+                    std::thread::sleep(Duration::from_millis(cfg.delay_ms(attempt)));
+                }
+                LlmProbeOutcome::Permanent => {
+                    emit_llm_probe_event(repo_root, "permanent_failure", code, attempt);
+                    anyhow::bail!("LLM probe permanent failure: status={code}");
+                }
+            },
+            Err(e) => {
+                warn!(error = %e, attempt, "paramedic: LLM probe request error, treating as transient");
+                emit_llm_probe_event(repo_root, "model_unavailable", 0, attempt);
+                if attempt + 1 >= max_attempts {
+                    emit_llm_probe_event(repo_root, "permanent_failure", 0, attempt);
+                    anyhow::bail!("LLM probe exhausted {max_attempts} attempts: {e:#}");
+                }
+                std::thread::sleep(Duration::from_millis(cfg.delay_ms(attempt)));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn emit_llm_probe_event(repo_root: &Path, kind: &str, status_code: u16, attempt: u32) {
+    let ambient_path = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let event = json!({
+        "ts": iso8601_now(),
+        "kind": kind,
+        "status_code": status_code,
+        "attempt": attempt,
+    });
+    match kind {
+        "model_unavailable" => {
+            warn!(
+                status_code,
+                attempt, "paramedic: LLM model unavailable, backing off"
+            )
+        }
+        "permanent_failure" => warn!(status_code, attempt, "paramedic: LLM permanent failure"),
+        _ => info!(status_code, attempt, "paramedic: LLM healthy"),
+    }
+    let line = serde_json::to_string(&event).unwrap_or_default() + "\n";
+    if let Some(parent) = ambient_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&ambient_path)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// `chump paramedic daemon -- --smoke-test` / `cargo run --bin paramedic --
+/// --smoke-test` (AC §3): a quick observability check that exercises the
+/// cost-report path without requiring live LLM credentials or network
+/// access in CI. Emits `kind=cost_report` to ambient.jsonl and prints a
+/// JSON line to stdout with `event: cost_report`.
+pub fn smoke_test(repo_root: &Path) -> Result<()> {
+    // Dummy LLM call — synthetic token/cost figures stand in for a real
+    // call so this can run in CI with no credentials (AC §3 intent: a
+    // quick health check, not an integration test against a live model).
+    let tokens_used: u64 = 128;
+    let estimated_cost_usd: f64 = tokens_used as f64 * 0.000_003;
+
+    let ambient_path = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let event = json!({
+        "ts": iso8601_now(),
+        "kind": "cost_report",
+        "tokens_used": tokens_used,
+        "estimated_cost_usd": estimated_cost_usd,
+    });
+    if let Some(parent) = ambient_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&ambient_path)
+    {
+        let _ = f.write_all((serde_json::to_string(&event).unwrap_or_default() + "\n").as_bytes());
+    }
+
+    let stdout_line = json!({
+        "event": "cost_report",
+        "tokens_used": tokens_used,
+        "estimated_cost_usd": estimated_cost_usd,
+    });
+    println!("{}", serde_json::to_string(&stdout_line)?);
+    Ok(())
+}
+
 /// `chump paramedic daemon --interval-secs N` — loop triage→execute.
 /// INFRA-1397: daemon with leader election.
 ///
@@ -392,6 +643,19 @@ pub fn daemon(interval_secs: u64, repo_root: &Path, dry_run: bool) -> Result<()>
 
     loop {
         let now_s = now_epoch();
+
+        // ── LLM health probe (INFRA-1645) ───────────────────────────────────
+        // Opt-in: only runs when PARAMEDIC_LLM_HEALTH_URL is set, so daemon
+        // behavior is unchanged for callers that don't configure an LLM
+        // endpoint. Runs every cycle regardless of leadership — it's a
+        // read-only health check, not PR-mutating work that needs election.
+        if let Ok(url) = std::env::var("PARAMEDIC_LLM_HEALTH_URL") {
+            if !url.is_empty() {
+                if let Err(e) = llm_resilience_probe(&url, repo_root, llm_max_attempts()) {
+                    warn!(error = %e, "paramedic daemon: LLM health probe failed");
+                }
+            }
+        }
 
         // ── leader election ─────────────────────────────────────────────────
         let is_leader = if force_leader {

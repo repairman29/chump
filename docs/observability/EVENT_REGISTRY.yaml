@@ -3639,6 +3639,39 @@ events:
     fields_required: [ts, kind, machine, pid]
     fields_optional: [dry_run]
 
+  # ── INFRA-1645: LLM-model 404 resilience (re-do of INFRA-1597) ────────────
+  - kind: model_unavailable
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: paramedic daemon's LLM health probe (PARAMEDIC_LLM_HEALTH_URL) got a transient HTTP status (404/429/network error) and is backing off before retrying; emitted once per retry attempt
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, status_code, attempt]
+    fields_optional: []
+
+  - kind: paramedic_healthy
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: paramedic daemon's LLM health probe received a 2xx response, ending a model_unavailable retry sequence (or confirming health on the first attempt)
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, status_code, attempt]
+    fields_optional: []
+
+  - kind: permanent_failure
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: paramedic daemon's LLM health probe got a non-retryable 4xx (anything but 404/429) or exhausted PARAMEDIC_LLM_MAX_ATTEMPTS retries on a transient status
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, status_code, attempt]
+    fields_optional: []
+
+  - kind: cost_report
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: paramedic `--smoke-test` runs a dummy LLM call and reports synthetic token/cost figures; also printed to stdout as the JSON line the smoke-test caller checks
+    consumers: []
+    fields_required: [ts, kind, tokens_used, estimated_cost_usd]
+    fields_optional: []
+
   # ── INFRA-1713: CI-failure rescue action ──────────────────────────────────
   - kind: ci_rescue_attempt
     effect_metric: self
