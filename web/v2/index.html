@@ -2300,6 +2300,101 @@
       white-space: pre-wrap;
       word-break: break-all;
     }
+
+    /* ── Ambient filter pills + presets (INFRA-1559) ──────────────────────── */
+    chump-ambient-viewer .amb-pills-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+      padding: 6px 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    chump-ambient-viewer .amb-pill-input {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 12px;
+      font-family: monospace;
+      min-width: 180px;
+    }
+    chump-ambient-viewer .amb-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+    chump-ambient-viewer .amb-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-family: monospace;
+    }
+    chump-ambient-viewer .amb-tag-x { cursor: pointer; opacity: 0.7; }
+    chump-ambient-viewer .amb-tag-x:hover { opacity: 1; }
+    chump-ambient-viewer .amb-preset-select,
+    chump-ambient-viewer .amb-preset-btn {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 11px;
+    }
+    chump-ambient-viewer .amb-preset-btn { cursor: pointer; }
+    chump-ambient-viewer .amb-since-viewed {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    chump-ambient-viewer .amb-since-viewed.amb-since-active { color: var(--accent); font-weight: 600; }
+
+    /* ── Bandit regret panel (INFRA-1559) ─────────────────────────────────── */
+    chump-bandit-regret-panel {
+      display: block;
+      font-size: 12px;
+      color: var(--text);
+    }
+    chump-bandit-regret-panel .regret-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    chump-bandit-regret-panel .regret-state { font-size: 11px; color: var(--text-secondary); }
+    chump-bandit-regret-panel .regret-chart-wrap {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px;
+    }
+    chump-bandit-regret-panel .regret-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    chump-bandit-regret-panel .regret-legend-swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    chump-bandit-regret-panel .regret-empty {
+      padding: 20px;
+      text-align: center;
+      color: var(--text-secondary);
+    }
   </style>
 </head>
 <body>

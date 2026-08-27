@@ -64,9 +64,9 @@ web/v2/app.js:3981:rule1-hex
 web/v2/app.js:3982:rule1-hex
 web/v2/app.js:3983:rule1-hex
 web/v2/app.js:3984:rule1-hex
-web/v2/app.js:5136:rule1-hex
-web/v2/app.js:5137:rule1-hex
-web/v2/app.js:5138:rule1-hex
+web/v2/app.js:5513:rule1-hex
+web/v2/app.js:5514:rule1-hex
+web/v2/app.js:5515:rule1-hex
 web/v2/autopilot-toggle.js:146:rule1-hex
 web/v2/autopilot-toggle.js:147:rule1-hex
 web/v2/autopilot-toggle.js:148:rule1-hex

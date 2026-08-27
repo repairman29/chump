@@ -11669,3 +11669,13 @@ events:
       instead of silently going stale.
     consumers: [fleet-brief, ops-audit, operator-recall]
     fields_required: [ts, kind, signs, green, amber, red, unknown, p_full_trek, out]
+
+  - kind: sse_filter_applied
+    effect_metric: self
+    emitter: web/v2/app.js (ChumpAmbientViewer, INFRA-1559)
+    trigger: the operator adds/removes a kind, gap, or severity filter pill,
+      or loads a saved filter preset, in the Ambient Events view's SSE
+      filter UI. Sent via navigator.sendBeacon to /api/ambient/emit.
+    consumers: [ambient.jsonl (usage analytics — which filters operators
+      actually reach for)]
+    fields_required: [ts, kind, filter_spec, results_count]

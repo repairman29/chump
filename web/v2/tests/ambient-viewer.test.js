@@ -32,6 +32,14 @@ class FakeElement {
     this.parent = null;
     this.className = '';
     this.title = '';
+    this.value = '';
+    // INFRA-1559: pill-filter overlay uses classList.toggle for active state.
+    this.classList = {
+      _set: new Set(),
+      toggle: (cls, on) => { if (on) this.classList._set.add(cls); else this.classList._set.delete(cls); },
+      add: (cls) => this.classList._set.add(cls),
+      contains: (cls) => this.classList._set.has(cls),
+    };
   }
   set innerHTML(v) {
     this._innerHTML = v;
