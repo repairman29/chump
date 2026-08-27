@@ -166,6 +166,7 @@ chump-kpi-report = { path = "crates/chump-kpi-report", version = "0.1.0" } # EFF
 chump-cron = { path = "crates/chump-cron", version = "0.1.0" } # INFRA-2057: chump cron — cron expr to launchd/systemd generator
 # META-175: JetStream durable consumer per role — needed by web_server handle_fleet_wire_health.
 chump-coord = { path = "crates/chump-coord", version = "0.2.0" }
+chump-xml-adapter = { path = "crates/chump-xml-adapter", version = "0.1.0" } # INFRA-1565: XML tool_call extraction for non-native-tool-call models
 async-nats = "0.50"
 inventory = "0.3"
 axonerai = "0.1"

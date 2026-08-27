@@ -266,6 +266,25 @@ mod tests {
         );
     }
 
+    /// 9. Synthetic LLM response mixing an XML-tagged tool call with plain
+    /// untagged prose — the tagged call is extracted, the untagged text
+    /// passes through unchanged. Mirrors what an Ollama-style model emits
+    /// mid-response before/after invoking a tool (INFRA-1565 AC 3).
+    #[test]
+    fn test_mixed_tagged_and_untagged_content() {
+        let raw = concat!(
+            "Let me check that file for you.\n",
+            r#"<tool_call>{"name":"read_file","arguments":{"path":"src/lib.rs"}}</tool_call>"#,
+            "\nI'll summarize once I see the contents."
+        );
+        let out = adapt(raw);
+        assert_eq!(out.tool_calls.len(), 1);
+        assert_eq!(out.tool_calls[0].name, "read_file");
+        assert_eq!(out.tool_calls[0].input["path"], "src/lib.rs");
+        assert!(out.text.contains("Let me check that file for you."));
+        assert!(out.text.contains("I'll summarize once I see the contents."));
+    }
+
     /// 8. Round-trip: ToolCall can be serialized and fields are preserved.
     #[test]
     fn test_round_trip() {

@@ -476,6 +476,13 @@ pub struct ProviderSlot {
     /// tiers so the cascade can prefer the right slot for each task complexity.
     /// From CHUMP_PROVIDER_{N}_MODEL_CLASS. Matched against CHUMP_PREFERRED_MODEL_CLASS.
     pub model_class: Option<String>,
+    /// XML-tag tool-call extraction (EFFECTIVE-003, INFRA-1565). When true,
+    /// responses with no native tool_calls are scanned for `<tool_call>` /
+    /// `<function_call>` XML blocks via `chump_xml_adapter::adapt` before
+    /// being treated as a plain-text/empty response. For models that emit
+    /// XML tool calls instead of native function calls (some local Ollama
+    /// models, older Mistral checkpoints). From CHUMP_PROVIDER_{N}_XML_TOOL_TAGS.
+    pub xml_tool_tags: bool,
     pub rpm_limit: u32,
     pub calls_this_minute: AtomicU32,
     pub minute_start: Mutex<Instant>,
@@ -630,6 +637,9 @@ impl ProviderCascade {
                     privacy: PrivacyTier::Safe,
                     context_k: None,
                     model_class: None,
+                    xml_tool_tags: std::env::var("CHUMP_PROVIDER_LOCAL_XML_TOOL_TAGS")
+                        .map(|v| v.trim() == "1")
+                        .unwrap_or(false),
                     rpm_limit: 0,
                     calls_this_minute: AtomicU32::new(0),
                     minute_start: Mutex::new(Instant::now()),
@@ -678,6 +688,9 @@ impl ProviderCascade {
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(|s| s.trim().to_lowercase());
+            let xml_tool_tags = std::env::var(format!("CHUMP_PROVIDER_{}_XML_TOOL_TAGS", n))
+                .map(|v| v.trim() == "1")
+                .unwrap_or(false);
 
             let provider = LocalOpenAIProvider::with_fallback(base.clone(), None, key, model);
             slots.push(ProviderSlot {
@@ -689,6 +702,7 @@ impl ProviderCascade {
                 privacy,
                 context_k,
                 model_class,
+                xml_tool_tags,
                 rpm_limit: rpm,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
@@ -1557,8 +1571,33 @@ impl Provider for ProviderCascade {
                     .await
             };
             match slot_res {
-                Ok(r) => {
+                Ok(mut r) => {
                     let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+                    // INFRA-1565 (EFFECTIVE-003): models that emit XML
+                    // tool_call/function_call tags instead of native tool
+                    // calls (some local Ollama models, older Mistral
+                    // checkpoints) need their text response run through the
+                    // XML adapter before the empty/malformed quality gate
+                    // below, or a valid XML-encoded tool call reads as an
+                    // empty response and gets discarded.
+                    if slot.xml_tool_tags && r.tool_calls.is_empty() {
+                        if let Some(text) = r.text.as_deref() {
+                            let adapted = chump_xml_adapter::adapt(text);
+                            if !adapted.tool_calls.is_empty() {
+                                r.tool_calls = adapted
+                                    .tool_calls
+                                    .into_iter()
+                                    .map(|tc| axonerai::provider::ToolCall {
+                                        id: tc.id,
+                                        name: tc.name,
+                                        input: tc.input,
+                                    })
+                                    .collect();
+                                r.text = Some(adapted.text);
+                            }
+                        }
+                    }
 
                     // Quality gate: if response is empty and tools were provided,
                     // the model likely failed silently — try the next slot.
@@ -2264,6 +2303,7 @@ mod tests {
                 privacy: PrivacyTier::Safe,
                 context_k: None,
                 model_class: None,
+                xml_tool_tags: false,
                 rpm_limit: 10,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
@@ -2286,6 +2326,7 @@ mod tests {
                 privacy: PrivacyTier::Safe,
                 context_k: None,
                 model_class: None,
+                xml_tool_tags: false,
                 rpm_limit: 10,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
@@ -2853,6 +2894,7 @@ mod tests {
             day_start: Mutex::new(Instant::now()),
             cooldown_until: Mutex::new(None),
             model_class: None,
+            xml_tool_tags: false,
         }
     }
 
@@ -3471,6 +3513,7 @@ mod tests {
             privacy: PrivacyTier::Safe,
             context_k: None,
             model_class: None,
+            xml_tool_tags: false,
             rpm_limit: 0,
             calls_this_minute: AtomicU32::new(0),
             minute_start: Mutex::new(Instant::now()),
@@ -3734,5 +3777,135 @@ mod tests {
             get_last_used_model(),
             Some("gemini-2.5-flash-lite".to_string())
         );
+    }
+
+    // ── INFRA-1565: xml_tool_tags end-to-end wiring ────────────────────────
+
+    /// End-to-end: a mock Ollama-style model that emits an XML `<tool_call>`
+    /// block instead of a native OpenAI tool_calls array. With
+    /// `xml_tool_tags: true` on the slot, the cascade must extract the tool
+    /// call via `chump_xml_adapter::adapt` and return it as a native
+    /// `ToolCall` rather than treating the response as empty/malformed and
+    /// failing over.
+    #[tokio::test]
+    async fn xml_tool_tags_slot_extracts_tool_call_from_mock_ollama_response() {
+        let mock = wiremock::MockServer::start().await;
+        let body = serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": r#"<tool_call>{"name":"read_file","arguments":{"path":"src/main.rs"}}</tool_call>"#,
+                    "tool_calls": null
+                },
+                "finish_reason": "stop"
+            }]
+        });
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/chat/completions"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock)
+            .await;
+
+        let base = mock.uri();
+        let mut slot = test_slot(
+            "ollama-xml",
+            0,
+            ProviderTier::Local,
+            PrivacyTier::Safe,
+            0,
+            0,
+            0,
+            0,
+        );
+        slot.base_url = base.clone();
+        slot.provider = LocalOpenAIProvider::with_fallback(
+            base,
+            None,
+            "not-needed".to_string(),
+            "test-model".to_string(),
+        );
+        slot.xml_tool_tags = true;
+
+        let cascade = ProviderCascade {
+            slots: vec![slot],
+            _strategy: CascadeStrategy::Priority,
+            local_only: false,
+            bandit: OnceLock::new(),
+        };
+
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: "read src/main.rs".to_string(),
+        }];
+        let out = cascade
+            .complete(messages, None, None, None)
+            .await
+            .expect("cascade call should succeed");
+
+        assert_eq!(out.tool_calls.len(), 1, "XML tool call should be extracted");
+        assert_eq!(out.tool_calls[0].name, "read_file");
+        assert_eq!(out.tool_calls[0].input["path"], "src/main.rs");
+    }
+
+    /// Same mock response, but `xml_tool_tags: false` (the default) — the
+    /// XML block must NOT be parsed into a tool call; it stays as raw text.
+    #[tokio::test]
+    async fn xml_tool_tags_disabled_leaves_xml_block_as_text() {
+        let mock = wiremock::MockServer::start().await;
+        let body = serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": r#"<tool_call>{"name":"read_file","arguments":{"path":"src/main.rs"}}</tool_call>"#,
+                    "tool_calls": null
+                },
+                "finish_reason": "stop"
+            }]
+        });
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/chat/completions"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock)
+            .await;
+
+        let base = mock.uri();
+        let mut slot = test_slot(
+            "ollama-xml-disabled",
+            0,
+            ProviderTier::Local,
+            PrivacyTier::Safe,
+            0,
+            0,
+            0,
+            0,
+        );
+        slot.base_url = base.clone();
+        slot.provider = LocalOpenAIProvider::with_fallback(
+            base,
+            None,
+            "not-needed".to_string(),
+            "test-model".to_string(),
+        );
+        // xml_tool_tags left at default (false) via test_slot().
+
+        let cascade = ProviderCascade {
+            slots: vec![slot],
+            _strategy: CascadeStrategy::Priority,
+            local_only: false,
+            bandit: OnceLock::new(),
+        };
+
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: "read src/main.rs".to_string(),
+        }];
+        let out = cascade
+            .complete(messages, None, None, None)
+            .await
+            .expect("cascade call should succeed");
+
+        assert!(
+            out.tool_calls.is_empty(),
+            "without xml_tool_tags, the XML block must not be parsed into a tool call"
+        );
+        assert!(out.text.unwrap_or_default().contains("<tool_call>"));
     }
 }

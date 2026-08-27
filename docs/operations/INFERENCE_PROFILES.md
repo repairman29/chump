@@ -159,6 +159,38 @@ OPENAI_MODEL=qwen2.5:7b
 
 ---
 
+## 2a. Models that emit XML tool-call tags instead of native function calls (INFRA-1565)
+
+**When to use:** Some local models (older Ollama checkpoints, some Mistral models running without native `tools` support) never populate the OpenAI `tool_calls` array — instead they emit the tool call inline as `<tool_call>{"name": ..., "arguments": {...}}</tool_call>` or `<function_call name="...">{...}</function_call>` text inside `content`. Without extraction, the cascade sees an empty/malformed response and either fails over or drops the tool call on the floor.
+
+**Fix:** set `xml_tool_tags: true` on the affected provider slot. The cascade (`src/provider_cascade.rs`) checks this flag whenever a response comes back with no native `tool_calls`; if set, it runs the raw text through `crates/chump-xml-adapter::adapt` before the empty/malformed quality gate, converting any `<tool_call>` / `<function_call>` blocks it finds into native `ToolCall`s and stripping them from the remaining text.
+
+**Config — per-slot env var, defaults to `false`:**
+
+```bash
+# Local slot (OPENAI_API_BASE-backed):
+CHUMP_PROVIDER_LOCAL_XML_TOOL_TAGS=1
+
+# Numbered cloud/local slots (CHUMP_PROVIDER_<N>_*):
+CHUMP_PROVIDER_1_ENABLED=1
+CHUMP_PROVIDER_1_BASE=http://127.0.0.1:11434/v1
+CHUMP_PROVIDER_1_MODEL=mistral:7b-old-checkpoint
+CHUMP_PROVIDER_1_XML_TOOL_TAGS=1
+```
+
+Only enable this for models that actually need it — for models that already return native `tool_calls`, extraction is a no-op (the flag is only consulted when `tool_calls` is empty), but leaving it off by default keeps the code path cold for the common case.
+
+**Supported tag styles** (see `crates/chump-xml-adapter/src/lib.rs`):
+
+```text
+<tool_call>{"name": "read_file", "arguments": {"path": "src/main.rs"}}</tool_call>
+<function_call name="read_file">{"path": "src/main.rs"}</function_call>
+```
+
+Malformed JSON inside a tag is left in place as plain text rather than dropped or panicking on.
+
+---
+
 ## 2b. In-process **mistral.rs** (optional Cargo feature)
 
 **What it is:** The **`mistralrs`** crate runs a Hugging Face text model **inside the Chump process** (no separate `vllm-mlx` / Ollama HTTP server). Same agent loop and tools as the HTTP providers.
