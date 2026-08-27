@@ -134,6 +134,12 @@ emit() {  # kind, extra-json (no leading/trailing comma)
 # (e.g. chump-integrator.service) — so also check the .timer counterpart.
 organ_watchdog_in_backoff() {  # unit
     local unit="$1"
+    # INFRA-1737: loop-stop sentinel — checked first, every call, so an
+    # operator can stop a backoff loop within one cycle by touching the file.
+    if [[ -f "$REPO_ROOT/.chump-locks/loop-stop-requested" ]]; then
+        echo "[organ-watchdog] stop requested: loop-stop sentinel found, exiting" >&2
+        exit 0
+    fi
     [[ -f "$BACKOFF_DIR/${unit}.json" ]] && return 0
     if [[ "$unit" == *.service ]]; then
         [[ -f "$BACKOFF_DIR/${unit%.service}.timer.json" ]] && return 0
