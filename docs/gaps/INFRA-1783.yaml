@@ -1,7 +1,7 @@
 - id: INFRA-1783
   domain: INFRA
   title: "EFFECTIVE: Phase 3 & 4 artifacts — HIDDEN_GEMS.md + CAPABILITIES_REGISTRY.json (INFRA-1746 phases 3-4)"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -12,5 +12,7 @@
   notes: |
     [2026-08-17T21:59:29Z] Implementation already shipped under INFRA-1746 (closed 2026-05-23, PR #2390) as src/evangelist.rs + src/systematizer.rs. This gaps AC were left as unfilled TODO placeholders from the decompose template; filled in with the actual observability behavior confirmed present in the code and its smoke tests.
     [2026-08-19T00:00:00Z] Re-verified all 4 AC directly against src/evangelist.rs, src/systematizer.rs, docs/observability/EVENT_REGISTRY.yaml, and ran scripts/ci/test-evangelist-smoke.sh + scripts/ci/test-systematizer-smoke.sh (both PASS, all 4 sub-checks each). No code changes needed; syncing stale status to done.
+  opened_date: '2026-07-26'
+  closed_date: '2026-08-27'
   outcome_id: MISSION-010
 
