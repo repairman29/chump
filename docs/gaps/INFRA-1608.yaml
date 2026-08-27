@@ -1,7 +1,7 @@
 - id: INFRA-1608
   domain: INFRA
   title: "RESILIENT: atomic-claim integrity bug — INFRA-1602 has TWO simultaneous live leases (claim-infra-1602-26392 + claim-infra-1602-47300); the try_claim_gap CAS is supposed to prevent this"
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -17,5 +17,7 @@
     - docs/process/CLAUDE_GOTCHAS.md gains a known-error-class entry for atomic-claim-collision with diagnosis steps and the test command
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  closed_date: '2026-08-27'
+  closed_pr: 4272
   outcome_id: MISSION-010
 
