@@ -18,14 +18,15 @@
 #                       INFRA gap so operator picks up the audit work.
 #   --apply (DANGER)    automatically rewrite drifted rates in-place. Not
 #                       wired by default; use only after manual review.
-#   --check-registry    INFRA-739: validate docs/dispatch/model_registry.yaml
-#                       against upstream. TODO: automated fetch not yet wired.
+#   --check-registry    INFRA-739 / INFRA-1564: validate docs/dispatch/model_registry.yaml
+#                       against LiteLLM upstream (automated fetch, same source as
+#                       the model_rates.yaml check above).
 #
 # Tunables:
 #   CHUMP_PRICING_DRIFT_PCT  drift threshold percent (default: 5)
 #   CHUMP_PRICING_UPSTREAM   override upstream URL (default: LiteLLM main branch)
 #
-# LaunchAgent: dev.chump.pricing-refresh (Sunday 09:00 weekly)
+# LaunchAgent: com.chump.refresh-model-prices (weekly, launchd/com.chump.refresh-model-prices.plist)
 
 set -uo pipefail
 
@@ -50,16 +51,79 @@ for arg in "$@"; do
     esac
 done
 
-# INFRA-739: registry check stub
+# INFRA-739 / INFRA-1564: registry check against LiteLLM upstream (same
+# rate-card source as the model_rates.yaml check below — Anthropic doesn't
+# publish a machine-readable pricing feed, so LiteLLM's community-maintained
+# card is the automated source of truth for both files).
 if [[ "$CHECK_REGISTRY" -eq 1 ]]; then
     if [[ ! -f "$REGISTRY_FILE" ]]; then
         echo "FATAL: $REGISTRY_FILE not found — INFRA-739 hasn't shipped yet?" >&2
         exit 1
     fi
-    echo "TODO: automated fetch from Anthropic pricing page not yet wired (INFRA-739)."
-    echo "Target file: $REGISTRY_FILE"
-    echo "Manual process: update input_per_mtk/output_per_mtk in the YAML and bump last_verified."
-    exit 0
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "FATAL: python3 required for YAML parse" >&2
+        exit 1
+    fi
+
+    REGISTRY_TMP="$(mktemp -t chump-registry-pricing.XXXXXX)"
+    trap 'rm -f "$REGISTRY_TMP"' EXIT
+    if ! curl -sSf --max-time 30 "$UPSTREAM_URL" > "$REGISTRY_TMP" 2>/dev/null; then
+        echo "WARN: could not fetch $UPSTREAM_URL — offline? skipping registry check" >&2
+        exit 0
+    fi
+
+    REGISTRY_FILE="$REGISTRY_FILE" REGISTRY_TMP="$REGISTRY_TMP" DRIFT_PCT="$DRIFT_PCT" \
+        python3 <<'PY'
+import os, re, sys, json
+
+registry_file = os.environ["REGISTRY_FILE"]
+upstream_tmp = os.environ["REGISTRY_TMP"]
+drift_pct = float(os.environ["DRIFT_PCT"])
+
+upstream = json.load(open(upstream_tmp))
+text = open(registry_file).read()
+
+# model_registry.yaml entries: model_id + input_per_mtk/output_per_mtk, same
+# shape as model_rates.yaml. Map to LiteLLM keys via the id itself (best
+# effort — entries with no upstream match are reported unknown, not fatal).
+entries = re.findall(
+    r"model_id:\s*([\w.\-]+)\s*\n\s*(?:.*\n)*?\s*input_per_mtk:\s*([\d.]+)\s*\n\s*output_per_mtk:\s*([\d.]+)",
+    text,
+)
+if not entries:
+    print("[registry-check] no model_id entries found in model_registry.yaml — nothing to check")
+    sys.exit(0)
+
+drift_found = 0
+unknown_found = 0
+for model_id, local_in, local_out in entries:
+    up_entry = upstream.get(model_id)
+    if not up_entry:
+        print(f"  ?? {model_id}: not in upstream ({model_id} missing)")
+        unknown_found += 1
+        continue
+    up_in = float(up_entry.get("input_cost_per_token", 0)) * 1_000_000
+    up_out = float(up_entry.get("output_cost_per_token", 0)) * 1_000_000
+    local_in_f, local_out_f = float(local_in), float(local_out)
+
+    def drift(a, b):
+        if a == 0 and b == 0:
+            return 0.0
+        if a == 0 or b == 0:
+            return 100.0
+        return abs(a - b) / max(a, b) * 100
+
+    d_in, d_out = drift(local_in_f, up_in), drift(local_out_f, up_out)
+    if d_in > drift_pct or d_out > drift_pct:
+        print(f"  ⚠ {model_id}: in {local_in_f:.2f}→{up_in:.2f} ({d_in:.0f}%)  out {local_out_f:.2f}→{up_out:.2f} ({d_out:.0f}%)  DRIFT")
+        drift_found += 1
+    else:
+        print(f"  ✓ {model_id}: in {local_in_f:.2f}~{up_in:.2f}  out {local_out_f:.2f}~{up_out:.2f}")
+
+print(f"registry drift={drift_found} unknown={unknown_found}")
+sys.exit(2 if drift_found else 0)
+PY
+    exit $?
 fi
 
 echo "$(date -u +%s)" > "$HEARTBEAT"
@@ -195,6 +259,13 @@ fi
 if [[ "$MODE" == "apply" && "$DRIFT_FOUND" -gt 0 ]]; then
     echo "WARN: --apply will rewrite $RATES_FILE in place. Skipping in this version (TBD: implement via INFRA-731 follow-up; manual audit safer)."
 fi
+
+# INFRA-1564: emit every run (not just on drift) so operators see the weekly
+# tick actually firing, distinct from the drift-only pricing_drift ALERT.
+mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null
+printf '{"ts":"%s","kind":"model_prices_refreshed","mode":"%s","drift_count":%d,"unknown_count":%d}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$MODE" "$DRIFT_FOUND" "$UNKNOWN_FOUND" \
+    >> "$AMBIENT_LOG" 2>/dev/null || true
 
 # Exit code: drift = 2 (advisory); unknown = 0 (informational)
 if [[ "$DRIFT_FOUND" -gt 0 ]]; then

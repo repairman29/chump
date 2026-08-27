@@ -223,3 +223,24 @@ installers:
     install: bash scripts/setup/install-a2a-dead-letter-reaper-launchd.sh
     check: bash scripts/setup/install-a2a-dead-letter-reaper-launchd.sh --check
     adds: ~/Library/LaunchAgents/com.chump.a2a-dead-letter-reaper.plist + 30-min run
+
+  - id: decomposition-hint-tracker-launchd
+    why: "INFRA-1564 — daily idempotent analytics on PR decomposition hints (scripts/dev/decomposition-hint-tracker.sh, FLEET-026). Plist existed only as a comment reference (install-decomposition-tracker-launchd.sh) with no manifest entry, so the daily heeded-rate/revealed-correct-rate signal never ran on a fresh machine."
+    priority: P2
+    install: "cp launchd/com.chump.decomposition-hint-tracker.plist ~/Library/LaunchAgents/ && sed -i '' \"s|/path/to/Chump|$(pwd)|g\" ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist && launchctl load ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist"
+    check: launchctl list 2>/dev/null | grep -q com.chump.decomposition-hint-tracker
+    adds: ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist + daily run
+
+  - id: refresh-model-prices-launchd
+    why: "INFRA-1564 — weekly model-pricing drift detection against LiteLLM upstream (scripts/dev/refresh-model-prices.sh, INFRA-731/INFRA-739). 5 days old with no manifest entry and not loaded into launchctl despite production-ready --refresh/--check-registry flags."
+    priority: P2
+    install: "cp launchd/com.chump.refresh-model-prices.plist ~/Library/LaunchAgents/ && sed -i '' \"s|/path/to/Chump|$(pwd)|g\" ~/Library/LaunchAgents/com.chump.refresh-model-prices.plist && launchctl load ~/Library/LaunchAgents/com.chump.refresh-model-prices.plist"
+    check: launchctl list 2>/dev/null | grep -q com.chump.refresh-model-prices
+    adds: ~/Library/LaunchAgents/com.chump.refresh-model-prices.plist + weekly run
+
+  - id: fleet-version-skew-detect-launchd
+    why: "INFRA-1564 — every-6h check that the working-tree scripts/dispatch/worker.sh hasn't drifted from origin/main (scripts/dev/fleet-version-skew-detect.sh, INFRA-609). 10 days old, 30+ LOC of business logic, no manifest entry — the skew ALERT never fires on a fresh machine."
+    priority: P2
+    install: "cp launchd/com.chump.fleet-version-skew-detect.plist ~/Library/LaunchAgents/ && sed -i '' \"s|/path/to/Chump|$(pwd)|g\" ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist && launchctl load ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist"
+    check: launchctl list 2>/dev/null | grep -q com.chump.fleet-version-skew-detect
+    adds: ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist + 6-hourly run

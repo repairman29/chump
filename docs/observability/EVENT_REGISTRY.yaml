@@ -429,6 +429,15 @@ events:
     trigger: workers running different chump binary versions
     consumers: [watchdog]
 
+  - kind: version_skew_detected
+    status: active
+    effect_metric: self
+    emitter: scripts/dev/fleet-version-skew-detect.sh (INFRA-609 / INFRA-1564)
+    emitter_paths: [scripts/dev/fleet-version-skew-detect.sh]
+    trigger: every fleet-version-skew-detect.sh run (6h launchd cadence) — detected=true/false records whether working-tree worker.sh diverged from origin/main
+    consumers: [watchdog, ambient glance]
+    fields_required: [ts, kind, detected, file]
+
   - kind: fleet_pid_invariant
     effect_metric: self
     emitter: scripts/ops/fleet-audit-pids.sh
@@ -2400,6 +2409,15 @@ events:
     trigger: model_rates.yaml drifted > 5% from LiteLLM upstream
     consumers: [fleet-brief, audit-log]
 
+  - kind: model_prices_refreshed
+    status: active
+    effect_metric: self
+    emitter: scripts/dev/refresh-model-prices.sh (INFRA-731 / INFRA-739 / INFRA-1564)
+    emitter_paths: [scripts/dev/refresh-model-prices.sh]
+    trigger: every refresh-model-prices.sh run (weekly launchd cadence) — records mode + drift/unknown counts regardless of whether drift crossed the alert threshold
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, mode, drift_count, unknown_count]
+
   # ── Mission / pillar metrics ──────────────────────────────────────────────
   - kind: mission_grade
     effect_metric: operator_action_or_gap_filed_within_60s
@@ -3221,6 +3239,15 @@ events:
     emitter: scripts/dispatch/decomposition-detector.sh
     trigger: agent suggested a gap should be split
     consumers: [audit-log]
+
+  - kind: decomposition_hint_tracked
+    status: active
+    effect_metric: self
+    emitter: scripts/dev/decomposition-hint-tracker.sh (FLEET-026 / INFRA-1564)
+    emitter_paths: [scripts/dev/decomposition-hint-tracker.sh]
+    trigger: every decomposition-hint-tracker.sh run (daily launchd cadence) — records how many decomposition_hint events were processed and resolved this pass
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, n_hints, n_resolved]
 
   - kind: recurring_gap_pattern
     effect_metric: self

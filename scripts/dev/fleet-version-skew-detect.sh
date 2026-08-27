@@ -70,6 +70,12 @@ fi
 # has deployed the current version, this is clean → no skew (breaks the loop).
 if git diff --quiet "origin/main" -- "$WORKER_PATH" 2>/dev/null; then
   log "working-tree worker.sh == origin/main — no skew (self-sync current)"
+  if [[ "$NO_EMIT" = "0" ]]; then
+    mkdir -p "$LOCK_DIR"
+    printf '{"ts":"%s","kind":"version_skew_detected","detected":false,"file":"%s"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$WORKER_PATH" \
+      >> "$AMBIENT" 2>/dev/null || true
+  fi
   exit 0
 fi
 
@@ -138,6 +144,12 @@ if [[ "$NO_EMIT" = "0" ]]; then
       "$AFFECTED_JSON" "$SESSION_ID" \
       >> "$AMBIENT" 2>/dev/null || true
   fi
+
+  # INFRA-1564: distinct from the ALERT-class fleet_version_skew above — a
+  # plain per-run signal so operators see the 6h tick actually firing.
+  printf '{"ts":"%s","kind":"version_skew_detected","detected":true,"file":"%s","commits_behind":%d}\n' \
+    "$TS" "$WORKER_PATH" "$COMMITS_BEHIND" \
+    >> "$AMBIENT" 2>/dev/null || true
   log "fleet_version_skew event written to $AMBIENT"
 fi
 

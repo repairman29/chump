@@ -77,6 +77,10 @@ N_HINTS="$(wc -l < "$HINT_EVENTS_TMP" | tr -d ' ')"
 if [[ "$N_HINTS" -eq 0 ]]; then
     echo "[decomposition-tracker] no decomposition_hint events found"
     echo "[decomposition-tracker] (FLEET-025 v0 emits these; check that PR has landed)"
+    mkdir -p "$LOCK_DIR" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"decomposition_hint_tracked","n_hints":0,"n_resolved":0}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        >> "$AMBIENT_LOG" 2>/dev/null || true
     exit 0
 fi
 
@@ -246,3 +250,10 @@ PYEOF
 # Atomic replace
 mv "$OUTCOMES_TMP" "$OUTCOMES_FILE"
 echo "[decomposition-tracker] outcomes written to $OUTCOMES_FILE" >&2
+
+# INFRA-1564: emit so operators see the daily tick firing in ambient.jsonl.
+N_RESOLVED="$(wc -l < "$OUTCOMES_FILE" | tr -d ' ')"
+mkdir -p "$LOCK_DIR" 2>/dev/null || true
+printf '{"ts":"%s","kind":"decomposition_hint_tracked","n_hints":%s,"n_resolved":%s}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$N_HINTS" "$N_RESOLVED" \
+    >> "$AMBIENT_LOG" 2>/dev/null || true
