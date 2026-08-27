@@ -233,6 +233,8 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    // assert_* tests are static preflight tests; behavior_* tests are runtime CI-only tests.
+
     /// Minimal 2048-bit RSA key in PKCS#8 PEM format for testing JWT generation.
     /// Generated offline; never used for real GitHub App authentication.
     const TEST_RSA_KEY_PEM: &str = "-----BEGIN RSA PRIVATE KEY-----\n\
@@ -274,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn load_apps_config_with_missing_file_returns_empty_map() {
+    fn assert_load_apps_config_with_missing_file_returns_empty_map() {
         let result = load_apps_config(Path::new("/tmp/__nonexistent_chump_test_config.toml"));
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
