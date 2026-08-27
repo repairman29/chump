@@ -718,10 +718,13 @@ BYPASS:
     CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1   Skip pipefail-race-sweep (INFRA-2350).
     CHUMP_PREFLIGHT_SKIP_PATHFILTER=1 Skip path-filter-coverage (INFRA-2350).
     CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1 Skip install-manifest gate (INFRA-2350).
+    CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1 Skip no-claude-leak gate (INFRA-1793).
 
 GATES (in order):
     1. event-registry-audit            (scope: ALWAYS, INFRA-1731/MISSION-064)
     2. env-var-coverage                (scope: ALWAYS, INFRA-1787/MISSION-064)
+    2b. no-claude-leak (warn-only)     (scope: ALWAYS when diff touches
+                                         src/|scripts/coord|dispatch|ops, INFRA-1793)
     3. cargo fmt --check               (scope: rust)
     4. cargo clippy -- -D warnings     (scope: rust)
     5. cargo check --all-targets        (scope: rust)
@@ -1355,6 +1358,47 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-env-var-coverage.sh"],
             GateKind::AlwaysFast,
         ));
+    }
+
+    // INFRA-1793 (INFRA-1051 Tier C #7): no-claude-leak audit mirror.
+    // ALWAYS-ON check (not scope-gated) because the staged diff could be
+    // src/-only (rust scope) or scripts/coord|dispatch|ops-only (scripts
+    // scope) — either alone should trigger it. Only fires when the staged
+    // diff actually touches product-layer paths (src/, scripts/coord/,
+    // scripts/dispatch/, scripts/ops/); a diff outside those dirs (e.g.
+    // scripts/git-hooks/, docs/) never pays this gate. Runs
+    // scripts/ci/test-no-claude-leak.sh in its default changed-only mode;
+    // the script itself stays warn-only (exit 0) until INFRA-1053 backfill
+    // closes the 39-file long-tail and both CI + preflight flip to
+    // --strict together (AC#6). Skip via CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1
+    // with audit-trail emit; or per-line opt-out `# chump-harness-ok:
+    // claude-mention`.
+    let claudeleak_in_scope = staged_paths(&repo_root).iter().any(|p| {
+        p.starts_with("src/")
+            || p.starts_with("scripts/coord/")
+            || p.starts_with("scripts/dispatch/")
+            || p.starts_with("scripts/ops/")
+    });
+    if claudeleak_in_scope {
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_CLAUDELEAK").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping no-claude-leak (CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1)");
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_claudeleak_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
+        } else {
+            steps.push(step(
+                "no-claude-leak",
+                &["bash", "scripts/ci/test-no-claude-leak.sh"],
+                GateKind::AlwaysFast,
+            ));
+        }
     }
 
     if scope.includes(GateKind::Rust) {

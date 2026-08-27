@@ -58,7 +58,7 @@ this week was one of these.
 | 4 | `test-markdown-intra-doc-links.sh` (changed-only) | No broken `.md` links in files modified by this PR (DOC-039) | NO | 1-2 per week | **INFRA-1790** |
 | 5 | `test-gap-preflight-ac-gate.sh` | Open gaps with vague/empty AC are unpickable (INFRA-1259) | NO | Indirectly via `chump gap audit-ac --open` | **INFRA-1791** |
 | 6 | `check-pr-scope.sh` | PR doesn't touch too many disjoint paths | NO | Operator-disciplined; rare CI fail | **INFRA-1792** |
-| 7 | `test-no-claude-leak.sh` (warn-only on CI today) | No new Claude-specific refs in product-layer code (INFRA-1051) | NO | Warn-only on CI; promotion to strict planned | **INFRA-1793** |
+| 7 | `test-no-claude-leak.sh` (warn-only on CI today) | No new Claude-specific refs in product-layer code (INFRA-1051) | **YES** (`chump preflight`, ALWAYS-ON when diff touches `src/`\|`scripts/coord/`\|`scripts/dispatch/`\|`scripts/ops/`) | Warn-only on both CI and preflight; promotion to strict planned together | **INFRA-1793** (shipped) |
 | 8 | `test-broad-canary-coverage.sh` | `docs/process/CLAUDE_GOTCHAS.md` is updated when known-failure-mode files are touched | NO | Operator-discipline; low-frequency | **INFRA-1794** |
 
 ## Tier D — cannot mirror locally ⛔
