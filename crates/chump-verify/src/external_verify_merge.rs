@@ -3196,4 +3196,18 @@ exit 0
         std::env::remove_var("CHUMP_CHROMIUM_BIN");
         std::env::remove_var("CHUMP_CURL_BIN");
     }
+
+    // INFRA-1649 (re-do of INFRA-1598): smoke test for the shared
+    // `crate::observability` event primitive used by `chump
+    // verify-claim-branch`. A simulated timeout must land on
+    // status=timeout / failure_class=transient — timeouts are retryable,
+    // not a real branch/lease mismatch.
+    #[test]
+    fn smoke_observability() {
+        let event = crate::observability::build_event("timeout", 1200, "transient");
+        assert_eq!(event["status"], "timeout");
+        assert_eq!(event["failure_class"], "transient");
+        assert_eq!(event["duration_ms"], 1200);
+        assert!(event["cost_estimate"].as_f64().unwrap() >= 0.0);
+    }
 }

@@ -158,12 +158,39 @@ pub fn verify(current_branch: &str, session_id: &str, leases: &[Lease]) -> Verdi
     Verdict::PeerLeasesOnly
 }
 
+/// AC1/AC4 (INFRA-1649): after the verdict is decided, emit a single
+/// observability JSON line to stdout (status/duration_ms/cost_estimate/
+/// failure_class) via the shared `chump_verify::observability` primitive.
+fn emit_observability(start: std::time::Instant, status: &str, failure_class: &str) {
+    let duration_ms = start.elapsed().as_millis();
+    chump_verify::observability::emit_event(status, duration_ms, failure_class);
+}
+
 pub fn run_cli(args: &[String]) -> i32 {
+    let start = std::time::Instant::now();
     let want_json = args.iter().any(|a| a == "--json");
     let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
-    let Some(branch) = current_branch(&repo_root) else {
+    // AC1 (INFRA-1649): --branch <name> overrides the detected git branch,
+    // e.g. for pre-flight checks against a not-yet-checked-out branch name.
+    let branch_override = args
+        .iter()
+        .position(|a| a == "--branch")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.to_lowercase());
+
+    // CHUMP_VERIFY_CLAIM_BRANCH_SIMULATE_TIMEOUT is a test-only hook (AC3)
+    // so the timeout/transient path is exercisable without an actual
+    // hanging git subprocess.
+    if std::env::var("CHUMP_VERIFY_CLAIM_BRANCH_SIMULATE_TIMEOUT").as_deref() == Ok("1") {
+        eprintln!("chump verify-claim-branch: simulated timeout (CHUMP_VERIFY_CLAIM_BRANCH_SIMULATE_TIMEOUT=1)");
+        emit_observability(start, "timeout", "transient");
+        return 1;
+    }
+
+    let Some(branch) = branch_override.or_else(|| current_branch(&repo_root)) else {
         eprintln!("chump verify-claim-branch: could not resolve current git branch");
+        emit_observability(start, "failure", "permanent");
         return 1;
     };
 
@@ -203,6 +230,7 @@ pub fn run_cli(args: &[String]) -> i32 {
             if want_json {
                 println!("{{\"verdict\":\"no_leases\",\"branch\":\"{branch}\"}}");
             }
+            emit_observability(start, "success", "none");
             0
         }
         Verdict::PeerLeasesOnly => {
@@ -213,6 +241,7 @@ pub fn run_cli(args: &[String]) -> i32 {
             if want_json {
                 println!("{{\"verdict\":\"peer_leases_only\",\"branch\":\"{branch}\"}}");
             }
+            emit_observability(start, "success", "none");
             0
         }
         Verdict::Ok { gap_id } => {
@@ -227,6 +256,7 @@ pub fn run_cli(args: &[String]) -> i32 {
             } else {
                 println!("chump verify-claim-branch: OK — branch '{branch}' matches claimed gap {gap_id}");
             }
+            emit_observability(start, "success", "none");
             0
         }
         Verdict::Mismatch {
@@ -255,6 +285,7 @@ pub fn run_cli(args: &[String]) -> i32 {
                 eprintln!("Use: cd to your claim worktree OR run `chump --release` if abandoning this claim.");
                 eprintln!();
             }
+            emit_observability(start, "failure", "permanent");
             1
         }
     }
