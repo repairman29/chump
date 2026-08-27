@@ -55,6 +55,7 @@ CHUMP_PREFLIGHT_SKIP_CARGOTEST     # Bypass-Justification: cargo-test gate skip;
 CHUMP_PREFLIGHT_SKIP_INTEGRATION   # Bypass-Justification: integration-test gate skip; grandfathered  gap: INFRA-2422
 CHUMP_PREFLIGHT_SKIP_CHUMPFIRST    # Bypass-Justification: chump-first-contract gate skip; grandfathered  gap: INFRA-2422
 CHUMP_PREFLIGHT_SKIP_ACPSMOKE      # Bypass-Justification: acp-smoke gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_CLAUDELEAK    # Bypass-Justification: no-claude-leak gate skip (INFRA-1793); mirrors INFRA-2422 preflight-gate-skip pattern  gap: INFRA-1793
 CHUMP_PREFLIGHT_SKIP_PRHYGIENE     # Bypass-Justification: pr-hygiene gate skip; grandfathered  gap: INFRA-2422
 CHUMP_PREFLIGHT_SKIP_PATHFILTER    # Bypass-Justification: path-filter-coverage gate skip; grandfathered  gap: INFRA-2422
 CHUMP_PREFLIGHT_SKIP_INSTALLMAP    # Bypass-Justification: install-manifest gate skip; grandfathered  gap: INFRA-2422
