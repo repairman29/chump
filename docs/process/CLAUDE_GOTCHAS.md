@@ -822,6 +822,48 @@ session before INFRA-1347 closed the holes.
 
 ---
 
+### deep lease path-set collision check (INFRA-1604)
+
+**What it is:** `chump claim` runs two collision checks against sibling
+`.chump-locks/*.json` leases before it provisions a worktree:
+
+1. **INFRA-1394 (AC-text heuristic, kept as secondary defense-in-depth).**
+   Scans the gap's `acceptance_criteria` TEXT for any mention of one of 5
+   hardcoded hot files (`scripts/coord/lib/hot-files.yaml`) and checks
+   whether a sibling lease already declares that exact file in its
+   `paths[]`. Catches only the worst-case, most-common collisions.
+2. **INFRA-1604 (structural, primary).** Computes the actual set
+   intersection of `{this claim's --paths}` against `{each sibling lease's
+   declared paths[]}` — no AC-text matching involved. Supports glob (`*`,
+   e.g. `src/foo/*.rs` overlaps `src/foo/bar.rs`) and directory-prefix
+   matching (a pattern ending in `/`, e.g. `docs/` overlaps
+   `docs/gaps/X.yaml`). This is what the lease `paths[]` field
+   (INFRA-1240) was designed for — declared scope, not text mentions.
+
+**Symptom when it fires:** `chump claim <GAP-ID> --paths <csv>` exits 16
+(distinct from INFRA-1394's exit 15) and prints one line per colliding
+sibling: `sibling session <id> (gap <id>) holds: <path> <-> <path>`.
+`kind=lease_path_collision` is emitted to `ambient.jsonl` on every
+detection (both the hard-stop and the `--force-overlap` bypass), with
+`{claim_gap, sibling_gap, sibling_session, overlap_paths[], paths_count}`.
+
+**Bypass:** `--force-overlap` proceeds anyway; the ambient event is still
+emitted so the collision is auditable even when overridden. Same flag
+overrides both the INFRA-1394 and INFRA-1604 checks.
+
+**Why two checks instead of replacing INFRA-1394:** a sibling session that
+never ran `chump claim --paths ...` (e.g. claimed before INFRA-1240, or
+paths were auto-detected incompletely) has an empty or partial `paths[]`
+in its lease file — the INFRA-1604 set-intersection check has nothing to
+compare against in that case, so the AC-text heuristic is the only signal
+left. Keep both; INFRA-1604 is not a strict superset of INFRA-1394's coverage.
+
+Implementation: `crates/chump-atomic-claim/src/atomic_claim.rs`
+(`check_lease_path_collisions`, `lease_paths_overlap`, `glob_match`). Test:
+`scripts/ci/test-deep-claim-collision.sh`.
+
+---
+
 <a id="stale-lease-cleanup"></a>
 ### stale-lease-cleanup — detecting and releasing orphaned leases
 

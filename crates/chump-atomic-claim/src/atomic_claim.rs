@@ -103,7 +103,7 @@ impl ClaimArgs {
                        --discard-wip    With --force-recover: bypass WIP-loss guard and wipe uncommitted changes\n  \
                        --rename         If the claim branch is orphaned (remote branch exists, its PR is closed),\n                        \
                                         auto-rename to <branch>-N and continue instead of aborting\n  \
-                       --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
+                       --force-overlap  Override hot-file (INFRA-1394) / lease path-set (INFRA-1604) collision block; warning still emitted\n  \
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
@@ -1159,6 +1159,57 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                         "[claim]   --force-overlap set; proceeding despite hot-file collision."
                     );
                 }
+            }
+        }
+    }
+
+    // 5.61. INFRA-1604: deep lease path-set collision check.
+    //
+    // Structural successor to the 5.6 AC-text heuristic above: computes the
+    // actual set intersection of {this claim's declared paths[]} ∩ {each
+    // sibling lease's declared paths[]}, with glob + directory-prefix
+    // matching. The 5.6 check stays as a secondary defense-in-depth pass
+    // for the case where a sibling's paths[] is incomplete.
+    {
+        let own_paths_for_deep_check: Vec<String> = claim_paths
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let collisions = check_lease_path_collisions(
+            &lock_dir,
+            &args.gap_id,
+            &session_id,
+            &own_paths_for_deep_check,
+        );
+
+        if !collisions.is_empty() {
+            for c in &collisions {
+                emit_lease_path_collision_event(
+                    &ambient_log,
+                    &args.gap_id,
+                    &c.sibling_gap,
+                    &c.sibling_session,
+                    &c.overlap_paths,
+                );
+                eprintln!(
+                    "[claim] INFRA-1604: LEASE PATH COLLISION vs sibling session {} (gap {}) — {} overlapping path(s): {}",
+                    c.sibling_session,
+                    c.sibling_gap,
+                    c.overlap_paths.len(),
+                    c.overlap_paths.join(", ")
+                );
+            }
+
+            if !args.force_overlap {
+                eprintln!(
+                    "[claim]   Re-run with --force-overlap to proceed anyway (events still emitted)."
+                );
+                std::process::exit(16);
+            } else {
+                eprintln!(
+                    "[claim]   --force-overlap set; proceeding despite lease path collision(s)."
+                );
             }
         }
     }
@@ -3850,6 +3901,198 @@ fn emit_claim_hot_file_overlap_event(
         sg = json_escape(sibling_gap),
         ss = json_escape(sibling_session),
         op = paths_json,
+    );
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+// ── INFRA-1604: deep lease path-set collision detection ─────────────────────
+//
+// INFRA-1394 (above) only catches collisions when the gap's AC *text*
+// mentions one of 5 hardcoded hot files. Real collisions happen on dozens
+// of files that are declared in a lease's paths[] but never mentioned in
+// AC text. This check computes the actual set intersection of {this
+// claim's declared paths} ∩ {each sibling lease's declared paths}, with
+// glob (`*`) and directory-prefix (trailing `/`) matching. Structural,
+// not heuristic — the INFRA-1394 check stays as a secondary defense-in-depth
+// pass for the case where a lease's paths[] is incomplete.
+
+/// One sibling lease whose declared paths[] intersects this claim's.
+struct LeasePathCollision {
+    sibling_session: String,
+    sibling_gap: String,
+    overlap_paths: Vec<String>,
+}
+
+/// Simple glob matcher supporting `*` (matches any run of characters,
+/// including `/`). No `?` or character-class support — lease path globs
+/// in practice are things like `src/foo/*.rs`.
+fn glob_match(pattern: &str, text: &str) -> bool {
+    fn helper(p: &[u8], t: &[u8]) -> bool {
+        match (p.first(), t.first()) {
+            (None, None) => true,
+            (Some(b'*'), _) => helper(&p[1..], t) || (!t.is_empty() && helper(p, &t[1..])),
+            (Some(pc), Some(tc)) if pc == tc => helper(&p[1..], &t[1..]),
+            _ => false,
+        }
+    }
+    helper(pattern.as_bytes(), text.as_bytes())
+}
+
+/// Do two lease-declared path entries overlap? Handles:
+///   - exact match: `"src/foo.rs" == "src/foo.rs"`
+///   - directory prefix: `"docs/"` overlaps `"docs/gaps/X.yaml"`
+///   - glob: `"src/foo/*.rs"` overlaps `"src/foo/bar.rs"`
+fn lease_paths_overlap(a: &str, b: &str) -> bool {
+    let a = a.trim();
+    let b = b.trim();
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    if a == b {
+        return true;
+    }
+    if a.ends_with('/') && b.starts_with(a) {
+        return true;
+    }
+    if b.ends_with('/') && a.starts_with(b) {
+        return true;
+    }
+    if a.contains('*') && glob_match(a, b) {
+        return true;
+    }
+    if b.contains('*') && glob_match(b, a) {
+        return true;
+    }
+    false
+}
+
+/// INFRA-1604: For each sibling lease under `lock_dir`, compute the set
+/// intersection of `own_paths` against the sibling's declared `paths[]`.
+/// Returns one `LeasePathCollision` per sibling with a non-empty overlap.
+/// Best-effort: malformed/unreadable lease files are silently skipped —
+/// this check must never block the claim flow on IO/parse errors.
+fn check_lease_path_collisions(
+    lock_dir: &Path,
+    gap_id: &str,
+    own_session: &str,
+    own_paths: &[String],
+) -> Vec<LeasePathCollision> {
+    let mut results = Vec::new();
+    if own_paths.is_empty() {
+        return results;
+    }
+    let Ok(entries) = std::fs::read_dir(lock_dir) else {
+        return results;
+    };
+
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        if stem == "ambient" {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(&p) else {
+            continue;
+        };
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+            continue;
+        };
+
+        let sid = val
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if sid.is_empty() || sid == own_session {
+            continue;
+        }
+
+        let sibling_gap = val
+            .get("gap_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if sibling_gap.is_empty() || sibling_gap == gap_id {
+            continue;
+        }
+
+        let sibling_paths: Vec<String> = val
+            .get("paths")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|p| p.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if sibling_paths.is_empty() {
+            continue;
+        }
+
+        let mut overlap: Vec<String> = Vec::new();
+        for op in own_paths {
+            for sp in &sibling_paths {
+                if lease_paths_overlap(op, sp) {
+                    let entry = format!("{} <-> {}", op, sp);
+                    if !overlap.contains(&entry) {
+                        overlap.push(entry);
+                    }
+                }
+            }
+        }
+
+        if !overlap.is_empty() {
+            overlap.sort();
+            results.push(LeasePathCollision {
+                sibling_session: sid,
+                sibling_gap,
+                overlap_paths: overlap,
+            });
+        }
+    }
+
+    results
+}
+
+/// INFRA-1604: Emit kind=lease_path_collision to ambient.jsonl. Best-effort
+/// — never blocks the claim flow. Fired on every detection, whether it
+/// results in a hard stop or a `--force-overlap` bypass.
+fn emit_lease_path_collision_event(
+    ambient_log: &Path,
+    claim_gap: &str,
+    sibling_gap: &str,
+    sibling_session: &str,
+    overlap_paths: &[String],
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ts = iso8601_from_unix(now);
+    let paths_json = serde_json::to_string(overlap_paths).unwrap_or_else(|_| "[]".to_string());
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"lease_path_collision\",\
+         \"claim_gap\":\"{cg}\",\"sibling_gap\":\"{sg}\",\
+         \"sibling_session\":\"{ss}\",\"overlap_paths\":{op},\"paths_count\":{pc}}}\n",
+        ts = ts,
+        cg = json_escape(claim_gap),
+        sg = json_escape(sibling_gap),
+        ss = json_escape(sibling_session),
+        op = paths_json,
+        pc = overlap_paths.len(),
     );
     use std::io::Write;
     if let Ok(mut f) = std::fs::OpenOptions::new()
