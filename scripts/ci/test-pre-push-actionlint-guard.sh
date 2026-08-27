@@ -171,4 +171,15 @@ done
 
 echo
 echo "=== $PASS passed, $FAIL failed ==="
-[[ "$FAIL" -eq 0 ]]
+if [[ "$FAIL" -eq 0 ]]; then
+    echo "guard: ok"
+    exit 0
+else
+    # Missing/unwired guard script or registry entries can't be fixed by
+    # re-running (permanent); everything else observed here is a synthetic
+    # repo assertion mismatch, which is transient (rerun-able) by nature.
+    class="transient"
+    [[ ! -x "$GUARD" ]] && class="permanent"
+    echo "guard: fail class=$class" >&2
+    exit 1
+fi

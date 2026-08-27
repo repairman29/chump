@@ -77,6 +77,55 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+// ── Observability (INFRA-1649, re-do of INFRA-1598) ────────────────────────
+
+/// Default cost-per-second used to derive `cost_estimate` when
+/// `CHUMP_COST_PER_SECOND` is unset.
+pub const DEFAULT_COST_PER_SECOND: f64 = 0.0006;
+
+/// Build the single-line JSON observability event emitted by verify-style
+/// commands (`chump verify-claim-branch`, etc.) on completion. Shared here so
+/// callers across crates (the `chump` bin's `verify_claim_branch` module and
+/// this crate's own gates) produce an identical event shape.
+///
+/// `status` is one of `success` / `failure` / `timeout`; `failure_class` is
+/// one of `transient` / `permanent` / `none`. `cost_estimate` is
+/// `duration_ms / 1000.0 * cost_per_second`.
+pub fn observability_event(
+    status: &str,
+    duration_ms: u64,
+    failure_class: &str,
+    cost_per_second: f64,
+) -> serde_json::Value {
+    let cost_estimate = (duration_ms as f64 / 1000.0) * cost_per_second;
+    serde_json::json!({
+        "status": status,
+        "duration_ms": duration_ms,
+        "cost_estimate": cost_estimate,
+        "failure_class": failure_class,
+    })
+}
+
+/// Resolve the configured cost-per-second from `CHUMP_COST_PER_SECOND`,
+/// falling back to [`DEFAULT_COST_PER_SECOND`] when unset or unparsable.
+pub fn cost_per_second_from_env() -> f64 {
+    std::env::var("CHUMP_COST_PER_SECOND")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(DEFAULT_COST_PER_SECOND)
+}
+
+/// Emit `event` as a single JSON line to stdout and log the resolved cost to
+/// stderr (`cost reported: $X`), per INFRA-1649 AC4.
+pub fn emit_observability_event(event: &serde_json::Value) {
+    println!("{event}");
+    let cost = event
+        .get("cost_estimate")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    eprintln!("cost reported: ${cost:.6}");
+}
+
 // ── Public API ────────────────────────────────────────────────────────────
 
 /// Entry point called from `src/main.rs` after routing `chump external verify-merge`.

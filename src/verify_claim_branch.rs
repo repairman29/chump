@@ -158,12 +158,53 @@ pub fn verify(current_branch: &str, session_id: &str, leases: &[Lease]) -> Verdi
     Verdict::PeerLeasesOnly
 }
 
+/// `--branch <name>` overrides git-derived branch detection — used by
+/// non-hook callers that already know the target branch (and by tests that
+/// can't rely on a real git checkout).
+fn branch_override(args: &[String]) -> Option<String> {
+    args.iter()
+        .position(|a| a == "--branch")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.to_lowercase())
+}
+
+/// `--simulate-timeout` forces a `status=timeout` / `failure_class=transient`
+/// observability event without requiring a real timeout condition — the
+/// verify-claim-branch check itself is local/instant, so this is the only
+/// way to exercise the timeout branch of the event contract (INFRA-1649 AC3).
+fn simulate_timeout(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--simulate-timeout")
+}
+
 pub fn run_cli(args: &[String]) -> i32 {
+    let start = std::time::Instant::now();
     let want_json = args.iter().any(|a| a == "--json");
     let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
-    let Some(branch) = current_branch(&repo_root) else {
+    if simulate_timeout(args) {
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let cost_per_second = chump_verify::external_verify_merge::cost_per_second_from_env();
+        let event = chump_verify::external_verify_merge::observability_event(
+            "timeout",
+            duration_ms,
+            "transient",
+            cost_per_second,
+        );
+        chump_verify::external_verify_merge::emit_observability_event(&event);
+        return 1;
+    }
+
+    let Some(branch) = branch_override(args).or_else(|| current_branch(&repo_root)) else {
         eprintln!("chump verify-claim-branch: could not resolve current git branch");
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let cost_per_second = chump_verify::external_verify_merge::cost_per_second_from_env();
+        let event = chump_verify::external_verify_merge::observability_event(
+            "failure",
+            duration_ms,
+            "permanent",
+            cost_per_second,
+        );
+        chump_verify::external_verify_merge::emit_observability_event(&event);
         return 1;
     };
 
@@ -198,7 +239,7 @@ pub fn run_cli(args: &[String]) -> i32 {
     let leases = list_active();
     let verdict = verify(&branch, &session_id, &leases);
 
-    match verdict {
+    let rc = match verdict {
         Verdict::NoLeases => {
             if want_json {
                 println!("{{\"verdict\":\"no_leases\",\"branch\":\"{branch}\"}}");
@@ -257,7 +298,24 @@ pub fn run_cli(args: &[String]) -> i32 {
             }
             1
         }
-    }
+    };
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+    let cost_per_second = chump_verify::external_verify_merge::cost_per_second_from_env();
+    let (status, failure_class) = if rc == 0 {
+        ("success", "none")
+    } else {
+        ("failure", "permanent")
+    };
+    let event = chump_verify::external_verify_merge::observability_event(
+        status,
+        duration_ms,
+        failure_class,
+        cost_per_second,
+    );
+    chump_verify::external_verify_merge::emit_observability_event(&event);
+
+    rc
 }
 
 #[cfg(test)]
