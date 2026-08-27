@@ -2612,6 +2612,7 @@ gaps:
   closed_date: '2026-07-30'
   closed_pr: 3552
   outcome_id: COTG
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-176
   domain: CREDIBLE
@@ -3126,6 +3127,7 @@ gaps:
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: registry + git history review 2026-08-06. OUTPUT: the describe-vs-do disease is measured and recurring — fleet ship-count once reported 78 vs 2 real merges (CREDIBLE-146/149); the ChumpBench judge had to be hardened so a do-nothing PR scores STUB not verify (CREDIBLE-192/194/195); EFFECTIVE-361 merged 2026-08-06 (#3487) re-prompting agents that only DESCRIBED a change instead of applying it; this session's own v1 fleet survey claimed 'publishing: nothing built' and was refuted by deeper almanac passes (DOC-084 record). THEORY: agent claims are structured text (commit subject, PR body, AC checkboxes) and almanac can ground each one in milliseconds — symbol exists at path:line, test file present in diff and executed, touched files actually in diff; ungrounded claims bounce like force-edit does, and bust-rate per model becomes a KPI. ALT: human review catches fluff — refuted by the 39x ship-count lie surviving weeks and the 0-byte README shipping to npm.
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-209
   domain: CREDIBLE
@@ -3260,6 +3262,7 @@ gaps:
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: chump gap list --status open | grep -E 'EFFECTIVE-354|CREDIBLE-200'  |  OUTPUT: two open P1 gaps say the same thing in the fleet's own words — EFFECTIVE-354 'cascade implement stubs real external bugs (no diagnosis, no source fix) — worker competence is the core can-chump-do-the-jobs blocker'; CREDIBLE-200 'cascade implement can ship a stub test (assert 1==1) with no source fix; organ only catches it on green CI'. Both describe the same undetected shape: a PR that is green and empty.  |  THEORY: nothing mechanically relates a PR's DIFF to the gap's stated TARGET. Almanac already computes exactly that relation — almanac_impact walks transitive importers, almanac_neighbors gives per-file import edges — so 'did this diff touch anything with a path to the thing the gap named' is a graph query the fleet already owns and never asks. A stub is cheap to write and currently costs a full CI round plus a human read to detect; making it fail before review inverts that economics.  |  ALT: considered relying on the judgment panel (CREDIBLE-191) — rejected as complementary, not a substitute: a panel is an LLM read that costs tokens and can be fooled by plausible prose, while this is a deterministic graph check that cannot be talked out of a verdict. Considered requiring a source-file change by file-extension heuristic (touched a non-test .rs) — rejected as too weak: it passes any unrelated source edit, and fails legitimately test-only fixes. The import-path relation is the honest version.
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-216
   domain: CREDIBLE
@@ -3589,6 +3592,7 @@ gaps:
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: ssh helsinki 'sudo cat /etc/nats/nats.conf'  |  OUTPUT: the file contents, including authorization{user: chump, password: <64-hex>} for both the main listener and leafnodes, were printed into a Claude Code session transcript on 2026-08-08 while auditing the box. File perms on disk are correct (600 root:root) — the exposure is entirely the transcript.  |  THEORY: same class as the tvly-dev key pasted earlier the same day. A credential that has appeared in a transcript, session export, or log must be treated as compromised regardless of how well-permissioned the file is, because transcripts persist in storage nobody audits. The password is shared between the main listener and the leafnode listener, so one rotation covers both — and every consumer that authenticates with it must be updated in the same pass or it goes silent, which in this fleet is indistinguishable from healthy (cf the curator dead 12 days).  |  ALT: considered treating it as low-risk because the bus is now firewalled and tailnet-only — rejected: shop rule 4 is revoke-before-publish and the fleet has a documented history of exactly this reasoning going wrong. Considered rotating it myself — refused: I do not handle credentials, and generating plus distributing this one is the operator's action.
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-237
   domain: CREDIBLE
@@ -4003,6 +4007,7 @@ gaps:
   outcome_id: MISSION-010
   evidence: |
     COMMAND: chump gap show on RESILIENT-262, RESILIENT-265, RESILIENT-266 after PR #3544 merged 2026-08-09T20:15:42Z | OUTPUT: all three report status: done with closed_pr: 3544. PR #3544 is RESILIENT-263 (outbound Discord DM + chunking) and did NONE of their work — 262 is triage-vs-escalate, 265 is the approve/deny loop, 266 is the gateway daemon whose actual work is in PR #3551 and was still OPEN when they flipped. Two of the three had zero commits of any kind | THEORY: unconfirmed. auto-flip-on-merge.yml extracts a SINGLE gap id from the PR TITLE, and that title named only RESILIENT-263, so the title path alone does not explain it. The three closed gaps are all referenced in RESILIENT-263 ACs and in the #3544 body under a LINK line, so a body scan or an AC-link cascade in chump gap ship are the leading suspects — NEITHER IS PROVEN. Do not fix on this theory without confirming it | ALT: rejected the fleet did the work — RESILIENT-265 and 262 have no branch, no PR and no commits; RESILIENT-266 has real work but it lives in PR #3551, which was open at the time and is still not merged
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-269
   domain: CREDIBLE
@@ -4136,6 +4141,7 @@ gaps:
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: incidental discovery across one session 2026-08-09, not a search | OUTPUT: four instruments were silently not doing their job, each found only because something else was being worked on. (1) mold was apt-installed by INFRA-2242 and never wired to RUSTFLAGS — a fast linker sitting unused for weeks, found while reading a CI failure. (2) operator-recall has sat enabled=true in ~/.chump/operator-recall.toml with ZERO processes since 2026-05-08 against a stale pidfile — three months dead, found while looking for an escalation channel. (3) CI gates pinned to src/main.rs paths silently passed VACUOUSLY after a refactor moved the code (CREDIBLE-237). (4) the 15-slot provider cascade logs provider_ms but never which slot answered (CREDIBLE-266), found by asking a simple question about model usage | THEORY: every one of these is a ZERO-DEFECT state by any process metric — nothing fails, nothing alarms, CI is green. The fleet has no detector for the class "an instrument that stopped reporting", so discovery is entirely incidental | ALT: rejected "first-pass-yield or CI metrics would catch these" — CREDIBLE-273 measures rework and by construction can only see things that FAIL. All four were invisible to it, and that limitation is written into that script own header
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-275
   domain: CREDIBLE
@@ -4278,6 +4284,7 @@ gaps:
   outcome_id: MISSION-010
   evidence: |
     COMMAND: scripts/ops/false-done-sweep.py --multi-close-only ; chump gap audit-done ; sed -n '90,95p' src/done_auditor.rs ; grep -n 'ORDER BY id' crates/chump-gap-store/src/lib.rs  |  OUTPUT: (1) Of 239 done gaps closed by the 47 PRs that each closed 3+ gaps, 79 were closed by SIX PRs whose diffs contain NO implementation file at all — only docs/gaps/*.yaml, docs/audits/RED_LETTER.md, docs/ROADMAP.md, docs/archive/*. Priority split 3 P0 / 23 P1 / 52 P2 / 1 P3. This is set membership, not a heuristic: PR #3199 closed CREDIBLE-151, RESILIENT-151 and RESILIENT-172 while touching exactly one file, docs/gaps/CREDIBLE-151.yaml. PR #3165 closed 18 gaps touching 4 bookkeeping files. Spot check of CREDIBLE-151 (scoreboard must verify build SHA is ancestor-of-origin/main): the only commit ever touching auto-deploy in scripts/dev/mission-scoreboard.sh is #3038, which PREDATES the closing PR. (2) chump gap audit-done exists for exactly this job (INFRA-3495) but reports '88 audited, 20 flagged' out of 1,608 done-with-PR gaps, because GapStore::list is 'ORDER BY id' and done_auditor::audit does .take(limit) with limit=100 hardcoded at src/main.rs:10706. It re-audits the same COG/CREDIBLE-0xx prefix on every run and has NEVER examined 1,520 gaps (94.5%). Nothing schedules it — no cron, no launchd, no CI reference.  |  THEORY: the closing mechanism is auto-flip-on-merge marking done every gap a PR merely CITES (CREDIBLE-268, open P0). A registry-bookkeeping PR that mentions many gap IDs therefore closes all of them. What is PROVEN here is that the closed_pr attribution is false — the receipt points at a diff that does not contain the work; whether each gap's work landed in some other PR needs the per-gap check. Either way the registry cannot answer 'where did this ship', which is the one question a closed_pr exists to answer. audit-done cannot find these because it scores acceptance-bullet coverage, and chump gap reserve auto-generates boilerplate AC ('The change described by <title> is implemented in the relevant code path(s)') that no diff can meaningfully cover or fail.  |  ALT: considered path-overlap between the gap's named files and the PR's diff as the detector — MEASURED AND REJECTED as the primary signal: it does not catch CREDIBLE-175, the case that motivated the whole sweep, because that gap's text names the exact files its false-closing PR touched. Kept as a lower-confidence SUSPECT tier (70 more) with the false-negative rate documented in the script. Considered widening audit-done's limit from 100 — insufficient on its own: order it by closed_at and make it resumable, or it will still only ever see one end of the alphabet.
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-280
   domain: CREDIBLE
@@ -4304,6 +4311,7 @@ gaps:
   outcome_id: CREDIBLE-000
   evidence: |
     COMMAND: chump gap reserve --help + sqlite3 .chump/state.db SELECT acceptance_criteria FROM gaps. OUTPUT: reserve has NO --acceptance-criteria flag; every reserved gap gets the tautological placeholder AC The change described by [title] is implemented in the relevant code paths. THEORY: the done-definition (WHAT done means) is intent and does NOT rot; only the decomposition (HOW / which files) ages. Deferring the done-definition to claim-time chump gap decompose (an LLM call) removes the external anchor - the same model family writes the AC, does the work, and the AC-gate judges the work against that self-authored AC, a closed loop grading its own homework. Structural driver of the unverified_ship class (37 of 70 cycles on CJ 2026-08-17). audit-ac already flags weak AC but reserve keeps minting placeholders. ALT rejected: keep placeholder + claim-time decompose (the current failure); pre-file sub-gaps at file time (those rot - why two-phase exists). Fix separates them: author WHAT at file time, generate HOW at claim time.
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-285
   domain: CREDIBLE
@@ -4330,6 +4338,7 @@ gaps:
     - "The change described by \"the claim bad-GAP-ID CLI test (fast-checks CREDIBLE-018) hits the farmer-RED refusal BEFORE gap-ID format validation, so a transient farmer-RED fails fast-checks -> test -> fast-checks-required -> verified on EVERY code PR and jams the whole merge pipeline. Fix: validate gap-ID format before the farmer-status gate (or make the test robust to farmer-RED). Env-race false-red gate site.\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: CREDIBLE-293
   domain: CREDIBLE
@@ -7664,6 +7673,7 @@ gaps:
     - "Test scripts/ci/test-yaml-orphan-prune-state-aware.sh: state.db row X-NNN exists, X-NNN.yaml exists → daemon does NOT delete. state.db row absent, YAML present → daemon deletes WITH the audit emit."
     - "Doctrine cross-ref: CASE STUDY referenced in docs/process/DURABLE_FIX_DOCTRINE.md (CREDIBLE-105) — the 2026-06-05 RESILIENT-110 ship attempt was forced into a YAML-rewrite cycle by this bug"
   outcome_id: EFFECTIVE-000
+  opened_date: '2026-07-26'
 
 - id: EFFECTIVE-220
   domain: EFFECTIVE
@@ -8408,6 +8418,7 @@ gaps:
   outcome_id: EFFECTIVE-000
   evidence: |
     2026-06-22 BEAST run: improve picked the top scan gap (ML-pipeline path fix), DEDUP correctly found an open PR (#4) already covers it, then EXITED — it did NOT advance to the next-ranked undone gap. For sustained unattended autonomy (MISSION-010), a single improve invocation must iterate: when the top gap is dedup-skipped (done or in-flight), advance to the next implementable gap and land a real PR. AC: pick stage loops through doctrine-ordered gaps until it finds one that passes dedup, implements THAT; add a bounded max-skips. Test: a scan whose top gap is covered by an open PR → improve implements the next undone gap, not exit. Pairs with the stale-scan problem (onboard refresh) — together they're what gate sustained autonomy.
+  opened_date: '2026-07-19'
 
 - id: EFFECTIVE-290
   domain: EFFECTIVE
@@ -9409,6 +9420,7 @@ gaps:
     - After intake produces requirements, a design pass emits a UI/brand/interaction spec so the shipped artifact is USABLE not just functional
     - "Proven: for a product gap the design chair emits an interaction+visual spec the implement stage consumes; the shipped artifact has coherent UI, not a raw CLI dump"
   outcome_id: COTG
+  opened_date: '2026-08-19'
 
 - id: EFFECTIVE-359
   domain: EFFECTIVE
@@ -9499,6 +9511,7 @@ gaps:
     - "Proven: a merged product gap yields a live URL / installable / delivered artifact the operator can actually use, not just a green PR"
   depends_on: [EFFECTIVE-363]
   outcome_id: COTG
+  opened_date: '2026-08-19'
 
 - id: EFFECTIVE-365
   domain: EFFECTIVE
@@ -9514,6 +9527,7 @@ gaps:
   notes: |
     2026-08-05 v2 survey (hardened, multi-pass): primary prior art is richer than first found — postsub (SubstackIntegrationService 449 LOC, ContentScheduler, rssGenerator, templateService: the Substack/newsletter lane nearly whole), echeovid SmartPublishingHub (433 LOC), jarvis skills/video-creation (recordDemo + per-product templates incl. recordOliveDemo — demo video/screenshot artifacts, already pointed at olive). beast-mode launch scripts remain secondary. All claimed capability: real code by line count, integrations unverified (Substack has no official API).
   outcome_id: COTG
+  opened_date: '2026-08-19'
 
 - id: EFFECTIVE-366
   domain: EFFECTIVE
@@ -9616,6 +9630,7 @@ gaps:
     - Scope the preflight BLOCKING gate (src/preflight.rs, currently 'cargo check --workspace' ~line 1081) to 'cargo check -p <changed-crate>' + capped jobs (~6) + nice + load-aware-defer.
     - A test in src/preflight.rs proves the scoped gate runs the changed crate's check and skips the full workspace; fails without the change.
     - "NOTE: earlier auto-generated AC (EFFECTIVE-386 write-ac) hallucinated file paths (src/lib/gate.rs, src/tests/*) — those do NOT exist; real path is src/preflight.rs. Blocked on EFFECTIVE-388 (AC-writer repo grounding) for trustworthy auto-AC."
+  opened_date: '2026-08-19'
 
 - id: EFFECTIVE-373
   domain: EFFECTIVE
@@ -10602,6 +10617,7 @@ gaps:
     - "--apply is opt-in; bare invocation only prints the validated Roadmap JSON."
     - max_gaps clamped client-side (never trust model compliance).
   outcome_id: COTG
+  opened_date: '2026-08-19'
 
 - id: EFFECTIVE-426
   domain: EFFECTIVE
@@ -21675,6 +21691,7 @@ gaps:
     Pillar RESILIENT — embraces concurrent edits as a budgeted failure
     class rather than rationing the resource.
   outcome_id: MISSION-010
+  opened_date: '2026-05-22'
 
 - id: INFRA-1689
   domain: INFRA
@@ -22663,6 +22680,7 @@ gaps:
   acceptance_criteria:
     - chump fanout and chump rollup are moved out of src/main.rs into self-registering modules via the inventory pattern; main.rs no longer holds their command bodies; both run with identical output before/after; editing one no longer forces recompile of the other.
   outcome_id: MISSION-010
+  opened_date: '2026-05-23'
 
 - id: INFRA-1749
   domain: INFRA
@@ -23635,6 +23653,7 @@ gaps:
     Pillar: RESILIENT. Discovered during PR shepherd work — chump CLI hangs were the root cause of cascade pre-push hook hangs (every hook invokes chump preflight or chump --version). Blocks INFRA-1808 trust (auto-install can not be reliable if installer scripts call chump and chump hangs). Pairs with INFRA-1597/1645 (paramedic daemon broken — likely related r2d2 lock issue). Effort=m because bisect + lazy-init refactor is non-trivial.
     [2026-05-24T09:01:11Z] stuck cycle 1 → re-attempt 2026-05-24 (PR #2447 auto-closed) respawn-handled:2447
   outcome_id: MISSION-010
+  opened_date: '2026-07-26'
 
 - id: INFRA-1810
   domain: INFRA
@@ -28281,6 +28300,7 @@ gaps:
     - Pairs with — INFRA-1893 (original fix, partial — diagnosed gap), INFRA-1998 (Rust messaging absorption, sibling pattern), curator-opus-shepherd-generalist lane.
     - Done definition — chump gap reserve with valid gh auth + unset GH_TOKEN produces no operator-visible 401 warning + collision-detection against in-flight PRs works.
   outcome_id: MISSION-010
+  opened_date: '2026-07-26'
 
 - id: INFRA-2029
   domain: INFRA
@@ -29283,6 +29303,7 @@ gaps:
   notes: |
     Filed 2026-05-27 by curator-opus-shepherd after today's CI-rot saga: 4 independent wedges all surfacing post-push because preflight didn't mirror CI. Today's 4-PR cascade (#2672/#2674/#2677/#2678) would have been visible at commit time with parity coverage. ESTIMATED IMPACT: 80% reduction in 'PR fails CI' round-trips.
   outcome_id: MISSION-010
+  opened_date: '2026-05-27'
 
 - id: INFRA-2085
   domain: INFRA
@@ -30267,6 +30288,7 @@ gaps:
     - "4. Once green: trigger re-run on PR #2700 to confirm cargo-test gate passes with sccache R2 enabled"
     - 5. Document failure pattern in CLAUDE_GOTCHAS.md under 'Rust test flakes'
   outcome_id: MISSION-010
+  opened_date: '2026-07-26'
 
 - id: INFRA-2153
   domain: INFRA
@@ -32450,6 +32472,7 @@ gaps:
   notes: |
     [2026-05-30T08:26:20Z] Filed 2026-05-30T08:30Z by curator-opus-shepherd. Pattern-14 evidence: PR #2848 (INFRA-2068) fast-checks job 78635935578 step 'Install Rust toolchain' fails with: error: component 'rustc-codegen-cranelift' for target 'x86_64-unknown-linux-gnu' is unavailable for download for channel 'stable'. Confirmed cross-PR: same failure shape on PR #2844, #2838, #2837, #2819. This is the queue-wide wedge stalling tonight's full Rust ship batch (6+ ARMED PRs with FAIL=5-10 each blocked on this one step). Same incident class as today's earlier sccache R2 (cross-PR same failure → root-cause to one config line).
   outcome_id: MISSION-010
+  opened_date: '2026-07-26'
 
 - id: INFRA-2284
   domain: INFRA
@@ -35029,6 +35052,7 @@ gaps:
     - "[\"chump claim INFRA-X --paths foo.sh,bar.rs scans every currently-open PR (gh pr list --json files) for path overlap\",\"On any overlap with an open PR: refuse claim with clear message: [claim] paths overlap with open PR #N (gap INFRA-Y, paths: foo.sh). Options: (a) coordinate with #N author and merge into that PR, (b) wait for #N to land then rebase, (c) --allow-overlap to proceed anyway (audit-logged via kind=claim_path_overlap_allowed).\",\"Auto-detection of same-region work (not just same-file): when same file overlaps, run git diff to extract modified line-ranges; only flag as collision if the proposed claim would touch the same line-range. Single-file with disjoint line-ranges still allowed.\",\"Operator-mode: when CHUMP_CLAIM_PATH_OVERLAP_OPERATOR=1 (operator-only env, source-controlled), claim proceeds without check (operator may know they want to ship 2 PRs touching same file)\",\"Emit kind=claim_path_overlap_blocked (and recovered) to ambient.jsonl with {claimed_gap, blocking_pr, blocking_gap, overlapping_paths}\",\"Smoke test scripts/ci/test-claim-path-overlap.sh: mock 1 open PR with file [a.sh]; claim with --paths a.sh exits non-zero with redirect message; claim with --paths b.sh succeeds\",\"Today trigger 2026-06-02: INFRA-2343 (PR #2924, 37h old) and INFRA-2347 both fixed the same 3 printf"
     - "grep -q patterns in scripts/coord/trunk-sentinel-daemon.sh. Different gap IDs, different titles, same code. Bypassed every existing dedup gate.\",\"Filing-time companion follow-up (separate gap if scope grows): chump gap reserve also checks title-similarity against OPEN PR titles (not just other gaps). Catches the case where 2 authors independently file 2 gaps for the same problem.\"]"
   outcome_id: MISSION-010
+  opened_date: '2026-07-26'
 
 - id: INFRA-2435
   domain: INFRA
@@ -36010,6 +36034,7 @@ gaps:
   acceptance_criteria:
     - audit-required passes on all currently-open PRs; no open PR is blocked by an audit-required failure.
   outcome_id: MISSION-010
+  opened_date: '2026-07-26'
 
 - id: INFRA-2488
   domain: INFRA
@@ -38561,6 +38586,7 @@ gaps:
     - chump preflight exits 0 on a fresh worktree
     - main-preflight-watchdog emits main_preflight_recovered and closes this gap
   outcome_id: MISSION-010
+  opened_date: '2026-07-26'
 
 - id: INFRA-2642
   domain: INFRA
@@ -50446,6 +50472,7 @@ gaps:
     [2026-07-29T03:21:22Z] DISCOVERY NOT-STARTED -> BUILD. venture-go-no-go skill exists but unwired; wire it as the engine + gate ahead of bootstrap.
     [2026-08-19T13:52:04Z] Jeff 2026-08-19: pivot to factory-forward — go/no-go pairs with INFRA-3480 intake front door.
   outcome_id: COTG
+  opened_date: '2026-08-19'
 
 - id: INFRA-3482
   domain: INFRA
@@ -51891,6 +51918,7 @@ gaps:
     - "receipt 2026-08-19: closed #3919(INFRA-1784)/#3910(META-193) 03:14:1x, reopened by repairman29 at 03:14:4x (~25s); both DIRTY+P2 → un-retireable, re-jam"
   notes: |
     [2026-08-19T03:47:05Z] Relates stale-pr-reaper, pr-shepherd reopener, pr-auto-rebase (no content-conflict resolution). Hit while unjamming queue 2026-08-19.
+  opened_date: '2026-08-19'
 
 - id: INFRA-3606
   domain: INFRA
@@ -51918,6 +51946,7 @@ gaps:
     - "regression test (extend picker_priority_infra3616.rs): a P3 gap that a P0 depends_on is picked before unrelated P1/P2 gaps; no deadlock where a blocked P0 waits behind all P1s while its own P2 prereq sits unworked"
   notes: |
     [2026-08-19T13:15:24Z] Jeff 2026-08-19: if P2/P3 items required for something to ship in P0, they are also P0 work. Correct. Machinery exists (unblocks() = transitive dependents); wire it into effective priority. Immediate instance fixed by hand: CREDIBLE-266 P2->P1 (blocks RESILIENT-262/276).
+  opened_date: '2026-08-19'
 
 - id: INFRA-3614
   domain: INFRA
@@ -56285,6 +56314,7 @@ gaps:
   acceptance_criteria:
     - bot-merge.sh per-PR path is replaced by GitHub native merge_group; main branch protection routes merges through the merge queue; a batched set of PRs lands through the queue in a single CI run.
   outcome_id: MISSION-010
+  opened_date: '2026-07-26'
 
 - id: META-197
   domain: META
@@ -59160,6 +59190,7 @@ gaps:
   acceptance_criteria:
     - "`chump ingest <repo>` reads a repo's defined backlog (.beast-mode-tasks.json/beads/TODO) and creates one fleet gap per item, tagged to that repo; re-running is idempotent (no duplicates)."
   outcome_id: MISSION-032
+  opened_date: '2026-07-26'
 
 - id: MISSION-056
   domain: MISSION
@@ -62276,6 +62307,7 @@ gaps:
     - Required CI gate audit passes on a fresh PR against main containing this fix
     - "If the issue is the audit aggregator wrapper hiding failure details: file a follow-up gap to instrument all audit sub-test runners with consistent [PASS]/[FAIL] output (META-quality)"
   outcome_id: RESILIENT-000
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-045
   domain: RESILIENT
@@ -62517,6 +62549,7 @@ gaps:
     - operator-recall AUTH_DEAD fires on repeated oauth_token_refresh_failed or token-staleness, not only worker_exit storms
     - a regression test simulates an expired/invalid primary token (API key present) and asserts the fleet stays up via the floor AND an alarm fires (extends src/auth.rs tests + a scripts/ci/test-*.sh)
   outcome_id: RESILIENT-000
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-055
   domain: RESILIENT
@@ -62802,6 +62835,7 @@ gaps:
     - "chump preflight cargo-test step actually runs the test suite (no 'usage:' error); a green run shows real test counts"
     - a regression test asserts the wrapper is invoked with its required -- <cmd> args
   outcome_id: RESILIENT-000
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-073
   domain: RESILIENT
@@ -63002,6 +63036,7 @@ gaps:
     - RESILIENT-081 (pr-shepherd strict-awareness) is folded into / consistent with this shared path
     - the farmer (RESILIENT-076) audits loaded rebaser daemons vs the strict flag each tick and re-reconciles drift
   outcome_id: RESILIENT-000
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-084
   domain: RESILIENT
@@ -63089,6 +63124,7 @@ gaps:
     - "`chump fleet up/restart` no longer requires a tty (no 'fork failed: Device not configured')"
     - MISSION-010 unattended operation is possible (fleet survives + self-recovers a halt overnight, no human terminal)
   outcome_id: MISSION-010
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-088
   domain: RESILIENT
@@ -63848,6 +63884,7 @@ gaps:
     - "Validation: re-run audit-shard (1) on PR #3095 — passes. Re-run on a fresh PR — passes. Failing pattern in audit logs disappears"
     - "Doctrine cross-ref: CREDIBLE-105 — a test that fails for environmental reasons (seed drift) rather than the code under test wedges every PR. Same family as the wedged-on-cargo-test-OOM pattern from RESILIENT-110 attempts"
   outcome_id: RESILIENT-000
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-130
   domain: RESILIENT
@@ -64052,6 +64089,7 @@ gaps:
   acceptance_criteria:
     - "1. bot-merge heartbeat prints the ACTUAL current stage (push / pr-create / merge), never a stale prior label like 'cargo fmt'. 2. The push/pr-create stall is root-caused (candidate: pre-push hook, gh pr create GraphQL, force-with-lease) and either fixed or fail-fast with a clear error + tight budget — no silent 210s+ hang. 3. A clean doc-only branch ships through to PR-create + auto-merge-arm within stage budget on the first attempt."
   outcome_id: RESILIENT-000
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-141
   domain: RESILIENT
@@ -64180,6 +64218,7 @@ gaps:
     - The main checkout cannot silently drift >K commits behind origin/main (auto-reconcile or alert).
     - "Precedent: the 2026-06-15..20 outage required manually deploying ci-health-gate.sh + farmer.sh + auth-status.sh to the main checkout because the daemons ran stale code."
   outcome_id: RESILIENT-000
+  opened_date: '2026-07-19'
 
 - id: RESILIENT-150
   domain: RESILIENT
@@ -64629,6 +64668,7 @@ gaps:
     - de-scaled slots removed from chumpd-status.json workers array
   notes: |
     Promoted P0 2026-07-22: confirmed #1 yield ceiling (2 real ships/day at 2 workers); wedge-kill tax measured across two nights.
+  opened_date: '2026-07-26'
 
 - id: RESILIENT-180
   domain: RESILIENT
@@ -66056,6 +66096,7 @@ gaps:
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: inspection of operator-recall config/handler + the #3510 auto-close | OUTPUT: ~/.chump/operator-recall.toml exists and is enabled with channel type=terminal-notifier, but the handler is NOT RUNNING — pgrep -f operator-recall-handler returns 0 processes against a stale pidfile (2407, written May 8). Meanwhile pr-failure-auto-rescue (INFRA-3542) closed PR #3510 at 22:32 on 2026-08-08 after a single false-red check, destroying 23h of ready work, and the operator learned about it only by asking hours later | THEORY: the escalation channel is built, configured, and dead; and even alive it is terminal-notifier — a macOS desktop popup that only reaches the operator while he is sitting at that Mac | ALT: rejected 'no escalation machinery exists' — it does (INFRA-665 operator-recall, webpush-escalation, stuck-pr-filer, fleet-wedge-escalation). This is another built-not-wired instance, not a greenfield build
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-263
   domain: RESILIENT
@@ -66242,6 +66283,7 @@ gaps:
   outcome_id: FLEET-BUILD-SPEED
   evidence: |
     ~/.chump/chumpbar-helsinki.json: helsinki 2 workers, grind mode, last10=0/10, both grinding manufactured pillar-starved gaps (INFRA-2789 'MISSION-ZERO-WASTE: pillar starved', INFRA-2802 'MISSION-RESILIENT: pillar starved') — the exact junk-gap class CLAUDE.md Mission-Driver §2 warns against. Helsinki is online, NATS-coordinated, own filesystem (no shared-lock) = free 2nd shipping host, but failing everything.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-273
   domain: RESILIENT
@@ -66273,6 +66315,7 @@ gaps:
   outcome_id: CHUMPOS
   evidence: |
     2026-08-09 session: 4 incidents (shared-target disk bloat->deadlock, run-fleet gh-probe brittleness, integrator aborts-whole-batch-on-first-conflict, can't-ship-when-fleet-down) EACH required the operator to notice + route. Fixes were not hard; the SPOF was that nobody was on duty. 7 playbook docs exist (OPERATOR_PLAYBOOK, SHIP_ASSIST_PLAYBOOK, SHEPHERD_LOOP_PLAYBOOK, REALITY_CHECK, ROLLBACK_RUNBOOK...) + an incident-commander ROLE doc (.claude/agents/curator-opus-incident-commander.md) — but all inert: docs a human reads + a role definition, not a standing process. Detectors fire into ambient.jsonl and wait for the operator.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-275
   domain: RESILIENT
@@ -66311,6 +66354,7 @@ gaps:
   outcome_id: CHUMPOS
   evidence: |
     COMMAND: operator DM to the live Discord gateway asking what the fleet is up to, 2026-08-09T20:24:12Z, then read ~/.chump/logs/discord-gateway.err | OUTPUT: INFRA-185 phase timings request_id=d2c55a47-e749-4cd0-9923-67724e201513 compaction_ms=0 provider_ms=289417 tools_ms=53 other_ms=10 rounds=3 total_ms=289480. The stall is visible between two consecutive log lines: iter=2 called the LLM at 20:24:15.890999Z and the next event is at 20:29:01.378160Z — 4m45s inside ONE provider call. Tools took 53ms total, so the fleet lookup itself was fast | THEORY: there is no bounded timeout on the agent loop LLM call, so a slow or hung slot stalls the whole turn instead of failing over. Searched src/agent_loop/ for timeout and Duration::from_secs and found NONE; other subsystems do set them (src/memory_tool.rs:67/95/541 use 10s, src/telegram.rs:78 sets one). No CHUMP_*TIMEOUT* env var is set either | ALT: rejected the model was simply thinking — rounds=3 with tools_ms=53 means the work was trivial; and two earlier turns the same evening on the same gateway returned in provider_ms 309 and 503. Also rejected network-wide failure — the turn eventually COMPLETED, so the connection was alive the whole time
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-277
   domain: RESILIENT
@@ -66527,6 +66571,7 @@ gaps:
   notes: |
     [2026-08-19T20:20:31Z] RESILIENT-318/COTG. Installer is ROLE-BLIND today (would put pr-lander on Pixel data node). docs/strategy/DATA_HOME_PLAN.md
     [2026-08-19T20:29:24Z] Jeff 2026-08-19 do-all-we-can: bumped P1->P0 — the COTG role-aware installer is the foundation for tuning bring-up to tonights reality; get it worked next.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-322
   domain: RESILIENT
@@ -66541,6 +66586,7 @@ gaps:
   notes: |
     [2026-08-19T20:20:31Z] Code EXISTS (node-orchestrator.sh place()) but OFF. Tonight foreground-mv of 23G cargo=50-min outage; /tmp-quota broke builds. Highest-value COTG gap. storage-relocation-lesson.
     [2026-08-19T20:31:33Z] 2026-08-19: GRACEFUL CARGO AUTO-PLACEMENT ARMED + PROVEN — rsync+atomic-swap+validate tested on scratch (canary intact, zero disruption); AUTOPLACE=1 live on CJ (no-op, cargo already on USB; fires on future root>90%). REMAINING SLICE: extend place() to worktrees + auto-route TMPDIR on tmpfs pressure, + a real forced->90% integration test.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-323
   domain: RESILIENT
@@ -66554,6 +66600,7 @@ gaps:
     - "verified: a node runs for DAYS with cargo/target/logs on a bounded plateau (not monotonic growth); disk never approaches the reaper-emergency threshold on its own"
   notes: |
     [2026-08-19T20:36:17Z] Jeff 2026-08-19: they need to LEARN to reap/cut storage + optimize — is it in our DNA? Honest audit: REACTIVE reaping = deep DNA (22 reapers). FOOTPRINT-CAPPING = designed (ZERO-WASTE-053 cargo-sweep-gc, shared-target) but was on the shelf (not installed, cargo-sweep not even present) — now wired. LEARNING/adaptive optimization = NOT in the DNA. This gap adds the minimize+learn layer to the ZERO-WASTE domain.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-328
   domain: RESILIENT
@@ -66589,6 +66636,7 @@ gaps:
     - "The change described by \"detect + page when N>=3 open code PRs fail the IDENTICAL required check (shared broken gate) — distinct from main-health-watchdog (which only sees red MAIN). Tonight 14 PRs stacked on a farmer-flap false-red for hours with ZERO alarm; the board eyeballed it only after operator prodding. Detector = group open-PR failing-check names, alarm on any check failing >=3 PRs, name the shared check + suspected root cause.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-338
   domain: RESILIENT
@@ -66601,6 +66649,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   depends_on: [RESILIENT-328, RESILIENT-337, RESILIENT-339, RESILIENT-341]
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-339
   domain: RESILIENT
@@ -66612,6 +66661,7 @@ gaps:
     - "The change described by \"NEVER REALFAIL-close a PR that is failing ONLY a KNOWN shared/systemic-red gate (farmer-flap cascade, or the RESILIENT-337 >=3-PRs-same-check signal). Tonight PRs false-red on fast-checks/test/verified (not their own fault) were eligible for REALFAIL-close at 8h — closing good code. Before closing, cross-check: are the PRs failing checks the SAME ones failing fleet-wide? If yes = false-red, SKIP close, alert instead. Only close on a failure UNIQUE to this PR. COTG: guard ships in rot-reaper, verified by self-test.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-341
   domain: RESILIENT
@@ -66637,6 +66687,7 @@ gaps:
     - "The change described by \"rebuild+restart running organs when main moves. CJ organs were running a 3-day/114-commit-STALE binary (built 08-17, main today) — PROVEN missing tonights CREDIBLE-291 cure (farmer forced RED, stale binary still returned farmer-RED not the format error). chump-cj-sync only git-fetches, never rebuilds. This is merged!=running at NODE scale: every fix on main never reaches the organs that actually run. Organ: on main-move → pull → cargo build --release → atomic binary swap → restart organs → self-test. COTG: installs via housekeeping ORGANS table; self-test must verify binary FRESHNESS (commit vs origin/main), not just binary-linked.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-346
   domain: RESILIENT
@@ -66648,6 +66699,7 @@ gaps:
     - "The change described by \"it closed #3958(P0,5 commits) + #3963(P1,5 commits) as CONFLICTING, but both rebase CLEAN onto current main (transient jam conflict). Root cause: the armed-pr-rebaser (the SALVAGE organ that rebases CONFLICTING PRs before the reaper closes them) was DARK — not wired on owned nodes. Fixes: (1) WIRE armed-pr-rebaser as a COTG organ [done on CJ 2026-08-20] + fold into install-node-housekeeping.sh ORGANS; (2) rot-reaper GUARD — before closing a CONFLICTING PR, attempt a rebase onto main; only close if it genuinely does NOT resolve. Never discard 5 commits over a transient conflict. Merge-race causes the transient conflicts (main churns under PRs) so this compounds the jam waste.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-19'
 
 - id: RESILIENT-347
   domain: RESILIENT
@@ -66659,6 +66711,7 @@ gaps:
     - "The change described by \"per-node-applicable organ reconcile (end shipped-but-dark for good). The loop EXISTS (organ-watchdog + 29 tracked chump-*.service|.timer + install-helsinki-atc reconciler) + keystone host-rewrite landed (RESILIENT-353). REMAINING: reconciling the WHOLE helsinki roster onto CJ failed 4 units (integrator/sla-scorecard/backlog-sync-writer/farmer) that need more than a path-rewrite (binary/role/deps). Add: (1) each organ declares ROLE (brain|muscle|data) + REQUIRES (binary/dep/env) in the manifest; (2) reconciler installs ONLY organs applicable to THIS node + VERIFIES start, backing off (disable, dont churn) any that fail instead of the current install-all; (3) THEN wire organ-watchdog to run it. Until (1)-(2), do NOT enable organ-watchdog auto-reconcile (it re-installs the 4 failing units every cycle). This is the durable answer to \"agents that wire what is built\" — curated per-node, not blast-all.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-20'
 
 - id: RESILIENT-348
   domain: RESILIENT
@@ -66670,6 +66723,7 @@ gaps:
     - "The change described by \"refresh-runner-binary.sh hardcodes its build worktree to /tmp/chump-binary-refresh-$$, but git worktree add checks out the full 8425-file tree — on CJ /tmp is a 3.6G tmpfs (753M free) so it fails \"unable to write file / Could not reset index\", auto-deploy fails every cycle, binary froze >1h (MISSION-012 THE MULTIPLIER silently down; ③ scoreboard even showed FALSE ✅ because binary==deployed but both stale — see CREDIBLE-293). Immediate fix on CJ: CHUMP_BINARY_REFRESH_WORKTREE=/mnt/cjdata2/chump-refresh/wt drop-in (USB, 5.7G). DURABLE: refresh-runner-binary.sh must default the worktree to a roomy path (CHUMP_STATE_DIR-relative or auto-pick largest volume), NOT /tmp; + the auto-deploy installer sets it per-node. Same host-assumption disease as helsinki units. COTG.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-20'
 
 - id: RESILIENT-349
   domain: RESILIENT
@@ -66681,6 +66735,7 @@ gaps:
     - "The change described by \"pr-stuck-cluster-detector.sh (INFRA-1133, 6h chronic-stuck threshold) aggregates ambient stuck-EVENTS, but nothing EMITS them from live GitHub state, so it finds nothing while real PRs sit (today #4008 6h+3-fails, #4012 5h DIRTY-not-armed — OS did not notice). FIX (COTG, installer-wired, works OOTB): (1) a LIVE-scan emitter — periodically gh-pr-list open PRs, emit kind=pr_stuck for any open >6h that is failing / DIRTY-unsalvaged / green-armed-not-merging (age from createdAt); (2) pr-stuck-cluster-detector consumes it (wired on CJ 2026-08-20, scaffold); (3) duty-officer routes pr_stuck_cluster/chronic → T1 heal (re-arm / trigger armed-rebaser for DIRTY / requeue abandoned-red) or T2 runbook; (4) all in install-node-housekeeping.sh ORGANS so every node sees sitting PRs. This is the OS understanding its own GitHub PR plane (pairs with RESILIENT-338).\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-20'
 
 - id: RESILIENT-356
   domain: RESILIENT
@@ -67214,6 +67269,7 @@ gaps:
     - live signal preserved as ambient (shepherd/ci-audit still consume it) — only gap-accumulation stops
     - "context: ~35% of the backlog is auto-filed make-work with no off-ramp = root of unbounded growth blocking drain-to-complete"
   outcome_id: ZERO-WASTE-000
+  opened_date: '2026-07-26'
 
 - id: ZERO-WASTE-015
   domain: ZERO-WASTE
@@ -67808,6 +67864,7 @@ gaps:
     - "The change described by \"chump gap ship flips state.db status=done + closed_pr but does NOT write docs/gaps/<ID>.yaml (ZERO-WASTE-020 made gap ship --update-yaml a no-op, but the yaml is git-tracked + gap sync treats it canonical). So EVERY shipped gap leaves state.db==done / yaml==open drift → a SEPARATE per-gap reconcile PR (repairman29 bot, one full agent+CI+merge pipeline each) is filed just to sync the yaml. Over time that is ~half of all merges = pure motion, zero mission progress, huge token+CI waste. FIX (COTG, ships to every node via the binary+auto-deploy, works OOTB): make  write docs/gaps/<ID>.yaml ATOMICALLY (status: done, closed_pr: N) via format_gap_yaml() [crates/chump-gap-store/src/lib.rs:2893] in the SAME op, so the yaml change lands in the WORK PR itself and no reconcile is ever needed. Reconcile with ZERO-WASTE-020 (make yaml-write the default, or fully retire git-tracked yaml status). REGRESSION TEST REQUIRED:  updates BOTH state.db AND docs/gaps/<ID>.yaml in one op; assert no post-ship drift. Files: src/main.rs gap-ship handler (~2038), chump-gap-store format_gap_yaml. Critical hot path — needs the test, do not break shipping. Immediate stopgap done: bulk sync --push (#4018) batches the current drip.\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  opened_date: '2026-08-20'
 
 - id: ZERO-WASTE-060
   domain: ZERO-WASTE

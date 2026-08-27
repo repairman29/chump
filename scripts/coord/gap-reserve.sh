@@ -225,9 +225,11 @@ if [[ "$DOMAIN" == "META" ]]; then
     echo "[gap-reserve] INFO: emitted meta_filed alert to ambient.jsonl (META-044)" >&2
 fi
 
-# EVAL-086: stamp opened_date on new gaps so stall detection is expressible as
-# a registry query. The Rust path currently leaves opened_date=''; patch it here
-# under the same flock we already hold.
+# EVAL-086 / INFRA-1611: stamp opened_date on new gaps so stall detection is
+# expressible as a registry query. The Rust `chump gap reserve` path now sets
+# opened_date itself at insert time (INFRA-1611); this UPDATE is a guarded
+# no-op left as defense-in-depth for any caller that bypasses this wrapper's
+# flock-held `chump gap reserve` invocation.
 _db="$MAIN_REPO/.chump/state.db"
 if [[ -f "$_db" ]]; then
     _today="$(date -u +%Y-%m-%d)"
