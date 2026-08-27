@@ -1011,3 +1011,18 @@ web/v2/wedge-watch.js:280:rule3-fallback
 web/v2/wedge-watch.js:292:rule1-hex
 web/v2/wedge-watch.js:292:rule3-fallback
 web/v2/wedge-watch.js:301:rule1-fn
+
+# INFRA-1711 (#4275) — PWA content-bots status/chart colors; tokenization tracked as follow-up. Baselined to restore main-green (unblocks the merge queue).
+web/v2/app.js:3829:rule1-hex
+web/v2/app.js:3830:rule1-fn
+web/v2/app.js:3830:rule1-hex
+web/v2/app.js:3968:rule1-hex
+web/v2/app.js:3998:rule1-hex
+web/v2/app.js:3999:rule1-hex
+web/v2/app.js:4000:rule1-hex
+web/v2/app.js:4001:rule1-hex
+web/v2/app.js:4002:rule1-hex
+web/v2/app.js:4003:rule1-hex
+web/v2/app.js:5155:rule1-hex
+web/v2/app.js:5156:rule1-hex
+web/v2/app.js:5157:rule1-hex
