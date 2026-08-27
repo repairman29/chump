@@ -1518,9 +1518,17 @@ events:
 
   - kind: lease_overlap
     effect_metric: self
-    emitter: chump-coord
-    trigger: two sessions claim same files
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs::reserve_gap_claim_marker
+    emitter_paths: [crates/chump-atomic-claim/src/atomic_claim.rs]
+    trigger: a `chump claim` loses the atomic gap-claim marker race (INFRA-1608)
+      — `reserve_gap_claim_marker`'s `create_new` (O_EXCL) fails against a
+      live marker held by a different session, closing the TOCTOU window
+      between `check_gap_id_uniqueness`'s scan and the real lease-file write
     consumers: [fleet-brief]
+    fields_required: [ts, kind, gap_id, winner_session, loser_session, paths_attempted]
+    docs: |
+      Root cause + investigation: docs/audits/lease-collision-2026-05-17.md.
+      Regression test: scripts/ci/test-atomic-claim-collision.sh.
 
   - kind: fixture_commit_dropped
     effect_metric: self
