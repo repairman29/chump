@@ -1360,6 +1360,12 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         &ambient_log,
     );
 
+    // 6c-pre3. INFRA-1733: symlink the worktree's .chump/github_cache.db to
+    // the main checkout's copy instead of letting it start out empty. Each
+    // fresh worktree previously got a cold cache (0% hit rate) even though
+    // the main checkout's cache was warm.
+    nugget_prefetch::link_github_cache(&args.repo_root, &worktree_path);
+
     // 6c-pre2. INFRA-1730: orphan-branch auto-rename. By this point the
     // 5b stomp-check has already run (above) and would have bailed if an
     // OPEN PR covers this exact branch — so if the remote still has the
@@ -4792,6 +4798,57 @@ mod nugget_prefetch {
             eprintln!(
                 "[claim]   {:<12} {:<6} {:<40} {}",
                 kind, sim, title_trunc, body_trunc
+            );
+        }
+    }
+
+    /// INFRA-1733: link a freshly-created worktree's `.chump/github_cache.db`
+    /// to the main checkout's copy instead of leaving it to be initialized
+    /// empty. The cache is fed by a webhook receiver against the main
+    /// checkout only, so a worktree that doesn't share it starts every
+    /// session with a 0% hit rate.
+    ///
+    /// Creates a relative symlink `<worktree>/.chump/github_cache.db` ->
+    /// `../../.chump/github_cache.db` (relative to the worktree root, so it
+    /// keeps resolving even if the worktree base moves). Best-effort: any
+    /// failure is logged and swallowed so the claim proceeds regardless.
+    pub fn link_github_cache(repo_root: &Path, worktree_path: &Path) {
+        let main_cache = repo_root.join(".chump/github_cache.db");
+        let worktree_chump_dir = worktree_path.join(".chump");
+        let worktree_cache = worktree_chump_dir.join("github_cache.db");
+
+        if let Err(e) = std::fs::create_dir_all(&worktree_chump_dir) {
+            log::warn!(
+                "INFRA-1733: failed to create {} for github_cache.db linking: {}",
+                worktree_chump_dir.display(),
+                e
+            );
+            return;
+        }
+
+        if !main_cache.exists() {
+            log::warn!(
+                "INFRA-1733: main checkout has no {} — creating empty github_cache.db in worktree",
+                main_cache.display()
+            );
+            if let Err(e) = std::fs::File::create(&worktree_cache) {
+                log::warn!(
+                    "INFRA-1733: failed to create empty {}: {}",
+                    worktree_cache.display(),
+                    e
+                );
+            }
+            return;
+        }
+
+        // Relative target so the symlink survives the worktree base moving.
+        let relative_target = Path::new("../../.chump/github_cache.db");
+        if let Err(e) = std::os::unix::fs::symlink(relative_target, &worktree_cache) {
+            log::warn!(
+                "INFRA-1733: failed to symlink {} -> {}: {}",
+                worktree_cache.display(),
+                relative_target.display(),
+                e
             );
         }
     }
