@@ -1001,6 +1001,12 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // INFRA-1789: chump-preflight help-regression gate — golden-file diff
+        // on `chump gap rate --help` against
+        // crates/chump-preflight/tests/help-golden.txt. Catches silent CLI
+        // usage-string drift (INFRA-1246 / INFRA-1762 Tier C #3). Pure local,
+        // no network, ~1s.
+        "scripts/ci/test-help-regression.sh",
     ];
     candidates
         .iter()

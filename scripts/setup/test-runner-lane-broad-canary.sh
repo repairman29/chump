@@ -110,6 +110,11 @@ register_step "cargo-fmt"                           "cargo fmt --all -- --check"
 # (INFRA-1246) — catches INFRA-1561 chump --acp silent regression upfront.
 register_step "chump-help-regression"               "bash scripts/ci/check-help-discoverability.sh 2>/dev/null || bash scripts/ci/check-chump-help-coverage.sh 2>/dev/null || ./target/debug/chump --help >/dev/null"
 
+# INFRA-1789: golden-file diff on `chump gap rate --help` against
+# crates/chump-preflight/tests/help-golden.txt — catches silent CLI
+# usage-string drift (INFRA-1246 / INFRA-1762 Tier C #3).
+register_step "help-regression"                      "CHUMP_BIN=\$(command -v chump 2>/dev/null || echo ./target/debug/chump) bash scripts/ci/test-help-regression.sh"
+
 # Mirrors ci.yml fast-checks "gap-preflight AC gate" (INFRA-1259).
 register_step "gap-preflight-ac-gate"               "bash scripts/ci/test-gap-preflight-ac-gate.sh 2>/dev/null || true"
 

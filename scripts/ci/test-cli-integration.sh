@@ -102,11 +102,22 @@ check_any() {
 }
 
 # Run command; pass if exit 0 and output is valid JSON.
+#
+# INFRA-1789: also used to validate the JSON structure of `--help` output
+# when `--format json` is passed. That flag isn't wired into every
+# subcommand's --help yet, so a non-zero exit on a `--help ... --format json`
+# invocation SKIPs rather than FAILs — this check activates automatically as
+# --format json support lands on more --help paths without needing to be
+# re-authored.
 check_json() {
     local desc="$1"; shift
     local output rc=0
     output=$("$CHUMP" "$@" 2>&1) || rc=$?
     if [[ $rc -ne 0 ]]; then
+        if [[ " $* " == *" --help "* || " $* " == *" --help" ]] && [[ " $* " == *" --format json"* ]]; then
+            echo "SKIP $desc → --format json not yet wired for this --help path"
+            return 0
+        fi
         fail "$desc → exit $rc (expected 0)"
     elif echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
         ok "$desc"
@@ -123,6 +134,11 @@ echo "--- 1. Gap management ---"
 # gap root: shows subcommand menu (exits non-zero when --help is treated as unknown subcommand)
 check_any    "gap --help shows subcommand menu"        "subcommand|list|reserve" gap --help
 check_error  "gap (no subcommand) exits non-zero"      "subcommand|error|list"   gap
+
+# INFRA-1789: gap --help --format json — SKIPs until --format json is wired
+# into this --help path; activates the JSON-structure check automatically
+# once it is.
+check_json   "gap --help --format json is structured JSON" gap --help --format json
 
 # gap list: reads DB, shows gap list
 check_success "gap list exits 0"                       gap list

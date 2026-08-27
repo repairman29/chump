@@ -1,0 +1,1 @@
+Usage: chump gap rate <GAP-ID> <1-5> [--comment "text"] [--pr N]
