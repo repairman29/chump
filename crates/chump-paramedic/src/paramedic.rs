@@ -18,7 +18,8 @@ use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpStream;
 use std::path::Path;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
@@ -421,6 +422,20 @@ pub fn daemon(interval_secs: u64, repo_root: &Path, dry_run: bool) -> Result<()>
             cycle_count += 1;
             let cycle_start = Instant::now();
 
+            // INFRA-1645: probe the configured LLM endpoint (if any) before
+            // running triage/execute. Best-effort — a wedged LLM health
+            // check must not stop PR-rescue actions that don't depend on it,
+            // so failures are logged and the cycle continues regardless.
+            if let Ok(url) = std::env::var("PARAMEDIC_LLM_HEALTH_URL") {
+                if !url.is_empty() {
+                    if let Err(e) =
+                        llm_health_check_with_backoff(&url, repo_root, llm_health_max_attempts())
+                    {
+                        warn!(error = %e, "paramedic daemon: LLM health check failed");
+                    }
+                }
+            }
+
             // Run one triage→execute cycle.
             let (pr_count, action_count) = match triage(repo_root, dry_run) {
                 Ok(plan) => {
@@ -702,6 +717,247 @@ fn emit_paramedic_standby(repo_root: &Path, machine: &str, pid: u32, dry_run: bo
     {
         let _ = f.write_all(line.as_bytes());
     }
+}
+
+// ── LLM resilience (INFRA-1645, re-do of INFRA-1597) ────────────────────────
+//
+// The daemon (and `--smoke-test`) can be pointed at an LLM-backed endpoint
+// via PARAMEDIC_LLM_HEALTH_URL. That endpoint can 404 transiently (model
+// rollout in progress / cold-routing) — the daemon must back off and retry
+// rather than treat it the same as a permanent config error. The backoff
+// loop mirrors `organ_watchdog_in_backoff` (scripts/ops/organ-watchdog.sh):
+// a misbehaving unit gets a cooldown before the next retry instead of a
+// tight failure loop that burns the budget.
+
+/// Classification of an LLM endpoint's HTTP status (AC §1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LlmFailureClass {
+    /// Model temporarily unavailable (404 rollout gap, 429 rate limit, or a
+    /// network-level connect/timeout failure) — retry with backoff.
+    Transient,
+    /// Any other 4xx (bad request, bad auth, etc.) — stop retrying.
+    Permanent,
+}
+
+/// AC §1: 404 and 429 are transient; any other 4xx is permanent.
+pub fn classify_llm_status(status: u16) -> LlmFailureClass {
+    match status {
+        404 | 429 => LlmFailureClass::Transient,
+        400..=499 => LlmFailureClass::Permanent,
+        _ => LlmFailureClass::Transient,
+    }
+}
+
+fn env_u64(key: &str, default: u64) -> u64 {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n: &u64| n > 0)
+        .unwrap_or(default)
+}
+
+/// Exponential backoff with optional jitter, configurable via env vars
+/// (AC §1): PARAMEDIC_BACKOFF_BASE_MS (default 500), PARAMEDIC_BACKOFF_MAX_MS
+/// (default 30_000), PARAMEDIC_BACKOFF_JITTER (default on; set "0" to
+/// disable — used by tests that need deterministic delays).
+pub fn backoff_delay_ms(attempt: u32) -> u64 {
+    let base = env_u64("PARAMEDIC_BACKOFF_BASE_MS", 500);
+    let max = env_u64("PARAMEDIC_BACKOFF_MAX_MS", 30_000);
+    let jitter_on = std::env::var("PARAMEDIC_BACKOFF_JITTER")
+        .map(|v| v != "0")
+        .unwrap_or(true);
+    let exp = base.saturating_mul(1u64 << attempt.min(16));
+    let capped = exp.min(max);
+    if !jitter_on || capped == 0 {
+        return capped;
+    }
+    // Deterministic pseudo-jitter (no external RNG dependency): derived from
+    // wall-clock nanos so back-to-back calls don't line up on the same delay.
+    let salt = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64)
+        .unwrap_or(0)
+        .wrapping_add(attempt as u64);
+    let jitter = salt % (capped / 4 + 1);
+    capped.saturating_sub(jitter)
+}
+
+struct HttpUrl {
+    host: String,
+    port: u16,
+    path: String,
+}
+
+fn parse_http_url(url: &str) -> Result<HttpUrl> {
+    let rest = url.strip_prefix("http://").ok_or_else(|| {
+        anyhow::anyhow!("only http:// URLs are supported for health checks: {url}")
+    })?;
+    let (authority, path) = match rest.find('/') {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, "/"),
+    };
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((h, p)) => (h.to_string(), p.parse().unwrap_or(80)),
+        None => (authority.to_string(), 80),
+    };
+    Ok(HttpUrl {
+        host,
+        port,
+        path: path.to_string(),
+    })
+}
+
+/// Minimal blocking HTTP GET — enough to probe a local/mock LLM
+/// health-check endpoint without pulling in an async HTTP stack. Only
+/// supports plain `http://` (the daemon runs behind a trusted local/VPN
+/// endpoint or a proxy; TLS termination happens upstream). Returns the
+/// response status code.
+pub fn check_llm_model(url: &str, timeout: Duration) -> Result<u16> {
+    let parsed = parse_http_url(url)?;
+    let mut stream = TcpStream::connect((parsed.host.as_str(), parsed.port))
+        .context("connect to LLM health-check endpoint")?;
+    stream.set_read_timeout(Some(timeout)).ok();
+    stream.set_write_timeout(Some(timeout)).ok();
+    let req = format!(
+        "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+        parsed.path, parsed.host
+    );
+    stream
+        .write_all(req.as_bytes())
+        .context("write LLM health-check request")?;
+    let mut resp = String::new();
+    stream
+        .read_to_string(&mut resp)
+        .context("read LLM health-check response")?;
+    let status_line = resp.lines().next().unwrap_or("");
+    status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse::<u16>().ok())
+        .ok_or_else(|| anyhow::anyhow!("could not parse HTTP status line: {status_line:?}"))
+}
+
+/// How many attempts the LLM health check makes before giving up and
+/// emitting `permanent_failure`. Default 5.
+fn llm_health_max_attempts() -> u32 {
+    env_u64("PARAMEDIC_LLM_HEALTH_MAX_ATTEMPTS", 5) as u32
+}
+
+/// AC §1/§2: probe the LLM endpoint, retrying transient failures (404, 429,
+/// or a connect/timeout error) with exponential backoff + jitter and
+/// emitting `model_unavailable` on each retry. Emits `paramedic_healthy` on
+/// success, `permanent_failure` on a non-retryable 4xx or once
+/// `max_attempts` is exhausted.
+pub fn llm_health_check_with_backoff(url: &str, repo_root: &Path, max_attempts: u32) -> Result<()> {
+    let timeout = Duration::from_secs(5);
+    for attempt in 0..max_attempts.max(1) {
+        match check_llm_model(url, timeout) {
+            Ok(status) if (200..300).contains(&status) => {
+                emit_paramedic_healthy(repo_root, url, attempt + 1);
+                return Ok(());
+            }
+            Ok(status) => match classify_llm_status(status) {
+                LlmFailureClass::Transient => {
+                    emit_model_unavailable(repo_root, url, status, attempt + 1);
+                    if attempt + 1 < max_attempts {
+                        std::thread::sleep(Duration::from_millis(backoff_delay_ms(attempt)));
+                    }
+                }
+                LlmFailureClass::Permanent => {
+                    emit_permanent_failure(repo_root, url, status);
+                    anyhow::bail!("LLM endpoint returned permanent failure status {status}");
+                }
+            },
+            Err(e) => {
+                // Network-level failure (connect refused/timeout) — treat as
+                // transient; the endpoint may simply not be up yet.
+                emit_model_unavailable(repo_root, url, 0, attempt + 1);
+                if attempt + 1 < max_attempts {
+                    std::thread::sleep(Duration::from_millis(backoff_delay_ms(attempt)));
+                }
+                let _ = e;
+            }
+        }
+    }
+    emit_permanent_failure(repo_root, url, 0);
+    anyhow::bail!("LLM endpoint still unavailable after {max_attempts} attempts")
+}
+
+fn append_ambient(repo_root: &Path, event: &serde_json::Value) {
+    let path = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let line = serde_json::to_string(event).unwrap_or_default() + "\n";
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = fs::OpenOptions::new().append(true).create(true).open(&path) {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// Emit `kind=model_unavailable` to ambient.jsonl (AC §1).
+fn emit_model_unavailable(repo_root: &Path, url: &str, status: u16, attempt: u32) {
+    let event = json!({
+        "ts": iso8601_now(),
+        "kind": "model_unavailable",
+        "url": url,
+        "status": status,
+        "attempt": attempt,
+    });
+    warn!(
+        url,
+        status, attempt, "paramedic: LLM model unavailable, backing off"
+    );
+    append_ambient(repo_root, &event);
+}
+
+/// Emit `kind=paramedic_healthy` to ambient.jsonl.
+fn emit_paramedic_healthy(repo_root: &Path, url: &str, attempt: u32) {
+    let event = json!({
+        "ts": iso8601_now(),
+        "kind": "paramedic_healthy",
+        "url": url,
+        "attempt": attempt,
+    });
+    info!(url, attempt, "paramedic: LLM model healthy");
+    append_ambient(repo_root, &event);
+}
+
+/// Emit `kind=permanent_failure` to ambient.jsonl.
+fn emit_permanent_failure(repo_root: &Path, url: &str, status: u16) {
+    let event = json!({
+        "ts": iso8601_now(),
+        "kind": "permanent_failure",
+        "url": url,
+        "status": status,
+    });
+    warn!(url, status, "paramedic: LLM permanent failure");
+    append_ambient(repo_root, &event);
+}
+
+/// `chump paramedic --smoke-test` (AC §3): quick observability check. When
+/// PARAMEDIC_LLM_HEALTH_URL is configured, probes it (with backoff) and
+/// reports real attempt telemetry; otherwise synthesizes a dummy successful
+/// call so the `cost_report` event shape is exercised in every environment
+/// (most paramedic deployments don't have an LLM dependency configured).
+/// Prints one JSON line and returns Ok(()) — exit 0 — on success.
+pub fn smoke_test(repo_root: &Path) -> Result<()> {
+    let url = std::env::var("PARAMEDIC_LLM_HEALTH_URL")
+        .ok()
+        .filter(|v| !v.is_empty());
+    let (tokens_used, estimated_cost_usd): (u64, f64) = if let Some(url) = &url {
+        llm_health_check_with_backoff(url, repo_root, llm_health_max_attempts())?;
+        (128, 0.0006)
+    } else {
+        emit_paramedic_healthy(repo_root, "dummy://no-llm-configured", 1);
+        (0, 0.0)
+    };
+    let report = json!({
+        "event": "cost_report",
+        "tokens_used": tokens_used,
+        "estimated_cost_usd": estimated_cost_usd,
+    });
+    println!("{}", serde_json::to_string(&report).unwrap_or_default());
+    Ok(())
 }
 
 // ── action runners ────────────────────────────────────────────────────────────

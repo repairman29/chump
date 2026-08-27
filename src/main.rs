@@ -5385,6 +5385,17 @@ async fn main() -> Result<()> {
         let repo_root = repo_path::repo_root();
         let dry_run = args.iter().any(|a| a == "--dry-run");
 
+        // INFRA-1645: `chump paramedic --smoke-test` — quick observability
+        // check independent of subcommand, exits 0 and prints a
+        // kind=cost_report JSON line on success.
+        if args.iter().any(|a| a == "--smoke-test") {
+            if let Err(e) = paramedic::smoke_test(&repo_root) {
+                eprintln!("chump paramedic --smoke-test: {e}");
+                std::process::exit(1);
+            }
+            return Ok(());
+        }
+
         if subcmd == "help" || args.iter().any(|a| a == "--help") {
             println!("Usage: chump paramedic <subcommand> [options]");
             println!();
@@ -5400,6 +5411,8 @@ async fn main() -> Result<()> {
             println!("  --interval-secs N    Daemon loop interval in seconds (default: 600).");
             println!("  --budget-secs N      Per-PR action budget in seconds (default: 90).");
             println!("  --plan F             Path to JSON plan file (execute only).");
+            println!("  --smoke-test         Quick observability check; prints a cost_report");
+            println!("                       JSON line and exits 0.");
             println!();
             println!("Examples:");
             println!("  chump paramedic triage");
