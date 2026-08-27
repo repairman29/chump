@@ -19,6 +19,7 @@ pub mod consensus;
 pub mod consensus_ask;
 pub mod consensus_tally;
 pub mod contract_scan;
+pub mod cos_digest;
 pub mod demo;
 pub mod dispatch_authoring;
 pub mod dispatch_external;

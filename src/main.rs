@@ -2319,6 +2319,16 @@ async fn main() -> Result<()> {
         std::process::exit(commands::consensus_ask::run(&sub_args));
     }
 
+    // `chump cos digest [--week] [--since YYYY-MM-DD] [--json]` (INFRA-1616,
+    // per docs/strategy/MISSION_YIELD.md + docs/process/COS_OPERATING_MODEL.md) —
+    // operator weekly digest: Mission Yield (minimal; CREDIBLE-071 owns full
+    // computation) + Curriculum (skill-health movement: top-by-yield, moved,
+    // new, decaying, anomalies).
+    if args.get(1).map(String::as_str) == Some("cos") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::cos_digest::run(&sub_args));
+    }
+
     // `chump voice --wedge-class <id> --minutes-lost <int> ...` (INFRA-2258) —
     // file a Voice-of-Agent (VOA) report: writes docs/gaps/VOA-NNNN.yaml +
     // docs/voice/VOA-NNNN-FULL.yaml and emits kind=voice_of_agent_filed.

@@ -290,6 +290,27 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_skills_category ON chump_skills(category);
         CREATE INDEX IF NOT EXISTS idx_skills_last_used ON chump_skills(last_used_at DESC);
+        -- INFRA-1616: per-skill Mission-Yield chip counts (populated by the
+        -- INFRA-1614 pr_chip_tagged.skills_invoked correlation once it lands;
+        -- reads as all-zero yield_weight until then, which is correct — no
+        -- fake numbers).
+        CREATE TABLE IF NOT EXISTS chump_skill_yield_count (
+            skill_name TEXT PRIMARY KEY,
+            marcus INTEGER NOT NULL DEFAULT 0,
+            fleet_quality INTEGER NOT NULL DEFAULT 0,
+            dev_tool INTEGER NOT NULL DEFAULT 0,
+            noise INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        -- INFRA-1616: weekly Wilson-midpoint snapshot per skill, used by
+        -- chump cos digest to detect skills that moved (delta over 0.15)
+        -- week over week.
+        CREATE TABLE IF NOT EXISTS chump_skill_wilson_snapshot (
+            skill_name TEXT NOT NULL,
+            week_start TEXT NOT NULL,
+            wilson_point REAL NOT NULL,
+            PRIMARY KEY (skill_name, week_start)
+        );
         -- Fleet coordination (Phase 3.1 of Hermes roadmap): peer registry + dispatch log.
         CREATE TABLE IF NOT EXISTS chump_fleet_peers (
             peer_id TEXT PRIMARY KEY,
