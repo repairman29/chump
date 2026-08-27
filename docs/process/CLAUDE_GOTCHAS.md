@@ -453,6 +453,8 @@ Emits one `kind=rust_first_bypass_audit` per violating file with `{path, violati
 
 Test: `scripts/ci/test-rust-first-bypass-gate.sh` covers (a) clean glue accepted, (b) narrative-only on a bad daemon rejected, (c) full-ack on the same daemon accepted, (d) partial-ack still rejected.
 
+**MODIFIED-file audit mode (INFRA-1651, re-do of INFRA-1580):** everything above only ever looks at NEW files (`git diff --cached --diff-filter=A`). An existing, already-Rust-first-clean shell file can cross the same thresholds via a plain EDIT (grows past 200 LOC, gains a state-mutating line) and the ADD-only gate never sees it. `pre-commit-rust-first.sh` now separately scans `--diff-filter=M` files in the same hot-path dirs and emits `kind=rust_first_modified_audit` (`{files, reasons}`) when a MODIFIED file meets the criteria — **audit-only, it never blocks the commit**, mirroring the warn-only default the NEW-file gate already runs under (INFRA-2522). Use this signal to prioritize port-to-Rust candidates that drifted in after their initial commit, not as an enforcement surface. Test coverage: `scripts/ci/test-rust-first-gate.sh` tests 11-12 (threshold-crossing MODIFIED file inside a hot-path dir emits the audit event; a MODIFIED file outside hot-path dirs emits nothing).
+
 ## Dispatched-subagent backend (COG-025, 2026-04-19)
 
 If you wake up inside a `chump-orchestrator`-dispatched worktree, you may be

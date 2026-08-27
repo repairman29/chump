@@ -2224,6 +2224,181 @@ fn iso_date_n_days_ago(n: u64) -> String {
     }
 }
 
+/// INFRA-1712 (INFRA-1699 slice 4/4): content-bot run outcome + cost-tally
+/// path. `record_content_bot_outcome` is the single entry point every content
+/// bot invocation calls on completion — it emits exactly one outcome event
+/// plus one `content_bot.cost_report` event so the PWA's per-bot cost/failure
+/// display and the `--content-bot-smoke` CLI test have one source of truth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContentBotOutcome {
+    Completed,
+    Failed,
+    TimedOut,
+}
+
+impl ContentBotOutcome {
+    fn event_kind(self) -> &'static str {
+        match self {
+            // scanner-anchor: "kind":"content_bot_run.completed"
+            ContentBotOutcome::Completed => "content_bot_run.completed",
+            // scanner-anchor: "kind":"content_bot_run.failed"
+            ContentBotOutcome::Failed => "content_bot_run.failed",
+            // scanner-anchor: "kind":"content_bot_run.timed_out"
+            ContentBotOutcome::TimedOut => "content_bot_run.timed_out",
+        }
+    }
+}
+
+/// Whether a failed/timed-out content-bot run is worth retrying automatically
+/// (`Transient` — e.g. LLM rate limit, network blip) or needs operator/config
+/// attention before a retry can succeed (`Permanent` — e.g. claude-cli missing,
+/// malformed bot manifest).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureClass {
+    Transient,
+    Permanent,
+}
+
+impl FailureClass {
+    fn as_str(self) -> &'static str {
+        match self {
+            FailureClass::Transient => "transient",
+            FailureClass::Permanent => "permanent",
+        }
+    }
+}
+
+/// One content-bot invocation's outcome, as reported by the dispatcher
+/// (`scripts/content-bots/run-bot.sh`) to the cost-tally path.
+pub struct ContentBotRunResult {
+    pub bot_id: String,
+    /// Unique id for this tally record (e.g. `run_id` from `content_bot_invoked`).
+    /// Lets the PWA join a cost-report row back to its originating run.
+    pub tally_id: String,
+    pub outcome: ContentBotOutcome,
+    /// Required (by convention) for `Failed`/`TimedOut`; ignored for `Completed`.
+    pub failure_class: Option<FailureClass>,
+    /// Estimate of wall-clock cost in milliseconds, used to render the PWA's
+    /// per-bot daily cost estimate before the pipeline actually runs.
+    pub estimated_cost_ms: u64,
+    /// Minimum observed cost floor in milliseconds for this bot_id — lets the
+    /// PWA flag an estimate that's implausibly below what the bot has ever
+    /// actually cost.
+    pub cost_floor_ms: u64,
+}
+
+fn append_ambient_event(repo_root: &Path, event: &serde_json::Value) {
+    let path = repo_root.join(".chump-locks").join("ambient.jsonl");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = writeln!(f, "{}", event);
+    }
+}
+
+/// Record a single content-bot run outcome. Emits exactly one of
+/// `content_bot_run.completed` / `content_bot_run.failed` /
+/// `content_bot_run.timed_out` (AC #1), followed by one
+/// `content_bot.cost_report` carrying `bot_id`, `estimated_cost_ms`,
+/// `cost_floor_ms`, and `tally_id` (AC #2). Best-effort — silently no-ops if
+/// `.chump-locks/ambient.jsonl` isn't writable, matching `emit_ambient` above.
+pub fn record_content_bot_outcome(repo_root: &Path, result: &ContentBotRunResult) {
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+
+    let mut outcome_event = serde_json::json!({
+        "ts": ts,
+        "kind": result.outcome.event_kind(),
+        "bot_id": result.bot_id,
+        "tally_id": result.tally_id,
+    });
+    if let Some(fc) = result.failure_class {
+        outcome_event["failure_class"] = serde_json::json!(fc.as_str());
+    }
+    append_ambient_event(repo_root, &outcome_event);
+
+    let cost_report_event = serde_json::json!({
+        // scanner-anchor: "kind":"content_bot.cost_report"
+        "ts": ts,
+        "kind": "content_bot.cost_report",
+        "bot_id": result.bot_id,
+        "estimated_cost_ms": result.estimated_cost_ms,
+        "cost_floor_ms": result.cost_floor_ms,
+        "tally_id": result.tally_id,
+    });
+    append_ambient_event(repo_root, &cost_report_event);
+}
+
+#[cfg(test)]
+mod content_bot_outcome_tests {
+    use super::*;
+
+    fn read_events(repo_root: &Path) -> Vec<serde_json::Value> {
+        let content = std::fs::read_to_string(repo_root.join(".chump-locks").join("ambient.jsonl"))
+            .unwrap_or_default();
+        content
+            .lines()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect()
+    }
+
+    #[test]
+    fn completed_run_emits_completed_and_cost_report_only() {
+        let tmp = std::env::temp_dir().join(format!(
+            "chump-content-bot-outcome-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(tmp.join(".chump-locks")).unwrap();
+        record_content_bot_outcome(
+            &tmp,
+            &ContentBotRunResult {
+                bot_id: "pmm".to_string(),
+                tally_id: "t1".to_string(),
+                outcome: ContentBotOutcome::Completed,
+                failure_class: None,
+                estimated_cost_ms: 1200,
+                cost_floor_ms: 800,
+            },
+        );
+        let events = read_events(&tmp);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["kind"], "content_bot_run.completed");
+        assert!(events[0].get("failure_class").is_none());
+        assert_eq!(events[1]["kind"], "content_bot.cost_report");
+        assert_eq!(events[1]["bot_id"], "pmm");
+        assert_eq!(events[1]["estimated_cost_ms"], 1200);
+        assert_eq!(events[1]["cost_floor_ms"], 800);
+        assert_eq!(events[1]["tally_id"], "t1");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn timed_out_permanent_run_carries_failure_class() {
+        let tmp = std::env::temp_dir().join(format!(
+            "chump-content-bot-outcome-test-timeout-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(tmp.join(".chump-locks")).unwrap();
+        record_content_bot_outcome(
+            &tmp,
+            &ContentBotRunResult {
+                bot_id: "docubot".to_string(),
+                tally_id: "t2".to_string(),
+                outcome: ContentBotOutcome::TimedOut,
+                failure_class: Some(FailureClass::Permanent),
+                estimated_cost_ms: 5000,
+                cost_floor_ms: 800,
+            },
+        );
+        let events = read_events(&tmp);
+        assert_eq!(events[0]["kind"], "content_bot_run.timed_out");
+        assert_eq!(events[0]["failure_class"], "permanent");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+}
+
 #[cfg(test)]
 mod close_reason_tests {
     use super::*;

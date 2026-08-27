@@ -5095,9 +5095,56 @@ async fn main() -> Result<()> {
     // lease_overlap, edit_burst) and prints a per-kind tally with rough
     // cost estimates where measurable. No new event emissions in MVP.
     if args.get(1).map(String::as_str) == Some("waste-tally") {
+        // INFRA-1712 (INFRA-1699 slice 4/4): content-bot cost-tally smoke path.
+        // Records 3 synthetic outcomes (completed / failed-transient /
+        // timed_out-permanent) via record_content_bot_outcome so
+        // scripts/ci/test-pwa-cost-ceiling.sh has a real invocation to assert
+        // content_bot.cost_report + permanent-failure-class events against.
+        if args.iter().any(|a| a == "--content-bot-smoke") {
+            let repo_root = repo_path::repo_root();
+            let samples = [
+                (
+                    waste_tally::ContentBotOutcome::Completed,
+                    None,
+                    1200u64,
+                    800u64,
+                ),
+                (
+                    waste_tally::ContentBotOutcome::Failed,
+                    Some(waste_tally::FailureClass::Transient),
+                    300,
+                    800,
+                ),
+                (
+                    waste_tally::ContentBotOutcome::TimedOut,
+                    Some(waste_tally::FailureClass::Permanent),
+                    5000,
+                    800,
+                ),
+            ];
+            for (i, (outcome, failure_class, estimated_cost_ms, cost_floor_ms)) in
+                samples.into_iter().enumerate()
+            {
+                waste_tally::record_content_bot_outcome(
+                    &repo_root,
+                    &waste_tally::ContentBotRunResult {
+                        bot_id: "pmm".to_string(),
+                        tally_id: format!("smoke-{i}"),
+                        outcome,
+                        failure_class,
+                        estimated_cost_ms,
+                        cost_floor_ms,
+                    },
+                );
+            }
+            println!(
+                "content-bot-smoke: recorded 3 outcomes (completed, failed/transient, timed_out/permanent)"
+            );
+            return Ok(());
+        }
         if args.iter().any(|a| a == "--help" || a == "help") {
             println!(
-                "Usage: chump waste-tally [--since WINDOW] [--json] [--domain|--by-domain] [--tokens] [--by-close-reason] [--emit-ambient]"
+                "Usage: chump waste-tally [--since WINDOW] [--json] [--domain|--by-domain] [--tokens] [--by-close-reason] [--emit-ambient] [--content-bot-smoke]"
             );
             println!();
             println!("Zero-Waste pillar measurement. Tallies waste events from ambient.jsonl");
@@ -5121,11 +5168,18 @@ async fn main() -> Result<()> {
                 "  --emit-ambient     with --by-close-reason: write kind=waste_category_report"
             );
             println!("                     to ambient.jsonl (for weekly cron)");
+            println!("  --content-bot-smoke record 3 synthetic content-bot outcomes (completed,");
+            println!("                     failed/transient, timed_out/permanent) via");
+            println!("                     record_content_bot_outcome — observability smoke test");
+            println!(
+                "                     for INFRA-1712 (see scripts/ci/test-pwa-cost-ceiling.sh)"
+            );
             println!();
             println!("Example:");
             println!("  chump waste-tally --since 7d");
             println!("  chump waste-tally --window 2h   # alias accepted by fleet scaling gate");
             println!("  chump waste-tally --by-close-reason --since 7d --json");
+            println!("  chump waste-tally --content-bot-smoke");
             return Ok(());
         }
         let since_arg = args

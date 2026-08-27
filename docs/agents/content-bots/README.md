@@ -82,8 +82,34 @@ Defined in [`bots.yaml`](bots.yaml). Each entry:
 | Follow-up (TBF) | Dispatcher script (`scripts/content-bots/run-bot.sh`) + ambient event registration |
 | Follow-up (TBF) | Pipeline orchestrator (PMM → DocuBot/Evangelist → CopyBot) |
 | Follow-up (TBF) | Fleet integration via `WORKER_SKILLS=content-bot,<bot_id>` |
-| Follow-up (TBF) | PWA toggle UI with per-bot daily cost estimate |
+| [INFRA-1699](../../gaps/INFRA-1699.yaml) | PWA toggle UI — per-repo enable/disable + per-bot daily cost estimate |
+| [INFRA-1712](../../gaps/INFRA-1712.yaml) (INFRA-1699 slice 4/4) | Cost-tally observability: `record_content_bot_outcome` in `crates/chump-waste-tally/src/waste_tally.rs` emits `content_bot_run.completed`/`.failed`/`.timed_out` (with `failure_class: transient|permanent` on failure) plus a paired `content_bot.cost_report` (`bot_id`, `estimated_cost_ms`, `cost_floor_ms`, `tally_id`) for every run |
 | Productization umbrella | [META-066](../../gaps/META-066.yaml) |
+
+### PWA "Run all enabled" button (INFRA-1699)
+
+The Content Bots toggle view in the PWA has a **"Run all enabled" button**
+that triggers every currently-enabled bot exactly once (via
+`orchestrate-pipeline.sh`) and, as each run finishes, surfaces that bot's
+cost estimate and outcome/failure class inline next to its toggle — reading
+`content_bot.cost_report` and `content_bot_run.completed`/`.failed`/`.timed_out`
+off the ambient stream. A `failed`/`timed_out` run tagged `failure_class:
+permanent` is surfaced distinctly from `transient` (permanent implies retrying
+without operator action won't help — e.g. missing `claude-cli` or a malformed
+bot manifest; transient covers rate limits / network blips that a re-run may
+clear).
+
+### Operator smoke test
+
+```bash
+bash scripts/ci/test-pwa-cost-ceiling.sh
+```
+
+Structural + observability smoke test for the cost-ceiling/kill-switch PWA
+surface (PRODUCT-113) plus the content-bot cost-tally path (INFRA-1712): it
+invokes `chump waste-tally --content-bot-smoke` against a scratch repo root
+and asserts the run emits both a `content_bot.cost_report` event and a
+`content_bot_run.timed_out` event classified `failure_class: permanent`.
 
 ## Provenance
 

@@ -89,4 +89,37 @@ grep -A6 "cost-kill-config" "$APP_JS" | grep -q "chump:navigate.*settings\|'sett
     || fail "Raise-ceiling button doesn't dispatch chump:navigate → settings"
 ok "Raise-ceiling: navigates to Settings via chump:navigate"
 
+# ── Test 12: content-bot cost-tally observability smoke test (INFRA-1712) ──
+# Invokes the real cost-tally path (record_content_bot_outcome) via
+# `chump waste-tally --content-bot-smoke` and asserts the resulting
+# ambient.jsonl carries a content_bot.cost_report event plus a
+# timed_out/permanent outcome. Isolated into a scratch CHUMP_REPO so this
+# never touches the real .chump-locks/ambient.jsonl.
+CHUMP_BIN="$REPO_ROOT/target/release/chump"
+if [[ ! -x "$CHUMP_BIN" ]]; then
+    CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+fi
+
+SMOKE_TMP="$(mktemp -d)"
+trap 'rm -rf "$SMOKE_TMP"' EXIT
+mkdir -p "$SMOKE_TMP/.chump-locks"
+SMOKE_AMBIENT="$SMOKE_TMP/.chump-locks/ambient.jsonl"
+
+if [[ -x "$CHUMP_BIN" ]]; then
+    CHUMP_REPO="$SMOKE_TMP" "$CHUMP_BIN" waste-tally --content-bot-smoke >/dev/null \
+        || fail "content-bot cost-tally smoke invocation failed (exit $?)"
+else
+    ( cd "$REPO_ROOT" && CHUMP_REPO="$SMOKE_TMP" cargo run -q --bin chump -- waste-tally --content-bot-smoke >/dev/null ) \
+        || fail "content-bot cost-tally smoke invocation failed (cargo run, exit $?)"
+fi
+
+[[ -f "$SMOKE_AMBIENT" ]] || fail "content-bot cost-tally smoke produced no ambient.jsonl — content_bot.cost_report missing"
+grep -q '"kind":"content_bot.cost_report"' "$SMOKE_AMBIENT" \
+    || fail "content-bot cost-tally smoke missing content_bot.cost_report event"
+grep -q '"kind":"content_bot_run.timed_out"' "$SMOKE_AMBIENT" \
+    || fail "content-bot cost-tally smoke missing content_bot_run.timed_out event"
+grep '"kind":"content_bot_run.timed_out"' "$SMOKE_AMBIENT" | grep -q '"failure_class":"permanent"' \
+    || fail "content-bot cost-tally smoke: timed-out run not classified as permanent"
+ok "content-bot cost-tally smoke: content_bot.cost_report + timed_out/permanent both present"
+
 ok "ALL PRODUCT-113 cost-ceiling checks passed"

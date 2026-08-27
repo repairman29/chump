@@ -197,6 +197,44 @@ else
 fi
 rm -rf "$TR10"
 
+# ── Test 11: MODIFIED existing shell crossing >200 LOC → audit, not blocked ──
+# INFRA-1651: re-do of INFRA-1580's NEW-file-only gate. A file that grows
+# past the threshold via an EDIT (not an ADD) must be audited (ambient
+# event emitted) but never blocked — audit mode only.
+TR11="$(mk_repo)"
+mkdir -p "$TR11/scripts/coord" "$TR11/.chump-locks"
+echo '#!/bin/sh' > "$TR11/scripts/coord/existing-big.sh"
+(cd "$TR11" && git add scripts/coord/existing-big.sh && git commit -q -m "seed")
+{ for i in $(seq 1 250); do echo "# line $i"; done; } >> "$TR11/scripts/coord/existing-big.sh"
+out="$(run_gate "$TR11" "tmp")"; rc=$?
+if [[ $rc -eq 0 ]]; then
+    ok "MODIFIED file crossing threshold: not blocked (audit mode, INFRA-1651)"
+else
+    fail "MODIFIED file audit path must never block (rc=$rc): $out"
+fi
+if [[ -f "$TR11/.chump-locks/ambient.jsonl" ]] \
+    && grep -q '"kind":"rust_first_modified_audit"' "$TR11/.chump-locks/ambient.jsonl" \
+    && grep -q 'scripts/coord/existing-big.sh' "$TR11/.chump-locks/ambient.jsonl"; then
+    ok "MODIFIED file audit emits kind=rust_first_modified_audit (INFRA-1651)"
+else
+    fail "MODIFIED file audit did NOT emit rust_first_modified_audit"
+fi
+rm -rf "$TR11"
+
+# ── Test 12: MODIFIED shell outside hot-path dirs → no audit emitted ─────────
+TR12="$(mk_repo)"
+mkdir -p "$TR12/scripts/dev" "$TR12/.chump-locks"
+echo '#!/bin/sh' > "$TR12/scripts/dev/existing.sh"
+(cd "$TR12" && git add scripts/dev/existing.sh && git commit -q -m "seed")
+{ for i in $(seq 1 250); do echo "# line $i"; done; } >> "$TR12/scripts/dev/existing.sh"
+out="$(run_gate "$TR12" "tmp")"; rc=$?
+if [[ $rc -eq 0 ]] && { [[ ! -f "$TR12/.chump-locks/ambient.jsonl" ]] || ! grep -q 'rust_first_modified_audit' "$TR12/.chump-locks/ambient.jsonl"; }; then
+    ok "MODIFIED file outside hot-path dirs: no audit emitted"
+else
+    fail "MODIFIED file outside hot-path dirs should not trigger audit"
+fi
+rm -rf "$TR12"
+
 echo
 echo "=== Summary: $PASS passed, $FAIL failed ==="
 if (( FAIL > 0 )); then

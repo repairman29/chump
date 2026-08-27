@@ -27,6 +27,65 @@ if [[ "${CHUMP_RUST_FIRST_CHECK:-1}" == "0" ]]; then
     exit 0
 fi
 
+# ── INFRA-1651: MODIFIED-file audit mode (re-do of INFRA-1580) ─────────────
+# The gate above (and INFRA-1580's strict machine-acknowledgment logic) only
+# ever look at NEW files (--diff-filter=A). A shell file that was already
+# Rust-first-clean can cross the same thresholds (grow past 200 LOC, gain a
+# state-mutating line, start living in a hot-path dir) via a plain EDIT and
+# the gate never sees it — silent drift with zero observability. This block
+# is audit-only: it NEVER blocks the commit (matches the warn-only default
+# above), it just emits an ambient event so drift is visible without adding
+# a second hard-enforcement surface.
+MODIFIED_SH="$(git diff --cached --name-only --diff-filter=M 2>/dev/null \
+    | grep -E '^scripts/(coord|dispatch|ops)/[^/]+\.sh$' || true)"
+
+if [[ -n "$MODIFIED_SH" ]]; then
+    MOD_VIOLATIONS=()
+    MOD_REASONS=()
+    while IFS= read -r mf; do
+        [[ -z "$mf" ]] && continue
+        [[ -f "$mf" ]] || continue
+
+        mod_triggers=()
+
+        if grep -qE '>>?\s*[^|]*\.chump/state\.db|>>?\s*[^|]*\.chump-locks/[^/]+\.json|>>?\s*[^|]*ambient\.jsonl|>>?\s*[^|]*docs/gaps/[A-Z]+-' "$mf" 2>/dev/null; then
+            mod_triggers+=("writes to canonical state (state.db / .chump-locks/ / ambient.jsonl / docs/gaps/)")
+        fi
+
+        case "$mf" in
+            scripts/coord/*.sh|scripts/dispatch/*.sh)
+                mod_triggers+=("hot-path directory (scripts/coord or scripts/dispatch)")
+                ;;
+        esac
+
+        mod_loc=$(wc -l < "$mf" 2>/dev/null | tr -d ' ')
+        if [[ "${mod_loc:-0}" -gt 200 ]]; then
+            mod_triggers+=("$mod_loc lines (> 200 threshold)")
+        fi
+
+        if (( ${#mod_triggers[@]} > 0 )); then
+            MOD_VIOLATIONS+=("$mf")
+            # shellcheck disable=SC2207
+            MOD_REASONS+=("$(IFS='|'; echo "${mod_triggers[*]}")")
+        fi
+    done <<< "$MODIFIED_SH"
+
+    if (( ${#MOD_VIOLATIONS[@]} > 0 )); then
+        AMBIENT="${CHUMP_AMBIENT_LOG:-$(git rev-parse --show-toplevel)/.chump-locks/ambient.jsonl}"
+        if [[ -d "$(dirname "$AMBIENT")" ]]; then
+            _mod_all_reasons="$(IFS='|'; echo "${MOD_REASONS[*]}")"
+            printf '{"ts":"%s","kind":"rust_first_modified_audit","files":"%s","reasons":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                "$(IFS=,; echo "${MOD_VIOLATIONS[*]}")" \
+                "$_mod_all_reasons" \
+                >> "$AMBIENT" 2>/dev/null || true
+        fi
+        echo "[rust-first] WARN (audit-only, INFRA-1651): ${#MOD_VIOLATIONS[@]} MODIFIED shell file(s) now meet the Rust-first criteria:" >&2
+        for _mv in "${MOD_VIOLATIONS[@]}"; do echo "    - ${_mv}" >&2; done
+        echo "[rust-first] Not blocking (audit mode — MODIFIED files are observability-only)." >&2
+    fi
+fi
+
 # Operate against the staged diff.
 # Find NEW files only (status=A) ending in .sh under hot-path dirs.
 NEW_SH="$(git diff --cached --name-only --diff-filter=A 2>/dev/null \
