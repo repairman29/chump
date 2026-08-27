@@ -42,17 +42,19 @@ else
     fail "git rev-parse --git-dir ($WT_GIT_DIR) is not a directory"
 fi
 
-# ── Verify the hook uses git rev-parse --git-dir ───────────────────────────
-if grep -qF '$(git rev-parse --git-dir)/COMMIT_EDITMSG' "$HOOK"; then
-    pass "hook uses git rev-parse --git-dir for MSG_FILE"
+# ── Verify neither hook contains the broken hardcoded path ─────────────────
+# INFRA-1969 moved the live docs-delta enforcement from scripts/git-hooks/pre-commit
+# to scripts/git-hooks/commit-msg, which reads the message from $1 (the path git
+# passes it) rather than resolving any COMMIT_EDITMSG path at all — so there is no
+# "$(git rev-parse --git-dir)/COMMIT_EDITMSG" string to require in either hook.
+# What matters is that the broken hardcoded path is gone. See
+# scripts/ci/test-docs-delta-linked-worktree.sh (INFRA-1521) for the end-to-end
+# behavioral proof that a linked-worktree commit succeeds without the bypass.
+COMMIT_MSG_HOOK="$REPO_ROOT/scripts/git-hooks/commit-msg"
+if grep -qF '$REPO_ROOT/.git/COMMIT_EDITMSG' "$HOOK" "$COMMIT_MSG_HOOK"; then
+    fail "a hook still contains the broken \$REPO_ROOT/.git/COMMIT_EDITMSG path"
 else
-    fail "hook still uses \$REPO_ROOT/.git/COMMIT_EDITMSG (fix not applied)"
-fi
-
-if grep -qF '$REPO_ROOT/.git/COMMIT_EDITMSG' "$HOOK"; then
-    fail "hook still contains the broken \$REPO_ROOT/.git/COMMIT_EDITMSG path"
-else
-    pass "hook does not contain the broken \$REPO_ROOT/.git/COMMIT_EDITMSG path"
+    pass "no hook contains the broken \$REPO_ROOT/.git/COMMIT_EDITMSG path"
 fi
 
 # ── Simulate: write COMMIT_EDITMSG to the real worktree git-dir ─────────────
