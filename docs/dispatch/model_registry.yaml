@@ -30,6 +30,16 @@
 # status: active (default) | deprecated
 # free_tier: true if the model is available on a free-usage tier
 # last_verified: YYYY-MM-DD of most recent operator confirmation
+#
+# xml_tool_tags     — INFRA-1565: true if this model emits tool calls as
+#                       <tool_call>/<function_call> XML tags instead of
+#                       native OpenAI-style `tool_calls` (some local Ollama
+#                       models, older Mistral checkpoints). Defaults to
+#                       false when absent. Consumed by
+#                       src/model_overlay.rs::xml_tool_tags_enabled() and
+#                       routes response text through
+#                       crates/chump-xml-adapter before native tool-call
+#                       parsing (src/local_openai.rs).
 
 schema_version: 1
 last_global_verified: "2026-05-10"
@@ -565,9 +575,10 @@ models:
     supports_thinking: false
     family: Other
     provider_hint: together
+    xml_tool_tags: true
     source_url: https://docs.together.ai/docs/serverless-models
     last_verified: "2026-05-08"
-    notes: "Mixtral MOE model via Together."
+    notes: "Mixtral MOE model via Together. No native tool_calls support; emits XML tool_call/function_call tags instead (INFRA-1565)."
 
   # ── Paid OSS-model serverless (Together) ─────────────────────────────────
   - model_id: together-deepseek-v3

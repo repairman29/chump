@@ -86,6 +86,15 @@ fn parse_function_call_block(open_tag: &str, body: &str) -> Option<(String, serd
 /// Returns `AdapterOutput` with extracted `tool_calls` and remaining `text`.
 /// Malformed JSON inside tags is skipped (not panicked on); the raw block
 /// is left in `text` so the caller can inspect it.
+///
+/// This is the canonical entry point for callers wiring this crate into a
+/// response-processing pipeline (see `src/local_openai.rs`); `adapt` is kept
+/// as the underlying implementation name for compatibility with existing
+/// callers/tests.
+pub fn extract_tool_calls(raw: &str) -> AdapterOutput {
+    adapt(raw)
+}
+
 pub fn adapt(raw: &str) -> AdapterOutput {
     let mut tool_calls: Vec<ToolCall> = Vec::new();
     let mut remaining = raw.to_string();
@@ -264,6 +273,28 @@ mod tests {
             out.text.contains("not json"),
             "raw content should remain in text"
         );
+    }
+
+    /// 9. Mixed synthetic LLM response: one XML-tagged tool_call, one
+    /// untagged function_call, plus surrounding prose — asserts both are
+    /// extracted correctly and the leftover text keeps the prose.
+    #[test]
+    fn test_mixed_tagged_and_untagged_response() {
+        let raw = concat!(
+            "Let me check the weather and then run a command.\n",
+            r#"<tool_call>{"name":"get_weather","arguments":{"city":"Austin"}}</tool_call>"#,
+            "\n",
+            r#"<function_call name="bash">{"cmd":"date"}</function_call>"#,
+            "\nAll done."
+        );
+        let out = extract_tool_calls(raw);
+        assert_eq!(out.tool_calls.len(), 2);
+        assert_eq!(out.tool_calls[0].name, "get_weather");
+        assert_eq!(out.tool_calls[0].input["city"], "Austin");
+        assert_eq!(out.tool_calls[1].name, "bash");
+        assert_eq!(out.tool_calls[1].input["cmd"], "date");
+        assert!(out.text.contains("Let me check the weather"));
+        assert!(out.text.contains("All done."));
     }
 
     /// 8. Round-trip: ToolCall can be serialized and fields are preserved.

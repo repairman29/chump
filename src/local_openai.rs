@@ -52,6 +52,48 @@ pub(crate) fn strip_think_blocks(text: &str) -> String {
     }
 }
 
+/// INFRA-1565: for models flagged `xml_tool_tags` in `docs/dispatch/model_registry.yaml`
+/// (some local Ollama models, older Mistral checkpoints emit `<tool_call>`/
+/// `<function_call>` XML instead of native OpenAI `tool_calls`), extract tool
+/// calls from the response text via [`chump_xml_adapter::extract_tool_calls`]
+/// before falling through to native tool-call parsing. No-op (returns the
+/// response unchanged) when the model isn't flagged, or when native
+/// `tool_calls` were already parsed from the API response.
+fn maybe_apply_xml_tool_adapter(model: &str, resp: CompletionResponse) -> CompletionResponse {
+    if !resp.tool_calls.is_empty() {
+        return resp;
+    }
+    if !crate::model_overlay::xml_tool_tags_enabled(model) {
+        return resp;
+    }
+    let Some(text) = resp.text.as_deref() else {
+        return resp;
+    };
+    let adapted = chump_xml_adapter::extract_tool_calls(text);
+    if adapted.tool_calls.is_empty() {
+        return resp;
+    }
+    let tool_calls = adapted
+        .tool_calls
+        .into_iter()
+        .map(|tc| ToolCall {
+            id: tc.id,
+            name: tc.name,
+            input: tc.input,
+        })
+        .collect();
+    let text = if adapted.text.trim().is_empty() {
+        None
+    } else {
+        Some(adapted.text)
+    };
+    CompletionResponse {
+        text,
+        tool_calls,
+        stop_reason: StopReason::ToolUse,
+    }
+}
+
 /// Routes streaming `<think>` content to [`AgentEvent::ThinkingDelta`] and non-think content
 /// to [`AgentEvent::TextDelta`] when `CHUMP_THINKING=1`.
 ///
@@ -1462,11 +1504,14 @@ impl LocalOpenAIProvider {
             stop_reason = StopReason::ToolUse;
         }
 
-        Ok(CompletionResponse {
-            text,
-            tool_calls: parsed_tool_calls,
-            stop_reason,
-        })
+        Ok(maybe_apply_xml_tool_adapter(
+            &self.model,
+            CompletionResponse {
+                text,
+                tool_calls: parsed_tool_calls,
+                stop_reason,
+            },
+        ))
     }
 
     async fn try_one_request(&self, base_url: &str, body: &Value) -> Result<CompletionResponse> {
@@ -1644,11 +1689,14 @@ impl LocalOpenAIProvider {
             stop_reason = StopReason::ToolUse;
         }
 
-        Ok(CompletionResponse {
-            text,
-            tool_calls,
-            stop_reason,
-        })
+        Ok(maybe_apply_xml_tool_adapter(
+            &self.model,
+            CompletionResponse {
+                text,
+                tool_calls,
+                stop_reason,
+            },
+        ))
     }
 }
 
@@ -2103,6 +2151,62 @@ mod tests {
         let out = provider.complete(messages, None, None, None).await.unwrap();
         assert_eq!(out.tool_calls.len(), 1);
         assert!(matches!(out.stop_reason, StopReason::ToolUse));
+    }
+
+    /// INFRA-1565: end-to-end — a mock Ollama-style server returns no native
+    /// `tool_calls`, only plain `content` with an embedded `<tool_call>` XML
+    /// block (as older Mistral / some local Ollama checkpoints do). With
+    /// `xml_tool_tags` enabled for the model, the response-processing layer
+    /// must route the text through `chump-xml-adapter` and surface the
+    /// extracted call as a native `ToolCall`.
+    #[tokio::test]
+    #[serial]
+    async fn complete_extracts_xml_tool_calls_when_model_flagged() {
+        std::env::set_var("CHUMP_XML_TOOL_TAGS", "1");
+        let _guard = scopeguard_env("CHUMP_XML_TOOL_TAGS");
+
+        let mock = MockServer::start().await;
+        let body = serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": "Sure.\n<tool_call>{\"name\":\"read_file\",\"arguments\":{\"path\":\"src/main.rs\"}}</tool_call>",
+                    "tool_calls": null
+                },
+                "finish_reason": "stop"
+            }]
+        });
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock)
+            .await;
+
+        let provider = LocalOpenAIProvider::new(
+            mock.uri().to_string(),
+            "not-needed".to_string(),
+            "ollama-mistral-xml-test".to_string(),
+        );
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: "Read the file".to_string(),
+        }];
+        let out = provider.complete(messages, None, None, None).await.unwrap();
+        assert_eq!(out.tool_calls.len(), 1);
+        assert_eq!(out.tool_calls[0].name, "read_file");
+        assert_eq!(out.tool_calls[0].input["path"], "src/main.rs");
+        assert!(matches!(out.stop_reason, StopReason::ToolUse));
+        assert_eq!(out.text.as_deref(), Some("Sure."));
+    }
+
+    /// Removes an env var on drop so `#[serial]` XML-adapter tests don't leak state.
+    fn scopeguard_env(key: &'static str) -> impl Drop {
+        struct Guard(&'static str);
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                std::env::remove_var(self.0);
+            }
+        }
+        Guard(key)
     }
 
     /// Task 1.3: deterministic trim — newest user turn survives; injection ctx carries its query hint.

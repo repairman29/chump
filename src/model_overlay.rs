@@ -79,6 +79,11 @@ pub enum ModelFamily {
 struct RegistryFamilyEntry {
     model_id: String,
     family: String,
+    /// INFRA-1565: per-model flag — true if this model emits tool calls as
+    /// `<tool_call>`/`<function_call>` XML tags instead of native
+    /// OpenAI-style `tool_calls`. Defaults to false (unset in the YAML).
+    #[serde(default)]
+    xml_tool_tags: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -139,6 +144,55 @@ fn registry_family_map() -> &'static HashMap<String, ModelFamily> {
         }
         HashMap::new()
     })
+}
+
+/// Cached map of model_id → `xml_tool_tags` loaded from
+/// `docs/dispatch/model_registry.yaml` (INFRA-1565). Only entries with
+/// `xml_tool_tags: true` are stored; lookups for unregistered models
+/// therefore fall through to `false` via [`xml_tool_tags_enabled`].
+fn registry_xml_tool_tags_map() -> &'static HashMap<String, bool> {
+    static CACHE: OnceLock<HashMap<String, bool>> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let candidates = [
+            std::env::var("CHUMP_REPO_ROOT")
+                .map(|r| format!("{}/docs/dispatch/model_registry.yaml", r))
+                .ok(),
+            Some(format!(
+                "{}/docs/dispatch/model_registry.yaml",
+                env!("CARGO_MANIFEST_DIR")
+            )),
+        ];
+        for candidate in candidates.iter().flatten() {
+            if let Ok(text) = std::fs::read_to_string(candidate) {
+                if let Ok(reg) = serde_yaml::from_str::<FamilyRegistry>(&text) {
+                    return reg
+                        .models
+                        .into_iter()
+                        .filter(|e| e.xml_tool_tags)
+                        .map(|e| (e.model_id, true))
+                        .collect();
+                }
+            }
+        }
+        HashMap::new()
+    })
+}
+
+/// INFRA-1565: does `model_id` emit XML `<tool_call>`/`<function_call>` tags
+/// instead of native tool calls? Checked by the response-processing layer
+/// (`src/local_openai.rs`) before falling back to native `tool_calls`
+/// parsing. `CHUMP_XML_TOOL_TAGS=1` force-enables it for any model
+/// (debugging / models not yet in the registry); unset defaults to the
+/// per-model registry value, which defaults to `false` when the model is
+/// unregistered or the flag is absent.
+pub fn xml_tool_tags_enabled(model_id: &str) -> bool {
+    if std::env::var("CHUMP_XML_TOOL_TAGS").as_deref() == Ok("1") {
+        return true;
+    }
+    registry_xml_tool_tags_map()
+        .get(model_id)
+        .copied()
+        .unwrap_or(false)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

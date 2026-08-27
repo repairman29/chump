@@ -289,6 +289,43 @@ mistralrs from-config --file ./mistralrs-tuned.toml
 
 ---
 
+## 2c. Models that emit XML tool calls instead of native `tool_calls` (INFRA-1565)
+
+**Symptom:** the model never triggers a tool call even though it clearly
+*intends* to call one — the reply text contains something like
+`<tool_call>{"name": "read_file", "arguments": {"path": "src/main.rs"}}</tool_call>`
+or `<function_call name="bash">{"cmd": "ls"}</function_call>` instead of a
+populated `tool_calls` array on the API response. This is common on some
+local Ollama models and older Mistral checkpoints (e.g. Mixtral) that were
+instruct-tuned before the provider's OpenAI-compatible endpoint added
+native function-calling support.
+
+**Fix — per-model config flag.** Set `xml_tool_tags: true` on the model's
+entry in **[`docs/dispatch/model_registry.yaml`](../dispatch/model_registry.yaml)**
+(the single source of truth for per-model routing metadata, keyed by
+`model_id` — the same value as `OPENAI_MODEL`):
+
+```yaml
+- model_id: mistralai/Mixtral-8x7B-Instruct-v0.1
+  # ...pricing/capability fields...
+  supports_tool_use: false
+  xml_tool_tags: true   # <-- extracts <tool_call>/<function_call> XML from content
+```
+
+When set, `src/local_openai.rs` routes the response's text content through
+**`crates/chump-xml-adapter::extract_tool_calls`** whenever the API returned
+no native `tool_calls` — converting any `<tool_call>`/`<function_call>` XML
+found in the text into the same `ToolCall` shape native providers return, and
+stripping the matched XML out of the leftover text. Models without the flag
+(the default — `xml_tool_tags` is `false`/absent) are unaffected; native
+`tool_calls` parsing always takes priority when present.
+
+**Debugging override:** `CHUMP_XML_TOOL_TAGS=1` force-enables extraction for
+*any* model, regardless of the registry — useful when testing a model that
+isn't registered yet, without editing YAML.
+
+---
+
 ## 3. Switching profiles (checklist)
 
 1. **Stop** the Discord bot: **`./scripts/setup/stop-chump-discord.sh`** or **`pkill -f 'chump.*--discord'`** / **`pkill -f 'rust-agent.*--discord'`**.

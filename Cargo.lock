@@ -1414,6 +1414,7 @@ dependencies = [
  "chump-tool-macro",
  "chump-verify",
  "chump-waste-tally",
+ "chump-xml-adapter",
  "console-subscriber",
  "dhat",
  "dotenvy",
