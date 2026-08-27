@@ -123,7 +123,7 @@ if [[ "$NO_EMIT" = "0" ]]; then
   EMIT_SCRIPT="$REPO_ROOT/scripts/dev/ambient-emit.sh"
   if [[ -x "$EMIT_SCRIPT" ]]; then
     "$EMIT_SCRIPT" ALERT \
-      "kind=fleet_version_skew" \
+      "kind=version_skew_detected" \
       "file=$WORKER_PATH" \
       "commits_behind=$COMMITS_BEHIND" \
       "telemetry_affected=$TELEMETRY_AFFECTED" \
@@ -132,13 +132,13 @@ if [[ "$NO_EMIT" = "0" ]]; then
       2>/dev/null || true
   else
     # Fallback: write directly without flock.
-    printf '{"ts":"%s","kind":"fleet_version_skew","file":"%s","commits_behind":%d,"telemetry_affected":%s,"affected_lines":"%s","action":"tmux kill-session -t chump-fleet && relaunch","session":"%s"}\n' \
+    printf '{"ts":"%s","kind":"version_skew_detected","file":"%s","commits_behind":%d,"telemetry_affected":%s,"affected_lines":"%s","action":"tmux kill-session -t chump-fleet && relaunch","session":"%s"}\n' \
       "$TS" "$WORKER_PATH" "$COMMITS_BEHIND" \
       "$([ "$TELEMETRY_AFFECTED" = "1" ] && echo "true" || echo "false")" \
       "$AFFECTED_JSON" "$SESSION_ID" \
       >> "$AMBIENT" 2>/dev/null || true
   fi
-  log "fleet_version_skew event written to $AMBIENT"
+  log "version_skew_detected event written to $AMBIENT"
 fi
 
 exit 1

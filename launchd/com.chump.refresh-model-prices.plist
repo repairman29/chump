@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.refresh-model-prices — INFRA-1564 LaunchAgent.
+
+  Runs scripts/dev/refresh-model-prices.sh in check mode and check-registry
+  mode weekly.
+  Diffs docs/pricing/model_rates.yaml and docs/dispatch/model_registry.yaml
+  against LiteLLM's community-maintained rate card, and emits ALERT
+  kind=pricing_drift when any tracked model's committed rate drifts more
+  than CHUMP_PRICING_DRIFT_PCT (default 5%) from upstream. Also emits
+  kind=model_prices_refreshed on every run so operators see this firing.
+
+  INSTALLATION:
+    (see scripts/setup/bootstrap-manifest.yaml id=refresh-model-prices-launchd)
+
+  Manual run:
+    launchctl start com.chump.refresh-model-prices
+    tail /tmp/chump-refresh-model-prices.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.refresh-model-prices.plist
+    rm ~/Library/LaunchAgents/com.chump.refresh-model-prices.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.refresh-model-prices</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/dev/refresh-model-prices.sh --check; /path/to/Chump/scripts/dev/refresh-model-prices.sh --check-registry</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Weekly. -->
+  <key>StartInterval</key>
+  <integer>604800</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-refresh-model-prices.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-refresh-model-prices.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>600</integer>
+</dict>
+</plist>

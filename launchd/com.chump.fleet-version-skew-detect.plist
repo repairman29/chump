@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.fleet-version-skew-detect — INFRA-1564 LaunchAgent.
+
+  Runs scripts/dev/fleet-version-skew-detect.sh in quiet mode every 6h. Compares
+  the working-tree scripts/dispatch/worker.sh against origin/main; when it
+  has drifted (and the drift touches telemetry paths), emits ALERT
+  kind=version_skew_detected to ambient.jsonl so operators know a fleet
+  relaunch is needed for reliable waste-tally/ambient numbers.
+
+  INSTALLATION:
+    (see scripts/setup/bootstrap-manifest.yaml id=fleet-version-skew-detect-launchd)
+
+  Manual run:
+    launchctl start com.chump.fleet-version-skew-detect
+    tail /tmp/chump-fleet-version-skew-detect.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist
+    rm ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.fleet-version-skew-detect</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/dev/fleet-version-skew-detect.sh --quiet</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Every 6 hours. -->
+  <key>StartInterval</key>
+  <integer>21600</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-fleet-version-skew-detect.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-fleet-version-skew-detect.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>600</integer>
+</dict>
+</plist>
