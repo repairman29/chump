@@ -228,6 +228,8 @@ pub fn load_apps_config(path: &Path) -> Result<HashMap<Lane, AppCredentials>> {
 
 // ── Unit tests ────────────────────────────────────────────────────────────────
 
+// Naming convention (INFRA-1768): assert_* tests are static preflight tests;
+// behavior_* tests are runtime CI-only tests.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,7 +266,7 @@ mod tests {
         -----END RSA PRIVATE KEY-----\n";
 
     #[test]
-    fn generate_jwt_produces_three_part_token() {
+    fn assert_generate_jwt_produces_three_part_token() {
         let jwt = generate_jwt(12345, TEST_RSA_KEY_PEM);
         // A real RSA key would work; this placeholder is deliberately invalid PEM,
         // so we expect an Err — but the important thing is the API contract.
