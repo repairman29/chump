@@ -60,7 +60,7 @@ Product vision, **60 user stories**, phased waves (instrument → close the loop
 Single index: [MARKET_EVALUATION.md](https://github.com/repairman29/chump/blob/main/docs/strategy/MARKET_EVALUATION.md) §8. Supporting docs and scripts:
 
 - [x] Pilot SQL / API / JSONL recipes for N3–N4: [WEDGE_PILOT_METRICS.md](https://github.com/repairman29/chump/blob/main/docs/strategy/WEDGE_PILOT_METRICS.md)
-- [x] Golden path extension (PWA task + optional `autonomy_once`): [WEDGE_H1_GOLDEN_EXTENSION.md](https://github.com/repairman29/chump/blob/main/docs/strategy/WEDGE_H1_GOLDEN_EXTENSION.md), [`scripts/eval/wedge-h1-smoke.sh`](https://github.com/repairman29/chump/blob/main/scripts/eval/wedge-h1-smoke.sh)
+- [x] Golden path extension (PWA task + optional `autonomy_once`): [WEDGE_H1_GOLDEN_EXTENSION.md](https://github.com/repairman29/chump/blob/main/docs/strategy/WEDGE_H1_GOLDEN_EXTENSION.md), [`scripts/archived/eval/wedge-h1-smoke.sh`](https://github.com/repairman29/chump/blob/main/scripts/archived/eval/wedge-h1-smoke.sh)
 - [x] Intent calibration harness (labeled set + procedure): [INTENT_CALIBRATION.md](https://github.com/repairman29/chump/blob/main/docs/INTENT_CALIBRATION.md)
 - [x] Model flap drill (reliability acceptance): [INFERENCE_STABILITY.md](https://github.com/repairman29/chump/blob/main/docs/operations/INFERENCE_STABILITY.md) (Model flap drill)
 - [x] Public trust summary + diagram (speculative rollback limits): [TRUST_SPECULATIVE_ROLLBACK.md](https://github.com/repairman29/chump/blob/main/docs/architecture/TRUST_SPECULATIVE_ROLLBACK.md)

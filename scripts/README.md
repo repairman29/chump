@@ -31,7 +31,8 @@ Less-used directories (small scope):
 | `git/` | Low-level git utilities |
 | `plists/` | Raw launchd plist fragments (consumed by `setup/`) |
 | `qa/` | Manual QA checklists and scripts |
-| `release/` | Homebrew formula + changelog tooling |
+| `release/` | `cargo publish` orchestration ([owner + manual-run note](./release/README.md)) |
+| `archived/` | Retired scripts kept for history/reference, no active callers ([`spike/`](./archived/spike/), [`demo/`](./archived/demo/), [`eval/`](./archived/eval/)) |
 
 ---
 
@@ -229,6 +230,9 @@ Research and measurement infrastructure.
 
 | Script | Purpose |
 |---|---|
-| `research-lane-a-smoke.sh` | RESEARCH-018: smoke test for lane A harness (no API) |
-| `run-eval-batch.sh` | Run a batch of gap evaluations |
-| `score-eval.sh` | Score model output against expected |
+| `research-lane-a-smoke.sh` | RESEARCH-018: smoke test for lane A harness (no API); run in CI (`ci.yml` "Research Lane A smoke") |
+| `eval-reflection-ab.sh` | EVAL-008: A/B accuracy comparison, heuristic vs. LLM reflection; reads `fixtures/reflection-episodes.json` by default |
+| `fixtures/` | Data fixtures consumed by `eval/` scripts (e.g. `reflection-episodes.json`) |
+
+Retired `run-study[1-5].sh` and `wedge-h1-smoke.sh` (no CI/script callers, single
+historical commits) moved to [`scripts/archived/eval/`](./archived/eval/).

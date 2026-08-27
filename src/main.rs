@@ -19630,7 +19630,7 @@ async fn run_reflection_ab_mode(episodes_path: Option<std::path::PathBuf>) {
     use reflection::{reflect_heuristic, reflect_via_provider, OutcomeClass, ReflectionInput};
 
     // ── Locate episode file ────────────────────────────────────────────────
-    let default_path = std::path::PathBuf::from("scripts/eval-reflection-ab/episodes.json");
+    let default_path = std::path::PathBuf::from("scripts/eval/fixtures/reflection-episodes.json");
     let path = episodes_path.unwrap_or(default_path);
     let raw = match std::fs::read_to_string(&path) {
         Ok(s) => s,
