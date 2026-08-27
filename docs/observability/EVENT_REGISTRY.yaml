@@ -3639,6 +3639,47 @@ events:
     fields_required: [ts, kind, machine, pid]
     fields_optional: [dry_run]
 
+  # ── INFRA-1645: paramedic LLM-endpoint healthcheck resilience ─────────────
+  - kind: model_unavailable
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: >
+      paramedic's LLM healthcheck (opt-in via PARAMEDIC_LLM_ENDPOINT, run once
+      per daemon cycle) got a transient failure (HTTP 404/429 or a network
+      error) from the model endpoint; emitted on every retry attempt before
+      the exponential backoff sleep.
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, attempt, error]
+
+  - kind: paramedic_healthy
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: >
+      paramedic's LLM healthcheck succeeded, either immediately or after one
+      or more transient retries; emitted once per healthcheck cycle.
+    consumers: [fleet-brief, chump health --slo-check]
+    fields_required: [ts, kind, attempts_before_healthy]
+
+  - kind: permanent_failure
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: >
+      paramedic's LLM healthcheck hit a non-retryable 4xx (e.g. 401/400/422),
+      or exhausted PARAMEDIC_LLM_MAX_ATTEMPTS retries on transient failures;
+      the healthcheck gives up for that cycle.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, attempt, error]
+
+  - kind: cost_report
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: >
+      `chump paramedic smoke-test` / `chump paramedic --smoke-test` completed
+      a dummy LLM call and reports token/cost accounting fields; used to
+      validate the observability plumbing without a live model call.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, event, tokens_used, estimated_cost_usd]
+
   # ── INFRA-1713: CI-failure rescue action ──────────────────────────────────
   - kind: ci_rescue_attempt
     effect_metric: self

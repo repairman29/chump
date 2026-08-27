@@ -421,6 +421,18 @@ pub fn daemon(interval_secs: u64, repo_root: &Path, dry_run: bool) -> Result<()>
             cycle_count += 1;
             let cycle_start = Instant::now();
 
+            // INFRA-1645: LLM healthcheck. Opt-in via PARAMEDIC_LLM_ENDPOINT
+            // so daemons that don't drive an LLM-backed action (RESCUE_CI_FAILURE
+            // dispatch) don't pay the curl round-trip every cycle. Failure here
+            // never stops the triage→execute cycle below — a flaky model
+            // backend shouldn't wedge PR rescue.
+            if let Ok(endpoint) = std::env::var("PARAMEDIC_LLM_ENDPOINT") {
+                let mut client = CurlLlmClient { endpoint };
+                if let Err(e) = run_llm_healthcheck_with_backoff(&mut client, repo_root) {
+                    warn!(error = %e, "paramedic daemon: LLM healthcheck failed");
+                }
+            }
+
             // Run one triage→execute cycle.
             let (pr_count, action_count) = match triage(repo_root, dry_run) {
                 Ok(plan) => {
@@ -1889,6 +1901,284 @@ fn epoch_to_parts(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
     }
     let day = rem + 1;
     (years, month, day, h, m, s)
+}
+
+// ── LLM resilience (INFRA-1645, re-do of INFRA-1597) ────────────────────────
+//
+// The paramedic daemon periodically pings its configured LLM backend (used
+// by RESCUE_CI_FAILURE dispatch) to confirm the model is reachable before
+// spending a rescue-subagent budget on it. Backends occasionally 404 during
+// model rollovers/retirements — that's a transient condition, not a fatal
+// one, so we retry with exponential backoff + jitter rather than crash-looping
+// the daemon. The backoff shape mirrors `organ_watchdog_in_backoff` in
+// scripts/ops/organ-watchdog.sh (check-then-defer semantics) for consistency
+// across the fleet's self-healing surfaces, though the implementations are
+// independent — this one is jittered exponential backoff, that one is a
+// filesystem cooldown-flag check.
+
+/// Outcome of a single LLM call attempt.
+#[derive(Debug, Clone)]
+pub enum LlmCallError {
+    /// An HTTP status code was returned (status, short message).
+    Http(u16, String),
+    /// The call could not be completed (DNS, connect refused, timeout, ...).
+    Network(String),
+}
+
+impl std::fmt::Display for LlmCallError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Http(status, msg) => write!(f, "http {status}: {msg}"),
+            Self::Network(msg) => write!(f, "network error: {msg}"),
+        }
+    }
+}
+
+/// Whether a failed LLM call should be retried (`Transient`) or should stop
+/// the daemon's healthcheck loop immediately (`Permanent`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LlmFailureClass {
+    Transient,
+    Permanent,
+}
+
+/// Classify an LLM-endpoint failure. 404 (model retired/renamed mid-rollover)
+/// and 429 (rate limited) are transient — worth a backoff+retry. Any other
+/// 4xx (401 bad auth, 400 bad request, 422 invalid payload, ...) is a
+/// permanent misconfiguration that retrying will not fix. Anything outside
+/// the 4xx range (network errors, 5xx) is treated as transient — the same
+/// "assume recoverable unless proven otherwise" default the fleet's other
+/// backoff loops use.
+pub fn classify_llm_error(err: &LlmCallError) -> LlmFailureClass {
+    match err {
+        LlmCallError::Http(404, _) | LlmCallError::Http(429, _) => LlmFailureClass::Transient,
+        LlmCallError::Http(400..=499, _) => LlmFailureClass::Permanent,
+        LlmCallError::Http(_, _) | LlmCallError::Network(_) => LlmFailureClass::Transient,
+    }
+}
+
+/// Exponential backoff with jitter, configurable via env vars so operators
+/// can tune retry pressure without a rebuild:
+///   PARAMEDIC_BACKOFF_BASE_MS   — base delay for attempt 0 (default 500)
+///   PARAMEDIC_BACKOFF_MAX_MS    — cap on any single delay (default 30_000)
+///   PARAMEDIC_BACKOFF_JITTER    — "1"/"true" enables +/-25% jitter (default on)
+///
+/// Doubling per attempt, capped at max, matching the organ-watchdog cooldown
+/// philosophy of "back off further the longer something stays broken."
+pub fn backoff_delay_ms(attempt: u32) -> u64 {
+    let base = std::env::var("PARAMEDIC_BACKOFF_BASE_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(500u64);
+    let max = std::env::var("PARAMEDIC_BACKOFF_MAX_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(30_000u64);
+    let jitter_enabled = std::env::var("PARAMEDIC_BACKOFF_JITTER")
+        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
+        .unwrap_or(true);
+
+    let raw = base.saturating_mul(1u64 << attempt.min(20));
+    let capped = raw.min(max);
+
+    if !jitter_enabled {
+        return capped;
+    }
+    // Deterministic pseudo-jitter derived from wall-clock nanos — avoids
+    // pulling in a `rand` dependency for a +/-25% wobble whose only job is
+    // to de-synchronize concurrent retriers.
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let jitter_pct = (nanos % 51) as i64 - 25; // -25..=25
+    let jittered = (capped as i64) + (capped as i64 * jitter_pct / 100);
+    jittered.clamp(0, max as i64) as u64
+}
+
+/// A pluggable LLM endpoint. Production uses `CurlLlmClient` (shells to
+/// `curl`, matching this module's existing style of driving CLI tools rather
+/// than pulling in an async HTTP stack); tests inject a mock so
+/// `resilience.rs` can validate the retry/backoff state machine against a
+/// real local TCP listener without touching the network.
+pub trait LlmClient {
+    /// Attempt one call. `Ok(())` means the model responded healthy.
+    fn call(&mut self) -> Result<(), LlmCallError>;
+}
+
+/// Production `LlmClient`: HTTP GET via `curl`, classifying the result by
+/// exit status / HTTP status code.
+pub struct CurlLlmClient {
+    pub endpoint: String,
+}
+
+impl LlmClient for CurlLlmClient {
+    fn call(&mut self) -> Result<(), LlmCallError> {
+        let out = std::process::Command::new("curl")
+            .args([
+                "-s",
+                "-o",
+                "/dev/null",
+                "-w",
+                "%{http_code}",
+                "--max-time",
+                "5",
+                &self.endpoint,
+            ])
+            .output()
+            .map_err(|e| LlmCallError::Network(e.to_string()))?;
+
+        let code_str = String::from_utf8_lossy(&out.stdout);
+        let status: u16 = code_str.trim().parse().unwrap_or(0);
+        if status == 0 {
+            return Err(LlmCallError::Network(format!(
+                "curl produced no status code (exit={:?})",
+                out.status.code()
+            )));
+        }
+        if (200..300).contains(&status) {
+            Ok(())
+        } else {
+            Err(LlmCallError::Http(status, format!("GET {}", self.endpoint)))
+        }
+    }
+}
+
+/// Max retry attempts for the LLM healthcheck before giving up and emitting
+/// `permanent_failure` (distinct from a same-cycle permanent classification,
+/// which gives up immediately).
+fn llm_healthcheck_max_attempts() -> u32 {
+    std::env::var("PARAMEDIC_LLM_MAX_ATTEMPTS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n: &u32| n > 0)
+        .unwrap_or(10)
+}
+
+/// Run one LLM healthcheck with retry+backoff, emitting the AC §1 events as
+/// it goes:
+///   - `model_unavailable` on every transient (404/429/network) failure
+///   - `paramedic_healthy` once the model responds
+///   - `permanent_failure` on a non-retryable 4xx, or once retries exhaust
+///
+/// Returns Ok(()) on eventual success, Err on permanent failure / exhaustion.
+pub fn run_llm_healthcheck_with_backoff(
+    client: &mut dyn LlmClient,
+    repo_root: &Path,
+) -> Result<()> {
+    let max_attempts = llm_healthcheck_max_attempts();
+    let mut attempt: u32 = 0;
+
+    loop {
+        match client.call() {
+            Ok(()) => {
+                emit_paramedic_healthy(repo_root, attempt);
+                return Ok(());
+            }
+            Err(err) => {
+                let class = classify_llm_error(&err);
+                match class {
+                    LlmFailureClass::Permanent => {
+                        emit_permanent_failure(repo_root, &err, attempt);
+                        anyhow::bail!("paramedic LLM healthcheck: permanent failure: {err}");
+                    }
+                    LlmFailureClass::Transient => {
+                        emit_model_unavailable(repo_root, &err, attempt);
+                        attempt += 1;
+                        if attempt >= max_attempts {
+                            emit_permanent_failure(repo_root, &err, attempt);
+                            anyhow::bail!(
+                                "paramedic LLM healthcheck: exhausted {max_attempts} attempts, last error: {err}"
+                            );
+                        }
+                        std::thread::sleep(Duration::from_millis(backoff_delay_ms(attempt)));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// `chump paramedic smoke-test` / AC §3: perform a quick observability check
+/// against a dummy LLM call and print a `cost_report` JSON line. Uses a
+/// deterministic in-process stub (no network) so the smoke test is fast and
+/// works offline — its job is to prove the observability plumbing (event
+/// shape, cost accounting fields) works, not to validate a live model.
+pub fn smoke_test(repo_root: &Path) -> Result<()> {
+    struct DummyLlmClient;
+    impl LlmClient for DummyLlmClient {
+        fn call(&mut self) -> Result<(), LlmCallError> {
+            Ok(())
+        }
+    }
+
+    let mut client = DummyLlmClient;
+    run_llm_healthcheck_with_backoff(&mut client, repo_root)?;
+
+    // Dummy token/cost accounting — smoke test proves the fields exist and
+    // are numeric, not that a real call happened.
+    let tokens_used: u64 = 128;
+    let estimated_cost_usd: f64 = 0.0006;
+    let event = json!({
+        "ts": iso8601_now(),
+        "event": "cost_report",
+        "kind": "cost_report",
+        "tokens_used": tokens_used,
+        "estimated_cost_usd": estimated_cost_usd,
+    });
+    println!("{event}");
+    emit_ambient_line(repo_root, &event);
+    Ok(())
+}
+
+fn emit_model_unavailable(repo_root: &Path, err: &LlmCallError, attempt: u32) {
+    let event = json!({
+        "ts": iso8601_now(),
+        "kind": "model_unavailable",
+        "event": "model_unavailable",
+        "attempt": attempt,
+        "error": err.to_string(),
+    });
+    warn!(attempt, error = %err, "paramedic: model_unavailable");
+    emit_ambient_line(repo_root, &event);
+}
+
+fn emit_paramedic_healthy(repo_root: &Path, attempts_before_healthy: u32) {
+    let event = json!({
+        "ts": iso8601_now(),
+        "kind": "paramedic_healthy",
+        "event": "paramedic_healthy",
+        "attempts_before_healthy": attempts_before_healthy,
+    });
+    info!(attempts_before_healthy, "paramedic: paramedic_healthy");
+    emit_ambient_line(repo_root, &event);
+}
+
+fn emit_permanent_failure(repo_root: &Path, err: &LlmCallError, attempt: u32) {
+    let event = json!({
+        "ts": iso8601_now(),
+        "kind": "permanent_failure",
+        "event": "permanent_failure",
+        "attempt": attempt,
+        "error": err.to_string(),
+    });
+    warn!(attempt, error = %err, "paramedic: permanent_failure");
+    emit_ambient_line(repo_root, &event);
+}
+
+fn emit_ambient_line(repo_root: &Path, event: &serde_json::Value) {
+    let ambient_path = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let line = serde_json::to_string(event).unwrap_or_default() + "\n";
+    if let Some(parent) = ambient_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&ambient_path)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
 }
 
 #[cfg(test)]
