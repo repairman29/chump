@@ -125,6 +125,7 @@ mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod cartographer; // INFRA-1782: chump cartograph <repo-path> — ARCHITECTURE.md generation (INFRA-1746 phase 2)
 mod collision_prediction; // META-076: predictive collision detection (mock inputs), first impl of docs/design/COLLISION_PREDICTION_SCHEMA.md
 mod completion;
+mod cos_digest;
 mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod done_auditor; // INFRA-3495: anti-over-claim watchdog — audit DONE gaps for uncovered AC
 mod evangelist; // INFRA-1783: chump evangelize <repo-path> — HIDDEN_GEMS.md generation (INFRA-1746 phase 3)
@@ -5467,6 +5468,68 @@ async fn main() -> Result<()> {
                 eprintln!("Run 'chump paramedic help' for usage.");
                 std::process::exit(1);
             }
+        }
+        return Ok(());
+    }
+
+    // `chump cos digest [--week] [--since W] [--json] [--emit]`
+    // (INFRA-1616) — CREDIBLE: operator weekly visibility into skill/procedure
+    // health via the Curriculum section: top-by-yield, moved, new, decaying,
+    // anomalies. Mission Yield chip-tag aggregation is CREDIBLE-071's scope
+    // and renders as a stub above the Curriculum section until that lands.
+    if args.get(1).map(String::as_str) == Some("cos")
+        && args.get(2).map(String::as_str) == Some("digest")
+    {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump cos digest [--week] [--since WINDOW] [--json] [--emit]");
+            println!();
+            println!("Operator weekly digest: Mission Yield (stub, see CREDIBLE-071) +");
+            println!("Curriculum section (skill health: top-by-yield, moved, new, decaying,");
+            println!("anomalies).");
+            println!();
+            println!("Options:");
+            println!("  --week      use a 7-day window (default)");
+            println!("  --since T   time window: 7d, 14d, 24h");
+            println!("  --json      output in JSON format");
+            println!("  --emit      write per-skill snapshot events for next week's diff");
+            println!();
+            println!("Subsections can be individually disabled via env vars:");
+            println!("  CHUMP_COS_HIDE_CURRICULUM_TOP=1");
+            println!("  CHUMP_COS_HIDE_CURRICULUM_MOVED=1");
+            println!("  CHUMP_COS_HIDE_CURRICULUM_NEW=1");
+            println!("  CHUMP_COS_HIDE_CURRICULUM_DECAYING=1");
+            println!("  CHUMP_COS_HIDE_CURRICULUM_ANOMALIES=1");
+            return Ok(());
+        }
+        let since_arg = args
+            .iter()
+            .position(|a| a == "--since")
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+            .unwrap_or_else(|| "7d".to_string());
+        let want_json = args.iter().any(|a| a == "--json");
+        let do_emit = args.iter().any(|a| a == "--emit");
+        let since_secs = parse_duration_to_secs(&since_arg).unwrap_or_else(|| {
+            eprintln!(
+                "chump cos digest: invalid --since '{}' (expected like 7d, 14d, 24h)",
+                since_arg
+            );
+            std::process::exit(2);
+        });
+        let repo_root = repo_path::repo_root();
+        let curriculum = cos_digest::build_curriculum(&repo_root, since_secs);
+        if want_json {
+            let out = serde_json::json!({
+                "mission_yield": serde_json::Value::Null,
+                "curriculum": cos_digest::render_curriculum_json(&curriculum),
+            });
+            println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
+        } else {
+            print!("{}", cos_digest::render_mission_yield_stub_markdown());
+            print!("{}", cos_digest::render_curriculum_markdown(&curriculum));
+        }
+        if do_emit {
+            cos_digest::emit_snapshots(&repo_root);
         }
         return Ok(());
     }
