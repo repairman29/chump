@@ -7117,6 +7117,25 @@ events:
       app.js, main.rs. The list is tunable in scripts/coord/lib/hot-files.yaml.
       Pairs with INFRA-1389 merge drivers (same region → no conflict) but the
       proactive block here saves the rebase cycle entirely for non-merge-driver paths.
+  # ── INFRA-1604: deep lease path-set collision detection ───────────────────
+  - kind: lease_path_collision
+    effect_metric: self
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs emit_lease_path_collision_event (INFRA-1604)
+    trigger: >
+      chump claim computed the actual set intersection between this claim's
+      declared paths[] and a sibling lease's declared paths[] (glob +
+      directory-prefix aware) and found a non-empty overlap. Fires before the
+      worktree is created — claim is blocked unless --force-overlap is passed.
+      Structural successor to claim_hot_file_overlap: that check matches AC
+      *text* against 5 hardcoded hot files; this one intersects the full
+      declared path sets of every sibling lease.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, claim_gap, sibling_gap, sibling_session, overlap_paths, paths_count]
+    docs: |
+      Runs unconditionally alongside claim_hot_file_overlap (defense in
+      depth) rather than replacing it — that check catches cases where the
+      lease paths[] declaration is incomplete but the AC text still names
+      the file.
   # ── INFRA-1763: lease-time predictive diff-collision detection ────────────
   - kind: collision_predicted
     effect_metric: self
