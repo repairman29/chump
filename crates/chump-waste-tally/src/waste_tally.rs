@@ -870,6 +870,118 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
     }
 }
 
+/// INFRA-1712: failure classification for a content-bot run outcome.
+/// `Transient` means a retry is likely to succeed (timeout, rate-limit,
+/// claude-cli transient nonzero exit); `Permanent` means retrying without
+/// operator intervention won't help (auth failure, malformed prompt
+/// manifest, disabled bot).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContentBotFailureClass {
+    Transient,
+    Permanent,
+}
+
+impl ContentBotFailureClass {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ContentBotFailureClass::Transient => "transient",
+            ContentBotFailureClass::Permanent => "permanent",
+        }
+    }
+}
+
+/// INFRA-1712: outcome of a single content-bot dispatch, as classified by
+/// the dispatcher (`scripts/content-bots/run-bot.sh`, INFRA-1695) once the
+/// LLM call returns, fails, or times out. Feeds `record_content_bot_outcome`.
+#[derive(Debug, Clone, Copy)]
+pub enum ContentBotOutcome {
+    Completed,
+    Failed(ContentBotFailureClass),
+    TimedOut(ContentBotFailureClass),
+}
+
+impl ContentBotOutcome {
+    fn event_kind(&self) -> &'static str {
+        match self {
+            ContentBotOutcome::Completed => "content_bot_run.completed",
+            ContentBotOutcome::Failed(_) => "content_bot_run.failed",
+            ContentBotOutcome::TimedOut(_) => "content_bot_run.timed_out",
+        }
+    }
+
+    fn failure_class(&self) -> Option<ContentBotFailureClass> {
+        match self {
+            ContentBotOutcome::Completed => None,
+            ContentBotOutcome::Failed(c) | ContentBotOutcome::TimedOut(c) => Some(*c),
+        }
+    }
+}
+
+/// INFRA-1712: record a content-bot run outcome plus its cost-tally entry.
+/// Emits exactly two ambient events, best-effort (silently no-ops if the
+/// ambient log isn't writable — mirrors `ClosureReasonReport::emit_ambient`
+/// above):
+///
+///   1. one of `content_bot_run.completed` / `.failed` / `.timed_out`,
+///      carrying `failure_class` (transient|permanent) for the latter two.
+///   2. `content_bot.cost_report`, always emitted — the PWA "Run all
+///      enabled" surface (`docs/agents/content-bots/README.md` Roadmap)
+///      reads this to show each bot's estimated cost against its floor.
+///
+/// `tally_id` correlates the two events (and, when present, every bot in the
+/// same "Run all enabled" batch) — analogous to `run_id` on
+/// `content_bot_invoked`/`content_bot_output` (INFRA-1695). Honors
+/// `CHUMP_AMBIENT_LOG` like `build_domain_report` so callers (and this
+/// crate's tests / the CI smoke test) can redirect to a scratch file instead
+/// of the real `.chump-locks/ambient.jsonl`.
+pub fn record_content_bot_outcome(
+    repo_root: &Path,
+    bot_id: &str,
+    tally_id: &str,
+    outcome: ContentBotOutcome,
+    estimated_cost_ms: u64,
+    cost_floor_ms: u64,
+) {
+    let ambient = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| repo_root.join(".chump-locks/ambient.jsonl"));
+    let Some(parent) = ambient.parent() else {
+        return;
+    };
+    let _ = std::fs::create_dir_all(parent);
+    let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient)
+    else {
+        return;
+    };
+    use std::io::Write;
+
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+
+    let mut run_event = serde_json::json!({
+        "ts": ts,
+        "kind": outcome.event_kind(),
+        "bot_id": bot_id,
+        "tally_id": tally_id,
+    });
+    if let Some(class) = outcome.failure_class() {
+        run_event["failure_class"] = serde_json::Value::String(class.as_str().to_string());
+    }
+    let _ = writeln!(f, "{}", run_event);
+
+    let cost_event = serde_json::json!({
+        "ts": ts,
+        "kind": "content_bot.cost_report",
+        "bot_id": bot_id,
+        "estimated_cost_ms": estimated_cost_ms,
+        "cost_floor_ms": cost_floor_ms,
+        "tally_id": tally_id,
+    });
+    let _ = writeln!(f, "{}", cost_event);
+}
+
 /// Parse the legacy free-text `note` field for `session=<id>`. Coord ALERTs
 /// emit JSON like `{"kind":"silent_agent","note":"session=infra-470-fix gap=..."}` —
 /// the entity for dedup is hidden inside `note`.
@@ -2333,5 +2445,93 @@ mod close_reason_tests {
         let json: serde_json::Value = serde_json::from_str(&report.render_json()).unwrap();
         assert_eq!(json["total"], 16);
         assert_eq!(json["categories"][0]["category"], "superseded");
+    }
+
+    // ── INFRA-1712: content-bot run outcome + cost-report events ──────────
+
+    /// Env-var mutation guard — CHUMP_AMBIENT_LOG is process-wide, so tests
+    /// that redirect it must serialize (mirrors ENV_GUARD in content_bots.rs).
+    static AMBIENT_ENV_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn read_ambient_lines(path: &Path) -> Vec<serde_json::Value> {
+        std::fs::read_to_string(path)
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn infra1712_completed_outcome_emits_run_and_cost_report_no_failure_class() {
+        let _g = AMBIENT_ENV_GUARD.lock().unwrap();
+        let tmp = tempdir();
+        let ambient = tmp.join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", &ambient);
+
+        record_content_bot_outcome(
+            &tmp,
+            "docubot",
+            "tally-1",
+            ContentBotOutcome::Completed,
+            1200,
+            500,
+        );
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        let lines = read_ambient_lines(&ambient);
+        assert_eq!(
+            lines.len(),
+            2,
+            "expected exactly one run event + one cost_report"
+        );
+        assert_eq!(lines[0]["kind"], "content_bot_run.completed");
+        assert!(
+            lines[0].get("failure_class").is_none(),
+            "completed run must not carry failure_class"
+        );
+        assert_eq!(lines[1]["kind"], "content_bot.cost_report");
+        assert_eq!(lines[1]["bot_id"], "docubot");
+        assert_eq!(lines[1]["estimated_cost_ms"], 1200);
+        assert_eq!(lines[1]["cost_floor_ms"], 500);
+        assert_eq!(lines[1]["tally_id"], "tally-1");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra1712_failed_and_timed_out_carry_failure_class() {
+        let _g = AMBIENT_ENV_GUARD.lock().unwrap();
+        let tmp = tempdir();
+        let ambient = tmp.join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", &ambient);
+
+        record_content_bot_outcome(
+            &tmp,
+            "pmm",
+            "tally-2",
+            ContentBotOutcome::Failed(ContentBotFailureClass::Permanent),
+            900,
+            300,
+        );
+        record_content_bot_outcome(
+            &tmp,
+            "pmm",
+            "tally-3",
+            ContentBotOutcome::TimedOut(ContentBotFailureClass::Transient),
+            900,
+            300,
+        );
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        let lines = read_ambient_lines(&ambient);
+        assert_eq!(lines.len(), 4);
+        assert_eq!(lines[0]["kind"], "content_bot_run.failed");
+        assert_eq!(lines[0]["failure_class"], "permanent");
+        assert_eq!(lines[2]["kind"], "content_bot_run.timed_out");
+        assert_eq!(lines[2]["failure_class"], "transient");
+        // Every outcome — including failures — still gets a cost_report.
+        assert_eq!(lines[1]["kind"], "content_bot.cost_report");
+        assert_eq!(lines[3]["kind"], "content_bot.cost_report");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

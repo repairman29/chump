@@ -902,6 +902,15 @@ events:
       and acknowledgment-present bool. Used for port-to-Rust prioritization.
     fields_required: [ts, kind, path, violations, has_bypass, has_acknowledgment, loc]
     consumers: [fleet-brief, audit-log, META-064-effectiveness]
+  - kind: rust_first_modified_audit
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-commit-rust-first.sh (INFRA-1651)
+    trigger: pre-commit gate saw a MODIFIED (not new) shell file under a
+      hot-path dir now meeting Rust-first criteria (loc>200, state-mutation,
+      hot-path dir). Audit-only — never blocks the commit; surfaces drift
+      the NEW-file-only gate (INFRA-1580) structurally cannot see.
+    fields_required: [ts, kind, files, reasons]
+    consumers: [fleet-brief, audit-log, META-064-effectiveness]
   - kind: redundancy_bypass_used
     effect_metric: self
     emitter: scripts/git-hooks/pre-commit-redundancy.sh (META-063)
@@ -7303,6 +7312,49 @@ events:
       registry-state drift). Closes the bypass-debt from PR #2348.
     consumers: [content-bots-pipeline-orchestrator, fleet-brief, ops-audit]
     fields_required: [ts, kind, run_id, reason]
+
+  # ── INFRA-1712 / INFRA-1699 slice 4/4: content-bot cost + outcome accounting ──
+  - kind: content_bot_run.completed
+    effect_metric: self
+    emitter: crates/chump-waste-tally/src/waste_tally.rs (record_content_bot_outcome, INFRA-1712)
+    trigger: >
+      A content-bot dispatch (PWA "Run all enabled" button, or the CLI
+      dispatcher scripts/content-bots/run-bot.sh) finished without error.
+      Pairs with content_bot.cost_report via shared tally_id.
+    consumers: [fleet-brief, ops-audit, chump-waste-tally]
+    fields_required: [ts, kind, bot_id, tally_id]
+
+  - kind: content_bot_run.failed
+    effect_metric: self
+    emitter: crates/chump-waste-tally/src/waste_tally.rs (record_content_bot_outcome, INFRA-1712)
+    trigger: >
+      A content-bot dispatch returned a non-zero/error result. Carries
+      failure_class (transient|permanent) so downstream retry logic can
+      distinguish "worth retrying" (rate-limit, claude-cli hiccup) from
+      "needs operator fix" (auth, malformed prompt manifest).
+    consumers: [fleet-brief, ops-audit, chump-waste-tally]
+    fields_required: [ts, kind, bot_id, tally_id, failure_class]
+
+  - kind: content_bot_run.timed_out
+    effect_metric: self
+    emitter: crates/chump-waste-tally/src/waste_tally.rs (record_content_bot_outcome, INFRA-1712)
+    trigger: >
+      A content-bot dispatch exceeded its wall-clock budget before the LLM
+      call returned. Carries failure_class (transient|permanent) — a bare
+      timeout defaults to transient (retry is usually worth it).
+    consumers: [fleet-brief, ops-audit, chump-waste-tally]
+    fields_required: [ts, kind, bot_id, tally_id, failure_class]
+
+  - kind: content_bot.cost_report
+    effect_metric: self
+    emitter: crates/chump-waste-tally/src/waste_tally.rs (record_content_bot_outcome, INFRA-1712)
+    trigger: >
+      Always emitted alongside one of content_bot_run.completed/failed/timed_out
+      — the PWA cost-estimate surface (docs/agents/content-bots/README.md
+      Roadmap) reads this per-bot to show estimated cost against the
+      configured cost floor after a "Run all enabled" click.
+    consumers: [fleet-brief, ops-audit, pwa-content-bots-settings]
+    fields_required: [ts, kind, bot_id, estimated_cost_ms, cost_floor_ms, tally_id]
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, pr_number, mode]
 

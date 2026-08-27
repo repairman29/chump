@@ -82,8 +82,37 @@ Defined in [`bots.yaml`](bots.yaml). Each entry:
 | Follow-up (TBF) | Dispatcher script (`scripts/content-bots/run-bot.sh`) + ambient event registration |
 | Follow-up (TBF) | Pipeline orchestrator (PMM → DocuBot/Evangelist → CopyBot) |
 | Follow-up (TBF) | Fleet integration via `WORKER_SKILLS=content-bot,<bot_id>` |
-| Follow-up (TBF) | PWA toggle UI with per-bot daily cost estimate |
+| [INFRA-1712](../../gaps/INFRA-1712.yaml) | PWA "Run all enabled" button + cost estimate + outcome accounting + observability smoke test |
 | Productization umbrella | [META-066](../../gaps/META-066.yaml) |
+
+### PWA "Run all enabled" button (INFRA-1712)
+
+The Content Bots settings view has a single **Run all enabled** button that
+triggers every currently-enabled bot (per `enabled_set()` in
+`src/content_bots.rs`) once, in one click — no per-bot dispatch needed for
+the common case of "run today's content pass." For each bot it surfaces:
+
+- the bot's **estimated cost** vs. its configured **cost floor** (both in
+  milliseconds), read from `content_bot.cost_report` events, and
+- the bot's **failure class** (`transient` / `permanent`) whenever a run
+  fails or times out, read from `content_bot_run.failed` /
+  `content_bot_run.timed_out` events — so the operator can tell "retry it"
+  from "needs a fix" at a glance.
+
+### Observability smoke test
+
+```bash
+bash scripts/ci/test-pwa-cost-ceiling.sh
+```
+
+Exercises the cost-tally path end-to-end (`chump waste-tally
+--content-bot-smoke-test`, backed by `record_content_bot_outcome` in
+`crates/chump-waste-tally/src/waste_tally.rs`) and asserts:
+
+1. every outcome emits a `content_bot.cost_report` event (`bot_id`,
+   `estimated_cost_ms`, `cost_floor_ms`, `tally_id`), and
+2. a timed-out run is never classified `failure_class:permanent` — a bare
+   timeout is presumed retryable until something else proves otherwise.
 
 ## Provenance
 

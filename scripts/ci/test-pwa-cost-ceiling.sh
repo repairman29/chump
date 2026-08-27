@@ -89,4 +89,34 @@ grep -A6 "cost-kill-config" "$APP_JS" | grep -q "chump:navigate.*settings\|'sett
     || fail "Raise-ceiling button doesn't dispatch chump:navigate → settings"
 ok "Raise-ceiling: navigates to Settings via chump:navigate"
 
+# ── Test 12 (INFRA-1712): cost-tally path emits content_bot.cost_report,
+# and a timed-out run must never surface as failure_class=permanent — a bare
+# timeout is presumed retryable until something else classifies it otherwise.
+BIN_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug"
+if [[ ! -x "$BIN_DIR/chump" ]]; then
+    echo "test-pwa-cost-ceiling: building chump ($BIN_DIR/chump) …" >&2
+    if ! command -v cargo >/dev/null 2>&1; then
+        fail "cargo not on PATH — cannot run the content-bot cost-tally smoke test"
+    fi
+    ( cd "$REPO_ROOT" && cargo build -q --bin chump ) \
+        || fail "cargo build failed — cannot run the content-bot cost-tally smoke test"
+    [[ -x "$BIN_DIR/chump" ]] || fail "chump binary still missing after cargo build ($BIN_DIR/chump)"
+fi
+
+SMOKE_AMBIENT="$(mktemp -t chump-infra1712-ambient.XXXXXX)"
+trap 'rm -f "$SMOKE_AMBIENT"' EXIT
+CHUMP_AMBIENT_LOG="$SMOKE_AMBIENT" "$BIN_DIR/chump" waste-tally --content-bot-smoke-test \
+    || fail "chump waste-tally --content-bot-smoke-test exited non-zero"
+
+grep -q '"kind":"content_bot.cost_report"' "$SMOKE_AMBIENT" \
+    || fail "cost-tally path did not emit content_bot.cost_report"
+ok "cost-tally path: content_bot.cost_report event emitted"
+
+TIMED_OUT_LINE="$(grep '"kind":"content_bot_run.timed_out"' "$SMOKE_AMBIENT" || true)"
+[[ -n "$TIMED_OUT_LINE" ]] || fail "cost-tally path did not emit content_bot_run.timed_out"
+if grep -q '"failure_class":"permanent"' <<< "$TIMED_OUT_LINE"; then
+    fail "timed-out run classified as permanent — timeouts must default to transient"
+fi
+ok "outcome accounting: timed-out run is not classified permanent"
+
 ok "ALL PRODUCT-113 cost-ceiling checks passed"

@@ -5095,6 +5095,37 @@ async fn main() -> Result<()> {
     // lease_overlap, edit_burst) and prints a per-kind tally with rough
     // cost estimates where measurable. No new event emissions in MVP.
     if args.get(1).map(String::as_str) == Some("waste-tally") {
+        // `chump waste-tally --content-bot-smoke-test` (INFRA-1712) — internal
+        // hook for scripts/ci/test-pwa-cost-ceiling.sh. Drives
+        // waste_tally::record_content_bot_outcome through a completed and a
+        // timed-out (transient) run so the smoke test can assert
+        // content_bot.cost_report + content_bot_run.* land in ambient.jsonl
+        // without needing a live content-bot dispatch. Honors CHUMP_AMBIENT_LOG
+        // so CI never touches the real ambient log.
+        if args.iter().any(|a| a == "--content-bot-smoke-test") {
+            let repo_root = repo_path::repo_root();
+            let tally_id = format!("smoke-{}", std::process::id());
+            waste_tally::record_content_bot_outcome(
+                &repo_root,
+                "docubot",
+                &tally_id,
+                waste_tally::ContentBotOutcome::Completed,
+                1200,
+                500,
+            );
+            waste_tally::record_content_bot_outcome(
+                &repo_root,
+                "docubot",
+                &tally_id,
+                waste_tally::ContentBotOutcome::TimedOut(
+                    waste_tally::ContentBotFailureClass::Transient,
+                ),
+                1200,
+                500,
+            );
+            println!("chump waste-tally: content-bot smoke events emitted (tally_id={tally_id})");
+            return Ok(());
+        }
         if args.iter().any(|a| a == "--help" || a == "help") {
             println!(
                 "Usage: chump waste-tally [--since WINDOW] [--json] [--domain|--by-domain] [--tokens] [--by-close-reason] [--emit-ambient]"
