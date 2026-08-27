@@ -4,6 +4,7 @@
   status: open
   priority: P0
   effort: xs
+  opened_date: 2026-07-26
   acceptance_criteria:
     - Change every occurrence of dtolnay/rust-toolchain@stable in .github/workflows/ci.yml to dtolnay/rust-toolchain@1.95.0 (last known good stable before the 1.96.0 manifest break)
     - "Verify 4 references in ci.yml: Install Rust toolchain steps at lines ~590, ~653, ~1111, ~1256 (counts current as of 2026-05-30 main HEAD)"

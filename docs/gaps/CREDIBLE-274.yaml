@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: l
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "THE CLASS, stated so it can be hunted rather than stumbled upon: a component that is configured, installed, or asserted — and is not actually running, not actually wired, or not actually checking what its name claims. Its signature is SILENCE, not failure, which is why no failure-based metric can find it"
     - "WHY THIS IS P1 DESPITE NOTHING BEING BROKEN: the four found in one session include a linker that made every build slower than necessary and a notification channel whose death let PR #3510 be destroyed with nobody told. The cost is real and unbounded; only the detection is missing"

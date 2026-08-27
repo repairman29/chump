@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: s
+  opened_date: 2026-07-26
   acceptance_criteria:
     - "Reproducer: chump gap reserve --domain X --title 'foo' → docs/gaps/X-NNN.yaml written → within minutes, file is gone from disk while state.db row remains open"
     - "Identify the deleting daemon — survey candidates: scripts/ops/gap-doctor-safe-sweep.sh, scripts/ops/orphan-yaml-prune.sh, scripts/ops/registry-orphan-reaper.sh, gap-lifecycle-manager (INFRA-NNN). Confirm via fsevents/dtruss OR by inspecting each daemon's deletion logic."

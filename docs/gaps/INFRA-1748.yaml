@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: l
+  opened_date: 2026-05-23
   acceptance_criteria:
     - chump fanout and chump rollup are moved out of src/main.rs into self-registering modules via the inventory pattern; main.rs no longer holds their command bodies; both run with identical output before/after; editing one no longer forces recompile of the other.
   outcome_id: MISSION-010

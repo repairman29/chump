@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-07-26
   description: |
     Diagnosed 2026-06-08 during META-287 manual ship (wedged 3x). In bot-merge.sh, AFTER rebase (31s with 1200s budget — validates RESILIENT-133: the 300s default was strangling rebase) + fmt (15s) + skip-tests/clippy (DOC_ONLY diff), the push / gh-pr-create stage HANGS >210s and NEVER creates a PR. During the hang the per-stage heartbeat still prints 'step=cargo fmt' (stale step label) — so it looks like fmt is hanging when the real stall is push/pr-create. Manual ships have no farmer-retry, so one hang = permanent wedge; the fleet survives only because the farmer re-runs the worker. Part of MISSION-044 (Cut the Friction). Two distinct bugs to fix.
   acceptance_criteria:

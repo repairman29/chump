@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-23
   acceptance_criteria:
     - "A GitHub Actions workflow (.github/workflows/build-fleet-binaries.yml) builds `cargo build --release --bin chump` on free GH-hosted ubuntu-latest runners on every push to main, for x86_64-unknown-linux-gnu (CJ) and aarch64-unknown-linux-gnu (Oracle Ampere A1 / general ARM glibc), using GITHUB_TOKEN only (no external secrets) and Swatinem/rust-cache for warm builds."
     - "Each target's binary is published as a per-SHA Actions artifact named chump-<target>-<full-sha>, addressable by head_sha so a node can fetch the binary for origin/main@<sha>. Native-target build verifies `chump --version` embeds the commit SHA; a sha256 accompanies each binary."

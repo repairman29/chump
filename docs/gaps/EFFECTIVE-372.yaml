@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - Scope the preflight BLOCKING gate (src/preflight.rs, currently 'cargo check --workspace' ~line 1081) to 'cargo check -p <changed-crate>' + capped jobs (~6) + nice + load-aware-defer.
     - A test in src/preflight.rs proves the scoped gate runs the changed crate's check and skips the full workspace; fails without the change.

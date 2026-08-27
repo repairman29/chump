@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "The change described by \"it closed #3958(P0,5 commits) + #3963(P1,5 commits) as CONFLICTING, but both rebase CLEAN onto current main (transient jam conflict). Root cause: the armed-pr-rebaser (the SALVAGE organ that rebases CONFLICTING PRs before the reaper closes them) was DARK — not wired on owned nodes. Fixes: (1) WIRE armed-pr-rebaser as a COTG organ [done on CJ 2026-08-20] + fold into install-node-housekeeping.sh ORGANS; (2) rot-reaper GUARD — before closing a CONFLICTING PR, attempt a rebase onto main; only close if it genuinely does NOT resolve. Never discard 5 commits over a transient conflict. Merge-race causes the transient conflicts (main churns under PRs) so this compounds the jam waste.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.

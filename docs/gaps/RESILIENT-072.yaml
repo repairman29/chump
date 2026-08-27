@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: s
+  opened_date: 2026-07-26
   description: |
     Found 2026-06-03 validating MISSION-008. chump preflight's cargo-test step invokes scripts/ci/cargo-test-with-rerun.sh WITHOUT the required '-- <cmd>' args, so it prints 'usage: ...' and exits non-zero — the cargo-test gate FAILS without running a single test. Every other preflight gate (fmt/clippy/check/registry/integrity/links) passed. Net effect: every push that touches Rust either fails preflight on cargo-test or bypasses it (Test-Gate-Bypass / Preflight-Skip), so the test gate is effectively OFF fleet-wide and unverified code reaches CI -> rework. STRONG suspect for a chunk of the current L2-SLO-2 token-waste breach (40% vs 5% target) and the CI churn. Fix in src/preflight.rs: invoke the wrapper with the correct '-- cargo test ...' form (or call cargo test directly).
   acceptance_criteria:

@@ -4,6 +4,7 @@
   status: open
   priority: P0
   effort: l
+  opened_date: 2026-07-26
   description: |
     VERIFIED 2026-06-04 (conductor, fleet down ~99min): after clearing the auth/gh blockers, `chump fleet restart` fails at 'create window failed: fork failed: Device not configured' — run-fleet launches workers in tmux windows, and tmux cannot fork a window without a controlling TTY. The Claude-Code Bash-tool context (and any headless/launchd/daemon context) has NO tty; even `script` fails with 'openpty: Device not configured'. CONSEQUENCE: when the worker fleet halts (auth blip, crash, etc.), NOTHING can relaunch it without a human at a real terminal — not the autopilot daemon, not the conductor, not a launchd job. This is a FOUNDATIONAL autonomy blocker for MISSION-010 (self-coordinating fleet / empty conductor's chair): a fleet that needs a human terminal to restart cannot run unattended (let alone build BEAST overnight). FIX: make the worker launch TTY-independent — use `tmux new-session -d` (detached, daemonizes without a controlling tty) for a fresh worker session instead of `new-window` into an existing one; OR run workers as plain background processes / launchd jobs (no tmux); OR wrap the launch in a pty allocator that works headlessly. The fleet must be able to (re)start itself with zero human + zero terminal.
   acceptance_criteria:

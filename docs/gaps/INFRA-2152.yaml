@@ -4,6 +4,7 @@
   status: open
   priority: P0
   effort: s
+  opened_date: 2026-07-26
   acceptance_criteria:
     - "1. chump-coord::ambient_distribution::emit_round_trips_to_subscriber test in crates/chump-coord/tests/ambient_distribution.rs:76 — panics in CI; investigate timing/race (likely needs longer wait OR deterministic subscriber-ready signal)"
     - "2. chump-gap-store::tests::test_reserve_skips_yaml_drift in crates/chump-gap-store/src/lib.rs:4152 — panics in CI; investigate fixture cleanup OR test isolation (concurrent test pollution)"

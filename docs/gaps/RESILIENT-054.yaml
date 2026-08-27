@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: l
+  opened_date: 2026-07-26
   description: |
     Operator-commissioned 2026-06-02 ('fix the auth substrate so this doesn't happen again'); credential model corrected 2026-06-02 to preserve the subscription cost model.
     

@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "chump gap reserve accepts --acceptance-criteria and for P0/P1 REQUIRES it (same firewall as --outcome/--evidence); refuses without it. Bypass: --no-ac-required (audit trailer)"
     - reserve NO LONGER auto-fills the tautological placeholder - an unauthored gap has EMPTY AC (which audit-ac flags), not a fake-pass placeholder that reads as covered

@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "Make the incident-commander a STANDING duty-officer loop (not a doc): (1) continuously watches health signals (ambient.jsonl kinds, ship-rate, disk, auth, wedges); (2) a playbook REGISTRY maps signal -> tier -> action: Tier1 executable auto-heal (code/daemons, e.g. RESILIENT-273), Tier2 agent-run runbook (REALITY_CHECK first, then the matching playbook), Tier3 escalate to operator (only novel/halt-class per the 4 triggers); (3) routes each incident through T1->T2->T3 and pages the operator ONLY at T3; (4) progressively executable-ize the top recurring incidents, starting with this session's four. Design doc first (tiers + registry format + duty-officer contract + how a business instantiates its own), then wire the standing loop. This is the RUN-the-business owner for customer-0 AND the productized per-business ops-owner for COTG/any-business."
   notes: |

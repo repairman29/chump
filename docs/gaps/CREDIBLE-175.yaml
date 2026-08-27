@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "This gap's ORIGINAL scope: the local cargo-test path must match CI's nextest so it stops false-redding. Active work item is CREDIBLE-278, which carries the fresh measurements and the pre-push specifics — close THIS one only when 278 lands"
     - "Anti-recurrence, the reason this is reopened: a closing PR's diff must actually touch the runner (git log -S nextest -- scripts/git-hooks/pre-push must return NON-EMPTY). This gap was previously marked done by PR #3552, which changed only .env.example, uncommitted-wip-watchdog.sh, install-wip-watchdog-launchd.sh, src/git_safety.rs and tests/git_safety_e2e.rs — none of this work — because its body merely MENTIONED the cargo-test race while explaining its own bypass, and auto-flip-on-merge closed the gap for citing it"

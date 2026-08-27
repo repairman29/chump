@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "closing a stale+CONFLICTING PR whose gap was demoted STICKS: not auto-reopened within seconds"
     - "reopener and stale-PR-reaper share one policy: keep a PR alive only if gap open AND branch mergeable/rebaseable; retire conflicting+stale+low-priority PRs (gap stays open for clean re-pick)"

@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: s
+  opened_date: 2026-07-26
   acceptance_criteria:
     - "Observed (2026-05-25 with valid gh auth): chump gap reserve printed [gap reserve] WARN open-PR scan failed (gh repo view failed HTTP 401 Bad credentials https://api.github.com/graphql). Direct shell test of identical command succeeded: gh repo view --json nameWithOwner --jq .nameWithOwner returns repairman29/chump exit 0. gh auth status reports keyring + valid scopes (repo workflow gist read-org)."
     - "Root cause: ~/.config/gh/hosts.yml does NOT contain oauth_token field; token lives only in macOS keychain. chump binary at /opt/homebrew/bin/chump (Homebrew-installed, version 0.1.2 1c9bd3103acc built 2026-05-25) spawns gh as a subprocess via std::process::Command. That subprocess context lacks the keychain entitlement my interactive shell has — so gh inside chump cannot read the token, falls back to anonymous request, gets 401."

@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "MECHANISM FOUND AND VERIFIED ON MAIN — no longer a hypothesis. scripts/ops/github-webhook-receiver.py: _extract_gap_ids (line 161) runs regex \\b([A-Z][A-Z-]+-\\d+)\\b over BOTH title AND body; _auto_flip_gaps_done (line 243, CREDIBLE-092) then runs `chump gap set <ID> --status done --closed-pr <N>` for EVERY id it found, on any merged PR. The receiver is RUNNING (1 process confirmed). That is the whole bug"
     - "IT EXPLAINS THE TWO THINGS THAT PREVIOUSLY DID NOT ADD UP: (1) it calls `gap set`, NOT `gap ship`, so INFRA-1392 PROOF-OF-MERGE never fires — that guard lives on the ship path only. Two routes to status=done, one guarded. (2) `gap set --status done` does not write closed_date, which is exactly why every falsely-closed gap has closed_pr set and closed_date empty"

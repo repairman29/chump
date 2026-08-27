@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - picker computes effective_priority(gap) = min band over {own priority} ∪ {priority of every gap it transitively unblocks} (via chump-planner unblocks()); a P3 that blocks a P0 is picked as P0
     - effective priority is the PRIMARY sort band, not a within-priority-band tiebreaker (today _pick_gap.py INFRA-1258 planner rank only breaks ties WITHIN a nominal band — crates/chump-planner/src/graph.rs has open_prerequisites/layers/critical_path_days/unblocks already)

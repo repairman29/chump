@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "REDUCE the need, not just reap residue: cargo-sweep-gc organ caps the shared target (ZERO-WASTE-053, wired 2026-08-19); local sccache active (currently CI-only) so rebuilds reuse cache; docs/archive + old logs compressed (.gz); a workspace-hack/hakari pass evaluated for build-dedup"
     - "ADAPTIVE layer (the real gap): an optimizer observes access patterns + growth rates and tunes caps/TTLs/what-to-keep per node instead of fixed thresholds; emits a footprint budget per node (cores/disk-aware) the orchestrator enforces"

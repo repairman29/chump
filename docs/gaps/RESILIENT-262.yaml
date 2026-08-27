@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: l
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "OPERATOR'S REQUIREMENT, verbatim intent: retry-once is not good enough. Dispatch a job that finds out WHAT IS HAPPENING, reports back whether to retry, and defines how to escalate. If a production line is shut down he must get an iMessage (or equivalent that reaches his PHONE) so he can decide"
     - "IMMEDIATE FIX FIRST, it is one line of the problem: the operator-recall handler is dead. Restart it and make it survive reboot (launchd, like docs-autocommit), because every other part of this gap is worthless if the delivery channel is not running. Then add a liveness check — a notification channel that fails silently is worse than none, since it manufactures false confidence that someone would have been told"

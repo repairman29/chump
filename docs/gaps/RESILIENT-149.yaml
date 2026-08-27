@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-07-19
   acceptance_criteria:
     - Fleet daemons (ci-health-gate, farmer, etc.) run the CURRENT merged version of their scripts without manual deploy — via post-merge hook that updates the main checkout, daemons pull/checkout before run, OR run from an auto-synced location.
     - "After a fix merges to origin/main, the running daemon picks it up within N minutes with NO human 'git show origin/main:script > file' + kickstart."

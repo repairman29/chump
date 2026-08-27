@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   description: |
     The deterministic half of anti-stub enforcement, complementing the judgment panel (CREDIBLE-191) rather than replacing it. Given a gap that names a target (file, symbol, or capability) and a PR claiming to close it, ask almanac whether any changed file has a resolved import path to that target. Three verdicts, all honest about the graph's limits: REACHES (a changed file imports or is imported by the target, transitively), TEST-ONLY (every changed file is a test/fixture), UNRELATED (no changed file has any resolved path to the target). Must carry almanac's standing lower-bound caveat — only resolved intra-repo edges walk, roughly 20-40 percent on large repos — so UNRELATED is a STRONG SIGNAL FOR REVIEW, never an automatic reject. The asymmetry is the point: REACHES proves nothing about quality, but TEST-ONLY and UNRELATED on a gap that asked for a source fix are exactly the two shapes EFFECTIVE-354 and CREDIBLE-200 describe.
   acceptance_criteria:

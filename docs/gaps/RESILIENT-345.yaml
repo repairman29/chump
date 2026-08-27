@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "The change described by \"rebuild+restart running organs when main moves. CJ organs were running a 3-day/114-commit-STALE binary (built 08-17, main today) — PROVEN missing tonights CREDIBLE-291 cure (farmer forced RED, stale binary still returned farmer-RED not the format error). chump-cj-sync only git-fetches, never rebuilds. This is merged!=running at NODE scale: every fix on main never reaches the organs that actually run. Organ: on main-move → pull → cargo build --release → atomic binary swap → restart organs → self-test. COTG: installs via housekeeping ORGANS table; self-test must verify binary FRESHNESS (commit vs origin/main), not just binary-linked.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.

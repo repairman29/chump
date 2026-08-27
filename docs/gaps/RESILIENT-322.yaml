@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "orchestrator senses per-volume free (incl USB)+tmpfs pressure; on root>threshold w/ a bigger volume, relocates cargo(+worktrees+TMPDIR) GRACEFULLY: bg rsync while fleet runs→atomic symlink swap→validate→reap; NEVER foreground mv"
     - enabled by default after forced-pressure test on CJ; full /tmp auto-routes TMPDIR to a data volume

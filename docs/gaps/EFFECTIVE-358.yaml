@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   description: |
     Factory-model L3 (design) — the only design capability today is the CSS token lint gate (INFRA-1590), a gate not a designer (docs/strategy/SOFTWARE_FACTORY_MATRIX_2026-08-05.md, DOC-079). Exploratory, deliberately last of the three missing-chair gaps: only matters once external user-facing tools flow through intake (EFFECTIVE-357). Rough shape: (a) a design-pass stage for user-facing tools the fleet ships — layout/spacing/typography/interaction review against a small written heuristic checklist; (b) per-product brand tokens compatible with CSS token discipline; (c) screenshot-based before/after evidence attached to the PR. P3 until EFFECTIVE-356/357 land.
   acceptance_criteria:

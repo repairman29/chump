@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-05-27
   acceptance_criteria:
     - "Inventory phase: scripts/ci/preflight-vs-ci-parity-audit.sh emits a list of (a) CI gates present in .github/workflows/ci.yml fast-checks + audit + cargo-test shards; (b) gates currently in chump preflight (per crates/chump-preflight/ or scripts/coord/preflight.sh); (c) DELTA — gates in CI but not in preflight. Today the delta is ~30%"
     - "Coverage phase: for each gate in DELTA, add to chump preflight OR explicitly mark in preflight-vs-ci-parity-allowlist.txt with reason (e.g. e2e-pwa requires browser stack that does not run locally — allowlist with reason \"browser-stack-required\"). Default is parity; allowlist is opt-out"

@@ -4,6 +4,7 @@
   status: open
   priority: P0
   effort: m
+  opened_date: 2026-08-20
   acceptance_criteria:
     - "The change described by \"chump gap ship flips state.db status=done + closed_pr but does NOT write docs/gaps/<ID>.yaml (ZERO-WASTE-020 made gap ship --update-yaml a no-op, but the yaml is git-tracked + gap sync treats it canonical). So EVERY shipped gap leaves state.db==done / yaml==open drift → a SEPARATE per-gap reconcile PR (repairman29 bot, one full agent+CI+merge pipeline each) is filed just to sync the yaml. Over time that is ~half of all merges = pure motion, zero mission progress, huge token+CI waste. FIX (COTG, ships to every node via the binary+auto-deploy, works OOTB): make  write docs/gaps/<ID>.yaml ATOMICALLY (status: done, closed_pr: N) via format_gap_yaml() [crates/chump-gap-store/src/lib.rs:2893] in the SAME op, so the yaml change lands in the WORK PR itself and no reconcile is ever needed. Reconcile with ZERO-WASTE-020 (make yaml-write the default, or fully retire git-tracked yaml status). REGRESSION TEST REQUIRED:  updates BOTH state.db AND docs/gaps/<ID>.yaml in one op; assert no post-ship drift. Files: src/main.rs gap-ship handler (~2038), chump-gap-store format_gap_yaml. Critical hot path — needs the test, do not break shipping. Immediate stopgap done: bulk sync --push (#4018) batches the current drip.\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.

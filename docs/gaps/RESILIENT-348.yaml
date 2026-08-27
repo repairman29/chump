@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-20
   acceptance_criteria:
     - "The change described by \"refresh-runner-binary.sh hardcodes its build worktree to /tmp/chump-binary-refresh-$$, but git worktree add checks out the full 8425-file tree — on CJ /tmp is a 3.6G tmpfs (753M free) so it fails \"unable to write file / Could not reset index\", auto-deploy fails every cycle, binary froze >1h (MISSION-012 THE MULTIPLIER silently down; ③ scoreboard even showed FALSE ✅ because binary==deployed but both stale — see CREDIBLE-293). Immediate fix on CJ: CHUMP_BINARY_REFRESH_WORKTREE=/mnt/cjdata2/chump-refresh/wt drop-in (USB, 5.7G). DURABLE: refresh-runner-binary.sh must default the worktree to a roomy path (CHUMP_STATE_DIR-relative or auto-pick largest volume), NOT /tmp; + the auto-deploy installer sets it per-node. Same host-assumption disease as helsinki units. COTG.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.

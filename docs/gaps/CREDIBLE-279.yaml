@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "scripts/ops/false-done-sweep.py ships and its BOOKKEEPING tier is reproducible: --multi-close-only --json reports 79 bookkeeping-closed gaps over the 47 multi-close PRs, and a test fixture proves the tier is set membership (a PR of only docs/gaps/*.yaml flags; a PR with one .rs file does not)"
     - "The 79 are TRIAGED, not just counted: each gets a verdict of (a) work landed in a different PR — record which, and fix closed_pr, or (b) work never landed — reopen. A count without verdicts leaves the registry exactly as untrustworthy as it is now"

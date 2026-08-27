@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: s
+  opened_date: 2026-07-26
   description: |
     Filed 2026-05-30T09:55Z. The 'audit' required CI gate runs N sub-tests sequentially; 31 visible [PASS] lines appear, then the script exits code 1 without a visible [FAIL] message. Last visible PASS is 'Test 5: all docs/gaps/*.yaml files have acceptance_criteria'. The silent-exit pattern means either: (a) a sub-test fails but uses a different output format, or (b) one of the audit scripts has a non-[PASS]/[FAIL] error path that just exits 1, or (c) the audit wrapper script returns an error after the last sub-test. Diagnostic gap, then fix.
   acceptance_criteria:

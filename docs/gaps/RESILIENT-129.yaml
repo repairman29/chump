@@ -4,6 +4,7 @@
   status: open
   priority: P0
   effort: xs
+  opened_date: 2026-07-26
   acceptance_criteria:
     - "Reproducer: PR #3095 (and presumably every other PR right now) fails audit-shard (1) at scripts/ci/test-credible-061-gap-list-json-schema.sh with 'FAIL: expected ≥5 fixture gaps; got 3'"
     - "Root cause: the seed fixture (or whatever produces the initial gap set in the audit runner env) emits 3 gaps (INFRA-001, EFFECTIVE-001, ZERO-WASTE-001) but the test threshold expects ≥5"

@@ -4,6 +4,7 @@
   status: open
   priority: P0
   effort: m
+  opened_date: 2026-08-19
   acceptance_criteria:
     - "installer takes --role factory|data|embed; installs organs BY ROLE: factory=workers+pr-lander+reapers+integrator+orchestrator+disk-monitor+main-health-watchdog; data=orchestrator+disk-monitor+main-health-watchdog+Postgres, NO pr-lander/PR-reapers; embed=orchestrator+disk-monitor"
     - factory provisions N workers=clamp(1,cores-1) minus 1 if node runs embeds; sets CHUMP_ORCH_WORKER_MAX (CJ 4-core+embeds→2); no hand-placed worker units/caps

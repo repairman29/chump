@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-07-26
   description: |
     Observed 2026-05-22 23:xxZ and 2026-05-23 07:xxZ during PR shepherd work: chump --version hung for 9+ minutes, chump preflight --help hung for 8+ minutes — both should print and exit in <100ms. Killing with kill -9 was the only recovery. No state.db lock visible via lsof, no obvious deadlock target. Symptom recurs under load (high process count, high disk IO). Every shell script that invokes chump as a preflight check (pre-push hook, scripts/coord/*, scripts/setup/*) becomes a hang risk; this is the root cause of many "pre-push hook hung 16+ min" reports. Without this fix, INFRA-1808 (bootstrap auto-install) cannot be trusted because every bootstrap run could hang. Rough shape: (a) add a 5s startup wallclock budget enforced inside main.rs early in fn main(); (b) on timeout, dump backtrace + exit non-zero with diagnostic; (c) bisect what subsystem causes the hang (suspect: tokio runtime init waiting on a downed Anthropic endpoint, or memory_db connection pool; possibly mistralrs feature flag); (d) make chump --version and chump --help short-circuit BEFORE any subsystem init so they cannot hang regardless.
   acceptance_criteria:

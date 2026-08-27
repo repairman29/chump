@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: xs
+  opened_date: 2026-08-19
   description: |
     Operator action. Generate a new secret on helsinki (openssl rand -hex 32), replace it in /etc/nats/nats.conf for BOTH the authorization block and the leafnodes block, restart nats.service, then update every consumer that authenticates to the bus. The consumer list is the risky part and is the same inventory RESILIENT-251 needs: scripts/coord/broadcast.sh, crates/chump-coord, the mesh-worker loop, chumpbar, and anything else grep finds subscribing to chump.events.*. A missed consumer stops receiving events silently. Consider per-service credentials rather than one shared secret while the file is open anyway.
   acceptance_criteria:

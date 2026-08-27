@@ -4,6 +4,7 @@
   status: open
   priority: P1
   effort: m
+  opened_date: 2026-07-19
   acceptance_criteria:
     - "1. When the top-ranked scan gap is dedup-skipped (done or in-flight PR), pick_gap advances to the next implementable gap instead of exiting. 2. Bounded by a max-skips guard. 3. Test: a scan whose top gap is covered by an open PR → improve implements the next undone gap, not exit."
   outcome_id: EFFECTIVE-000
