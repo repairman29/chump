@@ -228,6 +228,8 @@ pub fn load_apps_config(path: &Path) -> Result<HashMap<Lane, AppCredentials>> {
 
 // ── Unit tests ────────────────────────────────────────────────────────────────
 
+// Naming convention (INFRA-1768): assert_* tests are static preflight tests;
+// behavior_* tests are runtime CI-only tests.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn load_apps_config_with_missing_file_returns_empty_map() {
+    fn assert_load_apps_config_with_missing_file_returns_empty_map() {
         let result = load_apps_config(Path::new("/tmp/__nonexistent_chump_test_config.toml"));
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
