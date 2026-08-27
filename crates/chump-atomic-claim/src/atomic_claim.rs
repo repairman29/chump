@@ -26,6 +26,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[path = "worktree_build_cache.rs"]
 pub mod worktree_build_cache;
 
+/// INFRA-1733: symlink the worktree's `.chump/github_cache.db` back to the
+/// main checkout's cache instead of leaving each worktree with a cold one.
+#[path = "worktree_cache_link.rs"]
+pub mod worktree_cache_link;
+
 /// Args to atomic claim.
 #[derive(Debug, Clone)]
 pub struct ClaimArgs {
@@ -1359,6 +1364,10 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         &args.gap_id,
         &ambient_log,
     );
+
+    // 6c-pre3. INFRA-1733: symlink .chump/github_cache.db back to the main
+    // checkout instead of leaving the worktree with a cold, empty cache.
+    worktree_cache_link::link_worktree_github_cache(&args.repo_root, &worktree_path);
 
     // 6c-pre2. INFRA-1730: orphan-branch auto-rename. By this point the
     // 5b stomp-check has already run (above) and would have bailed if an
