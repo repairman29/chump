@@ -1951,6 +1951,42 @@ events:
     consumers: [ambient]
     fields_required: [ts, kind, sla_breaches, stalls_classified]
 
+  - kind: board_vitals_tick
+    effect_metric: self
+    emitter: scripts/coord/lib/board-vitals.sh (RESILIENT-371), invoked by the board-cycle beat
+    trigger: the resident board's NON-merge vital-signs watch ran one cycle;
+      records how many incidents it found plus the raw vitals (disk %, merge age,
+      worker-silence, main-red span) so a frozen watch is itself observable.
+    consumers: [ambient]
+  # NOTE: board_vitals_alert (the notify/page kind set via CHUMP_NOTIFY_KIND) is
+  # deliberately NOT registered here — like its sibling board_cycle_alert, it is
+  # a notify/page kind whose home is scripts/coord/operator-escalation-registry.txt,
+  # not an ambient-emitted kind. The ambient RECORD of a page is board_vitals_page_sent.
+  - kind: board_vitals_page_sent
+    effect_metric: self
+    emitter: scripts/coord/lib/board-vitals.sh (RESILIENT-371)
+    trigger: board-vitals paged the operator for a signature that had not paged
+      inside the dedup window, and recorded the signature.
+    consumers: [ambient]
+  - kind: board_vitals_page_deduped
+    effect_metric: self
+    emitter: scripts/coord/lib/board-vitals.sh (RESILIENT-371)
+    trigger: board-vitals found a live incident whose signature already paged inside
+      the dedup window — suppressed the repeat page (anti-firehose), logged only.
+    consumers: [ambient]
+  - kind: board_vitals_page_dryrun
+    effect_metric: self
+    emitter: scripts/coord/lib/board-vitals.sh (RESILIENT-371)
+    trigger: board-vitals ran with CHUMP_BOARD_VITALS_DRY_RUN=1 and would have paged;
+      the exact message was logged instead of DM'd (test/verification path).
+    consumers: [ambient]
+  - kind: board_vitals_novel_escalation
+    effect_metric: self
+    emitter: scripts/coord/lib/board-vitals.sh (RESILIENT-371)
+    trigger: board-vitals detected a worker-silence the deterministic rules could not
+      classify and escalated it to a bounded claude -p diagnosis before paging.
+    consumers: [ambient]
+
   - kind: board_ceo_briefing_beat
     effect_metric: self
     emitter: scripts/dispatch/board-ceo-briefing-beat.sh (INFRA-3601)
