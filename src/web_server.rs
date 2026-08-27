@@ -4329,6 +4329,136 @@ async fn handle_brain_graph_stats(
     Ok(Json(stats))
 }
 
+/// GET /api/brain/node/{id} — full record for one node (its edges), for the
+/// brain-graph right-pane detail view (INFRA-1558 AC 3).
+async fn handle_brain_node_detail(
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<crate::memory_graph_viz::NodeDetail>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let detail = crate::memory_graph_viz::node_detail(&id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(detail))
+}
+
+/// GET /api/brain/graph/stream — SSE push of node/edge add/remove deltas
+/// (INFRA-1558 AC 5). Polls the memory graph every 5s, diffs against the
+/// previously-sent snapshot, and emits only the delta so the frontend can
+/// call `cy.add()`/`cy.remove()` incrementally instead of reloading the graph.
+async fn handle_brain_graph_stream(
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+
+    tokio::spawn(async move {
+        let mut last_nodes: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut last_edges: std::collections::HashSet<(String, String, String)> =
+            std::collections::HashSet::new();
+        let mut first = true;
+
+        loop {
+            let Ok(body) = crate::memory_graph_viz::export_graph_json() else {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                continue;
+            };
+            let Ok(g) = serde_json::from_str::<serde_json::Value>(&body) else {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                continue;
+            };
+
+            let nodes: std::collections::HashSet<String> = g["nodes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|n| n["id"].as_str().map(String::from))
+                .collect();
+            let edges: std::collections::HashSet<(String, String, String)> = g["edges"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|e| {
+                    Some((
+                        e["source"].as_str()?.to_string(),
+                        e["target"].as_str()?.to_string(),
+                        e["relation"].as_str()?.to_string(),
+                    ))
+                })
+                .collect();
+
+            if first {
+                first = false;
+                if tx
+                    .send(Ok(Event::default().event("snapshot").data(body.clone())))
+                    .is_err()
+                {
+                    return;
+                }
+            } else {
+                for added in nodes.difference(&last_nodes) {
+                    let data = serde_json::json!({"id": added}).to_string();
+                    if tx
+                        .send(Ok(Event::default().event("node_added").data(data)))
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                for removed in last_nodes.difference(&nodes) {
+                    let data = serde_json::json!({"id": removed}).to_string();
+                    if tx
+                        .send(Ok(Event::default().event("node_removed").data(data)))
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                for (source, target, relation) in edges.difference(&last_edges) {
+                    let data =
+                        serde_json::json!({"source": source, "target": target, "relation": relation})
+                            .to_string();
+                    if tx
+                        .send(Ok(Event::default().event("edge_added").data(data)))
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                for (source, target, relation) in last_edges.difference(&edges) {
+                    let data =
+                        serde_json::json!({"source": source, "target": target, "relation": relation})
+                            .to_string();
+                    if tx
+                        .send(Ok(Event::default().event("edge_removed").data(data)))
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+            }
+
+            last_nodes = nodes;
+            last_edges = edges;
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    });
+
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
+}
+
 // ── EFFECTIVE-422: Voice advisor — Siri Shortcut seam into /api/chat ────────
 
 #[derive(serde::Deserialize)]
@@ -9542,6 +9672,8 @@ fn build_api_router() -> Router {
         .route("/.well-known/skills/index.json", get(handle_skills_index))
         .route("/api/brain/graph.json", get(handle_brain_graph_json))
         .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+        .route("/api/brain/node/{id}", get(handle_brain_node_detail))
+        .route("/api/brain/graph/stream", get(handle_brain_graph_stream))
         .route(
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),
@@ -9880,6 +10012,11 @@ pub async fn start_web_server(port: u16) -> Result<()> {
     let app = Router::new()
         .merge(api)
         .route("/", get(|| async { Redirect::permanent("/v2/") }))
+        // INFRA-1558: short link into the brain-graph view of the v2 PWA.
+        .route(
+            "/brain",
+            get(|| async { Redirect::permanent("/v2/?view=brain") }),
+        )
         .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true))
         .layer(cors);
 

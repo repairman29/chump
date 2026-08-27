@@ -2300,6 +2300,57 @@
       white-space: pre-wrap;
       word-break: break-all;
     }
+    /* INFRA-1558: <chump-view-brain> memory-graph renderer (LIBRARY cadence). */
+    chump-view-brain { display: block; padding: 16px 20px; }
+    chump-view-brain .brain-toolbar {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      padding: 6px 0; border-bottom: 1px solid var(--border);
+      margin-bottom: 10px;
+    }
+    chump-view-brain .brain-filter-chip {
+      font-size: 11px; padding: 4px 10px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--bg-surface); color: var(--text-secondary);
+      cursor: pointer;
+    }
+    chump-view-brain .brain-filter-chip[aria-pressed="true"] {
+      color: var(--accent); background: var(--accent-dim); border-color: var(--accent);
+    }
+    chump-view-brain .brain-body {
+      display: flex; gap: 12px;
+      height: 60vh; min-height: 360px;
+    }
+    chump-view-brain #cy-container {
+      flex: 1 1 auto; min-width: 0;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    chump-view-brain .brain-detail {
+      flex: 0 0 260px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      overflow-y: auto;
+      font-size: 12px;
+    }
+    chump-view-brain .brain-detail-empty { color: var(--text-secondary); }
+    chump-view-brain .brain-detail-edges { list-style: none; margin-top: 6px; }
+    chump-view-brain .brain-detail-edges li { padding: 3px 0; border-bottom: 1px solid var(--border); }
+    chump-view-brain .brain-legend {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      margin-top: 10px; font-size: 11px; color: var(--text-secondary);
+    }
+    chump-view-brain .brain-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+    chump-view-brain .brain-legend-swatch {
+      width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+    }
+    chump-view-brain .brain-status { margin-top: 6px; font-size: 11px; color: var(--text-secondary); }
+    @media (max-width: 640px) {
+      chump-view-brain .brain-body { flex-direction: column; height: auto; }
+      chump-view-brain .brain-detail { flex-basis: auto; max-height: 200px; }
+    }
   </style>
 </head>
 <body>
@@ -2399,6 +2450,7 @@
   <script src="daily-brief.js" type="module"></script>
   <script src="impact.js" type="module"></script>
   <script src="gap-list.js" type="module"></script>
+  <script src="brain.js" type="module"></script>
   <!-- INFRA-1340: per-tool policy dropdown (15min / 1h / session) augments the
        <chump-tool-approval-tray> defined in app.js. Order matters: app.js must
        have registered the tray before this script runs. -->

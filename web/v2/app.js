@@ -419,6 +419,7 @@ const CHUMP_CADENCES = [
       { id: 'judgment',  label: 'Judgment',  icon: '⚖️' },
       { id: 'decisions', label: 'Decisions', icon: '🎯' },
       { id: 'memory',    label: 'Memory',    icon: '🧠' },
+      { id: 'brain',     label: 'Brain',     icon: '🕸' }, // INFRA-1558
 
       { id: 'judgment',  label: 'Audit',     icon: '⚖️' },
       { id: 'roadmap',   label: 'Roadmap',   icon: '🗺' }, // INFRA-1207
@@ -5290,6 +5291,7 @@ const VIEWS = {
   settings:      () => document.createElement('chump-view-settings'),
   impact:        () => document.createElement('chump-view-impact'),          // PRODUCT-081
   brief:         () => document.createElement('chump-view-brief'),           // PRODUCT-078
+  brain:         () => document.createElement('chump-view-brain'),           // INFRA-1558
 };
 
 document.addEventListener('chump:navigate', (e) => {

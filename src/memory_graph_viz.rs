@@ -49,6 +49,23 @@ struct JsonGraph {
     edges: Vec<JsonEdge>,
 }
 
+/// Full record for a single node: its id, degree, and every edge touching it.
+/// Backs `GET /api/brain/node/{id}` — the right-pane detail view for INFRA-1558.
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeDetail {
+    pub id: String,
+    pub degree: usize,
+    pub edges: Vec<NodeEdge>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeEdge {
+    pub source: String,
+    pub target: String,
+    pub relation: String,
+    pub weight: f64,
+}
+
 /// Load all edges from the memory graph. Returns empty vec if the table
 /// is empty or doesn't exist.
 fn load_all_edges() -> Result<Vec<Edge>> {
@@ -184,6 +201,30 @@ pub fn export_graph_json() -> Result<String> {
     let edges = load_all_edges()?;
     let graph = build_json_graph(&edges);
     Ok(serde_json::to_string(&graph)?)
+}
+
+/// Full record for one node: every edge where it appears as subject or object.
+/// Returns `Ok(None)` if the id touches no edge (unknown / stale node).
+pub fn node_detail(id: &str) -> Result<Option<NodeDetail>> {
+    let edges = load_all_edges()?;
+    let related: Vec<NodeEdge> = edges
+        .iter()
+        .filter(|e| e.subject == id || e.object == id)
+        .map(|e| NodeEdge {
+            source: e.subject.clone(),
+            target: e.object.clone(),
+            relation: e.relation.clone(),
+            weight: e.weight,
+        })
+        .collect();
+    if related.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(NodeDetail {
+        id: id.to_string(),
+        degree: related.len(),
+        edges: related,
+    }))
 }
 
 /// Escape a string for safe inclusion as a DOT node ID or label.
