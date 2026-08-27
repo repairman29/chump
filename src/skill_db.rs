@@ -90,7 +90,7 @@ pub fn list_skill_records() -> Result<Vec<SkillRecord>> {
     let mut stmt = conn.prepare(
         "SELECT name, description, version, category, tags_json, \
                 use_count, success_count, failure_count, \
-                created_at, last_used_at, bt_rating \
+                created_at, last_used_at, bt_rating, endorsed \
          FROM chump_skills ORDER BY name",
     )?;
     let rows = stmt.query_map([], |r| {
@@ -108,6 +108,7 @@ pub fn list_skill_records() -> Result<Vec<SkillRecord>> {
             created_at: r.get(8)?,
             last_used_at: r.get(9)?,
             bt_rating: r.get(10).unwrap_or(1500.0),
+            endorsed: r.get::<_, i64>(11).unwrap_or(1) != 0,
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -126,6 +127,89 @@ pub struct SkillRecord {
     pub created_at: String,
     pub last_used_at: Option<String>,
     pub bt_rating: f64,
+    /// INFRA-1616: false = agent-proposed via skill_manage create, awaiting operator approval.
+    pub endorsed: bool,
+}
+
+/// INFRA-1616: mark an agent-proposed skill as operator-approved.
+pub fn endorse_skill(name: &str) -> Result<()> {
+    let conn = crate::db_pool::get()?;
+    conn.execute(
+        "UPDATE chump_skills SET endorsed = 1, updated_at = datetime('now') WHERE name = ?1",
+        [name],
+    )?;
+    Ok(())
+}
+
+/// INFRA-1616: current ISO-ish week bucket — days since epoch / 7. Monotonic and
+/// stable within a calendar week; exact ISO-8601 week numbering isn't required,
+/// only a consistent weekly bucket for snapshot comparison.
+pub fn current_week_id() -> i64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    (now / 86_400) / 7
+}
+
+/// INFRA-1616: snapshot of a skill's health at a given week, for week-over-week deltas.
+#[derive(Debug, Clone)]
+pub struct SkillSnapshot {
+    pub name: String,
+    pub use_count: u64,
+    pub success_count: u64,
+    pub failure_count: u64,
+    pub reliability: f64,
+    pub confidence_lower: f64,
+    pub confidence_upper: f64,
+}
+
+/// INFRA-1616: record this week's skill-health snapshot (idempotent — one row per
+/// name per week_id; re-running the digest the same week is a no-op).
+pub fn record_weekly_snapshot(week_id: i64, snapshots: &[SkillSnapshot]) -> Result<()> {
+    let conn = crate::db_pool::get()?;
+    for s in snapshots {
+        conn.execute(
+            "INSERT OR IGNORE INTO chump_skill_health_snapshots \
+               (week_id, name, use_count, success_count, failure_count, \
+                reliability, confidence_lower, confidence_upper) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                week_id,
+                s.name,
+                s.use_count as i64,
+                s.success_count as i64,
+                s.failure_count as i64,
+                s.reliability,
+                s.confidence_lower,
+                s.confidence_upper,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+/// INFRA-1616: most recent snapshot per skill name from a week strictly before `week_id`.
+pub fn latest_prior_snapshots(week_id: i64) -> Result<Vec<SkillSnapshot>> {
+    let conn = crate::db_pool::get()?;
+    let mut stmt = conn.prepare(
+        "SELECT name, use_count, success_count, failure_count, \
+                reliability, confidence_lower, confidence_upper \
+         FROM chump_skill_health_snapshots \
+         WHERE week_id = (SELECT MAX(week_id) FROM chump_skill_health_snapshots WHERE week_id < ?1)",
+    )?;
+    let rows = stmt.query_map([week_id], |r| {
+        Ok(SkillSnapshot {
+            name: r.get(0)?,
+            use_count: r.get::<_, i64>(1)? as u64,
+            success_count: r.get::<_, i64>(2)? as u64,
+            failure_count: r.get::<_, i64>(3)? as u64,
+            reliability: r.get(4)?,
+            confidence_lower: r.get(5)?,
+            confidence_upper: r.get(6)?,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 pub fn update_bt_rating(name: &str, new_rating: f64) -> Result<()> {

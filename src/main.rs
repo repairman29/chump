@@ -64,6 +64,7 @@ mod context_assembly;
 mod context_engine;
 mod context_firewall;
 mod context_window;
+mod cos_digest; // INFRA-1616: chump cos digest --week — Curriculum section
 mod cost_ledger;
 mod cost_tracker;
 mod cost_watch;
@@ -3186,6 +3187,54 @@ async fn main() -> Result<()> {
     // score (0-100) rolling up fleet-status, waste-tally, cost-watch,
     // mission-grade, pr-stuck, version-skew, auth, and ghost-gaps.
     // Emits kind=fleet_health to ambient.jsonl on each run.
+    // INFRA-1616: `chump cos digest --week` — operator Sunday digest. Mission
+    // Yield section is a placeholder (chip-tag data source not wired up yet);
+    // the Curriculum section (top-by-yield-weight / moved / new / decaying /
+    // anomalies) is fully backed by src/cos_digest.rs + skill_metrics.rs.
+    if args.get(1).map(String::as_str) == Some("cos")
+        && args.get(2).map(String::as_str) == Some("digest")
+    {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump cos digest --week [--json]");
+            println!();
+            println!("Operator weekly digest: Mission Yield + Curriculum (skill health movement).");
+            println!();
+            println!("Options:");
+            println!("  --week   render the weekly digest (default; only mode implemented)");
+            println!("  --json   output in JSON format");
+            println!();
+            println!("Curriculum subsections can be individually hidden via env vars:");
+            println!("  CHUMP_COS_HIDE_CURRICULUM_TOP=1");
+            println!("  CHUMP_COS_HIDE_CURRICULUM_MOVED=1");
+            println!("  CHUMP_COS_HIDE_CURRICULUM_NEW=1");
+            println!("  CHUMP_COS_HIDE_CURRICULUM_DECAYING=1");
+            println!("  CHUMP_COS_HIDE_CURRICULUM_ANOMALIES=1");
+            return Ok(());
+        }
+        let want_json = args.iter().any(|a| a == "--json");
+        if want_json {
+            match cos_digest::render_digest_json() {
+                Ok(v) => println!(
+                    "{}",
+                    serde_json::to_string_pretty(&v).unwrap_or_else(|_| "{}".to_string())
+                ),
+                Err(e) => {
+                    eprintln!("chump cos digest: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            match cos_digest::render_digest_text() {
+                Ok(s) => print!("{}", s),
+                Err(e) => {
+                    eprintln!("chump cos digest: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        return Ok(());
+    }
+
     if args.get(1).map(String::as_str) == Some("health") {
         if args.iter().any(|a| a == "--help" || a == "help") {
             println!("Usage: chump health [--json] [--watch] [--slo-check] [--temp]");

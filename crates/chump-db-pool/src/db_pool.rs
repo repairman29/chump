@@ -658,6 +658,42 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         ",
     )?;
 
+    // INFRA-1616: endorsed flag — agent-proposed skills (skill_manage create) start
+    // unendorsed (0) until the operator approves them; pre-existing skills at
+    // migration time are backfilled to endorsed=1 (already-established, not "new").
+    let endorsed_col_added = conn
+        .execute(
+            "ALTER TABLE chump_skills ADD COLUMN endorsed INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .is_ok();
+    if endorsed_col_added {
+        let _ = conn.execute("UPDATE chump_skills SET endorsed = 1", []);
+    }
+
+    // INFRA-1616: weekly skill-health snapshots for the cos digest Curriculum
+    // section's "moved" subsection (Wilson CI week-over-week delta).
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chump_skill_health_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            use_count INTEGER NOT NULL,
+            success_count INTEGER NOT NULL,
+            failure_count INTEGER NOT NULL,
+            reliability REAL NOT NULL,
+            confidence_lower REAL NOT NULL,
+            confidence_upper REAL NOT NULL,
+            taken_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(week_id, name)
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_skill_snapshots_week ON chump_skill_health_snapshots(week_id)",
+        [],
+    )?;
+
     sync_web_messages_fts(conn)?;
     Ok(())
 }

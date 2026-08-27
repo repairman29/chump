@@ -39,6 +39,8 @@ pub struct SkillHealth {
     pub days_since_last_use: Option<u32>,
     /// Composite ranking score in [0, 1].
     pub composite_score: f64,
+    /// INFRA-1616: false = agent-proposed, awaiting operator approval.
+    pub endorsed: bool,
 }
 
 /// Wilson score 95% confidence interval for a binomial proportion.
@@ -176,6 +178,7 @@ pub fn skill_health_ranking() -> Result<Vec<SkillHealth>> {
                 confidence_upper: upper,
                 days_since_last_use,
                 composite_score,
+                endorsed: r.endorsed,
             }
         })
         .collect();
