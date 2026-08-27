@@ -457,6 +457,30 @@ pub fn daemon(interval_secs: u64, repo_root: &Path, dry_run: bool) -> Result<()>
                 dry_run,
             );
 
+            // INFRA-1645: optional per-cycle LLM health-check. Only runs when
+            // PARAMEDIC_LLM_HEALTH_URL is configured — most deployments don't
+            // wire an LLM endpoint into paramedic, so this is a no-op by
+            // default. On a genuinely permanent failure we log and keep
+            // looping (cooldown, not process death) — same posture as
+            // `organ_watchdog_in_backoff` in scripts/ops/organ-watchdog.sh,
+            // which defers to a backed-off unit rather than killing the
+            // watchdog itself.
+            if let Ok(url) = std::env::var("PARAMEDIC_LLM_HEALTH_URL") {
+                if !url.is_empty() && !dry_run {
+                    let max_attempts = std::env::var("PARAMEDIC_BACKOFF_MAX_ATTEMPTS")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(5u32);
+                    if let Err(e) = crate::llm_resilience::call_llm_with_resilience(
+                        repo_root,
+                        &url,
+                        max_attempts,
+                    ) {
+                        warn!(error = %e, "paramedic daemon: LLM health-check failed permanently this cycle");
+                    }
+                }
+            }
+
             let elapsed = cycle_start.elapsed().as_secs();
             let sleep_secs = interval_secs.saturating_sub(elapsed);
             if sleep_secs > 0 {
