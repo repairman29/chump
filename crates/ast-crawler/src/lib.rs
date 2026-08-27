@@ -697,12 +697,7 @@ fn parse_bash(path: &str, src: &str) -> Result<FileShape> {
     let root = tree.root_node();
     let mut symbols = Vec::new();
     let imports: Vec<String> = Vec::new(); // bash has no formal imports
-    let mut cursor = root.walk();
-    for child in root.named_children(&mut cursor) {
-        if child.kind() == "function_definition" {
-            push_named(child, src, "fn", &mut symbols, "#");
-        }
-    }
+    collect_bash_functions(root, src, &mut symbols);
     Ok(FileShape {
         path: path.to_string(),
         language: "bash".into(),
@@ -710,6 +705,25 @@ fn parse_bash(path: &str, src: &str) -> Result<FileShape> {
         top_level_symbols: symbols,
         imports,
     })
+}
+
+/// Recursively walk a bash AST looking for `function_definition` nodes at
+/// any depth. The tree-sitter-bash grammar nests fn defs inside wrapper
+/// constructs that are common in this codebase (idempotent-guard blocks like
+/// `[[ cond ]] || { fn() { ... }; }`, and — separately — inside `ERROR`
+/// nodes produced whenever an earlier statement in the same file trips a
+/// grammar edge case), so a shallow `root.named_children()` scan misses
+/// them. We don't recurse into a `function_definition`'s own body: symbols
+/// declared inside a function are not file-scope-visible top-level symbols.
+fn collect_bash_functions(node: Node, src: &str, symbols: &mut Vec<Symbol>) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "function_definition" {
+            push_named(child, src, "fn", symbols, "#");
+        } else {
+            collect_bash_functions(child, src, symbols);
+        }
+    }
 }
 
 // ── YAML ──────────────────────────────────────────────────────────────────
@@ -970,6 +984,55 @@ bye() {
             .iter()
             .map(|s| s.name.as_str())
             .collect();
+        assert!(names.contains(&"hello"), "got {names:?}");
+        assert!(names.contains(&"bye"), "got {names:?}");
+    }
+
+    #[test]
+    fn bash_fixture_extracts_three_fn_styles() {
+        let shape =
+            crawl_file(Path::new("tests/fixtures/sample.sh")).expect("crawl fixture sample.sh");
+        assert_eq!(shape.language, "bash");
+        let names: Vec<&str> = shape
+            .top_level_symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert_eq!(shape.top_level_symbols.len(), 3, "got {names:?}");
+        assert!(names.contains(&"foo"), "got {names:?}");
+        assert!(names.contains(&"bar"), "got {names:?}");
+        assert!(names.contains(&"baz"), "got {names:?}");
+    }
+
+    #[test]
+    fn bash_finds_fn_nested_in_guard_block() {
+        // Pattern from scripts/lib/disk-check.sh: an idempotent-load guard
+        // wraps the whole body in `[[ cond ]] || { ... }`, nesting every
+        // function_definition one level below root. A shallow
+        // root.named_children() scan finds 0; the recursive walker must
+        // still surface both fns as top-level symbols.
+        let td = tempfile::tempdir().unwrap();
+        let body = r#"#!/usr/bin/env bash
+[[ "${_LOADED:-0}" == "1" ]] || {
+_LOADED=1
+
+hello() {
+    echo "hi"
+}
+
+bye() {
+    echo "bye"
+}
+}
+"#;
+        let p = write_tmp(td.path(), "guarded.sh", body);
+        let shape = crawl_file(&p).unwrap();
+        let names: Vec<&str> = shape
+            .top_level_symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert_eq!(names.len(), 2, "got {names:?}");
         assert!(names.contains(&"hello"), "got {names:?}");
         assert!(names.contains(&"bye"), "got {names:?}");
     }
