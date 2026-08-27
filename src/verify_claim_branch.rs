@@ -159,12 +159,45 @@ pub fn verify(current_branch: &str, session_id: &str, leases: &[Lease]) -> Verdi
 }
 
 pub fn run_cli(args: &[String]) -> i32 {
+    let start = std::time::Instant::now();
     let want_json = args.iter().any(|a| a == "--json");
+    // INFRA-1649: --branch <name> overrides git-resolved HEAD — lets callers
+    // (smoke tests, subagent shipping epilogue) check a branch name without
+    // needing to actually be checked out on it.
+    let branch_override = args
+        .iter()
+        .position(|a| a == "--branch")
+        .and_then(|i| args.get(i + 1))
+        .cloned();
     let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
-    let Some(branch) = current_branch(&repo_root) else {
-        eprintln!("chump verify-claim-branch: could not resolve current git branch");
-        return 1;
+    let emit_and_return = |code: i32,
+                           status: chump_verify::observability::Status,
+                           failure_class: chump_verify::observability::FailureClass|
+     -> i32 {
+        let ev = chump_verify::observability::build_event(
+            status,
+            start.elapsed().as_millis(),
+            failure_class,
+        );
+        chump_verify::observability::log_cost(&ev);
+        chump_verify::observability::print_json_line(&ev);
+        code
+    };
+
+    let branch = match branch_override {
+        Some(b) => b.to_lowercase(),
+        None => match current_branch(&repo_root) {
+            Some(b) => b,
+            None => {
+                eprintln!("chump verify-claim-branch: could not resolve current git branch");
+                return emit_and_return(
+                    1,
+                    chump_verify::observability::Status::Failure,
+                    chump_verify::observability::FailureClass::Transient,
+                );
+            }
+        },
     };
 
     // INFRA-779 sentinel: linked-worktree gitdir back-reference corruption.
@@ -203,7 +236,11 @@ pub fn run_cli(args: &[String]) -> i32 {
             if want_json {
                 println!("{{\"verdict\":\"no_leases\",\"branch\":\"{branch}\"}}");
             }
-            0
+            emit_and_return(
+                0,
+                chump_verify::observability::Status::Success,
+                chump_verify::observability::FailureClass::None,
+            )
         }
         Verdict::PeerLeasesOnly => {
             eprintln!(
@@ -213,7 +250,11 @@ pub fn run_cli(args: &[String]) -> i32 {
             if want_json {
                 println!("{{\"verdict\":\"peer_leases_only\",\"branch\":\"{branch}\"}}");
             }
-            0
+            emit_and_return(
+                0,
+                chump_verify::observability::Status::Success,
+                chump_verify::observability::FailureClass::None,
+            )
         }
         Verdict::Ok { gap_id } => {
             // scanner-anchor: "kind":"claim_branch_verified"
@@ -227,7 +268,11 @@ pub fn run_cli(args: &[String]) -> i32 {
             } else {
                 println!("chump verify-claim-branch: OK — branch '{branch}' matches claimed gap {gap_id}");
             }
-            0
+            emit_and_return(
+                0,
+                chump_verify::observability::Status::Success,
+                chump_verify::observability::FailureClass::None,
+            )
         }
         Verdict::Mismatch {
             gap_id,
@@ -255,7 +300,11 @@ pub fn run_cli(args: &[String]) -> i32 {
                 eprintln!("Use: cd to your claim worktree OR run `chump --release` if abandoning this claim.");
                 eprintln!();
             }
-            1
+            emit_and_return(
+                1,
+                chump_verify::observability::Status::Failure,
+                chump_verify::observability::FailureClass::Permanent,
+            )
         }
     }
 }

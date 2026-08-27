@@ -20,8 +20,29 @@ GUARD="$REPO_ROOT/scripts/git-hooks/pre-push-actionlint-guard.sh"
 
 PASS=0
 FAIL=0
+# INFRA-1649: failure-class taxonomy for this smoke test's own outcome —
+# mirrors the guard script's own transient/permanent split (see header
+# comment above). fail() defaults to "permanent" (a real assertion about
+# guard logic/wiring failed); callers pass "transient" explicitly for
+# environment-setup steps (git/mktemp) that can fail for reasons unrelated
+# to the guard's correctness.
+FAIL_CLASSES=()
 ok()   { printf '  \033[0;32mPASS\033[0m %s\n' "$*"; PASS=$((PASS+1)); }
-fail() { printf '  \033[0;31mFAIL\033[0m %s\n' "$*"; FAIL=$((FAIL+1)); }
+fail() {
+    local msg="$1" class="${2:-permanent}"
+    printf '  \033[0;31mFAIL\033[0m %s\n' "$msg"
+    FAIL=$((FAIL+1))
+    FAIL_CLASSES+=("$class")
+}
+
+# run_guard: hardened invocation wrapper (INFRA-1649, re-do of INFRA-1598).
+# Runs the guard in $TMP, capturing its exit code so callers can classify
+# a non-zero exit without re-deriving transient/permanent logic per call
+# site. Callers still consult $? directly for pass/fail branching; this
+# wrapper's job is just to be the single place guard invocation happens.
+run_guard() {
+    ( cd "$TMP" && bash "$GUARD" )
+}
 
 echo "=== INFRA-2322 pre-push actionlint gate test ==="
 echo
@@ -39,24 +60,23 @@ grep -q "CHUMP_ACTIONLINT_GUARD" "$REPO_ROOT/scripts/git-hooks/pre-push" \
   || fail "CHUMP_ACTIONLINT_GUARD bypass variable missing from pre-push"
 
 # ── Synthetic repo setup ─────────────────────────────────────────────────────
-TMP="$(mktemp -d)"
+# INFRA-1649: setup failures here are environment issues (disk full, git
+# missing/misconfigured), not a guard-logic bug — transient class, and fatal
+# to the rest of the test since nothing below can run without the fixture.
+TMP="$(mktemp -d)" || { fail "mktemp -d failed" transient; echo "guard: fail class=transient" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
 
-git -C "$TMP" init -q -b main
+git -C "$TMP" init -q -b main || { fail "git init failed" transient; echo "guard: fail class=transient" >&2; exit 1; }
 git -C "$TMP" config user.email test@example.com
 git -C "$TMP" config user.name "Test"
 mkdir -p "$TMP/.github/workflows" "$TMP/.chump-locks"
 echo "placeholder" > "$TMP/README.md"
 git -C "$TMP" add README.md
-git -C "$TMP" commit -q -m "init"
+git -C "$TMP" commit -q -m "init" || { fail "git commit failed" transient; echo "guard: fail class=transient" >&2; exit 1; }
 git -C "$TMP" remote add origin "$TMP" 2>/dev/null || true
 git -C "$TMP" update-ref refs/remotes/origin/main main
 
 AMB="$TMP/.chump-locks/ambient.jsonl"
-
-run_guard() {
-    ( cd "$TMP" && bash "$GUARD" )
-}
 
 # ── 2. No changed workflow files → no-op ─────────────────────────────────────
 git -C "$TMP" checkout -q -b feat-no-workflow
@@ -171,4 +191,22 @@ done
 
 echo
 echo "=== $PASS passed, $FAIL failed ==="
-[[ "$FAIL" -eq 0 ]]
+
+# INFRA-1649: single-line summary verdict, distinguishing transient vs
+# permanent failure class. "permanent" wins if any recorded failure was
+# permanent (a real guard-logic/wiring bug); "transient" only when every
+# recorded failure was environment-related.
+if [[ "$FAIL" -eq 0 ]]; then
+    echo "guard: ok"
+    exit 0
+fi
+
+SUMMARY_CLASS="transient"
+for c in "${FAIL_CLASSES[@]}"; do
+    if [[ "$c" == "permanent" ]]; then
+        SUMMARY_CLASS="permanent"
+        break
+    fi
+done
+echo "guard: fail class=$SUMMARY_CLASS" >&2
+exit 1
