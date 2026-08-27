@@ -1,0 +1,69 @@
+chump preflight — local CI mirror (INFRA-1670, INFRA-1672)
+
+USAGE:
+    chump preflight [OPTIONS]
+
+OPTIONS:
+    --scope <S>     Limit gates to a scope. S = auto|all|rust|scripts|docs.
+                    Default 'auto' reads `git diff --cached --name-only`
+                    and runs only the buckets the diff touches.
+                    Speed targets:
+                       docs    <5s   (no cargo, no scripts gates)
+                       scripts <15s  (no cargo; relevant scripts/ci/test-*.sh)
+                       rust    <60s  (cargo fmt/clippy/check warm; no scripts)
+                       all     same as the full INFRA-1670 set
+    --with-tests    Also run scripts/ci/test-*.sh that match the staged diff
+                    (slower; off by default to keep the fast path under 60s)
+    --full          EFFECTIVE-318: reproduce CI's audit shards locally. Forces
+                    --scope all + --with-tests, then runs every audit.yml test
+                    script that is locally-safe (auto-skips network/gh gates).
+                    Slower, but one local pass replaces a ~20-min CI round-trip.
+    --keep-going    Don't exit on the first failure; run all gates
+    --json          Emit one JSON object per gate to stdout (machine-readable)
+    --pre-commit    Enable pre-commit-only gates (docs-delta-trailer audit
+                    against HEAD's COMMIT_EDITMSG, INFRA-1788; plus 14
+                    staged-diff commit-content-guards mirrored from
+                    scripts/git-hooks/pre-commit-*.sh, INFRA-3377/META-070).
+                    Mirrored from scripts/coord/chump-commit.sh on the path
+                    leading to a real commit; the bare 'chump preflight'
+                    silently skips these so it stays fast for ad-hoc
+                    validation runs.
+    --vs <REF>      META-153: diff-scoped failure attribution. REF is typically
+                    'origin/main'. Runs preflight against both HEAD and REF,
+                    separates failures into NEW (your diff broke this — blocks)
+                    and PRE-EXISTING (already failing on REF — warns only).
+                    Baseline cached at .chump/preflight-baseline.json (TTL 1h,
+                    keyed by REF HEAD SHA). Falls back to normal mode when REF
+                    is unreachable. Pairs with --json for structured output.
+    --artifact-type <T>  EFFECTIVE-363: dispatch by artifact_type instead of
+                    assuming cargo. When T is registered in
+                    artifact_gates::REGISTRY (e.g. "release-note"), runs
+                    only that type's gates and skips the cargo pipeline
+                    entirely. Unregistered T (including the default "code")
+                    falls through to the normal pipeline below.
+    -h, --help      This message
+
+BYPASS:
+    Main-RED auto-skip (INFRA-2422): when origin/main itself is failing a
+    gate, preflight reads .chump/main-preflight-state.json and auto-skips
+    only those failing gates with a logged reason. No env override needed.
+    CHUMP_PREFLIGHT_SKIP_REGISTRY=1   Skip event-registry-audit (INFRA-1731).
+    CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1  Skip docs-delta-trailer (INFRA-1788).
+    CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1   Skip pipefail-race-sweep (INFRA-2350).
+    CHUMP_PREFLIGHT_SKIP_PATHFILTER=1 Skip path-filter-coverage (INFRA-2350).
+    CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1 Skip install-manifest gate (INFRA-2350).
+
+GATES (in order):
+    1. event-registry-audit            (scope: ALWAYS, INFRA-1731/MISSION-064)
+    2. env-var-coverage                (scope: ALWAYS, INFRA-1787/MISSION-064)
+    3. cargo fmt --check               (scope: rust)
+    4. cargo clippy -- -D warnings     (scope: rust)
+    5. cargo check --all-targets        (scope: rust)
+    6. docs-delta-trailer              (--pre-commit only, INFRA-1788)
+    7. 14 commit-content-guards        (--pre-commit only, INFRA-3377/META-070)
+    8. (with --with-tests) selected scripts/ci/test-*.sh  (scope: scripts)
+
+EXIT CODES:
+    0   all gates passed (or --vs: only pre-existing failures)
+    1   one or more NEW gates failed (see stdout)
+    2   bad usage

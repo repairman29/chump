@@ -593,6 +593,10 @@ struct Args {
     /// the cargo-shaped pipeline entirely. Unset or "code" runs the normal
     /// pipeline below unchanged.
     artifact_type: Option<String>,
+    /// INFRA-1789: `--format json` alias for `--json`, scoped specifically to
+    /// making `--help` output machine-readable for the CLI help-regression
+    /// check (test-cli-integration.sh's check_json helper).
+    format_json: bool,
 }
 
 fn parse_args(argv: &[String]) -> Args {
@@ -607,6 +611,7 @@ fn parse_args(argv: &[String]) -> Args {
         vs_ref: None,
         full: false,
         artifact_type: None,
+        format_json: false,
     };
     let mut i = 0;
     while i < argv.len() {
@@ -618,6 +623,12 @@ fn parse_args(argv: &[String]) -> Args {
             "--json" => a.json = true,
             "--pre-commit" => a.pre_commit = true,
             "-h" | "--help" => a.help = true,
+            "--format" => {
+                if i + 1 < argv.len() && argv[i + 1] == "json" {
+                    a.format_json = true;
+                    i += 1;
+                }
+            }
             "--scope" => {
                 if i + 1 >= argv.len() {
                     a.bad_scope = Some("(missing value)".to_string());
@@ -733,6 +744,17 @@ EXIT CODES:
     0   all gates passed (or --vs: only pre-existing failures)
     1   one or more NEW gates failed (see stdout)
     2   bad usage"
+    );
+}
+
+/// INFRA-1789: machine-readable `--help --format json` / `--help --json`.
+/// Deliberately minimal (command + usage + flag names) — this is a
+/// structure check target for test-cli-integration.sh's check_json helper,
+/// not a full schema; the human-readable `print_help()` text stays the
+/// source of truth for flag documentation.
+fn print_help_json() {
+    println!(
+        "{{\"command\":\"chump preflight\",\"usage\":\"chump preflight [OPTIONS]\",\"options\":[\"--scope\",\"--with-tests\",\"--full\",\"--keep-going\",\"--json\",\"--pre-commit\",\"--vs\",\"--artifact-type\",\"--format\",\"--help\"]}}"
     );
 }
 
@@ -1001,6 +1023,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // INFRA-1789: `chump preflight --help` golden-file regression — diffs
+        // live --help output against crates/chump-preflight/tests/help-golden.txt
+        // so a stale/drifted CLI surface fails locally instead of on CI.
+        // Pure local (chump binary + file diff), no network.
+        "scripts/ci/test-preflight-help-golden.sh",
     ];
     candidates
         .iter()
@@ -1215,7 +1242,11 @@ pub fn run(argv: &[String]) -> i32 {
     }
     let mut args = parse_args(argv);
     if args.help {
-        print_help();
+        if args.format_json || args.json {
+            print_help_json();
+        } else {
+            print_help();
+        }
         return 0;
     }
     // EFFECTIVE-318: --full reproduces CI's audit shards locally — force the
@@ -3041,6 +3072,31 @@ mod tests {
     fn parse_args_full_flag() {
         let a = parse_args(&["--full".to_string()]);
         assert!(a.full);
+    }
+
+    // INFRA-1789: --format json is a help-only alias for --json.
+    #[test]
+    fn parse_args_format_json() {
+        let a = parse_args(&["--format".to_string(), "json".to_string()]);
+        assert!(a.format_json);
+        // Unknown --format values are ignored for forward-compat, not fatal.
+        let b = parse_args(&["--format".to_string(), "yaml".to_string()]);
+        assert!(!b.format_json);
+    }
+
+    // INFRA-1789: help-regression golden-file check must be discovered so it
+    // actually runs locally instead of becoming shelf-ware.
+    #[test]
+    fn infra1789_help_golden_test_is_wired() {
+        let repo_root = find_repo_root().expect("repo root");
+        let scripts = discover_test_scripts(&repo_root);
+        assert!(
+            scripts
+                .iter()
+                .any(|p| p.ends_with("scripts/ci/test-preflight-help-golden.sh")),
+            "test-preflight-help-golden.sh must be wired into preflight's \
+             always-run allowlist so a stale --help surface fails locally"
+        );
     }
 
     // ── EFFECTIVE-318 ────────────────────────────────────────────────────────

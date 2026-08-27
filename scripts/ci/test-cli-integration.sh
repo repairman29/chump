@@ -102,17 +102,34 @@ check_any() {
 }
 
 # Run command; pass if exit 0 and output is valid JSON.
+# INFRA-1789: when the invocation includes `--help --format json` (or
+# `--help --json`), also require the parsed JSON to be an object (not a
+# bare array/scalar) — a minimal structural check so a help-JSON emitter
+# that degenerates to e.g. `[]` or `"ok"` still fails this gate even though
+# it's technically valid JSON.
 check_json() {
     local desc="$1"; shift
     local output rc=0
     output=$("$CHUMP" "$@" 2>&1) || rc=$?
     if [[ $rc -ne 0 ]]; then
         fail "$desc → exit $rc (expected 0)"
-    elif echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
-        ok "$desc"
-    else
-        fail "$desc → exit 0 but output is not valid JSON; got: ${output:0:120}"
+        return
     fi
+    if ! echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
+        fail "$desc → exit 0 but output is not valid JSON; got: ${output:0:120}"
+        return
+    fi
+    local is_help_format_json=0
+    for a in "$@"; do
+        [[ "$a" == "--help" ]] && is_help_format_json=1
+    done
+    if [[ $is_help_format_json -eq 1 ]]; then
+        if ! echo "$output" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if isinstance(d, dict) else 1)' >/dev/null 2>&1; then
+            fail "$desc → --help JSON output is not a JSON object; got: ${output:0:120}"
+            return
+        fi
+    fi
+    ok "$desc"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -149,6 +166,11 @@ check_error   "gap decompose (no args) exits non-zero" "Usage|error"            
 
 # gap audit-priorities: runs PM health check; exits non-zero when P0 findings exist (expected)
 check_any     "gap audit-priorities shows audit header" "audit-priorities|P0|open gaps" gap audit-priorities
+
+# INFRA-1789: preflight --help --format json → structured (object) JSON,
+# not just parseable JSON. Guards the help-regression JSON emitter against
+# degenerating to e.g. a bare array or string.
+check_json    "preflight --help --format json returns a JSON object" preflight --help --format json
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. CLAIM / SHIP TOP-LEVEL ALIASES
