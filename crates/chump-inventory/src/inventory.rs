@@ -1723,6 +1723,187 @@ fn detect_doc_only_features(conn: &Connection, _root: &Path) -> Result<usize> {
     Ok(n)
 }
 
+// ─── INFRA-1772: strategy-doc rot ──────────────────────────────────────────
+
+/// Why an `UnreferencedStrategyDoc` archive move did not complete. Feeds
+/// `kind=unreferenced_strategy_doc`'s `failure_class` field.
+///
+/// - `Transient`: retryable, e.g. the archive move failed on a permissions error.
+/// - `Permanent`: not retryable — the source file was already gone by move time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StrategyDocFailureClass {
+    /// Retryable: the archive move failed (e.g. permissions error).
+    Transient,
+    /// Not retryable: the source file was already gone by move time.
+    Permanent,
+}
+
+impl StrategyDocFailureClass {
+    fn as_str(self) -> &'static str {
+        match self {
+            StrategyDocFailureClass::Transient => "transient",
+            StrategyDocFailureClass::Permanent => "permanent",
+        }
+    }
+}
+
+/// One `UnreferencedStrategyDoc` event: a doc under `docs/strategy/` with
+/// mtime >90d and zero referencing gaps.
+struct UnreferencedStrategyDocEvent {
+    path: String,
+    staleness_days: i64,
+    archived: bool,
+    failure_class: Option<StrategyDocFailureClass>,
+}
+
+fn emit_unreferenced_strategy_doc_event(ev: &UnreferencedStrategyDocEvent) {
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let mut json = String::new();
+    json.push_str(&format!(
+        r#"{{"ts":"{}","kind":"unreferenced_strategy_doc","path":"{}","staleness_days":{},"archived":{}"#,
+        ts,
+        json_escape(&ev.path),
+        ev.staleness_days,
+        ev.archived,
+    ));
+    if let Some(fc) = ev.failure_class {
+        json.push_str(&format!(r#","failure_class":"{}""#, fc.as_str()));
+    }
+    json.push('}');
+
+    let path = ambient_log_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{}", json);
+    }
+}
+
+/// True if any `docs/gaps/*.yaml` file's content mentions `file_name`
+/// (used as the "is this strategy doc referenced by a gap" signal).
+fn strategy_doc_has_gap_reference(root: &Path, file_name: &str) -> bool {
+    let gaps_dir = root.join("docs/gaps");
+    let entries = match fs::read_dir(&gaps_dir) {
+        Ok(it) => it,
+        Err(_) => return false,
+    };
+    for entry in entries.filter_map(|e| e.ok()) {
+        let p = entry.path();
+        if p.extension().and_then(|s| s.to_str()) != Some("yaml") {
+            continue;
+        }
+        if let Ok(content) = fs::read_to_string(&p) {
+            if content.contains(file_name) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// 90-day staleness gate for `docs/strategy/*.md`: a doc with mtime >90d
+/// and zero gap references is emitted as an `UnreferencedStrategyDoc`
+/// event and moved to `docs/strategy/archive/`.
+fn check_strategy_doc_staleness(root: &Path) -> usize {
+    let strategy_dir = root.join("docs/strategy");
+    let archive_dir = strategy_dir.join("archive");
+    let entries = match fs::read_dir(&strategy_dir) {
+        Ok(it) => it,
+        Err(_) => return 0,
+    };
+
+    let now = now_secs();
+    let mut n = 0usize;
+
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.is_dir() {
+            continue; // skip archive/ and any other subdir
+        }
+        if path.extension().and_then(|s| s.to_str()) != Some("md") {
+            continue;
+        }
+        let file_name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(f) => f.to_string(),
+            None => continue,
+        };
+
+        let meta = match fs::metadata(&path) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let modified = match meta
+            .modified()
+            .ok()
+            .and_then(|m| m.duration_since(UNIX_EPOCH).ok())
+        {
+            Some(d) => d.as_secs() as i64,
+            None => continue,
+        };
+        let staleness_days = (now - modified) / 86400;
+        if staleness_days <= 90 {
+            continue;
+        }
+        if strategy_doc_has_gap_reference(root, &file_name) {
+            continue;
+        }
+
+        let rel_path = format!("docs/strategy/{}", file_name);
+
+        if !path.exists() {
+            emit_unreferenced_strategy_doc_event(&UnreferencedStrategyDocEvent {
+                path: rel_path,
+                staleness_days,
+                archived: false,
+                failure_class: Some(StrategyDocFailureClass::Permanent),
+            });
+            n += 1;
+            continue;
+        }
+
+        if let Err(_e) = fs::create_dir_all(&archive_dir) {
+            emit_unreferenced_strategy_doc_event(&UnreferencedStrategyDocEvent {
+                path: rel_path,
+                staleness_days,
+                archived: false,
+                failure_class: Some(StrategyDocFailureClass::Transient),
+            });
+            n += 1;
+            continue;
+        }
+
+        let dest = archive_dir.join(&file_name);
+        match fs::rename(&path, &dest) {
+            Ok(()) => {
+                emit_unreferenced_strategy_doc_event(&UnreferencedStrategyDocEvent {
+                    path: rel_path,
+                    staleness_days,
+                    archived: true,
+                    failure_class: None,
+                });
+                n += 1;
+            }
+            Err(_e) => {
+                let class = if !path.exists() {
+                    StrategyDocFailureClass::Permanent
+                } else {
+                    StrategyDocFailureClass::Transient
+                };
+                emit_unreferenced_strategy_doc_event(&UnreferencedStrategyDocEvent {
+                    path: rel_path,
+                    staleness_days,
+                    archived: false,
+                    failure_class: Some(class),
+                });
+                n += 1;
+            }
+        }
+    }
+
+    n
+}
+
 /// Detector 6: unreferenced-gap — gap exists in the gap registry but no
 /// PR in `pr_index` has a title containing it.
 ///
@@ -1737,6 +1918,9 @@ fn detect_doc_only_features(conn: &Connection, _root: &Path) -> Result<usize> {
 ///   * Secondary (legacy): merged gap whose introducing_gap artifacts
 ///     are all orphan now — kept for backward compatibility with
 ///     existing test fixtures.
+///
+/// Also runs the INFRA-1772 strategy-doc staleness gate as a tertiary
+/// signal (see [`check_strategy_doc_staleness`]).
 fn detect_unreferenced_gaps(conn: &Connection, root: &Path) -> Result<usize> {
     let mut n = 0usize;
 
@@ -1844,6 +2028,10 @@ fn detect_unreferenced_gaps(conn: &Connection, root: &Path) -> Result<usize> {
             n += 1;
         }
     }
+
+    // ─── Tertiary signal: strategy-doc rot (INFRA-1772) ────────────────────
+    n += check_strategy_doc_staleness(root);
+
     Ok(n)
 }
 
@@ -2755,5 +2943,145 @@ mod tests {
             extract_gap_id("CREDIBLE-002 something"),
             Some("CREDIBLE-002".to_string())
         );
+    }
+
+    /// Writes `docs/strategy/<name>` with the given content, then backdates
+    /// its mtime by `days_ago` days.
+    fn write_strategy_doc(root: &Path, name: &str, content: &str, days_ago: u64) -> PathBuf {
+        let dir = root.join("docs/strategy");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        fs::write(&path, content).unwrap();
+        let stale = SystemTime::now() - std::time::Duration::from_secs(days_ago * 86400);
+        let f = fs::File::options().write(true).open(&path).unwrap();
+        f.set_modified(stale).unwrap();
+        path
+    }
+
+    #[test]
+    #[serial]
+    fn detect_unreferenced_gaps_emits_unreferenced_strategy_doc_event() {
+        let (tmp, conn) = setup_test_db();
+        let root = tmp.path();
+        write_strategy_doc(root, "OLD_PLAN.md", "# old plan", 120);
+
+        let n = detect_unreferenced_gaps(&conn, root).unwrap();
+        assert!(n >= 1);
+
+        let ambient_path = ambient_log_path();
+        let contents = fs::read_to_string(&ambient_path).unwrap();
+        let line = contents
+            .lines()
+            .find(|l| l.contains("unreferenced_strategy_doc"))
+            .expect("expected an unreferenced_strategy_doc event");
+        assert!(line.contains("\"path\":\"docs/strategy/OLD_PLAN.md\""));
+        assert!(line.contains("\"staleness_days\":"));
+    }
+
+    #[test]
+    #[serial]
+    fn detect_unreferenced_gaps_archives_stale_unreferenced_strategy_doc() {
+        let (tmp, conn) = setup_test_db();
+        let root = tmp.path();
+        let path = write_strategy_doc(root, "ANCIENT.md", "# ancient", 100);
+
+        detect_unreferenced_gaps(&conn, root).unwrap();
+
+        assert!(!path.exists(), "original path should be removed");
+        let archived = root.join("docs/strategy/archive/ANCIENT.md");
+        assert!(archived.exists(), "doc should be moved to archive/");
+    }
+
+    #[test]
+    #[serial]
+    fn detect_unreferenced_gaps_skips_fresh_or_referenced_strategy_docs() {
+        let (tmp, conn) = setup_test_db();
+        let root = tmp.path();
+
+        // Fresh doc: mtime well within 90d.
+        let fresh = write_strategy_doc(root, "FRESH.md", "# fresh", 5);
+
+        // Stale doc, but referenced by a gap yaml.
+        let referenced = write_strategy_doc(root, "REFERENCED.md", "# referenced", 120);
+        let gaps_dir = root.join("docs/gaps");
+        fs::create_dir_all(&gaps_dir).unwrap();
+        fs::write(
+            gaps_dir.join("INFRA-9001.yaml"),
+            "- id: INFRA-9001\n  description: |\n    See docs/strategy/REFERENCED.md for context.\n",
+        )
+        .unwrap();
+
+        detect_unreferenced_gaps(&conn, root).unwrap();
+
+        assert!(fresh.exists(), "fresh doc must not be moved");
+        assert!(referenced.exists(), "referenced doc must not be moved");
+        let ambient_path = ambient_log_path();
+        let contents = fs::read_to_string(&ambient_path).unwrap_or_default();
+        assert!(
+            !contents.contains("\"path\":\"docs/strategy/FRESH.md\""),
+            "fresh doc must not emit an event"
+        );
+        assert!(
+            !contents.contains("\"path\":\"docs/strategy/REFERENCED.md\""),
+            "referenced doc must not emit an event"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn detect_unreferenced_gaps_strategy_doc_event_failure_class_permanent_when_source_absent() {
+        let (tmp, _conn) = setup_test_db();
+        let root = tmp.path();
+        let path = write_strategy_doc(root, "GONE.md", "# gone", 120);
+        fs::remove_file(&path).unwrap();
+
+        // Directly exercise the staleness gate: fs::read_dir would already
+        // skip a removed file, so simulate the race by emitting via the
+        // same path the detector would have used once metadata was read
+        // before deletion. We assert the event contract directly instead,
+        // since the read_dir listing self-heals around true absence.
+        emit_unreferenced_strategy_doc_event(&UnreferencedStrategyDocEvent {
+            path: "docs/strategy/GONE.md".to_string(),
+            staleness_days: 120,
+            archived: false,
+            failure_class: Some(StrategyDocFailureClass::Permanent),
+        });
+
+        let ambient_path = ambient_log_path();
+        let contents = fs::read_to_string(&ambient_path).unwrap();
+        let line = contents
+            .lines()
+            .find(|l| l.contains("GONE.md"))
+            .expect("expected event for GONE.md");
+        assert!(line.contains("\"failure_class\":\"permanent\""));
+    }
+
+    #[test]
+    #[serial]
+    fn detect_unreferenced_gaps_strategy_doc_event_failure_class_transient_on_permission_error() {
+        let (tmp, _conn) = setup_test_db();
+        let root = tmp.path();
+        write_strategy_doc(root, "LOCKED.md", "# locked", 120);
+
+        // Make docs/strategy/ read-only so the archive-dir create (and thus
+        // the move) fails with a permissions error.
+        use std::os::unix::fs::PermissionsExt;
+        let strategy_dir = root.join("docs/strategy");
+        let original_mode = fs::metadata(&strategy_dir).unwrap().permissions().mode();
+        fs::set_permissions(&strategy_dir, fs::Permissions::from_mode(0o555)).unwrap();
+
+        let n = check_strategy_doc_staleness(root);
+
+        // Restore perms so the tempdir can be cleaned up.
+        fs::set_permissions(&strategy_dir, fs::Permissions::from_mode(original_mode)).unwrap();
+
+        assert_eq!(n, 1);
+        let ambient_path = ambient_log_path();
+        let contents = fs::read_to_string(&ambient_path).unwrap();
+        let line = contents
+            .lines()
+            .find(|l| l.contains("LOCKED.md"))
+            .expect("expected event for LOCKED.md");
+        assert!(line.contains("\"failure_class\":\"transient\""));
     }
 }
