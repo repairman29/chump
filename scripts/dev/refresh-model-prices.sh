@@ -19,7 +19,7 @@
 #   --apply (DANGER)    automatically rewrite drifted rates in-place. Not
 #                       wired by default; use only after manual review.
 #   --check-registry    INFRA-739: validate docs/dispatch/model_registry.yaml
-#                       against upstream. TODO: automated fetch not yet wired.
+#                       against upstream (automated fetch, wired as of INFRA-1564).
 #
 # Tunables:
 #   CHUMP_PRICING_DRIFT_PCT  drift threshold percent (default: 5)
@@ -50,15 +50,129 @@ for arg in "$@"; do
     esac
 done
 
-# INFRA-739: registry check stub
+# Map local model_id → LiteLLM key. LiteLLM uses provider/model-id format
+# in some cases (e.g. "groq/llama-3.3-70b-versatile") and bare in others.
+# This is a curated translation table; expand as we add models to the YAML.
+LITELLM_MAP="claude-sonnet-4.5:claude-sonnet-4-5
+claude-haiku-4-5:claude-haiku-4-5
+claude-opus-4.7:claude-opus-4-7
+claude-haiku-3.5:claude-3-5-haiku-20241022
+together-deepseek-v3:together_ai/deepseek-ai/DeepSeek-V3
+together-llama-3.3-70b-turbo:together_ai/meta-llama/Llama-3.3-70B-Instruct-Turbo
+together-qwen-2.5-coder-32b:together_ai/Qwen/Qwen2.5-Coder-32B-Instruct"
+
+# INFRA-739: registry check, wired to the same LiteLLM upstream as the
+# model_rates.yaml check below (INFRA-1564 — was a manual-only TODO stub).
 if [[ "$CHECK_REGISTRY" -eq 1 ]]; then
     if [[ ! -f "$REGISTRY_FILE" ]]; then
         echo "FATAL: $REGISTRY_FILE not found — INFRA-739 hasn't shipped yet?" >&2
         exit 1
     fi
-    echo "TODO: automated fetch from Anthropic pricing page not yet wired (INFRA-739)."
-    echo "Target file: $REGISTRY_FILE"
-    echo "Manual process: update input_per_mtk/output_per_mtk in the YAML and bump last_verified."
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "FATAL: python3 required for YAML parse" >&2
+        exit 1
+    fi
+
+    REGISTRY_UPSTREAM_TMP="$(mktemp -t chump-registry-pricing.XXXXXX)"
+    trap 'rm -f "$REGISTRY_UPSTREAM_TMP"' EXIT
+
+    if ! curl -sSf --max-time 30 "$UPSTREAM_URL" > "$REGISTRY_UPSTREAM_TMP" 2>/dev/null; then
+        echo "WARN: could not fetch $UPSTREAM_URL — offline? skipping registry check" >&2
+        exit 0
+    fi
+
+    REG_DRIFT_FOUND=0
+    REG_UNKNOWN_FOUND=0
+    REG_REPORT=()
+
+    while IFS=: read -r local_id upstream_key; do
+        [[ -z "$local_id" || -z "$upstream_key" ]] && continue
+        REG_LINE=$(MODEL_LOCAL="$local_id" MODEL_UPSTREAM="$upstream_key" \
+                    RATES_FILE="$REGISTRY_FILE" UPSTREAM_TMP="$REGISTRY_UPSTREAM_TMP" \
+                    DRIFT_PCT="$DRIFT_PCT" \
+                    python3 <<'PY'
+import json, os, re, sys
+
+local_id = os.environ["MODEL_LOCAL"]
+upstream_key = os.environ["MODEL_UPSTREAM"]
+rates_file = os.environ["RATES_FILE"]
+upstream_tmp = os.environ["UPSTREAM_TMP"]
+drift_pct = float(os.environ["DRIFT_PCT"])
+
+try:
+    upstream = json.load(open(upstream_tmp))
+except Exception as e:
+    print(f"  ?? {local_id}: upstream parse error: {e}")
+    sys.exit(2)
+
+up_entry = upstream.get(upstream_key)
+if not up_entry:
+    print(f"  ?? {local_id}: not in upstream ({upstream_key} missing)")
+    sys.exit(2)
+
+up_in = float(up_entry.get("input_cost_per_token", 0)) * 1_000_000
+up_out = float(up_entry.get("output_cost_per_token", 0)) * 1_000_000
+
+text = open(rates_file).read()
+pat = re.compile(
+    r"- model_id:\s*" + re.escape(local_id) +
+    r"\s*\n\s*input_per_mtk:\s*([\d.]+)\s*\n\s*output_per_mtk:\s*([\d.]+)",
+    re.MULTILINE,
+)
+m = pat.search(text)
+if not m:
+    print(f"  ?? {local_id}: not found in {rates_file}")
+    sys.exit(2)
+local_in = float(m.group(1))
+local_out = float(m.group(2))
+
+def drift(a, b):
+    if a == 0 and b == 0:
+        return 0.0
+    if a == 0 or b == 0:
+        return 100.0
+    return abs(a - b) / max(a, b) * 100
+
+d_in = drift(local_in, up_in)
+d_out = drift(local_out, up_out)
+
+if d_in > drift_pct or d_out > drift_pct:
+    print(f"  ⚠ {local_id}: in {local_in:.2f}→{up_in:.2f} ({d_in:.0f}%)  out {local_out:.2f}→{up_out:.2f} ({d_out:.0f}%)  DRIFT")
+    sys.exit(1)
+else:
+    print(f"  ✓ {local_id}: in {local_in:.2f}~{up_in:.2f}  out {local_out:.2f}~{up_out:.2f}")
+    sys.exit(0)
+PY
+)
+        rc=$?
+        REG_REPORT+=("$REG_LINE")
+        case $rc in
+            1) REG_DRIFT_FOUND=$((REG_DRIFT_FOUND+1)) ;;
+            2) REG_UNKNOWN_FOUND=$((REG_UNKNOWN_FOUND+1)) ;;
+        esac
+    done <<< "$LITELLM_MAP"
+
+    echo "═══ INFRA-739 registry-refresh report ═══"
+    printf '%s\n' "${REG_REPORT[@]}"
+    echo ""
+    echo "drift=$REG_DRIFT_FOUND  unknown=$REG_UNKNOWN_FOUND"
+
+    if [[ "$REG_DRIFT_FOUND" -gt 0 ]]; then
+        ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null
+        printf '{"ts":"%s","event":"ALERT","kind":"pricing_drift","drift_count":%d,"unknown_count":%d,"note":"INFRA-739: %d registry rate(s) drifted >%s%% from LiteLLM upstream"}\n' \
+            "$ts" "$REG_DRIFT_FOUND" "$REG_UNKNOWN_FOUND" "$REG_DRIFT_FOUND" "$DRIFT_PCT" \
+            >> "$AMBIENT_LOG" 2>/dev/null || true
+    fi
+
+    ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null
+    printf '{"ts":"%s","kind":"model_prices_refreshed","target":"registry","drift_count":%d,"unknown_count":%d}\n' \
+        "$ts" "$REG_DRIFT_FOUND" "$REG_UNKNOWN_FOUND" >> "$AMBIENT_LOG" 2>/dev/null || true
+
+    if [[ "$REG_DRIFT_FOUND" -gt 0 ]]; then
+        exit 2
+    fi
     exit 0
 fi
 
@@ -82,17 +196,6 @@ if ! curl -sSf --max-time 30 "$UPSTREAM_URL" > "$UPSTREAM_TMP" 2>/dev/null; then
     echo "WARN: could not fetch $UPSTREAM_URL — offline? skipping check" >&2
     exit 0
 fi
-
-# Map local model_id → LiteLLM key. LiteLLM uses provider/model-id format
-# in some cases (e.g. "groq/llama-3.3-70b-versatile") and bare in others.
-# This is a curated translation table; expand as we add models to the YAML.
-LITELLM_MAP="claude-sonnet-4.5:claude-sonnet-4-5
-claude-haiku-4-5:claude-haiku-4-5
-claude-opus-4.7:claude-opus-4-7
-claude-haiku-3.5:claude-3-5-haiku-20241022
-together-deepseek-v3:together_ai/deepseek-ai/DeepSeek-V3
-together-llama-3.3-70b-turbo:together_ai/meta-llama/Llama-3.3-70B-Instruct-Turbo
-together-qwen-2.5-coder-32b:together_ai/Qwen/Qwen2.5-Coder-32B-Instruct"
 
 DRIFT_FOUND=0
 UNKNOWN_FOUND=0
@@ -195,6 +298,12 @@ fi
 if [[ "$MODE" == "apply" && "$DRIFT_FOUND" -gt 0 ]]; then
     echo "WARN: --apply will rewrite $RATES_FILE in place. Skipping in this version (TBD: implement via INFRA-731 follow-up; manual audit safer)."
 fi
+
+# INFRA-1564: emit so operators see this firing, independent of drift outcome.
+ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null
+printf '{"ts":"%s","kind":"model_prices_refreshed","target":"rates","drift_count":%d,"unknown_count":%d}\n' \
+    "$ts" "$DRIFT_FOUND" "$UNKNOWN_FOUND" >> "$AMBIENT_LOG" 2>/dev/null || true
 
 # Exit code: drift = 2 (advisory); unknown = 0 (informational)
 if [[ "$DRIFT_FOUND" -gt 0 ]]; then

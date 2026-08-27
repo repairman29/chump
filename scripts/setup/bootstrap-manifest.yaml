@@ -223,3 +223,24 @@ installers:
     install: bash scripts/setup/install-a2a-dead-letter-reaper-launchd.sh
     check: bash scripts/setup/install-a2a-dead-letter-reaper-launchd.sh --check
     adds: ~/Library/LaunchAgents/com.chump.a2a-dead-letter-reaper.plist + 30-min run
+
+  - id: decomposition-hint-tracker-launchd
+    why: "INFRA-1564 — decomposition-hint-tracker.sh (FLEET-026) has been production-ready for days: idempotent analytics on PR decomposition hints, own outcomes file, own ambient event. Never wired into launchctl, so the heeded-rate/revealed-correct-rate signal never refreshes on a real machine."
+    priority: P2
+    install: cp launchd/com.chump.decomposition-hint-tracker.plist ~/Library/LaunchAgents/ && sed -i '' "s|/path/to/Chump|$(pwd)|g; s|/path/to/HOME|$HOME|g" ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist && launchctl load ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist
+    check: launchctl list 2>/dev/null | grep -q com.chump.decomposition-hint-tracker
+    adds: ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist + daily run
+
+  - id: refresh-model-prices-launchd
+    why: "INFRA-1564 — refresh-model-prices.sh (INFRA-731/INFRA-739) diffs docs/pricing/model_rates.yaml + docs/dispatch/model_registry.yaml against LiteLLM upstream weekly, but had no launchd entry so pricing drift only surfaced when someone ran it by hand."
+    priority: P2
+    install: cp launchd/com.chump.refresh-model-prices.plist ~/Library/LaunchAgents/ && sed -i '' "s|/path/to/Chump|$(pwd)|g; s|/path/to/HOME|$HOME|g" ~/Library/LaunchAgents/com.chump.refresh-model-prices.plist && launchctl load ~/Library/LaunchAgents/com.chump.refresh-model-prices.plist
+    check: launchctl list 2>/dev/null | grep -q com.chump.refresh-model-prices
+    adds: ~/Library/LaunchAgents/com.chump.refresh-model-prices.plist + weekly run
+
+  - id: fleet-version-skew-detect-launchd
+    why: "INFRA-1564 — fleet-version-skew-detect.sh (INFRA-609/RESILIENT-155) compares the running fleet's working-tree worker.sh against origin/main and ALERTs when telemetry-affecting drift is unrelaunched, but had no launchd entry to run it automatically."
+    priority: P2
+    install: cp launchd/com.chump.fleet-version-skew-detect.plist ~/Library/LaunchAgents/ && sed -i '' "s|/path/to/Chump|$(pwd)|g; s|/path/to/HOME|$HOME|g" ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist && launchctl load ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist
+    check: launchctl list 2>/dev/null | grep -q com.chump.fleet-version-skew-detect
+    adds: ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist + 6h run

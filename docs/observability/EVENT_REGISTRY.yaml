@@ -11669,3 +11669,38 @@ events:
       instead of silently going stale.
     consumers: [fleet-brief, ops-audit, operator-recall]
     fields_required: [ts, kind, signs, green, amber, red, unknown, p_full_trek, out]
+
+  # ── INFRA-1564: dev-script launchd wiring ─────────────────────────────────
+  - kind: decomposition_hint_tracked
+    status: active
+    effect_metric: self
+    emitter: scripts/dev/decomposition-hint-tracker.sh (FLEET-026)
+    emitter_paths: [scripts/dev/decomposition-hint-tracker.sh]
+    trigger: the daily decomposition-hint-tracker.sh run finishes classifying
+      decomposition_hint events into heeded/landed_clean/landed_followup/
+      pending/skipped and rewrites .chump/decomposition-outcomes.jsonl
+    consumers: [fleet-brief, ambient glance]
+    fields_required: [ts, kind, n_hints, n_resolved]
+
+  - kind: model_prices_refreshed
+    status: active
+    effect_metric: self
+    emitter: scripts/dev/refresh-model-prices.sh (INFRA-731 / INFRA-739)
+    emitter_paths: [scripts/dev/refresh-model-prices.sh]
+    trigger: the weekly refresh-model-prices.sh run finishes diffing
+      docs/pricing/model_rates.yaml (target=rates) or
+      docs/dispatch/model_registry.yaml (target=registry) against the
+      LiteLLM upstream rate card
+    consumers: [fleet-brief, ambient glance]
+    fields_required: [ts, kind, target, drift_count, unknown_count]
+
+  - kind: version_skew_detected
+    status: active
+    effect_metric: self
+    emitter: scripts/dev/fleet-version-skew-detect.sh (INFRA-609 / RESILIENT-155)
+    emitter_paths: [scripts/dev/fleet-version-skew-detect.sh]
+    trigger: the working-tree scripts/dispatch/worker.sh differs from
+      origin/main — emitted every 6h run that finds drift, regardless of
+      whether the drift touches telemetry paths
+    consumers: [fleet-brief, operator-recall, watchdog]
+    fields_required: [ts, kind, file, commits_behind, telemetry_affected, action, session]
