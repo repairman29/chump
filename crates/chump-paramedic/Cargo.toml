@@ -6,13 +6,22 @@ description = "ChumpOS paramedic: per-PR triage/execute/daemon rule-engine that 
 repository = "https://github.com/repairman29/chump"
 license = "AGPL-3.0-only"
 
+[[bin]]
+name = "paramedic"
+path = "src/bin/paramedic.rs"
+
 [dependencies]
 anyhow = "1.0"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+rand = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1.0.118", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true

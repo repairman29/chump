@@ -1966,9 +1966,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "rand 0.10.2",
+ "reqwest 0.12.28",
  "rusqlite",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
 ]
 
