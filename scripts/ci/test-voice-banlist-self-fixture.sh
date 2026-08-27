@@ -85,6 +85,38 @@ else
     fail "Voice-Lint-Bypass bypass trailer missing from banlist script"
 fi
 
+# ── Test 7: product-marketing fixture doc is rejected (INFRA-1736) ───────────
+echo "Test 7: fixture doc with banned product-marketing word is rejected"
+MARKETING_FIXTURE="$SCRIPT_DIR/fixtures/voice-banlist-marketing-fixture.md"
+if [[ ! -f "$MARKETING_FIXTURE" ]]; then
+    fail "voice-banlist-marketing-fixture.md fixture missing: $MARKETING_FIXTURE"
+else
+    T7="$(mktemp -d)"
+    FAKE_REPO7="$T7/repo"
+    mkdir -p "$FAKE_REPO7/docs/process"
+    git -C "$FAKE_REPO7" init -q
+    git -C "$FAKE_REPO7" config user.email "test@test.com"
+    git -C "$FAKE_REPO7" config user.name "Test"
+    echo "# base" > "$FAKE_REPO7/docs/process/base.md"
+    git -C "$FAKE_REPO7" add .
+    git -C "$FAKE_REPO7" commit -q -m "base"
+    git -C "$FAKE_REPO7" tag base_commit
+
+    cp "$MARKETING_FIXTURE" "$FAKE_REPO7/docs/process/marketing-fixture.md"
+    git -C "$FAKE_REPO7" add docs/process/marketing-fixture.md
+    git -C "$FAKE_REPO7" commit -q -m "feat: add marketing fixture doc"
+
+    if ! REPO_ROOT="$FAKE_REPO7" \
+         CHUMP_AMBIENT_LOG="$T7/ambient.jsonl" \
+         CHUMP_VOICE_LINT_DRY_RUN=1 \
+         bash "$BANLIST" --base=base_commit >/dev/null 2>&1; then
+        ok "fixture doc with banned product-marketing word rejected"
+    else
+        fail "fixture doc with banned product-marketing word should have been rejected"
+    fi
+    rm -rf "$T7"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then

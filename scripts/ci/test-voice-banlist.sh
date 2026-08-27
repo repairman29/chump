@@ -69,6 +69,15 @@ BANNED_WORDS=(
 # We keep it simple: ban "leverage" as a standalone word in docs prose.
 BANNED_WORDS+=("leverage")
 
+# Product-marketing words (INFRA-1736) — generic pitch-deck vocabulary that
+# says nothing concrete about what shipped. "user journey" is a phrase, not
+# a single word; the python matcher below handles multi-word entries fine
+# (re.escape preserves the space, \b anchors the outer boundaries).
+BANNED_WORDS+=("user journey")
+BANNED_WORDS+=("feature")
+BANNED_WORDS+=("platform")
+BANNED_WORDS+=("ecosystem")
+
 # ── Check for bypass trailer ──────────────────────────────────────────────────
 _has_bypass() {
   # Check all commit messages in this PR range, or just HEAD.
