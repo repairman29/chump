@@ -1,0 +1,13 @@
+- id: INFRA-3833
+  domain: INFRA
+  title: "ZERO-WASTE: implement chump-github-cache refresh-open-prs bulk REST fill + divergence-audit infra (prereq for real INFRA-2062 cutover)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    INFRA-2062 investigation (2026-08-28) found the Phase 2 cutover premise unmet: neither the Python webhook receiver nor the Rust chump-webhook-receiver has ever run continuously in this environment (ps aux shows neither process alive, no launchd plist installed for either, .chump/github_cache.db does not even exist), no sqlite_diff/divergence-audit script exists, and refresh-open-prs is still an explicit Phase 1 stub (prints 0, no octocrab dep in Cargo.toml) per chump-github-cache/src/lib.rs's own doc comment: "NO bulk-refill REST loop ... real refill comes in a follow-up sub-gap." This gap is that follow-up: make refresh-open-prs functionally real and add divergence-tracking infra so a genuine 14-day parallel-run window (INFRA-2062 AC1) can actually start being measured, instead of being claimed without data.
+  acceptance_criteria:
+    - "chump-github-cache-cli refresh-open-prs performs a real bulk REST refill (octocrab or reqwest, matching bash cache_refresh_open_prs semantics) instead of printing a stub 0"
+    - "nightly divergence-audit script compares Python-receiver-written rows vs Rust-receiver-written rows for the same primary keys and emits ambient kind=cache_divergence_detected on any mismatch"
+    - "smoke test scripts/ci/test-github-cache-callsite-migration.sh referenced by INFRA-2062 AC4 is created, exercising at least 3 real bash callsites via the CLI path"
+    - "INFRA-2062 is NOT closed by this gap — it remains blocked on an actual 14-consecutive-day zero-divergence window, which cannot start until this gap's divergence-audit infra exists"

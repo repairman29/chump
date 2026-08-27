@@ -1,0 +1,12 @@
+- id: INFRA-3834
+  domain: INFRA
+  title: "CREDIBLE: worktree-local .chump/state.db gap-ID allocator can collide with canonical main-checkout IDs (chump gap reserve run inside a fresh worktree reused INFRA-1805, already assigned to an unrelated gap in main's state.db)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Repro (2026-08-28, worktree infra-2062-fleet-1-20260828-011633): a freshly-claimed worktree's .chump/state.db (gitignored, per-worktree file, NOT symlinked to main checkout's canonical .chump/state.db — unlike .chump/github_cache.db which INFRA-1733 symlinked) starts with its own gap_counters row. Running "chump gap reserve" inside that worktree allocated INFRA-1805 — an ID already assigned in main's canonical state.db to an unrelated gap ("EFFECTIVE: enrich CapabilityManifest schema..."). Because worktree-local state.db is gitignored and never merges back into canonical state.db, the collision is silent: the worktree-local copy of INFRA-1805 would simply vanish when the worktree is cleaned up, UNLESS a script or human trusts the worktree-local "chump gap show INFRA-1805" output and acts on it (e.g. cites it in a commit message or PR), which then permanently confuses it with the real, unrelated INFRA-1805 in the fleet's shared history. Root cause: gap_counters allocation is worktree-local-file-scoped, not canonical-db-scoped, so it doesn't know about IDs already burned in main. Fix direction: either (a) symlink .chump/state.db into worktrees the same way INFRA-1733 symlinked github_cache.db (simplest, matches precedent), or (b) make "chump gap reserve" always shell out to query/allocate against the main checkout's state.db regardless of cwd, or (c) make the ID allocator itself collision-safe (e.g. content-addressed or centrally-coordinated counter) so two independent allocations can never produce the same ID.
+  acceptance_criteria:
+    - "chump gap reserve run inside any linked worktree allocates an ID that is guaranteed unique against the canonical main-checkout state.db (not just the worktree-local copy)"
+    - "regression test: reserve a gap in a fresh worktree, reserve a gap in main checkout, assert IDs never collide even when both counters start from the same baseline"
+    - "either .chump/state.db is symlinked into fresh worktrees (mirroring INFRA-1733's github_cache.db symlink) or chump gap reserve/set resolve the canonical db path independent of cwd"

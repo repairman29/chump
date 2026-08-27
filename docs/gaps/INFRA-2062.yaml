@@ -4,6 +4,7 @@
   status: open
   priority: P2
   effort: s
+  depends_on: [INFRA-3833]
   acceptance_criteria:
     - "Parallel-run validation: 14+ consecutive days with both Python receiver (scripts/ops/github-webhook-receiver.py) and Rust receiver (chump-webhook-receiver) writing to .chump/github_cache.db; sqlite_diff audit run nightly shows zero divergence; ambient kind=cache_divergence_detected count == 0 over the window"
     - "DNS / proxy / launchd flip: webhook URL routes ONLY to chump-webhook-receiver (port 9876); Python receiver process stopped + launchd plist com.chump.github-webhook-receiver-py.plist unloaded + uninstalled"
@@ -13,5 +14,7 @@
     - "Rollback plan documented: if Rust receiver regression detected, DNS / proxy flip back to Python; Python receiver is restored from git (PR was atomic delete); 24h hot-rollback window"
   notes: |
     Phase 2 cutover of META-107 sub-gap INFRA-1999 (chump-github-cache). LONGER parallel-run window (14 days vs 7) because webhook receivers are externally-driven and miss-the-event divergence is silent. Sibling cutovers: INFRA-2060/2061/2063/2064/2065.
+
+    [2026-08-28] Investigation found this gap's premise unmet: neither the Python webhook receiver nor the Rust chump-webhook-receiver has ever run continuously / in parallel in this environment (no process, no launchd plist, .chump/github_cache.db doesn't exist in a fresh worktree). No sqlite_diff/divergence-audit tooling exists to measure AC1's 14-day window. chump-github-cache-cli's refresh-open-prs is still an explicit Phase 1 stub per chump-github-cache/src/lib.rs's own doc comment ("real refill comes in a follow-up sub-gap"), so AC4 parity isn't there either. Sibling INFRA-2060 was found closed with closed_pr pointing at the PR that filed the gap arc, not one that did real cutover work (scripts/git-hooks/pre-push is still 1628 LOC) — i.e. marked done without the work happening. Declining to repeat that: NOT closing INFRA-2062, NOT deleting the Python receiver or bash lib (still used by ~40 scripts) without real validation data. Filed INFRA-3833 (prerequisite: real refresh-open-prs + divergence-audit infra) and INFRA-3834 (found bug: worktree-local state.db gap-ID allocator collided with an existing canonical ID). INFRA-2062 stays open, depends_on INFRA-3833, and cannot ship as literally specified until that lands + 14 real consecutive zero-divergence days accrue.
   outcome_id: MISSION-010
 
