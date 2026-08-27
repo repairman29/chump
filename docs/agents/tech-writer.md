@@ -90,6 +90,7 @@ Group the changed files into these categories:
 | Env / config | `src/env_flags.rs`, `.env.example`, `src/config*.rs` |
 | Tools | `src/tools/**`, `docs/tools_index.md` |
 | Web API | `src/web/**`, `src/routes/**` |
+| PWA components | `web/v2/*.js` (new `customElements.define()` calls) |
 | Cognitive modules | `src/consciousness/**`, `src/agent_loop/**`, `src/surprise_tracker*`, `src/belief_state*`, `src/neuromod*`, `src/phi_proxy*`, `src/blackboard*`, `src/holographic*`, `src/precision_controller*`, `src/memory_graph*` |
 | Rust infrastructure | `src/llm*.rs`, `src/provider*.rs`, `src/speculative*`, `src/reflection_db*`, `src/prompt_assembler*` |
 | Scripts | `scripts/*.sh` (new files or significant changes) |
@@ -129,6 +130,16 @@ Read the tool's source. Check if it's in the index. If missing: add an entry wit
 ### New web API endpoints → `docs/WEB_API_REFERENCE.md`
 
 Read the route handler. If the endpoint is missing: add it with method, path, auth requirements, request/response shape, and a minimal example. If the signature changed: update it. If removed: remove the entry with a note of the removal commit.
+
+### New PWA components → `docs/design/PWA_STYLE_GUIDE.md` §2 (Component inventory)
+
+If a new `web/v2/*.js` file adds a `customElements.define()` call: run
+`bash scripts/dev/gen-pwa-component-inventory.sh --write` to regenerate the
+inventory table in place, then commit the diff. Do not hand-edit the table
+between the `BEGIN`/`END component-inventory-table` markers — the generator
+owns that block. If the new component also introduces a CSS variable,
+breakpoint, or composition pattern not covered by §§1/3/4 of that doc, flag
+it for human review rather than editing those prose sections yourself.
 
 ### Cognitive module changes → `docs/CHUMP_TO_CHAMP.md`
 
