@@ -9411,6 +9411,15 @@ fn build_api_router() -> Router {
         // INFRA-1338: server-side ROADMAP.md parser + 60s cache (replaces
         // INFRA-1207 client-side fallback).
         .route("/api/roadmap", get(routes::roadmap::handle_roadmap))
+        // INFRA-1563: operator-decision queue (sibling to /api/roadmap).
+        .route(
+            "/api/decisions",
+            get(routes::decisions::handle_decisions_list),
+        )
+        .route(
+            "/api/decisions/{id}/resolve",
+            post(routes::decisions::handle_decisions_resolve),
+        )
         .route("/api/chat", post(handle_chat_with_kill_gate))
         .route("/api/voice/ask", post(handle_voice_ask))
         .route("/api/advisor/ask", post(handle_advisor_ask))

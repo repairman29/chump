@@ -11669,3 +11669,22 @@ events:
       instead of silently going stale.
     consumers: [fleet-brief, ops-audit, operator-recall]
     fields_required: [ts, kind, signs, green, amber, red, unknown, p_full_trek, out]
+
+  - kind: operator_decision_needed
+    effect_metric: self
+    emitter: orchestrator/picker/bot-merge (any component that needs operator
+      input before it can proceed — gap_demote / gap_promote / merge_approval /
+      scope_clarify)
+    trigger: a fleet component reaches a decision point it cannot resolve
+      autonomously and needs operator confirmation.
+    consumers: [GET /api/decisions (src/routes/decisions.rs, INFRA-1563), web/v2/app.js chump-view-decisions]
+    fields_required: [ts, kind, id, priority, summary]
+
+  - kind: operator_decision_resolved
+    effect_metric: self
+    emitter: POST /api/decisions/{id}/resolve (src/routes/decisions.rs, INFRA-1563)
+    trigger: the operator resolves a pending decision from the decisions queue
+      UI. Its `id` matches a prior `operator_decision_needed` event's `id` and
+      removes that decision from the pending list on the next GET.
+    consumers: [GET /api/decisions (src/routes/decisions.rs, INFRA-1563)]
+    fields_required: [ts, kind, id, resolved_by]

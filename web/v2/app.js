@@ -2009,22 +2009,38 @@ class ChumpViewDecisions extends HTMLElement {
         }
         list.innerHTML = decisions.slice(0, 30).map((d) => {
           const priority = d.priority || 'normal';
-          const action = d.action || 'decision';
+          const kind = d.kind || 'decision';
+          const ref = d.gap_id || (d.pr_number ? `PR #${d.pr_number}` : '');
           return `
-            <article class="task-card">
+            <article class="task-card" data-decision-id="${d.id ?? ''}">
               <header class="task-card-header">
                 <span class="task-status ${priority}">${priority}</span>
                 <span class="task-id">${d.id ?? ''}</span>
               </header>
-              <p class="task-desc"><strong>${action}</strong></p>
-              ${d.context ? `<p class="task-desc" style="color: var(--text-secondary); font-size: 12px; margin-top: 4px;">${d.context}</p>` : ''}
+              <p class="task-desc"><strong>${kind}</strong>${ref ? ` — ${ref}` : ''}</p>
+              ${d.summary ? `<p class="task-desc" style="color: var(--text-secondary); font-size: 12px; margin-top: 4px;">${d.summary}</p>` : ''}
+              <button type="button" class="decision-resolve-btn" data-decision-id="${d.id ?? ''}">Resolve</button>
             </article>
           `;
         }).join('');
+        list.querySelectorAll('.decision-resolve-btn').forEach((btn) => {
+          btn.addEventListener('click', () => this.#resolve(btn.dataset.decisionId));
+        });
       })
       .catch(() => {
         list.innerHTML = '<p class="placeholder">Could not load decisions (offline or server not running).</p>';
       });
+  }
+
+  #resolve(id) {
+    if (!id) return;
+    fetch(`/api/decisions/${encodeURIComponent(id)}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resolved_by: 'operator' }),
+    })
+      .then((r) => r.ok && this.#load())
+      .catch(() => {});
   }
 }
 customElements.define('chump-view-decisions', ChumpViewDecisions);

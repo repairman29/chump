@@ -2109,3 +2109,36 @@ bypasses that mask CI state.
 **Fix**: call `.flush().await` on the subscribing client right after `subscribe()`, before doing anything that depends on the subscription being live. `flush()` forces a round-trip to the server, so by the time it returns the subscription is guaranteed registered. See `crates/chump-coord/tests/ambient_distribution.rs`.
 
 **Related — stale test referencing removed functionality**: `chump-gap-store::tests::test_reserve_skips_yaml_drift` was reported failing in the same gap but no longer exists in the tree — it was removed in #2727 (INFRA-2177, "drop docs/gaps YAML rollup from gap reserve — use state.db only") along with the functionality it tested. Before debugging a named test failure, `grep` for the test function first — if it's gone, the report is stale and the fix is a no-op.
+
+## Decisions queue — `/api/decisions` contract (INFRA-1563)
+
+**What it is**: the operator-decision queue for the Phase 3 Orchestrator MVP
+doctrine (operator types high-level intents → orchestrator surfaces
+decisions for confirmation). Sibling to `/api/roadmap` (INFRA-1338) — same
+shape: scan a local source of truth, serve JSON, never `500` on a missing or
+empty source.
+
+**Source of truth**: `.chump-locks/ambient.jsonl`. There is no separate
+persistence layer — the queue is event-sourced:
+
+- A component that needs operator input emits `kind=operator_decision_needed`
+  with `{ts, kind, id, priority, summary, gap_id?, pr_number?}`. `kind` here
+  is the *decision* kind (`gap_demote` \| `gap_promote` \| `merge_approval` \|
+  `scope_clarify`), not the ambient event kind.
+- `GET /api/decisions` (`src/routes/decisions.rs`) scans the whole file,
+  collects every `operator_decision_needed.id`, subtracts every
+  `operator_decision_resolved.id`, and returns what's left.
+- `POST /api/decisions/{id}/resolve` appends
+  `kind=operator_decision_resolved` with that `id` — the next `GET` excludes
+  it. There is no in-place mutation or deletion; resolution is itself an
+  append.
+
+**Implication for emitters**: if you want a decision to show up in the PWA
+queue, append a `kind=operator_decision_needed` line with a stable `id` to
+`.chump-locks/ambient.jsonl` — don't call any Rust API directly, the route
+just reads the file. Reuse the `id` you chose when you later want to resolve
+it out of the queue (e.g. from a script, `POST /api/decisions/<id>/resolve`).
+
+**Smoke test**: `scripts/ci/test-decisions-endpoint.sh` emits a synthetic
+`operator_decision_needed` event, asserts it appears in `GET /api/decisions`,
+resolves it, and asserts it disappears.

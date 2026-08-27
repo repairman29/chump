@@ -437,6 +437,61 @@ Replaces the client-side markdown parsing fallback in
 within the TTL returns the same `generated_at_iso` (CI test
 `scripts/ci/test-api-roadmap.sh` asserts this).
 
+## GET /api/decisions (INFRA-1563)
+
+Operator-decision queue. Scans `.chump-locks/ambient.jsonl` for
+`kind=operator_decision_needed` events, minus any `id` already covered by a
+`kind=operator_decision_resolved` event. Sibling to `GET /api/roadmap`
+(INFRA-1338) — same "never 500, empty is a valid answer" posture.
+
+**Response (always `200`):**
+
+```json
+[
+  {
+    "id": "dec-abc123",
+    "kind": "gap_demote",
+    "gap_id": "INFRA-1234",
+    "pr_number": null,
+    "summary": "Gap has been open 14d with no activity — demote to P3?",
+    "priority": "normal",
+    "created_at": "2026-08-27T00:00:00Z"
+  }
+]
+```
+
+**Fields:**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string | Stable decision identifier, set by the emitter. |
+| `kind` | string | One of `gap_demote` \| `gap_promote` \| `merge_approval` \| `scope_clarify`. |
+| `gap_id` | string \| null | Gap this decision concerns, when applicable. |
+| `pr_number` | number \| null | PR this decision concerns, when applicable. |
+| `summary` | string | Human-readable description of the decision needed. |
+| `priority` | string | Defaults to `"normal"` when the source event omits it. |
+| `created_at` | string | ISO 8601 timestamp from the source event's `ts` field. |
+
+Consumed by `web/v2/app.js#chump-view-decisions`.
+
+## POST /api/decisions/{id}/resolve (INFRA-1563)
+
+Resolves a pending decision. Writes a `kind=operator_decision_resolved` event
+to `.chump-locks/ambient.jsonl` with the given `id` — the next `GET
+/api/decisions` call excludes it.
+
+**Body (optional):**
+
+```json
+{ "response": "demoted to P3", "resolved_by": "operator" }
+```
+
+**Response:**
+
+```json
+{ "ok": true, "id": "dec-abc123" }
+```
+
 **Failure mode:** if `docs/ROADMAP.md` is missing or contains no parseable
 milestones the endpoint still returns `200` with `milestones: []` plus a
 `roadmap_error` string. The frontend renders this gracefully — returning
