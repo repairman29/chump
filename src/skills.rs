@@ -126,6 +126,49 @@ pub fn skills_root() -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// Install the operator-curated seed skills from `skills-bundle/` (repo root,
+/// committed) into `chump-brain/skills/` (gitignored, per-host learning state).
+///
+/// INFRA-1615: newly-installed fleets otherwise start with an empty brain,
+/// so `chump init` taps the bundle in to give every fresh install a baseline
+/// curriculum instead of zero. Idempotent — skips any skill whose name
+/// already exists under the brain path, never overwrites.
+///
+/// Returns the list of skill names actually installed (skipped ones omitted).
+pub fn install_bundle(repo_root: &Path) -> Result<Vec<String>> {
+    let bundle_dir = repo_root.join("skills-bundle");
+    if !bundle_dir.exists() {
+        return Ok(Vec::new());
+    }
+    let dest_root = skills_root()?;
+    std::fs::create_dir_all(&dest_root)?;
+
+    let mut installed = Vec::new();
+    let mut entries: Vec<_> = std::fs::read_dir(&bundle_dir)?
+        .filter_map(|e| e.ok())
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let src_md = entry.path().join("SKILL.md");
+        if !src_md.exists() {
+            continue;
+        }
+        let dest_dir = dest_root.join(&name);
+        let dest_md = dest_dir.join("SKILL.md");
+        if dest_md.exists() {
+            continue; // already installed — never overwrite
+        }
+        std::fs::create_dir_all(&dest_dir)?;
+        std::fs::copy(&src_md, &dest_md)?;
+        installed.push(name);
+    }
+    Ok(installed)
+}
+
 /// List all installed skills by scanning the skills root directory.
 pub fn list_skills() -> Result<Vec<Skill>> {
     let root = skills_root()?;

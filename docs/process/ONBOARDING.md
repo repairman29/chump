@@ -74,6 +74,54 @@ cargo build --release
 
 ---
 
+## Curriculum bootstrap (INFRA-1615)
+
+`chump-brain/` (per-host learning state, including `chump-brain/skills/`) is
+gitignored — correct, since it's local memory, not shared code. But that
+means a freshly-cloned repo starts with an **empty brain**: no skills exist
+yet for Chump to draw on, and it can take weeks of "create a skill from a
+successful pattern" moments before the curriculum fills in on its own.
+
+To avoid a cold start, `chump init` taps the operator-curated seed bundle at
+`skills-bundle/` (committed to the repo, not gitignored) into
+`chump-brain/skills/` as one of its sub-steps. Each seed skill ships as a
+full `SKILL.md` at `skills-bundle/<name>/SKILL.md`:
+
+- `verify-existence` — verify a "missing/broken" claim against runtime
+  state before filing a gap
+- `claim-without-collision` — check active leases before claiming a gap or
+  editing a file
+- `pre-ship-ci-prediction` — predict local-CI-catchable failures before
+  pushing
+
+The tap is **idempotent**: it copies any `skills-bundle/<name>/SKILL.md`
+whose name doesn't already exist under `$CHUMP_BRAIN_PATH/skills/` (default
+`chump-brain/skills/`), and never overwrites an existing skill — so re-running
+`chump init` on a host that has since mutated `verify-existence` (via the
+learning loop) won't clobber the mutation.
+
+To re-run the tap standalone (e.g. on an install where `chump init` already
+ran before this bundle existed):
+
+```bash
+chump skill bundle install
+```
+
+Adding a 4th, 5th, ... seed skill is a normal PR: drop a new
+`skills-bundle/<name>/SKILL.md` and the next `chump init` (or
+`chump skill bundle install`) picks it up automatically.
+
+Verify the bundle landed:
+
+```bash
+chump skill list --json | jq -r '.[].name'
+# verify-existence
+# claim-without-collision
+# pre-ship-ci-prediction
+```
+
+---
+
 ## Step 3 — The PWA
 
 Once the browser opens, you see the Chump chat interface:

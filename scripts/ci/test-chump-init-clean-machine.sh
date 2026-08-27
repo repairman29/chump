@@ -45,7 +45,16 @@ git init -q "$FIXTURE_REPO"
 git -C "$FIXTURE_REPO" config user.email "ftue-ci@localhost"
 git -C "$FIXTURE_REPO" config user.name "FTUE CI"
 touch "$FIXTURE_REPO/.gitkeep"
-git -C "$FIXTURE_REPO" add .gitkeep
+
+# INFRA-1615: copy the real skills-bundle/ into the fixture repo so this
+# smoke test exercises the curriculum-bootstrap tap (chump init -> chump
+# skill list should see the 3 seed skills, not an empty brain).
+_source_repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if [[ -d "$_source_repo_root/skills-bundle" ]]; then
+    cp -R "$_source_repo_root/skills-bundle" "$FIXTURE_REPO/skills-bundle"
+fi
+
+git -C "$FIXTURE_REPO" add .gitkeep skills-bundle 2>/dev/null || git -C "$FIXTURE_REPO" add .gitkeep
 git -C "$FIXTURE_REPO" commit -q -m "init"
 
 info "Running: chump --version"
@@ -92,6 +101,22 @@ MCP_OUT="$(CHUMP_REPO="$FIXTURE_REPO" CHUMP_BINARY_STALENESS_CHECK=0 \
     "$CHUMP_BIN" mcp list 2>/dev/null || true)"
 # Accept any output — the test is that mcp list doesn't crash.
 pass "Check 5: chump mcp list exits 0 (got $(echo "$MCP_OUT" | wc -l | tr -d ' ') lines)"
+
+# Verify INFRA-1615 skill-bundle tap: chump init should have copied the 3
+# seed skills from skills-bundle/ into $CHUMP_HOME/.chump-brain skills path.
+info "Running: chump skill list --json (INFRA-1615 curriculum bootstrap)"
+SKILL_LIST_OUT="$(HOME="$FAKE_HOME" CHUMP_REPO="$FIXTURE_REPO" CHUMP_BINARY_STALENESS_CHECK=0 \
+    "$CHUMP_BIN" skill list --json 2>/dev/null || true)"
+SEED_NAMES=(verify-existence claim-without-collision pre-ship-ci-prediction)
+MISSING_SEEDS=()
+for seed in "${SEED_NAMES[@]}"; do
+    echo "$SKILL_LIST_OUT" | grep -q "\"$seed\"" || MISSING_SEEDS+=("$seed")
+done
+if [[ ${#MISSING_SEEDS[@]} -eq 0 ]]; then
+    pass "Check 6: chump skill list --json contains all 3 seed skills"
+else
+    fail "Check 6: missing seed skills: ${MISSING_SEEDS[*]}"
+fi
 
 echo ""
 echo "INFRA-799: all chump init clean-machine checks passed."
