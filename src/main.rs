@@ -5400,11 +5400,22 @@ async fn main() -> Result<()> {
             println!("  --interval-secs N    Daemon loop interval in seconds (default: 600).");
             println!("  --budget-secs N      Per-PR action budget in seconds (default: 90).");
             println!("  --plan F             Path to JSON plan file (execute only).");
+            println!("  --smoke-test         Quick observability check: dummy LLM health call +");
+            println!("                       cost_report event (INFRA-1645). Exits 0 on success.");
             println!();
             println!("Examples:");
             println!("  chump paramedic triage");
             println!("  chump paramedic triage | chump paramedic execute --plan /dev/stdin");
             println!("  chump paramedic daemon --interval-secs 300 --dry-run");
+            println!("  chump paramedic --smoke-test");
+            return Ok(());
+        }
+
+        if args.iter().any(|a| a == "--smoke-test") {
+            if let Err(e) = paramedic::smoke_test(&repo_root) {
+                eprintln!("chump paramedic --smoke-test: {e}");
+                std::process::exit(1);
+            }
             return Ok(());
         }
 

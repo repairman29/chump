@@ -3652,6 +3652,49 @@ events:
     consumers: [fleet-brief, kpi-report, operator-recall]
     fields_required: [ts, kind, pr, check_name, attempt_count]
 
+  # ── INFRA-1645: paramedic LLM-model resilience (re-do of INFRA-1597) ──────
+  - kind: model_unavailable
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: >
+      the LLM-model health check ahead of a CI-rescue dispatch got a
+      transient response (HTTP 404 model-not-found, HTTP 429 rate-limited,
+      or a connection error); emitted once per retry attempt before the
+      exponential backoff sleep.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, machine, pid, status, attempt]
+
+  - kind: paramedic_healthy
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: >
+      the LLM-model health check (daemon pre-cycle check or
+      `chump paramedic --smoke-test`) got a 2xx response, ending any prior
+      model_unavailable retry sequence.
+    consumers: [fleet-brief, chump health --slo-check]
+    fields_required: [ts, kind, machine, pid, status]
+
+  - kind: permanent_failure
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: >
+      the LLM-model health check got a non-retryable 4xx (any status other
+      than 404/429); paramedic stops retrying and the daemon cycle returns
+      an error instead of proceeding to triage.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, machine, pid, status]
+
+  - kind: cost_report
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1645)
+    trigger: >
+      `chump paramedic --smoke-test` (or a successful LLM-model health
+      check during smoke-test) completed; reports the token/cost shape for
+      the dummy call so the smoke test doubles as a cost-observability
+      check.
+    consumers: [fleet-brief, kpi-report, api-cost-leaderboard]
+    fields_required: [ts, kind, machine, pid, tokens_used, estimated_cost_usd]
+
   # ── Centralized auto-merge armer (INFRA-1113) ─────────────────────────────
   - kind: auto_merge_armed
     effect_metric: self
