@@ -194,6 +194,19 @@ Redundancy-OK: <one-sentence reason>
 ```
 Logged to ambient as `kind=redundancy_bypass_used`.
 
+**Recorded exception — the two Thompson-sampling bandits (INFRA-1573).**
+`crates/chump-orchestrator/src/thompson.rs` (COG-037, cross-backend
+`Candidate` dispatch) and `src/provider_bandit.rs` (`BanditRouter`,
+in-cascade `ProviderSlot` selection) are algorithm-identical
+Beta(α, β) Thompson samplers with disjoint vocabularies, kept as two
+separate implementations rather than consolidated into a generic
+`BanditRouter<Arm>`. Reason: they sit in different crates with
+independent release cadences and different concurrency models
+(pure-function + caller `Rng` vs. `Mutex`-guarded shared state) — see
+[`docs/design/ADAPTIVE_ROUTING.md`](./docs/design/ADAPTIVE_ROUTING.md)
+for the full decision record. Revisit only if a third bandit consumer
+appears and the shared surface grows enough to justify the coupling.
+
 Sibling rules: META-064 (Rust-first), META-065 (auto-prioritization).
 
 ## Prefer shared services over silos (INFRA-3463)
