@@ -3814,8 +3814,27 @@ class ChumpViewSettings extends HTMLElement {
         console.error('cascade-slot-toggle failed:', err);
       });
   }
+
+  // INFRA-1711: shared error/info toast utility used by other v2 views
+  // (e.g. content-bots.js) that don't want to duplicate toast plumbing.
+  static showToast(kind, message) {
+    let host = document.getElementById('chump-view-settings-toast-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'chump-view-settings-toast-host';
+      host.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px;';
+      document.body.appendChild(host);
+    }
+    const toast = document.createElement('div');
+    const color = kind === 'error' ? '#ff453a' : '#3182ce';
+    toast.style.cssText = `background:${color};color:#fff;padding:8px 16px;border-radius:6px;font:13px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.3);`;
+    toast.textContent = message;
+    host.appendChild(toast);
+    setTimeout(() => toast.remove(), 5_000);
+  }
 }
 customElements.define('chump-view-settings', ChumpViewSettings);
+window.ChumpViewSettings = ChumpViewSettings;
 
 // ── <chump-view-agents> (PRODUCT-059) ────────────────────────────────────────
 // Read-only live results board: one card per active .chump-locks/*.json session.
