@@ -1,7 +1,7 @@
 - id: INFRA-1573
   domain: INFRA
   title: "ZERO-WASTE: two Thompson-sampling implementations — chump-orchestrator/thompson.rs (315 LOC, Candidate vocab) and src/provider_bandit.rs (586 LOC, ProviderSlot vocab); extract shared bandit crate OR document rationale"
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -15,5 +15,7 @@
     - docs/design/ADAPTIVE_ROUTING.md (the INFRA-1545 doc) explains the bandit layering once the decision is made
   notes: |
     wave: noise (thompson dedup — noise tag; only act if INFRA-1583 forces the decision)
+  closed_date: '2026-08-27'
+  closed_pr: 4267
   outcome_id: MISSION-010
 
