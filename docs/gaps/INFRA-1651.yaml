@@ -1,7 +1,7 @@
 - id: INFRA-1651
   domain: INFRA
   title: "RESILIENT: chump-commit MODIFIED-file bypass gate + audit mode (re-do of INFRA-1580)"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -9,5 +9,7 @@
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  closed_date: '2026-08-27'
+  closed_pr: 4274
   outcome_id: MISSION-010
 
