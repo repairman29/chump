@@ -5752,6 +5752,15 @@ events:
     consumers: [fleet-brief, curator, waste-tally]
     fields_required: [ts, kind, pillar, ratio, total_pickable]
 
+  # ── INFRA-1559: SSE filter UI (pairs with routing brain, TBD-INFRA-1545) ──
+  - kind: sse_filter_applied
+    effect_metric: self
+    emitter: web/v2/app.js ChumpAmbientViewer (INFRA-1559), via POST /api/ambient/emit
+    trigger: operator adds/removes a tag-based filter pill (kind=X, gap=Y,
+      severity=Z) or loads a saved preset on the ambient SSE viewer
+    consumers: [observability curator (future — which filters operators actually use)]
+    fields_required: [ts, kind, filter_spec, results_count]
+
   # ── INFRA-988: PWA settings panel ────────────────────────────────────────
   - kind: pwa_setting_changed
     effect_metric: self
