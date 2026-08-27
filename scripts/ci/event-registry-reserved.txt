@@ -248,6 +248,7 @@ runner_scaled                   # reason: INFRA-1535 autoscale daemon scale-up/d
 rust_first_blocked  # reason: emitted by scripts/git-hooks/pre-commit-rust-first.sh on the block path (INFRA-1448); git-hooks/ outside PROD_PATHS grep scan
 rust_first_bypass_audit  # reason: emitted by scripts/dev/rust-first-bypass-audit.sh (INFRA-1580); scripts/dev/ outside PROD_PATHS grep scan
 rust_first_strict_blocked  # reason: emitted by scripts/git-hooks/pre-commit-rust-first.sh strict layer (INFRA-1580); git-hooks/ outside PROD_PATHS grep scan
+rust_first_modified_audit  # reason: emitted by scripts/git-hooks/pre-commit-rust-first.sh MODIFIED-file audit path (INFRA-1651); git-hooks/ outside PROD_PATHS grep scan
 self_doctor_budget_exceeded    # reason: INFRA-1595 only fires under stress (>3 dispatches/10min); rare path not exercised in PROD_PATHS smoke
 self_doctor_failed             # reason: INFRA-1595 only fires on action failure (install error / execute-gap spawn error); rare path not exercised in PROD_PATHS smoke
 self_doctor_healed             # reason: INFRA-1595 same struct-init pattern as self_doctor_tick; emit-site not grep-scannable
