@@ -217,6 +217,27 @@ installers:
     check: bash scripts/setup/install-coord-assign-launchd.sh --check
     adds: ~/Library/LaunchAgents/com.chump.coord-assign.plist + KeepAlive daemon publishing WorkEnvelopes
 
+  - id: decomposition-hint-tracker-launchd
+    why: "INFRA-1564 — daily decomposition-hint-tracker.sh resolves FLEET-025 decomposition_hint ambient events against gh pr list and writes heeded/landed_clean/landed_followup outcomes to .chump/decomposition-outcomes.jsonl. Plist + script existed but were never wired into the manifest, so the heuristic-tuning signal never accumulated on a fresh machine."
+    priority: P2
+    install: bash scripts/setup/install-decomposition-hint-tracker-launchd.sh
+    check: launchctl list 2>/dev/null | grep -q com.chump.decomposition-hint-tracker
+    adds: ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist + daily run
+
+  - id: refresh-model-prices-launchd
+    why: "INFRA-1564 — weekly refresh-model-prices.sh diffs docs/pricing/model_rates.yaml and docs/dispatch/model_registry.yaml against LiteLLM upstream, emits ALERT on drift, and files a follow-up gap. Plist + script existed but were never wired into the manifest."
+    priority: P2
+    install: bash scripts/setup/install-refresh-model-prices-launchd.sh
+    check: launchctl list 2>/dev/null | grep -q com.chump.refresh-model-prices
+    adds: ~/Library/LaunchAgents/com.chump.refresh-model-prices.plist + weekly run
+
+  - id: fleet-version-skew-detect-launchd
+    why: "INFRA-1564 — every-6h fleet-version-skew-detect.sh compares the running fleet's worker.sh against origin/main so a telemetry-affecting skew is caught within hours instead of discovered by hand. Plist + script existed but were never wired into the manifest."
+    priority: P2
+    install: bash scripts/setup/install-fleet-version-skew-detect-launchd.sh
+    check: launchctl list 2>/dev/null | grep -q com.chump.fleet-version-skew-detect
+    adds: ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist + 6-hourly run
+
   - id: a2a-dead-letter-reaper-launchd
     why: "INFRA-1946 (INFRA-1862 slice C) — 30-min reaper that dead-letters messages sitting unread in a dormant recipient's inbox for CHUMP_A2A_DEAD_LETTER_MIN+ minutes into .chump-locks/inbox/dead-letter.jsonl and pages the operator via operator-recall.sh --condition A2A_DEAD_LETTER_FLOOD when too many pile up in one run. Without this, messages to a dormant inbox sit forever unread with no reaper, no pager, no closure (today's session: 4 curator inboxes accumulated 5K-19K bytes of unread dispatches)."
     priority: P1

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.refresh-model-prices — INFRA-1564 LaunchAgent.
+
+  Runs scripts/dev/refresh-model-prices.sh weekly (--refresh mode). Diffs
+  docs/pricing/model_rates.yaml against LiteLLM upstream; emits an ALERT +
+  files a follow-up gap on drift, and updates docs/dispatch/model_registry.yaml
+  verification state via --check-registry (INFRA-739).
+
+  INSTALLATION (use scripts/setup/install-refresh-model-prices-launchd.sh
+  for the templated path-replace + launchctl load; manual is below):
+    1. Edit this file: replace /path/to/Chump with your repo path.
+    2. cp launchd/com.chump.refresh-model-prices.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.refresh-model-prices.plist
+    4. Verify: launchctl list | grep chump.refresh-model-prices
+    5. Manual run: launchctl start com.chump.refresh-model-prices
+       Logs: tail /tmp/chump-refresh-model-prices.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.refresh-model-prices.plist
+    rm ~/Library/LaunchAgents/com.chump.refresh-model-prices.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.refresh-model-prices</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/dev/refresh-model-prices.sh</string>
+    <string>--refresh</string>
+    <string>--check-registry</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Weekly: every 604800 seconds. -->
+  <key>StartInterval</key>
+  <integer>604800</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-refresh-model-prices.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-refresh-model-prices.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+    <!-- curl + python3 + chump must be on PATH. -->
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>

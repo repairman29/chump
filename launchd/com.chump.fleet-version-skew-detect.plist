@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.fleet-version-skew-detect — INFRA-1564 LaunchAgent.
+
+  Runs scripts/dev/fleet-version-skew-detect.sh every 6 hours. Compares the
+  working-tree scripts/dispatch/worker.sh against origin/main; emits a
+  fleet_version_skew ALERT (legacy) + version_skew_detected (canonical) event
+  to .chump-locks/ambient.jsonl when the running fleet's worker.sh is stale.
+
+  INSTALLATION (use scripts/setup/install-fleet-version-skew-detect-launchd.sh
+  for the templated path-replace + launchctl load; manual is below):
+    1. Edit this file: replace /path/to/Chump with your repo path.
+    2. cp launchd/com.chump.fleet-version-skew-detect.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist
+    4. Verify: launchctl list | grep chump.fleet-version-skew-detect
+    5. Manual run: launchctl start com.chump.fleet-version-skew-detect
+       Logs: tail /tmp/chump-fleet-version-skew-detect.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist
+    rm ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.fleet-version-skew-detect</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/dev/fleet-version-skew-detect.sh</string>
+    <string>--quiet</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Every 6 hours: 21600 seconds. -->
+  <key>StartInterval</key>
+  <integer>21600</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-fleet-version-skew-detect.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-fleet-version-skew-detect.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+    <!-- git must be on PATH. -->
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>

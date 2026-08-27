@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# refresh-model-prices.sh — INFRA-731 / INFRA-739
+# refresh-model-prices.sh — INFRA-731 / INFRA-739 / INFRA-1564
 #
 # Weekly check that docs/pricing/model_rates.yaml is current with upstream.
-# INFRA-739: also validates docs/dispatch/model_registry.yaml against upstream
-# when --check-registry is passed. The registry is the unified metadata file;
-# model_rates.yaml is kept for backwards compat with session_ledger.rs.
+# INFRA-739: also validates docs/dispatch/model_registry.yaml against
+# upstream when --check-registry is passed — same LiteLLM diff logic,
+# applied to the registry's input_per_mtk/output_per_mtk fields (INFRA-1564
+# wires the automated fetch; this used to be a manual-only TODO stub).
 #
 # Reads LiteLLM's model_prices_and_context_window.json (community-maintained
 # rate card, MIT-licensed, used by half the Python LLM ecosystem) and diffs
@@ -18,14 +19,17 @@
 #                       INFRA gap so operator picks up the audit work.
 #   --apply (DANGER)    automatically rewrite drifted rates in-place. Not
 #                       wired by default; use only after manual review.
-#   --check-registry    INFRA-739: validate docs/dispatch/model_registry.yaml
-#                       against upstream. TODO: automated fetch not yet wired.
+#   --check-registry    INFRA-739/INFRA-1564: also validate
+#                       docs/dispatch/model_registry.yaml against upstream
+#                       using the same diff logic as model_rates.yaml.
+#                       Composable with --check/--refresh/--apply — runs in
+#                       addition to the model_rates.yaml check, not instead.
 #
 # Tunables:
 #   CHUMP_PRICING_DRIFT_PCT  drift threshold percent (default: 5)
 #   CHUMP_PRICING_UPSTREAM   override upstream URL (default: LiteLLM main branch)
 #
-# LaunchAgent: dev.chump.pricing-refresh (Sunday 09:00 weekly)
+# LaunchAgent: com.chump.refresh-model-prices (weekly, INFRA-1564)
 
 set -uo pipefail
 
@@ -49,18 +53,6 @@ for arg in "$@"; do
         *) echo "unknown arg: $arg" >&2; exit 1 ;;
     esac
 done
-
-# INFRA-739: registry check stub
-if [[ "$CHECK_REGISTRY" -eq 1 ]]; then
-    if [[ ! -f "$REGISTRY_FILE" ]]; then
-        echo "FATAL: $REGISTRY_FILE not found — INFRA-739 hasn't shipped yet?" >&2
-        exit 1
-    fi
-    echo "TODO: automated fetch from Anthropic pricing page not yet wired (INFRA-739)."
-    echo "Target file: $REGISTRY_FILE"
-    echo "Manual process: update input_per_mtk/output_per_mtk in the YAML and bump last_verified."
-    exit 0
-fi
 
 echo "$(date -u +%s)" > "$HEARTBEAT"
 
@@ -94,16 +86,21 @@ together-deepseek-v3:together_ai/deepseek-ai/DeepSeek-V3
 together-llama-3.3-70b-turbo:together_ai/meta-llama/Llama-3.3-70B-Instruct-Turbo
 together-qwen-2.5-coder-32b:together_ai/Qwen/Qwen2.5-Coder-32B-Instruct"
 
-DRIFT_FOUND=0
-UNKNOWN_FOUND=0
-REPORT=()
-
-while IFS=: read -r local_id upstream_key; do
-    [[ -z "$local_id" || -z "$upstream_key" ]] && continue
-    REPORT_LINE=$(MODEL_LOCAL="$local_id" MODEL_UPSTREAM="$upstream_key" \
-                  RATES_FILE="$RATES_FILE" UPSTREAM_TMP="$UPSTREAM_TMP" \
-                  DRIFT_PCT="$DRIFT_PCT" \
-                  python3 <<'PY'
+# check_file <label> <path> — runs the LiteLLM diff against <path>, prints a
+# report, and sets DRIFT_FOUND / UNKNOWN_FOUND (accumulated, not reset).
+check_file() {
+    local label="$1" file="$2"
+    local report=()
+    if [[ ! -f "$file" ]]; then
+        echo "WARN: $file not found — skipping $label check" >&2
+        return 0
+    fi
+    while IFS=: read -r local_id upstream_key; do
+        [[ -z "$local_id" || -z "$upstream_key" ]] && continue
+        REPORT_LINE=$(MODEL_LOCAL="$local_id" MODEL_UPSTREAM="$upstream_key" \
+                      RATES_FILE="$file" UPSTREAM_TMP="$UPSTREAM_TMP" \
+                      DRIFT_PCT="$DRIFT_PCT" \
+                      python3 <<'PY'
 import json, os, re, sys
 
 local_id = os.environ["MODEL_LOCAL"]
@@ -161,26 +158,43 @@ else:
     sys.exit(0)
 PY
 )
-    rc=$?
-    REPORT+=("$REPORT_LINE")
-    case $rc in
-        1) DRIFT_FOUND=$((DRIFT_FOUND+1)) ;;
-        2) UNKNOWN_FOUND=$((UNKNOWN_FOUND+1)) ;;
-    esac
-done <<< "$LITELLM_MAP"
+        rc=$?
+        report+=("$REPORT_LINE")
+        case $rc in
+            1) DRIFT_FOUND=$((DRIFT_FOUND+1)) ;;
+            2) UNKNOWN_FOUND=$((UNKNOWN_FOUND+1)) ;;
+        esac
+    done <<< "$LITELLM_MAP"
 
-# Render report
-echo "═══ INFRA-731 pricing-refresh report (mode=$MODE) ═══"
-printf '%s\n' "${REPORT[@]}"
-echo ""
+    echo "═══ INFRA-731 pricing-refresh report ($label, mode=$MODE) ═══"
+    printf '%s\n' "${report[@]}"
+    echo ""
+}
+
+DRIFT_FOUND=0
+UNKNOWN_FOUND=0
+
+check_file "model_rates.yaml" "$RATES_FILE"
+
+REGISTRY_DRIFT_FOUND=0
+if [[ "$CHECK_REGISTRY" -eq 1 ]]; then
+    if [[ ! -f "$REGISTRY_FILE" ]]; then
+        echo "FATAL: $REGISTRY_FILE not found — INFRA-739 hasn't shipped yet?" >&2
+        exit 1
+    fi
+    PRE_DRIFT=$DRIFT_FOUND
+    check_file "model_registry.yaml" "$REGISTRY_FILE"
+    REGISTRY_DRIFT_FOUND=$((DRIFT_FOUND - PRE_DRIFT))
+fi
+
 echo "drift=$DRIFT_FOUND  unknown=$UNKNOWN_FOUND"
 
 # Emit ambient ALERT only on actual drift
 if [[ "$DRIFT_FOUND" -gt 0 ]]; then
     ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null
-    printf '{"ts":"%s","event":"ALERT","kind":"pricing_drift","drift_count":%d,"unknown_count":%d,"note":"INFRA-731: %d model rate(s) drifted >%s%% from LiteLLM upstream"}\n' \
-        "$ts" "$DRIFT_FOUND" "$UNKNOWN_FOUND" "$DRIFT_FOUND" "$DRIFT_PCT" \
+    printf '{"ts":"%s","event":"ALERT","kind":"pricing_drift","drift_count":%d,"unknown_count":%d,"registry_drift_count":%d,"note":"INFRA-731: %d model rate(s) drifted >%s%% from LiteLLM upstream"}\n' \
+        "$ts" "$DRIFT_FOUND" "$UNKNOWN_FOUND" "$REGISTRY_DRIFT_FOUND" "$DRIFT_FOUND" "$DRIFT_PCT" \
         >> "$AMBIENT_LOG" 2>/dev/null || true
 
     # Refresh mode: file an INFRA gap so the fleet picks up the manual audit.
@@ -195,6 +209,13 @@ fi
 if [[ "$MODE" == "apply" && "$DRIFT_FOUND" -gt 0 ]]; then
     echo "WARN: --apply will rewrite $RATES_FILE in place. Skipping in this version (TBD: implement via INFRA-731 follow-up; manual audit safer)."
 fi
+
+# INFRA-1564: run signal so operators can see the weekly tick firing.
+mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null
+printf '{"ts":"%s","kind":"model_prices_refreshed","mode":"%s","drift_count":%d,"unknown_count":%d,"registry_checked":%s,"registry_drift_count":%d}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$MODE" "$DRIFT_FOUND" "$UNKNOWN_FOUND" \
+    "$([ "$CHECK_REGISTRY" -eq 1 ] && echo "true" || echo "false")" "$REGISTRY_DRIFT_FOUND" \
+    >> "$AMBIENT_LOG" 2>/dev/null || true
 
 # Exit code: drift = 2 (advisory); unknown = 0 (informational)
 if [[ "$DRIFT_FOUND" -gt 0 ]]; then

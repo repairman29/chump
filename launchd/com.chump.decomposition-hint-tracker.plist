@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.decomposition-hint-tracker — INFRA-1564 LaunchAgent.
+
+  Runs scripts/dev/decomposition-hint-tracker.sh daily. Reads
+  decomposition_hint ambient events, resolves each against `gh pr list`, and
+  writes normalized outcomes to .chump/decomposition-outcomes.jsonl.
+
+  INSTALLATION (use scripts/setup/install-decomposition-hint-tracker-launchd.sh
+  for the templated path-replace + launchctl load; manual is below):
+    1. Edit this file: replace /path/to/Chump with your repo path.
+    2. cp launchd/com.chump.decomposition-hint-tracker.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist
+    4. Verify: launchctl list | grep chump.decomposition-hint-tracker
+    5. Manual run: launchctl start com.chump.decomposition-hint-tracker
+       Logs: tail /tmp/chump-decomposition-hint-tracker.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist
+    rm ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.decomposition-hint-tracker</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/dev/decomposition-hint-tracker.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Daily: every 86400 seconds. -->
+  <key>StartInterval</key>
+  <integer>86400</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-decomposition-hint-tracker.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-decomposition-hint-tracker.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+    <!-- gh + git + python3 must be on PATH. -->
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>

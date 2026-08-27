@@ -139,6 +139,16 @@ if [[ "$NO_EMIT" = "0" ]]; then
       >> "$AMBIENT" 2>/dev/null || true
   fi
   log "fleet_version_skew event written to $AMBIENT"
+
+  # INFRA-1564: canonical event kind (fleet_version_skew above predates the
+  # bootstrap-manifest wiring and is kept for the existing [watchdog]
+  # consumer; version_skew_detected is the new signal the launchd plist's
+  # operators watch to confirm the 6-hourly tick is firing).
+  printf '{"ts":"%s","kind":"version_skew_detected","file":"%s","commits_behind":%d,"telemetry_affected":%s,"session":"%s"}\n' \
+    "$TS" "$WORKER_PATH" "$COMMITS_BEHIND" \
+    "$([ "$TELEMETRY_AFFECTED" = "1" ] && echo "true" || echo "false")" \
+    "$SESSION_ID" \
+    >> "$AMBIENT" 2>/dev/null || true
 fi
 
 exit 1

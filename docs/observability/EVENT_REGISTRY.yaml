@@ -11649,6 +11649,38 @@ events:
     consumers: [chump curator status, ambient]
     fields_required: [ts, kind, role, gap_id, reason]
 
+  - kind: decomposition_hint_tracked
+    status: active
+    effect_metric: self
+    emitter: scripts/dev/decomposition-hint-tracker.sh (INFRA-1564 daily launchd tick)
+    emitter_paths: [scripts/dev/decomposition-hint-tracker.sh]
+    trigger: the daily decomposition-hint-tracker run completes — resolved
+      FLEET-025 decomposition_hint events (heeded/landed_clean/landed_followup)
+      against gh pr list and wrote outcomes to .chump/decomposition-outcomes.jsonl
+    consumers: [operator (confirms daemon is firing), fleet-brief]
+    fields_required: [ts, kind, n_hints, n_resolved]
+
+  - kind: model_prices_refreshed
+    status: active
+    effect_metric: self
+    emitter: scripts/dev/refresh-model-prices.sh (INFRA-1564 weekly launchd tick)
+    emitter_paths: [scripts/dev/refresh-model-prices.sh]
+    trigger: the weekly refresh-model-prices run completes — diffed
+      docs/pricing/model_rates.yaml (and docs/dispatch/model_registry.yaml
+      when --check-registry is passed) against LiteLLM upstream
+    consumers: [operator (confirms daemon is firing), fleet-brief]
+    fields_required: [ts, kind, mode, drift_count, unknown_count, registry_checked, registry_drift_count]
+
+  - kind: version_skew_detected
+    status: active
+    effect_metric: self
+    emitter: scripts/dev/fleet-version-skew-detect.sh (INFRA-1564 6-hourly launchd tick)
+    emitter_paths: [scripts/dev/fleet-version-skew-detect.sh]
+    trigger: the working-tree scripts/dispatch/worker.sh differs from
+      origin/main — the running fleet may be executing stale telemetry code
+    consumers: [watchdog, operator]
+    fields_required: [ts, kind, file, commits_behind, telemetry_affected, session]
+
   - kind: vital_signs
     effect_metric: self
     emitter: scripts/ops/vital-signs.sh (the 8-vital-signs journey board)

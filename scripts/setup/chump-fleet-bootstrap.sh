@@ -114,6 +114,12 @@ REQUIRED_DAEMONS=(
     # recur on any host that never ran the installer by hand. REQUIRED so
     # this can't become another shipped-but-uninstalled daemon.
     "com.chump.almanac-summarize-watchdog|scripts/setup/install-almanac-summarize-watchdog.sh"
+    # INFRA-1564: three dev scripts with install contracts + clear automation
+    # intent that were never wired into a manifest or launchctl — same
+    # code-on-disk-not-active pattern as the INFRA-1546 monitor plists.
+    "com.chump.decomposition-hint-tracker|scripts/setup/install-decomposition-hint-tracker-launchd.sh"
+    "com.chump.refresh-model-prices|scripts/setup/install-refresh-model-prices-launchd.sh"
+    "com.chump.fleet-version-skew-detect|scripts/setup/install-fleet-version-skew-detect-launchd.sh"
 )
 UID_VAL="$(id -u)"
 

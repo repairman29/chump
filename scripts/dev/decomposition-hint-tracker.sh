@@ -246,3 +246,22 @@ PYEOF
 # Atomic replace
 mv "$OUTCOMES_TMP" "$OUTCOMES_FILE"
 echo "[decomposition-tracker] outcomes written to $OUTCOMES_FILE" >&2
+
+# INFRA-1564: emit a run signal to ambient.jsonl so operators can see this
+# daily tick actually firing (the daemon was code-on-disk-not-active before).
+N_RESOLVED="$(python3 -c "
+import json
+n=0
+with open('$OUTCOMES_FILE') as f:
+    for line in f:
+        line=line.strip()
+        if not line: continue
+        row=json.loads(line)
+        if row.get('outcome') not in (None,'pending'):
+            n+=1
+print(n)
+" 2>/dev/null || echo 0)"
+mkdir -p "$LOCK_DIR" 2>/dev/null || true
+printf '{"ts":"%s","kind":"decomposition_hint_tracked","n_hints":%s,"n_resolved":%s}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$N_HINTS" "$N_RESOLVED" \
+    >> "$AMBIENT_LOG" 2>/dev/null || true
