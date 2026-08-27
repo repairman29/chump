@@ -71,6 +71,7 @@ mod counterfactual;
 mod curator_bell;
 mod dashboard;
 mod sourcing_resolver; // INFRA-3508 (COTG-S.1): repo -> arsenal -> world prior-art resolver
+mod startup_budget; // INFRA-3784 (INFRA-1809 slice): startup wallclock budget + timeout enforcement
 pub use chump_db_pool::db_pool;
 mod decompose_task_tool;
 mod delegate_tool;
@@ -1342,6 +1343,15 @@ async fn main() -> Result<()> {
     // EFFECTIVE-011: expand short aliases (g, c, s, f, d, h, cs) before routing.
     let args = expand_aliases(args);
 
+    // INFRA-3784 (INFRA-1809 slice): everything from here on is the startup
+    // sequence. Wrap it in a wallclock budget so a hang anywhere in it (a
+    // deadlocked mutex, a network call that never returns, ...) fails loud
+    // with a diagnostic dump + exit(4) instead of hanging the CLI forever.
+    let budget_args = args.clone();
+    startup_budget::run_with_budget(&budget_args, run_chump(args)).await
+}
+
+async fn run_chump(args: Vec<String>) -> Result<()> {
     // SIGPIPE handling for CLI tools (Broken Pipe panics).
     #[cfg(unix)]
     unsafe {
