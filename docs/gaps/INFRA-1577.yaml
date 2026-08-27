@@ -1,7 +1,7 @@
 - id: INFRA-1577
   domain: INFRA
   title: "ZERO-WASTE: scripts cleanup — 5 legacy run-study[1-5].sh + 2 orphaned smoke scripts in scripts/eval/, eval-reflection-ab/ collapses into scripts/eval/fixtures/, scripts/spike/ + scripts/demo/ archive, scripts/release/publish-crates.sh CI promotion"
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -16,5 +16,7 @@
     - Update scripts/README.md taxonomy table to reflect the new layout
   notes: |
     wave: noise (scripts cleanup — noise; do not block ship)
+  closed_date: '2026-08-27'
+  closed_pr: 4269
   outcome_id: MISSION-010
 
