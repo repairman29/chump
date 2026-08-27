@@ -1425,6 +1425,54 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     }
 
     // 7b. Write JSON lease file to .chump-locks/<session>.json.
+    //
+    // INFRA-1608: acquire the per-gap claim mutex and re-check duplicate-gap
+    // uniqueness one more time immediately before writing. The early check
+    // (INFRA-1970, above) ran before worktree setup / NATS dual-write —
+    // several seconds of window in which a second `chump claim` on the same
+    // gap could pass its own early check and race here. Holding the mutex
+    // across [re-check + write] makes exactly one of two racing claims win;
+    // the loser sees its own competing lease already live and bails with a
+    // `lease_overlap` event instead of silently writing a second lease.
+    let _claim_mutex = match acquire_gap_claim_mutex(&lock_dir, &args.gap_id) {
+        Ok(g) => g,
+        Err(e) => {
+            rollback_wt(&format!("gap-claim mutex acquisition failed: {e}"));
+            return Err(e.context("acquiring per-gap claim mutex"));
+        }
+    };
+    if let Some((winner_session, taken_at)) =
+        find_competing_session(&lock_dir, &args.gap_id, &session_id)
+    {
+        let paths_attempted: Vec<String> = args
+            .paths
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        emit_lease_overlap_event(
+            &ambient_log,
+            &args.gap_id,
+            &winner_session,
+            &session_id,
+            &paths_attempted,
+        );
+        rollback_wt(&format!(
+            "lost the claim race for {} to session {} (taken at {})",
+            args.gap_id, winner_session, taken_at
+        ));
+        bail!(
+            "INFRA-1608: lost the claim race for {} — session {} already holds a live \
+             lease (taken at {}). This is the CAS the file-lease path now enforces: exactly \
+             one of two racing `chump claim` calls wins.",
+            args.gap_id,
+            winner_session,
+            taken_at,
+        );
+    }
+
     let lease_file = match write_or_merge_lease(
         &lock_dir,
         &session_id,
@@ -3101,6 +3149,106 @@ fn check_intent_overlap(
     Ok(())
 }
 
+// ── INFRA-1608: per-gap claim mutex ──────────────────────────────────────────
+//
+// Root cause of the INFRA-1602 double-lease collision (docs/audits/
+// lease-collision-2026-05-17.md): `check_gap_id_uniqueness` (below) is a
+// pure read-then-decide scan with NO exclusion around it. `run_claim` calls
+// it once, early, then does several seconds of work (worktree add, gitdir
+// repair, NATS dual-write) before writing the lease file. Two `chump claim
+// <same-gap>` invocations that start within that window BOTH see an empty
+// lock dir at check time, BOTH pass, and BOTH write a live lease — the CAS
+// the gap description assumed existed (`try_claim_gap`) is a chump-coord/
+// NATS-only primitive; the default offline file-lease path had no
+// equivalent. This mutex closes that window for the file-lease path.
+//
+// Implemented as an O_CREAT|O_EXCL marker file — atomic test-and-set on any
+// POSIX filesystem, no new crate dependency. Held across a final duplicate
+// re-check immediately before the lease write (see run_claim step 7b).
+
+const GAP_CLAIM_MUTEX_STALE_SECS: u64 = 30;
+const GAP_CLAIM_MUTEX_RETRY_MS: u64 = 50;
+const GAP_CLAIM_MUTEX_TIMEOUT_MS: u64 = 5_000;
+
+/// RAII guard for the per-gap claim mutex — removes the marker file on drop
+/// so a panicking or early-returning claim never wedges the gap forever.
+struct GapClaimMutexGuard {
+    path: PathBuf,
+}
+
+impl Drop for GapClaimMutexGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+fn gap_claim_mutex_path(lock_dir: &Path, gap_id: &str) -> PathBuf {
+    let safe_gap: String = gap_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    lock_dir.join(format!(".claiming-{}.lock", safe_gap))
+}
+
+/// Acquire the per-gap claim mutex, blocking (with backoff) until either it
+/// is free or `GAP_CLAIM_MUTEX_TIMEOUT_MS` elapses. A marker file older than
+/// `GAP_CLAIM_MUTEX_STALE_SECS` is treated as orphaned (holder crashed
+/// mid-critical-section) and reclaimed.
+fn acquire_gap_claim_mutex(lock_dir: &Path, gap_id: &str) -> Result<GapClaimMutexGuard> {
+    std::fs::create_dir_all(lock_dir)
+        .with_context(|| format!("create lock dir {}", lock_dir.display()))?;
+    let mutex_path = gap_claim_mutex_path(lock_dir, gap_id);
+    let start = SystemTime::now();
+
+    loop {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&mutex_path)
+        {
+            Ok(mut f) => {
+                use std::io::Write;
+                let _ = write!(f, "{}", std::process::id());
+                return Ok(GapClaimMutexGuard { path: mutex_path });
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                if let Ok(meta) = std::fs::metadata(&mutex_path) {
+                    if let Ok(modified) = meta.modified() {
+                        if let Ok(age) = SystemTime::now().duration_since(modified) {
+                            if age.as_secs() > GAP_CLAIM_MUTEX_STALE_SECS {
+                                // Orphaned lock from a crashed claim — reclaim it.
+                                let _ = std::fs::remove_file(&mutex_path);
+                                continue;
+                            }
+                        }
+                    }
+                }
+                let waited_ms = start.elapsed().map(|d| d.as_millis() as u64).unwrap_or(0);
+                if waited_ms > GAP_CLAIM_MUTEX_TIMEOUT_MS {
+                    bail!(
+                        "timed out after {}ms waiting for the gap-claim mutex on {} \
+                         (another claim is in progress for this gap)",
+                        GAP_CLAIM_MUTEX_TIMEOUT_MS,
+                        gap_id
+                    );
+                }
+                std::thread::sleep(std::time::Duration::from_millis(GAP_CLAIM_MUTEX_RETRY_MS));
+            }
+            Err(e) => {
+                return Err(e).with_context(|| {
+                    format!("acquiring gap-claim mutex at {}", mutex_path.display())
+                })
+            }
+        }
+    }
+}
+
 // ── INFRA-1970: Gap-ID uniqueness gate ───────────────────────────────────────
 
 /// INFRA-1970: Scan `.chump-locks/` for any live lease whose `gap_id` field
@@ -3117,15 +3265,42 @@ fn check_intent_overlap(
 /// Bypass: caller checks `CHUMP_CLAIM_ALLOW_DUPLICATE_GAP` before calling here.
 // scanner-anchor: "kind":"claim_duplicate_gap_blocked"
 fn check_gap_id_uniqueness(lock_dir: &Path, gap_id: &str, this_session: &str) -> Result<()> {
+    if let Some((lease_session, taken_at)) = find_competing_session(lock_dir, gap_id, this_session)
+    {
+        return Err(anyhow!(
+            "gap {} is already claimed by session {} (taken at {}).\n  \
+             Two sessions working the same gap produce duplicate PRs (see META-105).\n  \
+             Options:\n  \
+             1. Pick a different gap.\n  \
+             2. Wait for session {} to ship or release its lease.\n  \
+             3. Override: CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1 (audit event emitted).",
+            gap_id,
+            lease_session,
+            taken_at,
+            lease_session,
+        ));
+    }
+    Ok(())
+}
+
+/// Scan `.chump-locks/` for a live lease whose `gap_id` matches and whose
+/// `session_id` differs from `this_session`. Returns `(session_id, taken_at)`
+/// of the first live competitor found, or `None` if the gap is free.
+///
+/// Shared by `check_gap_id_uniqueness` (error-message path) and the
+/// INFRA-1608 mutex-protected re-check (`emit_lease_overlap_event` path,
+/// which needs the winning session id as structured data, not just prose).
+fn find_competing_session(
+    lock_dir: &Path,
+    gap_id: &str,
+    this_session: &str,
+) -> Option<(String, String)> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    let entries = match std::fs::read_dir(lock_dir) {
-        Ok(e) => e,
-        Err(_) => return Ok(()), // lock dir absent — no competing leases possible
-    };
+    let entries = std::fs::read_dir(lock_dir).ok()?;
 
     for entry in entries.flatten() {
         let p = entry.path();
@@ -3165,26 +3340,15 @@ fn check_gap_id_uniqueness(lock_dir: &Path, gap_id: &str, this_session: &str) ->
             }
         }
 
-        // Live competing lease found.
         let taken_at = val
             .get("taken_at")
             .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        return Err(anyhow!(
-            "gap {} is already claimed by session {} (taken at {}).\n  \
-             Two sessions working the same gap produce duplicate PRs (see META-105).\n  \
-             Options:\n  \
-             1. Pick a different gap.\n  \
-             2. Wait for session {} to ship or release its lease.\n  \
-             3. Override: CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1 (audit event emitted).",
-            gap_id,
-            lease_session,
-            taken_at,
-            lease_session,
-        ));
+            .unwrap_or("unknown")
+            .to_string();
+        return Some((lease_session.to_string(), taken_at));
     }
 
-    Ok(())
+    None
 }
 
 /// Emit a `claim_duplicate_gap_blocked` (or `_bypassed`) ambient event so the
@@ -3216,6 +3380,53 @@ fn emit_claim_duplicate_gap_event(
         json_escape(gap_id),
         json_escape(this_session),
         json_escape(detail),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// INFRA-1608: emit `lease_overlap` when a claim loses the mutex-protected
+/// re-check (see `acquire_gap_claim_mutex`) — i.e. it discovers a live
+/// competing lease was written for the same `gap_id` while it was doing
+/// worktree/NATS setup. `winner_session` is the session that already holds
+/// the live lease at re-check time; `loser_session` is `this_session`
+/// (the one now bailing out).
+// scanner-anchor: "kind":"lease_overlap"
+fn emit_lease_overlap_event(
+    ambient_path: &Path,
+    gap_id: &str,
+    winner_session: &str,
+    loser_session: &str,
+    paths_attempted: &[String],
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let paths_json = paths_attempted
+        .iter()
+        .map(|p| format!("\"{}\"", json_escape(p)))
+        .collect::<Vec<_>>()
+        .join(",");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"lease_overlap\",\
+         \"gap_id\":\"{}\",\"winner_session\":\"{}\",\"loser_session\":\"{}\",\
+         \"paths_attempted\":[{}]}}\n",
+        json_escape(gap_id),
+        json_escape(winner_session),
+        json_escape(loser_session),
+        paths_json,
     );
     if let Some(parent) = ambient_path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -7342,5 +7553,127 @@ mod release_lease_tests {
             .query_row("SELECT gap_id FROM leases", [], |r| r.get(0))
             .unwrap();
         assert_eq!(surviving, "EFFECTIVE-216");
+    }
+
+    // ── INFRA-1608: gap-claim mutex race tests ───────────────────────────
+
+    #[test]
+    fn gap_claim_mutex_serializes_two_racing_sessions() {
+        // Two threads race to claim the same gap under two different
+        // sessions. Without the mutex, both would pass find_competing_session
+        // (neither's lease file exists yet) and both would write a lease —
+        // the exact INFRA-1602 double-lease failure mode. With the mutex,
+        // exactly one wins and the other observes the winner's lease at
+        // its mutex-protected re-check.
+        use std::sync::{Arc, Barrier};
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let lock_dir = Arc::new(dir.path().to_path_buf());
+        let gap_id = "INFRA-RACE-1";
+        let barrier = Arc::new(Barrier::new(2));
+
+        let run = |session: &'static str, lock_dir: Arc<PathBuf>, barrier: Arc<Barrier>| {
+            std::thread::spawn(move || {
+                barrier.wait(); // maximize actual overlap
+                let _guard = acquire_gap_claim_mutex(&lock_dir, gap_id).unwrap();
+                match find_competing_session(&lock_dir, gap_id, session) {
+                    Some((winner, _taken_at)) => Err(winner),
+                    None => {
+                        write_basic_lease(&lock_dir, session, gap_id, None, 14_400).unwrap();
+                        Ok(())
+                    }
+                }
+            })
+        };
+
+        let t1 = run("session-a", lock_dir.clone(), barrier.clone());
+        let t2 = run("session-b", lock_dir.clone(), barrier.clone());
+        let r1 = t1.join().unwrap();
+        let r2 = t2.join().unwrap();
+
+        let winners = [&r1, &r2].iter().filter(|r| r.is_ok()).count();
+        assert_eq!(winners, 1, "exactly one session must win the claim race");
+
+        // Exactly one lease file for this gap must exist on disk.
+        let lease_files: Vec<_> = std::fs::read_dir(&*lock_dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
+            .collect();
+        assert_eq!(
+            lease_files.len(),
+            1,
+            "exactly one lease file must exist after the race — got {}",
+            lease_files.len()
+        );
+    }
+
+    #[test]
+    fn gap_claim_mutex_serializes_high_concurrency() {
+        // Regression coverage for AC6: 50 concurrent claimants on one gap —
+        // expect exactly one winner and zero double-claims persisted.
+        use std::sync::{Arc, Barrier};
+        use tempfile::tempdir;
+
+        const N: usize = 50;
+        let dir = tempdir().unwrap();
+        let lock_dir = Arc::new(dir.path().to_path_buf());
+        let gap_id = "INFRA-RACE-50";
+        let barrier = Arc::new(Barrier::new(N));
+
+        let handles: Vec<_> = (0..N)
+            .map(|i| {
+                let lock_dir = lock_dir.clone();
+                let barrier = barrier.clone();
+                let session = format!("session-{i}");
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    let _guard = acquire_gap_claim_mutex(&lock_dir, gap_id).unwrap();
+                    match find_competing_session(&lock_dir, gap_id, &session) {
+                        Some(_) => false, // lost — this is a lease_overlap in run_claim
+                        None => {
+                            write_basic_lease(&lock_dir, &session, gap_id, None, 14_400).unwrap();
+                            true
+                        }
+                    }
+                })
+            })
+            .collect();
+
+        let results: Vec<bool> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let winners = results.iter().filter(|w| **w).count();
+        let losers = results.iter().filter(|w| !**w).count();
+        assert_eq!(winners, 1, "exactly one winner across {N} racers");
+        assert_eq!(losers, N - 1, "all other racers must lose cleanly");
+
+        let lease_files: Vec<_> = std::fs::read_dir(&*lock_dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
+            .collect();
+        assert_eq!(lease_files.len(), 1, "zero double-claims must persist");
+    }
+
+    #[test]
+    fn gap_claim_mutex_reclaims_stale_lock() {
+        // A crashed holder leaves the marker file behind forever without
+        // staleness reclamation — simulate that by backdating mtime.
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let gap_id = "INFRA-STALE-1";
+        let mutex_path = gap_claim_mutex_path(dir.path(), gap_id);
+        let f = std::fs::File::create(&mutex_path).unwrap();
+
+        let old =
+            SystemTime::now() - std::time::Duration::from_secs(GAP_CLAIM_MUTEX_STALE_SECS + 5);
+        f.set_modified(old).unwrap();
+        drop(f);
+
+        // Must succeed promptly (not wait out the 5s timeout) by reclaiming.
+        let guard = acquire_gap_claim_mutex(dir.path(), gap_id).unwrap();
+        drop(guard);
+        assert!(!mutex_path.exists(), "guard drop must remove the marker");
     }
 }

@@ -1518,9 +1518,13 @@ events:
 
   - kind: lease_overlap
     effect_metric: self
-    emitter: chump-coord
-    trigger: two sessions claim same files
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs emit_lease_overlap_event (INFRA-1608)
+    emitter_paths: [crates/chump-atomic-claim/src/atomic_claim.rs]
+    trigger: chump claim lost the mutex-protected re-check immediately before writing
+      its lease file — another session's lease for the same gap_id was already live
+      (the INFRA-1602 double-claim race class; see docs/audits/lease-collision-2026-05-17.md)
     consumers: [fleet-brief]
+    fields_required: [ts, kind, gap_id, winner_session, loser_session, paths_attempted]
 
   - kind: fixture_commit_dropped
     effect_metric: self

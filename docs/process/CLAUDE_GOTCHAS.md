@@ -2109,3 +2109,18 @@ bypasses that mask CI state.
 **Fix**: call `.flush().await` on the subscribing client right after `subscribe()`, before doing anything that depends on the subscription being live. `flush()` forces a round-trip to the server, so by the time it returns the subscription is guaranteed registered. See `crates/chump-coord/tests/ambient_distribution.rs`.
 
 **Related — stale test referencing removed functionality**: `chump-gap-store::tests::test_reserve_skips_yaml_drift` was reported failing in the same gap but no longer exists in the tree — it was removed in #2727 (INFRA-2177, "drop docs/gaps YAML rollup from gap reserve — use state.db only") along with the functionality it tested. Before debugging a named test failure, `grep` for the test function first — if it's gone, the report is stale and the fix is a no-op.
+
+## atomic-claim-collision — double lease on the same gap (INFRA-1608, 2026-08-27)
+
+**Symptom**: `.chump-locks/` has two live (unexpired) `<session>.json` lease files whose `gap_id` field names the *same* gap, from two different sessions — usually surfaced as duplicate PRs against one gap, or two ambient digests each claiming ownership.
+
+**Diagnosis steps**:
+1. `grep -l '"gap_id": "<GAP-ID>"' .chump-locks/*.json` — confirm more than one file matches and both have a future `expires_at`.
+2. Compare `taken_at` timestamps on the colliding leases — if they're within a few seconds to low-minutes of each other, this is the race class below, not an orphan-resurrection or mixed-path issue.
+3. `grep '"kind":"lease_overlap"' .chump-locks/ambient.jsonl` for the gap_id — if present, the mutex (see fix below) caught the race and one side already bailed cleanly; the surviving lease is authoritative. If absent despite a visible double-claim, you're on a pre-INFRA-1608 binary — rebuild.
+
+**Real cause**: `chump claim`'s file-lease path (`crates/chump-atomic-claim/src/atomic_claim.rs::run_claim`) used to check `.chump-locks/` for a competing lease once, early, then do several seconds of worktree/NATS setup *before* writing its own lease file. Two `chump claim` calls on the same gap starting within that window both passed the early check (neither's lease existed yet) and both wrote live leases — a classic TOCTOU race, not a CAS failure (the CAS-correct `chump-coord::try_claim_gap` NATS path only runs when `CHUMP_NATS_URL` is set — it wasn't the path that raced). Full writeup: `docs/audits/lease-collision-2026-05-17.md`.
+
+**Fix**: `acquire_gap_claim_mutex` — an `O_CREAT|O_EXCL` marker file per gap_id, held across a final re-check immediately before the lease write. Exactly one racing claim wins; the loser emits `kind=lease_overlap` (`{gap_id, winner_session, loser_session, paths_attempted}`) and bails instead of writing a second lease.
+
+**Test command**: `scripts/ci/test-atomic-claim-collision.sh` (wraps `cargo test -p chump-atomic-claim gap_claim_mutex`) — races N synthetic claimants against one gap_id and asserts exactly one winner + zero double-claims.
