@@ -494,6 +494,22 @@ fn unix_ts() -> u64 {
         .as_secs()
 }
 
+/// INFRA-1611: age-in-days for a gap, preferring `opened_date` (the date the
+/// gap was actually reserved/created) over `created_at` (the Unix timestamp
+/// of the row's DB insert — which is import time on a fresh clone/reimport,
+/// not creation time, and made every P0 read "0d old" after a state.db
+/// reimport). Falls back to `created_at` only when `opened_date` is
+/// missing/unparseable.
+fn gap_age_days(opened_date: &str, created_at: i64, now_secs: i64) -> i64 {
+    if let Ok(opened) = chrono::NaiveDate::parse_from_str(opened_date, "%Y-%m-%d") {
+        let now_date = chrono::DateTime::from_timestamp(now_secs, 0)
+            .map(|dt| dt.date_naive())
+            .unwrap_or_else(|| chrono::Utc::now().date_naive());
+        return (now_date - opened).num_days();
+    }
+    (now_secs - created_at) / 86400
+}
+
 /// INFRA-1886: `chump gap preflight <ID>` advisory hint. When the target
 /// gap is open + unclaimed, surface up to 3 higher-priority unclaimed gaps
 /// so the picker is nudged toward what's actually starved without enforcing
@@ -12322,7 +12338,7 @@ async fn main() -> Result<()> {
                 let p0_stuck: Vec<(&gap_store::GapRow, i64)> = p0_open
                     .iter()
                     .filter_map(|g| {
-                        let age_days = (now_secs - g.created_at) / 86400;
+                        let age_days = gap_age_days(&g.opened_date, g.created_at, now_secs);
                         if age_days > 7 {
                             Some((*g, age_days))
                         } else {
@@ -12465,7 +12481,7 @@ async fn main() -> Result<()> {
                         "done_with_closed_pr": done_with_closed_pr.len(),
                         "race_test_pollution": race_pollution.len(),
                         "p0_gaps": p0_open.iter().map(|g| {
-                            let age_days = (now_secs - g.created_at) / 86400;
+                            let age_days = gap_age_days(&g.opened_date, g.created_at, now_secs);
                             let auto_filed = g.notes.contains(auto_filed_marker);
                             serde_json::json!({"id": g.id, "title": g.title, "age_days": age_days, "auto_filed": auto_filed})
                         }).collect::<Vec<_>>(),
@@ -12553,7 +12569,7 @@ async fn main() -> Result<()> {
                         p0_auto_filed.len()
                     );
                     for g in &p0_open {
-                        let age_days = (now_secs - g.created_at) / 86400;
+                        let age_days = gap_age_days(&g.opened_date, g.created_at, now_secs);
                         let stuck = if age_days > 7 { " *** STUCK" } else { "" };
                         let marker = if g.notes.contains(auto_filed_marker) {
                             " [auto-filed]"

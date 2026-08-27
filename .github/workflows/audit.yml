@@ -431,6 +431,10 @@ jobs:
         if: matrix.shard == 1
         run: bash scripts/ci/test-gap-lifecycle-manager.sh
 
+      - name: gap opened_date coverage — audit-priorities age uses opened_date, P0/P1 registry coverage (INFRA-1611)
+        if: matrix.shard == 1
+        run: bash scripts/ci/test-gap-opened-date-coverage.sh
+
       # ── shard-2: event-registry + observability + webhook/cache ──────────────
       - name: EVENT_REGISTRY coverage — no drift in either direction (INFRA-1237/INFRA-1287)
         if: matrix.shard == 2
