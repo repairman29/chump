@@ -377,6 +377,15 @@ board_vitals_check() {
 
     _bv_emit "board_vitals_tick" \
 "\"incidents\":${incidents},\"disk_pct\":\"${disk_pct}\",\"merge_age_min\":\"${merge_age_min}\",\"worker_silent\":${worker_silent},\"main_red_span_min\":${main_red_span}"
+
+    # RESILIENT-410: unconditional proof-of-life to STDOUT — so the resident
+    # watch is visible in the board-cycle beat's systemd JOURNAL (where the
+    # human board looks with journalctl), not only in .chump-locks/ambient.jsonl.
+    # Without this line a healthy watch (incidents=0, emits only to ambient) is
+    # indistinguishable from a dead one in the journal. Prints EVERY run.
+    printf '[board-vitals] tick — incidents=%s disk=%s%% merge_age=%sm worker_silent=%s main_red_span=%sm%s\n' \
+        "${incidents}" "${disk_pct:-?}" "${merge_age_min:-?}" "${worker_silent}" "${main_red_span}" \
+        "$( (( incidents > 0 )) && printf ' — PAGED (see board_vitals_page_sent)' || true )"
     return 0
 }
 

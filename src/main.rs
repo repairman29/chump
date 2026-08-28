@@ -5394,6 +5394,10 @@ async fn main() -> Result<()> {
             println!("                       instead of re-triaging.");
             println!("  daemon               Loop triage→execute forever. Single-instance via PID");
             println!("                       file at .chump-locks/paramedic.lock.");
+            println!(
+                "  smoke-test           INFRA-1645: quick observability check — dummy LLM call,"
+            );
+            println!("                       prints a cost_report JSON line, exits 0.");
             println!();
             println!("Options:");
             println!("  --dry-run            Print actions; do not actually run gh commands.");
@@ -5405,6 +5409,17 @@ async fn main() -> Result<()> {
             println!("  chump paramedic triage");
             println!("  chump paramedic triage | chump paramedic execute --plan /dev/stdin");
             println!("  chump paramedic daemon --interval-secs 300 --dry-run");
+            println!("  chump paramedic smoke-test");
+            return Ok(());
+        }
+
+        // `chump paramedic --smoke-test` (AC §3 flag form, in addition to
+        // the `smoke-test` subcommand above).
+        if args.iter().any(|a| a == "--smoke-test") {
+            if let Err(e) = paramedic::smoke_test(&repo_root) {
+                eprintln!("chump paramedic smoke-test: {e}");
+                std::process::exit(1);
+            }
             return Ok(());
         }
 
@@ -5459,6 +5474,12 @@ async fn main() -> Result<()> {
 
                 if let Err(e) = paramedic::daemon(interval_secs, &repo_root, dry_run) {
                     eprintln!("chump paramedic daemon: {e}");
+                    std::process::exit(1);
+                }
+            }
+            "smoke-test" => {
+                if let Err(e) = paramedic::smoke_test(&repo_root) {
+                    eprintln!("chump paramedic smoke-test: {e}");
                     std::process::exit(1);
                 }
             }
