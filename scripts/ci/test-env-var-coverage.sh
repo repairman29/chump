@@ -20,8 +20,8 @@ if [[ ! -f "$ENV_EXAMPLE" ]]; then
   exit 1
 fi
 
-# Extract all var names from src/ (std::env::var and env::var calls)
-src_vars=$(grep -rn 'std::env::var\b\|env::var(' "$REPO_ROOT/src/" \
+# Extract all var names from src/ and crates/**/src/ (std::env::var and env::var calls)
+src_vars=$(grep -rn --exclude-dir=target 'std::env::var\b\|env::var(' "$REPO_ROOT/src/" "$REPO_ROOT/crates/" \
   | grep -oE '"[A-Z][A-Z0-9_]+"' | tr -d '"' | sort -u)
 
 # Build lookup sets
