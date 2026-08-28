@@ -184,6 +184,15 @@ CLAUDE_ARGS=(-p "$PROMPT"
     --max-budget-usd "$BUDGET_USD"
     --model "$MODEL")
 
+# INFRA-3835: authoritative "did the agent get an answer out?" signal. The agent
+# sends its reply via `CHUMP_NOTIFY_KIND=discord_advisor_reply notify-operator.sh`,
+# which writes an ambient event carrying `"signal":"discord_advisor_reply"` (an
+# operator_direct_message once this fix is deployed, an operator_paged before it).
+# Counting that marker on disk before/after the turn is decoupled from claude's
+# stdout/stderr plumbing, so it survives a non-zero exit that still replied.
+ADVISOR_REPLY_MARKER='"signal":"discord_advisor_reply"'
+_replies_before="$(grep -c "$ADVISOR_REPLY_MARKER" "$REPO_ROOT/.chump-locks/ambient.jsonl" 2>/dev/null || echo 0)"
+
 if command -v timeout >/dev/null 2>&1; then
     cycle_output="$(timeout "${TIMEOUT_S}s" claude "${CLAUDE_ARGS[@]}" 2>&1)"
     cycle_rc=$?
@@ -197,15 +206,35 @@ printf '%s\n' "$cycle_output"
 ambient_emit "discord_advisor_agent_beat" ",\"exit_code\":${cycle_rc},\"node\":\"$(hostname -s 2>/dev/null || echo node)\""
 log "dispatch done — exit_code=$cycle_rc"
 
-# Fallback safety net: if the agent errored/timed out before it could call
-# notify_operator itself, Jeff must still hear SOMETHING rather than
-# silence (the exact failure mode RESILIENT-263 exists to prevent).
+# Fallback safety net (INFRA-3835 rewrite). A non-zero exit is NOT the same as
+# "Jeff heard nothing": in the incident that motivated this fix, the agent
+# replied successfully and THEN exited 1 (budget/tool-deny after the answer), so
+# the old unconditional fallback fired a SECOND "advisor agent failed" DM on top
+# of the real answer — two back-to-back pages. The rule is now:
+#   (a) ALWAYS record one QUIET diagnostic. discord_advisor_agent_failed is
+#       classified `suppress` in operator-escalation-registry.txt → it lands in
+#       ambient.jsonl (operator_notify_suppressed), never on the phone.
+#   (b) ONLY DM Jeff a graceful "let me get back to you" when NO answer already
+#       reached him this turn — preserving the RESILIENT-263 no-silence
+#       guarantee for a genuine crash-before-reply, without double-DMing when
+#       the agent did reply. That apology rides discord_advisor_reply (`direct`)
+#       so it is delivered as a normal DM, not a page.
 if [[ $cycle_rc -ne 0 ]]; then
     source "$REPO_ROOT/scripts/coord/lib/notify-operator.sh" 2>/dev/null || true
+    _replies_after="$(grep -c "$ADVISOR_REPLY_MARKER" "$REPO_ROOT/.chump-locks/ambient.jsonl" 2>/dev/null || echo 0)"
     if declare -F notify_operator >/dev/null 2>&1; then
+        # (a) Quiet diagnostic — suppressed to ambient, never DM'd.
         # scanner-anchor: "kind":"discord_advisor_agent_failed"
         CHUMP_NOTIFY_KIND=discord_advisor_agent_failed \
             notify_operator "advisor agent failed (exit ${cycle_rc}) on: ${QUESTION_TEXT:0:120}" || true
+        # (b) Graceful answer ONLY if no reply landed this turn (no-silence net).
+        if [[ "${_replies_after:-0}" -le "${_replies_before:-0}" ]]; then
+            log "no advisor reply landed (before=${_replies_before} after=${_replies_after}) — sending graceful fallback DM"
+            CHUMP_NOTIFY_KIND=discord_advisor_reply \
+                notify_operator "I hit an error looking into that one (exit ${cycle_rc}). Let me get back to you." || true
+        else
+            log "advisor reply already landed (before=${_replies_before} after=${_replies_after}) — suppressing redundant failure DM"
+        fi
     fi
 fi
 
