@@ -29,6 +29,30 @@ const TRACKED_KINDS = [
   { kind: 'worktree_gitdir_repair_fired', icon: '🩹', label: 'Worktree gitdir repaired' },
 ];
 
+// META-193 — PR-shepherd daemon (META-180) `pr_classified` outcomes that need
+// a human. `classification` is a field on the shared `pr_classified` event,
+// not a distinct ambient kind, so it's filtered client-side rather than
+// listed in TRACKED_KINDS. Only these three escalate; MERGEABLE and
+// BLOCKED_GREEN (the auto-rebased/auto-armed happy path) are deliberately
+// excluded — the daemon already handles those without a human.
+const PR_CLASSIFIED_ESCALATE = {
+  UNKNOWN: { icon: '❓', label: 'PR classification unknown (GitHub still computing)' },
+  DIRTY: { icon: '💥', label: 'PR has semantic merge conflicts' },
+  BLOCKED_REAL_FAIL: { icon: '🔴', label: 'PR blocked on a real check failure' },
+};
+
+// Section metadata used by render() — TRACKED_KINDS plus one synthetic
+// section per escalated pr_classified outcome, so the daemon-outcome rows
+// get their own grouped section same as any other ambient kind.
+const SECTION_KINDS = [
+  ...TRACKED_KINDS,
+  ...Object.entries(PR_CLASSIFIED_ESCALATE).map(([classification, { icon, label }]) => ({
+    kind: `pr_classified:${classification}`,
+    icon,
+    label,
+  })),
+];
+
 const DEFER_TTL_S = 4 * 60 * 60; // 4 hours
 const STATE_KEY = 'operatorAttentionState';
 
@@ -112,6 +136,7 @@ class ChumpOperatorAttention extends HTMLElement {
     });
     const results = await Promise.all(fetches);
     results.forEach((arr) => out.push(...arr));
+    out.push(...(await this._fetchPrClassifiedOutcomes()));
 
     // Drop deferred / dismissed.
     const state = this._readState();
@@ -129,6 +154,31 @@ class ChumpOperatorAttention extends HTMLElement {
 
     this._items = filtered;
     this.render();
+  }
+
+  // META-193 — fetch `pr_classified` events (META-180 PR-shepherd daemon) and
+  // keep only the classifications that need a human: UNKNOWN, DIRTY,
+  // BLOCKED_REAL_FAIL. MERGEABLE / BLOCKED_GREEN / ARMED / BEHIND are the
+  // daemon's own happy-path outcomes (including auto-rebased BEHIND->CLEAN)
+  // and are deliberately never escalated here.
+  async _fetchPrClassifiedOutcomes() {
+    try {
+      const r = await fetch(`/api/ambient/recent?kind=pr_classified&n=50`, {
+        headers: this._authHeaders(),
+        credentials: 'same-origin',
+      });
+      if (!r.ok) return [];
+      const body = await r.json();
+      const events = Array.isArray(body) ? body : (body.events || []);
+      return events
+        .filter((e) => Object.prototype.hasOwnProperty.call(PR_CLASSIFIED_ESCALATE, e.classification))
+        .map((e) => {
+          const { icon, label } = PR_CLASSIFIED_ESCALATE[e.classification];
+          return { ...e, _icon: icon, _label: label, _kind: `pr_classified:${e.classification}` };
+        });
+    } catch (_e) {
+      return [];
+    }
   }
 
   _defer(fp) {
@@ -302,7 +352,7 @@ class ChumpOperatorAttention extends HTMLElement {
       grouped[e._kind].push(e);
     });
 
-    const sectionsHtml = TRACKED_KINDS
+    const sectionsHtml = SECTION_KINDS
       .filter(({ kind }) => grouped[kind] && grouped[kind].length > 0)
       .map(({ kind, icon, label }) => {
         // PRODUCT-132: within-kind dedup. Identical events (same note prefix)

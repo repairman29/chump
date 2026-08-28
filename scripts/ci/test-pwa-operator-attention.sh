@@ -77,5 +77,23 @@ ok "cleans up refresh timer on disconnect"
 grep -q "_esc" "$COMP" || fail "no _esc helper for HTML injection"
 ok "HTML-escapes event note/message before render"
 
+# 14. META-193 — pr_classified daemon outcomes: UNKNOWN/DIRTY/BLOCKED_REAL_FAIL
+#     escalate to the queue; MERGEABLE/BLOCKED_GREEN (auto-rebased/auto-armed
+#     happy path) are deliberately excluded.
+grep -q "PR_CLASSIFIED_ESCALATE" "$COMP" || fail "no PR_CLASSIFIED_ESCALATE map"
+for cls in UNKNOWN DIRTY BLOCKED_REAL_FAIL; do
+    grep -q "$cls" "$COMP" || fail "PR_CLASSIFIED_ESCALATE missing classification: $cls"
+done
+grep -q "kind=pr_classified" "$COMP" || fail "no pr_classified fetch"
+ok "escalates pr_classified UNKNOWN/DIRTY/BLOCKED_REAL_FAIL to operator-attention queue"
+
+# 15. MERGEABLE / auto-rebased outcomes are NOT escalated (not in the allow-map)
+grep -qE "PR_CLASSIFIED_ESCALATE\s*=\s*\{" "$COMP" || fail "PR_CLASSIFIED_ESCALATE not an object literal"
+awk '/PR_CLASSIFIED_ESCALATE = \{/,/^\};/' "$COMP" > /tmp/pr-classified-escalate-block.$$
+grep -q "MERGEABLE" /tmp/pr-classified-escalate-block.$$ && fail "MERGEABLE must NOT be in PR_CLASSIFIED_ESCALATE"
+grep -q "BLOCKED_GREEN" /tmp/pr-classified-escalate-block.$$ && fail "BLOCKED_GREEN (auto-rebased/auto-armed) must NOT be in PR_CLASSIFIED_ESCALATE"
+rm -f /tmp/pr-classified-escalate-block.$$
+ok "MERGEABLE and BLOCKED_GREEN (auto-rebased path) are not escalated"
+
 echo
-echo "All PRODUCT-117 operator-attention tests passed."
+echo "All PRODUCT-117 / META-193 operator-attention tests passed."
