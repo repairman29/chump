@@ -206,15 +206,15 @@ tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 patch = { version = "0.7", default-features = false }
-jsonschema = { version = "0.51", default-features = false }
+jsonschema = { version = "0.49", default-features = false }
 serde_yaml = "0.9"
 mistralrs = { version = "0.8.1", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 web-push = { version = "0.11", default-features = false, features = ["hyper-client"], optional = true }
 mimalloc = { version = "0.1", default-features = false }
-wasmtime = "48"
-wasmtime-wasi = "48"
+wasmtime = "47"
+wasmtime-wasi = "47"
 wasi-common = "46"
 sha2 = "0.11.0"
 hex = "0.4.3"
@@ -275,6 +275,23 @@ chump-gap-store = { path = "crates/chump-gap-store", version = "0.2.0", features
 # NDK clang). Mac builds are unaffected. The durable fix is patching axonerai to
 # rustls-tls (INFRA-3627); this unblocks the cross-build until that lands.
 [target.'cfg(target_os = "android")'.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
+
+# INFRA-3677 sibling (build-fleet-binaries.yml ribbon unblock): the
+# aarch64-unknown-linux-gnu CROSS build (from the x86_64 GH runner) hits the
+# SAME openssl-sys wall as Android — no aarch64 system OpenSSL / pkg-config
+# sysroot on the runner, so `openssl-sys` fails with "Could not find openssl
+# via pkg-config" and the whole matrix run goes red. A red run has
+# conclusion=failure, so node-refresh-chump.sh's `runs?...&status=success`
+# artifact query excludes it — which silently killed the fleet's fast-pull for
+# BOTH targets (the good x86_64 artifact lives inside a run marked failed) and
+# forced every node back to the ~30-min cold compile. Forcing openssl's
+# `vendored` feature for the aarch64-linux target compiles OpenSSL from source
+# with the gcc-aarch64 cross toolchain the workflow already installs, exactly
+# like the Android precedent above. Native x86_64 (arch=x86_64) and macOS are
+# unaffected (different cfg). Durable fix remains INFRA-3627 (axonerai →
+# rustls-tls); this unblocks the cross-build until that lands.
+[target.'cfg(all(target_arch = "aarch64", target_os = "linux"))'.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }
 
 # Many modules expose public items for tests, trait surfaces, and future wiring; suppress
