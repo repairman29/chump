@@ -314,6 +314,7 @@ mod e2e_bot_tests;
 #[cfg(feature = "inprocess-embed")]
 mod embed_inprocess;
 
+mod coordination_cost;
 mod metrics;
 
 /// INFRA-3448: the recovery discipline the OS should apply to a STUCK gap.

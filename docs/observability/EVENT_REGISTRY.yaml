@@ -112,6 +112,13 @@ events:
     consumers: [operator visibility]
     fields_required: [ts, kind, gap_id, required_skills, available_skill_sets, session]
 
+  - kind: coordination_action_cost
+    effect_metric: self
+    emitter: src/coordination_cost.rs (META-082, META-073 slice); called from src/skill_routing.rs::emit_routing_decision_event for route_change actions
+    trigger: any coordination action (route change, lesson fetch, collision check, etc.) calls coordination_cost::record_action to log its CPU/time/cost footprint
+    consumers: [/api/metrics (crate::metrics::handle_metrics)]
+    fields_required: [ts, kind, agent_id, action_type, duration_ms, estimated_cost_usd]
+
   - kind: review_verdict
     effect_metric: self
     emitter: scripts/coord/code-reviewer-agent.sh (CREDIBLE-191 judgment panel)

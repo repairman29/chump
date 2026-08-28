@@ -12,6 +12,9 @@ pub struct FleetMetrics {
     pub pr_metrics: PrMetrics,
     pub gap_metrics: GapMetrics,
     pub fleet_metrics: FleetVelocity,
+    /// META-082: cost/time rollup for coordination actions (route changes,
+    /// lesson fetches, collision checks, etc.) — see `coordination_cost`.
+    pub coordination_cost: crate::coordination_cost::CoordinationCostSummary,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -60,6 +63,7 @@ pub fn snapshot() -> FleetMetrics {
             gaps_per_hour: 0.0,
             active_workers: 0,
         },
+        coordination_cost: crate::coordination_cost::summary(),
     }
 }
 

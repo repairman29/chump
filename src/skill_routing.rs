@@ -218,7 +218,12 @@ fn append_ambient_line(entry: &serde_json::Value) -> Result<()> {
 /// Emit `kind=routing_decision` (schema `skill-routing-v1`) for `result`,
 /// and — when `selection_reason == no_match` — the companion
 /// `kind=skill_routing_no_match` event for operator visibility.
+///
+/// META-082: also logs the routing decision itself as a coordination
+/// action (`action_type = "route_change"`) so its cost/duration rolls up
+/// into `/api/metrics`.
 pub fn emit_routing_decision_event(result: &RoutingResult, router_session: &str) -> Result<()> {
+    let started = std::time::Instant::now();
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     let candidates: Vec<_> = result
@@ -261,6 +266,16 @@ pub fn emit_routing_decision_event(result: &RoutingResult, router_session: &str)
         });
         append_ambient_line(&no_match_entry)?;
     }
+
+    // META-082: local in-process scoring has no marginal $ cost (no LLM/API
+    // call), so estimated_cost_usd is 0.0 here — duration_ms is the
+    // meaningful resource signal for this action type.
+    crate::coordination_cost::record_action(
+        router_session,
+        "route_change",
+        started.elapsed().as_millis() as u64,
+        0.0,
+    );
 
     Ok(())
 }

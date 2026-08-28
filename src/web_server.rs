@@ -9557,6 +9557,9 @@ fn build_api_router() -> Router {
         .route("/api/stuck/rescue/{id}", post(handle_stuck_rescue))
         .route("/api/fleet-status", get(handle_fleet_status))
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
+        // META-082: coordination-action cost/time rollup (route changes,
+        // lesson fetches, collision checks, etc.).
+        .route("/api/metrics", get(crate::metrics::handle_metrics))
         .route("/api/health/pillars", get(handle_health_pillars))
         .route("/api/health/doctor", get(handle_doctor_health))
         // META-175: JetStream consumer lag + delivery latency per role.
