@@ -689,6 +689,9 @@ async fn handle_broadcast(
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
+    // META-082: cost-track this coordination action (route change / broadcast).
+    let agent_id = get_session_id(&headers).unwrap_or_else(|| "unknown".to_string());
+    let _action_timer = crate::metrics::ActionTimer::start(&agent_id, "route_change");
 
     let event = body.event.trim().to_uppercase();
     let valid_events = [
@@ -881,6 +884,9 @@ async fn handle_lessons_post(
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
+    // META-082: cost-track this coordination action (lesson publish).
+    let agent_id = get_session_id(&headers).unwrap_or_else(|| "unknown".to_string());
+    let _action_timer = crate::metrics::ActionTimer::start(&agent_id, "lesson_publish");
     let headline = body.headline.trim().to_string();
     if headline.is_empty() {
         return Err((
@@ -943,6 +949,9 @@ async fn handle_lessons_get(
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
+    // META-082: cost-track this coordination action (lesson fetch).
+    let agent_id = get_session_id(&headers).unwrap_or_else(|| "unknown".to_string());
+    let _action_timer = crate::metrics::ActionTimer::start(&agent_id, "lesson_fetch");
     let tag = params
         .get("tag")
         .map(|t| t.trim().to_lowercase())
@@ -971,6 +980,10 @@ async fn handle_inbox_get(
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
+    // META-082: cost-track this coordination action (inbox read); the
+    // requesting agent is the inbox owner unless X-Session-ID overrides it.
+    let agent_id = get_session_id(&headers).unwrap_or_else(|| session.clone());
+    let _action_timer = crate::metrics::ActionTimer::start(&agent_id, "inbox_read");
     if session.is_empty() || session.contains('/') || session.contains("..") {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -9419,6 +9432,8 @@ fn build_api_router() -> Router {
         .route("/api/inject-hint", post(handle_inject_hint))
         // INFRA-1296: A2A — operator emits any a2a event from PWA.
         .route("/api/broadcast", post(handle_broadcast))
+        // META-082: coordination-action cost metrics (CPU/time/cost per action).
+        .route("/api/metrics", get(crate::metrics::handle_metrics))
         // INFRA-1298: A2A — operator/agent reads targeted inbox.
         .route("/api/inbox/{session}", get(handle_inbox_get))
         .route(
