@@ -1293,6 +1293,13 @@
       overflow: hidden;
     }
 
+    /* INFRA-2215: dashboard-summary strip sits in the persistent shell (not
+       the view router) so it's visible on "/" regardless of last-view. */
+    chump-dashboard-tiles {
+      display: block;
+      padding: 10px 16px 0 16px;
+    }
+
     /* ── Sidebar nav (PRODUCT-106 cadence rework) ──────────────────────── */
     /* Side rail = 4 cadence buttons (NOW / AMBIENT / LIBRARY / CONFIG).
        Sub-tab strip lives below or to the right of the cadence rail
@@ -2312,6 +2319,11 @@
     <chump-repo-switcher></chump-repo-switcher>
     <chump-heartbeat></chump-heartbeat>
   </header>
+
+  <!-- INFRA-2215: 3-tile dashboard summary strip (ships-today / ci-qa-score /
+       active-leases), mounted in the persistent shell so it's visible from
+       "/" on first load with no auth gate and no view-router dependency. -->
+  <chump-dashboard-tiles></chump-dashboard-tiles>
 
   <!-- PRODUCT-083: verb-shaped quick-actions panel — primary CTA above noun nav -->
   <chump-quick-actions></chump-quick-actions>
