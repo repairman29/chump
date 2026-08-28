@@ -11,7 +11,10 @@
     - "All operator escape-hatches still work post-cutover: CHUMP_OPERATOR_RECOVERY=1 admin-merge cycle, recovery-queue handoff to background daemon, --auto-merge arming via gh pr merge; verified by scripts/ci/test-chump-ship-recovery-paths.sh added in this PR"
     - Ambient emit kind=rust_migration_landed gap=INFRA-2001 lines_out=3044 lines_in=0 on cutover commit; bash_loc counter in fleet stats decremented by 3044
     - "Rollback plan documented: if Rust binary regression detected, revert PR restores bash body + shim feature flag in one commit; 24h hot-rollback window; cutover MUST NOT happen during fleet-busy window (>3 PRs in flight)"
+  depends_on: [INFRA-3837]
   notes: |
     Phase 2 cutover of META-107 sub-gap INFRA-2001 (chump-ship). HIGHEST-RISK cutover of the six (3044 LOC + ship-path is critical-path). Sibling cutovers: INFRA-2060/2061/2062/2063/2065. Recommend cutting over LAST or second-to-last in the sequence after the smaller cutovers prove the pattern.
+
+    BLOCKED 2026-08-28 (verified while claimed on this session, see INFRA-3837 for full detail): AC1's precondition never started. scripts/coord/bot-merge.sh:8 still reads CHUMP_SHIP_RUST:-0 (never flipped to default-on) and crates/chump-ship/src/bin/chump-ship.rs's BotMergePath is still logged as "STUB in Phase 1" — the bot-merge auto-merge ship path (the one every fleet PR actually ships through, including this one) never routes to Rust regardless of the flag. INFRA-2001 closed 2026-05-29 with these two AC items unmet. No ambient kind=ship_divergence_detected / kind=rust_migration_landed events exist anywhere, confirming no soak window has ever opened. Removing the bash body now would break the fleet's primary ship pipeline. Do not re-attempt this cutover until INFRA-3837 ships and a real 7+ day CHUMP_SHIP_RUST=1-default soak with zero divergence has actually elapsed.
   outcome_id: MISSION-010
 

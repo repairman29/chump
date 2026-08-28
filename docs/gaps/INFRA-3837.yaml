@@ -1,0 +1,17 @@
+- id: INFRA-3837
+  domain: INFRA
+  title: "chump-ship BotMergePath still stubbed + CHUMP_SHIP_RUST never defaulted — blocks INFRA-2064 cutover"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "BotMergePath ported off STUB in crates/chump-ship/src/bot_merge.rs with real bash-parity ship+PR-create+auto-merge-arm behavior"
+    - "scripts/ci/test-ship-rust-parity.sh and scripts/ci/test-ship-single-instance.sh added and green (both were unmet AC items on closed INFRA-2001)"
+    - "CHUMP_SHIP_RUST default flipped from 0 to 1 in scripts/coord/bot-merge.sh shim"
+    - "kind=ship_divergence_detected emitted and monitored; soak window opened and tracked in ambient.jsonl"
+  notes: |
+    Blocks INFRA-2064 (bash-body removal cutover). Discovered while claimed on INFRA-2064: that gap's AC1 (7+ day CHUMP_SHIP_RUST=1-as-default soak with zero divergence) cannot start until this ships, because the flag still defaults to 0 and bot-merge mode is a stub. Removing the bash body before this lands would break the fleet's primary auto-merge ship path.
+
+    Verified 2026-08-28: (1) scripts/coord/bot-merge.sh line 8 shim still reads CHUMP_SHIP_RUST:-0 — the flag has NEVER been flipped to default-on, so the AC1 "7+ consecutive days as default" clock has not started. (2) crates/chump-ship/src/bin/chump-ship.rs still logs "chump-ship bot-merge starting (STUB in Phase 1)" — BotMergePath (crates/chump-ship/src/bot_merge.rs) is unported from bash, so --mode bot-merge (the path every fleet auto-merge ship goes through, incl. scripts/coord/bot-merge.sh --auto-merge) always falls through to the legacy 4827-line bash body regardless of the flag. (3) INFRA-2001 was closed 2026-05-29 with these two items still open despite being in its own AC list — it shipped the manual-mode Rust path only. (4) No ambient kind=ship_divergence_detected or kind=rust_migration_landed events exist locally, consistent with the soak never having started.
+  depends_on: []
+  outcome_id: MISSION-010
