@@ -3185,6 +3185,17 @@ events:
       ambient, NOT DM'd — quiet-by-default escalation discipline.
     consumers: [ambient]
 
+  - kind: operator_direct_message
+    effect_metric: self
+    emitter: scripts/coord/lib/notify-operator.sh (INFRA-3835)
+    trigger: the notify_operator escalation gate classified a signal as `direct`
+      in operator-escalation-registry.txt — a normal DM the fleet owes the
+      operator (e.g. the Advisor's answer to a Jeff DM). The message IS delivered
+      to Discord, but it is NOT an escalation, so operator_direct_message is
+      emitted instead of operator_paged and it never counts against the
+      page-rate vital sign.
+    consumers: [discord]
+
   - kind: operator_page
     effect_metric: self
     emitter: scripts/dispatch/operator-page.sh (INFRA-1774)
