@@ -19,5 +19,11 @@
     (INFRA-2232, INFRA-1310). bot-merge.sh mirrors the same trigger-path
     config. All 3 AC are met by existing code; this PR only syncs the
     stale YAML status to match state.db.
+
+    Re-verified 2026-08-28: cascade_rebase_if_hot() present at
+    scripts/coord/queue-driver.sh:88 (invoked at :627),
+    scripts/coord/cascade-rebase-trigger-paths.txt present on disk. Closing
+    via the normal chump gap ship pipeline (bot-merge.sh) rather than a
+    manual state.db edit.
   outcome_id: MISSION-010
 
