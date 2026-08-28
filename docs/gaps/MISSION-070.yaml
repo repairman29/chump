@@ -1,12 +1,13 @@
 - id: MISSION-070
   domain: MISSION
   title: "MISSION: Develop worker-scaling formula (MISSION-065 slice)"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
     - Mathematical formula for worker scaling is implemented as a pure function
     - Formula correctly calculates target worker count based on input metrics
     - Unit tests cover edge cases (zero load, maximum capacity)
+  closed_pr: 4206
   outcome_id: CHUMPOS
 
