@@ -1,0 +1,67 @@
+# CREDIBLE-239 backlog: env vars newly visible now that the coverage gate
+# scans crates/**/src/ in addition to src/. These are NOT documented — they
+# are undocumented debt that predates this gate widening (the vars were
+# already unregistered; widening the scan only made them visible).
+#
+# This file exists so the gate can turn green WITHOUT the misleading effect
+# banned by CREDIBLE-239 AC 6: bulk-dumping these into env-vars-internal.txt
+# would falsely claim "these are legitimate internal-only vars, triaged and
+# fine forever." They have not been triaged. Each entry here should be
+# resolved by moving it to:
+#   - .env.example         if it's a Tier-1 operator-tunable var, or
+#   - env-vars-internal.txt if it's genuinely Tier-2/3 internal/runtime,
+# then DELETED from this file. This file shrinking over time is the signal
+# the debt is being paid down; it growing is a regression.
+#
+# Count at gate-widening time (2026-08-28): 51. Triage tracked in INFRA-3840.
+CHUMP_ALMANAC_DISPATCH_GROUNDING
+CHUMP_CLAUDE_BIN
+CHUMP_COORD_FILES
+CHUMP_COST_CEILING_USD
+CHUMP_COST_WARN_USD
+CHUMP_CURATOR_SUPERVISOR_DRY_RUN
+CHUMP_CURATOR_TICK_INTERVAL_S
+CHUMP_CURATOR_TMUX_SESSION
+CHUMPD_FLEET_BACKEND
+CHUMP_DISPATCH_CAPACITY
+CHUMP_DISPATCH_MODEL
+CHUMP_DISPATCH_PROVIDER_PFX
+CHUMPD_TAKEOVER
+CHUMP_ENRICH_LLM_CMD
+CHUMP_FAULT_INJECT
+CHUMP_FLEET_EVENTS_DB
+CHUMP_FLEET_RECORDER_TTL_DAYS
+CHUMP_FLEET_WIRE_FETCH_TIMEOUT_MS
+CHUMP_FLEET_WIRE_V1
+CHUMP_GAP_DECOMPOSE_MODEL
+CHUMP_GAP_SHIP_NO_ORPHAN_CLOSE
+CHUMP_GAP_SHIP_ORPHAN_FRESHNESS_MIN
+CHUMP_HANDOFF_RUNNER_CMD
+CHUMP_HELP_REQUEST_TTL_SECS
+CHUMP_INTEGRATOR_DO_NOT_BATCH_LABEL
+CHUMP_INTEGRATOR_DRY_RUN
+CHUMP_INTEGRATOR_SAMPLING_PCT
+CHUMP_LOCAL_BIN
+CHUMP_MEMORY_DB
+CHUMP_NATS_GAP_BUCKET
+CHUMP_NATS_HELP_REQUESTS_BUCKET
+CHUMP_PICKER_BIAS_THRESHOLD
+CHUMP_PICKER_BIAS_WINDOW
+CHUMP_SESSION_BUDGET_REQUESTS
+CHUMP_SESSION_BUDGET_TAVILY
+CHUMP_TEAM_API_KEY
+CHUMP_TEAM_JWT
+CHUMP_TEAM_SLUG
+CHUMP_VERIFY_CI_REQUIRED_ONLY
+CHUMP_WORK_BOARD_TTL_SECS
+CHUMP_WORKTREE_NAME
+FLEET_TIMEOUT_S
+OPENAI_EMBED_ENDPOINT
+PARAMEDIC_BACKOFF_BASE_MS
+PARAMEDIC_BACKOFF_JITTER
+PARAMEDIC_BACKOFF_MAX_MS
+PARAMEDIC_LLM_ENDPOINT
+PARAMEDIC_LLM_MAX_ATTEMPTS
+WORKER_BACKEND
+WORKER_MACHINE
+WORKER_SKILLS
