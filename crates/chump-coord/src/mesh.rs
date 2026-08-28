@@ -188,6 +188,36 @@ impl BandwidthBudget {
         self.remaining = self.total;
         self.window_start = chrono::Utc::now().to_rfc3339();
     }
+
+    /// INFRA-1804 AC5: compatibility shim around the shell-side
+    /// `CHUMP_GH_MAX_CALLS_PER_MIN` self-throttle
+    /// (`scripts/coord/lib/github.sh` `_chump_gh_throttle_wait`). Rust
+    /// callers that want the same per-minute call budget without shelling
+    /// out can construct a `BandwidthBudget` from the same env var, using
+    /// "calls" in place of "bytes" (one call == one unit).
+    pub fn from_env_gh_throttle() -> Self {
+        let limit: usize = std::env::var("CHUMP_GH_MAX_CALLS_PER_MIN")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(60);
+        Self::new(limit, 60)
+    }
+
+    /// Mirrors `_chump_gh_preempt_if_low` in `scripts/coord/lib/github.sh`:
+    /// `critical` calls are never deferred; `background` calls are deferred
+    /// once remaining budget drops below `threshold_pct` percent of total.
+    /// Returns `false` (never defer) for any criticality other than
+    /// `"background"`, matching the shell default-open behavior.
+    pub fn should_defer(&self, criticality: &str, threshold_pct: u32) -> bool {
+        if criticality != "background" {
+            return false;
+        }
+        if self.total == 0 {
+            return false;
+        }
+        let pct = (self.remaining * 100 / self.total) as u32;
+        pct < threshold_pct
+    }
 }
 
 /// Mesh message queue (simulates local queuing for offline operation) —
@@ -500,6 +530,32 @@ mod tests {
         assert!(!budget.can_send(501));
         budget.reset();
         assert_eq!(budget.remaining, 1000);
+    }
+
+    #[test]
+    fn bandwidth_budget_from_env_defaults_to_sixty_per_minute() {
+        // SAFETY: single-threaded test, no concurrent env mutation in this suite.
+        unsafe {
+            std::env::remove_var("CHUMP_GH_MAX_CALLS_PER_MIN");
+        }
+        let budget = BandwidthBudget::from_env_gh_throttle();
+        assert_eq!(budget.total, 60);
+        assert_eq!(budget.window_seconds, 60);
+    }
+
+    #[test]
+    fn bandwidth_budget_should_defer_only_background_below_threshold() {
+        let mut budget = BandwidthBudget::new(100, 60);
+        // Plenty remaining — never defer regardless of criticality.
+        assert!(!budget.should_defer("background", 10));
+        assert!(!budget.should_defer("critical", 10));
+
+        // Drain below the 10% threshold.
+        budget.deduct(95);
+        assert_eq!(budget.remaining, 5);
+        assert!(budget.should_defer("background", 10));
+        // Critical calls are never deferred, even when tight.
+        assert!(!budget.should_defer("critical", 10));
     }
 
     #[test]
