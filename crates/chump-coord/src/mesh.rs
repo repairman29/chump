@@ -188,6 +188,60 @@ impl BandwidthBudget {
         self.remaining = self.total;
         self.window_start = chrono::Utc::now().to_rfc3339();
     }
+
+    /// True once `window_seconds` have elapsed since `window_start`.
+    /// Malformed `window_start` (should not happen — always set via
+    /// `chrono::Utc::now()`) is treated as elapsed, fail-open toward a
+    /// reset rather than fail-closed toward a stuck budget.
+    pub fn window_elapsed(&self) -> bool {
+        match chrono::DateTime::parse_from_rfc3339(&self.window_start) {
+            Ok(start) => {
+                let elapsed = chrono::Utc::now().signed_duration_since(start);
+                elapsed.num_seconds() >= i64::from(self.window_seconds)
+            }
+            Err(_) => true,
+        }
+    }
+
+    /// Reset the window if it has elapsed. Call this before `can_send`
+    /// when the budget is long-lived (e.g. a per-process singleton) so
+    /// windows roll over without an external ticker.
+    pub fn maybe_auto_reset(&mut self) {
+        if self.window_elapsed() {
+            self.reset();
+        }
+    }
+
+    /// AC5 (INFRA-1804): mirror `chump_gh`'s `_chump_gh_preempt_if_low`
+    /// background-deferral rule (`scripts/coord/lib/github.sh`) in Rust —
+    /// `criticality=background` calls defer once remaining budget drops
+    /// below `threshold_pct` percent of `total`; `criticality=critical`
+    /// (chump_gh's default) never defers.
+    pub fn should_defer_background(&self, criticality: &str, threshold_pct: u8) -> bool {
+        if criticality != "background" {
+            return false;
+        }
+        if self.total == 0 {
+            return false;
+        }
+        let pct = (self.remaining * 100) / self.total;
+        pct < usize::from(threshold_pct)
+    }
+
+    /// Build a budget compatible with the `chump_gh` self-throttle env
+    /// contract (`scripts/coord/lib/github.sh` INFRA-1079/1080):
+    /// `CHUMP_GH_MAX_CALLS_PER_MIN` (default 60) calls per 60s window,
+    /// 'bytes' framing reinterpreted as 'tokens' — one call = one token
+    /// for this compatibility shim, matching the shell side's per-call
+    /// bucket (not per-byte).
+    pub fn from_gh_throttle_env() -> Self {
+        let total = std::env::var("CHUMP_GH_MAX_CALLS_PER_MIN")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(60);
+        Self::new(total, 60)
+    }
 }
 
 /// Mesh message queue (simulates local queuing for offline operation) —
@@ -500,6 +554,46 @@ mod tests {
         assert!(!budget.can_send(501));
         budget.reset();
         assert_eq!(budget.remaining, 1000);
+    }
+
+    #[test]
+    fn bandwidth_budget_window_elapsed_triggers_auto_reset() {
+        let mut budget = BandwidthBudget::new(100, 3600);
+        budget.deduct(60);
+        assert_eq!(budget.remaining, 40);
+        assert!(!budget.window_elapsed());
+        // Simulate an elapsed window by back-dating window_start.
+        budget.window_start = (chrono::Utc::now() - chrono::Duration::seconds(3601)).to_rfc3339();
+        assert!(budget.window_elapsed());
+        budget.maybe_auto_reset();
+        assert_eq!(budget.remaining, 100);
+    }
+
+    #[test]
+    fn bandwidth_budget_defers_background_below_threshold_only() {
+        let mut budget = BandwidthBudget::new(100, 60);
+        budget.deduct(95); // remaining = 5, i.e. 5%
+                           // Below threshold (10%) + background → defer.
+        assert!(budget.should_defer_background("background", 10));
+        // Critical never defers, regardless of remaining.
+        assert!(!budget.should_defer_background("critical", 10));
+        // Above threshold → no defer.
+        budget.reset();
+        assert!(!budget.should_defer_background("background", 10));
+    }
+
+    #[test]
+    fn bandwidth_budget_from_gh_throttle_env_defaults_to_sixty() {
+        // No env var set in this process by default — falls back to the
+        // chump_gh default of CHUMP_GH_MAX_CALLS_PER_MIN=60.
+        let saved = std::env::var("CHUMP_GH_MAX_CALLS_PER_MIN").ok();
+        std::env::remove_var("CHUMP_GH_MAX_CALLS_PER_MIN");
+        let budget = BandwidthBudget::from_gh_throttle_env();
+        assert_eq!(budget.total, 60);
+        assert_eq!(budget.window_seconds, 60);
+        if let Some(v) = saved {
+            std::env::set_var("CHUMP_GH_MAX_CALLS_PER_MIN", v);
+        }
     }
 
     #[test]
