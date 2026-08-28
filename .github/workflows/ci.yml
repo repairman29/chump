@@ -744,7 +744,9 @@ jobs:
 
   fast-checks:
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # META-204: ci_config_only (workflow-only PRs) skips the Rust suite so
+    # ci.yml-only edits don't pay the full build cost.
+    if: (needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true' || github.event_name == 'push' || github.event_name == 'merge_group') && needs.changes.outputs.ci_config_only != 'true'
     # RESILIENT-304: measured 2026-08-14 across real merged PRs — #3757 10m41s,
     # #3752 11m36s, #3759 11m53s, #3764 12m31s, #3753 12m35s. The old 15m cap
     # left 2-4 min of headroom, so PR #3765 (touches crates/, invalidating
@@ -1407,7 +1409,9 @@ jobs:
   # META-262 rolled back 2026-05-31: chump-ci image build failing on edition2024 — see follow-up INFRA-2331.
   clippy:
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # META-204: ci_config_only (workflow-only PRs) skips the Rust suite so
+    # ci.yml-only edits don't pay the full build cost.
+    if: (needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group') && needs.changes.outputs.ci_config_only != 'true'
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     # INFRA-2118: /tmp isolation only on self-hosted; GH-hosted uses
@@ -1505,7 +1509,12 @@ jobs:
   # Target wall-clock: ~60-75% reduction vs serial (limited by longest shard).
   cargo-test-shard:
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # META-204: ci_config_only (workflow-only PRs) skips the Rust suite so
+    # ci.yml-only edits don't pay the full build cost. cargo-test (the
+    # downstream if:always() rollup) already treats a skipped shard result
+    # as pass — no separate stub job needed (see META-261 collapsed
+    # stub/required pattern below).
+    if: (needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group') && needs.changes.outputs.ci_config_only != 'true'
     strategy:
       fail-fast: false
       matrix:
