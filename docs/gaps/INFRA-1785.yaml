@@ -5,9 +5,11 @@
   priority: P2
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Events: ingest_initiated/ingest_validated/ingest_failed (phase 1a, src/ingest.rs) and ingest_orchestrate_started/ingest_complete/ingest_orchestrate_failed (phase 5, src/ingest_orchestrate.rs) emitted to ambient.jsonl on every chump ingest run — dry-run, --confirm-mutations success, and every failure path; no separate timeout path since all phases are static-scan-only (zero LLM/API calls in v1)"
+    - "Cost: cost_usd_cents / total_cost_usd_cents always 0 in v1 (documented in ingest_complete payload and threaded through to certificate.json's ingestion_cost_usd_cents), with OrchestrateConfig::budget_usd checked after every phase so enforcement activates the moment a phase adds a real paid call, without an orchestrator code change"
+    - "Failure taxonomy: FailureClass::PathNotFound (permanent) / IoError (transient, retryable) / BudgetExceeded (permanent, currently unreachable in v1 since all phases cost $0) in src/ingest_orchestrate.rs, surfaced via .transient()/.as_str() and included in ingest_failed / ingest_orchestrate_failed events"
+    - "Demo recipe docs/demos/INGEST_DEMO.md: reproducible fixture-repo walkthrough (dry run + --confirm-mutations) with expected certificate.json shape and ambient event sequence; smoke test commands scripts/ci/test-ingest-smoke.sh (phase 1a) + scripts/ci/test-ingest-orchestrate-smoke.sh (phase 5) verify the same recipe in CI, <30s, no network"
+  notes: |
+    [2026-08-27] Implementation already shipped under INFRA-1746 (closed 2026-05-23, PR #2390) as src/ingest.rs + src/ingest_orchestrate.rs, with full observability doc at docs/process/INGEST_ORCHESTRATE_OBSERVABILITY.md and CI coverage at scripts/ci/test-ingest-smoke.sh + scripts/ci/test-ingest-orchestrate-smoke.sh. This gap's AC were unfilled TODO placeholders from the decompose template (same pattern as INFRA-1783); filled in with the actual observability behavior confirmed present in the code, plus added the one missing piece — docs/demos/INGEST_DEMO.md, the reproducible demo recipe referenced in the parent INFRA-1746 AC that had not yet been written.
   outcome_id: MISSION-010
 
