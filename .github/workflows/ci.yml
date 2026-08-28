@@ -1006,6 +1006,9 @@ jobs:
       - name: pre-push rebase-detect auto-skip (INFRA-368)
         run: bash scripts/ci/test-pre-push-rebase-allow.sh
 
+      - name: pre-push head-drift guard precision (INFRA-2431)
+        run: bash scripts/ci/test-pre-push-head-drift.sh
+
       - name: spike scripts isolated from production state.db (INFRA-430)
         run: bash scripts/ci/test-spike-isolation.sh
 
