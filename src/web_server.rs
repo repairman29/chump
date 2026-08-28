@@ -14,7 +14,7 @@ use axum::{
 };
 use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_stream::StreamExt;
 use tower_http::cors::{Any, CorsLayer};
@@ -686,6 +686,8 @@ async fn handle_broadcast(
     headers: HeaderMap,
     Json(body): Json<BroadcastRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let action_started_at = Instant::now();
+    let agent_id = get_session_id(&headers);
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
@@ -805,6 +807,12 @@ async fn handle_broadcast(
             format!("broadcast.sh exit {}: {}", output.status, stderr),
         ));
     }
+    // META-082: log CPU/time/cost for this coordination action.
+    crate::coordination_cost::record_action(
+        agent_id.as_deref(),
+        &format!("broadcast:{}", event),
+        action_started_at.elapsed(),
+    );
     Ok(Json(serde_json::json!({
         "ok": true,
         "event": event,
@@ -878,6 +886,8 @@ async fn handle_lessons_post(
     headers: HeaderMap,
     Json(body): Json<LessonPostRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let action_started_at = Instant::now();
+    let agent_id = get_session_id(&headers);
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
@@ -926,6 +936,12 @@ async fn handle_lessons_post(
         ],
         ..Default::default()
     });
+    // META-082: log CPU/time/cost for this coordination action.
+    crate::coordination_cost::record_action(
+        agent_id.as_deref(),
+        "lesson_publish",
+        action_started_at.elapsed(),
+    );
     Ok(Json(serde_json::json!({
         "ok": true,
         "lesson_id": lesson_id,
@@ -940,6 +956,8 @@ async fn handle_lessons_get(
     headers: HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let action_started_at = Instant::now();
+    let agent_id = get_session_id(&headers);
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
@@ -956,10 +974,31 @@ async fn handle_lessons_get(
             None => true,
         })
         .collect();
-    Ok(Json(serde_json::json!({
+    let count = lessons.len();
+    let response = Ok(Json(serde_json::json!({
         "lessons": lessons,
-        "count": lessons.len(),
-    })))
+        "count": count,
+    })));
+    drop(store);
+    // META-082: log CPU/time/cost for this coordination action.
+    crate::coordination_cost::record_action(
+        agent_id.as_deref(),
+        "lesson_fetch",
+        action_started_at.elapsed(),
+    );
+    response
+}
+
+/// META-082: GET /api/coordination-costs — CPU/time/estimated-$ rollup for
+/// coordination actions (broadcast/route-change, lesson fetch/publish, inbox
+/// read), broken down by action type and by agent.
+async fn handle_coordination_costs(
+    headers: HeaderMap,
+) -> Result<Json<crate::coordination_cost::CoordinationCostSnapshot>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    Ok(Json(crate::coordination_cost::snapshot()))
 }
 
 /// INFRA-1298: GET /api/inbox/{session} — read targeted-inbox messages.
@@ -968,6 +1007,7 @@ async fn handle_inbox_get(
     axum::extract::Path(session): axum::extract::Path<String>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let action_started_at = Instant::now();
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
@@ -987,6 +1027,11 @@ async fn handle_inbox_get(
         .join("inbox")
         .join(format!("{session}.read-cursor"));
     if !inbox_path.exists() {
+        crate::coordination_cost::record_action(
+            Some(&session),
+            "inbox_fetch",
+            action_started_at.elapsed(),
+        );
         return Ok(Json(serde_json::json!({
             "session": session, "messages": [], "count": 0,
         })));
@@ -1034,6 +1079,11 @@ async fn handle_inbox_get(
         out.push(entry);
     }
     let count = out.len();
+    crate::coordination_cost::record_action(
+        Some(&session),
+        "inbox_fetch",
+        action_started_at.elapsed(),
+    );
     Ok(Json(serde_json::json!({
         "session": session, "messages": out, "count": count,
     })))
@@ -9388,6 +9438,8 @@ fn build_api_router() -> Router {
             get(routes::health::handle_cascade_status),
         )
         .route("/api/slots", get(routes::health::handle_slots))
+        .route("/api/metrics", get(crate::metrics::handle_metrics))
+        .route("/api/coordination-costs", get(handle_coordination_costs))
         .route(
             "/api/cascade-slot-toggle",
             post(routes::health::handle_cascade_slot_toggle),
