@@ -239,6 +239,38 @@ impl MessageQueue {
     }
 }
 
+/// INFRA-1804 AC5: compatibility shim around the shell `chump_gh` self-throttle
+/// (`scripts/coord/lib/github.sh` `_chump_gh_preempt_if_low`, INFRA-1080).
+/// The shell throttle frames its budget as "calls per minute"; this maps that
+/// onto the same `BandwidthBudget` struct so Rust callers (e.g. a future
+/// chump-coord mesh consumer) share one accounting primitive with the shell
+/// layer instead of re-deriving the window math.
+impl BandwidthBudget {
+    /// Build a budget from `CHUMP_GH_MAX_CALLS_PER_MIN` (default 60, matching
+    /// the shell default), windowed per-minute.
+    pub fn from_calls_per_min_env() -> Self {
+        let calls_per_min = std::env::var("CHUMP_GH_MAX_CALLS_PER_MIN")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(60);
+        Self::new(calls_per_min, 60)
+    }
+}
+
+/// Mirrors `_chump_gh_preempt_if_low`: a `background`-criticality call defers
+/// when remaining budget has dropped below `threshold_pct` of total; a
+/// `critical` call (or any non-`"background"` tag) is never deferred, and a
+/// zero-total budget fails open (never defers) same as the shell's
+/// can't-determine-remaining fail-open path.
+pub fn should_defer_call(budget: &BandwidthBudget, criticality: &str, threshold_pct: u32) -> bool {
+    if criticality != "background" || budget.total == 0 {
+        return false;
+    }
+    let remaining_pct = (budget.remaining * 100) / budget.total;
+    remaining_pct < threshold_pct as usize
+}
+
 /// Mesh pub/sub interface. Real impls: NATS-backed (slice 2/4), file-only
 /// fallback (slice 3/4), in-memory simulator (test only).
 #[async_trait::async_trait]
@@ -537,6 +569,76 @@ mod tests {
         transport.publish(&ch, &msg).await.unwrap();
         let received = rx.recv().await.unwrap();
         assert_eq!(received.id, "msg-1");
+    }
+
+    #[test]
+    fn should_defer_call_matches_shell_preempt_semantics() {
+        let mut budget = BandwidthBudget::new(100, 60);
+        // Plenty remaining: neither criticality defers.
+        assert!(!should_defer_call(&budget, "background", 10));
+        assert!(!should_defer_call(&budget, "critical", 10));
+
+        // Drain below the 10% threshold used by CHUMP_GH_BACKOFF_THRESHOLD default.
+        budget.deduct(95);
+        assert_eq!(budget.remaining, 5);
+        assert!(should_defer_call(&budget, "background", 10));
+        // Critical calls are never preempted, matching _chump_gh_preempt_if_low.
+        assert!(!should_defer_call(&budget, "critical", 10));
+
+        // Zero-total budget fails open (mirrors the shell's can't-determine fail-open).
+        let empty = BandwidthBudget::new(0, 60);
+        assert!(!should_defer_call(&empty, "background", 10));
+    }
+
+    #[test]
+    fn bandwidth_budget_from_calls_per_min_env_defaults_to_sixty() {
+        // SAFETY: test runs single-threaded within this process; no other
+        // test reads/writes this specific env var.
+        std::env::remove_var("CHUMP_GH_MAX_CALLS_PER_MIN");
+        let budget = BandwidthBudget::from_calls_per_min_env();
+        assert_eq!(budget.total, 60);
+        assert_eq!(budget.window_seconds, 60);
+
+        std::env::set_var("CHUMP_GH_MAX_CALLS_PER_MIN", "25");
+        let budget = BandwidthBudget::from_calls_per_min_env();
+        assert_eq!(budget.total, 25);
+        std::env::remove_var("CHUMP_GH_MAX_CALLS_PER_MIN");
+    }
+
+    #[tokio::test]
+    async fn file_fallback_defers_background_and_queues_when_budget_low() {
+        // Integration test (AC6): BandwidthBudget windowing gates whether a
+        // background message is sent live vs. queued into the INFRA-1758
+        // file-fallback MessageQueue, and the queue's full-drop behavior
+        // still holds once messages start piling up under a low budget.
+        let mut budget = BandwidthBudget::new(100, 60);
+        let mut queue = MessageQueue::new(2);
+        let mk = |id: &str| Message {
+            id: id.to_string(),
+            timestamp: "t".to_string(),
+            channel: "ambient/broadcast".to_string(),
+            payload: vec![0u8; 4],
+            source: "test".to_string(),
+            signature: None,
+        };
+
+        // Drain the budget below the 10% deferral threshold.
+        budget.deduct(95);
+        assert!(should_defer_call(&budget, "background", 10));
+
+        // Deferred background messages fall back to the file-queue rather
+        // than being sent live.
+        assert!(queue.enqueue(mk("1")));
+        assert!(queue.enqueue(mk("2")));
+        // Queue is now full — further deferrals drop, matching MessageQueue's
+        // documented full-drop contract.
+        assert!(!queue.enqueue(mk("3")));
+        assert_eq!(queue.len(), 2);
+
+        // Window resets → budget replenished → critical/background both proceed live.
+        budget.reset();
+        assert!(!should_defer_call(&budget, "background", 10));
+        assert_eq!(queue.dequeue().unwrap().id, "1");
     }
 
     #[tokio::test]
