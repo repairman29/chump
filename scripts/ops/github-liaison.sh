@@ -10,8 +10,10 @@
 #   - Heartbeat file inside the lockdir; refreshed every cycle. Stale > 90s
 #     → another invocation may take over.
 #   - Refresh loop: each cycle calls scripts/ops/github-cache-reconcile.sh
-#     (one REST call → all open PRs). Default poll interval 60s, overridable
-#     via CHUMP_LIAISON_POLL_INTERVAL_S.
+#     (one REST call → all open PRs). Default poll interval 300s (INFRA-1318
+#     Phase 2 — the webhook receiver is now the primary event path, so REST
+#     polling only needs to backstop it), overridable via
+#     CHUMP_LIAISON_POLL_INTERVAL_S.
 #   - Opt-in via CHUMP_LIAISON_ENABLED=1 (default OFF, for safety during Phase 1).
 #
 # Out of scope (later phases):
@@ -27,7 +29,7 @@
 #
 # Env:
 #   CHUMP_LIAISON_ENABLED          (default 0) — daemon refuses to start unless 1
-#   CHUMP_LIAISON_POLL_INTERVAL_S  (default 60) — seconds between refresh cycles
+#   CHUMP_LIAISON_POLL_INTERVAL_S  (default 300) — seconds between refresh cycles
 #   CHUMP_LIAISON_STALE_S          (default 90) — heartbeat age that triggers takeover
 #   CHUMP_LIAISON_LOCK_DIR         override the lockdir (default <repo>/.chump-locks/github-liaison.lock)
 #   CHUMP_AMBIENT_LOG              override the ambient stream path
@@ -56,7 +58,7 @@ LOCK_DIR="${CHUMP_LIAISON_LOCK_DIR:-$REPO/.chump-locks/github-liaison.lock}"
 HEARTBEAT="$LOCK_DIR/heartbeat"
 HOLDER_FILE="$LOCK_DIR/holder"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO/.chump-locks/ambient.jsonl}"
-POLL_INTERVAL_S="${CHUMP_LIAISON_POLL_INTERVAL_S:-60}"
+POLL_INTERVAL_S="${CHUMP_LIAISON_POLL_INTERVAL_S:-300}"
 STALE_S="${CHUMP_LIAISON_STALE_S:-90}"
 RECONCILE_SCRIPT="$REPO/scripts/ops/github-cache-reconcile.sh"
 
