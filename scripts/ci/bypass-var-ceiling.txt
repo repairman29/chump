@@ -4,7 +4,7 @@
 # you must delete one. Raising it requires operator sign-off + a reason below.
 # Baseline 2026-06-03 (was 113 when INFRA-2525 was filed — the climb to here is
 # exactly what this ceiling now reverses). Ratchet DOWN as gates are culled.
-223
+224
 
 # 233 → 234 (2026-06-04): CREDIBLE-085 introduced CHUMP_SCCACHE_HIT_RATE_CHECK
 # as a cold-cache escape valve for the new sccache hit-rate gate. Cold-cache
@@ -113,3 +113,15 @@
 # zero-headroom tripwire. Operator sign-off (incident revival 2026-08-23; the PR was
 # false-closed by pr-failure-auto-rescue on this real red). Standing-headroom cull is
 # tracked by INFRA-3625.
+
+# 223 → 224 (2026-08-28, INFRA-3679): EFFECTIVE-450 (#4284, 66aa197) introduced
+# CHUMP_BINARY_NO_FETCH — a GENUINE, wired operator toggle in
+# scripts/setup/chump-node-install.sh (read at :477,
+# `[ "${CHUMP_BINARY_NO_FETCH:-0}" = 1 ] && ... build-from-source`) that forces
+# the clean-install to skip the prebuilt-binary fetch on nodes managing their
+# binary out-of-band — but it merged WITHOUT ratcheting this ceiling, so main
+# sat AT the ceiling (224>223) and audit-shard(4) bypass-lint jammed the ENTIRE
+# queue (#4283/#4286/#4287 all BLOCKED). Same recurring zero-headroom tripwire
+# this file's history keeps hitting. Admitting the legit already-merged var is
+# the sanctioned "only way up" (operator edit + reason). NET DEBT still owed:
+# the standing dead-bypass cull that restores headroom is tracked by INFRA-3625.
