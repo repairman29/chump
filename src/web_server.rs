@@ -878,9 +878,11 @@ async fn handle_lessons_post(
     headers: HeaderMap,
     Json(body): Json<LessonPostRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let action_start = std::time::Instant::now();
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
+    let agent_id_for_cost = body.agent.clone().unwrap_or_else(|| "unknown".to_string());
     let headline = body.headline.trim().to_string();
     if headline.is_empty() {
         return Err((
@@ -926,6 +928,11 @@ async fn handle_lessons_post(
         ],
         ..Default::default()
     });
+    crate::coordination_cost::record_action(
+        &agent_id_for_cost,
+        "lesson_publish",
+        action_start.elapsed().as_millis() as u64,
+    );
     Ok(Json(serde_json::json!({
         "ok": true,
         "lesson_id": lesson_id,
@@ -940,25 +947,38 @@ async fn handle_lessons_get(
     headers: HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let action_start = std::time::Instant::now();
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
+    let agent_id_for_cost = params
+        .get("agent")
+        .cloned()
+        .unwrap_or_else(|| "unknown".to_string());
     let tag = params
         .get("tag")
         .map(|t| t.trim().to_lowercase())
         .filter(|t| !t.is_empty());
     let mut store = lesson_store().lock().unwrap_or_else(|e| e.into_inner());
     prune_expired_lessons(&mut store);
-    let lessons: Vec<&LessonRecord> = store
+    let lessons: Vec<LessonRecord> = store
         .iter()
         .filter(|l| match &tag {
             Some(t) => l.context_tags.iter().any(|ct| ct == t),
             None => true,
         })
+        .cloned()
         .collect();
+    drop(store);
+    let count = lessons.len();
+    crate::coordination_cost::record_action(
+        &agent_id_for_cost,
+        "lesson_fetch",
+        action_start.elapsed().as_millis() as u64,
+    );
     Ok(Json(serde_json::json!({
         "lessons": lessons,
-        "count": lessons.len(),
+        "count": count,
     })))
 }
 
@@ -9431,6 +9451,9 @@ fn build_api_router() -> Router {
             "/api/lessons",
             get(handle_lessons_get).post(handle_lessons_post),
         )
+        // META-082: coordination-action cost tracking (route decisions,
+        // lesson publish/fetch, etc.) — META-073 slice.
+        .route("/api/metrics", get(crate::metrics::handle_metrics))
         .route("/api/approve", post(handle_approve))
         // INFRA-1340: per-tool persistent auto-approve policies (PWA dropdown)
         .route(

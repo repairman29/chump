@@ -131,9 +131,15 @@ pub fn select_route(
     required_skills: Vec<String>,
     mut candidates: Vec<RoutingCandidate>,
 ) -> RoutingResult {
+    let action_start = std::time::Instant::now();
     let gap_id = gap_id.into();
 
     if candidates.is_empty() {
+        crate::coordination_cost::record_action(
+            "route-engine",
+            "route_decision",
+            action_start.elapsed().as_millis() as u64,
+        );
         return RoutingResult {
             gap_id,
             task_type,
@@ -190,6 +196,12 @@ pub fn select_route(
             },
         )
     };
+
+    crate::coordination_cost::record_action(
+        selected_session.as_deref().unwrap_or("route-engine"),
+        "route_decision",
+        action_start.elapsed().as_millis() as u64,
+    );
 
     RoutingResult {
         gap_id,
