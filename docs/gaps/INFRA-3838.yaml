@@ -1,0 +1,17 @@
+- id: INFRA-3838
+  domain: INFRA
+  title: "chump-worker is a 220-LOC stub (bash worker.sh is 2461 LOC) + no CHUMP_FLEET_RUST soak instrumentation — blocks INFRA-2065 cutover"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "crates/chump-coord/src/bin/chump-worker.rs reaches bash-parity with scripts/dispatch/worker.sh (2461 LOC): claim loop, gap-pick heuristics, lease renewal, CI-wait, ship-pipeline invocation, timeout/skew handling — not just the git2::Worktree slice shipped in Phase 1"
+    - "chump-worker reads PR state via the chump-github-cache crate (no gh CLI text-parse in the worker hot path) — currently chump-coord has no dependency on chump-github-cache at all"
+    - "ambient kind=worker_divergence_detected registered and actually emitted by a nightly/per-cycle comparator between bash worker.sh and chump-worker output — the event referenced in INFRA-2065 AC1 does not exist anywhere in the codebase today, so the '7+ day, zero divergence' soak has never been measurable, let alone started"
+    - "CHUMP_FLEET_RUST flag flipped from opt-in (default 0 in scripts/dispatch/run-fleet.sh:72) to default-on for at least one real multi-worker fleet session, with the soak window tracked in ambient.jsonl"
+  notes: |
+    Blocks INFRA-2065 (worker.sh + run-fleet.sh bash-body removal cutover). Discovered while claimed on INFRA-2065: that gap's AC1 (7+ consecutive days of CHUMP_FLEET_RUST=1 selecting chump-fleet across 3+ multi-worker sessions, zero kind=worker_divergence_detected) cannot start because the divergence-detector event is unregistered and unemitted anywhere in the tree, and AC4's hard dependency (INFRA-2062 chump-github-cache single-stack cutover) is still open — scripts/ops/github-webhook-receiver.py (the Python receiver INFRA-2062 is supposed to retire) is still present on disk, confirming that cutover has not landed.
+
+    Verified 2026-08-28: (1) crates/chump-coord/src/bin/chump-worker.rs is 220 LOC total vs. scripts/dispatch/worker.sh's 2461 LOC — nowhere near feature parity; deleting the bash body today would strand the fleet's per-worker claim/ship loop. (2) `grep -rn worker_divergence_detected` across the tree returns zero hits — the AC1 gating signal literally does not exist. (3) chump-coord's Cargo.toml has no chump-github-cache dependency, so AC4's "chump-worker reads PR state via chump-github-cache crate" requirement is unmet independent of INFRA-2062's status. (4) INFRA-2062 (github-cache cutover, the named hard dependency in INFRA-2065 AC4) is still status:open and scripts/ops/github-webhook-receiver.py still exists, so even the dependency chain is unmet. Do not re-attempt the INFRA-2065 cutover until this ships and a real CHUMP_FLEET_RUST=1-default soak with zero divergence has actually elapsed.
+  depends_on: []
+  outcome_id: MISSION-010
