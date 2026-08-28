@@ -11827,3 +11827,18 @@ events:
       size the migration via scripts/dev/ambient-kind-audit.sh.
     consumers: [ops-audit]
     fields_required: [ts, kind]
+
+  # ── Offline-first: network sync daemon (INFRA-1324, OFFLINE_FIRST.md Phase 3) ─
+  - kind: cache_sync_completed
+    status: active
+    effect_metric: self
+    emitter: crates/chump-github-cache/src/lib.rs (GithubCache::flush_pending_push_queue_and_sync)
+      + scripts/network-sync-daemon.sh fallback path
+    emitter_paths: [crates/chump-github-cache/src/lib.rs, scripts/network-sync-daemon.sh]
+    trigger: >
+      network-sync-daemon.sh detects connectivity has returned (or is run
+      with --simulate-reconnect) and flushes the offline pending-push queue,
+      then resyncs the GitHub Liaison cache. Fires once per flush attempt,
+      success or failure.
+    consumers: [network-sync-daemon operator log, scripts/ci/test-liaison-webhook-cache.sh]
+    fields_required: [ts, kind, status, duration_ms]

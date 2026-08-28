@@ -70,6 +70,7 @@ pub mod webhook;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 
 pub use error::CacheError;
 pub use schema::{CheckRun, PrState, PrSummary};
@@ -133,6 +134,38 @@ pub trait GithubCache: Send + Sync {
     /// A follow-up sub-gap will extend `pr_state` with a `files_csv`
     /// column and populate it from the receiver.
     async fn lookup_pr_files(&self, number: u64) -> Result<Vec<String>, CacheError>;
+
+    /// Flush the offline pending-push queue and bring the cache back in
+    /// sync with GitHub once connectivity returns.
+    ///
+    /// Called by `scripts/network-sync-daemon.sh` (INFRA-1322 / INFRA-1324)
+    /// when `_network_available` transitions from false to true. Emits a
+    /// `CacheSyncCompleted` event (`kind=cache_sync_completed`) to
+    /// `.chump-locks/ambient.jsonl` containing `status` and `duration_ms`
+    /// regardless of outcome — callers should not need to re-derive
+    /// success/failure by diffing state.
+    async fn flush_pending_push_queue_and_sync(&self) -> Result<SyncOutcome, CacheError>;
+}
+
+/// Result of one [`GithubCache::flush_pending_push_queue_and_sync`] call.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncOutcome {
+    /// `true` iff the flush + resync completed without error.
+    pub success: bool,
+    /// Wall-clock duration of the flush + resync, in milliseconds.
+    pub duration_ms: u64,
+}
+
+impl SyncOutcome {
+    /// `"success"` or `"failure"` — matches the daemon's log-line contract
+    /// (`EVENT: cache_sync_complete status=<success|failure> duration_ms=<N>`).
+    pub fn status_str(&self) -> &'static str {
+        if self.success {
+            "success"
+        } else {
+            "failure"
+        }
+    }
 }
 
 /// Concrete [`GithubCache`] impl backed by SQLite via `rusqlite`.
@@ -392,6 +425,85 @@ impl GithubCache for SqliteCache {
         // sub-gap will add a `files_csv` column + receiver population
         // + a REST fallback inside this method.
         Ok(Vec::new())
+    }
+
+    async fn flush_pending_push_queue_and_sync(&self) -> Result<SyncOutcome, CacheError> {
+        let started = std::time::Instant::now();
+        // Phase 1: the SQLite side of "sync" is proving the DB is still
+        // writable/reachable (the actual `git push` flush of
+        // `.chump-locks/pending-push.jsonl` lives in
+        // `scripts/network-sync-daemon.sh`, which owns process/network
+        // concerns the crate does not). A no-op write against our own
+        // connection is sufficient to detect a wedged/corrupt cache DB.
+        let result = self
+            .conn
+            .lock()
+            .map_err(|_| CacheError::BadInput("cache connection poisoned".to_string()))
+            .and_then(|conn| {
+                conn.execute_batch("PRAGMA user_version = user_version;")
+                    .map_err(CacheError::from)
+            });
+        let duration_ms = started.elapsed().as_millis() as u64;
+        let success = result.is_ok();
+        emit_cache_sync_completed(success, duration_ms);
+        // Always return Ok — the outcome (including failure) IS the
+        // payload callers want (status + duration_ms), not an error to
+        // propagate. `scripts/network-sync-daemon.sh` branches on
+        // `outcome.success` for its own exit code.
+        Ok(SyncOutcome {
+            success,
+            duration_ms,
+        })
+    }
+}
+
+/// Append a `CacheSyncCompleted` event (`kind=cache_sync_completed`) to
+/// `.chump-locks/ambient.jsonl`. Best-effort: a write failure here must
+/// never fail the sync it is reporting on.
+fn emit_cache_sync_completed(success: bool, duration_ms: u64) {
+    use std::io::Write as _;
+
+    // Honor CHUMP_AMBIENT_LOG (same override every bash emitter in this
+    // repo respects) before falling back to `<repo_root>/.chump-locks/ambient.jsonl`.
+    let ambient = if let Ok(explicit) = std::env::var("CHUMP_AMBIENT_LOG") {
+        PathBuf::from(explicit)
+    } else {
+        let repo_root = std::process::Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| ".".to_string());
+        PathBuf::from(repo_root)
+            .join(".chump-locks")
+            .join("ambient.jsonl")
+    };
+    if let Some(parent) = ambient.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let ts = std::process::Command::new("date")
+        .args(["-u", "+%Y-%m-%dT%H:%M:%SZ"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
+    let status = if success { "success" } else { "failure" };
+    let line = format!(
+        r#"{{"ts":"{ts}","kind":"cache_sync_completed","status":"{status}","duration_ms":{duration_ms}}}"#,
+    );
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient)
+    {
+        let _ = writeln!(f, "{}", line);
     }
 }
 

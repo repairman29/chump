@@ -284,6 +284,39 @@ tail -n "+$((SNAP_DELTA2 + 1))" "$AMBIENT" \
     || fail "δ(b): liaison_cache_offline_read missing helper=cache_lookup_pr"
 ok "slice δ(b): cache_lookup_pr emits liaison_cache_offline_read when CHUMP_GITHUB_MODE=offline"
 
+# ── test_flush_on_reconnect (INFRA-1324) ──────────────────────────────────────
+# scripts/network-sync-daemon.sh --simulate-reconnect flushes the pending-push
+# queue + resyncs the cache; asserts the daemon's own log line plus the
+# resulting ambient cache_sync_completed status=success.
+NETWORK_SYNC_DAEMON="$REPO_ROOT/scripts/network-sync-daemon.sh"
+test_flush_on_reconnect() {
+    [[ -f "$NETWORK_SYNC_DAEMON" ]] || fail "test_flush_on_reconnect: missing $NETWORK_SYNC_DAEMON"
+    bash -n "$NETWORK_SYNC_DAEMON" || fail "test_flush_on_reconnect: daemon has syntax error"
+
+    local snap daemon_log rc
+    snap=$(ambient_line_count)
+    daemon_log="$TMP/network-sync-daemon.log"
+    rc=0
+    CHUMP_AMBIENT_LOG="$AMBIENT" \
+        CHUMP_CACHE_DB="$CACHE_DB" \
+        REPO_ROOT="$REPO_ROOT" \
+        bash "$NETWORK_SYNC_DAEMON" --simulate-reconnect >"$daemon_log" 2>&1 || rc=$?
+
+    [[ "$rc" -eq 0 ]] || fail "test_flush_on_reconnect: daemon exited $rc; log=$(cat "$daemon_log")"
+    grep -q 'EVENT: cache_sync_complete status=success' "$daemon_log" \
+        || fail "test_flush_on_reconnect: missing daemon log line; log=$(cat "$daemon_log")"
+
+    sleep 0.2
+    ambient_has_kind_after "$snap" cache_sync_completed \
+        || fail "test_flush_on_reconnect: cache_sync_completed not emitted; ambient tail=$(tail -5 "$AMBIENT" 2>/dev/null)"
+    tail -n "+$((snap + 1))" "$AMBIENT" \
+        | grep '"kind":"cache_sync_completed"' \
+        | grep -q '"status":"success"' \
+        || fail "test_flush_on_reconnect: cache_sync_completed missing status=success"
+    ok "test_flush_on_reconnect: --simulate-reconnect logs cache_sync_complete status=success within budget"
+}
+test_flush_on_reconnect
+
 # ── Final: confirm all 5 slice signals present in ambient.jsonl ──────────────
 echo ""
 echo "Signal summary (all 5 must be present):"

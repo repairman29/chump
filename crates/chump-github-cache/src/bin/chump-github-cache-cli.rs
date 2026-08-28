@@ -59,6 +59,10 @@ enum Cmd {
     QueryBehindPrs,
     /// Phase 1 stub: bulk-refill loop deferred. Prints `0`.
     RefreshOpenPrs,
+    /// Flush the offline pending-push queue + resync the cache (INFRA-1324).
+    /// Prints `status=<success|failure> duration_ms=<N>`; exit code mirrors
+    /// success/failure so `scripts/network-sync-daemon.sh` can branch on it.
+    FlushPendingPushAndSync,
 }
 
 fn resolve_db_path(arg: Option<PathBuf>) -> PathBuf {
@@ -176,6 +180,19 @@ async fn dispatch(cache: &SqliteCache, cmd: Cmd) -> Result<(), CacheError> {
             // follow-up sub-gap. Print 0 (matches the bash helper's
             // exit-stdout when it has nothing to refill).
             println!("0");
+        }
+        Cmd::FlushPendingPushAndSync => {
+            let outcome = cache.flush_pending_push_queue_and_sync().await?;
+            println!(
+                "status={status} duration_ms={duration_ms}",
+                status = outcome.status_str(),
+                duration_ms = outcome.duration_ms,
+            );
+            if !outcome.success {
+                return Err(CacheError::BadInput(
+                    "flush_pending_push_queue_and_sync reported failure".to_string(),
+                ));
+            }
         }
     }
     Ok(())

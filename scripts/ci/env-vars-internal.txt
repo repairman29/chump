@@ -2322,3 +2322,16 @@ CHUMP_AMBIENT_KIND_LAX
 CHUMP_AMBIENT_REJECTED_LOG
 # detected in: (standard input)
 CHUMP_AMBIENT_SCHEMA_CHECK
+
+# INFRA-1324: scripts/network-sync-daemon.sh overrides (pending-push queue
+# path + reconnect probe target/timing).
+# detected in: scripts/network-sync-daemon.sh
+CHUMP_PENDING_PUSH_QUEUE
+# detected in: scripts/network-sync-daemon.sh
+CHUMP_NETWORK_SYNC_INTERVAL_S
+# detected in: scripts/network-sync-daemon.sh
+CHUMP_NETWORK_SYNC_PROBE_HOST
+# detected in: scripts/network-sync-daemon.sh
+CHUMP_NETWORK_SYNC_PROBE_PORT
+# detected in: scripts/network-sync-daemon.sh
+CHUMP_NETWORK_SYNC_PROBE_TIMEOUT_S
