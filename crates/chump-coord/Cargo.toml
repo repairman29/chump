@@ -29,6 +29,12 @@ path = "src/bin/chump-fleet.rs"
 name = "chump-curator-subscriber"
 path = "src/bin/chump-curator-subscriber.rs"
 
+# INFRA-1804: BandwidthBudget-backed gate for the chump_gh self-throttle
+# (background-criticality path). Opt-in via CHUMP_BANDWIDTH_GATE_RUST=1.
+[[bin]]
+name = "chump-bandwidth-gate"
+path = "src/bin/chump-bandwidth-gate.rs"
+
 [lib]
 path = "src/lib.rs"
 

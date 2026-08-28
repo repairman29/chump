@@ -418,6 +418,37 @@ PY
 #
 # Each delay emits kind=gh_preempted with {script, api, waited_s,
 # remaining_percent_before, remaining_percent_after}.
+# INFRA-1804: BandwidthBudget-backed gate, opt-in compatibility shim around
+# CHUMP_GH_MAX_CALLS_PER_MIN. When CHUMP_BANDWIDTH_GATE_RUST=1, a background
+# call first checks a chump-coord::mesh::BandwidthBudget-backed CLI
+# (chump-bandwidth-gate) — same calls-per-minute cap the query-class
+# token-bucket in _chump_gh_throttle_wait already enforces, but expressed
+# through the mesh crate's budget type instead of the ad-hoc python window
+# file. Defaults off: unset/0 leaves this function's existing
+# graphql-remaining-percent logic as the only gate (no behavior change).
+_chump_gh_bandwidth_gate_check() {
+    local script_tag="${1:-?}" api_tag="${2:-?}"
+    [[ "${CHUMP_BANDWIDTH_GATE_RUST:-0}" == "1" ]] || return 0
+    command -v chump-bandwidth-gate >/dev/null 2>&1 || return 0
+
+    local max_per_min="${CHUMP_GH_QUERY_MAX:-${CHUMP_GH_MAX_CALLS_PER_MIN:-60}}"
+    local lock_dir; lock_dir="$(dirname "$(_chump_gh_ambient_path)")"
+    local state_file="$lock_dir/.gh-bandwidth-budget.${script_tag}.json"
+
+    if chump-bandwidth-gate --state-file "$state_file" --max-calls-per-min "$max_per_min" \
+        --criticality background >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local ambient; ambient="$(_chump_gh_ambient_path)"
+    mkdir -p "$(dirname "$ambient")" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"gh_preempted","script":"%s","api":"%s","waited_s":1,"remaining_percent_before":0,"remaining_percent_after":0}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$script_tag" "$api_tag" \
+        >> "$ambient" 2>/dev/null || true
+    sleep 1
+    return 0
+}
+
 _chump_gh_preempt_if_low() {
     local script_tag="${1:-?}"
     local api_tag="${2:-?}"
@@ -425,6 +456,9 @@ _chump_gh_preempt_if_low() {
     # Critical calls are never preempted.
     [[ "$criticality" == "critical" ]] && return 0
     [[ "${CHUMP_GH_NO_PREEMPT:-0}" == "1" ]] && return 0
+
+    # INFRA-1804: BandwidthBudget compatibility shim (opt-in, defers only).
+    _chump_gh_bandwidth_gate_check "$script_tag" "$api_tag"
 
     local threshold_pct="${CHUMP_GH_BACKOFF_THRESHOLD:-10}"
     # Read remaining + reset

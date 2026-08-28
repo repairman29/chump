@@ -148,7 +148,7 @@ pub mod channels {
 /// Bandwidth budget tracking — ported from the internal sibling repo's
 /// crates/coord/src/mesh/abstract_impl.rs (MIT-licensed); 'bytes' framing
 /// kept as-is (INFRA-1804 fold-in), callers may treat units as tokens.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BandwidthBudget {
     /// Bytes remaining in current window.
     pub remaining: usize,
