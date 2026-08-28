@@ -1,0 +1,18 @@
+- id: INFRA-3839
+  domain: INFRA
+  title: "chump-worker/chump-fleet Phase 1 stubs (no NATS PUSH, no divergence event, worker_divergence_detected unregistered) - blocks INFRA-2065 cutover"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "chump-fleet (crates/chump-coord/src/bin/chump-fleet.rs) ported past Phase 1 scope: worker_restarted emission added, PUSH-mode NATS path implemented (currently stubbed)"
+    - "chump-worker (crates/chump-coord/src/bin/chump-worker.rs) ported past Phase 1 scope: full cycle parity with scripts/dispatch/worker.sh, not just the PULL-mode happy path"
+    - "kind=worker_divergence_detected registered in docs/observability/EVENT_REGISTRY.yaml and actually emitted by a comparator that runs both bash and Rust paths and diffs outcomes"
+    - "CHUMP_FLEET_RUST default flipped from 0 to 1 in scripts/dispatch/run-fleet.sh"
+    - "Real 7+ consecutive day soak window opened and tracked in ambient.jsonl across 3+ distinct multi-worker fleet sessions, with kind=worker_divergence_detected count == 0 over the window"
+  notes: |
+    Blocks INFRA-2065 (worker.sh + run-fleet.sh bash-body removal cutover). Discovered while claimed on INFRA-2065: that gap's AC1 (7+ day CHUMP_FLEET_RUST=1-as-default soak with zero divergence) cannot start until this ships, because the flag still defaults to 0 and both Rust binaries are Phase-1 stubs.
+
+    Verified 2026-08-28: (1) scripts/dispatch/run-fleet.sh:72 still reads CHUMP_FLEET_RUST:-0 — the flag has NEVER been flipped to default-on, so the AC1 "7+ consecutive days as default" clock has not started. (2) crates/chump-coord/src/bin/chump-fleet.rs's own module doc says "## Phase 1 scope: PULL-mode only (workers stub the NATS PUSH path); No worker_restarted emission (kind not registered)". (3) crates/chump-coord/src/bin/chump-worker.rs's own module doc says "## Phase 1 scope: PULL-mode happy path against state.db (no NATS subscribe); No new ambient event kinds emitted." (4) kind=worker_divergence_detected does not exist in docs/observability/EVENT_REGISTRY.yaml and is emitted nowhere in the codebase — it structurally cannot have counted 0 over any window because no window has ever opened. (5) scripts/dispatch/worker.sh and scripts/dispatch/run-fleet.sh both received active commits in the last week (#4265, #4255, #4243), confirming they are still the fleet's live worker-spawn path, not a dormant parallel-run shadow. (6) Separately, INFRA-2065's AC4 hard dependency INFRA-2062 (chump-github-cache cutover) is itself still status:open with its own unmet 14-day parallel-run AC — cutting INFRA-2065 over now would also violate that precondition.
+  depends_on: []
+  outcome_id: MISSION-010
