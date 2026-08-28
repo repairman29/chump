@@ -66,6 +66,8 @@ Each new inbox line arrives as a `<task-notification>` that wakes the loop. Oper
 
 **Why it matters**: validated 2026-05-24 by curator-opus-target — Monitor `bo2mnd8z0` delivered a wizard DM in 0s vs the prior 5m cron poll. Operator's explicit fix to the operator-as-messenger antipattern (INFRA-1860/INFRA-1879).
 
+**Mid-session resilience (INFRA-1942, INFRA-1936 follow-up)**: on receiving a task-notification with status=killed for your inbox-watcher Monitor, immediately re-arm a fresh one (same command as above) before continuing any other work. A killed watcher means you're back to blind (no wake on new DMs) until re-armed — don't let it linger. Pairs with INFRA-1941 (SessionStart nag, catches this at session boundaries; this covers the mid-session gap).
+
 **Also on first turn (and on any role-switch within this shell)** — emit a role card (INFRA-2017, RCA Change 2 follow-up) so peers dedupe this physical session by `session_id` instead of alias:
 ```
 bash scripts/coord/role-card-emit.sh --role curator-opus-target --lane EFFECTIVE --wake-mode event-driven [--claim <active-gap-id>]
