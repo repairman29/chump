@@ -5,9 +5,17 @@
 # ledger that notify-operator.sh consults: QUIET by default, page the phone only
 # for halt-class or novel (no-playbook) signals.
 #
-# Format:  <signal-kind><TAB>suppress|page      (# comments + blank lines ignored)
+# Format:  <signal-kind><TAB>suppress|page|direct   (# comments + blank lines ignored)
 #   suppress = has an auto-heal/runbook → log it, DON'T DM the operator.
-#   page     = no automated remedy / operator must decide → DM the phone.
+#   page     = no automated remedy / operator must decide → DM the phone AND
+#              emit an operator_paged escalation event (counts against the
+#              page-rate vital sign in scripts/ops/vital-signs.sh).
+#   direct   = NOT an escalation — a normal DM the fleet OWES the operator (e.g.
+#              the Advisor's answer to a Jeff DM). DELIVER the message, but emit
+#              operator_direct_message instead of operator_paged so it never
+#              inflates the page-rate metric or trips the cry-wolf watchers.
+#              (INFRA-3835: without this, every advisor reply defaulted to PAGE
+#              and fired a spurious operator_paged on top of the real answer.)
 # A kind NOT listed here defaults to PAGE (fail loud — an unknown signal is, by
 # definition, one we have no playbook for). CHUMP_NOTIFY_SEVERITY=halt always pages.
 #
@@ -35,6 +43,12 @@ gap_autoflip_suppressed	suppress	# CREDIBLE-268 informational audit trail
 gap_flipped_done_on_merge	suppress	# CREDIBLE-275: routine when correct (title/Closes:-scoped extraction); wiring this as a real consumer gives it an audited operator_notify_suppressed trail instead of the void it sat in before
 oauth_token_refreshed	suppress
 ci_flake_rerun	suppress	# nextest flake wrapper + manual rerun playbook
+discord_advisor_agent_failed	suppress	# INFRA-3835: a failed advisor turn is a QUIET diagnostic (ambient log), never a phone page. The in-script fallback in discord-advisor-agent.sh sends Jeff ONE graceful "let me get back to you" DM (via discord_advisor_reply/direct) — and ONLY when no answer already landed — so a crash never double-DMs.
+
+# ── DIRECT: not an escalation — a normal DM the fleet owes the operator. ───────
+# Deliver the message; emit operator_direct_message (NOT operator_paged) so it
+# never counts against the page-rate vital sign.
+discord_advisor_reply	direct	# INFRA-3835: The Advisor's answer to a Jeff DM. This notify_operator call IS the reply — deliver it, but it is not an incident, so no operator_paged.
 
 # ── PAGE: halt-class or no automated remedy → reach the operator ──────────────
 # (Unlisted kinds also page by default; these document intent + catch typos.)

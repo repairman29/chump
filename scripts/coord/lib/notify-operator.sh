@@ -85,9 +85,15 @@ _notify_env() {
 # Classification input (both optional, set by the caller):
 #   CHUMP_NOTIFY_KIND      the ambient/signal kind (e.g. discord_gateway_down)
 #   CHUMP_NOTIFY_SEVERITY  set to "halt" to force a page regardless of registry
-# Registry: scripts/coord/operator-escalation-registry.txt — "<kind><TAB>suppress|page".
+# Registry: scripts/coord/operator-escalation-registry.txt — "<kind><TAB>suppress|page|direct".
 # Rules: halt severity → PAGE. kind in registry → its verdict. Unknown kind or
 # no kind → PAGE (fail loud: "no playbook → tell me").
+#   suppress → log operator_notify_suppressed, DO NOT DM.
+#   page     → emit operator_paged (counts against page-rate) AND DM the phone.
+#   direct   → INFRA-3835: emit operator_direct_message and DM, but it is NOT an
+#              escalation (no operator_paged). For normal messages the fleet owes
+#              the operator, e.g. the Advisor's answer — the DM IS the payload,
+#              a parallel "you were paged" event would be pure noise.
 _notify_ambient_log() {
     local root; root="$(_notify_repo_root)"
     printf '%s\n' "${CHUMP_AMBIENT_LOG:-${root}/.chump-locks/ambient.jsonl}"
@@ -100,8 +106,10 @@ _notify_emit() {  # kind, extra_json_fragment
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "${2:-}" >> "$log" 2>/dev/null || true
 }
 
-# Returns "page" or "suppress" on stdout. Default is PAGE (novel/no-playbook).
-# Whitespace-split (space OR tab); anything after the verdict is an inline comment.
+# Returns "page", "suppress", or "direct" on stdout. Default is PAGE
+# (novel/no-playbook). Whitespace-split (space OR tab); anything after the
+# verdict is an inline comment. "direct" (INFRA-3835) means a normal DM the
+# fleet owes the operator — deliver it, but it is NOT an escalation.
 _notify_escalation_verdict() {
     local kind="$1" root reg k verdict _rest
     [[ -n "$kind" ]] || { echo "page"; return; }   # unclassified caller → page
@@ -111,7 +119,11 @@ _notify_escalation_verdict() {
     while read -r k verdict _rest; do
         [[ -z "$k" || "$k" == \#* ]] && continue
         if [[ "$kind" == "$k" ]]; then
-            [[ "$verdict" == "suppress" ]] && echo "suppress" || echo "page"
+            case "$verdict" in
+                suppress) echo "suppress" ;;
+                direct)   echo "direct" ;;
+                *)        echo "page" ;;            # page or any typo → fail loud
+            esac
             return
         fi
     done < "$reg"
@@ -131,9 +143,18 @@ notify_operator() {
             echo "[notify-operator] SUPPRESSED (playbook exists, quiet-by-default): kind=${_kind}" >&2
             return 0
         fi
-        # Page-worthy: record whether it was classified or fell through as novel.
-        [[ -n "$_kind" ]] && _notify_emit "operator_paged" ",\"signal\":\"${_kind}\",\"class\":\"registry-page\"" \
-                          || _notify_emit "operator_paged" ",\"class\":\"unclassified-caller\""
+        if [[ "$_verdict" == "direct" ]]; then
+            # INFRA-3835: a normal DM the fleet owes the operator (e.g. the
+            # Advisor's answer). DELIVER it (fall through to the Discord send),
+            # but emit operator_direct_message rather than operator_paged — it is
+            # not an escalation, so it must not inflate the page-rate vital sign.
+            _notify_emit "operator_direct_message" ",\"signal\":\"${_kind}\""
+            echo "[notify-operator] DIRECT (owed-message, delivered without paging): kind=${_kind}" >&2
+        else
+            # Page-worthy: record whether it was classified or fell through as novel.
+            [[ -n "$_kind" ]] && _notify_emit "operator_paged" ",\"signal\":\"${_kind}\",\"class\":\"registry-page\"" \
+                              || _notify_emit "operator_paged" ",\"class\":\"unclassified-caller\""
+        fi
     fi
 
     local token uid

@@ -97,6 +97,72 @@ else
     bad "no chunking — a >2000 char alert will be rejected or lose content"
 fi
 
+# 9. INFRA-3835: the escalation VERDICT + emit behavior. The advisor's answer
+#    used to default to PAGE (unclassified kind), firing a spurious operator_paged
+#    ambient event on top of the real reply DM — and a crash added a second page.
+#    Assert the classification and the emit that follows from it, with an isolated
+#    ambient log and Discord unconfigured (so notify_operator no-ops after
+#    emitting; the emit happens before token resolution). This tests the actual
+#    behavior, not merely that the registry file contains a line.
+REG="$REPO_ROOT/scripts/coord/operator-escalation-registry.txt"
+
+# Helper: run notify_operator for a kind against a throwaway ambient log; echo
+# the emitted event kinds (one per line). Discord intentionally unconfigured.
+_verdict_emits() {
+    local kind="$1" log; log="$(mktemp)"
+    bash -c "unset DISCORD_TOKEN CHUMP_READY_DM_USER_ID; \
+        export CHUMP_AMBIENT_LOG='$log'; \
+        source '$LIB' 2>/dev/null; \
+        CHUMP_NOTIFY_KIND='$kind' notify_operator 'regression probe' >/dev/null 2>&1"
+    grep -oE '"kind":"[a-zA-Z0-9_]+"' "$log" 2>/dev/null | sed 's/.*:"//;s/"//'
+    rm -f "$log"
+}
+
+# 9a. Registry classifies the advisor reply as `direct` (deliver, don't page).
+if grep -qE '^discord_advisor_reply[[:space:]]+direct\b' "$REG"; then
+    ok "registry classifies discord_advisor_reply as direct"
+else
+    bad "discord_advisor_reply is not classified direct — advisor replies will page"
+fi
+
+# 9b. A direct-classified reply emits operator_direct_message and NEVER operator_paged.
+emits="$(_verdict_emits discord_advisor_reply)"
+if grep -q "operator_direct_message" <<<"$emits" && ! grep -q "operator_paged" <<<"$emits"; then
+    ok "discord_advisor_reply emits operator_direct_message, not operator_paged"
+else
+    bad "discord_advisor_reply emitted [$emits] — expected operator_direct_message and no operator_paged"
+fi
+
+# 9c. A failed advisor turn is suppressed (quiet diagnostic), never a phone page.
+if grep -qE '^discord_advisor_agent_failed[[:space:]]+suppress\b' "$REG"; then
+    ok "registry classifies discord_advisor_agent_failed as suppress"
+else
+    bad "discord_advisor_agent_failed is not suppressed — a crashed turn will page"
+fi
+emits="$(_verdict_emits discord_advisor_agent_failed)"
+if grep -q "operator_notify_suppressed" <<<"$emits" && ! grep -q "operator_paged" <<<"$emits"; then
+    ok "discord_advisor_agent_failed emits operator_notify_suppressed, not operator_paged"
+else
+    bad "discord_advisor_agent_failed emitted [$emits] — expected operator_notify_suppressed only"
+fi
+
+# 9d. Regression: a genuinely page-worthy kind still emits operator_paged.
+emits="$(_verdict_emits security_incident)"
+if grep -q "operator_paged" <<<"$emits"; then
+    ok "page-classified kind still emits operator_paged (escalation intact)"
+else
+    bad "security_incident emitted [$emits] — page path regressed, escalations lost"
+fi
+
+# 9e. The new operator_direct_message emit MUST NOT be counted by the page-rate
+#     vital sign (that metric is the cry-wolf tripwire this whole fix protects).
+VITAL="$REPO_ROOT/scripts/ops/vital-signs.sh"
+if [[ -f "$VITAL" ]] && grep -q "operator_direct_message" "$VITAL"; then
+    bad "vital-signs.sh counts operator_direct_message as a page — it must not"
+else
+    ok "operator_direct_message is not counted against the operator page-rate"
+fi
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ $FAIL -eq 0 ]] || exit 1
