@@ -392,17 +392,269 @@ write_node_env() {
 }
 
 # ---------- 4. BINARY ----------
-ensure_binary() {
-  local found=""
-  for c in "$BIN" "$HOME/chump/chump" "$(command -v chump 2>/dev/null)"; do
-    [ -n "$c" ] && [ -x "$c" ] && { found="$c"; break; }
-  done
-  if [ -n "$found" ]; then
-    [ "$found" != "$BIN" ] && run "ln -sf '$found' '$BIN'"
-    ok "binary: $found -> $BIN"
+# sha256 of a file as lowercase hex (host-agnostic: coreutils | BSD/macOS).
+sha256_hex() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" 2>/dev/null | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'
+  else return 1; fi
+}
+
+# Map this host to the cargo target triple the release workflow (dist-workspace.toml
+# `targets`) publishes a pre-built artifact for, or fail (no artifact → build).
+# Honors detect_host()'s $ARCH/$OS; termux/android has no release artifact.
+host_target_triple() {
+  case "${HOST_KIND:-}" in termux) return 1;; esac
+  local arch os
+  case "${ARCH:-}" in
+    x86_64|amd64) arch=x86_64;;
+    aarch64|arm64) arch=aarch64;;
+    *) return 1;;
+  esac
+  case "${OS:-}" in
+    Linux) os=unknown-linux-gnu;;
+    Darwin) os=apple-darwin;;
+    *) return 1;;
+  esac
+  printf '%s-%s\n' "$arch" "$os"
+}
+
+# Provenance gate — the heart of the false-pass fix. A binary at $1 is trusted
+# ONLY if it is one of:
+#   (a) release-sourced: its on-disk sha256 still matches the sha recorded when
+#       fetch_release_binary downloaded + published-checksum-verified it, or
+#   (b) built-from-this-repo-HEAD: its embedded build SHA (`chump --version`,
+#       baked by build.rs) is a prefix of the cloned repo's HEAD commit.
+# An arbitrary/inherited/stale `chump` (no marker, or SHA that matches neither)
+# FAILS — it must never be accepted as "INSTALLED".
+binary_provenance_ok() {
+  local bin="$1"
+  [ -x "$bin" ] || return 1
+  if [ -f "$bin.provenance" ] && grep -q '^source=release' "$bin.provenance" 2>/dev/null; then
+    local want got
+    want="$(grep '^binsha256=' "$bin.provenance" 2>/dev/null | cut -d= -f2)"
+    got="$(sha256_hex "$bin")"
+    [ -n "$want" ] && [ "$want" = "$got" ] && return 0
+    return 1
+  fi
+  local head_full ver_sha
+  head_full="$(git -C "$NODE_DIR/repo" rev-parse HEAD 2>/dev/null)"
+  ver_sha="$("$bin" --version 2>/dev/null | grep -oiE '[0-9a-f]{7,40}' | head -1)"
+  if [ -n "$head_full" ] && [ -n "$ver_sha" ] && [ "$ver_sha" != "unknown" ]; then
+    case "$head_full" in
+      "$ver_sha"*)
+        printf 'source=build\nsha=%s\nverified=%s\n' \
+          "$ver_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$bin.provenance" 2>/dev/null || true
+        return 0;;
+    esac
+  fi
+  return 1
+}
+
+# Export GH_TOKEN from providers.env (if present) so `gh api` / `gh run
+# download` can authenticate on a bare box — Actions artifacts require a token
+# even for public repos. Never echoes the value.
+_load_gh_token_for_fetch() {
+  [ -n "${GH_TOKEN:-}" ] && return 0
+  [ -f "$CREDS" ] || return 0
+  local t; t="$(grep -E '^(export )?GH_TOKEN=' "$CREDS" 2>/dev/null | tail -1 | sed -E 's/^(export )?GH_TOKEN=//; s/^"(.*)"$/\1/')"
+  [ -n "$t" ] && export GH_TOKEN="$t"
+  return 0
+}
+
+# PRIMARY fast path: pull the HEAD-exact pre-built binary that the fleet's free
+# GH-hosted CI already built for the repo's checked-out commit
+# (.github/workflows/build-fleet-binaries.yml → per-SHA Actions artifact
+# `chump-<target>-<full-sha>`), verify its sha256 + that `chump --version`
+# embeds that commit, and install it to $BIN — instead of a multi-minute cold
+# compile. This is the SAME artifact source scripts/ops/node-refresh-chump.sh
+# uses for the running-node refresh path (mine-before-build). HEAD-exact, so
+# the installed binary's provenance is "built-from-this-repo-HEAD" — no
+# staleness. Returns 1 (caller falls back) on any miss: fetch disabled, no gh,
+# unknown arch, no successful run for the SHA, or integrity/version mismatch.
+#   CHUMP_BINARY_NO_FETCH=1      skip all pre-built fetch (force build-from-source)
+#   CHUMP_ARTIFACT_WORKFLOW=...  workflow file to query (default build-fleet-binaries.yml)
+fetch_ci_artifact_binary() {
+  [ "${CHUMP_BINARY_NO_FETCH:-0}" = 1 ] && { info BINARY "pre-built fetch disabled (CHUMP_BINARY_NO_FETCH=1) — building from source"; return 1; }
+  local triple
+  triple="$(host_target_triple)" || { info BINARY "no pre-built target triple for ${OS:-?}/${ARCH:-?} — building from source"; return 1; }
+  command -v gh >/dev/null 2>&1 || { info BINARY "gh unavailable — cannot pull CI artifact; trying next source"; return 1; }
+  sha256_hex /dev/null >/dev/null 2>&1 || { info BINARY "no sha256 tool — cannot verify CI artifact; trying next source"; return 1; }
+  [ -d "$NODE_DIR/repo/.git" ] || { info BINARY "no repo checkout — cannot resolve HEAD for CI artifact; trying next source"; return 1; }
+  _load_gh_token_for_fetch
+
+  local slug; slug="$(printf '%s' "$REPO_URL" | sed -E 's#^https?://github.com/##; s#\.git$##')"
+  local full_sha short_sha
+  full_sha="$(git -C "$NODE_DIR/repo" rev-parse HEAD 2>/dev/null)"
+  short_sha="$(git -C "$NODE_DIR/repo" rev-parse --short=12 HEAD 2>/dev/null)"
+  [ -n "$full_sha" ] || { info BINARY "cannot resolve repo HEAD — trying next source"; return 1; }
+
+  # Idempotent accept: $BIN already built-from-this-HEAD (release/reset re-run).
+  if [ -x "$BIN" ] && binary_provenance_ok "$BIN"; then
+    ok "binary already present + provenance verified for HEAD — no fetch needed: $BIN"
     return 0
   fi
-  build_binary_from_repo
+
+  local wf="${CHUMP_ARTIFACT_WORKFLOW:-build-fleet-binaries.yml}"
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: gh api runs?head_sha=$short_sha&status=success -> gh run download chump-$triple-$full_sha, sha256+version verify, install -> $BIN"
+    return 0
+  fi
+
+  local run_id
+  run_id="$(gh api "repos/$slug/actions/workflows/$wf/runs?head_sha=$full_sha&status=success&per_page=1" \
+    --jq '.workflow_runs[0].id' 2>/dev/null | grep -vE '^(null)?$' || true)"
+  if [ -z "$run_id" ]; then
+    info BINARY "no successful $wf run for HEAD $short_sha — trying next source"
+    return 1
+  fi
+  local dl="$NODE_DIR/bin/.dlci" aname="chump-${triple}-${full_sha}"
+  run "rm -rf '$dl'"; run "mkdir -p '$dl'"
+  info BINARY "pulling CI artifact $aname (run $run_id) — download, not compile"
+  if ! gh run download "$run_id" --repo "$slug" -n "$aname" --dir "$dl" >/dev/null 2>&1; then
+    no "CI artifact download failed ($aname, run $run_id) — trying next source"; rm -rf "$dl"; return 1
+  fi
+  local pulled="$dl/chump"
+  [ -f "$pulled" ] || { no "CI artifact held no chump binary — trying next source"; rm -rf "$dl"; return 1; }
+  # Integrity: sha256 the artifact ships must match the binary.
+  if [ -f "$dl/chump.sha256" ]; then
+    local want got; want="$(awk '{print $1}' "$dl/chump.sha256" | head -1)"; got="$(sha256_hex "$pulled")"
+    if [ -n "$want" ] && [ "$want" != "$got" ]; then
+      no "CI artifact sha256 MISMATCH (published=$want computed=$got) — refusing, trying next source"; rm -rf "$dl"; return 1
+    fi
+    ok "sha256 verified: $aname ($got)"
+  fi
+  chmod +x "$pulled" 2>/dev/null || true
+  run "mkdir -p '$NODE_DIR/bin'"
+  install -m 755 "$pulled" "$BIN" 2>/dev/null || { cp -f "$pulled" "$BIN"; chmod +x "$BIN"; }
+  # Provenance: --version must embed the HEAD commit we resolved above.
+  local warm; warm="$("$BIN" --version 2>&1)"
+  case "$warm" in
+    *"$short_sha"*) ok "CI artifact installed + HEAD-verified: $BIN ($warm)";;
+    *) no "CI artifact --version ('$warm') does not embed HEAD $short_sha — discarding, trying next source"; rm -f "$BIN"; rm -rf "$dl"; return 1;;
+  esac
+  printf 'source=ci-artifact\nrun_id=%s\ntriple=%s\nsha=%s\ninstalled=%s\n' \
+    "$run_id" "$triple" "$short_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$BIN.provenance"
+  rm -rf "$dl"
+  return 0
+}
+
+# SECONDARY pre-built path (opt-in): fetch a SHA-pinned cargo-dist GitHub
+# *Release* tarball for this host's triple and verify its sha256 against the
+# published checksum. OFF by default: published releases can lag origin/main by
+# months (v0.1.2 vs 0.2.0), so silently installing one would freshly-install a
+# STALE binary — worse than building current. Enable only when a fast install
+# matters more than currency (CHUMP_BINARY_ALLOW_STALE_RELEASE=1).
+#   CHUMP_RELEASE_TAG=<tag>     pin a specific release (default: latest published)
+#   CHUMP_BINARY_NO_FETCH=1     skip the fetch entirely (force build-from-source)
+fetch_release_binary() {
+  [ "${CHUMP_BINARY_NO_FETCH:-0}" = 1 ] && { info BINARY "release fetch disabled (CHUMP_BINARY_NO_FETCH=1) — building from source"; return 1; }
+  [ "${CHUMP_BINARY_ALLOW_STALE_RELEASE:-0}" = 1 ] || { info BINARY "stale-release fallback off (set CHUMP_BINARY_ALLOW_STALE_RELEASE=1 to enable) — building from source"; return 1; }
+  local triple
+  triple="$(host_target_triple)" || { info BINARY "no pre-built target triple for ${OS:-?}/${ARCH:-?} — building from source"; return 1; }
+  command -v tar  >/dev/null 2>&1 || { info BINARY "tar missing — cannot use pre-built; building"; return 1; }
+  command -v curl >/dev/null 2>&1 || { info BINARY "curl missing — cannot fetch pre-built; building"; return 1; }
+  sha256_hex /dev/null >/dev/null 2>&1 || { info BINARY "no sha256 tool — cannot verify pre-built; building"; return 1; }
+
+  local slug; slug="$(printf '%s' "$REPO_URL" | sed -E 's#^https?://github.com/##; s#\.git$##')"
+
+  # Resolve the pinned tag: explicit env > latest published release.
+  local tag="${CHUMP_RELEASE_TAG:-}"
+  if [ -z "$tag" ]; then
+    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+      tag="$(gh release view --repo "$slug" --json tagName -q .tagName 2>/dev/null)"
+    fi
+    [ -z "$tag" ] && tag="$(curl -fsSL "https://api.github.com/repos/$slug/releases/latest" 2>/dev/null | grep -m1 '"tag_name"' | cut -d'"' -f4)"
+  fi
+  [ -n "$tag" ] && [ "$tag" != "null" ] || { info BINARY "no published release for $slug — building from source"; return 1; }
+
+  # Idempotent accept: a prior release install we can re-verify by sha (no
+  # re-download on every reset-loop tick).
+  if [ -x "$BIN" ] && [ -f "$BIN.provenance" ] && grep -q '^source=release' "$BIN.provenance" 2>/dev/null; then
+    local pv_tag pv_sha now_sha
+    pv_tag="$(grep '^tag=' "$BIN.provenance" | cut -d= -f2)"
+    pv_sha="$(grep '^binsha256=' "$BIN.provenance" | cut -d= -f2)"
+    now_sha="$(sha256_hex "$BIN")"
+    if [ "$pv_tag" = "$tag" ] && [ -n "$pv_sha" ] && [ "$pv_sha" = "$now_sha" ]; then
+      ok "pre-built release $tag already installed + sha-verified: $BIN"
+      return 0
+    fi
+  fi
+
+  local asset="chump-${triple}.tar.xz"
+  local dl="$NODE_DIR/bin/.dl"
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: download $asset (+ .sha256) from $slug@$tag, sha256-verify, install -> $BIN"
+    return 0
+  fi
+  run "rm -rf '$dl'"; run "mkdir -p '$dl'"
+
+  local base="https://github.com/$slug/releases/download/$tag"
+  info BINARY "fetching pre-built $asset ($slug@$tag) — download, not compile"
+  if ! curl -fsSL "$base/$asset" -o "$dl/$asset"; then
+    no "download failed: $base/$asset — falling back to build"; rm -rf "$dl"; return 1
+  fi
+  if ! curl -fsSL "$base/$asset.sha256" -o "$dl/$asset.sha256"; then
+    no "checksum download failed: $base/$asset.sha256 — falling back to build"; rm -rf "$dl"; return 1
+  fi
+  local want got
+  want="$(awk '{print $1}' "$dl/$asset.sha256" | head -1)"
+  got="$(sha256_hex "$dl/$asset")"
+  if [ -z "$want" ] || [ "$want" != "$got" ]; then
+    no "sha256 MISMATCH for $asset (published=$want computed=$got) — refusing unverified binary, building instead"
+    rm -rf "$dl"; return 1
+  fi
+  ok "sha256 verified: $asset ($got)"
+  if ! tar -xJf "$dl/$asset" -C "$dl" 2>/dev/null; then
+    no "extract failed for $asset — building"; rm -rf "$dl"; return 1
+  fi
+  local built="$dl/chump-${triple}/chump"
+  [ -f "$built" ] || built="$(find "$dl" -type f -name chump 2>/dev/null | head -1)"
+  if [ ! -f "$built" ]; then
+    no "no chump binary inside $asset — building"; rm -rf "$dl"; return 1
+  fi
+  run "mkdir -p '$NODE_DIR/bin'"
+  install -m 755 "$built" "$BIN" 2>/dev/null || { cp -f "$built" "$BIN"; chmod +x "$BIN"; }
+  # WARM smoke: the downloaded binary must answer --version before it's trusted.
+  local warm; warm="$("$BIN" --version 2>&1)"
+  if [ -z "$warm" ]; then no "WARM smoke failed on downloaded binary — discarding"; rm -f "$BIN"; rm -rf "$dl"; return 1; fi
+  local binsha; binsha="$(sha256_hex "$BIN")"
+  printf 'source=release\ntag=%s\ntriple=%s\nasset_sha256=%s\nbinsha256=%s\ninstalled=%s\n' \
+    "$tag" "$triple" "$got" "$binsha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$BIN.provenance"
+  rm -rf "$dl"
+  ok "pre-built release binary installed + sha-verified: $BIN ($warm)"
+  return 0
+}
+
+ensure_binary() {
+  # (A) An already-present $BIN is accepted ONLY with valid provenance
+  # (release-verified OR built-from-repo-HEAD). A stray/foreign/stale/inherited
+  # binary is discarded, never trusted — this closes the freeload false-pass
+  # where the installer symlinked any `chump` on PATH and reported INSTALLED ✓
+  # without ever building or verifying provenance (COTG node-install).
+  if [ -x "$BIN" ]; then
+    if binary_provenance_ok "$BIN"; then
+      ok "binary present + provenance verified: $BIN"
+      return 0
+    fi
+    no "existing $BIN has no valid provenance (foreign/stale) — discarding, will fetch/build a verified one"
+    run "rm -f '$BIN' '$BIN.provenance'"
+  fi
+  # (B) Fast path: HEAD-exact pre-built CI artifact (download + verify), then
+  # the opt-in stale-release tarball. Never a silent stale install by default.
+  if fetch_ci_artifact_binary; then
+    return 0
+  fi
+  if fetch_release_binary; then
+    return 0
+  fi
+  # (C) Fallback: build from the cloned repo HEAD, then gate on provenance.
+  build_binary_from_repo || return 1
+  if binary_provenance_ok "$BIN"; then
+    ok "binary built from repo HEAD + provenance verified: $BIN"
+    return 0
+  fi
+  no "built binary failed provenance gate ($BIN) — refusing to report INSTALLED"
+  return 1
 }
 
 # No binary found: build it from $NODE_DIR/repo. Reuses the resolve+build
@@ -483,10 +735,10 @@ build_binary_from_repo() {
 # open), so this is safe to re-run on every install.
 ensure_seed() {
   local gaps_dir="$NODE_DIR/repo/docs/gaps"
+  # Only the provenance-verified $BIN the BINARY phase installed — never a
+  # stray on-PATH chump (that was the freeload path this ship killed).
   local bin=""
-  for c in "$BIN" "$HOME/chump/chump" "$(command -v chump 2>/dev/null)"; do
-    [ -n "$c" ] && [ -x "$c" ] && { bin="$c"; break; }
-  done
+  [ -x "$BIN" ] && { bin="$BIN"; }
   if [ -z "$bin" ]; then
     info SEED "no chump binary yet — skipping (BINARY phase hasn't installed one); re-run after it does"
     return 0
@@ -626,7 +878,13 @@ self_test() {
     if [ -n "$head_sha" ] && [ "$head_sha" = "$origin_sha" ]; then ok "repo HEAD at origin/main ($head_sha)"
     else no "repo HEAD not at origin/main (HEAD=$head_sha origin/main=$origin_sha)"; fail=1; fi
   else no "repo missing: $NODE_DIR/repo/.git"; fail=1; fi
-  if [ -x "$BIN" ]; then ok "binary linked: $BIN"; else no "binary"; fail=1; fi
+  # Binary bar = present AND provenance-verified (release-sha-verified OR
+  # built-from-repo-HEAD). A bare `[ -x ]` here was the self-test half of the
+  # freeload false-pass: it green-lit any executable at $BIN regardless of
+  # where it came from. Provenance is now part of "INSTALLED".
+  if [ -x "$BIN" ] && binary_provenance_ok "$BIN"; then ok "binary present + provenance verified: $BIN"
+  elif [ -x "$BIN" ]; then no "binary at $BIN FAILED provenance (foreign/stale/unverified) — not a trusted install"; fail=1
+  else no "binary missing: $BIN"; fail=1; fi
   # INFRA-3633: post-seed sanity — canonical store should have picked up the
   # real backlog from docs/gaps/*.yaml, not sit empty. Compare PICKABLE
   # (non-terminal) counts on both sides: sync_pull's insert path (a brand

@@ -1001,6 +1001,13 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // INFRA-3836: guards the Cargo.toml aarch64-linux openssl `vendored`
+        // override that unblocked build-fleet-binaries.yml's cross-compile
+        // job — if silently dropped, the whole run goes red again (fail-fast
+        // false, but one red matrix leg still marks the run conclusion
+        // failure) and node-refresh-chump.sh's green-main scanner falls back
+        // to a stale pin. Pure grep, no network, <1s.
+        "scripts/ci/test-fleet-binary-aarch64-openssl-vendored.sh",
     ];
     candidates
         .iter()

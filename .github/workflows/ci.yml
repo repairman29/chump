@@ -1183,6 +1183,9 @@ jobs:
       - name: ci.yml concurrency-group key regression guard (INFRA-3579 / INFRA-1852 / INFRA-1655)
         run: bash scripts/ci/test-ci-concurrency-group-key.sh
 
+      - name: build-fleet-binaries aarch64 openssl-vendored regression guard (INFRA-3836)
+        run: bash scripts/ci/test-fleet-binary-aarch64-openssl-vendored.sh
+
       - name: model-registry schema validation (INFRA-739)
         run: bash scripts/ci/test-model-registry.sh
 
