@@ -1,0 +1,386 @@
+#!/usr/bin/env bash
+# board-vitals.sh — RESILIENT-371: the resident board's NON-merge watch.
+#
+# WHY THIS EXISTS. The board-cycle beat (INFRA-3590) + its escalate organ
+# (RESILIENT-373) residentized ONE dimension of the human board's per-loop
+# watch — the 30-minute merge SLA — and page the operator on a breach, deduped.
+# But the human board checks more than merges every tick: box health (disk),
+# worker liveness (a silent/wedged worker the farmer's kick can't revive),
+# merge DROUGHT (0 merges for hours with nothing in flight and no worker
+# producing — distinct from an SLA breach, which needs an armed green PR to
+# exist at all), and sustained main-red. On CJ those sensors are DARK: the
+# disk-health/disk-pressure/fleet-worker watchdogs are Mac-launchd units that
+# were never ported (Helsinki port-list debt), so NOTHING pages Jeff when /
+# fills or a worker wedges. The board still needs a human at a desktop for
+# exactly those cases. This lib closes that gap: a deterministic,
+# threshold-gated, DEDUPED consolidated watch that the ALREADY-RESIDENT
+# board-cycle beat invokes each cycle (so it rides an is-active+is-enabled
+# timer with no new root-owned systemd unit to install), pages the operator
+# ONLY on a real incident, and escalates a genuinely novel/unclassifiable
+# anomaly to a bounded `claude -p` diagnosis before paging.
+#
+# COMPLEMENTS, does not duplicate:
+#   * MERGE SLA (armed green PR past 30m) → board-cycle-escalate.sh owns it.
+#   * self-healed conditions (worker cooldown, disk auto-clean when the reactor
+#     runs, farmer kicking a silent worker) → their own organs own the heal;
+#     this lib pages only the RESIDUE those heals leave unresolved.
+#
+# CONTRACT:
+#   board_vitals_check              → always returns 0 (an escalation organ must
+#                                     never break the beat it reports on — same
+#                                     invariant as notify-operator.sh /
+#                                     board-cycle-escalate.sh).
+#
+# ENV (all optional):
+#   CHUMP_BOARD_VITALS_ENABLED         0 disables (default 1)
+#   CHUMP_BOARD_VITALS_DRY_RUN         1 = compute + log the EXACT message it
+#                                      WOULD send (kind=board_vitals_page_dryrun)
+#                                      and honor dedup, but never DM / never call
+#                                      the LLM. Default 0.
+#   CHUMP_AMBIENT_LOG                  ambient log to read + emit into
+#   CHUMP_BOARD_VITALS_STATE_DIR       dedup state dir (default .chump-locks/board-vitals)
+#   CHUMP_BOARD_VITALS_WINDOW_S        dedup window seconds (default 7200 = 2h)
+#   CHUMP_BOARD_VITALS_DISK_PATH       filesystem to check (default /)
+#   CHUMP_BOARD_VITALS_DISK_PCT        disk page threshold %% (default 90)
+#   CHUMP_BOARD_VITALS_DROUGHT_MIN     merge-drought threshold minutes (default 180)
+#   CHUMP_BOARD_VITALS_WORKER_SILENT_MIN worker-silence threshold minutes (default 40)
+#   CHUMP_BOARD_VITALS_MAIN_RED_MIN    sustained main-red threshold minutes (default 30)
+#   CHUMP_BOARD_VITALS_ESCALATE_MODEL  model for the novel-anomaly diagnosis (default sonnet)
+#   CHUMP_BOARD_VITALS_ESCALATE        1 enables the LLM novel-escalation (default 1)
+#
+# shellcheck shell=bash
+
+# ── HOST-ASSUMPTION HARDENING (mirrors vital-signs.sh / faculty-collector.sh) ──
+# The fleet's service convention hardcodes Environment=HOME=/root even when
+# User=jeff, and under systemd PATH is minimal. Resolve the RUN-USER's real
+# home + prepend its bins so gh/chump/claude resolve and per-user config reads
+# don't silently fail (which would make the board LIE).
+_bv_harden_env() {
+    local real_home
+    real_home="$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f6)"
+    [[ -z "$real_home" || ! -d "$real_home" ]] && real_home="${HOME:-/root}"
+    export HOME="$real_home"
+    export PATH="$real_home/.cargo/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+}
+
+_bv_repo_root() {
+    cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd
+}
+
+_bv_ambient_log() {
+    local root; root="$(_bv_repo_root)"
+    printf '%s\n' "${CHUMP_AMBIENT_LOG:-${root}/.chump-locks/ambient.jsonl}"
+}
+
+_bv_ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+_bv_now() { date -u +%s; }
+
+_bv_emit() {  # kind, extra-json (no leading/trailing comma) — never fails
+    local log; log="$(_bv_ambient_log)"
+    mkdir -p "$(dirname "$log")" 2>/dev/null || true
+    local ts; ts="$(_bv_ts)"
+    if [[ -n "${2:-}" ]]; then
+        printf '{"ts":"%s","kind":"%s",%s}\n' "$ts" "$1" "$2" >> "$log" 2>/dev/null || true
+    else
+        printf '{"ts":"%s","kind":"%s"}\n' "$ts" "$1" >> "$log" 2>/dev/null || true
+    fi
+}
+
+# Epoch of the NEWEST ambient line whose "kind" is one of the pipe-joined
+# alternatives in $1. Prints an integer epoch, or 0 if none/parse-fail.
+_bv_newest_kind_epoch() {  # kind_regex
+    local log; log="$(_bv_ambient_log)"
+    [[ -f "$log" ]] || { echo 0; return; }
+    KINDS="$1" python3 - "$log" <<'PY' 2>/dev/null || echo 0
+import sys, json, os, re
+from datetime import datetime, timezone
+kinds = set(os.environ.get("KINDS", "").split("|"))
+best = 0
+try:
+    with open(sys.argv[1]) as f:
+        for line in f:
+            if not any(('"kind":"%s"' % k) in line for k in kinds):
+                continue
+            try:
+                o = json.loads(line)
+            except Exception:
+                continue
+            if o.get("kind") not in kinds:
+                continue
+            try:
+                ep = int(datetime.strptime(o.get("ts",""), "%Y-%m-%dT%H:%M:%SZ")
+                         .replace(tzinfo=timezone.utc).timestamp())
+            except Exception:
+                ep = 0
+            if ep > best:
+                best = ep
+except Exception:
+    pass
+print(best)
+PY
+}
+
+# Newest board_cycle_report_posted line's (sla_breaches + stalls_classified),
+# the count of PRs "in flight" the board cycle already accounted for. Prints an
+# integer (0 if no report). Used to distinguish a true merge-drought (nothing in
+# flight) from CI-lag (PRs exist, just not merging yet — the beat's job).
+_bv_prs_in_flight() {
+    local log; log="$(_bv_ambient_log)"
+    [[ -f "$log" ]] || { echo 0; return; }
+    python3 - "$log" <<'PY' 2>/dev/null || echo 0
+import sys, json
+best = None
+try:
+    with open(sys.argv[1]) as f:
+        for line in f:
+            if '"board_cycle_report_posted"' not in line:
+                continue
+            try:
+                o = json.loads(line)
+            except Exception:
+                continue
+            if o.get("kind") == "board_cycle_report_posted":
+                best = o  # last wins = newest (append-ordered)
+except Exception:
+    pass
+if best is None:
+    print(-1)  # no report at all → caller treats as "unknown", not "zero"
+else:
+    def _i(k):
+        v = best.get(k, 0)
+        try: return int(v)
+        except Exception: return 0
+    print(_i("sla_breaches") + _i("stalls_classified"))
+PY
+}
+
+# Span in minutes of the CURRENT consecutive run of real-red main_red_detected
+# lines at the tail of the stream (0 if the newest such line is not real-red).
+# "real red" = status NOT in the benign set {no_runs, green, clean, passing,
+# none, ok}.
+_bv_main_red_span_min() {
+    local log; log="$(_bv_ambient_log)"
+    [[ -f "$log" ]] || { echo 0; return; }
+    python3 - "$log" <<'PY' 2>/dev/null || echo 0
+import sys, json
+from datetime import datetime, timezone
+BENIGN = {"no_runs","green","clean","passing","none","ok",""}
+rows = []
+try:
+    with open(sys.argv[1]) as f:
+        for line in f:
+            if '"main_red_detected"' not in line:
+                continue
+            try:
+                o = json.loads(line)
+            except Exception:
+                continue
+            if o.get("kind") != "main_red_detected":
+                continue
+            try:
+                ep = int(datetime.strptime(o.get("ts",""), "%Y-%m-%dT%H:%M:%SZ")
+                         .replace(tzinfo=timezone.utc).timestamp())
+            except Exception:
+                continue
+            rows.append((ep, str(o.get("status","")).lower()))
+except Exception:
+    pass
+if not rows:
+    print(0); sys.exit(0)
+rows.sort()
+newest_ep, newest_status = rows[-1]
+if newest_status in BENIGN:
+    print(0); sys.exit(0)
+# walk backwards while still real-red; span = newest - oldest-consecutive-red
+start_ep = newest_ep
+for ep, st in reversed(rows[:-1]):
+    if st in BENIGN:
+        break
+    start_ep = ep
+print(int((newest_ep - start_ep) // 60))
+PY
+}
+
+# Was a farmer_silent_worker emitted within the last $1 seconds? (the farmer
+# confirming a LEASED session went silent — the residue its kick may not fix)
+_bv_farmer_silent_recent() {  # within_seconds
+    local within="$1" ep now
+    ep="$(_bv_newest_kind_epoch "farmer_silent_worker")"
+    now="$(_bv_now)"
+    [[ "$ep" =~ ^[0-9]+$ ]] || ep=0
+    (( ep > 0 && now - ep <= within ))
+}
+
+# Resolve notify_operator (source notify-operator.sh; stub if absent so the lib
+# stays testable). Sets a module flag so we source once.
+_bv_ensure_notify() {
+    if declare -F notify_operator >/dev/null 2>&1; then return 0; fi
+    local sib; sib="$(dirname "${BASH_SOURCE[0]}")/notify-operator.sh"
+    if [[ -f "$sib" ]]; then
+        # shellcheck source=notify-operator.sh
+        source "$sib"
+    else
+        notify_operator() { echo "[board-vitals] notify-operator.sh MISSING" >&2; return 0; }
+    fi
+}
+
+# _bv_maybe_page <signature> <message>  — page via notify_operator
+# (kind=board_vitals_alert → registry PAGE) unless the same signature paged
+# inside the dedup window. Honors DRY_RUN (logs the exact WOULD-send message,
+# still records the signature so dedup is demonstrable). Emits an ambient trail
+# either way. Never fails.
+_bv_maybe_page() {
+    local sig="$1" msg="$2"
+    local state_dir window dry
+    state_dir="${CHUMP_BOARD_VITALS_STATE_DIR:-$(_bv_repo_root)/.chump-locks/board-vitals}"
+    window="${CHUMP_BOARD_VITALS_WINDOW_S:-7200}"
+    dry="${CHUMP_BOARD_VITALS_DRY_RUN:-0}"
+    mkdir -p "$state_dir" 2>/dev/null || true
+    local sigfile; sigfile="$state_dir/$(printf '%s' "$sig" | tr '/ :.' '____').json"
+
+    if [[ -f "$sigfile" ]]; then
+        local last now
+        last="$(python3 -c "import json;print(json.load(open('$sigfile')).get('last_epoch',0))" 2>/dev/null || echo 0)"
+        [[ "$last" =~ ^[0-9]+$ ]] || last=0
+        now="$(_bv_now)"
+        if (( now - last < window )); then
+            _bv_emit "board_vitals_page_deduped" "\"signature\":\"${sig}\""
+            return 0
+        fi
+    fi
+
+    if [[ "$dry" == "1" ]]; then
+        _bv_emit "board_vitals_page_dryrun" "\"signature\":\"${sig}\""
+        printf '[board-vitals DRY_RUN] WOULD PAGE (sig=%s):\n%s\n' "$sig" "$msg" >&2
+    else
+        _bv_ensure_notify
+        CHUMP_NOTIFY_KIND="board_vitals_alert" notify_operator "$msg" >/dev/null 2>&1
+        _bv_emit "board_vitals_page_sent" "\"signature\":\"${sig}\""
+    fi
+
+    python3 -c "import json;json.dump({'signature':'$sig','last_epoch':$(_bv_now)}, open('$sigfile','w'))" 2>/dev/null || true
+    return 0
+}
+
+# Bounded LLM diagnosis of a novel/unclassifiable anomaly. Returns the model's
+# one-paragraph diagnosis on stdout (empty on any failure). Never hangs the beat
+# (hard timeout). Skipped in DRY_RUN and when disabled.
+_bv_llm_diagnose() {  # snapshot_text
+    local snapshot="$1" model timeout_s
+    model="${CHUMP_BOARD_VITALS_ESCALATE_MODEL:-sonnet}"
+    timeout_s="${CHUMP_BOARD_VITALS_ESCALATE_TIMEOUT_S:-120}"
+    command -v claude >/dev/null 2>&1 || { echo ""; return 0; }
+    local prompt="You are the ChumpOS duty-officer triaging a fleet anomaly the \
+deterministic board watch could not classify. Given this vital-signs snapshot, \
+in 2-3 sentences: name the single most likely root cause and ONE concrete next \
+action a human operator should take. Be terse and specific. Do NOT send any \
+message, do NOT call tools, just answer.
+
+SNAPSHOT:
+${snapshot}"
+    local out
+    if command -v timeout >/dev/null 2>&1; then
+        out="$(timeout "${timeout_s}s" claude -p "$prompt" --model "$model" 2>/dev/null)"
+    else
+        out="$(claude -p "$prompt" --model "$model" 2>/dev/null)"
+    fi
+    printf '%s' "$out" | head -c 1200
+}
+
+# ── MAIN ─────────────────────────────────────────────────────────────────────
+board_vitals_check() {
+    [[ "${CHUMP_BOARD_VITALS_ENABLED:-1}" == "0" ]] && return 0
+    _bv_harden_env
+
+    local now; now="$(_bv_now)"
+    local disk_path disk_pct_thr drought_min silent_min main_red_min
+    disk_path="${CHUMP_BOARD_VITALS_DISK_PATH:-/}"
+    disk_pct_thr="${CHUMP_BOARD_VITALS_DISK_PCT:-90}"
+    drought_min="${CHUMP_BOARD_VITALS_DROUGHT_MIN:-180}"
+    silent_min="${CHUMP_BOARD_VITALS_WORKER_SILENT_MIN:-40}"
+    main_red_min="${CHUMP_BOARD_VITALS_MAIN_RED_MIN:-30}"
+
+    local incidents=0
+
+    # ── 1 · BOX: disk ────────────────────────────────────────────────────────
+    local disk_pct
+    disk_pct="$(df -P "$disk_path" 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print $5}')"
+    [[ "$disk_pct" =~ ^[0-9]+$ ]] || disk_pct=""
+    if [[ -n "$disk_pct" ]] && (( disk_pct >= disk_pct_thr )); then
+        incidents=$((incidents+1))
+        _bv_maybe_page "disk_full" \
+"🔴 **Box health — disk critical.** ${disk_path} is ${disk_pct}% full (page threshold ${disk_pct_thr}%). The disk auto-clean reactor is not resident on this node — a human should free space or install the reactor. (board-vitals.sh, pages once per $(( ${CHUMP_BOARD_VITALS_WINDOW_S:-7200} / 60 ))m)"
+    fi
+
+    # ── 2 · WORKER liveness (age of the freshest worker-produced signal) ─────
+    local worker_ep worker_age_min="" worker_silent=0
+    worker_ep="$(_bv_newest_kind_epoch "token_usage_partial|gap_shipped|gap_claimed")"
+    [[ "$worker_ep" =~ ^[0-9]+$ ]] || worker_ep=0
+    if (( worker_ep > 0 )); then
+        worker_age_min=$(( (now - worker_ep) / 60 ))
+        (( worker_age_min >= silent_min )) && worker_silent=1
+    fi
+
+    # ── 3 · MERGES: drought (distinct from an SLA breach) ────────────────────
+    local last_merge_ep merge_age_min="" prs_in_flight
+    last_merge_ep="$(git -C "$(_bv_repo_root)" log origin/main -1 --format=%ct 2>/dev/null)"
+    [[ "$last_merge_ep" =~ ^[0-9]+$ ]] || last_merge_ep=0
+    prs_in_flight="$(_bv_prs_in_flight)"
+    [[ "$prs_in_flight" =~ ^-?[0-9]+$ ]] || prs_in_flight=-1
+    local drought_fired=0
+    if (( last_merge_ep > 0 )); then
+        merge_age_min=$(( (now - last_merge_ep) / 60 ))
+        # A REAL stall: no merge for the threshold AND nothing in flight (0, not
+        # unknown) AND the worker is not producing. PRs in flight = CI-lag, which
+        # the board-cycle beat already owns — not a drought.
+        if (( merge_age_min >= drought_min )) && (( prs_in_flight == 0 )) && (( worker_silent == 1 )); then
+            drought_fired=1
+            incidents=$((incidents+1))
+            _bv_maybe_page "merge_drought" \
+"🟠 **Merge drought.** No merge to main in ${merge_age_min}m, 0 PRs in flight, and the worker has produced nothing for ${worker_age_min}m. The line has stopped — not CI-lag. (board-vitals.sh)"
+        fi
+    fi
+
+    # ── 4 · WORKER wedge (silent + farmer confirms a leased session silent) ──
+    local wedge_fired=0
+    if (( worker_silent == 1 )) && _bv_farmer_silent_recent 1200; then
+        wedge_fired=1
+        incidents=$((incidents+1))
+        _bv_maybe_page "worker_wedge" \
+"🟠 **Worker wedged.** No worker output for ${worker_age_min}m and the farmer flagged a leased session silent — its kick did not revive it (the pre-ship/clippy self-heal gap). A human may need to reap the lease. (board-vitals.sh)"
+    fi
+
+    # ── 5 · MAIN sustained red ───────────────────────────────────────────────
+    local main_red_span
+    main_red_span="$(_bv_main_red_span_min)"
+    [[ "$main_red_span" =~ ^[0-9]+$ ]] || main_red_span=0
+    if (( main_red_span >= main_red_min )); then
+        incidents=$((incidents+1))
+        _bv_maybe_page "main_red" \
+"🔴 **main CI red ${main_red_span}m.** main has been failing for ${main_red_span}m (threshold ${main_red_min}m) — the whole fleet builds on red. A human should look. (board-vitals.sh)"
+    fi
+
+    # ── 6 · NOVEL escalation: worker silent but UNEXPLAINED by 3/4 ───────────
+    # (silent, yet neither a drought nor a farmer-confirmed wedge — an anomaly
+    # the deterministic rules can't classify). Escalate to a bounded LLM
+    # diagnosis, then page WITH the diagnosis (deduped).
+    if (( worker_silent == 1 )) && (( drought_fired == 0 )) && (( wedge_fired == 0 )) \
+        && [[ "${CHUMP_BOARD_VITALS_ESCALATE:-1}" == "1" ]] && [[ "${CHUMP_BOARD_VITALS_DRY_RUN:-0}" != "1" ]]; then
+        local snapshot diag
+        snapshot="worker_silent_min=${worker_age_min}; last_merge_min=${merge_age_min}; prs_in_flight=${prs_in_flight}; disk_pct=${disk_pct}; main_red_span_min=${main_red_span}; farmer_silent_recent=no"
+        _bv_emit "board_vitals_novel_escalation" "\"worker_silent_min\":\"${worker_age_min}\""
+        diag="$(_bv_llm_diagnose "$snapshot")"
+        incidents=$((incidents+1))
+        _bv_maybe_page "worker_silent_unexplained" \
+"🟡 **Unclassified anomaly — worker silent ${worker_age_min}m** with no drought/wedge signature. LLM triage: ${diag:-<diagnosis unavailable>}"
+    fi
+
+    _bv_emit "board_vitals_tick" \
+"\"incidents\":${incidents},\"disk_pct\":\"${disk_pct}\",\"merge_age_min\":\"${merge_age_min}\",\"worker_silent\":${worker_silent},\"main_red_span_min\":${main_red_span}"
+    return 0
+}
+
+# Direct-execution entry point (mirrors notify-operator.sh / board-cycle-escalate.sh).
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    board_vitals_check
+fi

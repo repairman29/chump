@@ -136,5 +136,23 @@ else
     log "escalate organ missing ($ESCALATE_LIB) — no page path this cycle"
 fi
 
+# RESILIENT-371: the NON-merge half of the resident board watch. The escalate
+# organ above owns the 30-minute merge SLA; this lib owns the vital signs the
+# human board also checks each loop tick and that no resident sensor pages on
+# CJ — box/disk health, worker wedge, merge DROUGHT (distinct from an SLA
+# breach), sustained main-red — plus a bounded LLM escalation for a novel
+# anomaly. Deterministic, deduped, phone-quiet unless it's a real incident.
+# Riding this already-resident beat means no new root-owned systemd unit to
+# install. Never breaks the beat (board_vitals_check always returns 0).
+VITALS_LIB="$REPO_ROOT/scripts/coord/lib/board-vitals.sh"
+if [[ -f "$VITALS_LIB" ]]; then
+    unset CHUMP_NOTIFY_KIND   # the lib sets kind=board_vitals_alert on its own page
+    # shellcheck source=../coord/lib/board-vitals.sh
+    source "$VITALS_LIB"
+    board_vitals_check || true
+else
+    log "board-vitals organ missing ($VITALS_LIB) — non-merge watch dark this cycle"
+fi
+
 log "beat done — exit_code=$cycle_rc"
 exit 0
