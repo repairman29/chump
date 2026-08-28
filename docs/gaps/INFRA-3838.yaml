@@ -1,0 +1,19 @@
+- id: INFRA-3838
+  domain: INFRA
+  title: "chump-worker/chump-fleet parallel-run soak never started + chump-github-cache dependency unmet — blocks INFRA-2065 cutover"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "INFRA-2062 (chump-github-cache cutover: decommission scripts/ops/github-webhook-receiver.py + scripts/coord/lib/github_cache.sh) ships first, so chump-worker's PR-state reads sit on a single-stack cache layer as INFRA-2065 AC4 requires"
+    - "scripts/dispatch/run-fleet.sh CHUMP_FLEET_RUST default flipped from 0 to 1 (or an equivalent default-on soak mechanism) so the 7+ consecutive day / 3-distinct-session parallel-run clock in INFRA-2065 AC1 can actually start"
+    - "scripts/dispatch/worker.sh CHUMP_WORKER_RUST default flipped from 0 to 1 in lockstep — both flags must be default-on simultaneously since run-fleet.sh spawns worker.sh per pane"
+    - "kind=worker_divergence_detected emitted and monitored across the soak window with a real ambient trail (not zero events) before the cutover is re-attempted"
+  notes: |
+    Blocks INFRA-2065 (worker.sh + run-fleet.sh bash-body removal cutover). Discovered while claimed on INFRA-2065.
+
+    Verified 2026-08-28: (1) scripts/dispatch/run-fleet.sh:72 still reads CHUMP_FLEET_RUST:-0 and scripts/dispatch/worker.sh:38 still reads CHUMP_WORKER_RUST:-0 — neither flag has ever been flipped to default-on, so INFRA-2065 AC1's "7+ consecutive days across 3+ sessions" clock has not started. (2) No ambient kind=worker_divergence_detected or kind=rust_migration_landed gap=INFRA-2002 events exist anywhere in .chump-locks/ambient.jsonl, confirming zero soak activity to date. (3) INFRA-2065 AC4 names INFRA-2062 (chump-github-cache cutover) as a HARD dependency ("cannot complete INFRA-2065 until INFRA-2062 cutover lands so the cache layer is single-stack") and INFRA-2062 is still status:open — unshipped. (4) Sibling gap INFRA-2064 hit an equivalent unmet-precondition wall on 2026-08-28 (see its notes / precursor INFRA-3837) — same failure shape: Phase-1 gap closed with soak-flag-flip AC items unmet, so Phase-2 cutover has nothing real to point at.
+
+    Removing scripts/dispatch/worker.sh (1807 LOC) + scripts/dispatch/run-fleet.sh (750 LOC) now would strip the only working fleet-spawn path (chump-fleet/chump-worker have never run as the default) and would do so before the cache layer they depend on for PR-state reads is single-stack. Do not re-attempt INFRA-2065 until INFRA-2062 ships AND a real parallel-run soak with zero divergence has actually elapsed.
+  depends_on: []
+  outcome_id: MISSION-010
