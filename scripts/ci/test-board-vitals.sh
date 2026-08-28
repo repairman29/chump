@@ -66,6 +66,18 @@ B="$TMP/clean.jsonl"; : > "$B"
   set +a
   source "$LIB"; board_vitals_check ) >/dev/null 2>&1
 _notemitted "clean cycle sends no page" "$B" '"board_vitals_page_(dryrun|sent)"'
+
+# ── proof-of-life: unconditional stdout line (journal-visible, RESILIENT-410) ─
+echo "[test-board-vitals] proof-of-life stdout line every run"
+pol="$( ( set -a
+  CHUMP_AMBIENT_LOG="$TMP/pol.jsonl"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-pol"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  set +a
+  source "$LIB"; board_vitals_check ) 2>/dev/null )"
+echo "$pol" | grep -qE '^\[board-vitals\] tick — incidents=0 ' \
+    && _ok "healthy run prints proof-of-life tick to stdout (incidents=0)" \
+    || _fail "no proof-of-life stdout line (got: $pol)"
 _emitted "clean cycle still emits a tick heartbeat" "$B" '"board_vitals_tick","incidents":0'
 
 # ── helper: main-red span (consecutive real-red run) ─────────────────────────
