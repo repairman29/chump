@@ -49,3 +49,9 @@ operator_decision_required	page	# explicit T3 hand-off
 # real breach pages under board_cycle_alert.
 board_cycle_alert	page	# actionable SLA breach found by the board cycle — reach the operator (deduped per signature/window in board-cycle-escalate.sh)
 board_cycle_report	suppress	# routine status report — NOT an incident; the beat's escalate organ owns paging. Belt-and-suspenders for any stray agent notify_operator call.
+
+# RESILIENT-371: the board's NON-merge vital-signs watch (scripts/coord/lib/board-vitals.sh),
+# invoked by the board-cycle beat. Deterministic + deduped per signature/window; a
+# clean tick never pages. A real incident (disk critical / merge drought / worker
+# wedge / sustained main-red / novel anomaly) pages under board_vitals_alert.
+board_vitals_alert	page	# actionable box/worker/floor/drought incident found by the resident board-vitals watch (deduped per signature/window in board-vitals.sh)

@@ -1517,6 +1517,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "chump-team",
+ "log",
  "rusqlite",
  "serde",
  "serde_json",
