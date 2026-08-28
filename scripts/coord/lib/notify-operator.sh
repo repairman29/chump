@@ -38,40 +38,25 @@ _notify_repo_root() {
     cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd
 }
 
-# Candidate .env locations, most-specific first.
-#
-# The worktree case is load-bearing, not defensive: .env is GITIGNORED, so it
-# exists only in the main checkout. `chump claim` creates a worktree for every
-# gap, so anything invoked from one would silently find no credentials and skip
-# the alert — the precise fail-silently mode this file exists to prevent.
-# `git rev-parse --git-common-dir` resolves a worktree back to the main .git,
-# whose parent is the checkout that actually holds .env.
-_notify_env_files() {
-    local root common
-    root="$(_notify_repo_root)"
-    [[ -n "$root" ]] && printf '%s\n' "$root/.env"
-    [[ -n "${CHUMP_HOME:-}" ]] && printf '%s\n' "${CHUMP_HOME}/.env"
-    common="$(git -C "${root:-.}" rev-parse --git-common-dir 2>/dev/null)" || true
-    if [[ -n "$common" ]]; then
-        [[ "$common" != /* ]] && common="${root}/${common}"
-        printf '%s\n' "$(dirname "$common")/.env"
-    fi
-}
+# CREDIBLE-265: was an inline copy of the worktree-aware .env resolution (the
+# original RESILIENT-263 fix); now delegates to the shared resolver extracted
+# in RESILIENT-266 so there is exactly one place that knows how to map a
+# worktree back to the main checkout's .env.
+# shellcheck source=lib/resolve-env.sh
+if [[ -f "$(dirname "${BASH_SOURCE[0]}")/resolve-env.sh" ]]; then
+    # shellcheck disable=SC1091
+    source "$(dirname "${BASH_SOURCE[0]}")/resolve-env.sh"
+fi
 
 # Read a var from the process environment first, else from the first .env that
 # has it. Never echoes the value.
 _notify_env() {
-    local key="$1" val f
-    # Indirect expansion; this file is bash-only (see shebang) by design.
-    val="${!key:-}"
-    if [[ -n "$val" ]]; then printf '%s' "$val"; return 0; fi
-    while read -r f; do
-        [[ -f "$f" ]] || continue
-        val="$(grep -m1 "^${key}=" "$f" 2>/dev/null \
-            | cut -d= -f2- \
-            | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//" -e 's/[[:space:]]*$//')"
-        if [[ -n "$val" ]]; then printf '%s' "$val"; return 0; fi
-    done < <(_notify_env_files)
+    local key="$1"
+    if command -v chump_env_get >/dev/null 2>&1; then
+        chump_env_get "$key"
+        return
+    fi
+    printf '%s' "${!key:-}"
 }
 
 # RESILIENT-274 escalation discipline. Operator decision (Jeff, 2026-08-10):

@@ -37,29 +37,24 @@ for a in "$@"; do
     esac
 done
 
-# Resolve .env across worktrees. It is GITIGNORED, so it exists only in the
-# main checkout — and `chump claim` creates a worktree per gap, which is where
-# this installer will usually be run from. `git rev-parse --git-common-dir`
-# resolves a worktree back to the main .git, whose parent holds the .env.
-# (Same defect and same fix as notify-operator.sh in RESILIENT-263; it showed up
-# there as an alert that skipped SILENTLY, and here as a false "token not set".)
-_env_files() {
-    printf '%s\n' "${REPO_ROOT}/.env"
-    [[ -n "${CHUMP_HOME:-}" ]] && printf '%s\n' "${CHUMP_HOME}/.env"
-    local common
-    common="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null)" || return 0
-    [[ -n "$common" ]] || return 0
-    [[ "$common" != /* ]] && common="${REPO_ROOT}/${common}"
-    printf '%s\n' "$(dirname "$common")/.env"
-}
+# Resolve .env across worktrees via the shared resolver (RESILIENT-266). It is
+# GITIGNORED, so it exists only in the main checkout — and `chump claim`
+# creates a worktree per gap, which is where this installer will usually be
+# run from. (Same defect and same fix as notify-operator.sh in RESILIENT-263;
+# it showed up there as an alert that skipped SILENTLY, and here as a false
+# "token not set". CREDIBLE-265: was an inline copy, now uses the shared lib.)
+# shellcheck source=../coord/lib/resolve-env.sh
+if [[ -f "${REPO_ROOT}/scripts/coord/lib/resolve-env.sh" ]]; then
+    # shellcheck disable=SC1091
+    source "${REPO_ROOT}/scripts/coord/lib/resolve-env.sh"
+fi
 
 _have_key() {
-    local key="$1" f
+    local key="$1"
     [[ -n "${!key:-}" ]] && return 0
-    while read -r f; do
-        [[ -f "$f" ]] || continue
-        grep -qE "^${key}=." "$f" 2>/dev/null && return 0
-    done < <(_env_files)
+    if command -v chump_env_get >/dev/null 2>&1; then
+        [[ -n "$(chump_env_get "$key")" ]] && return 0
+    fi
     return 1
 }
 
