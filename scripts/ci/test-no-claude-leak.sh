@@ -88,10 +88,22 @@ is_in_scope() {
 
 # Build the file list.
 if [[ "$MODE" == "changed" ]]; then
+    # INFRA-1793: resolve the base ref ONCE and reuse it below for the
+    # per-file diff too. Previously the per-file loop hardcoded
+    # "origin/${BASE_BRANCH}" regardless of which branch this block
+    # resolved — harmless in CI (origin always exists) but silently
+    # produced zero violations in any local/test repo without an origin
+    # remote (the per-file `git diff origin/...` failed and was swallowed
+    # by `|| true`).
     if git rev-parse --verify "origin/${BASE_BRANCH}" >/dev/null 2>&1; then
-        CHANGED="$(git diff --name-only --diff-filter=AM "origin/${BASE_BRANCH}...HEAD" 2>/dev/null || true)"
+        RESOLVED_BASE="origin/${BASE_BRANCH}"
     elif git rev-parse --verify "${BASE_BRANCH}" >/dev/null 2>&1; then
-        CHANGED="$(git diff --name-only --diff-filter=AM "${BASE_BRANCH}...HEAD" 2>/dev/null || true)"
+        RESOLVED_BASE="${BASE_BRANCH}"
+    else
+        RESOLVED_BASE=""
+    fi
+    if [[ -n "$RESOLVED_BASE" ]]; then
+        CHANGED="$(git diff --name-only --diff-filter=AM "${RESOLVED_BASE}...HEAD" 2>/dev/null || true)"
     else
         CHANGED=""
     fi
@@ -124,7 +136,7 @@ while IFS= read -r f; do
     if [[ "$MODE" == "changed" ]]; then
         # NEW lines added in this PR that match 'claude' case-insensitively.
         # Skip lines with the explicit opt-out marker.
-        new_hits=$(git diff "origin/${BASE_BRANCH}...HEAD" -- "$f" 2>/dev/null \
+        new_hits=$(git diff "${RESOLVED_BASE}...HEAD" -- "$f" 2>/dev/null \
             | grep -E '^\+' \
             | grep -v '^+++' \
             | grep -iE 'claude' \

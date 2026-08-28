@@ -347,6 +347,27 @@ fn scope_from_paths(paths: &[String]) -> Scope {
     s
 }
 
+/// INFRA-1793: does the staged diff touch the product-layer directories the
+/// no-claude-leak audit (INFRA-1051) cares about? Deliberately narrower than
+/// `scope_from_paths`'s rust/scripts buckets — e.g. a `docs/`-only or
+/// `scripts/ci/`-only diff should NOT pay for this gate. Empty diff (no
+/// staged changes — a bare `chump preflight` run) is conservative-run, same
+/// convention as `scope_from_paths`.
+fn diff_touches_claudeleak_scope(paths: &[String]) -> bool {
+    if paths.is_empty() {
+        return true;
+    }
+    const PREFIXES: [&str; 4] = [
+        "src/",
+        "scripts/coord/",
+        "scripts/dispatch/",
+        "scripts/ops/",
+    ];
+    paths
+        .iter()
+        .any(|p| PREFIXES.iter().any(|prefix| p.starts_with(prefix)))
+}
+
 /// Read `git diff --cached --name-only` from the repo root. Returns an empty
 /// vec on any error (so callers can fall back to "all scope").
 fn staged_paths(repo_root: &std::path::Path) -> Vec<String> {
@@ -2027,11 +2048,6 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-doc-freshness.sh"],
             GateKind::Scripts,
         ));
-        steps.push(step(
-            "no-claude-leak",
-            &["bash", "scripts/ci/test-no-claude-leak.sh"],
-            GateKind::Scripts,
-        ));
         // CREDIBLE-240: docs/CAPABILITIES_REGISTRY.json is indexed by almanac,
         // so a broken catalog or a dangling file_paths receipt gets served to
         // agents with a file:line citation. Hermetic and ~2s — safe for the
@@ -2171,6 +2187,38 @@ pub fn run(argv: &[String]) -> i32 {
             "preflight-ci-parity-smoke",
             &["bash", "scripts/ci/test-preflight-ci-parity-smoke.sh"],
             GateKind::Scripts,
+        ));
+    }
+
+    // INFRA-1793 (INFRA-1762 Tier C #7): no-claude-leak audit (INFRA-1051).
+    // Deliberately OUTSIDE the `scope.includes(GateKind::Scripts)` block above:
+    // a diff touching only src/**.rs sets scope.rust=true / scope.scripts=false
+    // under `scope_from_paths`, but the audit must still fire on src/ changes
+    // (AC #1) — so this gate computes its own narrower trigger instead of
+    // reusing the rust/scripts bucket split. Runs only when the staged diff
+    // touches product-layer dirs (src/, scripts/coord/, scripts/dispatch/,
+    // scripts/ops/); a docs-only or scripts/ci-only diff doesn't pay for it.
+    // Invokes the script in its default changed-only mode, so it flags NEW
+    // "claude" mentions the diff introduces, not the pre-existing long-tail
+    // (INFRA-1053 backfill scope). Warn-only today (matches CI, AC #6); flip
+    // both to --strict once the backfill lands.
+    // Skip via CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1 with audit-trail emit.
+    if std::env::var("CHUMP_PREFLIGHT_SKIP_CLAUDELEAK").as_deref() == Ok("1") {
+        eprintln!("[preflight] skipping no-claude-leak (CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1)");
+        let _ = chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+            kind: "preflight_claudeleak_bypassed".to_string(),
+            source: Some("chump-preflight".to_string()),
+            fields: vec![(
+                "reason".to_string(),
+                "CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1".to_string(),
+            )],
+            ..Default::default()
+        });
+    } else if diff_touches_claudeleak_scope(&staged_paths(&repo_root)) {
+        steps.push(step(
+            "no-claude-leak",
+            &["bash", "scripts/ci/test-no-claude-leak.sh"],
+            GateKind::AlwaysFast,
         ));
     }
 

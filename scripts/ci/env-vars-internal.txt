@@ -502,6 +502,7 @@ CHUMP_GPU_LABEL
 CHUMP_IP_LABEL
 # INFRA-1788: skip the local docs-delta-trailer step in chump preflight --pre-commit
 CHUMP_PREFLIGHT_SKIP_DOCSDELTA
+CHUMP_PREFLIGHT_SKIP_CLAUDELEAK
 CHUMP_PREFLIGHT_SKIP_GAPSINT
 
 # INFRA-1834: --no-verify audit guard — require explicit reason when bypassing hooks
