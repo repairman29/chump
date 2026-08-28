@@ -1,7 +1,7 @@
 - id: META-145
   domain: META
   title: "META: Implement Cascade Rebase Auto-Trigger (META-131 slice)"
-  status: open
+  status: shipped
   priority: P2
   effort: s
   acceptance_criteria:
