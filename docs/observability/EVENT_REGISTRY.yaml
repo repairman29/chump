@@ -11757,3 +11757,32 @@ events:
       whether the drift touches telemetry paths
     consumers: [fleet-brief, operator-recall, watchdog]
     fields_required: [ts, kind, file, commits_behind, telemetry_affected, action, session]
+
+  # ── Kind-schema gate (INFRA-1889) ─────────────────────────────────────────────
+  - kind: ambient_kind_rejected
+    status: active
+    effect_metric: self
+    emitter: scripts/dev/ambient-emit.sh (INFRA-1889)
+    emitter_paths: [scripts/dev/ambient-emit.sh]
+    trigger: >
+      an emit call's "kind" was neither a registered EVENT_REGISTRY.yaml /
+      event-registry-reserved.txt slug nor slug-shaped (^[a-z][a-z0-9_]+$) —
+      e.g. a free-text English sentence dropped in by mistake (2026-05-23
+      curator-opus-handoff incident). The malformed event is quarantined to
+      .chump-locks/ambient-rejected.jsonl instead of ambient.jsonl; this
+      replacement event preserves the audit trail with the original value.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, bad_kind]
+
+  - kind: ambient_schema_lax
+    status: active
+    effect_metric: self
+    emitter: scripts/dev/ambient-emit.sh (INFRA-1889)
+    emitter_paths: [scripts/dev/ambient-emit.sh]
+    trigger: >
+      CHUMP_AMBIENT_KIND_LAX=1 restored the pre-INFRA-1889 accept-anything
+      behavior for a kind that would otherwise have been quarantined.
+      Emitted once per session (migration-safety marker) so the operator can
+      size the migration via scripts/dev/ambient-kind-audit.sh.
+    consumers: [ops-audit]
+    fields_required: [ts, kind]

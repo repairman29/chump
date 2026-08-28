@@ -142,6 +142,83 @@ done
 # removed in a future cleanup once all consumers are updated.
 JSON_LINE="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"harness\":\"${_HARNESS}\",\"kind\":\"${EVENT_KIND}\",\"event\":\"${EVENT_KIND}\"${EXTRA_JSON}}"
 
+# ── INFRA-1889: kind-schema gate ───────────────────────────────────────────────
+# Reject a free-text "kind" (e.g. a full English sentence dropped in by
+# mistake — see 2026-05-23 curator-opus-handoff incident) before it ever
+# lands in ambient.jsonl. A kind passes if it is either a registered
+# EVENT_REGISTRY.yaml / event-registry-reserved.txt slug, OR merely
+# slug-shaped (unregistered-but-plausible kinds still flow through so a new
+# emitter isn't blocked before its registry entry lands).
+_ambient_append() {
+    # $1 = target file, $2 = line
+    if command -v "$FLOCK_BIN" &>/dev/null; then
+        ( "$FLOCK_BIN" -x 200; printf '%s\n' "$2" >> "$1" ) 200>"${1}.lock"
+    else
+        printf '%s\n' "$2" >> "$1"
+    fi
+}
+
+REGISTRY_PATH=""
+if [[ -f "$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml" ]]; then
+    REGISTRY_PATH="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
+elif [[ -f "$MAIN_REPO/docs/observability/EVENT_REGISTRY.yaml" ]]; then
+    REGISTRY_PATH="$MAIN_REPO/docs/observability/EVENT_REGISTRY.yaml"
+fi
+RESERVED_PATH=""
+if [[ -f "$REPO_ROOT/scripts/ci/event-registry-reserved.txt" ]]; then
+    RESERVED_PATH="$REPO_ROOT/scripts/ci/event-registry-reserved.txt"
+elif [[ -f "$MAIN_REPO/scripts/ci/event-registry-reserved.txt" ]]; then
+    RESERVED_PATH="$MAIN_REPO/scripts/ci/event-registry-reserved.txt"
+fi
+
+_kind_registered() {
+    local k="$1"
+    if [[ -n "$REGISTRY_PATH" ]] && grep -qxF "  - kind: ${k}" "$REGISTRY_PATH" 2>/dev/null; then
+        return 0
+    fi
+    if [[ -n "$RESERVED_PATH" ]] && grep -v '^#' "$RESERVED_PATH" 2>/dev/null \
+            | grep -v '^[[:space:]]*$' | awk '{print $1}' | grep -qxF "$k"; then
+        return 0
+    fi
+    return 1
+}
+
+_KIND_VALID=true
+if [[ ! "$EVENT_KIND" =~ ^[a-z][a-z0-9_]+$ ]] && ! _kind_registered "$EVENT_KIND"; then
+    _KIND_VALID=false
+fi
+
+if [[ "$_KIND_VALID" == "false" ]]; then
+    if [[ "${CHUMP_AMBIENT_KIND_LAX:-0}" == "1" ]]; then
+        # Migration-safety bypass: restore accept-anything, but flag once per
+        # session so the operator can size the migration.
+        _LAX_ALERT_FILE="/tmp/chump-ambient-lax-alerted-${SESSION_ID}"
+        if [[ ! -f "$_LAX_ALERT_FILE" ]]; then
+            touch "$_LAX_ALERT_FILE" 2>/dev/null || true
+            # scanner-anchor: "kind":"ambient_schema_lax"
+            _lax_json="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"harness\":\"${_HARNESS}\",\"kind\":\"ambient_schema_lax\",\"event\":\"ambient_schema_lax\",\"hint\":\"CHUMP_AMBIENT_KIND_LAX=1 accepted a non-registry, non-slug-shaped kind\"}"
+            mkdir -p "$LOCK_DIR"
+            _ambient_append "$AMBIENT_LOG" "$_lax_json"
+        fi
+        # fall through: original JSON_LINE (with the free-text kind) still
+        # gets written by the normal append path below.
+    else
+        mkdir -p "$LOCK_DIR"
+        REJECTED_LOG="${CHUMP_AMBIENT_REJECTED_LOG:-$LOCK_DIR/ambient-rejected.jsonl}"
+        _ambient_append "$REJECTED_LOG" "$JSON_LINE"
+        BAD_KIND_ESC="$(printf '%s' "$EVENT_KIND" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])' 2>/dev/null \
+            || printf '%s' "$EVENT_KIND" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+        # scanner-anchor: "kind":"ambient_kind_rejected"
+        _REJECTED_JSON="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"harness\":\"${_HARNESS}\",\"kind\":\"ambient_kind_rejected\",\"event\":\"ambient_kind_rejected\",\"bad_kind\":\"${BAD_KIND_ESC}\"}"
+        _ambient_append "$AMBIENT_LOG" "$_REJECTED_JSON"
+        # Quarantined: the malformed event never reaches ambient.jsonl, and
+        # the replacement forensic event has already been written above —
+        # skip the harness-alert / schema-validate / atomic-append / NATS
+        # steps below, which all assume a well-formed kind.
+        exit 0
+    fi
+fi
+
 # ── CREDIBLE-037: emit one-shot missing_attribution alert ─────────────────────
 if [[ "${_HARNESS_ALERTED:-false}" == "true" ]]; then
     _alert_json="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"kind\":\"missing_attribution\",\"event\":\"ALERT\",\"harness\":\"$_HARNESS\",\"hint\":\"CHUMP_AGENT_HARNESS not set; defaulting to 'unknown'. Set via env var or --harness flag.\"}"
