@@ -41,9 +41,10 @@ const CSS = `
   .cockpit {
     display: grid;
     grid-template-columns: 320px 1fr 360px;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto auto 1fr auto;
     grid-template-areas:
       "title  title   title"
+      "tiles  tiles   tiles"
       "left   center  right"
       "footer footer  footer";
     gap: 12px;
@@ -95,6 +96,7 @@ const CSS = `
     text-transform: none;
     letter-spacing: 0;
   }
+  .zone-tiles  { grid-area: tiles; display: block; background: transparent; border: none; padding: 0; overflow: visible; }
   .zone-left   { grid-area: left;   }
   .zone-center { grid-area: center; }
   .zone-right  { grid-area: right;  display: flex; flex-direction: column; gap: 12px; }
@@ -353,6 +355,7 @@ const CSS = `
       grid-template-columns: 1fr;
       grid-template-areas:
         "title"
+        "tiles"
         "left"
         "center"
         "right"
@@ -389,6 +392,8 @@ class ChumpViewCockpit extends HTMLElement {
           <h1>Cockpit</h1>
           <span class="subtitle">PRODUCT-121 Phase 1 — Cockpit-MVP shell (PRODUCT-122)</span>
         </div>
+
+        <div class="zone zone-tiles" aria-label="Dashboard summary" id="slot-dashboard-tiles"></div>
 
         <div class="zone zone-left" aria-label="Attention queue">
           <div class="zone-header">
@@ -490,6 +495,7 @@ class ChumpViewCockpit extends HTMLElement {
     // Mount live components into slot containers. We use createElement so
     // each component runs its own connectedCallback lifecycle inside the
     // shadow tree.
+    this.#mount('slot-dashboard-tiles', 'chump-dashboard-tiles'); // INFRA-2215
     this.#mount('slot-attention', 'chump-operator-attention');
     this.#mount('slot-stuck', 'chump-stuck-items');   // PRODUCT-080
     this.#mount('slot-inbox', 'chump-inbox');

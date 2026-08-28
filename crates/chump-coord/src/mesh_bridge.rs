@@ -41,14 +41,14 @@
 
 // Post-Side-A: replace the three lines below with:
 //   pub use coord_mesh::mesh::{
-//       AckMessage, BandwidthBudget, Channel, LocalProcessTransport, MeshError,
-//       MeshTransport, Message, MessageQueue, StubMesh,
+//       AckMessage, BandwidthBudget, Channel, GhThrottleGate, LocalProcessTransport,
+//       MeshError, MeshTransport, Message, MessageQueue, StubMesh,
 //   };
 //   pub use coord_mesh::mesh::channels;
 pub use crate::mesh::channels;
 pub use crate::mesh::{
-    AckMessage, BandwidthBudget, Channel, LocalProcessTransport, MeshError, MeshTransport, Message,
-    MessageQueue, StubMesh,
+    AckMessage, BandwidthBudget, Channel, GhThrottleGate, LocalProcessTransport, MeshError,
+    MeshTransport, Message, MessageQueue, StubMesh,
 };
 
 // ── Consensus substrate ───────────────────────────────────────────────────────

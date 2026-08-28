@@ -79,6 +79,29 @@ fswatch -0 .chump-locks/inbox/<SESSION-ID>.jsonl \
 - **One-off scripts**, not curator sessions. The watcher is overhead if the session has no inbox.
 - **Sessions explicitly designed to ignore inbox** (e.g. a one-shot batch processor). These don't have a session-id and have no inbox file.
 
+## Mid-session resilience — re-arm on kill (INFRA-1942)
+
+A watcher armed at session start does not survive forever: harness timeouts,
+restarts, or an operator `TaskStop` can kill the underlying Monitor mid-session,
+silently returning the curator to blind (no wake on new inbox DMs) until the next
+SessionStart. INFRA-1941 (the SessionStart nag) catches this at session
+*boundaries*; it does nothing for a kill that happens mid-session while the
+curator is still working.
+
+The fix is agent-body discipline, not new infrastructure: every productized
+curator's `.claude/agents/<role>.md` carries an explicit instruction — on
+receiving a task-notification with `status=killed` for its inbox-watcher
+Monitor, re-arm a fresh one immediately, before continuing any other work.
+Shipped in `target.md` and `harvester.md` first (INFRA-1942); roll out to the
+remaining productized roles (shepherd / ci-audit / handoff / decompose /
+md-links / orchestrator) as a follow-up sweep.
+
+Together INFRA-1941 (start) and INFRA-1942 (middle) bracket the full watcher
+lifecycle. A harness-level "recurring monitor" auto-respawn feature (operator
+opt-in via a `Monitor(recurring=true)` flag) would remove the need for this
+agent-body instruction entirely — filed separately as a Claude Code harness
+feature request, not attempted here.
+
 ## Cross-references
 
 - [`docs/process/AGENT_API.md`](AGENT_API.md) — harness contract (INFRA-1050); inbox-watch listed under Wake signals.
