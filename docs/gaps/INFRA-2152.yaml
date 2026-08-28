@@ -1,7 +1,7 @@
 - id: INFRA-2152
   domain: INFRA
   title: "RESILIENT P1: 2 cargo-test failures on main blocking #2700 — chump-coord::ambient_distribution::emit_round_trips_to_subscriber + chump-gap-store::tests::test_reserve_skips_yaml_drift"
-  status: open
+  status: done
   priority: P0
   effort: s
   acceptance_criteria:
@@ -10,5 +10,8 @@
     - 3. Both tests must pass 10/10 reruns locally before re-enabling; if flaky-only (not 100% repro), demote with test.skip + file follow-up; if real bug, fix the underlying race
     - "4. Once green: trigger re-run on PR #2700 to confirm cargo-test gate passes with sccache R2 enabled"
     - 5. Document failure pattern in CLAUDE_GOTCHAS.md under 'Rust test flakes'
+  opened_date: '2026-07-26'
+  closed_date: '2026-08-28'
+  closed_pr: 3780
   outcome_id: MISSION-010
 
