@@ -80,6 +80,70 @@ echo "$pol" | grep -qE '^\[board-vitals\] tick — incidents=0 ' \
     || _fail "no proof-of-life stdout line (got: $pol)"
 _emitted "clean cycle still emits a tick heartbeat" "$B" '"board_vitals_tick","incidents":0'
 
+# ── RESILIENT-411: worker-silence ALONE must NOT page (no transient-lull page) ─
+echo "[test-board-vitals] worker silence alone never pages"
+S="$TMP/silence.jsonl"
+# a stale worker signal (2h old) → worker_silent=1, but no merge stall / disk
+printf '{"ts":"%s","kind":"token_usage_partial"}\n' \
+    "$(date -u -d '-120 min' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-120M +%Y-%m-%dT%H:%M:%SZ)" > "$S"
+( set -a
+  CHUMP_AMBIENT_LOG="$S"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-sil"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100
+  CHUMP_BOARD_VITALS_DROUGHT_MIN=999999   # merge-stall can't fire → isolates silence
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_notemitted "silent worker + no stall/disk → NO page (recovering lull is not Jeff's problem)" \
+    "$S" '"board_vitals_page_(dryrun|sent)"'
+grep -qE '"board_vitals_tick","incidents":0' "$S" \
+    && _ok "silence-alone still ticks incidents=0 (watched, not paged)" \
+    || _fail "silence-alone tick missing/incidents!=0"
+
+# ── RESILIENT-411: oauth GENUINELY expired pages; a recovery does not ────────
+echo "[test-board-vitals] floor — oauth expired pages, recovery does not"
+OA="$TMP/oauth.jsonl"
+nowts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+{ printf '{"ts":"%s","kind":"oauth_token_refresh_failed"}\n' "$(nowts)"
+  printf '{"ts":"%s","kind":"oauth_token_refresh_failed"}\n' "$(nowts)"
+  printf '{"ts":"%s","kind":"oauth_token_refresh_failed"}\n' "$(nowts)"; } > "$OA"
+( set -a
+  CHUMP_AMBIENT_LOG="$OA"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-oa"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_emitted "3 oauth failures (newest=failure) → pages oauth_expired" "$OA" '"board_vitals_page_dryrun".*"oauth_expired"'
+# a success lands AFTER the failures → recovered → must NOT page. Build a FRESH
+# log (not a copy of the paged one) so we measure only this run's pages.
+OA2LOG="$TMP/oauth2.jsonl"
+oldts() { date -u -d '-2 min' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-2M +%Y-%m-%dT%H:%M:%SZ; }
+{ printf '{"ts":"%s","kind":"oauth_token_refresh_failed"}\n' "$(oldts)"
+  printf '{"ts":"%s","kind":"oauth_token_refresh_failed"}\n' "$(oldts)"
+  printf '{"ts":"%s","kind":"oauth_token_refresh_failed"}\n' "$(oldts)"
+  printf '{"ts":"%s","kind":"oauth_token_refreshed"}\n'      "$(nowts)"; } > "$OA2LOG"
+( set -a
+  CHUMP_AMBIENT_LOG="$OA2LOG"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-oa2"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+# grep -c prints "0" on no match; do NOT append `|| echo 0` (that doubles it).
+oa2_pages="$(grep -c '"board_vitals_page_dryrun".*"oauth_expired"' "$OA2LOG" 2>/dev/null)"
+[[ "${oa2_pages:-0}" -eq 0 ]] && _ok "oauth recovered (success after failures) → NO page" \
+    || _fail "oauth recovery still paged ($oa2_pages)"
+
+# ── RESILIENT-411: cost/credit cap pages ─────────────────────────────────────
+echo "[test-board-vitals] floor — cost_cap_exceeded pages"
+CC="$TMP/cost.jsonl"
+printf '{"ts":"%s","kind":"cost_cap_exceeded","daily_usd":9.9}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$CC"
+( set -a
+  CHUMP_AMBIENT_LOG="$CC"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-cc"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_emitted "cost_cap_exceeded in-window → pages cost_cap" "$CC" '"board_vitals_page_dryrun".*"cost_cap"'
+
 # ── helper: main-red span (consecutive real-red run) ─────────────────────────
 echo "[test-board-vitals] _bv_main_red_span_min"
 MR="$TMP/mainred.jsonl"

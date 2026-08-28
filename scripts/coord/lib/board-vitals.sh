@@ -5,25 +5,42 @@
 # (RESILIENT-373) residentized ONE dimension of the human board's per-loop
 # watch — the 30-minute merge SLA — and page the operator on a breach, deduped.
 # But the human board checks more than merges every tick: box health (disk),
-# worker liveness (a silent/wedged worker the farmer's kick can't revive),
-# merge DROUGHT (0 merges for hours with nothing in flight and no worker
-# producing — distinct from an SLA breach, which needs an armed green PR to
-# exist at all), and sustained main-red. On CJ those sensors are DARK: the
-# disk-health/disk-pressure/fleet-worker watchdogs are Mac-launchd units that
-# were never ported (Helsinki port-list debt), so NOTHING pages Jeff when /
-# fills or a worker wedges. The board still needs a human at a desktop for
-# exactly those cases. This lib closes that gap: a deterministic,
+# an UNRECOVERABLE stall, sustained main-red, and credential/credit needs. On
+# CJ those sensors are DARK: the disk-health/disk-pressure/fleet-worker
+# watchdogs AND operator-recall (the halt-class credential/cost pager, INFRA-626)
+# are Mac-launchd / inactive units that were never made resident (Helsinki
+# port-list debt), so NOTHING pages Jeff when / fills, the line dies, or the
+# floor loses auth/credit. This lib closes that gap as a deterministic,
 # threshold-gated, DEDUPED consolidated watch that the ALREADY-RESIDENT
-# board-cycle beat invokes each cycle (so it rides an is-active+is-enabled
-# timer with no new root-owned systemd unit to install), pages the operator
-# ONLY on a real incident, and escalates a genuinely novel/unclassifiable
-# anomaly to a bounded `claude -p` diagnosis before paging.
+# board-cycle beat invokes each cycle (rides an is-active+is-enabled timer, no
+# new root-owned unit).
+#
+# THE PAGE BAR (RESILIENT-411 recalibration). Jeff's standing order: DMs are his
+# advisor conversation + ONLY pages he must ACT on — zero transient-operational-
+# lull pages. A page fires ONLY when it is genuinely HIS problem and nothing
+# self-heals it:
+#   * disk_full   — the disk path is ≥90% (80-90% self-cleans; no page).
+#   * merge_stall — the line is DEAD: 0 merges for the full drought window
+#                   (default 3h) AND 0 PRs in flight (BLOCKED/green/pending =
+#                   CI-lag the board-cycle beat nurses, NOT a stall) AND the
+#                   worker is not producing. This is the ONLY worker-silence-
+#                   related page; bare silence NEVER pages — worker lulls
+#                   self-heal (INFRA-3832) and an "unrecoverable wedge" is
+#                   exactly this 3h-dead-line case. The LLM diagnosis fires here.
+#   * main_red    — main CI red sustained ≥30m (not a transient per-PR red).
+#   * oauth_expired — ≥3 oauth_token_refresh_failed in-window with NO recovery
+#                   since (routine oauth_token_refreshed successes never page).
+#   * cost_cap    — a cost_cap_exceeded in-window (sub cap / OpenRouter credit).
+# oauth_expired + cost_cap residentize operator-recall.sh's proven signals+bar.
+# The `[board-vitals] tick` proof-of-life line (RESILIENT-410) still prints
+# EVERY beat regardless — that is journal observability, NOT a DM.
 #
 # COMPLEMENTS, does not duplicate:
 #   * MERGE SLA (armed green PR past 30m) → board-cycle-escalate.sh owns it.
-#   * self-healed conditions (worker cooldown, disk auto-clean when the reactor
-#     runs, farmer kicking a silent worker) → their own organs own the heal;
-#     this lib pages only the RESIDUE those heals leave unresolved.
+#   * self-healed conditions (worker cooldown/wedge → INFRA-3832; disk auto-clean
+#     when the reactor runs; farmer kicking a silent worker) → their own organs
+#     own the heal; this lib pages only the RESIDUE those heals leave unresolved
+#     (e.g. a stall still dead 3h later).
 #
 # CONTRACT:
 #   board_vitals_check              → always returns 0 (an escalation organ must
@@ -42,11 +59,13 @@
 #   CHUMP_BOARD_VITALS_WINDOW_S        dedup window seconds (default 7200 = 2h)
 #   CHUMP_BOARD_VITALS_DISK_PATH       filesystem to check (default /)
 #   CHUMP_BOARD_VITALS_DISK_PCT        disk page threshold %% (default 90)
-#   CHUMP_BOARD_VITALS_DROUGHT_MIN     merge-drought threshold minutes (default 180)
-#   CHUMP_BOARD_VITALS_WORKER_SILENT_MIN worker-silence threshold minutes (default 40)
+#   CHUMP_BOARD_VITALS_DROUGHT_MIN     merge-stall threshold minutes (default 180 = 3h)
+#   CHUMP_BOARD_VITALS_WORKER_SILENT_MIN worker not-producing threshold min (default 40)
 #   CHUMP_BOARD_VITALS_MAIN_RED_MIN    sustained main-red threshold minutes (default 30)
-#   CHUMP_BOARD_VITALS_ESCALATE_MODEL  model for the novel-anomaly diagnosis (default sonnet)
-#   CHUMP_BOARD_VITALS_ESCALATE        1 enables the LLM novel-escalation (default 1)
+#   CHUMP_BOARD_VITALS_FLOOR_WINDOW_S  window for oauth/cost signal counts (default 7200 = 2h)
+#   CHUMP_BOARD_VITALS_OAUTH_FAIL_THR  oauth_token_refresh_failed count to page (default 3)
+#   CHUMP_BOARD_VITALS_ESCALATE_MODEL  model for the merge-stall diagnosis (default sonnet)
+#   CHUMP_BOARD_VITALS_ESCALATE        1 enables the LLM diagnosis on merge_stall (default 1)
 #
 # shellcheck shell=bash
 
@@ -211,6 +230,42 @@ _bv_farmer_silent_recent() {  # within_seconds
     (( ep > 0 && now - ep <= within ))
 }
 
+# Count ambient lines of a given kind whose ts is within the last N seconds.
+# Used for the floor/credential page conditions (oauth-refresh-failed,
+# cost_cap_exceeded), mirroring operator-recall.sh's windowed-count bar.
+_bv_count_kind_since() {  # kind, window_seconds  -> integer count
+    local log; log="$(_bv_ambient_log)"
+    [[ -f "$log" ]] || { echo 0; return; }
+    KIND="$1" WINDOW="$2" python3 - "$log" <<'PY' 2>/dev/null || echo 0
+import sys, json, os
+from datetime import datetime, timezone
+kind = os.environ.get("KIND", ""); window = int(os.environ.get("WINDOW", "0"))
+now = datetime.now(timezone.utc).timestamp()
+n = 0
+try:
+    with open(sys.argv[1]) as f:
+        for line in f:
+            if ('"kind":"%s"' % kind) not in line:
+                continue
+            try:
+                o = json.loads(line)
+            except Exception:
+                continue
+            if o.get("kind") != kind:
+                continue
+            try:
+                ep = datetime.strptime(o.get("ts",""), "%Y-%m-%dT%H:%M:%SZ") \
+                     .replace(tzinfo=timezone.utc).timestamp()
+            except Exception:
+                continue
+            if now - ep <= window:
+                n += 1
+except Exception:
+    pass
+print(n)
+PY
+}
+
 # Resolve notify_operator (source notify-operator.sh; stub if absent so the lib
 # stays testable). Sets a module flag so we source once.
 _bv_ensure_notify() {
@@ -321,36 +376,43 @@ board_vitals_check() {
         (( worker_age_min >= silent_min )) && worker_silent=1
     fi
 
-    # ── 3 · MERGES: drought (distinct from an SLA breach) ────────────────────
+    # ── 3 · MERGES: an UNRECOVERABLE stall (the human board's real page bar) ─
+    # RESILIENT-411 recalibration. This is the ONLY worker-silence-related page.
+    # Worker lulls SELF-HEAL (INFRA-3832 cools-down / auto-blocks wedged or
+    # timed-out gaps), so a transient silence must NEVER page — an earlier
+    # 40-min-silence page fired on a lull that recovered in ~1 min (operational
+    # noise, not Jeff's problem). A page fires ONLY when the LINE IS DEAD: no
+    # merge to main for the full drought window (default 3h) AND nothing in
+    # flight (0 — BLOCKED+green+pending PRs are CI-lag the board-cycle beat is
+    # already nursing, NOT a stall) AND the worker is not producing. All three
+    # must hold; 3h is far past any self-heal window, so this is a genuinely
+    # unrecoverable stall — the "unrecoverable wedge" case, folded in here.
     local last_merge_ep merge_age_min="" prs_in_flight
     last_merge_ep="$(git -C "$(_bv_repo_root)" log origin/main -1 --format=%ct 2>/dev/null)"
     [[ "$last_merge_ep" =~ ^[0-9]+$ ]] || last_merge_ep=0
     prs_in_flight="$(_bv_prs_in_flight)"
     [[ "$prs_in_flight" =~ ^-?[0-9]+$ ]] || prs_in_flight=-1
-    local drought_fired=0
     if (( last_merge_ep > 0 )); then
         merge_age_min=$(( (now - last_merge_ep) / 60 ))
-        # A REAL stall: no merge for the threshold AND nothing in flight (0, not
-        # unknown) AND the worker is not producing. PRs in flight = CI-lag, which
-        # the board-cycle beat already owns — not a drought.
         if (( merge_age_min >= drought_min )) && (( prs_in_flight == 0 )) && (( worker_silent == 1 )); then
-            drought_fired=1
             incidents=$((incidents+1))
-            _bv_maybe_page "merge_drought" \
-"🟠 **Merge drought.** No merge to main in ${merge_age_min}m, 0 PRs in flight, and the worker has produced nothing for ${worker_age_min}m. The line has stopped — not CI-lag. (board-vitals.sh)"
+            # This IS the hard, possibly-novel case — enrich the page with a
+            # bounded LLM diagnosis (the escalation path; skipped in DRY_RUN /
+            # when disabled). The LLM now fires ONLY on a real dead line, never
+            # on bare silence.
+            local diag=""
+            if [[ "${CHUMP_BOARD_VITALS_ESCALATE:-1}" == "1" ]] && [[ "${CHUMP_BOARD_VITALS_DRY_RUN:-0}" != "1" ]]; then
+                _bv_emit "board_vitals_novel_escalation" \
+                    "\"merge_age_min\":\"${merge_age_min}\",\"worker_silent_min\":\"${worker_age_min}\""
+                diag="$(_bv_llm_diagnose "merge_age_min=${merge_age_min}; prs_in_flight=0; worker_silent_min=${worker_age_min}; disk_pct=${disk_pct}")"
+            fi
+            _bv_maybe_page "merge_stall" \
+"🔴 **Merge stall — the line is dead.** No merge to main in ${merge_age_min}m (threshold ${drought_min}m), 0 PRs in flight, and the worker has produced nothing for ${worker_age_min}m. Past the self-heal window — a human needs to look.$( [[ -n "$diag" ]] && printf '\nLLM triage: %s' "$diag" ) (board-vitals.sh)"
         fi
     fi
 
-    # ── 4 · WORKER wedge (silent + farmer confirms a leased session silent) ──
-    local wedge_fired=0
-    if (( worker_silent == 1 )) && _bv_farmer_silent_recent 1200; then
-        wedge_fired=1
-        incidents=$((incidents+1))
-        _bv_maybe_page "worker_wedge" \
-"🟠 **Worker wedged.** No worker output for ${worker_age_min}m and the farmer flagged a leased session silent — its kick did not revive it (the pre-ship/clippy self-heal gap). A human may need to reap the lease. (board-vitals.sh)"
-    fi
-
-    # ── 5 · MAIN sustained red ───────────────────────────────────────────────
+    # ── 4 · MAIN sustained red ───────────────────────────────────────────────
+    # Sustained (default >30m), not a transient per-PR red a hotfix clears.
     local main_red_span
     main_red_span="$(_bv_main_red_span_min)"
     [[ "$main_red_span" =~ ^[0-9]+$ ]] || main_red_span=0
@@ -360,19 +422,39 @@ board_vitals_check() {
 "🔴 **main CI red ${main_red_span}m.** main has been failing for ${main_red_span}m (threshold ${main_red_min}m) — the whole fleet builds on red. A human should look. (board-vitals.sh)"
     fi
 
-    # ── 6 · NOVEL escalation: worker silent but UNEXPLAINED by 3/4 ───────────
-    # (silent, yet neither a drought nor a farmer-confirmed wedge — an anomaly
-    # the deterministic rules can't classify). Escalate to a bounded LLM
-    # diagnosis, then page WITH the diagnosis (deduped).
-    if (( worker_silent == 1 )) && (( drought_fired == 0 )) && (( wedge_fired == 0 )) \
-        && [[ "${CHUMP_BOARD_VITALS_ESCALATE:-1}" == "1" ]] && [[ "${CHUMP_BOARD_VITALS_DRY_RUN:-0}" != "1" ]]; then
-        local snapshot diag
-        snapshot="worker_silent_min=${worker_age_min}; last_merge_min=${merge_age_min}; prs_in_flight=${prs_in_flight}; disk_pct=${disk_pct}; main_red_span_min=${main_red_span}; farmer_silent_recent=no"
-        _bv_emit "board_vitals_novel_escalation" "\"worker_silent_min\":\"${worker_age_min}\""
-        diag="$(_bv_llm_diagnose "$snapshot")"
+    # ── 5 · FLOOR: credential / credit needs — genuinely Jeff's to fix ───────
+    # Residentizes operator-recall.sh's (INFRA-626) halt-class credential/cost
+    # pages: that organ's timer is NOT active on this node. Same registered
+    # signals + thresholds, so this is a residency move, not a new invention.
+    local floor_window oauth_fail_thr oauth_fails cost_hits
+    floor_window="${CHUMP_BOARD_VITALS_FLOOR_WINDOW_S:-7200}"
+    #   (a) OAuth GENUINELY expired: >= N oauth_token_refresh_failed in-window
+    #       AND the most recent oauth event is a FAILURE (a later
+    #       oauth_token_refreshed success means it recovered → no page). Routine
+    #       oauth_token_refreshed successes never page.
+    oauth_fail_thr="${CHUMP_BOARD_VITALS_OAUTH_FAIL_THR:-3}"
+    oauth_fails="$(_bv_count_kind_since "oauth_token_refresh_failed" "$floor_window")"
+    [[ "$oauth_fails" =~ ^[0-9]+$ ]] || oauth_fails=0
+    if (( oauth_fails >= oauth_fail_thr )); then
+        local fail_ep ok_ep
+        fail_ep="$(_bv_newest_kind_epoch "oauth_token_refresh_failed")"
+        ok_ep="$(_bv_newest_kind_epoch "oauth_token_refreshed")"
+        [[ "$fail_ep" =~ ^[0-9]+$ ]] || fail_ep=0
+        [[ "$ok_ep" =~ ^[0-9]+$ ]] || ok_ep=0
+        if (( fail_ep > ok_ep )); then
+            incidents=$((incidents+1))
+            _bv_maybe_page "oauth_expired" \
+"🔑 **OAuth expired — the floor can't authenticate.** ${oauth_fails} token-refresh failures in the last $((floor_window/60))m (threshold ${oauth_fail_thr}), no recovery since. Re-auth is Jeff's to do. (board-vitals.sh)"
+        fi
+    fi
+    #   (b) Spend/credit cap hit: any cost_cap_exceeded in-window — sub cap
+    #       exhausted / OpenRouter credit needed, the floor can't ship.
+    cost_hits="$(_bv_count_kind_since "cost_cap_exceeded" "$floor_window")"
+    [[ "$cost_hits" =~ ^[0-9]+$ ]] || cost_hits=0
+    if (( cost_hits >= 1 )); then
         incidents=$((incidents+1))
-        _bv_maybe_page "worker_silent_unexplained" \
-"🟡 **Unclassified anomaly — worker silent ${worker_age_min}m** with no drought/wedge signature. LLM triage: ${diag:-<diagnosis unavailable>}"
+        _bv_maybe_page "cost_cap" \
+"💳 **Spend cap hit — the floor can't ship.** ${cost_hits} cost_cap_exceeded event(s) in the last $((floor_window/60))m: sub cap exhausted / credit needed. Topping up is Jeff's to do. (board-vitals.sh)"
     fi
 
     _bv_emit "board_vitals_tick" \
