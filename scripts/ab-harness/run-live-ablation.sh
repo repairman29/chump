@@ -86,13 +86,11 @@ if [[ -z "${MODULE}" ]]; then
 fi
 
 # --- env sourcing --------------------------------------------------------
-
-if [[ -f "${REPO_ROOT}/.env" ]]; then
-    set -a
-    # shellcheck disable=SC1091
-    source "${REPO_ROOT}/.env"
-    set +a
-fi
+# CREDIBLE-265: .env is gitignored and lives only in the main checkout; use
+# the shared resolver so this also works from a claim worktree.
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/scripts/coord/lib/resolve-env.sh"
+chump_env_load || true
 
 # --- provider wiring -----------------------------------------------------
 

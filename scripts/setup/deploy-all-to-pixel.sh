@@ -56,11 +56,16 @@ done
 
 # Option A: supply Mac cascade keys so apply-mabel-badass-env (run on Pixel) can inject them.
 # On the Pixel, MAC_ENV defaults to $HOME/Projects/Chump/.env which does not exist; without this, Mabel gets no cascade.
+# CREDIBLE-265: .env is gitignored and lives only in the main checkout; use the
+# shared resolver so this also works when REPO_ROOT is a claim worktree.
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/coord/lib/resolve-env.sh"
 MAC_ENV_REMOTE=""
-if [[ -f "$REPO_ROOT/.env" ]]; then
+_mac_env_file="$(chump_env_file || true)"
+if [[ -n "$_mac_env_file" ]]; then
   TMP_ENV_MAC=$(mktemp)
   trap 'rm -f "$TMP_ENV_MAC"' EXIT
-  grep -E '^CHUMP_PROVIDER_(1|2)_KEY=' "$REPO_ROOT/.env" > "$TMP_ENV_MAC" 2>/dev/null || true
+  grep -E '^CHUMP_PROVIDER_(1|2)_KEY=' "$_mac_env_file" > "$TMP_ENV_MAC" 2>/dev/null || true
   if [[ -s "$TMP_ENV_MAC" ]]; then
     attempt=1
     while [[ $attempt -le $MAX_ATTEMPTS ]]; do

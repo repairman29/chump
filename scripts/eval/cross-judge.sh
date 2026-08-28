@@ -87,25 +87,13 @@ command -v jq    >/dev/null || { echo "ERROR: jq not on PATH"   >&2; exit 1; }
 command -v curl  >/dev/null || { echo "ERROR: curl not on PATH" >&2; exit 1; }
 
 # ── Load .env so CHUMP_PROVIDER_* slot config is available ──────────────────
+# CREDIBLE-265: .env is gitignored and lives only in the main repo root; use
+# the shared resolver (resolves a worktree back to the main .git) instead of
+# a bespoke walk here.
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-# .env lives in the *main* repo root (gitignored). When running from a
-# linked worktree, --show-toplevel returns the worktree path which has no
-# .env. Walk up via --git-common-dir's parent to find the canonical .env.
-MAIN_REPO_ROOT="$REPO_ROOT"
-if _common_dir=$(git rev-parse --git-common-dir 2>/dev/null); then
-    if [[ "$_common_dir" != ".git" && "$_common_dir" != "$REPO_ROOT/.git" ]]; then
-        MAIN_REPO_ROOT="$(cd "$_common_dir/.." && pwd)"
-    fi
-fi
-for _env_path in "$REPO_ROOT/.env" "$MAIN_REPO_ROOT/.env"; do
-    if [[ -f "$_env_path" ]]; then
-        set -a
-        # shellcheck disable=SC1090
-        source "$_env_path"
-        set +a
-        break
-    fi
-done
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/coord/lib/resolve-env.sh"
+chump_env_load || true
 
 # ── Resolve cascade slot config → (base, key, model) ────────────────────────
 # Walks CHUMP_PROVIDER_1..10 looking for a slot whose NAME matches.

@@ -50,12 +50,13 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 log() { echo "[$(ts)] $*" | tee -a "$LOG_FILE"; }
 
-# Load ANTHROPIC_API_KEY from .env if not already set
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]] && [[ -f "$REPO_ROOT/.env" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$REPO_ROOT/.env"
-    set +a
+# Load ANTHROPIC_API_KEY from .env if not already set. CREDIBLE-265: .env is
+# gitignored and lives only in the main checkout; use the shared resolver so
+# this also works when REPO_ROOT is a claim worktree.
+if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/scripts/coord/lib/resolve-env.sh"
+    chump_env_load || true
 fi
 
 if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then

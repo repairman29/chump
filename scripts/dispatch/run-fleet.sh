@@ -167,20 +167,20 @@ SCRIPT_DIR="$REPO_ROOT/scripts/dispatch"
 # INFRA-469: route every `chump` invocation through the wedge-heal shim.
 export PATH="$REPO_ROOT/bin:$PATH"
 
-# INFRA-351: source $REPO_ROOT/.env (if present) so spawned worker panes
+# INFRA-351: source .env (if present) so spawned worker panes
 # inherit ANTHROPIC_API_KEY / OPENAI_API_KEY / TOGETHER_API_KEY etc. and
 # `claude -p` consumes workspace API credit instead of falling back to
 # the launcher's claude.ai subscription cap. Caught 2026-05-02 22:27:
 # Jeff had $92.71 unused workspace credit while the squad burned the
 # $20 monthly subscription cap. Bypass: CHUMP_FLEET_NOENV=1.
-if [[ -f "$REPO_ROOT/.env" && "${CHUMP_FLEET_NOENV:-0}" != "1" ]]; then
-    # set -a auto-exports every assignment; matches the standard "source .env"
-    # idiom used in tools like docker-compose. set +a restores prior behavior.
-    set -a
+# CREDIBLE-265: .env is gitignored and lives only in the main checkout; use
+# the shared resolver so this also works when REPO_ROOT is a claim worktree.
+if [[ "${CHUMP_FLEET_NOENV:-0}" != "1" ]]; then
     # shellcheck disable=SC1091
-    source "$REPO_ROOT/.env"
-    set +a
-    echo "[run-fleet] sourced $REPO_ROOT/.env (INFRA-351) — set CHUMP_FLEET_NOENV=1 to skip"
+    source "$REPO_ROOT/scripts/coord/lib/resolve-env.sh"
+    if chump_env_load; then
+        echo "[run-fleet] sourced $(chump_env_file) (INFRA-351/CREDIBLE-265) — set CHUMP_FLEET_NOENV=1 to skip"
+    fi
 fi
 
 # INFRA-620: detect auth mode before consuming any fleet config, so the

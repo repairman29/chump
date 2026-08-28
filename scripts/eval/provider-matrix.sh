@@ -64,13 +64,12 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
 cd "$REPO_ROOT"
 
 # Source .env for provider keys. Tolerate missing file — caller may export
-# the vars another way.
-if [[ -f "$REPO_ROOT/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$REPO_ROOT/.env"
-  set +a
-fi
+# the vars another way. CREDIBLE-265: .env is gitignored and lives only in
+# the main checkout; use the shared resolver so this also works from a claim
+# worktree, where --show-toplevel above resolves to the worktree, not main.
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/coord/lib/resolve-env.sh"
+chump_env_load || true
 
 # Resolve which providers to run.
 if [[ $# -gt 0 ]]; then
