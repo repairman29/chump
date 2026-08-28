@@ -1554,6 +1554,7 @@ dependencies = [
  "chrono",
  "chump-ambient-cli",
  "chump-gap-store",
+ "coord-mesh",
  "futures",
  "serde",
  "serde_json",
@@ -2392,6 +2393,19 @@ dependencies = [
  "serde_json",
  "time",
  "url",
+]
+
+[[package]]
+name = "coord-mesh"
+version = "0.1.0"
+source = "git+https://github.com/repairman29/chump-proprietary?rev=88930c2421754db46e36f76f4043d05a28959032#88930c2421754db46e36f76f4043d05a28959032"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tokio",
 ]
 
 [[package]]

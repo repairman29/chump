@@ -11,12 +11,12 @@
 // canonical copy instead of two that drift.
 //
 // This module is the **migration shim**: when the `mesh-bridge` feature flag
-// is active it exposes `chump_coord::mesh_bridge::*` which today re-exports
-// from the local hand-rolled modules (mesh.rs, consensus.rs). Once Side A
-// lands (INFRA-1815-sideA — create `crates/coord-mesh` in the internal
-// sibling repo and uncomment the git dep in Cargo.toml), the `pub use`
-// lines below switch from `crate::mesh::*` to `coord_mesh::mesh::*` with
-// no change to call sites.
+// is active, `chump_coord::mesh_bridge::*` re-exports from the `coord-mesh`
+// crate (INFRA-1815-sideA, shipped as repairman29/chump-proprietary#1) —
+// the canonical shared home for these types per CP-008. The local
+// hand-rolled modules (mesh.rs, consensus.rs) remain the fallback when the
+// feature is off, so crates that don't need the mesh substrate don't incur
+// the git dep.
 //
 // ## Consumption (INFRA-1758 / INFRA-1763 / INFRA-1804)
 //
@@ -25,41 +25,19 @@
 // use chump_coord::mesh_bridge::{Channel, Message, MeshTransport, StubMesh};
 // use chump_coord::mesh_bridge::consensus::ConsensusCoordinator;
 // ```
-//
-// ## Activation checklist (after INFRA-1815-sideA ships)
-//
-// 1. Get the HEAD SHA from the internal sibling repo after `crates/coord-mesh/` lands.
-// 2. In `crates/chump-coord/Cargo.toml`, uncomment the `[dependencies.coord-mesh]`
-//    block and fill in the SHA.
-// 3. Change the re-exports below from `crate::mesh::*` → `coord_mesh::mesh::*`
-//    and `crate::consensus::*` → `coord_mesh::consensus::*`.
-// 4. Change the feature line in Cargo.toml from `mesh-bridge = []` to
-//    `mesh-bridge = ["dep:coord-mesh"]`.
-// 5. Run: `cargo build --features mesh-bridge && cargo test -p chump-coord --lib`
 
 // ── Mesh transport substrate ──────────────────────────────────────────────────
 
-// Post-Side-A: replace the three lines below with:
-//   pub use coord_mesh::mesh::{
-//       AckMessage, BandwidthBudget, Channel, GhThrottleGate, LocalProcessTransport,
-//       MeshError, MeshTransport, Message, MessageQueue, StubMesh,
-//   };
-//   pub use coord_mesh::mesh::channels;
-pub use crate::mesh::channels;
-pub use crate::mesh::{
+pub use coord_mesh::mesh::channels;
+pub use coord_mesh::mesh::{
     AckMessage, BandwidthBudget, Channel, GhThrottleGate, LocalProcessTransport, MeshError,
     MeshTransport, Message, MessageQueue, StubMesh,
 };
 
 // ── Consensus substrate ───────────────────────────────────────────────────────
 
-// Post-Side-A: replace with:
-//   pub use coord_mesh::consensus::{
-//       ConsensusCoordinator, ConsensusDecision, ConsensusRecord, DecisionType,
-//       Vote, VoteProof, VoteRequest,
-//   };
 pub mod consensus {
-    pub use crate::consensus::{
+    pub use coord_mesh::consensus::{
         ConsensusCoordinator, ConsensusDecision, ConsensusRecord, DecisionType, Vote, VoteProof,
         VoteRequest,
     };

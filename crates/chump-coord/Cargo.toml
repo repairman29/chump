@@ -61,20 +61,13 @@ chump-ambient-cli = { path = "../ambient-cli", version = "0.1.0" }
 # Preferred over path-dep (breaks CI runners without the sibling clone) and over a
 # private cargo registry (no infra cost at this scale).
 #
-# Status: Side A (create coord-mesh crate in the internal sibling repo) tracked in
-# INFRA-1815-sideA. The dependency is scaffolded here but commented-out until Side A
-# lands — at that point, swap the comment block below for the live dep + pin the SHA.
-#
-# To activate once Side A lands:
-#   1. Get the HEAD SHA from the internal sibling repo after the coord-mesh crate ships.
-#   2. Uncomment the [dependencies.coord-mesh] block below, replacing <COORD_MESH_SHA>.
-#   3. Run: cargo update -p coord-mesh (or just cargo build --features mesh-bridge).
-#   4. Commit Cargo.lock with the pinned SHA.
-#
-# [dependencies.coord-mesh]
-# git = "https://github.com/repairman29/chump-proprietary"
-# rev = "<COORD_MESH_SHA>"     # pin to the commit that ships crates/coord-mesh/
-# optional = true
+# Status: Side A shipped (INFRA-1815-sideA, PR repairman29/chump-proprietary#1,
+# merged as 88930c2421754db46e36f76f4043d05a28959032) — crates/coord-mesh now
+# exists in the internal sibling repo. The git dep below is pinned to that SHA.
+[dependencies.coord-mesh]
+git = "https://github.com/repairman29/chump-proprietary"
+rev = "88930c2421754db46e36f76f4043d05a28959032"
+optional = true
 
 [dev-dependencies]
 serial_test = "4"
@@ -90,8 +83,7 @@ tempfile    = "3"
 # Guard in code: `#[cfg(feature = "mesh-bridge")]`
 [features]
 default = []
-mesh-bridge = []
-# mesh-bridge = ["dep:coord-mesh"]  # uncomment when Side A lands (INFRA-1815-sideA)
+mesh-bridge = ["dep:coord-mesh"]
 
 [lints]
 workspace = true
