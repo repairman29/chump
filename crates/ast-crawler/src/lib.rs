@@ -697,12 +697,7 @@ fn parse_bash(path: &str, src: &str) -> Result<FileShape> {
     let root = tree.root_node();
     let mut symbols = Vec::new();
     let imports: Vec<String> = Vec::new(); // bash has no formal imports
-    let mut cursor = root.walk();
-    for child in root.named_children(&mut cursor) {
-        if child.kind() == "function_definition" {
-            push_named(child, src, "fn", &mut symbols, "#");
-        }
-    }
+    collect_bash_functions(root, src, &mut symbols);
     Ok(FileShape {
         path: path.to_string(),
         language: "bash".into(),
@@ -710,6 +705,23 @@ fn parse_bash(path: &str, src: &str) -> Result<FileShape> {
         top_level_symbols: symbols,
         imports,
     })
+}
+
+// tree-sitter-bash nests `function_definition` under control-flow wrappers
+// (if/for/while/case bodies) rather than as a direct child of `program`, so
+// a flat `root.named_children()` scan misses functions declared inside a
+// guard or feature-flag conditional. Walk recursively to find them at any
+// depth, but stop descending once a function_definition is matched so
+// nested fn defs inside its body aren't extracted as file-scope symbols.
+fn collect_bash_functions(node: Node, src: &str, symbols: &mut Vec<Symbol>) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "function_definition" {
+            push_named(child, src, "fn", symbols, "#");
+        } else {
+            collect_bash_functions(child, src, symbols);
+        }
+    }
 }
 
 // ── YAML ──────────────────────────────────────────────────────────────────
@@ -972,6 +984,46 @@ bye() {
             .collect();
         assert!(names.contains(&"hello"), "got {names:?}");
         assert!(names.contains(&"bye"), "got {names:?}");
+    }
+
+    #[test]
+    fn bash_extracts_functions_from_fixture() {
+        let fixture = include_str!("../tests/fixtures/sample.sh");
+        let td = tempfile::tempdir().unwrap();
+        let p = write_tmp(td.path(), "sample.sh", fixture);
+        let shape = crawl_file(&p).unwrap();
+        assert_eq!(shape.language, "bash");
+        assert!(shape.supported);
+        let names: Vec<&str> = shape
+            .top_level_symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert_eq!(shape.top_level_symbols.len(), 3, "got {names:?}");
+        assert!(names.contains(&"foo"), "got {names:?}");
+        assert!(names.contains(&"bar"), "got {names:?}");
+        assert!(names.contains(&"baz"), "got {names:?}");
+    }
+
+    #[test]
+    fn bash_finds_functions_nested_in_control_flow() {
+        let td = tempfile::tempdir().unwrap();
+        let body = r#"#!/bin/bash
+if true; then
+  guarded_fn() {
+    echo "guarded"
+  }
+fi
+"#;
+        let p = write_tmp(td.path(), "guard.sh", body);
+        let shape = crawl_file(&p).unwrap();
+        assert_eq!(shape.language, "bash");
+        let names: Vec<&str> = shape
+            .top_level_symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert!(names.contains(&"guarded_fn"), "got {names:?}");
     }
 
     #[test]
