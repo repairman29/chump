@@ -1,7 +1,7 @@
 - id: INFRA-2065
   domain: INFRA
   title: "ZERO-WASTE: cutover INFRA-2002 chump-worker — remove scripts/dispatch/worker.sh (1807 LOC) + scripts/dispatch/run-fleet.sh (750 LOC) after 1-week parallel-run; tmux pane spawn migrated to chump-fleet"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -11,7 +11,10 @@
     - "octocrab native: chump-worker reads PR state via chump-github-cache crate (no gh CLI text-parse); INFRA-1999 chump-github-cache crate is a HARD dependency for cutover (cannot complete INFRA-2065 until INFRA-2062 cutover lands so the cache layer is single-stack)"
     - "Ambient emit kind=rust_migration_landed gap=INFRA-2002 lines_out=2557 lines_in=0 on cutover commit; total META-107 cutover arc emit at this point: kind=meta_107_cutover_complete with sum_lines_out=10487 (1154+583+1149+2000+3044+2557) for retrospective audit"
     - CRITICAL — this is the FINAL cutover of the META-107 arc; PR body includes (a) full LOC-out summary across all 6 cutover gaps, (b) reference to META-107 umbrella, (c) emit kind=meta_107_complete (already-registered) as the final closing event
+  depends_on: [INFRA-2062]
   notes: |
     Phase 2 cutover of META-107 sub-gap INFRA-2002 (chump-worker + chump-fleet). FINAL cutover in the META-107 arc. Sibling cutovers: INFRA-2060/2061/2062/2063/2064. Recommend cutting over LAST in the sequence — chump-worker hot-path depends on the github-cache cutover (INFRA-2062) being complete first since worker reads PR state every cycle.
+    
+    [2026-08-28T16:03:38Z] Reality-check (2026-08-28): AC1 requires 7+ consecutive days of CHUMP_FLEET_RUST=1 parallel-run validation across 3+ multi-worker sessions with zero worker_divergence_detected events -- no such ambient evidence exists (zero worker_divergence_detected events ever in ambient.jsonl). AC4 makes INFRA-2062 (chump-github-cache cutover) a HARD dependency, and INFRA-2062 is still status:open/unshipped. Cutting over now would delete 2557 LOC of the only proven worker-spawn path (chump-fleet is Phase-1/flag-gated, default CHUMP_FLEET_RUST=0, unvalidated) -- durable-fix doctrine forbids shipping a destructive removal whose own AC is unmet. Marked blocked on INFRA-2062 instead of force-shipping a fake cutover. Re-open once INFRA-2062 ships AND the 7-day/3-session parallel-run window is actually observed via ambient.
   outcome_id: MISSION-010
 
