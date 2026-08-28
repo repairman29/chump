@@ -27,6 +27,17 @@ const TRACKED_KINDS = [
   { kind: 'gh_shim_worktree_install_blocked', icon: '🔧', label: 'gh shim install blocked' },
   // INFRA-779 — gitdir back-ref repair fired
   { kind: 'worktree_gitdir_repair_fired', icon: '🩹', label: 'Worktree gitdir repaired' },
+  // META-193 — pr-shepherd-daemon (META-180) classification outcomes that need
+  // a human decision: UNKNOWN (classifier couldn't place the PR), DIRTY (real
+  // merge conflict), BLOCKED_REAL_FAIL (a check genuinely failed, not a flake).
+  // MERGEABLE / BLOCKED_GREEN are explicitly excluded via `filter` below — the
+  // daemon already auto-arms those, so escalating them would be pure noise.
+  {
+    kind: 'pr_classified',
+    icon: '🚦',
+    label: 'PR needs attention (shepherd)',
+    filter: (e) => ['UNKNOWN', 'DIRTY', 'BLOCKED_REAL_FAIL'].includes(e.classification),
+  },
 ];
 
 const DEFER_TTL_S = 4 * 60 * 60; // 4 hours
@@ -96,7 +107,7 @@ class ChumpOperatorAttention extends HTMLElement {
     // Fetch per kind. Each kind is cheap; total is O(8) HTTP calls every
     // 30s. Could be one combined endpoint if traffic warrants, but per-kind
     // is server-cache-friendly today.
-    const fetches = TRACKED_KINDS.map(async ({ kind, icon, label }) => {
+    const fetches = TRACKED_KINDS.map(async ({ kind, icon, label, filter }) => {
       try {
         const r = await fetch(`/api/ambient/recent?kind=${encodeURIComponent(kind)}&n=20`, {
           headers: this._authHeaders(),
@@ -104,7 +115,10 @@ class ChumpOperatorAttention extends HTMLElement {
         });
         if (!r.ok) return [];
         const body = await r.json();
-        const events = Array.isArray(body) ? body : (body.events || []);
+        let events = Array.isArray(body) ? body : (body.events || []);
+        // META-193: per-kind sub-filter (e.g. pr_classified only escalates
+        // specific classifications — MERGEABLE/BLOCKED_GREEN stay quiet).
+        if (typeof filter === 'function') events = events.filter(filter);
         return events.map((e) => ({ ...e, _icon: icon, _label: label, _kind: kind }));
       } catch (_e) {
         return [];
