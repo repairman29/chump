@@ -545,6 +545,7 @@ deliberator_heartbeat             # reason: META-157 emitted by scripts/coord/de
 vote                              # reason: META-157 FEEDBACK kind emitted via broadcast.sh FEEDBACK with kind=vote for consensus tallying. Read by scripts/coord/deliberator-loop.sh:190. Scanner-anchor: scripts/coord/deliberator-loop.sh.
 preference                        # reason: META-157 FEEDBACK kind emitted via broadcast.sh FEEDBACK with kind=preference for soft-signal aggregation. Scanner-anchor: scripts/coord/deliberator-loop.sh.
 proposal                          # reason: META-157 FEEDBACK kind emitted via broadcast.sh FEEDBACK with kind=proposal for option-ranking. Read by scripts/coord/decompose-loop.sh:138 + deliberator-loop.sh:283. Scanner-anchor: scripts/coord/decompose-loop.sh.
+vote-request                      # reason: META-189 FEEDBACK kind emitted via broadcast.sh FEEDBACK with kind=vote-request when a PR is classified MERGEABLE, corr_id=pr-N, so the fleet casts consensus votes via `chump vote pr-N`. Scanner-anchor: scripts/coord/pr-shepherd-daemon.sh.
 
 # FEEDBACK fanout (META-157)
 feedback_fanout_delivered         # reason: META-157 emitted by feedback-fanout.sh when a FEEDBACK message is replicated from broadcast to N curator inboxes. Carries corr_id, recipient_count. Scanner-anchor: scripts/coord/feedback-fanout.sh.
