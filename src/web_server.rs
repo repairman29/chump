@@ -686,6 +686,7 @@ async fn handle_broadcast(
     headers: HeaderMap,
     Json(body): Json<BroadcastRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let action_started_at = std::time::Instant::now();
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
@@ -805,6 +806,13 @@ async fn handle_broadcast(
             format!("broadcast.sh exit {}: {}", output.status, stderr),
         ));
     }
+    // META-082: coordination-action cost tracking (route change slice).
+    crate::coordination_cost::record_action(
+        body.recipient.as_deref().unwrap_or("broadcast"),
+        "route_change",
+        action_started_at.elapsed().as_millis() as u64,
+        0.0,
+    );
     Ok(Json(serde_json::json!({
         "ok": true,
         "event": event,
@@ -878,6 +886,7 @@ async fn handle_lessons_post(
     headers: HeaderMap,
     Json(body): Json<LessonPostRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let action_started_at = std::time::Instant::now();
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
@@ -916,16 +925,24 @@ async fn handle_lessons_post(
         store.push(record);
         store.len()
     };
+    let agent = body.agent.unwrap_or_default();
     // scanner-anchor: "kind":"lesson_published"
     let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
         kind: "lesson_published".to_string(),
         fields: vec![
             ("lesson_id".to_string(), lesson_id.clone()),
-            ("agent".to_string(), body.agent.unwrap_or_default()),
+            ("agent".to_string(), agent.clone()),
             ("context_tags".to_string(), context_tags.join(",")),
         ],
         ..Default::default()
     });
+    // META-082: coordination-action cost tracking (lesson-publish slice).
+    crate::coordination_cost::record_action(
+        if agent.is_empty() { "unknown" } else { &agent },
+        "lesson_publish",
+        action_started_at.elapsed().as_millis() as u64,
+        0.0,
+    );
     Ok(Json(serde_json::json!({
         "ok": true,
         "lesson_id": lesson_id,
@@ -940,6 +957,7 @@ async fn handle_lessons_get(
     headers: HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let action_started_at = std::time::Instant::now();
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
@@ -956,10 +974,64 @@ async fn handle_lessons_get(
             None => true,
         })
         .collect();
-    Ok(Json(serde_json::json!({
+    let count = lessons.len();
+    let response = Json(serde_json::json!({
         "lessons": lessons,
-        "count": lessons.len(),
-    })))
+        "count": count,
+    }));
+    drop(store); // release lock before recording; not needed after this point
+                 // META-082: coordination-action cost tracking (lesson-fetch slice).
+    let requesting_agent = params.get("agent").map(|s| s.trim()).unwrap_or("");
+    crate::coordination_cost::record_action(
+        if requesting_agent.is_empty() {
+            "unknown"
+        } else {
+            requesting_agent
+        },
+        "lesson_fetch",
+        action_started_at.elapsed().as_millis() as u64,
+        0.0,
+    );
+    Ok(response)
+}
+
+/// META-082: request body for POST /api/coordination-actions — lets shell
+/// coordination scripts (which don't go through the Rust handlers above)
+/// self-report cost metrics for their own coordination actions.
+#[derive(serde::Deserialize)]
+struct CoordinationActionRequest {
+    agent_id: String,
+    action_type: String,
+    duration_ms: u64,
+    #[serde(default)]
+    estimated_cost: f64,
+}
+
+/// META-082: POST /api/coordination-actions — log CPU/time/cost metrics for
+/// a coordination action (route change, lesson fetch, or any other
+/// script-driven coordination step). Aggregated view: GET /api/metrics.
+async fn handle_coordination_action_post(
+    headers: HeaderMap,
+    Json(body): Json<CoordinationActionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let agent_id = body.agent_id.trim();
+    let action_type = body.action_type.trim();
+    if agent_id.is_empty() || action_type.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "agent_id and action_type must be non-empty".to_string(),
+        ));
+    }
+    crate::coordination_cost::record_action(
+        agent_id,
+        action_type,
+        body.duration_ms,
+        body.estimated_cost,
+    );
+    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 /// INFRA-1298: GET /api/inbox/{session} — read targeted-inbox messages.
@@ -9431,6 +9503,12 @@ fn build_api_router() -> Router {
             "/api/lessons",
             get(handle_lessons_get).post(handle_lessons_post),
         )
+        // META-082: cost tracking for coordination actions (META-073 slice).
+        .route(
+            "/api/coordination-actions",
+            post(handle_coordination_action_post),
+        )
+        .route("/api/metrics", get(crate::metrics::handle_metrics))
         .route("/api/approve", post(handle_approve))
         // INFRA-1340: per-tool persistent auto-approve policies (PWA dropdown)
         .route(
