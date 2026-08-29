@@ -284,6 +284,38 @@ for entry in "${REQUIRED_DAEMONS[@]}"; do
     fi
 done
 
+# ── Merge Queue enforcement (INFRA-1518) ────────────────────────────────────
+# Structural fix for INFRA-1377: Merge Queue on main was an operator-flip
+# step after every fleet-up (the CONVOY-class failure diagnosed that
+# session). Every bootstrap run re-checks it and flips it back on if
+# disabled — idempotent, no-op once enabled.
+# shellcheck source=scripts/setup/lib/merge-queue-enforce.sh
+source "$REPO_ROOT/scripts/setup/lib/merge-queue-enforce.sh"
+MQ_REPO="${GITHUB_REPOSITORY:-$(command -v gh >/dev/null 2>&1 && gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)}"
+MQ_RESULT="$(enforce_merge_queue "$MODE" "$MQ_REPO")"
+case "$MQ_RESULT" in
+    ok)
+        [[ "$MODE" == "check" ]] && echo "  ok      merge-queue-enforcement"
+        ;;
+    enabled)
+        INSTALLED=$((INSTALLED + 1))
+        INSTALLED_LIST+=("merge-queue-enforcement")
+        echo "[bootstrap] INFRA-1518: main branch Merge Queue was OFF — enabled it"
+        ;;
+    missing)
+        MISSING_AT_CHECK+=("merge-queue-enforcement")
+        echo "  MISSING merge-queue-enforcement  (main branch Merge Queue is OFF — run: bash scripts/setup/chump-fleet-bootstrap.sh)"
+        ;;
+    failed)
+        FAILED=$((FAILED + 1))
+        FAILED_LIST+=("merge-queue-enforcement:api-put-failed")
+        echo "[bootstrap] FAILED merge-queue-enforcement (gh api PUT failed); continuing" >&2
+        ;;
+    skip-no-gh|skip-no-repo)
+        : # nothing to enforce — gh unavailable or repo unresolvable
+        ;;
+esac
+
 # Ambient emit for audit trail.
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 if [[ -d "$(dirname "$AMBIENT")" ]]; then
