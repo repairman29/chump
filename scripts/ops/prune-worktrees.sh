@@ -28,6 +28,9 @@
 # Emits to ambient.jsonl:
 #   kind=worktree_orphan_pruned  (one per pruned worktree)
 #   kind=worktree_orphan_skipped (one per skipped worktree with reason)
+#   kind=worktree_orphan_process_killed (INFRA-1516, one per killed
+#     background process — e.g. heartbeat-watcher.sh, chump --acp — whose
+#     cwd was still inside a worktree about to be deleted)
 
 set -uo pipefail
 
@@ -108,6 +111,62 @@ has_open_pr() {
     [[ "${pr_count:-1}" -gt 0 ]]
 }
 
+# INFRA-1516: kill any background process still running with its cwd
+# inside a worktree before we delete it. Without this, a heartbeat-watcher.sh
+# or `chump --acp` invocation started inside the worktree survives the
+# `git worktree remove` / `rm -rf` below as an orphan process — harmless
+# per-process CPU cost, but they accumulate and slow process-table scans
+# and confuse lease/liveness checks (11 such orphans found 2026-08-28).
+kill_worktree_processes() {
+    local wt_dir="$1"
+    local pids=""
+    if command -v lsof &>/dev/null; then
+        pids="$(lsof +D "$wt_dir" 2>/dev/null | awk 'NR>1 {print $2}' | sort -u)"
+    fi
+    if [[ -z "$pids" ]]; then
+        pids="$(pgrep -f "$wt_dir" 2>/dev/null | sort -u)"
+    fi
+    [[ -z "$pids" ]] && return 0
+
+    local pid cmd etime age
+    while IFS= read -r pid; do
+        [[ -z "$pid" ]] && continue
+        [[ "$pid" == "$$" ]] && continue
+        cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+        [[ -z "$cmd" ]] && continue
+        etime="$(ps -p "$pid" -o etime= 2>/dev/null | tr -d ' ')"
+        age="$(_etime_to_seconds "$etime")"
+        echo "[prune-worktrees] KILL pid=$pid age=${age}s cmd=$cmd (orphan process inside $wt_dir)"
+        kill "$pid" 2>/dev/null || true
+        emit_ambient "worktree_orphan_process_killed" \
+            "\"pid\":$pid,\"cmd\":\"$(printf '%s' "$cmd" | sed 's/\\/\\\\/g; s/"/\\"/g')\",\"worktree_path\":\"$wt_dir\",\"age_seconds\":$age"
+    done <<< "$pids"
+
+    sleep 2
+
+    # Force-kill anything that ignored SIGTERM.
+    while IFS= read -r pid; do
+        [[ -z "$pid" ]] && continue
+        kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+    done <<< "$pids"
+}
+
+# Convert `ps -o etime=` output ([[dd-]hh:]mm:ss) to whole seconds.
+_etime_to_seconds() {
+    local etime="$1" days=0 hms="$1"
+    [[ -z "$etime" ]] && { echo 0; return; }
+    if [[ "$etime" == *-* ]]; then
+        days="${etime%%-*}"
+        hms="${etime#*-}"
+    fi
+    local h=0 m=0 s=0
+    IFS=: read -r a b c <<< "$hms"
+    if [[ -n "$c" ]]; then h="$a"; m="$b"; s="$c";
+    elif [[ -n "$b" ]]; then m="$a"; s="$b";
+    else s="$a"; fi
+    echo $(( (10#${days:-0} * 86400) + (10#${h:-0} * 3600) + (10#${m:-0} * 60) + 10#${s:-0} ))
+}
+
 PRUNED=0
 SKIPPED=0
 ERRORS=0
@@ -162,6 +221,8 @@ while IFS= read -r wt_dir; do
         echo "[prune-worktrees]   [dry-run] would remove $wt_dir"
         PRUNED=$((PRUNED + 1))
     else
+        # INFRA-1516: kill orphan background processes before deleting.
+        kill_worktree_processes "$wt_dir"
         # git worktree remove also prunes the gitdir metadata.
         if git -C "$REPO_ROOT" worktree remove --force "$wt_dir" 2>/dev/null; then
             emit_ambient "worktree_orphan_pruned" "\"path\":\"$wt_dir\",\"branch\":\"$branch\""
