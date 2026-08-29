@@ -148,6 +148,23 @@ if [[ "$MODE" != "check" ]] && command -v launchctl >/dev/null 2>&1; then
     echo "[bootstrap] INFRA-2515: A2A flags set (CHUMP_FLEET_RECV_SIDE_V0=1, CHUMP_A2A_LAYER=1)"
 fi
 
+# ── INFRA-1518: Merge Queue enforcement on main (setup-invariant) ─────────────
+# Closes the INFRA-1377 "operator flips the switch by hand" hole: every
+# `fleet up`/`--check` call verifies (and, in install mode, repairs) that
+# GitHub Merge Queue is enabled on main's branch-protection rule.
+MQ_ENFORCE_FAILED=0
+MERGE_QUEUE_LIB="$REPO_ROOT/scripts/setup/lib/merge-queue-enforce.sh"
+if command -v gh >/dev/null 2>&1 && [[ -f "$MERGE_QUEUE_LIB" ]]; then
+    # shellcheck source=lib/merge-queue-enforce.sh
+    source "$MERGE_QUEUE_LIB"
+    MQ_REPO="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")"
+    if [[ -n "$MQ_REPO" ]]; then
+        if ! merge_queue_enforce "$MODE" "$MQ_REPO"; then
+            MQ_ENFORCE_FAILED=1
+        fi
+    fi
+fi
+
 # Parse the manifest (YAML → tab-separated rows: id\tpriority\tinstall\tcheck).
 # We use python3 because awk + YAML is misery.
 parse_manifest() {
@@ -330,7 +347,7 @@ if [[ "$MODE" == "check" ]]; then
             echo "  bash $installer   # registers $label"
         done
     fi
-    if (( ${#MISSING_AT_CHECK[@]} > 0 || ${#MISSING_DAEMONS[@]} > 0 )); then
+    if (( ${#MISSING_AT_CHECK[@]} > 0 || ${#MISSING_DAEMONS[@]} > 0 || MQ_ENFORCE_FAILED == 1 )); then
         echo "Run: bash scripts/setup/chump-fleet-bootstrap.sh"
         exit 1
     fi
@@ -338,7 +355,7 @@ if [[ "$MODE" == "check" ]]; then
 fi
 
 echo "=== bootstrap done: $INSTALLED installed, $SKIPPED_HEALTHY already healthy, $FAILED failed"
-if (( FAILED > 0 )); then
+if (( FAILED > 0 || MQ_ENFORCE_FAILED == 1 )); then
     for f in "${FAILED_LIST[@]}"; do echo "  FAILED: $f" >&2; done
     exit 1
 fi
