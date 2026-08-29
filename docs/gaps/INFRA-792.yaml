@@ -1,13 +1,15 @@
 - id: INFRA-792
   domain: INFRA
   title: "RESILIENT: INFRA: fast-checks + FTUE tests failing on PR #1373 (71m blocked)"
-  status: open
+  status: closed
   priority: P2
   effort: m
   acceptance_criteria:
     - "Diagnose why fast-checks and FTUE workflows fail on PR #1373; unblock 'Free-tier dispatch testing' PR; verify fixes work"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+
+    [2026-08-28T19:29:05Z] Verified 2026-08-28: PR 1373 merged 2026-05-10 14:45 UTC; fast-checks and FTUE both currently green on main (3-5 consecutive successes). No code fix needed, blocking condition resolved. Closing as already-resolved.
   opened_date: '2026-05-10'
   outcome_id: MISSION-010
 
