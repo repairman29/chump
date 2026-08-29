@@ -754,10 +754,38 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # "init" commits in the real worktree's git history.
             unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
-            # INFRA-1372 AC-3: record HEAD before cargo test. If a Rust test
-            # creates a commit (e.g. via git-command inheritance), HEAD moves and
-            # we must abort the push to prevent garbage commits landing on the branch.
-            _PRE_TEST_HEAD="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
+            # INFRA-1372 AC-3 / INFRA-2431 AC-2: record HEAD before cargo test,
+            # but only when this push's diff could plausibly trip the guard.
+            # `cargo test` runs the FULL suite, not just tests touched by this
+            # diff — a SHA read taken immediately before/after that run can
+            # race against ANY git-touching test anywhere in the tree, not
+            # just ones this push introduced (INFRA-2418: an integrator-only
+            # diff with zero git-touching files still tripped the guard).
+            # Scope the guard to when it can plausibly matter: skip capturing
+            # (leaving _PRE_TEST_HEAD=unknown, which the AC-3 block below
+            # already treats as "nothing to check") when no changed file
+            # shells out to git from test code.
+            _HD_DIFF_FILES="$(git diff --name-only origin/main...HEAD 2>/dev/null || true)"
+            _HD_RELEVANT=0
+            if [[ -n "$_HD_DIFF_FILES" ]]; then
+                while IFS= read -r _hd_f; do
+                    [[ -z "$_hd_f" || ! -f "$REPO_ROOT_T/$_hd_f" ]] && continue
+                    if grep -q 'Command::new("git")\|git_cmd!' "$REPO_ROOT_T/$_hd_f" 2>/dev/null; then
+                        _HD_RELEVANT=1
+                        break
+                    fi
+                done <<< "$_HD_DIFF_FILES"
+            fi
+            unset _HD_DIFF_FILES _hd_f
+
+            if [[ "$_HD_RELEVANT" -eq 1 ]]; then
+                _PRE_TEST_HEAD="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
+                _PRE_TEST_COUNT="$(git rev-list --count HEAD 2>/dev/null || echo "unknown")"
+            else
+                _PRE_TEST_HEAD="unknown"
+                echo "[pre-push] INFRA-2431: diff has no git-touching test files — HEAD-drift guard scoped out for this push." >&2
+            fi
+            unset _HD_RELEVANT
 
             # INFRA-1167: build --skip list from KNOWN_FLAKES.yaml so environment-
             # dependent parallel-test races never block a legitimate push. Skipped
