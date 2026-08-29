@@ -38,7 +38,6 @@ mod autonomy_fsm;
 mod autonomy_loop;
 mod autopilot;
 mod battle_qa_tool;
-mod belief_state;
 mod blackboard;
 mod blocker_detect;
 mod briefing;
@@ -85,8 +84,6 @@ mod dispatch;
 mod doctor;
 mod ego_tool;
 mod env_flags;
-mod episode_db;
-mod episode_extractor;
 mod episode_tool;
 pub use chump_eval_harness::eval_harness;
 mod execute_gap;
@@ -162,12 +159,12 @@ mod llm_backend_metrics;
 mod local_openai;
 mod mcp_bridge;
 mod mcp_discovery;
+mod memory;
 mod memory_brain_tool;
-pub use chump_memory_db::memory_db;
-mod memory_graph;
-mod memory_graph_tool;
-mod memory_graph_viz;
-mod memory_tool;
+pub use memory::{
+    belief_state, episode_db, episode_extractor, memory_db, memory_graph, memory_graph_tool,
+    memory_graph_viz, memory_tool,
+};
 mod messaging;
 mod mission_grade;
 #[cfg(feature = "mistralrs-infer")]
