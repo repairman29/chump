@@ -27,6 +27,9 @@ MANIFEST="$REPO_ROOT/scripts/setup/bootstrap-manifest.yaml"
 
 [[ -f "$MANIFEST" ]] || { echo "ERROR: manifest missing at $MANIFEST" >&2; exit 1; }
 
+# shellcheck source=scripts/setup/lib/merge-queue-enforce.sh
+source "$REPO_ROOT/scripts/setup/lib/merge-queue-enforce.sh"
+
 # ── REQUIRED_DAEMONS (INFRA-1594) ─────────────────────────────────────────────
 # Daemons whose absence makes the host fleet-incomplete even when the manifest
 # audit says "all green". Format: "launchd_label|install_script_path".
@@ -284,6 +287,16 @@ for entry in "${REQUIRED_DAEMONS[@]}"; do
     fi
 done
 
+# ── Merge Queue enforcement (INFRA-1518) ──────────────────────────────────────
+MERGE_QUEUE_MISSING=0
+if ! enforce_merge_queue "$MODE" "$REPO_ROOT"; then
+    MERGE_QUEUE_MISSING=1
+    if [[ "$MODE" != "check" ]]; then
+        FAILED=$((FAILED + 1))
+        FAILED_LIST+=("merge-queue")
+    fi
+fi
+
 # Ambient emit for audit trail.
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 if [[ -d "$(dirname "$AMBIENT")" ]]; then
@@ -330,7 +343,7 @@ if [[ "$MODE" == "check" ]]; then
             echo "  bash $installer   # registers $label"
         done
     fi
-    if (( ${#MISSING_AT_CHECK[@]} > 0 || ${#MISSING_DAEMONS[@]} > 0 )); then
+    if (( ${#MISSING_AT_CHECK[@]} > 0 || ${#MISSING_DAEMONS[@]} > 0 )) || [[ "$MERGE_QUEUE_MISSING" -eq 1 ]]; then
         echo "Run: bash scripts/setup/chump-fleet-bootstrap.sh"
         exit 1
     fi
