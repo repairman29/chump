@@ -12,6 +12,7 @@
 //!   SQUASH_INIT_LEAK    — flag PRs with Test <test@test.local> empty-author commits
 //!   FILE_CLUSTER_RESCUE — reserve a RESCUE gap when ≥3 PRs share the same failing check
 //!   RESCUE_CI_FAILURE   — INFRA-1713: diagnose top failing check on BLOCKED PRs; dispatch rescue subagent
+//!   CLEAN_PR_FORCE_MERGE — INFRA-1528: force `gh pr merge --squash` on PRs stuck CLEAN >5min with armed auto-merge
 
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OpenFlags};
@@ -44,6 +45,11 @@ pub enum ParamedicAction {
     /// subagent. 3 consecutive failures → stop trying, post manual-review
     /// comment, emit kind=ci_rescue_exhausted.
     RescueCiFailure,
+    /// INFRA-1528: PR has mergeStateStatus=CLEAN with autoMergeRequest armed
+    /// but hasn't merged within 5 min of reaching CLEAN — GitHub's
+    /// auto-merge service is eventually-consistent and sometimes needs an
+    /// explicit poke. Fires `gh pr merge --squash` directly.
+    CleanPrForceMerge,
 }
 
 impl ParamedicAction {
@@ -56,6 +62,7 @@ impl ParamedicAction {
             Self::FileClusterRescue => "FILE_CLUSTER_RESCUE",
             Self::KeystoneCascade => "KEYSTONE_CASCADE",
             Self::RescueCiFailure => "RESCUE_CI_FAILURE",
+            Self::CleanPrForceMerge => "CLEAN_PR_FORCE_MERGE",
         }
     }
 }
@@ -240,6 +247,20 @@ pub fn triage(repo_root: &Path, dry_run: bool) -> Result<ActionPlan> {
                 pr_number: pr.number,
                 action: ParamedicAction::RescueCiFailure.as_str().to_string(),
                 reason: format!("BLOCKED+FAILURE on check: {failing_check}"),
+                gap_id: extract_gap_id(&pr.head_ref),
+            });
+        }
+
+        // CLEAN_PR_FORCE_MERGE (INFRA-1528): PR is CLEAN with autoMergeRequest
+        // armed but hasn't merged within 5 min — GitHub's auto-merge service
+        // is eventually-consistent; poke it directly.
+        if let Some(time_in_clean_secs) = detect_clean_pr_force_merge(pr, &attempts) {
+            items.push(ActionItem {
+                pr_number: pr.number,
+                action: ParamedicAction::CleanPrForceMerge.as_str().to_string(),
+                reason: format!(
+                    "mergeStateStatus=CLEAN, autoMergeRequest armed, time_in_clean={time_in_clean_secs}s"
+                ),
                 gap_id: extract_gap_id(&pr.head_ref),
             });
         }
@@ -727,6 +748,7 @@ fn run_action(item: &ActionItem, repo_root: &Path, dry_run: bool, _skips: &SkipL
         "FILE_CLUSTER_RESCUE" => action_file_cluster_rescue(item, repo_root, dry_run),
         "KEYSTONE_CASCADE" => action_keystone_cascade(item, repo_root, dry_run),
         "RESCUE_CI_FAILURE" => action_rescue_ci_failure(item, repo_root, dry_run),
+        "CLEAN_PR_FORCE_MERGE" => action_clean_pr_force_merge(item, repo_root, dry_run),
         other => anyhow::bail!("unknown action: {other}"),
     }
 }
@@ -840,6 +862,70 @@ fn emit_keystone_cascade_event(
         .append(true)
         .open(&amb)
     {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// INFRA-1528: CLEAN_PR_FORCE_MERGE action. `item.reason` carries the
+/// time-in-clean-state diagnostics. Fires `gh pr merge --squash` directly
+/// (bypassing the eventually-consistent GitHub auto-merge armer) and emits
+/// `kind=auto_merge_armer_bypass` for observability.
+fn action_clean_pr_force_merge(item: &ActionItem, repo_root: &Path, dry_run: bool) -> Result<()> {
+    let pr = item.pr_number;
+    let time_in_clean_state = item
+        .reason
+        .rsplit("time_in_clean=")
+        .next()
+        .and_then(|s| s.trim_end_matches('s').parse::<i64>().ok())
+        .unwrap_or(0);
+
+    if dry_run {
+        info!(
+            pr_number = pr,
+            time_in_clean_state,
+            "CLEAN_PR_FORCE_MERGE dry-run: would run gh pr merge --squash"
+        );
+        eprintln!(
+            "[paramedic] CLEAN_PR_FORCE_MERGE dry-run PR#{pr}: time_in_clean_state={time_in_clean_state}s"
+        );
+        emit_auto_merge_armer_bypass(repo_root, pr, time_in_clean_state, dry_run);
+        return Ok(());
+    }
+
+    let out = std::process::Command::new("gh")
+        .args(["pr", "merge", &pr.to_string(), "--squash"])
+        .output()
+        .context("gh pr merge --squash")?;
+
+    if !out.status.success() {
+        anyhow::bail!(
+            "gh pr merge --squash failed for PR#{pr}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    emit_auto_merge_armer_bypass(repo_root, pr, time_in_clean_state, dry_run);
+    Ok(())
+}
+
+/// Emit `kind=auto_merge_armer_bypass` to ambient.jsonl (INFRA-1528 AC §2).
+fn emit_auto_merge_armer_bypass(repo_root: &Path, pr: u64, time_in_clean_state: i64, dry_run: bool) {
+    let amb = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let event = json!({
+        "ts": iso8601_now(),
+        "kind": "auto_merge_armer_bypass",
+        "pr": pr,
+        "time_in_clean_state": time_in_clean_state,
+        "armer_method": "gh_pr_merge_auto",
+        "manual_method": "gh_pr_merge_squash",
+        "dry_run": dry_run,
+    });
+    info!(pr, time_in_clean_state, "paramedic: auto-merge armer bypass fired");
+    let line = serde_json::to_string(&event).unwrap_or_default() + "\n";
+    if let Some(parent) = amb.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&amb) {
         let _ = f.write_all(line.as_bytes());
     }
 }
@@ -1294,6 +1380,89 @@ fn detect_ci_failure_blocked(
     }
     // Fallback: first failing check in cache order.
     rows.into_iter().next().map(|(name, _)| name)
+}
+
+/// INFRA-1528: detect PRs stuck CLEAN with an armed auto-merge that hasn't
+/// fired. Returns Some(seconds_in_clean_state) when the paramedic should
+/// force-merge, else None.
+///
+/// Trigger conditions (all must hold):
+///   1. mergeStateStatus = CLEAN
+///   2. autoMergeRequest is set (non-null) in the cached raw payload
+///   3. ≥5 min since the PR last updated (proxy for "time in CLEAN state" —
+///      the cache doesn't track state-transition timestamps, so we use
+///      updated_at as a conservative lower bound: any state transition
+///      bumps it)
+///   4. Fewer than 3 consecutive CLEAN_PR_FORCE_MERGE attempts recorded
+///      (avoids hammering `gh pr merge` on a PR that legitimately can't merge)
+fn detect_clean_pr_force_merge(pr: &PrInfo, attempts: &Connection) -> Option<i64> {
+    let mss = pr
+        .merge_state_status
+        .as_deref()
+        .or(pr.mergeable_state.as_deref())
+        .unwrap_or("");
+    if !mss.eq_ignore_ascii_case("CLEAN") {
+        return None;
+    }
+
+    // Gate 2: autoMergeRequest must be armed.
+    let auto_merge_armed = pr
+        .raw_payload
+        .as_deref()
+        .and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok())
+        .map(|v| {
+            let pr_obj = if v.get("pull_request").is_some() {
+                v["pull_request"].clone()
+            } else {
+                v.clone()
+            };
+            !pr_obj.get("autoMergeRequest").unwrap_or(&serde_json::Value::Null).is_null()
+        })
+        .unwrap_or(false);
+    if !auto_merge_armed {
+        return None;
+    }
+
+    // Gate 3: at least clean_pr_force_merge_quiet_min() minutes since updated_at.
+    let quiet_secs = clean_pr_force_merge_quiet_min() * 60;
+    let now = chrono::Utc::now().timestamp();
+    let updated_epoch = pr
+        .updated_at
+        .as_deref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.timestamp());
+    let Some(updated_epoch) = updated_epoch else {
+        return None;
+    };
+    let time_in_clean = now - updated_epoch;
+    if time_in_clean < quiet_secs as i64 {
+        return None;
+    }
+
+    // Gate 4: fewer than 3 rescue attempts already recorded.
+    let attempt_count: u32 = attempts
+        .query_row(
+            "SELECT COUNT(*) FROM attempts WHERE pr_number=? AND action='CLEAN_PR_FORCE_MERGE'",
+            rusqlite::params![pr.number],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if attempt_count >= 3 {
+        return None;
+    }
+
+    Some(time_in_clean)
+}
+
+/// How long (minutes) a PR must sit CLEAN with an armed auto-merge before
+/// paramedic pokes it directly with `gh pr merge --squash`. Default 5 min
+/// per INFRA-1528 AC.
+fn clean_pr_force_merge_quiet_min() -> u64 {
+    std::env::var("CHUMP_PARAMEDIC_CLEAN_FORCE_MERGE_QUIET_MIN")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n: &u64| n > 0)
+        .unwrap_or(5)
 }
 
 /// How long (minutes) since last author push before paramedic will attempt a CI rescue.
