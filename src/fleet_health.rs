@@ -78,6 +78,9 @@ pub struct HealthReport {
     // INFRA-1454: agent-bash sandbox-runtime status
     pub sandbox_status_tag: String,
     pub sandbox_status_summary: String,
+    // INFRA-1325: GitHub offline auto-detect mode + queue depth
+    pub github_mode: String,
+    pub github_queue_depth: u64,
 }
 
 pub fn build_report(repo_root: &Path) -> HealthReport {
@@ -276,6 +279,9 @@ pub fn build_report(repo_root: &Path) -> HealthReport {
     let sandbox_status_tag = sandbox_status.tag().to_string();
     let sandbox_status_summary = sandbox_status.summary();
 
+    // ── 11. GitHub offline mode (INFRA-1325) ─────────────────────────────────
+    let (github_mode, github_queue_depth) = github_offline_status(repo_root);
+
     // ── Score + grade ─────────────────────────────────────────────────────────
     let raw_score = (100i64 - total_penalty).max(0).min(100);
     let score = raw_score as u8;
@@ -310,7 +316,31 @@ pub fn build_report(repo_root: &Path) -> HealthReport {
         binary_stale,
         sandbox_status_tag,
         sandbox_status_summary,
+        github_mode,
+        github_queue_depth,
     }
+}
+
+/// INFRA-1325: read the current GitHub offline-mode state and queue depth.
+///
+/// Mode is maintained by `scripts/coord/lib/github-offline-queue.sh` in
+/// `.chump-locks/github-mode.state` (auto-detected via periodic connectivity
+/// probe; falls back to "online" when no state file exists yet). Queue depth
+/// is the line count of `.chump-locks/github-queue.jsonl` (mutations queued
+/// while offline, replayed FIFO on recovery).
+fn github_offline_status(repo_root: &Path) -> (String, u64) {
+    let mode_file = repo_root.join(".chump-locks").join("github-mode.state");
+    let mode = std::fs::read_to_string(&mode_file)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "online".to_string());
+
+    let queue_file = repo_root.join(".chump-locks").join("github-queue.jsonl");
+    let queue_depth = std::fs::read_to_string(&queue_file)
+        .map(|s| s.lines().filter(|l| !l.trim().is_empty()).count() as u64)
+        .unwrap_or(0);
+
+    (mode, queue_depth)
 }
 
 /// INFRA-1504: detect install method and upgrade the chump binary.
@@ -598,6 +628,10 @@ impl HealthReport {
         out.push_str(&format!(
             "  Sandbox:  {} — {}\n",
             self.sandbox_status_tag, self.sandbox_status_summary
+        ));
+        out.push_str(&format!(
+            "  GitHub:   {} (queue: {} items)\n",
+            self.github_mode, self.github_queue_depth
         ));
         if !self.signals.is_empty() {
             out.push_str("\n  Penalties:\n");
