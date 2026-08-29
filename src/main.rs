@@ -11359,13 +11359,17 @@ async fn main() -> Result<()> {
                     .any(|a| matches!(a.as_str(), "--help" | "-h"))
                 {
                     println!(
-                        "Usage: chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N] [--session ID]\n\n\
+                        "Usage: chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N] [--session ID]\n\
+                         Usage: chump gap ship <GAP-ID> --local-merge [--branch B] [--session ID]\n\n\
                          Mark a gap as done. Updates state.db (canonical), optionally mirrors to YAML.\n\n\
                          Options:\n  \
                            --update-yaml      Mirror status flip to docs/gaps/<ID>.yaml (destructive bulk-YAML; INFRA-825 staleness guard applies)\n  \
                            --closed-pr N      Stamp PR number on the row (required by INFRA-107 closed_pr integrity guard for YAML mirror)\n  \
                            --session ID       Session ID to record on the ship event (default derived)\n  \
                            --why              Print explanation alongside the flip\n  \
+                           --local-merge      Offline ship path (INFRA-1323): route through scripts/coord/local-merge-queue.sh\n                       \
+                                              instead of the GitHub-oriented flow below — no gh/GitHub call is made.\n  \
+                           --branch B         Branch to merge when using --local-merge (default: current branch)\n  \
                            -h, --help         Show this help"
                     );
                     return Ok(());
@@ -11374,6 +11378,62 @@ async fn main() -> Result<()> {
                     eprintln!("Usage: chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N]");
                     std::process::exit(2);
                 });
+                // INFRA-1323: offline ship path. Routes through
+                // scripts/coord/local-merge-queue.sh (NATS-KV-CAS / flock
+                // serialized local merge) instead of the GitHub-oriented flow
+                // below — no `gh`/GitHub call is made for any step. Intended
+                // for CHUMP_GITHUB_MODE=offline; see docs/design/OFFLINE_FIRST.md §2.
+                if args.iter().any(|a| a == "--local-merge") {
+                    let branch = flag("--branch").unwrap_or_else(|| {
+                        std::process::Command::new("git")
+                            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+                            .current_dir(&worktree_root)
+                            .output()
+                            .ok()
+                            .filter(|o| o.status.success())
+                            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                            .unwrap_or_else(|| "HEAD".to_string())
+                    });
+                    let worker = flag("--session")
+                        .or_else(|| crate::ambient_stream::env_session_id())
+                        .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
+                    let lmq = worktree_root
+                        .join("scripts")
+                        .join("coord")
+                        .join("local-merge-queue.sh");
+                    if !lmq.exists() {
+                        eprintln!(
+                            "chump gap ship --local-merge: {} not found",
+                            lmq.display()
+                        );
+                        std::process::exit(1);
+                    }
+                    let enqueued = std::process::Command::new("bash")
+                        .arg(&lmq)
+                        .args(["enqueue", &gap_id, &branch, "--worker", &worker])
+                        .current_dir(&worktree_root)
+                        .status();
+                    if !matches!(enqueued, Ok(s) if s.success()) {
+                        eprintln!("chump gap ship --local-merge: enqueue failed for {gap_id}");
+                        std::process::exit(1);
+                    }
+                    let processed = std::process::Command::new("bash")
+                        .arg(&lmq)
+                        .arg("process")
+                        .current_dir(&worktree_root)
+                        .status();
+                    if matches!(processed, Ok(s) if s.success()) {
+                        println!("shipped {gap_id} (local-merge, branch={branch})");
+                        return Ok(());
+                    }
+                    eprintln!(
+                        "chump gap ship --local-merge: process failed for {gap_id} — \
+                         see ambient.jsonl kind=local_merge_blocked, or retry: \
+                         {} process",
+                        lmq.display()
+                    );
+                    std::process::exit(1);
+                }
                 let session_id = flag("--session")
                     .or_else(|| crate::ambient_stream::env_session_id())
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
