@@ -188,6 +188,14 @@ docs/gaps.yaml
 # Lives as a sibling Cargo workspace under proprietary/. Canonical home:
 # https://github.com/repairman29/chump-proprietary (PRIVATE).
 proprietary/
+
+# INFRA-1513: canonical IP-protection rules — see docs/infra/GITIGNORE_IP_RULES.yaml
+# and scripts/ci/test-gitignore-ip-drift.sh. Cloud-notebook exports and local
+# model weight files can embed proprietary data/weights.
+*.sagemaker
+*.colab
+*.gguf
+*.safetensors
 bin/chump.wedged-*
 
 # Founding customer PII — never commit

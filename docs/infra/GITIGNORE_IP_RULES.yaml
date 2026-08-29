@@ -1,0 +1,70 @@
+# GITIGNORE_IP_RULES.yaml — INFRA-1513
+#
+# Canonical list of IP-protection rules that MUST be present in the repo
+# root .gitignore. This file is read by scripts/ci/test-gitignore-ip-drift.sh
+# to detect drift between "what we think is protected" and "what .gitignore
+# actually excludes".
+#
+# Each rule:
+#   name:        short identifier for logs/error messages
+#   pattern:     the exact .gitignore pattern expected to be present
+#                (matched as an exact line, ignoring leading/trailing
+#                whitespace — comments and blank lines don't count)
+#   category:    grouping used in AC #2 (proprietary / local-inference /
+#                cloud-notebook / operator-private)
+#   optional:    if true, an absent rule produces WARN not FAIL (default false)
+#   reason:      why this pattern protects IP — read this before removing a rule
+#
+# To add a new rule: append an entry here AND add the pattern to .gitignore
+# in the same PR. To remove a rule: remove it from BOTH files in the same PR
+# (removing only from .gitignore trips the drift gate; removing only from
+# here defeats the point of the gate).
+
+rules:
+  - name: proprietary-dir
+    pattern: "proprietary/"
+    category: proprietary
+    optional: false
+    reason: >
+      Sibling Cargo workspace (repairman29/chump-proprietary, PRIVATE) must
+      never be staged into the public chump repo.
+
+  - name: sagemaker-artifacts
+    pattern: "*.sagemaker"
+    category: cloud-notebook
+    optional: false
+    reason: >
+      AWS SageMaker notebook/model artifacts can embed proprietary training
+      data or model weights.
+
+  - name: colab-artifacts
+    pattern: "*.colab"
+    category: cloud-notebook
+    optional: false
+    reason: >
+      Google Colab notebook exports can embed proprietary experiment data.
+
+  - name: model-weights-gguf
+    pattern: "*.gguf"
+    category: local-inference
+    optional: false
+    reason: >
+      Local-inference model weight files are large and may be
+      license-encumbered or proprietary; never belong in git history.
+
+  - name: model-weights-safetensors
+    pattern: "*.safetensors"
+    category: local-inference
+    optional: false
+    reason: >
+      Same rationale as *.gguf — safetensors is the other common local
+      model-weight serialization format.
+
+  - name: operator-private-config
+    pattern: ".env.*"
+    category: operator-private
+    optional: false
+    reason: >
+      Operator-private config overrides (credentials, local endpoints) must
+      never be committed. Paired with the negated !.env.example /
+      !.env.minimal templates already in .gitignore.

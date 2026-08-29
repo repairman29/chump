@@ -880,6 +880,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // pure local (fifo + subshell, no network).
         "scripts/ci/test-parse-token-usage-dead-writer-timeout.sh",
         "scripts/ci/test-event-registry-coverage.sh",
+        // INFRA-1513: gitignore IP-protection drift gate — reads
+        // docs/infra/GITIGNORE_IP_RULES.yaml and asserts each rule's
+        // pattern is present in .gitignore. Pure Python/shell, no
+        // network, well under a second.
+        "scripts/ci/test-gitignore-ip-drift.sh",
         // MISSION-045: outcome-gate keystone — proves P0/P1 reserves are blocked
         // without an outcome (when outcomes exist), the audited flag + empty-DB
         // skip work. Fast (~2s), pure local (chump binary + temp dirs, no network).
