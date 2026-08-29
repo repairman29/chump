@@ -65,6 +65,32 @@ fi
 LOCK_DIR="${CHUMP_LOCK_DIR:-$MAIN_REPO/.chump-locks}"
 AMBIENT="$LOCK_DIR/ambient.jsonl"
 
+# INFRA-1531: reap stale bot-merge-*.health files (dead pid — trap EXIT
+# never fired, e.g. kill -9/OOM/host reboot) on every glance, since glance
+# runs on the hot claim/commit path and gives this check wide coverage
+# without a dedicated daemon. A lingering health file otherwise keeps
+# tripping bot_merge_hung ALERTs against a process that no longer exists.
+if [[ "${CHUMP_AMBIENT_GLANCE_REAP:-1}" == "1" ]]; then
+    for _health in "$LOCK_DIR"/bot-merge-*.health; do
+        [[ -e "$_health" ]] || continue
+        _bn="$(basename "$_health")"
+        _pid="${_bn#bot-merge-}"
+        _pid="${_pid%.health}"
+        [[ "$_pid" =~ ^[0-9]+$ ]] || continue
+        if ! kill -0 "$_pid" 2>/dev/null; then
+            _mtime_epoch="$(stat -c %Y "$_health" 2>/dev/null || stat -f %m "$_health" 2>/dev/null || echo 0)"
+            _now_epoch="$(date +%s)"
+            _age_hours="$(awk -v m="$_mtime_epoch" -v n="$_now_epoch" 'BEGIN{ if (m==0) print 0; else printf "%.1f", (n-m)/3600 }')"
+            rm -f "$_health" 2>/dev/null || true
+            _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            _machine="$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo unknown)"
+            printf '{"ts":"%s","kind":"bot_merge_health_reaped","pid":%s,"age_hours":%s,"machine":"%s"}\n' \
+                "$_ts" "$_pid" "$_age_hours" "$_machine" >> "$AMBIENT" 2>/dev/null || true
+            [[ "$QUIET" == "0" ]] && echo "[ambient-glance] INFRA-1531: reaped stale bot-merge health pid=$_pid age=${_age_hours}h" >&2
+        fi
+    done
+fi
+
 if [[ ! -f "$AMBIENT" ]]; then
     [[ "$QUIET" == "0" ]] && echo "[ambient-glance] (no ambient stream yet)" >&2
     exit 0

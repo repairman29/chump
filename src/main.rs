@@ -251,6 +251,7 @@ mod slack;
 mod spawn_worker_tool;
 mod speculative_execution;
 mod stack_detect;
+mod stale_bot_merge_health_reaper; // INFRA-1531: reap dead-pid bot-merge-*.health files on fleet up
 mod staleness;
 mod standard_missions; // EFFECTIVE-199: L1 foundation queue for 0→1 onboard — see docs/design/ONBOARD_0TO1_DOCTRINE.md
 mod state_db;
@@ -8167,6 +8168,22 @@ async fn main() -> Result<()> {
                     eprintln!("  Use 'chump fleet scale <N>' to resize.");
                     eprintln!("  Use 'chump fleet down' to stop first, then 'chump fleet up'.");
                     std::process::exit(2);
+                }
+
+                // INFRA-1531: reap stale bot-merge-*.health files (dead pid,
+                // trap-EXIT never fired — OOM/kill -9/host reboot) so a
+                // lingering health file doesn't keep firing bot_merge_hung
+                // ALERTs against a process that no longer exists.
+                let lock_dir_for_reap = repo_root.join(".chump-locks");
+                for reaped in
+                    stale_bot_merge_health_reaper::reap_stale_health_files(&lock_dir_for_reap)
+                {
+                    eprintln!(
+                        "[fleet up] INFRA-1531: reaped stale bot-merge health file pid={} age={:.1}h ({})",
+                        reaped.pid,
+                        reaped.age_hours,
+                        reaped.path.display()
+                    );
                 }
 
                 // INFRA-1522 (W-007): required-check health gate.
