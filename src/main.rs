@@ -314,6 +314,7 @@ mod e2e_bot_tests;
 #[cfg(feature = "inprocess-embed")]
 mod embed_inprocess;
 
+mod coord_cost; // META-082: cost tracking for coordination actions (META-073 slice)
 mod metrics;
 
 /// INFRA-3448: the recovery discipline the OS should apply to a STUCK gap.
