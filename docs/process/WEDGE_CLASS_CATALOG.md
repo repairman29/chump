@@ -354,6 +354,8 @@ Fixed in RESILIENT-020.
 | W-012 | <5 min per test | 🟡 patch tests lazily as they surface |
 | W-013 | <5 min per test | 🟡 patch tests lazily as they surface |
 | W-014 | <30 min | 🟡 detector shipped (INFRA-2036); bulk-fix remains manual |
+| W-015 | <5 min | 🟡 advisory-only detector shipped (RESILIENT-337) |
+| W-016 | 0 (isolated) | ✅ full pipeline shipped (INFRA-823/361/483/3832/267/831) |
 
 ---
 
@@ -480,6 +482,104 @@ wedge-state-machine.sh.
 
 **First seen**: 2026-08-20 — 14 PRs stacked on a farmer-flap false-red for
 hours with zero alarm; the board only caught it after operator prodding.
+
+## Class W-016 — Agent-level 0-byte cycle wedge (INFRA-706 investigation)
+
+**Distinct from the PR-level classes above**: those describe N stuck PRs in
+the merge queue. This class describes a single fleet **worker** whose
+`claude -p` (or open-model equivalent) invocation exits having produced
+**no meaningful stdout at all** — the agent never got far enough to write a
+commit, a log line, or even a partial response. `scripts/dispatch/worker.sh`
+calls this a "wedge" (as opposed to an ordinary failure) precisely because
+the process produced no signal to diagnose from.
+
+**Signature**:
+- `cycle_log` (the captured `claude -p` stdout for one worker cycle) is
+  < 100 bytes AND `rc` is either `124` (hit `FLEET_TIMEOUT_S`) or `0`
+  (backend exited "cleanly" having done nothing — the case the original
+  rc=124-only check missed).
+- No commit, no partial diff, no error message — just silence.
+- `worker_wedge_detected` fires per-occurrence; `fleet_wedge_storm` fires
+  when ≥`CHUMP_WEDGE_STORM_THRESHOLD` (default 5) wedges land in a rolling
+  1h window for one agent, signalling a systemic cause rather than one bad
+  gap.
+
+**Root causes found in code + comments (worker.sh, `INFRA-823`/`831`/`3832`/
+`267`/`464`)**:
+1. **MCP server startup hang** — the process spawns but blocks forever
+   waiting on an MCP tool server that never becomes ready; nothing reaches
+   stdout before `FLEET_TIMEOUT_S` fires (rc=124, 0 bytes).
+2. **Auth exhaustion / 401 storm** — token revoked or rate/cost-capped
+   mid-cycle (see the adjacent `_auth_counter_file` 401-storm detector,
+   same code region); some auth failures print nothing to stdout before
+   the CLI gives up.
+3. **Backend/API outage or hang** — the Anthropic API or (for
+   `FLEET_BACKEND=chump-local`) the open-model endpoint is unreachable or
+   wedged; `claude -p` blocks on the network call with zero stdout until
+   timeout.
+4. **rc=0 empty-completion case** — the backend returns cleanly but with
+   an empty/near-empty response (e.g. prompt rejected, context truncated to
+   nothing, or a backend that silently no-ops on malformed input). This is
+   the case the original detector (rc=124-only) missed, closed by
+   `INFRA-823`.
+5. **Gap/prompt incompatible with backend** — most often on `chump-local`
+   (open-model cascade): a prompt shape the smaller model can't parse
+   produces silence instead of an error.
+
+**Time-to-recovery target**: 0 operator-seconds for an isolated wedge (fully
+automated cooldown + backoff); <5 min operator diagnosis if a
+`fleet_wedge_storm` fires (systemic).
+
+**Detection**: `tail -50 .chump-locks/ambient.jsonl | grep -E 'worker_wedge_detected|fleet_wedge_storm|fleet_wedge'`
+
+**Current mitigation chain (already shipped, confirmed present in this
+worktree's `scripts/dispatch/worker.sh` as of this investigation)**:
+1. **Per-occurrence tagging** — `_is_wedge` computed from `cycle_log_size <
+   100 AND rc in {0,124}`; emits `worker_wedge_detected` (`INFRA-823`).
+2. **Storm detection** — rolling 1h window per agent in
+   `/tmp/chump-fleet-worker-<id>.wedge-count`; emits `fleet_wedge_storm` at
+   threshold (`INFRA-823`).
+3. **Extended cooldown** — a wedge gets `FLEET_WEDGE_COOLDOWN_S` (default
+   4h), much longer than an ordinary failure (30min) or a plain timeout
+   (1h), because a wedge signals the gap is likely structurally
+   incompatible with the current backend rather than unlucky
+   (`INFRA-361`/`INFRA-483`).
+4. **Escalating chronic-offender backoff** — consecutive non-ship cycles on
+   the same gap multiply the cooldown (capped at `CHUMP_MAX_COOLDOWN_S`,
+   default 4h) via a durable per-gap offense counter (`INFRA-3832`).
+5. **Auto-block after N offenses** — `CHUMP_AUTO_BLOCK_THRESHOLD` (default
+   3) consecutive non-ship cycles auto-sets the gap to `status:blocked`
+   with a note, removing it from the pick pool entirely rather than
+   looping forever (`INFRA-3832`).
+6. **P0 fallback** — if the wedge happened on `chump-local` and the gap is
+   P0, the worker falls through to a `claude` (Anthropic) retry rather than
+   leaving a P0 stuck on a backend that can't handle it (`INFRA-267`).
+7. **Ambient ALERT** — every wedge and storm emits an `ALERT`-tagged
+   ambient event so `tail .chump-locks/ambient.jsonl` (the mandatory
+   pre-flight step) surfaces it without a separate query.
+
+**Assessment**: the detection→cooldown→escalation→auto-block pipeline for
+this class is already comprehensive — no gap in coverage found. The
+highest-leverage remaining waste is root-cause attribution: `_is_wedge`
+currently treats causes 1-5 above as one bucket (cooldown/backoff logic is
+identical regardless of cause), so an MCP-hang wedge and an auth-storm
+wedge get the same generic 4h cooldown even though the 401-storm detector
+(separate code path, same function) already distinguishes auth as its own
+class with its own pause/exit thresholds. No further code change is
+in-scope for this investigation gap; the finding is that the pattern is
+well-instrumented and the mitigation stack is layered/complete as
+documented above.
+
+**Hardening shipped**: `INFRA-823` (detection + storm), `INFRA-361`/`483`
+(cooldown), `INFRA-3832` (chronic-offender escalation + auto-block),
+`INFRA-267` (P0 fallback), `INFRA-831` (timeout-no-commit WIP rescue,
+adjacent but distinct — fires on any rc=124, not just wedges).
+
+**First seen**: pre-existing pattern; multiple hardening gaps landed
+2026-05 through 2026-08 (`INFRA-823`/`361`/`483`/`3832`/`267`/`831`) before
+this investigation (`INFRA-706`) formally cataloged it here.
+
+---
 
 ## When you find a new class
 
