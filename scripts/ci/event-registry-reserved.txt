@@ -116,6 +116,7 @@ auto_envvar_applied # reason: INFRA-1853 emitted from scripts/coord/chump-commit
 auto_envvar_bypassed # reason: INFRA-1853 emitted from scripts/coord/chump-commit.sh when CHUMP_AUTO_ENVVAR=0 disables the auto-append block
 auto_fmt_applied # reason: INFRA-1833 emitted from scripts/coord/chump-commit.sh when cargo fmt --all was run pre-commit (default path)
 auto_fmt_bypassed # reason: INFRA-1833 emitted from scripts/coord/chump-commit.sh when CHUMP_AUTO_FMT=0 disables the auto-fmt block
+auto_merge_armer_bypass  # reason: INFRA-1528 emitted from crates/chump-paramedic/src/paramedic.rs action_clean_pr_force_merge; allowlist while EVENT_REGISTRY entry catches up
 auto_merge_armed           # reason: planned for bot-merge.sh --auto-merge success confirmation
 bot_merge_auto_armed       # reason: duplicate of auto_merge_armed (harmonize on ship)
 bot_merge_bypassed      # reason: emitted from scripts/git-hooks/pre-push (shell); not in PROD_PATHS scanned by coverage check

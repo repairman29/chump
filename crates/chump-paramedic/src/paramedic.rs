@@ -44,6 +44,11 @@ pub enum ParamedicAction {
     /// subagent. 3 consecutive failures → stop trying, post manual-review
     /// comment, emit kind=ci_rescue_exhausted.
     RescueCiFailure,
+    /// INFRA-1528: PR is CLEAN with squash auto-merge armed but GitHub's
+    /// auto-merge service hasn't fired within 5 min of reaching CLEAN
+    /// (eventually-consistent — see #2150 which sat CLEAN ~16h). Fires
+    /// `gh pr merge --squash` directly as a liveness guarantee.
+    CleanPrForceMerge,
 }
 
 impl ParamedicAction {
@@ -56,6 +61,7 @@ impl ParamedicAction {
             Self::FileClusterRescue => "FILE_CLUSTER_RESCUE",
             Self::KeystoneCascade => "KEYSTONE_CASCADE",
             Self::RescueCiFailure => "RESCUE_CI_FAILURE",
+            Self::CleanPrForceMerge => "CLEAN_PR_FORCE_MERGE",
         }
     }
 }
@@ -155,6 +161,8 @@ struct PrInfo {
     // INFRA-1429: time-gate + label-skip for auto-rebase.
     updated_at: Option<String>,
     labels: Vec<String>,
+    // INFRA-1528: whether GitHub auto-merge (autoMergeRequest) is armed.
+    auto_merge_enabled: bool,
 }
 
 // ── public entry points ───────────────────────────────────────────────────────
