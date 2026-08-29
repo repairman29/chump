@@ -727,6 +727,42 @@ pub async fn handle_fleet_health() -> Json<serde_json::Value> {
     Json(payload)
 }
 
+/// GET /api/fleet/pillars (INFRA-1339) — mission-grade snapshot for the four
+/// pillars only, keyed with the PRODUCT-107 quadrant's hyphenated
+/// `zero-waste` key (distinct from `/api/fleet/health`'s `zero_waste`).
+///
+/// Shape:
+///   { effective:{grade,trend,breach_reasons,...}, credible:..., resilient:...,
+///     "zero-waste":... }
+pub async fn handle_fleet_pillars() -> Json<serde_json::Value> {
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => std::path::PathBuf::from(r),
+        Err(_) => crate::repo_path::runtime_base(),
+    };
+
+    let report = crate::mission_grade::build_report(&repo_root);
+    let eff = pillar_entry_health(&report.effective);
+    let cred = pillar_entry_health(&report.credible);
+    let res = pillar_entry_health(&report.resilient);
+    let zw = pillar_entry_health(&report.zero_waste);
+
+    tracing::info!(
+        target: "chump::fleet_pillars",
+        effective_grade = eff["grade"].as_str().unwrap_or("?"),
+        credible_grade = cred["grade"].as_str().unwrap_or("?"),
+        resilient_grade = res["grade"].as_str().unwrap_or("?"),
+        zero_waste_grade = zw["grade"].as_str().unwrap_or("?"),
+        "fleet pillars computed"
+    );
+
+    Json(serde_json::json!({
+        "effective": eff,
+        "credible": cred,
+        "resilient": res,
+        "zero-waste": zw,
+    }))
+}
+
 // ── Pillar sub-object — mirrors /api/fleet/pillars (INFRA-1339) ────────────
 
 fn pillar_entry_health(c: &crate::mission_grade::PillarCounts) -> serde_json::Value {

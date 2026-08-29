@@ -9408,6 +9408,11 @@ fn build_api_router() -> Router {
             "/api/fleet/health",
             get(routes::health::handle_fleet_health),
         )
+        // INFRA-1339: mission-grade pillar quadrant (PRODUCT-107 / INFRA-1203)
+        .route(
+            "/api/fleet/pillars",
+            get(routes::health::handle_fleet_pillars),
+        )
         // INFRA-1338: server-side ROADMAP.md parser + 60s cache (replaces
         // INFRA-1207 client-side fallback).
         .route("/api/roadmap", get(routes::roadmap::handle_roadmap))
