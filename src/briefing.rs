@@ -134,6 +134,39 @@ pub struct GapBriefing {
     pub practices_block: String,
 }
 
+/// INFRA-1336: instrumented outbound HTTP GET. Wraps a `reqwest::Client`
+/// call and emits a `kind=outbound_http_call` ambient event (host, path,
+/// bytes, initiated_by) after the response completes, so the PWA network
+/// audit view (`ChumpViewNetworkAudit`, PRODUCT-112) can render this call
+/// and the air-gap trust signal has something real to observe. Best-effort:
+/// the ambient emission never blocks or fails the underlying request.
+pub(crate) async fn instrumented_http_get(
+    client: &reqwest::Client,
+    url: &str,
+    initiated_by: &str,
+) -> reqwest::Result<reqwest::Response> {
+    let resp = client.get(url).send().await?;
+    let host = reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        .unwrap_or_default();
+    let path = reqwest::Url::parse(url)
+        .ok()
+        .map(|u| u.path().to_string())
+        .unwrap_or_default();
+    let bytes = resp.content_length().unwrap_or(0);
+    crate::tool_policy::emit_ambient_json(
+        "outbound_http_call",
+        serde_json::json!({
+            "host": host,
+            "path": path,
+            "bytes": bytes,
+            "initiated_by": initiated_by,
+        }),
+    );
+    Ok(resp)
+}
+
 /// Build a briefing for the given gap ID. Returns `gap_not_found = true` when
 /// the gap is missing from both per-file and legacy locations (no error —
 /// agents may pass typos).
@@ -2495,5 +2528,58 @@ gaps:
             ..Default::default()
         };
         assert!(render_json(&absent).contains(r#""comprehension":null"#));
+    }
+
+    /// INFRA-1336: a mock HTTP call through `instrumented_http_get` must
+    /// produce a structured `kind=outbound_http_call` ambient line carrying
+    /// host/path/bytes/initiated_by — the signal `ChumpViewNetworkAudit`
+    /// (PRODUCT-112) renders in the PWA network-audit table.
+    #[test]
+    #[serial_test::serial(ambient_env)]
+    fn emits_outbound_http_call_event() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let ambient_path = tmp.path().join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", &ambient_path);
+
+        let marker = "briefing-test-infra-1336";
+
+        rt.block_on(async {
+            let mock = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/gap-briefing-probe"))
+                .respond_with(ResponseTemplate::new(200).set_body_string("hello world"))
+                .mount(&mock)
+                .await;
+
+            let client = reqwest::Client::new();
+            let url = format!("{}/gap-briefing-probe", mock.uri());
+            let resp = instrumented_http_get(&client, &url, marker)
+                .await
+                .expect("mock request must succeed");
+            assert!(resp.status().is_success());
+        });
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+
+        let raw = std::fs::read_to_string(&ambient_path).unwrap_or_default();
+        let line = raw
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .find_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .filter(|row| row["initiated_by"] == marker)
+            .expect("expected one outbound_http_call ambient line");
+
+        assert_eq!(line["kind"], "outbound_http_call");
+        assert!(
+            line["host"].as_str().unwrap_or("").contains("127.0.0.1"),
+            "host should be the mock server's host; got: {line}"
+        );
+        assert_eq!(line["path"], "/gap-briefing-probe");
+        assert_eq!(line["bytes"], 11);
+        assert_eq!(line["initiated_by"], marker);
     }
 }
