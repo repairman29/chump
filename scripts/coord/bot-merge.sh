@@ -212,6 +212,87 @@ _bm_progress_write() {
     fi
 }
 
+# ── INFRA-1465: per-PR/branch resumable checkpoint ────────────────────────────
+# Distinct from the progress ledger above (which is keyed by gap-id / pid and
+# is a liveness signal for monitors). This checkpoint is keyed by BRANCH (the
+# stable identity from process start; renamed to include the PR number once
+# one exists isn't needed since resume only needs one durable key) and is
+# meant to survive a session restart: a fresh session can read the file, see
+# whether the original PID is still alive, and either tail its log or
+# re-invoke bot-merge.sh skipping already-completed phases.
+_BM_CHECKPOINT_FILE=""
+_BM_CHECKPOINT_HB_PID=""
+
+_bm_checkpoint_slug() {
+    printf '%s' "$1" | tr -cs '[:alnum:]-' '-' | tr '[:upper:]' '[:lower:]'
+}
+
+# Initialise the checkpoint path. Call once BRANCH is known.
+_bm_checkpoint_init() {
+    local lock_dir="$1"
+    [[ $DRY_RUN -eq 1 ]] && return 0
+    [[ -z "${BRANCH:-}" ]] && return 0
+    mkdir -p "$lock_dir" 2>/dev/null || true
+    _BM_CHECKPOINT_FILE="${lock_dir}/bot-merge-checkpoint-$(_bm_checkpoint_slug "$BRANCH").json"
+
+    # Heartbeat: rewrite last_heartbeat every 10s while this process is alive.
+    local cf="$_BM_CHECKPOINT_FILE"
+    (
+        while true; do
+            sleep 10
+            [[ -f "$cf" ]] || continue
+            _bm_checkpoint_touch "$cf"
+        done
+    ) &
+    _BM_CHECKPOINT_HB_PID=$!
+    disown "$_BM_CHECKPOINT_HB_PID" 2>/dev/null || true
+}
+
+# Rewrite last_heartbeat in-place without changing phase (used by the 10s loop).
+_bm_checkpoint_touch() {
+    local cf="${1:-$_BM_CHECKPOINT_FILE}"
+    [[ -z "$cf" || ! -f "$cf" ]] && return 0
+    local now phase started_at branch gap
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    phase="$(_bm_json_field "$cf" phase)"
+    started_at="$(_bm_json_field "$cf" started_at)"
+    branch="$(_bm_json_field "$cf" branch)"
+    gap="$(_bm_json_field "$cf" gap)"
+    printf '{"phase":"%s","pid":%d,"started_at":"%s","last_heartbeat":"%s","branch":"%s","gap":"%s"}\n' \
+        "$phase" "$_BM_PID" "$started_at" "$now" "$branch" "$gap" \
+        > "${cf}.tmp" 2>/dev/null && mv "${cf}.tmp" "$cf" 2>/dev/null || true
+}
+
+# Minimal single-key JSON field extractor (no jq dependency in the hot path).
+_bm_json_field() {
+    local file="$1" key="$2"
+    [[ -f "$file" ]] || return 0
+    grep -o "\"${key}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" "$file" 2>/dev/null \
+        | head -1 | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/'
+}
+
+# Write a new checkpoint at phase entry. Called at: test-gate, push,
+# gh-pr-create, arm-auto-merge. Emits kind=bot_merge_checkpoint_written.
+_bm_checkpoint_write() {
+    local phase="$1"
+    [[ $DRY_RUN -eq 1 ]] && return 0
+    [[ -z "${_BM_CHECKPOINT_FILE:-}" ]] && return 0
+    local now gap_label pr_label ambient
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    gap_label="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
+    pr_label="${TARGET_PR:-${EXISTING_PR:-}}"
+    printf '{"phase":"%s","pid":%d,"started_at":"%s","last_heartbeat":"%s","branch":"%s","gap":"%s"}\n' \
+        "$phase" "$_BM_PID" "$now" "$now" "${BRANCH:-unknown}" "$gap_label" \
+        > "${_BM_CHECKPOINT_FILE}.tmp" 2>/dev/null \
+    && mv "${_BM_CHECKPOINT_FILE}.tmp" "$_BM_CHECKPOINT_FILE" 2>/dev/null || true
+
+    ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    # scanner-anchor: "kind":"bot_merge_checkpoint_written"
+    printf '{"ts":"%s","kind":"bot_merge_checkpoint_written","phase":"%s","pr":"%s","gap":"%s","branch":"%s","pid":%d}\n' \
+        "$now" "$phase" "$pr_label" "$gap_label" "${BRANCH:-unknown}" "$_BM_PID" \
+        >> "$ambient" 2>/dev/null || true
+}
+
 # Emit kind=bot_merge_step_stalled to ambient.jsonl and exit non-zero.
 # Called when gtimeout fires (exit 124) on a per-step invocation.
 # Parameters: <step_name> <elapsed_seconds> <last_progress_ts> <cmd_label>
@@ -288,6 +369,13 @@ _bm_cleanup() {
         kill "$_cl_pid" 2>/dev/null || true
     done
     rm -f "${_BM_HEALTH_FILE:-}" "${_BM_STEP_FILE:-}" "${_BM_PROGRESS_FILE:-}" 2>/dev/null || true
+    # INFRA-1465: always stop the checkpoint heartbeat loop; only delete the
+    # checkpoint file itself on a successful ship — a failed/killed run must
+    # leave it behind for bot-merge-resume.sh to pick up.
+    [[ -n "${_BM_CHECKPOINT_HB_PID:-}" ]] && kill "$_BM_CHECKPOINT_HB_PID" 2>/dev/null || true
+    if [[ "${_BM_TERMINAL_STATE:-unknown}" == "shipped" ]]; then
+        [[ -n "${_BM_CHECKPOINT_FILE:-}" ]] && rm -f "$_BM_CHECKPOINT_FILE" 2>/dev/null || true
+    fi
     # INFRA-1035: if the last transition was "start" (no matching "done"),
     # we crashed mid-step — record that so bot-merge-recover.sh can report it.
     if [[ -n "${_BM_STEPS_FILE:-}" && "${_BM_LAST_STEP_TRANSITION:-}" == "start" ]]; then
@@ -1758,6 +1846,8 @@ fi
 _bm_health_init "$REPO_ROOT/.chump-locks"
 # INFRA-2272: initialise per-step progress ledger (requires GAP_IDS + LOCK_DIR).
 _bm_progress_init "${LOCK_DIR:-$REPO_ROOT/.chump-locks}"
+# INFRA-1465: initialise the resumable per-branch checkpoint (requires BRANCH).
+_bm_checkpoint_init "${LOCK_DIR:-$REPO_ROOT/.chump-locks}"
 
 # ── INFRA-1034: always tee stdout+stderr to a per-PID log file ───────────────
 # Problem observed 2026-05-13: launching bot-merge in the background with
