@@ -127,6 +127,7 @@ mod collision_prediction; // META-076: predictive collision detection (mock inpu
 mod completion;
 mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod done_auditor; // INFRA-3495: anti-over-claim watchdog — audit DONE gaps for uncovered AC
+mod eval_status; // INFRA-1562: chump eval list — EVAL_STATUS.yaml execution-status tracker for docs/eval/preregistered/
 mod evangelist; // INFRA-1783: chump evangelize <repo-path> — HIDDEN_GEMS.md generation (INFRA-1746 phase 3)
 mod front_door; // EFFECTIVE-330 (COTG-0.0): plain-language front-door mode router
 mod gap_scoring; // INFRA-1816: gap-value scorer, vendored from repairman29/echeo — substrate for INFRA-1764

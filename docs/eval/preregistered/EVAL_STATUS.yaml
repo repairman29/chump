@@ -1,0 +1,137 @@
+# EVAL_STATUS.yaml — execution status for every preregistration in this
+# directory (INFRA-1562). Preregistration LOCKED != executed; this file is
+# the one place that tracks whether the sweep actually ran.
+#
+# status enum: pending | running | complete | abandoned
+#   pending   — preregistration locked, no (or an incomplete) result doc yet
+#   running   — harness actively collecting trial data
+#   complete  — result doc filed at docs/eval/<result_doc_path>, cites this prereg
+#   abandoned — will not be executed; reason recorded in `notes`
+#
+# scripts/ci/test-preregistered-eval-status.sh asserts every
+# docs/eval/preregistered/*.md (excluding README.md/TEMPLATE.md/
+# COST_OPTIMIZATION.md) has a matching entry here.
+
+- eval_id: COG-032
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: EVAL-087
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: EVAL-090
+  status: complete
+  last_run_ts: "2026-05-10"
+  result_doc_path: docs/eval/EVAL-090-neuromod-aggregate-rerun.md
+
+- eval_id: EVAL-096
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: EVAL-098
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: EVAL-099
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: EVAL-101
+  status: complete
+  last_run_ts: "2026-05-10"
+  result_doc_path: docs/eval/EVAL-101-cognition-ab-2026-05-10.md
+  notes: |
+    Closed as null (Δ=+0.025) but not citable — cold-water audit (INFRA-824,
+    PR #1449) found protocol violations (wrong agent, underpowered n, missing
+    judges). Superseded by EVAL-102. Kept `complete` because the run
+    happened and the result doc exists; citability is a separate concern
+    tracked in the result doc itself.
+
+- eval_id: EVAL-102
+  status: pending
+  last_run_ts: null
+  result_doc_path: docs/eval/EVAL-102-cognition-ab-followup-2026-05-14.md
+  notes: |
+    Preregistration locked 2026-05-11. Result doc filed 2026-05-14 but
+    explicitly headed "RESULTS PENDING — harness run not yet executed".
+    Load-bearing citable Week 2 result per docs/ROADMAP.md Phase 2 — see
+    smoke-test entry in docs/eval/preregistered/README.md before scheduling
+    the full sweep.
+
+- eval_id: INFRA-1004
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: RESEARCH-018
+  status: complete
+  last_run_ts: "2026-04-21"
+  result_doc_path: docs/eval/RESEARCH-018-length-matched.md
+
+- eval_id: RESEARCH-020
+  status: abandoned
+  last_run_ts: null
+  result_doc_path: null
+  notes: |
+    Preregistration content moved to the private chump-proprietary repo
+    (per-eval result writeups with specific deltas/n-values are
+    need-to-know). The public file is a stub pointer, not a placeholder
+    awaiting fill-in — reclassified abandoned rather than left pending so
+    the drift-detector (test-preregistered-eval-status.sh) doesn't flag it
+    as a stalled eval. Public methodology remains in
+    docs/process/RESEARCH_INTEGRITY.md.
+
+- eval_id: RESEARCH-021
+  status: abandoned
+  last_run_ts: null
+  result_doc_path: null
+  notes: |
+    Same "moved to chump-proprietary" stub as RESEARCH-020. A public result
+    doc (docs/eval/RESEARCH-021-tier-dependence-4-family.md) exists but the
+    preregistration record itself lives privately — see notes on
+    RESEARCH-020 above.
+
+- eval_id: RESEARCH-022
+  status: complete
+  last_run_ts: "2026-04-19"
+  result_doc_path: docs/eval/RESEARCH-022-module-reference-analysis.md
+
+- eval_id: RESEARCH-023
+  status: abandoned
+  last_run_ts: null
+  result_doc_path: null
+  notes: |
+    Same "moved to chump-proprietary" stub as RESEARCH-020 — see notes there.
+
+- eval_id: RESEARCH-024
+  status: abandoned
+  last_run_ts: null
+  result_doc_path: null
+  notes: |
+    Same "moved to chump-proprietary" stub as RESEARCH-020 — see notes there.
+
+- eval_id: RESEARCH-025
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: RESEARCH-026
+  status: complete
+  last_run_ts: "2026-05-05"
+  result_doc_path: docs/eval/RESEARCH-026-naturalization-pilot.md
+
+- eval_id: RESEARCH-028
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: RESEARCH-032
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
