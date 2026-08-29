@@ -884,6 +884,13 @@ jobs:
         continue-on-error: true
         run: bash scripts/ci/check-capabilities-freshness.sh
 
+      - name: gitignore IP-protection drift gate (INFRA-1513)
+        # Asserts every non-optional rule in docs/infra/GITIGNORE_IP_RULES.yaml
+        # is present in .gitignore. Catches a PR that removes an IP-protection
+        # rule from .gitignore without also removing it (or marking it
+        # optional) in the canonical rules file.
+        run: bash scripts/ci/test-gitignore-ip-drift.sh
+
       - name: no-claude-leak audit (INFRA-1051, warn-only, changed-only)
         # Prevents NEW Claude-specific references from leaking into product-
         # layer code (src/, scripts/coord/, scripts/dispatch/, scripts/ops/).

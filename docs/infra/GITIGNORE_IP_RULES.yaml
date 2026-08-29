@@ -1,0 +1,52 @@
+# INFRA-1513: canonical IP-protection rules that MUST appear in .gitignore.
+#
+# scripts/ci/test-gitignore-ip-drift.sh reads this file and asserts every
+# non-optional rule's `pattern` is present verbatim as a line in .gitignore.
+# Missing non-optional rule -> FAIL. Missing optional rule -> WARN only.
+#
+# To retire a rule: remove it from BOTH this file and .gitignore in the same
+# PR (removing only one side is exactly the drift this check exists to catch).
+rules:
+  - id: proprietary-dir
+    category: proprietary-workspace
+    pattern: "proprietary/"
+    reason: >
+      Private swarm-autonomy work lives as a sibling Cargo workspace under
+      proprietary/ (canonical home: repairman29/chump-proprietary, PRIVATE).
+      Must never be committed to the public repo.
+
+  - id: sagemaker-artifacts
+    category: local-inference
+    pattern: "*.sagemaker"
+    reason: >
+      AWS SageMaker training/artifact files may embed proprietary model or
+      dataset references; never commit.
+
+  - id: colab-artifacts
+    category: local-inference
+    pattern: "*.colab"
+    reason: >
+      Colab notebook export/artifact files may embed proprietary experiment
+      state; never commit.
+
+  - id: gguf-model-weights
+    category: model-weights
+    pattern: "*.gguf"
+    reason: >
+      Local-inference model weight files (llama.cpp / GGUF format) are large
+      binary IP and must never be committed.
+
+  - id: safetensors-model-weights
+    category: model-weights
+    pattern: "*.safetensors"
+    reason: >
+      Local-inference model weight files (safetensors format) are large
+      binary IP and must never be committed.
+
+  - id: operator-private-config
+    category: operator-config
+    pattern: "*.operator-private.yaml"
+    reason: >
+      Operator-private config overrides (credentials, machine-specific paths,
+      non-public tuning) must never be committed.
+    optional: true

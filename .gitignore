@@ -197,6 +197,14 @@ docs/business/contracts/
 # custom out-of-band cargo target dirs (INFRA-3289)
 .cargo-*-target/
 
+# INFRA-1513: IP-protection rules — canonical set tracked in
+# docs/infra/GITIGNORE_IP_RULES.yaml; scripts/ci/test-gitignore-ip-drift.sh
+# fails CI if either side drifts from the other.
+*.sagemaker
+*.colab
+*.gguf
+*.safetensors
+
 # ZERO-WASTE-041: fleet runtime state + repo-root scratch that regenerate every
 # session — never track, so they stop showing the main checkout as dirty.
 .chump/farmer-heartbeat
