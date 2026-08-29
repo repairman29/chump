@@ -162,6 +162,10 @@ while IFS= read -r wt_dir; do
         echo "[prune-worktrees]   [dry-run] would remove $wt_dir"
         PRUNED=$((PRUNED + 1))
     else
+        # INFRA-1516: kill any orphan background process still running inside
+        # the worktree (heartbeat-watcher.sh, chump --acp, etc.) before
+        # deleting it, so it doesn't survive with a dangling cwd.
+        wt_kill_orphan_processes "$wt_dir"
         # git worktree remove also prunes the gitdir metadata.
         if git -C "$REPO_ROOT" worktree remove --force "$wt_dir" 2>/dev/null; then
             emit_ambient "worktree_orphan_pruned" "\"path\":\"$wt_dir\",\"branch\":\"$branch\""

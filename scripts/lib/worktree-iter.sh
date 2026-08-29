@@ -27,6 +27,12 @@
 #       Append one JSON line to .chump-locks/ambient.jsonl.
 #       <extra_json_fields>: optional extra JSON fields like "\"foo\":1"
 #
+#   wt_kill_orphan_processes <wt_path>
+#       Kill any background process whose cwd is under <wt_path> (via
+#       `lsof +D` when available, else `pgrep -f` on the path string),
+#       wait 2s, and emit kind=worktree_orphan_process_killed per pid.
+#       Call this BEFORE removing/deleting a worktree directory.
+#
 # Usage:
 #   # shellcheck source=scripts/lib/worktree-iter.sh
 #   source "$(dirname "$0")/../lib/worktree-iter.sh"
@@ -228,4 +234,62 @@ emit_reaper_event() {
     fi
     mkdir -p "$(dirname "$ambient")" 2>/dev/null || true
     printf '%s\n' "$json" >> "$ambient" 2>/dev/null || true
+}
+
+# ── Public: wt_kill_orphan_processes ──────────────────────────────────────────
+
+# wt_kill_orphan_processes <wt_path>
+#
+# INFRA-1516: worktree-prune must kill any background process whose cwd is
+# under <wt_path> BEFORE the caller deletes the directory. Without this,
+# `rm -rf`/`git worktree remove` on a worktree with a live heartbeat-watcher.sh
+# or `chump --acp` process orphans it — it keeps running with a cwd that no
+# longer exists, contributing to slow process-table scans and zombie lease
+# confusion (observed: 11 orphans from chump-infra-819 / chump-credible-050).
+#
+# Prefers `lsof +D <path>` (accurate cwd match); falls back to
+# `pgrep -f <path>` (matches path anywhere in the command line — coarser,
+# but works on hosts without lsof). Skips its own pid/ppid so the reaper
+# never kills itself. Emits kind=worktree_orphan_process_killed per pid.
+wt_kill_orphan_processes() {
+    local wt_path="$1"
+    [[ -d "$wt_path" ]] || return 0
+    local abs_path
+    abs_path="$(cd "$wt_path" 2>/dev/null && pwd)" || return 0
+
+    local -a pids=()
+    if command -v lsof >/dev/null 2>&1; then
+        while IFS= read -r pid; do
+            [[ -n "$pid" ]] && pids+=("$pid")
+        done < <(lsof +D "$abs_path" 2>/dev/null | awk 'NR>1{print $2}' | sort -u)
+    fi
+    if [[ ${#pids[@]} -eq 0 ]] && command -v pgrep >/dev/null 2>&1; then
+        while IFS= read -r pid; do
+            [[ -n "$pid" ]] && pids+=("$pid")
+        done < <(pgrep -f -- "$abs_path" 2>/dev/null)
+    fi
+
+    local self=$$ parent=${PPID:-0}
+    local pid cmd killed=0
+    for pid in "${pids[@]}"; do
+        [[ "$pid" == "$self" || "$pid" == "$parent" ]] && continue
+        cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+        [[ -z "$cmd" ]] && continue
+        local age_s
+        age_s="$(ps -p "$pid" -o etimes= 2>/dev/null | tr -d ' ')"
+        [[ -z "$age_s" ]] && age_s=0
+        kill "$pid" 2>/dev/null || continue
+        killed=$((killed + 1))
+        emit_reaper_event "worktree_orphan_process_killed" "$wt_path" "orphan_process_in_worktree" \
+            "\"pid\":$pid,\"cmd\":\"$(printf '%s' "$cmd" | sed 's/\\/\\\\/g; s/"/\\"/g')\",\"age_seconds\":$age_s"
+    done
+    if [[ $killed -gt 0 ]]; then
+        sleep 2
+        # Escalate any survivors to SIGKILL.
+        for pid in "${pids[@]}"; do
+            [[ "$pid" == "$self" || "$pid" == "$parent" ]] && continue
+            kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+        done
+    fi
+    return 0
 }

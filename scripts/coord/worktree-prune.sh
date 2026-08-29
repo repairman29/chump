@@ -261,6 +261,10 @@ for wt_dir in $(scan_worktrees --no-tmp); do
                 action="PRUNE"
                 pruned_count=$((pruned_count + 1))
                 if [[ $DRY_RUN -eq 0 ]]; then
+                    # INFRA-1516: kill any orphan background process still running
+                    # inside the worktree before deleting it (heartbeat-watcher.sh,
+                    # chump --acp, etc.) so it doesn't survive with a dangling cwd.
+                    wt_kill_orphan_processes "$wt_dir"
                     git worktree remove "$wt_dir" --force >/dev/null 2>&1 || true
                     git branch -D "$branch_short" >/dev/null 2>&1 || true
                     action="PRUNED"
@@ -282,6 +286,10 @@ for wt_dir in $(scan_worktrees --no-tmp); do
                 action="PRUNE"
                 pruned_count=$((pruned_count + 1))
                 if [[ $DRY_RUN -eq 0 ]]; then
+                    # INFRA-1516: kill any orphan background process still running
+                    # inside the worktree before deleting it (heartbeat-watcher.sh,
+                    # chump --acp, etc.) so it doesn't survive with a dangling cwd.
+                    wt_kill_orphan_processes "$wt_dir"
                     git worktree remove "$wt_dir" --force >/dev/null 2>&1 || true
                     git branch -D "$branch_short" >/dev/null 2>&1 || true
                     action="PRUNED"
@@ -313,6 +321,10 @@ for wt_dir in $(scan_worktrees --no-tmp); do
                 action="PRUNE"
                 pruned_count=$((pruned_count + 1))
                 if [[ $DRY_RUN -eq 0 ]]; then
+                    # INFRA-1516: kill any orphan background process still running
+                    # inside the worktree before deleting it (heartbeat-watcher.sh,
+                    # chump --acp, etc.) so it doesn't survive with a dangling cwd.
+                    wt_kill_orphan_processes "$wt_dir"
                     git worktree remove "$wt_dir" --force >/dev/null 2>&1 || true
                     git branch -D "$branch_short" >/dev/null 2>&1 || true
                     action="PRUNED"

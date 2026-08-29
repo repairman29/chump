@@ -711,6 +711,10 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-orphan-worktree-prune.sh
 
+      - name: orphan-process reaper — worktree-prune kills bg processes before rm (INFRA-1516)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-orphan-process-reap.sh
+
       - name: stale-worktree-reaper extends to /tmp/chump-* (INFRA-2020)
         if: matrix.shard == 3
         run: bash scripts/ci/test-stale-worktree-reaper-tmp.sh
