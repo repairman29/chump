@@ -859,10 +859,21 @@ fn ensure_gh_token_env() {
     if std::env::var_os("GH_TOKEN").is_some() || std::env::var_os("GITHUB_TOKEN").is_some() {
         return;
     }
-    let Ok(out) = std::process::Command::new("gh")
-        .args(["auth", "token"])
-        .output()
-    else {
+    // INFRA-1561: `gh auth token` can block indefinitely on a headless
+    // runner with a desynced macOS keychain (it tries to prompt for
+    // keychain access that no one is present to approve). Run it on a
+    // background thread with a bounded wait instead of calling
+    // `Command::output()` inline, so a wedged `gh` can never hang chump's
+    // entire startup path — every subcommand, not just `--acp`, funnels
+    // through this call.
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let result = std::process::Command::new("gh")
+            .args(["auth", "token"])
+            .output();
+        let _ = tx.send(result);
+    });
+    let Ok(Ok(out)) = rx.recv_timeout(std::time::Duration::from_secs(5)) else {
         return;
     };
     if !out.status.success() {
@@ -1434,7 +1445,18 @@ async fn main() -> Result<()> {
     // successfully) and export it so every later `Command::new("gh")` in
     // this process inherits it for free. No-op if gh isn't installed or the
     // caller already supplied an explicit token.
-    ensure_gh_token_env();
+    //
+    // INFRA-1561: skipped entirely for `--acp` stdio mode. ACP never shells
+    // out to `gh`, and on a headless self-hosted runner with a desynced
+    // macOS keychain, `gh auth token` can block indefinitely on a keychain
+    // prompt that no one is present to dismiss — starving stdout before the
+    // ACP stdio loop (which is what actually needs to run) ever starts.
+    // Root cause of "chump --acp produces no stdout on M4": this call sat
+    // ahead of the acp_mode dispatch and swallowed the whole process.
+    let acp_mode_early = args.iter().any(|a| a == "--acp");
+    if !acp_mode_early {
+        ensure_gh_token_env();
+    }
 
     // INFRA-2054 (META-114 freshness cluster, binary-staleness layer):
     // `chump --build-info [--json]` prints the build-time metadata baked

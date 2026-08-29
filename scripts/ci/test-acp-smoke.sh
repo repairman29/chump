@@ -102,18 +102,24 @@ $MSG_SESSION_LIST"
 
 # ── Run ACP server with piped messages ───────────────────────────────────────
 TMPOUT=$(mktemp)
+TMPERR=$(mktemp)
 TMPDIR_SESSION=$(mktemp -d)
-trap 'rm -f "$TMPOUT"; rm -rf "$TMPDIR_SESSION"' EXIT
+trap 'rm -f "$TMPOUT" "$TMPERR"; rm -rf "$TMPDIR_SESSION"' EXIT
 
 echo "=== ACP Smoke Test ==="
 echo "Binary: $CHUMP_BIN"
 echo "Sending 3 messages: initialize, session/new, session/list"
 echo ""
 
+# INFRA-1561: stderr used to go to /dev/null, so when the binary hung or
+# panicked before writing anything to stdout the only diagnostic was "FAIL:
+# No output" — no clue why. Capture stderr to a second tmpfile so a real
+# failure (e.g. a blocked subprocess call, a panic) surfaces its message
+# instead of being silently discarded.
 if command -v timeout &>/dev/null; then
-  echo "$MESSAGES" | CHUMP_HOME="$TMPDIR_SESSION" timeout 15 "$CHUMP_BIN" --acp > "$TMPOUT" 2>/dev/null || true
+  echo "$MESSAGES" | CHUMP_HOME="$TMPDIR_SESSION" timeout 15 "$CHUMP_BIN" --acp > "$TMPOUT" 2>"$TMPERR" || true
 else
-  echo "$MESSAGES" | CHUMP_HOME="$TMPDIR_SESSION" "$CHUMP_BIN" --acp > "$TMPOUT" 2>/dev/null &
+  echo "$MESSAGES" | CHUMP_HOME="$TMPDIR_SESSION" "$CHUMP_BIN" --acp > "$TMPOUT" 2>"$TMPERR" &
   ACP_PID=$!
   sleep 8
   kill "$ACP_PID" 2>/dev/null || true
@@ -122,6 +128,9 @@ fi
 
 if [[ ! -s "$TMPOUT" ]]; then
   echo "FAIL: No output from chump --acp" >&2
+  echo "--- stderr ---" >&2
+  cat "$TMPERR" >&2
+  echo "--------------" >&2
   exit 1
 fi
 
