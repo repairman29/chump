@@ -15,6 +15,15 @@
             "async": true
           }
         ]
+      },
+      {
+        "_chump_tag": "meta-292-doctrine-delta",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "REPO=$(git rev-parse --show-toplevel 2>/dev/null) && [ -x \"$REPO/scripts/coord/doctrine-delta-inject.sh\" ] && \"$REPO/scripts/coord/doctrine-delta-inject.sh\" SessionStart </dev/null 2>/dev/null || true"
+          }
+        ]
       }
     ],
     "PreToolUse": [
