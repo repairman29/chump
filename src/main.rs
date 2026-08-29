@@ -8169,6 +8169,20 @@ async fn main() -> Result<()> {
                     std::process::exit(2);
                 }
 
+                // INFRA-1531: reap stale bot-merge-*.health files (dead pid,
+                // trap-skipping kill) before anything scans fleet health —
+                // a lingering health file from a killed bot-merge process
+                // keeps triggering false ALERT kind=bot_merge_hung.
+                let reaper_script = repo_root.join("scripts/coord/reap-stale-bot-merge-health.sh");
+                if reaper_script.exists() {
+                    let lock_dir = repo_root.join(".chump-locks");
+                    let _ = std::process::Command::new("bash")
+                        .arg(&reaper_script)
+                        .arg(&lock_dir)
+                        .arg("1")
+                        .status();
+                }
+
                 // INFRA-1522 (W-007): required-check health gate.
                 // Refuse `up` if any required status check has a flake history
                 // >20% or last 5 runs all SKIPPED — that's the wedge class

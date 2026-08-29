@@ -65,6 +65,16 @@ fi
 LOCK_DIR="${CHUMP_LOCK_DIR:-$MAIN_REPO/.chump-locks}"
 AMBIENT="$LOCK_DIR/ambient.jsonl"
 
+# INFRA-1531: reap stale bot-merge-*.health files on each glance — a
+# lingering health file from a killed (not gracefully-exited) bot-merge
+# process otherwise keeps triggering false ALERT kind=bot_merge_hung.
+_STALE_HEALTH_LIB="$(dirname "$0")/../coord/lib/stale-bot-merge-health.sh"
+if [[ -f "$_STALE_HEALTH_LIB" ]]; then
+    # shellcheck source=../coord/lib/stale-bot-merge-health.sh
+    source "$_STALE_HEALTH_LIB"
+    reap_stale_bot_merge_health "$LOCK_DIR" 1 "$AMBIENT"
+fi
+
 if [[ ! -f "$AMBIENT" ]]; then
     [[ "$QUIET" == "0" ]] && echo "[ambient-glance] (no ambient stream yet)" >&2
     exit 0
