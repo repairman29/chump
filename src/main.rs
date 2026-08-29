@@ -54,7 +54,6 @@ mod chump_log;
 mod ci_lesson;
 mod ci_summary;
 mod cli_tool;
-mod cluster_mesh;
 mod codebase_digest_tool;
 mod comprehend_tool;
 mod config_validation;
@@ -93,20 +92,15 @@ mod execute_gap;
 mod failure_catalog;
 mod farmer_status; // RESILIENT-069: farmer readiness gate (lights-on check)
 mod file_watch;
-mod fleet;
-mod fleet_capability;
-mod fleet_db;
+mod fleet; // INFRA-724: fleet, fleet_capability, fleet_db, fleet_health, fleet_status, fleet_tool, fleet_velocity, cluster_mesh live in src/fleet/
 mod fleet_fanout; // INFRA-1484: cross-repo fan-out (Marcus M-B continuation)
-mod fleet_health;
 mod fleet_mode;
 mod fleet_pulse; // INFRA-1995: THE FLOOR Phase 2 — single-pane fleet status
 mod fleet_resize;
 mod fleet_self_doctor;
 mod fleet_self_rescue_conductor; // EFFECTIVE-088: self-rescue conductor (the empty chair)
 mod fleet_spec; // INFRA-1483: declarative chump.fleet.yaml (Marcus M-B)
-mod fleet_status;
-mod fleet_tool;
-mod fleet_velocity;
+use fleet::{fleet_health, fleet_status, fleet_velocity};
 mod floor_temp; // INFRA-1992: THE FLOOR Phase 1 — floor-temperature signal
 mod ftue_tool;
 mod rebase_queue; // INFRA-2225: fleet rebase-queue — auto-rebase daemon backlog surface

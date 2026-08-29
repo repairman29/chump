@@ -125,32 +125,32 @@ pub fn current_peer_id() -> String {
 
 /// Register (or replace) a peer in the registry. Uses INSERT OR REPLACE for idempotency.
 pub fn register_peer(peer: FleetPeer) -> Result<()> {
-    crate::fleet_db::upsert_peer(&peer)
+    crate::fleet::fleet_db::upsert_peer(&peer)
 }
 
 /// Remove a peer from the registry.
 pub fn unregister_peer(peer_id: &str) -> Result<()> {
-    crate::fleet_db::delete_peer(peer_id)
+    crate::fleet::fleet_db::delete_peer(peer_id)
 }
 
 /// Update the status field for an existing peer.
 pub fn update_peer_status(peer_id: &str, status: PeerStatus) -> Result<()> {
-    crate::fleet_db::update_status(peer_id, status, now_unix())
+    crate::fleet::fleet_db::update_status(peer_id, status, now_unix())
 }
 
 /// Update last_seen_unix for a peer (typically called by the peer itself).
 pub fn heartbeat(peer_id: &str) -> Result<()> {
-    crate::fleet_db::touch_last_seen(peer_id, now_unix())
+    crate::fleet::fleet_db::touch_last_seen(peer_id, now_unix())
 }
 
 /// Return all peers currently in the registry, ordered by peer_id.
 pub fn list_peers() -> Result<Vec<FleetPeer>> {
-    crate::fleet_db::list_all_peers()
+    crate::fleet::fleet_db::list_all_peers()
 }
 
 /// Get a single peer by id.
 pub fn get_peer(peer_id: &str) -> Result<Option<FleetPeer>> {
-    crate::fleet_db::get_peer(peer_id)
+    crate::fleet::fleet_db::get_peer(peer_id)
 }
 
 /// Find a peer that satisfies the dispatch request. Matching rules (V1, in priority order):
@@ -161,9 +161,9 @@ pub fn get_peer(peer_id: &str) -> Result<Option<FleetPeer>> {
 ///   5. Among ties, return the one with the most recent `last_seen_unix`.
 pub fn find_peer_for_task(req: &FleetDispatchRequest) -> Result<Option<FleetPeer>> {
     if let Some(target) = &req.to_peer {
-        return crate::fleet_db::get_peer(target);
+        return crate::fleet::fleet_db::get_peer(target);
     }
-    let candidates = crate::fleet_db::list_all_peers()?;
+    let candidates = crate::fleet::fleet_db::list_all_peers()?;
     let mut filtered: Vec<FleetPeer> = candidates
         .into_iter()
         .filter(|p| p.status != PeerStatus::Offline)
