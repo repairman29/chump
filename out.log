@@ -1,0 +1,55 @@
++ set -euo pipefail
++++ dirname scripts/dev/dead-route-scan.sh
+++ cd scripts/dev/../..
+++ pwd
++ REPO_ROOT=/home/jeff/Projects/chump/.claude/worktrees/infra-1569-fleet-2-20260828-223617
++ cd /home/jeff/Projects/chump/.claude/worktrees/infra-1569-fleet-2-20260828-223617
++ JSON_OUT=0
++ [[ '' == \-\-json ]]
++ WEB_SERVER=src/web_server.rs
++ mapfile -t ROUTES
+++ perl -0777 -ne 'while (/\.route\(\s*"(\/api[^"]*)"/gs) { print "$1\n" }' src/web_server.rs
+++ sort -u
++ dead=()
++ test_only=()
++ live=()
++ for route in "${ROUTES[@]}"
+++ printf %s /api/advisor/ask
+++ sed -e 's/[.[\*^$]/\\&/g' -e 's/{[^}]*}/[^"'\''\/]*/g'
++ pattern=/api/advisor/ask
+++ grep -rlE /api/advisor/ask web/v2 '--include=*.js' '--include=*.ts' '--include=*.html'
+++ wc -l
+++ tr -d ' '
+++ true
++ fe_hits=0
+++ grep -rlE /api/advisor/ask src '--include=*.rs'
+++ grep -v '^src/web_server.rs$'
+++ wc -l
+++ tr -d ' '
++ rs_hits=1
+++ grep -rlE /api/advisor/ask tests
+++ wc -l
+++ tr -d ' '
+++ true
++ test_hits=0
+++ grep -rlE /api/advisor/ask scripts/ci '--include=*.sh'
+++ wc -l
+++ tr -d ' '
+++ true
++ test_hits=0
++ [[ 0 -gt 0 ]]
++ [[ 1 -gt 0 ]]
++ live+=("$route")
++ for route in "${ROUTES[@]}"
+++ printf %s /api/ambient/emit
+++ sed -e 's/[.[\*^$]/\\&/g' -e 's/{[^}]*}/[^"'\''\/]*/g'
++ pattern=/api/ambient/emit
+++ grep -rlE /api/ambient/emit web/v2 '--include=*.js' '--include=*.ts' '--include=*.html'
+++ wc -l
+++ tr -d ' '
++ fe_hits=7
+++ grep -rlE /api/ambient/emit src '--include=*.rs'
+++ grep -v '^src/web_server.rs$'
+++ wc -l
+++ tr -d ' '
++ rs_hits=0
