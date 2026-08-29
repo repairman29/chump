@@ -46,6 +46,12 @@ struct CatalogEntry {
     examples: Vec<String>,
     #[serde(default)]
     notes: Option<String>,
+    /// INFRA-1552: last time the runtime matched this rule, so unused rules
+    /// can be culled later. Not consulted for matching — write-only from the
+    /// catalog's point of view; `record_match` patches it in place.
+    #[serde(default)]
+    #[allow(dead_code)]
+    last_matched_at: Option<String>,
 }
 
 fn default_match_on() -> String {
@@ -172,6 +178,53 @@ impl FailureCatalog {
     pub fn len(&self) -> usize {
         self.entries.len()
     }
+}
+
+/// INFRA-1552 AC-6: record that catalog rule `entry_id` matched, by patching
+/// `last_matched_at: <timestamp>` into that entry's block in the YAML file.
+///
+/// Does a targeted text edit (not a full parse/re-serialize) so comments and
+/// formatting elsewhere in the file are preserved. Best-effort: I/O or
+/// find-entry failures are swallowed so a classification never fails because
+/// the catalog file couldn't be annotated.
+pub fn record_match(path: &Path, entry_id: &str, timestamp: &str) {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    let Some(id_line_idx) = lines.iter().position(|l| {
+        let trimmed = l.trim_start();
+        trimmed
+            .strip_prefix("- id:")
+            .is_some_and(|rest| rest.trim() == entry_id)
+    }) else {
+        return;
+    };
+    // Block runs from the entry's `- id:` line until the next `  - id:` line or EOF.
+    let block_end = lines[id_line_idx + 1..]
+        .iter()
+        .position(|l| l.trim_start().starts_with("- id:"))
+        .map(|rel| id_line_idx + 1 + rel)
+        .unwrap_or(lines.len());
+
+    let existing_lm_idx = lines[id_line_idx..block_end]
+        .iter()
+        .position(|l| l.trim_start().starts_with("last_matched_at:"))
+        .map(|rel| id_line_idx + rel);
+
+    let indent = "    "; // matches other entry fields (e.g. `confidence:`)
+    let new_field_line = format!("{indent}last_matched_at: \"{timestamp}\"");
+
+    let mut out_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
+    match existing_lm_idx {
+        Some(idx) => out_lines[idx] = new_field_line,
+        None => out_lines.insert(id_line_idx + 1, new_field_line),
+    }
+    let mut new_text = out_lines.join("\n");
+    if text.ends_with('\n') {
+        new_text.push('\n');
+    }
+    let _ = std::fs::write(path, new_text);
 }
 
 // ── CLI entry point ──────────────────────────────────────────────────────────

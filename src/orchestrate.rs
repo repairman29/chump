@@ -200,10 +200,47 @@ enum LlmAttemptOutcome {
     TimedOut { elapsed_s: u64 },
 }
 
-/// Classify a tool execution failure as transient or permanent (INFRA-796).
-fn classify_failure(error_msg: &str) -> &'static str {
+/// Lazily loaded FAILURE_MODES.yaml catalog (INFRA-1552), shared across calls
+/// within a single orchestrate session.
+static FAILURE_CATALOG: std::sync::OnceLock<crate::failure_catalog::FailureCatalog> =
+    std::sync::OnceLock::new();
+
+fn failure_catalog(repo_root: &Path) -> &'static crate::failure_catalog::FailureCatalog {
+    FAILURE_CATALOG.get_or_init(|| {
+        let path = repo_root.join("docs/process/FAILURE_MODES.yaml");
+        crate::failure_catalog::FailureCatalog::load(&path)
+    })
+}
+
+/// Classify a tool execution failure (INFRA-796, wired to the FAILURE_MODES.yaml
+/// catalog in INFRA-1552). Consults the ~217-rule catalog first, returning its
+/// `classification` field on the highest-confidence match; falls back to the
+/// original hardcoded transient/permanent heuristic on no match.
+///
+/// Emits `kind=ci_failure_classified` on a catalog hit (for the META-051 pattern
+/// detector) and `kind=failure_class_unknown` with a log snippet on a miss, so
+/// the catalog can be extended deliberately rather than silently.
+fn classify_failure(repo_root: &Path, error_msg: &str) -> String {
+    let catalog = failure_catalog(repo_root);
+    if let Some(m) = catalog.classify("", error_msg) {
+        let catalog_path = repo_root.join("docs/process/FAILURE_MODES.yaml");
+        let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        crate::failure_catalog::record_match(&catalog_path, &m.id, &ts);
+        emit_ambient_event(
+            repo_root,
+            "ci_failure_classified",
+            &[
+                ("failure_class", m.classification.as_str()),
+                ("catalog_id", m.id.as_str()),
+                ("auto_action", m.auto_action.as_str()),
+                ("confidence", &m.confidence.to_string()),
+            ],
+        );
+        return m.classification;
+    }
+
     let lc = error_msg.to_lowercase();
-    if lc.contains("timed out")
+    let fallback = if lc.contains("timed out")
         || lc.contains("timeout")
         || lc.contains("rate limit")
         || lc.contains("too many requests")
@@ -217,7 +254,14 @@ fn classify_failure(error_msg: &str) -> &'static str {
         "transient"
     } else {
         "permanent"
-    }
+    };
+    let snippet: String = error_msg.chars().take(300).collect();
+    emit_ambient_event(
+        repo_root,
+        "failure_class_unknown",
+        &[("raw_log_snippet", snippet.as_str()), ("fallback_class", fallback)],
+    );
+    fallback.to_string()
 }
 
 /// Compute, emit to ambient.jsonl, and print the 4-pillar mission grade.
@@ -533,7 +577,7 @@ pub async fn run(repo_root: &Path) -> Result<()> {
             let iter_start = Instant::now();
             let mut tool_count: usize = 0;
             let mut had_failure = false;
-            let mut failure_classes: Vec<&str> = Vec::new();
+            let mut failure_classes: Vec<String> = Vec::new();
 
             // ── LLM call with timeout + single retry (INFRA-1364) ─────────────────
             // Push user intent before attempt loop so retry reuses the same context.
@@ -666,7 +710,7 @@ pub async fn run(repo_root: &Path) -> Result<()> {
                 if result.contains("error") || result.contains("Error") || result.contains("failed")
                 {
                     had_failure = true;
-                    failure_classes.push(classify_failure(&result));
+                    failure_classes.push(classify_failure(repo_root, &result));
                 }
             }
             let tool_elapsed_ms = tool_start.elapsed().as_millis() as u64;
