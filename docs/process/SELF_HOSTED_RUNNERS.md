@@ -83,6 +83,47 @@ scripts/setup/install-self-hosted-runner.sh --uninstall
 
 Removes the launchd plist and runner directory. Re-registration possible afterward.
 
+## Migrate a runner off the operator's daily-driver (INFRA-1566)
+
+The 4 macOS-ARM64 runners historically ran co-located with the operator's
+laptop — under a hot CI queue (4 parallel `cargo build --workspace`, 156MB
+debug binaries each) all performance cores saturate and interactive work on
+the laptop degrades. `scripts/setup/migrate-actions-runner-host.sh` moves a
+runner from this host to any SSH-reachable target host that already has
+git/gh/cargo provisioned (see `docs/process/OFF_LAPTOP_SUBSTRATE.md` and
+`scripts/setup/provision-chumpd-host.sh --check`):
+
+```bash
+# Migrate one named runner:
+scripts/setup/migrate-actions-runner-host.sh --target-host mac-mini --runner-name jeffs-macbook-air
+
+# Migrate every locally-registered chump runner in one pass:
+scripts/setup/migrate-actions-runner-host.sh --target-host mac-mini --all
+
+# Preview every action without touching local/remote/GitHub state:
+scripts/setup/migrate-actions-runner-host.sh --target-host mac-mini --all --dry-run
+
+# Register on the target first, keep the laptop runner alive for a soak window:
+scripts/setup/migrate-actions-runner-host.sh --target-host mac-mini --all --keep-source
+```
+
+Per runner: resolves id/labels from `gh api .../actions/runners` (GitHub is
+the source of truth, not the local plist), rsyncs the `_work` cache dir to
+the target so the first post-migration job isn't a cold cargo build,
+registers on the target via `install-self-hosted-runner.sh` with matching
+name/labels, then deregisters from this host
+(`gh api -X DELETE .../actions/runners/{id}`) and removes the local plist +
+runner directory. `--keep-source` skips the deregister step for a soak
+window before cutover. Emits `kind=runner_host_migrated` to `ambient.jsonl`.
+
+This is Option A from INFRA-1566 (preferred over Option B — a
+linux-arm64 Pi lane, which adds capacity but doesn't relieve the laptop —
+or Option C — a recurring-cost cloud runner). It does not require
+`chumpd`/MISSION-051 (that's the separate, already-shipped RESILIENT-176
+substrate-migration path for the coordination daemon, not the GH Actions
+runner processes covered here); it only requires a target host with
+git/gh/cargo installed and reachable over SSH.
+
 ## Dependencies (INFRA-1556)
 
 Workflow steps under the self-hosted lane invoke these CLIs. Every one must be
