@@ -27,6 +27,14 @@
 #       Append one JSON line to .chump-locks/ambient.jsonl.
 #       <extra_json_fields>: optional extra JSON fields like "\"foo\":1"
 #
+#   wt_reap_processes <wt_path>
+#       Kill any background process whose cwd is under <wt_path> (via
+#       `lsof +D`, falling back to `pgrep -f`), wait 2s, then SIGKILL any
+#       survivors. Emits kind=worktree_orphan_process_killed per pid.
+#       Callers MUST invoke this before `rm -rf`/`git worktree remove` on
+#       a worktree (INFRA-1516) — otherwise long-lived children like
+#       heartbeat-watcher.sh or `chump --acp` outlive the deleted directory.
+#
 # Usage:
 #   # shellcheck source=scripts/lib/worktree-iter.sh
 #   source "$(dirname "$0")/../lib/worktree-iter.sh"
@@ -200,6 +208,66 @@ wt_is_dirty() {
     local out
     out="$(git -C "$wt_path" status --porcelain 2>/dev/null || true)"
     [[ -n "$out" ]]
+}
+
+# ── Public: wt_reap_processes ─────────────────────────────────────────────────
+
+# Best-effort process age in whole seconds. Linux `ps` supports `etimes`
+# (elapsed seconds) directly; BSD/macOS `ps` doesn't, so this degrades to 0
+# there rather than fail — age is a bonus diagnostic field, not a safety gate.
+_wt_process_age_seconds() {
+    local pid="$1"
+    local etimes
+    etimes="$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')"
+    [[ -n "$etimes" ]] && printf '%s' "$etimes" || printf '0'
+}
+
+# wt_reap_processes <wt_path>
+#
+# Kills any background process whose cwd is under <wt_path> before the
+# caller deletes the worktree directory (INFRA-1516). Two discovery paths:
+#   1. `lsof +D <wt_path>` — accurate cwd/open-file match, Linux + macOS.
+#   2. `pgrep -f <wt_path>` fallback — matches the path anywhere in the
+#      command line, used when lsof is unavailable or finds nothing.
+# Sends SIGTERM first, waits 2s, then SIGKILLs any survivor. Emits
+# kind=worktree_orphan_process_killed per pid via emit_reaper_event.
+# Always returns 0 — this is best-effort cleanup, not a safety gate.
+wt_reap_processes() {
+    local wt_path="$1"
+    [[ -d "$wt_path" ]] || return 0
+
+    local pids=""
+    if command -v lsof >/dev/null 2>&1; then
+        pids="$(lsof +D "$wt_path" 2>/dev/null | awk 'NR>1{print $2}' | sort -u)"
+    fi
+    if [[ -z "$pids" ]] && command -v pgrep >/dev/null 2>&1; then
+        pids="$(pgrep -f "$wt_path" 2>/dev/null | sort -u)"
+    fi
+    [[ -z "$pids" ]] && return 0
+
+    local self_pid=$$
+    local killed_pids=()
+    local pid cmd age
+    for pid in $pids; do
+        [[ "$pid" == "$self_pid" ]] && continue
+        cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+        [[ -z "$cmd" ]] && continue
+        age="$(_wt_process_age_seconds "$pid")"
+        kill "$pid" 2>/dev/null || true
+        killed_pids+=("$pid")
+        local cmd_escaped
+        cmd_escaped="$(printf '%s' "$cmd" | cut -c1-200 | sed 's/\\/\\\\/g; s/"/\\"/g')"
+        emit_reaper_event "worktree_orphan_process_killed" "$wt_path" "orphan_process" \
+            "\"pid\":$pid,\"cmd\":\"$cmd_escaped\",\"age_seconds\":${age:-0}"
+    done
+
+    if [[ ${#killed_pids[@]} -gt 0 ]]; then
+        sleep 2
+        for pid in "${killed_pids[@]}"; do
+            kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+        done
+    fi
+    return 0
 }
 
 # ── Public: emit_reaper_event ─────────────────────────────────────────────────

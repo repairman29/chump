@@ -261,6 +261,8 @@ for wt_dir in $(scan_worktrees --no-tmp); do
                 action="PRUNE"
                 pruned_count=$((pruned_count + 1))
                 if [[ $DRY_RUN -eq 0 ]]; then
+                    # INFRA-1516: kill orphan background processes before deleting.
+                    wt_reap_processes "$wt_dir"
                     git worktree remove "$wt_dir" --force >/dev/null 2>&1 || true
                     git branch -D "$branch_short" >/dev/null 2>&1 || true
                     action="PRUNED"
@@ -282,6 +284,8 @@ for wt_dir in $(scan_worktrees --no-tmp); do
                 action="PRUNE"
                 pruned_count=$((pruned_count + 1))
                 if [[ $DRY_RUN -eq 0 ]]; then
+                    # INFRA-1516: kill orphan background processes before deleting.
+                    wt_reap_processes "$wt_dir"
                     git worktree remove "$wt_dir" --force >/dev/null 2>&1 || true
                     git branch -D "$branch_short" >/dev/null 2>&1 || true
                     action="PRUNED"
@@ -313,6 +317,8 @@ for wt_dir in $(scan_worktrees --no-tmp); do
                 action="PRUNE"
                 pruned_count=$((pruned_count + 1))
                 if [[ $DRY_RUN -eq 0 ]]; then
+                    # INFRA-1516: kill orphan background processes before deleting.
+                    wt_reap_processes "$wt_dir"
                     git worktree remove "$wt_dir" --force >/dev/null 2>&1 || true
                     git branch -D "$branch_short" >/dev/null 2>&1 || true
                     action="PRUNED"

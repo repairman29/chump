@@ -5255,6 +5255,20 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, path, reason, branch]
 
+  # ── INFRA-1516: orphan-process reaper ────────────────────────────────────
+  - kind: worktree_orphan_process_killed
+    effect_metric: self
+    emitter: scripts/lib/worktree-iter.sh (wt_reap_processes, called from
+      scripts/ops/prune-worktrees.sh and scripts/coord/worktree-prune.sh
+      immediately before worktree deletion)
+    trigger: a background process (e.g. heartbeat-watcher.sh, chump --acp)
+      was still running with its cwd/open-files under a worktree path that
+      the reaper is about to delete — killed (SIGTERM, then SIGKILL after a
+      2s grace) before the directory was removed, to avoid leaving zombie
+      processes and slow process-table scans after the parent worktree is gone
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, worktree, pid, cmd, age_seconds]
+
   - kind: fleet_self_sync
     effect_metric: self
     emitter: scripts/ops/github-webhook-receiver.py (RESILIENT-152, _self_sync_fleet_scripts)
