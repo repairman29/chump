@@ -85,9 +85,21 @@ For that case, the PWA always offers a **Copy link** button next to the
 - Paste into a terminal to invoke `chump-acp-handler "<url>"` manually
 - Bookmark for later (the URL embeds gap/PR/branch state)
 
-In a future enhancement, `/api/acp/health` will expose registered-client
-state and the PWA will tooltip-warn before the operator's first click on
-an unregistered system. That endpoint is filed as a follow-up.
+`GET /api/acp/health` reports registered-client state so the PWA can
+tooltip-warn before the operator's first click on an unregistered system.
+Since Chump has no client-registration mechanism yet, it always returns an
+empty `registered_clients` list today:
+
+```json
+{
+  "status": "ok",
+  "registered_clients": []
+}
+```
+
+When `registered_clients` is empty, PRODUCT-110 deeplinks render a
+tooltip warning with the text **"No ACP client registered"** instead of
+attempting to launch `chump://acp/open`.
 
 ## Telemetry
 

@@ -66,6 +66,18 @@ pub async fn handle_health() -> Json<serde_json::Value> {
     }))
 }
 
+/// INFRA-1341 / PRODUCT-110: reports which ACP clients (Zed, JetBrains, ...)
+/// are registered on this machine, so the PWA deeplink surface
+/// (`docs/api/PWA_ACP_DEEPLINKS.md`) can tooltip-warn instead of firing a
+/// dead `chump://acp/open` link. No client registration mechanism exists
+/// yet, so this always reports an empty list.
+pub async fn handle_acp_health() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "status": "ok",
+        "registered_clients": [],
+    }))
+}
+
 /// OpenAI-compatible HTTP `/models` probe only.
 async fn probe_openai_http_sidecar(
     openai_base: Option<String>,

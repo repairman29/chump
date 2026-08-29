@@ -107,4 +107,42 @@ grep -q "PRODUCT-110" "$APP_JS" \
     || fail "ChumpAcpDeeplink code missing PRODUCT-110 provenance"
 ok "code references PRODUCT-110 (provenance trail)"
 
+# ── Test 12: /api/acp/health reports empty registered_clients (INFRA-1341) ─
+test_health_no_clients() {
+    source "$(dirname "$0")/lib/discover-chump-bin.sh"
+    [[ -x "$CHUMP_BIN" ]] || fail "no chump binary at $CHUMP_BIN (set CHUMP_BIN)"
+
+    local tmp
+    tmp="$(mktemp -d)"
+    mkdir -p "$tmp/.chump-locks"
+    local port
+    port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+    local log="$tmp/server.log"
+
+    CHUMP_REPO="$tmp" \
+    CHUMP_BINARY_STALENESS_CHECK=0 \
+        "$CHUMP_BIN" --web --port "$port" >"$log" 2>&1 &
+    local server_pid=$!
+    trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$tmp"' RETURN
+
+    local up=0
+    for _ in $(seq 1 50); do
+        sleep 0.2
+        curl -sf "http://127.0.0.1:$port/api/health" >/dev/null 2>&1 && { up=1; break; }
+    done
+    [[ "$up" -eq 1 ]] || fail "server failed to start for acp/health probe (log: $(cat "$log"))"
+
+    local body
+    body="$(curl -sf "http://127.0.0.1:$port/api/acp/health" 2>/dev/null)" \
+        || fail "GET /api/acp/health did not respond"
+    echo "$body" | grep -Eq '"registered_clients"[[:space:]]*:[[:space:]]*\[\]' \
+        || fail "/api/acp/health did not report an empty registered_clients list: $body"
+
+    kill "$server_pid" 2>/dev/null || true
+    rm -rf "$tmp"
+    trap - RETURN
+    ok "/api/acp/health no registered ACP clients"
+}
+test_health_no_clients
+
 ok "ALL PRODUCT-110 ACP-deeplink checks passed"

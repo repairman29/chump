@@ -9379,6 +9379,7 @@ fn build_api_router() -> Router {
     Router::new()
         .route("/favicon.ico", get(routes::health::handle_favicon))
         .route("/api/health", get(routes::health::handle_health))
+        .route("/api/acp/health", get(routes::health::handle_acp_health))
         .route(
             "/api/stack-status",
             get(routes::health::handle_stack_status),
