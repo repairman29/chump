@@ -9,6 +9,10 @@ This doc is the **single entry point** for new operators. Replaces the
 scattered process notes in docs/process/ that don't compose. If you're a
 new operator and you've never run a fleet, start here.
 
+**Bus-factor:** see [`OPERATOR_HANDOFF.md`](./OPERATOR_HANDOFF.md) for the
+co-operator/handoff plan — who else can drive this fleet if the primary
+operator is unreachable, and what to do until they can.
+
 ---
 
 ## 1. The Hierarchy
