@@ -1206,6 +1206,29 @@ INFRA-1655 investigation slices are warranted on any host** — if the gap
 resurfaces again, the fix is a one-line local `chump gap ship` from that
 host's main checkout, not another reproduction/root-cause pass.
 
+### state.db re-sync (2026-08-28, fleet-2 slice)
+
+`INFRA-1655` re-surfaced `open` on `closetjunky`'s local `.chump/state.db`
+again (the same machine the 2026-08-19 slice above already flipped),
+routing a fourth dispatch to this gap. No new reproduction, root-cause, or
+config investigation was performed — the 2026-08-12 disposition above
+(root cause found and fixed via INFRA-1852/INFRA-3579; restoration blocked
+on physical hardware re-registration, tracked by INFRA-3403) still holds
+and was not re-litigated.
+
+Per the per-machine-local `state.db` design documented in the prior slice,
+re-flipping a previously-shipped gap on the same host most likely means the
+local `state.db` was reset, recreated, or reverted between 2026-08-19 and
+2026-08-28 (e.g. a fresh `chump-fleet-bootstrap` run, disk event, or state
+migration) rather than a genuine new re-open — this session found no
+evidence contradicting the closed disposition. **Action taken:** ran `chump
+gap ship INFRA-1655 --update-yaml --why` from the main checkout
+(`/home/jeff/Projects/chump`), verified via `sqlite3 .chump/state.db
+"SELECT id,status,closed_pr FROM gaps WHERE id='INFRA-1655'"` →
+`INFRA-1655|done|`. Same fix pattern as the 2026-08-19 slice; documenting
+here so a future re-open on this or another host has one more confirmed
+data point that the underlying investigation remains closed.
+
 ---
 
 ## Pi mesh provisioner (INFRA-1543)
