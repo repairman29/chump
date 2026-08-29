@@ -27,6 +27,18 @@ const TRACKED_KINDS = [
   { kind: 'gh_shim_worktree_install_blocked', icon: '🔧', label: 'gh shim install blocked' },
   // INFRA-779 — gitdir back-ref repair fired
   { kind: 'worktree_gitdir_repair_fired', icon: '🩹', label: 'Worktree gitdir repaired' },
+  // META-193 — pr-shepherd-daemon (META-180) outcomes. Per META-180 AC#8:
+  // only DIRTY / UNKNOWN / real-fail (BLOCKED_REAL_FAIL) escalate here.
+  // MERGEABLE and auto-rebased (BEHIND) cases are handled by the daemon
+  // itself and must never reach this queue.
+  {
+    kind: 'pr_classified',
+    icon: '🛎️',
+    label: 'PR needs attention (dirty / unknown / real-fail)',
+    filter: (e) => e.classification === 'DIRTY'
+      || e.classification === 'UNKNOWN'
+      || e.classification === 'BLOCKED_REAL_FAIL',
+  },
 ];
 
 const DEFER_TTL_S = 4 * 60 * 60; // 4 hours
@@ -96,7 +108,7 @@ class ChumpOperatorAttention extends HTMLElement {
     // Fetch per kind. Each kind is cheap; total is O(8) HTTP calls every
     // 30s. Could be one combined endpoint if traffic warrants, but per-kind
     // is server-cache-friendly today.
-    const fetches = TRACKED_KINDS.map(async ({ kind, icon, label }) => {
+    const fetches = TRACKED_KINDS.map(async ({ kind, icon, label, filter }) => {
       try {
         const r = await fetch(`/api/ambient/recent?kind=${encodeURIComponent(kind)}&n=20`, {
           headers: this._authHeaders(),
@@ -105,7 +117,8 @@ class ChumpOperatorAttention extends HTMLElement {
         if (!r.ok) return [];
         const body = await r.json();
         const events = Array.isArray(body) ? body : (body.events || []);
-        return events.map((e) => ({ ...e, _icon: icon, _label: label, _kind: kind }));
+        const mapped = events.map((e) => ({ ...e, _icon: icon, _label: label, _kind: kind }));
+        return filter ? mapped.filter(filter) : mapped;
       } catch (_e) {
         return [];
       }
@@ -316,7 +329,8 @@ class ChumpOperatorAttention extends HTMLElement {
           const evt = bucket.latest;
           const href = this._detailHref(evt);
           const target = evt.pr ? `PR #${evt.pr}` : (evt.gap ? evt.gap : (evt.branch || ''));
-          const note = bucket.commonNote || evt.note || evt.message || '';
+          const note = bucket.commonNote || evt.note || evt.message
+            || (evt.classification ? `Classification: ${evt.classification}` : '');
           const ts = (evt.ts || '').replace('T', ' ').replace('Z', '');
           const countTag = bucket.count > 1
             ? `<span class="bucket-count" title="${bucket.count} identical events; oldest ${bucket.oldestTs}">${bucket.count}×</span>`
