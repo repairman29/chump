@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# stale-bot-merge-reaper.sh — INFRA-673
+# stale-bot-merge-reaper.sh — INFRA-673, engine-ified INFRA-1572
 #
 # Kills bash processes matching 'bot-merge.sh' that have been running longer
 # than 1 hour.  38 zombies (1-4 days old) wedged the entire fleet on 2026-05-08,
 # blocking child claude -p workers and starving the queue.
+#
+# Consumes the generic scripts/lib/reaper.sh engine — this script only
+# supplies the find command (ps -> pid/age) and reuses the engine's
+# kill action. See docs/audits/reaper-curation-2026-05.md for why this
+# reaper (and not its 10 siblings) was picked for engine consolidation.
 #
 # Usage:
 #   ./scripts/ops/stale-bot-merge-reaper.sh              # dry-run (default)
@@ -13,28 +18,17 @@
 # LaunchAgent: dev.chump.stale-bot-merge-reaper (every 30 min)
 #   Install: load scripts/plists/dev.chump.stale-bot-merge-reaper.plist
 
-set -euo pipefail
+set -uo pipefail
 
-DRY_RUN=true
-for arg in "$@"; do
-    case "$arg" in
-        --execute) DRY_RUN=false ;;
-        --dry-run) DRY_RUN=true ;;
-    esac
-done
-
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$(cd "$(dirname "$0")/../.." && pwd)")"
-LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
-THRESHOLD_SECONDS=3600  # 1 hour
+# shellcheck source=../lib/reaper.sh
+source "$(dirname "$0")/../lib/reaper.sh"
 
 # etime from ps is in [[DD-]HH:]MM:SS format; convert to seconds.
-etime_to_seconds() {
+_stale_bot_merge_etime_to_seconds() {
     local etime="$1"
     local days=0 hours=0 mins=0 secs=0
 
-    # Strip leading whitespace
     etime="${etime# }"
-
     if [[ "$etime" == *-* ]]; then
         days="${etime%%-*}"
         etime="${etime#*-}"
@@ -49,44 +43,16 @@ etime_to_seconds() {
 
     echo $(( days * 86400 + hours * 3600 + mins * 60 + secs ))
 }
+export -f _stale_bot_merge_etime_to_seconds
 
-KILLED=()
-SKIPPED=0
+REAPER_NAME=stale_bot_merge
+REAPER_AGE_THRESHOLD_S=3600
+REAPER_FIND_CMD='ps -eo pid=,etime=,args= 2>/dev/null | grep "bot-merge\.sh" | grep -v grep | while IFS= read -r line; do
+    pid="$(echo "$line" | awk "{print \$1}")"
+    etime="$(echo "$line" | awk "{print \$2}")"
+    age="$(_stale_bot_merge_etime_to_seconds "$etime")"
+    printf "%s\t%s\t%s\n" "$pid" "$age" "$etime"
+done'
+REAPER_ACTION_CMD='reaper_engine_kill'
 
-# Collect PIDs + etime for all bash processes with bot-merge.sh in their args.
-# Use -o to get pid, etime, and command without truncation.
-while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-
-    pid="$(echo "$line" | awk '{print $1}')"
-    etime="$(echo "$line" | awk '{print $2}')"
-    elapsed=$(etime_to_seconds "$etime")
-
-    if (( elapsed < THRESHOLD_SECONDS )); then
-        SKIPPED=$((SKIPPED + 1))
-        continue
-    fi
-
-    if [[ "$DRY_RUN" == "true" ]]; then
-        echo "  WOULD KILL pid=$pid etime=$etime elapsed=${elapsed}s"
-    else
-        echo "  KILLING pid=$pid etime=$etime elapsed=${elapsed}s"
-        kill -TERM "$pid" 2>/dev/null || true
-        sleep 2
-        kill -KILL "$pid" 2>/dev/null || true
-        KILLED+=("$pid")
-    fi
-done < <(ps -eo pid=,etime=,args= 2>/dev/null | grep 'bot-merge\.sh' | grep -v grep || true)
-
-echo
-echo "stale-bot-merge-reaper: killed=${#KILLED[@]} skipped=$SKIPPED dry_run=$DRY_RUN"
-
-if [[ "$DRY_RUN" == "false" && "${#KILLED[@]}" -gt 0 ]]; then
-    pid_list="$(IFS=,; echo "${KILLED[*]}")"
-    printf '{"ts":"%s","kind":"stale_bot_merge_killed","pids":[%s],"count":%d}\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$(IFS=,; echo "${KILLED[*]}" | sed 's/,/, /g')" \
-        "${#KILLED[@]}" \
-        >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
-    echo "  -> emitted stale_bot_merge_killed to ambient.jsonl (pids=$pid_list)"
-fi
+reaper_engine_run "$@"
