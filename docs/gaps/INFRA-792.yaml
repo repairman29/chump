@@ -8,6 +8,29 @@
     - "Diagnose why fast-checks and FTUE workflows fail on PR #1373; unblock 'Free-tier dispatch testing' PR; verify fixes work"
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+
+    Diagnosis (2026-08-28): PR #1373 ("Free-tier dispatch testing: 3 gaps +
+    synthesis") merged to main on 2026-05-10T14:45:33Z (merge commit
+    94284b7020204a32542926dfcd2cb94d2598e4a6) — it was never actually blocked
+    71m past this point; the checks resolved on retry and the PR shipped same
+    day. Root causes of the two failures cited in the title:
+      - `ftue` job (FTUE clean-machine workflow): failed at the
+        `chump --version` step right after a fresh `brew tap + install chump`
+        — a transient Homebrew-formula-lag flake (new binary not yet
+        propagated through the tap at install time), not a code defect in
+        PR #1373. Confirmed transient: FTUE has run green on every `main`
+        run for the last 5 days checked (2026-08-24 through 2026-08-28).
+      - `fast-checks`: both instances of this check name in the PR's rollup
+        (CI workflow and Repo health workflow) show `SUCCESS` — the
+        underlying failure was in sibling e2e jobs (`e2e-pwa`/`test-e2e`)
+        from a 16:06 retry, not `fast-checks` itself.
+    No fix was required or applied — the PR unblocked itself via retry/flake
+    resolution within the same day, well before the "71m blocked" title was
+    written up as a gap. Verified `chump gap audit-priorities` shows no
+    stale-P0 or stuck-gap side effects. Closing as resolved-by-time; no code
+    change needed. (Today's unrelated `fast-checks` failures on main, e.g.
+    CSS token-discipline smoke, are a separate live issue — not connected to
+    PR #1373 and out of scope for this gap.)
   opened_date: '2026-05-10'
   outcome_id: MISSION-010
 
