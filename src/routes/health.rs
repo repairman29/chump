@@ -817,6 +817,55 @@ fn fleet_health_pillars_json(r: &crate::mission_grade::MissionGradeReport) -> se
     })
 }
 
+// ── /api/fleet/pillars (INFRA-1339) ─────────────────────────────────────────
+//
+// Standalone mission-grade pillar endpoint. Reuses fleet_health_pillars_json
+// but exposes only the 4 pillars (no kpis/slo/graphql_budget) under the
+// literal key "zero-waste" (hyphenated, matching PRODUCT-107's quadrant
+// contract — distinct from the "zero_waste" key /api/fleet/health uses
+// internally).
+//
+// Shape:
+//   { effective:{grade,trend,breach_reasons,...}, credible:..., resilient:...,
+//     "zero-waste":... }
+
+/// GET /api/fleet/pillars — see module doc for full schema.
+pub async fn handle_fleet_pillars() -> Json<serde_json::Value> {
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => std::path::PathBuf::from(r),
+        Err(_) => crate::repo_path::runtime_base(),
+    };
+
+    if crate::gap_store::GapStore::open(&repo_root).is_err() {
+        tracing::error!(
+            target: "chump::fleet_pillars",
+            repo_root = %repo_root.display(),
+            "fleet pillars computation failed: gap store unavailable"
+        );
+    }
+
+    let report = crate::mission_grade::build_report(&repo_root);
+    let pillars = fleet_health_pillars_json(&report);
+
+    let payload = serde_json::json!({
+        "effective": pillars["effective"],
+        "credible": pillars["credible"],
+        "resilient": pillars["resilient"],
+        "zero-waste": pillars["zero_waste"],
+    });
+
+    tracing::info!(
+        target: "chump::fleet_pillars",
+        effective_grade = pillars["effective"]["grade"].as_str().unwrap_or("?"),
+        credible_grade = pillars["credible"]["grade"].as_str().unwrap_or("?"),
+        resilient_grade = pillars["resilient"]["grade"].as_str().unwrap_or("?"),
+        zero_waste_grade = pillars["zero_waste"]["grade"].as_str().unwrap_or("?"),
+        "fleet pillars computed"
+    );
+
+    Json(payload)
+}
+
 // ── KPIs sub-object ────────────────────────────────────────────────────────
 
 fn fleet_health_kpis_json(
