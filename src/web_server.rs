@@ -795,9 +795,17 @@ async fn handle_broadcast(
         _ => unreachable!(),
     }
 
+    let started_at = std::time::Instant::now();
     let output = cmd
         .output()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("spawn: {e}")))?;
+    // META-082: broadcast is chump's route-change/A2A coordination action —
+    // record its cost regardless of outcome so failed dispatches count too.
+    crate::coordination_action_metrics::record(
+        body.recipient.as_deref().unwrap_or("broadcast"),
+        "route_change",
+        started_at.elapsed().as_millis() as u64,
+    );
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         return Err((
@@ -943,6 +951,7 @@ async fn handle_lessons_get(
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
+    let started_at = std::time::Instant::now();
     let tag = params
         .get("tag")
         .map(|t| t.trim().to_lowercase())
@@ -956,10 +965,31 @@ async fn handle_lessons_get(
             None => true,
         })
         .collect();
-    Ok(Json(serde_json::json!({
+    let count = lessons.len();
+    let response = Ok(Json(serde_json::json!({
         "lessons": lessons,
-        "count": lessons.len(),
-    })))
+        "count": count,
+    })));
+    // META-082: track lesson-fetch coordination-action cost. GET requests
+    // carry no agent identity, so the tag filter (or "any") stands in.
+    crate::coordination_action_metrics::record(
+        tag.as_deref().unwrap_or("any"),
+        "lesson_fetch",
+        started_at.elapsed().as_millis() as u64,
+    );
+    response
+}
+
+/// META-082: GET /api/metrics/coordination-actions — cost metrics (CPU/time/
+/// estimated $) for coordination actions like route changes and lesson
+/// fetches, per META-073 slice AC-3.
+async fn handle_coordination_action_metrics(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    Ok(Json(crate::coordination_action_metrics::snapshot()))
 }
 
 /// INFRA-1298: GET /api/inbox/{session} — read targeted-inbox messages.
@@ -9430,6 +9460,11 @@ fn build_api_router() -> Router {
         .route(
             "/api/lessons",
             get(handle_lessons_get).post(handle_lessons_post),
+        )
+        // META-082: coordination-action cost metrics (META-073 slice).
+        .route(
+            "/api/metrics/coordination-actions",
+            get(handle_coordination_action_metrics),
         )
         .route("/api/approve", post(handle_approve))
         // INFRA-1340: per-tool persistent auto-approve policies (PWA dropdown)

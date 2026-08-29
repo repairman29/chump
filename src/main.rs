@@ -316,6 +316,8 @@ mod embed_inprocess;
 
 mod metrics;
 
+mod coordination_action_metrics;
+
 /// INFRA-3448: the recovery discipline the OS should apply to a STUCK gap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GapDiscipline {
