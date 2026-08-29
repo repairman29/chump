@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chump — Pricing</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.65;
+      color: #1a1a1a;
+      background: #fafafa;
+      margin: 0;
+      padding: 2rem 1rem;
+    }
+
+    main {
+      max-width: 640px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 2.5rem 3rem;
+      border: 1px solid #e4e4e4;
+      border-radius: 4px;
+    }
+
+    h1 {
+      font-size: 1.9rem;
+      font-weight: 700;
+      margin: 0 0 0.25rem 0;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: #555;
+      font-size: 0.95rem;
+      margin: 0 0 2rem 0;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid #e4e4e4;
+    }
+
+    h2 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin: 2.25rem 0 0.6rem 0;
+      padding-bottom: 0.25rem;
+      border-bottom: 1px solid #f0f0f0;
+      letter-spacing: -0.01em;
+    }
+
+    p { margin: 0 0 1rem 0; }
+
+    a { color: #0066cc; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    strong { font-weight: 600; }
+
+    code {
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, monospace;
+      font-size: 0.85em;
+      background: #f4f4f4;
+      border: 1px solid #e8e8e8;
+      border-radius: 3px;
+      padding: 0.1em 0.35em;
+    }
+
+    .offer-card {
+      border: 1px solid #d4c6f0;
+      background: #f9f6ff;
+      border-radius: 6px;
+      padding: 1.75rem 2rem;
+      text-align: center;
+      margin: 1.5rem 0 2rem 0;
+    }
+
+    .offer-name {
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #3d1f8c;
+      margin-bottom: 0.5rem;
+    }
+
+    .offer-price {
+      font-size: 2.4rem;
+      font-weight: 700;
+      margin-bottom: 0.1rem;
+    }
+
+    .offer-price .unit {
+      font-size: 1rem;
+      font-weight: 500;
+      color: #666;
+    }
+
+    .offer-desc {
+      font-size: 0.95rem;
+      color: #444;
+      margin-bottom: 1.4rem;
+    }
+
+    .offer-features {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 1.5rem 0;
+      text-align: left;
+      font-size: 0.92rem;
+      max-width: 360px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .offer-features li {
+      padding: 0.4rem 0;
+      border-bottom: 1px solid #ede8f8;
+    }
+
+    .offer-features li:last-child { border-bottom: none; }
+
+    .offer-features li::before {
+      content: "\2713";
+      color: #3d1f8c;
+      font-weight: 700;
+      margin-right: 0.5em;
+    }
+
+    .offer-cta {
+      display: inline-block;
+      padding: 0.75rem 2rem;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 1rem;
+      background: #3d1f8c;
+      color: #fff;
+      text-decoration: none;
+    }
+
+    .offer-cta:hover { background: #2e1769; }
+
+    details {
+      margin: 1rem 0 2rem 0;
+      border: 1px solid #e4e4e4;
+      border-radius: 4px;
+      padding: 0.9rem 1.2rem;
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.92rem;
+    }
+
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      font-size: 0.88rem;
+    }
+
+    .compare-table th, .compare-table td {
+      text-align: left;
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .compare-table th { color: #888; font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+
+    footer {
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid #f0f0f0;
+      font-size: 0.83rem;
+      color: #888;
+    }
+  </style>
+</head>
+<body data-variant="b">
+<main>
+  <h1>Chump &mdash; Pricing</h1>
+  <p class="subtitle">
+    One tier for teams who want fleet coordination without running their own broker.
+    &nbsp;|&nbsp; <a href="../index.html">Why Chump exists</a>
+  </p>
+
+  <div class="offer-card">
+    <div class="offer-name">Team</div>
+    <div class="offer-price">$29 <span class="unit">/ seat / mo</span></div>
+    <p class="offer-desc">Hosted coordinator + managed NATS. No broker to run yourself.</p>
+    <ul class="offer-features">
+      <li>Hosted coordinator + dashboard</li>
+      <li>Managed NATS cluster</li>
+      <li>Cross-machine fleet sync</li>
+      <li>Priority support</li>
+    </ul>
+    <a class="offer-cta" href="STRIPE_CHECKOUT_URL_PLACEHOLDER">Start checkout</a>
+  </div>
+
+  <details>
+    <summary>See all tiers (Solo / Team / Enterprise)</summary>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Tier</th><th>Price</th><th>Best for</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Solo</td><td>Free, OSS</td><td>Individual devs, self-hosted</td></tr>
+        <tr><td>Team</td><td>$29/seat/mo</td><td>2&ndash;20 dev teams</td></tr>
+        <tr><td>Enterprise</td><td>$12,000/yr base</td><td>Compliance / &gt;20 devs</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:0.9rem;font-size:0.85rem;">
+      Full comparison and pricing rationale:
+      <a href="../../business/PRICING_V1.md">docs/business/PRICING_V1.md</a>.
+      Enterprise inquiries: <a href="mailto:jeff@chump.dev?subject=Chump%20Enterprise">jeff@chump.dev</a>.
+    </p>
+  </details>
+
+  <h2>Founding customers</h2>
+  <p>
+    First 10 Team customers get 50% off for 12 months in exchange for a signed
+    case study. Full terms:
+    <a href="../../business/FOUNDING_CUSTOMER_OFFER.md">docs/business/FOUNDING_CUSTOMER_OFFER.md</a>.
+  </p>
+
+  <footer>
+    Chump &mdash; <a href="https://github.com/repairman29/chump">github.com/repairman29/chump</a>
+    &mdash; pricing experiment, not final pricing. See
+    <a href="../../business/PRICING_V1.md">PRICING_V1.md</a> for the decision rule.
+  </footer>
+</main>
+</body>
+</html>
