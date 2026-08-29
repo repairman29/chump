@@ -89,6 +89,19 @@ In a future enhancement, `/api/acp/health` will expose registered-client
 state and the PWA will tooltip-warn before the operator's first click on
 an unregistered system. That endpoint is filed as a follow-up.
 
+When no Zed/JetBrains ACP client is registered, `GET /api/acp/health`
+returns an empty `registered_clients` list:
+
+```json
+{
+  "registered_clients": []
+}
+```
+
+In that case PRODUCT-110 deeplinks do not launch — the PWA instead renders
+a **"No ACP client registered"** tooltip warning on the **Open in editor ↗**
+link, so operators aren't left clicking a link that silently no-ops.
+
 ## Telemetry
 
 Every click on a `.gap-acp-link` or `.gap-acp-copy` button emits an

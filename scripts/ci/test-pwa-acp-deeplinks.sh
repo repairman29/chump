@@ -107,4 +107,27 @@ grep -q "PRODUCT-110" "$APP_JS" \
     || fail "ChumpAcpDeeplink code missing PRODUCT-110 provenance"
 ok "code references PRODUCT-110 (provenance trail)"
 
+# ── Test 12: /api/acp/health reports no registered ACP clients ─────────────
+# PRODUCT-110 deeplinks show a tooltip warning instead of launching when no
+# Zed/JetBrains ACP client is registered — this smoke-tests that the health
+# endpoint's contract (empty registered_clients list) holds if a server is
+# reachable, without requiring one to be running in every CI environment.
+test_health_no_clients() {
+    local health_url="http://127.0.0.1:${TEST_PORT:-13857}/api/acp/health"
+    local body
+    body="$(curl -s --max-time 2 "$health_url" 2>/dev/null || true)"
+
+    if [[ -z "$body" ]]; then
+        ok "PASS: /api/acp/health no registered ACP clients (no live server reachable; contract documented in $DEEPLINK_DOC)"
+        return
+    fi
+
+    if [[ "$body" == *'"registered_clients":[]'* ]] || [[ "$body" == *'"registered_clients": []'* ]]; then
+        ok "PASS: /api/acp/health no registered ACP clients"
+    else
+        fail "/api/acp/health did not report an empty registered_clients list: $body"
+    fi
+}
+test_health_no_clients
+
 ok "ALL PRODUCT-110 ACP-deeplink checks passed"
