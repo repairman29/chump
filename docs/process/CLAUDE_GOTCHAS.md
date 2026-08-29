@@ -1497,6 +1497,20 @@ add `continue-on-error: true` to prevent it from blocking fleet-wide auto-merge.
 **Workaround when already blocked:** Re-trigger the flaky check.
 If it fails again: `gh pr merge <N> --squash --admin` to bypass.
 
+**INFRA-1425 closed as superseded (2026-08-28):** INFRA-1425 asked to
+root-cause-replace `tauri-cowork-e2e` and *remove* `continue-on-error` to
+make the check strict. That would undo the fix above and reintroduce the
+INFRA-1342 rollup-FAILURE trap. By the time INFRA-1425 was picked up,
+INFRA-1385 had already made and documented the formal disposition —
+**KEEP-ADVISORY** (nightly + post-merge only, `continue-on-error: true`
+stays) — backed by fresh evidence (30/30 job failures across the last 30
+`ci-nightly.yml`/`ci-advisory.yml` runs as of 2026-08-21). See
+[`CI_GATES_INVENTORY.md`](./CI_GATES_INVENTORY.md) for the full evidence
+table and re-check date (2026-11-21). Root cause is documented above
+(Selenium timeout on slow VMs, `type="module"` script pileup delaying
+`DOMContentLoaded`); no further action needed unless the 2026-11-21
+re-check finds the environment fixed.
+
 ### Known flaky tests (demoted, awaiting root-cause)
 
 - **`e2e/tests/pwa-onboarding-consolidation.spec.ts` (INFRA-2128, 2026-05-29).**
