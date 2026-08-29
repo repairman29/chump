@@ -754,10 +754,40 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # "init" commits in the real worktree's git history.
             unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
+            # INFRA-2431: only arm the HEAD-drift guard when the push diff
+            # actually touches a file capable of invoking git during a test
+            # run (Command::new("git") / the git_cmd! macro). cargo test
+            # recompiles + reruns the WHOLE suite regardless of which files
+            # changed, so a push that only touches docs/unrelated Rust files
+            # was still paying for (and occasionally false-positiving on) a
+            # guard meant to catch git-command-inheritance bugs in git-touching
+            # tests specifically. No behavior change for pushes that do touch
+            # git-invoking test code.
+            _GIT_TOUCHING_DIFF=0
+            _drift_diff_files="$(git diff --name-only origin/main...HEAD -- '*.rs' 2>/dev/null; git diff --name-only HEAD -- '*.rs' 2>/dev/null)"
+            _drift_diff_files="$(printf '%s\n' "$_drift_diff_files" | sort -u)"
+            if [[ -n "$_drift_diff_files" ]]; then
+                while IFS= read -r _ddf; do
+                    [[ -z "$_ddf" || ! -f "$REPO_ROOT_T/$_ddf" ]] && continue
+                    if grep -qE 'Command::new\("git"\)|git_cmd!' "$REPO_ROOT_T/$_ddf" 2>/dev/null; then
+                        _GIT_TOUCHING_DIFF=1
+                        break
+                    fi
+                done <<< "$_drift_diff_files"
+            fi
+            unset _drift_diff_files _ddf
+
             # INFRA-1372 AC-3: record HEAD before cargo test. If a Rust test
             # creates a commit (e.g. via git-command inheritance), HEAD moves and
             # we must abort the push to prevent garbage commits landing on the branch.
-            _PRE_TEST_HEAD="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
+            # INFRA-2431: only armed when the diff touches git-invoking test code.
+            if [[ "$_GIT_TOUCHING_DIFF" == "1" ]]; then
+                _PRE_TEST_HEAD="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
+                _PRE_TEST_COUNT="$(git rev-list --count HEAD 2>/dev/null || echo "unknown")"
+            else
+                _PRE_TEST_HEAD="unknown"
+                _PRE_TEST_COUNT="unknown"
+            fi
 
             # INFRA-1167: build --skip list from KNOWN_FLAKES.yaml so environment-
             # dependent parallel-test races never block a legitimate push. Skipped
@@ -992,25 +1022,38 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
     # a commit. GIT_DIR is now restored (unset above then re-exported after the
     # subshell exits — bash restores env after a subshell, but `unset` in the
     # parent shell is permanent). We re-read HEAD here from the worktree gitdir.
+    #
+    # INFRA-2431: the SHA-equality check alone false-positived when something
+    # other than an actual new commit moved the ref reported by `git
+    # rev-parse HEAD` (e.g. a transient worktree-gitdir resolution race —
+    # INFRA-779 — reading a sibling claim's HEAD momentarily). A real "test
+    # created a garbage commit" always adds exactly one commit to the branch's
+    # history, so gate on the commit COUNT changing, not just the SHA string.
     if [[ "${_PRE_TEST_HEAD:-unknown}" != "unknown" ]]; then
         _POST_TEST_HEAD="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
-        if [[ "$_PRE_TEST_HEAD" != "$_POST_TEST_HEAD" && "$_POST_TEST_HEAD" != "unknown" ]]; then
+        _POST_TEST_COUNT="$(git rev-list --count HEAD 2>/dev/null || echo "unknown")"
+        if [[ "$_PRE_TEST_HEAD" != "$_POST_TEST_HEAD" && "$_POST_TEST_HEAD" != "unknown" \
+              && "${_PRE_TEST_COUNT:-unknown}" != "${_POST_TEST_COUNT:-unknown}" ]]; then
             _pp_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
             _pp_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
             _pp_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             mkdir -p "${_pp_root}/.chump-locks" 2>/dev/null || true
-            printf '{"ts":"%s","kind":"prepush_head_drift","pre_head":"%s","post_head":"%s","branch":"%s"}\n' \
-                "$_pp_ts" "$_PRE_TEST_HEAD" "$_POST_TEST_HEAD" "$_pp_branch" \
+            printf '{"ts":"%s","kind":"prepush_head_drift","pre_head":"%s","post_head":"%s","pre_count":"%s","post_count":"%s","branch":"%s"}\n' \
+                "$_pp_ts" "$_PRE_TEST_HEAD" "$_POST_TEST_HEAD" "${_PRE_TEST_COUNT:-unknown}" "${_POST_TEST_COUNT:-unknown}" "$_pp_branch" \
                 >> "${_pp_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
             echo "" >&2
             echo "[pre-push] BLOCKED (INFRA-1372): HEAD moved during cargo test run!" >&2
-            echo "[pre-push]   Before: $_PRE_TEST_HEAD" >&2
-            echo "[pre-push]   After:  $_POST_TEST_HEAD" >&2
+            echo "[pre-push]   Before: $_PRE_TEST_HEAD (commit count: ${_PRE_TEST_COUNT:-unknown})" >&2
+            echo "[pre-push]   After:  $_POST_TEST_HEAD (commit count: ${_POST_TEST_COUNT:-unknown})" >&2
             echo "[pre-push] A test created a git commit — this leaks garbage commits onto the branch." >&2
             echo "[pre-push] Fix: ensure every Command::new(git) in tests unsets GIT_DIR/GIT_WORK_TREE." >&2
             echo "[pre-push] Emitted kind=prepush_head_drift to ambient.jsonl for observability." >&2
             echo "" >&2
             exit 1
+        elif [[ "$_PRE_TEST_HEAD" != "$_POST_TEST_HEAD" && "$_POST_TEST_HEAD" != "unknown" ]]; then
+            # SHA changed but commit count did not — not a garbage commit
+            # (e.g. transient ref-resolution race), so don't block the push.
+            echo "[pre-push] INFRA-2431: HEAD SHA differed after cargo test ($_PRE_TEST_HEAD -> $_POST_TEST_HEAD) but commit count unchanged (${_PRE_TEST_COUNT:-unknown}) — treating as non-drift, push proceeds." >&2
         fi
     fi
 fi
