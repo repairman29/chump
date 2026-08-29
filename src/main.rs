@@ -316,6 +316,9 @@ mod embed_inprocess;
 
 mod metrics;
 
+// META-082 (META-073 slice): coordination-action cost tracking.
+mod coord_cost_tracker;
+
 /// INFRA-3448: the recovery discipline the OS should apply to a STUCK gap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GapDiscipline {

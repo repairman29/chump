@@ -689,6 +689,7 @@ async fn handle_broadcast(
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
+    let cost_start = std::time::Instant::now();
 
     let event = body.event.trim().to_uppercase();
     let valid_events = [
