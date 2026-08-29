@@ -1,0 +1,128 @@
+# EVAL_STATUS.yaml — execution status for every preregistration in this
+# directory (INFRA-1562). Read by `chump eval list` and asserted against by
+# scripts/ci/test-preregistered-eval-status.sh (every *.md here except
+# README.md/TEMPLATE.md/COST_OPTIMIZATION.md must have a matching entry).
+#
+# status values:
+#   pending    — preregistration locked, no trial data collected yet
+#   running    — harness actively collecting trial data
+#   complete   — data collection finished; result_doc_path has the writeup
+#                (or, for moved-to-private preregs, the private-repo pointer)
+#   abandoned  — will not be executed; reason recorded inline
+#
+# last_run_ts: ISO-8601 UTC of the most recent harness run, or null if none.
+# result_doc_path: path to the public result doc, or null if none/private.
+
+- eval_id: COG-032
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: EVAL-087
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: EVAL-090
+  status: complete
+  last_run_ts: "2026-05-01T00:00:00Z"
+  result_doc_path: docs/eval/EVAL-090-neuromod-aggregate-rerun.md
+
+- eval_id: EVAL-096
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: EVAL-098
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: EVAL-099
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: EVAL-101
+  status: complete
+  last_run_ts: "2026-05-10T00:00:00Z"
+  result_doc_path: docs/eval/EVAL-101-cognition-ab-2026-05-10.md
+  # Ran, but violates RESEARCH_INTEGRITY.md protocol (n=20 not >=50, wrong
+  # primary agent, no Cell C) — not citable. See EVAL-102 result doc
+  # "Why EVAL-101 Cannot Be Cited". Execution status is complete; result
+  # quality is a separate axis this file does not track.
+
+- eval_id: EVAL-102
+  status: pending
+  last_run_ts: null
+  result_doc_path: docs/eval/EVAL-102-cognition-ab-followup-2026-05-14.md
+  # Canonical locked-but-pending case (see gap description). Result doc
+  # exists as a shell ("RESULTS PENDING — harness run not yet executed").
+  # Smoke-tested via AC3: python3.12 scripts/ab-harness/run-local-v2.py
+  # --gap EVAL-102 --n 2 before scheduling the full n>=50/cell sweep.
+
+- eval_id: INFRA-1004
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: RESEARCH-018
+  status: complete
+  last_run_ts: "2026-04-21T00:00:00Z"
+  result_doc_path: docs/eval/RESEARCH-018-length-matched.md
+  # RESEARCH-018-null-prose-generator.md is a second cell, moved to private.
+
+- eval_id: RESEARCH-020
+  status: abandoned
+  last_run_ts: null
+  result_doc_path: null
+  # 489B stub, never filled in, no trial data ever collected, no result
+  # doc anywhere (public or private). Reclassified abandoned per AC4
+  # (INFRA-1562) rather than left as an ambiguous empty prereg.
+
+- eval_id: RESEARCH-021
+  status: complete
+  last_run_ts: "2026-04-21T00:00:00Z"
+  result_doc_path: null
+  # Preregistration + result writeup both moved to chump-proprietary
+  # (private, need-to-know) — see docs/eval/preregistered/RESEARCH-021.md.
+
+- eval_id: RESEARCH-022
+  status: complete
+  last_run_ts: "2026-04-21T00:00:00Z"
+  result_doc_path: docs/eval/RESEARCH-022-module-reference-analysis.md
+
+- eval_id: RESEARCH-023
+  status: complete
+  last_run_ts: "2026-04-21T00:00:00Z"
+  result_doc_path: null
+  # Preregistration + result writeup both moved to chump-proprietary.
+
+- eval_id: RESEARCH-024
+  status: abandoned
+  last_run_ts: null
+  result_doc_path: null
+  # 489B stub, never filled in, no trial data ever collected, no result
+  # doc anywhere (public or private). Reclassified abandoned per AC4
+  # (INFRA-1562) rather than left as an ambiguous empty prereg.
+
+- eval_id: RESEARCH-025
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: RESEARCH-026
+  status: complete
+  last_run_ts: null
+  result_doc_path: docs/eval/RESEARCH-026-observer-effect.md
+  # Second cell: docs/eval/RESEARCH-026-naturalization-pilot.md.
+
+- eval_id: RESEARCH-028
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
+
+- eval_id: RESEARCH-032
+  status: pending
+  last_run_ts: null
+  result_doc_path: null
