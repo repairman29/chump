@@ -28,6 +28,9 @@ pub struct InitArgs {
     pub open_browser: bool,
     /// Skip stdin prompts; derive choices from env vars only (for CI/tests).
     pub no_interactive: bool,
+    /// INFRA-1478: `--remote <ssh-host>` — bootstrap a Chump worker on a
+    /// remote machine over SSH instead of initializing this machine.
+    pub remote: Option<String>,
 }
 
 impl Default for InitArgs {
@@ -40,6 +43,7 @@ impl Default for InitArgs {
             port,
             open_browser: true,
             no_interactive: false,
+            remote: None,
         }
     }
 }
@@ -51,6 +55,8 @@ impl InitArgs {
     /// - `--port N` — bind the web server to port N (overrides `CHUMP_WEB_PORT`)
     /// - `--no-browser` — skip the browser-open step (for CI / automation)
     /// - `--no-interactive` — skip stdin prompts; use env-var defaults only
+    /// - `--remote <ssh-host>` — bootstrap a Chump worker on a remote
+    ///   machine over SSH (INFRA-1478) instead of initializing this machine
     ///
     /// Returns `Err` for unknown flags or missing values.
     pub fn from_argv(argv: &[String]) -> Result<Self> {
@@ -75,8 +81,20 @@ impl InitArgs {
                     out.no_interactive = true;
                     i += 1;
                 }
+                "--remote" => {
+                    let raw = argv
+                        .get(i + 1)
+                        .ok_or_else(|| anyhow!("--remote requires a value (ssh-host)"))?;
+                    if raw.is_empty() {
+                        return Err(anyhow!("--remote requires a non-empty ssh-host"));
+                    }
+                    out.remote = Some(raw.clone());
+                    i += 2;
+                }
                 "--help" | "-h" => {
-                    println!("Usage: chump init [--port N] [--no-browser] [--no-interactive]");
+                    println!(
+                        "Usage: chump init [--port N] [--no-browser] [--no-interactive] [--remote <ssh-host>]"
+                    );
                     std::process::exit(0);
                 }
                 other => return Err(anyhow!("chump init: unknown flag {other:?}")),
@@ -87,6 +105,10 @@ impl InitArgs {
 }
 
 pub fn run_init(repo_root: &Path, args: &InitArgs) -> Result<()> {
+    if let Some(host) = &args.remote {
+        return run_remote_init(repo_root, host, args);
+    }
+
     println!("chump init — first-run wizard");
     println!();
 
@@ -201,6 +223,227 @@ pub fn run_init(repo_root: &Path, args: &InitArgs) -> Result<()> {
             println!("    brew install ollama && ollama pull qwen2.5:7b");
         }
         println!("  Then re-run: chump init");
+    }
+    Ok(())
+}
+
+// ────────────────────────── --remote (INFRA-1478) ──────────────────────────
+//
+// `chump init --remote <ssh-host>` is the "point my workers at a dedicated
+// box" onboarding ramp (Persona-1 dealbreaker, audit 2026-05-15). It is the
+// SSH-driven counterpart to the local wizard above: it bootstraps a Chump
+// worker on a remote machine, then runs the same style of green/red
+// diagnostic that `chump init` runs locally (INFRA-1462).
+//
+// Network model: outbound-only from the operator's laptop. SSH (port 22,
+// or whatever the host's ssh config specifies) is the only inbound
+// requirement on the remote box. If the fleet uses the NATS push tier
+// (FLEET-034), the remote worker dials OUT to the NATS URL — no inbound
+// port is required on the remote box for that either. See
+// docs/process/REMOTE_ONBOARDING.md for the full runbook.
+
+/// One step of the remote bootstrap + diagnostic, reported back to the
+/// caller so `run_remote_init` can print a green/red summary line per step
+/// (mirrors the `[a]`..`[f]` step reporting of the local wizard).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteStepResult {
+    pub label: &'static str,
+    pub ok: bool,
+    pub detail: String,
+}
+
+/// Builds the remote bootstrap script that is piped to `ssh <host> bash -s`.
+///
+/// Idempotent by construction: every step is guarded (`command -v`, `[ -f
+/// ... ] ||`, `mkdir -p`) so re-running `chump init --remote` against a
+/// machine that's already bootstrapped is a no-op past step 1.
+///
+/// `worker_machine` becomes the `WORKER_MACHINE` env var baked into the
+/// remote worker's launch environment (FLEET-034 push-tier routing key —
+/// gaps with `preferred_machine` set route straight to this box; gaps with
+/// none are picked up by any worker, remote included).
+pub fn build_remote_bootstrap_script(worker_machine: &str, nats_url: Option<&str>) -> String {
+    let nats_export = match nats_url {
+        Some(url) if !url.is_empty() => format!("export CHUMP_NATS_URL={:?}\n", url),
+        _ => String::new(),
+    };
+    format!(
+        r#"set -euo pipefail
+mkdir -p "$HOME/.chump"
+if ! command -v chump >/dev/null 2>&1; then
+  if command -v brew >/dev/null 2>&1; then
+    brew tap repairman29/chump && brew install chump
+  else
+    echo "chump-init-remote: no brew on remote host; install chump manually" >&2
+    exit 1
+  fi
+fi
+cat > "$HOME/.chump/worker.env" <<'ENVEOF'
+WORKER_MACHINE={worker_machine}
+WORKER_BACKEND=claude
+{nats_export}ENVEOF
+chump fleet doctor >/dev/null 2>&1 || true
+nohup env WORKER_MACHINE={worker_machine} chump-coord worker \
+  --subjects "chump.work.>.>.{worker_machine},chump.work.>.>.any" \
+  >"$HOME/.chump/worker.log" 2>&1 &
+disown || true
+echo "chump-init-remote: bootstrap complete on $(hostname)"
+"#,
+        worker_machine = shell_quote(worker_machine),
+        nats_export = nats_export,
+    )
+}
+
+/// Quote a value for safe interpolation into the heredoc-free parts of the
+/// bootstrap script above (worker_machine is operator-supplied, not
+/// attacker-controlled, but this keeps `set -u`/word-splitting honest).
+fn shell_quote(v: &str) -> String {
+    if v.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        v.to_string()
+    } else {
+        format!("'{}'", v.replace('\'', "'\\''"))
+    }
+}
+
+/// Builds the `ssh` command used to run the bootstrap script on `host`.
+/// Split out as a pure function so tests can assert on argv without an
+/// actual network round-trip.
+fn ssh_bootstrap_command(host: &str, script: &str) -> std::process::Command {
+    let mut cmd = std::process::Command::new("ssh");
+    cmd.args([
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        host,
+        "bash -s",
+    ]);
+    cmd.stdin(std::process::Stdio::piped());
+    // Caller writes `script` to stdin after spawn; kept as a separate
+    // parameter (not baked into argv) so it never round-trips through a
+    // shell-quoting layer.
+    let _ = script;
+    cmd
+}
+
+/// Builds the remote diagnostic command — mirrors the 180s green/red check
+/// that local `chump init` performs (INFRA-1462 AC2), run over SSH instead
+/// of in-process: binary present + fresh, worker daemon alive, gap store
+/// reachable.
+fn ssh_diagnostic_command(host: &str) -> std::process::Command {
+    let mut cmd = std::process::Command::new("ssh");
+    cmd.args([
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        host,
+        "chump fleet doctor --json 2>&1; echo CHUMP_DOCTOR_EXIT=$?; pgrep -f 'chump-coord worker' >/dev/null && echo CHUMP_WORKER_ALIVE=1 || echo CHUMP_WORKER_ALIVE=0",
+    ]);
+    cmd
+}
+
+pub fn run_remote_init(_repo_root: &Path, host: &str, args: &InitArgs) -> Result<()> {
+    println!("chump init --remote {host} — remote worker onboarding (INFRA-1478)");
+    println!();
+
+    // Reachability probe first — fail fast with a clear message rather than
+    // hanging on a bootstrap script that can never land.
+    let probe = std::process::Command::new("ssh")
+        .args([
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=10",
+            host,
+            "true",
+        ])
+        .output();
+    match &probe {
+        Ok(o) if o.status.success() => println!("  [1] ssh reachability ... ok"),
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            println!("  [1] ssh reachability ... FAILED");
+            println!("      {}", stderr.trim());
+            println!(
+                "      Fix: verify `ssh {host}` works interactively (key auth, host in ~/.ssh/config)."
+            );
+            return Err(anyhow!("chump init --remote: cannot reach {host} over ssh"));
+        }
+        Err(e) => {
+            println!("  [1] ssh reachability ... FAILED ({e})");
+            return Err(anyhow!("chump init --remote: ssh not available: {e}"));
+        }
+    }
+
+    // Worker machine tag defaults to the ssh host's short name (strips
+    // user@ and any port suffix) — used as the FLEET-034 push-tier routing
+    // key and printed so the operator knows what to pass as
+    // `--preferred-machine` when filing machine-pinned gaps.
+    let worker_machine = std::env::var("WORKER_MACHINE").unwrap_or_else(|_| {
+        host.rsplit('@')
+            .next()
+            .unwrap_or(host)
+            .split(':')
+            .next()
+            .unwrap_or(host)
+            .to_string()
+    });
+    let nats_url = std::env::var("CHUMP_NATS_URL").ok();
+    let script = build_remote_bootstrap_script(&worker_machine, nats_url.as_deref());
+
+    println!("  [2] bootstrapping worker (WORKER_MACHINE={worker_machine}) ...");
+    let mut cmd = ssh_bootstrap_command(host, &script);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| anyhow!("chump init --remote: failed to spawn ssh: {e}"))?;
+    {
+        use std::io::Write;
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| anyhow!("chump init --remote: no stdin pipe to ssh"))?;
+        stdin.write_all(script.as_bytes())?;
+    }
+    let bootstrap_out = child.wait_with_output()?;
+    if bootstrap_out.status.success() {
+        println!("      ok — {}", String::from_utf8_lossy(&bootstrap_out.stdout).trim());
+    } else {
+        println!("      FAILED");
+        println!("      {}", String::from_utf8_lossy(&bootstrap_out.stderr).trim());
+        return Err(anyhow!(
+            "chump init --remote: bootstrap script failed on {host}"
+        ));
+    }
+
+    // (3) same-shape green/red diagnostic as local init (INFRA-1462 AC2).
+    println!("  [3] remote diagnostic ...");
+    let diag_out = ssh_diagnostic_command(host).output();
+    match diag_out {
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let worker_alive = stdout.contains("CHUMP_WORKER_ALIVE=1");
+            let doctor_ok = stdout.contains("CHUMP_DOCTOR_EXIT=0");
+            if worker_alive && doctor_ok {
+                println!("      GREEN — worker daemon alive, fleet doctor clean");
+            } else {
+                println!("      RED — worker_alive={worker_alive} doctor_ok={doctor_ok}");
+                println!("      {}", stdout.trim());
+            }
+        }
+        Err(e) => {
+            println!("      RED — could not run remote diagnostic: {e}");
+        }
+    }
+
+    if !args.no_interactive {
+        println!();
+        println!("  chump init --remote complete.");
+        println!("    Pin gaps to this box: chump gap reserve ... --preferred-machine {worker_machine}");
+        println!("    Any-machine gaps are picked up automatically (FLEET-034 push tier).");
+        println!("    Runbook + network requirements: docs/process/REMOTE_ONBOARDING.md");
     }
     Ok(())
 }
@@ -765,5 +1008,110 @@ mod tests {
         std::env::remove_var("FLEET_MODEL");
         let m = resolve_fleet_model(true).unwrap();
         assert_eq!(m, "haiku");
+    }
+
+    // ────────────────────────── --remote (INFRA-1478) ──────────────────────────
+
+    #[test]
+    fn from_argv_remote_flag_parses() {
+        let argv: Vec<String> = vec!["--remote".into(), "user@neural-farm".into()];
+        let args = InitArgs::from_argv(&argv).unwrap();
+        assert_eq!(args.remote.as_deref(), Some("user@neural-farm"));
+    }
+
+    #[test]
+    fn from_argv_remote_missing_value_errors() {
+        let argv: Vec<String> = vec!["--remote".into()];
+        let err = InitArgs::from_argv(&argv).unwrap_err();
+        assert!(err.to_string().contains("--remote"));
+    }
+
+    #[test]
+    fn from_argv_remote_empty_value_errors() {
+        let argv: Vec<String> = vec!["--remote".into(), "".into()];
+        let err = InitArgs::from_argv(&argv).unwrap_err();
+        assert!(err.to_string().contains("--remote"));
+    }
+
+    #[test]
+    fn from_argv_remote_combines_with_other_flags() {
+        let argv: Vec<String> = vec![
+            "--no-interactive".into(),
+            "--remote".into(),
+            "10.0.0.5".into(),
+        ];
+        let args = InitArgs::from_argv(&argv).unwrap();
+        assert!(args.no_interactive);
+        assert_eq!(args.remote.as_deref(), Some("10.0.0.5"));
+    }
+
+    #[test]
+    fn build_remote_bootstrap_script_contains_worker_machine() {
+        let script = build_remote_bootstrap_script("neural-farm", None);
+        assert!(
+            script.contains("WORKER_MACHINE=neural-farm"),
+            "script missing WORKER_MACHINE:\n{script}"
+        );
+        assert!(
+            script.contains("chump-coord worker"),
+            "script does not register the worker daemon:\n{script}"
+        );
+        assert!(
+            !script.contains("CHUMP_NATS_URL"),
+            "nats url should be absent when None:\n{script}"
+        );
+    }
+
+    #[test]
+    fn build_remote_bootstrap_script_includes_nats_url_when_given() {
+        let script = build_remote_bootstrap_script("box2", Some("nats://coord.internal:4222"));
+        assert!(
+            script.contains("CHUMP_NATS_URL=\"nats://coord.internal:4222\""),
+            "script missing nats url:\n{script}"
+        );
+    }
+
+    #[test]
+    fn build_remote_bootstrap_script_is_idempotent_guarded() {
+        let script = build_remote_bootstrap_script("box3", None);
+        assert!(
+            script.contains("command -v chump"),
+            "bootstrap must guard binary install for re-run safety:\n{script}"
+        );
+    }
+
+    #[test]
+    fn shell_quote_passes_through_safe_tokens() {
+        assert_eq!(shell_quote("neural-farm.local"), "neural-farm.local");
+    }
+
+    #[test]
+    fn shell_quote_escapes_unsafe_tokens() {
+        let q = shell_quote("evil'; rm -rf /");
+        assert!(q.starts_with('\''), "expected quoted output: {q}");
+        assert!(q.contains("'\\''"), "expected escaped inner quote: {q}");
+    }
+
+    #[test]
+    fn ssh_bootstrap_command_targets_host() {
+        let cmd = ssh_bootstrap_command("worker-box", "echo hi");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(args.contains(&"worker-box".to_string()));
+        assert!(args.iter().any(|a| a == "bash -s"));
+    }
+
+    #[test]
+    fn ssh_diagnostic_command_checks_worker_and_doctor() {
+        let cmd = ssh_diagnostic_command("worker-box");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        let joined = args.join(" ");
+        assert!(joined.contains("chump fleet doctor"));
+        assert!(joined.contains("chump-coord worker"));
     }
 }

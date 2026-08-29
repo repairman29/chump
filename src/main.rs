@@ -2060,7 +2060,7 @@ async fn main() -> Result<()> {
             Ok(a) => a,
             Err(e) => {
                 eprintln!("chump init: {e:#}");
-                eprintln!("usage: chump init [--port N] [--no-browser]");
+                eprintln!("usage: chump init [--port N] [--no-browser] [--remote <ssh-host>]");
                 std::process::exit(2);
             }
         };
