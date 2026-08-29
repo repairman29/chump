@@ -100,6 +100,7 @@ mod fleet_fanout; // INFRA-1484: cross-repo fan-out (Marcus M-B continuation)
 mod fleet_health;
 mod fleet_mode;
 mod fleet_pulse; // INFRA-1995: THE FLOOR Phase 2 — single-pane fleet status
+mod fleet_radar; // INFRA-1477: real-time per-worktree flight-radar matrix
 mod fleet_resize;
 mod fleet_self_doctor;
 mod fleet_self_rescue_conductor; // EFFECTIVE-088: self-rescue conductor (the empty chair)
