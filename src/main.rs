@@ -5398,6 +5398,11 @@ async fn main() -> Result<()> {
                 "  smoke-test           INFRA-1645: quick observability check — dummy LLM call,"
             );
             println!("                       prints a cost_report JSON line, exits 0.");
+            println!("  check-squash-safety  INFRA-1463: pre-check before any squash/reset-style");
+            println!("                       action. --branch B --main M [--max-additions N].");
+            println!("                       Exits 1 (UNSAFE) if M has >N file additions since B");
+            println!("                       diverged — those files would be deleted by a");
+            println!("                       reset --soft-style squash.");
             println!();
             println!("Options:");
             println!("  --dry-run            Print actions; do not actually run gh commands.");
@@ -5481,6 +5486,45 @@ async fn main() -> Result<()> {
                 if let Err(e) = paramedic::smoke_test(&repo_root) {
                     eprintln!("chump paramedic smoke-test: {e}");
                     std::process::exit(1);
+                }
+            }
+            // `chump paramedic check-squash-safety --branch B --main M [--max-additions N]`
+            // (INFRA-1463) — standalone entry point for the SQUASH_INIT_LEAK
+            // pre-check: prints "SAFE <n>" and exits 0, or "UNSAFE" and exits 1,
+            // if <main> has picked up more than N file additions since <branch>
+            // diverged (would be deleted by a reset --soft-style squash).
+            "check-squash-safety" => {
+                let branch = args
+                    .iter()
+                    .position(|a| a == "--branch")
+                    .and_then(|i| args.get(i + 1))
+                    .cloned()
+                    .unwrap_or_else(|| "HEAD".to_string());
+                let main_ref = args
+                    .iter()
+                    .position(|a| a == "--main")
+                    .and_then(|i| args.get(i + 1))
+                    .cloned()
+                    .unwrap_or_else(|| "main".to_string());
+                let max_additions = args
+                    .iter()
+                    .position(|a| a == "--max-additions")
+                    .and_then(|i| args.get(i + 1))
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(5);
+                match paramedic::check_squash_safety(&repo_root, &branch, &main_ref, max_additions)
+                {
+                    Ok(Some(n)) => {
+                        println!("SAFE {n}");
+                    }
+                    Ok(None) => {
+                        println!("UNSAFE");
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("chump paramedic check-squash-safety: {e}");
+                        std::process::exit(1);
+                    }
                 }
             }
             other => {

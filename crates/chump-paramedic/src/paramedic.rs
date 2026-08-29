@@ -969,9 +969,62 @@ fn action_allowlist_emit(_pr_number: u64, repo_root: &Path, dry_run: bool) -> Re
     Ok(())
 }
 
+/// INFRA-1463: safety pre-check for any squash/reset-style action.
+///
+/// Runs `git diff --stat <branch>..<main>` and refuses if main has picked up
+/// more than `max_additions` file additions since the branch's base — those
+/// files would be silently deleted by a `git reset --soft <main>`-style
+/// squash (the #2068 incident: 38 files including a different PR's test
+/// file were dropped this way). Returns `Ok(None)` when the check would
+/// abort the caller (i.e. "do not proceed"), `Ok(Some(n))` with the addition
+/// count when it's safe to proceed.
+pub fn check_squash_safety(
+    repo_root: &Path,
+    branch: &str,
+    main: &str,
+    max_additions: usize,
+) -> Result<Option<usize>> {
+    let out = std::process::Command::new("git")
+        .args(["diff", "--stat", &format!("{branch}..{main}")])
+        .current_dir(repo_root)
+        .output()
+        .context("git diff --stat failed")?;
+    if !out.status.success() {
+        // Can't determine safety — refuse rather than risk a silent delete.
+        warn!("[paramedic] squash-safety: git diff --stat failed, refusing");
+        return Ok(None);
+    }
+    let stat = String::from_utf8_lossy(&out.stdout);
+    // Each changed-file line ends in " | <N> ++/--"; count lines that are
+    // pure additions (no existing file on the branch side to merge into).
+    let additions = stat
+        .lines()
+        .filter(|l| l.contains('|') && l.contains('+') && !l.contains('-'))
+        .count();
+    if additions > max_additions {
+        warn!(
+            "[paramedic] squash-safety: {main} has {additions} file additions since \
+             {branch} diverged (max {max_additions}) — refusing squash to avoid \
+             deleting intervening files"
+        );
+        return Ok(None);
+    }
+    Ok(Some(additions))
+}
+
 fn action_squash_init_leak(pr_number: u64, _repo_root: &Path, dry_run: bool) -> Result<()> {
     // Flag the PR with a comment — actual squash requires human confirmation.
+    // This action has NEVER performed `git reset --soft <main>` (it only
+    // posts a review comment). `check_squash_safety` above is the mandatory
+    // pre-check any FUTURE rewrite of this action (or any other
+    // squash/reset-style action) must call before touching branch history —
+    // see docs/process/PARAMEDIC_SAFETY_RULES.md for the #2068 incident
+    // this guards against.
     if dry_run {
+        eprintln!(
+            "[paramedic] DRY-RUN: would comment on PR #{pr_number} flagging init-leak commit \
+             for manual squash (no file deletions — comment-only action)"
+        );
         return Ok(());
     }
     let _ = std::process::Command::new("gh")
