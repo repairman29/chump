@@ -18,6 +18,14 @@
 # --upgrade is idempotent too: scans com.chump.actions-runner*.plist, rewrites
 # PATH to include ~/.cargo/bin + ~/.local/bin, bootouts + bootstraps each.
 #
+# Multi-instance (INFRA-1536): CHUMP_RUNNER_SLOT=<N> (default 1) runs a second+
+# runner on the same host without colliding on the launchd Label, runner dir,
+# or log files. Slot 1 keeps the original unsuffixed names; slot >1 gets a
+# "-<slot>" suffix everywhere (e.g. CHUMP_RUNNER_SLOT=2 -> Label
+# com.chump.actions-runner-2, dir ~/actions-runner-chump-2, logs
+# actions-runner-2.log/.err). Re-running install with the same slot is a
+# no-op; a new slot always creates a new plist + runner registration.
+#
 # Runner PATH includes ~/.cargo/bin and ~/.local/bin so workflow steps that
 # invoke `chump`, `cargo`, or other user-built binaries resolve correctly.
 # Discovered 2026-05-16 (INFRA-1556): bare /opt/homebrew/bin PATH caused
@@ -31,8 +39,22 @@ set -euo pipefail
 
 REPO_OWNER="${CHUMP_REPO_OWNER:-repairman29}"
 REPO_NAME="${CHUMP_REPO_NAME:-chump}"
-RUNNER_DIR="${RUNNER_DIR:-$HOME/actions-runner-chump}"
-RUNNER_NAME_DEFAULT="$(hostname -s | tr '[:upper:]' '[:lower:]')"
+
+# INFRA-1536: multi-instance support. Slot 1 (the default) keeps the original
+# unsuffixed names for backward compat with existing installs; slot >1 gets a
+# "-<slot>" suffix on the plist Label, runner dir, log files, and default
+# runner name so a second/third runner on the same host doesn't collide with
+# the first (previously: hardcoded com.chump.actions-runner Label caused
+# "Bootstrap failed: 5: Input/output error" on the 2nd `launchctl bootstrap`).
+CHUMP_RUNNER_SLOT="${CHUMP_RUNNER_SLOT:-1}"
+SLOT_SUFFIX=""
+if [ "$CHUMP_RUNNER_SLOT" != "1" ]; then
+  SLOT_SUFFIX="-$CHUMP_RUNNER_SLOT"
+fi
+PLIST_LABEL="com.chump.actions-runner${SLOT_SUFFIX}"
+
+RUNNER_DIR="${RUNNER_DIR:-$HOME/actions-runner-chump${SLOT_SUFFIX}}"
+RUNNER_NAME_DEFAULT="$(hostname -s | tr '[:upper:]' '[:lower:]')${SLOT_SUFFIX}"
 RUNNER_NAME="${RUNNER_NAME:-$RUNNER_NAME_DEFAULT}"
 RUNNER_LABELS_DEFAULT="self-hosted,macos-arm64,chump-fleet"
 RUNNER_LABELS="${RUNNER_LABELS:-$RUNNER_LABELS_DEFAULT}"
@@ -215,7 +237,7 @@ cmd_upgrade() {
 }
 
 cmd_uninstall() {
-  local plist="$HOME/Library/LaunchAgents/com.chump.actions-runner.plist"
+  local plist="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
   if [ -f "$plist" ]; then
     launchctl bootout "gui/$UID" "$plist" 2>/dev/null || true
     rm -f "$plist"
@@ -293,7 +315,7 @@ EOF
 
   # 4. Install as launchd service (macOS)
   if [ "$PLATFORM" = "osx" ]; then
-    local plist="$HOME/Library/LaunchAgents/com.chump.actions-runner.plist"
+    local plist="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
     mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs/Chump"
     cat > "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -301,7 +323,7 @@ EOF
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.chump.actions-runner</string>
+    <string>${PLIST_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
         <string>$RUNNER_DIR/run.sh</string>
@@ -315,9 +337,9 @@ EOF
     <key>ThrottleInterval</key>
     <integer>10</integer>
     <key>StandardOutPath</key>
-    <string>$HOME/Library/Logs/Chump/actions-runner.log</string>
+    <string>$HOME/Library/Logs/Chump/actions-runner${SLOT_SUFFIX}.log</string>
     <key>StandardErrorPath</key>
-    <string>$HOME/Library/Logs/Chump/actions-runner.err</string>
+    <string>$HOME/Library/Logs/Chump/actions-runner${SLOT_SUFFIX}.err</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -337,7 +359,7 @@ EOF
   echo "  scripts/setup/install-self-hosted-runner.sh --check"
   echo
   echo "View logs:"
-  echo "  tail -f $HOME/Library/Logs/Chump/actions-runner.log"
+  echo "  tail -f $HOME/Library/Logs/Chump/actions-runner${SLOT_SUFFIX}.log"
 
   # INFRA-1568: tighten exit condition — installing the runner is not the same
   # as declaring the lane production-ready. The broad canary asserts every
