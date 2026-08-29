@@ -44,6 +44,12 @@ pub enum ParamedicAction {
     /// subagent. 3 consecutive failures → stop trying, post manual-review
     /// comment, emit kind=ci_rescue_exhausted.
     RescueCiFailure,
+    /// INFRA-1460: measurement leg of the keystone cascade (INFRA-1420).
+    /// 30 min after a keystone-candidate merge (diff touches
+    /// `.github/workflows/`, `.gitattributes`, or a paths-filter config),
+    /// re-count PRs failing the target check and emit the before/after
+    /// delta so "this fix unblocked N PRs" is measured, not hand-counted.
+    KeystoneImpact,
 }
 
 impl ParamedicAction {
@@ -56,6 +62,7 @@ impl ParamedicAction {
             Self::FileClusterRescue => "FILE_CLUSTER_RESCUE",
             Self::KeystoneCascade => "KEYSTONE_CASCADE",
             Self::RescueCiFailure => "RESCUE_CI_FAILURE",
+            Self::KeystoneImpact => "KEYSTONE_IMPACT",
         }
     }
 }
