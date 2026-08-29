@@ -5398,6 +5398,12 @@ async fn main() -> Result<()> {
                 "  smoke-test           INFRA-1645: quick observability check — dummy LLM call,"
             );
             println!("                       prints a cost_report JSON line, exits 0.");
+            println!(
+                "  squash-check B [M]   INFRA-1463: safety pre-check before squashing branch B"
+            );
+            println!("                       against main M (default 'main'). Prints the file-list");
+            println!("                       that a reset --soft M would delete from B; exits 1 if");
+            println!("                       M has added more than 5 files since B diverged.");
             println!();
             println!("Options:");
             println!("  --dry-run            Print actions; do not actually run gh commands.");
@@ -5410,6 +5416,7 @@ async fn main() -> Result<()> {
             println!("  chump paramedic triage | chump paramedic execute --plan /dev/stdin");
             println!("  chump paramedic daemon --interval-secs 300 --dry-run");
             println!("  chump paramedic smoke-test");
+            println!("  chump paramedic squash-check feature-branch main");
             return Ok(());
         }
 
@@ -5481,6 +5488,45 @@ async fn main() -> Result<()> {
                 if let Err(e) = paramedic::smoke_test(&repo_root) {
                     eprintln!("chump paramedic smoke-test: {e}");
                     std::process::exit(1);
+                }
+            }
+            "squash-check" => {
+                // Positional args after the subcommand name that aren't flags.
+                let positional: Vec<&String> = args[3..]
+                    .iter()
+                    .filter(|a| !a.starts_with("--"))
+                    .collect();
+                let branch = match positional.first() {
+                    Some(b) => (*b).clone(),
+                    None => {
+                        eprintln!(
+                            "chump paramedic squash-check: usage: chump paramedic squash-check <branch> [main]"
+                        );
+                        std::process::exit(1);
+                    }
+                };
+                let main_ref = positional
+                    .get(1)
+                    .map(|s| (*s).clone())
+                    .unwrap_or_else(|| "main".to_string());
+
+                match paramedic::squash_safety_check(&repo_root, &branch, &main_ref, 5) {
+                    Ok(check) => {
+                        println!("{}", serde_json::to_string_pretty(&check).unwrap_or_default());
+                        if !check.safe {
+                            eprintln!(
+                                "chump paramedic squash-check: UNSAFE — {} file(s) changed on '{}' since '{}' diverged (max 5). \
+                                 A `git reset --soft {}` squash would delete these from '{}'. \
+                                 Use `git rebase -i --autosquash` instead. See docs/process/PARAMEDIC_SAFETY_RULES.md.",
+                                check.file_count, check.main, check.branch, check.main, check.branch
+                            );
+                            std::process::exit(1);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump paramedic squash-check: {e}");
+                        std::process::exit(1);
+                    }
                 }
             }
             other => {

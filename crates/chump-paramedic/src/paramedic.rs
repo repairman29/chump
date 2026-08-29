@@ -969,8 +969,67 @@ fn action_allowlist_emit(_pr_number: u64, repo_root: &Path, dry_run: bool) -> Re
     Ok(())
 }
 
+/// INFRA-1463: pre-squash safety-check result. `git diff --stat <branch>..<main>`
+/// lists every file that differs; `files_added_on_main` (best-effort — a stat
+/// line, not a name-status, so it also catches modifications) is the set that
+/// a `git reset --soft <main>` would silently wipe off `branch` if it were
+/// used to "squash". `safe == false` means: do NOT reset --soft, do NOT push.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SquashSafetyCheck {
+    pub branch: String,
+    pub main: String,
+    pub files_added_on_main: Vec<String>,
+    pub file_count: usize,
+    pub safe: bool,
+}
+
+/// Safety pre-check required before any automated squash of `branch` against
+/// `main` (docs/process/PARAMEDIC_SAFETY_RULES.md, INFRA-1463). Never call
+/// `git reset --soft <main>` to "squash" a branch — if main has picked up
+/// commits since branch diverged, those files exist only on main and a soft
+/// reset to main's tree silently deletes them from the branch's index. The
+/// 2026-08-28 #2068 incident: `git reset --soft chump/main` produced a commit
+/// that deleted 38 test files including
+/// scripts/ci/test-tauri-filter-scope.sh from an unrelated, already-merged PR.
+/// The only safe squash primitives are `git rebase -i --autosquash` (keeps
+/// each commit's own tree) or `git filter-repo` with an explicit commit-drop
+/// list — never a reset onto a divergent ref.
+pub fn squash_safety_check(
+    repo_root: &Path,
+    branch: &str,
+    main: &str,
+    max_additions: usize,
+) -> Result<SquashSafetyCheck> {
+    let output = std::process::Command::new("git")
+        .args(["diff", "--stat", &format!("{branch}..{main}")])
+        .current_dir(repo_root)
+        .output()
+        .with_context(|| format!("running git diff --stat {branch}..{main}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let files_added_on_main: Vec<String> = stdout
+        .lines()
+        .filter(|l| l.contains('|'))
+        .filter_map(|l| l.split('|').next())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let file_count = files_added_on_main.len();
+    Ok(SquashSafetyCheck {
+        branch: branch.to_string(),
+        main: main.to_string(),
+        safe: file_count <= max_additions,
+        files_added_on_main,
+        file_count,
+    })
+}
+
 fn action_squash_init_leak(pr_number: u64, _repo_root: &Path, dry_run: bool) -> Result<()> {
-    // Flag the PR with a comment — actual squash requires human confirmation.
+    // AC1 (INFRA-1463): this action MUST stay comment-only (human squashes via
+    // `git rebase -i --autosquash`). It must NEVER shell out to
+    // `git reset --soft <main>` — see squash_safety_check() doc comment and
+    // docs/process/PARAMEDIC_SAFETY_RULES.md for the #2068 incident this
+    // guards against. If this action ever grows an automated-squash path,
+    // it must call squash_safety_check() first and abort when `!safe`.
     if dry_run {
         return Ok(());
     }
@@ -981,7 +1040,9 @@ fn action_squash_init_leak(pr_number: u64, _repo_root: &Path, dry_run: bool) -> 
             &pr_number.to_string(),
             "--body",
             "⚠️ **Paramedic**: detected `Test <test@test.local>` author commit. \
-             Please squash the init-leak commit before merge.",
+             Please squash the init-leak commit before merge \
+             (`git rebase -i --autosquash` — never `git reset --soft main`, \
+             see docs/process/PARAMEDIC_SAFETY_RULES.md).",
         ])
         .output();
     Ok(())
