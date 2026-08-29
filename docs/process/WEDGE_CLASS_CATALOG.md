@@ -481,6 +481,95 @@ wedge-state-machine.sh.
 **First seen**: 2026-08-20 — 14 PRs stacked on a farmer-flap false-red for
 hours with zero alarm; the board only caught it after operator prodding.
 
+## Class W-016 — 0-byte cycle wedge (agent stuck before producing output)
+
+**Note on scope**: unlike W-001..W-015 (which are all *PR-side* wedges — N stuck
+open PRs sharing a signature), this class is a *worker-cycle* wedge: a single
+`claude -p` invocation inside `scripts/dispatch/worker.sh` that produces (almost)
+no stdout for the entire cycle. It's included here because it's the other
+half of "agents stuck" — before a PR ever exists, not after.
+
+**Signature** (INFRA-706 investigation, 2026-08-28):
+- `claude -p` (or the configured `FLEET_BACKEND`) exits with `rc=124` (timeout)
+  **or** `rc=0` having written almost nothing — cycle log size < 100 bytes.
+- No commit, no PR, no ambient `sub_agent_dispatched`-style progress marker —
+  the agent never got far enough to produce a trace of *why* it stalled.
+- Distinct from a normal timeout (rc=124 with a large, in-progress cycle log):
+  a 0-byte wedge means the process never got a token out at all, which points
+  at *startup*, not *slow work*.
+
+**Root causes found in history** (each already hardened — see below):
+1. **Stdin wedge** (2026-05-05, INFRA-483/`STATE_OF_UNION_2026-05-08.md`) — the
+   subprocess was spawned without `< /dev/null`; `claude -p` blocked reading
+   stdin that would never arrive. Fixed by always redirecting stdin from
+   `/dev/null` in the worker spawn.
+2. **Auth-storm** (2026-05-03, INFRA-464) — a dead/revoked token produced fast
+   401s repeatedly; not itself 0-byte (the log has the 401 text) but the two
+   detectors are adjacent and were built in the same incident family — see the
+   `_auth_counter_file` block directly above the wedge-detection block in
+   `worker.sh`.
+3. **MCP startup hang** — an MCP server configured for the session hangs during
+   its own startup handshake before `claude -p` emits anything; from the
+   worker's point of view this is indistinguishable from a wedge (0-byte log,
+   rc=124) without inspecting the MCP server logs separately.
+4. **Systemic API/backend incompatibility** — a prompt-format or backend change
+   the current `claude` binary can't parse; every cycle on every gap wedges,
+   which is why storm detection (below) exists — a lone wedge is "one gap had a
+   bad interaction"; a *storm* is "the backend itself is broken."
+
+**Detection** (already shipped, INFRA-823 / `scripts/dispatch/worker.sh`):
+- Per-cycle: `_cycle_log_size < 100 && (rc == 124 || rc == 0)` → `_is_wedge=1`,
+  emits `kind=worker_wedge_detected` (ALERT) with `rc`, `cycle_log_size`,
+  `wedge_count`.
+- Storm: a rolling 1h count of wedges per agent tracked in
+  `/tmp/chump-fleet-worker-${AGENT_ID}.wedge-count`; `>= threshold` (default in
+  `_wedge_storm_threshold`) emits `kind=fleet_wedge_storm` — the systemic
+  signal from cause (4) above.
+- Cost taxonomy: `fleet_wedge` is a first-class kind in
+  `crates/chump-waste-tally/src/waste_tally.rs` (`chump waste-tally`), tallied
+  with `cooldown_secs` from the cooldown record for a rough cost estimate.
+
+**Mitigation / recovery (already shipped)**:
+- `FLEET_WEDGE_COOLDOWN_S` (default 4h) — a wedged gap gets the *longest* of the
+  three cooldown tiers (ordinary rc!=0: 30min, timeout: 1h, wedge: 4h), because
+  a wedge is the strongest signal that re-picking immediately will just burn
+  another cycle.
+- INFRA-3832 chronic-offender ledger (`.chump-locks/offense/<GAP_ID>.count`) —
+  cooldown duration multiplies by consecutive-failure count (capped at
+  `CHUMP_MAX_COOLDOWN_S`, default 4h), so a gap that wedges repeatedly backs off
+  harder each time instead of looping at a fixed interval. Reset to 0 on any
+  clean (rc=0, non-wedge) cycle.
+- INFRA-267 P0 fallback — if `FLEET_BACKEND=chump-local` wedges on a P0 gap
+  (rc != 124, so this doesn't fire on the wedge path itself, only on
+  non-timeout chump-local failures), the worker retries once via `claude`
+  before applying cooldown.
+
+**Time-to-recovery target**: 0 for a single wedge (cooldown + chronic-offender
+backoff already prevent re-pick without any human involvement); <30 min to
+alarm for a storm (rolling 1h window, `fleet_wedge_storm` ALERT).
+
+**Residual gap identified by this investigation**: detection currently
+distinguishes wedge (0-byte) from ordinary timeout, but does **not** distinguish
+*which* of the 4 root causes above produced a given wedge — every `worker_wedge_detected`
+event looks the same regardless of whether it was an MCP hang, a fresh stdin
+regression, or a backend incompatibility storm. Root-causing still requires a
+human (or a follow-up curator pass) to read the cycle log / MCP logs by hand.
+A cheap next step (not implemented here — out of scope for this investigation
+gap, filed separately): have the wedge-detection block in `worker.sh` grep the
+(near-empty) cycle log for an MCP-server-name prefix or a known auth-error
+substring before falling back to "wedge_cause: unknown", so `fleet_wedge_storm`
+events carry a `suspected_cause` field the way W-015's `wedge_detected` events
+already do for PR-side wedges.
+
+**Hardening shipped**: INFRA-483 (stdin fix), INFRA-464 (auth-storm detector),
+INFRA-823 (0-byte wedge detection + storm detection + extended cooldown),
+INFRA-3832 (chronic-offender escalating backoff, unified non-ship cooldown path),
+INFRA-267 (P0 fallback retry), INFRA-488 (`fleet_wedge` in the waste taxonomy).
+
+**First seen**: 2026-05-05 (sonnet fleet, 2 workers, ~40min compute wasted on
+repeated 0-byte cycles before cooldown existed — see `worker.sh` comment above
+the INFRA-361 cooldown block).
+
 ## When you find a new class
 
 Add a section here with:
