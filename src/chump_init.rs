@@ -28,6 +28,9 @@ pub struct InitArgs {
     pub open_browser: bool,
     /// Skip stdin prompts; derive choices from env vars only (for CI/tests).
     pub no_interactive: bool,
+    /// INFRA-1478: `--remote <ssh-host>` — bootstrap a worker on a remote box
+    /// over SSH instead of initializing the local machine.
+    pub remote: Option<String>,
 }
 
 impl Default for InitArgs {
@@ -40,6 +43,7 @@ impl Default for InitArgs {
             port,
             open_browser: true,
             no_interactive: false,
+            remote: None,
         }
     }
 }
@@ -75,8 +79,17 @@ impl InitArgs {
                     out.no_interactive = true;
                     i += 1;
                 }
+                "--remote" => {
+                    let raw = argv
+                        .get(i + 1)
+                        .ok_or_else(|| anyhow!("--remote requires a value (ssh-host)"))?;
+                    out.remote = Some(raw.clone());
+                    i += 2;
+                }
                 "--help" | "-h" => {
-                    println!("Usage: chump init [--port N] [--no-browser] [--no-interactive]");
+                    println!(
+                        "Usage: chump init [--port N] [--no-browser] [--no-interactive]\n       chump init --remote <ssh-host> [--no-interactive]"
+                    );
                     std::process::exit(0);
                 }
                 other => return Err(anyhow!("chump init: unknown flag {other:?}")),
@@ -87,6 +100,10 @@ impl InitArgs {
 }
 
 pub fn run_init(repo_root: &Path, args: &InitArgs) -> Result<()> {
+    if let Some(host) = &args.remote {
+        return run_init_remote(host, args);
+    }
+
     println!("chump init — first-run wizard");
     println!();
 
