@@ -38,6 +38,11 @@ LMQ_LOCK_FILE="$LOCK_DIR/local-merge-queue.lock"
 LMQ_NATS_BUCKET="${CHUMP_LMQ_NATS_BUCKET:-chump-merge-queue}"
 LMQ_NATS_KEY="lock"
 LMQ_LOCK_TIMEOUT_S="${CHUMP_LMQ_LOCK_TIMEOUT_S:-60}"
+PENDING_PUSH_FILE="$LOCK_DIR/pending-push.jsonl"
+RUN_LOCAL_CI="$(dirname "$0")/../ci/run-local-ci.sh"
+# INFRA-1323: set to 1 to bypass the double local-CI gate (used by the
+# acceptance test to keep race fixtures fast). The real path always gates.
+LMQ_SKIP_CI="${CHUMP_LMQ_SKIP_CI:-0}"
 
 mkdir -p "$MISSIONS_DIR" "$LOCK_DIR"
 
@@ -46,6 +51,13 @@ _ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 # scanner-anchor: "kind":"local_merge_queued"
 # scanner-anchor: "kind":"local_merge_landed"
 # scanner-anchor: "kind":"local_merge_blocked"
+# scanner-anchor: "kind":"local_merge_lock_acquired"
+# scanner-anchor: "kind":"local_merge_lock_blocked"
+# scanner-anchor: "kind":"local_merge_lock_degraded"
+# scanner-anchor: "kind":"local_merge_ci_failed"
+# scanner-anchor: "kind":"local_merge_rebase_conflict"
+# scanner-anchor: "kind":"local_merge_succeeded"
+# scanner-anchor: "kind":"pending_push_queued"
 _emit() {
     # _emit <kind> <extra-json-fields-without-braces>
     local kind="$1" extra="${2:-}"
@@ -92,6 +104,7 @@ _acquire_merge_lock() {
     fi
     # Fallback: flock. Use a fixed fd (9) opened against LMQ_LOCK_FILE; the
     # fd is inherited by the caller's shell so it stays held until released.
+    _emit "local_merge_lock_degraded" "\"reason\":\"nats_unreachable_using_flock\""
     exec 9>"$LMQ_LOCK_FILE"
     if flock -w "$LMQ_LOCK_TIMEOUT_S" 9; then
         echo "flock"
