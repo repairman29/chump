@@ -56,6 +56,16 @@ done
 AMBIENT_FILE="${REPO_ROOT}/.chump-locks/ambient.jsonl"
 FOUND_OVERLAP=0
 
+# ── Step 0: INFRA-1531 — reap stale bot-merge-*.health files ──────────────
+# Every glance is a cheap opportunity to clear health files left behind by a
+# bot-merge.sh that was hard-killed (its normal EXIT trap cleanup skipped).
+_REAP_LIB="$(dirname "$0")/lib/bot-merge-health-reap.sh"
+if [[ -f "$_REAP_LIB" ]]; then
+  # shellcheck source=lib/bot-merge-health-reap.sh
+  source "$_REAP_LIB"
+  reap_stale_bot_merge_health "${REPO_ROOT}/.chump-locks" "${AMBIENT_FILE}" >/dev/null || true
+fi
+
 # ── Step 1: Check ambient.jsonl for INTENT/OBSERVED events in the window ──
 if [[ -f "${AMBIENT_FILE}" ]]; then
   NOW_TS=$(date +%s)

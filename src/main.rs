@@ -8154,6 +8154,25 @@ async fn main() -> Result<()> {
                     .or_else(|| cfg("session"))
                     .unwrap_or_else(|| "chump-fleet".to_string());
 
+                // INFRA-1531: reap stale .chump-locks/bot-merge-*.health files
+                // (left behind by a bot-merge.sh that was hard-killed and
+                // skipped its own EXIT-trap cleanup) before starting the
+                // fleet — a stale file otherwise keeps re-triggering a bogus
+                // bot_merge_hung ALERT every queue-health-monitor cycle.
+                let reap_lib = repo_root.join("scripts/coord/lib/bot-merge-health-reap.sh");
+                if reap_lib.exists() {
+                    let lock_dir = repo_root.join(".chump-locks");
+                    let ambient_file = lock_dir.join("ambient.jsonl");
+                    let _ = std::process::Command::new("bash")
+                        .arg("-c")
+                        .arg(r#"source "$1" && reap_stale_bot_merge_health "$2" "$3""#)
+                        .arg("bash")
+                        .arg(&reap_lib)
+                        .arg(&lock_dir)
+                        .arg(&ambient_file)
+                        .status();
+                }
+
                 // Idempotency: if session already running, bail early with clear guidance.
                 let already_running = std::process::Command::new("tmux")
                     .args(["has-session", "-t", &session])
