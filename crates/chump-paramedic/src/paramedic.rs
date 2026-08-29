@@ -44,6 +44,14 @@ pub enum ParamedicAction {
     /// subagent. 3 consecutive failures → stop trying, post manual-review
     /// comment, emit kind=ci_rescue_exhausted.
     RescueCiFailure,
+    /// INFRA-1460: measurement leg of INFRA-1420's keystone cascade. When a
+    /// keystone-candidate merge lands (diff touches .github/workflows/,
+    /// .gitattributes, or a paths-filter config, and carries the
+    /// `unblocks-cluster:` trailer), record a T0 snapshot of PRs failing
+    /// the target check; 30 min later compute the delta and emit
+    /// `kind=keystone_impact`. Replaces the manual rebase-and-count I did
+    /// for #2163 (narrow-tauri merge unblocked 23 PRs, counted by hand).
+    KeystoneImpact,
 }
 
 impl ParamedicAction {
@@ -56,6 +64,7 @@ impl ParamedicAction {
             Self::FileClusterRescue => "FILE_CLUSTER_RESCUE",
             Self::KeystoneCascade => "KEYSTONE_CASCADE",
             Self::RescueCiFailure => "RESCUE_CI_FAILURE",
+            Self::KeystoneImpact => "KEYSTONE_IMPACT",
         }
     }
 }
