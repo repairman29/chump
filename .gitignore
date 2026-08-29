@@ -190,6 +190,15 @@ docs/gaps.yaml
 proprietary/
 bin/chump.wedged-*
 
+# INFRA-1513: canonical IP-protection rules — kept in sync with
+# docs/infra/GITIGNORE_IP_RULES.yaml by scripts/ci/test-gitignore-ip-drift.sh.
+# Local-inference model weights — never commit large proprietary weight blobs.
+*.gguf
+*.safetensors
+# Cloud-notebook training artifacts — may embed proprietary datasets/creds.
+*.sagemaker
+*.colab
+
 # Founding customer PII — never commit
 docs/business/leads.csv
 docs/business/contracts/

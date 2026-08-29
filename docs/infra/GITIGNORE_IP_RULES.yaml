@@ -1,0 +1,52 @@
+# GITIGNORE_IP_RULES.yaml — canonical IP-protection rules (INFRA-1513)
+#
+# Each rule declares a pattern that MUST appear as a literal line in
+# .gitignore. scripts/ci/test-gitignore-ip-drift.sh reads this file and
+# fails CI if any non-optional rule's pattern is missing from .gitignore —
+# catching the case where someone edits .gitignore and accidentally drops
+# an IP-protection line (e.g. while reformatting or deduping the file).
+#
+# To retire a rule: remove it here AND remove the matching .gitignore line
+# in the same PR. Removing only one side is exactly the drift this check
+# exists to catch.
+#
+# optional: true → absence produces WARN, not FAIL (escape hatch for rules
+# that are aspirational or environment-dependent).
+
+rules:
+  - id: proprietary-dir
+    pattern: "proprietary/"
+    category: proprietary-repo
+    description: >-
+      Private sibling repo (chump-proprietary) — must never be tracked
+      inside this repo.
+
+  - id: sagemaker-artifacts
+    pattern: "*.sagemaker"
+    category: model-artifacts
+    description: >-
+      AWS SageMaker training/artifact files.
+
+  - id: colab-artifacts
+    pattern: "*.colab"
+    category: model-artifacts
+    description: >-
+      Google Colab notebook export artifacts.
+
+  - id: gguf-weights
+    pattern: "*.gguf"
+    category: model-weights
+    description: >-
+      Local-inference model weights (llama.cpp GGUF format).
+
+  - id: safetensors-weights
+    pattern: "*.safetensors"
+    category: model-weights
+    description: >-
+      Local-inference model weights (safetensors format).
+
+  - id: operator-private-config
+    pattern: ".env.*"
+    category: operator-config
+    description: >-
+      Operator-private config overrides (secrets, local env overrides).

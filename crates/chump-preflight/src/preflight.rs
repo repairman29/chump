@@ -1001,6 +1001,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // INFRA-1513: .gitignore IP-protection drift guard — asserts every
+        // rule in docs/infra/GITIGNORE_IP_RULES.yaml is present as a
+        // literal line in .gitignore (WARN for optional: true rules, FAIL
+        // for required ones). Pure bash + python3/PyYAML, no network.
+        "scripts/ci/test-gitignore-ip-drift.sh",
     ];
     candidates
         .iter()
