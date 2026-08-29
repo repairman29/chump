@@ -2328,6 +2328,17 @@ async fn main() -> Result<()> {
         std::process::exit(commands::voice::run(&sub_args));
     }
 
+    // `chump claim-paths <file...> [--ttl SECS] [--gap GAP-ID] | --heartbeat`
+    // (INFRA-1549) — CLI front for crates/chump-agent-lease::claim_paths, the
+    // integration point for the Claude Code PreToolUse Edit|Write hook (the
+    // only place that sees individual file edits; worker.sh only sees the
+    // coarse gap-level lease). Non-zero exit + LEASE_OVERLAP stderr line on
+    // collision so the hook can deny the tool call.
+    if args.get(1).map(String::as_str) == Some("claim-paths") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::claim_paths::run(&sub_args));
+    }
+
     // `chump source-resolve "<capability keyword>"` (INFRA-3508, COTG-S.1) —
     // resolve a capability against repo -> arsenal -> world prior art BEFORE
     // building. See src/sourcing_resolver.rs for the tiered resolution logic.

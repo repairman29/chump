@@ -14,6 +14,7 @@ pub mod add_path_filter;
 pub mod add_raw_gh_allowlist;
 pub mod bootstrap;
 pub mod claim_lint;
+pub mod claim_paths;
 pub mod config;
 pub mod consensus;
 pub mod consensus_ask;
