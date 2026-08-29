@@ -46,6 +46,11 @@ struct CatalogEntry {
     examples: Vec<String>,
     #[serde(default)]
     notes: Option<String>,
+    /// INFRA-1552: stamped by `touch_last_matched` on each match; lets a
+    /// future audit cull rules that have never fired.
+    #[serde(default)]
+    #[allow(dead_code)]
+    last_matched_at: Option<String>,
 }
 
 fn default_match_on() -> String {
@@ -172,6 +177,48 @@ impl FailureCatalog {
     pub fn len(&self) -> usize {
         self.entries.len()
     }
+}
+
+/// Stamp `last_matched_at: <RFC3339 timestamp>` onto the entry with the given
+/// `id` inside `path` (INFRA-1552 AC6), so unused rules can be culled later.
+///
+/// Best-effort: on any I/O or parse issue this silently no-ops rather than
+/// crashing the caller (classification must never fail because the catalog
+/// file is momentarily unwritable, e.g. read-only CI checkout).
+pub fn touch_last_matched(path: &Path, id: &str, timestamp: &str) {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let target_line = format!("  - id: {id}");
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+
+    let Some(start) = lines.iter().position(|l| l == &target_line) else {
+        return;
+    };
+    // Entry block runs until the next top-level "  - id:" line or EOF.
+    let end = lines
+        .iter()
+        .enumerate()
+        .skip(start + 1)
+        .find(|(_, l)| l.starts_with("  - id:"))
+        .map(|(i, _)| i)
+        .unwrap_or(lines.len());
+
+    let stamp = format!("    last_matched_at: \"{timestamp}\"");
+    if let Some(existing) = lines[start..end]
+        .iter()
+        .position(|l| l.trim_start().starts_with("last_matched_at:"))
+    {
+        lines[start + existing] = stamp;
+    } else {
+        lines.insert(end, stamp);
+    }
+
+    let mut new_text = lines.join("\n");
+    if text.ends_with('\n') {
+        new_text.push('\n');
+    }
+    let _ = std::fs::write(path, new_text);
 }
 
 // ── CLI entry point ──────────────────────────────────────────────────────────

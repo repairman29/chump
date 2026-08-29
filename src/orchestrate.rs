@@ -200,10 +200,55 @@ enum LlmAttemptOutcome {
     TimedOut { elapsed_s: u64 },
 }
 
-/// Classify a tool execution failure as transient or permanent (INFRA-796).
-fn classify_failure(error_msg: &str) -> &'static str {
+/// Cached catalog handle so a busy orchestrate session doesn't re-parse
+/// `FAILURE_MODES.yaml` + recompile ~217 regexes on every tool failure.
+static FAILURE_CATALOG: std::sync::OnceLock<crate::failure_catalog::FailureCatalog> =
+    std::sync::OnceLock::new();
+
+/// Classify a tool execution failure using the `FAILURE_MODES.yaml` catalog
+/// (INFRA-1552), falling back to a hardcoded transient/permanent heuristic
+/// only when no catalog rule matches.
+///
+/// Emits `kind=ci_failure_classified` on a catalog hit (with `failure_class`
+/// for downstream consumers like the META-051 pattern detector), or
+/// `kind=failure_class_unknown` with a raw log snippet on a miss so the
+/// catalog can be extended deliberately.
+fn classify_failure(repo_root: &Path, error_msg: &str) -> String {
+    let catalog = FAILURE_CATALOG.get_or_init(|| {
+        crate::failure_catalog::FailureCatalog::load(
+            &repo_root.join("docs/process/FAILURE_MODES.yaml"),
+        )
+    });
+
+    if let Some(m) = catalog.classify("", error_msg) {
+        emit_ambient_event(
+            repo_root,
+            "ci_failure_classified",
+            &[
+                ("failure_class", &m.classification),
+                ("rule_id", &m.id),
+                ("auto_action", &m.auto_action),
+                ("confidence", &m.confidence.to_string()),
+            ],
+        );
+        let catalog_path = repo_root.join("docs/process/FAILURE_MODES.yaml");
+        crate::failure_catalog::touch_last_matched(
+            &catalog_path,
+            &m.id,
+            &chrono::Utc::now().to_rfc3339(),
+        );
+        return m.classification;
+    }
+
+    let snippet: String = error_msg.chars().take(500).collect();
+    emit_ambient_event(
+        repo_root,
+        "failure_class_unknown",
+        &[("log_snippet", &snippet)],
+    );
+
     let lc = error_msg.to_lowercase();
-    if lc.contains("timed out")
+    let fallback = if lc.contains("timed out")
         || lc.contains("timeout")
         || lc.contains("rate limit")
         || lc.contains("too many requests")
@@ -217,7 +262,8 @@ fn classify_failure(error_msg: &str) -> &'static str {
         "transient"
     } else {
         "permanent"
-    }
+    };
+    fallback.to_string()
 }
 
 /// Compute, emit to ambient.jsonl, and print the 4-pillar mission grade.
@@ -533,7 +579,7 @@ pub async fn run(repo_root: &Path) -> Result<()> {
             let iter_start = Instant::now();
             let mut tool_count: usize = 0;
             let mut had_failure = false;
-            let mut failure_classes: Vec<&str> = Vec::new();
+            let mut failure_classes: Vec<String> = Vec::new();
 
             // ── LLM call with timeout + single retry (INFRA-1364) ─────────────────
             // Push user intent before attempt loop so retry reuses the same context.
@@ -666,7 +712,7 @@ pub async fn run(repo_root: &Path) -> Result<()> {
                 if result.contains("error") || result.contains("Error") || result.contains("failed")
                 {
                     had_failure = true;
-                    failure_classes.push(classify_failure(&result));
+                    failure_classes.push(classify_failure(repo_root, &result));
                 }
             }
             let tool_elapsed_ms = tool_start.elapsed().as_millis() as u64;
@@ -685,7 +731,7 @@ pub async fn run(repo_root: &Path) -> Result<()> {
             // Emit per-intent telemetry event (INFRA-796).
             let total_elapsed = llm_elapsed_ms + tool_elapsed_ms;
             let failure_class = if had_failure {
-                if failure_classes.contains(&"transient") {
+                if failure_classes.iter().any(|c| c == "transient") {
                     "transient"
                 } else {
                     "permanent"

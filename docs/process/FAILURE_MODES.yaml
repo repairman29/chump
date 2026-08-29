@@ -15,6 +15,10 @@
 #   confidence:     0.0..1.0 — how reliable this match is
 #   examples:       past incident IDs or short descriptions
 #   notes:          optional human-readable context (why this rule exists)
+#   last_matched_at: (optional) RFC3339 timestamp, runtime-stamped by
+#                   failure_catalog::touch_last_matched on the highest-
+#                   confidence match (INFRA-1552) — lets a future audit
+#                   cull rules that have never fired. Don't hand-edit.
 #
 # Classification taxonomy (mirrors ci_summary.rs):
 #   lint          — clippy / rustfmt / doc warnings; auto-fix applies
