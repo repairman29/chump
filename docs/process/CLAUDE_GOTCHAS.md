@@ -1508,6 +1508,26 @@ If it fails again: `gh pr merge <N> --squash --admin` to bypass.
   separate gap** to root-cause the `TimeoutError` (likely a `networkidle` vs.
   wizard-render race). Until then, treat as advisory.
 
+- **`tauri-cowork-e2e` — KEEP-ADVISORY, not root-caused, deliberately not gating (INFRA-1385, RESILIENT-016, review-by 2026-11-21).**
+  This job is not a borderline flake — it is **broken almost every run**: 30/30
+  failures on `ci-nightly.yml` and 29/30 on `ci-advisory.yml` (last 30 runs
+  each, measured 2026-08-21; see `docs/process/CI_GATES_INVENTORY.md`). It was
+  taken off the per-PR path entirely by RESILIENT-016 (`ci.yml` has
+  `if: false` on the job — it does not run on PRs at all) after it blocked
+  5+ simultaneous PRs (INFRA-1529) and needed a manual bulk-rebase to clear
+  (INFRA-1353). It still runs nightly (`ci-nightly.yml`) and post-merge
+  (`ci-advisory.yml`), both with `continue-on-error: true`, purely as a
+  non-blocking signal — **do not remove `continue-on-error` from either
+  workflow**; that would just reintroduce the INFRA-1342 rollup-FAILURE trap
+  on a job that fails almost every run. Root-cause candidates (Selenium
+  timeout on `chump-chat` custom-element selector — stale selector vs. slow
+  Tauri build vs. real render regression) were never narrowed down; see
+  `docs/gaps/INFRA-1529.yaml` for the investigation notes. **Real fix is
+  Tauri/WebDriver environment work**, tracked for re-check at the INFRA-1385
+  review-by date, not a CI-config change. If you land that environment fix,
+  update `docs/process/CI_GATES_INVENTORY.md`'s tauri-cowork-e2e row and
+  consider promoting the job back to `ci.yml`.
+
 ## bot-merge.sh shadow ship-plan advisory stream (INFRA-1346, 2026-05-15)
 
 `bot-merge.sh` emits a `ship_plan_advisory` ambient event at **main-flow entry**
