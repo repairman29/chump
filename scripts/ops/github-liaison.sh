@@ -26,17 +26,23 @@
 #   scripts/ops/github-liaison.sh --release    # release lock if we hold it
 #
 # Env:
-#   CHUMP_LIAISON_ENABLED          (default 0) — daemon refuses to start unless 1
-#   CHUMP_LIAISON_POLL_INTERVAL_S  (default 60) — seconds between refresh cycles
-#   CHUMP_LIAISON_STALE_S          (default 90) — heartbeat age that triggers takeover
-#   CHUMP_LIAISON_LOCK_DIR         override the lockdir (default <repo>/.chump-locks/github-liaison.lock)
-#   CHUMP_AMBIENT_LOG              override the ambient stream path
+#   CHUMP_LIAISON_ENABLED            (default 0) — daemon refuses to start unless 1
+#   CHUMP_LIAISON_POLL_INTERVAL_S    (default 300 — INFRA-1318 Phase 2) — seconds between refresh cycles
+#   CHUMP_LIAISON_STALE_S            (default 90) — heartbeat age that triggers takeover
+#   CHUMP_LIAISON_LOCK_DIR           override the lockdir (default <repo>/.chump-locks/github-liaison.lock)
+#   CHUMP_AMBIENT_LOG                override the ambient stream path
+#   CHUMP_LIAISON_CACHE_FRESH_S      (default 120) — INFRA-1318: if the webhook-fed
+#                                     cache (pr_state/check_runs) has a row newer than
+#                                     this, skip the REST reconcile call this cycle.
+#   CHUMP_LIAISON_WEBHOOK_CACHE_DISABLED (default 0) — force the REST reconcile every
+#                                     cycle, ignoring webhook cache freshness.
 #
 # Ambient events emitted (registered in docs/observability/EVENT_REGISTRY.yaml):
-#   liaison_elected   — this process acquired the liaison lock
-#   liaison_heartbeat — periodic per-cycle heartbeat (includes prs_refreshed)
-#   liaison_takeover  — reclaimed a stale lock from a dead prior liaison
-#   liaison_yielded   — graceful exit; lock removed
+#   liaison_elected           — this process acquired the liaison lock
+#   liaison_heartbeat         — periodic per-cycle heartbeat (includes reconcile_ok, cache_hit)
+#   liaison_takeover          — reclaimed a stale lock from a dead prior liaison
+#   liaison_yielded           — graceful exit; lock removed
+#   liaison_webhook_cache_hit — INFRA-1318: webhook cache was fresh; REST reconcile skipped
 #
 # Exit codes:
 #   0 — normal (single-cycle done, --check OK, daemon shut down cleanly,
@@ -56,9 +62,19 @@ LOCK_DIR="${CHUMP_LIAISON_LOCK_DIR:-$REPO/.chump-locks/github-liaison.lock}"
 HEARTBEAT="$LOCK_DIR/heartbeat"
 HOLDER_FILE="$LOCK_DIR/holder"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO/.chump-locks/ambient.jsonl}"
-POLL_INTERVAL_S="${CHUMP_LIAISON_POLL_INTERVAL_S:-60}"
+POLL_INTERVAL_S="${CHUMP_LIAISON_POLL_INTERVAL_S:-300}"
 STALE_S="${CHUMP_LIAISON_STALE_S:-90}"
 RECONCILE_SCRIPT="$REPO/scripts/ops/github-cache-reconcile.sh"
+
+# ── INFRA-1318 Phase 2: webhook-first cache ─────────────────────────────────
+# Each refresh cycle, before spending a REST call on github-cache-reconcile.sh,
+# check whether the webhook receiver has already kept the cache fresh (it
+# upserts pr_state/check_runs with a live fetched_at_local on every delivery —
+# see scripts/ops/github-webhook-receiver.py). If the newest row is younger
+# than CHUMP_LIAISON_CACHE_FRESH_S, the webhook stream is doing its job and
+# the REST reconcile is redundant this cycle — skip it.
+CACHE_DB="${CHUMP_CACHE_DB:-$REPO/.chump/github_cache.db}"
+CACHE_FRESH_S="${CHUMP_LIAISON_CACHE_FRESH_S:-120}"
 
 # ── INFRA-1875: webhook-health probe + polling fallback ────────────────────
 # Each refresh cycle, POST a heartbeat ping to the local
@@ -120,6 +136,36 @@ _heartbeat_age_s() {
 
 # _try_acquire_lock — attempts atomic mkdir. Returns 0 on success, 1 on contention
 # (another process holds a fresh lock), 2 on stale-lock takeover.
+# _webhook_cache_fresh — prints the age in seconds of the most recently
+# webhook-updated row across pr_state/check_runs, or nothing if the cache
+# DB is absent/empty. Returns 0 if that age is < CACHE_FRESH_S (cache is
+# hot enough to trust), 1 otherwise.
+_webhook_cache_fresh() {
+    [[ -f "$CACHE_DB" ]] || return 1
+    command -v sqlite3 >/dev/null 2>&1 || return 1
+    local newest
+    newest="$(sqlite3 "$CACHE_DB" "
+        SELECT MAX(ts) FROM (
+            SELECT MAX(fetched_at_local) AS ts FROM pr_state
+            UNION ALL
+            SELECT MAX(fetched_at_local) AS ts FROM check_runs
+        );
+    " 2>/dev/null)"
+    [[ -n "$newest" ]] || return 1
+    local age
+    age="$(python3 -c "
+import sys
+from datetime import datetime, timezone
+try:
+    ts = datetime.fromisoformat('$newest'.rstrip('Z')).replace(tzinfo=timezone.utc)
+    print(int((datetime.now(timezone.utc) - ts).total_seconds()))
+except Exception:
+    sys.exit(1)
+" 2>/dev/null)" || return 1
+    [[ -n "$age" ]] || return 1
+    [[ "$age" -lt "$CACHE_FRESH_S" ]]
+}
+
 _try_acquire_lock() {
     mkdir -p "$(dirname "$LOCK_DIR")" 2>/dev/null
     if mkdir "$LOCK_DIR" 2>/dev/null; then
@@ -213,10 +259,15 @@ _refresh_cycle() {
         fi
     fi
 
-    # One batch reconcile — this is the existing one-REST-call refresh that
-    # already migrates pr_state for all open PRs.
+    # INFRA-1318: webhook-first cache. Only fall back to a REST reconcile
+    # call when the webhook stream hasn't kept the cache fresh this cycle.
     local refreshed=0
-    if [[ -x "$RECONCILE_SCRIPT" ]]; then
+    local cache_hit=0
+    if [[ "${CHUMP_LIAISON_WEBHOOK_CACHE_DISABLED:-0}" != "1" ]] && _webhook_cache_fresh; then
+        cache_hit=1
+        echo "github-liaison: using cached event (webhook cache fresh, age < ${CACHE_FRESH_S}s) — skipping gh api" >&2
+        _emit_ambient liaison_webhook_cache_hit "pid=$$" "cache_fresh_s=$CACHE_FRESH_S"
+    elif [[ -x "$RECONCILE_SCRIPT" ]]; then
         # Capture exit status but don't fail the cycle on transient errors.
         if "$RECONCILE_SCRIPT" >/dev/null 2>&1; then
             refreshed=1
@@ -226,7 +277,8 @@ _refresh_cycle() {
     _emit_ambient liaison_heartbeat \
         "pid=$$" \
         "interval_s=$POLL_INTERVAL_S" \
-        "reconcile_ok=$refreshed"
+        "reconcile_ok=$refreshed" \
+        "cache_hit=$cache_hit"
 
     # INFRA-1927: resolve pending preflight_ci_agreement events.
     # Scans the last 30 lines of ambient.jsonl for unresolved preflight_ci_agreement
@@ -358,6 +410,7 @@ PYEOF
         while IFS= read -r ev_line; do
             [[ -z "$ev_line" ]] && continue
             printf '%s\n' "$ev_line" >> "$AMBIENT_LOG" 2>/dev/null || true
+            echo "github-liaison: preflight resolved from cache ($ev_line)" >&2
         done <<<"$new_events"
     fi
 }
