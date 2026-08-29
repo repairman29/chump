@@ -689,6 +689,12 @@ async fn handle_broadcast(
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
+    let cost_start = std::time::Instant::now();
+    let cost_agent_id = headers
+        .get("x-agent-id")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown")
+        .to_string();
 
     let event = body.event.trim().to_uppercase();
     let valid_events = [
@@ -805,6 +811,11 @@ async fn handle_broadcast(
             format!("broadcast.sh exit {}: {}", output.status, stderr),
         ));
     }
+    crate::coord_cost_tracker::record(
+        &cost_agent_id,
+        &format!("broadcast:{event}"),
+        cost_start.elapsed().as_millis() as u64,
+    );
     Ok(Json(serde_json::json!({
         "ok": true,
         "event": event,
@@ -881,6 +892,7 @@ async fn handle_lessons_post(
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
+    let cost_start = std::time::Instant::now();
     let headline = body.headline.trim().to_string();
     if headline.is_empty() {
         return Err((
@@ -901,6 +913,7 @@ async fn handle_lessons_post(
         .map(|t| t.trim().to_lowercase())
         .filter(|t| !t.is_empty())
         .collect();
+    let cost_agent_id = body.agent.clone().unwrap_or_else(|| "unknown".to_string());
     let record = LessonRecord {
         lesson_id: lesson_id.clone(),
         headline,
@@ -926,6 +939,11 @@ async fn handle_lessons_post(
         ],
         ..Default::default()
     });
+    crate::coord_cost_tracker::record(
+        &cost_agent_id,
+        "lesson_publish",
+        cost_start.elapsed().as_millis() as u64,
+    );
     Ok(Json(serde_json::json!({
         "ok": true,
         "lesson_id": lesson_id,
@@ -943,6 +961,12 @@ async fn handle_lessons_get(
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
+    let cost_start = std::time::Instant::now();
+    let cost_agent_id = headers
+        .get("x-agent-id")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown")
+        .to_string();
     let tag = params
         .get("tag")
         .map(|t| t.trim().to_lowercase())
@@ -956,10 +980,18 @@ async fn handle_lessons_get(
             None => true,
         })
         .collect();
-    Ok(Json(serde_json::json!({
+    let count = lessons.len();
+    let response = Ok(Json(serde_json::json!({
         "lessons": lessons,
-        "count": lessons.len(),
-    })))
+        "count": count,
+    })));
+    drop(store);
+    crate::coord_cost_tracker::record(
+        &cost_agent_id,
+        "lesson_fetch",
+        cost_start.elapsed().as_millis() as u64,
+    );
+    response
 }
 
 /// INFRA-1298: GET /api/inbox/{session} — read targeted-inbox messages.
@@ -9411,6 +9443,8 @@ fn build_api_router() -> Router {
         // INFRA-1338: server-side ROADMAP.md parser + 60s cache (replaces
         // INFRA-1207 client-side fallback).
         .route("/api/roadmap", get(routes::roadmap::handle_roadmap))
+        // META-082: fleet + coordination-action cost metrics.
+        .route("/api/metrics", get(crate::metrics::handle_metrics))
         .route("/api/chat", post(handle_chat_with_kill_gate))
         .route("/api/voice/ask", post(handle_voice_ask))
         .route("/api/advisor/ask", post(handle_advisor_ask))

@@ -12,6 +12,9 @@ pub struct FleetMetrics {
     pub pr_metrics: PrMetrics,
     pub gap_metrics: GapMetrics,
     pub fleet_metrics: FleetVelocity,
+    /// META-082 (META-073 slice): per-action CPU/time/cost ledger for
+    /// coordination actions (route changes, lesson fetch/publish, etc.).
+    pub coordination_action_metrics: crate::coord_cost_tracker::CoordCostMetrics,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -60,6 +63,7 @@ pub fn snapshot() -> FleetMetrics {
             gaps_per_hour: 0.0,
             active_workers: 0,
         },
+        coordination_action_metrics: crate::coord_cost_tracker::snapshot(),
     }
 }
 
