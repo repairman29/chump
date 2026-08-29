@@ -384,6 +384,39 @@ Aggregate fleet mission-health snapshot — the single data source for PRODUCT-1
 
 **GraphQL budget source:** scans `$CHUMP_REPO/.chump-locks/ambient.jsonl` in reverse for the most recent `graphql_exhausted` event. Returns `null` when no event found — this is expected on fresh deployments or when the fleet has not exhausted the quota.
 
+## GET /api/fleet/pillars (INFRA-1339)
+
+Mission-grade JSON endpoint powering the PRODUCT-107 pillar quadrant and
+INFRA-1203 grades. Thin re-projection of the same `pillars` computation
+backing `/api/fleet/health` above — the shape here is flattened to exactly
+the four pillar keys (no `mission` roll-up, no per-pillar counts), with
+`zero_waste` hyphenated to `zero-waste`.
+
+**Example request:**
+
+```bash
+curl http://localhost:PORT/api/fleet/pillars
+```
+
+**Response shape:**
+
+```json
+{
+  "effective":  { "grade": "A", "trend": "flat", "breach_reasons": [] },
+  "credible":   { "grade": "B", "trend": "flat", "breach_reasons": ["only 1 pickable gap — restock to 2+"] },
+  "resilient":  { "grade": "F", "trend": "flat", "breach_reasons": ["no open gaps in this pillar"] },
+  "zero-waste": { "grade": "F", "trend": "flat", "breach_reasons": ["no open gaps in this pillar"] }
+}
+```
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `<pillar>.grade` | string | `A`/`B`/`C`/`F` per-pillar grade (see `/api/fleet/health` for grading rule). |
+| `<pillar>.trend` | string | Currently always `"flat"` — reserved for a future rolling-window comparison. |
+| `<pillar>.breach_reasons` | array | Human-readable reasons for a sub-`A` grade; empty when grade is `A`. |
+
+**Logging:** emits `tracing::info!` (target `chump::fleet_pillars`) on success, `tracing::error!` on the same target if the underlying pillar computation is missing an expected key (falls back to a `grade: "?"` stub per pillar rather than a 5xx).
+
 ## GET /api/roadmap (INFRA-1338)
 
 Server-side parser for `docs/ROADMAP.md` with a 60-second in-process cache.

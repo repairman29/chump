@@ -817,6 +817,62 @@ fn fleet_health_pillars_json(r: &crate::mission_grade::MissionGradeReport) -> se
     })
 }
 
+/// GET /api/fleet/pillars — mission-grade JSON endpoint (INFRA-1339).
+///
+/// Thin re-projection of [`fleet_health_pillars_json`] (the same computation
+/// backing `/api/fleet/health`), with the zero-waste key hyphenated to match
+/// the PRODUCT-107 pillar-quadrant + INFRA-1203 grades data contract:
+/// `{effective, credible, resilient, zero-waste}`, each `{grade, trend,
+/// breach_reasons}`.
+pub async fn handle_fleet_pillars() -> Json<serde_json::Value> {
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => std::path::PathBuf::from(r),
+        Err(_) => crate::repo_path::runtime_base(),
+    };
+
+    let report = crate::mission_grade::build_report(&repo_root);
+    let pillars = fleet_health_pillars_json(&report);
+
+    match (
+        pillars.get("effective"),
+        pillars.get("credible"),
+        pillars.get("resilient"),
+        pillars.get("zero_waste"),
+    ) {
+        (Some(eff), Some(cred), Some(res), Some(zw)) => {
+            tracing::info!(
+                target: "chump::fleet_pillars",
+                "fleet pillars computed"
+            );
+            Json(serde_json::json!({
+                "effective": eff,
+                "credible": cred,
+                "resilient": res,
+                "zero-waste": zw,
+            }))
+        }
+        _ => {
+            tracing::error!(
+                target: "chump::fleet_pillars",
+                "fleet pillars computation missing expected keys"
+            );
+            let fallback = || {
+                serde_json::json!({
+                    "grade": "?",
+                    "trend": "flat",
+                    "breach_reasons": ["pillar computation error"],
+                })
+            };
+            Json(serde_json::json!({
+                "effective": fallback(),
+                "credible": fallback(),
+                "resilient": fallback(),
+                "zero-waste": fallback(),
+            }))
+        }
+    }
+}
+
 // ── KPIs sub-object ────────────────────────────────────────────────────────
 
 fn fleet_health_kpis_json(
