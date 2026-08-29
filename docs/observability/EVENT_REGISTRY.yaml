@@ -3952,13 +3952,21 @@ events:
 
   - kind: auto_merge_rearmed
     effect_metric: effective
-    emitter: scripts/coord/auto-merge-rearm-daemon.sh (INFRA-2309)
+    emitter: scripts/coord/auto-merge-rearm-daemon.sh (INFRA-2309); crates/chump-paramedic/src/paramedic.rs RE_ARM_AUTO_MERGE action (INFRA-1459)
     trigger: >
       CLEAN PR had autoMergeRequest=null (disarmed by force-push/rebase);
       daemon re-armed auto-merge via gh pr merge --auto --squash.
       dry_run=true when CHUMP_AUTO_MERGE_REARM_DRY_RUN is set.
+      INFRA-1459: the paramedic daemon (INFRA-1375) also emits this kind for
+      the BLOCKED case — a PR that mergeStateStatus=BLOCKED, has
+      autoMergeRequest=null, and has at least one prior arming in the
+      ambient audit log (arm_auto_merge / auto_merge_armed / auto_merge_rearmed)
+      gets re-armed via `gh pr merge --auto --squash` (or `--merge-queue` when
+      CHUMP_MERGE_QUEUE_ENABLED=1). Carries the paramedic-specific optional
+      fields `prior_arm_count` and `reason_unarmed_if_known`.
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, pr, reason, dry_run]
+    fields_optional: [prior_arm_count, reason_unarmed_if_known]
 
   - kind: auto_merge_rearm_skipped
     effect_metric: self

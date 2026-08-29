@@ -44,6 +44,13 @@ pub enum ParamedicAction {
     /// subagent. 3 consecutive failures → stop trying, post manual-review
     /// comment, emit kind=ci_rescue_exhausted.
     RescueCiFailure,
+    /// INFRA-1459: PR is BLOCKED with autoMergeRequest=null but has at
+    /// least one prior arming in the ambient audit log (arm_auto_merge /
+    /// auto_merge_armed / auto_merge_rearmed) — arming was silently
+    /// dropped (e.g. by a merge cycle, like #2069). Re-arm via
+    /// `gh pr merge --auto --squash` (or `--merge-queue` when
+    /// CHUMP_MERGE_QUEUE_ENABLED=1).
+    ReArmAutoMerge,
 }
 
 impl ParamedicAction {
@@ -56,6 +63,7 @@ impl ParamedicAction {
             Self::FileClusterRescue => "FILE_CLUSTER_RESCUE",
             Self::KeystoneCascade => "KEYSTONE_CASCADE",
             Self::RescueCiFailure => "RESCUE_CI_FAILURE",
+            Self::ReArmAutoMerge => "RE_ARM_AUTO_MERGE",
         }
     }
 }
@@ -155,6 +163,8 @@ struct PrInfo {
     // INFRA-1429: time-gate + label-skip for auto-rebase.
     updated_at: Option<String>,
     labels: Vec<String>,
+    // INFRA-1459: whether GitHub currently reports autoMergeRequest set.
+    auto_merge_enabled: bool,
 }
 
 // ── public entry points ───────────────────────────────────────────────────────
@@ -1693,10 +1703,10 @@ fn read_from_cache_db(db_path: &Path) -> Result<Vec<PrInfo>> {
         cols.contains(&"merge_state_status".to_string())
     };
     let sql = if col_exists {
-        "SELECT number, head_ref, head_sha, mergeable_state, merge_state_status, raw_payload_json
+        "SELECT number, head_ref, head_sha, mergeable_state, merge_state_status, raw_payload_json, auto_merge_enabled
          FROM pr_state WHERE merged_at IS NULL ORDER BY number DESC LIMIT 100"
     } else {
-        "SELECT number, head_ref, head_sha, mergeable_state, NULL, raw_payload_json
+        "SELECT number, head_ref, head_sha, mergeable_state, NULL, raw_payload_json, auto_merge_enabled
          FROM pr_state WHERE merged_at IS NULL ORDER BY number DESC LIMIT 100"
     };
     let prs = conn
@@ -1715,6 +1725,7 @@ fn read_from_cache_db(db_path: &Path) -> Result<Vec<PrInfo>> {
                 // the cache adds these columns.
                 updated_at: None,
                 labels: Vec::new(),
+                auto_merge_enabled: row.get::<_, i64>(6).unwrap_or(0) != 0,
             })
         })?
         .flatten()
