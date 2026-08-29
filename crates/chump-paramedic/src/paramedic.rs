@@ -969,6 +969,15 @@ fn action_allowlist_emit(_pr_number: u64, repo_root: &Path, dry_run: bool) -> Re
     Ok(())
 }
 
+// INFRA-1463: this action MUST NOT run `git reset --soft <main>` to perform
+// the squash automatically. `reset --soft` leaves the index/working tree at
+// the (stale) branch tip while moving HEAD to `<main>` — any file `main`
+// gained since the branch diverged then looks like a deletion when staged,
+// and committing it deletes those files for real (see incident #2068,
+// docs/process/PARAMEDIC_SAFETY_RULES.md). Instead, flag the PR for a human
+// to squash with `git rebase -i --autosquash <main>` or `git filter-repo`
+// with an explicit commit-drop — both operate commit-by-commit and cannot
+// turn an unrelated file addition into a deletion.
 fn action_squash_init_leak(pr_number: u64, _repo_root: &Path, dry_run: bool) -> Result<()> {
     // Flag the PR with a comment — actual squash requires human confirmation.
     if dry_run {
@@ -981,7 +990,9 @@ fn action_squash_init_leak(pr_number: u64, _repo_root: &Path, dry_run: bool) -> 
             &pr_number.to_string(),
             "--body",
             "⚠️ **Paramedic**: detected `Test <test@test.local>` author commit. \
-             Please squash the init-leak commit before merge.",
+             Please squash the init-leak commit with `git rebase -i --autosquash <main>` \
+             (NOT `git reset --soft <main>` — see docs/process/PARAMEDIC_SAFETY_RULES.md) \
+             before merge.",
         ])
         .output();
     Ok(())

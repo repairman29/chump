@@ -1617,6 +1617,14 @@ that aren't really conflicts (sibling PRs touched the same main-state files
 you also touched, but the changes ARE the right answer in main now), don't
 fight the rebase. Use the soft-reset recipe:
 
+**Safety pre-check first (INFRA-1463):** `reset --soft` stages any file
+`origin/main` gained since your branch diverged as a DELETION (see
+[`PARAMEDIC_SAFETY_RULES.md`](./PARAMEDIC_SAFETY_RULES.md) — PR #2068 deleted
+38 test files this way). Run the guard before resetting:
+```bash
+scripts/coord/paramedic-safe-squash-check.sh HEAD origin/main || exit 1
+```
+
 ```bash
 cd /tmp/chump-<gap>  # PR worktree, NOT main checkout
 git fetch origin main --quiet
