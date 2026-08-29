@@ -9,6 +9,9 @@
 //! chump-github-cache-cli query-open-prs-by-title <SUBSTR>
 //! chump-github-cache-cli query-behind-prs      → one number per line
 //! chump-github-cache-cli refresh-open-prs      → Phase 1 stub, prints 0
+//! chump-github-cache-cli flush-pending-push-and-sync
+//!                                               → `status=<success|failure> duration_ms=<N>`
+//!                                                 (INFRA-1324, network-sync-daemon.sh)
 //! ```
 //!
 //! Selected by the bash shim at the top of
@@ -59,6 +62,9 @@ enum Cmd {
     QueryBehindPrs,
     /// Phase 1 stub: bulk-refill loop deferred. Prints `0`.
     RefreshOpenPrs,
+    /// Flush the pending-push queue and sync the cache (INFRA-1324).
+    /// Prints `status=<success|failure> duration_ms=<N>`.
+    FlushPendingPushAndSync,
 }
 
 fn resolve_db_path(arg: Option<PathBuf>) -> PathBuf {
@@ -176,6 +182,13 @@ async fn dispatch(cache: &SqliteCache, cmd: Cmd) -> Result<(), CacheError> {
             // follow-up sub-gap. Print 0 (matches the bash helper's
             // exit-stdout when it has nothing to refill).
             println!("0");
+        }
+        Cmd::FlushPendingPushAndSync => {
+            let outcome = cache.flush_pending_push_queue_and_sync().await?;
+            println!(
+                "status={} duration_ms={}",
+                outcome.status, outcome.duration_ms
+            );
         }
     }
     Ok(())

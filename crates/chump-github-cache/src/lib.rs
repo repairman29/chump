@@ -72,7 +72,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub use error::CacheError;
-pub use schema::{CheckRun, PrState, PrSummary};
+pub use schema::{CheckRun, PrState, PrSummary, SyncOutcome};
 
 /// SQL schema embedded at compile time.
 ///
@@ -133,6 +133,16 @@ pub trait GithubCache: Send + Sync {
     /// A follow-up sub-gap will extend `pr_state` with a `files_csv`
     /// column and populate it from the receiver.
     async fn lookup_pr_files(&self, number: u64) -> Result<Vec<String>, CacheError>;
+
+    /// Flush the pending-push queue and sync the cache when connectivity
+    /// returns (INFRA-1324, OFFLINE_FIRST.md Phase 3).
+    ///
+    /// Called by `scripts/network-sync-daemon.sh::flush_pending_push_and_sync_cache`
+    /// once `wait_for_port`-style connectivity detection observes GitHub
+    /// is reachable again. Emits a `CacheSyncCompleted` tracing event
+    /// carrying `status` and `duration_ms` so the caller can log it and
+    /// callers auditing sync health have a structured signal to key off.
+    async fn flush_pending_push_queue_and_sync(&self) -> Result<SyncOutcome, CacheError>;
 }
 
 /// Concrete [`GithubCache`] impl backed by SQLite via `rusqlite`.
@@ -393,6 +403,35 @@ impl GithubCache for SqliteCache {
         // + a REST fallback inside this method.
         Ok(Vec::new())
     }
+
+    async fn flush_pending_push_queue_and_sync(&self) -> Result<SyncOutcome, CacheError> {
+        let start = std::time::Instant::now();
+        // Phase 3 (INFRA-1324) scope: the pending-push queue itself is
+        // git-level state flushed by the bash caller
+        // (`_flush_pending_pushes` in OFFLINE_FIRST.md); this method's
+        // job is the cache-side half — confirm the SQLite connection is
+        // healthy after a period of possible offline writes/reads so the
+        // daemon can report a trustworthy sync outcome. A real REST
+        // bulk-refill loop is deferred to a follow-up sub-gap (mirrors
+        // the `lookup_pr_files` / `refresh-open-prs` Phase 1 stubs above).
+        let result = {
+            let conn = self.conn.lock().expect("cache mutex poisoned");
+            conn.execute_batch("PRAGMA quick_check;")
+        };
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let status = if result.is_ok() { "success" } else { "failure" };
+        tracing::info!(
+            kind = "CacheSyncCompleted",
+            status,
+            duration_ms,
+            "cache sync completed"
+        );
+        result.map_err(CacheError::from)?;
+        Ok(SyncOutcome {
+            status: status.to_string(),
+            duration_ms,
+        })
+    }
 }
 
 // ---- Tests --------------------------------------------------------------
@@ -570,6 +609,13 @@ mod tests {
         cache.upsert_pr(&make_pr(1, "x", "clean", false)).unwrap();
         let files = cache.lookup_pr_files(1).await.unwrap();
         assert!(files.is_empty(), "Phase 1 stub must return empty");
+    }
+
+    #[tokio::test]
+    async fn flush_pending_push_queue_and_sync_reports_success() {
+        let cache = SqliteCache::open_in_memory().unwrap();
+        let outcome = cache.flush_pending_push_queue_and_sync().await.unwrap();
+        assert_eq!(outcome.status, "success");
     }
 
     #[tokio::test]

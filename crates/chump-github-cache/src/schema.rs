@@ -67,6 +67,19 @@ pub struct PrSummary {
     pub head_ref: String,
 }
 
+/// Outcome of a pending-push-queue flush + cache sync cycle (INFRA-1324).
+///
+/// Returned by [`crate::GithubCache::flush_pending_push_queue_and_sync`],
+/// called by `scripts/network-sync-daemon.sh` when connectivity is
+/// restored (OFFLINE_FIRST.md Phase 3).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncOutcome {
+    /// `"success"` or `"failure"`.
+    pub status: String,
+    /// Wall-clock duration of the sync attempt, in milliseconds.
+    pub duration_ms: u64,
+}
+
 /// One row in the `check_runs` SQLite table.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CheckRun {
