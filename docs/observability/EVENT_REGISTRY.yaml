@@ -11838,3 +11838,40 @@ events:
       size the migration via scripts/dev/ambient-kind-audit.sh.
     consumers: [ops-audit]
     fields_required: [ts, kind]
+
+  - kind: github_offline_detected
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/github-offline-detect.sh (INFRA-1325)
+    emitter_paths: [scripts/coord/github-offline-detect.sh]
+    trigger: >
+      the reachability probe (run at startup and every worker cycle) first
+      fails to reach GitHub — CHUMP_GITHUB_MODE is auto-set to offline
+      without operator intervention and GitHub mutations start queuing to
+      .chump-locks/github-queue.jsonl instead of hitting the network.
+    consumers: [chump-health, fleet-brief]
+    fields_required: [ts, kind, fail_reason, queue_depth]
+
+  - kind: github_offline_recovery
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/github-offline-detect.sh (INFRA-1325)
+    emitter_paths: [scripts/coord/github-offline-detect.sh]
+    trigger: >
+      the background probe (every 60s while offline) detects GitHub is
+      reachable again and finishes draining the queued mutations in FIFO
+      order (deduped by request_id, stale entries dropped separately).
+    consumers: [chump-health, fleet-brief]
+    fields_required: [ts, kind, mutations_replayed, mutations_skipped_stale]
+
+  - kind: github_queue_item_stale
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/github-offline-detect.sh (INFRA-1325)
+    emitter_paths: [scripts/coord/github-offline-detect.sh]
+    trigger: >
+      a queued GitHub mutation was older than 4h at recovery/drain time and
+      was dropped instead of replayed (stale-queue guard, one event per
+      dropped item).
+    consumers: [chump-health, fleet-brief]
+    fields_required: [ts, kind, request_id, queued_at]
