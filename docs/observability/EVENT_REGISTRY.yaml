@@ -893,6 +893,19 @@ events:
       covering them. Commit rejected; narrative-only bypass insufficient.
     fields_required: [ts, kind, files, unacknowledged]
     consumers: [fleet-brief, audit-log, META-064-effectiveness]
+  - kind: rust_first_bypass_format_fixed
+    effect_metric: self
+    emitter: crates/chump-paramedic/src/paramedic.rs (INFRA-1524)
+    trigger: >
+      paramedic COERCE_BYPASS_FORMAT action detected a PR whose audit gate
+      failed on a state-mutating/hot-path violation and whose body carried
+      a markdown-bullet or backtick form of 'Rust-First-Bypass:' (which the
+      gate's `^Rust-First-Bypass:` bare-line regex doesn't match). Paramedic
+      extracted the reason, rewrote the PR body with a bare-line trailer via
+      `gh pr edit --body-file`, and re-triggered CI with
+      `gh pr update-branch --rebase`.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, pr, original_form, extracted_reason]
   - kind: rust_first_bypass_audit
     effect_metric: self
     emitter: scripts/dev/rust-first-bypass-audit.sh (INFRA-1580)
