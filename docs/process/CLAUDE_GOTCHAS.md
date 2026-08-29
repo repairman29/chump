@@ -2149,3 +2149,15 @@ bypasses that mask CI state.
 **Fix**: call `.flush().await` on the subscribing client right after `subscribe()`, before doing anything that depends on the subscription being live. `flush()` forces a round-trip to the server, so by the time it returns the subscription is guaranteed registered. See `crates/chump-coord/tests/ambient_distribution.rs`.
 
 **Related — stale test referencing removed functionality**: `chump-gap-store::tests::test_reserve_skips_yaml_drift` was reported failing in the same gap but no longer exists in the tree — it was removed in #2727 (INFRA-2177, "drop docs/gaps YAML rollup from gap reserve — use state.db only") along with the functionality it tested. Before debugging a named test failure, `grep` for the test function first — if it's gone, the report is stale and the fix is a no-op.
+
+## CI pipeline
+
+### `tauri-cowork-e2e` — broken environment, not a flake (INFRA-1385, superseding INFRA-1425/INFRA-1342)
+
+**Symptom (historical, INFRA-1342/INFRA-1353)**: `tauri-cowork-e2e` intermittently red on required-check PR runs, forcing bulk rebases (5 PRs in one day) to get past a check nobody could reliably reproduce green.
+
+**Root cause**: NOT a race in webview boot timing or webview/parent IPC handshake — the job's Tauri + WebDriver environment (webkit2gtk / tauri-driver on `ubuntu-latest`) fails almost every run. Job-level `gh run view` history as of 2026-08-21: **30/30 failures** on `ci-nightly.yml` and **29/30 failures** on `ci-advisory.yml` (last 30 runs each). This is a broken/too-fragile-to-gate environment, not a borderline-flaky test — "fix the race" framing (as in the original INFRA-1425 AC) doesn't apply because there isn't a race to fix; the WebDriver harness itself doesn't reliably come up in the runner image.
+
+**Fix already shipped (RESILIENT-016 + INFRA-1381/1385, predates this note)**: the job was removed from the PR-blocking path entirely — `tauri-cowork-e2e` in `.github/workflows/ci.yml` is `if: false` (never runs on PRs), and the real job body lives only in `ci-nightly.yml` (daily cron) and `ci-advisory.yml` (post-merge push to main), both with `continue-on-error: true` by deliberate disposition, not oversight. Neither of those workflows can block a PR merge — branch protection's required-check list only reads `ci.yml`. So the "papered over with continue-on-error, still required and flaky" premise that produced the 2026-day bulk-rebase incident no longer holds: the check is not required, and its failures are informational-only.
+
+**Disposition of record**: `docs/process/CI_GATES_INVENTORY.md` (KEEP-ADVISORY table) — re-check by 2026-11-21 (or after Tauri/WebDriver environment work makes a green run plausible). Don't re-flip `continue-on-error` to strict on the advisory/nightly copies without first fixing the underlying webkit2gtk/tauri-driver environment — flipping it strict today would just turn a 30/30-failing informational job into a 30/30-failing blocking job on `main`, with no PR ever able to merge.
