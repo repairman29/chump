@@ -14,7 +14,7 @@ pub mod maintenance;
 pub mod sync;
 
 use anyhow::{bail, Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -716,6 +716,67 @@ impl GapStore {
             ",
         );
 
+        // INFRA-1436: local-embedding cache for semantic gap-dedup. Keyed by
+        // gap_id with a content_hash so a title/description/AC edit
+        // invalidates the row (re-embed on next lookup) without a background
+        // job. embedding is stored as a JSON array of f32 — simplest format
+        // that round-trips through rusqlite without a BLOB codec.
+        let _ = self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS gap_embeddings (
+                gap_id       TEXT PRIMARY KEY,
+                content_hash TEXT NOT NULL,
+                embedding    TEXT NOT NULL,
+                updated_at   INTEGER NOT NULL
+             );
+            ",
+        );
+
+        Ok(())
+    }
+
+    /// INFRA-1436: fetch a cached embedding for `gap_id` iff its stored
+    /// `content_hash` matches `content_hash` (cache invalidates on any
+    /// title/description/AC edit). Returns `None` on miss or hash mismatch.
+    pub fn get_cached_embedding(
+        &self,
+        gap_id: &str,
+        content_hash: &str,
+    ) -> Result<Option<Vec<f32>>> {
+        let row: Option<(String, String)> = self
+            .conn
+            .query_row(
+                "SELECT content_hash, embedding FROM gap_embeddings WHERE gap_id = ?1",
+                params![gap_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        match row {
+            Some((hash, embedding_json)) if hash == content_hash => {
+                let v: Vec<f32> = serde_json::from_str(&embedding_json)?;
+                Ok(Some(v))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// INFRA-1436: upsert a computed embedding into the cache.
+    pub fn put_cached_embedding(
+        &self,
+        gap_id: &str,
+        content_hash: &str,
+        embedding: &[f32],
+        updated_at: i64,
+    ) -> Result<()> {
+        let embedding_json = serde_json::to_string(embedding)?;
+        self.conn.execute(
+            "INSERT INTO gap_embeddings (gap_id, content_hash, embedding, updated_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(gap_id) DO UPDATE SET
+                content_hash = excluded.content_hash,
+                embedding = excluded.embedding,
+                updated_at = excluded.updated_at",
+            params![gap_id, content_hash, embedding_json, updated_at],
+        )?;
         Ok(())
     }
 }
