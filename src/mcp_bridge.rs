@@ -538,6 +538,125 @@ impl axonerai::tool::Tool for McpProxyTool {
 #[allow(unused_imports)]
 pub use chump_mcp_lifecycle::{PersistentMcpServer, SessionMcpPool, MAX_SERVERS_PER_SESSION};
 
+/// The 7 in-tree `crates/mcp-servers/*` binaries, in spawn order. This is the
+/// default tool surface an ACP session gets when the client doesn't request
+/// any `mcpServers` of its own (INFRA-1553).
+pub const DEFAULT_SESSION_MCP_SERVERS: &[&str] = &[
+    "chump-mcp-gaps",
+    "chump-mcp-coord",
+    "chump-mcp-memory",
+    "chump-mcp-github",
+    "chump-mcp-eval",
+    "chump-mcp-tavily",
+    "chump-mcp-adb",
+];
+
+/// Names of the servers to default a session to. Overridable via the
+/// `CHUMP_SESSION_MCP_SERVERS` env var (comma-separated crate/bin names);
+/// falls back to [`DEFAULT_SESSION_MCP_SERVERS`].
+pub fn default_session_mcp_server_names() -> Vec<String> {
+    match std::env::var("CHUMP_SESSION_MCP_SERVERS") {
+        Ok(v) if !v.trim().is_empty() => v
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        _ => DEFAULT_SESSION_MCP_SERVERS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+    }
+}
+
+/// Resolve a server name to a `(command, args)` pair. Prefers a built binary
+/// under `mcp_servers_dir()` (release build); falls back to `cargo run
+/// --release --bin <name>` so a dev checkout without a release build still
+/// works (slower first-call latency, same behavior after cargo's own cache).
+pub fn resolve_mcp_server_binary(name: &str) -> (String, Vec<String>) {
+    let candidate = mcp_servers_dir().join(name);
+    if candidate.is_file() {
+        (candidate.to_string_lossy().to_string(), vec![])
+    } else {
+        (
+            "cargo".to_string(),
+            vec![
+                "run".to_string(),
+                "--quiet".to_string(),
+                "--release".to_string(),
+                "--bin".to_string(),
+                name.to_string(),
+            ],
+        )
+    }
+}
+
+/// Build `(name, command, args)` configs for the default session MCP server
+/// set, ready to pass to `SessionMcpPool::spawn_all`.
+pub fn default_session_mcp_server_configs() -> Vec<(String, String, Vec<String>)> {
+    default_session_mcp_server_names()
+        .into_iter()
+        .map(|name| {
+            let (command, args) = resolve_mcp_server_binary(&name);
+            (name, command, args)
+        })
+        .collect()
+}
+
+/// Path to the ambient event log. Same env var + fallback other emitters in
+/// this crate use (see `src/auth.rs::emit_ambient`).
+fn ambient_log_path() -> PathBuf {
+    std::env::var("CHUMP_AMBIENT_LOG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| crate::repo_path::runtime_base().join(".chump-locks/ambient.jsonl"))
+}
+
+fn emit_ambient(payload: Value) {
+    let path = ambient_log_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = writeln!(f, "{}", payload);
+    }
+}
+
+/// Emit `kind=mcp_server_spawned` for one server in a session's pool
+/// (INFRA-1553, AC #4).
+pub fn emit_mcp_server_spawned(session_id: &str, server_name: &str, pid: Option<u32>) {
+    emit_ambient(json!({
+        "ts": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        "kind": "mcp_server_spawned",
+        "session_id": session_id,
+        "server_name": server_name,
+        "pid": pid,
+    }));
+}
+
+/// Emit `kind=mcp_server_reaped` for one server in a session's pool
+/// (INFRA-1553, AC #4).
+pub fn emit_mcp_server_reaped(session_id: &str, server_name: &str, pid: Option<u32>) {
+    emit_ambient(json!({
+        "ts": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        "kind": "mcp_server_reaped",
+        "session_id": session_id,
+        "server_name": server_name,
+        "pid": pid,
+    }));
+}
+
+/// Emit spawned events for every live server in `pool`, tagged with
+/// `session_id`. Best-effort — call after a successful `spawn_all`.
+pub fn emit_pool_spawned(session_id: &str, pool: &SessionMcpPool) {
+    for server in pool.__servers() {
+        emit_mcp_server_spawned(session_id, server.name(), server.pid());
+    }
+}
+
 /// ACP-001 follow-up: `axonerai::tool::Tool` wrapper around a session-scoped
 /// MCP tool. Holds an `Arc<SessionMcpPool>` so the agent loop's registry can
 /// call `execute()` while the ACP session's `SessionEntry` continues to own
