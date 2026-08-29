@@ -1414,6 +1414,18 @@ async fn main() -> Result<()> {
         std::process::exit(git_safety::run_snapshot_cli(&args));
     }
 
+    // INFRA-1549: `chump claim-paths <path...> [--ttl N] [--heartbeat]`
+    // wraps crates/chump-agent-lease's claim_paths API for the Claude Code
+    // PreToolUse Edit|Write hook, so in-session per-file collisions between
+    // two agents editing the same worktree are caught BEFORE the tool call
+    // lands — the gap-level lease in .chump-locks/<session>.json only sees
+    // coarse whole-gap ownership, never individual file paths. Dispatched
+    // here (ahead of store/config/network init) for the same latency reason
+    // as git-guard above: this runs on every single Edit/Write.
+    if args.get(1).map(String::as_str) == Some("claim-paths") {
+        std::process::exit(run_claim_paths_cli(&args));
+    }
+
     // INFRA-1649 (re-do of INFRA-1598): `chump verify-claim-branch [--json]`
     // asserts the current git branch matches the branch implied by this
     // session's active claim lease. Dispatched here — ahead of store/config
