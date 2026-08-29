@@ -2325,12 +2325,13 @@ async fn handle_dashboard_stream(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    fn build_dashboard_snapshot() -> String {
+    async fn build_dashboard_snapshot() -> String {
         let base = repo_path::runtime_base();
         let ship_log_path = base.join("logs/heartbeat-ship.log");
-        let ship_running = std::process::Command::new("pgrep")
+        let ship_running = tokio::process::Command::new("pgrep")
             .args(["-f", "heartbeat-ship"])
             .output()
+            .await
             .map(|o| o.status.success())
             .unwrap_or(false);
         let ship_log_content = std::fs::read_to_string(&ship_log_path).unwrap_or_default();
@@ -2404,7 +2405,7 @@ async fn handle_dashboard_stream(
         tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
     tokio::spawn(async move {
         loop {
-            let data = build_dashboard_snapshot();
+            let data = build_dashboard_snapshot().await;
             if tx
                 .send(Ok(Event::default().event("dashboard").data(data)))
                 .is_err()
