@@ -44,6 +44,12 @@ pub enum ParamedicAction {
     /// subagent. 3 consecutive failures → stop trying, post manual-review
     /// comment, emit kind=ci_rescue_exhausted.
     RescueCiFailure,
+    /// INFRA-1508: fast-checks failed with a `cargo fmt --check` diff
+    /// (log line matches `Diff in .*src/.*\.rs:[0-9]+:`). Clones the PR
+    /// branch, runs `cargo fmt`, commits, and force-with-lease pushes.
+    /// Class-aware — never fires on clippy or test failures. Rate-limited
+    /// to 3 autofix attempts per PR/branch.
+    CargoFmtAutoFix,
 }
 
 impl ParamedicAction {
@@ -56,6 +62,7 @@ impl ParamedicAction {
             Self::FileClusterRescue => "FILE_CLUSTER_RESCUE",
             Self::KeystoneCascade => "KEYSTONE_CASCADE",
             Self::RescueCiFailure => "RESCUE_CI_FAILURE",
+            Self::CargoFmtAutoFix => "CARGO_FMT_AUTOFIX",
         }
     }
 }
