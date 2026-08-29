@@ -125,6 +125,7 @@ mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod cartographer; // INFRA-1782: chump cartograph <repo-path> — ARCHITECTURE.md generation (INFRA-1746 phase 2)
 mod collision_prediction; // META-076: predictive collision detection (mock inputs), first impl of docs/design/COLLISION_PREDICTION_SCHEMA.md
 mod completion;
+mod coordination_cost; // META-082: cost tracking for coordination actions (route change, lesson fetch, etc.), META-073 slice
 mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod done_auditor; // INFRA-3495: anti-over-claim watchdog — audit DONE gaps for uncovered AC
 mod evangelist; // INFRA-1783: chump evangelize <repo-path> — HIDDEN_GEMS.md generation (INFRA-1746 phase 3)

@@ -219,6 +219,17 @@ fn append_ambient_line(entry: &serde_json::Value) -> Result<()> {
 /// and — when `selection_reason == no_match` — the companion
 /// `kind=skill_routing_no_match` event for operator visibility.
 pub fn emit_routing_decision_event(result: &RoutingResult, router_session: &str) -> Result<()> {
+    let start = std::time::Instant::now();
+    let outcome = emit_routing_decision_event_inner(result, router_session);
+    crate::coordination_cost::record_action(
+        router_session,
+        "route_change",
+        start.elapsed().as_secs_f64() * 1000.0,
+    );
+    outcome
+}
+
+fn emit_routing_decision_event_inner(result: &RoutingResult, router_session: &str) -> Result<()> {
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     let candidates: Vec<_> = result

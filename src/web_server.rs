@@ -878,6 +878,21 @@ async fn handle_lessons_post(
     headers: HeaderMap,
     Json(body): Json<LessonPostRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let cost_start = std::time::Instant::now();
+    let cost_agent = body.agent.clone().unwrap_or_else(|| "unknown".to_string());
+    let result = handle_lessons_post_inner(headers, Json(body)).await;
+    crate::coordination_cost::record_action(
+        &cost_agent,
+        "lesson_publish",
+        cost_start.elapsed().as_secs_f64() * 1000.0,
+    );
+    result
+}
+
+async fn handle_lessons_post_inner(
+    headers: HeaderMap,
+    Json(body): Json<LessonPostRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     if !check_auth(&headers) {
         return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
     }
@@ -937,6 +952,24 @@ async fn handle_lessons_post(
 /// META-080: GET /api/lessons?tag=<task-tag> — agents read relevant lessons.
 /// Without `tag`, returns all non-expired lessons.
 async fn handle_lessons_get(
+    headers: HeaderMap,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let cost_start = std::time::Instant::now();
+    let cost_agent = params
+        .get("agent")
+        .cloned()
+        .unwrap_or_else(|| "unknown".to_string());
+    let result = handle_lessons_get_inner(headers, Query(params)).await;
+    crate::coordination_cost::record_action(
+        &cost_agent,
+        "lesson_fetch",
+        cost_start.elapsed().as_secs_f64() * 1000.0,
+    );
+    result
+}
+
+async fn handle_lessons_get_inner(
     headers: HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
@@ -9557,6 +9590,7 @@ fn build_api_router() -> Router {
         .route("/api/stuck/rescue/{id}", post(handle_stuck_rescue))
         .route("/api/fleet-status", get(handle_fleet_status))
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
+        .route("/api/metrics", get(crate::metrics::handle_metrics))
         .route("/api/health/pillars", get(handle_health_pillars))
         .route("/api/health/doctor", get(handle_doctor_health))
         // META-175: JetStream consumer lag + delivery latency per role.
