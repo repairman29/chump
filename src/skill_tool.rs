@@ -247,6 +247,7 @@ fn handle_list() -> Result<String> {
 
 fn handle_view(name: &str) -> Result<String> {
     let skill = skills::load_skill(name)?;
+    emit_skill_considered(name);
     let reliability = crate::skill_db::skill_reliability(name).ok();
     let header = match reliability {
         Some((r, n)) if n > 0 => {
