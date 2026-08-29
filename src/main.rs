@@ -159,7 +159,6 @@ mod lesson_action;
 mod lesson_embeddings;
 mod limits;
 mod llm_backend_metrics;
-mod local_openai;
 mod mcp_bridge;
 mod mcp_discovery;
 mod memory_brain_tool;
@@ -170,8 +169,6 @@ mod memory_graph_viz;
 mod memory_tool;
 mod messaging;
 mod mission_grade;
-#[cfg(feature = "mistralrs-infer")]
-mod mistralrs_provider;
 mod model_overlay;
 mod model_probe;
 mod neuromodulation;
@@ -199,9 +196,12 @@ mod pr_rescue; // INFRA-1714: closed-loop PR rescue (chump pr-rescue)
 mod pr_triage;
 mod precision_controller;
 pub use chump_preflight::preflight; // INFRA-1670: local CI mirror — chump preflight subcommand (extracted to crates/chump-preflight, EFFECTIVE-400)
-mod provider_bandit;
-mod provider_cascade;
-mod provider_quality;
+pub mod providers; // INFRA-723: provider_bandit, provider_cascade, provider_quality, streaming_provider, local_openai, mistralrs_provider
+pub use providers::{
+    local_openai, provider_bandit, provider_cascade, provider_quality, streaming_provider,
+};
+#[cfg(feature = "mistralrs-infer")]
+pub use providers::mistralrs_provider;
 mod ratings;
 mod read_url_tool;
 mod reasoning_mode;
@@ -255,7 +255,6 @@ mod staleness;
 mod standard_missions; // EFFECTIVE-199: L1 foundation queue for 0→1 onboard — see docs/design/ONBOARD_0TO1_DOCTRINE.md
 mod state_db;
 mod stream_events;
-mod streaming_provider;
 mod system_prompt;
 mod systematizer; // INFRA-1783: chump systematize <repo-path> — CAPABILITIES_REGISTRY.json generation (INFRA-1746 phase 4)
 mod task_contract;
