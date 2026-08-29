@@ -98,6 +98,7 @@ mod fleet_capability;
 mod fleet_db;
 mod fleet_fanout; // INFRA-1484: cross-repo fan-out (Marcus M-B continuation)
 mod fleet_health;
+mod umbrella_progress; // META-291: structural-work-rate + umbrella-idle tracking
 mod fleet_mode;
 mod fleet_pulse; // INFRA-1995: THE FLOOR Phase 2 — single-pane fleet status
 mod fleet_resize;
@@ -3188,30 +3189,63 @@ async fn main() -> Result<()> {
     // Emits kind=fleet_health to ambient.jsonl on each run.
     if args.get(1).map(String::as_str) == Some("health") {
         if args.iter().any(|a| a == "--help" || a == "help") {
-            println!("Usage: chump health [--json] [--watch] [--slo-check] [--temp]");
+            println!(
+                "Usage: chump health [--json] [--watch] [--slo-check] [--temp] [--structural-pr-rate [--window Nd]]"
+            );
             println!();
             println!("Composite fleet health score (0-100) rolling up fleet-status, waste-tally,");
             println!("cost-watch, mission-grade, pr-stuck, version-skew, auth, and ghost-gaps.");
             println!("Emits kind=fleet_health to ambient.jsonl on each run.");
             println!();
             println!("Options:");
-            println!("  --json       output in JSON format");
-            println!("  --watch      refresh every 30 s (clear screen between runs)");
-            println!("  --slo-check  exit non-zero if any SLO is breached");
-            println!("  --temp       INFRA-1992: report floor-temperature only (COLD/WARM/HOT)");
+            println!("  --json                output in JSON format");
+            println!("  --watch                refresh every 30 s (clear screen between runs)");
+            println!("  --slo-check            exit non-zero if any SLO is breached");
+            println!("  --temp                 INFRA-1992: report floor-temperature only (COLD/WARM/HOT)");
+            println!(
+                "  --structural-pr-rate   META-291: % of shipped PRs (default 14d window) that"
+            );
+            println!(
+                "                         closed an INFRA/META gap. Exits 1 if <25%."
+            );
+            println!("  --window Nd            window for --structural-pr-rate (default 14d)");
             println!();
             println!("Example:");
             println!("  chump health");
             println!("  chump health --slo-check   # use in CI");
             println!("  chump health --temp        # one-word floor-temp signal");
             println!("  chump health --temp --json # full floor-temp report with component counts");
+            println!("  chump health --structural-pr-rate --window 28d");
             return Ok(());
         }
         let want_json = args.iter().any(|a| a == "--json");
         let watch = args.iter().any(|a| a == "--watch");
         let slo_check = args.iter().any(|a| a == "--slo-check");
         let want_temp = args.iter().any(|a| a == "--temp");
+        let want_structural_rate = args.iter().any(|a| a == "--structural-pr-rate");
         let repo_root = repo_path::repo_root();
+
+        // META-291: `chump health --structural-pr-rate [--window Nd]` — used
+        // by META-290's plumbing-bias trigger. Checked before the fleet_health
+        // score/SLO paths since it's a standalone, cheap, single-purpose query.
+        if want_structural_rate {
+            let window_days = args
+                .iter()
+                .position(|a| a == "--window")
+                .and_then(|i| args.get(i + 1))
+                .and_then(|w| w.trim_end_matches('d').parse::<u64>().ok())
+                .unwrap_or(14);
+            let report = umbrella_progress::structural_pr_rate(&repo_root, window_days);
+            if want_json {
+                println!("{}", report.render_json());
+            } else {
+                println!("{}", report.render_text());
+            }
+            if report.breached() {
+                std::process::exit(1);
+            }
+            return Ok(());
+        }
 
         // INFRA-1992 (THE FLOOR Phase 1): floor-temperature signal.
         // Reads ambient.jsonl over trailing 24h, counts hot event kinds
