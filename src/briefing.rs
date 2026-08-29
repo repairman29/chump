@@ -159,6 +159,65 @@ pub fn build_briefing(gap_id: &str) -> GapBriefing {
     build_briefing_at(gap_id, &repo_path::repo_root())
 }
 
+/// INFRA-1336: instrumented outbound HTTP GET for `GapBriefing`'s dispatch
+/// logic (e.g. the `gh`/GitHub lookups this module makes best-effort). Every
+/// call routed through here emits a `kind=outbound_http_call` ambient event
+/// with host/path/bytes/`initiated_by` *before* the request result is used,
+/// so the PRODUCT-112 air-gap claim ("Chump makes zero non-github outbound
+/// calls with `CHUMP_AIR_GAP_MODE=1`") is verifiable against real traffic
+/// instead of trusted on faith.
+pub async fn instrumented_http_get(
+    client: &reqwest::Client,
+    url: &str,
+    initiated_by: &str,
+    ambient_path: &Path,
+) -> Result<reqwest::Response, reqwest::Error> {
+    let parsed = reqwest::Url::parse(url).ok();
+    let host = parsed
+        .as_ref()
+        .and_then(|u| u.host_str())
+        .unwrap_or("")
+        .to_string();
+    let path = parsed.as_ref().map(|u| u.path().to_string()).unwrap_or_default();
+    let resp = client.get(url).send().await?;
+    let bytes = resp.content_length().unwrap_or(0);
+    emit_outbound_http_call_event(ambient_path, &host, &path, bytes, initiated_by);
+    Ok(resp)
+}
+
+/// Appends a `kind=outbound_http_call` line to `ambient_path` (mirrors the
+/// per-module `emit_ambient_event` pattern used across the codebase, e.g.
+/// `src/curator_bell.rs`). Best-effort: a write failure never blocks the
+/// caller's HTTP flow.
+fn emit_outbound_http_call_event(
+    ambient_path: &Path,
+    host: &str,
+    path: &str,
+    bytes: u64,
+    initiated_by: &str,
+) {
+    if let Some(parent) = ambient_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let event = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "kind": "outbound_http_call",
+        "host": host,
+        "path": path,
+        "bytes": bytes,
+        "initiated_by": initiated_by,
+    })
+    .to_string();
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+    {
+        let _ = writeln!(f, "{event}");
+    }
+}
+
 /// Test-friendly variant of [`build_briefing`] that accepts an explicit
 /// repo root. Production code calls [`build_briefing`]; tests call this
 /// directly with a tempdir to avoid CHUMP_REPO env-var racing under
