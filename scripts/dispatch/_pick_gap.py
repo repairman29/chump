@@ -49,7 +49,10 @@ MISSION-011: mission-directed picker
                         P1 (1, 1, ...) — mission wins within the band. A mission
                         P1 does NOT override a substrate P0 because prio_rank is
                         compared first (0 < 1 regardless of mission_rank).
-                        Sort tuple: (prio_rank, mission_rank, planner_rank, effort_rank, age, id)
+                        Sort tuple: (prio_rank, mission_rank, planner_rank, effort_rank,
+                        outcome_rank, age, id) — MISSION-045 AC3 adds
+                        outcome_rank (0=any outcome_id set, 1=untraced) as a
+                        tiebreak after effort_rank.
                         See scripts/ci/test-mission-picker.sh for the invariant.
 """
 
@@ -578,12 +581,20 @@ def main() -> int:
         # Sort tuple: (prio_rank, mission_rank, planner_rank, effort_rank, age, id)
         mission_rank = 0 if _is_mission_linked(g, active_mission) else 1
 
+        # MISSION-045 AC3: outcome_rank = 0 for any gap traced to SOME outcome
+        # (outcome_id set, not just the active mission), 1 for untraced gaps.
+        # Placed after effort_rank so it only breaks ties among gaps that are
+        # already equal on priority/effort — encourages tracing without
+        # overriding priority or mission-linkage.
+        outcome_rank = 0 if (g.get("outcome_id") or "").strip() else 1
+
         candidates.append(
             (
                 prio_rank,
                 mission_rank,
                 planner_rank,
                 EFFORT_RANK.get(e, 9),
+                outcome_rank,
                 g.get("created_at") or 0,
                 gid,
             )
@@ -599,7 +610,7 @@ def main() -> int:
             worker_idx = 1
         offset = (max(worker_idx, 1) - 1) % len(candidates)
         picked = candidates[offset]
-        # Tuple layout: (prio_rank, mission_rank, planner_rank, effort_rank, created_at, gid)
+        # Tuple layout: (prio_rank, mission_rank, planner_rank, effort_rank, outcome_rank, created_at, gid)
         picked_prio_rank = picked[0]
         picked_mission_rank = picked[1]
         picked_planner_rank = picked[2]
