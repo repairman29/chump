@@ -231,6 +231,13 @@ installers:
     check: launchctl list 2>/dev/null | grep -q com.chump.decomposition-hint-tracker
     adds: ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist + daily run
 
+  - id: pr-cycle-slo-launchd
+    why: "INFRA-1417 — pr-cycle-slo.sh computes fleet-wide PR created_at->merged_at median/p90 from the github cache and emits kind=pr_cycle_slo (+ pr_cycle_slo_breach when p90 > 120min). Without an hourly cadence the <chump-view-fleet-health> sparkline goes stale and the breach alert never fires."
+    priority: P2
+    install: cp launchd/com.chump.pr-cycle-slo.plist ~/Library/LaunchAgents/ && sed -i '' "s|/path/to/Chump|$(pwd)|g; s|/path/to/HOME|$HOME|g" ~/Library/LaunchAgents/com.chump.pr-cycle-slo.plist && launchctl load ~/Library/LaunchAgents/com.chump.pr-cycle-slo.plist
+    check: launchctl list 2>/dev/null | grep -q com.chump.pr-cycle-slo
+    adds: ~/Library/LaunchAgents/com.chump.pr-cycle-slo.plist + hourly run
+
   - id: refresh-model-prices-launchd
     why: "INFRA-1564 — refresh-model-prices.sh (INFRA-731/INFRA-739) diffs docs/pricing/model_rates.yaml + docs/dispatch/model_registry.yaml against LiteLLM upstream weekly, but had no launchd entry so pricing drift only surfaced when someone ran it by hand."
     priority: P2

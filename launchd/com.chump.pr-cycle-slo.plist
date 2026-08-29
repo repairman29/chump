@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.pr-cycle-slo — INFRA-1417 LaunchAgent.
+
+  Runs scripts/dev/pr-cycle-slo.sh hourly. Pages over merged PRs from
+  .chump/github_cache.db in the last 7 days, computes median + p90 of
+  created_at -> merged_at, and emits kind=pr_cycle_slo (+
+  kind=pr_cycle_slo_breach when p90 > 120min) to ambient.jsonl. The PWA
+  <chump-view-fleet-health> panel renders the latest emission as a sparkline.
+
+  INSTALLATION:
+    (see scripts/setup/bootstrap-manifest.yaml)
+
+  Manual run:
+    launchctl start com.chump.pr-cycle-slo
+    tail /tmp/chump-pr-cycle-slo.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.pr-cycle-slo.plist
+    rm ~/Library/LaunchAgents/com.chump.pr-cycle-slo.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.pr-cycle-slo</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/dev/pr-cycle-slo.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Hourly. -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-pr-cycle-slo.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-pr-cycle-slo.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>600</integer>
+</dict>
+</plist>
