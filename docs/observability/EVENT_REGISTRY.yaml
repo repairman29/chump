@@ -1453,6 +1453,17 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, path, freed_gb, worktree_age_h]
 
+  - kind: worktree_orphan_reaped
+    effect_metric: self
+    emitter: scripts/coord/chump-worktree.sh prune --orphaned (INFRA-1461)
+    trigger: chump-worktree.sh pruned a /tmp/chump-<gap-id> worktree with no
+      matching branch ref, or a branch idle >24h with no uncommitted changes.
+      Compatible field shape with target_artifact_reaped (INFRA-1349) / disk
+      -health-monitor (INFRA-1437) so both can consume the same {path,size_mb}
+      signal.
+    consumers: [target-dir-reaper, disk-health-monitor, fleet-brief, waste-tally]
+    fields_required: [ts, kind, path, size_mb, reason]
+
   - kind: stale_bot_merge_killed
     effect_metric: self
     emitter: scripts/ops/stale-bot-merge-reaper.sh (INFRA-673)
