@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chump — Pricing (Variant A)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.65;
+      color: #1a1a1a;
+      background: #fafafa;
+      margin: 0;
+      padding: 2rem 1rem;
+    }
+
+    main {
+      max-width: 880px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 2.5rem 3rem;
+      border: 1px solid #e4e4e4;
+      border-radius: 4px;
+    }
+
+    h1 {
+      font-size: 1.9rem;
+      font-weight: 700;
+      margin: 0 0 0.25rem 0;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: #555;
+      font-size: 0.95rem;
+      margin: 0 0 2rem 0;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid #e4e4e4;
+    }
+
+    .tiers {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+      margin: 1.5rem 0 2rem 0;
+    }
+
+    .tier {
+      border: 1px solid #e4e4e4;
+      border-radius: 6px;
+      padding: 1.5rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tier.featured {
+      border: 2px solid #2563eb;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
+    }
+
+    .tier h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin: 0 0 0.25rem 0;
+    }
+
+    .tier .price {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin: 0.5rem 0;
+    }
+
+    .tier .price small {
+      font-size: 0.85rem;
+      font-weight: 400;
+      color: #666;
+    }
+
+    .tier ul {
+      margin: 0.75rem 0 1.25rem 0;
+      padding-left: 1.2rem;
+      flex-grow: 1;
+    }
+
+    .tier li { margin-bottom: 0.4rem; font-size: 0.92rem; }
+
+    .cta {
+      display: inline-block;
+      text-align: center;
+      padding: 0.65rem 1rem;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 0.92rem;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      background: #f4f4f4;
+      color: #1a1a1a;
+    }
+
+    .cta.primary {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: #fff;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #2563eb;
+      margin-bottom: 0.5rem;
+    }
+
+    footer {
+      margin-top: 2rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid #f0f0f0;
+      font-size: 0.85rem;
+      color: #777;
+    }
+
+    @media (max-width: 720px) {
+      .tiers { grid-template-columns: 1fr; }
+      main { padding: 1.75rem 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Run your own fleet — or let us run it for you</h1>
+    <p class="subtitle">
+      Chump is free and open source. Solo is the real product for anyone
+      willing to run their own coordinator. Team exists for the moment you'd
+      rather not babysit infrastructure.
+    </p>
+
+    <div class="tiers">
+      <div class="tier">
+        <span class="badge">OSS</span>
+        <h2>Solo</h2>
+        <div class="price">Free</div>
+        <ul>
+          <li>Full <code>chump</code> CLI</li>
+          <li>Full fleet coordination</li>
+          <li>Self-hosted NATS (or none)</li>
+          <li>No seat cap, no feature gate</li>
+        </ul>
+        <a class="cta" href="https://github.com/">Get started on GitHub</a>
+      </div>
+
+      <div class="tier featured">
+        <span class="badge">Skip the ops work</span>
+        <h2>Team</h2>
+        <div class="price">$49<small>/seat/mo</small></div>
+        <ul>
+          <li>Hosted coordinator — nothing to babysit</li>
+          <li>Managed NATS cluster</li>
+          <li>Shared gap registry across your team</li>
+          <li>Web dashboard + email support</li>
+          <li>5-seat minimum</li>
+        </ul>
+        <a class="cta primary" data-variant="a" data-tier="team" href="#" id="team-cta">Start hosted trial</a>
+      </div>
+
+      <div class="tier">
+        <span class="badge">Contract</span>
+        <h2>Enterprise</h2>
+        <div class="price">$60k<small>/year, flat</small></div>
+        <ul>
+          <li>Air-gapped / on-prem install</li>
+          <li>Signed SLA (uptime + response time)</li>
+          <li>Dedicated support channel</li>
+          <li>Custom auth (SSO/SAML)</li>
+        </ul>
+        <a class="cta" href="mailto:jeff@chump.dev?subject=Enterprise%20pricing">Talk to us</a>
+      </div>
+    </div>
+
+    <footer>
+      This is a pricing experiment (variant A). Clicking "Start hosted trial"
+      opens a Stripe Checkout session in setup mode — it verifies a payment
+      method but does not charge your card. See
+      <code>docs/business/PRICING_V1.md</code> for the full experiment design.
+    </footer>
+  </main>
+
+  <script>
+    // Wire-up placeholder: point at the real Stripe Checkout Session URL
+    // created per docs/business/PRICING_V1.md before this page goes live.
+    document.getElementById('team-cta').addEventListener('click', function (e) {
+      e.preventDefault();
+      window.location.href = 'https://checkout.stripe.com/REPLACE_WITH_SESSION_ID?variant=a';
+    });
+  </script>
+</body>
+</html>
