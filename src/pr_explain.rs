@@ -17,8 +17,16 @@ use anyhow::{anyhow, Result};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 const FLEET_WIDE_THRESHOLD: usize = 3;
+
+/// INFRA-1647: how long a single `gh` shell-out is allowed to run before
+/// `run()` classifies it as `timeout` rather than waiting forever. `gh`
+/// itself has no built-in deadline, and a hung API call would otherwise
+/// block the CLI indefinitely.
+const GH_CALL_TIMEOUT_SECS: u64 = 20;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct CheckRow {
@@ -281,17 +289,164 @@ fn build_fleet_failing_map() -> HashMap<String, Vec<u64>> {
     map
 }
 
+/// Outcome of a single timed `gh` shell-out, used to classify why
+/// `run()` came back empty-handed (INFRA-1647 failure-class taxonomy).
+enum GhCallOutcome {
+    Ok(Value),
+    TimedOut,
+    /// gh ran and exited non-zero or produced unparseable output; stderr
+    /// (truncated) is carried for classification + the event field.
+    Failed(String),
+}
+
+/// Run `gh <args>` with a wall-clock deadline. `gh` has no native
+/// `--timeout`, so we poll `try_wait` instead of blocking on `output()`,
+/// and kill the child if it's still alive past `timeout_secs`.
+fn gh_call_with_timeout(args: &[&str], timeout_secs: u64) -> GhCallOutcome {
+    let mut child = match Command::new("gh")
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => return GhCallOutcome::Failed(format!("spawn failed: {e}")),
+    };
+
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_status)) => break,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return GhCallOutcome::TimedOut;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => return GhCallOutcome::Failed(format!("wait failed: {e}")),
+        }
+    }
+
+    let output = match child.wait_with_output() {
+        Ok(o) => o,
+        Err(e) => return GhCallOutcome::Failed(format!("collect output failed: {e}")),
+    };
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return GhCallOutcome::Failed(stderr.trim().chars().take(200).collect());
+    }
+    match serde_json::from_slice::<Value>(&output.stdout) {
+        Ok(v) => GhCallOutcome::Ok(v),
+        Err(e) => GhCallOutcome::Failed(format!("unparseable JSON: {e}")),
+    }
+}
+
+/// INFRA-1647 failure-class taxonomy: bucket a raw `gh` failure into a
+/// stable, ambient-event-friendly class so downstream consumers (waste
+/// tally, fleet-brief) can distinguish transient from permanent causes
+/// without re-parsing free-text stderr.
+fn classify_gh_failure(stderr: &str) -> &'static str {
+    let lower = stderr.to_lowercase();
+    if lower.contains("could not resolve to a pullrequest")
+        || lower.contains("no pull requests found")
+        || lower.contains("404")
+    {
+        "not_found" // permanent — bad PR number
+    } else if lower.contains("auth") || lower.contains("credential") || lower.contains("401") {
+        "auth_failed" // permanent until operator re-auths; not retry-worthy on its own
+    } else if lower.contains("rate limit") || lower.contains("secondary rate") {
+        "rate_limited" // transient — retry after backoff
+    } else if lower.contains("could not resolve host") || lower.contains("connection") {
+        "network_error" // transient
+    } else {
+        "unknown_error"
+    }
+}
+
+/// scanner-anchor: kind=pr_explain_block_run
+fn emit_run_event(pr_number: u64, report: &ExplainReport, duration_ms: u128) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "pr_explain_block_run".to_string(),
+        source: Some("chump-pr-explain-block".to_string()),
+        fields: vec![
+            ("pr".to_string(), pr_number.to_string()),
+            ("overall".to_string(), report.overall.clone()),
+            ("rows".to_string(), report.rows.len().to_string()),
+            ("duration_ms".to_string(), duration_ms.to_string()),
+        ],
+        ..Default::default()
+    });
+}
+
+/// scanner-anchor: kind=pr_explain_block_failed
+fn emit_failed_event(pr_number: u64, reason_class: &str, duration_ms: u128) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "pr_explain_block_failed".to_string(),
+        source: Some("chump-pr-explain-block".to_string()),
+        fields: vec![
+            ("pr".to_string(), pr_number.to_string()),
+            ("reason".to_string(), reason_class.to_string()),
+            ("duration_ms".to_string(), duration_ms.to_string()),
+        ],
+        ..Default::default()
+    });
+}
+
+/// scanner-anchor: kind=pr_explain_block_timeout
+fn emit_timeout_event(pr_number: u64, timeout_secs: u64) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "pr_explain_block_timeout".to_string(),
+        source: Some("chump-pr-explain-block".to_string()),
+        fields: vec![
+            ("pr".to_string(), pr_number.to_string()),
+            ("timeout_secs".to_string(), timeout_secs.to_string()),
+        ],
+        ..Default::default()
+    });
+}
+
 /// Run end-to-end with the default gh providers.
+///
+/// INFRA-1647: instrumented with ambient events on success
+/// (`pr_explain_block_run`), timeout (`pr_explain_block_timeout`), and
+/// permanent/transient failure (`pr_explain_block_failed`) — see
+/// `docs/process/PR_EXPLAIN_BLOCK_OBSERVABILITY.md`.
 pub fn run(pr_number: u64, json_out: bool) -> Result<()> {
-    let rollup_provider = gh_rollup_provider();
-    let fleet_provider = gh_fleet_failing_provider();
-    let rollup = rollup_provider(pr_number);
+    let start = Instant::now();
+    let rollup = match gh_call_with_timeout(
+        &["pr", "view", &pr_number.to_string(), "--json", "statusCheckRollup"],
+        GH_CALL_TIMEOUT_SECS,
+    ) {
+        GhCallOutcome::Ok(v) => v
+            .get("statusCheckRollup")
+            .and_then(|x| x.as_array())
+            .cloned()
+            .unwrap_or_default(),
+        GhCallOutcome::TimedOut => {
+            emit_timeout_event(pr_number, GH_CALL_TIMEOUT_SECS);
+            return Err(anyhow!(
+                "gh pr view #{pr_number} timed out after {GH_CALL_TIMEOUT_SECS}s"
+            ));
+        }
+        GhCallOutcome::Failed(stderr) => {
+            let class = classify_gh_failure(&stderr);
+            emit_failed_event(pr_number, class, start.elapsed().as_millis());
+            return Err(anyhow!("gh pr view #{pr_number} failed ({class}): {stderr}"));
+        }
+    };
+
     if rollup.is_empty() {
+        emit_failed_event(pr_number, "empty_rollup", start.elapsed().as_millis());
         return Err(anyhow!(
             "no statusCheckRollup for PR #{pr_number} — does it exist? are you authenticated?"
         ));
     }
+
+    let fleet_provider = gh_fleet_failing_provider();
     let report = build_report(pr_number, rollup, &fleet_provider);
+    emit_run_event(pr_number, &report, start.elapsed().as_millis());
     if json_out {
         println!("{}", serde_json::to_string_pretty(&report).unwrap());
     } else {
