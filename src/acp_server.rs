@@ -4093,6 +4093,50 @@ mod tests {
         assert!(a1.is_empty());
     }
 
+    /// INFRA-747 AC5: the hard cap of `MAX_SERVERS_PER_SESSION` (16) is
+    /// enforced at the ACP protocol boundary, not just inside
+    /// `SessionMcpPool::spawn_all`'s own unit tests. Requesting more than the
+    /// cap must not fail `session/new` — it degrades gracefully to no MCP
+    /// pool (matching the `Err` branch in `handle_session_new`) while still
+    /// recording every requested server on the session entry.
+    #[tokio::test]
+    async fn session_new_over_cap_mcp_servers_degrades_gracefully() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, None);
+
+        let over_cap = crate::mcp_bridge::MAX_SERVERS_PER_SESSION + 1;
+        let servers: Vec<String> = (0..over_cap)
+            .map(|i| {
+                format!(
+                    r#"{{"name":"srv-{i}","command":"/bin/does-not-exist-{i}","args":[]}}"#
+                )
+            })
+            .collect();
+        let req = format!(
+            r#"{{"jsonrpc":"2.0","id":702,"method":"session/new","params":{{"cwd":"/repo","mcpServers":[{}]}}}}"#,
+            servers.join(",")
+        );
+        server.handle_message(&req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert!(resp.error.is_none(), "session/new must still succeed");
+        let sid = resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let guard = server.sessions.lock().await;
+        let entry = guard.get(&sid).expect("session present");
+        assert_eq!(
+            entry.requested_mcp_servers.len(),
+            over_cap,
+            "every requested server is still recorded"
+        );
+        assert!(
+            entry.mcp_pool.is_none(),
+            "pool spawn must be refused when the request exceeds the hard cap"
+        );
+    }
+
     /// session/new with no `mcpServers` (most editors today) leaves the field
     /// empty, no warnings. Backward-compat with the wire format users have
     /// been sending since V1.
