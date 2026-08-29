@@ -200,8 +200,45 @@ enum LlmAttemptOutcome {
     TimedOut { elapsed_s: u64 },
 }
 
-/// Classify a tool execution failure as transient or permanent (INFRA-796).
-fn classify_failure(error_msg: &str) -> &'static str {
+/// Classify a tool execution failure as transient or permanent (INFRA-796),
+/// consulting the FAILURE_MODES.yaml catalog first (INFRA-1552) so the
+/// richer taxonomy (217 rules) drives downstream consumers like the
+/// META-051 pattern detector before falling back to the hardcoded
+/// keyword heuristic below.
+fn classify_failure(repo_root: &Path, error_msg: &str) -> &'static str {
+    let catalog_path = repo_root.join("docs/process/FAILURE_MODES.yaml");
+    let catalog = crate::failure_catalog::FailureCatalog::load(&catalog_path);
+    if let Some(m) = catalog.classify("", error_msg) {
+        emit_ambient_event(
+            repo_root,
+            "ci_failure_classified",
+            &[
+                ("rule_id", &m.id),
+                ("failure_class", &m.classification),
+                ("auto_action", &m.auto_action),
+                ("confidence", &m.confidence.to_string()),
+            ],
+        );
+        let _ = crate::failure_catalog::touch_last_matched_at(&catalog_path, &m.id);
+        return match m.classification.as_str() {
+            "flake" | "infra-broken" => "transient",
+            _ => "permanent",
+        };
+    }
+
+    let snippet: String = error_msg.chars().take(500).collect();
+    emit_ambient_event(
+        repo_root,
+        "failure_class_unknown",
+        &[("log_snippet", &snippet)],
+    );
+
+    classify_failure_fallback(error_msg)
+}
+
+/// Hardcoded keyword fallback, used only when no catalog rule matches
+/// (INFRA-1552).
+fn classify_failure_fallback(error_msg: &str) -> &'static str {
     let lc = error_msg.to_lowercase();
     if lc.contains("timed out")
         || lc.contains("timeout")
@@ -666,7 +703,7 @@ pub async fn run(repo_root: &Path) -> Result<()> {
                 if result.contains("error") || result.contains("Error") || result.contains("failed")
                 {
                     had_failure = true;
-                    failure_classes.push(classify_failure(&result));
+                    failure_classes.push(classify_failure(repo_root, &result));
                 }
             }
             let tool_elapsed_ms = tool_start.elapsed().as_millis() as u64;

@@ -46,6 +46,12 @@ struct CatalogEntry {
     examples: Vec<String>,
     #[serde(default)]
     notes: Option<String>,
+    /// Runtime-updated timestamp of this rule's most recent match
+    /// (INFRA-1552), so unused rules can be culled later. Not read at
+    /// match time; written by `touch_last_matched_at`.
+    #[serde(default)]
+    #[allow(dead_code)]
+    last_matched_at: Option<String>,
 }
 
 fn default_match_on() -> String {
@@ -255,6 +261,46 @@ fn catalog_yaml_path() -> std::path::PathBuf {
         }
     }
     candidates[1].clone()
+}
+
+// ── Runtime rule-usage tracking (INFRA-1552) ─────────────────────────────────
+
+/// Record that catalog entry `entry_id` matched just now by writing/updating
+/// its `last_matched_at` field in place. Edits the YAML as text (line-scoped
+/// to the matched entry's block) rather than round-tripping the whole file
+/// through serde, so hand-written comments elsewhere in the catalog survive.
+/// Best-effort: I/O or missing-entry failures are silently ignored by the
+/// caller (this is telemetry, not a correctness path).
+pub fn touch_last_matched_at(path: &Path, entry_id: &str) -> std::io::Result<()> {
+    let text = std::fs::read_to_string(path)?;
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let entry_marker = format!("- id: {entry_id}");
+
+    let lines: Vec<&str> = text.lines().collect();
+    let Some(start) = lines.iter().position(|l| l.trim() == entry_marker) else {
+        return Ok(());
+    };
+    let indent = " ".repeat(lines[start].len() - lines[start].trim_start().len() + 2);
+    let end = lines[start + 1..]
+        .iter()
+        .position(|l| l.trim_start().starts_with("- id:") || !l.starts_with(' '))
+        .map(|i| start + 1 + i)
+        .unwrap_or(lines.len());
+
+    let existing = lines[start..end]
+        .iter()
+        .position(|l| l.trim_start().starts_with("last_matched_at:"));
+
+    let mut out: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    match existing {
+        Some(offset) => {
+            out[start + offset] = format!("{indent}last_matched_at: \"{ts}\"");
+        }
+        None => {
+            out.insert(end, format!("{indent}last_matched_at: \"{ts}\""));
+        }
+    }
+    std::fs::write(path, out.join("\n") + "\n")
 }
 
 // ── Fallback: mirror ci_summary.rs heuristics ────────────────────────────────

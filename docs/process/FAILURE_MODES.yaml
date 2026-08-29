@@ -15,6 +15,9 @@
 #   confidence:     0.0..1.0 — how reliable this match is
 #   examples:       past incident IDs or short descriptions
 #   notes:          optional human-readable context (why this rule exists)
+#   last_matched_at: optional, runtime-written ISO-8601 timestamp of this
+#                    rule's most recent match (INFRA-1552) — used to spot
+#                    and cull rules that never fire. Do not hand-edit.
 #
 # Classification taxonomy (mirrors ci_summary.rs):
 #   lint          — clippy / rustfmt / doc warnings; auto-fix applies
