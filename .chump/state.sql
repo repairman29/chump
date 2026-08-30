@@ -15632,7 +15632,7 @@ gaps:
 - id: EFFECTIVE-512
   domain: EFFECTIVE
   title: "KEYSTONE decompose-at-file — fire the existing decompose+AC-writer AT reserve (not on-demand/at-assignment) AND route it off llama3.2:3b onto the sub floor (claude-via-sub adapter); every gap born decomposed with real testable AC so no context is lost"
-  status: open
+  status: done
   priority: P1
   effort: l
   description: |
@@ -15641,6 +15641,7 @@ gaps:
     - "The change described by \"3b onto the sub floor (claude-via-sub adapter); every gap born decomposed with real testable AC so no context is lost\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 4311
   outcome_id: CHUMPOS
 
 - id: EFFECTIVE-513
