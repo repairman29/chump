@@ -9589,8 +9589,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Edit the role documentation file for the curator‑opus‑infra‑watcher agent (.claude/agents/curator-opus-infra-watcher.md) to add a reference to the install‑auto‑deploy‑launchd.sh script (commit 3e871d9f0b2c), placing the reference in the “Lane scope” subsection (or the Cross‑references table) so that the script name appears in the documented role description.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-infra-watcher.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-infra-watcher to reference install-auto-deploy-launchd.sh (shipped in commit 3e871d9f0b2c) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'install-auto-deploy-launchd.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - Run `grep -l 'install-auto-deploy-launchd.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md` and confirm that the output includes `.claude/agents/curator-opus-infra-watcher.md`.
+    - Open `.claude/agents/curator-opus-infra-watcher.md` and verify that a line containing the literal `install-auto-deploy-launchd.sh` appears under a heading titled “Lane scope” (or within the Cross‑references table).
+    - Ensure the same line also contains the commit identifier `3e871d9f0b2c` to link the script to its source commit.
+    - Execute `bash scripts/ci/test-quartermaster-audit-loop.sh` and confirm it exits with status 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -79922,10 +79932,12 @@ gaps:
   domain: RESILIENT
   title: "RESILIENT: helsinki ships 0/10 grinding junk pillar-starved gaps — filter to real work so it becomes a live 2nd host"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - the helsinki picker filters out pillar-starvation/junk gaps and selects real work; a measured run ships >0 real gaps where it previously shipped 0/10.
+  notes: |
+    Decomposed into 9 slices: RESILIENT-432, RESILIENT-433, RESILIENT-434, RESILIENT-435, RESILIENT-436, RESILIENT-437, RESILIENT-438, RESILIENT-439, RESILIENT-440
   opened_date: '2026-08-19'
   outcome_id: FLEET-BUILD-SPEED
   evidence: |
@@ -82033,9 +82045,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add three new data structures—`GateRedState`, `DiagnosticResult`, and `GateMedicConfig`—to `crates/chump-handoff/src/contracts.rs`, deriving `serde::Serialize` and `serde::Deserialize` for each, implement `Default` for `GateMedicConfig` with concrete field values, and embed a `#[cfg(test)]` module that contains unit tests exercising JSON round‑trip serialization and verification of the default configuration.
+    
+    Target file(s):
+    - crates/chump-handoff/src/contracts.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Define `GateRedState`, `DiagnosticResult`, and `GateMedicConfig` structs with serialization support.
-    - Unit tests cover serialization and default configuration values.
+    - "The file `crates/chump-handoff/src/contracts.rs` defines a `GateRedState` struct annotated with `#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]`."
+    - "The file `crates/chump-handoff/src/contracts.rs` defines a `DiagnosticResult` struct annotated with `#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]`."
+    - "The file `crates/chump-handoff/src/contracts.rs` defines a `GateMedicConfig` struct with a `Default` implementation that returns the expected field values, and the struct is also annotated with `#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]`."
+    - "Running `cargo test --package chump-handoff` passes the `test_gate_medic_serialization` and `test_gate_medic_default` tests that serialize/deserialize a `GateMedicConfig` instance to JSON and assert that `GateMedicConfig::default()` yields the predefined defaults."
   notes: |
     [chump harvest check 'organ']
     === primitives_index match for 'organ' ===
@@ -82057,9 +82078,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a Bash function `detect_sustained_red` to `scripts/ci/test-half-impl-detector.sh` that parses the job‑status log, counts consecutive “red” entries, compares the accumulated red duration against a configurable threshold (default 5 minutes), and returns exit code 0 only when the sustained red period meets or exceeds the threshold; invoke this function from the script’s main detection flow so that the script’s overall exit status reflects a sustained‑red failure.
+    
+    Target file(s):
+    - scripts/ci/test-half-impl-detector.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Function `detect_sustained_red` correctly identifies main branch failures exceeding configured duration thresholds.
-    - Unit test verifies detection fires only after sustained red duration threshold is met.
+    - In `scripts/ci/test-half-impl-detector.sh` the function `detect_sustained_red` is defined and can be called with arguments `<log_file>` and `<duration_threshold>` and returns exit code 0 only when the red period ≥ threshold.
+    - Running `detect_sustained_red` on a log where red lasts less than the threshold exits with a non‑zero status (observable via `$?`).
+    - Running `detect_sustained_red` on a log where red lasts exactly the threshold or longer exits with status 0 (observable via `$?`).
+    - The top‑level execution of `scripts/ci/test-half-impl-detector.sh` exits with a non‑zero code only when `detect_sustained_red` triggers, confirming the script reports a sustained main‑red failure.
   depends_on: [RESILIENT-427]
   notes: |
     [chump harvest check 'organ']
@@ -82132,10 +82162,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new public async function `run_gate_medic_loop()` to `src/agent_loop/prompt_assembler.rs` that instantiates the Detector, Diagnoser, and Dispatcher, wires them together, and drives the monitoring loop until a stop condition; also add an integration test `test_gate_medic_full_workflow` in the same file that uses mock components to verify the end‑to‑end flow (red main → CSS‑drift diagnosis → fix dispatch) and prints a deterministic success message.
+    
+    Target file(s):
+    - src/agent_loop/prompt_assembler.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - GateMedic main loop connects detector, diagnoser, and dispatcher into complete operational workflow.
-    - Integration test demonstrates full workflow detecting sustained red main, diagnosing CSS drift, and dispatching fix.
-    - "`cargo fmt`, `clippy --all-targets -D warnings`, and all tests pass."
+    - "src/agent_loop/prompt_assembler.rs defines a public async function `run_gate_medic_loop() -> Result<(), Box<dyn std::error::Error>>` that compiles without warnings."
+    - src/agent_loop/prompt_assembler.rs contains an integration test `test_gate_medic_full_workflow` that feeds a mock detector a sustained red main, asserts that the mock diagnoser’s `diagnose_css_drift` method is invoked, and asserts that the mock dispatcher’s `dispatch_fix` method is called.
+    - Executing `cargo test --test gate_medic_integration` (the test module added in `prompt_assembler.rs`) exits with status 0 and the test outputs the line “Workflow completed” to stdout.
+    - Running `cargo fmt` and `cargo clippy --all-targets -D warnings` on the repository produces no formatting changes or warnings.
   depends_on: [RESILIENT-430]
   notes: |
     [chump harvest check 'organ']
@@ -82151,6 +82189,248 @@ gaps:
     
     === cross-pollination briefs mentioning 'organ' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-432
+  domain: RESILIENT
+  title: "RESILIENT: Analyze current Helsinki picker gap selection logic (RESILIENT-272 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - All source files and functions that currently select gaps for shipping are identified
+    - A brief diagram or list of these code locations is added to the project wiki
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-433
+  domain: RESILIENT
+  title: "RESILIENT: Define junk/pillar‑starvation gap criteria (RESILIENT-272 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A specification document lists at least three concrete conditions that classify a gap as junk (e.g., missing pillar ID, zero work units, placeholder tags)
+    - The criteria are reviewed and approved by the data‑quality lead
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-434
+  domain: RESILIENT
+  title: "RESILIENT: Implement junk‑gap filter function (RESILIENT-272 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A new function `filter_junk_gaps(gaps)` is added to the Helsinki picker codebase
+    - The function returns only gaps that do not match any of the defined junk criteria
+  depends_on: [RESILIENT-433]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-435
+  domain: RESILIENT
+  title: "RESILIENT: Create unit tests for junk‑gap filter (RESILIENT-272 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test suite includes at least two examples of junk gaps and two examples of real gaps
+    - All tests pass and coverage for `filter_junk_gaps` is ≥ 80%
+  depends_on: [RESILIENT-434]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-436
+  domain: RESILIENT
+  title: "RESILIENT: Integrate filter into Helsinki picker pipeline (RESILIENT-272 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The picker invokes `filter_junk_gaps` before any gap is shipped
+    - Integration tests confirm that no junk gaps are emitted after the filter runs
+  depends_on: [RESILIENT-432, RESILIENT-434]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-437
+  domain: RESILIENT
+  title: "RESILIENT: Add configuration toggle for junk‑gap filter (RESILIENT-272 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A config flag `enable_junk_filter` can be set true/false
+    - Default value is true in staging and false in local dev
+    - Toggle is respected at runtime without code redeploy
+  depends_on: [RESILIENT-436]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-438
+  domain: RESILIENT
+  title: "RESILIENT: Execute measured run and capture shipped gap count (RESILIENT-272 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A controlled run of the Helsinki picker is executed on the test dataset
+    - The run logs the total number of shipped gaps and stores the count in a monitoring metric
+  depends_on: [RESILIENT-437]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-439
+  domain: RESILIENT
+  title: "RESILIENT: Validate that shipped real gaps > 0 (RESILIENT-272 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Automated verification asserts that the shipped gap count from the measured run is greater than zero
+    - The verification fails the build if the count is 0
+  depends_on: [RESILIENT-438]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-440
+  domain: RESILIENT
+  title: "RESILIENT: Update documentation and monitoring for the new filter (RESILIENT-272 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - README and internal wiki sections are updated to describe the junk‑gap filter and its configuration
+    - Monitoring dashboards include the new metric showing shipped real gaps vs. filtered junk gaps
+  depends_on: [RESILIENT-439]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: SMOKE-001
   domain: SMOKE
