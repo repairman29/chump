@@ -2339,3 +2339,22 @@ CHUMP_VOTE_REQUEST_SIGNAL_FILE
 CHUMP_FACULTY_OUT
 # detected in: (standard input)
 CHUMP_VITALS_OUT
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_DISK_PCT
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_DROUGHT_MIN
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_DRY_RUN
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_ESCALATE
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_MAIN_HEALTH_BIN
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_MAIN_RED_LIVE
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_MAIN_RED_MIN
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_STATE_DIR
