@@ -64488,6 +64488,7 @@ gaps:
     [2026-08-30T15:16:53Z] rot-reaper: PR #4289 auto-closed (required-check-red, 55h) 2026-08-30; RESPAWN CAP 3 reached (6 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T16:02:00Z] rot-reaper: PR #4289 auto-closed (required-check-red, 56h) 2026-08-30; RESPAWN CAP 3 reached (7 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T16:04:20Z] rot-reaper: PR #4289 auto-closed (required-check-red, 56h) 2026-08-30; RESPAWN CAP 3 reached (8 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T18:04:52Z] rot-reaper: PR #4289 auto-closed (required-check-red, 58h) 2026-08-30; RESPAWN CAP 3 reached (9 prior recycles) — NOT re-queued, escalating to operator.
   opened_date: '2026-08-28'
 
 - id: INFRA-3840
@@ -64528,7 +64529,7 @@ gaps:
 - id: INFRA-3843
   domain: INFRA
   title: "reconcile 1/9 — canonical merges_24h: retire 3 divergent computations"
-  status: open
+  status: already_satisfied
   priority: P0
   effort: s
   description: |
@@ -64537,7 +64538,11 @@ gaps:
     - "The change described by \"retire 3 divergent computations\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-30'
+  closed_pr: 4312
   outcome_id: CHUMPOS
+  evidence: |
+    already-satisfied backstop (INFRA-3826): worker cycle log agent-2-cycle1930-INFRA-3843.log reports the work already shipped in PR #4312 (merged 2026-08-30); worktree had no diff to ship. Auto-closed by gap-doctor-reconcile --check-already-satisfied.
 
 - id: INFRA-3844
   domain: INFRA
@@ -69040,6 +69045,8 @@ gaps:
     [2026-08-30T15:07:00Z] rot-reaper: PR #4298 auto-closed (required-check-red, 46h) 2026-08-30; RESPAWN CAP 3 reached (5 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T16:01:52Z] rot-reaper: PR #4298 auto-closed (required-check-red, 47h) 2026-08-30; RESPAWN CAP 3 reached (6 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T16:04:12Z] rot-reaper: PR #4298 auto-closed (required-check-red, 47h) 2026-08-30; RESPAWN CAP 3 reached (7 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T18:02:10Z] rot-reaper: PR #4298 auto-closed (required-check-red, 49h) 2026-08-30; RESPAWN CAP 3 reached (8 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T18:04:36Z] rot-reaper: PR #4298 auto-closed (required-check-red, 49h) 2026-08-30; RESPAWN CAP 3 reached (9 prior recycles) — NOT re-queued, escalating to operator.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -79324,7 +79331,7 @@ gaps:
 - id: RESILIENT-262
   domain: RESILIENT
   title: "CI-failure triage + operator escalation: diagnose the red check, decide retry vs escalate, and reach Jeff's phone when a production line stops"
-  status: open
+  status: done
   priority: P1
   effort: l
   acceptance_criteria:
@@ -79339,6 +79346,7 @@ gaps:
     - "VERIFY ON THE REAL INCIDENT: replay #3510's final state (armed PR, one red required check, that check green on main, check outside the flake wrapper) and assert triage classifies it as suspected-flake, retries, and does NOT close. That is the regression test for this whole gap"
   depends_on: [RESILIENT-266, CREDIBLE-266]
   opened_date: '2026-08-19'
+  closed_date: '2026-08-09'
   closed_pr: 3544
   outcome_id: CHUMPOS
   evidence: |
@@ -79383,7 +79391,7 @@ gaps:
 - id: RESILIENT-265
   domain: RESILIENT
   title: "ask before you close: route the auto-closer through the approval system Chump already has (Discord buttons, resolver, timeout) instead of notify-then-destroy"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -79398,6 +79406,7 @@ gaps:
     - "VERIFY END TO END ON A REAL DEVICE: fixture PR, real DM, tap deny on the phone, assert the PR is NOT closed and the decision is recorded in ambient. A test that asserts request_approval() was called is exactly the mock-shaped green that let the operator-recall handler sit dead for three months"
   depends_on: [RESILIENT-266, RESILIENT-277]
   opened_date: '2026-08-19'
+  closed_date: '2026-08-09'
   closed_pr: 3544
   outcome_id: CHUMPOS
   evidence: |
@@ -81583,6 +81592,42 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match RESILIENT-422 (score 1.00) considered at reserve time — proceeded (advisory-only, no override flag used). [dup of RESILIENT-422]
+  outcome_id: CHUMPOS
+
+- id: RESILIENT-424
+  domain: RESILIENT
+  title: "organ-watchdog: heal active-but-unscheduled/stale timer-organs (silent-dark blind spot)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"heal active-but-unscheduled/stale timer-organs (silent-dark blind spot)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+
+- id: RESILIENT-425
+  domain: RESILIENT
+  title: "owned-node deploy path is dead: install-helsinki-atc --auto + organ-reconcile skip when non-root"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"install-helsinki-atc --auto + organ-reconcile skip when non-root\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+
+- id: RESILIENT-426
+  domain: RESILIENT
+  title: organ oneshots hang in activating(start) with no TimeoutStartSec, blocking timer re-arm
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"organ oneshots hang in activating(start) with no TimeoutStartSec, blocking timer re-arm\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   outcome_id: CHUMPOS
 
 - id: SMOKE-001
