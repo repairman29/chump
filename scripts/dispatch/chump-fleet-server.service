@@ -1,0 +1,40 @@
+# scripts/dispatch/chump-fleet-server.service — INFRA-2175 / INFRA-2164
+# Fleet visualization HTTP + WebSocket query server. THE keystone data organ:
+# it serves the metric-gauge API (~48 gauges, dark until something serves them)
+# and is the home for bat-phone intake.
+#
+# Endpoints (bind 127.0.0.1:7070, CHUMP_FLEET_SERVER_PORT):
+#   GET /api/dashboard-summary  -> {today_ships, ci_qa_score, active_leases}
+#   GET /api/events /api/segments /api/sessions/active /api/trace/pr/{n}
+#   WS  /api/live       GET /healthz
+# postgrest already holds :3000 on every node; 7070 is the crate default and free.
+#
+# HOST-AGNOSTIC (TREK-18): the /root/ path prefixes and User=root are
+# host-rewritten by scripts/setup/install-helsinki-atc.sh to the repo-owner
+# HOME/user, which also injects User=/HOME=/PATH=/WorkingDirectory= when absent.
+# Declared `enabled ... role=data` in scripts/ops/organ-manifest.txt AND added to
+# the SYSTEM_UNITS roster in install-helsinki-atc.sh so the unit file is actually
+# cp'd into /etc/systemd/system — RESILIENT-376: a manifest-only `enabled` line
+# whose unit is missing from the roster never installs and stays DARK
+# (merged-not-running). Reads local .chump/github_cache.db + .chump-locks/
+# ambient.jsonl + claim leases, so it needs the repo checkout, not the network.
+[Unit]
+Description=Chump fleet-server — metric-gauge API + bat-phone intake (INFRA-2175)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+Environment=CHUMP_FLEET_SERVER_PORT=7070
+Environment=RUST_LOG=info
+WorkingDirectory=/root/Projects/chump
+# Source provider + node creds (GH_TOKEN for the count_today_ships gh fallback).
+# set -a exports the bare (non-export) CLAUDE_CODE_OAUTH_TOKEN line in cj.env too.
+ExecStart=/bin/bash -c 'set -a; source /root/.chump/providers.env 2>/dev/null; source /root/.chump/cj.env 2>/dev/null; set +a; exec /root/Projects/chump/target/release/chump-fleet-server'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

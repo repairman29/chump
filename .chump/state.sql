@@ -64904,6 +64904,79 @@ gaps:
   notes: perf-probe, board cleanup
   outcome_id: CHUMPOS
 
+- id: INFRA-3860
+  domain: INFRA
+  title: BATPHONE probe delete me
+  status: closed
+  priority: P2
+  effort: l
+  description: |
+    Add a health metrics endpoint to the fleet server that reports uptime, request counts, and error rates. Should aggregate from the existing event store and expose Prometheus-compatible output.
+  acceptance_criteria:
+    - endpoint returns 200
+    - metrics include uptime
+    - prometheus format valid
+  notes: probe/test gap for BATPHONE build EFFECTIVE-513 — not real work
+
+- id: INFRA-3861
+  domain: INFRA
+  title: "INFRA: Define Prometheus metrics endpoint (INFRA-3860 slice)"
+  status: closed
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - endpoint returns 200
+    - metrics include request counts
+    - metrics include error rates
+  notes: probe/test gap for BATPHONE build EFFECTIVE-513 — not real work
+
+- id: INFRA-3862
+  domain: INFRA
+  title: "INFRA: Implement Prometheus metrics endpoint (INFRA-3860 slice)"
+  status: closed
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - prometheus format output is valid
+    - endpoint returns request counts and error rates
+  depends_on: [INFRA-3861]
+  notes: probe/test gap for BATPHONE build EFFECTIVE-513 — not real work
+
+- id: INFRA-3863
+  domain: INFRA
+  title: "INFRA: Aggregate metrics from event store (INFRA-3860 slice)"
+  status: closed
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - metrics are aggregated correctly
+    - metrics include uptime
+  depends_on: [INFRA-3862]
+  notes: probe/test gap for BATPHONE build EFFECTIVE-513 — not real work
+
+- id: INFRA-3864
+  domain: INFRA
+  title: "INFRA: Implement health metrics endpoint (INFRA-3860 slice)"
+  status: closed
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - endpoint returns 200
+    - metrics include request counts, error rates, and uptime
+  depends_on: [INFRA-3863]
+  notes: probe/test gap for BATPHONE build EFFECTIVE-513 — not real work
+
+- id: INFRA-3865
+  domain: INFRA
+  title: "INFRA: Update fleet server configuration (INFRA-3860 slice)"
+  status: closed
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - fleet server is configured to use new health metrics endpoint
+  depends_on: [INFRA-3864]
+  notes: probe/test gap for BATPHONE build EFFECTIVE-513 — not real work
+
 - id: INFRA-394
   domain: INFRA
   title: Race-abandoned as first-class dispatch outcome — DispatchOutcome enum + report category for 'sibling won the gap, I ceded gracefully' (META-025 surfaced this category mid-measurement)
