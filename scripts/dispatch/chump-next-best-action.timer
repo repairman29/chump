@@ -1,0 +1,14 @@
+# Pairs with chump-next-best-action.service. Recomputes the advisory
+# next-best-action ranking every 20 minutes so the nervous system always reads
+# a FRESH ~/.chump/next-best-action.json instead of the 8-day-stale file that
+# motivated wiring this organ. Cheap (no LLM call), so a tight cadence is fine.
+[Unit]
+Description=Recompute the Chump next-best-action advisory ranking every 20 minutes (keep the NBA output fresh — nervous-system input)
+
+[Timer]
+OnBootSec=6min
+OnUnitActiveSec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
