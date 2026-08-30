@@ -151,6 +151,34 @@ struct Outcome {
 fn run_step(s: &Step) -> Outcome {
     let started = Instant::now();
 
+    // META-208: "flake-ingest" is a pseudo-step (no subprocess spawn) — after
+    // a successful "test" step produces cargo-nextest JSON output, this arm
+    // calls chump_atomic_claim::run_flake_import in-process to upsert flaky
+    // outcomes into .chump/flake_tracker.db. argv[1] is the path to the
+    // nextest output file produced by the preceding "test" step; argv[2]
+    // (optional, test-only override) is the repo root — defaults to cwd.
+    if s.argv[0] == "flake-ingest" {
+        let input_path = std::path::Path::new(&s.argv[1]);
+        let repo_root = match s.argv.get(2) {
+            Some(rr) => std::path::PathBuf::from(rr),
+            None => std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        };
+        return match chump_atomic_claim::atomic_claim::run_flake_import(&repo_root, input_path) {
+            Ok(n) => Outcome {
+                status: Status::Pass,
+                elapsed_ms: started.elapsed().as_millis(),
+                captured: Some(format!(
+                    "[preflight] flake-ingest: {n} flaky test(s) recorded"
+                )),
+            },
+            Err(e) => Outcome {
+                status: Status::Fail,
+                elapsed_ms: started.elapsed().as_millis(),
+                captured: Some(format!("[preflight] flake-ingest failed: {e:#}")),
+            },
+        };
+    }
+
     // INFRA-2721/2722: graceful-skip when a bash gate points at a missing
     // script. Without this guard the gate hard-fails locally (because the
     // script genuinely isn't on disk) but the CI parity rule says main is
@@ -3182,6 +3210,32 @@ mod tests {
         let out = run_step(&s);
         assert_eq!(out.status, Status::Fail);
         assert!(out.captured.is_some());
+    }
+
+    // META-208: "flake-ingest" arm runs in-process (no subprocess spawn) —
+    // exercises run_step's dispatch, not just chump_atomic_claim directly.
+    #[test]
+    fn run_step_flake_ingest_imports_flaky_rows() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let input_path = dir.path().join("nextest-flaky.json");
+        std::fs::write(
+            &input_path,
+            r#"[{"name": "tests::flaky_one", "outcome": "flaky"}]"#,
+        )
+        .unwrap();
+        let s = step(
+            "flake-ingest",
+            &[
+                "flake-ingest",
+                input_path.to_str().unwrap(),
+                dir.path().to_str().unwrap(),
+            ],
+            GateKind::AlwaysFast,
+        );
+        let out = run_step(&s);
+
+        assert_eq!(out.status, Status::Pass);
+        assert!(out.captured.unwrap().contains("1 flaky"));
     }
 
     // INFRA-2422: The old skip_via_env_returns_zero test is removed because
