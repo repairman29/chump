@@ -7,8 +7,14 @@
 Description=Run the Chump merge-serializer every 5 minutes (RESILIENT-372)
 
 [Timer]
+# ROOT-CAUSE FIX (RESILIENT-413, 2026-08-30): was OnUnitActiveSec=5min, a
+# self-chaining timer that loses its anchor on daemon-reload/unit-recreate and
+# wedges at NextElapse=infinity (confirmed dark on CJ 2026-08-30, last trigger
+# 17:29 then never). OnCalendar is wall-clock and self-anchoring, so it cannot
+# silently die; Persistent=true replays a run missed while the node was down.
+# Same conversion as #4310, INFRA-3826 and chump-rot-reaper.timer.
 OnBootSec=2min
-OnUnitActiveSec=5min
+OnCalendar=*:0/5
 Persistent=true
 
 [Install]

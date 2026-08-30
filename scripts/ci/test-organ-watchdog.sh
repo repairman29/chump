@@ -786,10 +786,12 @@ AMB26="$TMP/ambient26.jsonl"; : > "$AMB26"
 CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB26" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
     CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
     CHUMP_AMBIENT_LOG="$AMB26" "$WATCHDOG" >/dev/null 2>&1
-grep -q "start chump-rot-reaper.service" "$LOG26" \
-    || fail "26: expected 'start chump-rot-reaper.service' to re-anchor; calls: $(cat "$LOG26")"
+grep -q "daemon-reload" "$LOG26" \
+    || fail "26: expected daemon-reload before re-anchor (pick up merged-but-unreloaded unit); calls: $(cat "$LOG26")"
 grep -q "restart chump-rot-reaper.timer" "$LOG26" \
     || fail "26: expected 'restart chump-rot-reaper.timer'; calls: $(cat "$LOG26")"
+grep -q "start chump-rot-reaper.service" "$LOG26" \
+    && fail "26: must NOT blocking-start the oneshot service (hang/recursion risk); calls: $(cat "$LOG26")"
 grep -q '"kind":"organ_timer_reanchored"' "$AMB26" \
     || fail "26: expected organ_timer_reanchored emitted; ambient: $(cat "$AMB26")"
 grep -q '"reason":"next_elapse_infinity"' "$AMB26" \
@@ -832,8 +834,8 @@ AMB29="$TMP/ambient29.jsonl"; : > "$AMB29"
 CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB29" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
     CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
     CHUMP_AMBIENT_LOG="$AMB29" "$WATCHDOG" --dry-run >/dev/null 2>&1
-grep -q "start chump-rot-reaper.service" "$LOG29" \
-    && fail "29: --dry-run must NOT start the service; calls: $(cat "$LOG29")"
+grep -q "daemon-reload" "$LOG29" \
+    && fail "29: --dry-run must NOT daemon-reload; calls: $(cat "$LOG29")"
 grep -Eq "restart chump-rot-reaper.timer" "$LOG29" \
     && fail "29: --dry-run must NOT restart the timer; calls: $(cat "$LOG29")"
 grep -q '"kind":"organ_timer_reanchored"' "$AMB29" \
@@ -848,7 +850,7 @@ AMB30="$TMP/ambient30.jsonl"; : > "$AMB30"
 CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB30" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
     CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
     CHUMP_AMBIENT_LOG="$AMB30" "$WATCHDOG" >/dev/null 2>&1
-grep -q "start chump-farmer.service" "$LOG30" \
+grep -Eq "(restart|start) chump-farmer" "$LOG30" \
     && fail "30: default skip-list must NOT revive chump-farmer.timer (cj-farmer supersedes it); calls: $(cat "$LOG30")"
 grep -q '"unit":"chump-farmer.timer"' "$AMB30" \
     && fail "30: must not emit a re-anchor for a skip-listed timer; ambient: $(cat "$AMB30")"
@@ -866,7 +868,7 @@ CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB31" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT=
     CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
     CHUMP_ORGAN_RECONCILE_BACKOFF_DIR="$BACKOFF_DIR31" \
     CHUMP_AMBIENT_LOG="$AMB31" "$WATCHDOG" >/dev/null 2>&1
-grep -q "start chump-rot-reaper.service" "$LOG31" \
+grep -Eq "(restart|start) chump-rot-reaper" "$LOG31" \
     && fail "31: must NOT re-anchor a timer whose service is in organ-reconcile backoff; calls: $(cat "$LOG31")"
 grep -q '"kind":"organ_timer_reanchored"' "$AMB31" \
     && fail "31: must NOT emit re-anchor for a backed-off timer; ambient: $(cat "$AMB31")"

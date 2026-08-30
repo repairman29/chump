@@ -369,9 +369,22 @@ fi
 #   (A) NextElapseUSecMonotonic=infinity AND no realtime elapse  -> unscheduled.
 #   (B) LastTriggerUSec older than 3x the timer's own interval    -> stale
 #       (catches anchor-DRIFT where next elapse is finite but absurdly far out).
-# Re-anchor = `systemctl start <service>` (re-run now + re-anchor OnUnitActiveSec
-# to a fresh activation) then `systemctl restart <timer>` (recompute NextElapse,
-# picking up any updated on-disk unit file). Emits organ_timer_reanchored.
+# Re-anchor = `systemctl daemon-reload` (once per cycle, so an on-disk unit
+# fix — e.g. #4310's OnCalendar conversion — that was merged but never reloaded
+# into the running systemd generation is picked up) then `systemctl restart
+# <timer>` (recompute NextElapse from the reloaded unit; for an OnCalendar timer
+# this yields a durable finite next, and Persistent=true replays the run missed
+# while the timer was dark). Emits organ_timer_reanchored.
+#
+# We deliberately do NOT `systemctl start <service>` here: (1) it BLOCKS on a
+# Type=oneshot service until it completes, serializing/hanging the whole watchdog
+# cycle behind a slow organ; (2) starting chump-organ-watchdog.service would
+# RECURSE into a nested watchdog run; and (3) empirically it does not durably
+# re-anchor a oneshot OnUnitActiveSec timer anyway — the timer snaps straight
+# back to infinity. daemon-reload + restart-timer avoids all three, and the
+# real durable fix for a chronically-wedging monotonic timer is converting its
+# unit to OnCalendar (the belt; see chump-rot-reaper.timer et al.), which cannot
+# anchor-drift — this section is the suspenders that catches any straggler.
 #
 # Guards: only ACTIVE, enabled timers (inactive ones are section 2's job);
 # skip-listed timers (CHUMP_ORGAN_WATCHDOG_TIMER_SKIP, default chump-farmer.timer
@@ -390,6 +403,7 @@ DEFAULT_INTERVAL_S="${CHUMP_ORGAN_WATCHDOG_DEFAULT_INTERVAL_S:-900}"
 
 if [[ -n "$ALL_TIMERS" ]]; then
     _now_epoch_2b="$(date +%s)"
+    _did_daemon_reload=0   # daemon-reload at most once per cycle, lazily
     while IFS= read -r timer; do
         [[ -z "$timer" ]] && continue
         # Only ACTIVE timers here — an inactive one was already handled by §2.
@@ -451,24 +465,25 @@ if [[ -n "$ALL_TIMERS" ]]; then
 
         echo "[organ-watchdog] UNSCHEDULED ($_reason, active but not scheduled to fire): $timer (interval=${_interval_s}s ceiling=${_ceiling}s last='${_last_trig:-none}' next_mono='${_next_mono:-?}')"
         if [[ "$DRY_RUN" == "1" ]]; then
-            echo "[organ-watchdog]   (dry-run) would start $svc + restart $timer to re-anchor"
+            echo "[organ-watchdog]   (dry-run) would daemon-reload + restart $timer to re-anchor"
             # scanner-anchor: "kind":"organ_timer_reanchored"  (RESILIENT-413;
             # dry-run tag lets a report show what WOULD be re-anchored)
             emit organ_timer_reanchored "\"unit\":\"$timer\",\"reason\":\"$_reason\",\"dry_run\":1"
             continue
         fi
-        # Re-run the service now (re-anchors OnUnitActiveSec to a fresh
-        # activation) then restart the timer so systemd recomputes NextElapse
-        # from the current unit file.
-        _ok=1
-        "$SYSTEMCTL_BIN" start "$svc" 2>&1 || _ok=0
-        "$SYSTEMCTL_BIN" restart "$timer" 2>&1 || _ok=0
-        if [[ "$_ok" == "1" ]]; then
-            echo "[organ-watchdog]   re-anchored $timer (ran $svc + restarted timer)"
+        # daemon-reload once (pick up a merged-but-unreloaded on-disk unit),
+        # then restart the timer to recompute NextElapse. No blocking/recursive
+        # `start <service>` — see the section header for why.
+        if [[ "$_did_daemon_reload" != "1" ]]; then
+            "$SYSTEMCTL_BIN" daemon-reload 2>&1 || echo "[organ-watchdog]   WARN: daemon-reload failed (continuing)" >&2
+            _did_daemon_reload=1
+        fi
+        if "$SYSTEMCTL_BIN" restart "$timer" 2>&1; then
+            echo "[organ-watchdog]   re-anchored $timer (daemon-reload + restart timer)"
             # scanner-anchor: "kind":"organ_timer_reanchored"  (RESILIENT-413;
             # fires when the watchdog re-anchors an active-but-unscheduled/stale
             # timer-organ — the silent-dark blind spot section 1/2 both miss)
-            emit organ_timer_reanchored "\"unit\":\"$timer\",\"service\":\"$svc\",\"reason\":\"$_reason\",\"last_trigger\":\"${_last_trig:-none}\",\"action\":\"start-service+restart-timer\""
+            emit organ_timer_reanchored "\"unit\":\"$timer\",\"service\":\"$svc\",\"reason\":\"$_reason\",\"last_trigger\":\"${_last_trig:-none}\",\"action\":\"daemon-reload+restart-timer\""
             healed=$((healed + 1))
         else
             echo "[organ-watchdog]   ERROR: failed to re-anchor $timer" >&2
