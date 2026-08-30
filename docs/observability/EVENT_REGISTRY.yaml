@@ -5187,6 +5187,14 @@ events:
     trigger: a gap hits the chump-local strike threshold (CHUMP_DECOMPOSE_STRIKE_THRESHOLD, default 2 whole-gap failures) and the frontier model decomposes it into xs/s sub-gaps via 'chump gap decompose --apply'
     consumers: [tier-scorecard (model×effort split), ambient glance]
     fields_required: [ts, kind, source, agent, gap_id, backend, trigger_rc]
+  - kind: decompose_provider_selected
+    status: active
+    effect_metric: self
+    emitter: scripts/dispatch/lib/decompose-provider.sh (shared decompose/enrich provider selector; used by gap-drain.sh + the worker.sh EFFECTIVE-310 reflex)
+    emitter_paths: [scripts/dispatch/lib/decompose-provider.sh]
+    trigger: gap-drain.sh or the worker.sh decompose reflex selects the decompose/enrich provider — OpenRouter deepseek-v4-pro when a decompose-size request is affordable, else a capable free tier (Google gemini-3.6-flash, then Groq gpt-oss-120b) when OpenRouter 402s on credit exhaustion
+    consumers: [ambient glance, provider-fallback audit]
+    fields_required: [ts, kind, source, detail]
   - kind: model_tier_escalated
     status: active
     effect_metric: self
