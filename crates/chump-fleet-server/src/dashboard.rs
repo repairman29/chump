@@ -71,13 +71,52 @@ pub fn repo_root() -> PathBuf {
 
 /// Count PRs merged in the last `window_hours` hours.
 ///
-/// Strategy:
+/// INFRA-3843 (parent INFRA-3841): `merges_24h` is a CANONICAL computation
+/// shared with `scripts/ops/vital-signs.sh` and `scripts/ops/faculty-collector.sh`
+/// via `scripts/ops/lib/merges-24h.sh`. Rust can't `source` a bash lib, so
+/// when `window_hours == 24` (the only window this server ever requests) and
+/// the shared script is resolvable on disk, shell out to it — it implements
+/// the identical cache-first-then-`gh` strategy below. Fall back to the
+/// in-process implementation when the script isn't found (e.g. hermetic
+/// tests whose fixture repo root doesn't contain a full checkout) or the
+/// window isn't the canonical 24h.
+///
+/// In-process strategy (also the shared script's strategy):
 ///  1. Open `.chump/github_cache.db` read-only.
 ///  2. Query `merged_at IS NOT NULL AND merged_at >= <cutoff_rfc3339>`.
 ///  3. On any error (missing DB, SQL error), fall back to `gh pr list`.
 pub fn count_today_ships(repo_root: &Path, window_hours: u32) -> u64 {
-    count_today_ships_from_cache(repo_root, window_hours)
-        .unwrap_or_else(|_| count_today_ships_from_gh(window_hours))
+    count_today_ships_from_shared_helper(repo_root, window_hours)
+        .or_else(|| count_today_ships_from_cache(repo_root, window_hours).ok())
+        .unwrap_or_else(|| count_today_ships_from_gh(window_hours))
+}
+
+/// Shell out to the canonical `scripts/ops/lib/merges-24h.sh` helper. Only
+/// applies for the canonical 24h window; the script is located via the real
+/// git checkout root (not `repo_root`, which in tests is a bare fixture
+/// dir) so it resolves correctly under `cargo test` too, while `repo_root`
+/// is still passed through as the *data* root the script should read.
+fn count_today_ships_from_shared_helper(data_root: &Path, window_hours: u32) -> Option<u64> {
+    if window_hours != 24 {
+        return None;
+    }
+    let script = repo_root().join("scripts/ops/lib/merges-24h.sh");
+    if !script.is_file() {
+        return None;
+    }
+    let out = std::process::Command::new("bash")
+        .arg(&script)
+        .arg(data_root)
+        .arg("repairman29/chump")
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .trim()
+        .parse::<u64>()
+        .ok()
 }
 
 fn count_today_ships_from_cache(repo_root: &Path, window_hours: u32) -> Result<u64> {
