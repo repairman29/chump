@@ -11850,3 +11850,152 @@ events:
       emitted once per ghost gap_id discovered during the ghost-gap audit.
     consumers: [operator, ghost-gap-audit report]
     fields_required: [ts, kind, gap_id, pr_numbers_referencing, classification]
+  # ── INFRA-2400: backfill for INFRA-2396 reserved cohort (16 emit-without-register) ─
+  - kind: daemon_auto_activated
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/daemon-activator-loop.sh (META-225)
+    emitter_paths: [scripts/coord/daemon-activator-loop.sh]
+    trigger: daemon-activator finds a newly-shipped installer/plist on main not yet loaded and successfully activates it via launchctl
+    consumers: [fleet-brief, quartermaster shelfware audit]
+    fields_required: [ts, kind, label, install_script]
+
+  - kind: daemon_activator_failed
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/daemon-activator-loop.sh (META-225)
+    emitter_paths: [scripts/coord/daemon-activator-loop.sh]
+    trigger: daemon-activator attempts to install/activate a newly-shipped daemon and the installer script exits non-zero or cannot be extracted from origin/main
+    consumers: [fleet-brief, operator visibility]
+    fields_required: [ts, kind, label, install_script, error]
+
+  - kind: daemon_silence_monitor_tick
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/daemon-silence-monitor.sh (INFRA-2352)
+    emitter_paths: [scripts/coord/daemon-silence-monitor.sh]
+    trigger: end-of-cycle heartbeat emitted every run so the daemon-silence-monitor stays visible to its own liveness check
+    consumers: [daemon-silence-monitor self-check, fleet-brief]
+    fields_required: [ts, kind, daemon, actual_count]
+
+  - kind: detector_disabled
+    status: active
+    effect_metric: self
+    emitter: crates/chump-inventory/src/inventory.rs (run_detectors_v2)
+    emitter_paths: [crates/chump-inventory/src/inventory.rs]
+    trigger: a PR-dependent inventory detector class (doc-only-feature, unreferenced-gap, long-undormant-substrate) is skipped for the current rebuild because pr_index is empty (gh auth missing)
+    consumers: [observability, chump harvest class-stats]
+    fields_required: [ts, kind, finding_class, reason]
+
+  - kind: ghost_pr_closed
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/ghost-pr-closer.sh (META-225)
+    emitter_paths: [scripts/coord/ghost-pr-closer.sh]
+    trigger: an open PR whose underlying gap is already status=done and whose mergeability is DIRTY/CONFLICTING is auto-closed
+    consumers: [fleet-brief, queue-health]
+    fields_required: [ts, kind, pr, gap_id]
+
+  - kind: handoff_contract_vote
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/handoff-loop.sh (_cast_vote)
+    emitter_paths: [scripts/coord/handoff-loop.sh]
+    trigger: the handoff reactor casts an A2A vote (+1/-1/0) on a FEEDBACK kind=proposal whose rationale mentions the typed-contract migration
+    consumers: [deliberator, a2a-consensus]
+    fields_required: [ts, kind, corr_id, vote, reason]
+
+  - kind: handoff_reactor_cooldown_skip
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/handoff-loop.sh (_cmd_react_feedback)
+    emitter_paths: [scripts/coord/handoff-loop.sh]
+    trigger: the handoff reactor skips an otherwise-eligible react-feedback candidate because its corr_id is still within the 1-hour cooldown window
+    consumers: [observability]
+    fields_required: [ts, kind, corr_id]
+
+  - kind: investigate_dispatch_failed
+    status: active
+    effect_metric: self
+    emitter: scripts/dispatch/investigate-agent.sh (INFRA-2357)
+    emitter_paths: [scripts/dispatch/investigate-agent.sh]
+    trigger: investigate-agent subprocess mode cannot dispatch — either claude -p auth is dead or an unknown --mode value was passed
+    consumers: [operator visibility]
+    fields_required: [ts, kind, topic, reason]
+
+  - kind: investigate_dispatched
+    status: active
+    effect_metric: self
+    emitter: scripts/dispatch/investigate-agent.sh (INFRA-2357)
+    emitter_paths: [scripts/dispatch/investigate-agent.sh]
+    trigger: investigate-agent successfully dispatches an investigate-and-report brief, either as a signal file (mode=signal) or a live claude -p subprocess (mode=subprocess)
+    consumers: [SessionStart pickup, observability]
+    fields_required: [ts, kind, topic, report_path, mode]
+
+  - kind: investigate_dryrun
+    status: active
+    effect_metric: self
+    emitter: scripts/dispatch/investigate-agent.sh (INFRA-2357)
+    emitter_paths: [scripts/dispatch/investigate-agent.sh]
+    trigger: investigate-agent invoked with mode=dryrun — prints the brief that would be dispatched without writing a signal file or spawning a subprocess (test path)
+    consumers: [scripts/ci/test-investigate-agent.sh]
+    fields_required: [ts, kind, topic, report_path]
+
+  - kind: investigate_pending
+    status: active
+    effect_metric: self
+    emitter: scripts/dispatch/investigate-agent.sh (INFRA-2357, signal mode)
+    emitter_paths: [scripts/dispatch/investigate-agent.sh]
+    trigger: >
+      investigate-agent writes a pending-signal JSON file under
+      .chump-locks/investigate-pending-<topic>-<ts>.json in mode=signal (the
+      default) for a future SessionStart pickup to process — the "kind"
+      field here identifies the signal-file's own record type, not a
+      standalone ambient.jsonl line.
+    consumers: [SessionStart pickup]
+    fields_required: [kind, topic, report_path, dispatched_at, brief]
+
+  - kind: main_worktree_drift_detected
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/main-worktree-drift-detector.sh (META-225)
+    emitter_paths: [scripts/coord/main-worktree-drift-detector.sh]
+    trigger: untracked docs/gaps/*.yaml count or commits-behind-origin/main count crosses its configured threshold in the main checkout
+    consumers: [shepherd triage, fleet-brief]
+    fields_required: [ts, kind, untracked_yaml, commits_behind, suggested_action]
+
+  - kind: quartermaster_heartbeat
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/quartermaster-audit-loop.sh (META-205)
+    emitter_paths: [scripts/coord/quartermaster-audit-loop.sh]
+    trigger: the quartermaster shelfware-audit daemon completes a tick (fired or not) so the orchestrator can confirm liveness
+    consumers: [orchestrator liveness audit]
+    fields_required: [ts, kind, role]
+
+  - kind: shelfware_audit_run
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/quartermaster-audit-loop.sh (META-205)
+    emitter_paths: [scripts/coord/quartermaster-audit-loop.sh]
+    trigger: the quartermaster shelfware-audit trigger condition fires (ships_since_last_audit >= 5, or >= 1800s elapsed with >= 1 ship) and a full audit pass completes
+    consumers: [quartermaster curator, observability]
+    fields_required: [ts, kind, ships_checked, shelfware_found, gaps_filed, deferred_count]
+
+  - kind: shelfware_detected
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/quartermaster-audit-loop.sh (META-205)
+    emitter_paths: [scripts/coord/quartermaster-audit-loop.sh]
+    trigger: a shipped artifact (daemon, CLI, ambient kind, scanner anchor) is found with no reference in any curator role-doc, and a follow-up EFFECTIVE gap is filed to wire it in
+    consumers: [quartermaster curator, fleet-brief]
+    fields_required: [ts, kind, gap_id, artifact, role_candidate]
+
+  - kind: wedge_class_detected
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/novel-wedge-classifier.sh (INFRA-2067)
+    emitter_paths: [scripts/coord/novel-wedge-classifier.sh]
+    trigger: a distinct pr_failed (failing_test_name, first_error_line signature) recurs >= threshold times within the configured window and has not already been rate-limited (max 5/hour)
+    consumers: [INFRA-2068 auto-wedge-file, INFRA-2069 template library, INFRA-2070 cascade-unblock, INFRA-2071 admin-merge circuit-breaker]
+    fields_required: [ts, kind, signature_hash, failing_test_name, occurrence_count, sample_pr_numbers]

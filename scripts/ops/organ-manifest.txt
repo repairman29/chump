@@ -248,6 +248,7 @@ enabled     chump-board-cycle.timer  role=brain
 #     (INFRA-3631). Node-neutral by construction (systemd unit name is fixed,
 #     not host-suffixed).
 enabled     chump-cj-worker.service  role=muscle requires=bin:chump,bin:git
+enabled     chump-cj-disk-monitor.service  role=janitor requires=bin:df
 enabled     chump-cj-sync.service  role=data requires=bin:git
 enabled     chump-postgrest.service  role=data requires=bin:postgrest
 
