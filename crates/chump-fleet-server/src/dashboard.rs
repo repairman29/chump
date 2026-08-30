@@ -344,8 +344,7 @@ fn extract_ci_qa_score(v: &serde_json::Value) -> Option<CiQaScore> {
 /// effect — to invoke it for a synthetic/tempdir data root.
 fn compute_ci_qa_score_live(data_root: &Path) -> Option<CiQaScore> {
     let checkout = repo_root();
-    let same = std::fs::canonicalize(data_root).ok()
-        == std::fs::canonicalize(&checkout).ok()
+    let same = std::fs::canonicalize(data_root).ok() == std::fs::canonicalize(&checkout).ok()
         || data_root == checkout;
     if !same {
         return None;
@@ -398,12 +397,8 @@ fn read_active_leases_from_db(repo_root: &Path) -> Option<Vec<ActiveLease>> {
     if !db_path.is_file() {
         return None;
     }
-    let conn =
-        Connection::open_with_flags(&db_path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .ok()?
-        .as_secs() as i64;
+    let conn = Connection::open_with_flags(&db_path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
     let mut stmt = conn
         .prepare(
             "SELECT gap_id, session_id, expires_at FROM leases \
@@ -501,8 +496,8 @@ pub fn build_summary(repo_root: &Path) -> DashboardSummary {
     const WINDOW_HOURS: u32 = 24;
 
     let today_ships = count_today_ships(repo_root, WINDOW_HOURS);
-    let ci_qa_score = read_ci_qa_score(repo_root, WINDOW_HOURS)
-        .or_else(|| compute_ci_qa_score_live(repo_root));
+    let ci_qa_score =
+        read_ci_qa_score(repo_root, WINDOW_HOURS).or_else(|| compute_ci_qa_score_live(repo_root));
     let active_leases = read_active_leases(repo_root);
 
     DashboardSummary {
