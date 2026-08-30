@@ -69,6 +69,9 @@ if [[ ! -f "$REPO_ROOT/scripts/ops/organ-manifest.txt" ]]; then
   done
 fi
 
+# shellcheck source=scripts/ops/lib/merges-24h.sh
+source "$SCRIPT_DIR/lib/merges-24h.sh"
+
 OUT="${CHUMP_VITALS_OUT:-$REAL_HOME/.chump/vital-signs.json}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 GH_REPO="${CHUMP_GH_REPO:-repairman29/chump}"
@@ -146,8 +149,7 @@ jnum() { local n="${1:-}"; [[ "$n" =~ ^-?[0-9]+([.][0-9]+)?$ ]] && printf '%s' "
 # ════════════════════════════════════════════════════════════════════════════
 # 1 · merge_throughput  (flow / lagging)  — merges in the last 24h
 # ════════════════════════════════════════════════════════════════════════════
-merges="$(gh pr list --repo "$GH_REPO" --state merged --limit 300 --json mergedAt \
-          --jq "[.[]|select(.mergedAt>\"$CUT_24H\")]|length" 2>/dev/null)"
+merges="$(merges_24h "$REPO_ROOT" "$GH_REPO")"
 if [[ "$merges" =~ ^[0-9]+$ ]]; then
   s="$(status_hi "$merges" "$CFG_MERGE_GREEN" "$CFG_MERGE_AMBER")"
   SIGNS+=("$(mksign merge_throughput "Merge Throughput" flow lagging \

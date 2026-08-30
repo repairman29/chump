@@ -62,6 +62,9 @@ export HOME="$REAL_HOME"
 # bins so every endpoint resolves regardless of the caller's PATH.
 export PATH="$REAL_HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
+# shellcheck source=scripts/ops/lib/merges-24h.sh
+source "$SCRIPT_DIR/lib/merges-24h.sh"
+
 OUT="${CHUMP_FACULTY_OUT:-$REAL_HOME/.chump/faculty-status.json}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 GH_REPO="${CHUMP_GH_REPO:-repairman29/chump}"
@@ -105,8 +108,7 @@ mkfac() { # key name question value unit position state organ note
 }
 
 # ── 1. BUILD — intent -> shipped work (merges/24h) ──────────────────────────
-merges="$(gh pr list --repo "$GH_REPO" --state merged --limit 200 --json mergedAt \
-          --jq '[.[]|select(.mergedAt > (now-86400|todate))]|length' 2>/dev/null)"
+merges="$(merges_24h "$REPO_ROOT" "$GH_REPO")"
 [[ "$merges" =~ ^[0-9]+$ ]] || merges=0
 # saturate at 60 merges/24h — a full owned-node factory day
 b_frac="$(sat "$merges" 60)"
