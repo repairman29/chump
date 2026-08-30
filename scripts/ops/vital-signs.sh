@@ -71,6 +71,8 @@ fi
 
 # shellcheck source=scripts/ops/lib/merges-24h.sh
 source "$SCRIPT_DIR/lib/merges-24h.sh"
+# shellcheck source=scripts/ops/lib/operator-pages-24h.sh
+source "$SCRIPT_DIR/lib/operator-pages-24h.sh"
 
 OUT="${CHUMP_VITALS_OUT:-$REAL_HOME/.chump/vital-signs.json}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
@@ -300,13 +302,14 @@ fi
 
 # ════════════════════════════════════════════════════════════════════════════
 # 7 · human_intervention  (autonomy / lagging)  — operator pages / 24h.
-#     Counts kind in {operator_page, operator_paged, pager_notified} in 24h.
+#     INFRA-3848: operator_pages_24h() in lib/operator-pages-24h.sh is the
+#     SINGLE canonical computation, shared with faculty-collector.sh (faculty
+#     communicate) — both readers now count the same kind-set:
+#     {operator_page, operator_paged, pager_notified}.
 #     A missing organ is whatever keeps paging a human.
 # ════════════════════════════════════════════════════════════════════════════
 if [[ -f "$AMBIENT_LOG" ]]; then
-  pages="$(grep -hE '"kind":"(operator_page|operator_paged|pager_notified)"' "$AMBIENT_LOG" 2>/dev/null \
-    | awk -v c="$CUT_24H" -F'"ts":"' '{split($2,a,"\""); if(a[1]>c) n++} END{print n+0}')"
-  [[ "$pages" =~ ^[0-9]+$ ]] || pages=0
+  pages="$(operator_pages_24h "$AMBIENT_LOG" "$CUT_24H")"
   s="$(status_lo "$pages" "$CFG_PAGES_GREEN" "$CFG_PAGES_AMBER")"
   SIGNS+=("$(mksign human_intervention "Human Intervention" autonomy lagging \
     "$(jnum "$pages")" "pages/24h" "$s" \
