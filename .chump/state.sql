@@ -8433,8 +8433,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a reference to scripts/coord/fleet-supervisor.sh in .claude/agents/curator-opus-target.md within its Lane scope section or Cross-references table so the curator-opus-target role card explicitly lists fleet-supervisor.sh as part of its supervised toolset.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-target.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-target to reference fleet-supervisor.sh (shipped in RESILIENT-058) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'fleet-supervisor.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - Edit .claude/agents/curator-opus-target.md to list fleet-supervisor.sh in either the Lane scope section or the Cross-references table.
+    - Running `grep -l 'fleet-supervisor.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md` outputs at least one file path containing the reference.
+    - Execute `bash scripts/ci/test-quartermaster-audit-loop.sh` and verify the script exits with status 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -8444,8 +8453,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update .claude/agents/curator-opus-target.md to reference scripts/coord/gap-supervisor.sh within the Lane scope section or the Cross-references table so that curator-opus-target role documentation explicitly documents the gap supervisor integration.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-target.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-target to reference gap-supervisor.sh (shipped in RESILIENT-058) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'gap-supervisor.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - .claude/agents/curator-opus-target.md contains a reference to gap-supervisor.sh in either the Lane scope section or the Cross-references table.
+    - Running `grep -l 'gap-supervisor.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md` returns at least one hit.
+    - Executing `bash scripts/ci/test-quartermaster-audit-loop.sh` exits with status code 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -8467,8 +8485,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update .claude/agents/curator-opus-ci-audit.md to reference scripts/ci/test-stale-main-guards.sh in the Lane scope or Cross-references section, ensuring the curator-opus-ci-audit role includes stale main branch guard auditing in its documented scope.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-ci-audit.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-ci-audit to reference test-stale-main-guards.sh (shipped in INFRA-2628) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-stale-main-guards.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - Add scripts/ci/test-stale-main-guards.sh to .claude/agents/curator-opus-ci-audit.md in either the Lane Scope or Cross-references section.
+    - Running `grep -l 'test-stale-main-guards.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md` returns at least .claude/agents/curator-opus-ci-audit.md.
+    - Execute `bash scripts/ci/test-quartermaster-audit-loop.sh` and verify it exits with status 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -81597,7 +81624,7 @@ gaps:
 - id: RESILIENT-413
   domain: RESILIENT
   title: "gap-closure-reconcile timer DEAD since 2026-08-21 (Trigger:n/a) — durable GitHub-truth close backstop down; INFRA-3808 worker-side close covers strong cases but the periodic reconciler must be revived + its closed_pr-NULL blindness fixed"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -81605,6 +81632,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   opened_date: '2026-08-26'
+  closed_pr: 4313
 
 - id: RESILIENT-414
   domain: RESILIENT
