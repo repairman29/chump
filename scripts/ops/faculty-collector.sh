@@ -36,6 +36,7 @@
 #   CHUMP_AMBIENT_LOG               ambient jsonl (default REPO_ROOT/.chump-locks/ambient.jsonl)
 #   CHUMP_GH_REPO                   owner/repo for gh (default repairman29/chump)
 #   CHUMP_ALMANAC_REPO / _BIN       almanac checkout / binary
+#   CHUMP_PR_BOOK_CALIB             pr-book calibration log (default ~/.chump/pr-book-calibration.log)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -154,7 +155,7 @@ FAC+=("$(mkfac resolve "Resolve" "merge conflicts drained without a human" \
         "consumer=${res_timer}, #4137=${res_pr}; organ only when both true.")")
 
 # ── 4. KNOW_SCORE — does the OS know how good its own calls are (Brier) ──────
-CAL_LOG="$REAL_HOME/.chump/pr-book-calibration.log"
+CAL_LOG="${CHUMP_PR_BOOK_CALIB:-$REAL_HOME/.chump/pr-book-calibration.log}"
 brier=""; ks_val=""; ks_frac=0
 if [[ -f "$CAL_LOG" ]]; then
   brier="$(tail -n1 "$CAL_LOG" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -n1)"

@@ -269,16 +269,18 @@ fi
 
 # ════════════════════════════════════════════════════════════════════════════
 # 6 · calibration_brier  (trust / meta)  — is the PR-book pricing HONEST?
-#     Brier from pr-book-calibration.log if present; else unknown (uninstrumented).
-#     Log format expected: one JSON obj/line with .predicted (0..1) and .outcome (0|1).
+#     INFRA-3845: pr-book.sh --settle is the SINGLE writer of calibration_brier —
+#     it computes Brier once and appends a trailing {kind:pr_book_calibration,
+#     brier:...} summary row to pr-book-calibration.log. Read that value BY
+#     REFERENCE (tail -n1) rather than recomputing from the per-row
+#     predicted/outcome pairs — two independent computations of the same
+#     number is exactly the drift this gap closes (see faculty-collector.sh
+#     which already reads the same trailing row the same way).
 # ════════════════════════════════════════════════════════════════════════════
 brier=""
 if [[ -s "$PR_BOOK_CALIB" ]]; then
-  brier="$(jq -rs '
-    [ .[] | select((.predicted!=null) and (.outcome!=null))
-          | ((.predicted - .outcome) * (.predicted - .outcome)) ] as $sq
-    | if ($sq|length)>0 then ($sq|add/length) else empty end' \
-    "$PR_BOOK_CALIB" 2>/dev/null)"
+  brier="$(tail -n1 "$PR_BOOK_CALIB" 2>/dev/null | \
+    jq -r 'select(.kind=="pr_book_calibration") | .brier // empty' 2>/dev/null)"
 fi
 if [[ "$brier" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
   brier_r="$(awk -v b="$brier" 'BEGIN{printf "%.4f", b}')"
