@@ -62,6 +62,16 @@
 #   CHUMP_BOARD_VITALS_DROUGHT_MIN     merge-stall threshold minutes (default 180 = 3h)
 #   CHUMP_BOARD_VITALS_WORKER_SILENT_MIN worker not-producing threshold min (default 40)
 #   CHUMP_BOARD_VITALS_MAIN_RED_MIN    sustained main-red threshold minutes (default 30)
+#   CHUMP_BOARD_VITALS_MAIN_RED_LIVE   0 disables the live per-beat invocation of
+#                                      main-health-watchdog.sh (RESILIENT-414);
+#                                      default 1. Without this, main_red_detected
+#                                      only ever lands via that script's macOS-
+#                                      launchd-only daily cron, which is dark on
+#                                      non-mac hosts — a real outage never emits.
+#   CHUMP_BOARD_VITALS_MAIN_HEALTH_BIN override path to the main-health-watchdog
+#                                      script invoked live (default
+#                                      scripts/ops/main-health-watchdog.sh;
+#                                      test hook).
 #   CHUMP_BOARD_VITALS_FLOOR_WINDOW_S  window for oauth/cost signal counts (default 7200 = 2h)
 #   CHUMP_BOARD_VITALS_OAUTH_FAIL_THR  oauth_token_refresh_failed count to page (default 3)
 #   CHUMP_BOARD_VITALS_ESCALATE_MODEL  model for the merge-stall diagnosis (default sonnet)
@@ -376,17 +386,52 @@ board_vitals_check() {
         (( worker_age_min >= silent_min )) && worker_silent=1
     fi
 
-    # ── 3 · MERGES: an UNRECOVERABLE stall (the human board's real page bar) ─
+    # ── 3a · LIVE main-red emit (RESILIENT-414) ───────────────────────────────
+    # main-health-watchdog.sh (INFRA-1656) is a macOS-launchd-only daily cron.
+    # On a systemd host (e.g. CJ) it never runs at all, so ambient's
+    # main_red_detected stream is permanently empty and _bv_main_red_span_min
+    # below always reads 0 — a real, sustained red-main outage is invisible to
+    # this watch no matter how long it lasts (observed: 44h outage read as
+    # incidents=0, never paged). This beat is ALREADY resident every cycle, so
+    # fire the watchdog's own detection logic live, right here, instead of
+    # depending on a cron that may not exist on this host. Same script, same
+    # dedup/gap-filing behavior — just invoked from a live beat, not a dead
+    # timer. Bounded + best-effort: never blocks or breaks the beat.
+    local main_health_bin
+    main_health_bin="${CHUMP_BOARD_VITALS_MAIN_HEALTH_BIN:-$(_bv_repo_root)/scripts/ops/main-health-watchdog.sh}"
+    if [[ "${CHUMP_BOARD_VITALS_MAIN_RED_LIVE:-1}" == "1" ]] && [[ -f "$main_health_bin" ]]; then
+        if command -v timeout >/dev/null 2>&1; then
+            timeout 20s bash "$main_health_bin" >/dev/null 2>&1 || true
+        else
+            bash "$main_health_bin" >/dev/null 2>&1 || true
+        fi
+    fi
+
+    # ── 3b · MAIN sustained red span (consumed by both section 3c and 4) ──────
+    local main_red_span
+    main_red_span="$(_bv_main_red_span_min)"
+    [[ "$main_red_span" =~ ^[0-9]+$ ]] || main_red_span=0
+
+    # ── 3c · MERGES: an UNRECOVERABLE stall (the human board's real page bar) ─
     # RESILIENT-411 recalibration. This is the ONLY worker-silence-related page.
     # Worker lulls SELF-HEAL (INFRA-3832 cools-down / auto-blocks wedged or
     # timed-out gaps), so a transient silence must NEVER page — an earlier
     # 40-min-silence page fired on a lull that recovered in ~1 min (operational
     # noise, not Jeff's problem). A page fires ONLY when the LINE IS DEAD: no
-    # merge to main for the full drought window (default 3h) AND nothing in
-    # flight (0 — BLOCKED+green+pending PRs are CI-lag the board-cycle beat is
-    # already nursing, NOT a stall) AND the worker is not producing. All three
-    # must hold; 3h is far past any self-heal window, so this is a genuinely
-    # unrecoverable stall — the "unrecoverable wedge" case, folded in here.
+    # merge to main for the full drought window (default 3h) AND (nothing in
+    # flight OR main is currently red) AND the worker is not producing.
+    #
+    # RESILIENT-414: "nothing in flight" used to be the ONLY escape hatch, but
+    # _bv_prs_in_flight folds board-cycle's `stalls_classified` count in — and
+    # when main is red, GitHub marks EVERY open PR BLOCKED, which the beat's
+    # LLM classifies as a "stall" (a PR it is nursing), so prs_in_flight is
+    # never 0 during a red-main outage. That let a fully-jammed queue read as
+    # "PRs in flight, not a stall" for the ENTIRE outage — the 44h case. A
+    # queue full of PRs that are BLOCKED because main itself is broken is not
+    # being nursed toward landing; nothing can land until a human fixes main.
+    # So: bypass the in-flight gate whenever main is currently red — the drought
+    # + worker-silence conditions still both have to hold, so this only fires
+    # once the line has genuinely gone dead for the full window.
     local last_merge_ep merge_age_min="" prs_in_flight
     last_merge_ep="$(git -C "$(_bv_repo_root)" log origin/main -1 --format=%ct 2>/dev/null)"
     [[ "$last_merge_ep" =~ ^[0-9]+$ ]] || last_merge_ep=0
@@ -394,7 +439,9 @@ board_vitals_check() {
     [[ "$prs_in_flight" =~ ^-?[0-9]+$ ]] || prs_in_flight=-1
     if (( last_merge_ep > 0 )); then
         merge_age_min=$(( (now - last_merge_ep) / 60 ))
-        if (( merge_age_min >= drought_min )) && (( prs_in_flight == 0 )) && (( worker_silent == 1 )); then
+        if (( merge_age_min >= drought_min )) \
+           && ( (( prs_in_flight == 0 )) || (( main_red_span >= 1 )) ) \
+           && (( worker_silent == 1 )); then
             incidents=$((incidents+1))
             # This IS the hard, possibly-novel case — enrich the page with a
             # bounded LLM diagnosis (the escalation path; skipped in DRY_RUN /
@@ -406,16 +453,18 @@ board_vitals_check() {
                     "\"merge_age_min\":\"${merge_age_min}\",\"worker_silent_min\":\"${worker_age_min}\""
                 diag="$(_bv_llm_diagnose "merge_age_min=${merge_age_min}; prs_in_flight=0; worker_silent_min=${worker_age_min}; disk_pct=${disk_pct}")"
             fi
+            local in_flight_desc="0 PRs in flight"
+            if (( prs_in_flight != 0 )) && (( main_red_span >= 1 )); then
+                in_flight_desc="${prs_in_flight} PR(s) BLOCKED behind red main (not real progress)"
+            fi
             _bv_maybe_page "merge_stall" \
-"🔴 **Merge stall — the line is dead.** No merge to main in ${merge_age_min}m (threshold ${drought_min}m), 0 PRs in flight, and the worker has produced nothing for ${worker_age_min}m. Past the self-heal window — a human needs to look.$( [[ -n "$diag" ]] && printf '\nLLM triage: %s' "$diag" ) (board-vitals.sh)"
+"🔴 **Merge stall — the line is dead.** No merge to main in ${merge_age_min}m (threshold ${drought_min}m), ${in_flight_desc}, and the worker has produced nothing for ${worker_age_min}m. Past the self-heal window — a human needs to look.$( [[ -n "$diag" ]] && printf '\nLLM triage: %s' "$diag" ) (board-vitals.sh)"
         fi
     fi
 
     # ── 4 · MAIN sustained red ───────────────────────────────────────────────
     # Sustained (default >30m), not a transient per-PR red a hotfix clears.
-    local main_red_span
-    main_red_span="$(_bv_main_red_span_min)"
-    [[ "$main_red_span" =~ ^[0-9]+$ ]] || main_red_span=0
+    # (main_red_span computed live in section 3a/3b above, RESILIENT-414.)
     if (( main_red_span >= main_red_min )); then
         incidents=$((incidents+1))
         _bv_maybe_page "main_red" \
