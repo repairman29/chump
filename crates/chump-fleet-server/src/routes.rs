@@ -6,7 +6,7 @@ use std::sync::Arc;
 use axum::{
     extract::{Path, Query, State, WebSocketUpgrade},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,7 @@ use tokio::time::{interval, Duration};
 
 use crate::dashboard;
 use crate::db::{now_ms, FleetStore};
+use crate::mission::{self, MissionRequest};
 
 // ── shared state ──────────────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ pub fn build_router(store: SharedStore, repo_root: PathBuf) -> Router {
         .route("/api/sessions/active", get(get_active_sessions))
         .route("/api/trace/pr/{n}", get(get_trace_pr))
         .route("/api/dashboard-summary", get(get_dashboard_summary))
+        .route("/api/mission", post(post_mission))
         .route("/api/live", get(ws_live))
         .route("/healthz", get(healthz))
         .with_state(state)
@@ -232,6 +234,86 @@ async fn handle_ws(mut socket: axum::extract::ws::WebSocket, store: SharedStore)
             // Client disconnected.
             tracing::debug!("ws: client disconnected");
             break;
+        }
+    }
+}
+
+/// POST /api/mission — bat-phone external mission intake (EFFECTIVE-513).
+///
+/// Fail-closed bearer auth via `CHUMP_BATPHONE_TOKEN`. On success it reserves a
+/// gap, seeds description + AC, and spawns a detached `chump gap decompose`
+/// (never awaited — it runs ~1-2 min under a free-tier LLM and must not block
+/// the response or halt the fleet). Returns 202 with the created gap id; the
+/// fleet queue picks up the slices on its own cadence.
+async fn post_mission(
+    State(s): State<AppState>,
+    headers: axum::http::HeaderMap,
+    payload: Result<Json<MissionRequest>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    // 1. Auth — fail-closed. No token configured => route refuses entirely.
+    let Some(expected) = mission::configured_token() else {
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "bat-phone disabled: CHUMP_BATPHONE_TOKEN not set"
+            })),
+        )
+            .into_response();
+    };
+    let presented = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.strip_prefix("Bearer ").unwrap_or(v).trim().to_string())
+        .unwrap_or_default();
+    if !mission::constant_time_eq(&presented, &expected) {
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "unauthorized"})),
+        )
+            .into_response();
+    }
+
+    // 2. Body.
+    let req = match payload {
+        Ok(Json(r)) => r,
+        Err(e) => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("invalid JSON body: {e}")})),
+            )
+                .into_response();
+        }
+    };
+    if req.title.trim().is_empty() {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "title is required"})),
+        )
+            .into_response();
+    }
+
+    // 3. Reserve + set + spawn decompose off the async runtime (it shells out).
+    let repo_root = s.repo_root.clone();
+    let result =
+        tokio::task::spawn_blocking(move || mission::create_mission_gap(&repo_root, req)).await;
+
+    match result {
+        Ok(Ok(outcome)) => (axum::http::StatusCode::ACCEPTED, Json(outcome)).into_response(),
+        Ok(Err(e)) => {
+            tracing::error!("POST /api/mission failed: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("POST /api/mission task join error: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response()
         }
     }
 }

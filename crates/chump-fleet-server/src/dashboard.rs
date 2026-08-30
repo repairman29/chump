@@ -6,10 +6,15 @@
 //!   Reads `.chump/github_cache.db` first (cache-first per INFRA-1081);
 //!   falls through to `gh pr list --state merged --json mergedAt` on cold cache.
 //! - `ci_qa_score` — payload of the most recent `kind=ci_qa_score` event from
-//!   `.chump-locks/ambient.jsonl` (INFRA-1872 emit) within the last 24 h.
-//!   Returns `null` when no qualifying event exists.
-//! - `active_leases` — top-10 active claim leases sorted by `expires_at` DESC,
-//!   sourced from `.chump-locks/claim-*.json`.
+//!   `.chump-locks/ambient.jsonl` (INFRA-1872 emit) within the last 24 h. When
+//!   no fresh event exists (the emitter isn't scheduled on this node), falls
+//!   back to shelling out to the canonical `scripts/ops/ci-qa-score.sh --json`,
+//!   which recomputes live AND re-emits the ambient event (self-healing).
+//!   Returns `null` only when neither source yields data.
+//! - `active_leases` — top-10 active (unexpired) claim leases sorted by
+//!   `expires_at` DESC. Primary source is the canonical gap-store sqlite
+//!   `.chump/state.db` (`leases` table); claim/lease state moved there from the
+//!   legacy `.chump-locks/claim-*.json` files, which remain a fallback.
 //! - `window_hours` — always 24 (seconds per window).
 
 use anyhow::{Context, Result};
@@ -326,11 +331,98 @@ fn extract_ci_qa_score(v: &serde_json::Value) -> Option<CiQaScore> {
     None
 }
 
+/// Fallback for when `ambient.jsonl` carries no fresh `ci_qa_score` event
+/// (i.e. the INFRA-1872 emitter isn't scheduled on this node): shell out to
+/// the canonical `scripts/ops/ci-qa-score.sh --json`. That script recomputes
+/// the score from live CI data AND re-emits the ambient event, so subsequent
+/// requests are served by the fast ambient path (self-healing). The script
+/// exits 1/2 for WARN/ALERT, so stdout is parsed regardless of exit status.
+///
+/// Only runs when the dashboard's data root IS the real git checkout: the
+/// script computes over the checkout's own ambient log and `gh` history and
+/// (re-)emits into it, so it is meaningless — and a test-polluting side
+/// effect — to invoke it for a synthetic/tempdir data root.
+fn compute_ci_qa_score_live(data_root: &Path) -> Option<CiQaScore> {
+    let checkout = repo_root();
+    let same = std::fs::canonicalize(data_root).ok() == std::fs::canonicalize(&checkout).ok()
+        || data_root == checkout;
+    if !same {
+        return None;
+    }
+    let script = checkout.join("scripts/ops/ci-qa-score.sh");
+    if !script.is_file() {
+        return None;
+    }
+    let out = std::process::Command::new("bash")
+        .arg(&script)
+        .arg("--json")
+        .output()
+        .ok()?;
+    // Do NOT gate on out.status: WARN/ALERT return non-zero by design.
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for line in stdout.lines().rev() {
+        let v: serde_json::Value = match serde_json::from_str(line.trim()) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if v.get("kind").and_then(|k| k.as_str()) != Some("ci_qa_score") {
+            continue;
+        }
+        if let Some(score) = extract_ci_qa_score(&v) {
+            return Some(score);
+        }
+    }
+    None
+}
+
 // ── active_leases ─────────────────────────────────────────────────────────────
 
-/// Parse `.chump-locks/claim-*.json` and return the top-10 leases sorted by
-/// `expires_at` descending (soonest-to-expire last; most time remaining first).
+/// Return the top-10 active (unexpired) claim leases, most-time-remaining
+/// first. Primary source is the canonical gap-store sqlite `.chump/state.db`
+/// (`leases` table) — claim/lease state moved there from the legacy
+/// `.chump-locks/claim-*.json` files (gap-store consolidation). Falls back to
+/// the legacy JSON files when the DB is absent or unreadable.
 pub fn read_active_leases(repo_root: &Path) -> Vec<ActiveLease> {
+    read_active_leases_from_db(repo_root)
+        .unwrap_or_else(|| read_active_leases_from_files(repo_root))
+}
+
+/// Read active (unexpired) leases from `.chump/state.db`. Returns `None` when
+/// the DB is absent/unreadable (so the caller falls back to the JSON files);
+/// returns `Some(vec![])` when the DB is readable but holds no active lease
+/// (authoritative empty — no active claims — do NOT resurrect stale files).
+fn read_active_leases_from_db(repo_root: &Path) -> Option<Vec<ActiveLease>> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let db_path = repo_root.join(".chump").join("state.db");
+    if !db_path.is_file() {
+        return None;
+    }
+    let conn = Connection::open_with_flags(&db_path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
+    let mut stmt = conn
+        .prepare(
+            "SELECT gap_id, session_id, expires_at FROM leases \
+             WHERE expires_at > ?1 ORDER BY expires_at DESC LIMIT 10",
+        )
+        .ok()?;
+    let rows = stmt
+        .query_map(params![now], |r| {
+            let gap: String = r.get(0)?;
+            let session: String = r.get(1)?;
+            let expires_at: i64 = r.get(2)?;
+            Ok(ActiveLease {
+                gap,
+                session,
+                expires_at: epoch_to_rfc3339(expires_at.max(0) as u64),
+            })
+        })
+        .ok()?;
+    Some(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Legacy fallback: parse `.chump-locks/claim-*.json` and return the top-10
+/// leases sorted by `expires_at` descending (most time remaining first).
+fn read_active_leases_from_files(repo_root: &Path) -> Vec<ActiveLease> {
     let lock_dir = repo_root.join(".chump-locks");
     let pattern = lock_dir.join("claim-*.json");
 
@@ -404,7 +496,8 @@ pub fn build_summary(repo_root: &Path) -> DashboardSummary {
     const WINDOW_HOURS: u32 = 24;
 
     let today_ships = count_today_ships(repo_root, WINDOW_HOURS);
-    let ci_qa_score = read_ci_qa_score(repo_root, WINDOW_HOURS);
+    let ci_qa_score =
+        read_ci_qa_score(repo_root, WINDOW_HOURS).or_else(|| compute_ci_qa_score_live(repo_root));
     let active_leases = read_active_leases(repo_root);
 
     DashboardSummary {

@@ -9416,8 +9416,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a reference to test-bootstrap-smoke.sh in the Lane scope or Cross-references section of .claude/agents/curator-opus-ci-audit.md so the role document explicitly includes the bootstrap smoke test script.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-ci-audit.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-ci-audit to reference test-bootstrap-smoke.sh (shipped in INFRA-2265) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-bootstrap-smoke.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - Add a reference to test-bootstrap-smoke.sh within .claude/agents/curator-opus-ci-audit.md in the Lane scope or Cross-references table.
+    - Running `grep -l 'test-bootstrap-smoke.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md` outputs at least one matching file.
+    - Running `bash scripts/ci/test-quartermaster-audit-loop.sh` completes with exit code 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -9444,8 +9453,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Edit .claude/agents/curator-opus-target.md to reference bypass-env-var-allowlist.txt within either the Lane scope section or the Cross-references table, documenting its role as the environment variable allowlist file shipped in CREDIBLE-085.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-target.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-target to reference bypass-env-var-allowlist.txt (shipped in CREDIBLE-085) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'bypass-env-var-allowlist.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - .claude/agents/curator-opus-target.md contains a reference to bypass-env-var-allowlist.txt in its Lane scope section or Cross-references table.
+    - Executing `grep -l 'bypass-env-var-allowlist.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md` returns at least one matching file path.
+    - Executing `bash scripts/ci/test-quartermaster-audit-loop.sh` completes successfully with exit code 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -9455,8 +9473,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a reference to `bypass-var-ceiling.txt` in the Lane scope section or Cross-references table of `.claude/agents/curator-opus-target.md` so the role doc explicitly covers the var ceiling bypass configuration.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-target.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-target to reference bypass-var-ceiling.txt (shipped in CREDIBLE-085) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'bypass-var-ceiling.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - The file `.claude/agents/curator-opus-target.md` contains the text `bypass-var-ceiling.txt`.
+    - Running `grep -l 'bypass-var-ceiling.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md` produces at least one match.
+    - Running `bash scripts/ci/test-quartermaster-audit-loop.sh` completes with an exit code of 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -9466,8 +9493,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a reference to scripts/ci/check-sccache-hit-rate.sh in the role-doc file .claude/agents/curator-opus-target.md under either the Lane scope section or the Cross-references table to document sccache performance monitoring for this role.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-target.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-target to reference check-sccache-hit-rate.sh (shipped in CREDIBLE-085) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'check-sccache-hit-rate.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - .claude/agents/curator-opus-target.md references check-sccache-hit-rate.sh in its Lane scope section or Cross-references table.
+    - Running `grep -l 'check-sccache-hit-rate.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md` returns at least one matching file.
+    - Running `bash scripts/ci/test-quartermaster-audit-loop.sh` succeeds with exit code 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -9513,8 +9549,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a reference to bypass-env-var-allowlist.txt in .claude/agents/curator-opus-target.md under either the Lane scope section or the Cross-references table, explicitly documenting the allowlist file shipped in commit 3e871d9f0b2c for environment variable bypass handling.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-target.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-target to reference bypass-env-var-allowlist.txt (shipped in commit 3e871d9f0b2c) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'bypass-env-var-allowlist.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - Update .claude/agents/curator-opus-target.md to include a reference to bypass-env-var-allowlist.txt in its Lane scope section or Cross-references table.
+    - Running `grep -l 'bypass-env-var-allowlist.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md` returns at least one matching file.
+    - Executing `bash scripts/ci/test-quartermaster-audit-loop.sh` completes successfully with exit code 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -9524,8 +9569,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update .claude/agents/curator-opus-target.md to include a reference to bypass-var-ceiling.txt in its Lane Scope or Cross-references section, documenting the bypass mechanism for the curator-opus-target role.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-target.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-target to reference bypass-var-ceiling.txt (shipped in commit 3e871d9f0b2c) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'bypass-var-ceiling.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - .claude/agents/curator-opus-target.md contains a reference to bypass-var-ceiling.txt in either its Lane scope or Cross-references section.
+    - Running grep -l 'bypass-var-ceiling.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md returns at least one matching file path.
+    - Running bash scripts/ci/test-quartermaster-audit-loop.sh exits with code 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -69316,6 +69370,8 @@ gaps:
     [2026-08-30T20:19:40Z] rot-reaper: PR #4298 auto-closed (required-check-red, 51h) 2026-08-30; RESPAWN CAP 3 reached (13 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T21:31:38Z] rot-reaper: PR #4298 auto-closed (required-check-red, 52h) 2026-08-30; RESPAWN CAP 3 reached (14 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T21:34:04Z] rot-reaper: PR #4298 auto-closed (required-check-red, 52h) 2026-08-30; RESPAWN CAP 3 reached (15 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T22:15:24Z] rot-reaper: PR #4298 auto-closed (required-check-red, 53h) 2026-08-30; RESPAWN CAP 3 reached (16 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T22:18:21Z] rot-reaper: PR #4298 auto-closed (required-check-red, 53h) 2026-08-30; RESPAWN CAP 3 reached (17 prior recycles) — NOT re-queued, escalating to operator.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -72689,7 +72745,7 @@ gaps:
 - id: MISSION-079
   domain: MISSION
   title: BATPHONE live AC test - delete me
-  status: open
+  status: closed
   priority: P2
   effort: l
   description: |
@@ -72698,89 +72754,53 @@ gaps:
     - gap created
     - gap decomposed into slices
     - fleet unaffected
-  notes: |
-    Decomposed into 3 slices: MISSION-080, MISSION-081, MISSION-082
+  notes: BATPHONE EFFECTIVE-513 live-test gap; closed by build agent
 
 - id: MISSION-080
   domain: MISSION
   title: "MISSION: Verify bat-phone intake (MISSION-079 slice)"
-  status: open
+  status: closed
   priority: P2
   effort: s
   acceptance_criteria:
     - bat-phone intake created successfully
     - decomposition end-to-end verified
-  notes: |
-    [chump harvest check 'delete']
-    === primitives_index match for 'delete' ===
-    
-    === cluster keyword match for 'delete' ===
-    
-    === extracted_primitives (per-file, line-refd) match for 'delete' ===
-    
-    === repo-description match for 'delete' ===
-    
-    === HARVEST_ROADMAP.md mention of 'delete' (deep-scan findings) ===
-    
-    === cross-pollination briefs mentioning 'delete' ===
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+  notes: BATPHONE EFFECTIVE-513 live-test gap; closed by build agent
 
 - id: MISSION-081
   domain: MISSION
   title: "MISSION: Create decomposition end-to-end test (MISSION-079 slice)"
-  status: open
+  status: closed
   priority: P1
   effort: xs
   acceptance_criteria:
     - test creates a decomposed gap with correct slices
     - test asserts gap lands sliced
   depends_on: [MISSION-080]
-  notes: |
-    [chump harvest check 'delete']
-    === primitives_index match for 'delete' ===
-    
-    === cluster keyword match for 'delete' ===
-    
-    === extracted_primitives (per-file, line-refd) match for 'delete' ===
-    
-    === repo-description match for 'delete' ===
-    
-    === HARVEST_ROADMAP.md mention of 'delete' (deep-scan findings) ===
-    
-    === cross-pollination briefs mentioning 'delete' ===
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+  notes: BATPHONE EFFECTIVE-513 live-test gap; closed by build agent
 
 - id: MISSION-082
   domain: MISSION
   title: "MISSION: Delete bat-phone live AC test (MISSION-079 slice)"
-  status: open
+  status: closed
   priority: P2
   effort: xs
   acceptance_criteria:
     - bat-phone live AC test deleted successfully
-  notes: |
-    [chump harvest check 'delete']
-    === primitives_index match for 'delete' ===
-    
-    === cluster keyword match for 'delete' ===
-    
-    === extracted_primitives (per-file, line-refd) match for 'delete' ===
-    
-    === repo-description match for 'delete' ===
-    
-    === HARVEST_ROADMAP.md mention of 'delete' (deep-scan findings) ===
-    
-    === cross-pollination briefs mentioning 'delete' ===
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+  notes: BATPHONE EFFECTIVE-513 live-test gap; closed by build agent
+
+- id: MISSION-083
+  domain: MISSION
+  title: BATPHONE response-shape proof - delete me
+  status: closed
+  priority: P3
+  effort: s
+  description: capture the 202 JSON envelope
+  acceptance_criteria:
+    - "The change described by \"BATPHONE response-shape proof - delete me\" is implemented in the relevant MISSION code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: BATPHONE EFFECTIVE-513 live-test gap; closed by build agent
 
 - id: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA-001
   domain: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA
@@ -81866,12 +81886,14 @@ gaps:
   domain: RESILIENT
   title: "No systemic-gate-red diagnose+fix organ: main sat red 2 days on css baseline drift and nothing fixed it; build a gate-medic that detects sustained main-red, diagnoses the broken required check, lands or dispatches the fix"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   acceptance_criteria:
     - "The change described by \"main sat red 2 days on css baseline drift and nothing fixed it; build a gate-medic that detects sustained main-red, diagnoses the broken required check, lands or dispatches the fix\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 5 slices: RESILIENT-427, RESILIENT-428, RESILIENT-429, RESILIENT-430, RESILIENT-431
   outcome_id: CHUMPOS
 
 - id: RESILIENT-417
@@ -81898,6 +81920,11 @@ gaps:
     - "The change described by \"armed-pr-rebaser and cascade-unblock-detector exist as Mac-launchd but inactive on CJ; wire them as CJ systemd so blocked PRs auto-update after a gate fix\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-08-30T22:30:47Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 6h) 2026-08-30; re-attempt on fresh main.
+    [2026-08-30T22:32:02Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 6h) 2026-08-30; re-attempt on fresh main.
+    [2026-08-30T22:34:29Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 6h) 2026-08-30; re-attempt on fresh main.
+    [2026-08-30T22:36:55Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 6h) 2026-08-30; RESPAWN CAP 3 reached (3 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: CHUMPOS
 
 - id: RESILIENT-419
@@ -81999,6 +82026,131 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   outcome_id: CHUMPOS
+
+- id: RESILIENT-427
+  domain: RESILIENT
+  title: "RESILIENT: Define core data types and configuration for GateMedic (RESILIENT-416 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Define `GateRedState`, `DiagnosticResult`, and `GateMedicConfig` structs with serialization support.
+    - Unit tests cover serialization and default configuration values.
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-428
+  domain: RESILIENT
+  title: "RESILIENT: Implement sustained main-red failure detector (RESILIENT-416 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Function `detect_sustained_red` correctly identifies main branch failures exceeding configured duration thresholds.
+    - Unit test verifies detection fires only after sustained red duration threshold is met.
+  depends_on: [RESILIENT-427]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-429
+  domain: RESILIENT
+  title: "RESILIENT: Build check failure diagnostic engine for CSS baseline drift and required checks (RESILIENT-416 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Diagnoser parses failed CI check logs/outputs and identifies CSS baseline drift vs general build failures.
+    - Unit tests verify diagnosis classification against sample CSS baseline failure outputs.
+  depends_on: [RESILIENT-427]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-430
+  domain: RESILIENT
+  title: "RESILIENT: Implement fix dispatch and landing organ for auto-resolvable failures (RESILIENT-416 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Dispatcher executes automated baseline updates or creates fix PRs based on diagnostic output.
+    - Tests verify dispatcher correctly triggers fix action for diagnosed baseline drift.
+  depends_on: [RESILIENT-428, RESILIENT-429]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-431
+  domain: RESILIENT
+  title: "RESILIENT: Integrate GateMedic monitoring loop with CLI/CI system (RESILIENT-416 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - GateMedic main loop connects detector, diagnoser, and dispatcher into complete operational workflow.
+    - Integration test demonstrates full workflow detecting sustained red main, diagnosing CSS drift, and dispatching fix.
+    - "`cargo fmt`, `clippy --all-targets -D warnings`, and all tests pass."
+  depends_on: [RESILIENT-430]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: SMOKE-001
   domain: SMOKE
