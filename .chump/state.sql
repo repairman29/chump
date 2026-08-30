@@ -8313,8 +8313,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a reference to `test-deliberator-tick-emits.sh` in `.claude/agents/curator-opus-ci-audit.md` within either the Lane scope section or Cross-references table so the audit role documentation tracks deliberator tick emission test coverage.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-ci-audit.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-ci-audit to reference test-deliberator-tick-emits.sh (shipped in RESILIENT-061) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-deliberator-tick-emits.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - .claude/agents/curator-opus-ci-audit.md contains a reference to scripts/ci/test-deliberator-tick-emits.sh.
+    - Executing `grep -l 'test-deliberator-tick-emits.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md` returns at least one matching file.
+    - Executing `bash scripts/ci/test-quartermaster-audit-loop.sh` exits 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -8372,8 +8381,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a reference to `scripts/ci/test-audit-shard-coverage.sh` in `.claude/agents/curator-opus-ci-audit.md` under either the Lane Scope section or the Cross-references table to document shard coverage audit testing for the curator-opus-ci-audit role.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-ci-audit.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-ci-audit to reference test-audit-shard-coverage.sh (shipped in INFRA-2565) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-audit-shard-coverage.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - Edit `.claude/agents/curator-opus-ci-audit.md` to reference `test-audit-shard-coverage.sh` in the Lane scope or Cross-references table.
+    - Running `grep -l 'test-audit-shard-coverage.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md` returns `.claude/agents/curator-opus-ci-audit.md`.
+    - Running `bash scripts/ci/test-quartermaster-audit-loop.sh` exits with code 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -8383,8 +8401,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update .claude/agents/curator-opus-target.md to reference RESILIENT-058.yaml in the Lane scope section or Cross-references table, establishing the formal link between curator-opus-target and the RESILIENT-058 specification.
+    
+    Target file(s):
+    - .claude/agents/curator-opus-target.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-058.yaml (shipped in RESILIENT-058) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-058.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+    - .claude/agents/curator-opus-target.md includes an explicit text reference to RESILIENT-058.yaml
+    - Running `grep -l 'RESILIENT-058.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md` returns at least one matching file
+    - Executing `bash scripts/ci/test-quartermaster-audit-loop.sh` exits with code 0
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -59097,7 +59124,7 @@ gaps:
   domain: INFRA
   title: "MISSION: TREK-13 —  almanac_health probe: emit measurable eyes-alive each cycle"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     [RESILIENT/s] Part of the install-a-Trek-from-0 epic (outcome MISSION-010). Mines: scripts/setup/refresh-runner-binary.sh emit() (ambient JSONL pattern); scripts/ci/event-registry-reserved.txt; almanac stats/repos subcommands. Depends on: Bring the eyes up on install: run clone+build FIRST, then index + wire chump-mcp.json + install refresh hooks (kill the silent no-op).
@@ -59106,12 +59133,7 @@ gaps:
     - The kind is added to scripts/ci/event-registry-reserved.txt as a first-class ambient event
     - "VERIFY-LIVE on CJ: after one cycle the ambient stream contains an almanac_health line with binary_present=true and indexed_files>0"
   notes: |
-    [2026-08-22T11:30:44Z] rot-reaper: PR #4110 auto-closed (CONFLICTING, 4h) 2026-08-22; re-attempt on fresh main.
-    [2026-08-22T12:01:04Z] rot-reaper: PR #4110 auto-closed (CONFLICTING, 4h) 2026-08-22; re-attempt on fresh main.
-    [2026-08-22T12:31:31Z] rot-reaper: PR #4110 auto-closed (CONFLICTING, 5h) 2026-08-22; re-attempt on fresh main.
-    [2026-08-22T13:01:50Z] rot-reaper: PR #4110 auto-closed (CONFLICTING, 5h) 2026-08-22; RESPAWN CAP 3 reached (3 prior recycles) — NOT re-queued, escalating to operator.
-    [2026-08-22T13:32:11Z] rot-reaper: PR #4110 auto-closed (CONFLICTING, 6h) 2026-08-22; RESPAWN CAP 3 reached (4 prior recycles) — NOT re-queued, escalating to operator.
-    [2026-08-22T14:02:33Z] rot-reaper: PR #4110 auto-closed (CONFLICTING, 6h) 2026-08-22; RESPAWN CAP 3 reached (5 prior recycles) — NOT re-queued, escalating to operator.
+    Decomposed into 3 slices: INFRA-3856, INFRA-3857, INFRA-3858
   opened_date: '2026-08-21'
 
 - id: INFRA-3639
@@ -64488,6 +64510,7 @@ gaps:
     [2026-08-30T15:16:53Z] rot-reaper: PR #4289 auto-closed (required-check-red, 55h) 2026-08-30; RESPAWN CAP 3 reached (6 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T16:02:00Z] rot-reaper: PR #4289 auto-closed (required-check-red, 56h) 2026-08-30; RESPAWN CAP 3 reached (7 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T16:04:20Z] rot-reaper: PR #4289 auto-closed (required-check-red, 56h) 2026-08-30; RESPAWN CAP 3 reached (8 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T18:04:52Z] rot-reaper: PR #4289 auto-closed (required-check-red, 58h) 2026-08-30; RESPAWN CAP 3 reached (9 prior recycles) — NOT re-queued, escalating to operator.
   opened_date: '2026-08-28'
 
 - id: INFRA-3840
@@ -64528,7 +64551,7 @@ gaps:
 - id: INFRA-3843
   domain: INFRA
   title: "reconcile 1/9 — canonical merges_24h: retire 3 divergent computations"
-  status: open
+  status: already_satisfied
   priority: P0
   effort: s
   description: |
@@ -64537,7 +64560,11 @@ gaps:
     - "The change described by \"retire 3 divergent computations\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-30'
+  closed_pr: 4312
   outcome_id: CHUMPOS
+  evidence: |
+    already-satisfied backstop (INFRA-3826): worker cycle log agent-2-cycle1930-INFRA-3843.log reports the work already shipped in PR #4312 (merged 2026-08-30); worktree had no diff to ship. Auto-closed by gap-doctor-reconcile --check-already-satisfied.
 
 - id: INFRA-3844
   domain: INFRA
@@ -64712,6 +64739,122 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   outcome_id: FLEET-BUILD-SPEED
+
+- id: INFRA-3856
+  domain: INFRA
+  title: "INFRA: Register almanac_health in event registry (INFRA-3638 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - scripts/ci/event-registry-reserved.txt contains the event kind almanac_health
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-3857
+  domain: INFRA
+  title: "INFRA: Emit almanac_health probe payload during liveness cycle (INFRA-3638 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/setup/refresh-runner-binary.sh gathers almanac stats including indexed_files, last_index_age_s, binary_present, and mcp_reachable
+    - scripts/setup/refresh-runner-binary.sh calls emit() with kind=almanac_health during each execution cycle
+    - grep -rln almanac_health returns non-zero results across the repository
+  depends_on: [INFRA-3856]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-3858
+  domain: INFRA
+  title: "INFRA: Verify live almanac_health emission on CJ environment (INFRA-3638 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The ambient event stream on CJ contains an almanac_health line after one liveness cycle
+    - The emitted almanac_health event line contains binary_present=true and indexed_files>0
+  depends_on: [INFRA-3857]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: INFRA-394
   domain: INFRA
@@ -69040,6 +69183,8 @@ gaps:
     [2026-08-30T15:07:00Z] rot-reaper: PR #4298 auto-closed (required-check-red, 46h) 2026-08-30; RESPAWN CAP 3 reached (5 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T16:01:52Z] rot-reaper: PR #4298 auto-closed (required-check-red, 47h) 2026-08-30; RESPAWN CAP 3 reached (6 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T16:04:12Z] rot-reaper: PR #4298 auto-closed (required-check-red, 47h) 2026-08-30; RESPAWN CAP 3 reached (7 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T18:02:10Z] rot-reaper: PR #4298 auto-closed (required-check-red, 49h) 2026-08-30; RESPAWN CAP 3 reached (8 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T18:04:36Z] rot-reaper: PR #4298 auto-closed (required-check-red, 49h) 2026-08-30; RESPAWN CAP 3 reached (9 prior recycles) — NOT re-queued, escalating to operator.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -79324,7 +79469,7 @@ gaps:
 - id: RESILIENT-262
   domain: RESILIENT
   title: "CI-failure triage + operator escalation: diagnose the red check, decide retry vs escalate, and reach Jeff's phone when a production line stops"
-  status: open
+  status: done
   priority: P1
   effort: l
   acceptance_criteria:
@@ -79339,6 +79484,7 @@ gaps:
     - "VERIFY ON THE REAL INCIDENT: replay #3510's final state (armed PR, one red required check, that check green on main, check outside the flake wrapper) and assert triage classifies it as suspected-flake, retries, and does NOT close. That is the regression test for this whole gap"
   depends_on: [RESILIENT-266, CREDIBLE-266]
   opened_date: '2026-08-19'
+  closed_date: '2026-08-09'
   closed_pr: 3544
   outcome_id: CHUMPOS
   evidence: |
@@ -79383,7 +79529,7 @@ gaps:
 - id: RESILIENT-265
   domain: RESILIENT
   title: "ask before you close: route the auto-closer through the approval system Chump already has (Discord buttons, resolver, timeout) instead of notify-then-destroy"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -79398,6 +79544,7 @@ gaps:
     - "VERIFY END TO END ON A REAL DEVICE: fixture PR, real DM, tap deny on the phone, assert the PR is NOT closed and the decision is recorded in ambient. A test that asserts request_approval() was called is exactly the mock-shaped green that let the operator-recall handler sit dead for three months"
   depends_on: [RESILIENT-266, RESILIENT-277]
   opened_date: '2026-08-19'
+  closed_date: '2026-08-09'
   closed_pr: 3544
   outcome_id: CHUMPOS
   evidence: |
@@ -81583,6 +81730,42 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match RESILIENT-422 (score 1.00) considered at reserve time — proceeded (advisory-only, no override flag used). [dup of RESILIENT-422]
+  outcome_id: CHUMPOS
+
+- id: RESILIENT-424
+  domain: RESILIENT
+  title: "organ-watchdog: heal active-but-unscheduled/stale timer-organs (silent-dark blind spot)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"heal active-but-unscheduled/stale timer-organs (silent-dark blind spot)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+
+- id: RESILIENT-425
+  domain: RESILIENT
+  title: "owned-node deploy path is dead: install-helsinki-atc --auto + organ-reconcile skip when non-root"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"install-helsinki-atc --auto + organ-reconcile skip when non-root\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+
+- id: RESILIENT-426
+  domain: RESILIENT
+  title: organ oneshots hang in activating(start) with no TimeoutStartSec, blocking timer re-arm
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"organ oneshots hang in activating(start) with no TimeoutStartSec, blocking timer re-arm\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   outcome_id: CHUMPOS
 
 - id: SMOKE-001
