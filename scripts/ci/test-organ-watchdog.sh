@@ -872,4 +872,24 @@ grep -q '"kind":"organ_timer_reanchored"' "$AMB31" \
     && fail "31: must NOT emit re-anchor for a backed-off timer; ambient: $(cat "$AMB31")"
 pass "31: defers to organ-reconcile backoff — a backed-off timer is not re-anchored (same contract as §1)"
 
+# ── 32. RESILIENT-413: an injected systemctl stub is NEVER sudo-elevated ────
+# The sudo -n self-elevation must fire ONLY for the real default `systemctl`
+# binary when running non-root on an owned node — never when the operator/CI
+# injected CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN (which would double-wrap the stub
+# and break every other test). Proven by the elevation banner being absent.
+STUB32="$TMP/systemctl-healthy32"
+cat > "$STUB32" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$STUB32"
+AMB32="$TMP/ambient32.jsonl"; : > "$AMB32"
+out32="$(CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB32" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_AMBIENT_LOG="$AMB32" "$WATCHDOG" 2>&1)"
+echo "$out32" | grep -q "elevating systemctl management calls" \
+    && fail "32: an injected systemctl stub must NOT be sudo-elevated; output: $out32"
+echo "$out32" | grep -q "healed=0" || fail "32: expected a clean healthy cycle with the stub; output: $out32"
+pass "32: an injected systemctl stub is never sudo-wrapped (self-elevation is scoped to the real default binary)"
+
 echo "ALL PASS"

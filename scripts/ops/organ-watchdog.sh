@@ -110,6 +110,26 @@ DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
 SYSTEMCTL_BIN="${CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN:-systemctl}"
+# RESILIENT-413: the tracked unit is User=root, but install-helsinki-atc.sh
+# rewrites User=root -> the run-user (jeff) on an OWNED node — so on CJ this
+# watchdog actually runs as User=jeff. reset-failed/restart/start on a
+# SYSTEM-scope unit then fails with "Access denied ... requires interactive
+# authentication", and EVERY heal in §1/§2/§2b silently no-ops (the self-heal
+# premise was dead on owned nodes — which is why the dark timers below were
+# never re-anchored). jeff has NOPASSWD sudo, so transparently elevate the
+# management binary through `sudo -n` when: we are not root, sudo is present and
+# non-interactive, and the operator hasn't injected a stub (tests set
+# CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN and must never be wrapped). Read-only calls
+# (list/show/is-active) also work under sudo, so wrapping the whole binary is
+# safe; the systemd --user path (§5b) captures the UN-elevated binary below so
+# `--user` still targets jeff's own bus, not root's.
+SYSTEMCTL_RAW="$SYSTEMCTL_BIN"
+if [[ "$SYSTEMCTL_BIN" == "systemctl" && "${EUID:-$(id -u)}" -ne 0 ]] \
+    && command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    _sctl_elevated() { command sudo -n systemctl "$@"; }
+    SYSTEMCTL_BIN="_sctl_elevated"
+    echo "[organ-watchdog] not root — elevating systemctl management calls via 'sudo -n' (owned-node User=jeff deployment, RESILIENT-413)"
+fi
 GIT_BIN="${CHUMP_ORGAN_WATCHDOG_GIT_BIN:-git}"
 DEPLOY_SCRIPT="${CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT:-$REPO_ROOT/scripts/setup/install-helsinki-atc.sh}"
 
@@ -176,8 +196,8 @@ timespan_to_secs() {  # span-string -> secs on stdout
     echo "$total"
 }
 
-if ! command -v "$SYSTEMCTL_BIN" >/dev/null 2>&1; then
-    echo "[organ-watchdog] systemctl unavailable ($SYSTEMCTL_BIN not found) — no-op (expected off the helsinki node)"
+if ! command -v "$SYSTEMCTL_RAW" >/dev/null 2>&1; then
+    echo "[organ-watchdog] systemctl unavailable ($SYSTEMCTL_RAW not found) — no-op (expected off the helsinki node)"
     exit 1
 fi
 
@@ -718,7 +738,9 @@ if [[ "${CHUMP_ORGAN_WATCHDOG_BINARY_HEAL:-0}" == "1" ]]; then
 
     # 5b. binary-refresh organ (chump-node-refresh.service, --user scope) failed
     REFRESH_UNIT="${CHUMP_BINARY_REFRESH_UNIT:-chump-node-refresh.service}"
-    USER_SYSTEMCTL_BIN="${CHUMP_ORGAN_WATCHDOG_USER_SYSTEMCTL_BIN:-$SYSTEMCTL_BIN}"
+    # Use the UN-elevated binary for --user: `sudo systemctl --user` would
+    # target root's user bus, not jeff's (RESILIENT-413).
+    USER_SYSTEMCTL_BIN="${CHUMP_ORGAN_WATCHDOG_USER_SYSTEMCTL_BIN:-$SYSTEMCTL_RAW}"
     REFRESH_UNIT_FAILED="$("$USER_SYSTEMCTL_BIN" --user list-units --all --type=service --state=failed --plain --no-legend "$REFRESH_UNIT" 2>/dev/null | awk '{print $1}')"
     if [[ -n "$REFRESH_UNIT_FAILED" ]]; then
         echo "[organ-watchdog] FAILED (binary-refresh organ, --user scope): $REFRESH_UNIT"
