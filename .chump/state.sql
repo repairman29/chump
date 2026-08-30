@@ -81662,14 +81662,18 @@ gaps:
 - id: RESILIENT-414
   domain: RESILIENT
   title: "Board blind to JAMMED queue: merge_stall counts BLOCKED PRs as in-flight and main_red had no live emitter, so a 44h red-main outage read as incidents=0 and never paged Jeff; a queue blocked behind red main must page"
-  status: open
+  status: already_satisfied
   priority: P1
   effort: m
   acceptance_criteria:
     - "The change described by \"merge_stall counts BLOCKED PRs as in-flight and main_red had no live emitter, so a 44h red-main outage read as incidents=0 and never paged Jeff; a queue blocked behind red main must page\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-30'
+  closed_pr: 4316
   outcome_id: FLEET-RADIO
+  evidence: |
+    already-satisfied backstop (INFRA-3826): worker cycle log agent-3-cycle9-RESILIENT-414.log reports the work already shipped in PR #4316 (merged 2026-08-30); worktree had no diff to ship. Auto-closed by gap-doctor-reconcile --check-already-satisfied.
 
 - id: RESILIENT-415
   domain: RESILIENT
