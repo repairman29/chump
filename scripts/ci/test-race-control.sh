@@ -173,5 +173,31 @@ else
     fail "Test 8: expected date=2026-08-21, got $DATE_IN_ROW"
 fi
 
+# ── Test 9: fleet-status.sh renders merge-mix from race-control.jsonl (INFRA-3844) ──
+# merge-mix-board.sh was retired; race-control.sh is now the sole emitter and
+# fleet-status.sh must read its metrics file (race-control.jsonl) with its
+# field names (window/self_maintenance_pct), not the old merge-mix-board.jsonl
+# shape (self_maint_pct). This fails without the fix: fleet-status.sh would
+# either find no file (old path) or KeyError on the old field name.
+# Best-effort like test-autonomous-ship-rate.sh Test 6: fleet-status.sh's main
+# body drives a tmux dashboard / arg-parsing flow unrelated to this gap, so we
+# extract just the render_merge_mix() function (awk range match on its brace
+# block) and eval it in isolation rather than running the whole script.
+FLEET_STATUS="$REPO_ROOT/scripts/dispatch/fleet-status.sh"
+if [[ -f "$FLEET_STATUS" ]]; then
+    echo '{"date":"2026-08-21","window":6,"user_value_count":1,"self_maintenance_count":2,"reconcile_waste_count":3,"user_value_pct":16.7,"self_maintenance_pct":33.3,"reconcile_waste_pct":50.0}' \
+        > "$METRICS_DIR/race-control.jsonl"
+    rm -f "$METRICS_DIR/merge-mix-board.jsonl"
+    RENDER_FN="$(awk '/^render_merge_mix\(\)/,/^}/' "$FLEET_STATUS")"
+    FLEET_OUT="$(CHUMP_METRICS_DIR="$METRICS_DIR" bash -c "$RENDER_FN"$'\n'"render_merge_mix" 2>/dev/null || true)"
+    if echo "$FLEET_OUT" | grep -q "merge-mix: user-value=17% self-maint=33% reconcile-waste=50%"; then
+        pass "Test 9: fleet-status render_merge_mix reads race-control.jsonl"
+    else
+        fail "Test 9: expected merge-mix line sourced from race-control.jsonl, got: $FLEET_OUT"
+    fi
+else
+    pass "Test 9: fleet-status.sh not found — skipping render test (optional)"
+fi
+
 echo ""
-echo "All CREDIBLE-296 race-control checks passed (8/8)."
+echo "All CREDIBLE-296 race-control checks passed (9/9)."

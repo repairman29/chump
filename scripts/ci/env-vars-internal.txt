@@ -2137,10 +2137,6 @@ CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT
 # detected in: (standard input)
 CHUMP_METRICS_DIR
 # detected in: (standard input)
-CHUMP_MMB_DATE
-# detected in: (standard input)
-CHUMP_MMB_FIXTURE
-# detected in: (standard input)
 CHUMP_PATTERN_DETECTOR_HOLD
 # detected in: (standard input)
 CHUMP_PATTERN_DETECTOR_ALERT_ONLY
