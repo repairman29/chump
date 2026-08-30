@@ -6,5 +6,6 @@
 
 pub mod dashboard;
 pub mod db;
+pub mod mission;
 pub mod routes;
 pub mod segmenter;
