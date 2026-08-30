@@ -64662,7 +64662,7 @@ gaps:
 - id: INFRA-3848
   domain: INFRA
   title: reconcile 5/9 — one operator_pages_24h column, one kind-set
-  status: open
+  status: already_satisfied
   priority: P1
   effort: s
   description: |
@@ -64671,7 +64671,11 @@ gaps:
     - "The change described by \"reconcile 5/9 — one operator_pages_24h column, one kind-set\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-30'
+  closed_pr: 4318
   outcome_id: CHUMPOS
+  evidence: |
+    already-satisfied backstop (INFRA-3826): worker cycle log agent-1-cycle1-INFRA-3848.log reports the work already shipped in PR #4318 (merged 2026-08-30); worktree had no diff to ship. Auto-closed by gap-doctor-reconcile --check-already-satisfied.
 
 - id: INFRA-3849
   domain: INFRA
@@ -69310,6 +69314,8 @@ gaps:
     [2026-08-30T19:30:00Z] rot-reaper: PR #4298 auto-closed (required-check-red, 50h) 2026-08-30; RESPAWN CAP 3 reached (11 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T20:17:08Z] rot-reaper: PR #4298 auto-closed (required-check-red, 51h) 2026-08-30; RESPAWN CAP 3 reached (12 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T20:19:40Z] rot-reaper: PR #4298 auto-closed (required-check-red, 51h) 2026-08-30; RESPAWN CAP 3 reached (13 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T21:31:38Z] rot-reaper: PR #4298 auto-closed (required-check-red, 52h) 2026-08-30; RESPAWN CAP 3 reached (14 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T21:34:04Z] rot-reaper: PR #4298 auto-closed (required-check-red, 52h) 2026-08-30; RESPAWN CAP 3 reached (15 prior recycles) — NOT re-queued, escalating to operator.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -72679,6 +72685,102 @@ gaps:
     This is the fifth instance today of the same fleet pattern: instrument built, never run (cf. pr-rescue.sh unscheduled RESILIENT-247, non-chump CI unwatched CREDIBLE-220, organs never swept EFFECTIVE-389, tracemap never pointed at its own example input EFFECTIVE-397).
   opened_date: '2026-08-19'
   outcome_id: MISSION-032
+
+- id: MISSION-079
+  domain: MISSION
+  title: BATPHONE live AC test - delete me
+  status: open
+  priority: P2
+  effort: l
+  description: |
+    Verify the bat-phone intake creates a decomposed gap end to end. Build a small self-test that posts a mission and asserts the gap lands sliced.
+  acceptance_criteria:
+    - gap created
+    - gap decomposed into slices
+    - fleet unaffected
+  notes: |
+    Decomposed into 3 slices: MISSION-080, MISSION-081, MISSION-082
+
+- id: MISSION-080
+  domain: MISSION
+  title: "MISSION: Verify bat-phone intake (MISSION-079 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - bat-phone intake created successfully
+    - decomposition end-to-end verified
+  notes: |
+    [chump harvest check 'delete']
+    === primitives_index match for 'delete' ===
+    
+    === cluster keyword match for 'delete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'delete' ===
+    
+    === repo-description match for 'delete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'delete' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'delete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: MISSION-081
+  domain: MISSION
+  title: "MISSION: Create decomposition end-to-end test (MISSION-079 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - test creates a decomposed gap with correct slices
+    - test asserts gap lands sliced
+  depends_on: [MISSION-080]
+  notes: |
+    [chump harvest check 'delete']
+    === primitives_index match for 'delete' ===
+    
+    === cluster keyword match for 'delete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'delete' ===
+    
+    === repo-description match for 'delete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'delete' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'delete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: MISSION-082
+  domain: MISSION
+  title: "MISSION: Delete bat-phone live AC test (MISSION-079 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - bat-phone live AC test deleted successfully
+  notes: |
+    [chump harvest check 'delete']
+    === primitives_index match for 'delete' ===
+    
+    === cluster keyword match for 'delete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'delete' ===
+    
+    === repo-description match for 'delete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'delete' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'delete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
 - id: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA-001
   domain: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA
