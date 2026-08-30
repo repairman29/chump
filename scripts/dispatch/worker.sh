@@ -1785,8 +1785,11 @@ Operator or sibling worker can rescue this branch via:
     # chump-local (open-model backend), record a strike; at the threshold
     # (default 2, CHUMP_DECOMPOSE_STRIKE_THRESHOLD) have the frontier model
     # decompose the gap into xs/s slices instead of retrying whole. The
-    # decompose call strips OPENAI_* so build_provider falls through to the
-    # Claude path — "frontier plans, open models execute".
+    # decompose call PINS the capable frontier model (openrouter +
+    # deepseek-v4-pro), mirroring scripts/dispatch/gap-drain.sh:38-40, so the
+    # slicing runs on a real planner. Stripping OPENAI_* was a bug: with the
+    # key defaulting to "ollama" it fell to the local default and re-selected
+    # llama3.2:3b, the same 3B model the gap already defeated (EFFECTIVE-512).
     # Sets _decomposed_this_cycle=1 so INFRA-267 doesn't ALSO burn a claude
     # whole-gap attempt on a gap we just sliced.
     _decomposed_this_cycle=0
@@ -1797,8 +1800,19 @@ Operator or sibling worker can rescue this branch via:
         chump gap strike "$GAP_ID" >/dev/null 2>&1 || _strike_rc=$?
         [[ "$_strike_rc" -eq 10 ]] || return 0
         log "EFFECTIVE-310: $GAP_ID hit strike threshold on chump-local — frontier decompose"
-        if env -u OPENAI_API_BASE -u OPENAI_MODEL -u OPENAI_API_KEY \
-            chump gap decompose "$GAP_ID" --apply >> "$cycle_log" 2>&1; then
+        # EFFECTIVE-512: pin openrouter + deepseek-v4-pro exactly as
+        # gap-drain.sh:38-40 does, scoped to THIS decompose call via a subshell
+        # so the surrounding worker loop env is untouched.
+        if ( set -a
+             [ -f "$HOME/.chump/providers.env" ] && source "$HOME/.chump/providers.env" 2>/dev/null
+             [ -f "$HOME/.chump/cj.env" ] && source "$HOME/.chump/cj.env" 2>/dev/null
+             set +a
+             if [ -n "${OPENROUTER_API_KEY:-}" ]; then
+                 export OPENAI_API_BASE="https://openrouter.ai/api/v1"
+                 export OPENAI_API_KEY="$OPENROUTER_API_KEY"
+                 export OPENAI_MODEL="${CHUMP_DRAIN_MODEL:-deepseek/deepseek-v4-pro}"
+             fi
+             chump gap decompose "$GAP_ID" --apply ) >> "$cycle_log" 2>&1; then
             _decomposed_this_cycle=1
             chump gap strike "$GAP_ID" --reset >/dev/null 2>&1 || true
             printf '{"ts":"%s","kind":"gap_auto_decomposed","source":"worker.sh","agent":"%s","gap_id":"%s","backend":"%s","trigger_rc":%d}\n' \
