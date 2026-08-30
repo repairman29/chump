@@ -1807,11 +1807,14 @@ Operator or sibling worker can rescue this branch via:
              [ -f "$HOME/.chump/providers.env" ] && source "$HOME/.chump/providers.env" 2>/dev/null
              [ -f "$HOME/.chump/cj.env" ] && source "$HOME/.chump/cj.env" 2>/dev/null
              set +a
-             if [ -n "${OPENROUTER_API_KEY:-}" ]; then
-                 export OPENAI_API_BASE="https://openrouter.ai/api/v1"
-                 export OPENAI_API_KEY="$OPENROUTER_API_KEY"
-                 export OPENAI_MODEL="${CHUMP_DRAIN_MODEL:-deepseek/deepseek-v4-pro}"
-             fi
+             # EFFECTIVE-512 + INFRA: pin the capable planner (OpenRouter
+             # deepseek-v4-pro) but fall to a capable FREE tier when OpenRouter
+             # credits are exhausted (402 on full requests). SAME selector
+             # gap-drain.sh uses, so the two decompose entry points stay
+             # consistent. Never falls to the local 3B. See
+             # lib/decompose-provider.sh.
+             source "${BASH_SOURCE[0]%/*}/lib/decompose-provider.sh"
+             pick_decompose_provider
              chump gap decompose "$GAP_ID" --apply ) >> "$cycle_log" 2>&1; then
             _decomposed_this_cycle=1
             chump gap strike "$GAP_ID" --reset >/dev/null 2>&1 || true
