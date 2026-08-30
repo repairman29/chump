@@ -247,14 +247,25 @@ async fn test_dashboard_summary_with_fixtures() {
         "today_ships should count 3 merged PRs from fixture cache"
     );
 
-    // ci_qa_score from ambient fixture.
+    // ci_qa_score from ambient fixture. INFRA-3847 (parent INFRA-3841,
+    // "reconcile 4/9"): the API field is `clean_landing_pct`, distinctly
+    // named from vital-signs.sh's `ci_run_pass_rate` sign — they measure
+    // different things (clean-PR-landing % vs raw CI-workflow-run %) and
+    // must never share a bare "pct"/"ci pass rate" name.
     let score = v["ci_qa_score"]
         .as_object()
         .expect("ci_qa_score should be an object");
     assert!(
-        (score["pct"].as_f64().unwrap() - 87.5).abs() < 0.01,
-        "pct mismatch: {:?}",
-        score["pct"]
+        score.contains_key("clean_landing_pct"),
+        "ci_qa_score must expose a distinctly-named `clean_landing_pct` field \
+         (not a bare `pct`) to avoid colliding with vital-signs.sh's \
+         ci_run_pass_rate sign: {:?}",
+        score
+    );
+    assert!(
+        (score["clean_landing_pct"].as_f64().unwrap() - 87.5).abs() < 0.01,
+        "clean_landing_pct mismatch: {:?}",
+        score["clean_landing_pct"]
     );
     assert_eq!(score["sample_size"].as_u64().unwrap(), 40);
     assert_eq!(score["status"].as_str().unwrap(), "healthy");

@@ -2313,6 +2313,12 @@ events:
     emitter: scripts/ops/ci-qa-score.sh (INFRA-1872 / parent INFRA-1861 slice g)
     trigger: daily aggregate — pct of last-N merged PRs landed clean (no --no-verify, no flake-rerun, no post-CI rebase)
     consumers: [audit-log, fleet-brief, dashboard]
+    # INFRA-3847 (parent INFRA-3841, "reconcile 4/9"): this event's `pct`
+    # field is surfaced via /api/dashboard-summary as `clean_landing_pct`
+    # (crates/chump-fleet-server/src/dashboard.rs) — a PR-clean-landing
+    # rate. It is a DIFFERENT metric from the `ci_run_pass_rate` sign in
+    # `kind: vital_signs` below (a raw CI-workflow-run pass rate). Never
+    # display either under a bare "CI pass rate" label.
 
   - kind: ci_qa_score_bypassed
     effect_metric: self
@@ -11787,6 +11793,13 @@ events:
       instead of silently going stale.
     consumers: [fleet-brief, ops-audit, operator-recall]
     fields_required: [ts, kind, signs, green, amber, red, unknown, p_full_trek, out]
+    # INFRA-3847 (parent INFRA-3841, "reconcile 4/9"): sign #3 in `signs` is
+    # keyed `ci_run_pass_rate` — the % of CI WORKFLOW RUNS that succeeded in
+    # the last 24h (`gh run list`). This is a different metric from
+    # `kind: ci_qa_score`'s `pct` (surfaced as `clean_landing_pct` in
+    # /api/dashboard-summary), which measures the % of merged PRs that
+    # landed with no bypass signal. Do not conflate the two under a bare
+    # "CI pass rate" label.
 
   # ── INFRA-1564: dev-script launchd wiring ─────────────────────────────────
   - kind: decomposition_hint_tracked

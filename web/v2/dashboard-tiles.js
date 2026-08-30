@@ -207,8 +207,11 @@ class ChumpDashboardTiles extends HTMLElement {
     const top10 = leases.slice(0, 10);
 
     const ciTone = ChumpDashboardTiles.#ciTone(ci);
+    // clean_landing_pct (INFRA-1872/INFRA-3847) — % of merged PRs with no
+    // bypass signal. Distinct from vital-signs.sh's ci_run_pass_rate (raw
+    // CI-workflow-run pass rate) — do not relabel this bare "CI pass rate".
     const ciLabel = ci
-      ? `${ci.pct.toFixed(0)}%`
+      ? `${ci.clean_landing_pct.toFixed(0)}%`
       : '—';
     const ciMeta = ci
       ? `${ci.sample_size} run${ci.sample_size === 1 ? '' : 's'} · ${ci.status}`
@@ -260,9 +263,9 @@ class ChumpDashboardTiles extends HTMLElement {
   }
 
   static #ciTone(ci) {
-    if (!ci || typeof ci.pct !== 'number') return 'gray';
-    if (ci.pct >= 80) return 'green';
-    if (ci.pct >= 50) return 'amber';
+    if (!ci || typeof ci.clean_landing_pct !== 'number') return 'gray';
+    if (ci.clean_landing_pct >= 80) return 'green';
+    if (ci.clean_landing_pct >= 50) return 'amber';
     return 'red';
   }
 

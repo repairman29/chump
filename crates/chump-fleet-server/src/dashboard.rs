@@ -29,10 +29,26 @@ pub struct DashboardSummary {
 }
 
 /// Payload surfaced from the most-recent `kind=ci_qa_score` ambient event.
+///
+/// INFRA-3847 (parent INFRA-3841, "reconcile 4/9"): this is one of TWO
+/// distinct CI pass-rate metrics in the fleet, and they must never be
+/// confused or displayed under a bare "CI pass rate" label.
+///
+/// - `clean_landing_pct` (this field) — % of the last N *merged PRs* that
+///   landed with NO bypass signal (no --no-verify, no post-CI rebase, no
+///   flake-rerun). Computed by `scripts/ops/ci-qa-score.sh` (INFRA-1872).
+/// - `ci_run_pass_rate` (`scripts/ops/vital-signs.sh` sign `ci_run_pass_rate`)
+///   — % of *CI workflow runs* (success / decided) in the last 24h. A raw
+///   green/red count of `gh run list`, unrelated to bypass hygiene.
+///
+/// The two answer different questions ("did PRs land clean?" vs "did CI
+/// runs go green?") and can diverge sharply — do not average or conflate them.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CiQaScore {
-    /// Pass-rate as a percentage (0.0–100.0).
-    pub pct: f64,
+    /// % of merged PRs in the sample window that landed with no bypass
+    /// signal. NOT the same metric as vital-signs.sh's `ci_run_pass_rate`.
+    #[serde(rename = "clean_landing_pct", alias = "pct")]
+    pub clean_landing_pct: f64,
     /// Number of CI runs included in the score.
     pub sample_size: u64,
     /// Human-readable status label (e.g. "healthy", "degraded").
@@ -317,7 +333,7 @@ fn extract_ci_qa_score(v: &serde_json::Value) -> Option<CiQaScore> {
 
         if let (Some(pct), Some(sample_size), Some(status)) = (pct, sample_size, status) {
             return Some(CiQaScore {
-                pct,
+                clean_landing_pct: pct,
                 sample_size,
                 status,
             });
