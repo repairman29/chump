@@ -69316,6 +69316,7 @@ gaps:
     [2026-08-30T20:19:40Z] rot-reaper: PR #4298 auto-closed (required-check-red, 51h) 2026-08-30; RESPAWN CAP 3 reached (13 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T21:31:38Z] rot-reaper: PR #4298 auto-closed (required-check-red, 52h) 2026-08-30; RESPAWN CAP 3 reached (14 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T21:34:04Z] rot-reaper: PR #4298 auto-closed (required-check-red, 52h) 2026-08-30; RESPAWN CAP 3 reached (15 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T22:15:24Z] rot-reaper: PR #4298 auto-closed (required-check-red, 53h) 2026-08-30; RESPAWN CAP 3 reached (16 prior recycles) — NOT re-queued, escalating to operator.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -72689,7 +72690,7 @@ gaps:
 - id: MISSION-079
   domain: MISSION
   title: BATPHONE live AC test - delete me
-  status: open
+  status: closed
   priority: P2
   effort: l
   description: |
@@ -72698,89 +72699,53 @@ gaps:
     - gap created
     - gap decomposed into slices
     - fleet unaffected
-  notes: |
-    Decomposed into 3 slices: MISSION-080, MISSION-081, MISSION-082
+  notes: BATPHONE EFFECTIVE-513 live-test gap; closed by build agent
 
 - id: MISSION-080
   domain: MISSION
   title: "MISSION: Verify bat-phone intake (MISSION-079 slice)"
-  status: open
+  status: closed
   priority: P2
   effort: s
   acceptance_criteria:
     - bat-phone intake created successfully
     - decomposition end-to-end verified
-  notes: |
-    [chump harvest check 'delete']
-    === primitives_index match for 'delete' ===
-    
-    === cluster keyword match for 'delete' ===
-    
-    === extracted_primitives (per-file, line-refd) match for 'delete' ===
-    
-    === repo-description match for 'delete' ===
-    
-    === HARVEST_ROADMAP.md mention of 'delete' (deep-scan findings) ===
-    
-    === cross-pollination briefs mentioning 'delete' ===
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+  notes: BATPHONE EFFECTIVE-513 live-test gap; closed by build agent
 
 - id: MISSION-081
   domain: MISSION
   title: "MISSION: Create decomposition end-to-end test (MISSION-079 slice)"
-  status: open
+  status: closed
   priority: P1
   effort: xs
   acceptance_criteria:
     - test creates a decomposed gap with correct slices
     - test asserts gap lands sliced
   depends_on: [MISSION-080]
-  notes: |
-    [chump harvest check 'delete']
-    === primitives_index match for 'delete' ===
-    
-    === cluster keyword match for 'delete' ===
-    
-    === extracted_primitives (per-file, line-refd) match for 'delete' ===
-    
-    === repo-description match for 'delete' ===
-    
-    === HARVEST_ROADMAP.md mention of 'delete' (deep-scan findings) ===
-    
-    === cross-pollination briefs mentioning 'delete' ===
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+  notes: BATPHONE EFFECTIVE-513 live-test gap; closed by build agent
 
 - id: MISSION-082
   domain: MISSION
   title: "MISSION: Delete bat-phone live AC test (MISSION-079 slice)"
-  status: open
+  status: closed
   priority: P2
   effort: xs
   acceptance_criteria:
     - bat-phone live AC test deleted successfully
-  notes: |
-    [chump harvest check 'delete']
-    === primitives_index match for 'delete' ===
-    
-    === cluster keyword match for 'delete' ===
-    
-    === extracted_primitives (per-file, line-refd) match for 'delete' ===
-    
-    === repo-description match for 'delete' ===
-    
-    === HARVEST_ROADMAP.md mention of 'delete' (deep-scan findings) ===
-    
-    === cross-pollination briefs mentioning 'delete' ===
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
-      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+  notes: BATPHONE EFFECTIVE-513 live-test gap; closed by build agent
+
+- id: MISSION-083
+  domain: MISSION
+  title: BATPHONE response-shape proof - delete me
+  status: closed
+  priority: P3
+  effort: s
+  description: capture the 202 JSON envelope
+  acceptance_criteria:
+    - "The change described by \"BATPHONE response-shape proof - delete me\" is implemented in the relevant MISSION code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: BATPHONE EFFECTIVE-513 live-test gap; closed by build agent
 
 - id: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA-001
   domain: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA
