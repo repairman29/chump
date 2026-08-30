@@ -542,18 +542,19 @@ render_ship_rate() {
 render_merge_mix() {
   # CREDIBLE-296: Race Control merge-mix board — user-value% vs self-maint%
   # vs reconcile-waste%. Read last row from metrics file if available (avoids
-  # API call in hot render path).
-  local metrics_file="${CHUMP_METRICS_DIR:-$HOME/.chump/metrics}/merge-mix-board.jsonl"
+  # API call in hot render path). race-control.sh (scripts/coord/) is the
+  # canonical emitter — merge-mix-board.sh was retired (INFRA-3844).
+  local metrics_file="${CHUMP_METRICS_DIR:-$HOME/.chump/metrics}/race-control.jsonl"
   if [[ -f "$metrics_file" ]]; then
     local last_row; last_row="$(tail -1 "$metrics_file")"
     local uv sm rw date
     uv="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'{d[\"user_value_pct\"]:.0f}%')" 2>/dev/null || echo "?")"
-    sm="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'{d[\"self_maint_pct\"]:.0f}%')" 2>/dev/null || echo "?")"
+    sm="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'{d[\"self_maintenance_pct\"]:.0f}%')" 2>/dev/null || echo "?")"
     rw="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'{d[\"reconcile_waste_pct\"]:.0f}%')" 2>/dev/null || echo "?")"
     date="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['date'])" 2>/dev/null || echo "?")"
     echo "merge-mix: user-value=${uv} self-maint=${sm} reconcile-waste=${rw} (as of ${date})"
   else
-    echo "merge-mix: (no data — run: bash scripts/dispatch/merge-mix-board.sh)"
+    echo "merge-mix: (no data — run: bash scripts/coord/race-control.sh)"
   fi
 }
 

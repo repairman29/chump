@@ -173,5 +173,18 @@ else
     fail "Test 8: expected date=2026-08-21, got $DATE_IN_ROW"
 fi
 
+# ── Test 9: merge-mix-board is retired, race-control is canonical (INFRA-3844) ──
+[[ ! -f "$REPO_ROOT/scripts/dispatch/merge-mix-board.sh" ]] \
+    || fail "Test 9: scripts/dispatch/merge-mix-board.sh should have been retired"
+[[ ! -f "$REPO_ROOT/scripts/ci/test-merge-mix-board.sh" ]] \
+    || fail "Test 9: scripts/ci/test-merge-mix-board.sh should have been retired"
+grep -q "merge_mix_waste_threshold_breach" "$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml" \
+    && fail "Test 9: merge_mix_waste_threshold_breach must not be registered — race_control_waste_alarm is canonical"
+grep -q "race-control.jsonl" "$REPO_ROOT/scripts/dispatch/fleet-status.sh" \
+    || fail "Test 9: fleet-status.sh should read race-control.jsonl, not merge-mix-board.jsonl"
+grep -q "self_maintenance_pct" "$REPO_ROOT/scripts/dispatch/fleet-status.sh" \
+    || fail "Test 9: fleet-status.sh should use the unified self_maintenance_pct field name"
+pass "Test 9: merge-mix-board retired, race-control is the sole canonical emitter"
+
 echo ""
-echo "All CREDIBLE-296 race-control checks passed (8/8)."
+echo "All CREDIBLE-296 race-control checks passed (9/9)."
