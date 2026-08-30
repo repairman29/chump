@@ -892,3 +892,6 @@ real_fresh  # reason: RESILIENT-352 — same record type as up_to_date above; wr
 ALERT  # reason: INFRA-1889 legacy envelope kind (event=ALERT, kind=<sub-kind> via --field override); pre-dates the lowercase-slug convention. Registered here so scripts/dev/ambient-emit.sh's kind-schema gate doesn't quarantine the envelope itself; the sub-kind is separately registered under "alert".
 INTENT  # reason: INFRA-1889 legacy envelope kind (path-overlap declaration, docs/ambient-schema.json enum); pre-dates the lowercase-slug convention. Registered here so scripts/dev/ambient-emit.sh's kind-schema gate doesn't quarantine it.
 parked      # reason: RESILIENT-352 — same record type as up_to_date above; written by scripts/dev/almanac-refresh-guard.py to its own --log file.
+
+# ── INFRA-2395: ghost-gap audit — one-shot manual emission ─────────────────
+ghost_gap_audit_finding  # reason: INFRA-2395 — emitted once via a manual audit pass (105 events, one per ghost gap_id found), not by a persistent script/emitter with a grep-scannable "kind":"X" literal in tracked source. Registered in EVENT_REGISTRY.yaml for consumer documentation; reserved here so the coverage gate's register-without-emit check doesn't flag it as an orphan.
