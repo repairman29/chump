@@ -209,7 +209,10 @@ pub fn create_mission_gap(repo_root: &Path, req: MissionRequest) -> anyhow::Resu
     }
     let stdout = String::from_utf8_lossy(&reserve.stdout);
     let gap_id = parse_gap_id(&stdout).ok_or_else(|| {
-        anyhow::anyhow!("could not parse gap id from reserve output: {}", stdout.trim())
+        anyhow::anyhow!(
+            "could not parse gap id from reserve output: {}",
+            stdout.trim()
+        )
     })?;
 
     // 2. Set description + seed AC. Best-effort: the gap already exists, so a
@@ -268,7 +271,9 @@ pub fn create_mission_gap(repo_root: &Path, req: MissionRequest) -> anyhow::Resu
         priority,
         status: "reserved".into(),
         decompose,
-        detail: "gap reserved; decompose-at-file spawned in background; fleet queue picks up the slices".into(),
+        detail:
+            "gap reserved; decompose-at-file spawned in background; fleet queue picks up the slices"
+                .into(),
     })
 }
 
