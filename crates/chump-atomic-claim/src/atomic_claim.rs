@@ -5464,6 +5464,119 @@ fn parse_iso8601_simple(ts: &str) -> Result<u64> {
     parse_iso8601(ts)
 }
 
+/// META-208: cargo-nextest flake-import ingestion path. Reads a JSON file
+/// (one array of `{"name": <test>, "outcome": "passed"|"failed"|"flaky"}`
+/// objects — the shape `chump preflight`'s `"flake-ingest"` step and
+/// `cargo run --bin chump-atomic-claim -- flake-import` both consume) and
+/// upserts one row per flaky outcome into `.chump/flake_tracker.db`.
+/// Non-flaky outcomes are ignored — this table only tracks flake history,
+/// not full test results (those already live in CI logs).
+/// Returns the number of flaky rows inserted.
+pub fn run_flake_import(repo_root: &Path, input_path: &Path) -> Result<usize> {
+    let raw = std::fs::read_to_string(input_path)
+        .with_context(|| format!("reading nextest output {}", input_path.display()))?;
+    let events: Vec<serde_json::Value> = serde_json::from_str(&raw)
+        .with_context(|| format!("parsing nextest JSON {}", input_path.display()))?;
+
+    let db_path = repo_root.join(".chump/flake_tracker.db");
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+    let conn = rusqlite::Connection::open(&db_path)
+        .with_context(|| format!("opening {} for flake import", db_path.display()))?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS flake_outcomes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            test_name TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            run_timestamp TEXT NOT NULL
+        )",
+        [],
+    )
+    .context("creating flake_outcomes table")?;
+
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let run_timestamp = unix_to_iso8601(now_secs);
+
+    let mut inserted = 0usize;
+    for event in &events {
+        let outcome = event.get("outcome").and_then(|v| v.as_str()).unwrap_or("");
+        if outcome != "flaky" {
+            continue;
+        }
+        let test_name = event
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("flaky event missing \"name\" field: {}", event))?;
+        conn.execute(
+            "INSERT INTO flake_outcomes(test_name, outcome, run_timestamp)
+             VALUES(?1, 'flaky', ?2)",
+            rusqlite::params![test_name, run_timestamp],
+        )
+        .with_context(|| format!("inserting flake row for {}", test_name))?;
+        inserted += 1;
+    }
+    Ok(inserted)
+}
+
+#[cfg(test)]
+mod flake_import_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn imports_only_flaky_rows_with_timestamp() {
+        let dir = tempdir().unwrap();
+        let repo_root = dir.path();
+        let input_path = repo_root.join("nextest-flaky.json");
+        std::fs::write(
+            &input_path,
+            r#"[
+                {"name": "tests::stable_pass", "outcome": "passed"},
+                {"name": "tests::stable_fail", "outcome": "failed"},
+                {"name": "tests::flaky_one", "outcome": "flaky"},
+                {"name": "tests::flaky_two", "outcome": "flaky"}
+            ]"#,
+        )
+        .unwrap();
+
+        let inserted = run_flake_import(repo_root, &input_path).unwrap();
+        assert_eq!(inserted, 2);
+
+        let db_path = repo_root.join(".chump/flake_tracker.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT test_name, outcome, run_timestamp FROM flake_outcomes ORDER BY test_name",
+            )
+            .unwrap();
+        let rows: Vec<(String, String, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].0, "tests::flaky_one");
+        assert_eq!(rows[0].1, "flaky");
+        assert!(!rows[0].2.is_empty());
+        assert_eq!(rows[1].0, "tests::flaky_two");
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM flake_outcomes WHERE test_name IN ('tests::stable_pass', 'tests::stable_fail')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "non-flaky outcomes must not be inserted");
+    }
+}
+
 #[cfg(test)]
 mod fuzzy_match_tests {
     //! INFRA-1442: pure-function tests for the claim-time fuzzy-match

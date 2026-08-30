@@ -11838,3 +11838,15 @@ events:
       size the migration via scripts/dev/ambient-kind-audit.sh.
     consumers: [ops-audit]
     fields_required: [ts, kind]
+
+  # ── Gap-registry hygiene (INFRA-2395) ─────────────────────────────────────
+  - kind: ghost_gap_audit_finding
+    status: active
+    effect_metric: self
+    emitter: docs/audit/GHOST-GAP-AUDIT-2026-06-01.md audit pass (one-shot, INFRA-2395)
+    trigger: >
+      a gap_id referenced in a merged PR title (COG-*/EVAL-*/INFRA-NNN
+      prefixes) was found with no docs/gaps/<id>.yaml and no state.db row —
+      emitted once per ghost gap_id discovered during the ghost-gap audit.
+    consumers: [operator, ghost-gap-audit report]
+    fields_required: [ts, kind, gap_id, pr_numbers_referencing, classification]

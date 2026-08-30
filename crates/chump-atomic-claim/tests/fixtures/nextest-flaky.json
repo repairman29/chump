@@ -1,0 +1,6 @@
+[
+  {"name": "tests::stable_pass", "outcome": "passed"},
+  {"name": "tests::stable_fail", "outcome": "failed"},
+  {"name": "tests::flaky_one", "outcome": "flaky"},
+  {"name": "tests::flaky_two", "outcome": "flaky"}
+]

@@ -592,8 +592,12 @@ case "$EVENT" in
             exit 1
         }
         case "$FB_KIND" in
-            defect|proposal|preference|retro) : ;;
-            *) echo "FEEDBACK kind must be one of: defect proposal preference retro (got $FB_KIND)" >&2; exit 1 ;;
+            # META-189: vote-request — a curator/daemon asks the fleet to cast
+            # consensus votes on a subject (e.g. "pr-N" for a MERGEABLE PR).
+            # corr_id derives from FB_SUBJECT so `chump vote <corr_id>` calls
+            # and `chump consensus-tally --corr-id <id>` land on the same bucket.
+            defect|proposal|preference|retro|vote-request) : ;;
+            *) echo "FEEDBACK kind must be one of: defect proposal preference retro vote-request (got $FB_KIND)" >&2; exit 1 ;;
         esac
         # corr_id: when --reply-to is given, use the parent's corr_id so this
         # vote lands in the correct deliberator tally bucket. Otherwise fall
