@@ -11,9 +11,16 @@
 [Unit]
 Description=Run the Chump backlog-sync writer every 15 minutes (CREDIBLE-292)
 
+# ROOT-CAUSE FIX (2026-08-30): the trigger below was OnUnitActiveSec=15min, a
+# self-chaining timer anchored to the service's last activation. On a
+# daemon-reload or unit re-create the anchor timestamp is cleared, NextElapse
+# resolves to infinity, and the timer sits 'active' but never fires again
+# (this organ went dark Aug-2026; organ-watchdog only heals FAILED units, not
+# idle-unscheduled ones). OnCalendar is wall-clock and self-anchoring, so the
+# beat cannot silently die this way. Persistent=true still catches missed runs.
 [Timer]
 OnBootSec=3min
-OnUnitActiveSec=15min
+OnCalendar=*:0/15
 Persistent=true
 
 [Install]
