@@ -38,6 +38,7 @@ run_disk() {
     ( set -a
       CHUMP_AMBIENT_LOG="$A"; CHUMP_BOARD_VITALS_STATE_DIR="$SD"
       CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0        # keep pre-RESILIENT-414 tests hermetic (no live gh/watchdog call)
       CHUMP_BOARD_VITALS_DISK_PCT=1          # real usage always exceeds 1%
       CHUMP_BOARD_VITALS_DROUGHT_MIN=999999  # never fire drought in the test
       set +a
@@ -61,6 +62,7 @@ B="$TMP/clean.jsonl"; : > "$B"
 ( set -a
   CHUMP_AMBIENT_LOG="$B"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-clean"
   CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0        # keep pre-RESILIENT-414 tests hermetic (no live gh/watchdog call)
   CHUMP_BOARD_VITALS_DISK_PCT=100           # unreachable → no disk incident
   CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
   set +a
@@ -72,6 +74,7 @@ echo "[test-board-vitals] proof-of-life stdout line every run"
 pol="$( ( set -a
   CHUMP_AMBIENT_LOG="$TMP/pol.jsonl"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-pol"
   CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0        # keep pre-RESILIENT-414 tests hermetic (no live gh/watchdog call)
   CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
   set +a
   source "$LIB"; board_vitals_check ) 2>/dev/null )"
@@ -89,6 +92,7 @@ printf '{"ts":"%s","kind":"token_usage_partial"}\n' \
 ( set -a
   CHUMP_AMBIENT_LOG="$S"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-sil"
   CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0        # keep pre-RESILIENT-414 tests hermetic (no live gh/watchdog call)
   CHUMP_BOARD_VITALS_DISK_PCT=100
   CHUMP_BOARD_VITALS_DROUGHT_MIN=999999   # merge-stall can't fire → isolates silence
   set +a
@@ -109,6 +113,7 @@ nowts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 ( set -a
   CHUMP_AMBIENT_LOG="$OA"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-oa"
   CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0        # keep pre-RESILIENT-414 tests hermetic (no live gh/watchdog call)
   CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
   set +a
   source "$LIB"; board_vitals_check ) >/dev/null 2>&1
@@ -124,6 +129,7 @@ oldts() { date -u -d '-2 min' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-2M +
 ( set -a
   CHUMP_AMBIENT_LOG="$OA2LOG"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-oa2"
   CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0        # keep pre-RESILIENT-414 tests hermetic (no live gh/watchdog call)
   CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
   set +a
   source "$LIB"; board_vitals_check ) >/dev/null 2>&1
@@ -139,6 +145,7 @@ printf '{"ts":"%s","kind":"cost_cap_exceeded","daily_usd":9.9}\n' "$(date -u +%Y
 ( set -a
   CHUMP_AMBIENT_LOG="$CC"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-cc"
   CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0        # keep pre-RESILIENT-414 tests hermetic (no live gh/watchdog call)
   CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
   set +a
   source "$LIB"; board_vitals_check ) >/dev/null 2>&1
@@ -166,6 +173,98 @@ inflight="$( CHUMP_AMBIENT_LOG="$PF" bash -c 'source "'"$LIB"'"; _bv_prs_in_flig
 empty_pf="$TMP/empty.jsonl"; : > "$empty_pf"
 inflight2="$( CHUMP_AMBIENT_LOG="$empty_pf" bash -c 'source "'"$LIB"'"; _bv_prs_in_flight' 2>/dev/null )"
 [[ "$inflight2" == "-1" ]] && _ok "no report → in_flight -1 (unknown, not zero)" || _fail "no-report in_flight not -1 (got '$inflight2')"
+
+# ── RESILIENT-414: live main-red emit — no pre-existing ambient line needed ──
+# Proves board_vitals_check now invokes the watchdog live each beat instead of
+# depending solely on its macOS-launchd-only daily cron (dark on non-mac
+# hosts, e.g. CJ). A stub watchdog binary emits ONE fresh red line; with the
+# threshold forced to 0 (a single line always spans 0m), that alone must page.
+echo "[test-board-vitals] RESILIENT-414: live main-red emit pages without pre-existing ambient"
+LR="$TMP/liveemit.jsonl"; : > "$LR"
+STUB="$TMP/stub-main-health.sh"
+cat > "$STUB" <<'STUBEOF'
+#!/usr/bin/env bash
+printf '{"ts":"%s","kind":"main_red_detected","status":"failure"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${CHUMP_AMBIENT_LOG}"
+STUBEOF
+chmod +x "$STUB"
+( set -a
+  CHUMP_AMBIENT_LOG="$LR"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-liveemit"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_MAIN_RED_MIN=0             # a single fresh red line (span=0) must be enough
+  CHUMP_BOARD_VITALS_MAIN_HEALTH_BIN="$STUB"
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_emitted "board_vitals_check itself invoked the stub watchdog (wrote a fresh main_red_detected line)" \
+    "$LR" '"kind":"main_red_detected","status":"failure"'
+_emitted "empty ambient + live-invoked watchdog stub → main_red pages this beat" \
+    "$LR" '"board_vitals_page_dryrun".*"main_red"'
+
+echo "[test-board-vitals] RESILIENT-414: MAIN_RED_LIVE=0 skips the live invocation"
+LR2="$TMP/liveemit-off.jsonl"; : > "$LR2"
+( set -a
+  CHUMP_AMBIENT_LOG="$LR2"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-liveemit-off"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  # NOTE: threshold left at the real default (30) on purpose — with NO red
+  # lines at all, _bv_main_red_span_min returns 0, and 0 >= 0 would trivially
+  # "page" on an all-green history regardless of live-emit; a nonzero
+  # threshold is required for this assertion to mean anything.
+  CHUMP_BOARD_VITALS_MAIN_HEALTH_BIN="$STUB"
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0            # disabled → stub never runs → no red line → no page
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_notemitted "MAIN_RED_LIVE=0 → stub not invoked → no main_red page" \
+    "$LR2" '"board_vitals_page_(dryrun|sent)".*"main_red"'
+
+# ── RESILIENT-414: merge_stall must page when the queue is BLOCKED behind red
+# main, even though _bv_prs_in_flight counts those BLOCKED PRs as non-zero ──
+echo "[test-board-vitals] RESILIENT-414: merge_stall pages despite BLOCKED-PRs-in-flight when main is red"
+BR="$TMP/blocked-red.jsonl"
+{
+  printf '{"ts":"%s","kind":"token_usage_partial"}\n' \
+      "$(date -u -d '-120 min' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-120M +%Y-%m-%dT%H:%M:%SZ)"
+  echo '{"ts":"2026-08-27T11:00:00Z","kind":"board_cycle_report_posted","sla_breaches":0,"stalls_classified":5}'
+  echo '{"ts":"2026-08-27T10:00:00Z","kind":"main_red_detected","status":"red"}'
+  echo '{"ts":"2026-08-27T10:05:00Z","kind":"main_red_detected","status":"red"}'
+} > "$BR"
+( set -a
+  CHUMP_AMBIENT_LOG="$BR"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-br"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100
+  CHUMP_BOARD_VITALS_DROUGHT_MIN=0              # last git-log merge is always "old enough"
+  CHUMP_BOARD_VITALS_MAIN_RED_MIN=999999        # isolate: main_red itself must NOT page here
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0            # use the synthetic ambient lines above, not a live call
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_emitted "5 BLOCKED-behind-red-main PRs (in_flight=5) still pages merge_stall" \
+    "$BR" '"board_vitals_page_dryrun".*"merge_stall"'
+_notemitted "main_red itself does not page in this run (isolated assertion)" \
+    "$BR" '"board_vitals_page_dryrun".*"main_red"'
+
+# ── control: same BLOCKED-in-flight count, but main is GREEN → old suppression
+# behavior is preserved (in-flight PRs genuinely being nursed still hold off
+# the page) ────────────────────────────────────────────────────────────────
+echo "[test-board-vitals] RESILIENT-414: in-flight PRs still suppress merge_stall when main is green"
+BG="$TMP/blocked-green.jsonl"
+{
+  printf '{"ts":"%s","kind":"token_usage_partial"}\n' \
+      "$(date -u -d '-120 min' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-120M +%Y-%m-%dT%H:%M:%SZ)"
+  echo '{"ts":"2026-08-27T11:00:00Z","kind":"board_cycle_report_posted","sla_breaches":0,"stalls_classified":5}'
+  echo '{"ts":"2026-08-27T10:00:00Z","kind":"main_red_detected","status":"green"}'
+} > "$BG"
+( set -a
+  CHUMP_AMBIENT_LOG="$BG"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-bg"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100
+  CHUMP_BOARD_VITALS_DROUGHT_MIN=0
+  CHUMP_BOARD_VITALS_MAIN_RED_MIN=999999
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_notemitted "5 in-flight PRs + main GREEN → merge_stall still suppressed (unchanged behavior)" \
+    "$BG" '"board_vitals_page_(dryrun|sent)".*"merge_stall"'
 
 echo
 echo "[test-board-vitals] PASS=$PASS FAIL=$FAIL"

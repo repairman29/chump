@@ -2344,3 +2344,18 @@ CHUMP_VITALS_OUT
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_PR_BOOK_CALIB
+CHUMP_BOARD_VITALS_DISK_PCT
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_DROUGHT_MIN
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_DRY_RUN
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_ESCALATE
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_MAIN_HEALTH_BIN
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_MAIN_RED_LIVE
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_MAIN_RED_MIN
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_STATE_DIR
