@@ -176,8 +176,15 @@ SYSTEM_UNITS=(
   # Same silent-disable class RESILIENT-376 fixed for the merge-flow organs.
   chump-gap-closure-reconcile.service
   chump-gap-closure-reconcile.timer
+  # cascade-unblock-detector (RESILIENT-418 / INFRA-2070): the launchd
+  # installer (install-meta-118-daemons.sh) only wired this on Mac/helsinki;
+  # on CJ nothing fanned a merged wedge_auto_fix PR out to sibling PRs blocked
+  # on the same failure signature, so those PRs sat stale until a human ran
+  # `gh pr update-branch` by hand. Linux port so every node self-heals.
+  chump-cascade-unblock-detector.service
+  chump-cascade-unblock-detector.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-cascade-unblock-detector.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
