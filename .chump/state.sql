@@ -72812,6 +72812,32 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: BATPHONE EFFECTIVE-513 live-test gap; closed by build agent
 
+- id: MISSION-084
+  domain: MISSION
+  title: batphone deploy self-test (delete)
+  status: open
+  priority: P3
+  effort: l
+  description: verify intake end to end
+  acceptance_criteria:
+    - "The change described by \"batphone deploy self-test (delete)\" is implemented in the relevant MISSION code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+
+- id: MISSION-085
+  domain: MISSION
+  title: batphone deploy self-test (delete)
+  status: open
+  priority: P3
+  effort: l
+  description: verify intake end to end
+  acceptance_criteria:
+    - "The change described by \"batphone deploy self-test (delete)\" is implemented in the relevant MISSION code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match MISSION-084 (score 1.00) considered at reserve time — proceeded (advisory-only, no override flag used).
+
 - id: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA-001
   domain: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA
   title: "EFFECTIVE: preferred_operator gap field — m"
@@ -79960,16 +79986,12 @@ gaps:
   domain: RESILIENT
   title: "RESILIENT: wire the incident-commander as a STANDING duty-officer + playbook registry (signal->tier->action) — remove the operator as the incident-response SPOF"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "Make the incident-commander a STANDING duty-officer loop (not a doc): (1) continuously watches health signals (ambient.jsonl kinds, ship-rate, disk, auth, wedges); (2) a playbook REGISTRY maps signal -> tier -> action: Tier1 executable auto-heal (code/daemons, e.g. RESILIENT-273), Tier2 agent-run runbook (REALITY_CHECK first, then the matching playbook), Tier3 escalate to operator (only novel/halt-class per the 4 triggers); (3) routes each incident through T1->T2->T3 and pages the operator ONLY at T3; (4) progressively executable-ize the top recurring incidents, starting with this session's four. Design doc first (tiers + registry format + duty-officer contract + how a business instantiates its own), then wire the standing loop. This is the RUN-the-business owner for customer-0 AND the productized per-business ops-owner for COTG/any-business."
   notes: |
-    CORRECTION (2026-08-09, per DISCORD_HANDOFF.md — verified-by-running): my earlier 'escalation is dark / no-op' note was HALF WRONG. Outbound Discord DM to Jeff's phone WORKS NOW and is proven by real delivery (3 DMs). It uses src/discord_dm.rs (send_dm_if_configured, 5 callers) + notify-operator.sh (bash+curl, no bot), keyed on DISCORD_TOKEN + CHUMP_READY_DM_USER_ID (present) — NOT the dead operator-recall.sh/CHUMP_OPERATOR_RECALL_URL path I checked. So RESILIENT-274 tier-3 SEND already has a working substrate; do not rebuild it.
-    
-    What is genuinely NOT wired yet (owned, in-order): RECEIVE/replies+buttons — the gateway was compiled out; RESILIENT-266 compiles --features discord + runs it under launchd (THE unlock). Then RESILIENT-265 routes PR auto-close through request_approval() (approve/deny buttons; src/discord.rs:1210 + approval_resolver.rs, built+unit-tested) and RESILIENT-262 does retry-vs-escalate triage. The approve/deny loop has NEVER been exercised end-to-end on a real phone (RESILIENT-265 acceptance test). DOC-093 = comms-on-Discord decision; openclaw code may be PORTED (MIT) but its system NOT run.
-    
-    So RESILIENT-274 (duty-officer router) is a CONSUMER of: discord_dm (send, works) + RESILIENT-266 (receive) + RESILIENT-265 (approval routing) + RESILIENT-262 (triage). Its only new surface remains the registry + standing loop + 'is my notify channel live' self-check. ALSO: the disk/target work I filed (RESILIENT-273 self-heal + FLEET-BUILD-SPEED) OVERLAPS the pre-existing RESILIENT-275 (P0: target is a symlink to the shared dir, so a worktree release build deletes the fleet binary mid-build). Reconcile with RESILIENT-275, do not fight it; per handoff do NOT revert ZERO-WASTE-029.
+    Decomposed into 11 slices: RESILIENT-441, RESILIENT-442, RESILIENT-443, RESILIENT-444, RESILIENT-445, RESILIENT-446, RESILIENT-447, RESILIENT-448, RESILIENT-449, RESILIENT-450, RESILIENT-451
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
@@ -82222,9 +82244,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new helper function `is_junk_gap` to `crates/chump-gap-store/src/sync.rs` that evaluates a `Gap` against three concrete junk criteria (missing pillar ID, zero work units, placeholder tags) and update the existing `mod tests` block in the same file with unit tests that assert the function returns true for each junk condition and false for a valid gap.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/sync.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A specification document lists at least three concrete conditions that classify a gap as junk (e.g., missing pillar ID, zero work units, placeholder tags)
-    - The criteria are reviewed and approved by the data‑quality lead
+    - In `crates/chump-gap-store/src/sync.rs`, the function `is_junk_gap` returns `true` when the `Gap` has a missing `pillar_id`.
+    - In `crates/chump-gap-store/src/sync.rs`, the function `is_junk_gap` returns `true` when the `Gap` has `work_units == 0`.
+    - "In `crates/chump-gap-store/src/sync.rs`, the function `is_junk_gap` returns `true` when the `Gap` contains placeholder tags such as `\"TODO\"` or `\"FIXME\"`."
+    - In `crates/chump-gap-store/src/sync.rs` tests, a unit test verifies that a fully populated, non‑junk `Gap` yields `false` from `is_junk_gap`.
   notes: |
     [chump harvest check 'RESILIENT']
     === primitives_index match for 'RESILIENT' ===
@@ -82275,9 +82306,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a `#[cfg(test)]` module to `src/agent_loop/prompt_assembler.rs` that defines four unit tests for the `filter_junk_gaps` function: two tests feeding known junk‑gap strings and asserting the function returns `true`, and two tests feeding genuine gap strings and asserting it returns `false`. The tests are placed alongside the existing test module at line 313 and are written to be compiled by `cargo test` without affecting production code.
+    
+    Target file(s):
+    - src/agent_loop/prompt_assembler.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test suite includes at least two examples of junk gaps and two examples of real gaps
-    - All tests pass and coverage for `filter_junk_gaps` is ≥ 80%
+    - Running `cargo test` in the repository succeeds and reports all newly added `filter_junk_gaps` tests as passed.
+    - The file `src/agent_loop/prompt_assembler.rs` contains a test function `test_junk_gap_examples` that calls `filter_junk_gaps` with at least two junk‑gap inputs and asserts the result is `true`.
+    - The file `src/agent_loop/prompt_assembler.rs` contains a test function `test_real_gap_examples` that calls `filter_junk_gaps` with at least two real‑gap inputs and asserts the result is `false`.
+    - Executing a coverage command such as `cargo tarpaulin --out Xml` shows `filter_junk_gaps` line coverage ≥ 80 %.
   depends_on: [RESILIENT-434]
   notes: |
     [chump harvest check 'RESILIENT']
@@ -82415,6 +82455,314 @@ gaps:
     - README and internal wiki sections are updated to describe the junk‑gap filter and its configuration
     - Monitoring dashboards include the new metric showing shipped real gaps vs. filtered junk gaps
   depends_on: [RESILIENT-439]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-441
+  domain: RESILIENT
+  title: "RESILIENT: Draft design document for incident‑commander duty‑officer (tiers, registry format, contract, business instantiation guide) (RESILIENT-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Design doc exists at docs/RESILIENT-274_design.md
+    - "Includes sections: Tier definitions, Registry JSON schema, Duty‑Officer trait contract, Step‑by‑step business instantiation example"
+    - Document reviewed and approved by the RESILIENT lead
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-442
+  domain: RESILIENT
+  title: "RESILIENT: Define Playbook Registry data structures (Signal → Tier → Action) (RESILIENT-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - src/playbook_registry.rs added with `Signal`, `Tier` enum, `PlaybookEntry` struct, and `PlaybookRegistry` map
+    - "Public API: `fn get_entry(&self, signal: &Signal) -> Option<&PlaybookEntry>`"
+    - "Unit test `tests::registry_lookup` verifies lookup for a sample signal"
+  depends_on: [RESILIENT-441]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-443
+  domain: RESILIENT
+  title: "RESILIENT: Implement registry loading from JSON file (RESILIENT-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Function `fn load_registry(path: &Path) -> Result<PlaybookRegistry>` reads a JSON file matching the schema defined in the design doc"
+    - Fails with clear error on malformed JSON
+    - Integration test loads `tests/fixtures/registry_example.json` and asserts expected entries
+  depends_on: [RESILIENT-442]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-444
+  domain: RESILIENT
+  title: "RESILIENT: Create DutyOfficer trait contract (RESILIENT-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "src/duty_officer.rs added with trait `DutyOfficer` exposing `fn evaluate(&self, signal: Signal) -> Tier` and `fn route(&self, tier: Tier, signal: Signal) -> Result<()>`"
+    - Mock implementation `TestDutyOfficer` compiles and passes a basic unit test exercising both methods
+  depends_on: [RESILIENT-441]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-445
+  domain: RESILIENT
+  title: "RESILIENT: Wire standing loop that watches health signals and invokes the registry (RESILIENT-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "src/duty_officer_loop.rs added with async `run_duty_officer_loop(registry: PlaybookRegistry, officer: impl DutyOfficer)`"
+    - Loop reads mock signal sources (ambient.jsonl, ship-rate, disk, auth, wedges) via a test harness
+    - For each signal, calls `registry.get_entry` and then `officer.route`
+    - Loop can be started from `src/main.rs` behind a feature flag `duty_officer`
+  depends_on: [RESILIENT-443, RESILIENT-444]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-446
+  domain: RESILIENT
+  title: "RESILIENT: Integrate Tier 1 auto‑heal execution (RESILIENT‑273) into the routing logic (RESILIENT-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "When `Tier::Tier1` is returned, `officer.route` invokes a stubbed `auto_heal(signal)` function"
+    - Auto‑heal stub records invocation in a test‑only vector; unit test confirms it is called exactly once for a Tier 1 signal
+    - "No regression: existing RESILIENT‑273 code remains untouched"
+  depends_on: [RESILIENT-445]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-447
+  domain: RESILIENT
+  title: "RESILIENT: Integrate Tier 2 agent‑run runbook with approval flow (RESILIENT‑265) (RESILIENT-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Tier 2 routing triggers a REALITY_CHECK step (mocked) followed by `request_approval(signal)` from `src/discord.rs`
+    - Approval request creates a Discord message with approve/deny buttons using `CreateButton` and `CreateActionRow`
+    - Unit test simulates button press and verifies that the approved path calls the appropriate runbook function
+    - "Denial path returns a clear `Result::Err` without invoking the runbook"
+  depends_on: [RESILIENT-445, RESILIENT-446]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-448
+  domain: RESILIENT
+  title: "RESILIENT: Integrate Tier 3 escalation using existing Discord DM path (RESILIENT‑274 tier‑3 send) (RESILIENT-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "When `Tier::Tier3` is returned, routing calls `discord_dm::send_dm_if_configured` with a formatted escalation payload"
+    - Test harness sets `DISCORD_TOKEN` and `CHUMP_READY_DM_USER_ID` env vars and asserts that `send_dm_impl` is invoked (mocked) with expected content
+    - No new bot token handling is introduced
+  depends_on: [RESILIENT-445]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-449
+  domain: RESILIENT
+  title: "RESILIENT: Self‑check for notify channel liveliness (RESILIENT-274 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`fn notify_channel_live() -> bool` returns true only when both `DISCORD_TOKEN` and `CHUMP_READY_DM_USER_ID` are set and a test DM can be sent without error"
+    - Unit test covers true, missing token, missing user ID, and simulated send failure cases
+  depends_on: [RESILIENT-441]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-450
+  domain: RESILIENT
+  title: "RESILIENT: End‑to‑end test harness exercising T1→T2→T3 routing and paging only at Tier 3 (RESILIENT-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test creates a temporary registry with one signal mapped to Tier 1, another to Tier 2, and a third to Tier 3
+    - Runs `run_duty_officer_loop` in a Tokio test runtime with mocked signal source
+    - "Verifies: auto‑heal called for Tier 1, approval flow executed for Tier 2, and a DM sent exactly once for Tier 3"
+    - Ensures no DM is sent for Tier 1 or Tier 2 signals
+  depends_on: [RESILIENT-445, RESILIENT-446, RESILIENT-447, RESILIENT-448, RESILIENT-449]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-451
+  domain: RESILIENT
+  title: "RESILIENT: Update documentation with business‑instantiation guide and example config (RESILIENT-274 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Docs/RESILIENT-274_usage.md added
+    - Provides step‑by‑step instructions for a business to create `registry.json`, enable the `duty_officer` feature, and deploy the standing loop
+    - Includes a minimal example `registry_example.json` and a snippet showing how to call `run_duty_officer_loop` from the binary
+  depends_on: [RESILIENT-441]
   notes: |
     [chump harvest check 'RESILIENT']
     === primitives_index match for 'RESILIENT' ===
