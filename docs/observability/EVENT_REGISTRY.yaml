@@ -6510,6 +6510,19 @@ events:
     consumers: [fleet-brief, ops-audit, curator]
     fields_required: [ts, kind, unit, action]
 
+  - kind: organ_timer_reanchored
+    effect_metric: organ_self_heal_rate
+    emitter: scripts/ops/organ-watchdog.sh (RESILIENT-413)
+    trigger: a chump-*.timer was ActiveState=active yet scheduled to fire NEVER
+      (NextElapseUSecMonotonic=infinity — a self-chaining OnUnitActiveSec timer
+      that lost its anchor on daemon-reload/unit re-create) or its LastTrigger
+      had drifted older than 3x its interval, and the watchdog re-anchored it
+      (daemon-reload + restart timer) — the silent-dark blind spot §1 (failed
+      only) and §2 (inactive only) both miss, since the unit sits active with
+      Result=success. dry_run=1 tags a --dry-run detection with no mutation.
+    consumers: [fleet-brief, ops-audit, curator]
+    fields_required: [ts, kind, unit, reason]
+
   - kind: organ_self_heal_failed
     effect_metric: self
     emitter: scripts/ops/organ-watchdog.sh (INFRA-3595)

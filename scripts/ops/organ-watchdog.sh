@@ -387,11 +387,11 @@ fi
 # anchor-drift — this section is the suspenders that catches any straggler.
 #
 # Guards: only ACTIVE, enabled timers (inactive ones are section 2's job);
-# skip-listed timers (CHUMP_ORGAN_WATCHDOG_TIMER_SKIP, default chump-farmer.timer
+# skip-listed timers (CHUMP_ORGAN_WATCHDOG_TIMER_EXCLUDE, default chump-farmer.timer
 # — superseded by the chump-cj-farmer daemon, RESILIENT-313's successor) are
 # left alone; a timer whose service is in organ-reconcile's backoff registry is
 # deferred to that curated decision (same contract as section 1).
-TIMER_SKIP="${CHUMP_ORGAN_WATCHDOG_TIMER_SKIP:-chump-farmer.timer}"
+TIMER_EXCLUDE="${CHUMP_ORGAN_WATCHDOG_TIMER_EXCLUDE:-chump-farmer.timer}"
 # Multiplier + absolute floor for the staleness ceiling. Floor stops a fast
 # organ (e.g. a 30s cadence) from being re-kicked on one merely-late trigger.
 STALE_MULT="${CHUMP_ORGAN_WATCHDOG_STALE_MULT:-3}"
@@ -409,7 +409,7 @@ if [[ -n "$ALL_TIMERS" ]]; then
         # Only ACTIVE timers here — an inactive one was already handled by §2.
         "$SYSTEMCTL_BIN" is-active --quiet "$timer" 2>/dev/null || continue
         # Skip-list (superseded/decommissioned timers we deliberately leave dark).
-        case " $TIMER_SKIP " in *" $timer "*)
+        case " $TIMER_EXCLUDE " in *" $timer "*)
             continue ;;
         esac
         svc="${timer%.timer}.service"
