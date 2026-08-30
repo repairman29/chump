@@ -397,3 +397,6 @@ self-hosted-runner-stats emit smoke (CREDIBLE-069)   # reason: CI-only smoke inv
 
 # ── EFFECTIVE-483: PUBLISHER_PLATFORMS typed config (TypeScript, not Rust) ─
 test-publisher-platforms.sh   # reason: EFFECTIVE-483 — type-checks + unit-tests web/v2/lib/publisher/platforms.ts via a scoped npm toolchain (tsx/typescript); requires `npm ci` (network on cold cache), so it is intentionally excluded from chump preflight's pure-local/no-network whitelist (discover_test_scripts doc comment). CI-only gate; run manually with `bash scripts/ci/test-publisher-platforms.sh` when touching this config.
+
+# ── META-249: rescue-class PR body citation gate (needs live PR context) ─
+test-rescue-class-cites-procedure.sh   # reason: META-249 — reads the live PR title/body via `gh pr view` for the PR being checked; no local worktree analog (there is no "current PR" outside a `pull_request` CI run). Self-tests its citation-check logic via `bash scripts/ci/test-rescue-class-cites-procedure.sh --self-test`.

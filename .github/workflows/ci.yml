@@ -636,6 +636,17 @@ jobs:
           CHUMP_AC_GATE_ENABLED: ${{ vars.CHUMP_AC_GATE_ENABLED || 'true' }}
         run: bash scripts/ci/test-pr-ac-coverage.sh ${{ github.event.pull_request.number }} || true
 
+      # META-249 (META-247 slice): rescue-class PRs (fix(...rescue), unblock,
+      # fix(...trunk-red), fix(...allowlist), filed-by-pr-shepherd) must cite
+      # §5 (Failure-surface taxonomy) and §6 (Cascade impact tables) of
+      # docs/process/PR_RESCUE_PROCEDURE.md in the PR body. Non-rescue-class
+      # PRs are skipped.
+      - name: Rescue-class cites procedure gate (META-249)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/test-rescue-class-cites-procedure.sh ${{ github.event.pull_request.number }}
+
       - name: Workflow Linux-only step guard sweep (INFRA-1539)
         # Proactive sweep: every workflow step that runs sudo/apt-get/pip-install
         # must carry `if: runner.os == 'Linux'`. Catches the cascade that hit on
@@ -750,7 +761,9 @@ jobs:
 
   fast-checks:
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # META-204: ci_config_only (workflow-only PRs) skips the Rust suite so
+    # ci.yml-only edits don't pay the full build cost.
+    if: (needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true' || github.event_name == 'push' || github.event_name == 'merge_group') && needs.changes.outputs.ci_config_only != 'true'
     # RESILIENT-304: measured 2026-08-14 across real merged PRs — #3757 10m41s,
     # #3752 11m36s, #3759 11m53s, #3764 12m31s, #3753 12m35s. The old 15m cap
     # left 2-4 min of headroom, so PR #3765 (touches crates/, invalidating
@@ -1413,7 +1426,9 @@ jobs:
   # META-262 rolled back 2026-05-31: chump-ci image build failing on edition2024 — see follow-up INFRA-2331.
   clippy:
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # META-204: ci_config_only (workflow-only PRs) skips the Rust suite so
+    # ci.yml-only edits don't pay the full build cost.
+    if: (needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group') && needs.changes.outputs.ci_config_only != 'true'
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     # INFRA-2118: /tmp isolation only on self-hosted; GH-hosted uses
@@ -1511,7 +1526,12 @@ jobs:
   # Target wall-clock: ~60-75% reduction vs serial (limited by longest shard).
   cargo-test-shard:
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # META-204: ci_config_only (workflow-only PRs) skips the Rust suite so
+    # ci.yml-only edits don't pay the full build cost. cargo-test (the
+    # downstream if:always() rollup) already treats a skipped shard result
+    # as pass — no separate stub job needed (see META-261 collapsed
+    # stub/required pattern below).
+    if: (needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group') && needs.changes.outputs.ci_config_only != 'true'
     strategy:
       fail-fast: false
       matrix:

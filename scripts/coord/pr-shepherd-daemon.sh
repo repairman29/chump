@@ -71,6 +71,10 @@ FILED_GAPS_FILE="$REPO_ROOT/.chump/pr-shepherd-filed-gaps.jsonl"
 # INFRA-2346: persistent per-PR state for flake-rerun cap and wedged-DM debounce.
 FLAKE_RERUN_FILE="${CHUMP_FLAKE_RERUN_FILE:-$REPO_ROOT/.chump-locks/flake-rerun-count.json}"
 WEDGED_SIGNAL_FILE="${CHUMP_WEDGED_SIGNAL_FILE:-$REPO_ROOT/.chump-locks/pr-wedged-signaled.json}"
+# META-189: per-PR/head-SHA debounce for the MERGEABLE vote-request broadcast
+# so a re-broadcast only fires when the PR gets a new commit (new head SHA),
+# not on every 60s tick.
+VOTE_REQUEST_SIGNAL_FILE="${CHUMP_VOTE_REQUEST_SIGNAL_FILE:-$REPO_ROOT/.chump-locks/pr-vote-request-signaled.json}"
 SAFE_MODE_STATE_FILE="${CHUMP_SAFE_MODE_STATE_FILE:-$REPO_ROOT/.chump-locks/pr-shepherd-safe-mode.json}"
 # INFRA-2349: trunk-sentinel's own state file (red_since_epoch) — authoritative
 # source for how long trunk has actually been red, so the cascade gate can be
@@ -702,6 +706,44 @@ with open(path, 'w') as f:
 PYEOF
 }
 
+# _vote_request_already_sent — returns 0 if a vote-request was already
+# broadcast for this exact PR/head_sha (debounce: only re-fire on new commits).
+# Args: $1=pr_num $2=head_sha
+_vote_request_already_sent() {
+  local pr_num="$1" head_sha="$2"
+  [[ -f "$VOTE_REQUEST_SIGNAL_FILE" ]] || return 1
+  python3 - "$VOTE_REQUEST_SIGNAL_FILE" "$pr_num" "$head_sha" << 'PYEOF'
+import json, sys
+path, pr_num, head_sha = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if data.get(pr_num) == head_sha else 1)
+PYEOF
+}
+
+# _record_vote_request_sent — mark this PR/head_sha as vote-request-broadcast
+# Args: $1=pr_num $2=head_sha
+_record_vote_request_sent() {
+  local pr_num="$1" head_sha="$2"
+  mkdir -p "$(dirname "$VOTE_REQUEST_SIGNAL_FILE")"
+  [[ -f "$VOTE_REQUEST_SIGNAL_FILE" ]] || echo '{}' > "$VOTE_REQUEST_SIGNAL_FILE"
+  python3 - "$VOTE_REQUEST_SIGNAL_FILE" "$pr_num" "$head_sha" << 'PYEOF'
+import json, sys
+path, pr_num, head_sha = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+data[pr_num] = head_sha
+with open(path, 'w') as f:
+    json.dump(data, f)
+PYEOF
+}
+
 cmd_tick() {
   # META-183: fetch full PR details with mergeStateStatus + autoMergeRequest for classification.
   # META-184: also fetch headRefOid (head SHA) for debounce keying.
@@ -1251,6 +1293,27 @@ print(m.group(0) if m else '')
             _emit_pr_action_taken "$pr_num" "file_followup_gap" "no_id_parsed" "$gap_id"
             gap_file_count=$((gap_file_count + 1))
           fi
+        fi
+
+      # META-189: MERGEABLE (clean, not yet armed, not a trusted-author
+      # admin-merge target — those short-circuit above) → broadcast a
+      # FEEDBACK kind=vote-request so the fleet casts consensus votes,
+      # corr_id=pr-N so `chump vote pr-N +1|-1|0` and `chump consensus-tally
+      # --corr-id pr-N` land on the same tally bucket.
+      elif [ "$c" = "MERGEABLE" ]; then
+        if _vote_request_already_sent "$pr_num" "$head_sha"; then
+          _emit_pr_action_taken "$pr_num" "vote_request_skipped" "debounce" "$gap_id"
+        elif [ -n "$DRY_RUN" ]; then
+          echo "[pr-shepherd-daemon] DRY_RUN: would broadcast vote-request for PR #${pr_num}" >&2
+          _emit_pr_action_taken "$pr_num" "vote_request_broadcast" "" "$gap_id"
+          _record_vote_request_sent "$pr_num" "$head_sha"
+        else
+          echo "[pr-shepherd-daemon] broadcasting vote-request for PR #${pr_num}" >&2
+          bash "$REPO_ROOT/scripts/coord/broadcast.sh" FEEDBACK vote-request "pr-${pr_num}" \
+            "PR #${pr_num} is MERGEABLE — cast a consensus vote: chump vote pr-${pr_num} +1|-1|0 --reason '<why>'" \
+            >/dev/null 2>&1 || true
+          _emit_pr_action_taken "$pr_num" "vote_request_broadcast" "" "$gap_id"
+          _record_vote_request_sent "$pr_num" "$head_sha"
         fi
       fi
     done <<< "$classified"

@@ -2015,6 +2015,7 @@ name = "chump-preflight"
 version = "0.1.0"
 dependencies = [
  "chump-ambient-cli",
+ "chump-atomic-claim",
  "tempfile",
 ]
 
