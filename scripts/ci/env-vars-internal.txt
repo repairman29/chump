@@ -2328,3 +2328,8 @@ CHUMP_AMBIENT_SCHEMA_CHECK
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_GH_MAX_CALLS_PER_MIN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_VOTE_REQUEST_SIGNAL_FILE
