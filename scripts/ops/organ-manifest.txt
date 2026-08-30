@@ -251,6 +251,12 @@ enabled     chump-cj-worker.service  role=muscle requires=bin:chump,bin:git
 enabled     chump-cj-disk-monitor.service  role=janitor requires=bin:df
 enabled     chump-cj-sync.service  role=data requires=bin:git
 enabled     chump-postgrest.service  role=data requires=bin:postgrest
+# chump-fleet-server (INFRA-2175): the metric-gauge API + bat-phone intake.
+# Serves /api/dashboard-summary etc on 127.0.0.1:7070 from the local repo
+# data (github_cache.db, ambient.jsonl, claim leases). ~48 gauges stayed
+# dark until this served them. Unit + SYSTEM_UNITS roster entry land together
+# (RESILIENT-376: manifest-only never installs the file).
+enabled     chump-fleet-server.service  role=data requires=bin:git
 
 # chump-almanac-liveness.timer: systemd complement to the macOS-only
 # almanac-summarize-watchdog (RESILIENT-354/launchd) — covers almanac binary

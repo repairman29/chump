@@ -176,6 +176,11 @@ SYSTEM_UNITS=(
   # Same silent-disable class RESILIENT-376 fixed for the merge-flow organs.
   chump-gap-closure-reconcile.service
   chump-gap-closure-reconcile.timer
+  # chump-fleet-server (INFRA-2175): metric-gauge API + bat-phone intake.
+  # Serves 127.0.0.1:7070; role=data. Declared `enabled` in organ-manifest.txt
+  # — MUST be rostered here or the unit file never lands and the gauges stay
+  # dark (RESILIENT-376 merged-not-running class). Service-only, no timer.
+  chump-fleet-server.service
 )
 SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer)
 
