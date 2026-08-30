@@ -64596,7 +64596,7 @@ gaps:
 - id: INFRA-3844
   domain: INFRA
   title: reconcile 2/9 — retire merge-mix-board, race-control is canonical
-  status: open
+  status: already_satisfied
   priority: P1
   effort: s
   description: |
@@ -64605,12 +64605,16 @@ gaps:
     - "The change described by \"reconcile 2/9 — retire merge-mix-board, race-control is canonical\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-30'
+  closed_pr: 4317
   outcome_id: CHUMPOS
+  evidence: |
+    already-satisfied backstop (INFRA-3826): worker cycle log agent-3-cycle8-INFRA-3844.log reports the work already shipped in PR #4317 (merged 2026-08-30); worktree had no diff to ship. Auto-closed by gap-doctor-reconcile --check-already-satisfied.
 
 - id: INFRA-3845
   domain: INFRA
   title: "reconcile 3/9 — Brier single-source: pr-book writes, others read by ref"
-  status: open
+  status: already_satisfied
   priority: P1
   effort: s
   description: |
@@ -64619,7 +64623,11 @@ gaps:
     - "The change described by \"pr-book writes, others read by ref\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-30'
+  closed_pr: 4315
   outcome_id: CHUMPOS
+  evidence: |
+    already-satisfied backstop (INFRA-3826): worker cycle log agent-1-cycle3-INFRA-3845.log reports the work already shipped in PR #4315 (merged 2026-08-30); worktree had no diff to ship. Auto-closed by gap-doctor-reconcile --check-already-satisfied.
 
 - id: INFRA-3846
   domain: INFRA
@@ -64882,6 +64890,19 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-3859
+  domain: INFRA
+  title: perf probe — delete me
+  status: superseded
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - "The change described by \"perf probe — delete me\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: perf-probe, board cleanup
+  outcome_id: CHUMPOS
 
 - id: INFRA-394
   domain: INFRA
@@ -69214,6 +69235,8 @@ gaps:
     [2026-08-30T18:04:36Z] rot-reaper: PR #4298 auto-closed (required-check-red, 49h) 2026-08-30; RESPAWN CAP 3 reached (9 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T19:27:35Z] rot-reaper: PR #4298 auto-closed (required-check-red, 50h) 2026-08-30; RESPAWN CAP 3 reached (10 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T19:30:00Z] rot-reaper: PR #4298 auto-closed (required-check-red, 50h) 2026-08-30; RESPAWN CAP 3 reached (11 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T20:17:08Z] rot-reaper: PR #4298 auto-closed (required-check-red, 51h) 2026-08-30; RESPAWN CAP 3 reached (12 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T20:19:40Z] rot-reaper: PR #4298 auto-closed (required-check-red, 51h) 2026-08-30; RESPAWN CAP 3 reached (13 prior recycles) — NOT re-queued, escalating to operator.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
