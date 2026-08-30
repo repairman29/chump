@@ -1,0 +1,10 @@
+# RESILIENT-418 — pairs with chump-cascade-unblock-detector.service.
+# Fires every 5 min (matches the launchd StartInterval 300s it replaces).
+[Unit]
+Description=Run the Chump cascade-unblock detector every 5 minutes (RESILIENT-418/INFRA-2070)
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+Persistent=true
+[Install]
+WantedBy=timers.target
