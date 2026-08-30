@@ -733,4 +733,165 @@ grep -q '"reason":"missing"' "$AMB25" \
     || fail "expected reason=missing on the binary-healed event; ambient: $(cat "$AMB25")"
 pass "25: missing target/release/chump triggers node-refresh + organ_binary_healed (AC 1, AC 5 adversarial)"
 
+# ── 26-31. RESILIENT-413: active-but-unscheduled / stale timer re-anchor ────
+# THE SILENT-DARK BLIND SPOT. A self-chaining OnUnitActiveSec= timer that lost
+# its anchor on daemon-reload sits ActiveState=active with NextElapse=infinity
+# (Result=success) and never fires — invisible to §1 (not failed) and §2 (not
+# inactive). Confirmed dark 2026-08: chump-gap-closure-reconcile, chump-rot-
+# reaper. These prove §2b (26) re-anchors an infinity-next timer, (27) re-anchors
+# an anchor-DRIFTED timer via the stale-last-trigger signal, (28) leaves a
+# HEALTHY timer alone (no churn), (29) --dry-run detects without mutating, (30)
+# honors the skip-list (chump-farmer.timer, superseded), (31) defers to
+# organ-reconcile backoff.
+
+# Build a stub that: reports no failed services, no worker template; lists ONE
+# enabled timer; reports it active; answers `show` with the given props; logs
+# start/restart. Args: 1=stub 2=log 3=timername 4=next_mono 5=next_real
+# 6=last_trigger 7=timers_monotonic_line
+mk_timer_stub() {
+    local stub="$1" log="$2" tname="$3" nmono="$4" nreal="$5" ltrig="$6" tmono="$7"
+    cat > "$stub" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$log"
+case "\$1" in
+    list-units) exit 0 ;;
+    list-unit-files)
+        if [[ "\$*" == *"--type=timer"* ]]; then
+            echo "$tname enabled preset"
+        fi
+        exit 0 ;;
+    is-active) exit 0 ;;
+    show)
+        printf '%s\n' "NextElapseUSecMonotonic=$nmono"
+        printf '%s\n' "NextElapseUSecRealtime=$nreal"
+        printf '%s\n' "LastTriggerUSec=$ltrig"
+        printf '%s\n' "$tmono"
+        exit 0 ;;
+    start|restart) exit 0 ;;
+esac
+exit 0
+EOF
+    chmod +x "$stub"
+}
+
+NOW_EPOCH="$(date +%s)"
+OLD_TRIG="$(date -u -d "@$(( NOW_EPOCH - 8*86400 ))" '+%a %Y-%m-%d %H:%M:%S UTC' 2>/dev/null || date -u '+%a %Y-%m-%d %H:%M:%S UTC')"
+FRESH_TRIG="$(date -u -d "@$(( NOW_EPOCH - 120 ))" '+%a %Y-%m-%d %H:%M:%S UTC' 2>/dev/null || date -u '+%a %Y-%m-%d %H:%M:%S UTC')"
+
+# ── 26. active + NextElapse=infinity → re-anchor (start service + restart timer)
+STUB26="$TMP/systemctl-reanchor26"; LOG26="$TMP/calls26.log"
+mk_timer_stub "$STUB26" "$LOG26" "chump-rot-reaper.timer" "infinity" "" "$OLD_TRIG" \
+    "TimersMonotonic={ OnUnitActiveUSec=30min ; next_elapse=infinity }"
+AMB26="$TMP/ambient26.jsonl"; : > "$AMB26"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB26" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_AMBIENT_LOG="$AMB26" "$WATCHDOG" >/dev/null 2>&1
+grep -q "daemon-reload" "$LOG26" \
+    || fail "26: expected daemon-reload before re-anchor (pick up merged-but-unreloaded unit); calls: $(cat "$LOG26")"
+grep -q "restart chump-rot-reaper.timer" "$LOG26" \
+    || fail "26: expected 'restart chump-rot-reaper.timer'; calls: $(cat "$LOG26")"
+grep -q "start chump-rot-reaper.service" "$LOG26" \
+    && fail "26: must NOT blocking-start the oneshot service (hang/recursion risk); calls: $(cat "$LOG26")"
+grep -q '"kind":"organ_timer_reanchored"' "$AMB26" \
+    || fail "26: expected organ_timer_reanchored emitted; ambient: $(cat "$AMB26")"
+grep -q '"reason":"next_elapse_infinity"' "$AMB26" \
+    || fail "26: expected reason=next_elapse_infinity; ambient: $(cat "$AMB26")"
+pass "26: active timer with NextElapse=infinity is re-anchored (the silent-dark blind spot §1/§2 both miss)"
+
+# ── 27. active + finite next but LastTrigger drifted stale → re-anchor ───────
+STUB27="$TMP/systemctl-reanchor27"; LOG27="$TMP/calls27.log"
+mk_timer_stub "$STUB27" "$LOG27" "chump-rot-reaper.timer" "2w 6d 12h" "Sun 2026-09-14 06:00:00 UTC" "$OLD_TRIG" \
+    "TimersMonotonic={ OnUnitActiveUSec=30min ; next_elapse=2w 6d 12h }"
+AMB27="$TMP/ambient27.jsonl"; : > "$AMB27"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB27" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_AMBIENT_LOG="$AMB27" "$WATCHDOG" >/dev/null 2>&1
+grep -q "restart chump-rot-reaper.timer" "$LOG27" \
+    || fail "27: expected re-anchor of an anchor-drifted timer; calls: $(cat "$LOG27")"
+grep -q '"reason":"stale_last_trigger"' "$AMB27" \
+    || fail "27: expected reason=stale_last_trigger (8d > 3x30min ceiling); ambient: $(cat "$AMB27")"
+pass "27: active timer whose LastTrigger drifted older than 3x its interval is re-anchored (anchor-drift signal)"
+
+# ── 28. active + finite next + FRESH LastTrigger → left alone (no churn) ─────
+STUB28="$TMP/systemctl-healthy28"; LOG28="$TMP/calls28.log"
+mk_timer_stub "$STUB28" "$LOG28" "chump-rot-reaper.timer" "25min" "Sun 2026-08-30 18:00:00 UTC" "$FRESH_TRIG" \
+    "TimersMonotonic={ OnUnitActiveUSec=30min ; next_elapse=25min }"
+AMB28="$TMP/ambient28.jsonl"; : > "$AMB28"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB28" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_AMBIENT_LOG="$AMB28" "$WATCHDOG" >/dev/null 2>&1
+grep -q "restart chump-rot-reaper.timer" "$LOG28" \
+    && fail "28: must NOT touch a healthy scheduled timer; calls: $(cat "$LOG28")"
+grep -q '"kind":"organ_timer_reanchored"' "$AMB28" \
+    && fail "28: must NOT emit organ_timer_reanchored for a healthy timer; ambient: $(cat "$AMB28")"
+pass "28: a healthy timer (finite next, fresh LastTrigger) is left untouched — no false re-anchors"
+
+# ── 29. --dry-run detects the infinity timer but does not start/restart ──────
+STUB29="$TMP/systemctl-dry29"; LOG29="$TMP/calls29.log"
+mk_timer_stub "$STUB29" "$LOG29" "chump-rot-reaper.timer" "infinity" "" "$OLD_TRIG" \
+    "TimersMonotonic={ OnUnitActiveUSec=30min ; next_elapse=infinity }"
+AMB29="$TMP/ambient29.jsonl"; : > "$AMB29"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB29" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_AMBIENT_LOG="$AMB29" "$WATCHDOG" --dry-run >/dev/null 2>&1
+grep -q "daemon-reload" "$LOG29" \
+    && fail "29: --dry-run must NOT daemon-reload; calls: $(cat "$LOG29")"
+grep -Eq "restart chump-rot-reaper.timer" "$LOG29" \
+    && fail "29: --dry-run must NOT restart the timer; calls: $(cat "$LOG29")"
+grep -q '"kind":"organ_timer_reanchored"' "$AMB29" \
+    || fail "29: --dry-run should still DETECT + emit organ_timer_reanchored; ambient: $(cat "$AMB29")"
+pass "29: --dry-run detects an infinity-next timer without mutating systemd state"
+
+# ── 30. skip-list: chump-farmer.timer (superseded by cj-farmer) left dark ───
+STUB30="$TMP/systemctl-skip30"; LOG30="$TMP/calls30.log"
+mk_timer_stub "$STUB30" "$LOG30" "chump-farmer.timer" "infinity" "" "$OLD_TRIG" \
+    "TimersMonotonic={ OnUnitActiveUSec=30s ; next_elapse=infinity }"
+AMB30="$TMP/ambient30.jsonl"; : > "$AMB30"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB30" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_AMBIENT_LOG="$AMB30" "$WATCHDOG" >/dev/null 2>&1
+grep -Eq "(restart|start) chump-farmer" "$LOG30" \
+    && fail "30: default skip-list must NOT revive chump-farmer.timer (cj-farmer supersedes it); calls: $(cat "$LOG30")"
+grep -q '"unit":"chump-farmer.timer"' "$AMB30" \
+    && fail "30: must not emit a re-anchor for a skip-listed timer; ambient: $(cat "$AMB30")"
+pass "30: skip-list honored — a superseded timer (chump-farmer.timer) is deliberately left dark, not revived"
+
+# ── 31. backoff: a timer whose service is backed off by organ-reconcile ─────
+STUB31="$TMP/systemctl-backoff31"; LOG31="$TMP/calls31.log"
+mk_timer_stub "$STUB31" "$LOG31" "chump-rot-reaper.timer" "infinity" "" "$OLD_TRIG" \
+    "TimersMonotonic={ OnUnitActiveUSec=30min ; next_elapse=infinity }"
+BACKOFF_DIR31="$TMP/organ-backoff31"; mkdir -p "$BACKOFF_DIR31"
+printf '{"unit":"chump-rot-reaper.timer","since":%d,"reason":"verify_failed"}\n' "$(date +%s)" \
+    > "$BACKOFF_DIR31/chump-rot-reaper.timer.json"
+AMB31="$TMP/ambient31.jsonl"; : > "$AMB31"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB31" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_RECONCILE_BACKOFF_DIR="$BACKOFF_DIR31" \
+    CHUMP_AMBIENT_LOG="$AMB31" "$WATCHDOG" >/dev/null 2>&1
+grep -Eq "(restart|start) chump-rot-reaper" "$LOG31" \
+    && fail "31: must NOT re-anchor a timer whose service is in organ-reconcile backoff; calls: $(cat "$LOG31")"
+grep -q '"kind":"organ_timer_reanchored"' "$AMB31" \
+    && fail "31: must NOT emit re-anchor for a backed-off timer; ambient: $(cat "$AMB31")"
+pass "31: defers to organ-reconcile backoff — a backed-off timer is not re-anchored (same contract as §1)"
+
+# ── 32. RESILIENT-413: an injected systemctl stub is NEVER sudo-elevated ────
+# The sudo -n self-elevation must fire ONLY for the real default `systemctl`
+# binary when running non-root on an owned node — never when the operator/CI
+# injected CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN (which would double-wrap the stub
+# and break every other test). Proven by the elevation banner being absent.
+STUB32="$TMP/systemctl-healthy32"
+cat > "$STUB32" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$STUB32"
+AMB32="$TMP/ambient32.jsonl"; : > "$AMB32"
+out32="$(CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB32" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_AMBIENT_LOG="$AMB32" "$WATCHDOG" 2>&1)"
+echo "$out32" | grep -q "elevating systemctl management calls" \
+    && fail "32: an injected systemctl stub must NOT be sudo-elevated; output: $out32"
+echo "$out32" | grep -q "healed=0" || fail "32: expected a clean healthy cycle with the stub; output: $out32"
+pass "32: an injected systemctl stub is never sudo-wrapped (self-elevation is scoped to the real default binary)"
+
 echo "ALL PASS"
