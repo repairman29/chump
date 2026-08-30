@@ -35,6 +35,11 @@
 #      next timer tick.
 #   3. Do the same for chump-*.timer units that are enabled but inactive
 #      (a timer can itself be disabled by a failed daemon-reload elsewhere).
+#   3b. (RESILIENT-413) Re-anchor chump-*.timer units that are ACTIVE but
+#      scheduled to fire NEVER (NextElapse=infinity, a self-chaining
+#      OnUnitActiveSec timer that lost its anchor on daemon-reload) or whose
+#      LastTrigger has drifted older than 3x their interval — the silent-dark
+#      blind spot that steps 1 and 2 both miss (Result=success, still active).
 #   4. Emit kind=organ_self_healed per unit healed (observable proof of
 #      self-heal, no human step) and kind=organ_watchdog_tick every run
 #      (heartbeat, mirrors main-health-watchdog's success-path emit) so a
@@ -105,6 +110,26 @@ DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
 SYSTEMCTL_BIN="${CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN:-systemctl}"
+# RESILIENT-413: the tracked unit is User=root, but install-helsinki-atc.sh
+# rewrites User=root -> the run-user (jeff) on an OWNED node — so on CJ this
+# watchdog actually runs as User=jeff. reset-failed/restart/start on a
+# SYSTEM-scope unit then fails with "Access denied ... requires interactive
+# authentication", and EVERY heal in §1/§2/§2b silently no-ops (the self-heal
+# premise was dead on owned nodes — which is why the dark timers below were
+# never re-anchored). jeff has NOPASSWD sudo, so transparently elevate the
+# management binary through `sudo -n` when: we are not root, sudo is present and
+# non-interactive, and the operator hasn't injected a stub (tests set
+# CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN and must never be wrapped). Read-only calls
+# (list/show/is-active) also work under sudo, so wrapping the whole binary is
+# safe; the systemd --user path (§5b) captures the UN-elevated binary below so
+# `--user` still targets jeff's own bus, not root's.
+SYSTEMCTL_RAW="$SYSTEMCTL_BIN"
+if [[ "$SYSTEMCTL_BIN" == "systemctl" && "${EUID:-$(id -u)}" -ne 0 ]] \
+    && command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    _sctl_elevated() { command sudo -n systemctl "$@"; }
+    SYSTEMCTL_BIN="_sctl_elevated"
+    echo "[organ-watchdog] not root — elevating systemctl management calls via 'sudo -n' (owned-node User=jeff deployment, RESILIENT-413)"
+fi
 GIT_BIN="${CHUMP_ORGAN_WATCHDOG_GIT_BIN:-git}"
 DEPLOY_SCRIPT="${CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT:-$REPO_ROOT/scripts/setup/install-helsinki-atc.sh}"
 
@@ -141,8 +166,38 @@ organ_watchdog_in_backoff() {  # unit
     return 1
 }
 
-if ! command -v "$SYSTEMCTL_BIN" >/dev/null 2>&1; then
-    echo "[organ-watchdog] systemctl unavailable ($SYSTEMCTL_BIN not found) — no-op (expected off the helsinki node)"
+# RESILIENT-413: convert a systemd time span (as printed inside
+# TimersMonotonic={ OnUnitActiveUSec=<span> ; ... }) to whole seconds. systemd
+# renders these as compound single-unit tokens: "30s", "30min", "15min", "1h",
+# "1min 30s", "2w 6d 12h". Unknown/blank input -> 0 (caller treats as "no
+# monotonic cadence known"). Pure bash, no systemd-analyze dependency, so the
+# CI stub-systemctl harness can exercise it deterministically.
+timespan_to_secs() {  # span-string -> secs on stdout
+    local span="${1:-}" total=0 tok num unit
+    # normalise: strip a trailing "usec"/"us" exact-microsecond suffix systemd
+    # sometimes appends, and collapse whitespace to single spaces.
+    for tok in $span; do
+        # split leading digits from trailing unit letters (e.g. 30min -> 30 min)
+        num="${tok%%[a-zA-Z]*}"
+        unit="${tok#"$num"}"
+        [[ "$num" =~ ^[0-9]+$ ]] || continue
+        case "$unit" in
+            w|week|weeks)              total=$(( total + num*604800 )) ;;
+            d|day|days)                total=$(( total + num*86400 )) ;;
+            h|hr|hour|hours)           total=$(( total + num*3600 )) ;;
+            m|min|minute|minutes)      total=$(( total + num*60 )) ;;
+            s|sec|second|seconds)      total=$(( total + num )) ;;
+            ms|msec)                   total=$(( total + num/1000 )) ;;
+            us|usec|µs)                total=$(( total + num/1000000 )) ;;
+            "")                        total=$(( total + num )) ;;  # bare number = seconds
+            *)                         : ;;                          # unknown unit, skip
+        esac
+    done
+    echo "$total"
+}
+
+if ! command -v "$SYSTEMCTL_RAW" >/dev/null 2>&1; then
+    echo "[organ-watchdog] systemctl unavailable ($SYSTEMCTL_RAW not found) — no-op (expected off the helsinki node)"
     exit 1
 fi
 
@@ -293,6 +348,148 @@ if [[ -n "$ALL_TIMERS" ]]; then
         echo "[organ-watchdog]   healed $timer"
         emit organ_self_healed "\"unit\":\"$timer\",\"action\":\"start-timer\""
         healed=$((healed + 1))
+    done <<< "$ALL_TIMERS"
+fi
+
+# ── 2b. Active-but-UNSCHEDULED / stale chump-*.timer units (RESILIENT-413) ──
+# THE SILENT-DARK BLIND SPOT. Section 2 only re-arms a timer that went
+# *inactive*. A far nastier failure keeps the timer `active` yet scheduled to
+# fire NEVER: a self-chaining monotonic timer (OnUnitActiveSec=) loses its
+# activation anchor on a daemon-reload or unit re-create, so NextElapse resolves
+# to `infinity` — the unit sits ActiveState=active/SubState=elapsed with
+# Result=success, invisible to both section 1 (not failed) and section 2 (not
+# inactive). It simply rots. Confirmed dark this way 2026-08: chump-gap-closure-
+# reconcile (last fired Aug 21) and chump-rot-reaper (last Aug 22, anchor
+# drifted weeks out). A merged unit-file fix (e.g. #4310's OnCalendar
+# conversion) that was never reloaded into the running systemd generation
+# presents identically — the on-disk file is correct but the in-memory timer is
+# still wedged at infinity — and this section re-anchors it too.
+#
+# Detection uses two robust signals, either of which fires a re-anchor:
+#   (A) NextElapseUSecMonotonic=infinity AND no realtime elapse  -> unscheduled.
+#   (B) LastTriggerUSec older than 3x the timer's own interval    -> stale
+#       (catches anchor-DRIFT where next elapse is finite but absurdly far out).
+# Re-anchor = `systemctl daemon-reload` (once per cycle, so an on-disk unit
+# fix — e.g. #4310's OnCalendar conversion — that was merged but never reloaded
+# into the running systemd generation is picked up) then `systemctl restart
+# <timer>` (recompute NextElapse from the reloaded unit; for an OnCalendar timer
+# this yields a durable finite next, and Persistent=true replays the run missed
+# while the timer was dark). Emits organ_timer_reanchored.
+#
+# We deliberately do NOT `systemctl start <service>` here: (1) it BLOCKS on a
+# Type=oneshot service until it completes, serializing/hanging the whole watchdog
+# cycle behind a slow organ; (2) starting chump-organ-watchdog.service would
+# RECURSE into a nested watchdog run; and (3) empirically it does not durably
+# re-anchor a oneshot OnUnitActiveSec timer anyway — the timer snaps straight
+# back to infinity. daemon-reload + restart-timer avoids all three, and the
+# real durable fix for a chronically-wedging monotonic timer is converting its
+# unit to OnCalendar (the belt; see chump-rot-reaper.timer et al.), which cannot
+# anchor-drift — this section is the suspenders that catches any straggler.
+#
+# Guards: only ACTIVE, enabled timers (inactive ones are section 2's job);
+# skip-listed timers (CHUMP_ORGAN_WATCHDOG_TIMER_EXCLUDE, default chump-farmer.timer
+# — superseded by the chump-cj-farmer daemon, RESILIENT-313's successor) are
+# left alone; a timer whose service is in organ-reconcile's backoff registry is
+# deferred to that curated decision (same contract as section 1).
+TIMER_EXCLUDE="${CHUMP_ORGAN_WATCHDOG_TIMER_EXCLUDE:-chump-farmer.timer}"
+# Multiplier + absolute floor for the staleness ceiling. Floor stops a fast
+# organ (e.g. a 30s cadence) from being re-kicked on one merely-late trigger.
+STALE_MULT="${CHUMP_ORGAN_WATCHDOG_STALE_MULT:-3}"
+STALE_FLOOR_S="${CHUMP_ORGAN_WATCHDOG_STALE_FLOOR_S:-600}"
+# Fallback interval when a timer has no monotonic OnUnitActiveSec cadence to
+# parse (e.g. a pure-OnCalendar timer). Such timers self-anchor and cannot
+# infinity-wedge, so signal (B) with a generous default is sufficient.
+DEFAULT_INTERVAL_S="${CHUMP_ORGAN_WATCHDOG_DEFAULT_INTERVAL_S:-900}"
+
+if [[ -n "$ALL_TIMERS" ]]; then
+    _now_epoch_2b="$(date +%s)"
+    _did_daemon_reload=0   # daemon-reload at most once per cycle, lazily
+    while IFS= read -r timer; do
+        [[ -z "$timer" ]] && continue
+        # Only ACTIVE timers here — an inactive one was already handled by §2.
+        "$SYSTEMCTL_BIN" is-active --quiet "$timer" 2>/dev/null || continue
+        # Skip-list (superseded/decommissioned timers we deliberately leave dark).
+        case " $TIMER_EXCLUDE " in *" $timer "*)
+            continue ;;
+        esac
+        svc="${timer%.timer}.service"
+        # Defer to organ-reconcile's curated backoff (checks the .timer too).
+        if organ_watchdog_in_backoff "$svc"; then
+            continue
+        fi
+
+        # One systemctl show for every property we need.
+        _props="$("$SYSTEMCTL_BIN" show "$timer" \
+            -p NextElapseUSecMonotonic -p NextElapseUSecRealtime \
+            -p LastTriggerUSec -p TimersMonotonic 2>/dev/null)"
+        _next_mono=""; _next_real=""; _last_trig=""; _interval_s=0
+        while IFS= read -r _line; do
+            case "$_line" in
+                NextElapseUSecMonotonic=*) _next_mono="${_line#*=}" ;;
+                NextElapseUSecRealtime=*)  _next_real="${_line#*=}" ;;
+                LastTriggerUSec=*)         _last_trig="${_line#*=}" ;;
+                TimersMonotonic=*)
+                    # Prefer the recurring OnUnitActiveUSec cadence; ignore the
+                    # one-shot OnBootUSec startup delay.
+                    if [[ "$_line" == *OnUnitActiveUSec=* ]]; then
+                        _span="${_line#*OnUnitActiveUSec=}"
+                        _span="${_span%% ;*}"
+                        _interval_s="$(timespan_to_secs "$_span")"
+                    fi
+                    ;;
+            esac
+        done <<< "$_props"
+
+        [[ "$_interval_s" -gt 0 ]] 2>/dev/null || _interval_s="$DEFAULT_INTERVAL_S"
+        _ceiling=$(( _interval_s * STALE_MULT ))
+        [[ "$_ceiling" -lt "$STALE_FLOOR_S" ]] && _ceiling="$STALE_FLOOR_S"
+
+        # Signal (A): scheduled to fire never.
+        _reason=""
+        if [[ "$_next_mono" == "infinity" && ( -z "$_next_real" || "$_next_real" == "infinity" ) ]]; then
+            _reason="next_elapse_infinity"
+        else
+            # Signal (B): last trigger older than the staleness ceiling.
+            if [[ -n "$_last_trig" ]]; then
+                _last_epoch="$(date -d "$_last_trig" +%s 2>/dev/null || echo "")"
+                if [[ "$_last_epoch" =~ ^[0-9]+$ ]]; then
+                    _age=$(( _now_epoch_2b - _last_epoch ))
+                    if (( _age > _ceiling )); then
+                        _reason="stale_last_trigger"
+                    fi
+                fi
+            fi
+        fi
+
+        [[ -z "$_reason" ]] && continue
+
+        echo "[organ-watchdog] UNSCHEDULED ($_reason, active but not scheduled to fire): $timer (interval=${_interval_s}s ceiling=${_ceiling}s last='${_last_trig:-none}' next_mono='${_next_mono:-?}')"
+        if [[ "$DRY_RUN" == "1" ]]; then
+            echo "[organ-watchdog]   (dry-run) would daemon-reload + restart $timer to re-anchor"
+            # scanner-anchor: "kind":"organ_timer_reanchored"  (RESILIENT-413;
+            # dry-run tag lets a report show what WOULD be re-anchored)
+            emit organ_timer_reanchored "\"unit\":\"$timer\",\"reason\":\"$_reason\",\"dry_run\":1"
+            continue
+        fi
+        # daemon-reload once (pick up a merged-but-unreloaded on-disk unit),
+        # then restart the timer to recompute NextElapse. No blocking/recursive
+        # `start <service>` — see the section header for why.
+        if [[ "$_did_daemon_reload" != "1" ]]; then
+            "$SYSTEMCTL_BIN" daemon-reload 2>&1 || echo "[organ-watchdog]   WARN: daemon-reload failed (continuing)" >&2
+            _did_daemon_reload=1
+        fi
+        if "$SYSTEMCTL_BIN" restart "$timer" 2>&1; then
+            echo "[organ-watchdog]   re-anchored $timer (daemon-reload + restart timer)"
+            # scanner-anchor: "kind":"organ_timer_reanchored"  (RESILIENT-413;
+            # fires when the watchdog re-anchors an active-but-unscheduled/stale
+            # timer-organ — the silent-dark blind spot section 1/2 both miss)
+            emit organ_timer_reanchored "\"unit\":\"$timer\",\"service\":\"$svc\",\"reason\":\"$_reason\",\"last_trigger\":\"${_last_trig:-none}\",\"action\":\"daemon-reload+restart-timer\""
+            healed=$((healed + 1))
+        else
+            echo "[organ-watchdog]   ERROR: failed to re-anchor $timer" >&2
+            emit organ_self_heal_failed "\"unit\":\"$timer\",\"step\":\"reanchor\",\"reason\":\"$_reason\""
+            scan_fail=1
+        fi
     done <<< "$ALL_TIMERS"
 fi
 
@@ -556,7 +753,9 @@ if [[ "${CHUMP_ORGAN_WATCHDOG_BINARY_HEAL:-0}" == "1" ]]; then
 
     # 5b. binary-refresh organ (chump-node-refresh.service, --user scope) failed
     REFRESH_UNIT="${CHUMP_BINARY_REFRESH_UNIT:-chump-node-refresh.service}"
-    USER_SYSTEMCTL_BIN="${CHUMP_ORGAN_WATCHDOG_USER_SYSTEMCTL_BIN:-$SYSTEMCTL_BIN}"
+    # Use the UN-elevated binary for --user: `sudo systemctl --user` would
+    # target root's user bus, not jeff's (RESILIENT-413).
+    USER_SYSTEMCTL_BIN="${CHUMP_ORGAN_WATCHDOG_USER_SYSTEMCTL_BIN:-$SYSTEMCTL_RAW}"
     REFRESH_UNIT_FAILED="$("$USER_SYSTEMCTL_BIN" --user list-units --all --type=service --state=failed --plain --no-legend "$REFRESH_UNIT" 2>/dev/null | awk '{print $1}')"
     if [[ -n "$REFRESH_UNIT_FAILED" ]]; then
         echo "[organ-watchdog] FAILED (binary-refresh organ, --user scope): $REFRESH_UNIT"

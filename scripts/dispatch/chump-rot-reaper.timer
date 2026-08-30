@@ -6,8 +6,19 @@
 Description=Run the Chump rot-reaper every 30 minutes (RESILIENT-324)
 
 [Timer]
+# ROOT-CAUSE FIX (RESILIENT-413, 2026-08-30): was OnUnitActiveSec=30min, a
+# self-chaining timer anchored to the service's last activation. On a
+# daemon-reload or unit re-create that anchor is cleared, NextElapse resolves to
+# infinity, and the timer sits 'active' but never fires again — confirmed dark
+# here (last trigger 2026-08-22). organ-watchdog only healed FAILED units, so
+# this rotted invisibly (Result=success). OnCalendar is wall-clock and
+# self-anchoring, so the beat cannot silently die this way; Persistent=true
+# (now meaningful, paired with OnCalendar) catches a run missed while the node
+# was down. Same conversion as #4310 (faculty-collector/backlog-sync-writer) and
+# INFRA-3826 (gap-closure-reconcile). organ-watchdog §2b is the belt to this
+# suspenders: it re-anchors ANY active-but-unscheduled timer-organ regardless.
 OnBootSec=5min
-OnUnitActiveSec=30min
+OnCalendar=*:0/30
 Persistent=true
 
 [Install]
