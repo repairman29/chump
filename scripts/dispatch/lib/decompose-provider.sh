@@ -36,7 +36,6 @@
 #   CHUMP_DRAIN_FREE_PROVIDER   free-tier order             ("google groq")
 #   CHUMP_DRAIN_GOOGLE_MODEL    google model                (gemini-3.6-flash)
 #   CHUMP_DRAIN_GROQ_MODEL      groq model                  (openai/gpt-oss-120b)
-#   CHUMP_DECOMPOSE_SKIP_OPENROUTER=1  skip OpenRouter, go straight to free tier
 #   CHUMP_DECOMPOSE_API_BASE/_API_KEY/_MODEL   full manual override (escape hatch)
 
 # pick_decompose_provider: select + export OPENAI_* for the decompose/enrich call.
@@ -75,7 +74,7 @@ pick_decompose_provider() {
   #    max_tokens=<afford_tokens> reservation. A trivial "ok" prompt stops after
   #    a couple tokens, so the probe is ~free when it PASSES; when credits are
   #    dry OpenRouter 402s here just as the real decompose would.
-  if [ -n "${OPENROUTER_API_KEY:-}" ] && [ "${CHUMP_DECOMPOSE_SKIP_OPENROUTER:-0}" != "1" ]; then
+  if [ -n "${OPENROUTER_API_KEY:-}" ]; then
     local code
     code=$(curl -sS -m 20 -o /dev/null -w "%{http_code}" "$or_base/chat/completions" \
       -H "Authorization: Bearer $OPENROUTER_API_KEY" -H "Content-Type: application/json" \
