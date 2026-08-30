@@ -298,3 +298,16 @@ enabled     chump-organ-deploy.timer  role=janitor requires=bin:git
 # organ-reconcile re-arms it if it drifts and Roll-Call
 # (scripts/ci/test-resilient-366-organ-roll-call.sh) never lets it rot silently.
 enabled     chump-gap-drain.timer  role=brain requires=bin:chump-gap-enricher,bin:almanac
+
+# chump-next-best-action.timer: OS-HAS-NO-NERVOUS-SYSTEM — the ADVISORY
+# next-best-action router. scripts/coord/next-best-action.sh recomputes an
+# EV-ranked (value x P(success)) list of next-best-actions from the sighted
+# organs that already price work (pr-book P(merge), the faculty self-portrait,
+# journey odds, open gaps, failed organs) and writes ~/.chump/
+# next-best-action.json + emits kind=next_best_action. Recommend-only: it never
+# dispatches, merges, or restarts. The engine existed but its output was
+# computed ONCE and left to rot (8 days stale) — dark. This timer keeps the NBA
+# ranking FRESH so the nervous system (duty-officer, board, operator) reads a
+# current picture, not a week-old file. Cheap (no LLM call). Declared here so
+# organ-reconcile re-arms it on drift and Roll-Call never lets it rot silently.
+enabled     chump-next-best-action.timer  role=data requires=bin:gh,bin:jq

@@ -1,0 +1,35 @@
+# OS-HAS-NO-NERVOUS-SYSTEM — wire the ADVISORY next-best-action router as a
+# recurring timer-organ. scripts/coord/next-best-action.sh COMPUTES and EMITS a
+# ranked list of next-best-actions by EV = value x P(success), reading the
+# sighted organs that already price work (pr-book-model.jq P(merge), the
+# faculty self-portrait, journey odds, open gaps, failed organs). It RECOMMENDS
+# and LOGS only — it never dispatches a worker, merges a PR, or restarts an
+# organ (autonomy is earned only after its recommendations prove calibrated).
+#
+# The engine existed but its output was computed ONCE and abandoned: ~/.chump/
+# next-best-action.json went 8 days stale. This unit keeps the NBA output fresh
+# so the nervous system (duty-officer, board, operator) always reads a current
+# ranking instead of a dark, week-old file. Paired with
+# chump-next-best-action.timer; rostered in scripts/ops/organ-manifest.txt so
+# organ-reconcile + organ-deploy keep it alive (RESILIENT-366 / RESILIENT-374).
+#
+# CJ-native form (User=jeff, /home/jeff paths), mirroring chump-gap-drain.service;
+# install-helsinki-atc.sh host-rewrites paths per node if ever run elsewhere.
+[Unit]
+Description=Chump next-best-action — recompute the EV-ranked advisory action list + emit kind=next_best_action (recommend-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jeff
+Environment=HOME=/home/jeff
+Environment=PATH=/home/jeff/.cargo/bin:/home/jeff/Projects/chump/target/release:/usr/local/bin:/usr/bin:/bin
+Environment=CHUMP_REPO_ROOT=/home/jeff/Projects/chump
+WorkingDirectory=/home/jeff/Projects/chump
+# Source providers.env + cj.env for parity with the other CJ organs (gh token,
+# per-node config). The NBA router itself makes no LLM call — it only reads
+# already-computed fleet state (pr-book, faculty, gaps, failed organs) — so it
+# is cheap and cannot contend the model cascade.
+ExecStart=/bin/bash -lc 'set -a; source /home/jeff/.chump/providers.env 2>/dev/null; source /home/jeff/.chump/cj.env 2>/dev/null; set +a; cd /home/jeff/Projects/chump; exec bash scripts/coord/next-best-action.sh'
+TimeoutStartSec=300
