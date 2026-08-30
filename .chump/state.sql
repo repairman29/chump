@@ -69212,6 +69212,8 @@ gaps:
     [2026-08-30T16:04:12Z] rot-reaper: PR #4298 auto-closed (required-check-red, 47h) 2026-08-30; RESPAWN CAP 3 reached (7 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T18:02:10Z] rot-reaper: PR #4298 auto-closed (required-check-red, 49h) 2026-08-30; RESPAWN CAP 3 reached (8 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T18:04:36Z] rot-reaper: PR #4298 auto-closed (required-check-red, 49h) 2026-08-30; RESPAWN CAP 3 reached (9 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T19:27:35Z] rot-reaper: PR #4298 auto-closed (required-check-red, 50h) 2026-08-30; RESPAWN CAP 3 reached (10 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T19:30:00Z] rot-reaper: PR #4298 auto-closed (required-check-red, 50h) 2026-08-30; RESPAWN CAP 3 reached (11 prior recycles) — NOT re-queued, escalating to operator.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
