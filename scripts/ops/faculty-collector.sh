@@ -65,6 +65,8 @@ export PATH="$REAL_HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 # shellcheck source=scripts/ops/lib/merges-24h.sh
 source "$SCRIPT_DIR/lib/merges-24h.sh"
+# shellcheck source=scripts/ops/lib/operator-pages-24h.sh
+source "$SCRIPT_DIR/lib/operator-pages-24h.sh"
 
 OUT="${CHUMP_FACULTY_OUT:-$REAL_HOME/.chump/faculty-status.json}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
@@ -239,10 +241,11 @@ FAC+=("$(mkfac aim "Aim" "who chooses what to build" \
         "targets are still human-set; the OS proposes but does not choose the mission.")")
 
 # ── 9. COMMUNICATE — outward voice / 24h (operator pages) ────────────────────
-msgs="$(jq -rR --arg c "$CUTOFF_24H" \
-        'fromjson? | select(.kind=="operator_paged" and (.ts>=$c)) | .ts' \
-        "$AMBIENT_LOG" 2>/dev/null | wc -l | tr -d ' ')"
-[[ "$msgs" =~ ^[0-9]+$ ]] || msgs=0
+# INFRA-3848: operator_pages_24h() in lib/operator-pages-24h.sh is the SINGLE
+# canonical computation, shared with vital-signs.sh (sign human_intervention)
+# — both readers now count the same kind-set: {operator_page, operator_paged,
+# pager_notified}.
+msgs="$(operator_pages_24h "$AMBIENT_LOG" "$CUTOFF_24H")"
 if [[ "$msgs" -gt 0 ]]; then
   com_state=hand; com_frac="$(sat "$msgs" 20)"
   com_note="${msgs} operator page(s) in 24h — one-way curated voice; two-way DM still gated."
