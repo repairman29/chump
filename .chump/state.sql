@@ -85986,10 +85986,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a headless‑test mode to the worker launcher by extending the `execute` function in `src/spawn_worker_tool.rs` to recognise the environment variable `HEADLESS_TEST=1`, invoke the existing worker launch in a detached session (using `setsid`), capture the “fork failed: Device not configured” error, and exit with status 0 on success (printing “HEADLESS TEST PASSED”) or status 1 on failure (printing the error). Adjust `scripts/dispatch/run-fleet.sh` to forward the `HEADLESS_TEST` flag to the binary and to propagate its exit code unchanged.
+    
+    Target file(s):
+    - src/spawn_worker_tool.rs
+    - scripts/dispatch/run-fleet.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Script can be executed in an environment with no controlling terminal (e.g., via `ssh localhost script` or `setsid`)
-    - "Script reproduces the 'fork failed: Device not configured' error when invoking the current worker launch method"
-    - Script exits with a clear pass/fail indication for headless launch capability
+    - Running the compiled `spawn_worker_tool` binary with `HEADLESS_TEST=1` under `setsid` exits with status 0 and prints exactly `HEADLESS TEST PASSED`.
+    - "? Running the same binary with `HEADLESS_TEST=1` under `setsid` when the worker launch triggers the simulated fork failure prints `fork failed : Device not configured` and exits with status 1."
+    - Executing `scripts/dispatch/run-fleet.sh` with `HEADLESS_TEST=1` invokes the new headless path and returns the identical exit code (0 for pass, 1 for fail) as the binary.
+    - The CI helper `scripts/ci/test-reap-orphan-fg-detection.sh` detects a non‑zero exit status from `run-fleet.sh` and fails the CI job, while a zero status passes.
   notes: |
     [chump harvest check 'RESILIENT']
     === primitives_index match for 'RESILIENT' ===
@@ -86014,10 +86023,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify the worker‑launch section in `scripts/dispatch/run-fleet.sh` (the code that invokes tmux for each worker) to replace `tmux new-window` with `tmux new-session -d`, ensuring the session is started detached and does not require a controlling TTY.
+    
+    Target file(s):
+    - scripts/dispatch/run-fleet.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Worker launch code (e.g., `run-fleet` or equivalent) uses `tmux new-session -d` instead of `new-window` to start workers
-    - Headless test harness confirms workers start without TTY errors
-    - "`chump fleet restart` succeeds when run from a headless context (no controlling terminal)"
+    - In `scripts/dispatch/run-fleet.sh`, the tmux command line used to start a worker contains the substring `new-session -d` and no longer contains `new-window`.
+    - Executing `scripts/ci/test-run-fleet-cross-repo.sh` in a headless CI container runs `run-fleet` and exits with status 0, with its log showing “worker … started” and no “tty” related errors.
+    - "Running `chump fleet restart` from a non‑interactive shell (e.g., `ssh -T host \"chump fleet restart\"`) returns exit code 0 and prints “fleet restarted” to stdout."
+    - "The headless test harness (`scripts/ci/test-run-fleet-cross-repo.sh`) prints the line “PASS: workers launched detached” after successful launch, confirming the detached tmux sessions are functional."
   depends_on: [RESILIENT-383]
   notes: |
     [chump harvest check 'RESILIENT']
