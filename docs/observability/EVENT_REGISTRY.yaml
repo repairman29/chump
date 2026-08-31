@@ -3333,6 +3333,17 @@ events:
     consumers: [ops-audit]
     fields_required: [ts, kind, size_bytes_before, lines_before, archive]
 
+  - kind: gz_archive_compressed
+    effect_metric: self
+    emitter: scripts/coord/gz-archive-compressor.sh (RESILIENT-467)
+    trigger: >
+      gz-archive-compressor.sh completed an --execute sweep of stale logs
+      and archived docs. Each candidate is gzipped, verified with
+      `gzip -t`, and the original removed only after verification passes;
+      this event summarizes the sweep totals.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, compressed, skipped, bytes_saved]
+
   # (product_drought removed by INFRA-1287: emitter scripts/ops/pillar-drought-detector.sh
   #  never shipped; drought detection done via chump gap list + pillar counts)
 
