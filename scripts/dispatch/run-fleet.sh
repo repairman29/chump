@@ -594,6 +594,40 @@ if [[ "${CHUMP_GH_PROBE_SKIP:-0}" != "1" && "$FLEET_DRY_RUN" != "1" ]]; then
     fi
 fi
 
+# CREDIBLE-390 (CREDIBLE-130 slice): classify a probe error string into one
+# of four discrete classes so callers stop conflating "billing exhausted"
+# with "credentials invalid" (the 2026-06-08 auth-dead false-positive — a
+# valid API key on a zero-balance account was reported as "authentication
+# failed" and sent the on-call down an auth/flag/lease rabbit hole before a
+# direct probe revealed the real cause was credit exhaustion). Order matters:
+# billing/credit-exhaustion phrases must be checked BEFORE the generic
+# 401/unauthorized check, since a credit-exhausted response can also carry a
+# 401-shaped envelope depending on provider.
+#   echoes one of: auth-invalid | credit-exhausted | rate-limit | network
+classify_probe_error() {
+    local out="$1"
+    local lower
+    lower="$(tr '[:upper:]' '[:lower:]' <<<"$out")"
+
+    if grep -qiE 'credit balance is too low|credit_limit|credit limit|insufficient quota|insufficient_quota|payment required|\b402\b|billing' <<<"$lower"; then
+        echo "credit-exhausted"
+        return
+    fi
+    if grep -qiE '\b429\b|rate.?limit|too many requests|overloaded_error|rate_limit_error' <<<"$lower"; then
+        echo "rate-limit"
+        return
+    fi
+    if grep -qiE 'could not resolve host|connection refused|econnrefused|network is unreachable|timed out|timeout|dns|no route to host|connection reset' <<<"$lower"; then
+        echo "network"
+        return
+    fi
+    if grep -qiE '\b401\b|unauthorized|invalid.*(api.?key|token)|authentication_error|permission_error|invalid x-api-key' <<<"$lower"; then
+        echo "auth-invalid"
+        return
+    fi
+    echo "auth-invalid"
+}
+
 # INFRA-621: launch-time auth verification. Probe the detected auth path with
 # a minimal claude call to ensure credentials are valid before spawning workers.
 # This catches misconfigurations early (e.g., expired OAUTH token, invalid API key)
@@ -655,19 +689,21 @@ if [[ "$FLEET_BACKEND" == "claude" ]]; then
     else
         _auth_probe_failed=1
 
-        # Generate operator-friendly error hints based on auth mode.
-        if [[ "$_fleet_auth_mode" == "subscription" ]]; then
-            if grep -q "401\|Unauthorized\|invalid.*token" <<<"$_probe_out" 2>/dev/null; then
-                _auth_probe_error="CLAUDE_CODE_OAUTH_TOKEN is expired or invalid. Refresh your subscription credentials."
-            else
-                _auth_probe_error="CLAUDE_CODE_OAUTH_TOKEN authentication failed."
-            fi
+        # CREDIBLE-390: classify the failure into a discrete class BEFORE
+        # generating the operator-facing message, so credit-exhaustion never
+        # gets mislabeled as an auth failure (CREDIBLE-130).
+        _probe_error_class="$(classify_probe_error "$_probe_out")"
+
+        if [[ "$_probe_error_class" == "credit-exhausted" ]]; then
+            _auth_probe_error="Credit balance is too low on this account (not a credentials problem — auth accepted, billing exhausted). Top up credits, or switch CHUMP_AUTH_MODE to use a different auth path."
+        elif [[ "$_probe_error_class" == "rate-limit" ]]; then
+            _auth_probe_error="Anthropic API rate limit hit during the launch probe. This is transient — retry launch, or reduce fleet concurrency."
+        elif [[ "$_probe_error_class" == "network" ]]; then
+            _auth_probe_error="Network error reaching the Anthropic API (not a credentials problem). Check connectivity and retry."
+        elif [[ "$_fleet_auth_mode" == "subscription" ]]; then
+            _auth_probe_error="CLAUDE_CODE_OAUTH_TOKEN is expired or invalid. Refresh your subscription credentials."
         elif [[ "$_fleet_auth_mode" == "api_key" ]]; then
-            if grep -q "401\|Unauthorized\|invalid.*key" <<<"$_probe_out" 2>/dev/null; then
-                _auth_probe_error="ANTHROPIC_API_KEY is invalid or has insufficient permissions."
-            else
-                _auth_probe_error="ANTHROPIC_API_KEY authentication failed."
-            fi
+            _auth_probe_error="ANTHROPIC_API_KEY is invalid or has insufficient permissions."
         elif [[ "$_fleet_auth_mode" == "unknown" ]]; then
             _auth_probe_error="No auth credentials found. Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN."
         else
@@ -675,21 +711,25 @@ if [[ "$FLEET_BACKEND" == "claude" ]]; then
         fi
 
         # Check for conflicting auth setup (both set but one is empty).
-        if [[ -n "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
-            && [[ "$_fleet_auth_mode" != "api_key" ]]; then
-            _auth_probe_error="$_auth_probe_error (hint: ANTHROPIC_API_KEY is set but appears invalid; unset it if you want to use OAUTH token instead)"
-        fi
-        if [[ -z "${ANTHROPIC_API_KEY:-}" && -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
-            && [[ "$_fleet_auth_mode" != "subscription" ]]; then
-            _auth_probe_error="$_auth_probe_error (hint: CLAUDE_CODE_OAUTH_TOKEN is set but appears invalid; unset it if you want to use API key instead)"
+        # Only relevant to the auth-invalid class — credit/rate-limit/network
+        # failures aren't fixed by switching auth path.
+        if [[ "$_probe_error_class" == "auth-invalid" ]]; then
+            if [[ -n "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
+                && [[ "$_fleet_auth_mode" != "api_key" ]]; then
+                _auth_probe_error="$_auth_probe_error (hint: ANTHROPIC_API_KEY is set but appears invalid; unset it if you want to use OAUTH token instead)"
+            fi
+            if [[ -z "${ANTHROPIC_API_KEY:-}" && -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
+                && [[ "$_fleet_auth_mode" != "subscription" ]]; then
+                _auth_probe_error="$_auth_probe_error (hint: CLAUDE_CODE_OAUTH_TOKEN is set but appears invalid; unset it if you want to use API key instead)"
+            fi
         fi
 
-        echo "[run-fleet] ERROR: INFRA-621: auth probe failed" >&2
+        echo "[run-fleet] ERROR: INFRA-621: auth probe failed (class=$_probe_error_class)" >&2
         echo "[run-fleet]   $_auth_probe_error" >&2
         # shellcheck disable=SC2001  # sed needed for correct quoting in JSON context
-        printf '{"ts":"%s","kind":"fleet_auth_misconfigured","auth_mode":"%s","auth_path":"%s","error":"%s"}\n' \
+        printf '{"ts":"%s","kind":"fleet_auth_misconfigured","auth_mode":"%s","auth_path":"%s","error_class":"%s","error":"%s"}\n' \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            "$_fleet_auth_mode" "$_fleet_auth_path" \
+            "$_fleet_auth_mode" "$_fleet_auth_path" "$_probe_error_class" \
             "$(echo "$_auth_probe_error" | sed 's/"/""/g')" \
             >> "$_amb_log" 2>/dev/null || true
 
