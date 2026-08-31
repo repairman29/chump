@@ -280,6 +280,18 @@ pub fn create_mission_gap(repo_root: &Path, req: MissionRequest) -> anyhow::Resu
 /// Spawn a detached `chump gap decompose <id> --apply`, logging to
 /// `.chump/batphone-decompose.log`. The child is dropped (not awaited); on Unix
 /// this does not kill it.
+///
+/// The decompose is routed through the sovereign free-tier PROVIDER SELECTOR
+/// (`scripts/dispatch/lib/decompose-provider.sh::pick_decompose_provider`,
+/// shipped in #4314; already used by gap-drain.sh + worker.sh). Without it the
+/// spawned `chump` would inherit the fleet-server process env, auto-select the
+/// local `llama3.2:3b`, and emit schema-invalid JSON -> parse error -> zero
+/// slices (EFFECTIVE-513). We therefore spawn a LOGIN SHELL that first sources
+/// the selector and calls `pick_decompose_provider` (which exports
+/// OPENAI_API_BASE/KEY/MODEL to a capable free-tier model — gemini-3.6-flash /
+/// groq, never the 3B), then execs the decompose. All paths + the gap id are
+/// passed as positional args (\$1..\$3) so nothing is interpolated into the
+/// shell string. Still fully DETACHED — the HTTP handler never waits on it.
 fn spawn_decompose(chump: &Path, repo_root: &Path, gap_id: &str) -> anyhow::Result<()> {
     let log_path = repo_root.join(".chump").join("batphone-decompose.log");
     if let Some(dir) = log_path.parent() {
@@ -296,15 +308,39 @@ fn spawn_decompose(chump: &Path, repo_root: &Path, gap_id: &str) -> anyhow::Resu
         },
         Err(_) => (Stdio::null(), Stdio::null()),
     };
-    Command::new(chump)
+    let provider_sh = repo_root
+        .join("scripts")
+        .join("dispatch")
+        .join("lib")
+        .join("decompose-provider.sh");
+    // Login shell: source the selector (defines + runs pick_decompose_provider,
+    // which self-sources providers.env and exports OPENAI_*), then exec the
+    // decompose so it inherits the capable free-tier route. Positional args:
+    //   \$0 label  \$1 selector path  \$2 chump bin  \$3 gap id
+    let wrapper = r#"
+if [ -f "$1" ]; then
+  # shellcheck disable=SC1090
+  . "$1" 2>&1 && pick_decompose_provider || echo "[batphone] provider selection failed; proceeding with inherited env" >&2
+else
+  echo "[batphone] decompose-provider.sh not found at $1; proceeding with inherited env" >&2
+fi
+echo "[batphone] decompose route: OPENAI_API_BASE=${OPENAI_API_BASE:-<unset>} OPENAI_MODEL=${OPENAI_MODEL:-<unset>}" >&2
+exec "$2" gap decompose "$3" --apply
+"#;
+    Command::new("bash")
         .current_dir(repo_root)
-        .args(["gap", "decompose", gap_id, "--apply"])
+        .arg("-lc")
+        .arg(wrapper)
+        .arg("chump-batphone-decompose")
+        .arg(&provider_sh)
+        .arg(chump)
+        .arg(gap_id)
         .stdin(Stdio::null())
         .stdout(out)
         .stderr(err)
         .spawn()
         .map(|_child| ())
-        .map_err(|e| anyhow::anyhow!("failed to spawn `chump gap decompose`: {e}"))
+        .map_err(|e| anyhow::anyhow!("failed to spawn decompose login-shell: {e}"))
 }
 
 #[cfg(test)]
