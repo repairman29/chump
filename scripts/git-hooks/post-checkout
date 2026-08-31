@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+
+# --- modern-bash re-exec (INFRA-3688) -------------------------------------
+# macOS ships bash 3.2, which lacks `mapfile`/`readarray` and errors on an
+# empty array expanded under `set -u` — silently breaking any guard that uses
+# bash-4 idioms (the actionlint + ci-regression guards among them, which is how
+# the Mac kept pushing split-brained state past dead guardrails). Re-exec the
+# whole hook (and everything it sources) under a bash>=4 if one exists;
+# otherwise warn LOUDLY rather than no-op in silence.
+if [ -z "${CHUMP_HOOK_BASH_REEXEC:-}" ] && [ "${BASH_VERSINFO:-0}" -lt 4 ]; then
+  for _cb in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    if [ -x "$_cb" ]; then export CHUMP_HOOK_BASH_REEXEC=1; exec "$_cb" "$0" "$@"; fi
+  done
+  echo "⚠ [chump-hook $(basename "$0")] bash ${BASH_VERSINFO:-3}.x too old and no bash>=4 found — guards may silently no-op. Fix: brew install bash" >&2
+fi
+# --------------------------------------------------------------------------
 # post-checkout — auto-install hooks into every worktree after a worktree add.
 #
 # git fires post-checkout after both `git checkout` and `git worktree add`.
