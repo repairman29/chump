@@ -1,0 +1,25 @@
+# RESILIENT-418 — the cascade-unblock detector as a systemd organ.
+# The launchd installer (install-meta-118-daemons.sh, INFRA-2280) only wired
+# this on Mac/helsinki; on CJ nothing consumed a merged wedge_auto_fix PR to
+# fan the fix out to sibling PRs blocked on the same failure signature, so
+# blocked PRs sat BEHIND/failing until a human re-ran `gh pr update-branch`
+# by hand. This unit is the Linux port so every node cascades the fix
+# automatically.
+#
+# Runs scripts/coord/cascade-unblock-detector.sh: scans ambient.jsonl for
+# recently-merged wedge_auto_fix PRs, finds open PRs whose CI failed on the
+# same failure signature, and calls `gh pr update-branch` on each safe match.
+#
+# CHUMP_REPO_ROOT is REQUIRED: the script's default $HOME/Projects/Chump is
+# capital-C and does not exist on case-sensitive Linux. install-helsinki-atc.sh
+# rewrites /root + User for the target node on install.
+[Unit]
+Description=Chump cascade-unblock detector — fan a merged fix PR out to sibling blocked PRs (RESILIENT-418/INFRA-2070)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/coord/cascade-unblock-detector.sh'
+TimeoutStartSec=600
