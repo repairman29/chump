@@ -15835,6 +15835,282 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
 
+- id: EFFECTIVE-516
+  domain: EFFECTIVE
+  title: SELFTEST EFFECTIVE-513 batphone decompose routing verify
+  status: wontfix
+  priority: P2
+  effort: l
+  description: |
+    Self-test of the bat-phone free-tier decompose routing fix. Verify the detached decompose selects a capable free-tier provider (gemini-3.6-flash) instead of the local llama3.2:3b, and files real child slices into state.db.
+  acceptance_criteria:
+    - decompose routes through pick_decompose_provider
+    - "provider is gemini-3.6-flash not llama3.2:3b"
+    - child slices filed into state.db
+  notes: |
+     | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+  closed_date: '2026-08-31'
+
+- id: EFFECTIVE-517
+  domain: EFFECTIVE
+  title: SELFTEST EFFECTIVE-513 batphone decompose routing verify
+  status: wontfix
+  priority: P2
+  effort: l
+  description: |
+    Self-test of the bat-phone free-tier decompose routing fix. Verify the detached decompose selects a capable free-tier provider (gemini-3.6-flash) instead of the local llama3.2:3b, and files real child slices into state.db.
+  acceptance_criteria:
+    - decompose routes through pick_decompose_provider
+    - "provider is gemini-3.6-flash not llama3.2:3b"
+    - child slices filed into state.db
+  notes: |
+    Decomposed into 7 slices: EFFECTIVE-518, EFFECTIVE-519, EFFECTIVE-520, EFFECTIVE-521, EFFECTIVE-522, EFFECTIVE-523, EFFECTIVE-524 | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+  closed_date: '2026-08-31'
+
+- id: EFFECTIVE-518
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Analyze routing code to locate pick_decompose_provider usage (EFFECTIVE-517 slice)"
+  status: wontfix
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Source files containing the decompose routing logic are identified
+    - Exact call sites of pick_decompose_provider are documented with file path and line numbers
+  notes: |
+    [chump harvest check 'decompose']
+    === primitives_index match for 'decompose' ===
+    
+    === cluster keyword match for 'decompose' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'decompose' ===
+    
+    === repo-description match for 'decompose' ===
+    
+    === HARVEST_ROADMAP.md mention of 'decompose' (deep-scan findings) ===
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'decompose' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+  closed_date: '2026-08-31'
+
+- id: EFFECTIVE-519
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add instrumentation to capture selected provider during decompose (EFFECTIVE-517 slice)"
+  status: wontfix
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Log entry (or metric) is emitted each time pick_decompose_provider selects a provider
+    - Log includes provider name and request context
+    - Instrumentation does not affect existing functionality
+  depends_on: [EFFECTIVE-518]
+  notes: |
+    [chump harvest check 'decompose']
+    === primitives_index match for 'decompose' ===
+    
+    === cluster keyword match for 'decompose' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'decompose' ===
+    
+    === repo-description match for 'decompose' ===
+    
+    === HARVEST_ROADMAP.md mention of 'decompose' (deep-scan findings) ===
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'decompose' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+  closed_date: '2026-08-31'
+
+- id: EFFECTIVE-520
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write unit test for pick_decompose_provider free‑tier selection (EFFECTIVE-517 slice)"
+  status: wontfix
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test invokes pick_decompose_provider with a free‑tier request
+    - "Test asserts the returned provider is \"gemini-3.6-flash\""
+    - "Test fails if \"llama3.2:3b\" or any other provider is returned"
+  depends_on: [EFFECTIVE-518]
+  notes: |
+    [chump harvest check 'decompose']
+    === primitives_index match for 'decompose' ===
+    
+    === cluster keyword match for 'decompose' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'decompose' ===
+    
+    === repo-description match for 'decompose' ===
+    
+    === HARVEST_ROADMAP.md mention of 'decompose' (deep-scan findings) ===
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'decompose' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+  closed_date: '2026-08-31'
+
+- id: EFFECTIVE-521
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Mock state.db and verify child slice insertion logic (EFFECTIVE-517 slice)"
+  status: wontfix
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A mock/fake state.db is injected into the decompose flow
+    - After decompose, the mock records at least one child slice entry
+    - Recorded child slice contains expected metadata (parent ID, provider, timestamp)
+  depends_on: [EFFECTIVE-518]
+  notes: |
+    [chump harvest check 'decompose']
+    === primitives_index match for 'decompose' ===
+    
+    === cluster keyword match for 'decompose' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'decompose' ===
+    
+    === repo-description match for 'decompose' ===
+    
+    === HARVEST_ROADMAP.md mention of 'decompose' (deep-scan findings) ===
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'decompose' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+  closed_date: '2026-08-31'
+
+- id: EFFECTIVE-522
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create integration test for bat‑phone decompose routing verification (EFFECTIVE-517 slice)"
+  status: wontfix
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - End‑to‑end test runs the bat‑phone free‑tier decompose path
+    - "Test asserts that the selected provider (captured via instrumentation) is \"gemini-3.6-flash\""
+    - Test asserts that at least one child slice is persisted in a real or in‑memory state.db
+    - "Test fails if provider is \"llama3.2:3b\" or if no child slice is recorded"
+  depends_on: [EFFECTIVE-519, EFFECTIVE-520, EFFECTIVE-521]
+  notes: |
+    [chump harvest check 'decompose']
+    === primitives_index match for 'decompose' ===
+    
+    === cluster keyword match for 'decompose' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'decompose' ===
+    
+    === repo-description match for 'decompose' ===
+    
+    === HARVEST_ROADMAP.md mention of 'decompose' (deep-scan findings) ===
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'decompose' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+  closed_date: '2026-08-31'
+
+- id: EFFECTIVE-523
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update CI pipeline to execute new unit and integration tests (EFFECTIVE-517 slice)"
+  status: wontfix
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI configuration includes commands to run the new test suite
+    - Pipeline passes when all new tests pass
+    - Pipeline fails when any new test fails
+  depends_on: [EFFECTIVE-522]
+  notes: |
+    [chump harvest check 'decompose']
+    === primitives_index match for 'decompose' ===
+    
+    === cluster keyword match for 'decompose' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'decompose' ===
+    
+    === repo-description match for 'decompose' ===
+    
+    === HARVEST_ROADMAP.md mention of 'decompose' (deep-scan findings) ===
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'decompose' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+  closed_date: '2026-08-31'
+
+- id: EFFECTIVE-524
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Perform dedupe check against EFFECTIVE-516 and ensure no duplicate state.db entries (EFFECTIVE-517 slice)"
+  status: wontfix
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Run the dedupe utility with the new child slices as input
+    - Utility reports zero duplicate matches with EFFECTIVE-516 (score < 1.00)
+    - No new duplicate entries are written to state.db
+  depends_on: [EFFECTIVE-522]
+  notes: |
+    [chump harvest check 'decompose']
+    === primitives_index match for 'decompose' ===
+    
+    === cluster keyword match for 'decompose' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'decompose' ===
+    
+    === repo-description match for 'decompose' ===
+    
+    === HARVEST_ROADMAP.md mention of 'decompose' (deep-scan findings) ===
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'decompose' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+  closed_date: '2026-08-31'
+
 - id: EVAL-085
   title: test eval 085
   status: done
@@ -74991,7 +75267,7 @@ gaps:
 - id: PRODUCT-167
   domain: PRODUCT
   title: "[postsub.io] Dead a: \"Status\" -- no navigation, no request, no DOM mutation, no storage/focus/scroll/field change"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -75008,6 +75284,8 @@ gaps:
     - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-08-31T04:23:16Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=timeout, rc=124, cycle_log=400373B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
@@ -75015,7 +75293,7 @@ gaps:
 - id: PRODUCT-168
   domain: PRODUCT
   title: "[postsub.io] Dead a: \"Community\" -- no navigation, no request, no DOM mutation, no storage/focus/scroll/field change"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -75032,6 +75310,8 @@ gaps:
     - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-08-31T04:45:35Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=timeout, rc=124, cycle_log=533815B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/postsub"
