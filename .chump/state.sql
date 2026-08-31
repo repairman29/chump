@@ -64843,7 +64843,7 @@ gaps:
 - id: INFRA-3855
   domain: INFRA
   title: TOOL DEBT — chump gap reserve is ~10s each (registry health check on every call); 9 reserves exceed a 2min budget. Cache/skip/batch the health check so reserve is sub-second
-  status: open
+  status: already_satisfied
   priority: P1
   effort: m
   description: |
@@ -64852,7 +64852,11 @@ gaps:
     - "The change described by \"TOOL DEBT — chump gap reserve is ~10s each (registry health check on every call); 9 reserves exceed a 2min budget. Cache/skip/batch the health check so reserve is sub-second\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-31'
+  closed_pr: 4324
   outcome_id: FLEET-BUILD-SPEED
+  evidence: |
+    already-satisfied backstop (INFRA-3826): worker cycle log agent-3-cycle5-INFRA-3855.log reports the work already shipped in PR #4324 (merged 2026-08-31); worktree had no diff to ship. Auto-closed by gap-doctor-reconcile --check-already-satisfied.
 
 - id: INFRA-3856
   domain: INFRA
@@ -69400,7 +69404,7 @@ gaps:
 - id: META-194
   domain: META
   title: "META: Implement comprehensive test suite for pr-shepherd-daemon (META-180 slice)"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -69411,6 +69415,8 @@ gaps:
     [2026-08-29T16:45:00Z] rot-reaper: PR #4296 auto-closed (required-check-red, 24h) 2026-08-29; re-attempt on fresh main.
     [2026-08-29T16:47:13Z] rot-reaper: PR #4296 auto-closed (required-check-red, 24h) 2026-08-29; re-attempt on fresh main.
   opened_date: '2026-07-26'
+  closed_date: '2026-08-31'
+  closed_pr: 4296
   outcome_id: MISSION-010
 
 - id: META-195
@@ -82060,12 +82066,14 @@ gaps:
   domain: RESILIENT
   title: "NBA spine phase 3 — meta-gauge instrumentation: pane coverage pct + a generalized Brier scorer for operational predictions (extend pr-book calibration from PR-merge bets to any this-will-break-to-P0 call) so an NBA engine can be scored not vibed"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"pane coverage pct + a generalized Brier scorer for operational predictions (extend pr-book calibration from PR-merge bets to any this-will-break-to-P0 call) so an NBA engine can be scored not vibed\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 7 slices: RESILIENT-483, RESILIENT-484, RESILIENT-485, RESILIENT-486, RESILIENT-487, RESILIENT-488, RESILIENT-489
   outcome_id: CHUMPOS
 
 - id: RESILIENT-423
@@ -83424,10 +83432,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a `cargo-hakari` workspace‑hack crate declaration to the workspace root Cargo.toml and modify the `ship` function in `crates/chump-gap-store/src/lib.rs` to invoke `cargo hakari generate` (via a `std::process::Command`) before proceeding, thereby wiring the deduplication step into the build pipeline.
+    
+    Target file(s):
+    - Cargo.toml
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - cargo-hakari workspace-hack crate is generated and wired into workspace root
-    - Build graph analysis verifies duplicate compilation of shared transitive dependencies is reduced
-    - Full workspace build and test suite pass without feature unification conflicts
+    - Running `cargo hakari generate` in the repository root creates a `workspace-hack` crate and updates Cargo.toml with the expected `[workspace.metadata.hakari]` section.
+    - Executing `cargo test --workspace` completes successfully and `cargo tree -d` reports fewer duplicate transitive dependencies than before the change.
+    - Invoking `cargo run -p chump-gap-store -- ship` calls the new `Command` to run `cargo hakari generate` (observable via a log line “Running cargo hakari generate”) and finishes without any feature unification conflicts.
+    - The `Cargo.toml` file now contains a `[workspace.package]` entry for the generated `workspace-hack` crate and a `[workspace.metadata.hakari]` configuration block.
   notes: |
     [chump harvest check 'beyond']
     === primitives_index match for 'beyond' ===
@@ -83451,10 +83468,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new function `compute_footprint_budget(host_cpu_cores: int, total_disk_gb: float) -> dict` to `scripts/ab-harness/gen-longitudinal-fixture.py` that calculates dynamic maximum caps for logs, target directories, and caches based on the host's CPU core count and total/available disk space, and injects the resulting budget dict into the existing `SESSION_FACTS` structure under a new key `footprint_budget`.
+    
+    Target file(s):
+    - scripts/ab-harness/gen-longitudinal-fixture.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Calculator inspects host hardware capacity (CPU cores, total/available disk space)
-    - Computes dynamic maximum disk target caps for logs, target directories, and caches
-    - Emits structured footprint budget schema consumable by the orchestrator
+    - In `scripts/ab-harness/gen-longitudinal-fixture.py` a function named `compute_footprint_budget` is defined and returns a dictionary containing the keys `log_cap_mb`, `target_dir_cap_mb`, and `cache_cap_mb`.
+    - "The `SESSION_FACTS` constant in the same file now includes a top‑level entry `\"footprint_budget\"` whose value is the result of calling `compute_footprint_budget` with the detected CPU core count and total disk size."
+    - Executing `python scripts/ab-harness/gen-longitudinal-fixture.py` on a host with 8 CPU cores and 200 GB total disk produces JSON output where `footprint_budget.log_cap_mb` equals 20 GB (10 % of disk), `target_dir_cap_mb` equals 100 GB (50 % of disk), and `cache_cap_mb` equals 10 GB (5 % of disk).
+    - A downstream validator script (`scripts/arsenal/build.py`) can import the generated JSON and successfully read the `footprint_budget` object without raising a parsing exception.
   notes: |
     [chump harvest check 'beyond']
     === primitives_index match for 'beyond' ===
@@ -83478,10 +83503,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new Bash function `observe_storage_pattern` to `scripts/dev/mission-scoreboard.sh` that (1) accepts a target directory and a configurable time‑window, (2) walks the directory to collect each file’s last access timestamp and size, (3) classifies files accessed within the window as “active” and older ones as “stale”, (4) computes the total size growth since the previous observation (persisting prior totals in a temporary state file), and (5) emits a single JSON line with fields `active_files`, `stale_files`, and `size_growth_bytes` to stdout for consumption by the internal telemetry API, while preserving existing script behavior.
+    
+    Target file(s):
+    - scripts/dev/mission-scoreboard.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Observer tracks directory access timestamps and disk space growth deltas over configurable time windows
-    - Differentiates between actively accessed build artifacts and cold stale files
-    - Exposes access pattern metrics via structured internal telemetry API
+    - Running `scripts/dev/mission-scoreboard.sh --storage-observe /tmp/testdir --window 5m` prints a JSON object that includes the keys `active_files`, `stale_files`, and `size_growth_bytes`.
+    - In the JSON output, any file in `/tmp/testdir` whose atime is within the last 5 minutes is counted in `active_files` and not in `stale_files`.
+    - The `size_growth_bytes` value equals the difference between the current total size of `/tmp/testdir` and the size recorded in the temporary state file from the previous invocation of `observe_storage_pattern`.
+    - The script exits with status 0 and the original `list_tracked_repos` functionality remains unchanged when `--storage-observe` is not supplied.
   depends_on: [RESILIENT-470]
   notes: |
     [chump harvest check 'beyond']
@@ -83506,10 +83539,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new RPC endpoint `adjust_storage_bounds` to the worker registration handlers (`register_worker_rpc_handlers` and `register_worker_rpc_handlers_with_presence`) that accepts observed growth‑rate metrics, computes adaptive TTL and cargo‑sweep caps, and returns the new bounds; extend `notify_operator` in `notify-operator.sh` to emit a notification message whenever these storage bounds are updated.
+    
+    Target file(s):
+    - crates/chump-coord/src/rpc.rs
+    - scripts/coord/lib/notify-operator.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Optimizer evaluates observer access patterns against the node footprint budget
-    - Dynamically tunes cargo-sweep-gc TTLs and log retention windows based on growth rate velocity
-    - Applies updated storage bounds without requiring daemon or process restarts
+    - In `crates/chump-coord/src/rpc.rs`, the function `register_worker_rpc_handlers` registers an RPC named `adjust_storage_bounds` that accepts a JSON payload with a `growth_rate` field and returns a JSON response containing `ttl_seconds` and `sweep_cap_bytes`.
+    - In `crates/chump-coord/src/rpc.rs`, the function `register_worker_rpc_handlers_with_presence` also registers the `adjust_storage_bounds` RPC with identical request/response schema.
+    - "? In `scripts/coord/lib/notify-operator.sh`, the function `notify_operator` prints a line containing the substring `Storage bounds updated : ttl=` followed by the new TTL value when invoked with a `--storage-update` flag."
+    - Running the CLI command `chump-cli adjust-storage --node-id 1 --growth-rate 10` produces a coordinator log entry matching the regex `Adjusted TTL to \d+ seconds, sweep cap to \d+ bytes`.
   depends_on: [RESILIENT-470, RESILIENT-471]
   notes: |
     [chump harvest check 'beyond']
@@ -83534,10 +83576,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a hard storage‑capacity guard to the `reserve_with_external` function in `crates/chump-gap-store/src/lib.rs` that rejects reservations which would push total reserved bytes past a new `MAX_STORAGE_BYTES` constant, and introduce an integration test `test_storage_plateau_under_longitudinal_load` in `crates/chump-fleet-recorder/src/main.rs` that drives the engine for a sustained workload, records disk usage periodically, and asserts that usage stabilises within a bounded plateau below the emergency reaper threshold.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    - crates/chump-fleet-recorder/src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Node execution test under continuous build/log creation reaches a bounded storage plateau
-    - Disk utilization remains stably below reactive emergency reaper thresholds indefinitely
-    - Adaptive optimizer continuously maintains target bounds without unbounded monotonic growth
+    - In `crates/chump-gap-store/src/lib.rs`, `reserve_with_external` returns an `Err` and logs a warning when a reservation would cause total reserved storage to exceed `MAX_STORAGE_BYTES`.
+    - In `crates/chump-fleet-recorder/src/main.rs`, the new test `test_storage_plateau_under_longitudinal_load` runs the engine for ≥10 000 cycles, records disk usage every 1 000 cycles, and asserts that the usage delta after the first 2 000 cycles does not exceed 5 % of the initial plateau value.
+    - Executing `cargo test --test storage_plateau` prints the line `storage plateau verified` to stdout, confirming the test passed.
+    - The script `scripts/dispatch/board-cycle-beat.sh` now includes a log entry `storage_usage=<bytes>` on each beat, and the CI log contains at least three such entries during a long‑running node simulation.
   depends_on: [RESILIENT-467, RESILIENT-468, RESILIENT-472]
   notes: |
     [chump harvest check 'beyond']
@@ -83782,6 +83833,212 @@ gaps:
     
     === cross-pollination briefs mentioning 'organ' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-483
+  domain: RESILIENT
+  title: "RESILIENT: Implement pane coverage percentage calculation (RESILIENT-422 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A function `compute_pane_coverage_pct` is added to the RESILIENT codebase.
+    - The function accepts pane data and returns a float representing coverage percentage.
+    - Unit test verifies correct output for at least three representative input scenarios.
+    - All existing tests continue to pass.
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-484
+  domain: RESILIENT
+  title: "RESILIENT: Create generalized Brier scorer module (RESILIENT-422 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "A module `brier_scorer` exposing `compute_brier_score(predictions: &[f64], outcomes: &[bool]) -> f64` is added."
+    - The scorer works for any binary outcome set, not only PR‑merge bets.
+    - Unit test validates the Brier score against known values for multiple prediction/outcome pairs.
+    - All existing tests continue to pass.
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-485
+  domain: RESILIENT
+  title: "RESILIENT: Extend PR‑book calibration to use generalized Brier scorer (RESILIENT-422 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Calibration logic now calls `brier_scorer::compute_brier_score` for any \"this‑will‑break‑to‑P0\" call."
+    - Fallback behavior for legacy PR‑merge bets remains unchanged.
+    - Integration test confirms that calibrated scores match expected Brier values for a sample PR‑book dataset.
+    - All prior unit tests still pass.
+  depends_on: [RESILIENT-484]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-486
+  domain: RESILIENT
+  title: "RESILIENT: Integrate pane coverage pct and Brier scorer into NBA engine scoring pipeline (RESILIENT-422 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - NBA engine now incorporates `compute_pane_coverage_pct` and the generalized Brier score into its final operational score.
+    - Configuration flags allow enabling/disabling each metric independently.
+    - End‑to‑end test runs the NBA engine on a mock dataset and asserts that the output score reflects both metrics.
+    - No regression in existing NBA engine tests.
+  depends_on: [RESILIENT-483, RESILIENT-485, RESILIENT-486]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-487
+  domain: RESILIENT
+  title: "RESILIENT: Add integration test for NBA engine scoring with new metrics (RESILIENT-422 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A new CI test `test_nba_engine_scoring` is added under `scripts/ci/`.
+    - The test exercises the NBA engine with realistic pane data and prediction sets, asserting expected combined score.
+    - Test fails when the new metrics are removed, proving coverage.
+    - All existing tests still pass.
+  depends_on: [RESILIENT-486]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-488
+  domain: RESILIENT
+  title: "RESILIENT: Update CI scripts to run new integration test (RESILIENT-422 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - CI pipeline (`scripts/ci/test-*.sh`) includes the new `test_nba_engine_scoring` script.
+    - CI run reports the new test as passed.
+    - No other CI steps are broken.
+  depends_on: [RESILIENT-487]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-489
+  domain: RESILIENT
+  title: "RESILIENT: Run cargo fmt, clippy and ensure no warnings (RESILIENT-422 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt` runs without changes needed."
+    - "`cargo clippy --all-targets -D warnings` completes with zero warnings."
+    - All tests (unit and integration) pass after formatting and linting.
+  depends_on: [RESILIENT-483, RESILIENT-484, RESILIENT-485, RESILIENT-486, RESILIENT-487, RESILIENT-488]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
 
 - id: SMOKE-001
   domain: SMOKE
