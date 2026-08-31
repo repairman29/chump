@@ -13202,6 +13202,8 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.R5UhOPohfj has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
+  notes: |
+    Decomposed into 4 slices: EFFECTIVE-536, EFFECTIVE-537, EFFECTIVE-538, EFFECTIVE-539
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -18694,6 +18696,109 @@ gaps:
     === cross-pollination briefs mentioning 'phase' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-536
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Initialize temporary repository with scaffold commit (EFFECTIVE-266 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new directory is created at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.R5UhOPohfj
+    - Git repository is initialized in the directory
+    - A single initial commit (scaffold commit) exists with a meaningful commit message
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-537
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add README.md containing intent string (EFFECTIVE-266 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README.md is created at the repository root
+    - "The first body line of README.md exactly reads: \"Another intent\""
+    - README.md is added and committed to the repository
+  depends_on: [EFFECTIVE-536]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-538
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Validate git history starts with scaffold commit (EFFECTIVE-266 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A script or manual check confirms that the first commit in the repository log is the scaffold commit created in slice 0
+    - The validation step passes without errors
+  depends_on: [EFFECTIVE-536]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-539
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create sub‑gap tickets for core feature areas (EFFECTIVE-266 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - At least three sub‑gap tickets are filed in the project tracker
+    - Each sub‑gap is linked to the parent gap EFFECTIVE-266
+    - "Sub‑gap titles clearly reference core feature areas (e.g., \"Core Feature A\", \"Core Feature B\", \"Core Feature C\")"
+    - All sub‑gaps have appropriate priority and initial status
+  depends_on: [EFFECTIVE-536]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
 
 - id: EVAL-085
   title: test eval 085
@@ -74908,8 +75013,18 @@ gaps:
   status: open
   priority: P3
   effort: s
+  description: |
+    Update the `suggested_action` function in `scripts/coord/main-worktree-drift-detector.sh` to automatically handle the case where the worktree contains untracked YAML files: the function will add and commit those files with the message “chore: import accumulated gap yamls”, then perform a `git pull --rebase`. If no such files exist, it will fall back to the existing `git stash -u && git pull --rebase && git stash drop` workflow, ensuring the worktree ends clean.
+    
+    Target file(s):
+    - scripts/coord/main-worktree-drift-detector.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+    - "? Running `scripts/coord/main-worktree-drift-detector.sh` in a repository that has untracked `*.yaml` files results in those files being added and committed with the exact commit message “chore : import accumulated gap yamls”."
+    - After the script completes, executing `git status` in the same repository reports a clean working tree (no staged, unstaged, or untracked changes).
+    - After the script completes, `git rev-parse HEAD` equals `git rev-parse @{u}` confirming that HEAD matches `origin/main`.
+    - When the repository has no untracked `*.yaml` files, the script performs `git stash -u && git pull --rebase && git stash drop` and leaves the working tree clean, as verified by `git status`.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -75060,8 +75175,18 @@ gaps:
   status: open
   priority: P3
   effort: s
+  description: |
+    Update the `suggested_action` function in `scripts/coord/main-worktree-drift-detector.sh` to automatically handle the “main worktree cleanup” scenario: count untracked `*.yaml` files, and if the count exceeds a threshold (e.g., 400) stage and commit them with the message `chore: import accumulated gap yamls` before pulling; otherwise stash untracked files, pull with rebase, and drop the stash, ensuring the working tree ends clean and HEAD matches `origin/main`.
+    
+    Target file(s):
+    - scripts/coord/main-worktree-drift-detector.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+    - "? In `scripts/coord/main-worktree-drift-detector.sh`, the `suggested_action` function runs `git add docs/gaps/*.yaml && git commit -m 'chore : import accumulated gap yamls'` when `git ls-files --others --exclude-standard *.yaml | wc -l` returns a number greater than 400."
+    - In the same function, when the untracked yaml count is 400 or fewer, it executes `git stash -u && git pull --rebase && git stash drop` and then verifies that `git status --porcelain` produces no output.
+    - After the function completes, `git rev-parse HEAD` is equal to `git rev-parse origin/main`, confirming the local HEAD matches the remote.
+    - The script exits with status 0 and leaves the working tree clean (`git status --short` shows no changes) for both the stash‑path and the commit‑path scenarios.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
