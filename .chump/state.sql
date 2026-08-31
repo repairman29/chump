@@ -60966,13 +60966,15 @@ gaps:
 - id: INFRA-3472
   domain: INFRA
   title: "CREDIBLE: CONFIG organ over-claims DRIFT — normalize placeholders + collapse equivalent expressions + fix multi-value parse before counting"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"CONFIG organ over-claims DRIFT — normalize placeholders + collapse equivalent expressions + fix multi-value parse before counting\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-08-31T20:59:55Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
@@ -70172,11 +70174,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify the `register_step` function in `scripts/setup/test-runner-lane-broad-canary.sh` to add a new CI step that (1) installs the `aarch64-unknown-linux-gnu` Rust target via `rustup target add aarch64-unknown-linux-gnu` and (2) builds the `chump` binary for that target with `cargo build --release --bin chump --target aarch64-unknown-linux-gnu`, ensuring the resulting artifact is placed at `target/aarch64-unknown-linux-gnu/release/chump`.
+    
+    Target file(s):
+    - scripts/setup/test-runner-lane-broad-canary.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Workflow installs the aarch64 target via `rustup target add aarch64-unknown-linux-gnu`
-    - Workflow runs `cargo build --release --bin chump --target aarch64-unknown-linux-gnu`
-    - Resulting binary is located at target/aarch64-unknown-linux-gnu/release/chump
-    - Build step succeeds on a test push
+    - In `scripts/setup/test-runner-lane-broad-canary.sh`, the `register_step` function contains the exact command `rustup target add aarch64-unknown-linux-gnu`.
+    - In the same `register_step` function, the command `cargo build --release --bin chump --target aarch64-unknown-linux-gnu` is executed after the target installation.
+    - After a test push triggers the workflow, the CI log shows the target installation and build commands executing without error, and the file `target/aarch64-unknown-linux-gnu/release/chump` exists in the workspace.
+    - The CI job completes with exit code 0, indicating the new cross‑compile step succeeded.
   depends_on: [INFRA-3905]
   notes: |
     [chump harvest check 'EFFECTIVE']
