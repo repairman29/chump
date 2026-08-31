@@ -84301,10 +84301,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update docs/design/OPERATIONAL_SPINE_CONSOLIDATION.md under the "The design — one supervised process per node" section to specify the operational protocol for organ process restarts following an atomic swap, detailing SIGTERM graceful shutdown, process re-exec using the new binary path, a 30-second PID change and health check verification window, and automatic rollback to the prior binary with failure logging if restart fails.
+    
+    Target file(s):
+    - docs/design/OPERATIONAL_SPINE_CONSOLIDATION.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Organ process is stopped gracefully, then started using the swapped binary path
-    - Process PID changes and health check passes within 30 seconds
-    - If restart fails, the system rolls back to the previous binary and logs the failure
+    - docs/design/OPERATIONAL_SPINE_CONSOLIDATION.md specifies the graceful stop (SIGTERM) and restart sequence using the swapped binary path.
+    - docs/design/OPERATIONAL_SPINE_CONSOLIDATION.md defines the 30-second health check timeout requirement and PID validation step.
+    - docs/design/OPERATIONAL_SPINE_CONSOLIDATION.md documents the automatic rollback procedure to the previous binary and failure logging requirement upon health check failure.
   depends_on: [RESILIENT-493]
   notes: |
     [chump harvest check 'organ']
