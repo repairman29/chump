@@ -81526,7 +81526,7 @@ gaps:
   domain: RESILIENT
   title: "RESILIENT: auth substrate has no durable credential — long-lived setup-token as subscription primary, API-key as optional floor, validate-before-use, scream on staleness"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   description: |
     Operator-commissioned 2026-06-02 ('fix the auth substrate so this doesn't happen again'); credential model corrected 2026-06-02 to preserve the subscription cost model.
@@ -81557,6 +81557,8 @@ gaps:
     - oauth-token-refresh.sh persists expires_at and a freshness watchdog emits a loud signal WEEKS before a long-lived token lapses, independent of worker usage
     - operator-recall AUTH_DEAD fires on repeated oauth_token_refresh_failed or token-staleness, not only worker_exit storms
     - a regression test simulates an expired/invalid primary token (API key present) and asserts the fleet stays up via the floor AND an alarm fires (extends src/auth.rs tests + a scripts/ci/test-*.sh)
+  notes: |
+    Decomposed into 9 slices: RESILIENT-524, RESILIENT-525, RESILIENT-526, RESILIENT-527, RESILIENT-528, RESILIENT-529, RESILIENT-530, RESILIENT-531, RESILIENT-532
   opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
@@ -86267,6 +86269,7 @@ gaps:
   notes: |
     Decomposed into 9 slices: RESILIENT-514, RESILIENT-515, RESILIENT-516, RESILIENT-517, RESILIENT-518, RESILIENT-519, RESILIENT-520, RESILIENT-521, RESILIENT-522
     [2026-08-31T05:55:10Z] rot-reaper: PR #4330 auto-closed (CONFLICTING, 4h) 2026-08-31; re-attempt on fresh main.
+    [2026-08-31T21:36:30Z] rot-reaper: PR #4358 auto-closed (CONFLICTING, 4h) 2026-08-31; re-attempt on fresh main.
   opened_date: '2026-08-23'
   outcome_id: MISSION-010
   evidence: |
@@ -90185,9 +90188,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify the `implement_gap` function in `src/improve.rs` to compute a default Git worktree directory when the environment variable `CHUNK_BINARY_REFRESH_WORKTREE` is unset. The function will first attempt to create a writable sub‑directory under the path given by `CHUNK_STATE_DIR`; if that fails, it will scan all mounted filesystems, pick the mount point with the most free space, and use a sub‑directory there. The selected path is then supplied to the `git worktree add` invocation and logged via the existing logger.
+    
+    Target file(s):
+    - src/improve.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - If CHUNK_BINARY_REFRESH_WORKTREE is not set, script computes a writable directory under CHUNK_STATE_DIR or selects the mount point with the most free space
-    - The computed path is used for git worktree add and is logged
+    - "src/improve.rs::implement_gap returns a path that is a writable sub‑directory of the directory referenced by the `CHUNK_STATE_DIR` environment variable when that directory exists and is writable."
+    - "src/improve.rs::implement_gap returns a path located on the mount point with the greatest available free space when `CHUNK_STATE_DIR` is missing, not writable, or cannot host a sub‑directory."
+    - The path produced by `implement_gap` is passed as the target directory argument to the `git worktree add` command executed within the same function, and the command exits with a zero status.
+    - The selected worktree path is emitted to the project's logger (or stdout) and a test that captures the log output can verify that the exact path string appears.
   depends_on: [RESILIENT-507]
 
 - id: RESILIENT-509
@@ -90492,6 +90504,266 @@ gaps:
     - a deploy that times out or fails emits a loud signal (not silent) so merged-not-running is caught
     - prefer prebuilt-binary download (EFFECTIVE-450) over cold-compile so deploy cannot time out
   outcome_id: MISSION-012
+
+- id: RESILIENT-524
+  domain: RESILIENT
+  title: "RESILIENT: Update documentation to describe durable subscription primary token model (RESILIENT-054 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "README/CLAUDE.md includes a new section \"Authentication – Durable Subscription Token\""
+    - Section explains how to generate a long‑lived setup‑token via `claude setup-token` and store it in `~/.chump/config.toml` under `api.claude_code_oauth_token`
+    - Notes the optional `ANTHROPIC_API_KEY` floor and clarifies fallback behavior
+    - Docs reference the new watchdog and AUTH_DEAD behavior
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-525
+  domain: RESILIENT
+  title: "RESILIENT: Extend config handling to persist token expiry (`expires_at`) in config.toml (RESILIENT-054 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`read_config_kv` can retrieve `api.claude_code_oauth_token_expires_at` as an ISO‑8601 timestamp"
+    - "`write_config_kv` can upsert `api.claude_code_oauth_token_expires_at` without corrupting existing config"
+    - A new helper `fn get_oauth_token_expiry() -> Option<DateTime<Utc>>` is added to `src/auth.rs` and returns `None` when the field is missing or malformed
+    - All existing config reads continue to work unchanged
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-526
+  domain: RESILIENT
+  title: "RESILIENT: Make AuthMode::Auto prefer a VALID subscription OAuth token over API key (RESILIENT-054 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "When `AuthMode::Auto` is selected, `resolve_for_spawn` first checks for a non‑empty `claude_code_oauth_token` and validates it (see slice 4)"
+    - If the token is valid, `ActiveAuth` uses it as the primary credential
+    - Only when no valid token exists does the logic fall back to `ANTHROPIC_API_KEY` as a floor
+    - Unit test confirms that with both credentials present, the OAuth token is chosen
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-527
+  domain: RESILIENT
+  title: "RESILIENT: Add validate‑before‑use logic to `resolve_for_spawn` (RESILIENT-054 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`resolve_for_spawn` invokes `cached_validation` (or performs a fresh validation if cache expired) before returning an `ActiveAuth`"
+    - If validation fails, the function returns an `ActiveAuth` that uses the floor API key instead of attempting a spawn with the bad token
+    - "Network or timeout errors are classified as `AuthFailureKind::Transient` and result in a fail‑open (continue using the primary token)"
+    - Integration test verifies that an expired primary token triggers fallback to the floor without spawning a failing `claude -p` call
+  depends_on: [RESILIENT-526]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-528
+  domain: RESILIENT
+  title: "RESILIENT: Update `oauth-token-refresh.sh` to persist `expires_at` and become secondary refresher (RESILIENT-054 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - After a successful refresh, the script writes both `claude_code_oauth_token` and `claude_code_oauth_token_expires_at` to `~/.chump/config.toml` using the new `write_config_kv` helper
+    - The script no longer overwrites the durable token when the Keychain is unreadable; it logs a warning and exits with status 0
+    - A new environment variable `OAUTH_REFRESH_MODE=secondary` is recognized; when set, the script only attempts a refresh if the primary token is within 7 days of expiry
+    - Log messages clearly indicate when the script acts as a secondary refresher
+  depends_on: [RESILIENT-525]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-529
+  domain: RESILIENT
+  title: "RESILIENT: Add freshness watchdog to `infra-watcher-loop.sh` (RESILIENT-054 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`cmd_check_oauth_freshness` reads `api.claude_code_oauth_token_expires_at` from config.toml"
+    - If the token expires in < 30 days, the command emits a loud finding (`_emit_finding`) with severity `critical` and a message indicating weeks‑before‑expiry
+    - The watchdog runs on every tick and does not depend on worker activity
+    - Unit test (bash) confirms that a token expiring in 20 days triggers the finding, while a token expiring in 40 days does not
+  depends_on: [RESILIENT-525, RESILIENT-528]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-530
+  domain: RESILIENT
+  title: "RESILIENT: Extend `operator-recall` to fire `AUTH_DEAD` on token staleness or refresh failures (RESILIENT-054 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`operator-recall.sh` now listens for the critical finding emitted by the freshness watchdog"
+    - When such a finding is received, the script records an `AUTH_DEAD` event (e.g., writes to the fleet event log) regardless of worker exit storms
+    - The event includes the reason (`token_stale` or `refresh_failed`)
+    - Manual test shows that forcing a stale token causes `AUTH_DEAD` to appear in the operator dashboard
+  depends_on: [RESILIENT-529]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-531
+  domain: RESILIENT
+  title: "RESILIENT: Add regression test simulating expired primary token with API‑key fallback (RESILIENT-054 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test script creates a config.toml with an expired `claude_code_oauth_token` and a valid `ANTHROPIC_API_KEY`
+    - It runs the fleet spawn path and asserts that the spawn succeeds using the floor credential
+    - The test also verifies that the freshness watchdog emits a critical finding and that `operator-recall` records an `AUTH_DEAD` event
+    - Test is added to `scripts/ci/test-auth-fallback.sh` and runs in CI
+  depends_on: [RESILIENT-527, RESILIENT-529, RESILIENT-530]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-532
+  domain: RESILIENT
+  title: "RESILIENT: Add unit tests for new AuthMode::Auto preference and validation logic (RESILIENT-054 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`src/auth.rs` test module includes cases for:"
+    - • Preference of a valid OAuth token over an API key
+    - • Fallback to API key when token validation fails
+    - • Fail‑open behavior on transient network errors
+    - All tests pass with `cargo test`
+    - Coverage for `resolve_for_spawn` and `cached_validation` is ≥ 80%
+  depends_on: [RESILIENT-527]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: SMOKE-001
   domain: SMOKE
