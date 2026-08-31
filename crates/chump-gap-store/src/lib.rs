@@ -121,6 +121,14 @@ pub struct OutcomeRow {
     /// Only meaningful when status == "parked"; NULL otherwise.
     #[serde(default)]
     pub park_reason: Option<String>,
+    /// COTG-0.3: negotiated-away-for-now phases of this outcome's roadmap.
+    /// JSON array of `{ description, files_to_modify, phase, ... }` subtask
+    /// objects that `decompose_task` returned with `phase > 1` — recorded so
+    /// the "smallest honest first tool" scope negotiation is auditable, but
+    /// deliberately NOT turned into gaps/work (guards the overbuild failure
+    /// mode). NULL until a decompose call negotiates a phased scope.
+    #[serde(default)]
+    pub deferred_phases: Option<String>,
 }
 
 /// MISSION-033: first-class Repo object.
@@ -685,6 +693,13 @@ impl GapStore {
         let _ = self
             .conn
             .execute("ALTER TABLE outcomes ADD COLUMN park_reason TEXT", []);
+
+        // COTG-0.3: deferred_phases persists the negotiated-away-for-now
+        // remainder of a decompose_task MVP-scope negotiation (JSON array of
+        // subtask objects with phase > 1). NULL unless a negotiation ran.
+        let _ = self
+            .conn
+            .execute("ALTER TABLE outcomes ADD COLUMN deferred_phases TEXT", []);
 
         // CREDIBLE-107: evidence column for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
         // Nullable TEXT — no default — so existing rows stay NULL (no evidence required
@@ -5020,7 +5035,7 @@ impl GapStore {
     /// Fetch one outcome by ID. Returns None if not found.
     pub fn get_outcome(&self, id: &str) -> Result<Option<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason,deferred_phases
              FROM outcomes WHERE id=?1",
         )?;
         stmt.query_row(params![id], |r| {
@@ -5033,6 +5048,7 @@ impl GapStore {
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
                 park_reason: r.get(7)?,
+                deferred_phases: r.get(8)?,
             })
         })
         .optional()
@@ -5042,7 +5058,7 @@ impl GapStore {
     /// List all outcomes, ordered by id.
     pub fn list_outcomes(&self) -> Result<Vec<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason,deferred_phases
              FROM outcomes ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -5055,9 +5071,27 @@ impl GapStore {
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
                 park_reason: r.get(7)?,
+                deferred_phases: r.get(8)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// COTG-0.3: persist the negotiated-away-for-now remainder of an MVP
+    /// scope negotiation. `phases_json` is a JSON array (subtask objects with
+    /// `phase > 1`); overwrites any prior negotiation for this outcome, since
+    /// each `decompose_task` call represents the current, authoritative
+    /// scope negotiation. Does NOT create gaps or start any work — advisory
+    /// record only, same as the rest of the outcomes table.
+    pub fn record_deferred_phases(&self, outcome_id: &str, phases_json: &str) -> Result<()> {
+        let n = self.conn.execute(
+            "UPDATE outcomes SET deferred_phases=?2 WHERE id=?1",
+            params![outcome_id, phases_json],
+        )?;
+        if n == 0 {
+            anyhow::bail!("outcome '{}' not found", outcome_id);
+        }
+        Ok(())
     }
 
     /// RESILIENT-254: mark an outcome as deliberately parked — it has open
@@ -5119,7 +5153,7 @@ impl GapStore {
     /// Keeps existing per-gap P0 checks intact — adds outcome-level view alongside.
     pub fn list_p0_outcomes(&self) -> Result<Vec<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason,deferred_phases
              FROM outcomes WHERE priority='P0' AND status='open' ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -5132,6 +5166,7 @@ impl GapStore {
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
                 park_reason: r.get(7)?,
+                deferred_phases: r.get(8)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
