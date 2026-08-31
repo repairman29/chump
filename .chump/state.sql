@@ -8669,9 +8669,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Insert a top‑level module documentation comment in `crates/chump-preflight/src/preflight.rs` that adds a markdown heading “## Disk Reality”, copies the disk statistics from slice 1, and provides a concise explanation of how those statistics affect the per‑worker directory layout.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Insert a \"Disk Reality\" heading"
-    - Add the disk statistics from slice 1 and explain per‑worker directory impact
+    - "The file `crates/chump-preflight/src/preflight.rs` contains a module‑level doc comment (`//!`) with a line exactly matching `## Disk Reality`."
+    - The same doc comment includes the disk statistics from slice 1 (e.g., total = X GB, used = Y GB, free = Z GB) verbatim as provided in the slice.
+    - The doc comment contains a paragraph that mentions each worker receives its own sub‑directory under the shared disk and describes the expected size impact per worker.
+    - Running `cargo doc` produces HTML documentation for the `preflight` module where the “Disk Reality” heading and its content appear under the module’s description.
   depends_on: [DOC-101, DOC-103]
   notes: |
     [chump harvest check 'fleet']
