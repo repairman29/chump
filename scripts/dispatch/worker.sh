@@ -2160,6 +2160,12 @@ Operator or sibling worker can rescue this branch via:
         fi
         if [ -n "$_ship_evidence" ]; then
             _cycle_kind="shipped"
+            # EFFECTIVE-441: a verified ship clears any accumulated unverified_ship
+            # attempt count so a gap that eventually lands isn't left carrying
+            # stale escalation history (e.g. after an operator manually bumped
+            # required_model and the next attempt succeeded).
+            python3 "$REPO_ROOT/scripts/dispatch/_unverified_ship_escalation.py" \
+                clear "$REPO_ROOT/.chump-locks/cooldown" "$GAP_ID" 2>/dev/null || true
         else
             _cycle_kind="unverified_ship"
             log "CREDIBLE-154: rc=0 but NO ship evidence (branch=${_ship_branch}, no PR in cache/gh, gap not ready_to_ship) — classifying unverified_ship"
@@ -2225,6 +2231,56 @@ Operator or sibling worker can rescue this branch via:
                 printf '{"gap_id":"%s","until":%d,"agent":"%s","ts":"%s","reason":"unverified_ship"}\n' \
                     "$GAP_ID" "$_cd_until" "$AGENT_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                     > "$_cd_dir/${AGENT_ID}-${GAP_ID}.json" 2>/dev/null || true
+
+                # EFFECTIVE-441: the per-worker cooldown file above only backs off
+                # THIS worker's next pick — it carries no memory of how many times,
+                # in total, the gap has looped through unverified_ship. Track a
+                # single monotonic per-gap counter (independent of which worker
+                # attempted it) and escalate/park once it crosses a threshold, so
+                # the fleet learns "hard gap it cannot crack" instead of re-picking
+                # forever. Tunable via CHUMP_UNVERIFIED_SHIP_ESCALATE_N (default 3)
+                # and CHUMP_UNVERIFIED_SHIP_PARK_M (default 6).
+                _uv_escalate_n="${CHUMP_UNVERIFIED_SHIP_ESCALATE_N:-3}"
+                _uv_park_m="${CHUMP_UNVERIFIED_SHIP_PARK_M:-6}"
+                _uv_result="$(python3 "$REPO_ROOT/scripts/dispatch/_unverified_ship_escalation.py" \
+                    record "$_cd_dir" "$GAP_ID" \
+                    --escalate-n "$_uv_escalate_n" --park-m "$_uv_park_m" 2>/dev/null || echo "0 none")"
+                _uv_count="$(printf '%s' "$_uv_result" | awk '{print $1}')"
+                _uv_action="$(printf '%s' "$_uv_result" | awk '{print $2}')"
+                _uv_amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                printf '{"ts":"%s","session":"%s","kind":"unverified_ship_attempt","gap_id":"%s","agent":"%s","count":%s,"action":"%s"}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet}" "$GAP_ID" "$AGENT_ID" "${_uv_count:-0}" "${_uv_action:-none}" \
+                    >> "$_uv_amb" 2>/dev/null || true
+                log "EFFECTIVE-441: unverified_ship attempt #${_uv_count:-0} on $GAP_ID (action=${_uv_action:-none})"
+                case "${_uv_action:-none}" in
+                    escalate)
+                        # Bump model tier so the next pick routes to a stronger
+                        # model, and refresh the cluster-wide cooldown so it isn't
+                        # immediately re-picked at the same (failing) tier.
+                        CHUMP_REPO="$REPO_ROOT" chump gap set "$GAP_ID" --required-model opus \
+                            --add-note "EFFECTIVE-441: escalated required_model -> opus after ${_uv_count} consecutive unverified_ship attempts" \
+                            >/dev/null 2>&1 || true
+                        printf '{"ts":"%s","session":"%s","kind":"gap_model_escalated","gap_id":"%s","count":%s,"new_model":"opus"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet}" "$GAP_ID" "${_uv_count:-0}" \
+                            >> "$_uv_amb" 2>/dev/null || true
+                        printf '{"gap_id":"%s","cooldown_kind":"cluster_wide","until":%d,"agent":"%s","ts":"%s","reason":"unverified_ship_escalate"}\n' \
+                            "$GAP_ID" "$_cd_until" "$AGENT_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                            > "$_cd_dir/${GAP_ID}.json" 2>/dev/null || true
+                        log "EFFECTIVE-441: escalated $GAP_ID to required_model=opus after $_uv_count unverified_ship attempts"
+                        ;;
+                    park)
+                        # M total attempts: take it out of the open pool entirely so
+                        # no single gap can be re-attempted more than M times in a
+                        # row. Needs a human or a decompose pass, not another pick.
+                        CHUMP_REPO="$REPO_ROOT" chump gap set "$GAP_ID" --status needs_decompose \
+                            --add-note "EFFECTIVE-441: parked after ${_uv_count} unverified_ship attempts (>= park threshold ${_uv_park_m}) — needs human review or decomposition; RESILIENT-354-class re-attempt loop halted" \
+                            >/dev/null 2>&1 || true
+                        printf '{"ts":"%s","session":"%s","kind":"gap_parked_unverified_ship","gap_id":"%s","count":%s,"reason":"needs_decompose"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet}" "$GAP_ID" "${_uv_count:-0}" \
+                            >> "$_uv_amb" 2>/dev/null || true
+                        log "EFFECTIVE-441: PARKED $GAP_ID after $_uv_count unverified_ship attempts (status=needs_decompose)"
+                        ;;
+                esac
             fi
         fi
     elif [ "${_is_wedge:-0}" -eq 1 ]; then
