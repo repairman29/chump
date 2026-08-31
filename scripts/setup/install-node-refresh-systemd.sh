@@ -70,6 +70,16 @@ mkdir -p "$UNIT_DIR"
     echo ""
     echo "[Service]"
     echo "Type=oneshot"
+    # RESILIENT-523: without an explicit TimeoutStartSec, systemd falls back to
+    # DefaultTimeoutStartSec (90s system-wide default) — far shorter than even
+    # the 30min limit that proved fatal to the macOS auto-deploy path on a cold
+    # cargo build of the 190k+ LOC chump binary. node-refresh-chump.sh tries the
+    # INFRA-3677 prebuilt-artifact pull first (seconds), but the local-build
+    # fallback still needs headroom for a genuinely cold build. 2700s (45min)
+    # sits comfortably above worst-case cold-build time while still bounding
+    # a truly wedged run (network hang, deadlocked cargo) instead of running
+    # forever.
+    echo "TimeoutStartSec=2700"
     [[ -n "${CHUMP_NODE_REPO:-}" ]] && echo "Environment=CHUMP_NODE_REPO=${CHUMP_NODE_REPO}"
     [[ -n "${CHUMP_NODE_BIN:-}" ]]  && echo "Environment=CHUMP_NODE_BIN=${CHUMP_NODE_BIN}"
     echo "ExecStart=/usr/bin/env bash ${SCRIPT_SRC}"
@@ -90,9 +100,54 @@ mkdir -p "$UNIT_DIR"
     echo "WantedBy=timers.target"
 } > "$UNIT_DIR/chump-node-refresh.timer"
 
+# --- RESILIENT-523: node-deploy-lag-watchdog (loud signal on stall/timeout) --
+# Linux/systemd counterpart of merge-deploy-lag-watchdog.sh (macOS-only). Runs
+# every 5 min — much tighter than the refresh cadence — so a stalled or
+# timed-out refresh surfaces fast instead of silently leaving the node on a
+# stale binary (AC #2).
+WATCHDOG_SRC=""
+for candidate in \
+    "$(dirname "$SCRIPT_SRC")/../coord/node-deploy-lag-watchdog.sh" \
+    "${CHUMP_NODE_REPO:-}/scripts/coord/node-deploy-lag-watchdog.sh" \
+    "$(dirname "$0")/../coord/node-deploy-lag-watchdog.sh"; do
+    if [[ -n "$candidate" && -f "$candidate" ]]; then WATCHDOG_SRC="$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"; break; fi
+done
+
+if [[ -n "$WATCHDOG_SRC" ]]; then
+    chmod +x "$WATCHDOG_SRC" 2>/dev/null || true
+    echo "watchdog script: $WATCHDOG_SRC"
+    {
+        echo "[Unit]"
+        echo "Description=chump node deploy-lag watchdog (loud signal on stalled/timed-out refresh) — RESILIENT-523"
+        echo "After=network-online.target"
+        echo ""
+        echo "[Service]"
+        echo "Type=oneshot"
+        [[ -n "${CHUMP_NODE_REPO:-}" ]] && echo "Environment=CHUMP_REPO_ROOT=${CHUMP_NODE_REPO}"
+        [[ -n "${CHUMP_NODE_BIN:-}" ]]  && echo "Environment=CHUMP_NODE_BIN=${CHUMP_NODE_BIN}"
+        echo "ExecStart=/usr/bin/env bash ${WATCHDOG_SRC}"
+        echo "Nice=10"
+    } > "$UNIT_DIR/chump-node-deploy-lag-watchdog.service"
+    {
+        echo "[Unit]"
+        echo "Description=chump node deploy-lag watchdog timer (every 5m) — RESILIENT-523"
+        echo ""
+        echo "[Timer]"
+        echo "OnBootSec=5min"
+        echo "OnUnitActiveSec=5min"
+        echo "Persistent=true"
+        echo ""
+        echo "[Install]"
+        echo "WantedBy=timers.target"
+    } > "$UNIT_DIR/chump-node-deploy-lag-watchdog.timer"
+else
+    echo "WARN: node-deploy-lag-watchdog.sh not found — skipping watchdog install" >&2
+fi
+
 echo "wrote:"
 echo "  $UNIT_DIR/chump-node-refresh.service"
 echo "  $UNIT_DIR/chump-node-refresh.timer"
+[[ -n "$WATCHDOG_SRC" ]] && echo "  $UNIT_DIR/chump-node-deploy-lag-watchdog.service" && echo "  $UNIT_DIR/chump-node-deploy-lag-watchdog.timer"
 
 # --- linger (best-effort) ----------------------------------------------------
 if command -v loginctl >/dev/null 2>&1; then
@@ -106,10 +161,14 @@ fi
 # --- enable + start ----------------------------------------------------------
 systemctl --user daemon-reload
 systemctl --user enable --now chump-node-refresh.timer
+[[ -n "$WATCHDOG_SRC" ]] && systemctl --user enable --now chump-node-deploy-lag-watchdog.timer
 echo ""
 echo "=== timer status ==="
 systemctl --user list-timers chump-node-refresh.timer --no-pager 2>/dev/null || true
+[[ -n "$WATCHDOG_SRC" ]] && systemctl --user list-timers chump-node-deploy-lag-watchdog.timer --no-pager 2>/dev/null || true
 echo ""
 echo "Manual run:   systemctl --user start chump-node-refresh.service"
 echo "Logs:         journalctl --user -u chump-node-refresh.service -n 50 --no-pager"
+echo "Watchdog run: systemctl --user start chump-node-deploy-lag-watchdog.service"
+echo "Watchdog log: journalctl --user -u chump-node-deploy-lag-watchdog.service -n 50 --no-pager"
 echo "Disable:      systemctl --user disable --now chump-node-refresh.timer"

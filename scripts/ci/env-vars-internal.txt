@@ -2402,3 +2402,14 @@ CHUMP_TWO_TIER_MODEL_CLASS
 # detected in: (standard input)
 CHUMP_TWO_TIER_SLOT
 CHUMP_RESERVE_ALLOW_STALE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_NODE_DEPLOY_LAG_NO_HEAL
+# detected in: (standard input)
+CHUMP_NODE_DEPLOY_LAG_SLO_SECS
+# detected in: (standard input)
+CHUMP_NODE_DEPLOY_LAG_SYSTEMCTL_BIN
+# detected in: (standard input)
+CHUMP_NODE_DEPLOY_LAG_UNIT
