@@ -7589,14 +7589,13 @@ async fn handle_gap_create(
 
     // Optional extras in one set_fields pass. Mirrors the CLI's warn-and-continue:
     // the gap exists once reserve succeeds; extras failing must not orphan it.
+    // CREDIBLE-393: no tautological auto-fill — an unauthored gap gets
+    // empty AC so audit-priorities correctly flags it as missing AC.
     let ac_json = match &body.acceptance_criteria {
         Some(list) if !list.is_empty() => {
             serde_json::to_string(list).unwrap_or_else(|_| "[]".into())
         }
-        _ => {
-            let acs = crate::default_acceptance_criteria(&title, &domain);
-            serde_json::to_string(&acs).unwrap_or_else(|_| "[]".into())
-        }
+        _ => "[]".into(),
     };
     let skills = match (
         body.skills_required.as_deref(),
