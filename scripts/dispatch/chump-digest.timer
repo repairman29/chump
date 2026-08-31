@@ -1,0 +1,17 @@
+# RESILIENT-376 — fires the Discord digest twice daily (09:00 + 18:00
+# America/Denver) plus a boot catch-up. Twice-a-day is the operator's chosen
+# cadence: enough to run a multi-day model without sitting over a terminal, few
+# enough that the DM is a signal not noise. Persistent=true so a missed fire
+# (node asleep) still posts on next wake. Enable:
+#   systemctl enable --now chump-digest.timer
+[Unit]
+Description=Fire the Chump Discord digest at 09:00 + 18:00 America/Denver (RESILIENT-376)
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 America/Denver
+OnCalendar=*-*-* 18:00:00 America/Denver
+OnBootSec=3min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -207,6 +207,12 @@ enabled     chump-armed-rebaser.timer  role=muscle requires=bin:gh
 # disabling chump-armed-rebaser.timer so it stops resetting verified on main moves.
 enabled     chump-merge-serializer.timer  role=muscle requires=bin:gh
 enabled     chump-board-cycle.timer  role=brain
+# RESILIENT-376: the DISCORD DIGEST organ — twice-daily phone-readable
+# factory pulse (SHIPPED/THE NUMBER/STUCK/NEEDS-YOUR-CALL) to the operator
+# Discord DM. role=data (publishes state, no muscle). Deterministic state
+# read, no LLM. Must be manifest-declared or it stays dark after a reset.
+enabled     chump-digest.timer  role=data
+
 
 # --- Owned-node factory organs (TREK-16 / INFRA-3642, install-a-Trek-from-0) -
 # CJ is the first owned MUSCLE+DATA node (COTG). Until this line, its worker,

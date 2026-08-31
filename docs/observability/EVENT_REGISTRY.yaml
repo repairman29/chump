@@ -2007,6 +2007,19 @@ events:
     consumers: [ambient]
     fields_required: [ts, kind, drift_verdict]
 
+  - kind: chump_digest_posted
+    effect_metric: self
+    emitter: scripts/dispatch/digest-beat.sh (RESILIENT-376)
+    trigger: the twice-daily Discord DIGEST organ successfully posted its
+      phone-readable factory pulse (SHIPPED / THE NUMBER / STUCK /
+      NEEDS-YOUR-CALL) to operator Discord via scripts/coord/lib/notify-operator.sh
+      (CHUMP_NOTIFY_KIND=chump_digest, verdict direct). Deterministic state-read
+      only, no LLM — distinct from board_ceo_briefing_posted (the Sonnet strategy
+      layer). Records the digest window merge/gap/organ counts so each post is
+      provable without a desktop session open.
+    consumers: [ambient]
+    fields_required: [ts, kind]
+
   - kind: discord_command_agent_dispatched
     effect_metric: self
     emitter: scripts/dispatch/discord-command-agent.sh (INFRA-3596)
