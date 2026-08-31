@@ -1,0 +1,18 @@
+# RESILIENT-365 — systemd unit for the RCA reflex organ. Paired with
+# chump-rca-reflex.timer. Deployed by scripts/setup/install-helsinki-atc.sh
+# (system unit, root-owned; host-rewritten per-node by the installer, same
+# pattern as chump-almanac-liveness.service).
+#
+# CHUMP_RCA_REFLEX_ENABLED is deliberately NOT set here — the script defaults
+# it to 0 (OFF). Detection + the human-facing ambient ALERT still run every
+# cycle; only the auto-file-a-root-gap + auto-block-symptoms half is gated.
+# Flipping it on is a tracked toggle — see docs/process/CAPABILITY_DECISIONS.md.
+[Unit]
+Description=Chump RCA reflex — recurring-gap-pattern cluster detection + auto-RCA (RESILIENT-365 / INFRA-249)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/coord/recurring-gap-pattern-detector.sh --quiet'
