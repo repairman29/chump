@@ -18001,12 +18001,14 @@ gaps:
   domain: EFFECTIVE
   title: "NBA spine phase 2 — single-pane cockpit renders the full registry: extend PWA cockpit + dashboard.rs to show all ~48 currently-unseen metrics (vital-signs board, 11 faculties, pr-book casino ev/bands/brier, race-control mix, SLA p50/p90, board-vitals incidents) grouped + status-colored; today only today_ships + ci_qa_score reach the pane"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   acceptance_criteria:
     - "The change described by \"extend PWA cockpit + dashboard.rs to show all ~48 currently-unseen metrics (vital-signs board, 11 faculties, pr-book casino ev/bands/brier, race-control mix, SLA p50/p90, board-vitals incidents) grouped + status-colored; today only today_ships + ci_qa_score reach the pane\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 11 slices: EFFECTIVE-525, EFFECTIVE-526, EFFECTIVE-527, EFFECTIVE-528, EFFECTIVE-529, EFFECTIVE-530, EFFECTIVE-531, EFFECTIVE-532, EFFECTIVE-533, EFFECTIVE-534, EFFECTIVE-535
   outcome_id: FLEET-RADIO
 
 - id: EFFECTIVE-509
@@ -18376,6 +18378,314 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
   closed_date: '2026-08-31'
+
+- id: EFFECTIVE-525
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Document and enumerate all ~48 unseen metrics and their source fields (EFFECTIVE-508 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A markdown file lists each metric with name, description, source data field, and category
+    - The list is reviewed and approved by the product owner
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-526
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add metric definitions to the backend data model (EFFECTIVE-508 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A Rust struct or enum representing each metric exists in the EFFECTIVE codebase
+    - Compilation succeeds and `cargo fmt` shows no formatting changes
+  depends_on: [EFFECTIVE-525]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-527
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Expose new metrics via a JSON API endpoint (EFFECTIVE-508 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - GET /api/metrics returns a JSON object containing all defined metrics with current values
+    - The endpoint returns HTTP 200 and matches the schema defined in the data model
+  depends_on: [EFFECTIVE-526]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-528
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create status‑color mapping utility (EFFECTIVE-508 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "A function `status_color(metric: &Metric) -> &'static str` returns a CSS color string based on metric thresholds"
+    - Unit test verifies correct color for at least three sample metrics
+  depends_on: [EFFECTIVE-526]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-529
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement grouping logic for metric categories in the UI layer (EFFECTIVE-508 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Metrics are grouped into sections: vital‑signs, faculties, pr‑book casino, race‑control, SLA, board‑vitals"
+    - Each group renders a header with the category name
+  depends_on: [EFFECTIVE-527, EFFECTIVE-528]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-530
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update PWA cockpit component to consume dynamic metric list (EFFECTIVE-508 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The cockpit component fetches `/api/metrics` and renders a tile for each metric
+    - Existing metrics (today_ships, ci_qa_score) continue to display unchanged
+  depends_on: [EFFECTIVE-527, EFFECTIVE-529]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-531
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Render individual metric tiles with status‑colored badges (EFFECTIVE-508 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Each metric tile shows the metric name, current value, and a badge colored via the status‑color utility
+    - Visual regression test confirms correct colors for sample data
+  depends_on: [EFFECTIVE-530, EFFECTIVE-528]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-532
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integrate new metric tiles into `dashboard.rs` view (EFFECTIVE-508 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`dashboard.rs` imports the updated cockpit component and displays all metric groups on the single pane"
+    - The page loads without JavaScript errors in the browser console
+  depends_on: [EFFECTIVE-531]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-533
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add integration test verifying full registry appears in the cockpit (EFFECTIVE-508 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test starts the application, requests the cockpit page, and asserts that at least 45 new metric tiles are present
+    - Test fails when the new metrics are not rendered
+  depends_on: [EFFECTIVE-532]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-534
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update CI scripts to run the new integration test (EFFECTIVE-508 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`scripts/ci/test-cockpit.sh` executes the integration test and returns a non‑zero exit code on failure"
+    - CI pipeline shows the new test as part of the test suite
+  depends_on: [EFFECTIVE-533]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-535
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Run `cargo fmt`, `cargo clippy`, and ensure no warnings or formatting issues (EFFECTIVE-508 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` makes no changes"
+    - "`cargo clippy --all-targets -D warnings` passes without warnings"
+    - All existing and new tests pass
+  depends_on: [EFFECTIVE-534, EFFECTIVE-535]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
 
 - id: EVAL-085
   title: test eval 085
