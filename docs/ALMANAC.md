@@ -66,6 +66,16 @@ questions go to Almanac BEFORE grep or agent fan-outs.
    read the cited file at the citation. Snippets and summaries are pointers,
    not ground truth — and the working tree may have uncommitted changes the
    index never saw.
+8. **CONFIG-organ DRIFT no longer over-claims on benign spelling variance**
+   (INFRA-3472, almanac#7). Before the fix, an unset default spelled `""` in
+   one call site and `"(unset)"`/`"None"` in another — or a dynamic
+   per-process placeholder like `AGENT_ID:-$$` reading differently at every
+   call site — each counted as N conflicting defaults. `normalize_default()`
+   in `almanac-organs/src/config.rs` canonicalizes only known-equivalent
+   spellings (unset sentinels -> `""`, dynamic expressions -> `<dynamic>`)
+   before dedup/count, and never splits a multi-value default (e.g. a CSV
+   allowlist) into per-element pieces. Genuine conflicting static literals
+   still report as real drift.
 
 ## Latency shaping (measured 2026-08-06, Apple Silicon)
 
