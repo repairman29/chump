@@ -1568,6 +1568,8 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  notes: |
+    Decomposed into 4 slices: CREDIBLE-365, CREDIBLE-366, CREDIBLE-367, CREDIBLE-368
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -1582,6 +1584,8 @@ gaps:
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  notes: |
+    Decomposed into 11 slices: CREDIBLE-369, CREDIBLE-370, CREDIBLE-371, CREDIBLE-372, CREDIBLE-373, CREDIBLE-374, CREDIBLE-375, CREDIBLE-376, CREDIBLE-377, CREDIBLE-378, CREDIBLE-379
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -6839,11 +6843,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Create `scripts/ci/grep-target-rot-detector.py` to parse all files in `scripts/ci/` for `grep` commands, extract target path arguments from those commands, verify whether each path exists in the repository, and output a JSON report containing any missing targets (with `file`, `line`, and `target_path` properties) while returning an exit code of 0.
+    
+    Target file(s):
+    - scripts/ci/grep-target-rot-detector.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A script scans all files under scripts/ci for grep commands and extracts their target paths.
-    - The script verifies that each extracted target exists in the repository tree.
-    - The script outputs a JSON report listing any missing targets with file and line reference.
-    - The script runs without causing CI failures (exit code 0 regardless of findings).
+    - Running `python3 scripts/ci/grep-target-rot-detector.py` scans all files in `scripts/ci/` and exits with code 0 regardless of findings.
+    - The script outputs a valid JSON report containing a `missing_targets` list where each entry specifies `file`, `line`, and `target_path`.
+    - Missing paths referenced in `grep` targets under `scripts/ci/` are accurately listed in the report, while existing repo paths are omitted from `missing_targets`.
 
 - id: CREDIBLE-362
   domain: CREDIBLE
@@ -6851,11 +6861,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Create a scheduled GitHub Actions workflow at .github/workflows/rot-detector-sweep.yml that invokes scripts/ab-harness/run-ablation-sweep.py on a daily schedule. Update the workflow and sweep harness to direct execution logs and timestamped report artifacts to logs/rot-detector/, and ensure the workflow step exits with status 0 so standard PR builds and pipeline status checks are not blocked.
+    
+    Target file(s):
+    - .github/workflows/rot-detector-sweep.yml
+    - scripts/ab-harness/run-ablation-sweep.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The sweep script from slice 0 is invoked automatically on a daily schedule (e.g., via cron or a scheduled CI workflow).
-    - Execution logs are persisted to a known location (e.g., logs/rot‑detector/*.log).
-    - The scheduled run does not block any PR builds and always exits with status 0.
-    - A timestamped report file is generated for each run.
+    - .github/workflows/rot-detector-sweep.yml includes a schedule trigger with cron expression '0 0 * * *' as well as workflow_dispatch.
+    - Executing scripts/ab-harness/run-ablation-sweep.py writes logs and a timestamped report file to logs/rot-detector/ rot-detector-*.json.
+    - "The workflow job step running the rot-detector sweep uses continue-on-error: true or an explicit exit 0 handler so the step execution always yields exit status 0."
   depends_on: [CREDIBLE-361]
 
 - id: CREDIBLE-363
@@ -6877,12 +6894,191 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Update scripts/ci/test-gap-doctor-safe-sweep.sh to add and validate structural rot probes for (a) declared launchd/plist jobs with zero running processes, (b) toml config entries set to enabled=true with missing daemon binaries, and (d) installed tools unreferenced by scripts or environment variables. Ensure the sweep generates JSON report entries categorized by probe type and aggregates counts per probe category without triggering CI failures.
+    
+    Target file(s):
+    - scripts/ci/test-gap-doctor-safe-sweep.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "The sweep now also checks: (a) launchd/plist jobs declared in scripts/launchd or ~/Library/LaunchAgents that have zero running processes; (b) toml/config entries with enabled=true whose daemon binary is absent; (d) apt/brew‑installed tools that are not referenced by any script or environment variable."
-    - Each probe produces entries in the same JSON report format as slice 0, with clear categorisation.
-    - False‑positive tolerance is documented, and the report aggregates counts per probe type.
-    - The extended sweep runs on the same schedule as defined in slice 1 and does not cause CI failures.
+    - Executing scripts/ci/test-gap-doctor-safe-sweep.sh executes checks for stopped launchd jobs, missing toml daemon binaries, and unreferenced installed tools.
+    - The generated JSON report contains aggregated counts for each new probe type (launchd_stopped, toml_missing_binary, unreferenced_tool).
+    - scripts/ci/test-gap-doctor-safe-sweep.sh exits with status code 0 upon completing the extended sweep.
   depends_on: [CREDIBLE-361]
+
+- id: CREDIBLE-365
+  domain: CREDIBLE
+  title: "CREDIBLE: Create halt-class-emit.sh wrapper with failure-class taxonomy support (CREDIBLE-108 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - scripts/lib/halt-class-emit.sh is created and executable
+    - Function categorizes failures into transient vs permanent taxonomy
+    - Emits structured events for success, failure, and timeout statuses
+
+- id: CREDIBLE-366
+  domain: CREDIBLE
+  title: "CREDIBLE: Add cost tracking payload support to halt-class-emit.sh (CREDIBLE-108 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - halt-class-emit.sh accepts cost metrics flags/parameters
+    - Emitted event payload includes cost data formatted for operator reporting
+  depends_on: [CREDIBLE-365]
+
+- id: CREDIBLE-367
+  domain: CREDIBLE
+  title: "CREDIBLE: Retrofit existing script emitters to use halt-class-emit.sh wrapper (CREDIBLE-108 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Existing halt-class emission call-sites updated to invoke scripts/lib/halt-class-emit.sh
+    - All success, timeout, and failure exit paths trigger expected emitter calls
+  depends_on: [CREDIBLE-365, CREDIBLE-366]
+
+- id: CREDIBLE-368
+  domain: CREDIBLE
+  title: "CREDIBLE: Add smoke test script for halt-class emission observability (CREDIBLE-108 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Smoke test script executes emission paths for transient failure, permanent failure, timeout, and success
+    - Smoke test verifies emitted log output matches expected taxonomy and cost reporting schema
+  depends_on: [CREDIBLE-367]
+
+- id: CREDIBLE-369
+  domain: CREDIBLE
+  title: "CREDIBLE: Define HALT_CLASS_PREDICATES manifest schema (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A schema file (e.g., HALT_CLASS_PREDICATES.schema.yaml) exists in the repo
+    - The schema validates required fields (predicate name, condition, action) using a YAML schema validator
+    - Running the validator against a minimal valid example returns success
+
+- id: CREDIBLE-370
+  domain: CREDIBLE
+  title: "CREDIBLE: Create HALT_CLASS_PREDICATES.yaml with sample predicates (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A HALT_CLASS_PREDICATES.yaml file is added under docs/observability
+    - The file contains at least two distinct predicate definitions
+    - Running the schema validator from slice 0 against this file succeeds
+  depends_on: [CREDIBLE-369]
+
+- id: CREDIBLE-371
+  domain: CREDIBLE
+  title: "CREDIBLE: Add CI test script to validate manifest against schema (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A bash script (e.g., test_halt_predicates.sh) is added to the CI test suite
+    - The script invokes the YAML schema validator on HALT_CLASS_PREDICATES.yaml
+    - The script exits with code 0 for a valid manifest and non‑zero for an invalid one
+    - CI logs clearly show validation success or failure
+  depends_on: [CREDIBLE-369, CREDIBLE-370]
+
+- id: CREDIBLE-372
+  domain: CREDIBLE
+  title: "CREDIBLE: Document events emitted on success, failure, and timeout (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A markdown file (EVENTS.md) is created under docs/observability
+    - "The file lists three events: SUCCESS, FAILURE, TIMEOUT"
+    - Each event entry includes a JSON payload schema and a brief description
+
+- id: CREDIBLE-373
+  domain: CREDIBLE
+  title: "CREDIBLE: Add event emission stub to CI test (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The CI test script from slice 2 now prints a mock event JSON to stdout for each outcome
+    - When the manifest validates, a SUCCESS event is emitted; when it fails, a FAILURE event is emitted
+    - The emitted JSON matches the schema defined in slice 3
+  depends_on: [CREDIBLE-371, CREDIBLE-372]
+
+- id: CREDIBLE-374
+  domain: CREDIBLE
+  title: "CREDIBLE: Document cost tracking and reporting format (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A markdown file (COST_TRACKING.md) is added under docs/observability
+    - The document describes which cost metrics are captured (e.g., CPU‑seconds, memory‑MB‑seconds)
+    - It defines the reporting payload (JSON) and where operators can retrieve it
+
+- id: CREDIBLE-375
+  domain: CREDIBLE
+  title: "CREDIBLE: Add cost tracking stub to CI test (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The CI test script now generates a dummy cost payload (e.g., {\"cpu_seconds\": 0.5})"
+    - The payload is printed to stdout following the format described in slice 5
+    - The script still exits with the correct status code based on validation
+  depends_on: [CREDIBLE-371, CREDIBLE-374]
+
+- id: CREDIBLE-376
+  domain: CREDIBLE
+  title: "CREDIBLE: Document failure‑class taxonomy (transient vs permanent) (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A markdown file (FAILURE_TAXONOMY.md) is added under docs/observability
+    - "The taxonomy defines at least two classes: TRANSIENT and PERMANENT"
+    - Each class includes criteria and example scenarios
+
+- id: CREDIBLE-377
+  domain: CREDIBLE
+  title: "CREDIBLE: Add classification stub to CI test (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The CI test script can simulate a failure and classify it as TRANSIENT or PERMANENT based on a simple rule
+    - The classification result is printed to stdout and matches the taxonomy defined in slice 7
+  depends_on: [CREDIBLE-371, CREDIBLE-376]
+
+- id: CREDIBLE-378
+  domain: CREDIBLE
+  title: "CREDIBLE: Create smoke test command to verify observability (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new executable script (smoke_observability.sh) is added under scripts/
+    - The script runs the CI test from slice 2, captures emitted events, cost payload, and classification
+    - It asserts that all three event types can be produced, cost payload is present, and classification matches taxonomy
+    - The script exits with code 0 only when all assertions pass
+  depends_on: [CREDIBLE-372, CREDIBLE-374, CREDIBLE-376, CREDIBLE-371]
+
+- id: CREDIBLE-379
+  domain: CREDIBLE
+  title: "CREDIBLE: Integrate smoke test into CI pipeline (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The CI configuration (e.g., .github/workflows/ci.yml) includes a step that runs smoke_observability.sh
+    - The pipeline fails the build if the smoke test exits with a non‑zero code
+    - Build logs show the output of the smoke test for debugging
+  depends_on: [CREDIBLE-378, CREDIBLE-371]
 
 - id: DOC-031
   domain: DOC
@@ -60842,10 +61038,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add or update the `ensure_postgres_installed` function in `scripts/setup/install-self-hosted-runner.sh` to idempotently install PostgreSQL. The function checks for an existing installation using `command -v pg_isready`; if present, it logs a skip message and returns 0. If missing, it invokes the system package manager (`apt-get` or `brew`) to install PostgreSQL and verifies `pg_isready` is executable before returning 0.
+    
+    Target file(s):
+    - scripts/setup/install-self-hosted-runner.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - On a fresh box, the script installs PostgreSQL using the distribution's package manager.
-    - On re-run, the step detects an existing installation (e.g., via `which pg_isready`) and skips installation.
-    - The script exits 0 in both cases, and a subsequent `pg_isready` returns success.
+    - In `scripts/setup/install-self-hosted-runner.sh`, `ensure_postgres_installed` checks `command -v pg_isready` before attempting package installation.
+    - Executing `ensure_postgres_installed` when `pg_isready` is present logs a skip message and exits 0 without invoking the package manager.
+    - Executing `ensure_postgres_installed` when `pg_isready` is missing installs PostgreSQL via the system package manager, exits 0, and leaves `pg_isready` executable.
   depends_on: [INFRA-3696]
   notes: |
     [chump harvest check 'MISSION']
@@ -60883,12 +61086,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update `ensure_db_and_roles` in `scripts/setup/install-gap-substrate.sh` to read the database password from `providers.env` or environment variables without hardcoding, create the `chump_fleet` PostgreSQL database if it does not exist using `psql`, and idempotently create the `authenticator` and `anon` roles with granted permissions for `chump_fleet`.
+    
+    Target file(s):
+    - scripts/setup/install-gap-substrate.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The script reads the database password from providers.env (sourced or passed via environment); no hardcoded password.
-    - It creates the `chump_fleet` database if it does not exist, using `psql`.
-    - It creates the `authenticator` and `anon` roles with the password if they do not exist, and grants necessary permissions.
-    - "On re-run, the step is idempotent: no errors if DB/roles already exist."
-    - The `authenticator` role can log in to the `chump_fleet` database with the password.
+    - In `scripts/setup/install-gap-substrate.sh`, `ensure_db_and_roles` reads the password from `providers.env` or environment variables without hardcoded credentials.
+    - Running `scripts/setup/install-gap-substrate.sh` creates the `chump_fleet` database and `authenticator` and `anon` roles via `psql` when they do not exist.
+    - Re-running `scripts/setup/install-gap-substrate.sh` succeeds idempotently without script or SQL errors when the database and roles already exist.
+    - "`psql -U authenticator -d chump_fleet` successfully authenticates using the password loaded from `providers.env`."
   depends_on: [INFRA-3697]
   notes: |
     [chump harvest check 'MISSION']
