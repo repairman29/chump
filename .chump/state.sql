@@ -75718,7 +75718,7 @@ gaps:
 - id: PRODUCT-169
   domain: PRODUCT
   title: "[chump] Rust builds duplicated: crons on stable(1.97.1) vs sessions pinned 1.96.0, plus split CARGO_TARGET_DIRs"
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -75730,8 +75730,12 @@ gaps:
     - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-08-31T06:54:23Z] CREDIBLE-178: closed via PR #4336 with UNCOVERED acceptance criteria "misses":[0,1,2]. Verify the work is complete before trusting status=done.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
+  closed_date: '2026-08-31'
+  closed_pr: 4336
   skills_required: "external_repo:repairman29/chump"
 
 - id: PRODUCT-170
