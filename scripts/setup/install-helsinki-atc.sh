@@ -107,6 +107,11 @@ SYSTEM_UNITS=(
   chump-organ-watchdog.timer
   chump-board-ceo-briefing.service
   chump-board-ceo-briefing.timer
+  # RESILIENT-376: the Discord digest organ — twice-daily phone-readable
+  # factory pulse to the operator DM. SYSTEM unit so it survives the
+  # deploy-mirror reset and boots on a fresh node.
+  chump-digest.service
+  chump-digest.timer
   chump-organ-reconcile.service
   chump-organ-reconcile.timer
   chump-pr-approval.service
@@ -191,7 +196,7 @@ SYSTEM_UNITS=(
   chump-nba-dispatch.service
   chump-nba-dispatch.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
