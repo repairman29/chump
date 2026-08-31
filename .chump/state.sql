@@ -8816,9 +8816,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Insert a Tier 2 documentation block as comments immediately before the `_emit_ambient` function in `scripts/dispatch/free-tier-e2e-test.sh`, adding a “Tier 2” sub‑heading and concise notes that macOS requires `lld` (installed via `brew install llvm`), Linux requires `mold` (installed via the system package manager), and that the current CI environment lacks these linkers.
+    
+    Target file(s):
+    - scripts/dispatch/free-tier-e2e-test.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Add a \"Tier 2\" sub‑heading"
-    - Explain need for lld on macOS (brew install) and mold on Linux, and current missing state
+    - "The file `scripts/dispatch/free-tier-e2e-test.sh` contains a comment line `# Tier 2: Linker Requirements` directly above the `_emit_ambient` function definition."
+    - "The comment block includes the exact phrase `macOS: install lld via \\`brew install llvm\\``."
+    - "The comment block includes the exact phrase `Linux: install mold via your package manager`."
+    - "The comment block includes a line stating `Current state: lld/mold are not installed in the CI environment`."
   depends_on: [DOC-103]
   notes: |
     [chump harvest check 'fleet']
@@ -8954,9 +8963,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new function `_emit_tier5_doc` to `scripts/dispatch/free-tier-e2e-test.sh` that prints a markdown “## Tier 5” heading followed by explicit steps to “Bring Helsinki online” and “Prepare closetjunky”, and modify the existing `_emit_ambient` function to invoke `_emit_tier5_doc`. Also insert a matching comment block with the same heading and steps at the top of `scripts/ci/test-tier5-self-improve.sh` for static documentation.
+    
+    Target file(s):
+    - scripts/dispatch/free-tier-e2e-test.sh
+    - scripts/ci/test-tier5-self-improve.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Add a \"Tier 5\" sub‑heading"
-    - Outline steps to bring Helsinki online and prep closetjunky
+    - "`scripts/dispatch/free-tier-e2e-test.sh` defines a function named `_emit_tier5_doc` that `echo`s the exact line `## Tier 5` and two subsequent lines: `- Bring Helsinki online` and `- Prepare closetjunky`."
+    - "`scripts/dispatch/free-tier-e2e-test.sh`'s `_emit_ambient` function contains a call to `_emit_tier5_doc`."
+    - "Executing `scripts/dispatch/free-tier-e2e-test.sh` with any argument prints the string `## Tier 5` to stdout (verified by `grep '## Tier 5'`)."
+    - "`scripts/ci/test-tier5-self-improve.sh` includes a top‑of‑file comment block that contains the exact markdown heading `## Tier 5` and the two bullet steps for Helsinki and closetjunky."
   depends_on: [DOC-103]
   notes: |
     [chump harvest check 'fleet']
