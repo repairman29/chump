@@ -40596,7 +40596,7 @@ gaps:
 - id: INFRA-2400
   domain: INFRA
   title: "ZERO-WASTE: backfill 16 EVENT_REGISTRY emit-without-register entries (INFRA-2396 reserved cohort)"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -40607,7 +40607,10 @@ gaps:
   notes: |
     [2026-08-29T17:24:13Z] rot-reaper: PR #4304 auto-closed (required-check-red, 24h) 2026-08-29; re-attempt on fresh main.
     [2026-08-29T17:26:28Z] rot-reaper: PR #4304 auto-closed (required-check-red, 24h) 2026-08-29; re-attempt on fresh main.
+    [2026-08-31T03:42:35Z] CREDIBLE-178: closed via PR #4332 with UNCOVERED acceptance criteria "misses":[0,1,2,3]. Verify the work is complete before trusting status=done.
   opened_date: '2026-07-26'
+  closed_date: '2026-08-31'
+  closed_pr: 4332
   outcome_id: MISSION-010
 
 - id: INFRA-2401
@@ -65096,6 +65099,17 @@ gaps:
     - scripts/ci/test-manifest-installer-parity.sh + test-resilient-366-organ-roll-call.sh reference the new path and pass
   notes: |
     Deferred from the 2026-08-30 manifest->installer parity fix for SAFETY: rename after digest/nba PRs settle. At that time install-helsinki-atc.sh was a LIVE high-churn merge target — OPEN PRs #4326 (RESILIENT-376 digest organ, itself adding to the roster) and #4307 both touched it, and #4327 had just merged into it. A repo-wide git mv + 40-file rewrite would have conflicted with in-flight work. Do this once the installer-touching PR queue is quiet. Tasks 1+2 (roster drift patch + test-manifest-installer-parity.sh CI gate) landed separately.
+
+- id: INFRA-3867
+  domain: INFRA
+  title: "Ribbon: a bare box becomes a real ChumpOS node in one command"
+  status: open
+  priority: P2
+  effort: l
+  description: |
+    Land the fresh-box FTUE fixes so chump-node-install on a genuinely fresh owned box produces a real ATC/worker node, not a crippled muscle node — the switch that makes factory-2 real.
+  acceptance_criteria:
+    - On a genuinely fresh box, git clone plus one command yields a node whose self-test is GREEN and whose systemd lists the full ATC organ plane (board-cycle, organ-watchdog, duty-officer, gap-drain, discord-gateway, pr-lander, nba-dispatch, chump-digest), not just heartbeat/worker/process-organ-heal.
 
 - id: INFRA-394
   domain: INFRA
