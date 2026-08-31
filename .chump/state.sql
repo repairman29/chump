@@ -8256,9 +8256,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Refactor the `run` function in `crates/chump-preflight/src/preflight.rs` to eliminate all Clippy warnings (e.g., replace `unwrap`/`expect` with proper error propagation, rename shadowed variables, remove dead code, and add explicit type annotations where needed) and adjust the code formatting so that `cargo fmt --check` reports no changes, while preserving the original runtime behavior of the function.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - cargo fmt passes without changes
-    - cargo clippy --all-targets -D warnings passes with zero warnings
+    - Running `cargo fmt -- --check` on the repository exits with status 0 and prints no formatting differences.
+    - Running `cargo clippy --all-targets -D warnings` on the repository exits with status 0 and reports zero warnings.
+    - "The `run` function in `crates/chump-preflight/src/preflight.rs` compiles without any Clippy warnings when the file is linted in isolation (`cargo clippy -- -W clippy::all`)."
+    - Executing the preflight binary (e.g., `cargo run --bin chump-preflight -- run`) returns the same exit code and output as before the change (verified against a stored baseline).
   depends_on: [CREDIBLE-416]
   notes: |
     [chump harvest check 'Index']
@@ -18405,7 +18414,7 @@ gaps:
   domain: EFFECTIVE
   title: "BAT-PHONE — external task/mission acceptor: POST intake on the fleet HTTP server that accepts a mission/correction, decomposes-at-file, and hands ATC/orchestrator a job WITHOUT halting the fleet; unifies with next_best_action as the second dispatch source"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   description: |
     Files: crates/chump-fleet-server (add POST /api/mission intake; today only GET routes), docs/design/MISSION_LAYER_INTERFACE.md + A2A_TWO_WAY_COMMS.md + OPERATOR_AGENT.md (existing scaffolding), crates/chump-orchestrator (ATC consumer), scripts/coord/next-best-action.sh. AC: a POSTed mission becomes a decomposed, AC-complete gap the orchestrator dispatches; fleet keeps running; same path serves NBA dispatches; recognized like a bat-phone (priority-injected, not halting).
@@ -18413,6 +18422,8 @@ gaps:
     - "The change described by \"POST intake on the fleet HTTP server that accepts a mission/correction, decomposes-at-file, and hands ATC/orchestrator a job WITHOUT halting the fleet; unifies with next_best_action as the second dispatch source\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 9 slices: EFFECTIVE-540, EFFECTIVE-541, EFFECTIVE-542, EFFECTIVE-543, EFFECTIVE-544, EFFECTIVE-545, EFFECTIVE-546, EFFECTIVE-547, EFFECTIVE-548
   outcome_id: CHUMPOS
 
 - id: EFFECTIVE-514
@@ -19134,6 +19145,269 @@ gaps:
     
     === cross-pollination briefs mentioning 'Bootstrap' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-540
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add POST /api/mission route registration in fleet server (EFFECTIVE-513 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Insert a route registration for POST /api/mission inside the `build_api_router` function in `src/web_server.rs`, wiring it to the existing `post_mission` handler defined in `crates/chump-fleet-server/src/routes.rs` and adding any necessary `use` import for the handler.
+    
+    Target file(s):
+    - src/web_server.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - "src/web_server.rs: the `build_api_router` function contains a line that registers a POST handler at the path `\"/api/mission\"` and calls `post_mission`."
+    - Running `cargo test -p chump-fleet-server` completes without compilation errors.
+    - "crates/chump-fleet-server/tests/mission_intake.rs: the `build_app` test can issue a POST request to `/api/mission` and receives an HTTP 200 response."
+  notes: |
+    [chump harvest check 'external']
+    === primitives_index match for 'external' ===
+    
+    === cluster keyword match for 'external' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'external' ===
+    
+    === repo-description match for 'external' ===
+    
+    === HARVEST_ROADMAP.md mention of 'external' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'external' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-541
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create handler stub for POST /api/mission (EFFECTIVE-513 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A new function `handle_post_mission` exists and returns a 200 OK with a placeholder JSON body.
+    - The function is wired to the route added in slice 0.
+  depends_on: [EFFECTIVE-540]
+  notes: |
+    [chump harvest check 'external']
+    === primitives_index match for 'external' ===
+    
+    === cluster keyword match for 'external' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'external' ===
+    
+    === repo-description match for 'external' ===
+    
+    === HARVEST_ROADMAP.md mention of 'external' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'external' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-542
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Parse and validate incoming mission payload (EFFECTIVE-513 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The handler deserializes the request body into a `Mission` struct (or equivalent) and returns 400 Bad Request on malformed JSON.
+    - Unit test verifies that valid JSON yields 200 and invalid JSON yields 400.
+  depends_on: [EFFECTIVE-541]
+  notes: |
+    [chump harvest check 'external']
+    === primitives_index match for 'external' ===
+    
+    === cluster keyword match for 'external' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'external' ===
+    
+    === repo-description match for 'external' ===
+    
+    === HARVEST_ROADMAP.md mention of 'external' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'external' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-543
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement mission decomposition to file (EFFECTIVE-513 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The handler writes the received mission to a uniquely‑named file in the configured mission directory.
+    - A log entry confirms successful write.
+    - Integration test checks that after a POST, a file appears with expected contents.
+  depends_on: [EFFECTIVE-542]
+  notes: |
+    [chump harvest check 'external']
+    === primitives_index match for 'external' ===
+    
+    === cluster keyword match for 'external' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'external' ===
+    
+    === repo-description match for 'external' ===
+    
+    === HARVEST_ROADMAP.md mention of 'external' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'external' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-544
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Dispatch decomposed mission to ATC/orchestrator asynchronously (EFFECTIVE-513 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - After writing the mission file, the handler spawns a Tokio task that sends a job message to the orchestrator via the existing ATC channel.
+    - The fleet server does not block the request thread; response is returned immediately.
+    - Mocked orchestrator test confirms receipt of the job message.
+  depends_on: [EFFECTIVE-543]
+  notes: |
+    [chump harvest check 'external']
+    === primitives_index match for 'external' ===
+    
+    === cluster keyword match for 'external' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'external' ===
+    
+    === repo-description match for 'external' ===
+    
+    === HARVEST_ROADMAP.md mention of 'external' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'external' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-545
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integrate next‑best‑action as secondary dispatch source (EFFECTIVE-513 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The orchestrator now accepts jobs from both the POST endpoint and the existing next‑best‑action script.
+    - A flag or identifier in the job payload distinguishes the source.
+    - Unit test ensures a job originating from the POST path is processed identically to one from next‑best‑action.
+  depends_on: [EFFECTIVE-544]
+  notes: |
+    [chump harvest check 'external']
+    === primitives_index match for 'external' ===
+    
+    === cluster keyword match for 'external' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'external' ===
+    
+    === repo-description match for 'external' ===
+    
+    === HARVEST_ROADMAP.md mention of 'external' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'external' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-546
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update next‑best‑action script to use unified dispatch endpoint (EFFECTIVE-513 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/coord/next-best-action.sh now POSTs to /api/mission instead of its previous mechanism.
+    - Running the script results in a new mission file and orchestrator job, verified by a smoke test.
+  depends_on: [EFFECTIVE-545]
+  notes: |
+    [chump harvest check 'external']
+    === primitives_index match for 'external' ===
+    
+    === cluster keyword match for 'external' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'external' ===
+    
+    === repo-description match for 'external' ===
+    
+    === HARVEST_ROADMAP.md mention of 'external' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'external' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-547
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add integration test covering full POST intake flow (EFFECTIVE-513 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test sends a valid mission JSON to the running fleet server, asserts 200 response, checks file creation, and verifies orchestrator received the job.
+    - Test fails if any step is missing.
+  depends_on: [EFFECTIVE-544]
+  notes: |
+    [chump harvest check 'external']
+    === primitives_index match for 'external' ===
+    
+    === cluster keyword match for 'external' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'external' ===
+    
+    === repo-description match for 'external' ===
+    
+    === HARVEST_ROADMAP.md mention of 'external' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'external' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-548
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Run cargo fmt, clippy and CI checks (EFFECTIVE-513 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` makes no changes."
+    - "`cargo clippy --all-targets -D warnings` passes without warnings."
+    - All existing and new tests pass in CI.
+  depends_on: [EFFECTIVE-547]
+  notes: |
+    [chump harvest check 'external']
+    === primitives_index match for 'external' ===
+    
+    === cluster keyword match for 'external' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'external' ===
+    
+    === repo-description match for 'external' ===
+    
+    === HARVEST_ROADMAP.md mention of 'external' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'external' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
 - id: EVAL-085
   title: test eval 085
