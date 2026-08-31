@@ -93,18 +93,23 @@ else
     exit 1
 fi
 
-# ---- Test 5: CHUMP_DOCS_DELTA_CHECK=0 bypass must allow no-trailer commit ----
+# ---- Test 5: Verify-Bypass: docs-delta trailer must allow no-trailer commit ----
+# CREDIBLE-155 (commit ab7ab2fa, 2026-07-19) ported docs-delta into the
+# `chump verify` unified policy engine (src/verify/rules/docs_delta.rs) and
+# collapsed every rule onto ONE audited bypass surface: the
+# `Verify-Bypass: <rule-id>: <reason>` commit trailer. CHUMP_DOCS_DELTA_CHECK=0
+# only bypasses via the legacy inline fallback in scripts/git-hooks/commit-msg
+# (legacy_docs_delta_check()), which is skipped whenever a `chump` binary
+# with `verify --stage` support is on PATH — true on any machine that has
+# built/installed chump, which is every real dev/CI environment. This test
+# exercises the real, current, audited bypass instead of the retired
+# env-var semantics (mirrors case 3 in test-docs-delta-guard.sh).
 echo "more" > docs/more.md
 git add docs/more.md
-echo "Test 5: CHUMP_DOCS_DELTA_CHECK=0 bypass must allow no-trailer commit"
-set +e
-CHUMP_DOCS_DELTA_CHECK=0 git commit -m "feat: add more doc" >/dev/null 2>&1
-rc=$?
-set -e
-if [[ "$rc" -eq 0 ]]; then
-    echo "[PASS] Test 5: bypass env var works"
+echo "Test 5: Verify-Bypass: docs-delta trailer must allow no-trailer commit"
+if try_commit 0 "$(printf 'feat: add more doc\n\nVerify-Bypass: docs-delta: test exercises the audited bypass surface\n')"; then
+    echo "[PASS] Test 5: Verify-Bypass: docs-delta trailer bypasses the guard"
 else
-    echo "[FAIL] Test 5: bypass env var didn't allow commit (rc=$rc)"
     exit 1
 fi
 
