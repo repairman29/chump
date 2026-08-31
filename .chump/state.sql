@@ -84360,10 +84360,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify the `_on_ambient_line` function in `scripts/coord/binary-refresh-event-watcher.sh` to detect a line containing `main_moved=true` and write a `needs_rebuild=true` flag into the corresponding ORGANS table entry; extend the `OrgansEntry` struct and the `import_from_yaml` function in `crates/chump-gap-store/src/lib.rs` to include a `needs_rebuild: bool` field (default false) that is populated from YAML and cleared after a rebuild, and adjust the installation routine to check this flag and invoke the pull‑build‑swap‑restart sequence exactly once per flag set.
+    
+    Target file(s):
+    - scripts/coord/binary-refresh-event-watcher.sh
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - ORGANS table entry includes a `needs_rebuild` flag that is set when `main_moved` is true
-    - Installation routine checks this flag and initiates the pull‑build‑swap‑restart sequence
-    - No duplicate rebuilds occur if the flag is already cleared
+    - In `scripts/coord/binary-refresh-event-watcher.sh`, the `_on_ambient_line` function appends `needs_rebuild=true` to the ORGANS table entry when it processes a line that matches `main_moved=true`.
+    - "In `crates/chump-gap-store/src/lib.rs`, the `OrgansEntry` struct now contains a `needs_rebuild: bool` field with a default of `false`, and `import_from_yaml` correctly parses a `needs_rebuild` key from the YAML source."
+    - The installation routine (the function `install_organs` in `crates/chump-gap-store/src/lib.rs`) reads the `needs_rebuild` flag, triggers the `pull-build-swap-restart` command when the flag is `true`, and resets the flag to `false` after the command completes.
+    - Executing the main‑move event twice in succession results in only one invocation of `pull-build-swap-restart`, confirming that the flag is cleared after the first rebuild and no duplicate rebuilds occur.
   depends_on: [RESILIENT-490]
   notes: |
     [chump harvest check 'organ']
