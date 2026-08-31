@@ -65745,12 +65745,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the ChumpViewFleetHealth class in web/v2/app.js (specifically the method that processes operator‑reported bad resolutions) to check the 24‑hour regression window, automatically switch CHUMP_CLAIM_MODE to blocking when a bad resolution occurs within that window, log a claim_mode_reverted event with the operator’s reason, and reset the consecutive clean‑resolution counter; add a corresponding unit test in scripts/ci/test-a2a-always-on.sh to verify the behavior.
+    
+    Target file(s):
+    - web/v2/app.js
+    - scripts/ci/test-a2a-always-on.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - If operator reports a bad resolution (via revert in escalation queue), 24h regression window is checked
-    - If bad resolution within 24h, CHUMP_CLAIM_MODE automatically reverts to blocking
-    - Revert is logged as kind=claim_mode_reverted with reason
-    - Consecutive clean resolution counter resets
-    - Unit test verifies revert trigger and counter reset
+    - In web/v2/app.js, the method handling operator‑reported bad resolutions (e.g., ChumpViewFleetHealth.handleOperatorRevert) sets CHUMP_CLAIM_MODE to “blocking” when the resolution timestamp is within the last 24 hours.
+    - In web/v2/app.js, the same method creates a log entry with kind=claim_mode_reverted and includes the operator‑provided reason field.
+    - In web/v2/app.js, after the auto‑revert, the consecutive clean‑resolution counter stored on the fleet health object is reset to zero.
+    - The test script scripts/ci/test-a2a-always-on.sh contains a new unit test that simulates a bad resolution reported within 24 hours and asserts that claim mode becomes blocking, the log entry is created, and the clean‑resolution counter is reset.
   depends_on: [INFRA-3773, INFRA-3772]
   notes: |
     [chump harvest check 'RESILIENT']
@@ -65807,10 +65814,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify the `ship` function in `crates/chump-gap-store/src/lib.rs` to add a compatibility branch that, when `CHUMP_CLAIM_MODE` is set to its default value `blocking`, processes a bare chump claim exactly as the legacy implementation did (no extra lease creation, same status handling), while leaving all other claim‑mode logic untouched.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Under default CHUMP_CLAIM_MODE=blocking, chump claim semantics are identical to pre-change behavior
-    - Existing sibling-lease alerts fire unchanged
-    - Smoke test run against legacy test suite passes without modification
+    - "In `crates/chump-gap-store/src/lib.rs::ship`, a bare chump claim under `CHUMP_CLAIM_MODE=blocking` returns the identical `ClaimResult` (status code, lease ID, and metadata) as the pre‑change version verified by a dedicated unit test."
+    - "The log output from `crates/chump-gap-store/src/lib.rs::ship` for a sibling‑lease alert remains unchanged; the exact string `Sibling lease alert:` appears with the same payload before and after the edit."
+    - Executing the legacy smoke‑test script `scripts/dispatch/board-ceo-briefing-beat.sh` exits with status 0 and produces no new or altered alert messages related to chump claims.
+    - All existing tests in the `chump-gap-store` crate (`cargo test --package chump-gap-store`) pass without any modifications to the test suite.
   depends_on: [INFRA-3765]
   notes: |
     [chump harvest check 'RESILIENT']
