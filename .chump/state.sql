@@ -4647,7 +4647,7 @@ gaps:
     - chump gap decompose PRESERVES author-provided acceptance_criteria as the fixed done-definition (the WHAT) and only generates the implementation sub-steps (the HOW); never overwrites authored AC
     - "CI smoke test proves: (a) reserve P1 without AC is refused, (b) with it the AC is stored verbatim, (c) decompose leaves authored AC unchanged"
   notes: |
-    Decomposed into 3 slices: CREDIBLE-343, CREDIBLE-344, CREDIBLE-345
+    Decomposed into 3 slices: CREDIBLE-392, CREDIBLE-393, CREDIBLE-394
   opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
@@ -7449,6 +7449,107 @@ gaps:
     
     === cross-pollination briefs mentioning 'run-fleet' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-392
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-343: Enforce --acceptance-criteria flag for P0/P1 reserve (CREDIBLE-284 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The gap reserve command accepts a new flag `--acceptance-criteria <text>`.
+    - For gaps with priority P0 or P1, the flag is mandatory; execution without it fails with a clear error message.
+    - The optional bypass flag `--no-ac-required` allows creation without AC and logs an audit‑trailer entry.
+    - The provided flag value is stored verbatim in the gap's `acceptance_criteria` field.
+  notes: |
+    [chump harvest check 'reserve']
+    === primitives_index match for 'reserve' ===
+    
+    === cluster keyword match for 'reserve' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'reserve' ===
+    
+    === repo-description match for 'reserve' ===
+    
+    === HARVEST_ROADMAP.md mention of 'reserve' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'reserve' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-393
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-344: Remove tautological placeholder auto‑fill for unauthored gaps (CREDIBLE-284 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When a gap is created without providing `--acceptance-criteria` (and without `--no-ac-required`), the `acceptance_criteria` field is empty/null rather than a placeholder string.
+    - "The audit subsystem flags gaps with empty `acceptance_criteria` as \"missing AC\"."
+    - "No placeholder text such as \"TODO: add acceptance criteria\" is auto‑generated."
+  notes: |
+    [chump harvest check 'reserve']
+    === primitives_index match for 'reserve' ===
+    
+    === cluster keyword match for 'reserve' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'reserve' ===
+    
+    === repo-description match for 'reserve' ===
+    
+    === HARVEST_ROADMAP.md mention of 'reserve' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'reserve' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-394
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-345: Preserve authored acceptance criteria during gap decomposition (CREDIBLE-284 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Decompose operation reads the stored `acceptance_criteria` and copies it unchanged into the resulting sub‑steps' done definition.
+    - No step in the generated implementation overwrites or replaces the original acceptance_criteria.
+    - "CI smoke test verifies: (a) reserve P1 without AC is refused, (b) reserve with AC stores it verbatim, (c) decompose leaves the AC unchanged."
+  depends_on: [CREDIBLE-392]
+  notes: |
+    [chump harvest check 'reserve']
+    === primitives_index match for 'reserve' ===
+    
+    === cluster keyword match for 'reserve' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'reserve' ===
+    
+    === repo-description match for 'reserve' ===
+    
+    === HARVEST_ROADMAP.md mention of 'reserve' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'reserve' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: DOC-031
   domain: DOC
@@ -62142,11 +62243,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend `scripts/ci/test-jetstream-consumer-roundtrip.sh` to recognize a new `--verify-live` flag. When the flag is present, the script first checks that the `almanac` binary is on the PATH, then runs `almanac repos` and `almanac stats <slug>` (where `<slug>` is derived from the current repository). It aborts with a non‑zero exit code if `almanac repos` fails or if `almanac stats` reports zero or fewer files. On subsequent invocations with the same commit SHA on a live CJ node, the script skips any `git clone`, `cargo build`, or other mutating steps, ensuring a pure re‑run with no side effects.
+    
+    Target file(s):
+    - scripts/ci/test-jetstream-consumer-roundtrip.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The script supports --verify-live and runs `almanac repos` and `almanac stats <slug>` after ensuring the binary is installed
-    - On a CJ live node, --verify-live passes only if `almanac repos` is resolvable and `almanac stats <slug>` reports >0 files
-    - Re-running the script on a live CJ node with a matching SHA performs no clone, no cargo build, and no mutation of repo or stats data
-    - "--verify-live exits non-zero if repos are unresolvable or stats <=0 files"
+    - Running `scripts/ci/test-jetstream-consumer-roundtrip.sh --verify-live` on a live CJ node where `almanac repos` succeeds and `almanac stats <slug>` reports a file count > 0 exits with status code 0.
+    - Running the same script with `--verify-live` on a node where `almanac repos` returns a non‑zero exit code causes the script to exit with a non‑zero status code.
+    - Running the script with `--verify-live` on a node where `almanac stats <slug>` reports 0 files causes the script to exit with a non‑zero status code.
+    - When the script is invoked a second time on the same live CJ node with the identical SHA and `--verify-live`, the log output contains no lines invoking `git clone` or `cargo build`, and the repository directory timestamps remain unchanged, confirming no side‑effect re‑run.
   depends_on: [INFRA-3713]
   notes: |
     [chump harvest check 'MISSION']
