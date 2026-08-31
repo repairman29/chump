@@ -18,6 +18,8 @@
     - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    Fixed upstream in repairman29/postsub, commit 8bf007a: removed the dead footer Status <a href=#> link (no status-page infra exists to link to). Deployed via Firebase Hosting auto-deploy on push to main (GH Actions run 33355372032, succeeded). Verified live: static JS bundle footer now reads Help Center -> Documentation -> Community, Status entry gone. No regression to surrounding footer markup.
   source_doc: "holler:feedback_events"
   skills_required: "external_repo:repairman29/postsub"
 
