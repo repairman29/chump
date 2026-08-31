@@ -492,7 +492,8 @@ other 3 working lanes. With per-lane toggles, the recovery is a one-var flip.
 
 ## Current state — degraded ubuntu-only mode (2026-05-21, INFRA-1655)
 
-**Repo variable state as of 2026-05-21T06:00Z:**
+**Repo variable state as of 2026-05-21T06:00Z (historical — see INFRA-3403
+disposition below for current state as of 2026-08-31):**
 
 | Variable | Value | Effect |
 |---|---|---|
@@ -1205,6 +1206,63 @@ per-machine-local design, not a bug to chase further. **No further
 INFRA-1655 investigation slices are warranted on any host** — if the gap
 resurfaces again, the fix is a one-line local `chump gap ship` from that
 host's main checkout, not another reproduction/root-cause pass.
+
+### INFRA-3403 disposition: lane restoration blocked, not attempted (2026-08-31)
+
+INFRA-3403 asked to restore the remaining 4 self-hosted lanes
+(`RUNNER_AUDIT`, `RUNNER_COVERAGE`, `RUNNER_E2E_GOLDEN_PATH`,
+`RUNNER_TAURI_COWORK_E2E`) one at a time, gated on AC1: confirming the
+`RUNNER_E2E_PWA` canary lane had run clean across ≥3 PR cycles. Checked
+live state before touching any `gh variable` command:
+
+```
+$ gh variable list -R repairman29/chump
+CHUMP_SELF_HOSTED_CHANGES	false	2026-05-28T01:16:41Z
+CHUMP_SELF_HOSTED_ENABLED	false	2026-07-27T01:57:02Z
+
+$ gh variable get RUNNER_E2E_PWA -R repairman29/chump
+variable RUNNER_E2E_PWA was not found
+
+$ gh api repos/repairman29/chump/actions/runners --jq '.runners[] | {name,status,labels:[.labels[].name]}'
+{"labels":["self-hosted","Linux","X64","chumpd-host"],"name":"chumpd-eu-runner","status":"offline"}
+```
+
+**AC1 cannot be satisfied — the canary premise no longer holds.**
+`RUNNER_E2E_PWA` is not currently set at all (no lane variables exist),
+`CHUMP_SELF_HOSTED_ENABLED` has been `false` since 2026-07-27, and the only
+registered runner in the pool is `chumpd-eu-runner` (Linux/x64, currently
+**offline**) — there is zero macOS-arm64 hardware registered to route a
+`self-hosted,macos-arm64,chump-fleet` job to. This matches, and is caused
+by, two things already on record in this doc:
+
+1. **The 2026-07-27 disk-pressure decision** (see "Resolved: checkout flake
+   root cause + current state" above) — the operator deliberately stopped
+   the 4 M4 runners (`launchctl bootout` + `.plist.bak`) because cargo/
+   rust-cache churn was eating the Mac's thin disk headroom, and decided
+   *not* to re-enable while that Mac also hosts fleet coordination. This is
+   a standing operator decision, not an incident to fix.
+2. **Full deregistration since** (INFRA-3544/3550/3556/3562/3574/3576) —
+   the `jeffs-macbook-air-10-X` runners are no longer merely stopped, they
+   are absent from `gh api .../actions/runners` entirely. Setting any
+   `RUNNER_*` lane variable to `macos-arm64` labels today would not "restore
+   a canary," it would silently queue jobs against hardware that doesn't
+   exist to dispatch to.
+
+**Disposition: closed as blocked, matching INFRA-1655's disposition.**
+Restoring lanes is not this session's call to make unilaterally — it would
+both re-litigate the 2026-07-27 disk-pressure decision and route jobs at
+non-existent hardware, neither of which "restore RUNNER_AUDIT, wait one
+clean PR cycle" can paper over. No lane variables were set. AC6
+(`kind=runner_health_restored`) is not applicable — there is no full
+restoration to announce. The correct trigger to resume this work is a
+physical/operator action (re-register the M4 hardware via
+`scripts/setup/install-self-hosted-runner.sh` on the machine, and revisit
+the disk-pressure constraint), at which point the original one-lane-at-a-
+time sequence in "Required steps to restore self-hosted routing" above is
+still the right playbook. **No further INFRA-3403 restoration slices
+should be dispatched until that physical precondition changes** — re-running
+this same `gh variable list` / `gh api runners` check will keep returning
+the same `runner_absent`/`offline` result until then.
 
 ---
 
