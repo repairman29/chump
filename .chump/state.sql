@@ -8256,9 +8256,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Refactor the `run` function in `crates/chump-preflight/src/preflight.rs` to eliminate all Clippy warnings (e.g., replace `unwrap`/`expect` with proper error propagation, rename shadowed variables, remove dead code, and add explicit type annotations where needed) and adjust the code formatting so that `cargo fmt --check` reports no changes, while preserving the original runtime behavior of the function.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - cargo fmt passes without changes
-    - cargo clippy --all-targets -D warnings passes with zero warnings
+    - Running `cargo fmt -- --check` on the repository exits with status 0 and prints no formatting differences.
+    - Running `cargo clippy --all-targets -D warnings` on the repository exits with status 0 and reports zero warnings.
+    - "The `run` function in `crates/chump-preflight/src/preflight.rs` compiles without any Clippy warnings when the file is linted in isolation (`cargo clippy -- -W clippy::all`)."
+    - Executing the preflight binary (e.g., `cargo run --bin chump-preflight -- run`) returns the same exit code and output as before the change (verified against a stored baseline).
   depends_on: [CREDIBLE-416]
   notes: |
     [chump harvest check 'Index']
@@ -19143,9 +19152,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Insert a route registration for POST /api/mission inside the `build_api_router` function in `src/web_server.rs`, wiring it to the existing `post_mission` handler defined in `crates/chump-fleet-server/src/routes.rs` and adding any necessary `use` import for the handler.
+    
+    Target file(s):
+    - src/web_server.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The router in crates/chump-fleet-server includes a POST /api/mission entry pointing to a handler function.
-    - Compilation succeeds after adding the route.
+    - "src/web_server.rs: the `build_api_router` function contains a line that registers a POST handler at the path `\"/api/mission\"` and calls `post_mission`."
+    - Running `cargo test -p chump-fleet-server` completes without compilation errors.
+    - "crates/chump-fleet-server/tests/mission_intake.rs: the `build_app` test can issue a POST request to `/api/mission` and receives an HTTP 200 response."
   notes: |
     [chump harvest check 'external']
     === primitives_index match for 'external' ===
