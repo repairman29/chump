@@ -66417,10 +66417,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update the preflight orchestration in `crates/chump-preflight/src/preflight.rs` to measure the wall‑clock duration of each gate, and when the cumulative sequential time exceeds 60 seconds, schedule independent gates to run concurrently using `tokio::spawn`. Add logging of total duration and a flag indicating how many checks were parallelized, ensuring warm runs stay under 60 s and cold runs under 120 s.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Preflight wall-clock time is <60s warm and <120s cold after adding new gates
-    - "If parity adds >60s, parallelize independent checks using tokio::spawn"
-    - Performance measured and verified
+    - "In `crates/chump-preflight/src/preflight.rs`, the function that executes all gates must emit a log line `Preflight duration: <X>s (warm)` and the measured `<X>` must be <60 when the binary is run twice consecutively (warm cache)."
+    - "When three mock independent checks each `tokio::time::sleep(Duration::from_secs(30))` are added, the same function must log `Parallelized 3 checks` and the total wall‑clock time reported must be <70 seconds, demonstrating parallel execution."
+    - Running the compiled binary `chump-preflight --dry-run` must exit with status 0 and print `All preflight checks passed` within the measured duration limits (≤60 s warm, ≤120 s cold).
+    - Add a unit test `test_parallelization` in `crates/chump-preflight/tests/parallel.rs` that asserts the elapsed time of the parallelized mock checks is less than the sum of their individual sleep durations (i.e., <90 s for three 30‑second sleeps).
   depends_on: [INFRA-3793]
   notes: |
     [chump harvest check 'RESILIENT']
