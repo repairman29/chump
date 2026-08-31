@@ -77,6 +77,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use crate::comprehend_findings;
+
 // ── Public API ────────────────────────────────────────────────────────────
 
 /// Entry point called from `src/main.rs` after routing `chump external verify-merge`.
@@ -405,6 +407,54 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
     );
 
     if opts.apply {
+        // ── Gate 5 (advisory, INFRA-3470): comprehension organs — structured
+        // findings ──────────────────────────────────────────────────────────
+        // Runs the `comprehend` organs over the clone right before the
+        // autonomous merge fires, and parses the report into typed
+        // `ComprehendFinding`s (instead of the opaque prose every other
+        // caller embeds verbatim) so the merge is accompanied by a coverage
+        // signal on the target repo. Advisory only — never blocks: the
+        // organs binary is often absent (CI, most dev machines), and a
+        // missing/degraded comprehension signal on an EXTERNAL repo must not
+        // veto a merge gates 1-4 already earned. Wired specifically to
+        // `--apply` (not the dry-run path) so this only fires for the real
+        // autonomous-merge moment, not every judging pass.
+        println!(
+            "\n[verify-merge] Gate 5 (advisory): comprehension organs — structured findings ..."
+        );
+        match run_comprehend_advisory(&clone_dir) {
+            Some(findings) => {
+                for f in &findings {
+                    println!(
+                        "  {} : {} — {}",
+                        f.section,
+                        f.coverage.as_str(),
+                        if f.detail.is_empty() {
+                            "(no detail)"
+                        } else {
+                            &f.detail
+                        }
+                    );
+                }
+                let json = comprehend_findings::findings_to_json(&findings);
+                emit_ambient_event(
+                    "comprehend_findings_structured",
+                    &[
+                        ("repo", opts.repo.as_str()),
+                        ("gap", opts.gap.as_str()),
+                        ("pr", &opts.pr.to_string()),
+                        ("findings", &json.to_string()),
+                    ],
+                );
+            }
+            None => {
+                println!(
+                    "  (comprehend organs unavailable or produced no structured findings — \
+                     advisory only, not blocking)"
+                );
+            }
+        }
+
         println!(
             "\n[verify-merge] --apply: merging PR #{} on {} ...",
             opts.pr, opts.repo
@@ -2042,6 +2092,47 @@ fn emit_outcome_probe(opts: &Opts, url: &str, passed: bool, note: &str) {
     );
 }
 
+/// Resolve the `comprehend` binary (almanac-organs): `CHUMP_COMPREHEND_BIN`
+/// if set and existing, else `~/.cargo/bin/comprehend` if present. Mirrors
+/// `comprehend_tool::comprehend_bin` in the bin crate — kept as a standalone
+/// copy here so this crate (extracted for independent build/cache, per the
+/// module doc comment at the top of this file) doesn't pull in a dependency
+/// on the bin crate just for a path lookup.
+fn resolve_comprehend_bin() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("CHUMP_COMPREHEND_BIN") {
+        let pb = PathBuf::from(p);
+        return pb.exists().then_some(pb);
+    }
+    let home = std::env::var("HOME").ok()?;
+    let default = PathBuf::from(home).join(".cargo/bin/comprehend");
+    default.exists().then_some(default)
+}
+
+/// INFRA-3470: run the comprehension organs over `clone_dir` and parse the
+/// report into structured findings. `None` on any failure mode (binary
+/// absent, disabled via env, empty/unparseable output) — best-effort by
+/// construction so a missing organs install can never fail the merge gate.
+fn run_comprehend_advisory(
+    clone_dir: &Path,
+) -> Option<Vec<comprehend_findings::ComprehendFinding>> {
+    if std::env::var("CHUMP_VERIFY_COMPREHEND_ENABLED").as_deref() == Ok("0") {
+        return None;
+    }
+    let bin = resolve_comprehend_bin()?;
+    let out = Command::new(&bin)
+        .arg("--repo")
+        .arg(clone_dir)
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let findings = comprehend_findings::parse_comprehend_report(&text);
+    if findings.is_empty() {
+        None
+    } else {
+        Some(findings)
+    }
+}
+
 /// Execute `gh pr merge <N> --repo <repo> --squash`.
 fn merge_pr(opts: &Opts) -> anyhow::Result<bool> {
     let status = Command::new(&opts.gh_bin)
@@ -3195,5 +3286,116 @@ exit 0
         std::env::remove_var("CHUMP_OUTCOME_PROBE_RENDER");
         std::env::remove_var("CHUMP_CHROMIUM_BIN");
         std::env::remove_var("CHUMP_CURL_BIN");
+    }
+
+    // ── INFRA-3470: comprehend organs → structured findings, wired to --apply ──
+
+    fn write_fake_comprehend(dir: &std::path::Path, stdout: &str) -> String {
+        let bin = dir.join("comprehend");
+        let content = format!("#!/usr/bin/env bash\ncat <<'EOF'\n{stdout}\nEOF\n");
+        fs::write(&bin, content).expect("write fake comprehend");
+        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755))
+            .expect("chmod fake comprehend");
+        bin.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn run_comprehend_advisory_parses_structured_findings_from_fake_binary() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let bin = write_fake_comprehend(
+            tmp.path(),
+            "WIRING: full (12 live)\nGATES: partial\nCONFIG: none",
+        );
+        std::env::set_var("CHUMP_COMPREHEND_BIN", &bin);
+        std::env::remove_var("CHUMP_VERIFY_COMPREHEND_ENABLED");
+
+        let findings = run_comprehend_advisory(tmp.path()).expect("expected structured findings");
+        assert_eq!(findings.len(), 3);
+        assert_eq!(findings[0].section, "WIRING");
+        assert_eq!(findings[0].coverage, comprehend_findings::Coverage::Full);
+        assert_eq!(findings[1].coverage, comprehend_findings::Coverage::Partial);
+        assert_eq!(findings[2].coverage, comprehend_findings::Coverage::None);
+
+        std::env::remove_var("CHUMP_COMPREHEND_BIN");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn run_comprehend_advisory_none_when_binary_absent() {
+        std::env::set_var(
+            "CHUMP_COMPREHEND_BIN",
+            "/definitely/not/a/real/path/comprehend",
+        );
+        std::env::remove_var("CHUMP_VERIFY_COMPREHEND_ENABLED");
+
+        assert!(run_comprehend_advisory(Path::new(".")).is_none());
+
+        std::env::remove_var("CHUMP_COMPREHEND_BIN");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn run_comprehend_advisory_none_when_disabled_via_env() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let bin = write_fake_comprehend(tmp.path(), "WIRING: full (12 live)");
+        std::env::set_var("CHUMP_COMPREHEND_BIN", &bin);
+        std::env::set_var("CHUMP_VERIFY_COMPREHEND_ENABLED", "0");
+
+        assert!(
+            run_comprehend_advisory(tmp.path()).is_none(),
+            "CHUMP_VERIFY_COMPREHEND_ENABLED=0 must disable the advisory gate"
+        );
+
+        std::env::remove_var("CHUMP_COMPREHEND_BIN");
+        std::env::remove_var("CHUMP_VERIFY_COMPREHEND_ENABLED");
+    }
+
+    /// Full wiring proof: with --apply, gates 1-4 fake-green, and a fake
+    /// comprehend binary present, the ambient stream carries a
+    /// `comprehend_findings_structured` event with the parsed findings JSON.
+    /// This is what "wire verifier to --apply" means concretely — the organs
+    /// consult fires as part of the real autonomous-merge path, not just as
+    /// a standalone parser.
+    #[test]
+    #[serial_test::serial]
+    fn apply_path_emits_comprehend_findings_structured_event() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let comprehend_bin =
+            write_fake_comprehend(tmp.path(), "WIRING: full (7 live)\nGATES: none");
+        std::env::set_var("CHUMP_COMPREHEND_BIN", &comprehend_bin);
+        std::env::remove_var("CHUMP_VERIFY_COMPREHEND_ENABLED");
+
+        let ambient_path = tmp.path().join("ambient.jsonl");
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            ambient_path.to_string_lossy().as_ref(),
+        );
+
+        let opts = make_opts("gh");
+        let findings = run_comprehend_advisory(tmp.path()).expect("findings");
+        let json = comprehend_findings::findings_to_json(&findings);
+        emit_ambient_event(
+            "comprehend_findings_structured",
+            &[
+                ("repo", opts.repo.as_str()),
+                ("gap", opts.gap.as_str()),
+                ("pr", &opts.pr.to_string()),
+                ("findings", &json.to_string()),
+            ],
+        );
+
+        let contents = fs::read_to_string(&ambient_path).expect("ambient file");
+        assert!(
+            contents.contains("\"kind\":\"comprehend_findings_structured\""),
+            "ambient stream missing structured-findings event: {contents}"
+        );
+        assert!(
+            contents.contains("WIRING"),
+            "structured findings JSON not embedded: {contents}"
+        );
+
+        std::env::remove_var("CHUMP_COMPREHEND_BIN");
+        std::env::remove_var("CHUMP_AMBIENT_IN_PROMPT");
     }
 }

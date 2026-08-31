@@ -6066,6 +6066,26 @@ events:
       Backfill evidence later with: chump gap set <ID> --evidence "COMMAND: ..."
       # scanner-anchor: gap_reserved_no_evidence
 
+  - kind: comprehend_findings_structured
+    effect_metric: self
+    emitter: crates/chump-verify/src/external_verify_merge.rs run_comprehend_advisory (INFRA-3470)
+    trigger: |
+      `chump external verify-merge --apply` ran the comprehend organs over the
+      external repo's clone (comprehend_findings::parse_comprehend_report) as
+      the advisory Gate 5, right before the autonomous squash-merge. Emitted
+      only when the organs binary is present and produced at least one
+      parseable WIRING/GATES/CONFIG finding — advisory only, never blocks the
+      merge that gates 1-4 already earned.
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, repo, gap, pr, findings]
+    docs: |
+      findings is a JSON array of {section, coverage, detail} objects (see
+      comprehend_findings::ComprehendFinding). coverage is one of
+      full/partial/none/unknown. This is the structured counterpart to the
+      free-text comprehend report every other consumer (briefing.rs,
+      execute_gap.rs) embeds verbatim into a prompt.
+      # scanner-anchor: comprehend_findings_structured
+
   - kind: gap_dup_archived
     effect_metric: self
     emitter: src/main.rs gap consolidate --apply handler (INFRA-1435)
