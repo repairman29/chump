@@ -83131,12 +83131,14 @@ gaps:
   domain: RESILIENT
   title: bot-merge push/PR-create stage hangs + heartbeat mislabels it as prior stage (cargo fmt)
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Diagnosed 2026-06-08 during META-287 manual ship (wedged 3x). In bot-merge.sh, AFTER rebase (31s with 1200s budget — validates RESILIENT-133: the 300s default was strangling rebase) + fmt (15s) + skip-tests/clippy (DOC_ONLY diff), the push / gh-pr-create stage HANGS >210s and NEVER creates a PR. During the hang the per-stage heartbeat still prints 'step=cargo fmt' (stale step label) — so it looks like fmt is hanging when the real stall is push/pr-create. Manual ships have no farmer-retry, so one hang = permanent wedge; the fleet survives only because the farmer re-runs the worker. Part of MISSION-044 (Cut the Friction). Two distinct bugs to fix.
   acceptance_criteria:
     - "1. bot-merge heartbeat prints the ACTUAL current stage (push / pr-create / merge), never a stale prior label like 'cargo fmt'. 2. The push/pr-create stall is root-caused (candidate: pre-push hook, gh pr create GraphQL, force-with-lease) and either fixed or fail-fast with a clear error + tight budget — no silent 210s+ hang. 3. A clean doc-only branch ships through to PR-create + auto-merge-arm within stage budget on the first attempt."
+  notes: |
+    Decomposed into 12 slices: RESILIENT-533, RESILIENT-534, RESILIENT-535, RESILIENT-536, RESILIENT-537, RESILIENT-538, RESILIENT-539, RESILIENT-540, RESILIENT-541, RESILIENT-542, RESILIENT-543, RESILIENT-544
   opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
@@ -90764,6 +90766,337 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-533
+  domain: RESILIENT
+  title: "RESILIENT: Reproduce bot-merge hang and stale heartbeat locally (RESILIENT-140 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Running bot-merge.sh with a doc‑only change reproduces the >210 s hang at the push/pr‑create stage
+    - Captured logs show heartbeat still reporting step=cargo fmt while the process is stalled
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-534
+  domain: RESILIENT
+  title: "RESILIENT: Add failing test for heartbeat stage label correctness (RESILIENT-140 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Automated test invokes the heartbeat during push and pr‑create stages and asserts the reported step matches the actual stage
+    - Test fails on current code (shows stale cargo fmt label)
+  depends_on: [RESILIENT-533]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-535
+  domain: RESILIENT
+  title: "RESILIENT: Fix heartbeat to report the actual current stage (RESILIENT-140 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Heartbeat now prints step=push during the push stage and step=pr-create during the PR creation stage
+    - The test from slice 1 passes
+    - No regression in other stages (cargo fmt, merge, etc.)
+  depends_on: [RESILIENT-534]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-536
+  domain: RESILIENT
+  title: "RESILIENT: Add detailed logging around push and gh‑pr‑create steps (RESILIENT-140 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Push command logs its exit code, stdout, and stderr
+    - gh pr create GraphQL call logs request payload, response status, and any error messages
+    - Logs are emitted to the same heartbeat stream for easy correlation
+  depends_on: [RESILIENT-533]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-537
+  domain: RESILIENT
+  title: "RESILIENT: Investigate pre‑push hook for potential deadlock (RESILIENT-140 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Isolated execution of the pre‑push hook shows whether it can exceed 30 s or block indefinitely
+    - Root cause (e.g., network call, cargo fmt loop) is identified and documented
+  depends_on: [RESILIENT-533]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-538
+  domain: RESILIENT
+  title: "RESILIENT: Implement timeout and fail‑fast for pre‑push hook (RESILIENT-140 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Pre‑push hook is wrapped with a configurable timeout (default 30 s)
+    - If the timeout is hit, bot‑merge aborts with a clear error message and non‑zero exit code
+    - No silent >210 s hang can occur from the hook
+  depends_on: [RESILIENT-537]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-539
+  domain: RESILIENT
+  title: "RESILIENT: Investigate gh‑pr‑create GraphQL call for hangs (RESILIENT-140 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Reproduced scenario where the GraphQL request takes >210 s
+    - Determined whether the issue is network latency, API throttling, or missing response handling
+  depends_on: [RESILIENT-533]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-540
+  domain: RESILIENT
+  title: "RESILIENT: Add timeout and retry logic for gh‑pr‑create GraphQL call (RESILIENT-140 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - GraphQL request now has a 60 s timeout
+    - On timeout or transient error, the command retries up to 2 times with exponential back‑off
+    - If all attempts fail, bot‑merge exits with a clear error message
+  depends_on: [RESILIENT-539]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-541
+  domain: RESILIENT
+  title: "RESILIENT: Enforce overall stage timeout with fail‑fast behavior (RESILIENT-140 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Each stage (push, pr‑create, merge, etc.) is bounded by a 210 s budget
+    - When a stage exceeds its budget, the process aborts immediately with a descriptive error
+    - Heartbeat continues to report the correct stage up to the point of abort
+  depends_on: [RESILIENT-538, RESILIENT-540]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-542
+  domain: RESILIENT
+  title: "RESILIENT: End‑to‑end test: doc‑only branch ships through push/pr‑create to auto‑merge within budget (RESILIENT-140 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Automated pipeline creates a doc‑only branch, runs bot‑merge, and verifies a PR is created and auto‑merged on the first attempt
+    - Total elapsed time for push and pr‑create stages is <210 s
+    - Heartbeat logs show correct stage labels throughout
+    - No errors or timeouts are reported
+  depends_on: [RESILIENT-535, RESILIENT-538, RESILIENT-540, RESILIENT-541]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-543
+  domain: RESILIENT
+  title: "RESILIENT: Update documentation for new timeout and error messages (RESILIENT-140 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README/CONTRIBUTING sections describe the new pre‑push hook timeout, GraphQL retry behavior, and stage budget limits
+    - Error messages are listed with suggested remediation steps
+  depends_on: [RESILIENT-542]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-544
+  domain: RESILIENT
+  title: "RESILIENT: CI integration and cleanup (RESILIENT-140 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All new tests (heartbeat, end‑to‑end) run in CI and pass
+    - Linting and static analysis succeed with the new code
+    - No flaky behavior observed in CI runs
+  depends_on: [RESILIENT-542]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
 
 - id: SMOKE-001
   domain: SMOKE
