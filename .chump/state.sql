@@ -3978,8 +3978,18 @@ gaps:
   status: open
   priority: P3
   effort: xs
+  description: |
+    Add the missing fields to the PRESENCE record by extending the `PresenceRecord` struct in `presence.rs` to include `worker_id`, `backend`, `machine`, `skills`, `harness`, `started_at`, and `current_gap`, and update the `register_worker_rpc_handlers_with_presence` function in `rpc.rs` to populate all of these fields when a worker registers.
+    
+    Target file(s):
+    - crates/chump-coord/src/presence.rs
+    - crates/chump-coord/src/rpc.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "PRESENCE record has the required fields: worker_id, backend, machine, skills, harness, started_at, current_gap"
+    - In `crates/chump-coord/src/presence.rs` the `PresenceRecord` struct definition contains exactly the seven fields `worker_id`, `backend`, `machine`, `skills`, `harness`, `started_at`, and `current_gap` with appropriate Rust types and derives `Serialize`/`Deserialize`.
+    - In `crates/chump-coord/src/rpc.rs` the function `register_worker_rpc_handlers_with_presence` constructs a `PresenceRecord` instance and sets each of the seven required fields from the incoming registration request before storing or returning it.
+    - Running `cargo test --package chump-coord` succeeds and a test that serializes a `PresenceRecord` to JSON verifies that the output contains all seven keys (`worker_id`, `backend`, `machine`, `skills`, `harness`, `started_at`, `current_gap`).
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-249
@@ -69705,7 +69715,7 @@ gaps:
 - id: META-208
   domain: META
   title: "META-141 follow-up: CI step to populate flake_tracker.db from cargo-nextest output (ingestion path)"
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -69724,7 +69734,10 @@ gaps:
     [2026-08-29T17:07:49Z] rot-reaper: PR #4301 auto-closed (required-check-red, 24h) 2026-08-29; re-attempt on fresh main.
     [2026-08-29T17:10:26Z] rot-reaper: PR #4301 auto-closed (required-check-red, 24h) 2026-08-29; re-attempt on fresh main.
     [2026-08-29T17:12:39Z] rot-reaper: PR #4301 auto-closed (required-check-red, 24h) 2026-08-29; re-attempt on fresh main.
+    [2026-08-31T03:08:42Z] CREDIBLE-178: closed via PR #4331 with UNCOVERED acceptance criteria "misses":[0,1,2]. Verify the work is complete before trusting status=done.
   opened_date: '2026-07-26'
+  closed_date: '2026-08-31'
+  closed_pr: 4331
   outcome_id: MISSION-010
 
 - id: META-209
