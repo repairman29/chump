@@ -2431,3 +2431,10 @@ CHUMP_BARNACLE_STATE_DIR
 CHUMP_CALLS
 # detected in: (standard input)
 CHUMP_SHIM_DIR
+CHUMP_NODE_DEPLOY_LAG_NO_HEAL
+# detected in: (standard input)
+CHUMP_NODE_DEPLOY_LAG_SLO_SECS
+# detected in: (standard input)
+CHUMP_NODE_DEPLOY_LAG_SYSTEMCTL_BIN
+# detected in: (standard input)
+CHUMP_NODE_DEPLOY_LAG_UNIT
