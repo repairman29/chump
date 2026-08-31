@@ -8,9 +8,11 @@
 # two-way operator channel dark with nothing to revive it.
 #
 # HOST-AGNOSTIC: paths use /root/; install-helsinki-atc.sh host-rewrites `/root/`
-# -> the repo-owner's HOME and inserts `User=<owner>` under [Service]. The beat
-# additionally fixes HOME from the run-user at runtime (the sed only rewrites
-# `/root/` WITH a trailing slash, so a bare Environment=HOME=/root would survive).
+# -> the repo-owner's HOME and inserts `User=<owner>` under [Service]. The bare
+# HOME value below (set to /root with no trailing slash) is ALSO host-rewritten
+# by the installer INFRA-3647 whole-value rule, so it resolves to the run-user
+# home on an owned node; the beat additionally re-resolves HOME from the run-user
+# at runtime as a belt-and-braces fallback.
 [Unit]
 Description=Chump Discord receive gateway (serenity-free, two-way operator channel) — RESILIENT-370
 After=network-online.target
