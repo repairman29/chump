@@ -661,6 +661,15 @@ jobs:
       - name: Install manifest gate
         run: bash scripts/ci/test-install-script-manifest.sh
 
+      # RESILIENT-376: manifest->installer parity — every organ declared
+      # `enabled` in scripts/ops/organ-manifest.txt must be installed by the
+      # install path (install-helsinki-atc.sh SYSTEM_UNITS/SYSTEM_TIMERS roster,
+      # or a dedicated installer in the test's exclusion map), else it runs on
+      # the reference node but stays DARK on a fresh install ("wouldn't
+      # reproduce"). The enforcement half of the fresh-box -> working-factory ribbon.
+      - name: Manifest->installer parity gate (RESILIENT-376)
+        run: bash scripts/ci/test-manifest-installer-parity.sh
+
       # INFRA-1808: every scripts/setup/install-*.sh must be mode 0755.
       # install-bot-merge-watchdog.sh shipped 0644 and silently never ran
       # via chump-fleet-bootstrap.sh for days (2026-05-23 curator finding).

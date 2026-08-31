@@ -190,8 +190,48 @@ SYSTEM_UNITS=(
   # loop stays open (RESILIENT-376 merged-not-running class). Paired timer below.
   chump-nba-dispatch.service
   chump-nba-dispatch.timer
+  # RESILIENT-376 (manifest->installer parity drift, 2026-08-30): these organs
+  # were declared `enabled` in scripts/ops/organ-manifest.txt but were MISSING
+  # from this roster, so on a fresh Linux fleet-node their unit files never
+  # landed in /etc/systemd/system and organ-reconcile's `enable --now` failed on
+  # a missing unit -> backoff -> DARK (the merged-not-running / "runs on CJ but
+  # wouldn't reproduce" class). They have static systemd units in scripts/dispatch
+  # and NO dedicated Linux installer on the fresh-boot path (unlike
+  # almanac-liveness<-install-almanac-organ.sh, postgrest<-install-gap-substrate.sh,
+  # cj-*<-node-orchestrator/housekeeping, which ARE installed elsewhere and are
+  # deliberately excluded from the parity gate). scripts/ci/test-manifest-installer
+  # -parity.sh now FAILS if a manifest-`enabled` organ lacks either a roster entry
+  # here or an entry in that gate's DEDICATED_INSTALLER map, so this drift can
+  # never recur silently.
+  #   ci-flake-rerun (RESILIENT-306): only had a Mac-launchd installer
+  #     (install-ci-flake-rerun-launchd.sh); nothing installed it on Linux.
+  #   discord-gateway: the two-way operator channel (must not go dark); its
+  #     install-discord-gateway.sh is launchd/Mac-only. Service-only, no timer —
+  #     organ-reconcile enables it (same as chump-fleet-server.service).
+  #   organ-deploy (RESILIENT-374): the root self-deploy organ — already named in
+  #     the _KEEP_ROOT_ORGANS map below but never actually rostered, so the
+  #     keep-root path never ran. Rostering it here completes that half-wiring.
+  #   next-best-action (OS-nervous-system): the advisory NBA producer; its
+  #     consumer chump-nba-dispatch was rostered above but the producer was not.
+  #   process-organ-heal / outcome-verify-heal-consumer / faculty-collector /
+  #     pr-book-settle: peer-heal + verify + faculty organs with no installer.
+  chump-ci-flake-rerun.service
+  chump-ci-flake-rerun.timer
+  chump-discord-gateway.service
+  chump-faculty-collector.service
+  chump-faculty-collector.timer
+  chump-next-best-action.service
+  chump-next-best-action.timer
+  chump-organ-deploy.service
+  chump-organ-deploy.timer
+  chump-outcome-verify-heal-consumer.service
+  chump-outcome-verify-heal-consumer.timer
+  chump-pr-book-settle.service
+  chump-pr-book-settle.timer
+  chump-process-organ-heal.service
+  chump-process-organ-heal.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-ci-flake-rerun.timer chump-faculty-collector.timer chump-next-best-action.timer chump-organ-deploy.timer chump-outcome-verify-heal-consumer.timer chump-pr-book-settle.timer chump-process-organ-heal.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
