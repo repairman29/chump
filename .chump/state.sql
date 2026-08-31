@@ -69892,10 +69892,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Extend the `detect_sccache_dir` function in `scripts/setup/install-sccache.sh` with a Linux‑specific branch that runs `cargo install sccache --locked`, verifies the binary is placed in `$HOME/.cargo/bin`, and explicitly skips any `brew` invocation on Linux, while preserving the existing macOS behavior.
+    
+    Target file(s):
+    - scripts/setup/install-sccache.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When OS is detected as Linux, script runs `cargo install sccache --locked`
-    - Installation succeeds and sccache binary is placed in $HOME/.cargo/bin
-    - No brew command is executed on Linux
+    - "In `scripts/setup/install-sccache.sh`, `detect_sccache_dir` contains a conditional that checks `uname -s` for \"Linux\" and executes `cargo install sccache --locked` without calling `brew`."
+    - After running the script on a Linux node, the file `$HOME/.cargo/bin/sccache` exists and is executable.
+    - The script’s stdout/stderr on Linux does not contain the string `brew`, confirming no brew command was executed.
+    - On macOS (Darwin), `detect_sccache_dir` still invokes the original brew‑based installation path, leaving macOS behavior unchanged.
   depends_on: [INFRA-3898]
   notes: |
     [chump harvest check 'EFFECTIVE']
