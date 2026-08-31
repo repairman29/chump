@@ -222,6 +222,61 @@ stale PR number.
 
 **Prevention**: CREDIBLE-028 (same checker handles A and F).
 
+### Drift Mode G — Stale-checkout canonical-ID collision (fixed, INFRA-3687)
+**Symptom**: `chump gap reserve` on a checkout that is behind `origin/main`
+re-issues an ID that canonically already belongs to an already-merged gap.
+Distinct from Drift Mode B (allocator race between two concurrent
+reserves): here there is no race at all — a single checkout's local
+`gaps` table is simply stale relative to `origin/main`.
+
+**How it happens**: `reserve_with_external()`'s allocation ceiling
+(`combined_max`) used to come from only two sources: `existing_max`
+(`SELECT MAX(id)` on the LOCAL `.chump/state.db`) and `extra_max`
+(`.chump-locks/*.json` leases + open-PR titles, via
+`external_pending_ids()`). Neither consults `origin/main`'s canonical,
+git-tracked `.chump/state.sql` (the full dump of every gap ever reserved
+or merged — see `load_state_sql()` / `restore_from_state_sql()`). A
+checkout N commits behind `origin/main` has a stale local `gaps` table,
+so `existing_max` under-counts and the naive `existing_max + 1` can equal
+an ID that already shipped upstream.
+
+**Real incident**: a checkout 177 commits behind reserved `INFRA-3680`,
+which canonically is a merged "parse_verdict" gap — collision, stranding
+the new gap in the stale local rep.
+
+**Prevention (fixed, INFRA-3687)** — three parts, all in
+`crates/chump-gap-store/src/lib.rs`:
+1. `GapStore::canonical_max_id(domain)` best-effort `git fetch origin
+   main --quiet` (mirrors the INFRA-2423 auto-fetch pattern), then reads
+   `origin/main:.chump/state.sql` via `git show` and extracts the max
+   `<DOMAIN>-N` from the **`id` column only** (deliberately not a raw
+   text scan — `state.sql` carries `<DOMAIN>-N`-shaped junk substrings
+   outside the `id` field, e.g. a stray `INFRA-9999999` quoted in a
+   note, and a naive scan would rocket the allocator to that instead).
+   `reserve_with_external` folds this into `combined_max`, so a stale
+   local checkout can no longer under-allocate whenever origin refs are
+   reachable.
+2. Fail-closed: if this checkout is genuinely behind `origin/main`
+   (`git rev-list --count main..origin/main` > 0) AND
+   `canonical_max_id()` could not verify canonical truth (offline,
+   unreachable ref, or the file is absent at that ref — distinct from
+   "verified and this domain has zero canonical gaps", which returns
+   `Some(0)`), `reserve_with_external` returns `Err` rather than trust a
+   possibly-stale local counter. Audited escape hatch:
+   `CHUMP_RESERVE_ALLOW_STALE=1` (emits `gap_reserve_stale_bypass_used`
+   to `ambient.jsonl`, registered in `docs/observability/EVENT_REGISTRY.yaml`).
+3. `chump gap list` prints a loud, non-blocking `stderr` warning when the
+   checkout is behind `origin/main` (`GapStore::behind_origin_main()`) —
+   stdout output (`--json`/`--csv`/plain) is untouched since scripts
+   parse it.
+
+**Regression lock**: `scripts/ci/test-gap-reserve-no-stale-collision.sh`
+(wired in both `.github/workflows/ci.yml` and `chump preflight` per the
+INFRA-2120 parity rule) runs the `chump-gap-store` unit tests that
+reproduce the exact drift (local max stuck low, canonical max high) and
+assert the allocator beats canonical truth, plus the fail-closed +
+bypass paths and the junk-ID-immune extraction.
+
 ## 5 — Stores that look load-bearing but aren't
 
 To keep the contract clean, these surfaces are explicitly **not canonical**

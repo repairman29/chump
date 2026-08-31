@@ -5551,6 +5551,15 @@ events:
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, domain, skipped_id]
 
+  - kind: gap_reserve_stale_bypass_used
+    effect_metric: self
+    emitter: crates/chump-gap-store/src/lib.rs (reserve_with_external — INFRA-3687)
+    trigger: checkout is behind origin/main AND canonical_max_id() could not verify
+      canonical state.sql (unreadable/unreachable), but CHUMP_RESERVE_ALLOW_STALE=1
+      bypassed the fail-closed refusal — audit trail for the escape hatch
+    consumers: [fleet-brief, curator, operator-recall]
+    fields_required: [ts, kind, domain, behind]
+
   - kind: gap_id_allocator_collision
     effect_metric: self
     emitter: crates/chump-gap-store/src/lib.rs

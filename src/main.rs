@@ -9909,6 +9909,20 @@ async fn main() -> Result<()> {
                         "state.db was empty on open — auto-imported from docs/gaps/"
                     );
                 }
+                // INFRA-3687 part 3: loud, non-blocking staleness warning.
+                // stderr only — stdout is script-parsed (--json/--csv/plain
+                // ids), so this must never appear there and must never
+                // block the read. Deliberately doesn't force a fetch (this
+                // is a hot/frequent read path); it reports against whatever
+                // origin/main ref this checkout already knows.
+                if let Some(behind) = store.behind_origin_main() {
+                    if behind > 0 {
+                        eprintln!(
+                            "\u{26A0} gap list may be STALE: checkout is {behind} commit(s) \
+                             behind origin/main — run `git pull` for canonical state."
+                        );
+                    }
+                }
                 match store.list(status_filter.as_deref()) {
                     Ok(all_gaps) => {
                         // Apply --since filter before any output path.
