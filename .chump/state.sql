@@ -1923,6 +1923,8 @@ gaps:
     Observed 2026-06-08: fleet-brief banner (SessionStart hook) showed 'Ships: 0 (24h) | last 1h: 0' + '✓ fleet looks healthy', but ground truth at the same moment was: git log origin/main = 2 merges last 1h / 7 last 6h; 24 worker.sh procs, 42 claude -p procs, 13 bot-merge procs in-flight, 2 active leases. ~30 min earlier the SAME script reported 'Ships: 43 | last 1h: 9' (correct). The ship-count intermittently collapses to 0 — likely a transient failure inside fleet-brief.sh (git fetch timeout / swallowed subshell error -> empty -> 0). This is the ROOT of the #1 operator false-positive ('fleet is dead', mis-called 4x per CLAUDE.md): the brief is the first thing every SessionStart shows, so a false 0 makes every fresh agent misdiagnose fleet-death. Sibling of CREDIBLE-086 (merge-queue lie) + META-287 fresh-eyes comparator_6 (brief-says-healthy-but-not-shipping).
   acceptance_criteria:
     - "1. fleet-brief ship-count NEVER silently returns 0 on a transient error — it retries, reports the real count, or prints an explicit 'ship-count unavailable (<reason>)' instead of a misleading 0. 2. Root-cause the intermittent-0 (candidate: git fetch failure / swallowed subshell error inside the script). 3. The 'looks healthy' verdict incorporates ship-rate — a 0-ship state with live workers is NOT 'healthy', it is 'measurement failed / investigate'. 4. Regression test: synthetic scenario where the count query fails -> brief shows 'unavailable', not '0 + healthy'."
+  notes: |
+    Decomposed into 10 slices: CREDIBLE-380, CREDIBLE-381, CREDIBLE-382, CREDIBLE-383, CREDIBLE-384, CREDIBLE-385, CREDIBLE-386, CREDIBLE-387, CREDIBLE-388, CREDIBLE-389
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -1936,6 +1938,8 @@ gaps:
     2026-06-08: fleet down because the Anthropic API account hit 'Credit balance is too low' (key VALID, authenticates fine, len 108; CHUMP_AUTH_MODE=api-key forces the empty account). But run-fleet.sh INFRA-621 probe reports 'ERROR: auth probe failed / ANTHROPIC_API_KEY authentication failed' — a BILLING failure mislabeled as an AUTH failure. This is the #1 false-positive class (auth-dead, mis-called 4x): the mislabel sent diagnosis through auth/flag/lease theories before a direct probe revealed the real cause (credit). Fix: classify the failure.
   acceptance_criteria:
     - "1. INFRA-621 probe parses the error and reports the ACTUAL class (auth-invalid vs credit-exhausted vs rate-limit vs network), not a blanket 'authentication failed'. 2. On credit-exhaustion: actionable message (top up / switch CHUMP_AUTH_MODE=oauth). 3. Emits a distinct ambient kind (e.g. fleet_credit_exhausted) so operator-recall routes it correctly."
+  notes: |
+    Decomposed into 2 slices: CREDIBLE-390, CREDIBLE-391
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -4643,7 +4647,7 @@ gaps:
     - chump gap decompose PRESERVES author-provided acceptance_criteria as the fixed done-definition (the WHAT) and only generates the implementation sub-steps (the HOW); never overwrites authored AC
     - "CI smoke test proves: (a) reserve P1 without AC is refused, (b) with it the AC is stored verbatim, (c) decompose leaves authored AC unchanged"
   notes: |
-    Decomposed into 3 slices: CREDIBLE-343, CREDIBLE-344, CREDIBLE-345
+    Decomposed into 3 slices: CREDIBLE-392, CREDIBLE-393, CREDIBLE-394
   opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
@@ -6910,13 +6914,17 @@ gaps:
 - id: CREDIBLE-365
   domain: CREDIBLE
   title: "CREDIBLE: Create halt-class-emit.sh wrapper with failure-class taxonomy support (CREDIBLE-108 slice)"
-  status: open
+  status: already_satisfied
   priority: P2
   effort: s
   acceptance_criteria:
     - scripts/lib/halt-class-emit.sh is created and executable
     - Function categorizes failures into transient vs permanent taxonomy
     - Emits structured events for success, failure, and timeout statuses
+  closed_date: '2026-08-31'
+  closed_pr: 4338
+  evidence: |
+    already-satisfied backstop (INFRA-3826): worker cycle log agent-3-cycle13-CREDIBLE-365.log reports the work already shipped in PR #4338 (merged 2026-08-31); worktree had no diff to ship. Auto-closed by gap-doctor-reconcile --check-already-satisfied.
 
 - id: CREDIBLE-366
   domain: CREDIBLE
@@ -7079,6 +7087,477 @@ gaps:
     - The pipeline fails the build if the smoke test exits with a non‑zero code
     - Build logs show the output of the smoke test for debugging
   depends_on: [CREDIBLE-378, CREDIBLE-371]
+
+- id: CREDIBLE-380
+  domain: CREDIBLE
+  title: "CREDIBLE: Add robust error detection for ship-count retrieval (CREDIBLE-129 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Update ship-count retrieval subshell execution in scripts/ci/test-chump-improve.sh to capture non-zero exit codes from git fetch or subshell operations, setting a SHIP_COUNT_ERROR flag instead of silently defaulting the ship count to 0 upon failure.
+    
+    Target file(s):
+    - scripts/ci/test-chump-improve.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - In scripts/ci/test-chump-improve.sh, failing git fetch or subshell commands during ship-count retrieval store the non-zero exit status into SHIP_COUNT_ERR_CODE.
+    - When ship-count evaluation fails, scripts/ci/test-chump-improve.sh sets SHIP_COUNT_ERROR=1 instead of silently defaulting SHIP_COUNT to 0.
+    - Executing bash scripts/ci/test-chump-improve.sh allows downstream scripts to inspect SHIP_COUNT_ERROR and abort or handle the error flag appropriately.
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-381
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement retry mechanism for transient ship-count errors (CREDIBLE-129 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    In crates/chump-orchestrator/src/monitor.rs, wrap the ship-count retrieval logic in a retry loop that makes up to 3 total attempts (initial attempt plus 2 retries) with a 2-second sleep backoff between transient failures. Return the ship-count upon any successful attempt, and if all attempts fail, retain the error flag set from slice 0 and return the failure.
+    
+    Target file(s):
+    - crates/chump-orchestrator/src/monitor.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - crates/chump-orchestrator/src/monitor.rs retries ship-count retrieval up to 2 additional times with a 2-second delay upon transient failures.
+    - If any retry attempt succeeds, the function returns the retrieved ship-count without raising an error.
+    - If all 3 attempts fail, the error flag from slice 0 remains set in the monitor state and the final failure is returned.
+    - "`cargo test` passes for the chump-orchestrator package."
+  depends_on: [CREDIBLE-380]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-382
+  domain: CREDIBLE
+  title: "CREDIBLE: Display 'ship-count unavailable' message on failure (CREDIBLE-129 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "When the error flag is set after retries, fleet‑brief prints \"Ships: unavailable (<reason>)\" instead of \"Ships: 0\"."
+    - "The <reason> string includes the underlying error (e.g., \"git fetch timeout\")."
+    - The message is visible in both console output and any generated logs.
+  depends_on: [CREDIBLE-380, CREDIBLE-381]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-383
+  domain: CREDIBLE
+  title: "CREDIBLE: Update health verdict to consider ship-rate (CREDIBLE-129 slice)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    In scripts/coord/fleet-doctor-strict.sh, update the health verdict evaluation logic to account for ship-count and active worker processes. When active worker processes are running but ship-count is zero or unavailable, set the health verdict output to "measurement failed / investigate". Only show "✓ fleet looks healthy" when ship-count is available and greater than 0, or when no active worker processes are running.
+    
+    Target file(s):
+    - scripts/coord/fleet-doctor-strict.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - "Running `scripts/coord/fleet-doctor-strict.sh` when active worker processes exist and ship-count is zero or missing outputs the verdict \"measurement failed / investigate\"."
+    - "Running `scripts/coord/fleet-doctor-strict.sh` when active worker processes exist and ship-count is greater than zero outputs the \"✓ fleet looks healthy\" badge."
+    - "Running `scripts/coord/fleet-doctor-strict.sh` when zero worker processes are running outputs \"✓ fleet looks healthy\" even if ship-count is zero or missing."
+  depends_on: [CREDIBLE-382]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-384
+  domain: CREDIBLE
+  title: "CREDIBLE: Add detailed logging for ship-count retrieval failures (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Update ship-count retrieval failure handling in `src/web_server.rs` to output structured error log statements detailing the timestamp, attempted command, exit code, retry count, and final failure reason while ensuring credentials and sensitive tokens are sanitized before logging.
+    
+    Target file(s):
+    - src/web_server.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - "When ship-count retrieval fails in `src/web_server.rs`, `tracing::error!` or `log::error!` emits log entries containing timestamp, attempted command, exit code, retry count, and failure reason."
+    - Log lines are formatted cleanly to standard application log outputs so they are grep-searchable without exposing raw authentication tokens or sensitive environment variables.
+    - "`cargo test` passes cleanly with no compilation errors or broken tests."
+  depends_on: [CREDIBLE-380]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-385
+  domain: CREDIBLE
+  title: "CREDIBLE: Unit test for ship-count error handling (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Add a subprocess error test case to scripts/ci/test-pwa-subprocess-errors.sh that mocks a git fetch failure during ship-count evaluation, asserting that the fleet-brief output includes "Ships: unavailable" and that the health verdict is not "healthy".
+    
+    Target file(s):
+    - scripts/ci/test-pwa-subprocess-errors.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - scripts/ci/test-pwa-subprocess-errors.sh contains a test case mocking git fetch failure during fleet-brief ship-count execution.
+    - "The test in scripts/ci/test-pwa-subprocess-errors.sh asserts output stdout includes \"Ships: unavailable\"."
+    - "The test in scripts/ci/test-pwa-subprocess-errors.sh asserts the health verdict output is not \"healthy\"."
+    - Executing `bash scripts/ci/test-pwa-subprocess-errors.sh` succeeds with zero exit code in under 2 minutes.
+  depends_on: [CREDIBLE-382]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-386
+  domain: CREDIBLE
+  title: "CREDIBLE: Integration regression test for fleet-brief zero‑count scenario (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A synthetic scenario forces the ship‑count query to fail (e.g., by stubbing the subshell).
+    - "Running fleet‑brief in this scenario shows \"Ships: unavailable\" and a non‑healthy verdict."
+    - The test is added to the CI pipeline and must pass before merge.
+  depends_on: [CREDIBLE-383, CREDIBLE-385]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-387
+  domain: CREDIBLE
+  title: "CREDIBLE: Instrument subshell calls to capture and surface exit codes (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All subshell invocations in fleet‑brief.sh now store $? immediately after execution.
+    - Any non‑zero exit code propagates to the error flag used by slice 0.
+    - No existing successful paths are altered.
+  depends_on: [CREDIBLE-380]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-388
+  domain: CREDIBLE
+  title: "CREDIBLE: Update documentation for new ship-count behavior (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "README/ops docs include a section describing the \"Ships: unavailable\" output and the revised health verdict logic."
+    - Documentation mentions the retry behavior and how to interpret measurement‑failed states.
+    - Docs are reviewed and merged alongside code changes.
+  depends_on: [CREDIBLE-382, CREDIBLE-383]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-389
+  domain: CREDIBLE
+  title: "CREDIBLE: Deploy changes and monitor for false‑positive health signals (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Changes are rolled out to a staging environment.
+    - "Monitoring confirms that no fleet‑brief output shows \"Ships: 0\" with a healthy verdict while workers are active."
+    - After a 24‑hour observation window, the deployment is promoted to production.
+  depends_on: [CREDIBLE-386, CREDIBLE-388]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-390
+  domain: CREDIBLE
+  title: "CREDIBLE: Parse and classify INFRA-621 probe API response errors into distinct categories (CREDIBLE-130 slice)"
+  status: already_satisfied
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "INFRA-621 probe parses error responses from Anthropic API calls into discrete classes: auth-invalid, credit-exhausted, rate-limit, and network."
+    - Responses containing 'credit balance is too low' or equivalent billing exhaustion signals are categorized as credit-exhausted rather than auth-invalid.
+    - Unit/integration tests verify each error category maps correctly from sample API responses.
+  notes: |
+    [chump harvest check 'run-fleet']
+    === primitives_index match for 'run-fleet' ===
+    
+    === cluster keyword match for 'run-fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'run-fleet' ===
+    
+    === repo-description match for 'run-fleet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'run-fleet' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'run-fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+  closed_date: '2026-08-31'
+  closed_pr: 4341
+  evidence: |
+    already-satisfied backstop (INFRA-3826): worker cycle log agent-1-cycle16-CREDIBLE-390.log reports the work already shipped in PR #4341 (merged 2026-08-31); worktree had no diff to ship. Auto-closed by gap-doctor-reconcile --check-already-satisfied.
+
+- id: CREDIBLE-391
+  domain: CREDIBLE
+  title: "CREDIBLE: Emit distinct fleet_credit_exhausted ambient event and actionable operator remediation message (CREDIBLE-130 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When credit-exhausted class is detected, run-fleet probe outputs actionable remediation messaging (top up account or switch CHUMP_AUTH_MODE=oauth).
+    - Probe emits the distinct ambient event kind 'fleet_credit_exhausted' to ensure operator recall routes the incident correctly.
+  depends_on: [CREDIBLE-390]
+  notes: |
+    [chump harvest check 'run-fleet']
+    === primitives_index match for 'run-fleet' ===
+    
+    === cluster keyword match for 'run-fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'run-fleet' ===
+    
+    === repo-description match for 'run-fleet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'run-fleet' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'run-fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-392
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-343: Enforce --acceptance-criteria flag for P0/P1 reserve (CREDIBLE-284 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The gap reserve command accepts a new flag `--acceptance-criteria <text>`.
+    - For gaps with priority P0 or P1, the flag is mandatory; execution without it fails with a clear error message.
+    - The optional bypass flag `--no-ac-required` allows creation without AC and logs an audit‑trailer entry.
+    - The provided flag value is stored verbatim in the gap's `acceptance_criteria` field.
+  notes: |
+    [chump harvest check 'reserve']
+    === primitives_index match for 'reserve' ===
+    
+    === cluster keyword match for 'reserve' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'reserve' ===
+    
+    === repo-description match for 'reserve' ===
+    
+    === HARVEST_ROADMAP.md mention of 'reserve' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'reserve' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-393
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-344: Remove tautological placeholder auto‑fill for unauthored gaps (CREDIBLE-284 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When a gap is created without providing `--acceptance-criteria` (and without `--no-ac-required`), the `acceptance_criteria` field is empty/null rather than a placeholder string.
+    - "The audit subsystem flags gaps with empty `acceptance_criteria` as \"missing AC\"."
+    - "No placeholder text such as \"TODO: add acceptance criteria\" is auto‑generated."
+  notes: |
+    [chump harvest check 'reserve']
+    === primitives_index match for 'reserve' ===
+    
+    === cluster keyword match for 'reserve' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'reserve' ===
+    
+    === repo-description match for 'reserve' ===
+    
+    === HARVEST_ROADMAP.md mention of 'reserve' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'reserve' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-394
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-345: Preserve authored acceptance criteria during gap decomposition (CREDIBLE-284 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Decompose operation reads the stored `acceptance_criteria` and copies it unchanged into the resulting sub‑steps' done definition.
+    - No step in the generated implementation overwrites or replaces the original acceptance_criteria.
+    - "CI smoke test verifies: (a) reserve P1 without AC is refused, (b) reserve with AC stores it verbatim, (c) decompose leaves the AC unchanged."
+  depends_on: [CREDIBLE-392]
+  notes: |
+    [chump harvest check 'reserve']
+    === primitives_index match for 'reserve' ===
+    
+    === cluster keyword match for 'reserve' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'reserve' ===
+    
+    === repo-description match for 'reserve' ===
+    
+    === HARVEST_ROADMAP.md mention of 'reserve' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'reserve' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: DOC-031
   domain: DOC
@@ -7897,6 +8376,8 @@ gaps:
   acceptance_criteria:
     - "Create docs/strategy/FLEET_BUILD_SPEED_2026-08-09.md as plan-of-record. MUST capture: (a) ROOT CAUSE = target-dir precedence bug — INFRA-2183 per-worktree isolation (crates/chump-atomic-claim/src/worktree_build_cache.rs) is silently overridden because worker.sh:171-180 exports CARGO_TARGET_DIR and cargo reads env-var before .cargo/config.toml target-dir; (b) DISK REALITY — Mac /System/Volumes/Data is 96%% full, 20GB free, shared target already 72GB, so per-worker dirs would BLOW the Mac disk => per-worker only viable on hosts WITH headroom; Mac levers = free-disk + linker + offload; (c) sccache OFF for measured 0%% hit (ZERO-WASTE-021: worktree paths poison rustc arg hashes) not just the RESILIENT-112 wedge; needs --remap-path-prefix first; (d) TIERS: 1 reconcile target-dir per-host-disk, 2 linker (lld Mac needs brew install, mold Linux — currently MISSING), 3 cargo-hakari, 4 sccache-after-remap, 5 revive helsinki(online,0/10 on junk gaps)+closetjunky(prep-only); (e) DISPATCH is built-not-wired: preferred_machine field + chump-coord assign daemon exist but assign daemon not running. "
     - " Cross-link + update docs/strategy/DISK_AWARE_FLEET_2026-05-29.md and docs/ROADMAP.md to point at this plan."
+  notes: |
+    Decomposed into 17 slices: DOC-100, DOC-101, DOC-102, DOC-103, DOC-104, DOC-105, DOC-106, DOC-107, DOC-108, DOC-109, DOC-110, DOC-111, DOC-112, DOC-113, DOC-114, DOC-115, DOC-116
   opened_date: '2026-08-19'
   outcome_id: FLEET-BUILD-SPEED
 
@@ -7953,6 +8434,817 @@ gaps:
     [2026-08-29T11:13:51Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=5998B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
+- id: DOC-100
+  domain: DOC
+  title: "DOC: Research root cause bug (INFRA-2183) details (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Locate INFRA-2183 issue in crates/chump-atomic-claim/src/worktree_build_cache.rs
+    - Document how CARGO_TARGET_DIR env var overrides .cargo/config.toml target-dir
+    - Summarize impact on per‑worktree isolation
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-101
+  domain: DOC
+  title: "DOC: Gather Mac disk usage data (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Record total, used, and free space on /System/Volumes/Data
+    - Confirm free space is ~20 GB and shared target directory occupies ~72 GB
+    - Provide a short note on how per‑worker dirs would exceed available space
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-102
+  domain: DOC
+  title: "DOC: Verify sccache off behavior and hit rate (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Run a representative build with sccache enabled
+    - Show that hit rate is 0 % (ZERO‑WASTE‑021)
+    - Document that --remap-path-prefix is required to avoid path poisoning
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-103
+  domain: DOC
+  title: "DOC: Create markdown skeleton for plan‑of‑record (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Create file docs/strategy/FLEET_BUILD_SPEED_2026-08-09.md
+    - "Add top‑level headings: Root Cause, Disk Reality, SCCache, Tiers, Dispatch"
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-104
+  domain: DOC
+  title: "DOC: Write Root Cause section (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Insert a \"Root Cause\" heading under the skeleton"
+    - Include the bug description from slice 0 verbatim
+  depends_on: [DOC-100, DOC-103]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-105
+  domain: DOC
+  title: "DOC: Write Disk Reality section (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Insert a top‑level module documentation comment in `crates/chump-preflight/src/preflight.rs` that adds a markdown heading “## Disk Reality”, copies the disk statistics from slice 1, and provides a concise explanation of how those statistics affect the per‑worker directory layout.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - "The file `crates/chump-preflight/src/preflight.rs` contains a module‑level doc comment (`//!`) with a line exactly matching `## Disk Reality`."
+    - The same doc comment includes the disk statistics from slice 1 (e.g., total = X GB, used = Y GB, free = Z GB) verbatim as provided in the slice.
+    - The doc comment contains a paragraph that mentions each worker receives its own sub‑directory under the shared disk and describes the expected size impact per worker.
+    - Running `cargo doc` produces HTML documentation for the `preflight` module where the “Disk Reality” heading and its content appear under the module’s description.
+  depends_on: [DOC-101, DOC-103]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-106
+  domain: DOC
+  title: "DOC: Write SCCache section (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Insert an \"SCCache\" heading"
+    - Summarize findings from slice 2 and note the required --remap-path-prefix flag
+  depends_on: [DOC-102, DOC-103]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-107
+  domain: DOC
+  title: "DOC: Write Tier 1 content (target‑dir per‑host‑disk reconciliation) (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Add a \"Tier 1\" sub‑heading under a \"Tiers\" section"
+    - Describe the strategy to reconcile target‑dir with host disk headroom
+  depends_on: [DOC-103]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-108
+  domain: DOC
+  title: "DOC: Write Tier 2 content (linker requirements) (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Insert a Tier 2 documentation block as comments immediately before the `_emit_ambient` function in `scripts/dispatch/free-tier-e2e-test.sh`, adding a “Tier 2” sub‑heading and concise notes that macOS requires `lld` (installed via `brew install llvm`), Linux requires `mold` (installed via the system package manager), and that the current CI environment lacks these linkers.
+    
+    Target file(s):
+    - scripts/dispatch/free-tier-e2e-test.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - "The file `scripts/dispatch/free-tier-e2e-test.sh` contains a comment line `# Tier 2: Linker Requirements` directly above the `_emit_ambient` function definition."
+    - "The comment block includes the exact phrase `macOS: install lld via \\`brew install llvm\\``."
+    - "The comment block includes the exact phrase `Linux: install mold via your package manager`."
+    - "The comment block includes a line stating `Current state: lld/mold are not installed in the CI environment`."
+  depends_on: [DOC-103]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-109
+  domain: DOC
+  title: "DOC: Write Tier 3 content (cargo‑hakari integration) (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Add a \"Tier 3\" sub‑heading"
+    - Detail how cargo‑hakari will be introduced and expected benefits
+  depends_on: [DOC-103]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-110
+  domain: DOC
+  title: "DOC: Write Tier 4 content (sccache after remap) (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Add a \"Tier 4\" sub‑heading"
+    - Describe enabling sccache once path remapping is in place
+  depends_on: [DOC-103]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-111
+  domain: DOC
+  title: "DOC: Write Tier 5 content (revive Helsinki & closetjunky) (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Add a new function `_emit_tier5_doc` to `scripts/dispatch/free-tier-e2e-test.sh` that prints a markdown “## Tier 5” heading followed by explicit steps to “Bring Helsinki online” and “Prepare closetjunky”, and modify the existing `_emit_ambient` function to invoke `_emit_tier5_doc`. Also insert a matching comment block with the same heading and steps at the top of `scripts/ci/test-tier5-self-improve.sh` for static documentation.
+    
+    Target file(s):
+    - scripts/dispatch/free-tier-e2e-test.sh
+    - scripts/ci/test-tier5-self-improve.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - "`scripts/dispatch/free-tier-e2e-test.sh` defines a function named `_emit_tier5_doc` that `echo`s the exact line `## Tier 5` and two subsequent lines: `- Bring Helsinki online` and `- Prepare closetjunky`."
+    - "`scripts/dispatch/free-tier-e2e-test.sh`'s `_emit_ambient` function contains a call to `_emit_tier5_doc`."
+    - "Executing `scripts/dispatch/free-tier-e2e-test.sh` with any argument prints the string `## Tier 5` to stdout (verified by `grep '## Tier 5'`)."
+    - "`scripts/ci/test-tier5-self-improve.sh` includes a top‑of‑file comment block that contains the exact markdown heading `## Tier 5` and the two bullet steps for Helsinki and closetjunky."
+  depends_on: [DOC-103]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-112
+  domain: DOC
+  title: "DOC: Write Dispatch section (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Insert a \"Dispatch\" heading"
+    - Explain preferred_machine field and current state of chump‑coord assign daemon
+  depends_on: [DOC-103]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-113
+  domain: DOC
+  title: "DOC: Assemble full plan‑of‑record document (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Combine sections from slices 4‑12 into a single coherent markdown file
+    - Verify markdown renders without errors and all headings are in correct order
+  depends_on: [DOC-104, DOC-105, DOC-106, DOC-107, DOC-108, DOC-109, DOC-110, DOC-111, DOC-112]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-114
+  domain: DOC
+  title: "DOC: Cross‑link update DISK_AWARE_FLEET doc (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Edit docs/strategy/DISK_AWARE_FLEET_2026-05-29.md
+    - Add a link pointing to docs/strategy/FLEET_BUILD_SPEED_2026-08-09.md
+  depends_on: [DOC-113]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-115
+  domain: DOC
+  title: "DOC: Update ROADMAP doc with link to plan‑of‑record (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Edit docs/ROADMAP.md
+    - Insert a reference/link to the new FLEET_BUILD_SPEED plan‑of‑record
+  depends_on: [DOC-113]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-116
+  domain: DOC
+  title: "DOC: Final review and commit (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Confirm all sections are present and correctly ordered
+    - Verify links from DISK_AWARE_FLEET and ROADMAP resolve
+    - Run spell‑check and fix any issues
+    - Commit the changes to the repository
+  depends_on: [DOC-113, DOC-114, DOC-115]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
 - id: DOCS-001
   domain: DOCS
   title: "EFFECTIVE: unify factory org model into one JTBD framework (DOC-079/083/088)"
@@ -7976,7 +9268,258 @@ gaps:
     - "The change described by \"Run-the-Business roadmap track — the RUN half of COTG (customer 0)\" is implemented in the relevant DOCS code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 8 slices: DOCS-003, DOCS-004, DOCS-005, DOCS-006, DOCS-007, DOCS-008, DOCS-009, DOCS-010
   opened_date: '2026-08-19'
+
+- id: DOCS-003
+  domain: DOCS
+  title: "DOCS: Identify RUN half of COTG code path in DOCS repository (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Location of RUN half of COTG code path identified in the DOCS codebase
+    - List of files and functions that will be modified is documented
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-004
+  domain: DOCS
+  title: "DOCS: Create design outline for RUN half implementation (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Insert a multi‑line comment block immediately above the `fn run` definition in `src/revert_pr.rs` that serves as the design outline for the RUN‑half implementation, enumerating the required code changes, their impact on existing modules, and any coordination points with other crates.
+    
+    Target file(s):
+    - src/revert_pr.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - "src/revert_pr.rs contains a comment block starting with `/// Design Outline: RUN half implementation` placed directly above the `fn run` signature."
+    - The comment block lists at least three bullet‑point items describing the required changes and their impact on the codebase.
+    - Executing `cargo build` (or `cargo test`) completes successfully with no compilation errors introduced by the new comment.
+    - "Running `grep -A2 \"Design Outline\" src/revert_pr.rs` outputs the inserted comment block."
+  depends_on: [DOCS-003]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-005
+  domain: DOCS
+  title: "DOCS: Implement RUN half of COTG behavior (DOCS-002 slice)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Add the missing RUN‑half implementation to the `run_inner` function in `src/improve.rs`, inserting logic that parses the incoming COTG request, executes the designated run workflow, and returns a fully populated `RunResult` (including status, output logs, and any generated artifacts) as defined in the DOCS‑002 slice.
+    
+    Target file(s):
+    - src/improve.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - "The `run_inner` function in `src/improve.rs` now contains a branch that matches the `Mode::Run` variant and constructs a `RunResult` with non‑empty `status`, `logs`, and `artifacts` fields."
+    - Executing `cargo test --package improve --test run_inner` passes a test that asserts the `RunResult` fields contain the expected values for a sample RUN request.
+    - Running `cargo build` for the whole workspace completes without compilation errors or warnings related to the new RUN‑half code.
+  depends_on: [DOCS-004]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-006
+  domain: DOCS
+  title: "DOCS: Add unit test for new RUN behavior (DOCS-002 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A unit test asserting the expected RUN behavior is added
+    - The test fails on the pre‑change code and passes after the implementation
+  depends_on: [DOCS-005]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-007
+  domain: DOCS
+  title: "DOCS: Add integration test script for RUN behavior (DOCS-002 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A CI script (e.g., scripts/ci/test-run.sh) exercising the RUN track is added
+    - The script runs successfully and validates the new behavior
+  depends_on: [DOCS-005]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-008
+  domain: DOCS
+  title: "DOCS: Run cargo fmt and cargo clippy, fix warnings (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt completes with no changes required
+    - cargo clippy runs with -D warnings and reports zero warnings
+  depends_on: [DOCS-005]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-009
+  domain: DOCS
+  title: "DOCS: Verify no regression of existing tests (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All existing cargo test suites pass after the change
+    - No new test failures are introduced
+  depends_on: [DOCS-005]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-010
+  domain: DOCS
+  title: "DOCS: Update documentation for RUN track (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Insert a concise comment block directly above the `_run_strict_gate_harness` function in `scripts/ci/test-pr-shepherd-daemon.sh` that explains the purpose of the RUN half of COTG, and extend the script’s `--help` output to include the same description so that both the source and the command‑line help document the RUN track.
+    
+    Target file(s):
+    - scripts/ci/test-pr-shepherd-daemon.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - "The file `scripts/ci/test-pr-shepherd-daemon.sh` contains a comment block beginning with `# RUN track:` immediately preceding the definition of `_run_strict_gate_harness`."
+    - Executing `scripts/ci/test-pr-shepherd-daemon.sh --help` prints a line that includes the phrase “RUN half of COTG”.
+    - Grep-ing the repository for the exact phrase “RUN half of COTG” returns the newly added comment in `scripts/ci/test-pr-shepherd-daemon.sh` and the help‑output line.
+    - Running the documentation build command (e.g., `make docs` or the repo’s equivalent) completes without errors, confirming that the added comment does not break any doc generation steps.
+  depends_on: [DOCS-005]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: EFFECTIVE-001
   domain: EFFECTIVE
@@ -56910,7 +58453,7 @@ gaps:
 - id: INFRA-3403
   domain: INFRA
   title: "RESILIENT: restore remaining self-hosted runner lanes (AUDIT/COVERAGE/E2E_GOLDEN_PATH/TAURI) one at a time"
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -56932,7 +58475,11 @@ gaps:
     Do not batch — if one lane flakes, you need to know which.
   acceptance_criteria:
     - "1. Confirm RUNNER_E2E_PWA canary has run clean (no CANCELLED/checkout-fail) across >=3 PR cycles\n2. Restore RUNNER_AUDIT, wait one clean PR cycle\n3. Restore RUNNER_COVERAGE, wait one clean PR cycle\n4. Restore RUNNER_E2E_GOLDEN_PATH and RUNNER_TAURI_COWORK_E2E, wait one clean PR cycle\n5. Update docs/process/SELF_HOSTED_RUNNERS.md \"Repo variable state\" table to reflect final state\n6. Emit ambient kind=runner_health_restored on full restoration"
+  notes: |
+    [2026-08-31T08:12:33Z] CREDIBLE-178: closed via PR #4340 with UNCOVERED acceptance criteria "misses":[0]. Verify the work is complete before trusting status=done.
   opened_date: '2026-07-26'
+  closed_date: '2026-08-31'
+  closed_pr: 4340
 
 - id: INFRA-3404
   domain: INFRA
@@ -57451,14 +58998,18 @@ gaps:
 - id: INFRA-3444
   domain: INFRA
   title: "CREDIBLE: docs-delta-guard self-test fails on clean main — CHUMP_DOCS_DELTA_CHECK=0 bypass case rejected"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"docs-delta-guard self-test fails on clean main — CHUMP_DOCS_DELTA_CHECK=0 bypass case rejected\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-08-31T07:43:31Z] CREDIBLE-178: closed via PR #4339 with UNCOVERED acceptance criteria "misses":[1]. Verify the work is complete before trusting status=done.
   opened_date: '2026-08-19'
+  closed_date: '2026-08-31'
+  closed_pr: 4339
 
 - id: INFRA-3445
   domain: INFRA
@@ -57719,14 +59270,18 @@ gaps:
 - id: INFRA-3464
   domain: INFRA
   title: "EFFECTIVE: migrate gap-decompose-verify to the shared cascade — drop the bespoke LocalOpenAIProvider@api.anthropic.com (OAuth-incompatible) for provider_cascade::build_provider()"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"migrate gap-decompose-verify to the shared cascade — drop the bespoke LocalOpenAIProvider@api.anthropic.com (OAuth-incompatible) for provider_cascade::build_provider()\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-08-31T11:36:41Z] CREDIBLE-178: closed via PR #4343 with UNCOVERED acceptance criteria "misses":[1]. Verify the work is complete before trusting status=done.
   opened_date: '2026-08-19'
+  closed_date: '2026-08-31'
+  closed_pr: 4343
 
 - id: INFRA-3465
   domain: INFRA
@@ -57767,13 +59322,15 @@ gaps:
 - id: INFRA-3468
   domain: INFRA
   title: "EFFECTIVE: CONFIG organ — add JS/TS + Python env adapters (comprehend UAT pilot-1 B1/B2)"
-  status: open
+  status: already_satisfied
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"CONFIG organ — add JS/TS + Python env adapters (comprehend UAT pilot-1 B1/B2)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-08-31T12:12:35Z] Verified 2026-08-31: CONFIG organ (almanac crates/almanac-organs/src/config.rs) already has JsEnvAdapter + PyEnvAdapter, shipped in almanac PR #1 (repairman29/almanac, 'ChumpOS comprehension organs — wiring/gates/config/provenance/traces + unified comprehend'). Both are wired into build_flags(), covered by 11 passing unit tests (js_env_*/py_env_* in config::tests, verified green on almanac main today), and already cited as live/shipped by downstream gaps PRODUCT-189 (py-env adapter, 2026-08-05) and PRODUCT-191 (js-env adapter, 2026-08-05). Closing as already-shipped to avoid duplicating implementation in the external repo. Sibling gap INFRA-3469 (WIRING organ B3) remains genuinely open.
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
@@ -61764,11 +63321,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend `scripts/ci/test-jetstream-consumer-roundtrip.sh` to recognize a new `--verify-live` flag. When the flag is present, the script first checks that the `almanac` binary is on the PATH, then runs `almanac repos` and `almanac stats <slug>` (where `<slug>` is derived from the current repository). It aborts with a non‑zero exit code if `almanac repos` fails or if `almanac stats` reports zero or fewer files. On subsequent invocations with the same commit SHA on a live CJ node, the script skips any `git clone`, `cargo build`, or other mutating steps, ensuring a pure re‑run with no side effects.
+    
+    Target file(s):
+    - scripts/ci/test-jetstream-consumer-roundtrip.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The script supports --verify-live and runs `almanac repos` and `almanac stats <slug>` after ensuring the binary is installed
-    - On a CJ live node, --verify-live passes only if `almanac repos` is resolvable and `almanac stats <slug>` reports >0 files
-    - Re-running the script on a live CJ node with a matching SHA performs no clone, no cargo build, and no mutation of repo or stats data
-    - "--verify-live exits non-zero if repos are unresolvable or stats <=0 files"
+    - Running `scripts/ci/test-jetstream-consumer-roundtrip.sh --verify-live` on a live CJ node where `almanac repos` succeeds and `almanac stats <slug>` reports a file count > 0 exits with status code 0.
+    - Running the same script with `--verify-live` on a node where `almanac repos` returns a non‑zero exit code causes the script to exit with a non‑zero status code.
+    - Running the script with `--verify-live` on a node where `almanac stats <slug>` reports 0 files causes the script to exit with a non‑zero status code.
+    - When the script is invoked a second time on the same live CJ node with the identical SHA and `--verify-live`, the log output contains no lines invoking `git clone` or `cargo build`, and the repository directory timestamps remain unchanged, confirming no side‑effect re‑run.
   depends_on: [INFRA-3713]
   notes: |
     [chump harvest check 'MISSION']
@@ -64025,11 +65589,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify the `resolve_dirty_pr` function in `scripts/coord/queue-driver.sh` to emit a structured telemetry event after a successful auto‑resolution. The edit adds a call to the existing metrics‑sink logger that writes a JSON record with `kind":"conflict_auto_resolved"` and a payload containing `pr`, `files`, `scenario_match`, and `confidence`.
+    
+    Target file(s):
+    - scripts/coord/queue-driver.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Telemetry event kind=conflict_auto_resolved is emitted on successful auto-resolution
-    - Event payload includes {pr, files, scenario_match, confidence}
-    - Event is written to structured log / metrics sink
-    - Unit test verifies telemetry emission with correct fields
+    - "In `scripts/coord/queue-driver.sh`, `resolve_dirty_pr` writes a JSON line with `\"kind\":\"conflict_auto_resolved\"` to the structured log when it completes a successful auto‑resolution."
+    - The emitted JSON includes the keys `pr`, `files`, `scenario_match`, and `confidence` populated from the function’s runtime variables.
+    - A unit test that runs `resolve_dirty_pr` with a mocked successful auto‑resolution checks the structured log and asserts exactly one `conflict_auto_resolved` entry with the expected payload fields.
+    - The telemetry line is sent through the existing metrics sink (e.g., via `log_to_metrics`) and can be verified in the sink output file used by the test harness.
   depends_on: [INFRA-3767]
   notes: |
     [chump harvest check 'RESILIENT']
@@ -64176,12 +65747,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the ChumpViewFleetHealth class in web/v2/app.js (specifically the method that processes operator‑reported bad resolutions) to check the 24‑hour regression window, automatically switch CHUMP_CLAIM_MODE to blocking when a bad resolution occurs within that window, log a claim_mode_reverted event with the operator’s reason, and reset the consecutive clean‑resolution counter; add a corresponding unit test in scripts/ci/test-a2a-always-on.sh to verify the behavior.
+    
+    Target file(s):
+    - web/v2/app.js
+    - scripts/ci/test-a2a-always-on.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - If operator reports a bad resolution (via revert in escalation queue), 24h regression window is checked
-    - If bad resolution within 24h, CHUMP_CLAIM_MODE automatically reverts to blocking
-    - Revert is logged as kind=claim_mode_reverted with reason
-    - Consecutive clean resolution counter resets
-    - Unit test verifies revert trigger and counter reset
+    - In web/v2/app.js, the method handling operator‑reported bad resolutions (e.g., ChumpViewFleetHealth.handleOperatorRevert) sets CHUMP_CLAIM_MODE to “blocking” when the resolution timestamp is within the last 24 hours.
+    - In web/v2/app.js, the same method creates a log entry with kind=claim_mode_reverted and includes the operator‑provided reason field.
+    - In web/v2/app.js, after the auto‑revert, the consecutive clean‑resolution counter stored on the fleet health object is reset to zero.
+    - The test script scripts/ci/test-a2a-always-on.sh contains a new unit test that simulates a bad resolution reported within 24 hours and asserts that claim mode becomes blocking, the log entry is created, and the clean‑resolution counter is reset.
   depends_on: [INFRA-3773, INFRA-3772]
   notes: |
     [chump harvest check 'RESILIENT']
@@ -64238,10 +65816,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify the `ship` function in `crates/chump-gap-store/src/lib.rs` to add a compatibility branch that, when `CHUMP_CLAIM_MODE` is set to its default value `blocking`, processes a bare chump claim exactly as the legacy implementation did (no extra lease creation, same status handling), while leaving all other claim‑mode logic untouched.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Under default CHUMP_CLAIM_MODE=blocking, chump claim semantics are identical to pre-change behavior
-    - Existing sibling-lease alerts fire unchanged
-    - Smoke test run against legacy test suite passes without modification
+    - "In `crates/chump-gap-store/src/lib.rs::ship`, a bare chump claim under `CHUMP_CLAIM_MODE=blocking` returns the identical `ClaimResult` (status code, lease ID, and metadata) as the pre‑change version verified by a dedicated unit test."
+    - "The log output from `crates/chump-gap-store/src/lib.rs::ship` for a sibling‑lease alert remains unchanged; the exact string `Sibling lease alert:` appears with the same payload before and after the edit."
+    - Executing the legacy smoke‑test script `scripts/dispatch/board-ceo-briefing-beat.sh` exits with status 0 and produces no new or altered alert messages related to chump claims.
+    - All existing tests in the `chump-gap-store` crate (`cargo test --package chump-gap-store`) pass without any modifications to the test suite.
   depends_on: [INFRA-3765]
   notes: |
     [chump harvest check 'RESILIENT']
@@ -64599,11 +66185,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Replace the eager construction of the Anthropic SDK client in `chump/cli.py` with a lazy‑initialization wrapper that defers client creation until the first runtime use after argument parsing, and enforce a creation timeout equal to `CHUMP_STARTUP_TIMEOUT_MS`; update the implementation notes in `docs/arsenal/cross-pollination/CP-009-mock-services.md` to reflect this new behavior.
+    
+    Target file(s):
+    - chump/cli.py
+    - docs/arsenal/cross-pollination/CP-009-mock-services.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Anthropic SDK client is not initialized during startup; it is lazily created on first use after arg parsing
-    - Lazy init is wrapped in a timeout matching CHUMP_STARTUP_TIMEOUT_MS
-    - chump --version and chump --help do not trigger Anthropic SDK init
-    - "Test: chump preflight (which requires Anthropic) still works correctly with lazy init"
+    - In `chump/cli.py`, the function that provides the Anthropic client (e.g., `get_anthropic_client`) returns a proxy that only instantiates the real SDK client on first call, and no SDK client is created during module import or initial CLI startup.
+    - Executing `chump --version` terminates without any Anthropic SDK initialization (no client creation log entry, no network request to Anthropic endpoints).
+    - Executing `chump --help` terminates without any Anthropic SDK initialization (no client creation log entry, no network request to Anthropic endpoints).
+    - Running `chump preflight` triggers the lazy client creation, which completes within `CHUMP_STARTUP_TIMEOUT_MS` and the command exits successfully, confirming the timeout wrapper works as intended.
   depends_on: [INFRA-3786]
   notes: |
     [chump harvest check 'RESILIENT']
@@ -64823,10 +66417,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update the preflight orchestration in `crates/chump-preflight/src/preflight.rs` to measure the wall‑clock duration of each gate, and when the cumulative sequential time exceeds 60 seconds, schedule independent gates to run concurrently using `tokio::spawn`. Add logging of total duration and a flag indicating how many checks were parallelized, ensuring warm runs stay under 60 s and cold runs under 120 s.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Preflight wall-clock time is <60s warm and <120s cold after adding new gates
-    - "If parity adds >60s, parallelize independent checks using tokio::spawn"
-    - Performance measured and verified
+    - "In `crates/chump-preflight/src/preflight.rs`, the function that executes all gates must emit a log line `Preflight duration: <X>s (warm)` and the measured `<X>` must be <60 when the binary is run twice consecutively (warm cache)."
+    - "When three mock independent checks each `tokio::time::sleep(Duration::from_secs(30))` are added, the same function must log `Parallelized 3 checks` and the total wall‑clock time reported must be <70 seconds, demonstrating parallel execution."
+    - Running the compiled binary `chump-preflight --dry-run` must exit with status 0 and print `All preflight checks passed` within the measured duration limits (≤60 s warm, ≤120 s cold).
+    - Add a unit test `test_parallelization` in `crates/chump-preflight/tests/parallel.rs` that asserts the elapsed time of the parallelized mock checks is less than the sum of their individual sleep durations (i.e., <90 s for three 30‑second sleeps).
   depends_on: [INFRA-3793]
   notes: |
     [chump harvest check 'RESILIENT']
