@@ -7258,10 +7258,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a subprocess error test case to scripts/ci/test-pwa-subprocess-errors.sh that mocks a git fetch failure during ship-count evaluation, asserting that the fleet-brief output includes "Ships: unavailable" and that the health verdict is not "healthy".
+    
+    Target file(s):
+    - scripts/ci/test-pwa-subprocess-errors.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A test harness mocks a git fetch failure.
-    - "The test asserts that fleet‑brief output contains \"Ships: unavailable\" and that the health verdict is not \"healthy\"."
-    - The test runs in under 2 minutes in CI and passes.
+    - scripts/ci/test-pwa-subprocess-errors.sh contains a test case mocking git fetch failure during fleet-brief ship-count execution.
+    - "The test in scripts/ci/test-pwa-subprocess-errors.sh asserts output stdout includes \"Ships: unavailable\"."
+    - "The test in scripts/ci/test-pwa-subprocess-errors.sh asserts the health verdict output is not \"healthy\"."
+    - Executing `bash scripts/ci/test-pwa-subprocess-errors.sh` succeeds with zero exit code in under 2 minutes.
   depends_on: [CREDIBLE-382]
   notes: |
     [chump harvest check 'fleet-brief']
