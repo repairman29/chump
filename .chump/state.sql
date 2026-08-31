@@ -80801,14 +80801,14 @@ gaps:
   domain: RESILIENT
   title: "Node monitoring & management on the scoreboard (JTBD): SEE + health + place every node, incl. the Pixel"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"SEE + health + place every node, incl. the Pixel\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    [2026-08-23T06:39:36Z] rot-reaper: PR #4170 auto-closed (CONFLICTING, 4h) 2026-08-23; re-attempt on fresh main.
+    Decomposed into 9 slices: RESILIENT-514, RESILIENT-515, RESILIENT-516, RESILIENT-517, RESILIENT-518, RESILIENT-519, RESILIENT-520, RESILIENT-521, RESILIENT-522
   opened_date: '2026-08-23'
   outcome_id: MISSION-010
   evidence: |
@@ -84754,6 +84754,239 @@ gaps:
     - cargo fmt formats all changed files without changes needed
     - cargo clippy --all-targets -D warnings reports zero warnings
     - All existing unit tests continue to pass
+
+- id: RESILIENT-514
+  domain: RESILIENT
+  title: "RESILIENT: Identify RESILIENT code paths for node monitoring and scoreboard rendering (RESILIENT-376 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A short design doc (README snippet) lists the source files and functions that handle node enumeration, health checks, and scoreboard UI.
+    - Stakeholder review confirms the identified locations cover all existing node handling.
+  notes: |
+    [chump harvest check 'monitoring']
+    === primitives_index match for 'monitoring' ===
+    
+    === cluster keyword match for 'monitoring' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'monitoring' ===
+    
+    === repo-description match for 'monitoring' ===
+      analytics-platform-service: Comprehensive game analytics and monitoring platform with real-time metrics and player behavior analysis
+      services-dashboard: Services Dashboard - Monitoring and management interface for Smuggler RPG enterprise platform
+    
+    === HARVEST_ROADMAP.md mention of 'monitoring' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'monitoring' ===
+
+- id: RESILIENT-515
+  domain: RESILIENT
+  title: "RESILIENT: Define data model for node health, placement, and Pixel node metadata (RESILIENT-376 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "A new struct `NodeInfo` (or equivalent) is added with fields: id, health_status, placement, is_pixel."
+    - The struct derives Serialize/Deserialize and compiles without warnings.
+  depends_on: [RESILIENT-514]
+  notes: |
+    [chump harvest check 'monitoring']
+    === primitives_index match for 'monitoring' ===
+    
+    === cluster keyword match for 'monitoring' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'monitoring' ===
+    
+    === repo-description match for 'monitoring' ===
+      analytics-platform-service: Comprehensive game analytics and monitoring platform with real-time metrics and player behavior analysis
+      services-dashboard: Services Dashboard - Monitoring and management interface for Smuggler RPG enterprise platform
+    
+    === HARVEST_ROADMAP.md mention of 'monitoring' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'monitoring' ===
+
+- id: RESILIENT-516
+  domain: RESILIENT
+  title: "RESILIENT: Implement health‑status retrieval function for a generic node (RESILIENT-376 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Function `get_node_health(node_id: &str) -> HealthStatus` returns a valid enum value for known nodes."
+    - "The function returns `HealthStatus::Unknown` for nonexistent IDs."
+  depends_on: [RESILIENT-515]
+  notes: |
+    [chump harvest check 'monitoring']
+    === primitives_index match for 'monitoring' ===
+    
+    === cluster keyword match for 'monitoring' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'monitoring' ===
+    
+    === repo-description match for 'monitoring' ===
+      analytics-platform-service: Comprehensive game analytics and monitoring platform with real-time metrics and player behavior analysis
+      services-dashboard: Services Dashboard - Monitoring and management interface for Smuggler RPG enterprise platform
+    
+    === HARVEST_ROADMAP.md mention of 'monitoring' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'monitoring' ===
+
+- id: RESILIENT-517
+  domain: RESILIENT
+  title: "RESILIENT: Extend node enumeration to include the Pixel node (RESILIENT-376 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Pixel node appears in the collection returned by the existing node‑list API.
+    - Pixel node is marked with `is_pixel = true` in the new `NodeInfo` struct.
+  depends_on: [RESILIENT-515]
+  notes: |
+    [chump harvest check 'monitoring']
+    === primitives_index match for 'monitoring' ===
+    
+    === cluster keyword match for 'monitoring' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'monitoring' ===
+    
+    === repo-description match for 'monitoring' ===
+      analytics-platform-service: Comprehensive game analytics and monitoring platform with real-time metrics and player behavior analysis
+      services-dashboard: Services Dashboard - Monitoring and management interface for Smuggler RPG enterprise platform
+    
+    === HARVEST_ROADMAP.md mention of 'monitoring' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'monitoring' ===
+
+- id: RESILIENT-518
+  domain: RESILIENT
+  title: "RESILIENT: Update scoreboard UI to display health and placement for every node (RESILIENT-376 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Scoreboard renders a row for each node showing its health icon and placement coordinates.
+    - Pixel node is rendered with the same health/placement fields as other nodes.
+  depends_on: [RESILIENT-516, RESILIENT-517]
+  notes: |
+    [chump harvest check 'monitoring']
+    === primitives_index match for 'monitoring' ===
+    
+    === cluster keyword match for 'monitoring' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'monitoring' ===
+    
+    === repo-description match for 'monitoring' ===
+      analytics-platform-service: Comprehensive game analytics and monitoring platform with real-time metrics and player behavior analysis
+      services-dashboard: Services Dashboard - Monitoring and management interface for Smuggler RPG enterprise platform
+    
+    === HARVEST_ROADMAP.md mention of 'monitoring' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'monitoring' ===
+
+- id: RESILIENT-519
+  domain: RESILIENT
+  title: "RESILIENT: Add unit test for `get_node_health` proving new behavior (RESILIENT-376 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Test `test_get_node_health_returns_expected` asserts correct health for a mock node.
+    - Running the test suite fails before the implementation and passes after slice 2 is merged.
+  depends_on: [RESILIENT-516]
+  notes: |
+    [chump harvest check 'monitoring']
+    === primitives_index match for 'monitoring' ===
+    
+    === cluster keyword match for 'monitoring' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'monitoring' ===
+    
+    === repo-description match for 'monitoring' ===
+      analytics-platform-service: Comprehensive game analytics and monitoring platform with real-time metrics and player behavior analysis
+      services-dashboard: Services Dashboard - Monitoring and management interface for Smuggler RPG enterprise platform
+    
+    === HARVEST_ROADMAP.md mention of 'monitoring' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'monitoring' ===
+
+- id: RESILIENT-520
+  domain: RESILIENT
+  title: "RESILIENT: Add integration test verifying scoreboard shows all nodes including Pixel (RESILIENT-376 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test launches the scoreboard in a headless mode and checks that a row exists for the Pixel node with health and placement displayed.
+    - Test fails when slice 4 is not present and passes after slice 4 is merged.
+  depends_on: [RESILIENT-518]
+  notes: |
+    [chump harvest check 'monitoring']
+    === primitives_index match for 'monitoring' ===
+    
+    === cluster keyword match for 'monitoring' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'monitoring' ===
+    
+    === repo-description match for 'monitoring' ===
+      analytics-platform-service: Comprehensive game analytics and monitoring platform with real-time metrics and player behavior analysis
+      services-dashboard: Services Dashboard - Monitoring and management interface for Smuggler RPG enterprise platform
+    
+    === HARVEST_ROADMAP.md mention of 'monitoring' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'monitoring' ===
+
+- id: RESILIENT-521
+  domain: RESILIENT
+  title: "RESILIENT: Run `cargo fmt` and `cargo clippy` and fix any warnings (RESILIENT-376 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` reports no changes needed."
+    - "`cargo clippy --all-targets -D warnings` exits with status 0."
+  depends_on: [RESILIENT-518]
+  notes: |
+    [chump harvest check 'monitoring']
+    === primitives_index match for 'monitoring' ===
+    
+    === cluster keyword match for 'monitoring' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'monitoring' ===
+    
+    === repo-description match for 'monitoring' ===
+      analytics-platform-service: Comprehensive game analytics and monitoring platform with real-time metrics and player behavior analysis
+      services-dashboard: Services Dashboard - Monitoring and management interface for Smuggler RPG enterprise platform
+    
+    === HARVEST_ROADMAP.md mention of 'monitoring' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'monitoring' ===
+
+- id: RESILIENT-522
+  domain: RESILIENT
+  title: "RESILIENT: Update CI scripts to execute new tests and enforce formatting (RESILIENT-376 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`scripts/ci/test-*.sh` includes the new unit and integration test files."
+    - CI pipeline passes with the new tests and formatting checks.
+  depends_on: [RESILIENT-519, RESILIENT-520, RESILIENT-521]
+  notes: |
+    [chump harvest check 'monitoring']
+    === primitives_index match for 'monitoring' ===
+    
+    === cluster keyword match for 'monitoring' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'monitoring' ===
+    
+    === repo-description match for 'monitoring' ===
+      analytics-platform-service: Comprehensive game analytics and monitoring platform with real-time metrics and player behavior analysis
+      services-dashboard: Services Dashboard - Monitoring and management interface for Smuggler RPG enterprise platform
+    
+    === HARVEST_ROADMAP.md mention of 'monitoring' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'monitoring' ===
 
 - id: SMOKE-001
   domain: SMOKE
