@@ -66,6 +66,16 @@ else
     fail "CARGO_TARGET_DIR not set after worker.sh env block (got: $result)"
 fi
 
+# ── Test 5 (PRODUCT-169): binary-refresh cron plists share the same target dir ─
+echo "Test 5: install-refresh-runner-binary-launchd.sh pins cron CARGO_TARGET_DIR to the shared cache"
+REFRESH_INSTALLER="$REPO_ROOT/scripts/setup/install-refresh-runner-binary-launchd.sh"
+if grep -q 'CARGO_TARGET_DIR' "$REFRESH_INSTALLER" 2>/dev/null \
+        && grep -qE '(\.cargo/chump-shared-target|CHUMP_SHARED_CARGO_TARGET)' "$REFRESH_INSTALLER" 2>/dev/null; then
+    ok "install-refresh-runner-binary-launchd.sh pins CARGO_TARGET_DIR to the shared session cache"
+else
+    fail "install-refresh-runner-binary-launchd.sh does not pin CARGO_TARGET_DIR to the shared cache — cron and sessions will build into disjoint target dirs"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then

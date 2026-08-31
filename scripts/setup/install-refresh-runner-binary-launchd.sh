@@ -79,6 +79,13 @@ mkdir -p "$LOG_BASE"
 # Resolve full PATH for the launchd env (bash + git + cargo discoverable)
 LAUNCHD_PATH="$HOME/.cargo/bin:$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
+# PRODUCT-169: pin the cron's CARGO_TARGET_DIR to the SAME shared cache
+# worker.sh/run-fleet.sh default interactive sessions to
+# ($HOME/.cargo/chump-shared-target). Without this, refresh-runner-binary.sh
+# falls back to its own default (REPO_ROOT/target) and every crate compiles
+# twice into two disjoint caches with zero artifact sharing.
+SHARED_CARGO_TARGET="${CHUMP_SHARED_CARGO_TARGET:-$HOME/.cargo/chump-shared-target}"
+
 # ── 1. Cron fallback: every 5 minutes ────────────────────────────────────────
 cat > "$CRON_PLIST_PATH" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -117,6 +124,8 @@ cat > "$CRON_PLIST_PATH" <<EOF
         <string>${HOME}</string>
         <key>CHUMP_REPO_ROOT</key>
         <string>${REPO_ROOT}</string>
+        <key>CARGO_TARGET_DIR</key>
+        <string>${SHARED_CARGO_TARGET}</string>
     </dict>
 
     <key>ProcessType</key>
@@ -164,6 +173,8 @@ cat > "$WATCHER_PLIST_PATH" <<EOF
         <string>${HOME}</string>
         <key>CHUMP_REPO_ROOT</key>
         <string>${REPO_ROOT}</string>
+        <key>CARGO_TARGET_DIR</key>
+        <string>${SHARED_CARGO_TARGET}</string>
     </dict>
 
     <key>ProcessType</key>
