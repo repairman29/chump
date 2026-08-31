@@ -65411,9 +65411,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Introduce a public getter `pub fn chump_store_shadow() -> bool` in `src/execute_gap.rs` that reads the environment variable `CHUMP_STORE_SHADOW` and defaults to `false` when the variable is unset or has an unrecognised value. Then modify `crates/chump-preflight/src/preflight.rs` inside the `discover_test_scripts` function to call this getter, thereby making the flag available to the rest of the codebase via a central module.
+    
+    Target file(s):
+    - src/execute_gap.rs
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Flag is read from environment variable CHUMP_STORE_SHADOW and defaults to false
-    - Flag value is accessible throughout the codebase via a central config module
+    - src/execute_gap.rs defines a public function `chump_store_shadow()` that returns `true` only when `CHUMP_STORE_SHADOW` is set to “1”, “true”, or “on”, and returns `false` otherwise.
+    - "crates/chump-preflight/src/preflight.rs compiles after adding a call to `crate::execute_gap::chump_store_shadow()` inside the `discover_test_scripts` function, and the call yields a `bool`."
+    - Running `scripts/ci/test-conflict-resolver.sh` with `CHUMP_STORE_SHADOW=1` in the environment prints a line containing `CHUMP_STORE_SHADOW=enabled` to stdout.
   notes: |
     [chump harvest check 'Substrate']
     === primitives_index match for 'Substrate' ===
