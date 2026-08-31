@@ -7407,7 +7407,7 @@ gaps:
 - id: CREDIBLE-390
   domain: CREDIBLE
   title: "CREDIBLE: Parse and classify INFRA-621 probe API response errors into distinct categories (CREDIBLE-130 slice)"
-  status: open
+  status: already_satisfied
   priority: P1
   effort: s
   acceptance_criteria:
@@ -7428,6 +7428,10 @@ gaps:
     
     === cross-pollination briefs mentioning 'run-fleet' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+  closed_date: '2026-08-31'
+  closed_pr: 4341
+  evidence: |
+    already-satisfied backstop (INFRA-3826): worker cycle log agent-1-cycle16-CREDIBLE-390.log reports the work already shipped in PR #4341 (merged 2026-08-31); worktree had no diff to ship. Auto-closed by gap-doctor-reconcile --check-already-satisfied.
 
 - id: CREDIBLE-391
   domain: CREDIBLE
