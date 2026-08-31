@@ -90421,9 +90421,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the `test-cli-integration.sh` script by adding a new integration test case that launches the scoreboard in headless mode, captures its JSON output, and uses the existing `check_json` helper (line 105) to assert that a row for the Pixel node exists and that the row contains non‑empty `health` and `placement` fields. The test should fail with a non‑zero exit code when slice 4 is absent and succeed when slice 4 is merged.
+    
+    Target file(s):
+    - scripts/ci/test-cli-integration.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test launches the scoreboard in a headless mode and checks that a row exists for the Pixel node with health and placement displayed.
-    - Test fails when slice 4 is not present and passes after slice 4 is merged.
+    - Running `scripts/ci/test-cli-integration.sh` exits with status 0 and prints “Scoreboard includes Pixel node” after slice 4 is merged and the Pixel node appears in the scoreboard JSON.
+    - Running `scripts/ci/test-cli-integration.sh` exits with a non‑zero status and prints “Scoreboard missing Pixel node” when slice 4 is not present.
+    - The new test invokes the `check_json` function defined at line 105 of `scripts/ci/test-cli-integration.sh` to validate that the `health` and `placement` fields for the Pixel node are present and non‑empty.
+    - The added test is executed as part of the existing CI pipeline step that runs `scripts/ci/test-cli-integration.sh`, ensuring the scoreboard verification is performed on every CI run.
   depends_on: [RESILIENT-518]
   notes: |
     [chump harvest check 'monitoring']
@@ -90473,9 +90482,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Extend `scripts/ci/test-subagent-epilogue-ref.sh` to invoke the newly added unit‑test module in `crates/chump-gap-store/src/sync.rs` and the integration‑test module in `crates/chump-gap-store/src/maintenance/enricher.rs`, and to run `cargo fmt -- --check` for formatting enforcement. The script now uses the existing `fail` function (line 33) to abort on any test or formatting failure and prints explicit success messages when all checks pass.
+    
+    Target file(s):
+    - scripts/ci/test-subagent-epilogue-ref.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`scripts/ci/test-*.sh` includes the new unit and integration test files."
-    - CI pipeline passes with the new tests and formatting checks.
+    - Executing `scripts/ci/test-subagent-epilogue-ref.sh` runs `cargo test` that exercises the `mod tests` blocks in `crates/chump-gap-store/src/sync.rs` and `crates/chump-gap-store/src/maintenance/enricher.rs` and exits with status 0 when they succeed.
+    - The script runs `cargo fmt -- --check` and exits with a non‑zero status if any source file fails the rustfmt check.
+    - On a successful run the script outputs the exact lines `All new tests passed` and `Formatting check passed`.
+    - On any test or formatting failure the script invokes the `fail` function defined at line 33 of `scripts/ci/test-subagent-epilogue-ref.sh` and prints the associated error message.
   depends_on: [RESILIENT-519, RESILIENT-520, RESILIENT-521]
   notes: |
     [chump harvest check 'monitoring']
