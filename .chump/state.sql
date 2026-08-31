@@ -59047,7 +59047,7 @@ gaps:
   domain: INFRA
   title: "Gap Fairy: Wonka-gate intake assay + continuous backlog furnace — bad eggs never reach the pickable scale, and the dirty backlog is deduped/primed/furnaced automatically"
   status: open
-  priority: P0
+  priority: P2
   effort: l
   description: |
     Sibling to Race Control (CREDIBLE-296, watches merges) and the RCA reflex (RESILIENT-365). Race Control watches the OUTPUT; the Gap Fairy guards the INTAKE. Built by orchestrating EXISTING tools (mine-before-build): gap triage (INFRA-942), decompose (LLM AC), dep-clean, consolidate (INFRA-935), audit-ac, rebalance — none of which today run continuously, furnace, or enforce admission.
@@ -59057,6 +59057,8 @@ gaps:
     - "GUARDRAILS (furnace is destructive-ish): NEVER furnace P0/P1 (only P2/P3 cruft + confirmed dups); every auto-close is fully reversible via chump gap requeue (close != delete, honors archive-not-delete); daily furnace cap (env CHUMP_FAIRY_FURNACE_CAP default 50); dry-run mode; guarded behind CHUMP_GAP_FAIRY_ENABLED default OFF, logged to docs/process/CAPABILITY_DECISIONS.md as a tracked toggle."
     - "DETECTABLE: emits kind=gap_assay_report each cycle (primed N, deduped N, furnaced N, pickable-pool% = ready/open) so Race Control + the board see intake health. Wired as chump-gap-fairy.timer + .service + organ manifest (built+wired+detectable+revivable, Roll-Call)."
     - "PROOF: on the current live backlog it must collapse the 573 near-dup clusters and lift pickable-pool% measurably; test with a seeded dirty-backlog fixture asserts dups closed + vague-AC primed + P0/P1 never furnaced + a furnaced gap requeues cleanly. Depth tier + gaps named per green-not-covered. VERIFY-LIVE: chump-gap-fairy.timer is-active on CJ + one real gap_assay_report in ambient."
+  notes: |
+    Decomposed into 11 slices: INFRA-3877, INFRA-3878, INFRA-3879, INFRA-3880, INFRA-3881, INFRA-3882, INFRA-3883, INFRA-3884, INFRA-3885, INFRA-3886, INFRA-3887
   opened_date: '2026-08-21'
   outcome_id: MISSION-010
   evidence: |
@@ -65456,6 +65458,148 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-3877
+  domain: INFRA
+  title: "INFRA: Add feature flags and furnace cap configuration (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CHUMP_GAP_FAIRY_ENABLED flag exists in config with default OFF
+    - CHUMP_FAIRY_FURNACE_CAP flag exists with default value 50
+    - Flags are readable via the existing config loader and documented in docs/config.md
+
+- id: INFRA-3878
+  domain: INFRA
+  title: "INFRA: Create admission gate entry point in gap intake pipeline (INFRA-3619 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - New gaps are routed through the admission_gate function before being marked ready
+    - If CHUMP_GAP_FAIRY_ENABLED is OFF, admission_gate is a no‑op and gaps become ready as before
+    - Admission gate logs a concise message for each processed gap
+  depends_on: [INFRA-3877]
+
+- id: INFRA-3879
+  domain: INFRA
+  title: "INFRA: Implement assay checks (empty, vague, size, false‑deps, duplicate detection) (INFRA-3619 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Gap fails assay if description is empty or only TODO placeholders
+    - Gap fails assay if AC list is empty or contains only generic placeholders
+    - Gap fails assay if estimated effort exceeds defined MAX_GAP_SIZE (configurable)
+    - Gap fails assay if it contains false dependencies (dependency IDs that do not exist)
+    - Gap fails assay if a near‑duplicate open gap exists (using existing consolidate similarity logic)
+    - When a gap fails, its status remains needs‑prep and a detailed reason is stored
+  depends_on: [INFRA-3878]
+
+- id: INFRA-3880
+  domain: INFRA
+  title: "INFRA: Expose duplicate‑detection utility (consolidate) as a reusable library function (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Function consolidate_near_duplicates(gap_list) returns clusters of near‑duplicate gaps
+    - Each cluster is ordered by priority, AC count, and creation date
+    - Function is covered by unit tests for at least three duplicate scenarios
+  depends_on: [INFRA-3877]
+
+- id: INFRA-3881
+  domain: INFRA
+  title: "INFRA: Add skeleton systemd timer and service for the Gap Fairy furnace (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - chump-gap-fairy.timer triggers chump-gap-fairy.service every 15 minutes
+    - Service starts the furnace main entry point and exits with status 0 on success
+    - Timer and service files are installed to /etc/systemd/system and enabled on deploy
+  depends_on: [INFRA-3877]
+
+- id: INFRA-3882
+  domain: INFRA
+  title: "INFRA: Implement deduplication furnace step (INFRA-3619 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - During each furnace run, consolidate_near_duplicates is called on all open gaps
+    - For each duplicate cluster, the best gap is kept (priority > AC count > oldest) and others are auto‑closed with status=closed, reason=duplicate
+    - Closed duplicates retain their full history and can be re‑opened via the requeue mechanism
+    - Deduplication logs summary counts (clusters processed, gaps closed)
+  depends_on: [INFRA-3880, INFRA-3881]
+
+- id: INFRA-3883
+  domain: INFRA
+  title: "INFRA: Implement priming step (decompose vague/empty AC, split oversized gaps) (INFRA-3619 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Gaps with empty or placeholder AC are automatically populated with concrete AC derived from the gap title (using existing decompose LLM helper)
+    - Gaps whose estimated effort exceeds MAX_GAP_SIZE are split into multiple child gaps with proportional effort and linked via parent_id
+    - Primed gaps are transitioned to status=ready and emitted in the pickable pool
+    - All transformations are logged and reversible via the requeue path
+  depends_on: [INFRA-3878, INFRA-3881]
+
+- id: INFRA-3884
+  domain: INFRA
+  title: "INFRA: Implement unsalvageable furnace auto‑close with guardrails (INFRA-3619 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Gaps that remain needs‑prep after N_MAX_ATTEMPTS (configurable) are auto‑closed with status=closed, reason=furnaced
+    - Guardrails prevent auto‑closing any gap with priority P0 or P1
+    - Daily furnace cap respects CHUMP_FAIRY_FURNACE_CAP; excess gaps are left untouched and logged
+    - Dry‑run mode (CHUMP_GAP_FAIRY_DRY_RUN=true) reports actions without persisting changes
+    - All auto‑close actions are recorded in audit logs with reason and original gap ID
+  depends_on: [INFRA-3882, INFRA-3883, INFRA-3877]
+
+- id: INFRA-3885
+  domain: INFRA
+  title: "INFRA: Add reversible close (requeue) mechanism for furnace‑closed gaps (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Closed gaps with reason=furnaced can be re‑opened via a new CLI command `gap requeue <gap_id>`
+    - Requeue restores the gap to its pre‑close status (needs‑prep) and clears furnace metadata
+    - Requeue operation is idempotent and logged as a separate audit event
+  depends_on: [INFRA-3884]
+
+- id: INFRA-3886
+  domain: INFRA
+  title: "INFRA: Emit gap_assay_report metric each furnace cycle (INFRA-3619 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - At the end of each furnace run, a JSON event with kind=gap_assay_report is sent to the existing telemetry pipeline
+    - "Event includes fields: primed_count, deduped_count, furnaced_count, pickable_pool_percent"
+    - Metric is visible in Race Control dashboard and documented in docs/metrics.md
+  depends_on: [INFRA-3882, INFRA-3883, INFRA-3884]
+
+- id: INFRA-3887
+  domain: INFRA
+  title: "INFRA: Create integration test fixture for dirty backlog and verify full furnace flow (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test loads a seeded backlog containing 573 near‑duplicate clusters, vague AC gaps, oversized gaps, and a mix of priorities
+    - "After running the full furnace (timer invoked programmatically), test asserts:"
+    - • All duplicate clusters have exactly one open gap
+    - • All vague/empty AC gaps are primed and become ready
+    - • No P0 or P1 gaps are auto‑closed
+    - • At least one gap is closed with reason=furnaced and can be re‑queued successfully
+    - • gap_assay_report event is emitted with non‑zero counts
+  depends_on: [INFRA-3878, INFRA-3879, INFRA-3882, INFRA-3883, INFRA-3884, INFRA-3885, INFRA-3886]
 
 - id: INFRA-394
   domain: INFRA
