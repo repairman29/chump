@@ -10197,6 +10197,9 @@ async fn main() -> Result<()> {
                 let why = args.iter().any(|a| a == "--why");
                 let skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
                 let custom_acceptance_criteria = flag("--acceptance-criteria");
+                // CREDIBLE-392 (CREDIBLE-343 slice of CREDIBLE-284): --no-ac-required
+                // bypasses the P0/P1 --acceptance-criteria mandate below.
+                let no_ac_required = args.iter().any(|a| a == "--no-ac-required");
 
                 // INFRA-756: compute acceptance_criteria. Default to 4 obs-AC templates
                 // unless --skip-obs-acs is set or --acceptance-criteria is provided.
@@ -10216,6 +10219,59 @@ async fn main() -> Result<()> {
                     }
                     _ => "[]".into(),
                 };
+
+                // ── CREDIBLE-392 (CREDIBLE-343 slice of CREDIBLE-284): mandatory
+                // --acceptance-criteria for P0/P1 reserve ──────────────────────
+                // The obs-AC template default above lets P0/P1 gaps land with
+                // generic AC nobody hand-wrote for this specific gap. Force an
+                // explicit --acceptance-criteria value for the highest-priority
+                // gaps unless the filer opts out (audited).
+                {
+                    let enforce_priorities = ["P0", "P1"];
+                    let needs_ac = enforce_priorities.contains(&priority.as_str());
+
+                    if needs_ac && custom_acceptance_criteria.is_none() {
+                        if no_ac_required {
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let ambient_path =
+                                worktree_root.join(".chump-locks").join("ambient.jsonl");
+                            let safe_domain = domain.replace(['"', '\\'], "");
+                            let safe_title = title.replace(['"', '\\'], "");
+                            if let Some(parent) = ambient_path.parent() {
+                                let _ = std::fs::create_dir_all(parent);
+                            }
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write;
+                                let _ = writeln!(
+                                    f,
+                                    r#"{{"ts":"{ts}","kind":"gap_reserved_no_ac","priority":"{priority}","domain":"{safe_domain}","title":"{safe_title}","bypass_reason":"--no-ac-required flag"}}"#
+                                );
+                            }
+                            if !quiet {
+                                eprintln!(
+                                    "[reserve] WARN: gap_reserved_no_ac emitted (bypass=--no-ac-required flag)"
+                                );
+                            }
+                        } else {
+                            eprintln!();
+                            eprintln!(
+                                "chump gap: P0/P1 gaps require --acceptance-criteria \"<text>\" (CREDIBLE-343/CREDIBLE-392)."
+                            );
+                            eprintln!(
+                                "Separate multiple criteria with '|', e.g. --acceptance-criteria \"does X|handles Y|tested by Z\"."
+                            );
+                            eprintln!(
+                                "Bypass: --no-ac-required (adds audit trailer to ambient.jsonl)."
+                            );
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                // ── end CREDIBLE-392 acceptance-criteria gate ──────────────────
 
                 // FLEET-029: ambient glance before allocating ID
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
