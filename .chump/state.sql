@@ -59768,7 +59768,7 @@ gaps:
 - id: INFRA-3469
   domain: INFRA
   title: "EFFECTIVE: WIRING organ — add ecosystem adapters beyond Rust (comprehend UAT pilot-1 B3, the #1 coverage gap)"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -59776,6 +59776,8 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   opened_date: '2026-08-19'
+  closed_date: '2026-08-31'
+  closed_pr: 4352
   skills_required: "external_repo:repairman29/almanac"
 
 - id: INFRA-3470
