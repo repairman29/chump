@@ -18664,10 +18664,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Format Rust source code in `crates/chump-verify/src/external_verify_merge.rs` and `src/autonomy_loop.rs` using rustfmt, and fix any Clippy warnings across the Rust workspace so `cargo clippy --all-targets -- -D warnings` and `cargo fmt --all -- --check` pass without errors.
+    
+    Target file(s):
+    - crates/chump-verify/src/external_verify_merge.rs
+    - src/autonomy_loop.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`cargo fmt --all` makes no changes"
-    - "`cargo clippy --all-targets -D warnings` passes without warnings"
-    - All existing and new tests pass
+    - "`cargo fmt --all -- --check` exits with status 0 without producing formatting diffs in `crates/chump-verify/src/external_verify_merge.rs` or `src/autonomy_loop.rs`."
+    - "`cargo clippy --all-targets -- -D warnings` completes with zero warnings or errors."
+    - "`cargo test` passes all existing test suites."
   depends_on: [EFFECTIVE-534, EFFECTIVE-535]
   notes: |
     [chump harvest check 'phase']
