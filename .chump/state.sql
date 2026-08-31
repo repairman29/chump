@@ -80296,15 +80296,14 @@ gaps:
   domain: RESILIENT
   title: "COTG: orchestrator storage auto-placement LIVE — graceful cargo/worktree/TMPDIR relocation, no hand disk-moves"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "orchestrator senses per-volume free (incl USB)+tmpfs pressure; on root>threshold w/ a bigger volume, relocates cargo(+worktrees+TMPDIR) GRACEFULLY: bg rsync while fleet runs→atomic symlink swap→validate→reap; NEVER foreground mv"
     - enabled by default after forced-pressure test on CJ; full /tmp auto-routes TMPDIR to a data volume
     - "verified: induce root>90%, relocates while fleet stays up + builds keep working"
   notes: |
-    [2026-08-19T20:20:31Z] Code EXISTS (node-orchestrator.sh place()) but OFF. Tonight foreground-mv of 23G cargo=50-min outage; /tmp-quota broke builds. Highest-value COTG gap. storage-relocation-lesson.
-    [2026-08-19T20:31:33Z] 2026-08-19: GRACEFUL CARGO AUTO-PLACEMENT ARMED + PROVEN — rsync+atomic-swap+validate tested on scratch (canary intact, zero disruption); AUTOPLACE=1 live on CJ (no-op, cargo already on USB; fires on future root>90%). REMAINING SLICE: extend place() to worktrees + auto-route TMPDIR on tmpfs pressure, + a real forced->90% integration test.
+    Decomposed into 9 slices: RESILIENT-458, RESILIENT-459, RESILIENT-460, RESILIENT-461, RESILIENT-462, RESILIENT-463, RESILIENT-464, RESILIENT-465, RESILIENT-466
   opened_date: '2026-08-19'
 
 - id: RESILIENT-323
@@ -81983,6 +81982,13 @@ gaps:
     [2026-08-30T23:41:00Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-30; RESPAWN CAP 3 reached (6 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T23:43:15Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-30; RESPAWN CAP 3 reached (7 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T23:45:35Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-30; RESPAWN CAP 3 reached (8 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T23:48:03Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-30; RESPAWN CAP 3 reached (9 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T23:50:26Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-30; RESPAWN CAP 3 reached (10 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T23:52:46Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-30; RESPAWN CAP 3 reached (11 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T23:55:01Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-30; RESPAWN CAP 3 reached (12 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T23:57:14Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-30; RESPAWN CAP 3 reached (13 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-30T23:59:28Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-30; RESPAWN CAP 3 reached (14 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:00:10Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (15 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: CHUMPOS
 
 - id: RESILIENT-419
@@ -82764,9 +82770,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new public function `pub fn notify_channel_live() -> bool` to `crates/chump-preflight/src/preflight.rs` that checks that the environment variables `DISCORD_TOKEN` and `CHUMP_READY_DM_USER_ID` are both present and then attempts to send a test direct message using the existing Discord client helper; it returns `true` only if the send succeeds without error, otherwise `false`. Also embed a `#[cfg(test)]` module in the same file containing four unit tests that exercise the success case, missing token, missing user‑id, and simulated send‑failure scenarios via a mock Discord client.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`fn notify_channel_live() -> bool` returns true only when both `DISCORD_TOKEN` and `CHUMP_READY_DM_USER_ID` are set and a test DM can be sent without error"
-    - Unit test covers true, missing token, missing user ID, and simulated send failure cases
+    - In `crates/chump-preflight/src/preflight.rs` the function `notify_channel_live()` is defined, is public, and returns a `bool` according to the described logic.
+    - The unit test `test_notify_channel_live_success` in `crates/chump-preflight/src/preflight.rs` sets both `DISCORD_TOKEN` and `CHUMP_READY_DM_USER_ID`, mocks the Discord client to succeed, calls `notify_channel_live()`, and asserts that the result is `true`.
+    - The unit test `test_notify_channel_live_missing_token` in `crates/chump-preflight/src/preflight.rs` clears `DISCORD_TOKEN`, ensures `CHUMP_READY_DM_USER_ID` is set, calls `notify_channel_live()`, and asserts that the result is `false`.
+    - The unit test `test_notify_channel_live_send_failure` in `crates/chump-preflight/src/preflight.rs` sets both environment variables, mocks the Discord client to return an error on send, calls `notify_channel_live()`, and asserts that the result is `false`.
   depends_on: [RESILIENT-441]
   notes: |
     [chump harvest check 'RESILIENT']
@@ -82791,11 +82806,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new end‑to‑end integration test in `src/execute_gap.rs` that constructs a temporary registry containing three signals (one mapped to Tier 1, one to Tier 2, and one to Tier 3), runs `run_duty_officer_loop` inside a Tokio test runtime with a mocked signal source, and asserts that `auto_heal` is invoked for the Tier 1 signal, the approval flow is executed for the Tier 2 signal, and exactly one DM is sent for the Tier 3 signal while no DM is sent for Tier 1 or Tier 2.
+    
+    Target file(s):
+    - src/execute_gap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test creates a temporary registry with one signal mapped to Tier 1, another to Tier 2, and a third to Tier 3
-    - Runs `run_duty_officer_loop` in a Tokio test runtime with mocked signal source
-    - "Verifies: auto‑heal called for Tier 1, approval flow executed for Tier 2, and a DM sent exactly once for Tier 3"
-    - Ensures no DM is sent for Tier 1 or Tier 2 signals
+    - "src/execute_gap.rs defines a `#[tokio::test]` function named `test_resilient_end_to_end_routing_and_paging` that creates a temporary registry with signals mapped to Tier 1, Tier 2, and Tier 3."
+    - The test calls `run_duty_officer_loop` within a Tokio test runtime using a mocked signal source that emits the three signals.
+    - The test verifies that the `auto_heal` handler is called exactly once for the Tier 1 signal and that the approval‑flow handler is called exactly once for the Tier 2 signal.
+    - The test verifies that `send_dm` (or the DM‑sending component) is called exactly once for the Tier 3 signal and is not called for the Tier 1 or Tier 2 signals.
   depends_on: [RESILIENT-445, RESILIENT-446, RESILIENT-447, RESILIENT-448, RESILIENT-449]
   notes: |
     [chump harvest check 'RESILIENT']
@@ -82848,10 +82870,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new configurable timeout constant named CHUMP_PROVIDER_TIMEOUT_S with a default of 30 seconds in src/provider_cascade.rs, expose a public getter that reads the CHUMP_PROVIDER_TIMEOUT_S environment variable (falling back to the default), and modify the write_routing_outcome function in crates/chump-orchestrator/src/monitor.rs to use this getter when handling provider‑timeout cases.
+    
+    Target file(s):
+    - src/provider_cascade.rs
+    - crates/chump-orchestrator/src/monitor.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A constant CHUMP_PROVIDER_TIMEOUT_S is defined in the configuration module.
-    - Default value is set to 30 seconds.
-    - Value can be overridden via environment variable or config file without code changes.
+    - src/provider_cascade.rs defines a public const CHUMP_PROVIDER_TIMEOUT_S set to 30 and a public fn get_chump_provider_timeout() that returns the value of the CHUMP_PROVIDER_TIMEOUT_S environment variable parsed as u64, defaulting to the const.
+    - "When the environment variable CHUMP_PROVIDER_TIMEOUT_S is set to \"45\", calling src/provider_cascade.rs::get_chump_provider_timeout() returns 45."
+    - "crates/chump-orchestrator/src/monitor.rs::write_routing_outcome references get_chump_provider_timeout() to obtain the timeout value instead of a hard‑coded literal."
+    - Executing scripts/ci/test-gap-decompose-truncation.sh completes successfully (exit code 0) after the changes, confirming the gap is resolved without hanging.
   notes: |
     [chump harvest check 'timeout']
     === primitives_index match for 'timeout' ===
@@ -82876,10 +82907,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Edit the `execute` function in `src/repo_tools.rs` to run the external provider command inside a timeout guard that uses the `CHUMP_PROVIDER_TIMEOUT_S` constant (or env var). If the timeout expires, kill the child process and return a distinct `TimeoutError` variant; callers will interpret this error as a slot failure, triggering the 15‑slot ladder fail‑over to the next slot.
+    
+    Target file(s):
+    - src/repo_tools.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Provider calls are wrapped with a timeout using CHUMP_PROVIDER_TIMEOUT_S.
-    - When the timeout expires, the call returns a timeout error.
-    - The error is treated as a slot failure and the 15‑slot ladder automatically fails over to the next slot.
+    - In `src/repo_tools.rs`, the `execute` function must start the child process with a timeout equal to `CHUMP_PROVIDER_TIMEOUT_S` seconds and forcibly terminate the process when the timeout elapses.
+    - "When the timeout expires, `execute` must return an `Err` containing the string `\"provider timeout\"` (or a dedicated `TimeoutError` type) that can be pattern‑matched by callers."
+    - "A log entry `\"[slot failure] provider timeout\"` must be emitted by the caller (e.g., `scripts/coord/queue-driver.sh` or any consumer of `execute`) when the timeout error is received, demonstrating that the failure is treated as a slot failure and the ladder proceeds to the next slot."
   depends_on: [RESILIENT-452]
   notes: |
     [chump harvest check 'timeout']
@@ -82905,9 +82943,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Update the logging statements inside `fn execute` in `src/spawn_worker_tool.rs` and inside `fn get_last_used_slot` in `src/provider_cascade.rs` so that every provider‑call log entry appends the slot identifier (`slot_id`) and the model name (`model_name`) while keeping the overall log line format unchanged and still parsable by existing aggregation tools.
+    
+    Target file(s):
+    - src/spawn_worker_tool.rs
+    - src/provider_cascade.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Every log entry for a provider call includes the slot identifier and model name.
-    - Log format remains parsable by existing log aggregation tools.
+    - "In `src/spawn_worker_tool.rs::execute`, the emitted log line now contains the substrings `slot_id=` and `model_name=` with the correct values for the current call."
+    - "In `src/provider_cascade.rs::get_last_used_slot`, the log entry produced for a slot lookup includes `slot_id=` and `model_name=` fields."
+    - Running `scripts/eval/provider-matrix.sh` (which invokes `run_one`) produces log output that still matches the existing log‑parsing regex used by the aggregation pipeline.
+    - A unit test added to `src/spawn_worker_tool.rs` verifies that a mock execution writes a log line containing both `slot_id=` and `model_name=` tokens.
   notes: |
     [chump harvest check 'timeout']
     === primitives_index match for 'timeout' ===
@@ -82932,10 +82980,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the `classify_failure_cause` function in `crates/chump-orchestrator/src/reflect.rs` to detect provider‑call timeout errors, map them to a new `FailureSignature::ProviderTimeout` variant, and ensure the emitted failure event carries the slot identifier from the log entry as part of its payload; add a corresponding unit test in the same file’s `mod tests` section.
+    
+    Target file(s):
+    - crates/chump-orchestrator/src/reflect.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "When a provider call times out, a failure event with type \"PROVIDER_TIMEOUT\" is emitted."
-    - The event payload contains the slot identifier from the logs.
-    - Downstream failure‑detection pipelines (EFFECTIVE‑366, RESILIENT‑270) recognize the new signature.
+    - "In `crates/chump-orchestrator/src/reflect.rs::classify_failure_cause`, a timeout error (e.g., matching the regex `\"provider call timed out\"` in the log) returns `FailureSignature::ProviderTimeout` instead of the generic failure type."
+    - "The failure event emitted for a timeout includes a JSON payload field `\"slot_id\"` whose value equals the slot identifier extracted from the original log line."
+    - "Running the downstream detection pipeline `EFFECTIVE-366` on a log containing a timeout produces a parsed event with `type == \"PROVIDER_TIMEOUT\"` and the correct `slot_id` field."
+    - "The unit test added to `crates/chump-orchestrator/src/reflect.rs::tests` asserts that a fabricated timeout log entry results in `FailureSignature::ProviderTimeout` and that the event payload contains the expected `slot_id`."
   depends_on: [RESILIENT-453, RESILIENT-454]
   notes: |
     [chump harvest check 'timeout']
@@ -83014,6 +83070,240 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: RESILIENT-458
+  domain: RESILIENT
+  title: "RESILIENT: Implement volume and tmpfs pressure detection (RESILIENT-322 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Function `detect_pressure()` returns true when root filesystem usage exceeds 90% and another mounted volume has at least 20 GB free space.
+    - Function returns false when usage is below threshold or no larger volume is available.
+    - Unit tests simulate disk usage scenarios and verify correct boolean output.
+  notes: |
+    [chump harvest check 'orchestrator']
+    === primitives_index match for 'orchestrator' ===
+    
+    === cluster keyword match for 'orchestrator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'orchestrator' ===
+    
+    === repo-description match for 'orchestrator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'orchestrator' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'orchestrator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-459
+  domain: RESILIENT
+  title: "RESILIENT: Extend `place()` to relocate worktrees (RESILIENT-322 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`place()` accepts an array of worktree paths and includes them in the relocation process."
+    - After execution, each worktree directory is present on the target volume, a symlink at the original location points atomically to the new location, and the original directory is removed.
+    - Integration test confirms that a running build can still access the worktree after relocation.
+  depends_on: [RESILIENT-458]
+  notes: |
+    [chump harvest check 'orchestrator']
+    === primitives_index match for 'orchestrator' ===
+    
+    === cluster keyword match for 'orchestrator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'orchestrator' ===
+    
+    === repo-description match for 'orchestrator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'orchestrator' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'orchestrator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-460
+  domain: RESILIENT
+  title: "RESILIENT: Auto‑route TMPDIR on tmpfs pressure (RESILIENT-322 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When `detect_pressure()` reports tmpfs pressure (>80% usage), orchestrator sets the `TMPDIR` environment variable to a directory on the selected data volume.
+    - Processes spawned after placement inherit the new `TMPDIR` value.
+    - Verification script checks that `echo $TMPDIR` points to the data‑volume path during pressure conditions.
+  depends_on: [RESILIENT-458]
+  notes: |
+    [chump harvest check 'orchestrator']
+    === primitives_index match for 'orchestrator' ===
+    
+    === cluster keyword match for 'orchestrator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'orchestrator' ===
+    
+    === repo-description match for 'orchestrator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'orchestrator' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'orchestrator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-461
+  domain: RESILIENT
+  title: "RESILIENT: Background rsync copy with atomic symlink swap (RESILIENT-322 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Data (cargo, worktrees, TMPDIR) is copied to the target volume using `rsync` launched in the background.
+    - Upon successful rsync completion, an atomic `ln -sfn` swaps the original path symlink to the new location.
+    - During copy, the original path remains fully accessible; after swap, all reads are served from the new location without interruption.
+    - Test harness validates that no partial files are visible at any point.
+  depends_on: [RESILIENT-458]
+  notes: |
+    [chump harvest check 'orchestrator']
+    === primitives_index match for 'orchestrator' ===
+    
+    === cluster keyword match for 'orchestrator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'orchestrator' ===
+    
+    === repo-description match for 'orchestrator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'orchestrator' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'orchestrator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-462
+  domain: RESILIENT
+  title: "RESILIENT: Validate copied data integrity (RESILIENT-322 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - After the atomic swap, a checksum (e.g., SHA‑256) of each relocated directory is compared to the source checksum.
+    - If any checksum mismatches, the orchestrator rolls back the symlink to the original location and logs an error.
+    - Successful validation logs a confirmation message.
+  depends_on: [RESILIENT-461]
+  notes: |
+    [chump harvest check 'orchestrator']
+    === primitives_index match for 'orchestrator' ===
+    
+    === cluster keyword match for 'orchestrator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'orchestrator' ===
+    
+    === repo-description match for 'orchestrator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'orchestrator' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'orchestrator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-463
+  domain: RESILIENT
+  title: "RESILIENT: Cleanup old cargo/worktree/TMPDIR after successful validation (RESILIENT-322 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - When validation passes, the orchestrator removes the original source directories safely.
+    - No leftover files remain on the original volume.
+    - Filesystem free‑space metrics reflect the reclaimed space.
+  depends_on: [RESILIENT-462]
+  notes: |
+    [chump harvest check 'orchestrator']
+    === primitives_index match for 'orchestrator' ===
+    
+    === cluster keyword match for 'orchestrator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'orchestrator' ===
+    
+    === repo-description match for 'orchestrator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'orchestrator' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'orchestrator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-464
+  domain: RESILIENT
+  title: "RESILIENT: Add AUTOPLACE configuration flag (enabled by default after forced‑pressure test) (RESILIENT-322 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Configuration file includes `AUTOPLACE=1` and is read by the orchestrator at startup.
+    - When `AUTOPLACE` is set, the orchestrator automatically triggers `place()` when `detect_pressure()` reports a high‑pressure condition.
+    - A log entry `AUTOPLACE enabled – automatic relocation engaged` appears during a pressure event.
+  notes: |
+    [chump harvest check 'orchestrator']
+    === primitives_index match for 'orchestrator' ===
+    
+    === cluster keyword match for 'orchestrator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'orchestrator' ===
+    
+    === repo-description match for 'orchestrator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'orchestrator' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'orchestrator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-465
+  domain: RESILIENT
+  title: "RESILIENT: End‑to‑end integration test: induce root >90% pressure and verify graceful relocation (RESILIENT-322 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test script fills the root filesystem to >90% using temporary files.
+    - Orchestrator detects pressure, runs `place()` for cargo, worktrees, and TMPDIR, and completes without stopping fleet processes.
+    - After relocation, builds continue to succeed and temporary files are cleaned up.
+    - Metrics show cargo, worktrees, and TMPDIR now reside on the larger data volume and original space is reclaimed.
+  depends_on: [RESILIENT-459, RESILIENT-460, RESILIENT-461, RESILIENT-462, RESILIENT-463, RESILIENT-464]
+  notes: |
+    [chump harvest check 'orchestrator']
+    === primitives_index match for 'orchestrator' ===
+    
+    === cluster keyword match for 'orchestrator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'orchestrator' ===
+    
+    === repo-description match for 'orchestrator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'orchestrator' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'orchestrator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-466
+  domain: RESILIENT
+  title: "RESILIENT: Update documentation for live graceful auto‑placement (RESILIENT-322 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - README and operational docs include a section describing the pressure‑driven auto‑placement feature, configuration flag, and expected behavior.
+    - Docs contain the steps to run the integration test and interpret its results.
+    - Documentation is reviewed and approved by the team lead.
+  depends_on: [RESILIENT-465]
+  notes: |
+    [chump harvest check 'orchestrator']
+    === primitives_index match for 'orchestrator' ===
+    
+    === cluster keyword match for 'orchestrator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'orchestrator' ===
+    
+    === repo-description match for 'orchestrator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'orchestrator' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'orchestrator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
 - id: SMOKE-001
   domain: SMOKE
