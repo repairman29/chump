@@ -60291,11 +60291,19 @@ gaps:
   status: open
   priority: P3
   effort: s
+  description: |
+    Extend the CLI in `src/main.rs` by adding a new `gonogo` subcommand that accepts a mandatory `<vision>` argument and an optional `--json` flag. The handler reads the `CHUMP_GONOGO_FORCE_VERDICT` environment variable (if set) to force a verdict for testing, otherwise it runs the existing go‑no‑go logic, then prints a JSON object containing `verdict`, `reason`, `cost_estimate_usd`, and `tier_ceiling_usd` when `--json` is supplied. The process exits with code 0 for `GO` and `NEEDS-NARROWING`, and with a non‑zero code for `NO‑GO` and `NO‑GO‑ON‑COST`. A small integration check is added to `scripts/dev/outcomes-delivered.sh` to assert the exit code and JSON content.
+    
+    Target file(s):
+    - src/main.rs
+    - scripts/dev/outcomes-delivered.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`chump gonogo \"<vision>\" --json` prints JSON with verdict/reason/cost_estimate_usd/tier_ceiling_usd."
-    - Exits non-zero for NO-GO and NO-GO-ON-COST, zero for GO and NEEDS-NARROWING.
-    - Uses CHUMP_GONOGO_FORCE_VERDICT for testing.
-    - Integration test verifies exit codes via script or test harness.
+    - "Running `cargo run -- gonogo \"example vision\"` without `--json` prints a human‑readable line containing the word `verdict` and exits with code 0 when `CHUMP_GONOGO_FORCE_VERDICT` is unset and the default logic returns `GO` (validated by checking `$?` in a shell script)."
+    - "Running `cargo run -- gonogo \"example vision\" --json` outputs a single JSON object on stdout that includes the keys `verdict`, `reason`, `cost_estimate_usd`, and `tier_ceiling_usd` (validated by piping the output to `jq empty` in `scripts/dev/outcomes-delivered.sh`)."
+    - "Setting `CHUMP_GONOGO_FORCE_VERDICT=NO-GO` and executing `cargo run -- gonogo \"example vision\" --json` causes the command to exit with a non‑zero status (specifically code 1) and the JSON `verdict` field equals `\"NO-GO\"` (checked in `src/main.rs` test harness)."
+    - "The script `scripts/dev/outcomes-delivered.sh` contains a test case that invokes `cargo run -- gonogo \"example vision\" --json` with `CHUMP_GONOGO_FORCE_VERDICT=NO-GO-ON-COST` and asserts that the process exits with code 2 and that the parsed JSON `verdict` field is `\"NO-GO-ON-COST\"`."
   depends_on: [INFRA-3682, INFRA-3683]
   notes: |
     [chump harvest check 'honest']
