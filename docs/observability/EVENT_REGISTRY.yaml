@@ -12036,3 +12036,48 @@ events:
     trigger: a distinct pr_failed (failing_test_name, first_error_line signature) recurs >= threshold times within the configured window and has not already been rate-limited (max 5/hour)
     consumers: [INFRA-2068 auto-wedge-file, INFRA-2069 template library, INFRA-2070 cascade-unblock, INFRA-2071 admin-merge circuit-breaker]
     fields_required: [ts, kind, signature_hash, failing_test_name, occurrence_count, sample_pr_numbers]
+
+  - kind: node_main_sync_noop
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-main-sync.sh (RESILIENT-491)
+    emitter_paths: [scripts/ops/node-main-sync.sh]
+    trigger: node-main-sync ran and local HEAD already equals origin/main (main_moved=false) — no fetch/reset action needed
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, sha]
+
+  - kind: node_main_sync_main_moved
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-main-sync.sh (RESILIENT-491)
+    emitter_paths: [scripts/ops/node-main-sync.sh]
+    trigger: node-main-sync detected main_moved=true (local HEAD != origin/main after fetch) and is about to run git reset --hard origin/main
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, from, to]
+
+  - kind: node_main_sync_synced
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-main-sync.sh (RESILIENT-491)
+    emitter_paths: [scripts/ops/node-main-sync.sh]
+    trigger: git fetch + git reset --hard origin/main both succeeded; local checkout is now current with origin/main
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, sha]
+
+  - kind: node_main_sync_fetch_failed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-main-sync.sh (RESILIENT-491)
+    emitter_paths: [scripts/ops/node-main-sync.sh]
+    trigger: git fetch origin main exited non-zero; the rebuild sequence is aborted before any reset is attempted
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, rc, output]
+
+  - kind: node_main_sync_reset_failed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-main-sync.sh (RESILIENT-491)
+    emitter_paths: [scripts/ops/node-main-sync.sh]
+    trigger: git reset --hard origin/main exited non-zero after a successful fetch; the rebuild sequence is aborted
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, rc, from, to]
