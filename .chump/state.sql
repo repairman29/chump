@@ -86937,11 +86937,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Implement the missing logic in the `detectable_gate_check` function (or its equivalent) within `crates/chump-verify/src/pr_ac_coverage.rs` to read a specified heartbeat file, compare its modification timestamp against the current system time minus the configured `expected_heartbeat` interval, and return a boolean indicating gate pass (true) or fail (false). The implementation must handle missing files gracefully by returning false.
+    
+    Target file(s):
+    - crates/chump-verify/src/pr_ac_coverage.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Check the organ's heartbeat file or output metric; compare its timestamp to the current time minus the expected_heartbeat interval.
-    - If the heartbeat is recent (within the interval), the DETECTABLE gate passes; otherwise, it fails.
-    - "Test: create a heartbeat file with a timestamp 1 second ago and an interval of 10 seconds; verify pass."
-    - "Test: create a heartbeat file with a timestamp 20 seconds ago and an interval of 10 seconds; verify fail."
+    - In `crates/chump-verify/src/pr_ac_coverage.rs`, calling `detectable_gate_check` with a heartbeat file whose modification time is 1 second ago and an `expected_heartbeat` interval of 10 seconds returns `true`.
+    - In `crates/chump-verify/src/pr_ac_coverage.rs`, calling `detectable_gate_check` with a heartbeat file whose modification time is 20 seconds ago and an `expected_heartbeat` interval of 10 seconds returns `false`.
+    - Running the unit test `detectable_gate_passes` (added to the `tests` module of `pr_ac_coverage.rs`) verifies the true case and the false case as described above.
+    - The `detectable_gate_check` function returns `false` without panicking when the specified heartbeat file does not exist.
   depends_on: [RESILIENT-395]
   notes: |
     [chump harvest check 'canonical']
