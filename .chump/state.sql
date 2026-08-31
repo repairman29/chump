@@ -90187,9 +90187,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify the `implement_gap` function in `src/improve.rs` to compute a default Git worktree directory when the environment variable `CHUNK_BINARY_REFRESH_WORKTREE` is unset. The function will first attempt to create a writable sub‑directory under the path given by `CHUNK_STATE_DIR`; if that fails, it will scan all mounted filesystems, pick the mount point with the most free space, and use a sub‑directory there. The selected path is then supplied to the `git worktree add` invocation and logged via the existing logger.
+    
+    Target file(s):
+    - src/improve.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - If CHUNK_BINARY_REFRESH_WORKTREE is not set, script computes a writable directory under CHUNK_STATE_DIR or selects the mount point with the most free space
-    - The computed path is used for git worktree add and is logged
+    - "src/improve.rs::implement_gap returns a path that is a writable sub‑directory of the directory referenced by the `CHUNK_STATE_DIR` environment variable when that directory exists and is writable."
+    - "src/improve.rs::implement_gap returns a path located on the mount point with the greatest available free space when `CHUNK_STATE_DIR` is missing, not writable, or cannot host a sub‑directory."
+    - The path produced by `implement_gap` is passed as the target directory argument to the `git worktree add` command executed within the same function, and the command exits with a zero status.
+    - The selected worktree path is emitted to the project's logger (or stdout) and a test that captures the log output can verify that the exact path string appears.
   depends_on: [RESILIENT-507]
 
 - id: RESILIENT-509
