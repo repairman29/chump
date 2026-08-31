@@ -14760,7 +14760,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    EVIDENCE PRESERVED AND NOW INDEXED 2026-08-08. The artifact is still on disk at ~/.chump/external/bootstrap_photo-renamer/clone/rename_photos.py and still broken: python3 -c 'ast.parse(...)' returns SyntaxError: '(' was never closed. Registered in almanac as slug 'bootstrap_photo-renamer', so the failure is now citable at path:line rather than described from memory. Its README is the original bootstrap PROMPT verbatim ('Build a command-line tool in a file named rename_photos.py, using the Pillow (PIL) library, that renames every JPEG... read the date from EXIF DateTimeOriginal'), which makes this a complete specimen: the instruction given, the code produced, and the exact way it failed — useful for the syntax-pre-check AC this gap asks for, and as a fixture for testing it.
+    Decomposed into 7 slices: EFFECTIVE-554, EFFECTIVE-555, EFFECTIVE-556, EFFECTIVE-557, EFFECTIVE-558, EFFECTIVE-559, EFFECTIVE-560
   opened_date: '2026-08-19'
 
 - id: EFFECTIVE-352
@@ -19547,6 +19547,379 @@ gaps:
     
     === cross-pollination briefs mentioning 'Bootstrap' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-554
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement syntax validation helper using ast.parse (EFFECTIVE-351 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "A Rust function `validate_python_syntax(code: &str) -> Result<(), String>` is added."
+    - The function returns `Ok(())` for syntactically correct Python code and `Err(error_message)` containing the parser error for invalid code.
+  notes: |
+    [chump harvest check 'Agent']
+    === primitives_index match for 'Agent' ===
+    
+    === cluster keyword match for 'Agent' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'Agent' ===
+    
+    === repo-description match for 'Agent' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      posse: Scout: autonomous agents that play your software and tell you what's wrong. Deterministic bots + a fresh-context stranger agent, no required cloud dependency.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      registry: Registry of agents implementing the Agent Client Protocol (ACP)
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+      zendesk-background-agent: Background agent for Zendesk workflow automation.
+    
+    === HARVEST_ROADMAP.md mention of 'Agent' (deep-scan findings) ===
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      128:**Original claim (incorrect):** "`repairman29/registry` is a fork of `agentclientprotocol/registry` with **276 commits ahead, 0 behind** — Jeff has been actively customizing it." 
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      134:**Verdict from INFRA-1822 CP-007:** option (c) — Chump coord continues independent path. ACP is NOT a sequencing trap for the A2A layer work (INFRA-1118-1121). Narrow follow-up only if editor-side demand appears: an inbound shim that lets Zed/editor users drive Chump *as* an ACP agent.
+      158:1. `mythseeker2` — TypeScript+Three.js+Firebase+OpenAI. 3D RPG. Harvest candidate: agent persona system if cleanly extracted.
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+      228:harvester agent for the remaining 29 via `gh api` (no full clones), added their findings to
+    
+    === cross-pollination briefs mentioning 'Agent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: EFFECTIVE-555
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integrate syntax validation into the scoring pipeline (EFFECTIVE-351 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Before any score is computed, the generated Python file is passed through `validate_python_syntax`.
+    - If validation fails, scoring is skipped and the error message is sent back to the agent as feedback.
+    - The code path is exercised in normal operation without causing panics.
+  depends_on: [EFFECTIVE-554]
+  notes: |
+    [chump harvest check 'Agent']
+    === primitives_index match for 'Agent' ===
+    
+    === cluster keyword match for 'Agent' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'Agent' ===
+    
+    === repo-description match for 'Agent' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      posse: Scout: autonomous agents that play your software and tell you what's wrong. Deterministic bots + a fresh-context stranger agent, no required cloud dependency.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      registry: Registry of agents implementing the Agent Client Protocol (ACP)
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+      zendesk-background-agent: Background agent for Zendesk workflow automation.
+    
+    === HARVEST_ROADMAP.md mention of 'Agent' (deep-scan findings) ===
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      128:**Original claim (incorrect):** "`repairman29/registry` is a fork of `agentclientprotocol/registry` with **276 commits ahead, 0 behind** — Jeff has been actively customizing it." 
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      134:**Verdict from INFRA-1822 CP-007:** option (c) — Chump coord continues independent path. ACP is NOT a sequencing trap for the A2A layer work (INFRA-1118-1121). Narrow follow-up only if editor-side demand appears: an inbound shim that lets Zed/editor users drive Chump *as* an ACP agent.
+      158:1. `mythseeker2` — TypeScript+Three.js+Firebase+OpenAI. 3D RPG. Harvest candidate: agent persona system if cleanly extracted.
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+      228:harvester agent for the remaining 29 via `gh api` (no full clones), added their findings to
+    
+    === cross-pollination briefs mentioning 'Agent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: EFFECTIVE-556
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add unit test for syntax validation using broken rename_photos.py fixture (EFFECTIVE-351 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A test `test_invalid_python_syntax` loads the file at `~/.chump/external/bootstrap_photo-renamer/clone/rename_photos.py`.
+    - "The test asserts that `validate_python_syntax` returns `Err` containing \"(' was never closed\"."
+    - The test passes when the validation logic is correct and fails without the new helper.
+  depends_on: [EFFECTIVE-555]
+  notes: |
+    [chump harvest check 'Agent']
+    === primitives_index match for 'Agent' ===
+    
+    === cluster keyword match for 'Agent' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'Agent' ===
+    
+    === repo-description match for 'Agent' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      posse: Scout: autonomous agents that play your software and tell you what's wrong. Deterministic bots + a fresh-context stranger agent, no required cloud dependency.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      registry: Registry of agents implementing the Agent Client Protocol (ACP)
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+      zendesk-background-agent: Background agent for Zendesk workflow automation.
+    
+    === HARVEST_ROADMAP.md mention of 'Agent' (deep-scan findings) ===
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      128:**Original claim (incorrect):** "`repairman29/registry` is a fork of `agentclientprotocol/registry` with **276 commits ahead, 0 behind** — Jeff has been actively customizing it." 
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      134:**Verdict from INFRA-1822 CP-007:** option (c) — Chump coord continues independent path. ACP is NOT a sequencing trap for the A2A layer work (INFRA-1118-1121). Narrow follow-up only if editor-side demand appears: an inbound shim that lets Zed/editor users drive Chump *as* an ACP agent.
+      158:1. `mythseeker2` — TypeScript+Three.js+Firebase+OpenAI. 3D RPG. Harvest candidate: agent persona system if cleanly extracted.
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+      228:harvester agent for the remaining 29 via `gh api` (no full clones), added their findings to
+    
+    === cross-pollination briefs mentioning 'Agent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: EFFECTIVE-557
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Harden tool‑call loop against git_commit storm (EFFECTIVE-351 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The loop now tracks consecutive `git_commit` calls and aborts the storm after 2 rapid calls.
+    - File writes are performed to a temporary file and atomically renamed to avoid truncation.
+    - No partial or truncated Python files are left on disk after an aborted storm.
+  notes: |
+    [chump harvest check 'Agent']
+    === primitives_index match for 'Agent' ===
+    
+    === cluster keyword match for 'Agent' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'Agent' ===
+    
+    === repo-description match for 'Agent' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      posse: Scout: autonomous agents that play your software and tell you what's wrong. Deterministic bots + a fresh-context stranger agent, no required cloud dependency.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      registry: Registry of agents implementing the Agent Client Protocol (ACP)
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+      zendesk-background-agent: Background agent for Zendesk workflow automation.
+    
+    === HARVEST_ROADMAP.md mention of 'Agent' (deep-scan findings) ===
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      128:**Original claim (incorrect):** "`repairman29/registry` is a fork of `agentclientprotocol/registry` with **276 commits ahead, 0 behind** — Jeff has been actively customizing it." 
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      134:**Verdict from INFRA-1822 CP-007:** option (c) — Chump coord continues independent path. ACP is NOT a sequencing trap for the A2A layer work (INFRA-1118-1121). Narrow follow-up only if editor-side demand appears: an inbound shim that lets Zed/editor users drive Chump *as* an ACP agent.
+      158:1. `mythseeker2` — TypeScript+Three.js+Firebase+OpenAI. 3D RPG. Harvest candidate: agent persona system if cleanly extracted.
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+      228:harvester agent for the remaining 29 via `gh api` (no full clones), added their findings to
+    
+    === cross-pollination briefs mentioning 'Agent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: EFFECTIVE-558
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integration test for tool‑call storm handling (EFFECTIVE-351 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A test simulates three rapid `git_commit` calls while generating `rename_photos.py`.
+    - The test verifies that the final file on disk is syntactically complete (passes `ast.parse`).
+    - The test also checks that the agent receives a clear error message after the storm is halted.
+  depends_on: [EFFECTIVE-557]
+  notes: |
+    [chump harvest check 'Agent']
+    === primitives_index match for 'Agent' ===
+    
+    === cluster keyword match for 'Agent' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'Agent' ===
+    
+    === repo-description match for 'Agent' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      posse: Scout: autonomous agents that play your software and tell you what's wrong. Deterministic bots + a fresh-context stranger agent, no required cloud dependency.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      registry: Registry of agents implementing the Agent Client Protocol (ACP)
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+      zendesk-background-agent: Background agent for Zendesk workflow automation.
+    
+    === HARVEST_ROADMAP.md mention of 'Agent' (deep-scan findings) ===
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      128:**Original claim (incorrect):** "`repairman29/registry` is a fork of `agentclientprotocol/registry` with **276 commits ahead, 0 behind** — Jeff has been actively customizing it." 
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      134:**Verdict from INFRA-1822 CP-007:** option (c) — Chump coord continues independent path. ACP is NOT a sequencing trap for the A2A layer work (INFRA-1118-1121). Narrow follow-up only if editor-side demand appears: an inbound shim that lets Zed/editor users drive Chump *as* an ACP agent.
+      158:1. `mythseeker2` — TypeScript+Three.js+Firebase+OpenAI. 3D RPG. Harvest candidate: agent persona system if cleanly extracted.
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+      228:harvester agent for the remaining 29 via `gh api` (no full clones), added their findings to
+    
+    === cross-pollination briefs mentioning 'Agent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: EFFECTIVE-559
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update CI to run new syntax and storm tests (EFFECTIVE-351 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI scripts (`scripts/ci/test-*.sh` or equivalent) invoke the unit and integration tests added in slices 2 and 4.
+    - The CI run fails when the validation or storm‑handling code is missing.
+  depends_on: [EFFECTIVE-556, EFFECTIVE-558]
+  notes: |
+    [chump harvest check 'Agent']
+    === primitives_index match for 'Agent' ===
+    
+    === cluster keyword match for 'Agent' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'Agent' ===
+    
+    === repo-description match for 'Agent' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      posse: Scout: autonomous agents that play your software and tell you what's wrong. Deterministic bots + a fresh-context stranger agent, no required cloud dependency.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      registry: Registry of agents implementing the Agent Client Protocol (ACP)
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+      zendesk-background-agent: Background agent for Zendesk workflow automation.
+    
+    === HARVEST_ROADMAP.md mention of 'Agent' (deep-scan findings) ===
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      128:**Original claim (incorrect):** "`repairman29/registry` is a fork of `agentclientprotocol/registry` with **276 commits ahead, 0 behind** — Jeff has been actively customizing it." 
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      134:**Verdict from INFRA-1822 CP-007:** option (c) — Chump coord continues independent path. ACP is NOT a sequencing trap for the A2A layer work (INFRA-1118-1121). Narrow follow-up only if editor-side demand appears: an inbound shim that lets Zed/editor users drive Chump *as* an ACP agent.
+      158:1. `mythseeker2` — TypeScript+Three.js+Firebase+OpenAI. 3D RPG. Harvest candidate: agent persona system if cleanly extracted.
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+      228:harvester agent for the remaining 29 via `gh api` (no full clones), added their findings to
+    
+    === cross-pollination briefs mentioning 'Agent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: EFFECTIVE-560
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Run cargo fmt + clippy and fix warnings (EFFECTIVE-351 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` completes without changes."
+    - "`cargo clippy --all-targets -- -D warnings` passes with zero warnings."
+  depends_on: [EFFECTIVE-559]
+  notes: |
+    [chump harvest check 'Agent']
+    === primitives_index match for 'Agent' ===
+    
+    === cluster keyword match for 'Agent' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'Agent' ===
+    
+    === repo-description match for 'Agent' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      posse: Scout: autonomous agents that play your software and tell you what's wrong. Deterministic bots + a fresh-context stranger agent, no required cloud dependency.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      registry: Registry of agents implementing the Agent Client Protocol (ACP)
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+      zendesk-background-agent: Background agent for Zendesk workflow automation.
+    
+    === HARVEST_ROADMAP.md mention of 'Agent' (deep-scan findings) ===
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      128:**Original claim (incorrect):** "`repairman29/registry` is a fork of `agentclientprotocol/registry` with **276 commits ahead, 0 behind** — Jeff has been actively customizing it." 
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      134:**Verdict from INFRA-1822 CP-007:** option (c) — Chump coord continues independent path. ACP is NOT a sequencing trap for the A2A layer work (INFRA-1118-1121). Narrow follow-up only if editor-side demand appears: an inbound shim that lets Zed/editor users drive Chump *as* an ACP agent.
+      158:1. `mythseeker2` — TypeScript+Three.js+Firebase+OpenAI. 3D RPG. Harvest candidate: agent persona system if cleanly extracted.
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+      228:harvester agent for the remaining 29 via `gh api` (no full clones), added their findings to
+    
+    === cross-pollination briefs mentioning 'Agent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
 - id: EVAL-085
   title: test eval 085
@@ -87757,9 +88130,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the `task_class_for_gap_id` function in `crates/chump-orchestrator/src/dispatch.rs` to recognize the gap ID `RESILIENT-430` and return a new `FixDispatchTask` that either runs an automated baseline update or creates a fix PR, and augment the `dispatched` function in `scripts/coord/nba-dispatch-beat.sh` to invoke this task and emit a clear log line when the fix is generated.
+    
+    Target file(s):
+    - crates/chump-orchestrator/src/dispatch.rs
+    - scripts/coord/nba-dispatch-beat.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Dispatcher executes automated baseline updates or creates fix PRs based on diagnostic output.
-    - Tests verify dispatcher correctly triggers fix action for diagnosed baseline drift.
+    - "In `crates/chump-orchestrator/src/dispatch.rs`, calling `task_class_for_gap_id(\"RESILIENT-430\")` returns a `FixDispatchTask` enum variant (or concrete struct) instead of `None`."
+    - The `dispatched` function in `scripts/coord/nba-dispatch-beat.sh` prints exactly `Created fix PR for RESILIENT-430` to stdout when invoked with a diagnostic payload that signals baseline drift for that gap.
+    - "Running `src/tool_middleware.rs::execute` with a mock diagnostic JSON containing `{\"gap_id\":\"RESILIENT-430\",\"baseline_drift\":true}` creates a file at `fix_prs/RESILIENT-430.pr` on the filesystem."
+    - The same `execute` run exits with status code 0, confirming the dispatcher completed without error.
   depends_on: [RESILIENT-428, RESILIENT-429]
   notes: |
     [chump harvest check 'organ']
@@ -90927,10 +91310,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Wrap pre-push hook execution in .githooks/pre-push and scripts/dispatch/run-fleet.sh with a configurable timeout using PRE_PUSH_TIMEOUT (defaulting to 30 seconds). If the hook duration exceeds the timeout limit, terminate the hook process, output 'Pre-push hook timed out after ${PRE_PUSH_TIMEOUT}s' to stderr, and exit with a non-zero status code so bot-merge aborts immediately without hanging.
+    
+    Target file(s):
+    - .githooks/pre-push
+    - scripts/dispatch/run-fleet.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Pre‑push hook is wrapped with a configurable timeout (default 30 s)
-    - If the timeout is hit, bot‑merge aborts with a clear error message and non‑zero exit code
-    - No silent >210 s hang can occur from the hook
+    - Running .githooks/pre-push with a hanging subprocess and PRE_PUSH_TIMEOUT=1 terminates after 1 second with a non-zero exit code.
+    - When a pre-push timeout occurs, stderr contains the explicit message 'Pre-push hook timed out after'.
+    - PRE_PUSH_TIMEOUT in scripts/dispatch/run-fleet.sh defaults to 30 if unset in the environment.
   depends_on: [RESILIENT-537]
   notes: |
     [chump harvest check 'bot-merge']
@@ -90982,10 +91373,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update the gh GraphQL PR creation execution in scripts/coord/queue-driver.sh to wrap calls with a 60-second per-attempt timeout and a retry loop that attempts execution up to 3 times (initial attempt plus 2 retries) using exponential back-off (sleeping 2s and 4s between attempts). If all attempts fail, output a clear error message to stderr and exit with a non-zero exit status.
+    
+    Target file(s):
+    - scripts/coord/queue-driver.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - GraphQL request now has a 60 s timeout
-    - On timeout or transient error, the command retries up to 2 times with exponential back‑off
-    - If all attempts fail, bot‑merge exits with a clear error message
+    - scripts/coord/queue-driver.sh executes the gh GraphQL PR creation request with a 60-second per-request timeout.
+    - On timeout or transient network failure, scripts/coord/queue-driver.sh retries up to 2 times with exponential back-off before escalating.
+    - "If all 3 attempts fail, scripts/coord/queue-driver.sh prints \"ERROR: gh-pr-create GraphQL call failed after 3 attempts\" to stderr and exits with status 1."
   depends_on: [RESILIENT-539]
   notes: |
     [chump harvest check 'bot-merge']
