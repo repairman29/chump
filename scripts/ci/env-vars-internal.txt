@@ -2378,3 +2378,8 @@ CHUMP_NODE_SYNC_AMBIENT
 CHUMP_NODE_SYNC_GIT_BIN
 # detected in: (standard input)
 CHUMP_NODE_SYNC_LOGDIR
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SHARED_CARGO_TARGET
