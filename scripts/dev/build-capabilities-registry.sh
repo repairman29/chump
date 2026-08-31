@@ -404,7 +404,148 @@ for crate_path in crate_dirs:
             "crate_kind": crate_kind,
             "entry_file": str(entry.relative_to(repo_root)),
             "public_items": items,
+            "ecosystem": "rust",
         })
+
+# ── 3b. Ecosystem adapters beyond Rust (INFRA-3469) ───────────────────────────
+#
+# `chump ingest <repo-path>` runs this generator against arbitrary target
+# repos (Column A Quartermaster artifact), but until now §3 only understood
+# Rust workspaces — an npm package or a Python package handed to `chump
+# ingest` produced a registry with zero crate_apis entries, the #1 coverage
+# gap surfaced by comprehend UAT pilot-1 (B3). These adapters extend the same
+# "package -> entry file -> public items" shape to JS/TS and Python so the
+# WIRING organ reports real coverage for non-Rust repos too.
+_IGNORE_DIR_NAMES = {
+    "node_modules", "target", ".git", "dist", "build", "venv", ".venv",
+    "__pycache__", "vendor", ".cargo", ".mypy_cache", ".pytest_cache",
+}
+
+def _path_ignored(p: Path) -> bool:
+    return any(part in _IGNORE_DIR_NAMES for part in p.parts)
+
+# JS/TS: every package.json (excluding ignored dirs) is a "package". Entry
+# file resolves via package.json's main/module/types field, falling back to
+# common index files.
+_JS_EXPORT_PATTERNS = [
+    (re.compile(r"^export\s+default\s+(?:async\s+)?function\s+(?P<name>\w+)", re.MULTILINE), "function"),
+    (re.compile(r"^export\s+(?:async\s+)?function\s+(?P<name>\w+)", re.MULTILINE), "function"),
+    (re.compile(r"^export\s+class\s+(?P<name>\w+)", re.MULTILINE), "class"),
+    (re.compile(r"^export\s+interface\s+(?P<name>\w+)", re.MULTILINE), "interface"),
+    (re.compile(r"^export\s+type\s+(?P<name>\w+)", re.MULTILINE), "type"),
+    (re.compile(r"^export\s+(?:const|let|var)\s+(?P<name>\w+)", re.MULTILINE), "const"),
+]
+_JS_NAMED_EXPORT_BLOCK = re.compile(r"^export\s*\{([^}]+)\}", re.MULTILINE)
+
+def _js_public_items(text: str) -> list[dict]:
+    items: list[dict] = []
+    seen: set[str] = set()
+    lines = text.splitlines()
+    for idx, line in enumerate(lines, start=1):
+        for pattern, kind in _JS_EXPORT_PATTERNS:
+            m = pattern.match(line)
+            if m and m.group("name") not in seen:
+                seen.add(m.group("name"))
+                items.append({"name": m.group("name"), "kind": kind, "line": idx})
+        m = _JS_NAMED_EXPORT_BLOCK.match(line)
+        if m:
+            for raw in m.group(1).split(","):
+                raw = raw.strip()
+                if not raw:
+                    continue
+                # `foo as bar` re-exports under the alias `bar`.
+                name = raw.split(" as ")[-1].strip()
+                if name and name not in seen:
+                    seen.add(name)
+                    items.append({"name": name, "kind": "named_export", "line": idx})
+    return items
+
+def _js_entry_file(pkg_dir: Path, pkg_json: dict) -> Path | None:
+    for field in ("types", "main", "module"):
+        val = pkg_json.get(field)
+        if isinstance(val, str) and (pkg_dir / val).is_file():
+            return pkg_dir / val
+    for candidate in ("index.ts", "index.tsx", "index.js", "index.jsx",
+                       "src/index.ts", "src/index.tsx", "src/index.js"):
+        p = pkg_dir / candidate
+        if p.is_file():
+            return p
+    return None
+
+for pkg_json_path in sorted(repo_root.rglob("package.json")):
+    if _path_ignored(pkg_json_path.relative_to(repo_root)):
+        continue
+    pkg_dir = pkg_json_path.parent
+    try:
+        pkg = json.loads(pkg_json_path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        continue
+    pkg_name = pkg.get("name") or pkg_dir.name
+    entry = _js_entry_file(pkg_dir, pkg)
+    if entry is None:
+        crate_apis.append({
+            "crate_name": pkg_name,
+            "crate_path": str(pkg_dir.relative_to(repo_root)) or ".",
+            "crate_kind": "other",
+            "entry_file": str(pkg_json_path.relative_to(repo_root)),
+            "public_items": [],
+            "ecosystem": "js_ts",
+        })
+        continue
+    try:
+        entry_text = entry.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        entry_text = ""
+    crate_apis.append({
+        "crate_name": pkg_name,
+        "crate_path": str(pkg_dir.relative_to(repo_root)) or ".",
+        "crate_kind": "lib",
+        "entry_file": str(entry.relative_to(repo_root)),
+        "public_items": _js_public_items(entry_text),
+        "ecosystem": "js_ts",
+    })
+
+# Python: a package root is a directory holding __init__.py whose parent is
+# NOT itself a package (avoids re-listing every nested sub-module as its own
+# top-level entry). Module-level (non-indented) `def`/`class` are public
+# unless name-mangled with a leading underscore.
+_PY_DEF_PATTERN = re.compile(r"^(?:async\s+)?def\s+(?P<name>[A-Za-z_]\w*)\s*\(")
+_PY_CLASS_PATTERN = re.compile(r"^class\s+(?P<name>[A-Za-z_]\w*)")
+
+def _py_public_items(text: str) -> list[dict]:
+    items: list[dict] = []
+    for idx, line in enumerate(text.splitlines(), start=1):
+        for pattern, kind in ((_PY_DEF_PATTERN, "function"), (_PY_CLASS_PATTERN, "class")):
+            m = pattern.match(line)
+            if m and not m.group("name").startswith("_"):
+                items.append({"name": m.group("name"), "kind": kind, "line": idx})
+    return items
+
+_py_pkg_roots: list[Path] = []
+for init_py in sorted(repo_root.rglob("__init__.py")):
+    rel = init_py.relative_to(repo_root)
+    if _path_ignored(rel):
+        continue
+    pkg_dir = init_py.parent
+    if (pkg_dir.parent / "__init__.py").is_file():
+        continue  # nested sub-package; its top-level ancestor already covers it
+    _py_pkg_roots.append(pkg_dir)
+
+for pkg_dir in sorted(set(_py_pkg_roots)):
+    init_py = pkg_dir / "__init__.py"
+    try:
+        text = init_py.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        text = ""
+    crate_apis.append({
+        "crate_name": pkg_dir.name,
+        "crate_path": str(pkg_dir.relative_to(repo_root)) or ".",
+        "crate_kind": "lib",
+        "entry_file": str(init_py.relative_to(repo_root)),
+        "public_items": _py_public_items(text),
+        "ecosystem": "python",
+    })
+
 crate_apis.sort(key=lambda c: (c["crate_path"], c["crate_name"]))
 
 # ── 4. MCP tools (chump-mcp.json + #[chump_tool] macro sites) ─────────────────
@@ -534,9 +675,15 @@ for ev in event_kinds:
         "version": "git-sha",
     }))
 
-# Crate primitives
+# Crate primitives (INFRA-3469: also covers js_ts/python packages, not just Rust crates)
+_ECOSYSTEM_INVOCATION = {
+    "js_ts": lambda name: f'import ... from "{name}";',
+    "python": lambda name: f"import {name}",
+}
 for cr in crate_apis:
-    pid = slug(f"crate-{cr['crate_name']}")
+    ecosystem = cr.get("ecosystem", "rust")
+    pid = slug(f"crate-{ecosystem}-{cr['crate_name']}" if ecosystem != "rust" else f"crate-{cr['crate_name']}")
+    invocation = _ECOSYSTEM_INVOCATION.get(ecosystem, lambda name: f'use {name.replace("-", "_")};')(cr["crate_name"])
     primitives.append(apply_overlay({
         "primitive_id": pid,
         "kind": "crate",
@@ -544,10 +691,10 @@ for cr in crate_apis:
         # "<path>/src/lib.rs" produced dangling receipts for binary crates.
         "file_paths": [cr["entry_file"]],
         "purpose_one_line": (
-            f"{cr['crate_kind']} crate, {len(cr['public_items'])} public items"
+            f"{cr['crate_kind']} {ecosystem} package, {len(cr['public_items'])} public items"
         ),
         "when_to_use": "",
-        "example_invocation": f'use {cr["crate_name"].replace("-","_")};',
+        "example_invocation": invocation,
         "version": "0.1.0",
     }))
 
