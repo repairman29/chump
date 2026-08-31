@@ -1007,6 +1007,8 @@ gaps:
     - When a curator dispatches an Agent-tool using only the Opus model, the supervisor’s structured log stream (e.g., `journalctl -u chump-curator-supervisor -o json`) contains an entry with `kind` equal to `sub_agent_dispatched`, `model` equal to `opus`, and `delegated` equal to `false`.
     - When a curator delegates a tool to Sonnet, the log entry contains `delegated` equal to `true` and `model` equal to `sonnet`.
     - Running `chump fleet dispatch-hygiene` when no dispatched entries are available outputs an error message to stderr and exits with code 1.
+  notes: |
+    Decomposed into 2 slices: CREDIBLE-359, CREDIBLE-360
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -6779,6 +6781,57 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   outcome_id: CREDIBLE-000
+
+- id: CREDIBLE-359
+  domain: CREDIBLE
+  title: "CREDIBLE: Emit sub_agent_dispatched telemetry in curator supervisor (CREDIBLE-074 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "When a curator dispatches an Agent-tool call using only the Opus model, supervisor tracing emits a structured log entry with kind=\"sub_agent_dispatched\", model=\"opus\", and delegated=false."
+    - "When a curator delegates an Agent-tool call to Sonnet, supervisor tracing emits a structured log entry with kind=\"sub_agent_dispatched\", model=\"sonnet\", and delegated=true."
+  notes: |
+    [chump harvest check 'curator']
+    === primitives_index match for 'curator' ===
+    
+    === cluster keyword match for 'curator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'curator' ===
+    
+    === repo-description match for 'curator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'curator' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'curator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-360
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement chump fleet dispatch-hygiene CLI subcommand (CREDIBLE-074 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Running `chump fleet dispatch-hygiene` when no sub_agent_dispatched entries are available outputs an error message to stderr and exits with code 1.
+    - Executing `chump fleet dispatch-hygiene` after at least two curators have dispatched tools prints a table with columns curator_name, opus_only_count, sonnet_delegated_count, ratio and exits with code 0.
+  depends_on: [CREDIBLE-359]
+  notes: |
+    [chump harvest check 'curator']
+    === primitives_index match for 'curator' ===
+    
+    === cluster keyword match for 'curator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'curator' ===
+    
+    === repo-description match for 'curator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'curator' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'curator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
 
 - id: DOC-031
   domain: DOC
@@ -81647,6 +81700,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 9 slices: RESILIENT-514, RESILIENT-515, RESILIENT-516, RESILIENT-517, RESILIENT-518, RESILIENT-519, RESILIENT-520, RESILIENT-521, RESILIENT-522
+    [2026-08-31T05:55:10Z] rot-reaper: PR #4330 auto-closed (CONFLICTING, 4h) 2026-08-31; re-attempt on fresh main.
   opened_date: '2026-08-23'
   outcome_id: MISSION-010
   evidence: |
