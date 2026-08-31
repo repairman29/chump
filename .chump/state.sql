@@ -80443,12 +80443,14 @@ gaps:
   domain: RESILIENT
   title: "NODE-UPDATER organ: rebuild+restart running organs when main moves. CJ organs were running a 3-day/114-commit-STALE binary (built 08-17, main today) — PROVEN missing tonights CREDIBLE-291 cure (farmer forced RED, stale binary still returned farmer-RED not the format error). chump-cj-sync only git-fetches, never rebuilds. This is merged!=running at NODE scale: every fix on main never reaches the organs that actually run. Organ: on main-move → pull → cargo build --release → atomic binary swap → restart organs → self-test. COTG: installs via housekeeping ORGANS table; self-test must verify binary FRESHNESS (commit vs origin/main), not just binary-linked."
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"rebuild+restart running organs when main moves. CJ organs were running a 3-day/114-commit-STALE binary (built 08-17, main today) — PROVEN missing tonights CREDIBLE-291 cure (farmer forced RED, stale binary still returned farmer-RED not the format error). chump-cj-sync only git-fetches, never rebuilds. This is merged!=running at NODE scale: every fix on main never reaches the organs that actually run. Organ: on main-move → pull → cargo build --release → atomic binary swap → restart organs → self-test. COTG: installs via housekeeping ORGANS table; self-test must verify binary FRESHNESS (commit vs origin/main), not just binary-linked.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 10 slices: RESILIENT-490, RESILIENT-491, RESILIENT-492, RESILIENT-493, RESILIENT-494, RESILIENT-495, RESILIENT-496, RESILIENT-497, RESILIENT-498, RESILIENT-499
   opened_date: '2026-08-19'
 
 - id: RESILIENT-346
@@ -82022,6 +82024,7 @@ gaps:
     [2026-08-31T00:32:26Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 8h) 2026-08-31; RESPAWN CAP 3 reached (29 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-31T00:34:40Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 8h) 2026-08-31; RESPAWN CAP 3 reached (30 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-31T00:36:53Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 8h) 2026-08-31; RESPAWN CAP 3 reached (31 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T01:24:39Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 8h) 2026-08-31; RESPAWN CAP 3 reached (32 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: CHUMPOS
 
 - id: RESILIENT-419
@@ -83662,9 +83665,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add (or flesh‑out) a `diagnose_broken_check()` function in `crates/chump-verify/src/external_verify_merge.rs` that, when `is_sustained_main_red()` is true, inspects the RESILIENT‑417 required‑check slice, returns the identifier of the missing/broken check, and logs a clear message with the check name and the reason (“sustained main red”) using the crate’s logging macro.
+    
+    Target file(s):
+    - crates/chump-verify/src/external_verify_merge.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When `is_sustained_main_red()` is true, `diagnose_broken_check()` returns the identifier of the missing/broken required check
-    - The diagnostic function logs a clear message with the check name and reason
+    - In `crates/chump-verify/src/external_verify_merge.rs`, `diagnose_broken_check()` returns the exact identifier string of the missing required check when `is_sustained_main_red()` evaluates to true.
+    - The function emits a log line (via `info!` or equivalent) that includes the check name and the phrase “sustained main red”.
+    - Running `cargo test --package chump-verify --test external_verify_merge` produces a passing test that asserts the returned identifier matches the expected value for a simulated broken‑check scenario.
+    - The signature of `diagnose_broken_check()` remains `fn diagnose_broken_check() -> Option<String>` (or the existing return type) and no other functions in `external_verify_merge.rs` have their signatures altered.
   depends_on: [RESILIENT-475]
   notes: |
     [chump harvest check 'organ']
@@ -83687,10 +83699,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify the `_run_check_auth` function in `scripts/ci/test-farmer-check-auth.sh` to invoke `diagnose_broken_check()`; when it returns a known fixable check, call `apply_auto_fix()` and, on success, clear the sustained‑red flag and write a green status, while on failure exit with a distinct error code and log the failure without panicking.
+    
+    Target file(s):
+    - scripts/ci/test-farmer-check-auth.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - If `diagnose_broken_check()` returns a known fixable check, `apply_auto_fix()` attempts to re‑run or patch the check
-    - Successful auto‑fix clears the sustained‑red flag and updates the status to green
-    - Failure of auto‑fix returns an error code without panicking
+    - Running `scripts/ci/test-farmer-check-auth.sh` with a deliberately broken auth check prints “Applying auto‑fix” and then “Auto‑fix applied, status green”, and exits with code 0.
+    - After a successful auto‑fix, the file `scripts/ci/.status/red` is removed and `scripts/ci/.status/green` is created by the `_run_check_auth` function.
+    - If `apply_auto_fix()` returns a non‑zero error, `_run_check_auth` prints “Auto‑fix failed” and exits with code 2, without a stack trace or panic.
+    - When `diagnose_broken_check()` reports an unknown or non‑fixable issue, `_run_check_auth` skips `apply_auto_fix()` and proceeds with the original failure handling path.
   depends_on: [RESILIENT-476]
   notes: |
     [chump harvest check 'organ']
@@ -83713,9 +83733,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update the `almanac_grounding_block` function in `crates/chump-orchestrator/src/dispatch.rs` to catch any `Err` returned by `apply_auto_fix()` and, in that branch, invoke `dispatch_alert()` with a structured payload that includes the originating check identifier, the current UTC timestamp, and the error details from `apply_auto_fix`.
+    
+    Target file(s):
+    - crates/chump-orchestrator/src/dispatch.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When `apply_auto_fix()` returns an error, `dispatch_alert()` sends a structured alert to the configured ops channel
-    - Alert payload includes check identifier, timestamp, and error details
+    - In `crates/chump-orchestrator/src/dispatch.rs`, the `almanac_grounding_block` function contains a `match` or `if let Err(e)` clause that calls `dispatch_alert()` when `apply_auto_fix()` fails.
+    - The payload passed to `dispatch_alert()` includes the fields `check_id`, `timestamp` (ISO‑8601 UTC string), and `error_message`, verified by a unit test that mocks `apply_auto_fix()` to return an error and asserts the exact JSON structure sent to `dispatch_alert()`.
+    - A new unit test in `crates/chump-orchestrator/tests/dispatch.rs` exercises the failure path and confirms that `dispatch_alert()` is invoked exactly once with the expected payload.
+    - When the compiled binary is executed with a scenario that triggers an `apply_auto_fix()` error, the console (or configured ops channel) shows a JSON alert containing the correct `check_id`, a parsable timestamp, and the error details.
   depends_on: [RESILIENT-476]
   notes: |
     [chump harvest check 'organ']
@@ -83738,9 +83767,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new Rust unit‑test module `sustained_red.rs` under `crates/chump-preflight/tests` that creates mock main‑status timelines of 24 h and 72 h, invokes `is_sustained_main_red()` from the production code, and asserts the expected boolean result for each case.
+    
+    Target file(s):
+    - crates/chump-preflight/tests/sustained_red.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test simulates a red status lasting <48 h and asserts `is_sustained_main_red()` is false
-    - Test simulates a red status lasting ≥48 h and asserts `is_sustained_main_red()` is true
+    - The file `crates/chump-preflight/tests/sustained_red.rs` defines a test function `test_sustained_main_red_false` that simulates a red status lasting 24 h and asserts `is_sustained_main_red()` returns `false`.
+    - The same file defines a test function `test_sustained_main_red_true` that simulates a red status lasting 72 h and asserts `is_sustained_main_red()` returns `true`.
+    - Executing `cargo test --test sustained_red` in the repository runs both tests and they both pass.
   depends_on: [RESILIENT-475]
   notes: |
     [chump harvest check 'organ']
@@ -84039,6 +84076,264 @@ gaps:
     === cross-pollination briefs mentioning 'phase' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-490
+  domain: RESILIENT
+  title: "RESILIENT: Detect main branch change by comparing stored commit hash with origin/main (RESILIENT-345 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Organ stores the commit hash of the binary it is running
+    - On each start or scheduled check, organ fetches origin/main and compares hashes
+    - A flag `main_moved` is set to true only when hashes differ
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-491
+  domain: RESILIENT
+  title: "RESILIENT: Fetch and pull latest code when main move is detected (RESILIENT-345 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When `main_moved` flag is true, organ runs `git fetch` and `git reset --hard origin/main`
+    - Command output and exit code are logged
+    - Failure to fetch results in a clear error and aborts the rebuild sequence
+  depends_on: [RESILIENT-490]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-492
+  domain: RESILIENT
+  title: "RESILIENT: Automate `cargo build --release` after successful pull (RESILIENT-345 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - After pull, organ invokes `cargo build --release` in the repository root
+    - Build logs are captured and stored
+    - Build succeeds (exit code 0) before proceeding to the next step
+  depends_on: [RESILIENT-491]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-493
+  domain: RESILIENT
+  title: "RESILIENT: Implement atomic binary swap for the newly built binary (RESILIENT-345 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - New binary is written to a temporary location
+    - Swap is performed using `rename` (or platform‑specific atomic move) so that the path used by the organ points to the new binary instantly
+    - If swap fails, the previous binary remains executable and an error is logged
+  depends_on: [RESILIENT-492]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-494
+  domain: RESILIENT
+  title: "RESILIENT: Restart organ process after atomic swap (RESILIENT-345 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Organ process is stopped gracefully, then started using the swapped binary path
+    - Process PID changes and health check passes within 30 seconds
+    - If restart fails, the system rolls back to the previous binary and logs the failure
+  depends_on: [RESILIENT-493]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-495
+  domain: RESILIENT
+  title: "RESILIENT: Self‑test to verify binary freshness after restart (RESILIENT-345 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Self‑test runs `git rev-parse HEAD` inside the running binary's directory and compares it to `origin/main`
+    - Test passes only if the two commits match
+    - Failure triggers a warning and marks the organ as unhealthy
+  depends_on: [RESILIENT-494]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-496
+  domain: RESILIENT
+  title: "RESILIENT: Update housekeeping ORGANS table installation flow to trigger rebuild on main‑move (RESILIENT-345 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - ORGANS table entry includes a `needs_rebuild` flag that is set when `main_moved` is true
+    - Installation routine checks this flag and initiates the pull‑build‑swap‑restart sequence
+    - No duplicate rebuilds occur if the flag is already cleared
+  depends_on: [RESILIENT-490]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-497
+  domain: RESILIENT
+  title: "RESILIENT: Write integration test for full rebuild‑restart‑self‑test flow (RESILIENT-345 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test simulates a main‑move by altering the stored commit hash
+    - Test asserts that git pull, cargo build, atomic swap, restart, and freshness self‑test all execute in order
+    - Test fails if any step is skipped or if the final binary commit does not match origin/main
+  depends_on: [RESILIENT-495, RESILIENT-496]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-498
+  domain: RESILIENT
+  title: "RESILIENT: Add CI script to run the new integration test and ensure failure without change (RESILIENT-345 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - CI pipeline executes the integration test added in slice 7
+    - Pipeline fails when the code base does not contain the rebuild‑restart logic
+    - Pipeline passes when the logic is present
+  depends_on: [RESILIENT-497]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-499
+  domain: RESILIENT
+  title: "RESILIENT: Run `cargo fmt` and `cargo clippy --all-targets -D warnings` and ensure no regressions (RESILIENT-345 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - All source files are formatted according to `cargo fmt` without changes needed
+    - Clippy runs with `-D warnings` and reports zero warnings
+    - Existing unit tests and the new integration test all pass
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: SMOKE-001
   domain: SMOKE
