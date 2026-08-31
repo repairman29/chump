@@ -4460,7 +4460,7 @@ gaps:
     - REPORT AS FINDINGS, NOT FAILURES. These are not CI failures and must not block PRs; they are a queue of suspected-dead instruments for a human or a triage agent to confirm. False positives are expected — a gate can legitimately assert something absent
     - "VERIFY BY REPLAY: run the sweep against the tree as of 2026-08-08 and assert it independently finds operator-recall dead and the vacuous stale-binary assertion. A rot-detector that cannot rediscover known rot is itself rot"
   notes: |
-    Decomposed into 4 slices: CREDIBLE-332, CREDIBLE-333, CREDIBLE-334, CREDIBLE-335
+    Decomposed into 4 slices: CREDIBLE-361, CREDIBLE-362, CREDIBLE-363, CREDIBLE-364
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
@@ -6832,6 +6832,57 @@ gaps:
     === cross-pollination briefs mentioning 'curator' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-361
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement CI grep‑target rot detector (probe c) (CREDIBLE-274 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A script scans all files under scripts/ci for grep commands and extracts their target paths.
+    - The script verifies that each extracted target exists in the repository tree.
+    - The script outputs a JSON report listing any missing targets with file and line reference.
+    - The script runs without causing CI failures (exit code 0 regardless of findings).
+
+- id: CREDIBLE-362
+  domain: CREDIBLE
+  title: "CREDIBLE: Schedule periodic execution of the rot‑detector sweep (CREDIBLE-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The sweep script from slice 0 is invoked automatically on a daily schedule (e.g., via cron or a scheduled CI workflow).
+    - Execution logs are persisted to a known location (e.g., logs/rot‑detector/*.log).
+    - The scheduled run does not block any PR builds and always exits with status 0.
+    - A timestamped report file is generated for each run.
+  depends_on: [CREDIBLE-361]
+
+- id: CREDIBLE-363
+  domain: CREDIBLE
+  title: "CREDIBLE: Report findings as a non‑blocking triage queue (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Each detected dead instrument from the sweep is added to a markdown report stored in docs/rot‑detector‑findings.md.
+    - The report includes instrument identifier, type of probe (e.g., CI grep), location, and a brief description.
+    - The report is automatically committed to a dedicated branch or opened as a draft PR for review, without failing any CI checks.
+    - A Slack webhook (or similar) posts a summary of new findings after each scheduled run.
+  depends_on: [CREDIBLE-362]
+
+- id: CREDIBLE-364
+  domain: CREDIBLE
+  title: "CREDIBLE: Add additional structural rot probes (a, b, d) (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The sweep now also checks: (a) launchd/plist jobs declared in scripts/launchd or ~/Library/LaunchAgents that have zero running processes; (b) toml/config entries with enabled=true whose daemon binary is absent; (d) apt/brew‑installed tools that are not referenced by any script or environment variable."
+    - Each probe produces entries in the same JSON report format as slice 0, with clear categorisation.
+    - False‑positive tolerance is documented, and the report aggregates counts per probe type.
+    - The extended sweep runs on the same schedule as defined in slice 1 and does not cause CI failures.
+  depends_on: [CREDIBLE-361]
 
 - id: DOC-031
   domain: DOC
