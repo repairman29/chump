@@ -59286,7 +59286,7 @@ gaps:
 - id: INFRA-3465
   domain: INFRA
   title: "ZERO-WASTE: formally allowlist adversary_llm + screen_vision as audited intentional-direct LLM calls"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -59294,6 +59294,8 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   opened_date: '2026-08-19'
+  closed_date: '2026-08-31'
+  closed_pr: 4345
 
 - id: INFRA-3466
   domain: INFRA
@@ -66644,10 +66646,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the `hand_off_to_conflict_consumer` function in `scripts/ops/rot-reaper.sh` to detect when a linked gap has been demoted (priority lowered) and, if the associated PR is stale (>7 days) and has merge conflicts, close the PR and apply the GitHub “retired” label; also ensure the same close‑and‑label logic runs for any stale/conflicting PR even when no demotion occurs, using the `GapBriefing` data from `src/briefing.rs` to assess gap priority changes.
+    
+    Target file(s):
+    - scripts/ops/rot-reaper.sh
+    - src/briefing.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When a gap is demoted (priority lowered), any open PR linked to that gap which is stale (>7 days) and has merge conflicts is closed by the reaper within 1 hour.
-    - The reaper adds the 'retired' label to such closed PRs.
-    - The reaper also continues to close PRs that are stale and conflicting regardless of gap demotion, adding 'retired' label.
+    - In `scripts/ops/rot-reaper.sh`, the `hand_off_to_conflict_consumer` function closes a PR that is >7 days old, has merge conflicts, and whose linked gap priority was lowered, and adds the `retired` label within 1 hour of the demotion event.
+    - In `scripts/ops/rot-reaper.sh`, the reaper closes any PR that is >7 days old and has merge conflicts regardless of gap demotion, and adds the `retired` label to each closed PR.
+    - "After the reaper runs, querying the GitHub API for a PR that was closed by the reaper returns a `labels` array containing `\"retired\"`."
+    - The reaper logs a line matching `Closed stale conflicting PR
   notes: |
     [chump harvest check 'while']
     === primitives_index match for 'while' ===
