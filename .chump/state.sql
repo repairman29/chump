@@ -6687,15 +6687,24 @@ gaps:
 - id: CREDIBLE-354
   domain: CREDIBLE
   title: Debt Index 1/5 — regenerate CAPABILITIES_REGISTRY + liveness/stage cross-ref
-  status: open
+  status: done
   priority: P1
   effort: l
   description: |
     Files: scripts/dev/build-capabilities-registry.sh, docs/CAPABILITIES_REGISTRY.json (951 primitives, 3wk stale). AC: registry regenerated fresh; each primitive tagged lifecycle stage (built/wired/running/in-use) from systemctl is-active + ambient-in-window cross-ref; a first honest live_pct computed + printed.
+    
+    STAGE ADDED (2026-08-30, FTUE/ribbon): fresh_install_reproducible. Existing stages measure RUNNING-ON-REFERENCE-NODE-CJ (node-liveness). The TRUE ribbon metric is REPRODUCES-ON-A-CLEAN-INSTALL: fresh owned box -> one command -> working factory. For each manifest-enabled organ: is it in an installer roster (would chump-node-install.sh + install-helsinki-atc.sh reproduce it under its manifest unit on a bare owned box)?
+      COMPUTABLE DEFINITION: reproducible_pct = (manifest-enabled organs that ARE in the installer roster) / (manifest-enabled organs).
+      WHERE IT COMPUTES: the set manifest(enabled) INTERSECT installer-roster.
+        manifest(enabled) = enabled lines in scripts/ops/organ-manifest.txt (29 units @2026-08-30).
+        installer-roster = unit (or .service/.timer sibling) in install-helsinki-atc.sh SYSTEM_UNITS array, OR installed by a dedicated scripts/setup/install-*.sh the node bring-up invokes (discord-gateway<-install-discord-gateway.sh; almanac-liveness<-install-almanac-organ.sh/ensure_eyes; postgrest<-install-gap-substrate.sh/ensure_substrate; cj-disk-monitor<-install-node-housekeeping.sh).
+      PRIOR ART / HOME: scripts/ci/test-resilient-366-organ-roll-call.sh already tests both roll-call directions (installer-roster SUBSET manifest, and the INFRA-3826 reverse). reproducible_pct is the quantified generalization of that reverse roll-call; compute+print it in build-capabilities-registry.sh alongside live_pct.
+      FIRST STATIC READING (2026-08-30, HEAD bc78ef88): 20/29 = 69%. NOT reproducible under manifest unit: chump-ci-flake-rerun.timer, chump-process-organ-heal.timer, chump-outcome-verify-heal-consumer.timer, chump-cj-worker.service, chump-cj-sync.service, chump-faculty-collector.timer, chump-pr-book-settle.timer, chump-next-best-action.timer, chump-organ-deploy.timer (worker + process-organ-heal DO reproduce as a capability via chump-node-install.sh but under a different unit shape). Full audit: docs/audits/ftue-verifications/FTUE-VERIFICATION-2026-08-30.md.
   acceptance_criteria:
     - "The change described by \"Debt Index 1/5 — regenerate CAPABILITIES_REGISTRY + liveness/stage cross-ref\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 4329
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-355
@@ -15713,13 +15722,14 @@ gaps:
 - id: EFFECTIVE-509
   domain: EFFECTIVE
   title: NBA spine phase 4 — NBA engine reads the metrics bus, scores candidate actions by EV=impact x P(success) x urgency - cost, ranks, populates the already-registered next_best_action ambient kind; generalizes pr-book casino from one table to every table
-  status: open
+  status: done
   priority: P1
   effort: l
   acceptance_criteria:
     - "The change described by \"NBA spine phase 4 — NBA engine reads the metrics bus, scores candidate actions by EV=impact x P(success) x urgency - cost, ranks, populates the already-registered next_best_action ambient kind; generalizes pr-book casino from one table to every table\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 4327
   outcome_id: CHUMPOS
 
 - id: EFFECTIVE-510
@@ -65060,6 +65070,23 @@ gaps:
   depends_on: [INFRA-3864]
   notes: probe/test gap for BATPHONE build EFFECTIVE-513 — not real work
 
+- id: INFRA-3866
+  domain: INFRA
+  title: Rename install-helsinki-atc.sh -> node-generic name (install path off dead node)
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    install-helsinki-atc.sh is named for helsinki, a DECOMMISSIONED node; the install path must be node-generic. git mv it to a generic name (e.g. install-fleet-node.sh) and update ALL references repo-wide (grep -rl install-helsinki-atc = ~40 files: organ-deploy.sh, node-refresh-chump.sh, node-orchestrator.sh, chump-node-install.sh, fleet-doctor-strict.sh, docs/process/*, scripts/ci/test-install-helsinki-atc.sh + test-organ-deploy/watchdog/roll-call + the new test-manifest-installer-parity.sh, and organ .service ExecStart lines). Verify grep -rl install-helsinki-atc returns ZERO afterward.
+  acceptance_criteria:
+    - install-helsinki-atc.sh is git mv-renamed to a node-generic name
+    - every repo-wide reference is updated to the new name
+    - grep -rl install-helsinki-atc returns ZERO
+    - the renamed installer still passes bash -n
+    - scripts/ci/test-manifest-installer-parity.sh + test-resilient-366-organ-roll-call.sh reference the new path and pass
+  notes: |
+    Deferred from the 2026-08-30 manifest->installer parity fix for SAFETY: rename after digest/nba PRs settle. At that time install-helsinki-atc.sh was a LIVE high-churn merge target — OPEN PRs #4326 (RESILIENT-376 digest organ, itself adding to the roster) and #4307 both touched it, and #4327 had just merged into it. A repo-wide git mv + 40-file rewrite would have conflicted with in-flight work. Do this once the installer-touching PR queue is quiet. Tasks 1+2 (roster drift patch + test-manifest-installer-parity.sh CI gate) landed separately.
+
 - id: INFRA-394
   domain: INFRA
   title: Race-abandoned as first-class dispatch outcome — DispatchOutcome enum + report category for 'sibling won the gap, I ceded gracefully' (META-025 surfaced this category mid-measurement)
@@ -80484,12 +80511,14 @@ gaps:
   domain: RESILIENT
   title: "self-deploy DOWN on small-/tmp nodes: refresh-runner-binary.sh hardcodes its build worktree to /tmp/chump-binary-refresh-$$, but git worktree add checks out the full 8425-file tree — on CJ /tmp is a 3.6G tmpfs (753M free) so it fails \"unable to write file / Could not reset index\", auto-deploy fails every cycle, binary froze >1h (MISSION-012 THE MULTIPLIER silently down; ③ scoreboard even showed FALSE ✅ because binary==deployed but both stale — see CREDIBLE-293). Immediate fix on CJ: CHUMP_BINARY_REFRESH_WORKTREE=/mnt/cjdata2/chump-refresh/wt drop-in (USB, 5.7G). DURABLE: refresh-runner-binary.sh must default the worktree to a roomy path (CHUMP_STATE_DIR-relative or auto-pick largest volume), NOT /tmp; + the auto-deploy installer sets it per-node. Same host-assumption disease as helsinki units. COTG."
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"refresh-runner-binary.sh hardcodes its build worktree to /tmp/chump-binary-refresh-$$, but git worktree add checks out the full 8425-file tree — on CJ /tmp is a 3.6G tmpfs (753M free) so it fails \"unable to write file / Could not reset index\", auto-deploy fails every cycle, binary froze >1h (MISSION-012 THE MULTIPLIER silently down; ③ scoreboard even showed FALSE ✅ because binary==deployed but both stale — see CREDIBLE-293). Immediate fix on CJ: CHUMP_BINARY_REFRESH_WORKTREE=/mnt/cjdata2/chump-refresh/wt drop-in (USB, 5.7G). DURABLE: refresh-runner-binary.sh must default the worktree to a roomy path (CHUMP_STATE_DIR-relative or auto-pick largest volume), NOT /tmp; + the auto-deploy installer sets it per-node. Same host-assumption disease as helsinki units. COTG.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 7 slices: RESILIENT-507, RESILIENT-508, RESILIENT-509, RESILIENT-510, RESILIENT-511, RESILIENT-512, RESILIENT-513
   opened_date: '2026-08-20'
 
 - id: RESILIENT-349
@@ -82029,6 +82058,16 @@ gaps:
     [2026-08-31T01:24:39Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 8h) 2026-08-31; RESPAWN CAP 3 reached (32 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-31T01:28:59Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 8h) 2026-08-31; RESPAWN CAP 3 reached (33 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-31T01:30:06Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 9h) 2026-08-31; RESPAWN CAP 3 reached (34 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T01:33:40Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 9h) 2026-08-31; RESPAWN CAP 3 reached (35 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T01:37:58Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 9h) 2026-08-31; RESPAWN CAP 3 reached (36 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T01:40:13Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 9h) 2026-08-31; RESPAWN CAP 3 reached (37 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T01:42:26Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 9h) 2026-08-31; RESPAWN CAP 3 reached (38 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T01:44:39Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 9h) 2026-08-31; RESPAWN CAP 3 reached (39 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T01:46:53Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 9h) 2026-08-31; RESPAWN CAP 3 reached (40 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T01:49:27Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 9h) 2026-08-31; RESPAWN CAP 3 reached (41 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T01:51:41Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 9h) 2026-08-31; RESPAWN CAP 3 reached (42 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T01:54:04Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 9h) 2026-08-31; RESPAWN CAP 3 reached (43 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T01:58:42Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 9h) 2026-08-31; RESPAWN CAP 3 reached (44 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: CHUMPOS
 
 - id: RESILIENT-419
@@ -83382,7 +83421,7 @@ gaps:
 - id: RESILIENT-467
   domain: RESILIENT
   title: "RESILIENT: Implement automated gz compression for archived docs and stale logs (RESILIENT-323 slice)"
-  status: open
+  status: already_satisfied
   priority: P1
   effort: s
   acceptance_criteria:
@@ -83405,6 +83444,10 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+  closed_date: '2026-08-31'
+  closed_pr: 4325
+  evidence: |
+    already-satisfied backstop (INFRA-3826): worker cycle log agent-3-cycle10-RESILIENT-467.log reports the work already shipped in PR #4325 (merged 2026-08-31); worktree had no diff to ship. Auto-closed by gap-doctor-reconcile --check-already-satisfied.
 
 - id: RESILIENT-468
   domain: RESILIENT
@@ -83955,11 +83998,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update the PR‑book calibration path inside `scripts/ab-harness/run-binary-ablation.py` by replacing the existing “this‑will‑break‑to‑P0” scoring call with a call to the generalized scorer `brier_scorer.compute_brier_score`. The edit adds the appropriate import, injects the new scorer in `run_trial`, and preserves the legacy branch so that when the `--legacy` flag (or equivalent legacy condition) is active the original scoring logic remains unchanged.
+    
+    Target file(s):
+    - scripts/ab-harness/run-binary-ablation.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Calibration logic now calls `brier_scorer::compute_brier_score` for any \"this‑will‑break‑to‑P0\" call."
-    - Fallback behavior for legacy PR‑merge bets remains unchanged.
-    - Integration test confirms that calibrated scores match expected Brier values for a sample PR‑book dataset.
-    - All prior unit tests still pass.
+    - In `scripts/ab-harness/run-binary-ablation.py`, the function `run_trial` must invoke `brier_scorer.compute_brier_score` for every non‑legacy calibration run (verified by a unit‑test that patches `brier_scorer.compute_brier_score` and asserts it was called).
+    - When the script is executed with the `--legacy` flag, `run_trial` must **not** call `brier_scorer.compute_brier_score` and must continue to use the previous scoring implementation (verified by a unit‑test that ensures the legacy path is taken).
+    - Running `scripts/ab-harness/run-binary-ablation.py --sample-data` must print calibrated scores that exactly match the pre‑computed Brier values for the provided sample PR‑book dataset (e.g., `0.1234` and `0.5678` appear in the output).
+    - Executing the full test suite (`pytest -q`) after the change must result in zero test failures, confirming that all prior unit tests still pass.
   depends_on: [RESILIENT-484]
   notes: |
     [chump harvest check 'phase']
@@ -83985,11 +84035,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify the `drive_engine` function in `crates/chump-bench/src/bench.rs` to invoke the new `compute_pane_coverage_pct` and generalized Brier score functions, merge their results into the engine’s final operational score, and gate each addition behind separate configuration flags (`enable_pane_coverage` and `enable_brier_score`). Also expose these flags via the engine’s config struct.
+    
+    Target file(s):
+    - crates/chump-bench/src/bench.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - NBA engine now incorporates `compute_pane_coverage_pct` and the generalized Brier score into its final operational score.
-    - Configuration flags allow enabling/disabling each metric independently.
-    - End‑to‑end test runs the NBA engine on a mock dataset and asserts that the output score reflects both metrics.
-    - No regression in existing NBA engine tests.
+    - In `crates/chump-bench/src/bench.rs`, `drive_engine` calls `compute_pane_coverage_pct` and adds its value to the final score only when `config.enable_pane_coverage` is true.
+    - In `crates/chump-bench/src/bench.rs`, `drive_engine` calls the generalized Brier scorer and adds its value to the final score only when `config.enable_brier_score` is true.
+    - Executing `scripts/dev/mission-scoreboard.sh` on a mock dataset prints a line containing both the pane‑coverage percentage and the Brier score as part of the NBA engine’s reported score.
+    - All existing NBA engine unit tests (e.g., those in `crates/chump-bench/src/bench.rs` and related test modules) pass without modification.
   depends_on: [RESILIENT-483, RESILIENT-485, RESILIENT-486]
   notes: |
     [chump harvest check 'phase']
@@ -84015,11 +84072,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new integration test function `test_nba_engine_scoring` inside the existing `#[cfg(test)]` module of `crates/chump-bench/src/bench.rs`. The test builds realistic pane data and a prediction set, calls `drive_engine` (the NBA engine entry point), computes the combined score using the newly‑added metrics, and asserts that the score equals the expected hard‑coded value. The test is annotated with `#[test]` and does not modify production code paths.
+    
+    Target file(s):
+    - crates/chump-bench/src/bench.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A new CI test `test_nba_engine_scoring` is added under `scripts/ci/`.
-    - The test exercises the NBA engine with realistic pane data and prediction sets, asserting expected combined score.
-    - Test fails when the new metrics are removed, proving coverage.
-    - All existing tests still pass.
+    - Running `cargo test --test bench` reports a passing test named `test_nba_engine_scoring` (output contains `test_nba_engine_scoring ... ok`).
+    - If the new metric calculation inside `drive_engine` is temporarily disabled (e.g., comment out the metric addition), the same `cargo test --test bench` run fails with an assertion panic in `test_nba_engine_scoring`.
+    - Executing `cargo test` on the whole repository still results in zero test failures, confirming that all existing tests in `crates/chump-bench/src/bench.rs` remain green.
   depends_on: [RESILIENT-486]
   notes: |
     [chump harvest check 'phase']
@@ -84045,10 +84108,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Extend the `run_test_script` function in both `scripts/ci/run-local-ci.sh` and `scripts/ci/run-remote-ci.sh` to include the new `test_nba_engine_scoring.sh` script in the list of CI test scripts that are executed, preserving existing behavior for all other tests.
+    
+    Target file(s):
+    - scripts/ci/run-local-ci.sh
+    - scripts/ci/run-remote-ci.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - CI pipeline (`scripts/ci/test-*.sh`) includes the new `test_nba_engine_scoring` script.
-    - CI run reports the new test as passed.
-    - No other CI steps are broken.
+    - "? Running `scripts/ci/run-local-ci.sh` invokes `test_nba_engine_scoring.sh` and the CI output contains a line `test_nba_engine_scoring.sh : PASS`."
+    - "? Running `scripts/ci/run-remote-ci.sh` invokes `test_nba_engine_scoring.sh` and the CI output contains a line `test_nba_engine_scoring.sh : PASS`."
+    - Existing CI test scripts (e.g., `scripts/ci/test-recurring-gap-pattern-detector.sh`) are still executed and their output reports `PASS` without errors.
+    - Both CI scripts exit with status code 0 after all tests, including the new one, have completed.
   depends_on: [RESILIENT-487]
   notes: |
     [chump harvest check 'phase']
@@ -84074,10 +84146,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify the `run` function in `crates/chump-preflight/src/preflight.rs` to invoke `cargo fmt -- --check` and `cargo clippy --all-targets -D warnings` sequentially, capture their exit statuses, and return an error (causing the preflight to fail) if either command reports a problem; on success log explicit “fmt passed” and “clippy passed” messages.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`cargo fmt` runs without changes needed."
-    - "`cargo clippy --all-targets -D warnings` completes with zero warnings."
-    - All tests (unit and integration) pass after formatting and linting.
+    - "In `crates/chump-preflight/src/preflight.rs::run`, the function returns an `Err` when `cargo fmt -- --check` reports any formatting changes."
+    - "In `crates/chump-preflight/src/preflight.rs::run`, the function returns an `Err` when `cargo clippy --all-targets -D warnings` emits any warnings."
+    - "The `run_preflight` entry point in `scripts/coord/definition-of-ready-gate.sh` exits with status 0 only if both the fmt and clippy steps in `preflight.rs::run` succeed."
+    - After the updated preflight runs successfully, executing `cargo test --all` completes with exit code 0.
   depends_on: [RESILIENT-483, RESILIENT-484, RESILIENT-485, RESILIENT-486, RESILIENT-487, RESILIENT-488]
   notes: |
     [chump harvest check 'phase']
@@ -84103,10 +84183,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Extend the `check_postconditions` function in `src/tool_middleware.rs` to read a persisted commit‑hash file (e.g. `.organ_commit_hash`), invoke `git rev-parse origin/main` to obtain the current upstream hash, compare the two, and set a new boolean field `main_moved` to true only when they differ; also update the persisted file when the hashes match and emit a log entry indicating the result.
+    
+    Target file(s):
+    - src/tool_middleware.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Organ stores the commit hash of the binary it is running
-    - On each start or scheduled check, organ fetches origin/main and compares hashes
-    - A flag `main_moved` is set to true only when hashes differ
+    - "src/tool_middleware.rs::check_postconditions reads the hash from `.organ_commit_hash`, runs `git rev-parse origin/main`, and sets the struct field `main_moved` to true if the hashes differ."
+    - "When `main_moved` is set to true, `check_postconditions` logs the exact message “Main branch moved: true” to stdout/stderr."
+    - "? If the stored hash matches the upstream hash, `check_postconditions` updates `.organ_commit_hash` with the current hash and logs “Main branch moved : false”."
   notes: |
     [chump harvest check 'organ']
     === primitives_index match for 'organ' ===
@@ -84128,10 +84215,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify the `cmd_tick` function in `scripts/coord/pr-shepherd-daemon.sh` to check the `main_moved` flag; when true, execute `git fetch` followed by `git reset --hard origin/main`, capture and log each command’s stdout, stderr, and exit code, and abort the daemon’s rebuild sequence on any non‑zero exit status.
+    
+    Target file(s):
+    - scripts/coord/pr-shepherd-daemon.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When `main_moved` flag is true, organ runs `git fetch` and `git reset --hard origin/main`
-    - Command output and exit code are logged
-    - Failure to fetch results in a clear error and aborts the rebuild sequence
+    - "In `scripts/coord/pr-shepherd-daemon.sh:cmd_tick`, when `main_moved` is true the script runs `git fetch` and writes both its stdout and exit code to the log file."
+    - After a successful `git fetch`, `cmd_tick` runs `git reset --hard origin/main` and logs its stdout and exit code.
+    - If either `git fetch` or `git reset` returns a non‑zero exit code, `cmd_tick` logs an error line containing the text “Failed to update main” and exits the script with a non‑zero status, preventing further rebuild steps.
+    - An integration test that sets `main_moved=true` and stubs `git fetch`/`git reset` to succeed verifies that the repository’s HEAD matches `origin/main` after `cmd_tick` completes.
   depends_on: [RESILIENT-490]
   notes: |
     [chump harvest check 'organ']
@@ -84575,6 +84670,83 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: RESILIENT-507
+  domain: RESILIENT
+  title: "RESILIENT: Add CHUNK_BINARY_REFRESH_WORKTREE env var support to refresh-runner-binary.sh (RESILIENT-348 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Script reads CHUNK_BINARY_REFRESH_WORKTREE env var and uses its value as the worktree path if set
+    - When the variable is unset, script falls back to its existing /tmp behavior
+
+- id: RESILIENT-508
+  domain: RESILIENT
+  title: "RESILIENT: Implement default worktree path selection (CHUNK_STATE_DIR-relative or largest volume) (RESILIENT-348 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - If CHUNK_BINARY_REFRESH_WORKTREE is not set, script computes a writable directory under CHUNK_STATE_DIR or selects the mount point with the most free space
+    - The computed path is used for git worktree add and is logged
+  depends_on: [RESILIENT-507]
+
+- id: RESILIENT-509
+  domain: RESILIENT
+  title: "RESILIENT: Update auto‑deploy installer to set per‑node CHUNK_BINARY_REFRESH_WORKTREE (RESILIENT-348 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Installer detects the node’s largest writable volume and writes CHUNK_BINARY_REFRESH_WORKTREE=<path> into the node’s environment configuration
+    - Deployment on a CJ node creates the variable pointing to /mnt/cjdata2/chump-refresh/wt
+  depends_on: [RESILIENT-508]
+
+- id: RESILIENT-510
+  domain: RESILIENT
+  title: "RESILIENT: Add documentation for worktree path configuration (RESILIENT-348 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - README or ops guide includes a section describing CHUNK_BINARY_REFRESH_WORKTREE, default selection logic, and how to override it
+    - Documentation is version‑controlled and passes spell‑check
+  depends_on: [RESILIENT-507, RESILIENT-508]
+
+- id: RESILIENT-511
+  domain: RESILIENT
+  title: "RESILIENT: Create integration test for refresh‑runner‑binary.sh path handling (RESILIENT-348 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test sets CHUNK_BINARY_REFRESH_WORKTREE to a temporary directory and asserts that git worktree is created there
+    - Test runs without the env var and asserts that the worktree is created under the computed default path
+    - Test fails when the script still hard‑codes /tmp
+  depends_on: [RESILIENT-507, RESILIENT-508]
+
+- id: RESILIENT-512
+  domain: RESILIENT
+  title: "RESILIENT: Add CI step to execute the new integration test and verify failure without change (RESILIENT-348 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - CI pipeline runs the integration test and marks the build green only when the test passes
+    - Running the pipeline on the pre‑change code results in a test failure
+  depends_on: [RESILIENT-511]
+
+- id: RESILIENT-513
+  domain: RESILIENT
+  title: "RESILIENT: Run cargo fmt, clippy and ensure no new warnings (RESILIENT-348 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt formats all changed files without changes needed
+    - cargo clippy --all-targets -D warnings reports zero warnings
+    - All existing unit tests continue to pass
 
 - id: SMOKE-001
   domain: SMOKE
