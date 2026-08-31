@@ -20,4 +20,11 @@
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
   skills_required: "external_repo:repairman29/postsub"
+  notes: |
+    Fixed upstream: repairman29/postsub@f55066d8 (pushed directly to postsub's
+    main branch, Firebase Hosting auto-deploy succeeded, verified live on
+    https://postsub.io -- the dead footer "Community" href="#" link was
+    removed, matching the sibling PRODUCT-167 "Status" link precedent since
+    no community destination (Discord/forum/GitHub Discussions) exists for
+    this app).
 
