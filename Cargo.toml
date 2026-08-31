@@ -49,8 +49,18 @@ members = [
     "crates/chump-waste-tally",
     "crates/chump-kpi-report",
     "crates/chump-cron",
+    "crates/workspace-hack",
 ]
 resolver = "2"
+
+# RESILIENT-469: cargo-hakari workspace-hack config. Managed by
+# `cargo hakari generate` — regenerate rather than hand-editing after the
+# member list or dependency graph changes.
+[workspace.metadata.hakari]
+hakari-package = "workspace-hack"
+resolver = "2"
+dep-format-version = "4"
+platforms = []
 
 [package]
 name = "chump"

@@ -2274,6 +2274,20 @@ impl GapStore {
         // closed_pr set and the merge commit on main from the webhook's
         // `pull_request.merge_commit_sha` is what git log finds.
         if self.repo_root.join(".git").exists() {
+            // RESILIENT-469: dedupe transitive-dependency feature sets via the
+            // cargo-hakari workspace-hack crate before proceeding. Best-effort
+            // and non-fatal, same discipline as the git fetch/pull below —
+            // `cargo-hakari` is a dev-time convenience, not a ship-blocking
+            // dependency, so an absent binary or a stale workspace-hack must
+            // never stop a gap from shipping.
+            eprintln!("Running cargo hakari generate");
+            let _ = std::process::Command::new("cargo")
+                .args(["hakari", "generate"])
+                .current_dir(&self.repo_root)
+                .stderr(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .status();
+
             // Fetch quietly; failure is non-fatal (offline or no remote).
             let _ = std::process::Command::new("git")
                 .args(["fetch", "origin", "main", "--quiet"])

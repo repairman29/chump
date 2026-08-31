@@ -25,6 +25,9 @@ postgres = { version = "0.19", optional = true }
 # (async fn complete) plus the chump-gap-architect bin's tokio runtime.
 tokio = { version = "1", features = ["rt", "macros", "process"] }
 thiserror = "2"
+# RESILIENT-469: cargo-hakari workspace-hack unification. See
+# [workspace.metadata.hakari] in the workspace root Cargo.toml.
+workspace-hack = { path = "../workspace-hack" }
 
 [features]
 # Opt-in test helpers (`conn_for_test`) for downstream crates that want to

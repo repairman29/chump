@@ -1,0 +1,13 @@
+[package]
+name = "workspace-hack"
+version = "0.1.0"
+edition = "2021"
+description = "cargo-hakari workspace-hack crate: unifies transitive feature selection across the workspace so cargo doesn't build duplicate copies of shared deps with divergent feature sets. Managed by `cargo hakari generate` — do not hand-edit."
+publish = false
+license = "Apache-2.0"
+
+[dependencies]
+
+[build-dependencies]
+
+[dev-dependencies]
