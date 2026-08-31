@@ -317,3 +317,17 @@ enabled     chump-gap-drain.timer  role=brain requires=bin:chump-gap-enricher,bi
 # current picture, not a week-old file. Cheap (no LLM call). Declared here so
 # organ-reconcile re-arms it on drift and Roll-Call never lets it rot silently.
 enabled     chump-next-best-action.timer  role=data requires=bin:gh,bin:jq
+
+# chump-nba-dispatch.timer: EFFECTIVE-509 (+ conservative first cut of
+# EFFECTIVE-510) - the AUTO-DISPATCH CONSUMER that closes the next-best-action
+# loop so the OS can aim ITSELF between human check-ins. The producer above is
+# ADVISORY (writes the ranking, never acts); this consumer reads the TOP bet and
+# takes a SAFE, REVERSIBLE, ALLOW-LISTED action only - heal a DEAD organ
+# (reset-failed+restart; a relapse escalates to the human, never loops), ensure
+# worker/farmer muscle is building (respects the fleet-paused sentinel), or a
+# wait_ci no-op. EVERYTHING else (merge PRs, cut PRs, resolve/rebase,
+# raise_faculty, any unknown action-type) DEFERS: records a needs-human item +
+# emits kind=nba_deferred_to_human for Jeff's digest. Idempotent (30-min bet
+# cooldown). Safe-by-default. Declared here so organ-reconcile re-arms it on
+# drift and Roll-Call never lets it rot silently. role=brain (it decides+acts).
+enabled     chump-nba-dispatch.timer  role=brain requires=bin:jq

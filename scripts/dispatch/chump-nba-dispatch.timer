@@ -1,0 +1,15 @@
+# Pairs with chump-nba-dispatch.service. Fires the auto-dispatch consumer every
+# ~30 min — half the producer's 20-min cadence is plenty: the consumer reads the
+# freshest ~/.chump/next-best-action.json and acts on (or defers) the top bet.
+# The consumer is idempotent (30-min bet cooldown) so a tight cadence never
+# re-dispatches the same standing bet. Cheap (no LLM call).
+[Unit]
+Description=Run the Chump NBA auto-dispatch consumer every 30 minutes (aim the OS between human check-ins — EFFECTIVE-509)
+
+[Timer]
+OnBootSec=9min
+OnUnitActiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

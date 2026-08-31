@@ -181,8 +181,17 @@ SYSTEM_UNITS=(
   # — MUST be rostered here or the unit file never lands and the gauges stay
   # dark (RESILIENT-376 merged-not-running class). Service-only, no timer.
   chump-fleet-server.service
+  # chump-nba-dispatch (EFFECTIVE-509): the AUTO-DISPATCH CONSUMER for the
+  # next-best-action router - reads the top EV-ranked bet and takes a SAFE,
+  # reversible, allow-listed action (heal a dead organ / ensure workers building
+  # / wait_ci) or DEFERS everything else to the human (kind=nba_deferred_to_human).
+  # Lets the OS aim itself between human check-ins. Declared `enabled` in
+  # organ-manifest.txt - MUST be rostered here or the unit never lands and the
+  # loop stays open (RESILIENT-376 merged-not-running class). Paired timer below.
+  chump-nba-dispatch.service
+  chump-nba-dispatch.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
