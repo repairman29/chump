@@ -80310,14 +80310,14 @@ gaps:
   domain: RESILIENT
   title: "Storage-MINIMIZE DNA: beyond reactive reaping — bounded caps + active sccache + compression + adaptive learn-what-to-keep"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "REDUCE the need, not just reap residue: cargo-sweep-gc organ caps the shared target (ZERO-WASTE-053, wired 2026-08-19); local sccache active (currently CI-only) so rebuilds reuse cache; docs/archive + old logs compressed (.gz); a workspace-hack/hakari pass evaluated for build-dedup"
     - "ADAPTIVE layer (the real gap): an optimizer observes access patterns + growth rates and tunes caps/TTLs/what-to-keep per node instead of fixed thresholds; emits a footprint budget per node (cores/disk-aware) the orchestrator enforces"
     - "verified: a node runs for DAYS with cargo/target/logs on a bounded plateau (not monotonic growth); disk never approaches the reaper-emergency threshold on its own"
   notes: |
-    [2026-08-19T20:36:17Z] Jeff 2026-08-19: they need to LEARN to reap/cut storage + optimize — is it in our DNA? Honest audit: REACTIVE reaping = deep DNA (22 reapers). FOOTPRINT-CAPPING = designed (ZERO-WASTE-053 cargo-sweep-gc, shared-target) but was on the shelf (not installed, cargo-sweep not even present) — now wired. LEARNING/adaptive optimization = NOT in the DNA. This gap adds the minimize+learn layer to the ZERO-WASTE domain.
+    Decomposed into 7 slices: RESILIENT-467, RESILIENT-468, RESILIENT-469, RESILIENT-470, RESILIENT-471, RESILIENT-472, RESILIENT-473
   opened_date: '2026-08-19'
 
 - id: RESILIENT-328
@@ -81989,6 +81989,12 @@ gaps:
     [2026-08-30T23:57:14Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-30; RESPAWN CAP 3 reached (13 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T23:59:28Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-30; RESPAWN CAP 3 reached (14 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-31T00:00:10Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (15 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:02:48Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (16 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:05:26Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (17 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:07:44Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (18 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:09:59Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (19 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:12:18Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (20 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:14:34Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (21 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: CHUMPOS
 
 - id: RESILIENT-419
@@ -83304,6 +83310,198 @@ gaps:
     
     === cross-pollination briefs mentioning 'orchestrator' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-467
+  domain: RESILIENT
+  title: "RESILIENT: Implement automated gz compression for archived docs and stale logs (RESILIENT-323 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Logs older than configured age threshold are automatically compressed to .gz
+    - Archive docs matching retention policy are compressed to .gz
+    - Original uncompressed files are safely removed after successful gzip verification
+  notes: |
+    [chump harvest check 'beyond']
+    === primitives_index match for 'beyond' ===
+    
+    === cluster keyword match for 'beyond' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'beyond' ===
+    
+    === repo-description match for 'beyond' ===
+    
+    === HARVEST_ROADMAP.md mention of 'beyond' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'beyond' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: RESILIENT-468
+  domain: RESILIENT
+  title: "RESILIENT: Enable active local sccache wrapper for local and node builds (RESILIENT-323 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Local node build environment detects sccache binary and configures RUSTC_WRAPPER
+    - sccache daemon automatically starts and tracks hit/miss cache statistics across local compilations
+    - Build scripts fail open gracefully to standard rustc if sccache is unavailable
+  notes: |
+    [chump harvest check 'beyond']
+    === primitives_index match for 'beyond' ===
+    
+    === cluster keyword match for 'beyond' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'beyond' ===
+    
+    === repo-description match for 'beyond' ===
+    
+    === HARVEST_ROADMAP.md mention of 'beyond' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'beyond' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: RESILIENT-469
+  domain: RESILIENT
+  title: "RESILIENT: Integrate cargo-hakari workspace-hack for crate build deduplication (RESILIENT-323 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - cargo-hakari workspace-hack crate is generated and wired into workspace root
+    - Build graph analysis verifies duplicate compilation of shared transitive dependencies is reduced
+    - Full workspace build and test suite pass without feature unification conflicts
+  notes: |
+    [chump harvest check 'beyond']
+    === primitives_index match for 'beyond' ===
+    
+    === cluster keyword match for 'beyond' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'beyond' ===
+    
+    === repo-description match for 'beyond' ===
+    
+    === HARVEST_ROADMAP.md mention of 'beyond' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'beyond' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: RESILIENT-470
+  domain: RESILIENT
+  title: "RESILIENT: Create node footprint budget calculator based on core and disk capacity (RESILIENT-323 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Calculator inspects host hardware capacity (CPU cores, total/available disk space)
+    - Computes dynamic maximum disk target caps for logs, target directories, and caches
+    - Emits structured footprint budget schema consumable by the orchestrator
+  notes: |
+    [chump harvest check 'beyond']
+    === primitives_index match for 'beyond' ===
+    
+    === cluster keyword match for 'beyond' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'beyond' ===
+    
+    === repo-description match for 'beyond' ===
+    
+    === HARVEST_ROADMAP.md mention of 'beyond' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'beyond' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: RESILIENT-471
+  domain: RESILIENT
+  title: "RESILIENT: Implement storage access pattern and growth rate observer (RESILIENT-323 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Observer tracks directory access timestamps and disk space growth deltas over configurable time windows
+    - Differentiates between actively accessed build artifacts and cold stale files
+    - Exposes access pattern metrics via structured internal telemetry API
+  depends_on: [RESILIENT-470]
+  notes: |
+    [chump harvest check 'beyond']
+    === primitives_index match for 'beyond' ===
+    
+    === cluster keyword match for 'beyond' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'beyond' ===
+    
+    === repo-description match for 'beyond' ===
+    
+    === HARVEST_ROADMAP.md mention of 'beyond' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'beyond' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: RESILIENT-472
+  domain: RESILIENT
+  title: "RESILIENT: Build adaptive optimizer to dynamically adjust TTLs and cargo-sweep caps (RESILIENT-323 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Optimizer evaluates observer access patterns against the node footprint budget
+    - Dynamically tunes cargo-sweep-gc TTLs and log retention windows based on growth rate velocity
+    - Applies updated storage bounds without requiring daemon or process restarts
+  depends_on: [RESILIENT-470, RESILIENT-471]
+  notes: |
+    [chump harvest check 'beyond']
+    === primitives_index match for 'beyond' ===
+    
+    === cluster keyword match for 'beyond' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'beyond' ===
+    
+    === repo-description match for 'beyond' ===
+    
+    === HARVEST_ROADMAP.md mention of 'beyond' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'beyond' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: RESILIENT-473
+  domain: RESILIENT
+  title: "RESILIENT: Verify bounded storage plateau on long-running node under sustained workload (RESILIENT-323 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Node execution test under continuous build/log creation reaches a bounded storage plateau
+    - Disk utilization remains stably below reactive emergency reaper thresholds indefinitely
+    - Adaptive optimizer continuously maintains target bounds without unbounded monotonic growth
+  depends_on: [RESILIENT-467, RESILIENT-468, RESILIENT-472]
+  notes: |
+    [chump harvest check 'beyond']
+    === primitives_index match for 'beyond' ===
+    
+    === cluster keyword match for 'beyond' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'beyond' ===
+    
+    === repo-description match for 'beyond' ===
+    
+    === HARVEST_ROADMAP.md mention of 'beyond' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'beyond' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
 
 - id: SMOKE-001
   domain: SMOKE
