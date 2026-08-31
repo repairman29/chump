@@ -1,0 +1,13 @@
+# RESILIENT-365 — wires the INFRA-249 recurring-gap-pattern-detector as a live
+# organ instead of a script only ever run by hand. Cadence mirrors
+# chump-almanac-liveness.timer (a periodic sweep, not a hot path).
+[Unit]
+Description=Chump RCA reflex — recurring-gap-pattern cluster detection + auto-RCA (RESILIENT-365 / INFRA-249)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
