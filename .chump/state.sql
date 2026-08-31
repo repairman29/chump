@@ -13571,6 +13571,8 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
+  notes: |
+    Decomposed into 5 slices: EFFECTIVE-549, EFFECTIVE-550, EFFECTIVE-551, EFFECTIVE-552, EFFECTIVE-553
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -19408,6 +19410,135 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-549
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create temporary repository with scaffold commit (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A directory at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT is created
+    - Git repository is initialized in that directory
+    - A scaffold commit is created as the first commit in the repository
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-550
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Validate git history starts with scaffold commit (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running `git log --reverse` shows the scaffold commit as the first entry
+    - Commit hash and message match the expected scaffold commit details
+  depends_on: [EFFECTIVE-549]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-551
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add README.md with intent line (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README.md file is created at the repository root
+    - "The first body line of README.md contains the exact string \"Another intent\""
+    - File uses UTF-8 encoding and ends with a newline
+  depends_on: [EFFECTIVE-549]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-552
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Commit README.md changes (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new commit is created that adds/updates README.md
+    - Commit message clearly indicates addition of intent description
+    - "`git log` shows the README commit after the scaffold commit"
+  depends_on: [EFFECTIVE-551]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-553
+  domain: EFFECTIVE
+  title: "EFFECTIVE: File sub‑gaps for core feature areas (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A list of core feature areas is identified (e.g., UI, API, Data Model, Testing)
+    - For each area, a sub‑gap ticket is created in the tracking system with a clear title and description
+    - All sub‑gap tickets are linked to the parent gap EFFECTIVE-268
+    - Each sub‑gap has appropriate priority and estimated effort assigned
+  depends_on: [EFFECTIVE-552]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
 
 - id: EVAL-085
   title: test eval 085
