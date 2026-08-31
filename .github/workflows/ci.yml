@@ -1296,6 +1296,9 @@ jobs:
           export PATH="${CARGO_TARGET_DIR:-$(pwd)/target}/debug:$PATH"
           bash scripts/ci/test-gap-reserve-padding.sh
 
+      - name: gap-reserve no stale-checkout collision (INFRA-3687)
+        run: bash scripts/ci/test-gap-reserve-no-stale-collision.sh
+
       - name: gap-ID cross-session collision prevention (CREDIBLE-052)
         run: |
           export PATH="${CARGO_TARGET_DIR:-$(pwd)/target}/debug:$PATH"

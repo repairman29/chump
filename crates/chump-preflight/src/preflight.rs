@@ -2200,6 +2200,11 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-preflight-ci-parity-smoke.sh"],
             GateKind::Scripts,
         ));
+        steps.push(step(
+            "gap-reserve-no-stale-collision",
+            &["bash", "scripts/ci/test-gap-reserve-no-stale-collision.sh"],
+            GateKind::Scripts,
+        ));
     }
 
     // INFRA-3377 (META-070): commit-content-guards mirrors. --pre-commit

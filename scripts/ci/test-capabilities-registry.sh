@@ -258,6 +258,76 @@ else
     echo "WARN: could not regenerate for the drift comparison — skipping"
 fi
 
+# ── 8. Ecosystem adapters beyond Rust (INFRA-3469) ───────────────────────────
+#
+# comprehend UAT pilot-1 B3: running the generator against a non-Rust repo
+# produced zero crate_apis entries — the WIRING organ's #1 coverage gap. This
+# builds a synthetic fixture repo with a JS/TS package and a Python package
+# (no Cargo.toml anywhere) and asserts the generator now discovers both.
+fixture_dir="$(mktemp -d -t chump-capreg-ecosystem-fixture-XXXXXX)"
+fixture_out="$(mktemp -t chump-capreg-ecosystem-out-XXXXXX.json)"
+# shellcheck disable=SC2064
+trap "rm -f '$tmp' '${backdated:-}' '${fresh_copy:-}' '$drift_out' '$fixture_out'; rm -rf '$fixture_dir'" EXIT
+
+mkdir -p "$fixture_dir/pkg-js/src"
+cat > "$fixture_dir/pkg-js/package.json" <<'EOF'
+{"name": "fixture-js-pkg", "main": "src/index.js"}
+EOF
+cat > "$fixture_dir/pkg-js/src/index.js" <<'EOF'
+export function widgetFrobnicate() {}
+export class WidgetGadget {}
+EOF
+
+mkdir -p "$fixture_dir/pkg_py"
+cat > "$fixture_dir/pkg_py/__init__.py" <<'EOF'
+def frobnicate_widget():
+    pass
+
+
+class GadgetWidget:
+    pass
+EOF
+
+if bash scripts/dev/build-capabilities-registry.sh --repo-root "$fixture_dir" --out "$fixture_out" --quiet 2>/dev/null; then
+    ecosystem_check_rc=0
+    FIXTURE_OUT="$fixture_out" python3 - <<'PYEOF' || ecosystem_check_rc=$?
+import json, os, sys
+
+doc = json.load(open(os.environ["FIXTURE_OUT"]))
+apis = doc.get("crate_apis", [])
+
+js_entries = [c for c in apis if c.get("ecosystem") == "js_ts"]
+py_entries = [c for c in apis if c.get("ecosystem") == "python"]
+
+if not js_entries:
+    print("no js_ts crate_apis entry discovered for fixture package.json")
+    sys.exit(1)
+js_names = {i["name"] for i in js_entries[0].get("public_items", [])}
+if "widgetFrobnicate" not in js_names or "WidgetGadget" not in js_names:
+    print(f"js_ts public_items missing expected exports, got {js_names}")
+    sys.exit(1)
+
+if not py_entries:
+    print("no python crate_apis entry discovered for fixture __init__.py")
+    sys.exit(1)
+py_names = {i["name"] for i in py_entries[0].get("public_items", [])}
+if "frobnicate_widget" not in py_names or "GadgetWidget" not in py_names:
+    print(f"python public_items missing expected def/class, got {py_names}")
+    sys.exit(1)
+
+sys.exit(0)
+PYEOF
+    if [[ "$ecosystem_check_rc" -ne 0 ]]; then
+        echo "FAIL: ecosystem adapters did not discover JS/TS + Python fixture packages"
+        FAIL=1
+    else
+        echo "PASS: js_ts + python ecosystem adapters discover fixture packages + public items"
+    fi
+else
+    echo "FAIL: generator errored against ecosystem-adapter fixture repo"
+    FAIL=1
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     exit 1
 fi

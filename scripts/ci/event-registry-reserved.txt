@@ -155,6 +155,7 @@ claim_active_lease_bypassed  # reason: INFRA-1646 bypass variant (CHUMP_CLAIM_AL
 cli  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
 commit  # reason: emitted by Claude Code PostToolUse hook (Bash git commit), not by scripts/; hooks are outside grep production paths
 crate  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
+named_export  # reason: INFRA-3469 — JSON enum value for crate_apis[].public_items[].kind (js_ts adapter) in build-capabilities-registry.sh, not an ambient kind
 curator_decision           # reason: planned for opus-curator gap-ranking decision emit
 infra_watcher_finding      # reason: META-102 — emitted from scripts/coord/infra-watcher-loop.sh via direct printf JSON; emit uses dynamic {category,severity,detail} fields assembled at runtime, not grep-scannable as a `"kind":"infra_watcher_finding"` literal in the production path scan
 disk_critical              # reason: emitter scripts/ops/disk-watchdog.sh uses variable-mediated emit (disk_alert_kind); grep pattern misses it; will fix in follow-up

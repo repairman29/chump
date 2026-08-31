@@ -1598,6 +1598,51 @@ impl GapStore {
         //   reconcile any manual YAML edits back into state.db — that's the right
         //   home for the reconciliation pass, not the hot reserve path.
 
+        // INFRA-3687, parts 1+2 of the stale-checkout collision fix: consult
+        // origin/main's canonical state.sql BEFORE touching the local
+        // counter, and fail closed if this checkout is genuinely behind
+        // origin/main AND canonical truth is unverifiable. Computed up
+        // front (outside the BEGIN IMMEDIATE write-lock below) since both
+        // are pure git shell-outs with no state.db interaction — no reason
+        // to hold the write lock across them.
+        //
+        // Existing test fixtures (`test_store()`) use a bare `TempDir` with
+        // no `.git` at all, so both calls return `None` for them and this
+        // gate is a no-op — unaffected.
+        let canonical_max = self.canonical_max_id(&domain_upper);
+        let behind = behind_origin_main_count(&self.repo_root).unwrap_or(0);
+        let allow_stale = std::env::var("CHUMP_RESERVE_ALLOW_STALE").as_deref() == Ok("1");
+        if behind > 0 && canonical_max.is_none() {
+            if !allow_stale {
+                bail!(
+                    "refusing to reserve {domain_upper}: checkout is {behind} commit(s) behind \
+                     origin/main and canonical state.sql is unreadable — cannot guarantee a \
+                     unique ID. Run `git pull` (or restore state.db from state.sql) and retry. \
+                     Emergency escape hatch: CHUMP_RESERVE_ALLOW_STALE=1 (audited)."
+                );
+            }
+            // CHUMP_RESERVE_ALLOW_STALE=1 audit trail — same ambient-event
+            // idiom already used twice below in this function
+            // (gap_id_allocator_collision_avoided /
+            // gap_id_reused_from_git_history_avoided). Registered in
+            // docs/observability/EVENT_REGISTRY.yaml.
+            let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+            let ts = unix_to_iso_full(unix_now());
+            // scanner-anchor: "kind":"gap_reserve_stale_bypass_used" (registered in docs/observability/EVENT_REGISTRY.yaml, INFRA-3687)
+            let line = format!(
+                "{{\"ts\":\"{ts}\",\"kind\":\"gap_reserve_stale_bypass_used\",\
+                 \"domain\":\"{domain_upper}\",\"behind\":{behind}}}\n"
+            );
+            use std::io::Write as _;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
+
         // Seed the counter from existing gaps if this is the first reserve for the domain.
         // Then atomically bump it and insert the new gap row under IMMEDIATE (reserved write
         // lock). BEGIN EXCLUSIVE was too strong: concurrent GapStore::open + migrate on the
@@ -1617,7 +1662,17 @@ impl GapStore {
             // pending leases (sources the DB cannot see). The counter must
             // start above the max of (DB max, external max).
             let extra_max = extra_used.iter().copied().max().unwrap_or(0);
-            let combined_max = std::cmp::max(existing_max, extra_max);
+            // INFRA-3687: also bump past origin/main's canonical state.sql
+            // max (computed above, before the transaction started) — the
+            // fix for the stale-checkout collision class. A checkout behind
+            // origin/main has a stale `existing_max` here; folding in
+            // `canonical_max` makes it impossible to re-issue an ID that
+            // canonically already belongs to a merged gap, independent of
+            // how stale this checkout's local DB and leases are.
+            let combined_max = std::cmp::max(
+                std::cmp::max(existing_max, extra_max),
+                canonical_max.unwrap_or(0),
+            );
             self.conn.execute(
                 "INSERT INTO gap_counters(domain, next_num) VALUES(?1, ?2)
                  ON CONFLICT(domain) DO UPDATE SET next_num = MAX(next_num, excluded.next_num)",
@@ -2112,6 +2167,82 @@ impl GapStore {
         }
 
         Ok(out)
+    }
+
+    /// INFRA-3687: read origin/main's tracked `.chump/state.sql` — the
+    /// canonical, git-tracked dump of every gap ever reserved or merged —
+    /// and return the highest `<DOMAIN>-N` id number found for
+    /// `domain_upper`.
+    ///
+    /// This closes the stale-checkout ID collision class documented in
+    /// `docs/process/CANONICAL_STATE_CONTRACT.md` § Drift Mode G: a
+    /// checkout N commits behind `origin/main` has a stale local `gaps`
+    /// table, so `existing_max` (local state.db) and `extra_max`
+    /// (`.chump-locks/*.json` leases + open-PR titles) can BOTH under-count,
+    /// and `reserve_with_external` re-issues an ID that canonically already
+    /// belongs to a merged gap (real repro: a checkout 177 commits behind
+    /// reserved `INFRA-3680`, canonically a merged "parse_verdict" gap).
+    /// Folding this method's result into `combined_max` in
+    /// `reserve_with_external` makes that physically impossible whenever
+    /// origin refs are reachable.
+    ///
+    /// Best-effort `git fetch origin main --quiet` first (mirrors the
+    /// INFRA-2423 `ship()` auto-fetch pattern; non-fatal offline/no-remote —
+    /// falls through to whatever `origin/main` this checkout already knows
+    /// about). Then reads `origin/main:.chump/state.sql` via `git show` and
+    /// delegates to [`Self::max_id_num_in_gaps`] — the SAME id-column-only
+    /// extraction the local allocator uses, deliberately NOT a raw
+    /// text/regex scan over the whole dump (see that method's docs for why:
+    /// state.sql is known to carry `<DOMAIN>-N`-shaped junk substrings
+    /// outside the `id` column, e.g. `INFRA-9999999` quoted in a note).
+    ///
+    /// Returns `None` — "could not verify canonical truth" — ONLY when
+    /// there is no `.git`, the `git show` itself fails (offline,
+    /// unreachable ref, or the file does not exist at `origin/main`'s
+    /// current tip), or the YAML fails to parse. Deliberately distinct from
+    /// "the file was read successfully but this domain has zero canonical
+    /// gaps" — that case is verified truth (a fresh domain's canonical max
+    /// really is 0) and returns `Some(0)`, not `None`. Collapsing the two
+    /// would make `reserve_with_external`'s fail-closed gate refuse every
+    /// first-ever reserve for a new domain on a checkout that happens to be
+    /// behind, which is not a staleness risk at all. Callers MUST treat
+    /// `None` as "unverifiable" — see the fail-closed gate in
+    /// `reserve_with_external`.
+    pub fn canonical_max_id(&self, domain_upper: &str) -> Option<i64> {
+        if !self.repo_root.join(".git").exists() {
+            return None;
+        }
+        // Best-effort refresh; non-fatal if offline (mirrors the INFRA-2423
+        // auto-fetch already used by ship()'s proof-of-merge check).
+        let _ = std::process::Command::new("git")
+            .args(["fetch", "origin", "main", "--quiet"])
+            .current_dir(&self.repo_root)
+            .output();
+        let output = std::process::Command::new("git")
+            .args(["show", "origin/main:.chump/state.sql"])
+            .current_dir(&self.repo_root)
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let file = Self::parse_state_sql_yaml(&text).ok()?;
+        // Read + parse succeeded: this IS verified canonical truth, even
+        // when the domain has zero matches there (a brand-new domain's
+        // canonical max legitimately is 0 — see the doc comment above).
+        Some(Self::max_id_num_in_gaps(&file.gaps, domain_upper).unwrap_or(0))
+    }
+
+    /// Public wrapper around [`behind_origin_main_count`] for CLI callers
+    /// (`chump gap list`'s Drift-Mode-G staleness warning, part 3 of the
+    /// INFRA-3687 fix). Deliberately does NOT fetch first — `gap list` is a
+    /// hot/frequent read path and this must stay non-blocking; it reports
+    /// against whatever `origin/main` ref this checkout already has from
+    /// ambient fetches elsewhere. See that function's docs for `None`
+    /// semantics.
+    pub fn behind_origin_main(&self) -> Option<u64> {
+        behind_origin_main_count(&self.repo_root)
     }
 
     /// Claim a gap for a session (write lease row).
@@ -3925,8 +4056,44 @@ impl GapStore {
     fn load_state_sql(sql_path: &Path) -> Result<YamlGapsFile> {
         let text = std::fs::read_to_string(sql_path)
             .with_context(|| format!("reading state.sql at {}", sql_path.display()))?;
-        serde_yaml::from_str(&text)
+        Self::parse_state_sql_yaml(&text)
             .with_context(|| format!("parsing YAML in {}", sql_path.display()))
+    }
+
+    /// Parse the YAML body of a `.chump/state.sql` dump (despite the `.sql`
+    /// extension it is a YAML gaps list, not SQL — see [`Self::load_state_sql`])
+    /// from an in-memory string. Split out of `load_state_sql` so
+    /// [`Self::canonical_max_id`] can parse `git show origin/main:.chump/state.sql`
+    /// output directly, without a temp-file round trip.
+    fn parse_state_sql_yaml(text: &str) -> Result<YamlGapsFile> {
+        serde_yaml::from_str(text).context("parsing state.sql YAML")
+    }
+
+    /// Extract the highest numeric suffix among `gaps[].id` values matching
+    /// `<DOMAIN_UPPER>-<N>` — the **id column only**.
+    ///
+    /// This is deliberately narrow: `state.sql` is known to contain
+    /// `<DOMAIN>-<N>`-shaped substrings *outside* the `id` field too (test
+    /// fixtures and incident write-ups quoted verbatim in `notes`/`title`/
+    /// `description`, e.g. a stray `INFRA-9999999` mentioned as example
+    /// junk data). A raw text/regex scan over the whole dump would treat
+    /// those as real gap IDs and could rocket the allocator to a nonsense
+    /// value — a worse regression than the stale-checkout collision this
+    /// method exists to prevent. Scanning only `g.id` mirrors exactly what
+    /// the local counter's SQL query does
+    /// (`SELECT MAX(...) FROM gaps WHERE id LIKE 'DOMAIN-%'`).
+    ///
+    /// `MAX_SANE_GAP_NUM` is defense-in-depth on top of that: even a
+    /// legitimate-looking `id` field is dropped if its suffix is absurdly
+    /// large, so a malformed or synthetic row can never poison allocation.
+    fn max_id_num_in_gaps(gaps: &[YamlGap], domain_upper: &str) -> Option<i64> {
+        const MAX_SANE_GAP_NUM: i64 = 1_000_000;
+        let prefix = format!("{}-", domain_upper);
+        gaps.iter()
+            .filter_map(|g| g.id.strip_prefix(prefix.as_str()))
+            .filter_map(|rest| rest.parse::<i64>().ok())
+            .filter(|&n| n > 0 && n <= MAX_SANE_GAP_NUM)
+            .max()
     }
 
     fn insert_or_replace_gap_row(&self, g: &YamlGap) -> Result<()> {
@@ -4364,6 +4531,38 @@ fn fetch_origin_refs(repo_root: &Path) {
         .args(["fetch", "origin", "--quiet", "--no-tags"])
         .current_dir(repo_root)
         .output();
+}
+
+/// INFRA-3687: how many commits `origin/main` is ahead of local `main` —
+/// i.e. how far behind this checkout is. Deliberately returns `None` (NOT
+/// `0`) when the question doesn't apply: no `.git` at all (synthetic test
+/// fixtures — every existing `test_store()`-based test uses a bare
+/// `TempDir`), or the `rev-list` call itself fails (no local `main` ref,
+/// detached HEAD, shallow clone). Callers MUST treat `None` as "not
+/// applicable" and skip any staleness gate built on top of it, never as
+/// "definitely not behind" — see the fail-closed check in
+/// `reserve_with_external` and `GapStore::behind_origin_main`.
+///
+/// Uses whatever `refs/remotes/origin/main` this checkout already knows
+/// about — no fetch here, callers that need a fresh view fetch first
+/// (`canonical_max_id` does; `chump gap list`'s staleness warning
+/// deliberately does not, to stay non-blocking on a hot read path).
+fn behind_origin_main_count(repo_root: &Path) -> Option<u64> {
+    if !repo_root.join(".git").exists() {
+        return None;
+    }
+    let output = std::process::Command::new("git")
+        .args(["rev-list", "--count", "main..origin/main"])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<u64>()
+        .ok()
 }
 
 /// INFRA-100: lightweight matcher for `<DOMAIN>-NNN` substrings in a string.
@@ -5470,11 +5669,23 @@ mod auto_fetch_tests {
             .ok();
         git(repo, &["push", "--quiet", "origin", "main"]);
 
-        // Advance origin (via scratch clone) so local is behind.
+        // Advance origin (via scratch clone) so local is behind. Also
+        // commit a (real-world-realistic) `.chump/state.sql` so
+        // INFRA-3687's canonical_max_id() can verify canonical truth here —
+        // this scenario is exercising ship()'s dirty-tree guard, not the
+        // stale-checkout reserve() guard, so canonical must be readable or
+        // the new fail-closed gate below would (correctly, but not what
+        // this test is about) refuse the reserve() call before ship() is
+        // ever reached.
         let scratch_dir = tempdir().unwrap();
         non_bare_clone(origin_dir.path().to_str().unwrap(), scratch_dir.path());
         std::fs::write(scratch_dir.path().join("extra.txt"), b"extra").ok();
-        git(scratch_dir.path(), &["add", "extra.txt"]);
+        std::fs::create_dir_all(scratch_dir.path().join(".chump")).ok();
+        std::fs::write(scratch_dir.path().join(".chump/state.sql"), b"gaps: []\n").ok();
+        git(
+            scratch_dir.path(),
+            &["add", "extra.txt", ".chump/state.sql"],
+        );
         git(
             scratch_dir.path(),
             &["commit", "--quiet", "-m", "chore: origin-ahead"],
@@ -5559,6 +5770,261 @@ mod auto_fetch_tests {
             result.is_ok(),
             "Scenario A: expected Ok after auto-pull on clean+behind; got: {result:?}"
         );
+    }
+
+    /// INFRA-3687 regression lock, part 1: the exact stale-checkout drift
+    /// from the real repro (a checkout 177 commits behind reserved
+    /// INFRA-3680, canonically a merged "parse_verdict" gap). Local
+    /// state.db only ever sees a low max (INFRA-1xx-ish); origin/main's
+    /// canonical `.chump/state.sql` already records a much higher gap
+    /// (INFRA-3866). `reserve()` must fold in the canonical max and must
+    /// NOT hand back an ID at or below it.
+    #[test]
+    fn canonical_max_id_reads_origin_state_sql_and_reserve_beats_stale_local() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path();
+        init_repo(repo);
+
+        // Origin starts in sync with local (no state.sql yet).
+        let origin_dir = tempdir().unwrap();
+        bare_clone(repo, origin_dir.path());
+        std::process::Command::new("git")
+            .args([
+                "remote",
+                "add",
+                "origin",
+                origin_dir.path().to_str().unwrap(),
+            ])
+            .current_dir(repo)
+            .status()
+            .ok();
+        git(repo, &["push", "--quiet", "origin", "main"]);
+
+        // Advance origin (via scratch clone) with a canonical state.sql
+        // recording INFRA-3866 as an already-merged gap — this checkout's
+        // local state.db has never seen it. Also plant a junk
+        // `INFRA-9999999`-shaped substring in the notes field of the SAME
+        // row to prove the id-column-only extraction isn't fooled by it.
+        let scratch_dir = tempdir().unwrap();
+        non_bare_clone(origin_dir.path().to_str().unwrap(), scratch_dir.path());
+        std::fs::create_dir_all(scratch_dir.path().join(".chump")).ok();
+        std::fs::write(
+            scratch_dir.path().join(".chump/state.sql"),
+            b"gaps:\n\
+              - id: INFRA-3866\n\
+              \x20 domain: INFRA\n\
+              \x20 title: parse_verdict\n\
+              \x20 status: done\n\
+              \x20 priority: P2\n\
+              \x20 effort: s\n\
+              \x20 notes: \"see also junk id INFRA-9999999 mentioned in an old incident writeup\"\n",
+        )
+        .ok();
+        git(scratch_dir.path(), &["add", ".chump/state.sql"]);
+        git(
+            scratch_dir.path(),
+            &[
+                "commit",
+                "--quiet",
+                "-m",
+                "chore: canonical state.sql with INFRA-3866",
+            ],
+        );
+        git(scratch_dir.path(), &["push", "--quiet", "origin", "main"]);
+
+        // Local checkout never pulled this — reproduces the "N commits
+        // behind" drift. Seed local state.db with a low max (INFRA-1) so
+        // existing_max alone would naively pick INFRA-2.
+        let store = open_store(repo);
+        store
+            .reserve("INFRA", "local-only seed, stale checkout", "P2", "xs")
+            .unwrap();
+
+        let canonical = store.canonical_max_id("INFRA");
+        assert_eq!(
+            canonical,
+            Some(3866),
+            "canonical_max_id must read origin/main's state.sql id column \
+             only (3866), ignoring the junk INFRA-9999999 substring in \
+             notes; got {canonical:?}"
+        );
+
+        let id = store
+            .reserve("INFRA", "post-drift reserve must beat canonical", "P1", "s")
+            .unwrap();
+        let picked_num: i64 = id
+            .strip_prefix("INFRA-")
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(-1);
+        assert!(
+            picked_num > 3866,
+            "reserve must allocate above canonical max 3866 despite a \
+             stale local checkout; got {id}"
+        );
+    }
+
+    /// INFRA-3687 regression lock, part 2: fail-closed when this checkout
+    /// is genuinely behind origin/main AND canonical truth is unreadable
+    /// (origin/main advanced but never touched `.chump/state.sql`, so `git
+    /// show origin/main:.chump/state.sql` fails). `reserve()` must refuse
+    /// rather than silently trust a possibly-stale local counter.
+    /// `CHUMP_RESERVE_ALLOW_STALE=1` must bypass the refusal.
+    #[test]
+    fn reserve_fails_closed_when_behind_and_canonical_unreadable_bypass_works() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path();
+        init_repo(repo);
+
+        let origin_dir = tempdir().unwrap();
+        bare_clone(repo, origin_dir.path());
+        std::process::Command::new("git")
+            .args([
+                "remote",
+                "add",
+                "origin",
+                origin_dir.path().to_str().unwrap(),
+            ])
+            .current_dir(repo)
+            .status()
+            .ok();
+        git(repo, &["push", "--quiet", "origin", "main"]);
+
+        // Advance origin with a commit that does NOT touch .chump/state.sql
+        // — canonical_max_id's `git show origin/main:.chump/state.sql` will
+        // fail (the file has never existed at that ref), simulating
+        // "canonical truth unreadable" while genuinely behind.
+        let scratch_dir = tempdir().unwrap();
+        non_bare_clone(origin_dir.path().to_str().unwrap(), scratch_dir.path());
+        std::fs::write(scratch_dir.path().join("extra.txt"), b"extra").ok();
+        git(scratch_dir.path(), &["add", "extra.txt"]);
+        git(
+            scratch_dir.path(),
+            &[
+                "commit",
+                "--quiet",
+                "-m",
+                "chore: origin-ahead, no state.sql ever committed",
+            ],
+        );
+        git(scratch_dir.path(), &["push", "--quiet", "origin", "main"]);
+
+        let store = open_store(repo);
+        unsafe {
+            std::env::remove_var("CHUMP_RESERVE_ALLOW_STALE");
+        }
+        let result = store.reserve(
+            "INFRA",
+            "should refuse — unverifiable staleness",
+            "P3",
+            "xs",
+        );
+        assert!(
+            result.is_err(),
+            "expected Err when behind + canonical-unreadable; got {result:?}"
+        );
+        let msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            msg.contains("behind origin/main") && msg.contains("CHUMP_RESERVE_ALLOW_STALE"),
+            "expected staleness refusal message naming the escape hatch; got: {msg}"
+        );
+
+        // CHUMP_RESERVE_ALLOW_STALE=1 must bypass the fail-closed gate.
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_ALLOW_STALE", "1");
+        }
+        let result2 = store.reserve("INFRA", "bypass allowed via env escape hatch", "P3", "xs");
+        unsafe {
+            std::env::remove_var("CHUMP_RESERVE_ALLOW_STALE");
+        }
+        assert!(
+            result2.is_ok(),
+            "CHUMP_RESERVE_ALLOW_STALE=1 must bypass the fail-closed gate; got {result2:?}"
+        );
+    }
+}
+
+/// INFRA-3687: fast, no-git unit tests for the id-column-only extraction
+/// that [`GapStore::canonical_max_id`] delegates to. Proves the invariant
+/// directly against the parser + filter, independent of the git plumbing
+/// (which the `auto_fetch_tests` module above exercises end-to-end).
+#[cfg(test)]
+mod canonical_max_id_parse_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_max_id_ignores_junk_ids_in_descriptions() {
+        // Real state.sql shape: one gap whose `id` is legitimately
+        // INFRA-3887, but whose `notes` field quotes a much larger
+        // `INFRA-9999999`-shaped substring as example junk data (and
+        // INFRA-9999 too, just to be doubly sure) — plus an older, lower
+        // real gap. A naive text/regex scan over the whole dump would
+        // return 9999999; the id-column-only extraction must return 3887.
+        let yaml = r#"
+gaps:
+- id: INFRA-3887
+  domain: INFRA
+  title: "real gap"
+  status: open
+  priority: P2
+  effort: s
+  notes: "mentions INFRA-9999999 as junk test data, and INFRA-9999 too, but is NOT one"
+- id: INFRA-042
+  domain: INFRA
+  title: "older real gap"
+  status: done
+  priority: P3
+  effort: xs
+"#;
+        let file = GapStore::parse_state_sql_yaml(yaml).expect("state.sql YAML must parse");
+        let max = GapStore::max_id_num_in_gaps(&file.gaps, "INFRA");
+        assert_eq!(
+            max,
+            Some(3887),
+            "junk INFRA-9999999 / INFRA-9999 substrings in `notes` must not \
+             poison the max — only the `id` column is authoritative; got {max:?}"
+        );
+    }
+
+    #[test]
+    fn max_id_num_in_gaps_drops_absurdly_large_ids_as_a_sanity_ceiling() {
+        // Defense-in-depth: even if a malformed/synthetic row DID slip an
+        // absurd number into the `id` column itself, it must not poison
+        // allocation. This is belt-and-suspenders on top of the
+        // id-column-only extraction above, not the primary defense.
+        let yaml = r#"
+gaps:
+- id: INFRA-3887
+  domain: INFRA
+  title: "real gap"
+  status: open
+  priority: P2
+  effort: s
+- id: INFRA-99999999
+  domain: INFRA
+  title: "synthetic/malformed fixture row — must be ignored"
+  status: open
+  priority: P2
+  effort: s
+"#;
+        let file = GapStore::parse_state_sql_yaml(yaml).expect("state.sql YAML must parse");
+        let max = GapStore::max_id_num_in_gaps(&file.gaps, "INFRA");
+        assert_eq!(
+            max,
+            Some(3887),
+            "an absurdly large id-column value must be dropped by the sanity \
+             ceiling, not treated as the real max; got {max:?}"
+        );
+    }
+
+    #[test]
+    fn canonical_max_id_returns_none_without_a_git_dir() {
+        // Every existing test_store()-based fixture (and any real
+        // synthetic GapStore built in a bare TempDir) has no `.git` at
+        // all. canonical_max_id must short-circuit to None rather than
+        // attempting to shell out to git in a directory that isn't a repo.
+        let dir = tempfile::tempdir().unwrap();
+        let store = GapStore::open(dir.path()).unwrap();
+        assert_eq!(store.canonical_max_id("INFRA"), None);
     }
 }
 
