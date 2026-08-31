@@ -12125,3 +12125,21 @@ events:
     trigger: git reset --hard origin/main exited non-zero after a successful fetch; the rebuild sequence is aborted
     consumers: [ambient, fleet-brief]
     fields_required: [ts, kind, rc, from, to]
+  - kind: barnacle_threshold_crossed
+    effect_metric: self
+    emitter: scripts/coord/barnacle-buster.sh (RESILIENT-359)
+    trigger: one of the registered accumulating surfaces in
+      docs/process/BARNACLE_SURFACES.yaml (stale worktrees, untracked gap
+      yaml, commits-behind-main, disk fill, expired leases) crosses its
+      configured threshold on a barnacle-buster run.
+    consumers: [ambient, fleet-brief (future), Roll Call]
+    fields_required: [ts, kind, surface, value, threshold, domain]
+
+  - kind: barnacle_buster_tick
+    effect_metric: self
+    emitter: scripts/coord/barnacle-buster.sh (RESILIENT-359)
+    trigger: every barnacle-buster run, healthy or not — the busters are
+      themselves Roll-Called (RESILIENT-358 twin): this is the liveness
+      signal proving the drain is actually running, not just registered.
+    consumers: [ambient, Roll Call]
+    fields_required: [ts, kind, surfaces_checked, surfaces_breached]
