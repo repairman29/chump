@@ -7090,10 +7090,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Update ship-count retrieval subshell execution in scripts/ci/test-chump-improve.sh to capture non-zero exit codes from git fetch or subshell operations, setting a SHIP_COUNT_ERROR flag instead of silently defaulting the ship count to 0 upon failure.
+    
+    Target file(s):
+    - scripts/ci/test-chump-improve.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When the git fetch (or any subshell) used to compute ship-count fails, the script captures the non‑zero exit status.
-    - The failure does not silently default the ship-count to 0.
-    - An internal error flag is set that can be inspected by downstream logic.
+    - In scripts/ci/test-chump-improve.sh, failing git fetch or subshell commands during ship-count retrieval store the non-zero exit status into SHIP_COUNT_ERR_CODE.
+    - When ship-count evaluation fails, scripts/ci/test-chump-improve.sh sets SHIP_COUNT_ERROR=1 instead of silently defaulting SHIP_COUNT to 0.
+    - Executing bash scripts/ci/test-chump-improve.sh allows downstream scripts to inspect SHIP_COUNT_ERROR and abort or handle the error flag appropriately.
   notes: |
     [chump harvest check 'fleet-brief']
     === primitives_index match for 'fleet-brief' ===
@@ -7117,10 +7124,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    In crates/chump-orchestrator/src/monitor.rs, wrap the ship-count retrieval logic in a retry loop that makes up to 3 total attempts (initial attempt plus 2 retries) with a 2-second sleep backoff between transient failures. Return the ship-count upon any successful attempt, and if all attempts fail, retain the error flag set from slice 0 and return the failure.
+    
+    Target file(s):
+    - crates/chump-orchestrator/src/monitor.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The ship-count retrieval is attempted up to 2 additional times with a short back‑off (e.g., 2 s).
-    - If any retry succeeds, the correct ship-count is used.
-    - If all attempts fail, the error flag from slice 0 remains set.
+    - crates/chump-orchestrator/src/monitor.rs retries ship-count retrieval up to 2 additional times with a 2-second delay upon transient failures.
+    - If any retry attempt succeeds, the function returns the retrieved ship-count without raising an error.
+    - If all 3 attempts fail, the error flag from slice 0 remains set in the monitor state and the final failure is returned.
+    - "`cargo test` passes for the chump-orchestrator package."
   depends_on: [CREDIBLE-380]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -7173,10 +7188,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    In scripts/coord/fleet-doctor-strict.sh, update the health verdict evaluation logic to account for ship-count and active worker processes. When active worker processes are running but ship-count is zero or unavailable, set the health verdict output to "measurement failed / investigate". Only show "✓ fleet looks healthy" when ship-count is available and greater than 0, or when no active worker processes are running.
+    
+    Target file(s):
+    - scripts/coord/fleet-doctor-strict.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "If ship-count is unavailable or zero while there are active worker processes, the health verdict is \"measurement failed / investigate\"."
-    - "The \"✓ fleet looks healthy\" badge is shown only when ship-count is available and > 0 or when no workers are running."
-    - Existing healthy cases (non‑zero ship‑count) retain the original verdict.
+    - "Running `scripts/coord/fleet-doctor-strict.sh` when active worker processes exist and ship-count is zero or missing outputs the verdict \"measurement failed / investigate\"."
+    - "Running `scripts/coord/fleet-doctor-strict.sh` when active worker processes exist and ship-count is greater than zero outputs the \"✓ fleet looks healthy\" badge."
+    - "Running `scripts/coord/fleet-doctor-strict.sh` when zero worker processes are running outputs \"✓ fleet looks healthy\" even if ship-count is zero or missing."
   depends_on: [CREDIBLE-382]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -7201,10 +7223,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update ship-count retrieval failure handling in `src/web_server.rs` to output structured error log statements detailing the timestamp, attempted command, exit code, retry count, and final failure reason while ensuring credentials and sensitive tokens are sanitized before logging.
+    
+    Target file(s):
+    - src/web_server.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Each failure logs: timestamp, attempted command, exit code, retry count, and the final reason."
-    - Logs are written to the standard fleet‑brief log file and are searchable via grep.
-    - No sensitive information is leaked in the logs.
+    - "When ship-count retrieval fails in `src/web_server.rs`, `tracing::error!` or `log::error!` emits log entries containing timestamp, attempted command, exit code, retry count, and failure reason."
+    - Log lines are formatted cleanly to standard application log outputs so they are grep-searchable without exposing raw authentication tokens or sensitive environment variables.
+    - "`cargo test` passes cleanly with no compilation errors or broken tests."
   depends_on: [CREDIBLE-380]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -57243,7 +57272,7 @@ gaps:
 - id: INFRA-3403
   domain: INFRA
   title: "RESILIENT: restore remaining self-hosted runner lanes (AUDIT/COVERAGE/E2E_GOLDEN_PATH/TAURI) one at a time"
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -57265,7 +57294,11 @@ gaps:
     Do not batch — if one lane flakes, you need to know which.
   acceptance_criteria:
     - "1. Confirm RUNNER_E2E_PWA canary has run clean (no CANCELLED/checkout-fail) across >=3 PR cycles\n2. Restore RUNNER_AUDIT, wait one clean PR cycle\n3. Restore RUNNER_COVERAGE, wait one clean PR cycle\n4. Restore RUNNER_E2E_GOLDEN_PATH and RUNNER_TAURI_COWORK_E2E, wait one clean PR cycle\n5. Update docs/process/SELF_HOSTED_RUNNERS.md \"Repo variable state\" table to reflect final state\n6. Emit ambient kind=runner_health_restored on full restoration"
+  notes: |
+    [2026-08-31T08:12:33Z] CREDIBLE-178: closed via PR #4340 with UNCOVERED acceptance criteria "misses":[0]. Verify the work is complete before trusting status=done.
   opened_date: '2026-07-26'
+  closed_date: '2026-08-31'
+  closed_pr: 4340
 
 - id: INFRA-3404
   domain: INFRA
