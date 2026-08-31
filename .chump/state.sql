@@ -3579,6 +3579,8 @@ gaps:
     - "The change described by \"tmp\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 5 slices: CREDIBLE-395, CREDIBLE-396, CREDIBLE-397, CREDIBLE-398, CREDIBLE-399
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-226
@@ -7558,6 +7560,61 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-395
+  domain: CREDIBLE
+  title: "CREDIBLE: Identify relevant CREDIBLE code path(s) for the \"tmp\" change (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The source files and functions that need to be modified for the \"tmp\" change are listed in a short document or comment."
+    - Stakeholder (e.g., team lead) confirms the identified locations are correct.
+
+- id: CREDIBLE-396
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement the \"tmp\" change in the identified code path(s) (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The code compiles without errors after the modification.
+    - "The behavior described by \"tmp\" is present when the relevant functionality is exercised."
+  depends_on: [CREDIBLE-395]
+
+- id: CREDIBLE-397
+  domain: CREDIBLE
+  title: "CREDIBLE: Add a test that validates the new \"tmp\" behavior (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new cargo test (or script in scripts/ci/test-*.sh) is added that exercises the changed code path.
+    - The test fails on the pre‑change code base and passes after the implementation.
+  depends_on: [CREDIBLE-396]
+
+- id: CREDIBLE-398
+  domain: CREDIBLE
+  title: "CREDIBLE: Run cargo fmt and clippy to ensure no warnings (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running `cargo fmt` makes no changes to the modified files.
+    - Running `cargo clippy --all-targets -D warnings` completes with zero warnings.
+  depends_on: [CREDIBLE-396]
+
+- id: CREDIBLE-399
+  domain: CREDIBLE
+  title: "CREDIBLE: Verify full test suite and CI scripts pass without regression (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo test` runs all existing tests and the new test passes."
+    - All scripts in `scripts/ci/test-*.sh` execute successfully.
+    - No existing tests regress after the change.
+  depends_on: [CREDIBLE-397, CREDIBLE-398]
 
 - id: DOC-031
   domain: DOC
@@ -21629,7 +21686,7 @@ gaps:
 - id: INFRA-1324
   domain: INFRA
   title: "RESILIENT: network-sync-daemon.sh — flush pending-push queue and sync GitHub cache when connectivity returns (OFFLINE_FIRST.md Phase 3)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -21645,6 +21702,8 @@ gaps:
     - "`scripts/network-sync-daemon.sh`: function `flush_pending_push_and_sync_cache` logs exactly `EVENT: cache_sync_complete status=<success|failure> duration_ms=<N>` to stdout after the call."
     - Run `bash scripts/network-sync-daemon.sh --simulate-reconnect` and observe the event log line within 10 seconds; exit code 0 on success, non-zero on failure.
     - "`scripts/ci/test-liaison-webhook-cache.sh`: new test `test_flush_on_reconnect` asserts that after simulating reconnect, the daemon log contains `cache_sync_complete status=success`."
+  notes: |
+    [2026-08-31T13:46:42Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=timeout, rc=124, cycle_log=932530B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -67766,10 +67825,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Extend `scripts/setup/install-helsinki-atc.sh` (fn emit) to generate two new systemd unit files (`/etc/systemd/system/chump-gap-fairy.service` and `/etc/systemd/system/chump-gap-fairy.timer`) with the appropriate ExecStart and OnCalendar settings, copy them into the target directory, and invoke `systemctl enable --now chump-gap-fairy.timer` (which also enables the service).  Update `scripts/ci/test-install-helsinki-atc.sh` (fn fail) to assert the presence, correct contents, and enabled state of those unit files after the install script runs.
+    
+    Target file(s):
+    - scripts/setup/install-helsinki-atc.sh
+    - scripts/ci/test-install-helsinki-atc.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - chump-gap-fairy.timer triggers chump-gap-fairy.service every 15 minutes
-    - Service starts the furnace main entry point and exits with status 0 on success
-    - Timer and service files are installed to /etc/systemd/system and enabled on deploy
+    - install-helsinki-atc.sh creates `/etc/systemd/system/chump-gap-fairy.service` containing an `ExecStart=` line that points to the furnace main entry point binary (`/usr/local/bin/chump-gap-fairy`) and exits with status 0 on success.
+    - install-helsinki-atc.sh creates `/etc/systemd/system/chump-gap-fairy.timer` containing `OnCalendar=*/15 * * * *` and a `Unit=` reference to `chump-gap-fairy.service`.
+    - install-helsinki-atc.sh runs `systemctl enable --now chump-gap-fairy.timer` and `systemctl enable chump-gap-fairy.service` after writing the unit files.
+    - test-install-helsinki-atc.sh verifies that both unit files exist at the expected paths, that `systemctl list-unit-files` reports them as enabled, and that `systemctl is-active chump-gap-fairy.timer` returns “active”.
   depends_on: [INFRA-3877]
 
 - id: INFRA-3882
@@ -67899,11 +67967,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the `_organ_roll_call_is_applicable` function in `scripts/coord/fleet-doctor-strict.sh` to parse an organ's `requires=` specifications (bin:, env:, dep:), verify that each required binary exists in `$PATH`, each required environment variable is defined, and each dependent organ is already installed; when all checks pass, have `install_organs` invoke `svc_install <organ>` followed by `svc_up <organ>`, otherwise log a clear “requirements not met” message and skip the organ without aborting the overall install process.
+    
+    Target file(s):
+    - scripts/coord/fleet-doctor-strict.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "For every organ selected by the previous slice, its 'requires=' specifications (bin:/env:/dep:) are parsed"
-    - install_organs checks that all required binaries, environment variables, and dependencies are present on the host
-    - When requirements are satisfied, svc_install is called followed by svc_up for that organ
-    - Organs whose requirements are not met are logged and skipped without aborting the install process
+    - "? In `scripts/coord/fleet-doctor-strict.sh`, `_organ_roll_call_is_applicable` returns a non‑zero status and logs “Organ <name> skipped : missing binary <bin>” when a binary listed in `requires=bin:` is not found on the host."
+    - In `scripts/coord/fleet-doctor-strict.sh`, when all `requires=` entries are satisfied, `install_organs` executes `svc_install <organ>` and then `svc_up <organ>` (verified by a test that captures the invoked commands).
+    - "? In `scripts/coord/fleet-doctor-strict.sh`, if a required environment variable listed in `requires=env:` is unset, the function logs “Organ <name> skipped : missing environment variable <VAR>” and does not call `svc_install` for that organ."
+    - "? In `scripts/coord/fleet-doctor-strict.sh`, when a required dependency listed in `requires=dep:` is not installed, the script logs “Organ <name> skipped : unmet dependency <dep>” and continues processing the remaining organs."
   depends_on: [INFRA-3888]
   notes: |
     [chump harvest check 'MISSION']
@@ -68097,6 +68172,20 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-3894
+  domain: INFRA
+  title: "SOVEREIGN: OS integrity must not depend on operator-machine env — route gap writes through the network store so no client holds a writable canonical replica"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Root principle (Jeff 2026-08-31): the OS and our success must NOT depend on any operator/dev machine (the Mac). Two split-brain-class failures this session — INFRA-3687 (stale-checkout gap-ID collision) and INFRA-3688 (macOS bash-3.2 silently-bypassed hooks) — both traced to operating from the Mac, a stale old-tooling NON-fleet box, leaking into canonical state. 3687 made reserve fail-closed for any stale client (guardrail). This is the DURABLE finish: route ALL gap mutations through the network gap-store (PostgREST already running on CJ at CHUMP_GAP_STORE_URL) so no client holds a writable local state.db replica. Verified 2026-08-31: CHUMP_GAP_STORE_URL has ZERO references in the Rust CLI — server exists, CLI writes local-only. Trade-off: today local-first allows offline reserve; mitigate with a local write-through queue that syncs on reconnect so offline still works but canonical stays authoritative. Companion principle: OS integrity is enforced server-side (CI + network store on owned iron), never assumed from a client machine env.
+  acceptance_criteria:
+    - chump gap mutations route through CHUMP_GAP_STORE_URL when set (Rust CLI reads it)
+    - a stale/offline client cannot corrupt canonical gap state — write-through-queue-on-reconnect or fail-closed
+    - the operator Mac is never a canonical writer; canonical authority lives on owned iron
+  outcome_id: SOVEREIGN
 
 - id: INFRA-394
   domain: INFRA
@@ -70276,10 +70365,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new `handle_collision_prediction` handler (or extend the existing event loop) in `crates/chump-curator-supervisor/src/main.rs` that subscribes to the CollisionPrediction event, removes any flagged path segments from the routing engine’s candidate routes, and then emits a `route_adjusted` event via the event bus while leaving the skill‑aware routing priority untouched; also document the new `route_adjusted` event schema in `docs/design/COLLISION_PREDICTION_SCHEMA.md`.
+    
+    Target file(s):
+    - crates/chump-curator-supervisor/src/main.rs
+    - docs/design/COLLISION_PREDICTION_SCHEMA.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Routing engine avoids paths flagged by collision predictor
-    - Emits 'route_adjusted' event when collision avoidance triggered
-    - Preserves skill-aware routing priority
+    - "crates/chump-curator-supervisor/src/main.rs: the `handle_collision_prediction` function calls `routing_engine.avoid_path` with the segment IDs supplied by the CollisionPrediction event."
+    - "crates/chump-curator-supervisor/src/main.rs: after avoidance, the function publishes a `route_adjusted` event on the event bus containing both the original and adjusted route identifiers."
+    - "docs/design/COLLISION_PREDICTION_SCHEMA.md: a new `route_adjusted` event entry is added with fields `original_route_id`, `adjusted_route_id`, and `timestamp`."
+    - Running `cargo test --test collision_routing` reports a passing test that verifies a route containing a flagged segment is excluded from the final computed route.
   depends_on: [META-076, META-078]
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
@@ -71416,10 +71514,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend `discover_test_scripts` in `crates/chump-preflight/src/preflight.rs` to accept a list of PR path filters, filter out test scripts whose source files do not match any filter, and emit a debug log for each skipped script; update `run_agg` in `scripts/ci/test-aggregator-verified.sh` to capture and display those logs, printing a clear “SKIP lane … due to path filter” message for each lane that is omitted.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    - scripts/ci/test-aggregator-verified.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The 'Verified' aggregator service correctly identifies which lane checks are relevant based on PR path filters.
-    - The aggregator can determine when a lane check *should* be skipped due to path filters.
-    - The aggregator logs its path-filtering decisions for auditing.
+    - In `crates/chump-preflight/src/preflight.rs`, `discover_test_scripts` returns only scripts whose file paths match at least one entry in the provided path‑filter list.
+    - "In `crates/chump-preflight/src/preflight.rs`, a log entry of the form `lane_skip: <lane_name> excluded by path filter` is emitted for every script that is filtered out."
+    - In `scripts/ci/test-aggregator-verified.sh`, the `run_agg` function prints a line `SKIP lane <lane_name> due to path filter` for each lane omitted by the new logic.
+    - "An automated test for `discover_test_scripts` (e.g., `tests/discover_test_scripts_path_filter.rs`) asserts that given a mock PR with paths `[\"src/foo.rs\"]` and filters `[\"src/foo.rs\"]`, the function includes the corresponding lane, and that a script outside the filter is excluded and logged."
   depends_on: [META-135]
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
@@ -72413,9 +72520,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a private method `_enqueueOperatorAttention(outcome)` to the `ChumpViewCockpit` class and modify the existing daemon‑result handler (e.g. `handleDaemonOutcome`) so that it invokes this method only for outcomes `UNKNOWN`, `DIRTY`, and `real-fail`, while explicitly skipping `MERGEABLE` and `auto-rebased`, thereby surfacing the selected outcomes to the PWA cockpit operator‑attention queue.
+    
+    Target file(s):
+    - web/v2/cockpit.js
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Daemon outcomes for `UNKNOWN`, `DIRTY`, and `real-fail` cases are surfaced to the PWA cockpit operator-attention queue.
-    - Outcomes for `MERGEABLE` and `auto-rebased` cases are explicitly *not* escalated to the operator queue.
+    - "In `web/v2/cockpit.js`, the `handleDaemonOutcome` function calls `_enqueueOperatorAttention` for the literals `\"UNKNOWN\"`, `\"DIRTY\"` and `\"real-fail\"` and does **not** call it for `\"MERGEABLE\"` or `\"auto-rebased\"`."
+    - "The newly added `_enqueueOperatorAttention` method appends an object `{type: outcome}` to the `this.operatorAttentionQueue` array of `ChumpViewCockpit`."
+    - A unit test in `test/web/v2/cockpit.test.js` asserts that after `handleDaemonOutcome('UNKNOWN')` the `operatorAttentionQueue.length` increments by one, and after `handleDaemonOutcome('MERGEABLE')` the length remains unchanged.
+    - The cockpit UI renders a list item with class `.operator-attention-item` for each entry in `operatorAttentionQueue`, displaying the outcome string (e.g., “UNKNOWN”) in the rendered DOM.
   notes: |
     [2026-08-29T16:56:03Z] rot-reaper: PR #4298 auto-closed (required-check-red, 24h) 2026-08-29; re-attempt on fresh main.
     [2026-08-29T16:58:37Z] rot-reaper: PR #4298 auto-closed (required-check-red, 24h) 2026-08-29; re-attempt on fresh main.
@@ -88021,6 +88137,20 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'monitoring' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'monitoring' ===
+
+- id: RESILIENT-523
+  domain: RESILIENT
+  title: auto-deploy times out (30min systemd limit < cold chump build) — every merge silently fails to reach the running binary; the fleet runs stale code
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    PROVEN on CJ 2026-08-31: chump-auto-deploy.service has TimeoutStartUSec=30min, but a cold cargo build of the chump binary (190k+ LOC) exceeds 30min, so the service TIMES OUT and the install never lands. Evidence: last_deployed=48ea37fd but origin/main was at 2a5ad0a8d (INFRA-3687 gap-store fix) with the RUNNING binary built 12:38 (pre-merge) and canonical_max_id ABSENT from it — the fix merged but never ran. This is the fleet-wide 'merged != running disease' root: EVERY merge silently fails to deploy, so the fleet runs stale code and shipped fixes never take effect. Manual out-of-systemd build was required to land INFRA-3687. Fix options: (a) raise TimeoutStartSec well above worst-case cold-build (or set to infinity + rely on the reset-loop), and/or (b) BETTER: make refresh-runner-binary.sh use the provenance-gated PREBUILT binary download (EFFECTIVE-450 build-fleet-binaries artifact) instead of cold-compiling — a download is seconds and never times out. Also emit a LOUD signal when a deploy times out/fails (today it is silent). AC: after a merge to origin/main, the running binary on every fleet node carries the new code within N minutes, VERIFIED by a symbol/sha check, and a failed deploy pages loudly.
+  acceptance_criteria:
+    - a merge to origin/main results in the running chump binary on CJ carrying the new code within N min (sha/symbol-verified)
+    - a deploy that times out or fails emits a loud signal (not silent) so merged-not-running is caught
+    - prefer prebuilt-binary download (EFFECTIVE-450) over cold-compile so deploy cannot time out
+  outcome_id: MISSION-012
 
 - id: SMOKE-001
   domain: SMOKE
