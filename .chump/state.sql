@@ -1938,6 +1938,8 @@ gaps:
     2026-06-08: fleet down because the Anthropic API account hit 'Credit balance is too low' (key VALID, authenticates fine, len 108; CHUMP_AUTH_MODE=api-key forces the empty account). But run-fleet.sh INFRA-621 probe reports 'ERROR: auth probe failed / ANTHROPIC_API_KEY authentication failed' — a BILLING failure mislabeled as an AUTH failure. This is the #1 false-positive class (auth-dead, mis-called 4x): the mislabel sent diagnosis through auth/flag/lease theories before a direct probe revealed the real cause (credit). Fix: classify the failure.
   acceptance_criteria:
     - "1. INFRA-621 probe parses the error and reports the ACTUAL class (auth-invalid vs credit-exhausted vs rate-limit vs network), not a blanket 'authentication failed'. 2. On credit-exhaustion: actionable message (top up / switch CHUMP_AUTH_MODE=oauth). 3. Emits a distinct ambient kind (e.g. fleet_credit_exhausted) so operator-recall routes it correctly."
+  notes: |
+    Decomposed into 2 slices: CREDIBLE-390, CREDIBLE-391
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -7360,6 +7362,56 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-390
+  domain: CREDIBLE
+  title: "CREDIBLE: Parse and classify INFRA-621 probe API response errors into distinct categories (CREDIBLE-130 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "INFRA-621 probe parses error responses from Anthropic API calls into discrete classes: auth-invalid, credit-exhausted, rate-limit, and network."
+    - Responses containing 'credit balance is too low' or equivalent billing exhaustion signals are categorized as credit-exhausted rather than auth-invalid.
+    - Unit/integration tests verify each error category maps correctly from sample API responses.
+  notes: |
+    [chump harvest check 'run-fleet']
+    === primitives_index match for 'run-fleet' ===
+    
+    === cluster keyword match for 'run-fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'run-fleet' ===
+    
+    === repo-description match for 'run-fleet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'run-fleet' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'run-fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-391
+  domain: CREDIBLE
+  title: "CREDIBLE: Emit distinct fleet_credit_exhausted ambient event and actionable operator remediation message (CREDIBLE-130 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When credit-exhausted class is detected, run-fleet probe outputs actionable remediation messaging (top up account or switch CHUMP_AUTH_MODE=oauth).
+    - Probe emits the distinct ambient event kind 'fleet_credit_exhausted' to ensure operator recall routes the incident correctly.
+  depends_on: [CREDIBLE-390]
+  notes: |
+    [chump harvest check 'run-fleet']
+    === primitives_index match for 'run-fleet' ===
+    
+    === cluster keyword match for 'run-fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'run-fleet' ===
+    
+    === repo-description match for 'run-fleet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'run-fleet' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'run-fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
 
 - id: DOC-031
   domain: DOC
