@@ -2362,3 +2362,10 @@ CHUMP_BOARD_VITALS_STATE_DIR
 CHUMP_AMBIENT_PR_CACHE_TTL_S
 # detected in: (standard input)
 CHUMP_TEST_GH_MARKER
+CHUMP_GZ_ARCHIVE_AGE_DAYS
+# detected in: (standard input)
+CHUMP_GZ_ARCHIVE_DIRS
+# detected in: (standard input)
+CHUMP_GZ_LOG_AGE_DAYS
+# detected in: (standard input)
+CHUMP_GZ_LOG_DIRS
