@@ -59322,13 +59322,15 @@ gaps:
 - id: INFRA-3468
   domain: INFRA
   title: "EFFECTIVE: CONFIG organ — add JS/TS + Python env adapters (comprehend UAT pilot-1 B1/B2)"
-  status: open
+  status: already_satisfied
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"CONFIG organ — add JS/TS + Python env adapters (comprehend UAT pilot-1 B1/B2)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-08-31T12:12:35Z] Verified 2026-08-31: CONFIG organ (almanac crates/almanac-organs/src/config.rs) already has JsEnvAdapter + PyEnvAdapter, shipped in almanac PR #1 (repairman29/almanac, 'ChumpOS comprehension organs — wiring/gates/config/provenance/traces + unified comprehend'). Both are wired into build_flags(), covered by 11 passing unit tests (js_env_*/py_env_* in config::tests, verified green on almanac main today), and already cited as live/shipped by downstream gaps PRODUCT-189 (py-env adapter, 2026-08-05) and PRODUCT-191 (js-env adapter, 2026-08-05). Closing as already-shipped to avoid duplicating implementation in the external repo. Sibling gap INFRA-3469 (WIRING organ B3) remains genuinely open.
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
@@ -66183,11 +66185,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Replace the eager construction of the Anthropic SDK client in `chump/cli.py` with a lazy‑initialization wrapper that defers client creation until the first runtime use after argument parsing, and enforce a creation timeout equal to `CHUMP_STARTUP_TIMEOUT_MS`; update the implementation notes in `docs/arsenal/cross-pollination/CP-009-mock-services.md` to reflect this new behavior.
+    
+    Target file(s):
+    - chump/cli.py
+    - docs/arsenal/cross-pollination/CP-009-mock-services.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Anthropic SDK client is not initialized during startup; it is lazily created on first use after arg parsing
-    - Lazy init is wrapped in a timeout matching CHUMP_STARTUP_TIMEOUT_MS
-    - chump --version and chump --help do not trigger Anthropic SDK init
-    - "Test: chump preflight (which requires Anthropic) still works correctly with lazy init"
+    - In `chump/cli.py`, the function that provides the Anthropic client (e.g., `get_anthropic_client`) returns a proxy that only instantiates the real SDK client on first call, and no SDK client is created during module import or initial CLI startup.
+    - Executing `chump --version` terminates without any Anthropic SDK initialization (no client creation log entry, no network request to Anthropic endpoints).
+    - Executing `chump --help` terminates without any Anthropic SDK initialization (no client creation log entry, no network request to Anthropic endpoints).
+    - Running `chump preflight` triggers the lazy client creation, which completes within `CHUMP_STARTUP_TIMEOUT_MS` and the command exits successfully, confirming the timeout wrapper works as intended.
   depends_on: [INFRA-3786]
   notes: |
     [chump harvest check 'RESILIENT']
