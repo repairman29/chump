@@ -9490,9 +9490,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Insert a concise comment block directly above the `_run_strict_gate_harness` function in `scripts/ci/test-pr-shepherd-daemon.sh` that explains the purpose of the RUN half of COTG, and extend the script’s `--help` output to include the same description so that both the source and the command‑line help document the RUN track.
+    
+    Target file(s):
+    - scripts/ci/test-pr-shepherd-daemon.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Documentation (README or docs folder) is updated to describe the RUN half of COTG
-    - Documentation builds without errors
+    - "The file `scripts/ci/test-pr-shepherd-daemon.sh` contains a comment block beginning with `# RUN track:` immediately preceding the definition of `_run_strict_gate_harness`."
+    - Executing `scripts/ci/test-pr-shepherd-daemon.sh --help` prints a line that includes the phrase “RUN half of COTG”.
+    - Grep-ing the repository for the exact phrase “RUN half of COTG” returns the newly added comment in `scripts/ci/test-pr-shepherd-daemon.sh` and the help‑output line.
+    - Running the documentation build command (e.g., `make docs` or the repo’s equivalent) completes without errors, confirming that the added comment does not break any doc generation steps.
   depends_on: [DOCS-005]
   notes: |
     [chump harvest check 'roadmap']
@@ -59261,14 +59270,18 @@ gaps:
 - id: INFRA-3464
   domain: INFRA
   title: "EFFECTIVE: migrate gap-decompose-verify to the shared cascade — drop the bespoke LocalOpenAIProvider@api.anthropic.com (OAuth-incompatible) for provider_cascade::build_provider()"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"migrate gap-decompose-verify to the shared cascade — drop the bespoke LocalOpenAIProvider@api.anthropic.com (OAuth-incompatible) for provider_cascade::build_provider()\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-08-31T11:36:41Z] CREDIBLE-178: closed via PR #4343 with UNCOVERED acceptance criteria "misses":[1]. Verify the work is complete before trusting status=done.
   opened_date: '2026-08-19'
+  closed_date: '2026-08-31'
+  closed_pr: 4343
 
 - id: INFRA-3465
   domain: INFRA
@@ -65574,11 +65587,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify the `resolve_dirty_pr` function in `scripts/coord/queue-driver.sh` to emit a structured telemetry event after a successful auto‑resolution. The edit adds a call to the existing metrics‑sink logger that writes a JSON record with `kind":"conflict_auto_resolved"` and a payload containing `pr`, `files`, `scenario_match`, and `confidence`.
+    
+    Target file(s):
+    - scripts/coord/queue-driver.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Telemetry event kind=conflict_auto_resolved is emitted on successful auto-resolution
-    - Event payload includes {pr, files, scenario_match, confidence}
-    - Event is written to structured log / metrics sink
-    - Unit test verifies telemetry emission with correct fields
+    - "In `scripts/coord/queue-driver.sh`, `resolve_dirty_pr` writes a JSON line with `\"kind\":\"conflict_auto_resolved\"` to the structured log when it completes a successful auto‑resolution."
+    - The emitted JSON includes the keys `pr`, `files`, `scenario_match`, and `confidence` populated from the function’s runtime variables.
+    - A unit test that runs `resolve_dirty_pr` with a mocked successful auto‑resolution checks the structured log and asserts exactly one `conflict_auto_resolved` entry with the expected payload fields.
+    - The telemetry line is sent through the existing metrics sink (e.g., via `log_to_metrics`) and can be verified in the sink output file used by the test harness.
   depends_on: [INFRA-3767]
   notes: |
     [chump harvest check 'RESILIENT']
