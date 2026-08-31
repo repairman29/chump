@@ -15790,6 +15790,17 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   outcome_id: CHUMPOS
 
+- id: EFFECTIVE-515
+  domain: EFFECTIVE
+  title: Add CI test harness for nba-dispatch-beat.sh (allow-list boundary, relapse-loop, pause-guard, idempotency, stale-input)
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"Add CI test harness for nba-dispatch-beat.sh (allow-list boundary, relapse-loop, pause-guard, idempotency, stale-input)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+
 - id: EVAL-085
   title: test eval 085
   status: done
@@ -81952,14 +81963,14 @@ gaps:
   domain: RESILIENT
   title: "No systemic-gate-red diagnose+fix organ: main sat red 2 days on css baseline drift and nothing fixed it; build a gate-medic that detects sustained main-red, diagnoses the broken required check, lands or dispatches the fix"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   acceptance_criteria:
     - "The change described by \"main sat red 2 days on css baseline drift and nothing fixed it; build a gate-medic that detects sustained main-red, diagnoses the broken required check, lands or dispatches the fix\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    DEDUPE-CHECK (ZERO-WASTE-045): state.db near-match RESILIENT-416 (score 1.00) considered at reserve time — proceeded (advisory-only, no override flag used).
+    Decomposed into 9 slices: RESILIENT-474, RESILIENT-475, RESILIENT-476, RESILIENT-477, RESILIENT-478, RESILIENT-479, RESILIENT-480, RESILIENT-481, RESILIENT-482
   outcome_id: CHUMPOS
 
 - id: RESILIENT-418
@@ -81995,6 +82006,16 @@ gaps:
     [2026-08-31T00:09:59Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (19 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-31T00:12:18Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (20 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-31T00:14:34Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (21 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:16:46Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (22 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:18:58Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (23 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:21:11Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (24 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:23:25Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (25 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:25:38Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (26 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:27:51Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 7h) 2026-08-31; RESPAWN CAP 3 reached (27 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:30:08Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 8h) 2026-08-31; RESPAWN CAP 3 reached (28 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:32:26Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 8h) 2026-08-31; RESPAWN CAP 3 reached (29 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:34:40Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 8h) 2026-08-31; RESPAWN CAP 3 reached (30 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-08-31T00:36:53Z] rot-reaper: PR #4307 auto-closed (CONFLICTING, 8h) 2026-08-31; RESPAWN CAP 3 reached (31 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: CHUMPOS
 
 - id: RESILIENT-419
@@ -83187,10 +83208,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new subsection titled “## Checksum Validation after Atomic Swap” to docs/process/RESEARCH_INTEGRITY.md that describes computing a SHA‑256 checksum for each relocated directory, comparing it to the source checksum, rolling back the symlink on mismatch, and logging the outcome; also insert a reference to this new validation step within the Data Poisoning section of docs/archive/2026-04/THREAT_MODEL.md.
+    
+    Target file(s):
+    - docs/process/RESEARCH_INTEGRITY.md
+    - docs/archive/2026-04/THREAT_MODEL.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - After the atomic swap, a checksum (e.g., SHA‑256) of each relocated directory is compared to the source checksum.
-    - If any checksum mismatches, the orchestrator rolls back the symlink to the original location and logs an error.
-    - Successful validation logs a confirmation message.
+    - "docs/process/RESEARCH_INTEGRITY.md contains a heading exactly matching “## Checksum Validation after Atomic Swap”."
+    - The new subsection in docs/process/RESEARCH_INTEGRITY.md includes a code block with the command `sha256sum -c checksums.txt` and a description of rollback behavior on checksum mismatch.
+    - docs/archive/2026-04/THREAT_MODEL.md’s Data Poisoning section (heading 2.2) now contains a sentence referencing the “Checksum Validation after Atomic Swap” procedure.
   depends_on: [RESILIENT-461]
   notes: |
     [chump harvest check 'orchestrator']
@@ -83213,10 +83242,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify the `ship` function in `crates/chump-gap-store/src/lib.rs` to invoke a new `cleanup_worktree` routine after validation succeeds, and extend the existing `cleanup` function in `scripts/ci/battle-qa.sh` to safely remove the original cargo/worktree/TMPDIR directories, log the reclaimed space, and ensure no leftover files remain on the source volume.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    - scripts/ci/battle-qa.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When validation passes, the orchestrator removes the original source directories safely.
-    - No leftover files remain on the original volume.
-    - Filesystem free‑space metrics reflect the reclaimed space.
+    - In `crates/chump-gap-store/src/lib.rs`, the `ship` function calls `cleanup_worktree()` only when the validation step returns `Ok` and does not call it on validation failure.
+    - In `scripts/ci/battle-qa.sh`, the `cleanup` function deletes the paths referenced by `$WORKTREE_DIR` and `$TMPDIR`, and prints a line matching `Reclaimed [0-9]+ MB` containing the reclaimed size.
+    - "After running the validation workflow (`cargo test -- --test-validate`), a check `test -d \"$WORKTREE_DIR\"` returns false, confirming the worktree directory has been removed."
+    - The CI log includes a `df -h` line showing that the `Available` column for the filesystem containing the worktree has increased by at least the size of the deleted directory (verified by parsing the `df` output).
   depends_on: [RESILIENT-462]
   notes: |
     [chump harvest check 'orchestrator']
@@ -83239,10 +83277,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add reading of an `AUTOPLACE` environment variable (defaulting to `1`) at the start of `scripts/coord/broadcast.sh`; modify the `route_by_urgency` function (around line 297) to check this flag and, when a high‑pressure condition is detected, invoke the existing `place()` routine and emit the log entry `AUTOPLACE enabled – automatic relocation engaged`.
+    
+    Target file(s):
+    - scripts/coord/broadcast.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Configuration file includes `AUTOPLACE=1` and is read by the orchestrator at startup.
-    - When `AUTOPLACE` is set, the orchestrator automatically triggers `place()` when `detect_pressure()` reports a high‑pressure condition.
-    - A log entry `AUTOPLACE enabled – automatic relocation engaged` appears during a pressure event.
+    - In `scripts/coord/broadcast.sh` the variable `AUTOPLACE` is set to `1` when the environment does not define it, and can be overridden by exporting a different value before script execution.
+    - The `route_by_urgency` function in `scripts/coord/broadcast.sh` reads the `AUTOPLACE` flag and, on a simulated high‑pressure condition, calls the `place()` command.
+    - When the high‑pressure branch is taken, `scripts/coord/broadcast.sh` outputs the exact log line `AUTOPLACE enabled – automatic relocation engaged` to stdout (or the configured logger).
+    - Executing `scripts/ci/test-default-flip-guard.sh` without setting `AUTOPLACE` results in the log line from the previous criterion appearing in the test output, confirming the flag is enabled by default.
   notes: |
     [chump harvest check 'orchestrator']
     === primitives_index match for 'orchestrator' ===
@@ -83264,11 +83310,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new test function `test_root_pressure_relocation` to `scripts/ci/test-graceful-shutdown.sh` that deliberately fills the root filesystem to >90 % using temporary files, triggers the orchestrator to detect the pressure and execute `place()` for cargo, worktrees, and TMPDIR, then verifies that those directories have been relocated to the larger data volume, that the filler files are cleaned up, and that a subsequent `cargo build` succeeds without stopping fleet processes.
+    
+    Target file(s):
+    - scripts/ci/test-graceful-shutdown.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test script fills the root filesystem to >90% using temporary files.
-    - Orchestrator detects pressure, runs `place()` for cargo, worktrees, and TMPDIR, and completes without stopping fleet processes.
-    - After relocation, builds continue to succeed and temporary files are cleaned up.
-    - Metrics show cargo, worktrees, and TMPDIR now reside on the larger data volume and original space is reclaimed.
+    - The file `scripts/ci/test-graceful-shutdown.sh` contains a function named `test_root_pressure_relocation` and the script calls this function during its execution.
+    - The function creates temporary filler files (e.g., via `dd`) that cause `df /` to report usage greater than 90 % and logs the reported usage.
+    - After the orchestrator runs, the script checks that `df` reports the mount point for `$CARGO_HOME`, `$WORKTREE_ROOT`, and `$TMPDIR` is different from `/` (indicating relocation) and that the filler files no longer exist.
+    - The script runs `cargo build` (or an equivalent build command) after relocation and asserts that the command exits with status 0, confirming builds continue to succeed.
   depends_on: [RESILIENT-459, RESILIENT-460, RESILIENT-461, RESILIENT-462, RESILIENT-463, RESILIENT-464]
   notes: |
     [chump harvest check 'orchestrator']
@@ -83502,6 +83555,233 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: RESILIENT-474
+  domain: RESILIENT
+  title: "RESILIENT: Investigate existing gate logic for main‑sat red reporting (RESILIENT-417 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Documented location(s) in the RESILIENT codebase where main‑sat red status is emitted
+    - Identify data structures used to store the red status and its timestamps
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-475
+  domain: RESILIENT
+  title: "RESILIENT: Add sustained‑red detection (>=48 h) to gate‑medic module (RESILIENT-417 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - gate‑medic flags a sustained‑red condition only when a main‑sat red persists for at least 48 continuous hours
+    - The flag is exposed via a public function `is_sustained_main_red()` returning a boolean
+  depends_on: [RESILIENT-474]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-476
+  domain: RESILIENT
+  title: "RESILIENT: Implement diagnostic logic to pinpoint broken required check (RESILIENT-417 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When `is_sustained_main_red()` is true, `diagnose_broken_check()` returns the identifier of the missing/broken required check
+    - The diagnostic function logs a clear message with the check name and reason
+  depends_on: [RESILIENT-475]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-477
+  domain: RESILIENT
+  title: "RESILIENT: Create automatic fix landing for the diagnosed check (RESILIENT-417 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - If `diagnose_broken_check()` returns a known fixable check, `apply_auto_fix()` attempts to re‑run or patch the check
+    - Successful auto‑fix clears the sustained‑red flag and updates the status to green
+    - Failure of auto‑fix returns an error code without panicking
+  depends_on: [RESILIENT-476]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-478
+  domain: RESILIENT
+  title: "RESILIENT: Add dispatch fallback (alert) when auto‑fix fails (RESILIENT-417 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When `apply_auto_fix()` returns an error, `dispatch_alert()` sends a structured alert to the configured ops channel
+    - Alert payload includes check identifier, timestamp, and error details
+  depends_on: [RESILIENT-476]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-479
+  domain: RESILIENT
+  title: "RESILIENT: Write unit test for sustained‑red detection (RESILIENT-417 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Test simulates a red status lasting <48 h and asserts `is_sustained_main_red()` is false
+    - Test simulates a red status lasting ≥48 h and asserts `is_sustained_main_red()` is true
+  depends_on: [RESILIENT-475]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-480
+  domain: RESILIENT
+  title: "RESILIENT: Write integration test for diagnosis and auto‑fix flow (RESILIENT-417 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test triggers a sustained‑red condition, verifies `diagnose_broken_check()` returns the expected check
+    - Test confirms `apply_auto_fix()` succeeds and the red flag is cleared
+    - Test also covers the failure path where auto‑fix is unavailable and `dispatch_alert()` is called
+  depends_on: [RESILIENT-477, RESILIENT-478]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-481
+  domain: RESILIENT
+  title: "RESILIENT: Update CI scripts to run new tests (RESILIENT-417 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - CI pipeline executes the new unit and integration tests and fails if they fail
+    - Scripts/ci/test‑gate‑medic.sh is added and referenced in the CI configuration
+  depends_on: [RESILIENT-479, RESILIENT-480]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-482
+  domain: RESILIENT
+  title: "RESILIENT: Run cargo fmt, clippy and ensure no warnings (RESILIENT-417 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all -- --check` passes without changes"
+    - "`cargo clippy --all-targets -- -D warnings` passes with zero warnings"
+    - All existing and new tests pass (`cargo test` succeeds)
+  depends_on: [RESILIENT-477, RESILIENT-478, RESILIENT-479, RESILIENT-480, RESILIENT-481]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: SMOKE-001
   domain: SMOKE
