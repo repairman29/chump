@@ -108,7 +108,10 @@ pub fn constant_time_eq(a: &str, b: &str) -> bool {
 
 /// Resolve the chump binary: `CHUMP_BIN` env, else the built release binary in
 /// the repo, else bare `chump` on PATH.
-fn resolve_chump_bin(repo_root: &Path) -> PathBuf {
+///
+/// `pub(crate)` (INFRA-3689): reused by `gap_write` so `POST /api/gap` shells
+/// out the same way `POST /api/mission` does, rather than re-deriving it.
+pub(crate) fn resolve_chump_bin(repo_root: &Path) -> PathBuf {
     if let Ok(p) = std::env::var(CHUMP_BIN_ENV) {
         if !p.trim().is_empty() {
             return PathBuf::from(p);
@@ -122,7 +125,9 @@ fn resolve_chump_bin(repo_root: &Path) -> PathBuf {
 }
 
 /// True when `s` looks like a gap id, e.g. `MISSION-42` / `INFRA-3860`.
-fn is_gap_id(s: &str) -> bool {
+///
+/// `pub(crate)` (INFRA-3689): reused by `gap_write`.
+pub(crate) fn is_gap_id(s: &str) -> bool {
     let Some((prefix, num)) = s.split_once('-') else {
         return false;
     };
@@ -133,7 +138,9 @@ fn is_gap_id(s: &str) -> bool {
 }
 
 /// Extract the last gap-id line from `chump gap reserve` stdout.
-fn parse_gap_id(stdout: &str) -> Option<String> {
+///
+/// `pub(crate)` (INFRA-3689): reused by `gap_write`.
+pub(crate) fn parse_gap_id(stdout: &str) -> Option<String> {
     stdout
         .lines()
         .map(str::trim)
@@ -144,7 +151,9 @@ fn parse_gap_id(stdout: &str) -> Option<String> {
 /// Keep a domain to uppercase alphanumerics (id prefixes only). Command args
 /// are passed directly (no shell), so this is field-hygiene, not injection
 /// defense.
-fn sanitize_domain(s: &str) -> String {
+///
+/// `pub(crate)` (INFRA-3689): reused by `gap_write`.
+pub(crate) fn sanitize_domain(s: &str) -> String {
     let cleaned: String = s
         .trim()
         .chars()
@@ -157,14 +166,16 @@ fn sanitize_domain(s: &str) -> String {
     }
 }
 
-fn sanitize_priority(p: Option<&str>) -> String {
+/// `pub(crate)` (INFRA-3689): reused by `gap_write`.
+pub(crate) fn sanitize_priority(p: Option<&str>) -> String {
     match p.map(|s| s.trim().to_uppercase()) {
         Some(s) if matches!(s.as_str(), "P0" | "P1" | "P2" | "P3") => s,
         _ => DEFAULT_PRIORITY.to_string(),
     }
 }
 
-fn sanitize_effort(e: Option<&str>) -> String {
+/// `pub(crate)` (INFRA-3689): reused by `gap_write`.
+pub(crate) fn sanitize_effort(e: Option<&str>) -> String {
     match e.map(|s| s.trim().to_lowercase()) {
         Some(s) if matches!(s.as_str(), "s" | "m" | "l" | "xl") => s,
         _ => DEFAULT_EFFORT.to_string(),

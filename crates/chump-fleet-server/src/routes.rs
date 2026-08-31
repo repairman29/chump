@@ -14,6 +14,7 @@ use tokio::time::{interval, Duration};
 
 use crate::dashboard;
 use crate::db::{now_ms, FleetStore};
+use crate::gap_write::{self, GapWriteRequest};
 use crate::mission::{self, MissionRequest};
 
 // ── shared state ──────────────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ pub fn build_router(store: SharedStore, repo_root: PathBuf) -> Router {
         .route("/api/trace/pr/{n}", get(get_trace_pr))
         .route("/api/dashboard-summary", get(get_dashboard_summary))
         .route("/api/mission", post(post_mission))
+        .route("/api/gap", post(post_gap))
         .route("/api/live", get(ws_live))
         .route("/healthz", get(healthz))
         .with_state(state)
@@ -309,6 +311,100 @@ async fn post_mission(
         }
         Err(e) => {
             tracing::error!("POST /api/mission task join error: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// POST /api/gap — bat-phone canonical gap-write (INFRA-3689).
+///
+/// Second dispatch surface alongside `POST /api/mission`: exposes the raw
+/// `chump gap reserve|set|ship` primitive over HTTP so a non-canonical/stale
+/// client (the operator's Mac) can mutate canonical gap state WITHOUT
+/// holding a writable local canonical replica — it delegates the write to
+/// this server, which runs on owned iron (CJ) against the real checkout.
+///
+/// Auth is the EXACT same fail-closed bearer check as `post_mission` — same
+/// `CHUMP_BATPHONE_TOKEN` env, same constant-time comparison, same
+/// 503-when-unconfigured / 401-when-wrong semantics. `op` is validated
+/// against the `reserve|set|ship` allow-list before any shell-out; an
+/// unknown op is a 400, never reaches `gap_write::execute_gap_write`.
+async fn post_gap(
+    State(s): State<AppState>,
+    headers: axum::http::HeaderMap,
+    payload: Result<Json<GapWriteRequest>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    // 1. Auth — fail-closed, identical to post_mission.
+    let Some(expected) = mission::configured_token() else {
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "bat-phone disabled: CHUMP_BATPHONE_TOKEN not set"
+            })),
+        )
+            .into_response();
+    };
+    let presented = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.strip_prefix("Bearer ").unwrap_or(v).trim().to_string())
+        .unwrap_or_default();
+    if !mission::constant_time_eq(&presented, &expected) {
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "unauthorized"})),
+        )
+            .into_response();
+    }
+
+    // 2. Body.
+    let req = match payload {
+        Ok(Json(r)) => r,
+        Err(e) => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("invalid JSON body: {e}")})),
+            )
+                .into_response();
+        }
+    };
+
+    // 3. op allow-list — 400 before any shell-out.
+    if !gap_write::is_valid_op(&req.op) {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!(
+                    "unsupported op {:?} (allowed: {:?})",
+                    req.op,
+                    gap_write::ALLOWED_OPS
+                )
+            })),
+        )
+            .into_response();
+    }
+
+    // 4. Execute off the async runtime (it shells out).
+    let repo_root = s.repo_root.clone();
+    let result =
+        tokio::task::spawn_blocking(move || gap_write::execute_gap_write(&repo_root, req)).await;
+
+    match result {
+        Ok(Ok(outcome)) => (axum::http::StatusCode::ACCEPTED, Json(outcome)).into_response(),
+        Ok(Err(e)) => {
+            tracing::error!("POST /api/gap failed: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("POST /api/gap task join error: {e}");
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": "internal error"})),
