@@ -9256,10 +9256,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new `scan-ci` mode to `scripts/ops/cargo-target-reaper.sh` by implementing a `scan_ci_grep_targets` function that iterates over all `scripts/ci/*.sh` files, parses each `grep` invocation for literal file arguments, checks that those files exist in the repository tree, and prints a JSON object `{ "dead_targets": [ … ] }` describing any missing or vacuous targets; modify `scripts/ci/test-registry-pattern8.sh` to call this mode and assert that the JSON report is produced and the script exits with status 0.
+    
+    Target file(s):
+    - scripts/ops/cargo-target-reaper.sh
+    - scripts/ci/test-registry-pattern8.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Scanner script checks files in scripts/ci for grep targets, paths, or symbols that do not exist in the repository tree
-    - Outputs identified dead/vacuous targets as structured report findings (JSON or text summary)
-    - Script exits with status code 0 to ensure findings are reported as non-blocking queue items rather than CI build failures
+    - Running `bash scripts/ops/cargo-target-reaper.sh scan-ci` prints a JSON object to stdout with a top‑level key `dead_targets` that is an array; each array element includes the fields `script`, `line`, and `pattern` for a missing target.
+    - The command `bash scripts/ops/cargo-target-reaper.sh scan-ci` exits with status code 0 regardless of whether any dead targets are found.
+    - "After inserting a line `grep \"TODO\" non_existent_file.txt` into `scripts/ci/test-a2a-inbox-routing.sh`, executing `bash scripts/ops/cargo-target-reaper.sh scan-ci` includes an entry in the `dead_targets` array referencing `test-a2a-inbox-routing.sh` and the correct line number."
+    - "The test script `scripts/ci/test-registry-pattern8.sh` invokes `bash scripts/ops/cargo-target-reaper.sh scan-ci`, checks that the output contains the string `\"dead_targets\"` and that the script exits with code 0."
 
 - id: CREDIBLE-456
   domain: CREDIBLE
