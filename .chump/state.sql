@@ -68081,11 +68081,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a dedicated test module in `src/reflection.rs` that stubs the process‑detector function `svc_is_alive` and the launcher function `svc_revive` to simulate organ death and revival. Implement two concrete test functions—`test_revive_happy_path` and `test_revive_backoff_adversarial`—that verify the emission of an `organ_self_healed` event on successful revive and that the backoff logic suppresses an immediate second revive, respectively, and document any remaining coverage gaps in comments.
+    
+    Target file(s):
+    - src/reflection.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Create a test script that stubs the process detector (svc_is_alive) and launcher (svc_revive) to simulate organ death and revival.
-    - "Test happy-path: when a process-organ is detected dead, it is revived and an organ_self_healed event is emitted."
-    - "Test adversarial: when a revived organ dies again immediately, the backoff prevents revive on the next tick, and after backoff expires, revive is attempted again."
-    - Gaps in coverage are documented.
+    - In `src/reflection.rs`, a new test function `test_revive_happy_path` asserts that when `svc_is_alive` is stubbed to return false, `svc_revive` is invoked and an `organ_self_healed` event is logged.
+    - In `src/reflection.rs`, a new test function `test_revive_backoff_adversarial` asserts that after `svc_revive` succeeds and the organ dies again immediately, the backoff flag prevents a second revive on the next tick, and after the backoff timer expires, `svc_revive` is called again.
+    - Running `cargo test --test reflection` produces console output containing the string `organ_self_healed` for the happy‑path test and the string `backoff_active` for the adversarial test.
+    - The added test module includes a comment block titled “Coverage Gaps” that lists any scenarios not exercised by these tests.
   depends_on: [INFRA-3723, INFRA-3724, INFRA-3725, INFRA-3726]
   notes: |
     [chump harvest check 'MISSION']
