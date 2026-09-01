@@ -25066,7 +25066,7 @@ gaps:
 - id: EFFECTIVE-611
   domain: EFFECTIVE
   title: "EFFECTIVE: Initialize repository with scaffold commit (EFFECTIVE-266 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -25094,6 +25094,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'Bootstrap' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+    [2026-09-01T22:02:13Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2188B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-612
   domain: EFFECTIVE
@@ -25192,9 +25193,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    In `src/commands/bootstrap.rs`, add a public function `init_scaffold_repo(path: &Path)` that creates the directory if missing, runs `git init`, and creates an empty initial commit with message "scaffold". In `scripts/ci/test-product-056-vscode-scaffold.sh`, add a test that invokes the scaffold command with the exact path `/var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT` and asserts the repository exists and the latest commit message contains "scaffold".
+    
+    Target file(s):
+    - src/commands/bootstrap.rs
+    - scripts/ci/test-product-056-vscode-scaffold.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Repository exists at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT
-    - Git log shows at least one commit with message containing 'scaffold'
+    - After running the scaffold command, the directory `/var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT` exists and contains a `.git` subdirectory.
+    - In that repository, `git -C /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT log --format=%s -1` outputs a message containing the word 'scaffold'.
+    - The script `scripts/ci/test-product-056-vscode-scaffold.sh` exits with code 0 and prints 'PASS'.
   notes: |
     [chump harvest check 'Bootstrap']
     === primitives_index match for 'Bootstrap' ===
@@ -25241,9 +25251,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In `scripts/ab-harness/score.py`, update the `_ATEGORY_RUBRIC_DEFAULTS` dict constant to add three EFFECTIVE core feature areas (e.g., "EFFECTIVE-Search", "EFFECTIVE-Recommendation", and "EFFECTIVE-Personalization"), each mapped to a brief description string that explains the area's purpose.
+    
+    Target file(s):
+    - scripts/ab-harness/score.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A list of at least 3 core feature areas is produced (e.g., in a document or shared list)
-    - Each area has a brief description (1-2 sentences)
+    - Running `python3 -c 'from scripts.ab_harness.score import _CATEGORY_RUBRIC_DEFAULTS; print(_CATEGORY_RUBRIC_DEFAULTS)'` includes at least 3 keys whose names start with 'EFFECTIVE-'.
+    - Each EFFECTIVE-* key maps to a non-empty string (the description).
+    - The descriptions are between 20 and 150 characters long.
   notes: |
     [chump harvest check 'Bootstrap']
     === primitives_index match for 'Bootstrap' ===
@@ -25864,7 +25882,7 @@ gaps:
 - id: GAME-010
   domain: GAME
   title: "[crystal-rush] Stranger bot: stuck on \"survive-60s\" (single run)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -25879,6 +25897,8 @@ gaps:
     - "The originating check passes on re-run in repairman29/crystal-rush (tool + target in the description: surveyor edge -> verdict PASS; repeat milestone -> completed >=1/N; bot/widget error -> no longer reproduces)"
     - crystal-rush test suite stays green
     - FINDINGS.md / DEPTH.md in repairman29/crystal-rush updated in the same commit
+  notes: |
+    [2026-09-01T22:10:23Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=3535B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/crystal-rush"
@@ -91162,13 +91182,15 @@ gaps:
   domain: RESILIENT
   title: "RESILIENT: fleet daemons run STALE scripts — main checkout drifts behind origin/main, forcing manual surgical deploy after every fix"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - Fleet daemons (ci-health-gate, farmer, etc.) run the CURRENT merged version of their scripts without manual deploy — via post-merge hook that updates the main checkout, daemons pull/checkout before run, OR run from an auto-synced location.
     - "After a fix merges to origin/main, the running daemon picks it up within N minutes with NO human 'git show origin/main:script > file' + kickstart."
     - The main checkout cannot silently drift >K commits behind origin/main (auto-reconcile or alert).
     - "Precedent: the 2026-06-15..20 outage required manually deploying ci-health-gate.sh + farmer.sh + auth-status.sh to the main checkout because the daemons ran stale code."
+  notes: |
+    Decomposed into 5 slices: RESILIENT-629, RESILIENT-630, RESILIENT-631, RESILIENT-632, RESILIENT-633
   opened_date: '2026-07-19'
   outcome_id: RESILIENT-000
 
@@ -99131,6 +99153,13 @@ gaps:
     [2026-09-01T21:57:13Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (54 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T21:59:28Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (55 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T22:00:10Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (56 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:01:41Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (57 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:03:54Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (58 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:06:08Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (59 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:08:31Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (60 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:11:02Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (61 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:13:18Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (62 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:15:34Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (63 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
@@ -101719,6 +101748,147 @@ gaps:
     - CI is not reset unnecessarily
     - Verify that with strict=true, rebasing still works correctly
   depends_on: [RESILIENT-622, RESILIENT-623, RESILIENT-624, RESILIENT-625, RESILIENT-626, RESILIENT-627]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-629
+  domain: RESILIENT
+  title: "RESILIENT: Auto-sync main checkout with origin/main via cron and post-merge webhook (RESILIENT-149 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A cron job runs every 60 seconds to execute `git -C /path/to/main/checkout pull --ff-only`
+    - A webhook endpoint triggers an immediate pull on push to origin/main
+    - After any new commit to origin/main, the local checkout is updated within 1 minute without manual intervention
+    - Log entries are recorded for each sync attempt (success/failure)
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-630
+  domain: RESILIENT
+  title: "RESILIENT: Modify ci-health-gate daemon to run script from auto-synced checkout (RESILIENT-149 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The ci-health-gate daemon's launcher performs a `git pull` in the main checkout directory before executing its script, or sources the script directly from the checkout
+    - After a merge to origin/main, the next scheduled run of ci-health-gate uses the merged script without manual deploy
+    - No regression in daemon functionality
+  depends_on: [RESILIENT-629]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-631
+  domain: RESILIENT
+  title: "RESILIENT: Modify farmer daemon to run script from auto-synced checkout (RESILIENT-149 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The farmer daemon's launcher ensures it runs the latest script from the synced checkout (via git pull or direct sourcing)
+    - After a merge, the farmer picks up the change in the next run without manual intervention
+    - No regression in farmer operations
+  depends_on: [RESILIENT-629]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-632
+  domain: RESILIENT
+  title: "RESILIENT: Modify auth-status daemon to run script from auto-synced checkout (RESILIENT-149 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The auth-status daemon runs the latest script from the synced main checkout
+    - After a merge, the auth-status daemon picks up the change in the next run without manual steps
+    - No regression
+  depends_on: [RESILIENT-629]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-633
+  domain: RESILIENT
+  title: "RESILIENT: Implement drift detection and alerting for main checkout (RESILIENT-149 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A monitoring script periodically checks the number of commits the local checkout is behind origin/main
+    - If the drift exceeds K commits (e.g., 5), an alert is sent to the team
+    - The check runs at least every 5 minutes
+    - The system attempts an automatic pull to reconcile; if pull fails, an alert is sent
+  depends_on: [RESILIENT-629]
   notes: |
     [chump harvest check 'RESILIENT']
     === primitives_index match for 'RESILIENT' ===
