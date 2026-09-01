@@ -160,7 +160,8 @@ FAC+=("$(mkfac resolve "Resolve" "merge conflicts drained without a human" \
 CAL_LOG="${CHUMP_PR_BOOK_CALIB:-$REAL_HOME/.chump/pr-book-calibration.log}"
 brier=""; ks_val=""; ks_frac=0
 if [[ -f "$CAL_LOG" ]]; then
-  brier="$(tail -n1 "$CAL_LOG" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -n1)"
+  brier="$(tail -n1 "$CAL_LOG" 2>/dev/null | \
+    jq -r 'select(.kind=="pr_book_calibration") | .brier // empty' 2>/dev/null)"
 fi
 odds="$(grep -c 'pr_book_odds' "$AMBIENT_LOG" 2>/dev/null || echo 0)"
 [[ "$odds" =~ ^[0-9]+$ ]] || odds=0
