@@ -400,3 +400,6 @@ test-publisher-platforms.sh   # reason: EFFECTIVE-483 — type-checks + unit-tes
 
 # ── META-249: rescue-class PR body citation gate (needs live PR context) ─
 test-rescue-class-cites-procedure.sh   # reason: META-249 — reads the live PR title/body via `gh pr view` for the PR being checked; no local worktree analog (there is no "current PR" outside a `pull_request` CI run). Self-tests its citation-check logic via `bash scripts/ci/test-rescue-class-cites-procedure.sh --self-test`.
+
+# ── RESILIENT-376: manifest->installer parity gate (self-referential meta-check) ─
+test-manifest-installer-parity.sh   # reason: RESILIENT-376 — this gate itself walks scripts/ops/organ-manifest.txt against the installer rosters (install-helsinki-atc.sh + DEDICATED_INSTALLER map) to catch manifest-declared-but-uninstalled organ drift. It is a CI-time cross-file consistency check over tracked repo state, not a build/test step preflight would gain by re-running locally pre-commit; preflight's own parity-gate (this script) already covers "does every ci.yml step have a local equivalent" — the manifest-parity check is the local equivalent, so mirroring it into preflight.rs would just be preflight calling this same script. Allowlisted rather than double-wrapped.
