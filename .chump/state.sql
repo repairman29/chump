@@ -25069,9 +25069,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the `reserve_umbrella_gap` function to initialize a Git repository at `/var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.R5UhOPohfj` and create an initial commit with message 'scaffold' that includes a README.md containing the heading 'Try Chump in 5 minutes'.
+    
+    Target file(s):
+    - src/commands/bootstrap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Repository exists at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.R5UhOPohfj
-    - Git history contains at least one commit with message 'scaffold'
+    - Running `cargo run -- bootstrap` creates a Git repository at the exact path `/var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.R5UhOPohfj`.
+    - The repository contains exactly one commit; `git log --oneline` prints a single line ending with 'scaffold'.
+    - The commit's tree includes a file `README.md` whose content contains the string 'Try Chump in 5 minutes'.
   notes: |
     [chump harvest check 'Bootstrap']
     === primitives_index match for 'Bootstrap' ===
@@ -25118,9 +25126,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Extend the `reserve_umbrella_gap` function to extract core feature areas from the intent argument and print them as a bulleted list to stdout, using a new helper `extract_feature_areas` that returns a `Vec<String>`.
+    
+    Target file(s):
+    - src/commands/bootstrap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - List of core feature areas documented (e.g., in a note or issue)
-    - List covers key aspects of the intent 'Another intent'
+    - Running `cargo run -- bootstrap reserve-umbrella-gap --intent 'Another intent'` prints a markdown bullet list of at least two core feature areas to stdout.
+    - The printed list is a bulleted markdown list with each area on a new line.
+    - The function `reserve_umbrella_gap` in `src/commands/bootstrap.rs` calls `extract_feature_areas` and prints its result.
+    - The new function `extract_feature_areas` is defined in `src/commands/bootstrap.rs` and returns a `Vec<String>`.
   notes: |
     [chump harvest check 'Bootstrap']
     === primitives_index match for 'Bootstrap' ===
@@ -25142,9 +25159,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify `reserve_umbrella_gap` in `src/commands/bootstrap.rs` to, after creating the umbrella gap, automatically generate sub-gap issues for each core feature area by extracting the feature list from the EFFECTIVE domain spec and calling the issue creation API with structured title, priority, and acceptance criteria for each.
+    
+    Target file(s):
+    - src/commands/bootstrap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Sub-gap issues created for each identified core feature area
-    - Each sub-gap has title, priority, and acceptance criteria
+    - Running `bootstrap reserve_umbrella_gap --domain EFFECTIVE` prints a summary listing each created sub-gap issue number, title, and priority.
+    - "Each sub-gap issue in the tracker has a title prefixed with 'EFFECTIVE:' and contains a non-empty acceptance criteria field."
+    - The count of sub-gaps created matches the number of core feature areas defined in the EFFECTIVE domain specification file.
   depends_on: [EFFECTIVE-613]
   notes: |
     [chump harvest check 'Bootstrap']
@@ -77853,10 +77878,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add two alert definitions inside the find_alerts function of scripts/arsenal/build.py: a Prometheus alert named 'TargetDirSizeExceeded' that fires when per-worker target directory total size exceeds 90% of the configured cap, and a log-based alert named 'PhantomFingerprintError' that triggers on any line containing 'phantom fingerprint from sibling worktree'. Extend scripts/ci/test-cargo-target-reaper.sh to add a test that overrides the threshold via environment variable and verifies the target dir alert fires, and a test that uses the log function from scripts/setup/deploy-fleet.sh to emit the phantom fingerprint line and asserts the log alert triggers.
+    
+    Target file(s):
+    - scripts/arsenal/build.py
+    - scripts/ci/test-cargo-target-reaper.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Add a metric/alert (e.g., Prometheus) that fires when total size of per-worker target directories exceeds 90% of the cap.
-    - Add a log-based alert that triggers on any line containing 'phantom fingerprint from sibling worktree'.
-    - Confirm alerts are functional by temporary override of thresholds in test environment.
+    - In scripts/arsenal/build.py, the find_alerts function returns an alert rule 'TargetDirSizeExceeded' with expression (sum of per-worker target directory sizes) > (cap * 0.9).
+    - In scripts/arsenal/build.py, the find_alerts function returns an alert rule 'PhantomFingerprintError' that matches log lines containing the exact string 'phantom fingerprint from sibling worktree'.
+    - Running scripts/ci/test-cargo-target-reaper.sh with OVERRIDE_THRESHOLD=0.5 causes the 'TargetDirSizeExceeded' alert to transition to firing state in the test environment's Prometheus instance.
+    - In scripts/ci/test-cargo-target-reaper.sh, the new test case calls the log function from scripts/setup/deploy-fleet.sh to emit a line with 'phantom fingerprint from sibling worktree' and verifies the 'PhantomFingerprintError' alert appears in the alert manager.
   depends_on: [INFRA-3962]
   notes: |
     [chump harvest check 'MISSION']
@@ -80034,10 +80068,18 @@ gaps:
   status: open
   priority: P3
   effort: s
+  description: |
+    Add two new handler functions `handle_lesson_share` (POST) and `handle_lesson_get` (GET) in src/web_server.rs, register them in `build_api_router` at `/api/lessons`, and implement an in-memory store (a `HashMap<String, Vec<Lesson>>` keyed by task tag) with a 24-hour expiration check on retrieval.
+    
+    Target file(s):
+    - src/web_server.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Agents can POST lessons to shared endpoint
-    - Agents can GET relevant lessons by task tag
-    - Lessons expire after 24 hours by default
+    - "POST to /api/lessons with JSON `{\"task_tag\":\"build\",\"lesson\":\"...\"}` returns HTTP 201 and the lesson is retrievable via GET /api/lessons?tag=build."
+    - GET /api/lessons?tag=build returns a JSON array of lessons for that tag; if none exist or all are expired, the array is empty.
+    - When a stored lesson's timestamp is older than 24 hours (e.g., injected in a test), GET /api/lessons?tag=build excludes it from the response.
+    - "The `build_api_router` function in src/web_server.rs contains `.route(\"/api/lessons\", post(handle_lesson_share))` and `.route(\"/api/lessons\", get(handle_lesson_get))`."
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -85790,7 +85832,7 @@ gaps:
 - id: MISSION-088
   domain: MISSION
   title: "MISSION: Implement repo resolver: locate .beast-mode-tasks.json and beads/TODO in <repo> (MISSION-055 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -85826,6 +85868,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-01T21:37:23Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=6154B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: MISSION-089
   domain: MISSION
@@ -89733,7 +89776,7 @@ gaps:
   domain: RESILIENT
   title: "RESILIENT P1: consolidate + strict-gate the PR-rebaser daemon FAMILY (8 daemons, no shared helper) — rebasing BEHIND PRs under strict=false is the reset-churn root"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   description: |
     VERIFIED 2026-06-03 (conductor). EIGHT daemons call `gh pr update-branch --rebase` with NO shared helper: queue-driver (INFRA-048, pure cascade-rebaser), pr-auto-rebase, stale-pr-rebase-bot (pure rebasers), plus pr-auto-rearm, pr-failure-auto-rescue, chump-pr-triage, cascade-unblock-detector, wizard-daemon (rebase as a secondary function). All are strict=true-era relics: when strict=true a BEHIND PR cannot merge until rebased, so these 'push BEHIND PRs forward.' Under strict=false (the current decision) BEHIND PRs merge WITHOUT a rebase, so every rebase is pure churn that RESETS the PR's CI on the 4-core self-hosted pool. EVIDENCE: keystone #3005 (RESILIENT-068 farmer — the mission gate) was reset repeatedly: ~20:17 by pr-shepherd, then 20:38 by chump-queue-driver[bot] ('Merge branch main into chump/resilient-068-claim'), each bounce throwing it from ~26/31 checks back to re-running. This is why it would not land for ~40min. MANUAL STOPGAP this session: pr-shepherd rebase budget=0 (RESILIENT-081 = its durable strict-awareness); queue-driver + pr-auto-rebase + stale-pr-rebase-bot launchctl-unloaded. The other 5 still rebase. DURABLE FIX: (a) ONE shared rebase path (e.g. scripts/coord/lib/pr_rebase.sh) that every daemon calls, with a single strict-gate (skip rebase when branch-protection strict=false, cached REST); (b) collapse the 8 down to a single owner of the rebase action; (c) the farmer (RESILIENT-076) reconciles which rebasers are loaded against the strict flag each tick. Re-enable rebasing only when strict=true OR a real local merge-queue exists (GitHub native merge queue is IMPOSSIBLE here — personal account, verified owner type=User, POST returns 422; see RESILIENT-082 + CREDIBLE-086). || UPDATE 2026-06-03 (conductor, post-fix): the DOMINANT rebaser is a GitHub WORKFLOW, not a daemon — .github/workflows/queue-driver.yml fires on push-to-main + check_suite:completed + */5min cron, rebasing BEHIND PRs with the QUEUE_DRIVER_APP token (chosen specifically to RESET CI: app-origin pushes re-trigger workflows). check_suite:completed makes it SELF-SUSTAINING. MANUALLY DISABLED via `gh workflow disable queue-driver.yml` (now disabled_manually). SEVERITY ESCALATED: the churn does not merely DELAY PRs — a queue-driver rebase SILENTLY DROPPED a committed fix: the keystone RESILIENT-068 lost its test-farmer.sh Darwin guard (commit d39a5ba2e) during a BEHIND rebase, causing 7/9 test fails; had to re-apply it as 03ed7c837. The durable fix must strict-gate queue-driver.yml (run only when strict=true) AND the local daemons. Current session-level stopgaps to REPLACE: pr-shepherd MAX_REBASES=0, cascade-unblock CHUMP_UNBLOCK_DRY_RUN=1, wizard CHUMP_WIZARD_CASCADE_RATE_LIMIT=0, and queue-driver/pr-auto-rebase/stale-pr-rebase daemons launchctl-unloaded.
@@ -89744,6 +89787,8 @@ gaps:
     - the keystone-reset signature (a BEHIND PR re-committed by a *-bot right after an unrelated merge) does not recur under strict=false
     - RESILIENT-081 (pr-shepherd strict-awareness) is folded into / consistent with this shared path
     - the farmer (RESILIENT-076) audits loaded rebaser daemons vs the strict flag each tick and re-reconciles drift
+  notes: |
+    Decomposed into 7 slices: RESILIENT-622, RESILIENT-623, RESILIENT-624, RESILIENT-625, RESILIENT-626, RESILIENT-627, RESILIENT-628
   opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
@@ -98904,6 +98949,12 @@ gaps:
     [2026-09-01T21:25:56Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (41 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T21:28:09Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (42 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T21:30:05Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (43 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:32:28Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (44 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:34:51Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (45 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:37:05Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (46 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:39:26Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (47 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:41:40Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (48 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:43:55Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (49 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
@@ -101303,6 +101354,211 @@ gaps:
     
     === cross-pollination briefs mentioning 'concurrent' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-622
+  domain: RESILIENT
+  title: "RESILIENT: Create shared rebase helper script with strict-gate (RESILIENT-083 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Script exists at scripts/coord/lib/pr_rebase.sh
+    - Accepts PR number and repository as arguments
+    - Checks branch protection strict flag via GitHub API with file-based cache (TTL 60s)
+    - If strict=true, runs `gh pr update-branch --rebase` for the given PR
+    - If strict=false, logs skip message and exits 0 without rebasing
+    - Script is executable and can be sourced by other daemons
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-623
+  domain: RESILIENT
+  title: "RESILIENT: Gate queue-driver.yml workflow on strict flag (RESILIENT-083 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - .github/workflows/queue-driver.yml modified to include a step that checks strict flag using the shared helper
+    - Rebase step is conditionally executed only when strict=true
+    - Workflow still triggers on push, check_suite, and cron but skips rebase when strict=false
+    - QUEUE_DRIVER_APP token used only during actual rebase
+  depends_on: [RESILIENT-622]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-624
+  domain: RESILIENT
+  title: "RESILIENT: Modify pr-shepherd to use shared helper and integrate strict-awareness (RESILIENT-083 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - pr-shepherd daemon calls shared rebase helper instead of direct `gh pr update-branch`
+    - "Strict-awareness from RESILIENT-081 is folded in: daemon respects strict flag and does not attempt rebase when strict=false"
+    - MAX_REBASES=0 stopgap removed or made consistent with shared path
+  depends_on: [RESILIENT-622]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-625
+  domain: RESILIENT
+  title: "RESILIENT: Convert remaining non-pure rebaser daemons to shared helper (RESILIENT-083 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - pr-auto-rearm, pr-failure-auto-rescue, chump-pr-triage, cascade-unblock-detector, wizard-daemon all use shared helper for any rebase action
+    - No daemon issues independent `gh pr update-branch`
+    - Stopgaps (CHUMP_UNBLOCK_DRY_RUN=1, CHUMP_WIZARD_CASCADE_RATE_LIMIT=0) removed or adjusted to rely on shared gate
+  depends_on: [RESILIENT-622]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-626
+  domain: RESILIENT
+  title: "RESILIENT: Delete pure rebaser daemons (queue-driver local, pr-auto-rebase, stale-pr-rebase-bot) (RESILIENT-083 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Local queue-driver daemon (INFRA-048) removed: launchctl plist deleted, script deleted"
+    - pr-auto-rebase daemon removed
+    - stale-pr-rebase-bot daemon removed
+    - No residual files or launch agents remain
+  depends_on: [RESILIENT-622]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-627
+  domain: RESILIENT
+  title: "RESILIENT: Farmer audit and reconciliation of rebaser daemons vs strict flag (RESILIENT-083 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Farmer (RESILIENT-076) extended with per-tick audit function
+    - Audit checks current branch protection strict flag (cached)
+    - Enumerates loaded rebaser daemons from known list
+    - If strict=false, ensures no rebaser daemons are running (unloads if found) and logs drift
+    - If strict=true, ensures necessary rebaser daemons are loaded (if any remain) and logs drift
+    - Reconciliation is idempotent
+  depends_on: [RESILIENT-622, RESILIENT-626]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-628
+  domain: RESILIENT
+  title: "RESILIENT: End-to-end verification of no reset churn under strict=false (RESILIENT-083 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Set up test scenario with strict=false and a BEHIND PR
+    - Trigger an unrelated merge to main
+    - Confirm no bot re-commits the BEHIND PR (keystone-reset signature absent)
+    - CI is not reset unnecessarily
+    - Verify that with strict=true, rebasing still works correctly
+  depends_on: [RESILIENT-622, RESILIENT-623, RESILIENT-624, RESILIENT-625, RESILIENT-626, RESILIENT-627]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: SMOKE-001
   domain: SMOKE
