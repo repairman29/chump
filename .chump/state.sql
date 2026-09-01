@@ -92991,10 +92991,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new Rust integration test `gap_ship_updates_state_db_and_gap_yaml_without_drift` in `tests/main_dispatch.rs` that uses `tempfile::tempdir()` to set up an isolated environment with a mock gap file at `docs/gaps/<ID>.yaml` and an initialized `state.db`. The test invokes `gap-ship` for the gap ID with a closed PR number, then asserts that both `state.db` (`status='done'`, `closed_pr=N`) and `docs/gaps/<ID>.yaml` (`status: done`, `closed_pr: N`) are updated synchronously without metadata drift.
+    
+    Target file(s):
+    - tests/main_dispatch.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Test exists under tests/ or src/ that invokes gap-ship for a sample gap ID and asserts state.db shows status=done and closed_pr=N while docs/gaps/<ID>.yaml contains status: done and closed_pr: N."
-    - Test fails on current main because yaml is not written/updated (or remains open).
-    - Test uses a temporary directory for state.db and yaml artifacts; no test pollution.
+    - "`tests/main_dispatch.rs` defines test function `gap_ship_updates_state_db_and_gap_yaml_without_drift` using a temporary directory for test artifacts."
+    - The test executes `gap-ship` for test gap `GAP-TEST-062` passing PR number `42`.
+    - "The test asserts `state.db` contains `status = 'done'` and `closed_pr = 42` for `GAP-TEST-062`, and `docs/gaps/GAP-TEST-062.yaml` contains `status: done` and `closed_pr: 42`."
+    - Running `cargo test --test main_dispatch gap_ship_updates_state_db_and_gap_yaml_without_drift` passes cleanly without workspace pollution.
   notes: |
     [chump harvest check 'ATOMIC']
     === primitives_index match for 'ATOMIC' ===
