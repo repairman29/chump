@@ -14207,6 +14207,8 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.VXMw46xG7y has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
+  notes: |
+    Decomposed into 3 slices: EFFECTIVE-594, EFFECTIVE-595, EFFECTIVE-596
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -22995,11 +22997,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add an AUTONOMY_LEVEL field to the effective configuration struct (default 1) and extend the validate_config function to reject values outside the inclusive range 0..5 with a clear error message that includes the invalid value.
+    
+    Target file(s):
+    - src/config_validation.rs
+    - src/skill_tool.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Valid level values 0,1,2,3,4,5 are accepted from fleet config/flag
-    - Invalid, negative, or >5 values are rejected with a clear error
-    - When unset the flag defaults to level 1 OBSERVE
-    - No other existing behavior changes in this slice
+    - "validate_config in src/config_validation.rs, when given a config with AUTONOMY_LEVEL=6, returns an error containing \"AUTONOMY_LEVEL\" and \"6\"."
+    - "validate_config in src/config_validation.rs, when given a config with AUTONOMY_LEVEL=-1, returns an error containing \"AUTONOMY_LEVEL\" and \"-1\"."
+    - The effective configuration struct, when deserialized from a fleet config that omits AUTONOMY_LEVEL entirely, has AUTONOMY_LEVEL == 1 (OBSERVE).
+    - Running handle_tap_add in src/skill_tool.rs with AUTONOMY_LEVEL=1 (default) produces the same output and side effects as before this change.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -23030,10 +23040,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In `src/main.rs`, add a new CLI subcommand `chump fleet level <0-5>` that parses the integer argument, validates it is in range 0-5, and atomically writes the new autonomy level to the persisted fleet state. In `src/fleet_self_rescue_conductor.rs`, ensure the `tick` function reads this persisted level on each invocation so the updated value is visible on next tick.
+    
+    Target file(s):
+    - src/main.rs
+    - src/fleet_self_rescue_conductor.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`chump fleet level 0-5` atomically updates the persisted fleet autonomy level"
-    - Out-of-range or non-numeric arguments fail without changing the current level
-    - Updated level is visible to agents/daemons on next tick or reload
+    - Running `chump fleet level 3` exits 0 and the persisted fleet state file contains autonomy level 3.
+    - Running `chump fleet level 6` or `chump fleet level abc` exits non-zero and the persisted fleet state file retains its previous autonomy level value.
+    - After `chump fleet level 2` is executed, the next invocation of `tick` in `src/fleet_self_rescue_conductor.rs` reads autonomy level 2 from the persisted state and uses it for decision-making.
   depends_on: [EFFECTIVE-582]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -23065,10 +23083,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add an `autonomy_level()` accessor method to the shared runtime context struct (likely `RepoContext` in `src/autonomy_loop.rs`) that returns the current `AUTONOMY_LEVEL` for agents and daemons. Then replace hardcoded per‑caller autonomy level overrides in `deterministic_ship`, `implement_gap`, and `fix_pr_dispatch` (in `src/improve.rs`) with calls to this accessor, ensuring the default level is returned when no flag is set.
+    
+    Target file(s):
+    - src/autonomy_loop.rs
+    - src/improve.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - One accessor returns the current AUTONOMY_LEVEL for agents and daemons
-    - Callers do not hardcode per-caller level overrides
-    - Default level is returned when no flag is set
+    - In `src/autonomy_loop.rs`, the `RepoContext` struct (or the object returned by `ensure_repo_context`) exposes a method `autonomy_level()` that returns an `AutonomyLevel` value.
+    - In `src/improve.rs`, the functions `deterministic_ship`, `implement_gap`, and `fix_pr_dispatch` no longer contain hardcoded `AUTONOMY_LEVEL` constants; instead they call the accessor on the shared context.
+    - Running `cargo check` in the repository root succeeds with zero errors, confirming the accessor is defined and all updated callers compile.
+    - "When no `--autonomy-level` flag is provided, the `ensure_repo_context` function in `src/autonomy_loop.rs` initializes the context so that `autonomy_level()` returns the default level (e.g., `AutonomyLevel::default()`)."
   depends_on: [EFFECTIVE-582]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -23100,10 +23127,20 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify `atomic_claim.rs` to add a private `check_mutation_allowed(operation: &str)` method that reads the autonomy level via `read_level` and returns `Err` with a stderr log `level 0 STOP: {operation} blocked` when level is 0. Call this check at the top of every public mutation method (build, merge, push, and any concurrency entrypoint). In `autonomy_level.rs` ensure `read_level` can be called to obtain the level correctly. In `node-orchestrator.sh` add an early‑exit guard in the `enforce_cap` function that prints `level 0 STOP: concurrency` and returns when `CHUMP_LEVEL` is 0.
+    
+    Target file(s):
+    - crates/chump-atomic-claim/src/atomic_claim.rs
+    - crates/chump-atomic-claim/src/autonomy_level.rs
+    - scripts/ops/node-orchestrator.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When level is 0, build, merge, push, and concurrency actions are blocked
-    - Read-only actions succeed
-    - Denied actions log a level 0 STOP reason
+    - In `autonomy_level.rs`, setting `CHUMP_AUTONOMY_LEVEL=0` in the environment and calling `read_level()` returns the integer `0`.
+    - "Running the binary as `chump build --autonomy-level 0` (or `cargo run -- build --autonomy-level 0`) exits non‑zero and prints `level 0 STOP: build blocked` to stderr."
+    - Running `chump pull --autonomy-level 0` (a read‑only action) exits successfully with status 0 and no stop message appears.
+    - "In `node-orchestrator.sh`, executing `enforce_cap conc 5` with `CHUMP_LEVEL=0` prints `level 0 STOP: concurrency` to stderr and does not start any child process."
   depends_on: [EFFECTIVE-584]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -23408,6 +23445,80 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-594
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Initialize repository with scaffold commit (EFFECTIVE-136 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Repository exists at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.VXMw46xG7y
+    - Git history contains exactly one commit with a scaffold message
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-595
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add README with intent string (EFFECTIVE-136 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README.md exists in repository root
+    - "First body line of README.md contains exactly \"Another intent\""
+  depends_on: [EFFECTIVE-594]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-596
+  domain: EFFECTIVE
+  title: "EFFECTIVE: File sub-gaps for core feature areas (EFFECTIVE-136 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - At least three sub-gaps are filed under EFFECTIVE-136
+    - Each sub-gap names a distinct core feature area
+    - Each sub-gap has an effort estimate of xs or s
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
 
 - id: EVAL-085
   title: test eval 085
