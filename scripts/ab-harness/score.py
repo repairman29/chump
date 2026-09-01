@@ -472,6 +472,18 @@ _CATEGORY_RUBRIC_DEFAULTS: dict[str, str] = {
         "knowledge from all prior sessions. Award high marks for comprehensive, "
         "accurate summaries and honest acknowledgement of gaps."
     ),
+    "EFFECTIVE-Search": (
+        "Covers ranking and retrieving relevant results from a corpus in "
+        "response to a user query, including relevance ranking and filtering."
+    ),
+    "EFFECTIVE-Recommendation": (
+        "Covers surfacing items a user is likely to want next, based on "
+        "their behavior, preferences, or similarity to other users/items."
+    ),
+    "EFFECTIVE-Personalization": (
+        "Covers tailoring content, layout, or behavior to an individual "
+        "user's history, context, and stated preferences."
+    ),
 }
 
 
