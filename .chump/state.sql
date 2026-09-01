@@ -1585,7 +1585,7 @@ gaps:
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
   notes: |
-    Decomposed into 11 slices: CREDIBLE-369, CREDIBLE-370, CREDIBLE-371, CREDIBLE-372, CREDIBLE-373, CREDIBLE-374, CREDIBLE-375, CREDIBLE-376, CREDIBLE-377, CREDIBLE-378, CREDIBLE-379
+    Decomposed into 4 slices: CREDIBLE-435, CREDIBLE-436, CREDIBLE-437, CREDIBLE-438
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -8708,6 +8708,51 @@ gaps:
     - Command exits with status 0 when all checks pass and logs a concise summary
     - Automated CI job executes the smoke test and fails the build on any regression
   depends_on: [CREDIBLE-433]
+
+- id: CREDIBLE-435
+  domain: CREDIBLE
+  title: "CREDIBLE: Define HALT_CLASS_PREDICATES taxonomy and lifecycle events manifest (CREDIBLE-109 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Create docs/observability/HALT_CLASS_PREDICATES.yaml containing predicate definitions
+    - Explicitly distinguish failure-class taxonomy into transient vs permanent categories
+    - Define emitted event specifications for success, failure, and timeout states
+
+- id: CREDIBLE-436
+  domain: CREDIBLE
+  title: "CREDIBLE: Add cost tracking and operator reporting specification to predicate manifest (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Update docs/observability/HALT_CLASS_PREDICATES.yaml with cost tracking metadata fields
+    - Specify how execution costs are measured and reported to the operator
+  depends_on: [CREDIBLE-435]
+
+- id: CREDIBLE-437
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement bash CI script to validate HALT_CLASS_PREDICATES.yaml structure (CREDIBLE-109 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Create bash test script (e.g., scripts/ci/test_halt_class_predicates.sh) that validates YAML schema
+    - Script asserts required failure classes (transient/permanent), event definitions, and cost tracking fields are present
+    - Script exits non-zero with descriptive error messages when manifest is invalid or missing required keys
+  depends_on: [CREDIBLE-435]
+
+- id: CREDIBLE-438
+  domain: CREDIBLE
+  title: "CREDIBLE: Add observability smoke test command and CI gate integration (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Expose smoke test command to verify observability manifest validity locally
+    - Integrate validation script into CI workflow for Gate 3 verification
+  depends_on: [CREDIBLE-436, CREDIBLE-437]
 
 - id: DOC-031
   domain: DOC
@@ -93050,7 +93095,7 @@ gaps:
 - id: RESILIENT-549
   domain: RESILIENT
   title: "RESILIENT: Enhance test-preflight-ci-parity.sh to auto‑recognize gates added in the same PR diff (RESILIENT-545 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -93074,6 +93119,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-01T07:29:33Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-550
   domain: RESILIENT
