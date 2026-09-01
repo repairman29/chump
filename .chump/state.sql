@@ -23319,10 +23319,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a `run_design_pass` function in preflight.rs (near existing `print_help` at line 665/693) that runs the automated design checklist lint rules, returns an exit code, and is callable by the CI job definition.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A new CI job named `design-pass` runs after the intake requirements step
-    - Job fails when any checklist item is violated according to automated lint rules
-    - Job produces a pass/fail status visible in the PR checks UI
+    - Running `./scripts/ci/test-gap-ship-integration.sh` triggers a CI job named `design-pass` visible in the PR checks UI after the intake step completes.
+    - The `design-pass` job invokes a `run_design_pass` function in `crates/chump-preflight/src/preflight.rs` that exits non-zero when any design checklist lint rule is violated.
+    - "The `design-pass` job outputs a pass/fail status line (e.g., 'DESIGN PASS: OK' or 'DESIGN PASS: FAIL') in its CI log that is grep-able from the PR checks panel."
+    - The `cleanup` function in `scripts/ci/test-gap-ship-integration.sh` (line 30) removes any artifacts left by a failed `design-pass` run so subsequent pipeline stages are not contaminated.
   depends_on: [EFFECTIVE-561]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -23424,10 +23432,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    In src/improve.rs, add screenshot capture to the design‑pass job: the `implement_gap` function takes before/after UI screenshots of changed components using a headless browser and saves them to `target/screenshots/`; the `verify_and_merge` function uploads that directory as a CI artifact and posts a PR comment with markdown image links, ensuring that even when the design‑pass fails the screenshots are still uploaded and commented.
+    
+    Target file(s):
+    - src/improve.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - During the `design-pass` job, before/after UI screenshots are automatically generated for the changed components
-    - Screenshots are uploaded as artifacts and a comment with image links is posted to the PR
-    - A failing design‑pass still posts screenshots for reviewer visibility
+    - In src/improve.rs, the `implement_gap` function writes before/after PNG screenshots to `target/screenshots/` for each component touched by the gap.
+    - The `verify_and_merge` function invokes `gh pr comment` with a body containing `![screenshot](<artifact-url>)` for each screenshot, using the artifact URL from the upload step.
+    - The CI workflow step `design-pass` uploads the `target/screenshots/` directory as an artifact named `design-screenshots` via `actions/upload-artifact`.
+    - When `implement_gap` returns a non‑zero exit code, the artifact upload and PR comment steps still execute (the job does not abort before posting).
   depends_on: [EFFECTIVE-562]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -23459,10 +23475,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    In the `_self_sync_fleet_scripts` function (line 528 area), add logic after requirements-approval detection to enqueue a `design-pass` job into the CI pipeline by calling the existing job-enqueue mechanism with job type `design-pass` and the PR metadata.
+    
+    Target file(s):
+    - scripts/ops/github-webhook-receiver.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Intake pipeline definition includes a step that enqueues the `design-pass` job after requirements are approved
-    - When a new user‑facing tool PR is opened, the design‑pass job is automatically scheduled
-    - A test intake run shows the design‑pass job appears in the CI queue
+    - Running `python scripts/ops/github-webhook-receiver.py --dry-run --event requirements_approved --pr 42` prints a log line containing `enqueued design-pass job`.
+    - The `_self_sync_fleet_scripts` function in `scripts/ops/github-webhook-receiver.py` contains a conditional branch that matches `requirements_approved` event type and calls `enqueue_ci_job('design-pass', pr_number)`.
+    - A test intake run via `scripts/ci/test-oracle-refresh.sh` shows `design-pass` in the CI queue output after a requirements-approved webhook is simulated.
   depends_on: [EFFECTIVE-562]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -25663,10 +25686,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new public function `enumerate_tests_for_diff` in `src/execute_gap.rs` that accepts a diff (as a set of changed file paths) and a file-to-test mapping (e.g., a HashMap<String, Vec<String>>) and returns a deduplicated, sorted list of test identifiers for all changed files, ignoring files with no mapping. The function is pure, and unit tests are added inside the existing `mod tests` block at line 1432, using a sample diff and mapping to verify correct enumeration.
+    
+    Target file(s):
+    - src/execute_gap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Given a diff and a file-to-test mapping, the function returns the deduplicated union of all test identifiers for all changed files.
-    - If a changed file matches no patterns, it is ignored (or a configurable default set is returned).
-    - The function is pure and testable; unit tests use a sample diff and mapping to verify correct enumeration.
+    - src/execute_gap.rs contains a public function `enumerate_tests_for_diff` that takes a differ parameter and a mapping, returning `Vec<String>`.
+    - Unit tests in the `mod tests` block at line 1432 exercise the function with a diff containing a file mapped to multiple tests and a file with no mapping, verifying the output is deduplicated and contains only the mapped test identifiers.
+    - The function does not perform any I/O, read environment variables, or access global state; all inputs are provided as arguments.
+    - When a changed file has no mapping entry, the function silently skips it and does not include any default test set.
   depends_on: [EFFECTIVE-624, EFFECTIVE-625]
   notes: |
     [chump harvest check 'chump']
@@ -25720,11 +25751,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new `impact` subcommand to the CLI argument parsing and dispatch logic in `src/cli_tool.rs`, which reads a unified diff from stdin (or a file path provided as an argument), invokes the existing enumeration logic from the `chump` crate, and prints the resulting list of affected tests/gates to stdout, one per line.
+    
+    Target file(s):
+    - src/cli_tool.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A new subcommand (e.g., `effective chump impact`) reads a diff from stdin or a file and prints the list of affected tests/gates, one per line.
-    - The command uses the enumeration logic and a default mapping configuration (which can be overridden via a config file or CLI flag).
-    - The output is plain text; exit code 0 on success, non-zero on invalid diff input.
-    - Manual testing with a sample diff shows the expected list.
+    - Running `effective chump impact --help` prints usage information including the option to pass a file path or read from stdin.
+    - Running `effective chump impact < sample.diff` (where `sample.diff` is a valid unified diff) prints a newline-separated list of affected test/gate identifiers to stdout and exits with code 0.
+    - Running `effective chump impact /path/to/nonexistent.diff` exits with a non-zero exit code and prints an error message to stderr.
+    - Running `effective chump impact` with invalid diff content piped to stdin exits with a non-zero exit code and prints an error message to stderr.
   depends_on: [EFFECTIVE-626]
   notes: |
     [chump harvest check 'chump']
@@ -89438,7 +89476,7 @@ gaps:
 - id: PRODUCT-193
   domain: PRODUCT
   title: "[almanac] INFRA-3530 (SQL indexing) is open as a capability gap but ROADMAP defers it by design — reconcile"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -89462,6 +89500,8 @@ gaps:
     - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-09-01T23:31:50Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2052B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
