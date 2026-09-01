@@ -247,9 +247,7 @@ pub fn repo_root() -> PathBuf {
     // INFRA-3341: CHUMP_REPO / CHUMP_HOME env vars take highest precedence.
     // Check them BEFORE the chumpd socket so that setting them later is not
     // shadowed by a stale OnceLock cache in chumpd_repo_root().
-    if let Ok(path) = std::env::var("CHUMP_REPO")
-        .or_else(|_| std::env::var("CHUMP_HOME"))
-    {
+    if let Ok(path) = std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME")) {
         let pb = PathBuf::from(path.trim().to_string());
         if pb.is_dir() {
             return pb;
