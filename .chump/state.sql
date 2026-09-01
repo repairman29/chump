@@ -15712,6 +15712,8 @@ gaps:
     - "Ordering matters for cost: run highest-value first (P0/P1, then unblocking-bonus per chump-planner scoring) rather than newest-first, so the LLM spend lands where a claimable gap actually moves the fleet"
     - "MEASURE THE OUTCOME, not the run: report the template-AC count before and after, and re-run audit-ac to prove the number moved. 'the pass ran' is a signal, not an outcome"
     - "WORKED EXAMPLE from tonight: ZERO-WASTE-036 — the systematic fix for the built-not-wired pattern itself — sat at P2 with pure template ACs and was effectively unclaimable until they were hand-written. The most important gap in the queue was invisible because of this exact problem"
+  notes: |
+    Decomposed into 3 slices: EFFECTIVE-579, EFFECTIVE-580, EFFECTIVE-581
   opened_date: '2026-08-19'
   outcome_id: EFFECTIVE-000
 
@@ -20563,6 +20565,86 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-579
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Enhance audit-ac detector to identify and classify default template ACs (EFFECTIVE-407 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - audit-ac identifies gaps containing default_acceptance_criteria template text and classifies them distinctly from todo_placeholder gaps
+    - audit-ac summary report explicitly splits counts for todo_placeholder and template_ac failure modes
+    - Tests verify both empty/TODO ACs and generic template ACs are correctly detected and categorized
+  notes: |
+    [chump harvest check 'queue']
+    === primitives_index match for 'queue' ===
+    
+    === cluster keyword match for 'queue' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'queue' ===
+    
+    === repo-description match for 'queue' ===
+    
+    === HARVEST_ROADMAP.md mention of 'queue' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'queue' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: EFFECTIVE-580
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add priority-ordered queue runner for targeting template-AC gaps with write-ac (EFFECTIVE-407 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Runner identifies open template-AC gaps identified by audit-ac
+    - Queue ordering processes higher priority gaps (P0/P1) and high unblocking score gaps first
+    - Supports generating candidate ACs without forcing auto-apply
+  depends_on: [EFFECTIVE-579]
+  notes: |
+    [chump harvest check 'queue']
+    === primitives_index match for 'queue' ===
+    
+    === cluster keyword match for 'queue' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'queue' ===
+    
+    === repo-description match for 'queue' ===
+    
+    === HARVEST_ROADMAP.md mention of 'queue' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'queue' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: EFFECTIVE-581
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Execute write-ac queue pass and verify template-AC metric reduction (EFFECTIVE-407 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Run the queue pass over prioritized template-AC gaps, landing ACs for high-signal gaps while leaving ambiguous gaps flagged
+    - Execute audit-ac before and after the pass to verify and log the reduction in template_ac count
+    - Verify no low-confidence or hallucinated ACs are auto-applied to unclaimable gaps
+  depends_on: [EFFECTIVE-579, EFFECTIVE-580]
+  notes: |
+    [chump harvest check 'queue']
+    === primitives_index match for 'queue' ===
+    
+    === cluster keyword match for 'queue' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'queue' ===
+    
+    === repo-description match for 'queue' ===
+    
+    === HARVEST_ROADMAP.md mention of 'queue' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'queue' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: EVAL-085
   title: test eval 085
