@@ -20606,7 +20606,7 @@ gaps:
 - id: EFFECTIVE-579
   domain: EFFECTIVE
   title: "EFFECTIVE: Enhance audit-ac detector to identify and classify default template ACs (EFFECTIVE-407 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -20628,6 +20628,7 @@ gaps:
     === cross-pollination briefs mentioning 'queue' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-01T06:34:17Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-580
   domain: EFFECTIVE
