@@ -71229,10 +71229,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new `audit_meta070` function to `preflight.rs` that iterates over the shipped META‑070 sub‑gaps, compares their declared CI gates against the gates registered in the preflight system, and prints any missing gates. Extend the `step` command‑line dispatcher to recognize a new sub‑command `audit-meta070` (or flag `--audit-meta070`) that invokes this function, and update `print_help` to document the new command. Include a minimal unit test that feeds a mock sub‑gap list where all gates are present and asserts that the function reports no gaps.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Review each shipped META-070 sub-gap
-    - Identify any CI gates added by those sub-gaps that are missing from preflight
-    - Report findings and create follow-up tasks if gaps exist
+    - Running `cargo run --bin chump-preflight audit-meta070` prints a table listing each META‑070 sub‑gap and any CI gates that are not present in preflight, or prints “No gaps found” when all gates are covered.
+    - Executing `cargo run --bin chump-preflight --help` shows a new entry for the `audit-meta070` command with a brief description.
+    - The `step` function returns exit code 0 after completing the audit, and returns a non‑zero code only on unexpected runtime errors.
+    - The unit test `test_audit_meta070_no_gaps` in `preflight.rs` passes, confirming that `audit_meta070` reports an empty gap list when supplied with a fully‑covered mock sub‑gap configuration.
   depends_on: [INFRA-3792]
   notes: |
     [chump harvest check 'RESILIENT']
