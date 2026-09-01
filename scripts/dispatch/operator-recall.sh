@@ -74,6 +74,18 @@
 #                             for 2.5h with no alarm on 2026-08-14 (AUTONOMY_HALT
 #                             above never fired because AUTONOMY_LEVEL stayed
 #                             non-zero the whole time).
+#   (j) ZERO_SHIP_ACTIVE    — RESILIENT-575: >= CHUMP_ZERO_SHIP_MIN_CYCLES
+#                             (default 3) worker_exit events (workers are
+#                             actively cycling — NOT idle/halted, which (h)/(i)
+#                             already cover) but 0 gap_shipped events, both
+#                             within CHUMP_ZERO_SHIP_WINDOW_SECS (default 3600).
+#                             This is the "board" signal from the 2026-09-01
+#                             incident: workers showed 'active' the whole time
+#                             while a sub-cap outage silently cooled-down+
+#                             blocked every gap it touched — zero real PRs for
+#                             9h, unpaged, because every existing condition
+#                             checks for idle/dead workers, not busy-but-fruitless
+#                             ones.
 #
 # Usage:
 #   operator-recall.sh                  # auto-detect all conditions; exit 0
@@ -95,6 +107,8 @@
 #   CHUMP_RUNNER_GHOST_ONLINE_DETECT       set to 0 to disable QUEUE_SATURATED detection (default 1)
 #   CHUMP_DISK_CRITICAL_WINDOW_SECS        recency window for disk_critical events (default 600)
 #   CHUMP_DISK_CRITICAL_PCT                free% threshold below which to page (default 5)
+#   CHUMP_ZERO_SHIP_WINDOW_SECS            default 3600 (RESILIENT-575)
+#   CHUMP_ZERO_SHIP_MIN_CYCLES             default 3 (RESILIENT-575)
 #   CHUMP_AMBIENT_LOG                      path to ambient.jsonl
 
 set -uo pipefail
@@ -117,6 +131,8 @@ _runner_queue_min_count="${CHUMP_RUNNER_QUEUE_MIN_COUNT:-3}"
 _runner_ghost_detect="${CHUMP_RUNNER_GHOST_ONLINE_DETECT:-1}"
 _disk_critical_window="${CHUMP_DISK_CRITICAL_WINDOW_SECS:-600}"
 _disk_critical_pct="${CHUMP_DISK_CRITICAL_PCT:-5}"
+_zero_ship_window="${CHUMP_ZERO_SHIP_WINDOW_SECS:-3600}"
+_zero_ship_min_cycles="${CHUMP_ZERO_SHIP_MIN_CYCLES:-3}"
 _autonomy_halt_min_secs="${CHUMP_AUTONOMY_HALT_MIN_SECS:-1800}"
 _autonomy_halt_window="${CHUMP_AUTONOMY_HALT_WINDOW_SECS:-86400}"
 
@@ -612,6 +628,27 @@ print(best if best is not None else 0)
                     _emit_recall "AUTONOMY_HALT" "$_reason" ',"class":"AUTONOMY_HALT","halt_age_s":'"$_halt_age"',"remediation":"chump fleet start (or chump fleet level N) to resume; if this was NOT operator-initiated, find + fix the process that wrote AUTONOMY_LEVEL=0 before resuming"'
                 fi
             fi
+        fi
+    fi
+fi
+
+# (j) ZERO_SHIP_ACTIVE — RESILIENT-575: workers are actively cycling
+# (worker_exit events present, so this is NOT idle/dead — (h)/(i) own that)
+# but nothing has shipped in the same window. Catches the "board said active,
+# nothing shipped" class the 2026-09-01 sub-cap-outage incident fell through.
+_worker_cycles=$(_scan_ambient "$_zero_ship_window" '"kind":"worker_exit"' | wc -l 2>/dev/null || echo 0)
+_worker_cycles="${_worker_cycles//[[:space:]]/}"
+if [[ -n "$_worker_cycles" ]] && (( _worker_cycles >= _zero_ship_min_cycles )); then
+    _ship_count=$(_scan_ambient "$_zero_ship_window" '"kind":"gap_shipped"' | wc -l 2>/dev/null || echo 0)
+    _ship_count="${_ship_count//[[:space:]]/}"
+    if [[ -n "$_ship_count" ]] && (( _ship_count == 0 )); then
+        _zs_hours=$(( _zero_ship_window / 3600 ))
+        _reason="${_worker_cycles} worker_exit cycle(s) in the last ${_zs_hours}h (workers actively cycling) but 0 gap_shipped events — fleet is busy but shipping nothing"
+        if (( _check_only )); then
+            echo "[operator-recall] HALT condition=ZERO_SHIP_ACTIVE: $_reason"
+            _any_halt=1
+        else
+            _emit_recall "ZERO_SHIP_ACTIVE" "$_reason" ',"class":"ZERO_SHIP_ACTIVE","worker_cycles":'"$_worker_cycles"',"remediation":"check for fleet_backend_auto_fallback / worker_cooldown_cluster_wide / auth-storm events in ambient.jsonl; a busy-but-fruitless fleet usually means every cycle is silently failing on one backend"'
         fi
     fi
 fi

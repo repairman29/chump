@@ -365,6 +365,27 @@ classify_rc() {
     esac
 }
 
+# RESILIENT-575: classify a `claude -p` (sub) cycle-log failure as an
+# account-level outage (cap exhausted / rate-limited / creds dead), not a
+# per-gap failure. Mirrors classify_probe_error() in run-fleet.sh so the two
+# entry points (launch-time probe, per-cycle failure) agree on what counts
+# as "the backend is down" vs "this gap is bad". Prints one of:
+#   credit-exhausted | rate-limit | auth-invalid | none
+classify_sub_failure() {
+    local log="$1"
+    [[ -f "$log" ]] || { echo "none"; return; }
+    if grep -qiE 'credit balance is too low|credit_limit|credit limit|insufficient quota|insufficient_quota|payment required|\b402\b|usage limit|usage_limit reached' "$log" 2>/dev/null; then
+        echo "credit-exhausted"; return
+    fi
+    if grep -qiE '\b429\b|rate.?limit|too many requests|overloaded_error|rate_limit_error' "$log" 2>/dev/null; then
+        echo "rate-limit"; return
+    fi
+    if grep -qiE 'Invalid authentication credentials|"type":"authentication_error"|API Error: 401|invalid x-api-key|unauthorized' "$log" 2>/dev/null; then
+        echo "auth-invalid"; return
+    fi
+    echo "none"
+}
+
 # INFRA-206: per-agent domain affinity. If FLEET_AGENT_DOMAINS is set (comma-
 # separated, e.g. "INFRA,EVAL,DOC"), agent K is assigned domains[(K-1) % N],
 # overriding the fleet-wide FLEET_DOMAIN_FILTER for this worker only.
@@ -1847,6 +1868,13 @@ Operator or sibling worker can rescue this branch via:
         # cycle, forever (board hand-blocked INFRA-3798 timeout-loop + INFRA-1497
         # 0B-log wedge for exactly this). Now every non-zero rc flows here, so the
         # cooldown + chronic-offender auto-block below cover timeout and wedge too.
+        # RESILIENT-575: snapshot the backend THIS cycle actually ran on before
+        # any auto-fallback below can reassign FLEET_BACKEND — the INFRA-267
+        # P0-fallback check further down must key off what failed just now, not
+        # off a backend we may have just switched TO to escape that failure
+        # (otherwise a sub→chump-local fallback would immediately re-trigger
+        # the chump-local→claude P0 fallback in the very same cycle).
+        _orig_backend="$FLEET_BACKEND"
         _dispatch_fail_count=$((_dispatch_fail_count + 1))
         if [ "$rc" -eq 124 ]; then
             if [ "$_is_wedge" -eq 1 ]; then
@@ -1860,6 +1888,61 @@ Operator or sibling worker can rescue this branch via:
 
         # EFFECTIVE-310: strike + possible frontier decompose (see above).
         _effective_003_reflex
+
+        # ── RESILIENT-575: sub outage auto-fallback to free-tier cascade ────
+        # INCIDENT 2026-09-01: FLEET_BACKEND=claude (the sub) started
+        # returning rc=1 every cycle (cap exhausted); the worker cooled-down
+        # + auto-blocked each gap it touched as if the GAP were bad, while
+        # the free-tier cascade (FLEET_BACKEND=chump-local) sat unused the
+        # whole time — 9h with zero real ships, unpaged. A backend outage is
+        # a fleet-wide signal and must TRIGGER a backend switch, not be
+        # misattributed to individual gaps. Two consecutive sub failures
+        # classified as account-level (credit/rate/auth, NOT a per-gap bug)
+        # flip this worker to chump-local for subsequent cycles and clear
+        # this worker's own cooldown ledger (the gaps it "failed" during the
+        # outage get a clean shot on the now-working backend instead of
+        # sitting blocked). _backend_outage_fail also tells the cooldown
+        # block below to skip writing a new cooldown for THIS cycle — never
+        # silently block a gap for an outage that isn't its fault.
+        _backend_outage_fail=0
+        if [[ "$_orig_backend" == "claude" ]] && [[ "$rc" -ne 124 ]]; then
+            _sub_fail_class="$(classify_sub_failure "$cycle_log")"
+            if [[ "$_sub_fail_class" != "none" ]]; then
+                _backend_outage_fail=1
+                _sub_fail_ctr_file="$FLEET_LOG_DIR/agent-${AGENT_ID}.sub-outage-fails"
+                _sub_fail_n=$(( $(cat "$_sub_fail_ctr_file" 2>/dev/null || echo 0) + 1 ))
+                echo "$_sub_fail_n" > "$_sub_fail_ctr_file" 2>/dev/null || true
+                _sub_fallback_threshold="${CHUMP_SUB_FALLBACK_THRESHOLD:-2}"
+                log "RESILIENT-575: sub backend failure class=$_sub_fail_class consecutive=$_sub_fail_n/$_sub_fallback_threshold on $GAP_ID"
+                if [[ "$_sub_fail_n" -ge "$_sub_fallback_threshold" ]] && [[ "${CHUMP_SUB_FALLBACK:-1}" != "0" ]]; then
+                    _amb_sf="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                    mkdir -p "$(dirname "$_amb_sf")" "$REPO_ROOT/.chump-locks/backend-outage" 2>/dev/null || true
+                    printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"fleet_backend_auto_fallback","agent_id":"%s","from_backend":"claude","to_backend":"chump-local","fail_class":"%s","consecutive_failures":%d,"gap_id":"%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                        "$AGENT_ID" "$_sub_fail_class" "$_sub_fail_n" "$GAP_ID" \
+                        >> "$_amb_sf" 2>/dev/null || true
+                    log "ALERT RESILIENT-575: kind=fleet_backend_auto_fallback sub backend failing (${_sub_fail_class} x${_sub_fail_n}) — switching worker $AGENT_ID to chump-local free-tier cascade"
+                    export FLEET_BACKEND="chump-local"
+                    : > "$_sub_fail_ctr_file" 2>/dev/null || true
+                    printf '{"backend":"claude","since":"%s","agent":"%s","fail_class":"%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_sub_fail_class" \
+                        > "$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.json" 2>/dev/null || true
+                    # AC2: unblock gaps this worker auto-blocked while the sub
+                    # was silently failing — a working backend just returned
+                    # (the free-tier cascade), so those cooldowns no longer
+                    # reflect a bad gap, only a dead backend window.
+                    _unblocked_n=$(ls "$REPO_ROOT/.chump-locks/cooldown/${AGENT_ID}-"*.json 2>/dev/null | wc -l | tr -d ' ')
+                    rm -f "$REPO_ROOT/.chump-locks/cooldown/${AGENT_ID}-"*.json 2>/dev/null || true
+                    printf '{"ts":"%s","session":"%s","kind":"fleet_backend_outage_unblock","agent_id":"%s","unblocked_count":%s}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                        "$AGENT_ID" "${_unblocked_n:-0}" \
+                        >> "$_amb_sf" 2>/dev/null || true
+                    log "RESILIENT-575: unblocked ${_unblocked_n:-0} cooldown record(s) for worker $AGENT_ID now that chump-local is active"
+                fi
+            else
+                rm -f "$FLEET_LOG_DIR/agent-${AGENT_ID}.sub-outage-fails" 2>/dev/null || true
+            fi
+        fi
 
         # ── INFRA-267: P0 fallback to Anthropic ─────────────────────────────
         # When the chump-local backend (free-tier cascade) fails on a P0 gap,
@@ -1876,7 +1959,7 @@ Operator or sibling worker can rescue this branch via:
         # The claude branch above already holds the inline-briefing logic;
         # we re-invoke claude here with a minimal prompt rather than
         # duplicating that whole block.
-        if [[ "$FLEET_BACKEND" == "chump-local" ]] \
+        if [[ "$_orig_backend" == "chump-local" ]] \
            && [[ "$rc" -ne 124 ]] \
            && [[ "${CHUMP_P0_FALLBACK:-1}" != "0" ]] \
            && [[ "$_decomposed_this_cycle" -eq 0 ]] \
@@ -1934,7 +2017,14 @@ Operator or sibling worker can rescue this branch via:
         #     — wedge means claude -p produced no output AT ALL; the gap
         #     is likely incompatible with the current backend or hit a
         #     systemic issue (auth, API down, MCP startup hang).
-        if [ "$rc" -ne 0 ]; then
+        #
+        # RESILIENT-575: a cycle classified as a sub account-level outage
+        # (credit/rate/auth — see classify_sub_failure above) skips cooldown
+        # entirely. The gap didn't fail; the backend did. Writing a cooldown
+        # here is exactly the misattribution the 2026-09-01 incident was
+        # caused by (a P0 gap auto-blocked for 9h while the real problem was
+        # an exhausted subscription cap).
+        if [ "$rc" -ne 0 ] && [ "${_backend_outage_fail:-0}" -eq 0 ]; then
             if [ "${_is_wedge:-0}" -eq 1 ]; then
                 cooldown_s="${FLEET_WEDGE_COOLDOWN_S:-14400}"  # 4h default
                 _cooldown_kind="wedge"

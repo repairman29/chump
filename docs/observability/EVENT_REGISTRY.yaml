@@ -532,6 +532,25 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [gap_id, count, new_model]
 
+  - kind: fleet_backend_auto_fallback
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (RESILIENT-575)
+    trigger: FLEET_BACKEND=claude (the sub) fails CHUMP_SUB_FALLBACK_THRESHOLD
+      (default 2) consecutive cycles with a credit/rate/auth signature; worker
+      switches itself to chump-local (free-tier cascade) so a sub-cap outage
+      never silently blocks gaps as if the gap were bad
+    consumers: [fleet-brief, watchdog, operator-recall]
+    fields_required: [agent_id, from_backend, to_backend, fail_class, consecutive_failures, gap_id]
+
+  - kind: fleet_backend_outage_unblock
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (RESILIENT-575)
+    trigger: emitted alongside fleet_backend_auto_fallback; this worker's own
+      per-worker cooldown ledger is cleared since a working backend just
+      returned and gaps cooled during the outage deserve a clean retry
+    consumers: [fleet-brief, watchdog]
+    fields_required: [agent_id, unblocked_count]
+
   - kind: gap_parked_unverified_ship
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (EFFECTIVE-441)
