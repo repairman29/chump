@@ -18009,10 +18009,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend `crates/chump-gap-store/src/lib.rs::ship` to log each drive or handoff event with the required fields (platform, content_id, timestamp, status) and to persist any reply or comment for owned surfaces under Jeff's account; then modify `src/web_server.rs::handle_stuck_list` to query the stored replies and expose them as an “unread_replies” JSON list for Jeff via the appropriate endpoint.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    - src/web_server.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Logs each drive or handoff event with platform, content id, timestamp, and status
-    - For owned surfaces, stores replies and comments for Jeff to answer manually
-    - Exposes an unread replies list for Jeff
+    - In `crates/chump-gap-store/src/lib.rs`, the `ship` function writes a log entry that includes the platform, content ID, ISO‑8601 timestamp, and status for every drive or handoff event.
+    - In `crates/chump-gap-store/src/lib.rs`, the `ship` function stores any reply or comment payload associated with an owned surface in the gap store, tagged with Jeff’s user identifier.
+    - In `src/web_server.rs`, the `handle_stuck_list` function returns a JSON response containing an `unread_replies` array that lists all stored replies for Jeff that have not been marked as read.
+    - A request to the web endpoint `/replies/unread` returns HTTP 200 with a JSON body matching the `unread_replies` schema and includes any replies logged by `ship` during the test run.
   depends_on: [EFFECTIVE-492, EFFECTIVE-493, EFFECTIVE-494, EFFECTIVE-495]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -32552,11 +32561,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new Express POST route handler for “/api/content-bots/toggle” in web/v2/app.js that flips the enabled flag in .chump-config.toml, writes the file atomically, emits success or failure events via the existing event emitter, and records the operation cost in the metrics subsystem; also extend scripts/ci/test-liaison-webhook-cache.sh with a smoke‑test command that invokes this endpoint and validates the JSON response.
+    
+    Target file(s):
+    - web/v2/app.js
+    - scripts/ci/test-liaison-webhook-cache.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "web/v2/app.js: The POST /api/content-bots/toggle handler writes the updated toggle state to .chump-config.toml and returns HTTP 200 with a JSON body containing the new state field."
+    - "web/v2/app.js: On successful write, the handler calls the global event emitter with event name “content_bot.toggle.success”."
+    - "web/v2/app.js: On error, the handler calls the event emitter with event name “content_bot.toggle.failure” and includes an error classification field distinguishing transient from permanent failures."
+    - "scripts/ci/test-liaison-webhook-cache.sh: The added smoke‑test command `curl -X POST http://localhost:$PORT/api/content-bots/toggle -d '{}'` exits with status 0 and its stdout contains `\"status\":\"toggled\"`."
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
