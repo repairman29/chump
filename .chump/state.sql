@@ -11565,9 +11565,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Insert a new Jest test case named “should exhibit the new RUN behavior” into the existing `auth-toast.dedup.test.js` file, calling the function or endpoint that implements the RUN behavior and asserting the expected output according to DOCS‑002.
+    
+    Target file(s):
+    - web/v2/tests/auth-toast.dedup.test.js
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A unit test asserting the expected RUN behavior is added
-    - The test fails on the pre‑change code and passes after the implementation
+    - The file `web/v2/tests/auth-toast.dedup.test.js` contains a test block with the exact title “should exhibit the new RUN behavior”.
+    - Executing the test suite with `npm test` (or the repository’s standard test command) fails on the current codebase because the new RUN behavior is not yet implemented.
+    - After the RUN behavior implementation is merged, the same `npm test` command passes, and the CI script `scripts/ci/test-curator-gap-ac-filled.sh` exits with status 0 indicating the new test succeeded.
   depends_on: [DOCS-005]
   notes: |
     [chump harvest check 'roadmap']
