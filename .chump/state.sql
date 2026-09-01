@@ -64319,7 +64319,7 @@ gaps:
 - id: INFRA-3487
   domain: INFRA
   title: "RESILIENT: [COTG-1.5] supervision-tree escalation (catch storms on cycle 4, not 30)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -64328,6 +64328,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~50% -> FINISH. unify neuromod pause (autonomy_loop.rs:1133) + src/hitl_escalation.rs + tool-storm exit 76 (execute_gap.rs:1339) into one restart-intensity policy that marks blocked+escalates after N no-progress cycles.
+    [2026-09-01T13:25:38Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4798B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: COTG
 
@@ -95639,7 +95640,7 @@ gaps:
   domain: RESILIENT
   title: "workers must AUTO-FALLBACK sub->free-tier on rc=1, not silently cool-down+block: a sub-cap outage killed the fleet for 9h"
   status: open
-  priority: P0
+  priority: P2
   effort: m
   description: |
     INCIDENT 2026-09-01: the fleet shipped ZERO real PRs for 9h while workers showed 'active'. Root cause: cj-worker-run.sh pinned FLEET_BACKEND=claude FLEET_MODEL=sonnet (the weekly Claude SUB); the sub started returning rc=1 (ERROR_1) every ~50min cycle (cap exhausted — it worked earlier in the session, then died) and the worker just cooled-down 5400s + INFRA-3832-auto-blocked the gap, then failed the NEXT gap identically — silently, for 9h. Meanwhile the FREE-TIER cascade (Cerebras gemma-4-31b @ chump --execute-gap) was LIVE the whole time and unused. Hand-fixed by flipping both workers to FLEET_BACKEND=chump-local. THE DURABLE FIX: when the primary backend (sub) fails a cycle with rc=1/auth/cap, the worker must AUTO-FALLBACK to the free-tier cascade for the next cycle (and emit a LOUD signal), NOT cool-down+block-the-gap as if the GAP were bad. A backend outage is a fleet-wide signal that must TRIGGER a backend switch (signals-must-trigger-action), not be misattributed to individual gaps (which then get wrongly auto-blocked). Also: default the floor to free-tier/paid-DeepSeek, sub as rare ceiling only (it exhausts). And the board must PAGE on 'active workers + 0 real ships for >1h' — this went 9h unpaged.
@@ -95647,7 +95648,331 @@ gaps:
     - a worker whose backend fails rc=1/auth twice switches to the free-tier cascade automatically + emits a loud signal, never silently blocks gaps for a backend outage
     - auto-blocked gaps from a backend-outage window are un-blocked when a working backend returns
     - the board pages on 'workers active + 0 real ships >1h'
+  notes: |
+    Decomposed into 10 slices: RESILIENT-576, RESILIENT-577, RESILIENT-578, RESILIENT-579, RESILIENT-580, RESILIENT-581, RESILIENT-582, RESILIENT-583, RESILIENT-584, RESILIENT-585
   outcome_id: RESILIENT-000
+
+- id: RESILIENT-576
+  domain: RESILIENT
+  title: "RESILIENT: Add backend priority defaults (free‑tier as floor, sub as ceiling) (RESILIENT-575 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Configuration file includes DEFAULT_BACKEND set to free‑tier
+    - Sub backend is only selected when explicitly configured or when free‑tier is unavailable
+  notes: |
+    [chump harvest check 'workers']
+    === primitives_index match for 'workers' ===
+    
+    === cluster keyword match for 'workers' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'workers' ===
+    
+    === repo-description match for 'workers' ===
+    
+    === HARVEST_ROADMAP.md mention of 'workers' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+    
+    === cross-pollination briefs mentioning 'workers' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-577
+  domain: RESILIENT
+  title: "RESILIENT: Implement consecutive rc=1/auth failure counter per worker (RESILIENT-575 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Worker tracks number of consecutive rc=1/auth failures
+    - Counter resets to zero after a successful request
+  depends_on: [RESILIENT-576]
+  notes: |
+    [chump harvest check 'workers']
+    === primitives_index match for 'workers' ===
+    
+    === cluster keyword match for 'workers' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'workers' ===
+    
+    === repo-description match for 'workers' ===
+    
+    === HARVEST_ROADMAP.md mention of 'workers' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+    
+    === cross-pollination briefs mentioning 'workers' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-578
+  domain: RESILIENT
+  title: "RESILIENT: Auto‑fallback to free‑tier backend when two consecutive failures occur (RESILIENT-575 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When counter reaches 2, worker switches its FLEET_BACKEND to free‑tier for the next cycle
+    - Fallback persists until primary backend health is re‑evaluated
+  depends_on: [RESILIENT-576, RESILIENT-577]
+  notes: |
+    [chump harvest check 'workers']
+    === primitives_index match for 'workers' ===
+    
+    === cluster keyword match for 'workers' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'workers' ===
+    
+    === repo-description match for 'workers' ===
+    
+    === HARVEST_ROADMAP.md mention of 'workers' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+    
+    === cross-pollination briefs mentioning 'workers' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-579
+  domain: RESILIENT
+  title: "RESILIENT: Emit loud alert signal on backend fallback event (RESILIENT-575 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Fallback triggers a high‑severity alert (e.g., Slack/PagerDuty) with clear message
+    - Alert includes worker ID, previous backend, and new backend
+  depends_on: [RESILIENT-578]
+  notes: |
+    [chump harvest check 'workers']
+    === primitives_index match for 'workers' ===
+    
+    === cluster keyword match for 'workers' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'workers' ===
+    
+    === repo-description match for 'workers' ===
+    
+    === HARVEST_ROADMAP.md mention of 'workers' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+    
+    === cross-pollination briefs mentioning 'workers' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-580
+  domain: RESILIENT
+  title: "RESILIENT: Skip cool‑down block for gaps when fallback is active (RESILIENT-575 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - When a worker is in fallback mode, gaps are processed normally without entering INFRA‑3832 auto‑block state
+    - Logs show that cool‑down was bypassed due to fallback
+  depends_on: [RESILIENT-578]
+  notes: |
+    [chump harvest check 'workers']
+    === primitives_index match for 'workers' ===
+    
+    === cluster keyword match for 'workers' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'workers' ===
+    
+    === repo-description match for 'workers' ===
+    
+    === HARVEST_ROADMAP.md mention of 'workers' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+    
+    === cross-pollination briefs mentioning 'workers' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-581
+  domain: RESILIENT
+  title: "RESILIENT: Auto‑unblock and restore primary backend when it becomes healthy (RESILIENT-575 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Worker periodically probes primary backend health
+    - On successful health check, worker switches back to primary backend and clears any auto‑blocked gaps
+    - A recovery alert is emitted
+  depends_on: [RESILIENT-578]
+  notes: |
+    [chump harvest check 'workers']
+    === primitives_index match for 'workers' ===
+    
+    === cluster keyword match for 'workers' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'workers' ===
+    
+    === repo-description match for 'workers' ===
+    
+    === HARVEST_ROADMAP.md mention of 'workers' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+    
+    === cross-pollination briefs mentioning 'workers' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-582
+  domain: RESILIENT
+  title: "RESILIENT: Add board paging rule for 'active workers + 0 real ships >1h' (RESILIENT-575 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Monitoring dashboard triggers a page when any worker reports active status while real‑ship count is zero for longer than 1 hour
+    - Page includes worker identifiers and timestamp
+  depends_on: [RESILIENT-580]
+  notes: |
+    [chump harvest check 'workers']
+    === primitives_index match for 'workers' ===
+    
+    === cluster keyword match for 'workers' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'workers' ===
+    
+    === repo-description match for 'workers' ===
+    
+    === HARVEST_ROADMAP.md mention of 'workers' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+    
+    === cross-pollination briefs mentioning 'workers' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-583
+  domain: RESILIENT
+  title: "RESILIENT: Unit tests for failure detection, fallback, and un‑fallback logic (RESILIENT-575 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Tests verify counter increments on rc=1/auth failures and resets on success
+    - Tests confirm fallback switch occurs after two failures
+    - Tests confirm auto‑unblock restores primary backend after simulated health recovery
+  depends_on: [RESILIENT-578, RESILIENT-579, RESILIENT-580, RESILIENT-581]
+  notes: |
+    [chump harvest check 'workers']
+    === primitives_index match for 'workers' ===
+    
+    === cluster keyword match for 'workers' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'workers' ===
+    
+    === repo-description match for 'workers' ===
+    
+    === HARVEST_ROADMAP.md mention of 'workers' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+    
+    === cross-pollination briefs mentioning 'workers' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-584
+  domain: RESILIENT
+  title: "RESILIENT: Integration test simulating sub‑backend outage and recovery (RESILIENT-575 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test runs a worker against a mock sub backend that returns rc=1 every 50 min
+    - Verifies worker falls back to free‑tier, processes gaps without block, emits alert, and later restores primary backend when mock recovers
+    - Board paging rule is exercised and confirmed
+  depends_on: [RESILIENT-581, RESILIENT-582, RESILIENT-583]
+  notes: |
+    [chump harvest check 'workers']
+    === primitives_index match for 'workers' ===
+    
+    === cluster keyword match for 'workers' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'workers' ===
+    
+    === repo-description match for 'workers' ===
+    
+    === HARVEST_ROADMAP.md mention of 'workers' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+    
+    === cross-pollination briefs mentioning 'workers' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-585
+  domain: RESILIENT
+  title: "RESILIENT: Update documentation and release notes for auto‑fallback feature (RESILIENT-575 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README and ops docs describe new fallback behavior, configuration defaults, and alerting
+    - Release notes list RESILIENT‑575 with summary of changes
+  depends_on: [RESILIENT-584]
+  notes: |
+    [chump harvest check 'workers']
+    === primitives_index match for 'workers' ===
+    
+    === cluster keyword match for 'workers' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'workers' ===
+    
+    === repo-description match for 'workers' ===
+    
+    === HARVEST_ROADMAP.md mention of 'workers' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+    
+    === cross-pollination briefs mentioning 'workers' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: SMOKE-001
   domain: SMOKE
