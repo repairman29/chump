@@ -1969,6 +1969,21 @@ if [ "${CHUMP_BRANCH_PROTECTION_AUDIT:-1}" != "0" ]; then
 fi
 
 # ------------------------------------------------------------------
+# 17b. CI-parity auto-file for new ci.yml gates (RESILIENT-587)
+# ------------------------------------------------------------------
+# Fires ONLY when .github/workflows/ci.yml is staged. Runs BEFORE the
+# blocking parity smoke (step 18) so a newly-added, unmirrored gate gets
+# an allowlist entry auto-appended to
+# scripts/ci/preflight-ci-parity-exceptions.txt instead of hard-blocking
+# the commit. Bypass: CHUMP_CI_PARITY_AUTOFILE=0.
+CI_PARITY_AUTOFILE_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-ci-parity-autofile.sh"
+if [ -x "$CI_PARITY_AUTOFILE_HOOK" ]; then
+    if ! "$CI_PARITY_AUTOFILE_HOOK"; then
+        exit 1
+    fi
+fi
+
+# ------------------------------------------------------------------
 # 18. preflight-vs-CI parity smoke (INFRA-2120, 2026-05-29)
 # ------------------------------------------------------------------
 # Fast-mode wrapper: fires ONLY when .github/workflows/ci.yml is staged
