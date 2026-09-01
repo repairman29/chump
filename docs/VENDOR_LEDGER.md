@@ -65,6 +65,35 @@ row (`docs/strategy/STRANGER_GATE_AND_FLEET_RADIO_2026-08-06.md`), status
 "at-limit behavior" column for beast-mode.dev-fronted surfaces must be
 re-verified by hand each time a surface changes.
 
+**BEAST_MODE_API / BEAST_MODE_API_URL / BEAST_MODE_URL flag-drift triage
+(PRODUCT-190, 2026-09-01).** The almanac flagmap drift report (2026-08-05)
+flagged three env-var names for the same endpoint across 356 reads in
+`repairman29/BEAST-MODE`, including a `beastmode.dev` vs `beast-mode.dev`
+typo-domain. Verified against the live `repairman29/BEAST-MODE` clone
+(`~/.chump/external/repairman29/BEAST-MODE/clone`) and DNS:
+- `beast-mode.dev` (hyphenated) **resolves and serves (HTTP 200)** — this is
+  the live, correct domain.
+- `beastmode.dev` (no hyphen) **does not resolve** — confirmed dead, despite
+  appearing as the "official" domain in `package.json` (`author`,
+  `homepage`), the GitHub App manifest, and several mock/test emails.
+- Every `BEAST_MODE_API` / `BEAST_MODE_API_URL` / `BEAST_MODE_URL` **default
+  fallback** (`process.env.X || '...'`) checked (all ~40 sites with an inline
+  default) already points at the live `beast-mode.dev` — the flag-name drift
+  is real (3 names, no canonical alias layer) but is not currently routing
+  live traffic to the dead domain.
+- One confirmed live bug: `website/lib/services/experimentDeployment.ts`
+  builds preview-deployment URLs as `` `https://${slug}.preview.beastmode.dev` ``
+  — the dead domain. `foo.preview.beastmode.dev` does not resolve, so every
+  generated preview link is broken today.
+- Fix (consolidate the 3 flag names into one canonical `BEAST_MODE_API_URL`
+  with the other two reading through it as aliases, and repoint
+  `experimentDeployment.ts`) is genuine work in `repairman29/BEAST-MODE`
+  (139 files touch these flag names), not in this repo — filed as
+  PRODUCT-201 with `skills_required: external_repo:repairman29/BEAST-MODE`
+  so it routes through the external-repo execution path
+  (`docs/design/EXTERNAL_REPO_EXECUTION.md`) once claimable, rather than
+  being hand-edited outside this worktree.
+
 ---
 
 ## Surface 2 — upshift (CLI + platform)
