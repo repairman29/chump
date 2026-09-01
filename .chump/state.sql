@@ -65988,11 +65988,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update `scripts/ci/test-gap-outcome-migration.sh` to include a PostgREST probe gap self-test and idempotency check for the `public.shared_gaps` endpoint. The script uses `curl` to POST a probe gap record to `/shared_gaps`, GETs it to verify creation, DELETEs it, and asserts that the endpoint returns an empty array `[]` with HTTP 200. If the endpoint is missing, errors, or fails any step, the script exits immediately with a non-zero status code.
+    
+    Target file(s):
+    - scripts/ci/test-gap-outcome-migration.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "The script performs a self-test after installation: it uses curl to POST a probe gap to the PostgREST endpoint, then GETs it back, then DELETE it, verifying HTTP 200/201."
-    - If the `public.shared_gaps` endpoint is missing or returns an error, the self-test exits with a non-zero code.
-    - "On a re-run (after successful installation), the entire script is a no-op: it re-checks each step, makes no changes, and the self-test still passes."
-    - The self-test verifies that the REST endpoint returns an empty collection (200) after a fresh install and after a re-run.
+    - "`scripts/ci/test-gap-outcome-migration.sh` issues `curl` commands to POST a probe gap to `/shared_gaps`, GETs the created record, and DELETEs it, asserting HTTP 200/201 response codes for each step."
+    - "`scripts/ci/test-gap-outcome-migration.sh` verifies that `/shared_gaps` returns HTTP 200 with an empty JSON array `[]` both before the probe insertion and after probe deletion."
+    - "`scripts/ci/test-gap-outcome-migration.sh` exits with a non-zero exit code if PostgREST `/shared_gaps` is unreachable, missing, or returns an HTTP error code."
+    - Executing `scripts/ci/test-gap-outcome-migration.sh` a second time against an already installed environment succeeds without applying schema mutations and passes all self-test probe assertions.
   depends_on: [INFRA-3696, INFRA-3697, INFRA-3698, INFRA-3699, INFRA-3700, INFRA-3701]
   notes: |
     [chump harvest check 'MISSION']
@@ -66118,10 +66125,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Update `scripts/setup/install-hooks.sh` to append a shell initialization snippet to shell profile files (`~/.bashrc` and `~/.zshrc`) if the hook line is not already present. The hook must check for the existence of `~/.chump/node.env` before sourcing it (e.g., `[ -f "$HOME/.chump/node.env" ] && . "$HOME/.chump/node.env"`), ensuring environment variables like `CHUMP_STATE_DIR`, `CHUMP_TEAM_URL`, `CHUMP_TEAM_API_KEY`, and `CHUMP_STORE_BACKEND` are exported without raising errors when the file is absent.
+    
+    Target file(s):
+    - scripts/setup/install-hooks.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - After install, the user's shell initialization file (e.g., ~/.bashrc, ~/.zshrc) has a line added to source ~/.chump/node.env (if not already present)
-    - Opening a new interactive shell sets the CHUMP_STATE_DIR, CHUMP_TEAM_URL, CHUMP_TEAM_API_KEY, CHUMP_STORE_BACKEND environment variables
-    - The hook does not cause errors if node.env is missing
+    - "Running `scripts/setup/install-hooks.sh` appends `[ -f \"$HOME/.chump/node.env\" ] && . \"$HOME/.chump/node.env\"` to existing `~/.bashrc` and `~/.zshrc` files if the snippet is missing."
+    - Re-running `scripts/setup/install-hooks.sh` is idempotent and does not add duplicate hook entries to shell configuration files.
+    - Sourcing `~/.bashrc` or `~/.zshrc` when `~/.chump/node.env` is missing completes with exit status 0 and outputs no error messages.
+    - Sourcing `~/.bashrc` or `~/.zshrc` when `~/.chump/node.env` exists successfully sets `CHUMP_STATE_DIR`, `CHUMP_TEAM_URL`, `CHUMP_TEAM_API_KEY`, and `CHUMP_STORE_BACKEND` in the active shell environment.
   depends_on: [INFRA-3703]
   notes: |
     [chump harvest check 'MISSION']
