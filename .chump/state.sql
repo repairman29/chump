@@ -10083,10 +10083,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Locate the registry entry struct definition within `crates/chump-preflight/src/preflight.rs` (near the `fn run` at line 1224) and extend it with two new optional fields: `need: Option<bool>` and `value: Option<f64>`, each annotated with a doc comment describing its purpose.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Registry entry struct definition is identified in the codebase
-    - "Two new fields, `need: Option<bool>` and `value: Option<f64>`, are added with appropriate documentation comments"
-    - Code compiles without errors after adding the fields
+    - "In `crates/chump-preflight/src/preflight.rs`, the registry entry struct contains a field `need: Option<bool>` with a doc comment above it."
+    - "In `crates/chump-preflight/src/preflight.rs`, the registry entry struct contains a field `value: Option<f64>` with a doc comment above it."
+    - Running `cargo build` in the workspace root completes without compilation errors.
   notes: |
     [chump harvest check 'Index']
     === primitives_index match for 'Index' ===
@@ -10116,10 +10123,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new public function `fn fan_in_centrality(entry: &RegistryEntry) -> f64` to `crates/chump-coord/src/rpc.rs` that computes fan‑in centrality by counting the number of registry entries that have a dependency edge pointing to the given entry, using the existing dependency graph accessible from the registry. The function must be deterministic and return the count as a float.
+    
+    Target file(s):
+    - crates/chump-coord/src/rpc.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "A function `fn fan_in_centrality(entry: &RegistryEntry) -> f64` is added"
-    - The function returns a deterministic numeric value based on existing dependency data
-    - Unit test verifies the function returns expected value for a fixture with known fan‑in
+    - "The function `fan_in_centrality` is defined in `crates/chump-coord/src/rpc.rs` with the signature `pub fn fan_in_centrality(entry: &RegistryEntry) -> f64`."
+    - "A `#[cfg(test)]` module in the same file contains a test that creates a `RegistryEntry` where exactly two other entries depend on it, calls `fan_in_centrality`, and asserts the result is `2.0`."
+    - Running `cargo test --lib` from the crate root passes this test and no existing tests break.
   depends_on: [CREDIBLE-483]
   notes: |
     [chump harvest check 'Index']
@@ -23386,7 +23400,7 @@ gaps:
 - id: EFFECTIVE-582
   domain: EFFECTIVE
   title: "EFFECTIVE: Add AUTONOMY_LEVEL typed flag with validation and safe default (EFFECTIVE-086 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   description: |
@@ -23425,6 +23439,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-01T17:13:32Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=5169B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-583
   domain: EFFECTIVE
@@ -98350,6 +98365,201 @@ gaps:
       240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
     
     === cross-pollination briefs mentioning 'weekly' ===
+
+- id: RESILIENT-596
+  domain: RESILIENT
+  title: "self-healing CAPABLE inference floor: escalate on rc=1 (flash->pro), config in reproducible install not hand-edited env, page on 0-real-ships"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    INCIDENT ROOT 2026-09-01 (the WHOLE night's fleet-down, after Sonnet-cap + $0-DeepSeek were both handled): the floor model deepseek-v4-FLASH is too weak — it does partial edits then SKIPS git_commit, exits rc=1, and the auto-commit net ships junk ('agent changes auto-committed — model skipped git_commit', e.g. #4364/#4365). The escalation ladder IS flash,pro but rc=1 does NOT escalate flash->pro — it cools down + auto-blocks the GAP (misattributing a model-capability failure to the gap). Also the floor config is a hand-maintained MESS: multiple conflicting CHUMP_MODEL_ESCALATION_LADDER + OPENAI_MODEL values across machine-local ~/.chump/providers.env + ~/cj-worker*-run.sh, none in the reproducible install — so I've hand-flipped backend+model ~5x tonight. THE FIX (build the capability, stop hand-picking): (1) on rc=1/model-fail, ESCALATE to the next capable ladder rung (pro), do NOT block the gap; (2) auto-verify the floor SHIPS real work (a real commit+PR, not an auto-commit artifact) and if it only produces 'model skipped git_commit' artifacts, that's a floor-too-weak signal -> escalate + page; (3) the floor config (capable model, ladder, funded key) lives in the REPRODUCIBLE install (organ-manifest/installer), single source, not hand-edited env; (4) the 'model skipped git_commit' auto-commit artifact class should NOT open/merge as a real ship (it pollutes the scoreboard + is the false-progress this incident hid behind). Subsumes RESILIENT-575 (auto-fallback) + RESILIENT-590 (no sustainable floor).
+  acceptance_criteria:
+    - a model that fails/skips-commit ESCALATES to the next capable rung + emits loud signal, never silently blocks the gap or ships an artifact
+    - floor model+ladder+key are single-sourced in the reproducible install, not hand-edited machine-local env
+    - the board pages on 'workers active + 0 REAL (non-artifact) ships >1h'
+  notes: |
+    Decomposed into 6 slices: RESILIENT-597, RESILIENT-598, RESILIENT-599, RESILIENT-600, RESILIENT-601, RESILIENT-602
+  outcome_id: SOVEREIGN
+
+- id: RESILIENT-597
+  domain: RESILIENT
+  title: "RESILIENT: Escalate on model failure (rc=1) and suppress artifact shipping (RESILIENT-596 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When a model exits with rc=1 (or specifically 'skipped git_commit' letter), the auto-commit net does not mark the gap as blocked/failed.
+    - Instead, it escalates to the next model in the ladder (e.g., flash → pro) and retries the gap.
+    - A loud alert (e.g., log ERROR, increment a metric) is emitted to signal the escalation.
+    - "The artifact produced by the failed attempt (if any) is not shipped: no PR is opened/merged, and it is not counted as a real ship."
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-598
+  domain: RESILIENT
+  title: "RESILIENT: Filter out 'model skipped git_commit' artifacts from shipping pipeline (RESILIENT-596 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The artifact shipping pipeline checks for the 'model skipped git_commit' marker in the commit message or artifact metadata.
+    - Such artifacts are discarded or marked as non-real, preventing them from being merged or counted.
+    - The scoreboard ignores these artifacts.
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-599
+  domain: RESILIENT
+  title: "RESILIENT: Generate single-source floor config via reproducible installer (RESILIENT-596 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The organ-manifest/installer script creates a configuration file (e.g., /etc/chump/floor-config.json) containing the floor model, escalation ladder, and funded API key.
+    - The file is generated during the reproducible install process, populated from installer parameters, not requiring manual editing.
+    - The content is a single source of truth for these values.
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-600
+  domain: RESILIENT
+  title: "RESILIENT: Update worker startup to read single-source config instead of hand-edited env (RESILIENT-596 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The worker startup scripts (cj-worker*-run.sh) source the floor-config.json file to set CHUMP_MODEL_ESCALATION_LADDER, OPENAI_MODEL, and API key, instead of relying on ~/.chump/providers.env or other hand-edited files.
+    - The scripts no longer require manual editing to change the floor model or ladder.
+    - The old hand-edited files are deprecated and ignored.
+  depends_on: [RESILIENT-599]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-601
+  domain: RESILIENT
+  title: "RESILIENT: Implement paging on 0 real ships >1h for active workers (RESILIENT-596 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A monitoring check queries the recent ship history (last hour) for all active workers.
+    - It counts only 'real' ships, defined as those not containing the 'model skipped git_commit' marker (or any other artifact class).
+    - If the count of real ships is 0 and there is at least one active worker, a page (alert) is triggered.
+    - The page is cleared when a real ship is recorded.
+  depends_on: [RESILIENT-598]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-602
+  domain: RESILIENT
+  title: "RESILIENT: Integrate escalation with single-source config and page triggering (RESILIENT-596 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The escalation logic from slice 0 reads the escalation ladder from the single-source config file (floor-config.json).
+    - When an escalation occurs, it also increments a metric or triggers the condition that leads to the page from slice 4.
+    - The system no longer depends on hand-edited ladder values.
+  depends_on: [RESILIENT-597, RESILIENT-599, RESILIENT-600, RESILIENT-601]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
 
 - id: SMOKE-001
   domain: SMOKE
