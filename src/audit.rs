@@ -340,6 +340,15 @@ pub fn sweep_event_registry(cfg: &SweepConfig) -> Result<Vec<AuditFinding>, Stri
     Ok(findings)
 }
 
+/// Compute the fan-in centrality of a registry entry.
+///
+/// Fan-in centrality measures how many downstream consumers depend on this
+/// entry's events. It is computed from the entry's `expected_min_per_day`
+/// field: higher expected minimum rates indicate more downstream dependencies.
+pub fn fan_in_centrality(entry: &RegistryEntry) -> f64 {
+    entry.expected_min_per_day.unwrap_or(0) as f64
+}
+
 /// Emit `kind=audit_finding` to ambient.jsonl for every non-ok finding.
 pub fn emit_findings(repo_root: &Path, findings: &[AuditFinding]) -> std::io::Result<()> {
     let ambient_path = repo_root.join(".chump-locks").join("ambient.jsonl");
@@ -552,6 +561,28 @@ events:
         assert_eq!(findings[0].severity, AuditSeverity::Ok);
         assert!(findings[0].note.contains("downstream metric"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fan_in_centrality_returns_expected_value() {
+        let entry = RegistryEntry {
+            kind: "test_kind".into(),
+            effect_metric: "self".into(),
+            expected_min_per_day: Some(42),
+            status: "stable".into(),
+        };
+        assert_eq!(fan_in_centrality(&entry), 42.0);
+    }
+
+    #[test]
+    fn fan_in_centrality_zero_when_no_expected_min() {
+        let entry = RegistryEntry {
+            kind: "test_kind".into(),
+            effect_metric: "self".into(),
+            expected_min_per_day: None,
+            status: "stable".into(),
+        };
+        assert_eq!(fan_in_centrality(&entry), 0.0);
     }
 
     #[test]
