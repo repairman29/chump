@@ -7905,10 +7905,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a `backfill_incomplete_slots` function in `src/mcp_discovery.rs` that processes incomplete slots, applies provider-policy defaults for RPM, RPD, TIER, PRIORITY, and CONTEXT_K, annotates each backfilled slot in diagnostics, and gates the logic behind a feature flag `backfill_incomplete_slots`. Update the CI test script `scripts/ci/test-gap-backfill-external-repo.sh` to exercise the backfill and verify diagnostic output.
+    
+    Target file(s):
+    - src/mcp_discovery.rs
+    - scripts/ci/test-gap-backfill-external-repo.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - For slots flagged as incomplete, default values for RPM, RPD, TIER, PRIORITY, and CONTEXT_K are applied based on provider policy
-    - Backfilled slots are clearly annotated in diagnostics as having defaulted values
-    - Backfill logic can be toggled via a feature flag
+    - In `src/mcp_discovery.rs`, the `tests` module contains a test `test_backfill_applies_defaults` that creates an incomplete slot, invokes `backfill_incomplete_slots` with the flag enabled, and asserts that RPM, RPD, TIER, PRIORITY, and CONTEXT_K are set to the expected defaults and that the slot's diagnostics include a `defaulted` annotation.
+    - When the feature flag is disabled, running `cargo test --lib test_backfill_flag_off` (a test in `src/mcp_discovery.rs`) confirms that incomplete slots remain unchanged and no `defaulted` annotation is added.
+    - Executing `bash scripts/ci/test-gap-backfill-external-repo.sh` exits with code 0, and its stdout shows backfilled slots with the default values and the `defaulted` diagnostic annotation.
   depends_on: [CREDIBLE-405]
   notes: |
     [chump harvest check 'provider']
@@ -8006,10 +8014,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new section to README.md that documents the hourly refresh job, explains how observed slot limits are compared against configured .env values, describes how drift tickets are generated and how to interpret them, and provides step-by-step instructions for correcting .env entries and handling incomplete slot definitions.
+    
+    Target file(s):
+    - README.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - README/operations docs include a section describing the refresh job, observed vs configured limits, and how drift is reported
-    - Documentation explains how to interpret drift tickets and how to correct .env entries
-    - Guidelines for handling incomplete slot definitions are added
+    - "README.md contains a section titled \"Slot Limit Verification and Drift Handling\" that references the hourly-update-to-discord.sh script and describes the comparison between observed and configured limits."
+    - The new README section includes a bulleted list explaining how to read a drift ticket (ticket fields, severity, affected slots) and the exact .env variable to update for correction.
+    - "The new README section contains a subheading \"Incomplete Slot Definitions\" with a guideline stating that missing or partial slot entries in .env must be added using the format shown in the documented example before the next refresh cycle."
+    - "Running `grep -A 20 \"Slot Limit Verification\" README.md` returns the full new section including the subheading \"Incomplete Slot Definitions\"."
   depends_on: [CREDIBLE-404, CREDIBLE-407]
   notes: |
     [chump harvest check 'provider']
@@ -8039,12 +8055,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a `trigger-refresh` subcommand to the `from_argv` function in `atomic_claim.rs` that invokes the drift-reporting refresh job manually. The new subcommand reads the job configuration from the existing environment, executes the refresh logic, and outputs the list of drift ticket IDs generated for mismatched slots to stdout so that staging verification can confirm the expected drift tickets.
+    
+    Target file(s):
+    - crates/chump-atomic-claim/src/atomic_claim.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All new services start without errors in staging environment
-    - Manual trigger of the refresh job produces expected drift tickets for known mismatched slots
-    - Incomplete slots are either warned or backfilled as per configuration and appear in diagnostics endpoint
-    - Provider_quality demotion signals are observable in the quality metrics dashboard
-    - No automatic edits to .env are observed
+    - Running `cargo run -- trigger-refresh` in the staging environment prints one or more drift ticket IDs to stdout when known mismatched slots exist in the test data set.
+    - The `GET /diagnostics` endpoint of the reflect service (crates/chump-orchestrator/src/reflect.rs) returns a JSON field `incomplete_slots` that contains either a `warn` or `backfill` status for each slot, matching the job's configuration.
+    - "After the refresh job completes, the Prometheus metrics endpoint (e.g., `http://localhost:9090/metrics`) exposes a gauge `provider_quality_demotion_signals` with a value > 0 for at least one provider."
+    - Running `git diff .env` before and after the deployment process shows no changes to the `.env` file.
   depends_on: [CREDIBLE-408, CREDIBLE-409]
   notes: |
     [chump harvest check 'provider']
@@ -62893,7 +62915,7 @@ gaps:
 - id: INFRA-3382
   domain: INFRA
   title: preflight-mirror CI-infra + observability-coverage gates (~10 scripts, META-086 cluster 4/5)
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -62903,6 +62925,8 @@ gaps:
     - chump preflight exits non-zero when any of these gates would fail, matching CI behavior
     - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
     - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
+  notes: |
+    [2026-09-01T15:33:03Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=4799B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3383
@@ -74051,10 +74075,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the `extract_mismatches` function to iterate over each mismatch's numeric fields and call `detect_double_bump` on them. When a double-bump is confirmed, the function must invoke `emit_mismatch_event` with a payload describing the field, its values, and the detected pattern, while leaving all existing extraction logic for non-numeric or non-double-bump cases untouched.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`extract_mismatches` now calls `detect_double_bump` on the numeric fields of each mismatch."
-    - When a double‑bump is detected, `emit_mismatch_event` is invoked with a descriptive payload.
-    - Existing mismatch extraction behavior is unchanged for non‑numeric or non‑double‑bump cases.
+    - "When `extract_mismatches` processes a mismatch containing a numeric field with a double-bump pattern, the log or event sink shows a call to `emit_mismatch_event` with a payload that includes the field name, the two values, and a `detected: double_bump` flag."
+    - Running the existing mismatch extraction test suite (e.g., `cargo test -p chump-preflight -- extract_mismatches`) passes with no regressions for mismatches that are non-numeric or numeric without a double-bump.
+    - A manual invocation of `detect_double_bump` via unit test on a sample numeric field with a known double-bump signature returns `true`, confirming the detection function is correctly integrated and callable.
   depends_on: [INFRA-3927]
   notes: |
     [chump harvest check 'RESILIENT']
@@ -74107,10 +74138,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new CI job step (or a separate job) after the existing build/test steps that runs `cargo fmt --all --check` and `cargo clippy --all-targets -- -D warnings`, failing the workflow if either produces output or warnings.
+    
+    Target file(s):
+    - .github/workflows/ci.yml
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`cargo fmt --all` completes without changes."
-    - "`cargo clippy --all-targets -- -D warnings` completes with zero warnings."
-    - No existing tests fail after formatting and clippy fixes.
+    - "`.github/workflows/ci.yml` contains a step that executes `cargo fmt --all --check` and fails the workflow if any file is not properly formatted."
+    - "`.github/workflows/ci.yml` contains a step that executes `cargo clippy --all-targets -- -D warnings` and fails the workflow on any clippy warning."
+    - Running `cargo fmt --all` locally in the repository root produces zero changes after `cargo clippy --all-targets -- -D warnings` passes locally with zero warnings.
+    - All existing tests listed in the repository's CI test step continue to pass without modification.
   notes: |
     [chump harvest check 'RESILIENT']
     === primitives_index match for 'RESILIENT' ===
@@ -74134,10 +74173,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new CI test script (or extend an existing one) that invokes the double‑bump detection logic from `crates/chump-preflight/src/preflight.rs` (around `discover_test_scripts` at line 901 or 873) and fails via `fail_t` from `scripts/ci/test-freshness-preamble.sh` if the hazard is not correctly identified. Wire this script into the CI pipeline so it runs alongside existing tests.
+    
+    Target file(s):
+    - scripts/ci/test-freshness-preamble.sh
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All existing tests (`cargo test` and all `scripts/ci/test-*.sh`) pass.
-    - The newly added double‑bump test passes, confirming the hazard is detected.
-    - CI pipeline reports success with no new warnings or failures.
+    - Running `scripts/ci/test-freshness-preamble.sh` directly exits 0 when no double‑bump hazard is present.
+    - Executing `cargo test` from the repository root passes all existing tests with zero failures.
+    - "Invoking the new double‑bump test script (or the extended preflight check) against a fixture with a simulated double‑bump causes `fail_t` to trigger a non‑zero exit and prints a message containing \"double‑bump\" to stderr."
+    - The full CI pipeline (e.g., `scripts/ci/test-all.sh` or equivalent aggregate runner) reports success and emits no new warnings when run on a clean branch.
   depends_on: [INFRA-3929, INFRA-3930]
   notes: |
     [chump harvest check 'RESILIENT']
@@ -95413,7 +95461,7 @@ gaps:
 - id: RESILIENT-545
   domain: RESILIENT
   title: "RESILIENT: parity gate fails a PR on its OWN newly-added CI gate — false-kill GENERATOR that auto-closes good PRs"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -95424,6 +95472,7 @@ gaps:
     - "regression test: a synthetic PR adding a ci.yml step + no exceptions entry either passes parity or is blocked at commit with the exact fix, never silently reaches CI-red-then-reaped"
   notes: |
     Decomposed into 4 slices: RESILIENT-586, RESILIENT-587, RESILIENT-588, RESILIENT-589
+    [2026-09-01T15:42:17Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=12806B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
@@ -96804,7 +96853,7 @@ gaps:
 - id: RESILIENT-588
   domain: RESILIENT
   title: "RESILIENT: Update rot‑reaper to ignore PRs whose only failure is an own‑gate parity error (RESILIENT-545 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -96827,6 +96876,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-01T15:44:23Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2703B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-589
   domain: RESILIENT
