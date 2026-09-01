@@ -69639,7 +69639,7 @@ gaps:
   domain: INFRA
   title: "Fleet-wide deploy FREEZE: build-fleet-binaries.yml red since 2026-08-24 (aarch64 openssl-sys) -> green-main pin stuck at pre-advisor 69f2922e (~833 commits stale); no node deploys new code"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     node-refresh-chump.sh pins each node to the last build-fleet-binaries.yml green SHA. Every run since 2026-08-24 is failure (aarch64-unknown-linux-gnu openssl-sys v0.9.117 cross-build) while x86_64 succeeds, so the whole run is red and the scanner falls back to green-main=69f2922e (predates the Discord advisor: discord-advisor-agent.sh/notify-operator.sh/discord-gateway.py absent at that SHA). Live effect on CJ 2026-08-28T03:11Z: refresh rolled ~/Projects/chump back to 69f2922e. Consequence: NO merged fix (incl. INFRA-3835) deploys until this recovers.
@@ -69648,17 +69648,7 @@ gaps:
     - "root cause: the aarch64-unknown-linux-gnu job fails building openssl-sys v0.9.117 (cross-compile openssl) while x86_64 succeeds; either fix the aarch64 openssl cross-build (vendored openssl / rustls / install aarch64 libssl-dev) OR make the green-pin scanner accept a run whose per-arch job for the NODE arch succeeded rather than requiring whole-run green"
     - "verify: after fix, CJ node-refresh resolves green-main to a commit that INCLUDES the discord advisor subsystem (scripts/dispatch/discord-advisor-agent.sh present in the pinned tree), not a pre-advisor SHA"
   notes: |
-    found via INFRA-3835 deploy-path verification on closetjunky
-    [2026-08-29T07:58:19Z] rot-reaper: PR #4289 auto-closed (required-check-red, 24h) 2026-08-29; re-attempt on fresh main.
-    [2026-08-29T08:00:37Z] rot-reaper: PR #4289 auto-closed (required-check-red, 24h) 2026-08-29; re-attempt on fresh main.
-    [2026-08-30T14:28:06Z] rot-reaper: PR #4289 auto-closed (required-check-red, 54h) 2026-08-30; re-attempt on fresh main.
-    [2026-08-30T14:30:32Z] rot-reaper: PR #4289 auto-closed (required-check-red, 54h) 2026-08-30; RESPAWN CAP 3 reached (3 prior recycles) — NOT re-queued, escalating to operator.
-    [2026-08-30T14:32:50Z] rot-reaper: PR #4289 auto-closed (required-check-red, 54h) 2026-08-30; RESPAWN CAP 3 reached (4 prior recycles) — NOT re-queued, escalating to operator.
-    [2026-08-30T15:13:50Z] rot-reaper: PR #4289 auto-closed (required-check-red, 55h) 2026-08-30; RESPAWN CAP 3 reached (5 prior recycles) — NOT re-queued, escalating to operator.
-    [2026-08-30T15:16:53Z] rot-reaper: PR #4289 auto-closed (required-check-red, 55h) 2026-08-30; RESPAWN CAP 3 reached (6 prior recycles) — NOT re-queued, escalating to operator.
-    [2026-08-30T16:02:00Z] rot-reaper: PR #4289 auto-closed (required-check-red, 56h) 2026-08-30; RESPAWN CAP 3 reached (7 prior recycles) — NOT re-queued, escalating to operator.
-    [2026-08-30T16:04:20Z] rot-reaper: PR #4289 auto-closed (required-check-red, 56h) 2026-08-30; RESPAWN CAP 3 reached (8 prior recycles) — NOT re-queued, escalating to operator.
-    [2026-08-30T18:04:52Z] rot-reaper: PR #4289 auto-closed (required-check-red, 58h) 2026-08-30; RESPAWN CAP 3 reached (9 prior recycles) — NOT re-queued, escalating to operator.
+    Decomposed into 12 slices: INFRA-3915, INFRA-3916, INFRA-3917, INFRA-3918, INFRA-3919, INFRA-3920, INFRA-3921, INFRA-3922, INFRA-3923, INFRA-3924, INFRA-3925, INFRA-3926
   opened_date: '2026-08-28'
 
 - id: INFRA-3840
@@ -71622,6 +71612,317 @@ gaps:
     === cross-pollination briefs mentioning 'EFFECTIVE' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3915
+  domain: INFRA
+  title: "INFRA: Reproduce aarch64 openssl-sys build failure in CI (INFRA-3836 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Running the latest main branch in CI shows the aarch64-unknown-linux-gnu job failing with the same error messages as reported in INFRA-3836
+    - The failure is isolated to the openssl-sys v0.9.117 crate
+  notes: |
+    [chump harvest check 'Fleet-wide']
+    === primitives_index match for 'Fleet-wide' ===
+    
+    === cluster keyword match for 'Fleet-wide' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Fleet-wide' ===
+    
+    === repo-description match for 'Fleet-wide' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Fleet-wide' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Fleet-wide' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3916
+  domain: INFRA
+  title: "INFRA: Collect and analyze error logs from the failing aarch64 job (INFRA-3836 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Error logs are saved and clearly indicate the missing symbols / libraries causing the cross‑compile failure
+    - Root cause hypothesis is documented
+  depends_on: [INFRA-3915]
+  notes: |
+    [chump harvest check 'Fleet-wide']
+    === primitives_index match for 'Fleet-wide' ===
+    
+    === cluster keyword match for 'Fleet-wide' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Fleet-wide' ===
+    
+    === repo-description match for 'Fleet-wide' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Fleet-wide' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Fleet-wide' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3917
+  domain: INFRA
+  title: "INFRA: Research remediation options for the aarch64 openssl build (INFRA-3836 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A short decision doc lists at least two viable approaches (e.g., vendoring OpenSSL, installing aarch64 libssl-dev, switching to rustls) with pros/cons
+    - The chosen approach is agreed upon by the infra team
+  depends_on: [INFRA-3916]
+  notes: |
+    [chump harvest check 'Fleet-wide']
+    === primitives_index match for 'Fleet-wide' ===
+    
+    === cluster keyword match for 'Fleet-wide' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Fleet-wide' ===
+    
+    === repo-description match for 'Fleet-wide' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Fleet-wide' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Fleet-wide' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3918
+  domain: INFRA
+  title: "INFRA: Add vendored OpenSSL support for aarch64 in openssl‑sys (INFRA-3836 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Cargo.toml of openssl‑sys includes the \"vendored\" feature for the aarch64 target"
+    - Local cross‑compile of openssl‑sys for aarch64 succeeds without external libssl
+  depends_on: [INFRA-3917]
+  notes: |
+    [chump harvest check 'Fleet-wide']
+    === primitives_index match for 'Fleet-wide' ===
+    
+    === cluster keyword match for 'Fleet-wide' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Fleet-wide' ===
+    
+    === repo-description match for 'Fleet-wide' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Fleet-wide' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Fleet-wide' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3919
+  domain: INFRA
+  title: "INFRA: Update CI pipeline to install aarch64 libssl‑dev before building (INFRA-3836 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "CI job for aarch64 runs \"apt-get install -y libssl-dev:arm64\" (or equivalent) before cargo build"
+    - The step is gated behind a conditional that runs only for the aarch64 job
+  depends_on: [INFRA-3917]
+  notes: |
+    [chump harvest check 'Fleet-wide']
+    === primitives_index match for 'Fleet-wide' ===
+    
+    === cluster keyword match for 'Fleet-wide' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Fleet-wide' ===
+    
+    === repo-description match for 'Fleet-wide' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Fleet-wide' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Fleet-wide' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3920
+  domain: INFRA
+  title: "INFRA: Enable vendored OpenSSL feature only for aarch64 builds (INFRA-3836 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Cargo configuration (e.g., .cargo/config.toml) sets \"openssl-sys = { features = [\"vendored\"] }\" for target aarch64-unknown-linux-gnu"
+    - x86_64 builds continue to use system OpenSSL
+  depends_on: [INFRA-3918]
+  notes: |
+    [chump harvest check 'Fleet-wide']
+    === primitives_index match for 'Fleet-wide' ===
+    
+    === cluster keyword match for 'Fleet-wide' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Fleet-wide' ===
+    
+    === repo-description match for 'Fleet-wide' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Fleet-wide' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Fleet-wide' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3921
+  domain: INFRA
+  title: "INFRA: Validate CI aarch64 job passes after vendoring / libssl‑dev changes (INFRA-3836 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The aarch64-unknown-linux-gnu job completes without errors
+    - All other architecture jobs (x86_64, etc.) remain green
+  depends_on: [INFRA-3918, INFRA-3919, INFRA-3920]
+  notes: |
+    [chump harvest check 'Fleet-wide']
+    === primitives_index match for 'Fleet-wide' ===
+    
+    === cluster keyword match for 'Fleet-wide' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Fleet-wide' ===
+    
+    === repo-description match for 'Fleet-wide' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Fleet-wide' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Fleet-wide' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3922
+  domain: INFRA
+  title: "INFRA: Modify green‑pin scanner to accept per‑arch success (INFRA-3836 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Scanner logic now treats a run as green for a node if the job matching the node's architecture succeeded, regardless of other arch failures
+    - Existing unit tests for the scanner still pass
+  depends_on: [INFRA-3921]
+  notes: |
+    [chump harvest check 'Fleet-wide']
+    === primitives_index match for 'Fleet-wide' ===
+    
+    === cluster keyword match for 'Fleet-wide' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Fleet-wide' ===
+    
+    === repo-description match for 'Fleet-wide' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Fleet-wide' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Fleet-wide' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3923
+  domain: INFRA
+  title: "INFRA: Add unit test for new green‑pin scanner behavior (INFRA-3836 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test case where only the aarch64 job is green returns true for an aarch64 node
+    - Test case where the node's arch job is red returns false
+  depends_on: [INFRA-3922]
+  notes: |
+    [chump harvest check 'Fleet-wide']
+    === primitives_index match for 'Fleet-wide' ===
+    
+    === cluster keyword match for 'Fleet-wide' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Fleet-wide' ===
+    
+    === repo-description match for 'Fleet-wide' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Fleet-wide' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Fleet-wide' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3924
+  domain: INFRA
+  title: "INFRA: Verify node‑refresh‑chump.sh resolves green‑main to a commit containing discord‑advisor files (INFRA-3836 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Running node‑refresh‑chump.sh after CI green shows the resolved SHA includes scripts/dispatch/discord-advisor-agent.sh
+    - The resolved SHA is newer than 69f2922e
+  depends_on: [INFRA-3921, INFRA-3923]
+  notes: |
+    [chump harvest check 'Fleet-wide']
+    === primitives_index match for 'Fleet-wide' ===
+    
+    === cluster keyword match for 'Fleet-wide' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Fleet-wide' ===
+    
+    === repo-description match for 'Fleet-wide' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Fleet-wide' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Fleet-wide' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3925
+  domain: INFRA
+  title: "INFRA: Update documentation for the chosen fix (vendored OpenSSL or scanner change) (INFRA-3836 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README/CI docs describe the new vendored OpenSSL setup or the updated scanner logic
+    - Documentation includes steps for future maintainers to verify the green‑main pin works
+  depends_on: [INFRA-3924]
+  notes: |
+    [chump harvest check 'Fleet-wide']
+    === primitives_index match for 'Fleet-wide' ===
+    
+    === cluster keyword match for 'Fleet-wide' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Fleet-wide' ===
+    
+    === repo-description match for 'Fleet-wide' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Fleet-wide' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Fleet-wide' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3926
+  domain: INFRA
+  title: "INFRA: Run full regression suite and clean up temporary changes (INFRA-3836 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - All CI checks (including other architectures) pass
+    - No leftover debug flags or temporary scripts remain in the repository
+  depends_on: [INFRA-3924]
+  notes: |
+    [chump harvest check 'Fleet-wide']
+    === primitives_index match for 'Fleet-wide' ===
+    
+    === cluster keyword match for 'Fleet-wide' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Fleet-wide' ===
+    
+    === repo-description match for 'Fleet-wide' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Fleet-wide' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Fleet-wide' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: INFRA-394
