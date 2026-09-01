@@ -655,6 +655,12 @@ jobs:
         # smoke itself is pure awk so it works anywhere.
         run: bash scripts/ci/test-workflow-linux-guard.sh
 
+      # INFRA-3836: guard against re-breaking the aarch64 cross-build of
+      # openssl-sys, which put build-fleet-binaries.yml red 2026-08-24 to
+      # 2026-08-27 and starved the green-main pin for every fleet node.
+      - name: aarch64 fleet-binary vendored-openssl gate (INFRA-3836)
+        run: bash scripts/ci/test-fleet-binary-aarch64-openssl-vendored.sh
+
       # INFRA-1810: installer manifest gate — every scripts/setup/install-*.sh
       # must be mapped to REQUIRED_DAEMONS, optional-installers-allowlist.txt,
       # or deprecated-installers-allowlist.txt. Prevents ship-but-never-install.
