@@ -4771,6 +4771,8 @@ gaps:
     - "The change described by \"a shell/doc PR ships with ZERO bot_merge_uncaught_error emitted; every best-effort step in the auto-close stage (ac-coverage advisory, else-branch) is failure-tolerant (logged, never thrown); prove on one live shell PR ship.\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 9 slices: CREDIBLE-474, CREDIBLE-475, CREDIBLE-476, CREDIBLE-477, CREDIBLE-478, CREDIBLE-479, CREDIBLE-480, CREDIBLE-481, CREDIBLE-482
   opened_date: '2026-08-21'
 
 - id: CREDIBLE-296
@@ -9738,6 +9740,254 @@ gaps:
     
     === cross-pollination briefs mentioning 'votes' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-474
+  domain: CREDIBLE
+  title: "CREDIBLE: Locate bot_merge_uncaught_error emission in auto‑close stage for shell/doc PRs (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Source files and line numbers where bot_merge_uncaught_error is currently emitted are identified
+    - Documentation of the code path (including the else‑branch and ac‑coverage advisory) is added to the ticket
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-475
+  domain: CREDIBLE
+  title: "CREDIBLE: Wrap ac‑coverage advisory step in failure‑tolerant block (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The advisory step runs inside a `|| true` or equivalent construct
+    - Errors from the advisory are captured and logged without causing the script to exit
+    - No bot_merge_uncaught_error is emitted when the advisory fails
+  depends_on: [CREDIBLE-474]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-476
+  domain: CREDIBLE
+  title: "CREDIBLE: Make else‑branch (rc!=0) failure‑tolerant (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When the auto‑close rc is non‑zero, the branch logs the failure and continues execution
+    - The branch no longer triggers the global uncaught‑error trap
+    - The script exits with the original rc after logging, but does not emit bot_merge_uncaught_error
+  depends_on: [CREDIBLE-474]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-477
+  domain: CREDIBLE
+  title: "CREDIBLE: Temporarily disable `set -e` around best‑effort steps (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`set +e` is applied before the advisory and else‑branch and restored afterwards"
+    - No other part of the script loses its strict error handling
+    - The change is covered by comments explaining the rationale
+  depends_on: [CREDIBLE-475, CREDIBLE-476]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-478
+  domain: CREDIBLE
+  title: "CREDIBLE: Add structured logging for caught errors (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All captured errors from the advisory and else‑branch are logged with a consistent prefix (e.g., `[auto‑close‑tolerant]`)
+    - Logs are emitted to stdout/stderr as the project’s logging convention dictates
+  depends_on: [CREDIBLE-475, CREDIBLE-476, CREDIBLE-477]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-479
+  domain: CREDIBLE
+  title: "CREDIBLE: Create integration test verifying zero bot_merge_uncaught_error on a live shell/doc PR ship (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test runs the auto‑close stage on a representative shell/doc PR fixture
+    - The test asserts that the `bot_merge_uncaught_error` signal is not emitted
+    - The test fails on the current codebase (pre‑change) and passes after the changes
+  depends_on: [CREDIBLE-477, CREDIBLE-478]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-480
+  domain: CREDIBLE
+  title: "CREDIBLE: Add the new integration test to CI pipeline (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The test is invoked by an existing CI script (e.g., `scripts/ci/test‑auto‑close.sh`)
+    - CI reports the test as passed on a clean build
+    - Failure of the test blocks the merge
+  depends_on: [CREDIBLE-479]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-481
+  domain: CREDIBLE
+  title: "CREDIBLE: Run `cargo fmt` and `cargo clippy --all-targets -D warnings`, fix any issues (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt` makes no changes"
+    - "`cargo clippy` reports zero warnings/errors"
+    - All changes from previous slices compile without lint errors
+  depends_on: [CREDIBLE-475, CREDIBLE-476, CREDIBLE-477, CREDIBLE-478]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-482
+  domain: CREDIBLE
+  title: "CREDIBLE: Execute full test suite to confirm no regression (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All existing unit, integration, and e2e tests pass (`cargo test` succeeds)
+    - No new failures are introduced by the auto‑close modifications
+  depends_on: [CREDIBLE-481, CREDIBLE-482]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
 
 - id: DOC-031
   domain: DOC
