@@ -174,6 +174,49 @@ pub fn ambient_kind_counts(
     Ok(counts)
 }
 
+/// Compute the ambient emission frequency for a registry entry.
+///
+/// Reads `.chump-locks/ambient.jsonl` from the current working directory
+/// and counts occurrences of `entry.kind` within a default 7-day window.
+/// Returns emissions per day (f64). If the ambient file does not exist,
+/// returns 0.0 (useful as a stub for testability).
+pub fn ambient_emission_freq(entry: &RegistryEntry) -> f64 {
+    let ambient_path = Path::new(".chump-locks").join("ambient.jsonl");
+    if !ambient_path.exists() {
+        return 0.0;
+    }
+    let raw = match std::fs::read_to_string(&ambient_path) {
+        Ok(s) => s,
+        Err(_) => return 0.0,
+    };
+    let cutoff_secs = (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0))
+    .saturating_sub(7 * 24 * 3600);
+
+    let mut count: u64 = 0;
+    for line in raw.lines() {
+        if !line.contains("\"kind\"") {
+            continue;
+        }
+        if let Some(ts_str) = extract_string_field(line, "ts") {
+            if let Some(line_secs) = parse_iso8601(&ts_str) {
+                if line_secs < cutoff_secs {
+                    continue;
+                }
+            }
+        }
+        if let Some(kind_str) = extract_string_field(line, "kind") {
+            if kind_str == entry.kind {
+                count += 1;
+            }
+        }
+    }
+    // Frequency = count / 7 days
+    count as f64 / 7.0
+}
+
 /// Extract `"FIELD":"value"` from a JSON-ish line. Naive but fast and works on
 /// the ambient stream's flat JSON shape.
 fn extract_string_field(line: &str, field: &str) -> Option<String> {
