@@ -6796,7 +6796,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 10 slices: CREDIBLE-411, CREDIBLE-412, CREDIBLE-413, CREDIBLE-414, CREDIBLE-415, CREDIBLE-416, CREDIBLE-417, CREDIBLE-418, CREDIBLE-419, CREDIBLE-420
+    Decomposed into 10 slices: CREDIBLE-494, CREDIBLE-495, CREDIBLE-496, CREDIBLE-497, CREDIBLE-498, CREDIBLE-499, CREDIBLE-500, CREDIBLE-501, CREDIBLE-502, CREDIBLE-503
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-357
@@ -8098,9 +8098,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    In src/improve.rs, extend fn locate_relevant_files to detect and return the Rust source files that compute the Debt Index; in src/commands/inventory.rs, add a documentation block to fn cmd_pr listing the functions/structs where live_pct, debt, and prune_ledger will be added.
+    
+    Target file(s):
+    - src/improve.rs
+    - src/commands/inventory.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Identify the Rust source files that compute the Debt Index
-    - Document the functions/structs where live_pct, debt, and prune_ledger will be added
+    - Running `cargo test` in the workspace passes, and the test for `fn locate_relevant_files` in src/improve.rs asserts that the returned file list includes the Debt Index computation module.
+    - Executing `grep -r 'live_pct' src/commands/inventory.rs` returns a hit inside the doc comment of `fn cmd_pr`.
+    - Executing `grep -r 'prune_ledger' src/commands/inventory.rs` returns a hit inside the doc comment of `fn cmd_pr`.
+    - A manual invocation of `cargo doc --no-deps` produces HTML documentation where the `fn cmd_pr` page visibly lists `live_pct`, `debt`, and `prune_ledger` under a 'Debt Index integration points' section.
   notes: |
     [chump harvest check 'Index']
     === primitives_index match for 'Index' ===
@@ -8130,9 +8140,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add live_pct (f64), debt (u64), and prune_ledger (u64) fields to the ChumpToolApprovalTray class constructor and its serialization logic so that ambient kind emissions include these new data fields.
+    
+    Target file(s):
+    - web/v2/app.js
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Data structs contain new fields with appropriate types (f64 for live_pct, u64 for debt and prune_ledger)
-    - Fields are serialized for ambient kind emission
+    - In web/v2/app.js, the ChumpToolApprovalTray class constructor (line 618) accepts and stores live_pct as a float64, debt as a uint64, and prune_ledger as a uint64.
+    - In web/v2/app.js, the ChumpToolApprovalTray serialization method emits live_pct, debt, and prune_ledger fields in the ambient kind output.
+    - Running the existing test suite for web/v2/app.js passes without errors and confirms the new fields appear in serialized output.
   depends_on: [CREDIBLE-411]
   notes: |
     [chump harvest check 'Index']
@@ -8163,10 +8181,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new function `live_pct` to `crates/chump-coord/src/rpc.rs` that computes the Crit‑weighted fraction of stages with status >= running, returning 0.0 for empty input, and register it as an RPC handler inside `register_worker_rpc_handlers`.
+    
+    Target file(s):
+    - crates/chump-coord/src/rpc.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Function computes Crit‑weighted fraction of stages with status >= running
-    - Handles empty set safely (returns 0.0)
-    - Unit test can call the function and verify expected value for a sample input
+    - Calling `live_pct` with an empty slice returns `0.0`.
+    - Calling `live_pct` with a sample input where 2 of 4 stages are >= running and Crit weights sum to 10 returns the expected weighted fraction (e.g., 0.5 if weights are equal).
+    - The function is registered as an RPC handler in `register_worker_rpc_handlers` so a unit test can invoke it via the RPC layer.
+    - A unit test in the existing test file (e.g., `crates/chump-coord/tests/a2a_mesh.rs`) calls the function and asserts the result matches a hand‑calculated value for a known input.
   depends_on: [CREDIBLE-412]
   notes: |
     [chump harvest check 'Index']
@@ -8197,10 +8223,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new function `calculate_debt` in the RPC module that iterates over dormant entries, filters for those with high Crit weighting using existing Crit logic, and sums Crit × (stages_short) for each qualifying entry.
+    
+    Target file(s):
+    - crates/chump-coord/src/rpc.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Function sums Crit × (stages‑short) for high‑Crit dormant entries
-    - Uses existing Crit weighting logic
-    - Returns 0 when no high‑Crit dormant entries exist
+    - Calling `calculate_debt` on an empty or no-high-Crit dormant set returns integer 0.
+    - Calling `calculate_debt` with 2 high-Crit dormant entries (Crit=3, stages_short=2 and Crit=5, stages_short=1) returns integer 11 (3×2 + 5×1).
+    - Function `calculate_debt` is registered as an RPC handler in `register_worker_rpc_handlers` and responds to the `calculate_debt` method name.
+    - The function uses the existing Crit weighting logic already present in the codebase (not a reimplementation) to determine 'high' Crit.
   depends_on: [CREDIBLE-412]
   notes: |
     [chump harvest check 'Index']
@@ -8231,9 +8265,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new RPC handler function (registered inside `register_worker_rpc_handlers` around line 618) that accepts ledger data, filters for entries with low Crit level and dormant status, counts them, and returns that count as `prune_ledger`.
+    
+    Target file(s):
+    - crates/chump-coord/src/rpc.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Function counts low‑Crit dormant entries and returns the count as prune_ledger
-    - Correctly filters by Crit level and dormant status
+    - Call the new RPC method with a sample ledger containing 3 low-Crit dormant entries, 2 high-Crit dormant, and 1 low-Crit active; response `prune_ledger` equals 3.
+    - Call the new RPC method with an empty ledger array; response `prune_ledger` equals 0.
+    - Inspect `crates/chump-coord/src/rpc.rs` and confirm a new handler function is registered in `register_worker_rpc_handlers` that receives ledger data and returns an integer count.
   depends_on: [CREDIBLE-412]
   notes: |
     [chump harvest check 'Index']
@@ -8264,10 +8306,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Expand the `EventKind` enum in `crates/chump-inventory/src/inventory.rs` by adding three new variants: `LivePct`, `Debt`, `PruneLedger`. Update the `detect_event_kind_zero_emits` function (line 2014) to iterate over these new variants and emit zero-filled ambient payloads for each, ensuring the registry schema automatically gains corresponding columns.
+    
+    Target file(s):
+    - crates/chump-inventory/src/inventory.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Computed values are added to the ambient kind payload
-    - Registry schema includes new columns with correct types
-    - Existing emission pipeline continues to compile
+    - In `crates/chump-inventory/src/inventory.rs`, the `EventKind` enum includes `LivePct`, `Debt`, and `PruneLedger` as variants.
+    - "In the same file, `detect_event_kind_zero_emits` (line 2014) emits zero-valued payloads for `EventKind::LivePct`, `EventKind::Debt`, and `EventKind::PruneLedger`."
+    - Running `cargo check -p chump-inventory` succeeds without new warnings.
+    - The generated database schema for the `ambient_kinds` table (verified via `diesel print-schema` or equivalent) includes `live_pct REAL`, `debt REAL`, and `prune_ledger REAL` columns.
   depends_on: [CREDIBLE-413, CREDIBLE-414, CREDIBLE-415]
   notes: |
     [chump harvest check 'Index']
@@ -10527,6 +10577,7 @@ gaps:
   acceptance_criteria:
     - A function compute_live_pct exists that accepts the necessary state (e.g., items with Crit and stage) and returns the Crit-weighted fraction of items at stage >= running.
     - A unit test with controlled inputs proves the calculation is correct (e.g., known items yield expected live_pct).
+  depends_on: [CREDIBLE-494]
   notes: |
     [chump harvest check 'Index']
     === primitives_index match for 'Index' ===
@@ -10559,6 +10610,7 @@ gaps:
   acceptance_criteria:
     - A function compute_debt exists that sums Crit × (stages - short) over high-Crit dormant items.
     - A unit test with controlled inputs verifies the debt value.
+  depends_on: [CREDIBLE-494]
   notes: |
     [chump harvest check 'Index']
     === primitives_index match for 'Index' ===
@@ -10588,6 +10640,231 @@ gaps:
   status: open
   priority: P2
   effort: s
+  acceptance_criteria:
+    - A function compute_prune_ledger exists that identifies low-Crit dormant items to be pruned.
+    - A unit test with controlled inputs confirms the correct set of items is returned.
+  depends_on: [CREDIBLE-494]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-498
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-415: Orchestrate full DebtIndex computation (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A function compute_debt_index calls compute_live_pct, compute_debt, and compute_prune_ledger and populates a DebtIndex struct.
+    - A unit test with mock data verifies the returned DebtIndex has correct live_pct, debt, and prune_ledger values.
+  depends_on: [CREDIBLE-495, CREDIBLE-496, CREDIBLE-497]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-499
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-416: Integrate computation into main code path (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - compute_debt_index is invoked at the appropriate point in the CREDIBLE update cycle (e.g., in the debt index module).
+    - An integration test demonstrates that the function is called and its result is stored or passed along.
+  depends_on: [CREDIBLE-498]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-500
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-417: Emit metrics as ambient kind + registry columns (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A function emit_debt_index formats the DebtIndex into the required ambient kind and registry columns.
+    - A test verifies the emitted output matches the expected structure and content for a known DebtIndex.
+  depends_on: [CREDIBLE-498]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-501
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-418: Ensure reproducibility of computations (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The computation is deterministic: given identical inputs, the same DebtIndex is produced every time."
+    - A test runs the computation twice on the same state and asserts equality of the results.
+  depends_on: [CREDIBLE-498]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-502
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-419: Add end-to-end integration test (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - An integration test sets up a scenario with known items, triggers the full update+emit cycle, and asserts that the emitted live_pct, debt, and prune_ledger match expected values.
+    - The test fails if any part of the pipeline is broken.
+  depends_on: [CREDIBLE-499, CREDIBLE-500, CREDIBLE-501]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-503
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-420: Final formatting, linting, and regression check (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt passes with no changes.
+    - cargo clippy --all-targets -D warnings passes with no errors.
+    - The full test suite (cargo test) passes with no regressions.
+  depends_on: [CREDIBLE-502]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: DOC-031
   domain: DOC
@@ -69178,7 +69455,7 @@ gaps:
   domain: INFRA
   title: "INFRA: Update self_test to verify canonical store resolution (INFRA-3632 slice)"
   status: open
-  priority: P1
+  priority: P0
   effort: xs
   acceptance_criteria:
     - The self_test function sources ~/.chump/node.env (if exists) and runs `chump gap list`
@@ -69220,7 +69497,7 @@ gaps:
   domain: INFRA
   title: "INFRA: Pin canonical store environment variable in chump-node-install.sh (INFRA-3633 slice)"
   status: open
-  priority: P1
+  priority: P0
   effort: xs
   acceptance_criteria:
     - The install script sets CANONICAL_STORE_PATH to a fixed path under the home directory (e.g., $HOME/.chump/gap-store.db) and exports it.
@@ -96227,8 +96504,8 @@ gaps:
 - id: RESILIENT-523
   domain: RESILIENT
   title: auto-deploy times out (30min systemd limit < cold chump build) — every merge silently fails to reach the running binary; the fleet runs stale code
-  status: blocked
-  priority: P1
+  status: open
+  priority: P0
   effort: m
   description: |
     PROVEN on CJ 2026-08-31: chump-auto-deploy.service has TimeoutStartUSec=30min, but a cold cargo build of the chump binary (190k+ LOC) exceeds 30min, so the service TIMES OUT and the install never lands. Evidence: last_deployed=48ea37fd but origin/main was at 2a5ad0a8d (INFRA-3687 gap-store fix) with the RUNNING binary built 12:38 (pre-merge) and canonical_max_id ABSENT from it — the fix merged but never ran. This is the fleet-wide 'merged != running disease' root: EVERY merge silently fails to deploy, so the fleet runs stale code and shipped fixes never take effect. Manual out-of-systemd build was required to land INFRA-3687. Fix options: (a) raise TimeoutStartSec well above worst-case cold-build (or set to infinity + rely on the reset-loop), and/or (b) BETTER: make refresh-runner-binary.sh use the provenance-gated PREBUILT binary download (EFFECTIVE-450 build-fleet-binaries artifact) instead of cold-compiling — a download is seconds and never times out. Also emit a LOUD signal when a deploy times out/fails (today it is silent). AC: after a merge to origin/main, the running binary on every fleet node carries the new code within N minutes, VERIFIED by a symbol/sha check, and a failed deploy pages loudly.
@@ -96237,9 +96514,7 @@ gaps:
     - a deploy that times out or fails emits a loud signal (not silent) so merged-not-running is caught
     - prefer prebuilt-binary download (EFFECTIVE-450) over cold-compile so deploy cannot time out
   notes: |
-    [2026-09-01T01:12:20Z] PROVEN 2026-08-31 firefight: the CJ deploy is a 4-LOOP CLOBBER TANGLE, not just a timeout. auto-deploy.timer + organ-deploy.timer + merge-deploy-lag.timer + organ-reconcile.timer each rebuild chump/fleet-server from a SEPARATE stale worktree (/mnt/cjdata2/chump-refresh/wt) on timers and OVERWRITE correct binaries within minutes ('running-then-reverted'). Took ~8 hand-installs of the fleet-server /api/gap binary before I killed ALL four loops + the running auto-deploy.sh/refresh-runner procs; only then did an atomic-mv install of a route-verified binary STAY (probe held 401 at t+6s and t+31s). Also hit ETXTBSY on cp over the running binary (use temp+mv, not cp). DEPLOY LOOPS ARE NOW DISABLED on CJ to stop the clobber — fleet won't auto-update binaries until 523 ships a working deploy + re-enables. IRONCLAD SPEC from this evidence: (1) SINGLE deploy authority (kill the competing loops), (2) verify the binary carries the expected symbol/route BEFORE install, (3) atomic install (temp+mv), (4) NEVER clobber a good binary with a stale rebuild, (5) build from the current-main worktree only (not a drifting side worktree), (6) roll back to last-good + LOUD page on failure.
-    [2026-09-01T02:51:34Z] PROVEN reference recipe (hand-bootstrapped on CJ at ~/.chump/safe-deploy.sh 2026-09-01, verified: install STAYS, /api/gap held 401 at t+6s and t+31s). FLEET must productionize this as the durable organ — I am NOT hand-shipping it. Recipe: (1) SINGLE authority — the 4 clobber loops (auto-deploy/organ-deploy/merge-deploy-lag/organ-reconcile timers) stay DISABLED, this replaces them; (2) git fetch+reset --hard origin/main (current-main worktree ONLY, never /mnt/cjdata2/chump-refresh side-worktree); (3) build BOTH binaries as TWO commands: 'cargo build --release --bin chump' then 'cargo build --release -p chump-fleet-server' (--bin chump-fleet-server without -p fails); (4) VERIFY-BEFORE-INSTALL: strings the built binary for the expected symbol/route (canonical_max_id / /healthz) — refuse install if absent; (5) ATOMIC install: cp to tmp then 'mv -f' (plain cp over a running binary → ETXTBSY); (6) restart service, sleep, HEALTH-VERIFY (chump --version + curl /healthz==200); (7) on any failure ROLL BACK to ~/.chump/deploy/last-good-* and restart, keep the good binary, emit LOUD ambient kind=deploy_failed_rolled_back + page; (8) record last-deployed sha, emit deploy_succeeded. Ship as scripts/ops/safe-deploy.sh + a systemd service/timer as the SINGLE deploy authority, add to install-helsinki-atc.sh roster + organ-manifest.txt, add a test (simulated bad deploy asserts rollback), THEN re-enable it (only it). Refine: make step-3 incremental (do NOT touch all crates every run — 20min deploys; rely on git-reset mtimes).
-    [2026-09-01T08:20:10Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
+    ROOT is bigger than the 30min timeout: CJ deploy was a 4-LOOP CLOBBER TANGLE (chump-auto-deploy+organ-deploy+merge-deploy-lag+organ-reconcile) rebuilding from a stale side-worktree and REVERTING correct binaries; all four now DISABLED so fleet cannot self-update binaries at all. FIX = single deploy authority per node using the recipe proven live 2026-08-31, handed off at ~/.chump/safe-deploy.sh: reset --hard origin/main; build BOTH bins (chump + -p chump-fleet-server); verify expected symbol IN each built binary (strings|grep) BEFORE install; atomic temp+mv (avoids ETXTBSY); health-verify (chump --version + curl :7070/healthz==200); rollback-to-last-good + loud page on fail; record sha; touch changed crate srcs to bust stale fingerprint; raise systemd timeout above a cold build; then re-enable EXACTLY ONE timer and remove the other three. AC: sole deploy authority per node; verify-symbol-before-install; atomic install; rollback+page on health-fail; verified live that a binary-affecting merge reaches CJ running binary within one cycle with zero clobber.
   outcome_id: MISSION-012
 
 - id: RESILIENT-524
