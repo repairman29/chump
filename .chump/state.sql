@@ -7832,10 +7832,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new function `report_drift_to_alerting` (or equivalent) inside `gap-doctor.py` that is called from `main` for every drift record detected. The function formats a concise summary (mismatch details, link to drift record), creates a gap ticket via the existing tracking integration, and sends the alert through the configured notification channels.
+    
+    Target file(s):
+    - scripts/coord/gap-doctor.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Each drift record triggers a gap creation in the tracking system (e.g., creates a CREDIBLE‑XXX ticket)
-    - Alert includes a concise summary of the mismatch and a link to the drift record
-    - Alerting respects existing notification channels
+    - Calling `python scripts/coord/gap-doctor.py` with a drift record present produces a new gap ticket in the tracking system referencing the drift record ID (e.g., `CREDIBLE‑XXX`).
+    - The generated gap ticket body contains a one-line mismatch summary and a direct link to the drift record.
+    - In `gap-doctor.py`, the new alerting call site is reachable from `main` without breaking existing execution paths when no drift records exist.
+    - The alert dispatch uses the existing notification-channel configuration already present in the repo (e.g., `scripts/ci/test-pre-push-head-stability.sh` `fail` callback or equivalent CI-audit lane boundary).
   depends_on: [CREDIBLE-403]
   notes: |
     [chump harvest check 'provider']
@@ -65545,13 +65553,16 @@ gaps:
 - id: INFRA-3567
   domain: INFRA
   title: "EFFECTIVE: reconcile ROADMAP.md — add the Run-the-Business track (RUN_THE_BUSINESS_2026-08-09) as a co-equal arm so the fleet gets pointed at run-the-business work, not only build"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"reconcile ROADMAP.md — add the Run-the-Business track (RUN_THE_BUSINESS_2026-08-09) as a co-equal arm so the fleet gets pointed at run-the-business work, not only build\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 4 slices: INFRA-3945, INFRA-3946, INFRA-3947, INFRA-3948
+    [2026-09-01T15:23:17Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=9926B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3568
@@ -74542,6 +74553,144 @@ gaps:
     - No existing functionality is broken as verified by the full test run.
     - CI pipeline passes all stages after the change.
   depends_on: [INFRA-3943]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3945
+  domain: INFRA
+  title: "INFRA: Add RUN_THE_BUSINESS_2026-08-09 track definition to ROADMAP.md (INFRA-3567 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - ROADMAP.md contains a new section for the Run-the-Business track, with name, date, and any required metadata matching the existing build track format.
+    - The new track is positioned as a co-equal arm alongside the existing build track.
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3946
+  domain: INFRA
+  title: "INFRA: Update ROADMAP.md parser to recognize the new Run-the-Business track (INFRA-3567 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The INFRA code path that parses ROADMAP.md now extracts the new track and stores it as a co-equal track.
+    - A new unit test verifies that the RUN_THE_BUSINESS_2026-08-09 track is parsed correctly from ROADMAP.md; this test fails without the parser change.
+    - Existing tests continue to pass.
+  depends_on: [INFRA-3945]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3947
+  domain: INFRA
+  title: "INFRA: Update fleet assignment logic to point to run-the-business work (INFRA-3567 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The logic that points the fleet to work now considers both the build and run-the-business tracks as co-equal, allowing assignment to run-the-business tasks.
+    - An integration test demonstrates that the fleet can be assigned a task from the run-the-business track; this test fails without the assignment logic change.
+    - Existing tests continue to pass.
+  depends_on: [INFRA-3946]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3948
+  domain: INFRA
+  title: "INFRA: Final formatting, linting, and full test suite verification (INFRA-3567 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt check passes with no changes.
+    - cargo clippy --all-targets -D warnings passes with no errors.
+    - cargo test passes with no regressions.
+  depends_on: [INFRA-3946, INFRA-3947]
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -91559,12 +91708,14 @@ gaps:
   domain: RESILIENT
   title: "No cap-exhaustion auto-resume: when the weekly sub cap renews nothing resumes the fleet, Jeff manually restarted via Swift after a 2-day halt; build cost-cap watch that parks then auto-resumes on cap reset"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"when the weekly sub cap renews nothing resumes the fleet, Jeff manually restarted via Swift after a 2-day halt; build cost-cap watch that parks then auto-resumes on cap reset\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 3 slices: RESILIENT-593, RESILIENT-594, RESILIENT-595
   outcome_id: CHUMPOS
 
 - id: RESILIENT-416
@@ -96597,7 +96748,7 @@ gaps:
 - id: RESILIENT-586
   domain: RESILIENT
   title: "RESILIENT: Enable test-preflight-ci-parity.sh to auto‑recognize gates added in the same PR diff (RESILIENT-545 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -96620,6 +96771,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-01T15:30:44Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=13273B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-587
   domain: RESILIENT
@@ -96813,6 +96965,87 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: RESILIENT-593
+  domain: RESILIENT
+  title: "RESILIENT: Add weekly cost cap configuration and exceedance logging (RESILIENT-415 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A new configuration option for weekly cost cap is added and can be set.
+    - A periodic check runs (e.g., every 15 minutes) that compares current weekly spend against the cap.
+    - When spend exceeds the cap, a warning is logged with details (current spend, cap).
+    - Unit test verifies the check function correctly identifies exceedance.
+    - Integration test verifies that with a mock spend exceeding cap, the log contains the expected warning.
+  notes: |
+    [chump harvest check 'weekly']
+    === primitives_index match for 'weekly' ===
+    
+    === cluster keyword match for 'weekly' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'weekly' ===
+    
+    === repo-description match for 'weekly' ===
+    
+    === HARVEST_ROADMAP.md mention of 'weekly' (deep-scan findings) ===
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'weekly' ===
+
+- id: RESILIENT-594
+  domain: RESILIENT
+  title: "RESILIENT: Park fleet when weekly cost cap is exceeded (RESILIENT-415 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When the cost cap monitor detects exceedance, it triggers a fleet park action (e.g., sets fleet state to 'parked').
+    - The park action is idempotent (if already parked, no error).
+    - The reason for parking is recorded (e.g., 'cost_cap_exceeded') to distinguish from manual parking.
+    - "Integration test: set up cap, simulate spend exceeding cap, verify fleet state becomes parked and reason is recorded."
+  depends_on: [RESILIENT-593]
+  notes: |
+    [chump harvest check 'weekly']
+    === primitives_index match for 'weekly' ===
+    
+    === cluster keyword match for 'weekly' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'weekly' ===
+    
+    === repo-description match for 'weekly' ===
+    
+    === HARVEST_ROADMAP.md mention of 'weekly' (deep-scan findings) ===
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'weekly' ===
+
+- id: RESILIENT-595
+  domain: RESILIENT
+  title: "RESILIENT: Auto-resume fleet when weekly cost cap resets (RESILIENT-415 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Detect when a new weekly billing period starts (cap reset).
+    - If the fleet was parked due to cost cap exceedance, automatically resume it.
+    - Resume action should only apply to fleets parked by this feature, not manually parked fleets.
+    - "Integration test: simulate cap hit and parking, then advance time to new week, verify fleet is resumed."
+  depends_on: [RESILIENT-594]
+  notes: |
+    [chump harvest check 'weekly']
+    === primitives_index match for 'weekly' ===
+    
+    === cluster keyword match for 'weekly' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'weekly' ===
+    
+    === repo-description match for 'weekly' ===
+    
+    === HARVEST_ROADMAP.md mention of 'weekly' (deep-scan findings) ===
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'weekly' ===
 
 - id: SMOKE-001
   domain: SMOKE
