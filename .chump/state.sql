@@ -75367,9 +75367,16 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add two unit test functions to the mod tests in src/main.rs: `test_completed_run_writes_record_with_nonempty_outcome` verifies that a completed trek run writes a Completed record with a non-empty outcome pointer to FileBackedMissionStore; `test_reload_produces_identical_persistent_mission` verifies that reloading the persisted record produces an identical PersistentMission struct.
+    
+    Target file(s):
+    - src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test verifies a completed trek run writes a Completed record with a non-empty outcome pointer to FileBackedMissionStore
-    - Test verifies reloading the persisted record produces an identical PersistentMission struct
+    - Running `cargo test test_completed_run_writes_record_with_nonempty_outcome` in the repository root exits with code 0.
+    - Running `cargo test test_reload_produces_identical_persistent_mission` in the repository root exits with code 0.
   depends_on: [INFRA-3895]
   notes: |
     [chump harvest check 'MISSION']
@@ -75483,9 +75490,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    In the `discover_test_scripts` function of preflight.rs, add a check before the cranelift and mold installation blocks that verifies the existence of the expected binary files (e.g., `cranelift` and `mold` at their configured paths). If a binary is missing, log a warning and skip the corresponding installation step; otherwise, proceed normally.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Installation steps for cranelift and mold are executed only if their binaries exist in the expected locations
-    - If a component is missing, the script logs a warning and continues without error
+    - Run `cargo run --bin chump-preflight` on a system where the cranelift binary is absent; verify that stderr contains a line matching `WARN.*cranelift.*not found` and that the script exits with status 0 without attempting to install cranelift.
+    - Repeat the run with the mold binary missing; verify an analogous warning for mold and that mold installation is skipped.
+    - Run the preflight with both binaries present at the expected paths; confirm that the cranelift and mold installation commands execute (e.g., by checking for their side effects or by inspecting debug output).
+    - Run the preflight with both binaries missing; verify that two distinct warnings are logged and the script completes without error.
   depends_on: [INFRA-3898]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -75517,11 +75533,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify the `detect_sccache_dir` function in `scripts/setup/install-sccache.sh` to check free space on `/home` using `df`. If available space is less than 25 GB, set `SCCACHE_DIR` to `/mnt/usb/sccache`; otherwise default to `$HOME/.cache/sccache`. Export `SCCACHE_DIR` so subsequent commands inherit it.
+    
+    Target file(s):
+    - scripts/setup/install-sccache.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Script calculates free space on /home
-    - If free space < 25 GB, SCCACHE_DIR is set to a USB mount path (e.g., /mnt/usb/sccache)
-    - If free space ≥ 25 GB, SCCACHE_DIR defaults to $HOME/.cache/sccache
-    - The chosen directory is exported for subsequent commands
+    - Run `bash scripts/setup/install-sccache.sh` on a machine where `/home` has less than 25 GB free; verify that the script exports `SCCACHE_DIR=/mnt/usb/sccache` (e.g., `echo $SCCACHE_DIR` prints that path).
+    - Run the same script on a machine where `/home` has 25 GB or more free; verify that `SCCACHE_DIR` is set and exported as `$HOME/.cache/sccache`.
+    - Inspect the `detect_sccache_dir` function in `scripts/setup/install-sccache.sh`; confirm it uses `df /home --output=avail` (or equivalent) and compares the value against `26214400` (25 GB in 1K-blocks).
+    - After sourcing the script (`. scripts/setup/install-sccache.sh`), run `echo $SCCACHE_DIR`; the output must match the expected directory based on the actual free space on `/home`.
   depends_on: [INFRA-3899]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -75588,9 +75611,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add inline comments and structured log statements to the file-serving logic in `handle_file_serve` (src/web_server.rs) and the dependency installation function `install_linux_deps` (scripts/setup/provision-chumpd-host.sh) that document and clearly trace Linux-specific branching and SCCACHE_DIR selection decisions.
+    
+    Target file(s):
+    - src/web_server.rs
+    - scripts/setup/provision-chumpd-host.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - File contains comments describing the Linux‑specific branches and the SCCACHE_DIR selection logic
-    - Log messages clearly indicate which path (macOS vs Linux) was taken and any skipped components
+    - "In `src/web_server.rs`, the `handle_file_serve` function (line ~1497) contains a comment block explaining the Linux vs macOS file-path resolution branch and emits a `log::info!` or `log::debug!` message stating which OS path was selected on each invocation."
+    - In `scripts/setup/provision-chumpd-host.sh`, the `install_linux_deps` function (line ~141) includes a comment describing why SCCACHE_DIR is set for Linux and logs an `echo` message to stdout indicating whether SCCACHE_DIR was configured or skipped.
+    - "Running `scripts/setup/provision-chumpd-host.sh` on a Linux host produces visible stdout output containing the substring \"SCCACHE_DIR\" exactly once per invocation, confirming the log path was taken."
+    - A grep for `Linux` inside `src/web_server.rs` within the `handle_file_serve` function boundary returns at least one comment line and one log macro line.
   depends_on: [INFRA-3898, INFRA-3899, INFRA-3900, INFRA-3901, INFRA-3902]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -77209,7 +77242,7 @@ gaps:
 - id: INFRA-3954
   domain: INFRA
   title: "INFRA: Reconcile Brier metric emitters (3 surfaces) into a single canonical column (INFRA-3841 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -77233,11 +77266,12 @@ gaps:
     === cross-pollination briefs mentioning 'phase' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+    [2026-09-01T20:07:16Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2902B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-3955
   domain: INFRA
   title: "INFRA: Reconcile ci pass-rate metric emitters (2 definitions) into a single canonical column (INFRA-3841 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -77261,6 +77295,7 @@ gaps:
     === cross-pollination briefs mentioning 'phase' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+    [2026-09-01T20:03:33Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=5375B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-3956
   domain: INFRA
@@ -98289,6 +98324,11 @@ gaps:
     [2026-09-01T19:56:12Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; re-attempt on fresh main.
     [2026-09-01T19:58:24Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; re-attempt on fresh main.
     [2026-09-01T20:00:40Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (3 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:05:00Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (4 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:07:16Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (5 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:09:46Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (6 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:12:00Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (7 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:14:16Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (8 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
@@ -100495,7 +100535,7 @@ gaps:
   domain: RESILIENT
   title: "CJ OOM-storm: 7GB box + concurrent worker rustc builds = 454 OOM-kills -> failed verify-cycles (artifacts/rc=1) AND node unreachability; serialize builds + kill the false 24GB assumption"
   status: open
-  priority: P0
+  priority: P2
   effort: m
   description: |
     CJ has 7.1Gi RAM + 8Gi swap (5.6Gi used, thrashing). 454 oom-kill events in the journal; rustc (~3GB RSS / 5.7GB virt each) under chump-cj-worker/worker3/organ-watchdog repeatedly OOM-killed. chumpd main.rs sets CARGO_BUILD_JOBS=4 under a comment assuming a 24GB laptop -- CJ is 7GB. TWO consequences: (1) a worker verify-build gets OOM-killed -> cycle fails -> auto-commit artifact / rc=1 = a ROOT of the 'floor produces artifacts' problem, INDEPENDENT of model tier (pro vs flash cannot fix an OOM-killed build); (2) swap-thrash makes the box briefly stop servicing the network -- the 2026-09-01 19:41 ~7min tailscale drop happened with uptime intact (3+ weeks, no reboot), i.e. stayed up but unreachable = swap-death, not power/wifi.
@@ -100506,6 +100546,8 @@ gaps:
     - " grep oom-kill)"
     - verify-build no longer fails from OOM -> fewer artifact/rc=1 cycles
     - node stays network-reachable through build activity
+  notes: |
+    Decomposed into 6 slices: RESILIENT-616, RESILIENT-617, RESILIENT-618, RESILIENT-619, RESILIENT-620, RESILIENT-621
   outcome_id: FLEET-BUILD-SPEED
   evidence: |
     COMMAND: journalctl -k | grep -c oom-kill ; free -h ; uptime -s ; git show #4371.
@@ -100526,6 +100568,166 @@ gaps:
     - on decompose failure (provider error or empty/unusable slices) it retries once on deepseek-v4-pro via OpenRouter before flagging human
     - "the vestigial ModelTier::Opus decompose declaration is retired/reconciled to the live free+escalate reality"
     - "documented decision-of-record: decompose floor=free-tier, ceiling-on-failure=OpenRouter pro, NOT Opus"
+
+- id: RESILIENT-616
+  domain: RESILIENT
+  title: "RESILIENT: Audit and document current memory assumptions in chumpd main.rs (RESILIENT-614 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Identify all hardcoded memory assumptions (24GB, CARGO_BUILD_JOBS=4) in chumpd main.rs
+    - Document findings with file paths and line numbers in a comment or separate note
+    - Confirm no other files contain similar hardcoded memory assumptions
+  notes: |
+    [chump harvest check 'concurrent']
+    === primitives_index match for 'concurrent' ===
+    
+    === cluster keyword match for 'concurrent' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concurrent' ===
+    
+    === repo-description match for 'concurrent' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concurrent' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'concurrent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-617
+  domain: RESILIENT
+  title: "RESILIENT: Implement dynamic CARGO_BUILD_JOBS derivation from actual free RAM (RESILIENT-614 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Replace hardcoded CARGO_BUILD_JOBS=4 with calculation based on actual free RAM (e.g., free / estimated_per_job_mb)
+    - Calculation uses sysinfo or /proc/meminfo to get real-time free memory
+    - CARGO_BUILD_JOBS is capped at nproc but never exceeds safe limit for 7GB box
+    - Unit test verifies correct job count for 7GB, 16GB, and 24GB scenarios
+  depends_on: [RESILIENT-616]
+  notes: |
+    [chump harvest check 'concurrent']
+    === primitives_index match for 'concurrent' ===
+    
+    === cluster keyword match for 'concurrent' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concurrent' ===
+    
+    === repo-description match for 'concurrent' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concurrent' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'concurrent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-618
+  domain: RESILIENT
+  title: "RESILIENT: Add global build semaphore to serialize rustc/cargo builds across workers (RESILIENT-614 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Single global lock/semaphore ensures only one rustc/cargo build runs at a time across all workers and organ-watchdog
+    - Lock is file-based (e.g., /tmp/chumpd_build.lock) or in-process mutex accessible to all worker threads
+    - Workers queue for the lock without busy-waiting; timeout after 30min to prevent deadlock
+    - Integration test spawns 3 concurrent build requests and verifies serial execution via logs
+  depends_on: [RESILIENT-616]
+  notes: |
+    [chump harvest check 'concurrent']
+    === primitives_index match for 'concurrent' ===
+    
+    === cluster keyword match for 'concurrent' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concurrent' ===
+    
+    === repo-description match for 'concurrent' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concurrent' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'concurrent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-619
+  domain: RESILIENT
+  title: "RESILIENT: Update chumpd comment to reflect dynamic memory logic (RESILIENT-614 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Remove or correct the comment assuming a 24GB laptop
+    - Add new comment explaining dynamic CARGO_BUILD_JOBS derivation and global semaphore
+    - Comment references the RESILIENT-614 issue for context
+  depends_on: [RESILIENT-617, RESILIENT-618]
+  notes: |
+    [chump harvest check 'concurrent']
+    === primitives_index match for 'concurrent' ===
+    
+    === cluster keyword match for 'concurrent' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concurrent' ===
+    
+    === repo-description match for 'concurrent' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concurrent' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'concurrent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-620
+  domain: RESILIENT
+  title: "RESILIENT: Add OOM-kill monitoring and alerting to verify-build cycle (RESILIENT-614 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - verify-build wrapper script checks journalctl for oom-kill events after each build
+    - On OOM-kill detection, logs warning and increments a metric (e.g., statsd or log counter)
+    - verify-build returns distinct exit code (e.g., 77) for OOM-kill vs other failures
+    - Alert fires if >0 OOM-kills in 24h window (manual check acceptable for initial slice)
+  depends_on: [RESILIENT-618]
+  notes: |
+    [chump harvest check 'concurrent']
+    === primitives_index match for 'concurrent' ===
+    
+    === cluster keyword match for 'concurrent' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concurrent' ===
+    
+    === repo-description match for 'concurrent' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concurrent' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'concurrent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-621
+  domain: RESILIENT
+  title: "RESILIENT: Test serialized builds on 7GB CJ node with 24h soak (RESILIENT-614 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Deploy changes to a 7GB CJ node
+    - Run continuous verify-build cycles for 24 hours
+    - journalctl -k | grep oom-kill shows 0 events
+    - No artifact/rc=1 cycles caused by OOM
+    - Node remains network-reachable throughout (ping/tailscale check every 5min)
+  depends_on: [RESILIENT-617, RESILIENT-618, RESILIENT-619, RESILIENT-620]
+  notes: |
+    [chump harvest check 'concurrent']
+    === primitives_index match for 'concurrent' ===
+    
+    === cluster keyword match for 'concurrent' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concurrent' ===
+    
+    === repo-description match for 'concurrent' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concurrent' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'concurrent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: SMOKE-001
   domain: SMOKE
