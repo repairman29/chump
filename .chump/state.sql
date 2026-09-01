@@ -16751,7 +16751,7 @@ gaps:
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
   notes: |
-    Decomposed into 5 slices: EFFECTIVE-549, EFFECTIVE-550, EFFECTIVE-551, EFFECTIVE-552, EFFECTIVE-553
+    Decomposed into 5 slices: EFFECTIVE-615, EFFECTIVE-616, EFFECTIVE-617, EFFECTIVE-618, EFFECTIVE-619
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -25171,6 +25171,129 @@ gaps:
     - "Each sub-gap issue in the tracker has a title prefixed with 'EFFECTIVE:' and contains a non-empty acceptance criteria field."
     - The count of sub-gaps created matches the number of core feature areas defined in the EFFECTIVE domain specification file.
   depends_on: [EFFECTIVE-613]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-615
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Initialize repository with scaffold commit (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Repository exists at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT
+    - Git log shows at least one commit with message containing 'scaffold'
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-616
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add README with intent string (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README.md exists in the repository
+    - The first non-empty line of the README body is exactly 'Another intent'
+  depends_on: [EFFECTIVE-615]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-617
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Identify core feature areas (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A list of at least 3 core feature areas is produced (e.g., in a document or shared list)
+    - Each area has a brief description (1-2 sentences)
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-618
+  domain: EFFECTIVE
+  title: "EFFECTIVE: File sub-gap for the first core feature area (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new gap exists in the backlog with a title that clearly references the first identified core feature area
+    - The gap description includes the description from the identified area
+  depends_on: [EFFECTIVE-617]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-619
+  domain: EFFECTIVE
+  title: "EFFECTIVE: File sub-gaps for remaining core feature areas (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - For each remaining core feature area (i.e., all except the first), a corresponding gap exists in the backlog
+    - Each gap's title clearly references its feature area and description matches
+  depends_on: [EFFECTIVE-617]
   notes: |
     [chump harvest check 'Bootstrap']
     === primitives_index match for 'Bootstrap' ===
@@ -80141,10 +80264,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new `coordination:smoke-test` command implementation in the existing observability test script that creates mock agents, triggers event emission and routing, validates lesson exchange between them, and returns exit code 0 on success or logs detailed failure information on stderr.
+    
+    Target file(s):
+    - scripts/ci/test-a2a-rpc-observability.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Command 'coordination:smoke-test' verifies event emission, routing, lesson exchange"
-    - Test generates mock agents and validates end-to-end flow
-    - Returns 0 on success, logs detailed failure otherwise
+    - "Running `bash scripts/ci/test-a2a-rpc-observability.sh coordination:smoke-test` returns exit code 0 when mock agents successfully emit events, route messages, and exchange lessons."
+    - "Running `bash scripts/ci/test-a2a-rpc-observability.sh coordination:smoke-test` returns non-zero exit code and prints a message containing 'FAIL:' to stderr when event emission fails."
+    - "Running `bash scripts/ci/test-a2a-rpc-observability.sh coordination:smoke-test` returns non-zero exit code and prints a message containing 'FAIL:' to stderr when lesson exchange between mock agents fails."
+    - "The script's `fail` function (line 35) is invoked for each detected failure, prefixing output with 'FAIL:' and the specific stage that failed (event emission, routing, or lesson exchange)."
   depends_on: [META-076, META-078, META-080]
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
@@ -81212,9 +81343,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Modify the `record_reflection` function in `crates/chump-orchestrator/src/monitor.rs` to also send a status report to the aggregator's `classify_lane` endpoint (provided by `scripts/ci/aggregator-verified.sh`) alongside the existing reflection recording, without altering the original reporting pathway.
+    
+    Target file(s):
+    - crates/chump-orchestrator/src/monitor.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The `fast-checks` CI job successfully reports its status to the new 'Verified' aggregator service.
-    - The `fast-checks` CI job continues to report its status as before (existing required status is unaffected).
+    - "In `crates/chump-orchestrator/src/monitor.rs`, the function `record_reflection` after storing the reflection (line `self.db.save(reflection)`) adds an HTTP POST to the aggregator service (`http://localhost:PORT/classify`) with JSON body containing the lane name and status, and logs the response."
+    - When the fast-checks job completes successfully or fails, the `classify_lane` function in `scripts/ci/aggregator-verified.sh` outputs a log line containing the lane identifier and the status (`pass` or `fail`) to stdout.
+    - The existing required status reporting via `scripts/ci/test-notify-operator.sh`' s `bad` function is still invoked and reports to the previous system, verified by checking that `test-notify-operator.sh` remains untouched or its behaviour is unchanged.
   depends_on: [META-135]
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
@@ -81225,9 +81364,21 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the `classify_lane` function in `scripts/ci/aggregator-verified.sh` to add a new lane classification entry for each of the six specified lane checks (audit, test, ACP, clippy, cargo-test, e2e-pwa) so that their statuses are recognized and reported to the Verified aggregator service, while ensuring the existing required-status reporting paths remain unchanged.
+    
+    Target file(s):
+    - scripts/ci/aggregator-verified.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All specified lane checks (audit, test, ACP, clippy, cargo-test, e2e-pwa) successfully report their statuses to the new 'Verified' aggregator service.
-    - All lane checks continue to report their statuses as before (existing required statuses are unaffected).
+    - Running `scripts/ci/aggregator-verified.sh` with a lane name matching 'audit' returns the aggregator's expected classification string for that lane.
+    - Running `scripts/ci/aggregator-verified.sh` with a lane name matching 'test' (but not 'cargo-test' or 'e2e-pwa') returns the aggregator's expected classification string for that lane.
+    - Running `scripts/ci/aggregator-verified.sh` with a lane name matching 'ACP' returns the aggregator's expected classification string for that lane.
+    - Running `scripts/ci/aggregator-verified.sh` with a lane name matching 'clippy' returns the aggregator's expected classification string for that lane.
+    - Running `scripts/ci/aggregator-verified.sh` with a lane name matching 'cargo-test' returns the aggregator's expected classification string for that lane.
+    - Running `scripts/ci/aggregator-verified.sh` with a lane name matching 'e2e-pwa' returns the aggregator's expected classification string for that lane.
+    - Running `scripts/ci/aggregator-verified.sh` with a lane name that was previously classified (e.g., an existing required status) still returns its original classification string unchanged.
   depends_on: [META-136]
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
@@ -81261,9 +81412,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the `LANE_CHECKS` constant in `crates/chump-preflight/src/preflight.rs` to add a `stub_pass: true` field for all lane checks (audit, test, ACP, fast-checks, clippy, cargo-test, e2e-pwa), and update the check runner logic to emit a stub-pass success status to the aggregator when a check's underlying job is skipped due to path filters.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All lane checks (audit, test, ACP, fast-checks, clippy, cargo-test, e2e-pwa) are modified.
-    - When an individual lane check's underlying job is skipped due to path filters, it emits a 'success' status (stub-pass) to the aggregator.
+    - "The `LANE_CHECKS` array in `crates/chump-preflight/src/preflight.rs` includes entries for 'audit', 'test', 'ACP', 'fast-checks', 'clippy', 'cargo-test', 'e2e-pwa' each with `stub_pass: true`."
+    - Running `cargo run --bin chump-preflight -- lane-check --path-filter 'docs/*'` in a scenario where all source files are excluded emits the string `stub-pass` for each of the seven checks to standard output and exits with code 0.
+    - Running the same command with a path filter that matches a lane's relevant files (e.g., `src/main.rs`) does not emit `stub-pass` for that lane.
   depends_on: [META-138]
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
@@ -81289,10 +81448,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In scripts/coord/pr-shepherd-daemon.sh, extend the cmd_tick function to count consecutive test failures with identical error fingerprints across PRs. When three or more consecutive runs of the same test produce the same fingerprint, record the test as a flake in a local SQLite database. Additionally, add a new subcommand `query-flakes` that reads and lists all currently tagged flakes from the database.
+    
+    Target file(s):
+    - scripts/coord/pr-shepherd-daemon.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The aggregator service can detect when a test fails 3+ times consecutively across PRs with the same error fingerprint.
-    - Detected flakes are tagged as 'flake' and stored persistently (e.g., in a database).
-    - An API endpoint or mechanism exists to query currently tagged flakes.
+    - Invoking `scripts/coord/pr-shepherd-daemon.sh cmd_tick` on a repository where test T has failed with identical fingerprint on its last three consecutive PR runs results in row added to flake.db with status='flake'.
+    - Running `scripts/coord/pr-shepherd-daemon.sh query-flakes` prints each flake's test name and error fingerprint to stdout.
+    - A test that has failed only twice consecutively with the same fingerprint is not marked as flake after `cmd_tick`.
+    - The error fingerprint used in `cmd_tick` comes from `scripts/ci/test-half-impl-detector.sh extract_job`.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -88032,7 +88199,7 @@ gaps:
 - id: PRODUCT-189
   domain: PRODUCT
   title: "[maclawd] Flag-default drift in Maclawd: OPENAI_API_KEY read with 4 different defaults; HEARTBEAT_DURATION 2m vs 8h"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -88046,6 +88213,8 @@ gaps:
     - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-09-01T21:47:22Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=101, rc=101, cycle_log=918B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/maclawd"
@@ -98955,6 +99124,13 @@ gaps:
     [2026-09-01T21:39:26Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (47 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T21:41:40Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (48 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T21:43:55Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (49 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:48:14Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (50 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:50:27Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (51 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:52:41Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (52 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:54:55Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (53 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:57:13Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (54 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:59:28Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (55 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:00:10Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (56 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
