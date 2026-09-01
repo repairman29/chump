@@ -10739,9 +10739,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a public function `compute_debt_index` to the `chump-disk-inventory` crate that orchestrates the full DebtIndex computation by calling `compute_live_pct`, `compute_debt`, and `compute_prune_ledger` in sequence, then populating and returning a `DebtIndex` struct with the resulting values.
+    
+    Target file(s):
+    - crates/chump-disk-inventory/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A function compute_debt_index calls compute_live_pct, compute_debt, and compute_prune_ledger and populates a DebtIndex struct.
-    - A unit test with mock data verifies the returned DebtIndex has correct live_pct, debt, and prune_ledger values.
+    - Running `cargo test` in `crates/chump-disk-inventory` passes a new test `test_compute_debt_index` that supplies mock data and asserts the returned `DebtIndex` struct contains the expected `live_pct`, `debt`, and `prune_ledger` fields matching the mock inputs.
+    - The function signature `pub fn compute_debt_index(...) -> DebtIndex` is present in `crates/chump-disk-inventory/src/lib.rs` and compiles without errors.
+    - "The `DebtIndex` struct definition in `crates/chump-disk-inventory/src/lib.rs` has at minimum three fields: `live_pct`, `debt`, and `prune_ledger` with appropriate types."
   depends_on: [CREDIBLE-495, CREDIBLE-496, CREDIBLE-497]
   notes: |
     [chump harvest check 'Index']
