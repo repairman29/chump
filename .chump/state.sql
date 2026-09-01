@@ -63214,9 +63214,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Insert a concrete reproduction script and verification steps under the “Reproduction attempt (2026-08-11, INFRA-3544 slice)” heading in docs/process/SELF_HOSTED_RUNNERS.md. The edit adds a bash snippet named `reproduce_checkout_failure.sh` that triggers a minimal workflow using actions/checkout@v6 on a self‑hosted runner identified as `jeffs-macbook-air-10-X`, asserts that the checkout step fails within 30 seconds, and documents the expected error output and runner‑specific nature of the failure.
+    
+    Target file(s):
+    - docs/process/SELF_HOSTED_RUNNERS.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Failure is reproduced within 30 seconds
-    - Failure is specific to jeffs-macbook-air-10-X runners
+    - In docs/process/SELF_HOSTED_RUNNERS.md, a new fenced code block titled `reproduce_checkout_failure.sh` appears directly under the INFRA-3544 heading.
+    - Executing `bash reproduce_checkout_failure.sh` on a `jeffs-macbook-air-10-X` runner exits with status != 0 and prints the exact error line “actions/checkout@v6 failed” within 30 seconds.
+    - Running the same script on a generic runner (e.g., `ubuntu-latest`) completes successfully (exit 0) and does not emit the “actions/checkout@v6 failed” error.
+    - The documentation records the timestamp of the test run and includes a note confirming that the failure is exclusive to the `jeffs-macbook-air-10-X` runner type.
   opened_date: '2026-08-19'
 
 - id: INFRA-3545
@@ -87739,6 +87748,7 @@ gaps:
     Decomposed into 9 slices: RESILIENT-514, RESILIENT-515, RESILIENT-516, RESILIENT-517, RESILIENT-518, RESILIENT-519, RESILIENT-520, RESILIENT-521, RESILIENT-522
     [2026-08-31T05:55:10Z] rot-reaper: PR #4330 auto-closed (CONFLICTING, 4h) 2026-08-31; re-attempt on fresh main.
     [2026-08-31T21:36:30Z] rot-reaper: PR #4358 auto-closed (CONFLICTING, 4h) 2026-08-31; re-attempt on fresh main.
+    [2026-09-01T06:25:06Z] rot-reaper: PR #4361 auto-closed (CONFLICTING, 4h) 2026-09-01; re-attempt on fresh main.
   opened_date: '2026-08-23'
   outcome_id: MISSION-010
   evidence: |
