@@ -64683,13 +64683,15 @@ gaps:
 - id: INFRA-3510
   domain: INFRA
   title: "CREDIBLE: [COTG-S.3] the build-vs-source decision (own-vs-rent, logged)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"[COTG-S.3] the build-vs-source decision (own-vs-rent, logged)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-01T14:36:02Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4779B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: COTG
 
@@ -84048,7 +84050,7 @@ gaps:
 - id: PRODUCT-170
   domain: PRODUCT
   title: "[chump] task_list silently widens unknown status filters to all-active (e2e queried ?status=pending green for months)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -84060,6 +84062,8 @@ gaps:
     - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-09-01T14:42:18Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4782B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/chump"
@@ -84086,7 +84090,7 @@ gaps:
 - id: PRODUCT-172
   domain: PRODUCT
   title: "[upshift] Playwright browser e2e suite is wired into no CI workflow (local-only despite living in e2e:all)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -84098,6 +84102,8 @@ gaps:
     - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-09-01T14:37:55Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4801B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/upshift"
