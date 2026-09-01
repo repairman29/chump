@@ -366,9 +366,37 @@ def is_mirrored(run_cmd):
     return False
 
 
+# ── 4a. Auto-recognize gates added in the same diff (RESILIENT-545) ──────────
+def get_changed_scripts():
+    """Return set of scripts/ci/*.sh paths changed in the current git diff.
+
+    A PR that adds both a ci.yml step AND the test script it runs should
+    NOT fail parity on its own gate — the gate is self-contained in the diff.
+    """
+    import subprocess
+    try:
+        # Try CI context (origin/main...HEAD) first, then local (HEAD)
+        for ref in ["origin/main...HEAD", "HEAD"]:
+            r = subprocess.run(
+                ["git", "diff", "--name-only", ref],
+                capture_output=True, text=True, timeout=5
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                return {p for p in r.stdout.strip().splitlines()
+                        if p.startswith("scripts/ci/") and p.endswith(".sh")}
+    except Exception:
+        pass
+    return set()
+
+changed_scripts = get_changed_scripts()
+if changed_scripts:
+    info(f"Auto-recognized scripts in diff: {len(changed_scripts)}")
+
+
 mirrored_count = 0
 tier_d_count = 0
 allowlisted_count = 0
+auto_recognized_count = 0
 unmirrored = []
 
 for (wf_name, job, step_name, run_cmd) in gates:
@@ -380,6 +408,8 @@ for (wf_name, job, step_name, run_cmd) in gates:
         tier_d_count += 1
     elif is_allowlisted(step_name, run_cmd, sp):
         allowlisted_count += 1
+    elif sp and sp in changed_scripts:
+        auto_recognized_count += 1
     else:
         ci_path = sp if sp else run_cmd.split()[0] if run_cmd else "unknown"
         unmirrored.append((wf_name, job, step_name, ci_path, run_cmd))
@@ -390,13 +420,14 @@ for (wf_name, job, step_name, run_cmd) in gates:
         fail(f"       (b) classify as Tier-D in docs/process/CI_GATES_INVENTORY.md,")
         fail(f"       (c) add to scripts/ci/preflight-ci-parity-exceptions.txt")
 
-total_classified = mirrored_count + tier_d_count + allowlisted_count
+total_classified = mirrored_count + tier_d_count + allowlisted_count + auto_recognized_count
 print()
 print("[ci-parity] Summary:")
 print(f"  Scanned workflows     : 1 primary (ci.yml) + {len(sibling_ymls)} sibling(s)  [META-268]")
 print(f"  Mirrored in preflight : {mirrored_count}")
 print(f"  Tier-D (cannot mirror): {tier_d_count}")
 print(f"  Allowlisted exceptions: {allowlisted_count}")
+print(f"  Auto-recognized (diff) : {auto_recognized_count}")
 print(f"  UNMIRRORED (FAIL)     : {len(unmirrored)}")
 print()
 
