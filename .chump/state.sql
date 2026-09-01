@@ -68839,11 +68839,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Implement classification routing handling within crates/chump-preflight/src/preflight.rs to dispatch CLI control flow based on route intent. For confident routes (Improve, Create, Ingest), check for the `--yes` flag to proceed or display a confirmation prompt and exit. For ambiguous routes, print ambiguity details along with a disambiguation prompt and exit. For diagnosis-only routes (Rescue, Comprehend), print "no Trek outcome" and exit with a non-zero exit code.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - For confident routes (Improve/Create/Ingest), if `--yes` is passed, proceed; otherwise, print a confirmation prompt and exit.
-    - For ambiguous routes, print the ambiguity and ask the user to disambiguate, then exit.
-    - For diagnosis-only routes (Rescue/Comprehend), print 'no Trek outcome' and exit with non-zero status.
-    - Unit tests cover each route type.
+    - "Routing Rescue or Comprehend classifications in crates/chump-preflight/src/preflight.rs outputs \"no Trek outcome\" and exits with non-zero status."
+    - Routing Improve, Create, or Ingest classifications without `--yes` prints a confirmation prompt and exits, while providing `--yes` allows execution to proceed.
+    - Routing ambiguous classifications prints the ambiguity reason and disambiguation prompt before exiting.
+    - Unit tests added to crates/chump-preflight/src/preflight.rs verify confident, ambiguous, and diagnosis-only route behaviors.
   depends_on: [INFRA-3744]
   notes: |
     [chump harvest check 'MISSION']
