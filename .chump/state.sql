@@ -16726,7 +16726,7 @@ gaps:
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.R5UhOPohfj has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
   notes: |
-    Decomposed into 4 slices: EFFECTIVE-536, EFFECTIVE-537, EFFECTIVE-538, EFFECTIVE-539
+    Decomposed into 4 slices: EFFECTIVE-611, EFFECTIVE-612, EFFECTIVE-613, EFFECTIVE-614
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -25047,6 +25047,104 @@ gaps:
     - "Each sub-gap file contains a `title` field that maps to a distinct core feature area: 'adding habits', 'daily tracking', or 'reporting'."
     - Each sub-gap file contains an `acceptance_criteria` list with at least one concrete, testable bullet and an `effort_estimate` field with a non-empty string value.
     - "`grep -c 'effort_estimate:' gaps/EFFECTIVE/EFFECTIVE-265-*.yaml` returns 3."
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-611
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Initialize repository with scaffold commit (EFFECTIVE-266 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Repository exists at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.R5UhOPohfj
+    - Git history contains at least one commit with message 'scaffold'
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-612
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create README.md with intent string (EFFECTIVE-266 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README.md exists in repository root
+    - First body line (after title) contains exactly 'Another intent'
+  depends_on: [EFFECTIVE-611]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-613
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Identify core feature areas from intent (EFFECTIVE-266 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - List of core feature areas documented (e.g., in a note or issue)
+    - List covers key aspects of the intent 'Another intent'
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-614
+  domain: EFFECTIVE
+  title: "EFFECTIVE: File sub-gaps for core feature areas (EFFECTIVE-266 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Sub-gap issues created for each identified core feature area
+    - Each sub-gap has title, priority, and acceptance criteria
+  depends_on: [EFFECTIVE-613]
   notes: |
     [chump harvest check 'Bootstrap']
     === primitives_index match for 'Bootstrap' ===
@@ -77229,10 +77327,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update `run_full_suite_delta` to consolidate the final formatting, linting, and test invocation into a single `cargo` call that runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test` sequentially, returning a unified success/failure status.
+    
+    Target file(s):
+    - crates/chump-verify/src/external_verify_merge.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - cargo fmt check passes with no changes.
-    - cargo clippy --all-targets -D warnings passes with no errors.
-    - cargo test passes with no regressions.
+    - "`cargo fmt --check` is invoked from within `run_full_suite_delta` and its exit status is captured; if it returns non-zero the overall suite reports failure."
+    - "`cargo clippy --all-targets -- -D warnings` is invoked from within `run_full_suite_delta` and its exit status is captured; if it returns non-zero the overall suite reports failure."
+    - "`cargo test` is invoked from within `run_full_suite_delta` and its exit status is captured; if it returns non-zero the overall suite reports failure."
+    - The function `run_full_suite_delta` returns `true` only when all three checks pass with zero exit codes.
   depends_on: [INFRA-3946, INFRA-3947]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -85710,11 +85816,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    In `src/briefing.rs`, add a public function `parse_backlog_file` that accepts a file path, reads the file, detects format (JSON if path ends with `.json`, else plain text), parses into `Vec<Task>`, and returns `Result<Vec<Task>, BacklogParseError>` with a descriptive error for malformed JSON. Include a `#[cfg(test)]` module with tests for valid `.beast-mode-tasks.json`, valid `beads/TODO` plain text, and malformed JSON rejection.
+    
+    Target file(s):
+    - src/briefing.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Parse valid .beast-mode-tasks.json into an array of task objects.
-    - Parse beads/TODO into equivalent array of task objects (assume plain text format).
-    - Reject malformed JSON with descriptive error.
-    - Unit test with sample valid and invalid files.
+    - "`cargo test --lib parse_backlog_file` includes a test that creates a temporary `.beast-mode-tasks.json` file with valid JSON content, calls `parse_backlog_file`, and asserts the result is `Ok(v)` where `v` has the expected item count and each item's `title` matches the file."
+    - "`cargo test --lib parse_backlog_file` includes a test that creates a temporary `beads/TODO` plain text file with task lines, calls `parse_backlog_file`, and asserts the returned `Vec<Task>` has the same number of items as lines and the `title` fields match the lines."
+    - "`cargo test --lib parse_backlog_file` includes a test that creates a temporary file with malformed JSON (e.g., missing braces), calls `parse_backlog_file`, and asserts the result is `Err(BacklogParseError::MalformedJson)` with a message containing the string 'malformed'."
+    - The function `parse_backlog_file` is publicly accessible from `src/briefing.rs` and can be called from other modules (e.g., `src/web_server.rs`) without additional imports besides the `briefing` module.
   depends_on: [MISSION-088]
   notes: |
     [chump harvest check 'MISSION']
@@ -87813,7 +87926,7 @@ gaps:
 - id: PRODUCT-187
   domain: PRODUCT
   title: "[smuggler] 375 of 450 server/services files do not parse — automated edits committed broken code at scale"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -87827,6 +87940,8 @@ gaps:
     - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-09-01T21:12:01Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2585B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/smuggler"
@@ -98756,6 +98871,13 @@ gaps:
     [2026-09-01T20:56:45Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (27 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T20:59:04Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (28 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T21:00:06Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (29 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:01:18Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (30 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:03:34Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (31 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:05:48Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (32 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:08:02Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (33 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:10:16Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (34 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:12:31Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (35 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:14:47Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (36 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
