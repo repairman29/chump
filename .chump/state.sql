@@ -95635,6 +95635,20 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
+- id: RESILIENT-575
+  domain: RESILIENT
+  title: "workers must AUTO-FALLBACK sub->free-tier on rc=1, not silently cool-down+block: a sub-cap outage killed the fleet for 9h"
+  status: open
+  priority: P0
+  effort: m
+  description: |
+    INCIDENT 2026-09-01: the fleet shipped ZERO real PRs for 9h while workers showed 'active'. Root cause: cj-worker-run.sh pinned FLEET_BACKEND=claude FLEET_MODEL=sonnet (the weekly Claude SUB); the sub started returning rc=1 (ERROR_1) every ~50min cycle (cap exhausted — it worked earlier in the session, then died) and the worker just cooled-down 5400s + INFRA-3832-auto-blocked the gap, then failed the NEXT gap identically — silently, for 9h. Meanwhile the FREE-TIER cascade (Cerebras gemma-4-31b @ chump --execute-gap) was LIVE the whole time and unused. Hand-fixed by flipping both workers to FLEET_BACKEND=chump-local. THE DURABLE FIX: when the primary backend (sub) fails a cycle with rc=1/auth/cap, the worker must AUTO-FALLBACK to the free-tier cascade for the next cycle (and emit a LOUD signal), NOT cool-down+block-the-gap as if the GAP were bad. A backend outage is a fleet-wide signal that must TRIGGER a backend switch (signals-must-trigger-action), not be misattributed to individual gaps (which then get wrongly auto-blocked). Also: default the floor to free-tier/paid-DeepSeek, sub as rare ceiling only (it exhausts). And the board must PAGE on 'active workers + 0 real ships for >1h' — this went 9h unpaged.
+  acceptance_criteria:
+    - a worker whose backend fails rc=1/auth twice switches to the free-tier cascade automatically + emits a loud signal, never silently blocks gaps for a backend outage
+    - auto-blocked gaps from a backend-outage window are un-blocked when a working backend returns
+    - the board pages on 'workers active + 0 real ships >1h'
+  outcome_id: RESILIENT-000
+
 - id: SMOKE-001
   domain: SMOKE
   title: coord-surfaces-smoke fixture (auto-clean)
