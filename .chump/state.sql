@@ -2809,6 +2809,8 @@ gaps:
     - Check whether curator loop scripts (ci-audit-loop.sh, handoff-loop.sh, deliberator-loop.sh, etc.) have a concrete 'cast a vote' step wired in, or whether the mandate exists only in CLAUDE.md prose with no code enforcement
     - Propose + ship at least one concrete fix (e.g. a lane-scoped auto-vote step in one curator loop, or a fleet-doctor check that flags proposals with total=0 votes past N hours) that gets real votes flowing, and verify via a real (not fabricated) proposal reaching quorum
     - "Test: after the fix, a newly-broadcast FEEDBACK proposal accumulates >=1 real vote within one curator-loop cycle, observable via scripts/coord/deliberator-loop.sh audit --corr-id <new-corr-id>"
+  notes: |
+    Decomposed into 8 slices: CREDIBLE-466, CREDIBLE-467, CREDIBLE-468, CREDIBLE-469, CREDIBLE-470, CREDIBLE-471, CREDIBLE-472, CREDIBLE-473
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-180
@@ -9527,6 +9529,214 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
+- id: CREDIBLE-466
+  domain: CREDIBLE
+  title: "CREDIBLE: Reproduce zero‑vote condition with deliberator‑loop audit (CREDIBLE-179 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Run `scripts/coord/deliberator-loop.sh audit` against the production `.chump-locks/feedback.jsonl` file.
+    - Capture the audit output and verify that for every line where `kind=proposal`, the fields `yes`, `no`, `abstain`, and `total` are all zero.
+  notes: |
+    [chump harvest check 'votes']
+    === primitives_index match for 'votes' ===
+    
+    === cluster keyword match for 'votes' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'votes' ===
+    
+    === repo-description match for 'votes' ===
+    
+    === HARVEST_ROADMAP.md mention of 'votes' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'votes' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-467
+  domain: CREDIBLE
+  title: "CREDIBLE: Add debug logging to `_peek_inbox` to show inbox contents (CREDIBLE-179 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Modify `_peek_inbox` in `deliberator-loop.sh` to emit a debug line for each item read, showing `corr_id` and `kind`.
+    - Run a single loop cycle and capture the debug output.
+    - Confirm that FEEDBACK proposals appear in the debug log.
+  depends_on: [CREDIBLE-466]
+  notes: |
+    [chump harvest check 'votes']
+    === primitives_index match for 'votes' ===
+    
+    === cluster keyword match for 'votes' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'votes' ===
+    
+    === repo-description match for 'votes' ===
+    
+    === HARVEST_ROADMAP.md mention of 'votes' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'votes' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-468
+  domain: CREDIBLE
+  title: "CREDIBLE: Log each invocation of `_nudge_curators_to_vote` (CREDIBLE-179 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Insert a debug statement before each call to `_nudge_curators_to_vote` that logs the `corr_id` being nudged.
+    - Execute a loop cycle and capture the logs.
+    - Verify that the log contains an entry for every proposal `corr_id` observed in the inbox.
+  depends_on: [CREDIBLE-467]
+  notes: |
+    [chump harvest check 'votes']
+    === primitives_index match for 'votes' ===
+    
+    === cluster keyword match for 'votes' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'votes' ===
+    
+    === repo-description match for 'votes' ===
+    
+    === HARVEST_ROADMAP.md mention of 'votes' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'votes' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-469
+  domain: CREDIBLE
+  title: "CREDIBLE: Document current vote‑casting logic in all curator loops (CREDIBLE-179 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Review `ci-audit-loop.sh`, `handoff-loop.sh`, `deliberator-loop.sh`, and any other `scripts/coord/*-loop.sh` files.
+    - Produce a short report that states whether each script contains an explicit step that creates a vote (`kind=vote` or similar).
+    - The report must confirm that no existing script automatically casts a vote for FEEDBACK proposals.
+  depends_on: [CREDIBLE-466]
+  notes: |
+    [chump harvest check 'votes']
+    === primitives_index match for 'votes' ===
+    
+    === cluster keyword match for 'votes' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'votes' ===
+    
+    === repo-description match for 'votes' ===
+    
+    === HARVEST_ROADMAP.md mention of 'votes' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'votes' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-470
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement auto‑vote step in `deliberator-loop.sh` (CREDIBLE-179 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Add logic after inbox reading that iterates over proposals with `total=0`.
+    - For each such proposal, call `_emit_kind` to write a vote line (`kind=vote`, `vote=+1`, appropriate `corr_id`).
+    - Guard the insertion with `_has_consensus_result` to keep the operation idempotent.
+    - Run the loop on a test inbox and verify that every proposal now has at least one vote entry in `feedback.jsonl`.
+  depends_on: [CREDIBLE-468, CREDIBLE-469]
+  notes: |
+    [chump harvest check 'votes']
+    === primitives_index match for 'votes' ===
+    
+    === cluster keyword match for 'votes' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'votes' ===
+    
+    === repo-description match for 'votes' ===
+    
+    === HARVEST_ROADMAP.md mention of 'votes' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'votes' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-471
+  domain: CREDIBLE
+  title: "CREDIBLE: Create integration test for auto‑vote behavior (CREDIBLE-179 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Write a test script that injects a mock FEEDBACK proposal into a temporary inbox file.
+    - Execute `deliberator-loop.sh` once against the temporary data.
+    - Parse the resulting `feedback.jsonl` and assert that a vote line exists for the mock `corr_id` with `yes >= 1`.
+    - The test must pass on a clean checkout.
+  depends_on: [CREDIBLE-470]
+  notes: |
+    [chump harvest check 'votes']
+    === primitives_index match for 'votes' ===
+    
+    === cluster keyword match for 'votes' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'votes' ===
+    
+    === repo-description match for 'votes' ===
+    
+    === HARVEST_ROADMAP.md mention of 'votes' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'votes' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-472
+  domain: CREDIBLE
+  title: "CREDIBLE: Deploy the fixed `deliberator-loop.sh` to production and verify real vote flow (CREDIBLE-179 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Push the updated `deliberator-loop.sh` to the production repository and restart any relevant services.
+    - Create a real FEEDBACK proposal in production, trigger one curator‑loop cycle, and run `deliberator-loop.sh audit` with the new `corr_id`.
+    - Confirm that the audit shows `yes >= 1` for the proposal within the same cycle.
+  depends_on: [CREDIBLE-471]
+  notes: |
+    [chump harvest check 'votes']
+    === primitives_index match for 'votes' ===
+    
+    === cluster keyword match for 'votes' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'votes' ===
+    
+    === repo-description match for 'votes' ===
+    
+    === HARVEST_ROADMAP.md mention of 'votes' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'votes' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-473
+  domain: CREDIBLE
+  title: "CREDIBLE: Add fleet‑doctor check for stale zero‑vote proposals (CREDIBLE-179 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Create a new `fleet-doctor` script that scans `feedback.jsonl` for proposals older than a configurable threshold (e.g., 6 hours) with `total=0`.
+    - The script must emit a warning containing the `corr_id` of each stale proposal.
+    - Run the script on a sample data set containing a known stale proposal and verify that the warning is produced.
+  depends_on: [CREDIBLE-470]
+  notes: |
+    [chump harvest check 'votes']
+    === primitives_index match for 'votes' ===
+    
+    === cluster keyword match for 'votes' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'votes' ===
+    
+    === repo-description match for 'votes' ===
+    
+    === HARVEST_ROADMAP.md mention of 'votes' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'votes' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
 - id: DOC-031
   domain: DOC
   title: "CREDIBLE: reconcile CLAUDE.md / AGENTS.md / DISPATCH_RULES.md into single agent doctrine"
@@ -10987,9 +11197,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Insert a documentation comment block at the top of `src/main.rs` (just before the `fn main()` definition) that adds a “Dispatch” heading and provides a concise explanation of the `preferred_machine` field and the current operational state of the chump‑coord assign daemon, ensuring the comment is syntactically valid Rust doc‑comment so it does not affect compilation.
+    
+    Target file(s):
+    - src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Insert a \"Dispatch\" heading"
-    - Explain preferred_machine field and current state of chump‑coord assign daemon
+    - src/main.rs contains a line with the heading `/// Dispatch` (or `///
+    - src/main.rs contains a sentence that mentions the `preferred_machine` field and describes its intended use.
+    - src/main.rs contains a sentence that describes the current state of the chump‑coord assign daemon.
+    - Running `cargo test` in the repository completes successfully with no new compilation errors.
   depends_on: [DOC-103]
   notes: |
     [chump harvest check 'fleet']
