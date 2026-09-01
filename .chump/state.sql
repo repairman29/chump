@@ -69748,10 +69748,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Replace the current implementation of the `_sccache_dir_writable` function in `scripts/setup/install-sccache.sh` so that it performs an actual I/O probe: it creates a temporary file inside the supplied directory, writes a single byte, closes and unlinks the file, and returns 0 on success or a non‑zero status on any failure, removing the previous `-w` permission‑only check.
+    
+    Target file(s):
+    - scripts/setup/install-sccache.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Calling _sccache_dir_writable <dir> returns 0 if a temporary file can be created and immediately unlinked in <dir>.
-    - Calling _sccache_dir_writable <dir> returns non-zero if the directory is unwritable or the file system reports errors (e.g., EBADMSG).
-    - The function no longer uses the -w test or any permission-only check; it performs a real I/O probe.
+    - In `scripts/setup/install-sccache.sh`, the `_sccache_dir_writable` function no longer contains a `test -w` (or `[ -w ... ]`) expression.
+    - Executing `source scripts/setup/install-sccache.sh && _sccache_dir_writable /tmp` returns exit status 0 on a writable directory.
+    - Executing `source scripts/setup/install-sccache.sh && _sccache_dir_writable /root` (or any directory without write permission) returns a non‑zero exit status.
+    - After calling `_sccache_dir_writable` on a writable directory, no residual temporary file remains in that directory.
   notes: |
     [chump harvest check 'MISSION']
     === primitives_index match for 'MISSION' ===
