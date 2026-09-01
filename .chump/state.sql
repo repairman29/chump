@@ -24860,7 +24860,7 @@ gaps:
 - id: EFFECTIVE-605
   domain: EFFECTIVE
   title: "EFFECTIVE: chump daemons --status: list all fleet daemons with health indicators (EFFECTIVE-178 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -24891,11 +24891,12 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-01T20:57:15Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2558B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-606
   domain: EFFECTIVE
   title: "EFFECTIVE: chump ship --manual: blessed manual fallback for gap shipping (EFFECTIVE-178 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -24933,6 +24934,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-01T20:52:15Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2539B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-607
   domain: EFFECTIVE
@@ -24975,10 +24977,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify the `run_bootstrap` function in `src/commands/bootstrap.rs` to initialize a Git repository at the target directory and create an initial scaffold commit containing a `.gitkeep` file.
+    
+    Target file(s):
+    - src/commands/bootstrap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Repository exists at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.sesaNzYOfT
-    - Git history contains at least one commit
-    - The first commit is a scaffold (e.g., adding a .gitkeep file)
+    - Executing `run_bootstrap` with a directory path results in a `.git` directory inside that path.
+    - The repository's commit history contains exactly one commit with a message indicating a scaffold.
+    - The commit's tree includes a `.gitkeep` file at the root.
   notes: |
     [chump harvest check 'Bootstrap']
     === primitives_index match for 'Bootstrap' ===
@@ -25026,10 +25035,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify `reserve_umbrella_gap` to generate at least 3 sub-gap YAML files under a core feature areas directory, each containing a distinct title, basic acceptance criteria, and an effort estimate field, then write them to the project management system's gap store.
+    
+    Target file(s):
+    - src/commands/bootstrap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - At least 3 sub-gaps are filed in the project management system
-    - Each sub-gap addresses a distinct core feature area (e.g., adding habits, daily tracking, reporting)
-    - Sub-gaps include basic acceptance criteria and effort estimates
+    - Running `cargo run -- bootstrap --gap-id EFFECTIVE-265` invokes `reserve_umbrella_gap` and creates exactly 3 sub-gap files in `gaps/EFFECTIVE/` with names like `EFFECTIVE-265-1.yaml`, `EFFECTIVE-265-2.yaml`, `EFFECTIVE-265-3.yaml`.
+    - "Each sub-gap file contains a `title` field that maps to a distinct core feature area: 'adding habits', 'daily tracking', or 'reporting'."
+    - Each sub-gap file contains an `acceptance_criteria` list with at least one concrete, testable bullet and an `effort_estimate` field with a non-empty string value.
+    - "`grep -c 'effort_estimate:' gaps/EFFECTIVE/EFFECTIVE-265-*.yaml` returns 3."
   notes: |
     [chump harvest check 'Bootstrap']
     === primitives_index match for 'Bootstrap' ===
@@ -25576,7 +25593,7 @@ gaps:
 - id: GAME-009
   domain: GAME
   title: "[crystal-rush] Stranger bot: stuck on \"survive-30s\" (single run)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -25591,6 +25608,8 @@ gaps:
     - "The originating check passes on re-run in repairman29/crystal-rush (tool + target in the description: surveyor edge -> verdict PASS; repeat milestone -> completed >=1/N; bot/widget error -> no longer reproduces)"
     - crystal-rush test suite stays green
     - FINDINGS.md / DEPTH.md in repairman29/crystal-rush updated in the same commit
+  notes: |
+    [2026-09-01T20:54:46Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=5160B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/crystal-rush"
@@ -75807,10 +75826,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new build step to the existing build workflow that runs `cargo build --release --bin chump --target x86_64-unknown-linux-gnu` after the default build step, ensuring the x86_64-unknown-linux-gnu target is installed via `rustup target add x86_64-unknown-linux-gnu` before building.
+    
+    Target file(s):
+    - .github/workflows/build.yml
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Workflow runs `cargo build --release --bin chump` for the x86_64 target
-    - Resulting binary is located at target/x86_64-unknown-linux-gnu/release/chump
-    - Build step succeeds on a test push
+    - "`.github/workflows/build.yml` contains a step that runs `rustup target add x86_64-unknown-linux-gnu` before the x86_64 build step."
+    - "`.github/workflows/build.yml` contains a step that runs `cargo build --release --bin chump --target x86_64-unknown-linux-gnu`."
+    - The workflow produces a binary at `target/x86_64-unknown-linux-gnu/release/chump` when the x86_64 build step completes.
+    - A test push to the repository triggers the workflow and the x86_64 build step exits with status 0.
   depends_on: [INFRA-3905]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -75921,10 +75948,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    In the release workflow's build job, modify or add steps so that after each target binary is built, the binary is uploaded as a GitHub Actions artifact named `chump-<target>-<full_sha>` and a corresponding SHA256 checksum file is uploaded with the same base name plus a `.sha256` extension, using the run's full commit SHA (`${{ github.sha }}`) for `<full_sha>`.
+    
+    Target file(s):
+    - .github/workflows/release.yml
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Workflow uploads each binary as an artifact named `chump-<target>-<full-sha>`
-    - Corresponding SHA256 checksum file is uploaded with the same naming scheme
-    - Artifacts are downloadable via the GitHub UI and the `gh` CLI using the run's head_sha
+    - After a release workflow run completes, `gh run view --json artifacts` shows an artifact named `chump-linux-amd64-<commit_sha>` containing the Linux amd64 binary.
+    - A second artifact named `chump-linux-amd64-<commit_sha>.sha256` is present and contains exactly the SHA256 checksum of that binary.
+    - Running `gh run download <run-id> -n chump-linux-amd64-<commit_sha>` restores the binary and `sha256sum -c chump-linux-amd64-<commit_sha>.sha256` succeeds.
+    - The GitHub Actions UI for the run lists both artifacts with the expected names and file sizes.
   depends_on: [INFRA-3906, INFRA-3907, INFRA-3908]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -76064,9 +76099,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Wrap any `sudo apt-get` or other Linux‑only commands in the CI workflow with `if: runner.os == 'Linux'` conditionals so that the workflow skips those steps on non‑Linux runners (e.g., macOS) instead of failing.
+    
+    Target file(s):
+    - .github/workflows/ci.yml
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Any `sudo apt-get` or other Linux‑only commands in the workflow are wrapped in `if: runner.os == 'Linux'`"
-    - Workflow runs successfully on non‑Linux runners (e.g., macOS) without executing those steps
+    - "In `.github/workflows/ci.yml`, every step containing `sudo apt-get` is guarded by `if: runner.os == 'Linux'`."
+    - Running the workflow on a macOS runner shows those steps as skipped in the GitHub Actions UI.
+    - Running the workflow on an Ubuntu runner still executes the `sudo apt-get` steps successfully.
   depends_on: [INFRA-3905]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -76098,10 +76141,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a unit test inside the existing `mod tests` block at line 387 of `crates/chump-orchestrator/src/reflect.rs` that loads the new workflow file, inspects its parsed representation, and asserts that no branch-protection rules or aggregator check configurations are altered in a way that would break existing CI protections.
+    
+    Target file(s):
+    - crates/chump-orchestrator/src/reflect.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All existing CI checks (aggregator, branch protection) remain green after merging the new workflow file
-    - No new registry or parity gate failures appear
-    - Running the full CI suite on a fresh branch passes without modifications to other workflows
+    - Running `cargo test -p chump-orchestrator` exits with code 0 and the new test case appears in the output as passed.
+    - The test fails with a clear panic message if the workflow file attempts to remove or weaken the branch-protection rule that enforces required status checks.
+    - The test fails with a clear panic message if the workflow file removes or disables the aggregator check step.
+    - "The test succeeds and prints \"CI protections intact\" when the workflow file leaves all existing protection rules unchanged."
   depends_on: [INFRA-3905, INFRA-3912, INFRA-3913]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -85146,10 +85197,12 @@ gaps:
   domain: MISSION
   title: "MISSION: chump ingest <repo> — import a repo's DEFINED backlog (.beast-mode-tasks.json/beads/TODO) as fleet gaps"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "`chump ingest <repo>` reads a repo's defined backlog (.beast-mode-tasks.json/beads/TODO) and creates one fleet gap per item, tagged to that repo; re-running is idempotent (no duplicates)."
+  notes: |
+    Decomposed into 6 slices: MISSION-087, MISSION-088, MISSION-089, MISSION-090, MISSION-091, MISSION-092
   opened_date: '2026-07-26'
   outcome_id: MISSION-032
 
@@ -85571,6 +85624,251 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     batphone deploy self-test (EFFECTIVE-513 verification) — route+intake confirmed live; closing, do not action
+
+- id: MISSION-087
+  domain: MISSION
+  title: "MISSION: Design ingest schema mapping: defined backlog item → fleet gap (MISSION-055 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Document how each field in .beast-mode-tasks.json maps to fleet gap fields (title, priority, effort, acceptance_criteria, tags, source repo).
+    - Specify idempotency key derivation (e.g., repo + item ID).
+    - Decision on handling missing/optional fields is recorded.
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: MISSION-088
+  domain: MISSION
+  title: "MISSION: Implement repo resolver: locate .beast-mode-tasks.json and beads/TODO in <repo> (MISSION-055 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Given a repo identifier, resolve to local clone or remote default and locate .beast-mode-tasks.json.
+    - Fallback to beads/TODO if .beast-mode-tasks.json is absent.
+    - Error out clearly if neither source is found.
+    - Unit test covers both file-found and file-not-found scenarios.
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: MISSION-089
+  domain: MISSION
+  title: "MISSION: Parse defined backlog file into structured items (MISSION-055 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Parse valid .beast-mode-tasks.json into an array of task objects.
+    - Parse beads/TODO into equivalent array of task objects (assume plain text format).
+    - Reject malformed JSON with descriptive error.
+    - Unit test with sample valid and invalid files.
+  depends_on: [MISSION-088]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: MISSION-090
+  domain: MISSION
+  title: "MISSION: Create fleet gap per defined backlog item (MISSION-055 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - For each parsed item, create one fleet gap using mapped fields.
+    - Tag each created gap with the source repo.
+    - Detect duplicates via idempotency key and skip creation.
+    - Report number of created vs skipped items at the end.
+    - Integration test with a mock fleet store.
+  depends_on: [MISSION-087, MISSION-089]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: MISSION-091
+  domain: MISSION
+  title: "MISSION: Wire up CLI command `chump ingest <repo>` (MISSION-055 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - CLI accepts one positional argument <repo>.
+    - Orchestrates file resolution, parsing, and gap creation.
+    - "Outputs summary: 'Ingested X gaps from <repo>; Y duplicates skipped.'."
+    - Exit code 0 on success, non-zero on error.
+    - Smoke test with a real sample repo.
+  depends_on: [MISSION-090]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: MISSION-092
+  domain: MISSION
+  title: "MISSION: Verify idempotency: re-running produces no duplicates (MISSION-055 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Run `chump ingest <repo>` twice on the same repo.
+    - Second run skips all items and reports 0 created.
+    - Fleet state identical after both runs.
+    - Automated acceptance test covers idempotency.
+  depends_on: [MISSION-091]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA-001
   domain: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA
@@ -98451,6 +98749,13 @@ gaps:
     [2026-09-01T20:41:02Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (20 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T20:43:20Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (21 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T20:45:34Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (22 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:47:47Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (23 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:50:01Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (24 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:52:15Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (25 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:54:31Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (26 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:56:45Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (27 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:59:04Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (28 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:00:06Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (29 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
