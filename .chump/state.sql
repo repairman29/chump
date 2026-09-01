@@ -16712,6 +16712,8 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.sesaNzYOfT has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"A CLI tool that tracks daily habits\"\n3. Sub-gaps filed for core feature areas"
+  notes: |
+    Decomposed into 3 slices: EFFECTIVE-608, EFFECTIVE-609, EFFECTIVE-610
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -24964,6 +24966,82 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-608
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Initialize Git repository and create scaffold commit (EFFECTIVE-265 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Repository exists at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.sesaNzYOfT
+    - Git history contains at least one commit
+    - The first commit is a scaffold (e.g., adding a .gitkeep file)
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-609
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add README.md with intent line (EFFECTIVE-265 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - File README.md exists in the repository root
+    - The first non-empty, non-heading line of README.md is exactly 'A CLI tool that tracks daily habits'
+    - README.md is committed to the repository
+  depends_on: [EFFECTIVE-608]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-610
+  domain: EFFECTIVE
+  title: "EFFECTIVE: File sub-gaps for core feature areas (EFFECTIVE-265 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - At least 3 sub-gaps are filed in the project management system
+    - Each sub-gap addresses a distinct core feature area (e.g., adding habits, daily tracking, reporting)
+    - Sub-gaps include basic acceptance criteria and effort estimates
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
 
 - id: EVAL-085
   title: test eval 085
@@ -76743,10 +76821,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a design-note comment block immediately above `fn build_briefing_at` (line 166) in `src/briefing.rs` that documents the organ-wiring analysis for spec COTG-S.4. The comment identifies the two primary code paths that handle organ processing and deduplication: `crates/chump-preflight/src/preflight.rs:901` (`fn discover_test_scripts`) and `crates/chump-verify/src/pr_ac_coverage.rs:1711` (`mod tests`), and briefly explains how each path contributes to structural completeness dedup (not keyword match) as required by the spec.
+    
+    Target file(s):
+    - src/briefing.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Specification \"[COTG-S.4] wire the organs into dedup (structural completeness, not keyword match)\" is reviewed and documented."
-    - All Rust modules/files that handle organ processing and deduplication are identified.
-    - A short design note links the identified code paths to the required wiring change.
+    - "`src/briefing.rs` contains a comment block starting with `// INFRA-3939: Organ wiring analysis` that includes the literal string `COTG-S.4`."
+    - "The comment block lists the file path `crates/chump-preflight/src/preflight.rs:901` and the function name `discover_test_scripts`."
+    - "The comment block lists the file path `crates/chump-verify/src/pr_ac_coverage.rs:1711` and the identifier `mod tests`."
+    - Running `grep -A 25 'INFRA-3939' src/briefing.rs` outputs the full comment block containing both file paths and the spec reference.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -77300,7 +77386,7 @@ gaps:
 - id: INFRA-3956
   domain: INFRA
   title: "INFRA: Reconcile operator-pages metric emitters (3 names) into a single canonical column (INFRA-3841 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -77324,6 +77410,7 @@ gaps:
     === cross-pollination briefs mentioning 'phase' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+    [2026-09-01T20:16:48Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=3256B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-3957
   domain: INFRA
@@ -87389,7 +87476,7 @@ gaps:
 - id: PRODUCT-186
   domain: PRODUCT
   title: "[almanac] Unparsed languages (Ruby/PHP/Java/...) index as 0 symbols silently — a 0-hit search reads as absence"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -87400,6 +87487,8 @@ gaps:
     - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-09-01T20:22:37Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2527B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
@@ -98329,6 +98418,13 @@ gaps:
     [2026-09-01T20:09:46Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (6 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T20:12:00Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (7 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T20:14:16Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (8 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:16:28Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (9 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:18:43Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (10 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:20:58Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (11 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:23:16Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (12 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:25:34Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (13 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:27:46Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (14 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:29:59Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (15 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
