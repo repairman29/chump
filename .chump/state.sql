@@ -90355,10 +90355,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add an integration‑test module to `crates/chump-preflight/src/preflight.rs` containing a new test function `test_diagnose_and_auto_fix_flow` that programmatically creates a sustained‑red condition, calls `diagnose_broken_check()` and asserts the expected broken result, then invokes `apply_auto_fix()` and asserts the red flag is cleared, and finally exercises the failure path by forcing `apply_auto_fix()` to error and verifying that `dispatch_alert()` is invoked.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test triggers a sustained‑red condition, verifies `diagnose_broken_check()` returns the expected check
-    - Test confirms `apply_auto_fix()` succeeds and the red flag is cleared
-    - Test also covers the failure path where auto‑fix is unavailable and `dispatch_alert()` is called
+    - Running `cargo test` prints a passing test named `test_diagnose_and_auto_fix_flow` defined in `crates/chump-preflight/src/preflight.rs`.
+    - "The test asserts that `diagnose_broken_check(&mut env)` returns the `CheckResult::Broken` variant for the simulated sustained‑red condition."
+    - After calling `apply_auto_fix(&mut env)`, the test asserts the function returns `Ok(())` and that `is_red(&env)` (or equivalent) returns `false`, confirming the red flag is cleared.
+    - In a sub‑test where `apply_auto_fix(&mut env)` is forced to return an error, the test asserts that `dispatch_alert(&mut env)` is called, e.g., by checking a `alert_sent` flag or captured log entry indicating the alert was dispatched.
   depends_on: [RESILIENT-477, RESILIENT-478]
   notes: |
     [chump harvest check 'organ']
@@ -91579,7 +91587,7 @@ gaps:
 - id: RESILIENT-525
   domain: RESILIENT
   title: "RESILIENT: Extend config handling to persist token expiry (`expires_at`) in config.toml (RESILIENT-054 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -91603,11 +91611,12 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-01T01:19:33Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-526
   domain: RESILIENT
   title: "RESILIENT: Make AuthMode::Auto prefer a VALID subscription OAuth token over API key (RESILIENT-054 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -91631,6 +91640,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-01T01:20:30Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-527
   domain: RESILIENT
