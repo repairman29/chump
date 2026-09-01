@@ -10813,9 +10813,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a public function `emit_debt_index` in `crates/credible/src/metrics.rs` that accepts a `DebtIndex` struct and returns a `String` formatted as an ambient kind line followed by registry column key-value pairs, exactly matching the output schema defined in CREDIBLE-417.
+    
+    Target file(s):
+    - crates/credible/src/metrics.rs
+    - crates/credible/tests/emit_debt_index_test.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A function emit_debt_index formats the DebtIndex into the required ambient kind and registry columns.
-    - A test verifies the emitted output matches the expected structure and content for a known DebtIndex.
+    - Running `cargo test emit_debt_index` in the credible crate passes; the test in `crates/credible/tests/emit_debt_index_test.rs` constructs a known `DebtIndex` and asserts the returned string starts with the ambient kind prefix and contains all required registry columns in the correct order.
+    - "The function `emit_debt_index` in `crates/credible/src/metrics.rs` compiles without warnings and its signature is `pub fn emit_debt_index(index: &DebtIndex) -> String`."
+    - The test output file `crates/credible/tests/emit_debt_index_test.rs` contains a snapshot assertion (e.g., `assert_eq!`) that fails if the emitted format changes unexpectedly, ensuring the contract is locked.
   depends_on: [CREDIBLE-498]
   notes: |
     [chump harvest check 'Index']
@@ -10846,9 +10855,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a test function `test_ship_determinism` inside `crates/chump-gap-store/src/lib.rs` that constructs a predetermined input state, calls the `ship` function twice, and asserts that both invocations return identical `DebtIndex` results.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "The computation is deterministic: given identical inputs, the same DebtIndex is produced every time."
-    - A test runs the computation twice on the same state and asserts equality of the results.
+    - "File `crates/chump-gap-store/src/lib.rs` contains a `#[test]` function named `test_ship_determinism`."
+    - The test creates a fixed `GapState` (or equivalent) fixture and calls `ship` twice, capturing the two resulting `DebtIndex` values.
+    - The test applies `assert_eq!` on the two captured `DebtIndex` values, ensuring bitwise equality.
+    - Executing `cargo test -p chump-gap-store test_ship_determinism` passes with exit code 0 and output containing `test test_ship_determinism ... ok`.
   depends_on: [CREDIBLE-498]
   notes: |
     [chump harvest check 'Index']
@@ -10879,9 +10897,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new integration test function `test_credible_419_full_update_emit_cycle` inside the existing `discover_test_scripts` module (near line 901) that sets up known inventory items, calls the full update+emit pipeline, and asserts that the returned `live_pct`, `debt`, and `prune_ledger` match hardcoded expected values.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - An integration test sets up a scenario with known items, triggers the full update+emit cycle, and asserts that the emitted live_pct, debt, and prune_ledger match expected values.
-    - The test fails if any part of the pipeline is broken.
+    - Running `cargo test --package chump-preflight -- test_credible_419_full_update_emit_cycle` passes when the pipeline logic is correct.
+    - The test function creates at least two known items, calls the same `update_and_emit` entry point used in production, and destructures the result into `live_pct`, `debt`, and `prune_ledger`.
+    - Each of the three destructured fields is compared against a literal expected value using `assert_eq!`, causing a panic if any part of the pipeline produces a mismatch.
+    - "The test is registered via `#[test]` so it is discovered by `cargo test` without manual registration or external scripts."
   depends_on: [CREDIBLE-499, CREDIBLE-500, CREDIBLE-501]
   notes: |
     [chump harvest check 'Index']
@@ -10912,10 +10939,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    In crates/chump-preflight/src/preflight.rs, inside fn discover_test_scripts, remove the unnecessary .clone() call on line 873 that triggers clippy::clone_on_copy. In src/trajectory_replay.rs, add #[derive(Debug)] to the GoldenTrajectory struct at line 39 to satisfy clippy::missing_debug_implementations. After both edits, run cargo fmt to ensure the files conform to the project's rustfmt style.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    - src/trajectory_replay.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - cargo fmt passes with no changes.
-    - cargo clippy --all-targets -D warnings passes with no errors.
-    - The full test suite (cargo test) passes with no regressions.
+    - "`cargo fmt --check` exits with code 0 and produces no diff."
+    - "`cargo clippy --all-targets -D warnings` exits with code 0; specifically, no `clone_on_copy` warning in crates/chump-preflight/src/preflight.rs and no `missing_debug_implementations` warning in src/trajectory_replay.rs."
+    - "`cargo test` exits with code 0, with all tests passing."
   depends_on: [CREDIBLE-502]
   notes: |
     [chump harvest check 'Index']
@@ -22415,9 +22450,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new async function `handle_post_mission` that returns an HTTP 200 response with a placeholder JSON body `{"status": "ok"}`. Then wire this handler to the existing POST /api/mission route inside the `create_mission_gap` function, replacing any previous stub.
+    
+    Target file(s):
+    - crates/chump-fleet-server/src/mission.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A new function `handle_post_mission` exists and returns a 200 OK with a placeholder JSON body.
-    - The function is wired to the route added in slice 0.
+    - "In crates/chump-fleet-server/src/mission.rs, the function `handle_post_mission` is defined and returns `StatusCode::OK` with a JSON body `{\"status\": \"ok\"}`."
+    - In the same file, the `create_mission_gap` function registers the route `POST /api/mission` to call `handle_post_mission`.
+    - Running `cargo build -p chump-fleet-server` compiles without errors.
+    - "Sending a POST request to `/api/mission` on the running server returns HTTP 200 and the exact JSON `{\"status\":\"ok\"}`."
   depends_on: [EFFECTIVE-540]
   notes: |
     [chump harvest check 'external']
@@ -73501,12 +73545,14 @@ gaps:
   domain: INFRA
   title: "NBA spine phase 0 — reconcile 9 duplicated/drifted metric emitters into canonical columns: merges_24h (3 computations vital-signs/dashboard/faculty), merge-mix (race-control vs merge-mix-board dup w/ field drift), Brier (3 surfaces), ci pass-rate (2 defs), operator-pages (3 names)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"merges_24h (3 computations vital-signs/dashboard/faculty), merge-mix (race-control vs merge-mix-board dup w/ field drift), Brier (3 surfaces), ci pass-rate (2 defs), operator-pages (3 names)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 5 slices: INFRA-3952, INFRA-3953, INFRA-3954, INFRA-3955, INFRA-3956
   outcome_id: CHUMPOS
 
 - id: INFRA-3842
@@ -76582,6 +76628,146 @@ gaps:
     
     === cross-pollination briefs mentioning 'Picker' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: INFRA-3952
+  domain: INFRA
+  title: "INFRA: Reconcile merges_24h metric emitters (vital-signs, dashboard, faculty) into a single canonical column (INFRA-3841 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The three merges_24h computations (vital-signs, dashboard, faculty) are consolidated into one canonical column definition.
+    - A test in the relevant test suite verifies that the canonical column emits the correct merges_24h value and fails if any of the old duplicate emitters are used.
+    - The change passes cargo fmt, clippy --all-targets -D warnings, cargo check, and does not regress existing tests.
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-3953
+  domain: INFRA
+  title: "INFRA: Reconcile merge-mix metric emitters (race-control and merge-mix-board) into a single canonical column, resolving field drift (INFRA-3841 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The two merge-mix emitters (race-control and merge-mix-board) are consolidated into one canonical column, with field drift resolved.
+    - A test verifies the canonical merge-mix column and fails without the consolidation.
+    - Passes cargo fmt, clippy, check, and existing tests.
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-3954
+  domain: INFRA
+  title: "INFRA: Reconcile Brier metric emitters (3 surfaces) into a single canonical column (INFRA-3841 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The three Brier surface emitters are consolidated into one canonical Brier column.
+    - A test verifies the canonical Brier column and fails without the consolidation.
+    - Passes cargo fmt, clippy, check, and existing tests.
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-3955
+  domain: INFRA
+  title: "INFRA: Reconcile ci pass-rate metric emitters (2 definitions) into a single canonical column (INFRA-3841 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The two ci pass-rate definitions are consolidated into one canonical column.
+    - A test verifies the canonical ci pass-rate column and fails without the consolidation.
+    - Passes cargo fmt, clippy, check, and existing tests.
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-3956
+  domain: INFRA
+  title: "INFRA: Reconcile operator-pages metric emitters (3 names) into a single canonical column (INFRA-3841 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The three operator-pages name emitters are consolidated into one canonical column.
+    - A test verifies the canonical operator-pages column and fails without the consolidation.
+    - Passes cargo fmt, clippy, check, and existing tests.
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
 
 - id: INFRA-416
   domain: INFRA
